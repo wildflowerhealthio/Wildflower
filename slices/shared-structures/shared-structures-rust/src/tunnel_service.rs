@@ -81,6 +81,20 @@ pub trait TunnelService: Send + Sync {
     /// tunnel is up, else the loopback fallback. A cheap, synchronous read.
     fn current_origin(&self) -> String;
 
+    /// The configured public host (bare, no scheme or port) the front
+    /// advertises — independent of whether the tunnel is currently `Verified`.
+    /// `None` when no public host is configured, in which case the tunnel
+    /// cannot be brought up at all.
+    ///
+    /// Distinct from [`Self::current_origin`], which conflates "tunnel down"
+    /// with "no public host configured": callers that need the public *name*
+    /// itself (e.g. to match an inbound forwarded request's subdomain against
+    /// the configured host) use this instead. Default returns `None` — only
+    /// the live tunnel slice needs to override it.
+    fn current_public_host(&self) -> Option<String> {
+        None
+    }
+
     /// Try to bring the tunnel up, returning the verified public origin once a
     /// reachability check confirms it, or a human-readable reason it couldn't.
     /// Idempotent: a no-op (beyond re-confirming) when already up.

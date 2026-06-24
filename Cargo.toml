@@ -5,6 +5,7 @@ members = [
   "apps/wildflower-tauri/src-tauri",
   "plugins/tauri-plugin-native-webview",
   "slices/apps/apps-rust",
+  "slices/apps/vendor-apps-rust",
   "slices/browser-sniffer/browser-sniffer-tauri-rust",
   "slices/databases/databases-rust",
   "slices/emr/emr-rust",

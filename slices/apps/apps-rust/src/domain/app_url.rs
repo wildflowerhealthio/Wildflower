@@ -35,7 +35,13 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(into = "String", try_from = "String")]
 pub enum AppUrl {
-    /// An absolute `https://` URL (off-device). May embed `{origin}`/`{launch}`.
+    /// An absolute URL the launch flow passes through verbatim (after any
+    /// `{origin}` / `{launch}` substitution). Parsed from `https://` strings
+    /// only — `http://` is rejected by [`FromStr`] (no-TLS / open-redirect
+    /// protection). The apps slice also *constructs* this variant directly
+    /// for internal-app rows materialized at read time (a loopback
+    /// `http://127.0.0.1:<port>/` origin built from host config); that path
+    /// bypasses the parser by construction and is not round-trippable.
     External(String),
     /// An on-device target — the part that follows the served origin (a leading
     /// `/path`, `?query`, `#fragment`, or empty for the bare origin).

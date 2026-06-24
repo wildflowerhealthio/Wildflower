@@ -208,6 +208,10 @@ const renderApp = ({
       runtimeLayer,
       awaitAuthReady: resolvedAwaitAuthReady,
       transport: transportPromise,
+      // Threaded so the apps launch POST targets the host API origin (the
+      // Tauri entry's loopback) rather than the page origin; undefined on
+      // web/embedded, where the page is served by the API.
+      apiBaseUrl,
     },
     defaultPreload: 'intent',
   })

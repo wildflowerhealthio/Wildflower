@@ -4,7 +4,6 @@ import { NavigationBridgeHandler } from 'navigation-react'
 import { Fragment, type JSX } from 'react'
 import { usePromiseOrDefault } from 'react-kitchen-sink'
 
-import { AppsSenderForwarder } from './apps-sender-forwarder.tsx'
 import { CollectorSenderForwarder } from './collector-sender-forwarder.tsx'
 import { stubTransport, TransportContext, type ReactTransport } from './transport-context.ts'
 
@@ -42,9 +41,7 @@ const AppRootTree = ({ router, transportPromise }: AppRootTreeProps): JSX.Elemen
                * rather than buried inside them.
                */}
               <NavigationBridgeHandler sender={transport.sendMessage} />
-              <CollectorSenderForwarder>
-                <AppsSenderForwarder>{children}</AppsSenderForwarder>
-              </CollectorSenderForwarder>
+              <CollectorSenderForwarder>{children}</CollectorSenderForwarder>
             </Fragment>
           )}
         />

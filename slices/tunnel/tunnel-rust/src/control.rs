@@ -68,6 +68,19 @@ impl TunnelService for TunnelControl {
         self.state.daemon.served_origin()
     }
 
+    /// The configured `public_host` from persisted settings — independent of
+    /// whether the daemon is currently `Verified`. A storage read error is
+    /// treated as "unconfigured" (None) rather than surfaced: the only caller
+    /// today (the host's subdomain dispatch) wants a permissive fallback —
+    /// route to the regular API when it can't confirm a configured host.
+    fn current_public_host(&self) -> Option<String> {
+        self.state
+            .store
+            .get_settings()
+            .ok()
+            .and_then(|s| s.public_host)
+    }
+
     async fn try_start(&self) -> Result<String, String> {
         self.request_start().await
     }

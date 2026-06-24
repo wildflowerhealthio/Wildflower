@@ -1,6 +1,8 @@
 mod api_stubs;
 mod bridge;
+mod launch_sink;
 mod spa;
+mod subdomain_dispatch;
 mod tunnel_adapters;
 
 use anyhow::Context;
@@ -11,12 +13,15 @@ use gatekeeper_rust::{
     layer_router_with_gatekeeper_auth_gating, setup_gatekeeper, GatekeeperConfig,
 };
 use shared_structures_rust::ServerRuntimeConfig;
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tauri::Manager;
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
+
+use crate::subdomain_dispatch::{maybe_dispatch_to_internal_subdomain, SubdomainDispatchState};
 
 // Loopback hostname/port for the embedded API server, derived at compile time
 // from the SINGLE SOURCE OF TRUTH
@@ -175,23 +180,36 @@ async fn run_server(
     let gated_tunnel =
         layer_router_with_gatekeeper_auth_gating(tunnel.router, gatekeeper.state.clone());
 
-    // The apps catalogue surface. `GET /apps` (list) and `GET /apps/{id}`
-    // (launch redirect) ride on the public router — the webview consumes
-    // them unauthenticated like the rest of the launch path. The admin
-    // surface (POST/PATCH/DELETE) is owner-gated through the gatekeeper.
-    // A `requires_tunnel` launch resolves to the tunnel's verified origin
-    // through the tunnel service (else falls back to loopback + tunnel=unavailable).
+    // The apps catalogue surface. `GET /apps` (list) and `POST /apps/{id}`
+    // (launch) ride on the public router — the webview consumes them
+    // unauthenticated like the rest of the launch path. The admin surface
+    // (POST/PATCH/DELETE) is owner-gated through the gatekeeper. A
+    // `requires_tunnel` launch resolves to the tunnel's verified origin through
+    // the tunnel service (else falls back to loopback + tunnel=unavailable).
+    // `internal_apps_loopback_host` is the host portion the host binds each
+    // internal-app listener on (see below) — the apps slice combines it with
+    // each internal-app row's `port` to render its `http://{host}:{port}/`
+    // launch target.
     let apps_config = AppsConfig {
         loopback_origin: loopback_origin.clone(),
+        internal_apps_loopback_host: runtime.loopback_hostname.clone(),
     };
     // `TunnelControl` implements `TunnelService`, so it's handed straight in.
     let tunnel_service: Arc<dyn tunnel_rust::TunnelService> = Arc::new(tunnel.control.clone());
-    // Wire the apps `RequestTunnel` web→host bridge handler now that the tunnel
-    // service exists: the SPA's launch path asks the host to bring the tunnel up
-    // (and awaits the verified origin) for an app that needs a public origin
-    // when the tunnel isn't already running.
-    bridge::attach_apps_tunnel_bridge(&app_handle, Arc::clone(&tunnel_service));
-    let apps = setup_apps(db, &apps_config, tunnel_service).context("failed to set up apps")?;
+    // Install the host launch sink: the launch handler resolves the URL (origin
+    // + tunnel) server-side, then hands it to this sink, which opens it in a
+    // native webview popup via `tauri-plugin-native-webview` (the server 204s,
+    // so the SPA stays mounted). This replaces the former `RequestTunnel` /
+    // `RequestSandboxedWebView` bridge round-trips.
+    let launch_sink: Arc<dyn apps_rust::LaunchSink> =
+        Arc::new(launch_sink::TauriLaunchSink::new(app_handle.clone()));
+    let apps = setup_apps(
+        db,
+        &apps_config,
+        Arc::clone(&tunnel_service),
+        Some(launch_sink),
+    )
+    .context("failed to set up apps")?;
     let gated_apps_admin =
         layer_router_with_gatekeeper_auth_gating(apps.admin_router, gatekeeper.state.clone());
 
@@ -234,6 +252,86 @@ async fn run_server(
     // `Authorization` — the one header the bearer clients need).
     // Trust doesn't come from CORS here anyway: the loopback gate
     // rejects non-local peers and auth rides the bearer header.
+    //
+    // Static "installed apps" are served from this directory under app-data at
+    // request time (see `vendor_apps_rust`). Created up front so it's a stable,
+    // discoverable place to drop an app's files into; an empty/missing dir just
+    // 404s. Best-effort — a creation failure only means the apps routes 404
+    // until it exists, so it must not abort server startup.
+    let installed_apps_dir = runtime.app_data_dir.join("installed-apps");
+    if let Err(error) = std::fs::create_dir_all(&installed_apps_dir) {
+        tauri_plugin_log::log::warn!(
+            "failed to create installed-apps dir {}: {error}",
+            installed_apps_dir.display()
+        );
+    }
+
+    // One dedicated loopback listener per internal app — each installed app
+    // gets its own origin (`http://{loopback_hostname}:{port}/`) so it
+    // becomes its own security context (own storage, own cookies, no
+    // Same-Origin Policy share with the API on the main port). The DB row's
+    // `port` is the source of truth for what we bind here; the apps slice
+    // reads the same value to render the launch target, so the redirect
+    // and the listener can't drift. Best-effort per-app bind: a port
+    // collision logs and is skipped (a future launch will redirect to a
+    // closed port and the SPA will surface a reachability error), but it
+    // must NOT abort the main `:loopback_port` listener that carries FHIR
+    // + gatekeeper + the apps catalogue itself.
+    //
+    // The same per-app routers populate the subdomain-dispatch map below:
+    // remote (forwarded) traffic arrives on the main API port without a
+    // per-app socket, so a request whose forwarded host is
+    // `<app-id>.<public-host>` is dispatched in software through the same
+    // router we serve loopback callers from. Built once, cloned both into
+    // the spawned listener and the dispatch map.
+    let internal_apps = apps
+        .internal_apps
+        .list()
+        .context("failed to list internal apps")?;
+    let mut internal_routers: HashMap<String, Router> = HashMap::new();
+    for internal in internal_apps {
+        let app_dir = installed_apps_dir.join(&internal.id);
+        let router = vendor_apps_rust::setup_installed_app(&internal.id, app_dir)
+            .layer(CorsLayer::very_permissive());
+        let bind_host = format!("{}:{}", runtime.loopback_hostname, internal.port);
+        match TcpListener::bind(&bind_host).await {
+            Ok(listener) => {
+                let id = internal.id.clone();
+                let serve_router = router.clone();
+                tauri_plugin_log::log::info!(
+                    "serving installed app {} on {}",
+                    internal.id,
+                    bind_host,
+                );
+                tokio::spawn(async move {
+                    if let Err(error) =
+                        axum::serve(listener, serve_router.into_make_service()).await
+                    {
+                        tauri_plugin_log::log::error!(
+                            "installed app {id} listener stopped: {error}",
+                        );
+                    }
+                });
+            }
+            Err(error) => {
+                // Likely the port is already taken. Log and continue so the
+                // main API stays up; launches to this app will redirect to
+                // a closed port until the user restarts. The dispatch map
+                // is still populated so remote forwarded traffic for this
+                // app continues to land on the right files.
+                tauri_plugin_log::log::error!(
+                    "failed to bind installed app {} listener on {bind_host}: {error}",
+                    internal.id,
+                );
+            }
+        }
+        internal_routers.insert(internal.id, router);
+    }
+    let subdomain_dispatch_state = Arc::new(SubdomainDispatchState::new(
+        internal_routers,
+        Arc::clone(&tunnel_service),
+    ));
+
     let router = Router::new()
         .merge(gatekeeper.router)
         .merge(gated_fhir_r4)
@@ -251,7 +349,17 @@ async fn run_server(
         .merge(gated_apps_admin)
         .merge(gated_databases)
         .fallback(spa::handle_serving_spa_html)
-        .layer(CorsLayer::very_permissive());
+        .layer(CorsLayer::very_permissive())
+        // Subdomain dispatch runs BEFORE the merged API routes: a
+        // forwarded request whose `Forwarded` host matches
+        // `<internal-app-id>.<configured-public-host>` is handed straight
+        // to the per-app router. Loopback and apex-host traffic falls
+        // through to the API stack above. The layer is applied last so it
+        // wraps everything that came before it.
+        .layer(axum::middleware::from_fn_with_state(
+            subdomain_dispatch_state,
+            maybe_dispatch_to_internal_subdomain,
+        ));
 
     axum::serve(
         listener,
@@ -329,9 +437,9 @@ pub fn run() {
             browser_sniffer_tauri_rust::attach_browser_sniffer(app.handle());
 
             let error_handle = app.handle().clone();
-            // The server task wires the apps `RequestTunnel` bridge handler once
-            // the tunnel service is built, so it needs an app handle to listen
-            // on / emit through the bridge event bus.
+            // The server task installs the apps launch sink once the apps slice
+            // is built; the sink opens launched apps in a native webview popup,
+            // so it needs an app handle.
             let server_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 let runtime = ServerRuntimeConfig {

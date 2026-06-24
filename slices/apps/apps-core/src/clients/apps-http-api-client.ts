@@ -19,8 +19,9 @@ const adminHc = defineSliceHttpClient({
  * `ListApps` + `LaunchApp`. Attaches a bearer: hosts that gate the
  * apps surface (e.g. the Tauri host's Rust server) reject anonymous
  * reads, and hosts that don't yet (wildflower-server) ignore the
- * header. Note `LaunchApp` is normally driven via `window.location`
- * navigation (which carries no bearer), not through this client.
+ * header. Note `LaunchApp` is normally driven by a raw `POST` the
+ * browser follows (the server 302s to the app, or 204s on the Tauri
+ * host), not through this client.
  */
 class AppsHttpApiClient extends publicHc.ClientTag<AppsHttpApiClient>() {
   static readonly layer = publicHc.makeLayerFactory(AppsHttpApiClient)()

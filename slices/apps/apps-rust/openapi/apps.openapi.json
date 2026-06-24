@@ -17,7 +17,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/AppEntry"
+                    "$ref": "#/components/schemas/AppListEntry"
                   }
                 }
               }
@@ -63,8 +63,9 @@
       }
     },
     "/apps/{id}": {
-      "get": {
-        "summary": "`GET /apps/{id}` — 302 to the resolved launch URL, or 404 if no app has\nthis id. Reachable unauthenticated (the webview follows the redirect).",
+      "post": {
+        "summary": "`POST /apps/{id}` — launch an app. `404` if no app has this id. Reachable\nunauthenticated (the webview follows the redirect).",
+        "description": "A host [`LaunchSink`](crate::LaunchSink) opens the resolved URL in a native\npopup *on this device*, which only helps the **local** caller — so the sink\nis used (returning `204`) only when the request came in over loopback. A\nrequest **forwarded by the trusted front** (the relay/tunnel sets\nthe `Forwarded` header) is a *remote* caller, for whom a host-side popup is\ninvisible; it gets the `302` redirect instead, the same as a host that\ninstalls no sink at all (web/standalone).",
         "operationId": "handle_launch_app",
         "parameters": [
           {
@@ -78,6 +79,9 @@
           }
         ],
         "responses": {
+          "204": {
+            "description": "Host sink opened the launch URL for a loopback caller (no redirect)"
+          },
           "302": {
             "description": "Redirect (Location header) to the resolved launch URL"
           },
@@ -221,6 +225,36 @@
           "url": {
             "type": "string",
             "description": "The launch URL template, serialized as a plain string on the wire and\nin SQLite. See [`AppUrl`] for the accepted shapes / placeholders."
+          },
+          "requiresTunnel": {
+            "type": "boolean"
+          }
+        }
+      },
+      "AppListEntry": {
+        "type": "object",
+        "description": "`GET /apps` row shape — id / enabled / name / optional subtitle /\n`requires_tunnel`. No `url`. See the module docs.",
+        "required": [
+          "id",
+          "enabled",
+          "name",
+          "requiresTunnel"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "subtitle": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "requiresTunnel": {
             "type": "boolean"

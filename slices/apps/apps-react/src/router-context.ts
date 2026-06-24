@@ -25,6 +25,17 @@ interface RouterContext {
   readonly queryClient: QueryClient
   readonly runAuthed: RunAuthed
   readonly runtimeLayer: RuntimeLayer
+  /**
+   * Absolute API origin for entries whose page is not served by the API
+   * server (the Tauri webview loads from the dev server / asset protocol
+   * while the API lives on the host's loopback origin). The launch POST
+   * targets `${apiBaseUrl}/apps/{id}` so it reaches the host server rather
+   * than the page origin (where, in the Tauri webview, the dev server / asset
+   * protocol has no `/apps` route and would 404). Omitted on web/embedded,
+   * where the page IS served by the API and a same-origin relative path
+   * suffices.
+   */
+  readonly apiBaseUrl?: string
 }
 
 const sliceRuntimeLayer: Layer.Layer<

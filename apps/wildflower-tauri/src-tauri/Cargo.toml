@@ -39,6 +39,10 @@ reqwest = { version = "0.12", default-features = false, features = [
   "json",
 ] }
 apps-rust = { path = "../../../slices/apps/apps-rust" }
+# Serves the vendored patient-browser SPA from the host's loopback API; merged
+# into the public router in `run()`. The `GET /apps/patient-browser` launch
+# redirect lands on these routes.
+vendor-apps-rust = { path = "../../../slices/apps/vendor-apps-rust" }
 browser-sniffer-tauri-rust = { path = "../../../slices/browser-sniffer/browser-sniffer-tauri-rust" }
 # Native, JS-injectable web view (iOS, Android, desktop); runs in parallel
 # with the browser-sniffer WebviewWindow path. Registered in `run()`.
@@ -50,6 +54,10 @@ persistence-rust = { path = "../../../slices/persistence/persistence-rust" }
 shared-structures-rust = { path = "../../../slices/shared-structures/shared-structures-rust", features = [
   "health-check",
 ] }
+# Provides `resolve_http_url`, the http(s)-only validator the apps launch flow
+# gates its `RequestSandboxedWebView { url }` on before handing the URL to the
+# native-webview plugin.
+shared-structures-tauri-rust = { path = "../../../slices/shared-structures/shared-structures-tauri-rust" }
 tunnel-rust = { path = "../../../slices/tunnel/tunnel-rust" }
 anyhow.workspace = true
 axum.workspace = true
@@ -58,6 +66,11 @@ tauri-plugin-log = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-dialog = "2"
 tower-http.workspace = true
+# `ServiceExt::oneshot` — used by `subdomain_dispatch` to dispatch an inbound
+# forwarded request into a per-internal-app axum router (the same router the
+# loopback `:port` listener serves). `util` is the feature that brings the
+# `oneshot`/`MapResponse`/etc. service combinators.
+tower = { version = "0.5", features = ["util"] }
 dotenvy = "0.15.7"
 
 # Opt the host into the workspace lints (notably `unsafe_code = "forbid"`).
@@ -66,4 +79,3 @@ workspace = true
 
 [dev-dependencies]
 http-body-util = "0.1"
-tower = { version = "0.5", features = ["util"] }

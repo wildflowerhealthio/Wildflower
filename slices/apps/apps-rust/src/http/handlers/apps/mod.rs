@@ -2,6 +2,9 @@
 //! webview consumes. One module per route handler (`list`, `launch`), each
 //! exposing a `#[utoipa::path]`-annotated handler; `openapi_router()` collects
 //! them so the served routes and the OpenAPI spec come from one place.
+//!
+//! `GET /apps` lists; `POST /apps/{id}` launches (302 to the resolved URL, or
+//! 204 when a host [`LaunchSink`](crate::LaunchSink) takes the side-effect).
 
 mod launch;
 mod list;
@@ -13,7 +16,7 @@ use utoipa_axum::routes;
 
 use crate::http::state::AppsState;
 
-/// The public `/apps` routes (`GET /apps`, `GET /apps/{id}`) as an
+/// The public `/apps` routes (`GET /apps`, `POST /apps/{id}`) as an
 /// `OpenApiRouter`. Mounted by [`crate::http`]; `routes!` reads each handler's
 /// `#[utoipa::path]` for its method + path.
 pub(crate) fn openapi_router() -> OpenApiRouter<Arc<AppsState>> {
@@ -24,7 +27,7 @@ pub(crate) fn openapi_router() -> OpenApiRouter<Arc<AppsState>> {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
 
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
@@ -33,31 +36,58 @@ mod tests {
     use tower::ServiceExt;
 
     use super::*;
-    use crate::db::AppsStore;
+    use crate::db::{AppsStore, InternalAppsStore};
     use crate::domain::{AppEntry, AppUrl};
     use crate::http::state::AppsState;
+    use crate::LaunchSink;
     use shared_structures_rust::tunnel_service::{
         OfflineTunnel, TunnelLiveness, TunnelService, TunnelStatus,
     };
 
+    /// Loopback host the synthetic internal-app launch URLs render against.
+    /// Matches the host portion of `LOOPBACK_ORIGIN` so the test reads
+    /// uniformly.
+    const LOOPBACK_HOST: &str = "127.0.0.1";
+
+    /// A [`LaunchSink`] stub that records the URLs it's handed, so a test can
+    /// assert the handler resolved the target and routed it to the sink (and
+    /// returned `204`) instead of redirecting.
+    #[derive(Default)]
+    struct RecordingSink(Mutex<Vec<String>>);
+
+    impl LaunchSink for RecordingSink {
+        fn open(&self, _app: &AppEntry, url: &str) {
+            self.0.lock().expect("sink mutex").push(url.to_owned());
+        }
+    }
+
     /// A `TunnelService` stub for a tunnel that's up and verified at `origin` —
     /// the success counterpart to the shared [`OfflineTunnel`], which already
     /// models the can't-reach case (`try_start` fails, state stays `Off`).
-    struct StubTunnel(String);
+    /// `public_host` is reported through [`TunnelService::current_public_host`]
+    /// — the internal-app launch handler reads it to render the subdomain
+    /// URL for forwarded callers.
+    struct StubTunnel {
+        origin: String,
+        public_host: Option<String>,
+    }
 
     #[async_trait::async_trait]
     impl TunnelService for StubTunnel {
         fn current_origin(&self) -> String {
-            self.0.clone()
+            self.origin.clone()
+        }
+        fn current_public_host(&self) -> Option<String> {
+            self.public_host.clone()
         }
         async fn try_start(&self) -> Result<String, String> {
-            Ok(self.0.clone())
+            Ok(self.origin.clone())
         }
         fn subscribe(&self) -> tokio::sync::watch::Receiver<TunnelLiveness> {
             tokio::sync::watch::channel(TunnelLiveness {
                 settings_revision: None,
                 status: TunnelStatus::Verified,
-                origin: self.0.clone(),
+                origin: self.origin.clone(),
                 error: None,
                 dial_attempts: 0,
             })
@@ -66,7 +96,21 @@ mod tests {
     }
 
     fn tunnel_at(origin: &str) -> Arc<dyn TunnelService> {
-        Arc::new(StubTunnel(origin.to_string()))
+        Arc::new(StubTunnel {
+            origin: origin.to_string(),
+            public_host: None,
+        })
+    }
+
+    /// `TunnelService` with a configured `public_host` but no `try_start`
+    /// success — the live shape that drives the internal-app launch's
+    /// subdomain branch (forwarded caller → `https://<id>.<host>/`) without
+    /// needing the tunnel to actually be up.
+    fn tunnel_with_public_host(public_host: &str) -> Arc<dyn TunnelService> {
+        Arc::new(StubTunnel {
+            origin: "http://127.0.0.1:8080".to_owned(),
+            public_host: Some(public_host.to_owned()),
+        })
     }
 
     fn tunnel_unavailable() -> Arc<dyn TunnelService> {
@@ -85,7 +129,14 @@ mod tests {
 
     fn state_with_tunnel(tunnel: Arc<dyn TunnelService>) -> Arc<AppsState> {
         let store = AppsStore::open_in_memory().expect("store");
-        Arc::new(AppsState::new(store, "http://127.0.0.1:8080", tunnel))
+        let internal_apps = InternalAppsStore::new(store.conn().clone());
+        Arc::new(AppsState::new(
+            store,
+            internal_apps,
+            "http://127.0.0.1:8080",
+            LOOPBACK_HOST,
+            tunnel,
+        ))
     }
 
     async fn send(state: &Arc<AppsState>, req: Request<Body>) -> (StatusCode, serde_json::Value) {
@@ -102,6 +153,34 @@ mod tests {
 
     fn get(uri: &str) -> Request<Body> {
         Request::builder().uri(uri).body(Body::empty()).unwrap()
+    }
+
+    /// A launch request — `POST /apps/{id}` with an empty body. No forwarding
+    /// header, so it reads as a direct loopback (local) caller.
+    fn post(uri: &str) -> Request<Body> {
+        Request::builder()
+            .method("POST")
+            .uri(uri)
+            .body(Body::empty())
+            .unwrap()
+    }
+
+    /// A launch request as the trusted front (relay/tunnel) would forward it:
+    /// `POST /apps/{id}` carrying the RFC 7239 `Forwarded` header with the
+    /// public `host`/`proto` — the same header
+    /// `shared_structures_rust::served_origin::request_provenance` reads to
+    /// resolve the served origin. Reads as a remote caller rather than the
+    /// local loopback webview.
+    fn post_forwarded(uri: &str) -> Request<Body> {
+        Request::builder()
+            .method("POST")
+            .uri(uri)
+            .header(
+                "forwarded",
+                "for=192.0.2.1;host=demo.example.com;proto=https",
+            )
+            .body(Body::empty())
+            .unwrap()
     }
 
     fn app(id: &str, url: AppUrl) -> AppEntry {
@@ -137,8 +216,12 @@ mod tests {
         }
     }
 
+    /// `GET /apps` deliberately omits `url` (the launch endpoint resolves
+    /// it per-request). An inserted row still appears in the list under
+    /// its id; the `url` it was written with shows up on launch / admin
+    /// responses, not here.
     #[tokio::test]
-    async fn list_apps_includes_inserted_rows() {
+    async fn list_apps_includes_inserted_rows_without_url() {
         let st = state();
         st.store
             .insert_app(&app("app-x", external("https://example.com/x")))
@@ -150,7 +233,11 @@ mod tests {
             .iter()
             .find(|v| v["id"] == "app-x")
             .expect("inserted row in list");
-        assert_eq!(found["url"], "https://example.com/x");
+        assert!(
+            found.get("url").is_none(),
+            "GET /apps must not expose url, got {found}",
+        );
+        assert_eq!(found["name"], "app-x");
     }
 
     #[tokio::test]
@@ -158,20 +245,22 @@ mod tests {
         let st = state();
         let res = router()
             .with_state(Arc::clone(&st))
-            .oneshot(get("/apps/no-such-thing"))
+            .oneshot(post("/apps/no-such-thing"))
             .await
             .unwrap();
         assert_eq!(res.status(), StatusCode::NOT_FOUND);
     }
 
-    /// A seeded app whose URL template substitutes `{origin}` resolves to a
-    /// same-origin redirect.
+    /// A seeded internal app launched by a loopback caller resolves to its
+    /// dedicated loopback origin — `http://{LOOPBACK_HOST}:{port}/`, built
+    /// from host config + the row's `port`. No `{origin}` substitution, no
+    /// tunnel involvement.
     #[tokio::test]
-    async fn launch_seeded_app_redirects_to_built_url() {
+    async fn launch_internal_app_redirects_to_its_dedicated_loopback_origin() {
         let st = state();
         let res = router()
             .with_state(Arc::clone(&st))
-            .oneshot(get("/apps/patient-browser"))
+            .oneshot(post("/apps/patient-browser"))
             .await
             .unwrap();
         assert_eq!(res.status(), StatusCode::FOUND);
@@ -181,10 +270,51 @@ mod tests {
             .expect("location header")
             .to_str()
             .unwrap();
-        assert_eq!(
-            location,
-            "http://127.0.0.1:8080/installed-apps/patient-browser/index.html"
-        );
+        assert_eq!(location, "http://127.0.0.1:8081/");
+    }
+
+    /// A forwarded launch of an internal app with `public_host` configured
+    /// redirects to the public subdomain — the URL a remote browser can
+    /// actually reach through the relay. Matches the subdomain shape the
+    /// host's inbound dispatch routes back to the same per-app router.
+    #[tokio::test]
+    async fn launch_internal_app_forwarded_redirects_to_the_public_subdomain() {
+        let st = state_with_tunnel(tunnel_with_public_host("demo.example.com"));
+        let res = router()
+            .with_state(Arc::clone(&st))
+            .oneshot(post_forwarded("/apps/patient-browser"))
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::FOUND);
+        let location = res
+            .headers()
+            .get("location")
+            .expect("location header")
+            .to_str()
+            .unwrap();
+        assert_eq!(location, "https://patient-browser.demo.example.com/");
+    }
+
+    /// A forwarded launch of an internal app falls back to the loopback URL
+    /// when `public_host` isn't configured — the redirect is degraded (a
+    /// remote browser can't follow it) but the catalogue stays consistent
+    /// and the launch handler doesn't error.
+    #[tokio::test]
+    async fn launch_internal_app_forwarded_falls_back_to_loopback_without_public_host() {
+        let st = state();
+        let res = router()
+            .with_state(Arc::clone(&st))
+            .oneshot(post_forwarded("/apps/patient-browser"))
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::FOUND);
+        let location = res
+            .headers()
+            .get("location")
+            .expect("location header")
+            .to_str()
+            .unwrap();
+        assert_eq!(location, "http://127.0.0.1:8081/");
     }
 
     /// When the tunnel can't be reached, a `requires_tunnel` launch falls back
@@ -195,7 +325,7 @@ mod tests {
         let st = state();
         let res = router()
             .with_state(Arc::clone(&st))
-            .oneshot(get("/apps/growth-chart"))
+            .oneshot(post("/apps/growth-chart"))
             .await
             .unwrap();
         assert_eq!(res.status(), StatusCode::FOUND);
@@ -222,7 +352,7 @@ mod tests {
         let st = state_with_tunnel(tunnel_at("https://dev1.example.com"));
         let res = router()
             .with_state(Arc::clone(&st))
-            .oneshot(get("/apps/growth-chart"))
+            .oneshot(post("/apps/growth-chart"))
             .await
             .unwrap();
         assert_eq!(res.status(), StatusCode::FOUND);
@@ -250,7 +380,7 @@ mod tests {
             .unwrap();
         let res = router()
             .with_state(Arc::clone(&st))
-            .oneshot(get("/apps/app-y"))
+            .oneshot(post("/apps/app-y"))
             .await
             .unwrap();
         assert_eq!(res.status(), StatusCode::FOUND);
@@ -281,9 +411,137 @@ mod tests {
             .unwrap();
         let res = router()
             .with_state(Arc::clone(&st))
-            .oneshot(get("/apps/app-bad"))
+            .oneshot(post("/apps/app-bad"))
             .await
             .unwrap();
         assert_eq!(res.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    /// With a [`LaunchSink`] installed, a launch hands the resolved URL to the
+    /// sink and returns `204` (no redirect) — the host owns the side-effect.
+    /// Exercised against the internal `patient-browser` row so the assertion
+    /// pins the URL the sink receives to a fixed value (no random `{launch}`
+    /// nonce).
+    #[tokio::test]
+    async fn launch_with_sink_204s_and_routes_the_url_to_the_sink() {
+        let sink = Arc::new(RecordingSink::default());
+        let store = AppsStore::open_in_memory().expect("store");
+        let internal_apps = InternalAppsStore::new(store.conn().clone());
+        let st = Arc::new(
+            AppsState::new(
+                store,
+                internal_apps,
+                "http://127.0.0.1:8080",
+                LOOPBACK_HOST,
+                tunnel_unavailable(),
+            )
+            .with_launch_sink(Arc::clone(&sink) as Arc<dyn LaunchSink>),
+        );
+        let res = router()
+            .with_state(Arc::clone(&st))
+            .oneshot(post("/apps/patient-browser"))
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::NO_CONTENT);
+        assert!(
+            res.headers().get("location").is_none(),
+            "a sink launch must not carry a Location redirect",
+        );
+        let opened = sink.0.lock().expect("sink mutex").clone();
+        assert_eq!(
+            opened,
+            vec!["http://127.0.0.1:8081/".to_string()],
+            "the sink must receive the same resolved URL the redirect path would 302 to",
+        );
+    }
+
+    /// Without a sink (the web/standalone default), a launch still `302`s to
+    /// the resolved URL — the counterpart to the sink test above.
+    #[tokio::test]
+    async fn launch_without_sink_still_302s() {
+        let st = state();
+        let res = router()
+            .with_state(Arc::clone(&st))
+            .oneshot(post("/apps/patient-browser"))
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::FOUND);
+        assert!(
+            res.headers().get("location").is_some(),
+            "no sink means the browser-following redirect path",
+        );
+    }
+
+    /// A non-tunnel launch forwarded by the relay/tunnel resolves `{origin}`
+    /// against the *served* (public) origin, not loopback — otherwise the
+    /// browser would chase a `Location: http://127.0.0.1:…` it can't reach
+    /// from outside the host. Mirrors `gatekeeper_rust::served_origin_for`'s
+    /// header contract. Exercised against an `{origin}`-templated external
+    /// row (patient-browser moved out to the internal store, which is
+    /// loopback-only by construction and so doesn't exercise the
+    /// served-origin substitution).
+    #[tokio::test]
+    async fn launch_forwarded_request_redirects_to_the_served_public_origin() {
+        let st = state();
+        st.store
+            .insert_app(&app("app-y", AppUrl::OriginRelative("/y".to_owned())))
+            .unwrap();
+        let res = router()
+            .with_state(Arc::clone(&st))
+            .oneshot(post_forwarded("/apps/app-y"))
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::FOUND);
+        let location = res
+            .headers()
+            .get("location")
+            .expect("location header")
+            .to_str()
+            .unwrap();
+        assert_eq!(
+            location, "https://demo.example.com/y",
+            "a forwarded launch must redirect to the public origin (the Forwarded host/proto), not loopback",
+        );
+    }
+
+    /// A sink is installed, but the request is forwarded by the relay/tunnel
+    /// (a *remote* caller): the host-side popup would be invisible to them, so
+    /// the launch `302`s instead of `204`ing — and the sink is NOT invoked.
+    /// Exercised against an external `{origin}` app (an internal-app launch
+    /// would still 302, but to its fixed loopback origin — which a remote
+    /// browser can't reach; the assertion-friendly substitution path is the
+    /// external one).
+    #[tokio::test]
+    async fn launch_with_sink_but_forwarded_request_302s_without_invoking_the_sink() {
+        let sink = Arc::new(RecordingSink::default());
+        let store = AppsStore::open_in_memory().expect("store");
+        let internal_apps = InternalAppsStore::new(store.conn().clone());
+        let st = Arc::new(
+            AppsState::new(
+                store,
+                internal_apps,
+                "http://127.0.0.1:8080",
+                LOOPBACK_HOST,
+                tunnel_unavailable(),
+            )
+            .with_launch_sink(Arc::clone(&sink) as Arc<dyn LaunchSink>),
+        );
+        st.store
+            .insert_app(&app("app-y", AppUrl::OriginRelative("/y".to_owned())))
+            .unwrap();
+        let res = router()
+            .with_state(Arc::clone(&st))
+            .oneshot(post_forwarded("/apps/app-y"))
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::FOUND);
+        assert!(
+            res.headers().get("location").is_some(),
+            "a forwarded request takes the redirect path even with a sink installed",
+        );
+        assert!(
+            sink.0.lock().expect("sink mutex").is_empty(),
+            "the sink must not open a popup for a remote (forwarded) caller",
+        );
     }
 }

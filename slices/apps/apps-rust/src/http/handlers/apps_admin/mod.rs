@@ -38,7 +38,7 @@ mod tests {
     use tower::ServiceExt;
 
     use super::*;
-    use crate::db::AppsStore;
+    use crate::db::{AppsStore, InternalAppsStore};
     use crate::http::state::AppsState;
 
     /// The served admin router, state not yet applied.
@@ -50,10 +50,17 @@ mod tests {
         // The admin surface never touches the tunnel, so the offline null-impl
         // is enough.
         let store = AppsStore::open_in_memory().expect("store");
+        let internal_apps = InternalAppsStore::new(store.conn().clone());
         let tunnel = Arc::new(shared_structures_rust::tunnel_service::OfflineTunnel::new(
             "http://127.0.0.1:8080",
         ));
-        Arc::new(AppsState::new(store, "http://127.0.0.1:8080", tunnel))
+        Arc::new(AppsState::new(
+            store,
+            internal_apps,
+            "http://127.0.0.1:8080",
+            "127.0.0.1",
+            tunnel,
+        ))
     }
 
     async fn send(state: &Arc<AppsState>, req: Request<Body>) -> (StatusCode, serde_json::Value) {
@@ -174,17 +181,20 @@ mod tests {
         assert_eq!(body["error"], "InvalidName");
     }
 
-    /// Every app is first-class — every editable field is editable.
-    /// Rename, URL swap, and disable all land successfully.
+    /// Every external app is first-class — every editable field is
+    /// editable. Rename, URL swap, and disable all land successfully.
+    /// (Internal apps live in their own table and are not editable through
+    /// this surface; see [`internal_app_id_is_not_editable_through_admin`]
+    /// below.)
     #[tokio::test]
     async fn seeded_app_can_be_fully_edited() {
         let st = state();
         let (status, body) = send(
             &st,
             patch(
-                "/apps/patient-browser",
+                "/apps/api-docs",
                 serde_json::json!({
-                    "name": "Renamed Browser",
+                    "name": "Renamed Docs",
                     "url": "https://example.com/replacement",
                     "enabled": false,
                 }),
@@ -192,18 +202,40 @@ mod tests {
         )
         .await;
         assert_eq!(status, StatusCode::OK, "body: {body}");
-        assert_eq!(body["name"], "Renamed Browser");
+        assert_eq!(body["name"], "Renamed Docs");
         assert_eq!(body["url"], "https://example.com/replacement");
         assert_eq!(body["enabled"], false);
     }
 
-    /// Every app is first-class — including for deletion.
+    /// Every external app is first-class — including for deletion.
     #[tokio::test]
     async fn seeded_app_can_be_deleted() {
         let st = state();
-        let (status, body) = send(&st, delete("/apps/patient-browser")).await;
+        let (status, body) = send(&st, delete("/apps/api-docs")).await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(body["deleted"], true);
+    }
+
+    /// `patient-browser` is an internal app — it has no row in the
+    /// (externals) `apps` table, so the admin handlers, which only look at
+    /// that table, 404 it. The internal catalogue has no admin surface.
+    #[tokio::test]
+    async fn internal_app_id_is_not_editable_through_admin() {
+        let st = state();
+        let (status, body) = send(
+            &st,
+            patch(
+                "/apps/patient-browser",
+                serde_json::json!({ "name": "Renamed" }),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(body["error"], "AppNotFound");
+
+        let (status, body) = send(&st, delete("/apps/patient-browser")).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(body["error"], "AppNotFound");
     }
 
     #[tokio::test]
@@ -251,7 +283,7 @@ mod tests {
         let (status, body) = send(
             &st,
             patch(
-                "/apps/patient-browser",
+                "/apps/api-docs",
                 serde_json::json!({ "url": "http://evil.example.com" }),
             ),
         )
@@ -270,7 +302,7 @@ mod tests {
         let (_, _) = send(
             &st,
             patch(
-                "/apps/patient-browser",
+                "/apps/api-docs",
                 serde_json::json!({ "subtitle": "fresh subtitle" }),
             ),
         )
@@ -278,20 +310,14 @@ mod tests {
         // Absent key — subtitle stays.
         let (_, body) = send(
             &st,
-            patch(
-                "/apps/patient-browser",
-                serde_json::json!({ "enabled": true }),
-            ),
+            patch("/apps/api-docs", serde_json::json!({ "enabled": true })),
         )
         .await;
         assert_eq!(body["subtitle"], "fresh subtitle");
         // Explicit null — subtitle clears.
         let (_, body) = send(
             &st,
-            patch(
-                "/apps/patient-browser",
-                serde_json::json!({ "subtitle": null }),
-            ),
+            patch("/apps/api-docs", serde_json::json!({ "subtitle": null })),
         )
         .await;
         assert!(
