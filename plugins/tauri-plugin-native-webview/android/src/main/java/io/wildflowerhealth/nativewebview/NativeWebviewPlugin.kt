@@ -2,8 +2,8 @@ package io.wildflowerhealth.nativewebview
 
 import android.app.Activity
 import android.app.Dialog
+import android.content.res.Configuration
 import android.graphics.Bitmap
-import android.graphics.Color
 import android.net.Uri
 import android.view.Gravity
 import android.view.KeyEvent
@@ -102,6 +102,17 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
 
         /** Menu item id for the top-toolbar Refresh action. */
         private const val MENU_ITEM_REFRESH = 1
+
+        // App palette as 0xAARRGGBB ints, one pair per token. Same tokens as the
+        // web app's --color-background / --color-neutral-1 / --color-neutral-4
+        // (named to match for clear relatedness); the matching value is picked at
+        // present() time from the current night-mode configuration.
+        private const val COLOR_BACKGROUND_LIGHT = 0xFFF7ECDD.toInt()
+        private const val COLOR_BACKGROUND_DARK = 0xFF221B16.toInt()
+        private const val COLOR_NEUTRAL_1_LIGHT = 0xFF2C211D.toInt()
+        private const val COLOR_NEUTRAL_1_DARK = 0xFFF3E9DB.toInt()
+        private const val COLOR_NEUTRAL_4_LIGHT = 0xFF6C5B50.toInt()
+        private const val COLOR_NEUTRAL_4_DARK = 0xFFB3A294.toInt()
     }
 
     private var dialog: Dialog? = null
@@ -242,13 +253,14 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
                             WebViewCompat.addDocumentStartJavaScript(existing, script, setOf("*"))
                     }
                 }
-                args.initialTitle?.let { currentToolbar?.title = if (it.isEmpty()) null else it }
-                args.initialSubtitle?.let {
-                    currentToolbar?.subtitle = if (it.isEmpty()) null else it
-                }
-                args.initialMessage?.let {
-                    currentMessageView?.text = if (it.isEmpty()) null else it
-                }
+                
+
+                applyWindowText(
+                    args.initialTitle,
+                    args.initialSubtitle,
+                    args.initialMessage,
+                    args.url,
+                )
                 existing.loadUrl(args.url)
             } else {
                 present(
@@ -308,9 +320,9 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
                 invoke.resolve(result)
                 return@runOnUiThread
             }
-            args.title?.let { toolbar.title = if (it.isEmpty()) null else it }
-            args.subtitle?.let { toolbar.subtitle = if (it.isEmpty()) null else it }
-            args.message?.let { messageView.text = if (it.isEmpty()) null else it }
+            // Patch notation per field: `null` (key absent) = leave the label
+            // unchanged, `""` = clear it, any other string = set it.
+            applyWindowText(args.title, args.subtitle, args.message, currentWebView?.getUrl())
             val result = JSObject()
             result.put("set", true)
             invoke.resolve(result)
@@ -359,6 +371,27 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
         if (!d.isShowing) return
         isClosing = true
         d.dismiss()
+    }
+
+    /**
+     * Apply any of the three window-text labels that are non-null in one call —
+     * `null` = leave unchanged, `""` = clear, otherwise set. Operates on the
+     * current popup's [currentToolbar] / [currentMessageView], so it is shared
+     * by `open`'s initial chrome, the `patchWindowText` command, and the re-wire
+     * path (the empty-string-clears rule lives here, in one place).
+     */
+    private fun applyWindowText(title: String?, subtitle: String?, message: String?, url: String?) {
+        title?.let { currentToolbar?.title = if (it.isEmpty()) url else it }
+        subtitle?.let { 
+            if (!it.isEmpty()) {
+                currentToolbar?.subtitle = it
+            } else if (!title.isNullOrEmpty()) {
+                currentToolbar?.subtitle = url
+            } else {
+                currentToolbar?.subtitle = null
+            }
+        }
+        message?.let { currentMessageView?.text = if (it.isEmpty()) null else it }
     }
 
     private fun present(
@@ -413,12 +446,22 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
             )
         }
 
+        // Resolve the app palette for the current OS appearance (light / dark).
+        val night =
+            (activity.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+                Configuration.UI_MODE_NIGHT_YES
+        val colorBackground = if (night) COLOR_BACKGROUND_DARK else COLOR_BACKGROUND_LIGHT
+        val colorNeutral1 = if (night) COLOR_NEUTRAL_1_DARK else COLOR_NEUTRAL_1_LIGHT
+        val colorNeutral4 = if (night) COLOR_NEUTRAL_4_DARK else COLOR_NEUTRAL_4_LIGHT
+
         val toolbar = Toolbar(activity).apply {
             title = Uri.parse(url).host ?: url
-            setTitleTextColor(Color.WHITE)
-            setSubtitleTextColor(Color.parseColor("#A0A4AF"))
-            setBackgroundColor(Color.parseColor("#14161C"))
-            navigationIcon = activity.getDrawable(android.R.drawable.ic_menu_close_clear_cancel)
+            setTitleTextColor(colorNeutral1)
+            setSubtitleTextColor(colorNeutral4)
+            setBackgroundColor(colorBackground)
+            navigationIcon =
+                activity.getDrawable(android.R.drawable.ic_menu_close_clear_cancel)
+                    ?.apply { setTint(colorNeutral1) }
             // Route through [dismissDialog] so the close→reopen guard
             // ([isClosing]) is set for user-initiated closes too.
             setNavigationOnClickListener { dismissDialog() }
@@ -427,6 +470,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
             // item so the toolbar.menu surface can grow without re-plumbing.
             menu.add(0, MENU_ITEM_REFRESH, 0, "Refresh").apply {
                 icon = activity.getDrawable(android.R.drawable.ic_menu_rotate)
+                    ?.apply { setTint(colorNeutral1) }
                 setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
             }
             setOnMenuItemClickListener { item ->
@@ -448,6 +492,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
         // because `android.webkit.WebView` exposes no canGo* observable.
         val backButton = ImageButton(activity).apply {
             setImageDrawable(activity.getDrawable(android.R.drawable.ic_media_previous))
+            setColorFilter(colorNeutral1)
             background = null
             contentDescription = "Back"
             setOnClickListener { if (webView.canGoBack()) webView.goBack() }
@@ -455,6 +500,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
         }
         val forwardButton = ImageButton(activity).apply {
             setImageDrawable(activity.getDrawable(android.R.drawable.ic_media_next))
+            setColorFilter(colorNeutral1)
             background = null
             contentDescription = "Forward"
             setOnClickListener { if (webView.canGoForward()) webView.goForward() }
@@ -464,7 +510,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
         // status text (e.g. "34 resources collected"). The plugin doesn't
         // touch its contents — `patchWindowText` is the only writer.
         val messageView = TextView(activity).apply {
-            setTextColor(Color.parseColor("#A0A4AF"))
+            setTextColor(colorNeutral4)
             textSize = 13f
             setPadding(16, 0, 0, 0)
             ellipsize = android.text.TextUtils.TruncateAt.END
@@ -474,16 +520,15 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
 
         // Apply caller-supplied initial chrome before the dialog shows so the
         // bar is correct on first paint (null = leave the default; title
-        // defaults to the URL host set above). Empty string clears, matching
-        // patchWindowText semantics.
-        initialTitle?.let { toolbar.title = if (it.isEmpty()) null else it }
-        initialSubtitle?.let { toolbar.subtitle = if (it.isEmpty()) null else it }
-        initialMessage?.let { messageView.text = if (it.isEmpty()) null else it }
+        // defaults to the URL host set above). URL under the title: with no
+        // caller subtitle, show the full URL so the user sees where the popup
+        // navigated (the title is only the host).
+        applyWindowText(initialTitle, initialSubtitle, initialMessage, url)
 
         val bottomBar = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.START or Gravity.CENTER_VERTICAL
-            setBackgroundColor(Color.parseColor("#14161C"))
+            setBackgroundColor(colorBackground)
             setPadding(8, 8, 8, 8)
             addView(
                 backButton,

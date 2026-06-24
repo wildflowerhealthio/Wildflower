@@ -20,6 +20,11 @@ const LOG_TAG: &str = "Log";
 /// `tauri.conf.json`. The consent-popup arrival path looks the window
 /// up by label to raise/focus it; an unknown label is a config drift
 /// and the focus call is skipped with a log.
+///
+/// `cfg(desktop)`-gated because its only use is the desktop
+/// [`raise_main_window`]; mobile builds compile the no-op stub instead, so
+/// an ungated const would trip `dead_code` there.
+#[cfg(desktop)]
 const MAIN_WINDOW_LABEL: &str = "main";
 
 /// Wire shape of a `Log` payload, pinned by

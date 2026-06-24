@@ -8,6 +8,8 @@
     "build": "tsc && vite build",
     "build:ios:prod": "tauri ios build --export-method app-store-connect && vp run atool",
     "dev": "vite",
+    "dev:android": "tauri android dev -- --target aarch64-linux-android",
+    "dev:ios": "tauri ios dev --host=\"$(ipconfig getifaddr en0)\"",
     "preview": "vite preview",
     "tauri": "tauri"
   },

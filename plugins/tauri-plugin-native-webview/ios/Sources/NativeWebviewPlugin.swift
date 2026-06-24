@@ -200,11 +200,11 @@ class NativeWebviewPlugin: Plugin {
             )
           )
         }
-        if let controller = self.currentController {
-          if let title = args.initialTitle { controller.updateTitle(title) }
-          if let subtitle = args.initialSubtitle { controller.updateSubtitle(subtitle) }
-          if let message = args.initialMessage { controller.updateMessage(message) }
-        }
+        self.currentController?.applyChrome(
+          title: args.initialTitle,
+          subtitle: args.initialSubtitle ?? url.absoluteString,
+          message: args.initialMessage
+        )
         existing.load(URLRequest(url: url))
         invoke.resolve(["opened": true])
         return
@@ -250,9 +250,11 @@ class NativeWebviewPlugin: Plugin {
         invoke.resolve(["set": false])
         return
       }
-      if let title = args.title { controller.updateTitle(title) }
-      if let subtitle = args.subtitle { controller.updateSubtitle(subtitle) }
-      if let message = args.message { controller.updateMessage(message) }
+      // Patch notation per field: `nil` (key absent) = leave the label
+      // unchanged, `""` = clear it, any other string = set it. `applyChrome`
+      // routes each through `updateTitle/Subtitle/Message`, which apply the
+      // empty-string-clears rule.
+      controller.applyChrome(title: args.title, subtitle: args.subtitle, message: args.message)
       invoke.resolve(["set": true])
     }
   }
@@ -321,10 +323,14 @@ class NativeWebviewPlugin: Plugin {
     currentController = browser
     // Apply caller-supplied initial chrome before presentation so the bar is
     // correct on first paint (nil = leave the default; title defaults to the
-    // URL host set in the controller's init).
-    if let initialTitle = initialTitle { browser.updateTitle(initialTitle) }
-    if let initialSubtitle = initialSubtitle { browser.updateSubtitle(initialSubtitle) }
-    if let initialMessage = initialMessage { browser.updateMessage(initialMessage) }
+    // URL host set in the controller's init). URL under the title: with no
+    // caller subtitle, show the full URL so the user sees where the popup
+    // navigated (the title is only the host).
+    browser.applyChrome(
+      title: initialTitle,
+      subtitle: initialSubtitle ?? url.absoluteString,
+      message: initialMessage
+    )
     browser.onClose = { [weak self] in
       // Read the latest (possibly rewired) channel BEFORE tearing the bridge
       // down: a second `open()` rebinds `bridge.channel`, and the `Closed`
@@ -364,6 +370,23 @@ class NativeWebviewPlugin: Plugin {
     // (see `presentationControllerDidDismiss`). Without this, a swipe-away
     // never emits `NativeWebviewEvent::Closed` and the host's collector idle-times-out.
     navigation.presentationController?.delegate = browser
+    // Theme the native chrome to the app palette, tracking the OS appearance.
+    let barAppearance = UINavigationBarAppearance()
+    barAppearance.configureWithOpaqueBackground()
+    barAppearance.backgroundColor = WildflowerColor.colorBackground
+    barAppearance.titleTextAttributes = [.foregroundColor: WildflowerColor.colorNeutral1]
+    navigation.navigationBar.standardAppearance = barAppearance
+    navigation.navigationBar.scrollEdgeAppearance = barAppearance
+    navigation.navigationBar.tintColor = WildflowerColor.colorNeutral1
+
+    let toolbarAppearance = UIToolbarAppearance()
+    toolbarAppearance.configureWithOpaqueBackground()
+    toolbarAppearance.backgroundColor = WildflowerColor.colorBackground
+    navigation.toolbar.standardAppearance = toolbarAppearance
+    if #available(iOS 15.0, *) {
+      navigation.toolbar.scrollEdgeAppearance = toolbarAppearance
+    }
+    navigation.toolbar.tintColor = WildflowerColor.colorNeutral1
     // Show the navigation controller's bottom toolbar so the controller's
     // `toolbarItems` (back / forward) render. The view controller hides /
     // shows it on appear, but flipping it here too avoids a flash at open.
@@ -384,6 +407,32 @@ class NativeWebviewPlugin: Plugin {
   }
 }
 
+/// App palette as dynamic colors that resolve per the OS light/dark
+/// appearance. Same tokens as the web app's `--color-background` /
+/// `--color-neutral-1` / `--color-neutral-4` (named to match for clear
+/// relatedness); redefined here because the native chrome can't read the web
+/// app's CSS.
+enum WildflowerColor {
+  static let colorBackground = dynamic(light: 0xF7_EC_DD, dark: 0x22_1B_16)
+  static let colorNeutral1 = dynamic(light: 0x2C_21_1D, dark: 0xF3_E9_DB)
+  static let colorNeutral4 = dynamic(light: 0x6C_5B_50, dark: 0xB3_A2_94)
+
+  /// A `UIColor` that picks `light` or `dark` (each an `0xRRGGBB` literal) from
+  /// the resolving trait collection, so it tracks the OS appearance live.
+  private static func dynamic(light: Int, dark: Int) -> UIColor {
+    UIColor { traits in rgb(traits.userInterfaceStyle == .dark ? dark : light) }
+  }
+
+  private static func rgb(_ hex: Int) -> UIColor {
+    UIColor(
+      red: CGFloat((hex >> 16) & 0xFF) / 255.0,
+      green: CGFloat((hex >> 8) & 0xFF) / 255.0,
+      blue: CGFloat(hex & 0xFF) / 255.0,
+      alpha: 1.0
+    )
+  }
+}
+
 /// Two-line title view stacked vertically in the navigation bar: the page
 /// host on top (semibold), a caller-controlled status subtitle beneath
 /// (smaller, secondary colour). Used as `navigationItem.titleView` so the
@@ -397,6 +446,7 @@ class WebViewTitleView: UIView {
     super.init(frame: frame)
     titleLabel.font = .systemFont(ofSize: 17, weight: .semibold)
     titleLabel.textAlignment = .center
+    titleLabel.textColor = WildflowerColor.colorNeutral1
     // Long hosts: truncate from the head so the registrable suffix
     // (`example.test`) stays visible — the leftmost subdomain is the
     // disposable part.
@@ -404,7 +454,7 @@ class WebViewTitleView: UIView {
 
     subtitleLabel.font = .systemFont(ofSize: 11, weight: .regular)
     subtitleLabel.textAlignment = .center
-    subtitleLabel.textColor = .secondaryLabel
+    subtitleLabel.textColor = WildflowerColor.colorNeutral4
     subtitleLabel.lineBreakMode = .byTruncatingTail
     subtitleLabel.isHidden = true
 
@@ -481,7 +531,7 @@ class NativeWebviewController: UIViewController, UIAdaptivePresentationControlle
     titleView.titleLabel.text = initialHost
     navigationItem.titleView = titleView
     messageLabel.font = .systemFont(ofSize: 13, weight: .regular)
-    messageLabel.textColor = .secondaryLabel
+    messageLabel.textColor = WildflowerColor.colorNeutral4
     messageLabel.lineBreakMode = .byTruncatingTail
   }
 
@@ -576,6 +626,16 @@ class NativeWebviewController: UIViewController, UIAdaptivePresentationControlle
   /// completion) does not double-emit.
   func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
     onClose?()
+  }
+
+  /// Apply any of the three chrome labels that are non-nil in one call — `nil`
+  /// = leave unchanged, `""` = clear, otherwise set. Shared by `open`'s initial
+  /// chrome, the `patchWindowText` command, and the re-wire path so the patch
+  /// semantics live in one place.
+  func applyChrome(title: String?, subtitle: String?, message: String?) {
+    if let title = title { updateTitle(title) }
+    if let subtitle = subtitle { updateSubtitle(subtitle) }
+    if let message = message { updateMessage(message) }
   }
 
   /// Push a new title (URL-host slot) into the chrome. Called from the
