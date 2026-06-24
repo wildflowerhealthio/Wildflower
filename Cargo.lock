@@ -1336,6 +1336,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a4ae5f15dda3c708c0ade84bfee31ccab44a3da4f88015ed22f63732abe300c8"
 
 [[package]]
+name = "data-url"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "be1e0bca6c3637f992fc1cc7cbc52a78c1ef6db076dbf1059c4323d6a2048376"
+
+[[package]]
 name = "databases-rust"
 version = "0.0.0"
 dependencies = [
@@ -6055,6 +6061,7 @@ dependencies = [
  "anyhow",
  "bytes",
  "cookie",
+ "data-url",
  "dirs",
  "dunce",
  "embed_plist",
@@ -6237,6 +6244,18 @@ dependencies = [
  "tauri-plugin",
  "thiserror 2.0.18",
  "time",
+]
+
+[[package]]
+name = "tauri-plugin-native-webview"
+version = "0.0.0"
+dependencies = [
+ "base64 0.22.1",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-plugin",
+ "url",
 ]
 
 [[package]]
@@ -7469,6 +7488,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-fs",
  "tauri-plugin-log",
+ "tauri-plugin-native-webview",
  "tauri-plugin-opener",
  "tokio",
  "tower",

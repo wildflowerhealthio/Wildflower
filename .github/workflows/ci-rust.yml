@@ -29,10 +29,10 @@ jobs:
   # a single compiled-artifact cache mean the workspace is compiled ONCE, then
   # clippy and the tests reuse those artifacts — instead of the previous two
   # jobs (lint and nextest) each warming the cache and compiling from it
-  # separately. wildflower-tauri, browser-sniffer-tauri-rust, and
-  # shared-structures-tauri-rust are excluded: all pull in `tauri = "2"` and
-  # need GTK/webkit system libs, so ci-rust-tauri.yml compiles, lints, and
-  # tests them on its own.
+  # separately. wildflower-tauri, browser-sniffer-tauri-rust,
+  # shared-structures-tauri-rust, and tauri-plugin-native-webview are
+  # excluded: all pull in `tauri = "2"` and need GTK/webkit system libs, so
+  # ci-rust-tauri.yml compiles, lints, and tests them on its own.
   rust:
     name: Lint + Test
     if: github.event.pull_request.draft != true
