@@ -7,8 +7,8 @@ use serde::de::DeserializeOwned;
 use tauri::{plugin::PluginApi, AppHandle, Runtime};
 
 use crate::models::{
-    CloseResponse, OpenRequest, OpenResponse, SendRequest, SendResponse, SetChromeRequest,
-    SetChromeResponse,
+    CloseRequest, CloseResponse, OpenRequest, OpenResponse, SendRequest, SendResponse,
+    SetChromeRequest, SetChromeResponse,
 };
 
 #[cfg(target_os = "ios")]
@@ -79,12 +79,18 @@ impl<R: Runtime> NativeWebview<R> {
 
     /// Dismiss the currently-presented popup. Idempotent — the native side
     /// resolves with `{closed: false}` if no popup was open. The native
-    /// `dismiss` callback still fires after the animation, so a
-    /// `PopupEvent::Closed` lands on the open channel for both user- and
-    /// host-initiated close paths.
-    pub fn close(&self) -> crate::Result<()> {
+    /// `dismiss` callback fires after the animation and lands a
+    /// `PopupEvent::Closed` on the open channel — unless `suppress_close_event`
+    /// is `true`, which makes that one dismissal silent (the host already
+    /// observed the terminal event that triggered the close).
+    pub fn close(&self, suppress_close_event: bool) -> crate::Result<()> {
         self.0
-            .run_mobile_plugin::<CloseResponse>("close", ())
+            .run_mobile_plugin::<CloseResponse>(
+                "close",
+                CloseRequest {
+                    suppress_close_event,
+                },
+            )
             .map_err(|error| crate::Error::PluginInvoke(error.to_string()))?;
         Ok(())
     }

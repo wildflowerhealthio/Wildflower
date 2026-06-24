@@ -11,7 +11,7 @@ It exposes four commands, with a backend per platform:
 - `open(url, initScript, channel, initialTitle?, initialSubtitle?, initialMessage?)` — present the popup.
 - `send(script)` — evaluate JS inside the open popup.
 - `set_chrome({title?, subtitle?, message?})` — update one or more of the chrome's title/subtitle/message labels.
-- `close()` — dismiss the popup (emits `PopupEvent::Closed` on the channel).
+- `close(suppress_close_event = false)` — dismiss the popup. Emits `PopupEvent::Closed` on the channel for the dismissal, unless `suppress_close_event` is `true` (a host that already observed the terminal event prompting the close passes `true` so the echo doesn't double-fire). User / OS dismissals always emit.
 
 | Platform | Backend                                                           | Native chrome                                                          | JS injection (any origin)                                 | Bridge back to host                              |
 | -------- | ----------------------------------------------------------------- | ---------------------------------------------------------------------- | --------------------------------------------------------- | ------------------------------------------------ |

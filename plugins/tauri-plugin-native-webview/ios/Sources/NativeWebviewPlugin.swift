@@ -38,6 +38,16 @@ class SetChromeArgs: Decodable {
   let message: String?
 }
 
+/// Arguments decoded from
+/// `invoke('plugin:native-webview|close', { suppressCloseEvent? })`. Matches
+/// `CloseRequest`'s camelCase serde wire shape. Optional with a `false` default
+/// (absent key = emit `Closed`); set `true` by a host that already observed the
+/// terminal event that prompted the close, so the resulting dismissal stays
+/// silent on the channel.
+class CloseArgs: Decodable {
+  let suppressCloseEvent: Bool?
+}
+
 /// Per-popup script message handler: holds the caller's [`Channel`] and
 /// forwards each `window.webkit.messageHandlers.nativeWebview.postMessage(...)`
 /// call as a `PopupEvent.message` payload. Per-popup (rather than plugin-
@@ -115,6 +125,12 @@ class NativeWebviewPlugin: Plugin {
   /// popup logically continues with new wiring rather than firing a spurious
   /// close (Task #10 close→reopen race guard).
   private var pendingOpenAfterClose: (() -> Void)?
+
+  /// Set by a host `close(suppressCloseEvent: true)` before the dismiss so
+  /// `onClose` skips the `Closed` channel echo for exactly that dismissal.
+  /// Consumed (reset to `false`) the next time `onClose` fires — a user
+  /// dismissal (Close button, swipe) never sets it, so those still emit.
+  private var suppressNextCloseEvent = false
 
   /// The `Invoke` whose `resolve` is owned by [`pendingOpenAfterClose`]. Held
   /// separately so that if a *second* `open()` supersedes a still-queued one
@@ -244,15 +260,21 @@ class NativeWebviewPlugin: Plugin {
   /// Dismiss the currently-presented popup. Idempotent — resolves with
   /// `{closed: false}` when no popup is open. Delegates to the controller's
   /// `requestClose()`, which routes through the same `dismiss` + `onClose`
-  /// pipeline the in-toolbar Close button uses, so the host-initiated
-  /// dismissal emits `PopupEvent::Closed` on the channel just like the
-  /// user-initiated one.
+  /// pipeline the in-toolbar Close button uses.
+  ///
+  /// By default the host-initiated dismissal emits `PopupEvent::Closed` on the
+  /// channel just like the user-initiated one. When the caller passes
+  /// `suppressCloseEvent: true`, `onClose` skips that echo for this one
+  /// dismissal — the host already observed the terminal event that prompted the
+  /// close, so a second `Closed` would double-fire it.
   @objc public func close(_ invoke: Invoke) throws {
+    let args = try invoke.parseArgs(CloseArgs.self)
     DispatchQueue.main.async {
       guard let controller = self.currentController else {
         invoke.resolve(["closed": false])
         return
       }
+      self.suppressNextCloseEvent = args.suppressCloseEvent ?? false
       controller.requestClose()
       invoke.resolve(["closed": true])
     }
@@ -313,15 +335,20 @@ class NativeWebviewPlugin: Plugin {
       self?.currentWebView = nil
       self?.currentController = nil
       self?.currentBridge = nil
+      // Consume the host-close suppression flag regardless of which branch
+      // runs below, so it can never leak onto a later dismissal.
+      let suppress = self?.suppressNextCloseEvent ?? false
+      self?.suppressNextCloseEvent = false
       // If `open()` queued a replay during the dismiss animation, run it
       // now and skip the `Closed` echo — the popup logically continues with
       // new wiring (Task #10). Otherwise this is a real dismiss; emit
-      // `Closed` so the host's collector releases per-popup state.
+      // `Closed` so the host's collector releases per-popup state — unless a
+      // host `close(suppressCloseEvent: true)` asked us to stay silent.
       if let pending = self?.pendingOpenAfterClose {
         self?.pendingOpenAfterClose = nil
         self?.pendingInvoke = nil
         pending()
-      } else {
+      } else if !suppress {
         // PopupEvent.closed (lowercase tag) — matches the `models.rs` shape.
         // `JsonObject` annotation pins the non-throwing overload (see above).
         let data: JsonObject = ["event": "closed"]

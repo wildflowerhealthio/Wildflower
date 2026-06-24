@@ -86,9 +86,13 @@ pub enum PopupEvent {
         /// parses on its own bus.
         payload: String,
     },
-    /// The user dismissed the popup via the native chrome (iOS Close button,
-    /// Android Toolbar back). Sent once per popup, after the sheet/dialog has
-    /// finished its dismiss animation.
+    /// The popup was dismissed. Sent once per popup, after the sheet / dialog /
+    /// window has finished its dismiss animation. Fired for user dismissals
+    /// (iOS Close button or sheet swipe, Android Toolbar back / system back,
+    /// desktop OS window X) and for host-initiated `close()` calls — UNLESS the
+    /// `close()` set [`CloseRequest::suppress_close_event`], in which case that
+    /// one dismissal is silent (the host already observed the terminal event
+    /// that prompted the close).
     #[serde(rename = "closed")]
     Closed,
 }
@@ -151,6 +155,30 @@ pub struct SetChromeRequest {
 pub struct SetChromeResponse {
     /// Whether the update was applied to a live popup chrome.
     pub set: bool,
+}
+
+/// Arguments for a `close` invocation.
+///
+/// `suppress_close_event` lets a *host-initiated* close opt out of the
+/// `PopupEvent::Closed` echo: the caller that issued the close already observed
+/// the terminal event that triggered it (e.g. the browser-sniffer's
+/// `SniffingComplete`), so re-emitting `Closed` on the channel would double-fire
+/// the terminal observation. User / OS dismissals (the native chrome Close
+/// button, a sheet swipe, the OS window X) never set this — those are the only
+/// way the host learns of a dismissal, so they always emit `Closed`. JS
+/// `invoke('plugin:native-webview|close')` callers get the default `false`.
+///
+/// Serialised camelCase (`suppressCloseEvent`) so the Swift / Kotlin
+/// `parseArgs` callsites and the Rust mobile `run_mobile_plugin` payload agree
+/// on the wire shape.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct CloseRequest {
+    /// When `true`, the dismissal this close triggers does NOT emit
+    /// `PopupEvent::Closed` on the channel. Defaults to `false` (emit), so a
+    /// caller that doesn't care keeps the symmetric "every close emits" posture.
+    #[serde(default)]
+    pub suppress_close_event: bool,
 }
 
 /// Result of a `close` invocation. `closed` is `true` once the dismiss has
@@ -369,5 +397,30 @@ mod tests {
         assert!(live.closed);
         let already: CloseResponse = serde_json::from_str(r#"{"closed":false}"#).expect("de");
         assert!(!already.closed);
+    }
+
+    /// `CloseRequest` serialises the suppression flag as camelCase
+    /// `suppressCloseEvent` — the wire key the Swift `CloseArgs` /
+    /// Kotlin `CloseArgs` `parseArgs` callsites read. Drift here would make a
+    /// host-initiated `close(true)` silently emit `Closed` anyway (the native
+    /// side would decode the absent key as its `false` default).
+    #[test]
+    fn close_request_serialises_suppress_flag_camel_case() {
+        let suppress = CloseRequest {
+            suppress_close_event: true,
+        };
+        assert_eq!(
+            serde_json::to_string(&suppress).expect("ser"),
+            r#"{"suppressCloseEvent":true}"#
+        );
+    }
+
+    /// An absent `suppressCloseEvent` decodes to `false` (the default), so a
+    /// JS `invoke('…|close')` with no args — or any caller on the old wire
+    /// shape — keeps the symmetric "every close emits `Closed`" posture.
+    #[test]
+    fn close_request_defaults_suppress_to_false() {
+        let default: CloseRequest = serde_json::from_str("{}").expect("de");
+        assert!(!default.suppress_close_event);
     }
 }

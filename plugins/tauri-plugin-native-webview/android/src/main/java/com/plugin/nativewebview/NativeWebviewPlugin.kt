@@ -76,6 +76,18 @@ class SetChromeArgs {
 }
 
 /**
+ * Arguments decoded from
+ * `invoke('plugin:native-webview|close', { suppressCloseEvent? })`. Matches
+ * `CloseRequest`'s camelCase serde wire shape. Defaults to `false` (absent key
+ * = emit `Closed`); a host that already observed the terminal event prompting
+ * the close sets `true` so the resulting dismissal stays silent on the channel.
+ */
+@InvokeArg
+class CloseArgs {
+    var suppressCloseEvent: Boolean = false
+}
+
+/**
  * Android counterpart to the iOS `NativeWebviewPlugin`. Presents an
  * `android.webkit.WebView` in a fullscreen `Dialog` with a native `Toolbar`
  * (Close + page host), injecting the caller's document-start script on any
@@ -162,6 +174,15 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
      * (there's no timeout on `open`). Task #10 last-write-wins fix.
      */
     private var pendingInvoke: Invoke? = null
+
+    /**
+     * Set by a host `close(suppressCloseEvent = true)` before [dismissDialog]
+     * so the `setOnDismissListener` skips the `Closed` channel echo for exactly
+     * that dismissal. Consumed (reset to `false`) every time the listener fires
+     * — user dismissals (Toolbar Close, system back) never set it, so those
+     * still emit.
+     */
+    private var suppressNextCloseEvent = false
 
     @Command
     fun open(invoke: Invoke) {
@@ -301,9 +322,15 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
      * `{closed: false}` when no popup is open. Routes through
      * [dismissDialog] so a same-tick reopen lands in the deferral branch of
      * [open] rather than rewiring a doomed WebView.
+     *
+     * By default the dismiss emits `PopupEvent::Closed` on the channel (like a
+     * user dismissal). When the caller passes `suppressCloseEvent = true`, the
+     * `setOnDismissListener` skips that echo for this one dismissal — the host
+     * already observed the terminal event that prompted the close.
      */
     @Command
     fun close(invoke: Invoke) {
+        val args = invoke.parseArgs(CloseArgs::class.java)
         activity.runOnUiThread {
             val d = dialog
             if (d == null || !d.isShowing) {
@@ -312,6 +339,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
                 invoke.resolve(result)
                 return@runOnUiThread
             }
+            suppressNextCloseEvent = args.suppressCloseEvent
             dismissDialog()
             val result = JSObject()
             result.put("closed", true)
@@ -598,16 +626,21 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
                 currentBridge = null
                 currentDocStartScript = null
                 isClosing = false
+                // Consume the host-close suppression flag regardless of which
+                // branch runs below, so it can never leak onto a later dismissal.
+                val suppress = suppressNextCloseEvent
+                suppressNextCloseEvent = false
                 // If `open()` queued a replay during the dismiss, run it now
                 // and skip the `Closed` echo — the popup logically continues
                 // with new wiring (Task #10). Otherwise this is a real
-                // dismiss; emit `Closed`.
+                // dismiss; emit `Closed` — unless a host
+                // `close(suppressCloseEvent = true)` asked us to stay silent.
                 val pending = pendingOpenAfterClose
                 pendingOpenAfterClose = null
                 if (pending != null) {
                     pendingInvoke = null
                     pending()
-                } else {
+                } else if (!suppress) {
                     // PopupEvent.closed (lowercase tag) — matches the `models.rs` shape.
                     val payload = JSObject()
                     payload.put("event", "closed")

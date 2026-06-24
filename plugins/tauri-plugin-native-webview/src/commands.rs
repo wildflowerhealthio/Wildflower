@@ -76,14 +76,21 @@ pub(crate) async fn set_chrome<R: Runtime>(
 
 /// Dismiss the currently-presented popup. Idempotent — succeeds with
 /// `closed: false` when no popup is open. The dismiss animation runs
-/// asynchronously; the native side still emits its usual
-/// `PopupEvent::Closed` through the open channel once the animation
-/// finishes (so a caller listening for the closed event sees it for both
-/// user- and host-initiated close).
+/// asynchronously; the native side then emits its usual `PopupEvent::Closed`
+/// through the open channel once the animation finishes — unless
+/// `suppressCloseEvent` is `true`, in which case this one dismissal stays
+/// silent (a host that already observed the terminal event needn't see the
+/// echo). Omitted / `false` keeps the symmetric "every close emits" posture.
 ///
 /// Invoked from the webview as
-/// `invoke('plugin:native-webview|close')`.
+/// `invoke('plugin:native-webview|close', { suppressCloseEvent? })`. JS callers
+/// that omit the arg get the default `false`. Rust callers go through
+/// [`crate::NativeWebviewExt::native_webview`] + `close(suppress_close_event)`.
 #[tauri::command]
-pub(crate) async fn close<R: Runtime>(app: AppHandle<R>) -> Result<()> {
-    app.native_webview().close()
+pub(crate) async fn close<R: Runtime>(
+    app: AppHandle<R>,
+    suppress_close_event: Option<bool>,
+) -> Result<()> {
+    app.native_webview()
+        .close(suppress_close_event.unwrap_or(false))
 }

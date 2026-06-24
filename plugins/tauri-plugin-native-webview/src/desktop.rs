@@ -295,6 +295,7 @@ pub fn init<R: Runtime, C: DeserializeOwned>(
     app.manage(PluginState {
         closing: AtomicBool::new(false),
         pending_reopen: Mutex::new(None),
+        suppress_close_event: AtomicBool::new(false),
     });
     Ok(NativeWebview(app.clone()))
 }
@@ -327,6 +328,13 @@ struct PluginState {
     /// the close and replays the request against the existing webviews; if
     /// `None`, the close proceeds.
     pending_reopen: Mutex<Option<(OpenRequest, Url)>>,
+    /// Set by `close(suppress_close_event = true)` before the runtime close so
+    /// the `Destroyed` handler skips the `PopupEvent::Closed` echo for exactly
+    /// that dismissal. Read-and-cleared (`swap`) when the destroy lands, and
+    /// also cleared on the `CloseRequested` replay path (a cancelled close must
+    /// not leak its suppression onto the next real close). User-initiated closes
+    /// (OS window X) never call `close()`, so this stays `false` and they emit.
+    suppress_close_event: AtomicBool,
 }
 
 /// Desktop handle to the native-webview plugin.
@@ -404,11 +412,18 @@ impl<R: Runtime> NativeWebview<R> {
     /// same-tick `open()` that races this close lands in the deferral branch
     /// of [`present`] (queued into `pending_reopen`) rather than navigating
     /// the doomed window. See [`PluginState`] for the full race story.
-    pub fn close(&self) -> crate::Result<()> {
+    ///
+    /// `suppress_close_event` is recorded on
+    /// [`PluginState::suppress_close_event`] so the `Destroyed` handler skips
+    /// the `PopupEvent::Closed` echo for this host-initiated dismissal.
+    pub fn close(&self, suppress_close_event: bool) -> crate::Result<()> {
         let Some(window) = self.0.get_window(WINDOW_LABEL) else {
             return Ok(());
         };
         if let Some(state) = self.0.try_state::<PluginState>() {
+            state
+                .suppress_close_event
+                .store(suppress_close_event, Ordering::SeqCst);
             state.closing.store(true, Ordering::SeqCst);
         }
         window.close()?;
@@ -772,7 +787,9 @@ fn apply_chrome_height<R: Runtime>(
 ///   reopen flicker. Otherwise let the close proceed.
 /// - **Destroyed**: fire `PopupEvent::Closed` on the current channel
 ///   ([`CurrentChannel`] in the window's typemap — re-bindable across
-///   rewires). The user dismisses the desktop popup via the OS window X (the
+///   rewires), UNLESS a host `close(suppress_close_event = true)` recorded
+///   suppression on [`PluginState::suppress_close_event`] (consumed read-and-
+///   clear here). The user dismisses the desktop popup via the OS window X (the
 ///   chrome bar has no Close button); without this hook the sniffer's
 ///   collector would idle-timeout waiting for `SniffingComplete`. Matches the
 ///   mobile path where the plugin's native chrome Close button fires `Closed`
@@ -813,6 +830,10 @@ fn install_window_listeners<R: Runtime>(app: &AppHandle<R>, window: &tauri::Wind
             };
             api.prevent_close();
             state.closing.store(false, Ordering::SeqCst);
+            // The close that set this is being cancelled (we're re-wiring the
+            // live webviews instead of letting them die), so its suppression
+            // must not leak onto the next *real* close — clear it here.
+            state.suppress_close_event.store(false, Ordering::SeqCst);
             // Replay the deferred open against the live (cancelled-close)
             // webviews. The parsed `Url` rode along in `pending_reopen`, so
             // there's no re-parse here. Skip if the content webview is gone
@@ -823,13 +844,22 @@ fn install_window_listeners<R: Runtime>(app: &AppHandle<R>, window: &tauri::Wind
             apply_rewire(&app_window, &content, &payload, parsed);
         }
         WindowEvent::Destroyed => {
+            // A host-initiated `close(suppress_close_event = true)` recorded its
+            // intent on `PluginState`; consume it (read-and-clear) so this one
+            // destroy stays silent. Any other destroy (the OS window X, or a
+            // host close without suppression) finds `false` and emits.
+            let suppress = app_window
+                .try_state::<PluginState>()
+                .is_some_and(|state| state.suppress_close_event.swap(false, Ordering::SeqCst));
             // Notify the *current* caller's channel handler that the popup
             // has gone away — read from the window's typemap so a rewire
             // before the close lands routes the event to the latest caller.
             // Errors are swallowed: the window is gone either way, and the
             // channel send is the only way to surface dismissal to the host.
-            if let Some(state) = window_clone.try_state::<CurrentChannel>() {
-                let _ = state.0.lock().unwrap().send(PopupEvent::Closed);
+            if !suppress {
+                if let Some(state) = window_clone.try_state::<CurrentChannel>() {
+                    let _ = state.0.lock().unwrap().send(PopupEvent::Closed);
+                }
             }
             if let Some(state) = app_window.try_state::<PluginState>() {
                 state.closing.store(false, Ordering::SeqCst);

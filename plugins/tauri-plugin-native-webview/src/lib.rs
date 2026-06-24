@@ -50,7 +50,7 @@ use tauri::{
 
 pub use error::{Error, Result};
 pub use models::{
-    CloseResponse, OpenRequest, OpenResponse, PopupEvent, SendRequest, SendResponse,
+    CloseRequest, CloseResponse, OpenRequest, OpenResponse, PopupEvent, SendRequest, SendResponse,
     SetChromeRequest, SetChromeResponse,
 };
 
