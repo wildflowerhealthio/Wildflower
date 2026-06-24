@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-evaluate-js"
+description = "Enables the evaluate_js command without any pre-configured scope."
+commands.allow = ["evaluate_js"]
+
+[[permission]]
+identifier = "deny-evaluate-js"
+description = "Denies the evaluate_js command without any pre-configured scope."
+commands.deny = ["evaluate_js"]

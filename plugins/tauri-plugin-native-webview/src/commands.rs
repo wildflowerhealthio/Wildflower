@@ -5,17 +5,17 @@
 
 use tauri::{ipc::Channel, AppHandle, Runtime};
 
-use crate::models::{OpenRequest, PopupEvent, SendRequest, SetChromeRequest};
+use crate::models::{EvaluateJsRequest, NativeWebviewEvent, OpenRequest, PatchWindowTextRequest};
 use crate::{NativeWebviewExt, Result};
 
 /// Present the external `url` in a native webview popup, injecting `initScript`
 /// at document start on any origin (if provided).
 ///
 /// Invoked from the webview as
-/// `invoke('plugin:native-webview|open', { url, initScript, channel })` where
-/// `channel` is a `new Channel<PopupEvent>()` the caller constructed to
-/// receive [`PopupEvent`] payloads from the popup webview. Tauri maps the
-/// camelCase `initScript` arg to the snake_case `init_script` parameter.
+/// `invoke('plugin:native-webview|open', { url, initScript, nativeWebviewEventChannel })`
+/// where `nativeWebviewEventChannel` is a `new Channel<NativeWebviewEvent>()` the caller
+/// constructed to receive [`NativeWebviewEvent`] payloads from the popup
+/// webview. Tauri maps the camelCase args to their snake_case parameters.
 ///
 /// Rust callers go through [`crate::NativeWebviewExt::native_webview`] +
 /// `open(OpenRequest { … })` directly — see `browser-sniffer-tauri-rust`'s
@@ -26,14 +26,14 @@ pub(crate) async fn open<R: Runtime>(
     app: AppHandle<R>,
     url: String,
     init_script: Option<String>,
-    channel: Channel<PopupEvent>,
+    native_webview_event_channel: Channel<NativeWebviewEvent>,
 ) -> Result<()> {
     app.native_webview().open(OpenRequest {
         url,
         init_script,
-        channel,
-        // JS callers drive chrome through the `setChrome` command; the
-        // initial-chrome fields are the Rust-caller convenience path.
+        native_webview_event_channel,
+        // JS callers drive window text through the `patchWindowText` command;
+        // the initial-chrome fields are the Rust-caller convenience path.
         initial_title: None,
         initial_subtitle: None,
         initial_message: None,
@@ -43,31 +43,32 @@ pub(crate) async fn open<R: Runtime>(
 /// Evaluate `script` inside the currently-open native popup webview.
 ///
 /// Invoked from the webview as
-/// `invoke('plugin:native-webview|send', { script })`. The caller owns the
-/// content (e.g. the browser-sniffer host emits
+/// `invoke('plugin:native-webview|evaluate_js', { script })`. The caller owns
+/// the content (e.g. the browser-sniffer host emits
 /// `window.__nativeWebviewReceive(JSON.stringify({ event, payload }))` to push
 /// bridge messages into the popup). Returns an error if no popup is open.
 #[tauri::command]
-pub(crate) async fn send<R: Runtime>(app: AppHandle<R>, script: String) -> Result<()> {
-    app.native_webview().send(SendRequest { script })
+pub(crate) async fn evaluate_js<R: Runtime>(app: AppHandle<R>, script: String) -> Result<()> {
+    app.native_webview()
+        .evaluate_js(EvaluateJsRequest { script })
 }
 
-/// Update one or more of the popup's three chrome labels (`title`,
+/// Patch one or more of the popup's three window-text labels (`title`,
 /// `subtitle`, `message`). Each is `Option<String>`: omitted / `null` =
 /// leave unchanged, `""` = clear, otherwise set.
 ///
 /// Invoked from the webview as
-/// `invoke('plugin:native-webview|setChrome', { title?, subtitle?, message? })`.
+/// `invoke('plugin:native-webview|patch_window_text', { title?, subtitle?, message? })`.
 /// The plugin's `open` defaults `title` to the URL host; subsequent changes
 /// are caller-driven (the plugin doesn't auto-update on navigation).
 #[tauri::command]
-pub(crate) async fn set_chrome<R: Runtime>(
+pub(crate) async fn patch_window_text<R: Runtime>(
     app: AppHandle<R>,
     title: Option<String>,
     subtitle: Option<String>,
     message: Option<String>,
 ) -> Result<()> {
-    app.native_webview().set_chrome(SetChromeRequest {
+    app.native_webview().patch_window_text(PatchWindowTextRequest {
         title,
         subtitle,
         message,
@@ -75,8 +76,8 @@ pub(crate) async fn set_chrome<R: Runtime>(
 }
 
 /// Dismiss the currently-presented popup. Idempotent — succeeds with
-/// `closed: false` when no popup is open. The dismiss animation runs
-/// asynchronously; the native side then emits its usual `PopupEvent::Closed`
+/// `closed_by_request: false` when no popup is open. The dismiss animation runs
+/// asynchronously; the native side then emits its usual `NativeWebviewEvent::Closed`
 /// through the open channel once the animation finishes — unless
 /// `suppressCloseEvent` is `true`, in which case this one dismissal stays
 /// silent (a host that already observed the terminal event needn't see the

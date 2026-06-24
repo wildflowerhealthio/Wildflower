@@ -2,15 +2,15 @@ import Tauri
 import UIKit
 import WebKit
 
-/// Arguments decoded from `invoke('plugin:native-webview|open', { url, initScript, channel })`.
+/// Arguments decoded from `invoke('plugin:native-webview|open', { url, initScript, nativeWebviewEventChannel })`.
 /// Keys match `OpenRequest`'s camelCase serde wire shape; `initScript` is
-/// omitted when absent. `channel` is a Tauri `Channel<PopupEvent>` the caller
-/// receives popup events on (`{"event":"message", "payload": …}` /
-/// `{"event":"closed"}`) — see `models.rs` `PopupEvent`.
+/// omitted when absent. `nativeWebviewEventChannel` is a Tauri `Channel<NativeWebviewEvent>`
+/// the caller receives popup events on (`{"event":"message", "payload": …}` /
+/// `{"event":"closed"}`) — see `models.rs` `NativeWebviewEvent`.
 class OpenArgs: Decodable {
   let url: String
   let initScript: String?
-  let channel: Channel
+  let nativeWebviewEventChannel: Channel
   // Chrome applied at presentation time (omitted keys decode to nil — leave
   // unchanged). Matches `OpenRequest`'s `initialTitle` / `initialSubtitle` /
   // `initialMessage` camelCase wire shape.
@@ -19,20 +19,20 @@ class OpenArgs: Decodable {
   let initialMessage: String?
 }
 
-/// Arguments decoded from `invoke('plugin:native-webview|send', { script })`.
-/// Keys match `SendRequest`'s camelCase serde wire shape. The host evaluates
+/// Arguments decoded from `invoke('plugin:native-webview|evaluate_js', { script })`.
+/// Keys match `EvaluateJsRequest`'s camelCase serde wire shape. The host evaluates
 /// `script` verbatim in the popup webview — typically a
 /// `window.__nativeWebviewReceive(JSON.stringify(...))` call carrying a bridge
 /// envelope.
-class SendArgs: Decodable {
+class EvaluateJsArgs: Decodable {
   let script: String
 }
 
-/// Arguments decoded from `invoke('plugin:native-webview|setChrome', { title?, subtitle?, message? })`.
-/// Keys match `SetChromeRequest`'s camelCase serde wire shape. Each field is
+/// Arguments decoded from `invoke('plugin:native-webview|patch_window_text', { title?, subtitle?, message? })`.
+/// Keys match `PatchWindowTextRequest`'s camelCase serde wire shape. Each field is
 /// optional: `nil` / absent means "leave unchanged"; empty string clears that
 /// label. The plugin batches all three to keep multi-field updates flicker-free.
-class SetChromeArgs: Decodable {
+class PatchWindowTextArgs: Decodable {
   let title: String?
   let subtitle: String?
   let message: String?
@@ -50,7 +50,7 @@ class CloseArgs: Decodable {
 
 /// Per-popup script message handler: holds the caller's [`Channel`] and
 /// forwards each `window.webkit.messageHandlers.nativeWebview.postMessage(...)`
-/// call as a `PopupEvent.message` payload. Per-popup (rather than plugin-
+/// call as a `NativeWebviewEvent.message` payload. Per-popup (rather than plugin-
 /// singleton) so a stacked second `open` doesn't redirect the first popup's
 /// events into the second popup's channel.
 ///
@@ -76,7 +76,7 @@ class PopupMessageBridge: NSObject, WKScriptMessageHandler {
   ) {
     // The injected adapter posts an opaque JSON string (the sniffer's wire
     // message). Forward it verbatim through the caller's channel as a
-    // `PopupEvent.message` (matches `models.rs` `PopupEvent` serde shape).
+    // `NativeWebviewEvent.message` (matches `models.rs` `NativeWebviewEvent` serde shape).
     // The explicit `JsonObject` annotation pins the non-throwing
     // `send(JsonObject)` overload — without it, Swift infers `[String: String]`
     // and picks the throwing `send<T: Encodable>` generic.
@@ -101,8 +101,8 @@ class NativeWebviewPlugin: Plugin {
   static let messageHandlerName = "nativeWebview"
 
   /// The currently-presented popup webview, if any. Captured on `open` so
-  /// `send` can `evaluateJavaScript(...)` into it; cleared on close to let
-  /// `send` fail loudly with a "no popup open" reject. Weak so a popup
+  /// `evaluateJs` can `evaluateJavaScript(...)` into it; cleared on close to let
+  /// `evaluateJs` fail loudly with a "no popup open" reject. Weak so a popup
   /// dismissed by other means (system back-swipe on the sheet, host app
   /// teardown) doesn't keep the webview alive past its presentation.
   private weak var currentWebView: WKWebView?
@@ -124,7 +124,7 @@ class NativeWebviewPlugin: Plugin {
   /// popup. When set, `onClose` suppresses the `Closed` channel echo — the
   /// popup logically continues with new wiring rather than firing a spurious
   /// close (Task #10 close→reopen race guard).
-  private var pendingOpenAfterClose: (() -> Void)?
+  private var onCloseFinishedHandler: (() -> Void)?
 
   /// Set by a host `close(suppressCloseEvent: true)` before the dismiss so
   /// `onClose` skips the `Closed` channel echo for exactly that dismissal.
@@ -132,7 +132,7 @@ class NativeWebviewPlugin: Plugin {
   /// dismissal (Close button, swipe) never sets it, so those still emit.
   private var suppressNextCloseEvent = false
 
-  /// The `Invoke` whose `resolve` is owned by [`pendingOpenAfterClose`]. Held
+  /// The `Invoke` whose `resolve` is owned by [`onCloseFinishedHandler`]. Held
   /// separately so that if a *second* `open()` supersedes a still-queued one
   /// (both during the same dismiss animation), the superseded invoke can be
   /// rejected before its closure is overwritten — otherwise its JS promise
@@ -160,12 +160,12 @@ class NativeWebviewPlugin: Plugin {
         self.pendingInvoke?.reject(
           "native-webview: superseded by a newer open() before the popup finished closing")
         self.pendingInvoke = invoke
-        self.pendingOpenAfterClose = { [weak self] in
+        self.onCloseFinishedHandler = { [weak self] in
           guard let self = self else { return }
           self.present(
             url: url,
             initScript: args.initScript,
-            channel: args.channel,
+            channel: args.nativeWebviewEventChannel,
             initialTitle: args.initialTitle,
             initialSubtitle: args.initialSubtitle,
             initialMessage: args.initialMessage
@@ -180,9 +180,9 @@ class NativeWebviewPlugin: Plugin {
       // for the just-loaded one — caveat documented in `desktop.rs`) and
       // also added to the user content controller so future loads inside
       // this popup run it at document-start. Caller-supplied initial chrome
-      // re-applies via the existing setChrome path. (Task #7 re-wire.)
+      // re-applies via the existing patchWindowText path. (Task #7 re-wire.)
       if let existing = self.currentWebView, let bridge = self.currentBridge {
-        bridge.channel = args.channel
+        bridge.channel = args.nativeWebviewEventChannel
         if let initScript = args.initScript {
           existing.evaluateJavaScript(initScript, completionHandler: nil)
           // Drop the prior document-start script before re-adding so repeated
@@ -212,7 +212,7 @@ class NativeWebviewPlugin: Plugin {
       self.present(
         url: url,
         initScript: args.initScript,
-        channel: args.channel,
+        channel: args.nativeWebviewEventChannel,
         initialTitle: args.initialTitle,
         initialSubtitle: args.initialSubtitle,
         initialMessage: args.initialMessage
@@ -225,15 +225,15 @@ class NativeWebviewPlugin: Plugin {
   /// popup is open (caller should `await invoke('plugin:native-webview|open',
   /// …)` first). The evaluation itself is asynchronous and best-effort — its
   /// return value and any thrown JS error are not surfaced.
-  @objc public func send(_ invoke: Invoke) throws {
-    let args = try invoke.parseArgs(SendArgs.self)
+  @objc public func evaluateJs(_ invoke: Invoke) throws {
+    let args = try invoke.parseArgs(EvaluateJsArgs.self)
     DispatchQueue.main.async {
       guard let webView = self.currentWebView else {
         invoke.reject("native-webview: no popup open")
         return
       }
       webView.evaluateJavaScript(args.script, completionHandler: nil)
-      invoke.resolve(["sent": true])
+      invoke.resolve(["wasDispatched": true])
     }
   }
 
@@ -243,8 +243,8 @@ class NativeWebviewPlugin: Plugin {
   /// Resolves with `{set: true}` once applied; `{set: false}` (not a
   /// reject) when no popup is open, so callers can push speculatively
   /// across the popup's lifecycle without retry plumbing.
-  @objc public func setChrome(_ invoke: Invoke) throws {
-    let args = try invoke.parseArgs(SetChromeArgs.self)
+  @objc public func patchWindowText(_ invoke: Invoke) throws {
+    let args = try invoke.parseArgs(PatchWindowTextArgs.self)
     DispatchQueue.main.async {
       guard let controller = self.currentController else {
         invoke.resolve(["set": false])
@@ -258,11 +258,11 @@ class NativeWebviewPlugin: Plugin {
   }
 
   /// Dismiss the currently-presented popup. Idempotent — resolves with
-  /// `{closed: false}` when no popup is open. Delegates to the controller's
+  /// `{closedByRequest: false}` when no popup is open. Delegates to the controller's
   /// `requestClose()`, which routes through the same `dismiss` + `onClose`
   /// pipeline the in-toolbar Close button uses.
   ///
-  /// By default the host-initiated dismissal emits `PopupEvent::Closed` on the
+  /// By default the host-initiated dismissal emits `NativeWebviewEvent::Closed` on the
   /// channel just like the user-initiated one. When the caller passes
   /// `suppressCloseEvent: true`, `onClose` skips that echo for this one
   /// dismissal — the host already observed the terminal event that prompted the
@@ -271,12 +271,12 @@ class NativeWebviewPlugin: Plugin {
     let args = try invoke.parseArgs(CloseArgs.self)
     DispatchQueue.main.async {
       guard let controller = self.currentController else {
-        invoke.resolve(["closed": false])
+        invoke.resolve(["closedByRequest": false])
         return
       }
       self.suppressNextCloseEvent = args.suppressCloseEvent ?? false
       controller.requestClose()
-      invoke.resolve(["closed": true])
+      invoke.resolve(["closedByRequest": true])
     }
   }
 
@@ -312,7 +312,7 @@ class NativeWebviewPlugin: Plugin {
 
     let webView = WKWebView(frame: .zero, configuration: configuration)
     webView.load(URLRequest(url: url))
-    // Capture so `send` can target it; cleared in `onClose` below.
+    // Capture so `evaluateJs` can target it; cleared in `onClose` below.
     currentWebView = webView
 
     let browser = NativeWebviewController(webView: webView, initialHost: url.host)
@@ -344,12 +344,12 @@ class NativeWebviewPlugin: Plugin {
       // new wiring (Task #10). Otherwise this is a real dismiss; emit
       // `Closed` so the host's collector releases per-popup state — unless a
       // host `close(suppressCloseEvent: true)` asked us to stay silent.
-      if let pending = self?.pendingOpenAfterClose {
-        self?.pendingOpenAfterClose = nil
+      if let pending = self?.onCloseFinishedHandler {
+        self?.onCloseFinishedHandler = nil
         self?.pendingInvoke = nil
         pending()
       } else if !suppress {
-        // PopupEvent.closed (lowercase tag) — matches the `models.rs` shape.
+        // NativeWebviewEvent.closed (lowercase tag) — matches the `models.rs` shape.
         // `JsonObject` annotation pins the non-throwing overload (see above).
         let data: JsonObject = ["event": "closed"]
         closeChannel.send(data)
@@ -362,7 +362,7 @@ class NativeWebviewPlugin: Plugin {
     // NOT route through `requestClose()`, so register the controller as the
     // sheet's presentation delegate to catch it and still fire `onClose`
     // (see `presentationControllerDidDismiss`). Without this, a swipe-away
-    // never emits `PopupEvent::Closed` and the host's collector idle-times-out.
+    // never emits `NativeWebviewEvent::Closed` and the host's collector idle-times-out.
     navigation.presentationController?.delegate = browser
     // Show the navigation controller's bottom toolbar so the controller's
     // `toolbarItems` (back / forward) render. The view controller hides /
@@ -448,7 +448,7 @@ class WebViewTitleView: UIView {
 /// - Title view: `WebViewTitleView` — caller-controlled title + subtitle.
 ///   Defaulted to the URL host on construction; the plugin does NOT
 ///   auto-update on navigation, so the caller drives any subsequent
-///   changes via `setChrome`.
+///   changes via `patchWindowText`.
 /// - Bottom toolbar: Back / Forward (KVO-driven enabled state), then a
 ///   caller-controlled `message` label for status text (e.g.
 ///   "34 resources collected").
@@ -522,7 +522,7 @@ class NativeWebviewController: UIViewController, UIAdaptivePresentationControlle
     // Title is owned by the caller from now on — observe only the nav
     // arrow enabled state. URL KVO for title auto-update is gone on
     // purpose: per the design, the host (sniffer / whatever) drives the
-    // title via `setChrome`. Initial value is the URL host set in init.
+    // title via `patchWindowText`. Initial value is the URL host set in init.
     canGoBackObservation = webView.observe(\.canGoBack, options: [.new]) { [weak self] webView, _ in
       self?.backItem.isEnabled = webView.canGoBack
     }
@@ -558,7 +558,7 @@ class NativeWebviewController: UIViewController, UIAdaptivePresentationControlle
 
   /// Programmatic close path shared by the in-toolbar Close button and the
   /// plugin's host-initiated `close` command. Animates dismissal and fires
-  /// `onClose` on completion — so the channel's `PopupEvent::Closed` lands
+  /// `onClose` on completion — so the channel's `NativeWebviewEvent::Closed` lands
   /// once per popup regardless of whether dismissal was user- or host-
   /// initiated.
   func requestClose() {
@@ -569,7 +569,7 @@ class NativeWebviewController: UIViewController, UIAdaptivePresentationControlle
 
   /// Interactive dismissal (swiping the page sheet down) bypasses
   /// `requestClose()`, so UIKit reports it here instead. Route it through the
-  /// same `onClose` path so `PopupEvent::Closed` fires exactly once whether the
+  /// same `onClose` path so `NativeWebviewEvent::Closed` fires exactly once whether the
   /// user tapped Close, the host called `close`, or the sheet was swiped away.
   /// UIKit does NOT call this for programmatic `dismiss(animated:)`, so the
   /// Close-button / host-`close` path (which fires `onClose` from its dismiss
@@ -579,18 +579,18 @@ class NativeWebviewController: UIViewController, UIAdaptivePresentationControlle
   }
 
   /// Push a new title (URL-host slot) into the chrome. Called from the
-  /// plugin's `setChrome` command on the main thread. Empty string clears.
+  /// plugin's `patchWindowText` command on the main thread. Empty string clears.
   func updateTitle(_ title: String) {
     titleView.titleLabel.text = title.isEmpty ? nil : title
   }
 
   /// Push a new subtitle into the chrome's title view. Called from the
-  /// plugin's `setChrome` command on the main thread. Empty string clears.
+  /// plugin's `patchWindowText` command on the main thread. Empty string clears.
   func updateSubtitle(_ subtitle: String) {
     titleView.setSubtitle(subtitle.isEmpty ? nil : subtitle)
   }
 
-  /// Push a new bottom-bar message. Called from the plugin's `setChrome`
+  /// Push a new bottom-bar message. Called from the plugin's `patchWindowText`
   /// command on the main thread. Empty string clears. The label's intrinsic
   /// size resizes in place inside its `customView`, so the toolbar is only
   /// rebuilt when the message's *presence* toggles (empty ⇄ non-empty) — the

@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-    namespace = "com.plugin.nativewebview"
+    namespace = "io.wildflowerhealth.nativewebview"
     compileSdk = 34
 
     defaultConfig {
