@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { box-sizing: border-box; }
+  /* App palette, following the OS appearance via prefers-color-scheme. Same
+     token names as the app (--color-background / --color-neutral-1 /
+     --color-neutral-4) for clear relatedness — redefined locally because the
+     chrome is a standalone data: document that doesn't inherit the app's CSS.
+     Light is the default; the media query swaps in the dark values. */
+  :root {
+    --color-background: #f7ecdd;
+    --color-neutral-1: #2c211d;
+    --color-neutral-4: #6c5b50;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --color-background: #221b16;
+      --color-neutral-1: #f3e9db;
+      --color-neutral-4: #b3a294;
+    }
+    /* No app token for the hover overlay; flip it to a light wash in dark. */
+    button:hover:not(:disabled) { background: rgba(255, 255, 255, 0.10); }
+  }
+  html, body { margin: 0; padding: 0; height: 100%; }
+  body {
+    background: var(--color-background);
+    color: var(--color-neutral-1);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    /* Two-column flex: nav left, message right. The title-stack is
+       absolutely positioned over the body's centre so it tracks the
+       window, not the available space between nav and message (those
+       siblings have asymmetric widths and would otherwise pull the
+       title off-centre). Asymmetric vertical padding — a bit more on
+       the bottom — gives the bar visual breathing room against the
+       content webview below. */
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px 12px;
+    user-select: none;
+  }
+  button {
+    background: transparent;
+    color: inherit;
+    border: 0;
+    border-radius: 6px;
+    padding: 6px 8px;
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+    min-width: 32px;
+  }
+  button:hover:not(:disabled) { background: rgba(0, 0, 0, 0.08); }
+  button:disabled { opacity: 0.4; cursor: default; }
+  .nav { display: flex; gap: 2px; flex-shrink: 0; }
+  .title-stack {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    /* Cap so a long host doesn't bleed into the nav / message regions —
+       60% leaves ~20% on each side for siblings before the title clips. */
+    max-width: 60%;
+    gap: 2px;
+    /* Click-through: the title is a label, not an interactive surface;
+       sibling buttons should still receive clicks if they overlap. */
+    pointer-events: none;
+  }
+  #title {
+    font-size: 14px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+  }
+  #subtitle {
+    font-size: 11px;
+    color: var(--color-neutral-4);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+  }
+  #subtitle:empty { display: none; }
+  #message {
+    font-size: 12px;
+    color: var(--color-neutral-4);
+    flex-shrink: 0;
+    max-width: 30%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  #message:empty { display: none; }
+</style>
+</head>
+<body>
+  <div class="nav">
+    <button id="back" aria-label="Back" disabled>&#x2039;</button>
+    <button id="forward" aria-label="Forward" disabled>&#x203A;</button>
+    <button id="refresh" aria-label="Refresh">&#x21BB;</button>
+  </div>
+  <div class="title-stack">
+    <div id="title"></div>
+    <div id="subtitle"></div>
+  </div>
+  <div id="message"></div>
+<script>
+(function() {
+  var titleEl = document.getElementById('title');
+  var subtitleEl = document.getElementById('subtitle');
+  var messageEl = document.getElementById('message');
+
+  // URL-fallback state machine — mirrors the iOS / Android backends. The
+  // content URL is shown in the highest slot the caller hasn't claimed: the
+  // title until a caller title arrives, then the subtitle until a caller
+  // subtitle arrives, then neither slot. `titleClaimed` / `subtitleClaimed`
+  // flip true the first time the caller supplies that field (any value,
+  // including ""). Rust owns nothing here beyond pushing the inputs below.
+  var url = '';
+  var titleClaimed = false;
+  var subtitleClaimed = false;
+
+  // Chrome -> Rust: bounce through a fake custom-scheme nav. `on_navigation`
+  // on the Rust side intercepts, dispatches the action onto the content
+  // webview, and returns false so the actual nav is cancelled.
+  var trigger = function(action) {
+    window.location.href = 'x-nv-action://action/' + encodeURIComponent(action);
+  };
+  document.getElementById('back').addEventListener('click', function() { trigger('back'); });
+  document.getElementById('forward').addEventListener('click', function() { trigger('forward'); });
+  document.getElementById('refresh').addEventListener('click', function() { trigger('refresh'); });
+
+  // Tell Rust how tall this chrome bar wants to be. A non-empty subtitle
+  // pushes the bar from a compact title-only height up to a two-line height;
+  // Rust resizes the chrome + content webviews to match. Constants here are
+  // paired with `CHROME_HEIGHT_BASE` on the Rust side — drift would either
+  // clip content or leave a gap above the content webview.
+  var reportHeight = function() {
+    var hasSubtitle = !!subtitleEl.textContent;
+    var height = hasSubtitle ? 68 : 52;
+    window.location.href = 'x-nv-action://height/' + height;
+  };
+
+  // Paint the URL into the highest unclaimed slot; caller-claimed slots are
+  // left untouched (they hold the values set by `applyWindowText`).
+  var renderUrlFallback = function() {
+    if (!titleClaimed) {
+      titleEl.textContent = url;
+    } else if (!subtitleClaimed) {
+      subtitleEl.textContent = url;
+    }
+  };
+
+  // Rust -> chrome: apply caller window text. Each present field claims its
+  // slot — `null`/absent leaves it unchanged, "" claims + clears, any other
+  // string claims + sets (matching `PatchWindowTextRequest`'s Option<String>
+  // semantics) — then the URL fallback re-renders into whatever's still
+  // unclaimed.
+  var applyWindowText = function(state) {
+    if (!state) return;
+    if (state.title != null) { titleClaimed = true; titleEl.textContent = state.title; }
+    if (state.subtitle != null) { subtitleClaimed = true; subtitleEl.textContent = state.subtitle; }
+    if (state.message != null) { messageEl.textContent = state.message; }
+    renderUrlFallback();
+    reportHeight();
+  };
+  window.__nativeWebviewPatchWindowText = applyWindowText;
+
+  // Rust -> chrome: reset for an in-place re-open. A re-wire is logically a
+  // fresh open, so clear the claims + slots, seed the new URL, then apply the
+  // caller's initial chrome — leaving the reused popup indistinguishable from
+  // a rebuilt one.
+  window.__nativeWebviewResetWindowText = function(state) {
+    titleClaimed = false;
+    subtitleClaimed = false;
+    url = (state && state.url) || '';
+    titleEl.textContent = '';
+    subtitleEl.textContent = '';
+    messageEl.textContent = '';
+    applyWindowText(state);
+  };
+
+  // Rust -> chrome: the content webview navigated; keep whichever slot still
+  // shows the URL in sync. No-ops once both slots are claimed. Pushed from
+  // Rust's `on_page_load` (Started) hook.
+  window.__nativeWebviewSetUrl = function(next) {
+    url = next || '';
+    renderUrlFallback();
+    reportHeight();
+  };
+
+  // Rust pushes back/forward enabled state via this global. Tauri's Webview
+  // Rust API exposes no `can_go_back` / `can_go_forward` predicates, so we
+  // track navigation count + last action in Rust and call this on each page
+  // load. `null` for either field = leave as-is.
+  window.__nativeWebviewSetNavState = function(state) {
+    if (!state) return;
+    if (state.canBack != null) document.getElementById('back').disabled = !state.canBack;
+    if (state.canForward != null) document.getElementById('forward').disabled = !state.canForward;
+  };
+
+  // Seed the initial state the Rust backend baked in (full content URL plus
+  // any caller-supplied initial title / subtitle / message). Paint the first
+  // frame synchronously so the bar is correct before first paint — but DON'T
+  // report height here: a navigation during parse is unsafe, so the height
+  // report is deferred to DOMContentLoaded (covers the title-on-open case
+  // before any Rust push lands).
+  var initial = __INITIAL_STATE__;
+  url = (initial && initial.url) || '';
+  if (initial) {
+    if (initial.title != null) { titleClaimed = true; titleEl.textContent = initial.title; }
+    if (initial.subtitle != null) { subtitleClaimed = true; subtitleEl.textContent = initial.subtitle; }
+    if (initial.message != null) { messageEl.textContent = initial.message; }
+  }
+  renderUrlFallback();
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', reportHeight);
+  } else {
+    reportHeight();
+  }
+})();
+</script>
+</body>
+</html>

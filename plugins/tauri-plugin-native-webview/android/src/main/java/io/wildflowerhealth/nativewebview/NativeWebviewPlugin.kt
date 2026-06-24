@@ -4,7 +4,6 @@ import android.app.Activity
 import android.app.Dialog
 import android.content.res.Configuration
 import android.graphics.Bitmap
-import android.net.Uri
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.MenuItem
@@ -141,6 +140,20 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
     private var currentMessageView: TextView? = null
 
     /**
+     * URL-fallback state machine for the current popup. The page URL is shown
+     * in the highest slot the caller has not yet claimed: the toolbar title
+     * until a caller `title` arrives, then the subtitle until a caller
+     * `subtitle` arrives, then neither slot. [currentUrl] tracks the live page
+     * URL (updated on navigation via [onNavigate]); [titleClaimed] /
+     * [subtitleClaimed] flip true the first time the caller supplies that field
+     * (any value, including `""`). All three reset per open — a fresh [present]
+     * or an in-place re-wire.
+     */
+    private var currentUrl: String = ""
+    private var titleClaimed = false
+    private var subtitleClaimed = false
+
+    /**
      * The currently-presented popup's JS-bridge. Captured so a second `open()`
      * against an existing popup can rebind `bridge.channel = …` without
      * rebuilding the WebView (Task #7 re-wire). Cleared on dismiss.
@@ -253,13 +266,18 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
                             WebViewCompat.addDocumentStartJavaScript(existing, script, setOf("*"))
                     }
                 }
-                
 
+                // A re-wire is logically a fresh open: reset the URL-fallback
+                // claim state (URL back in the title) and clear the message, then
+                // re-apply the caller's initial chrome before navigating.
+                currentUrl = args.url
+                titleClaimed = false
+                subtitleClaimed = false
+                currentMessageView?.text = null
                 applyWindowText(
                     args.initialTitle,
                     args.initialSubtitle,
                     args.initialMessage,
-                    args.url,
                 )
                 existing.loadUrl(args.url)
             } else {
@@ -321,8 +339,9 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
                 return@runOnUiThread
             }
             // Patch notation per field: `null` (key absent) = leave the label
-            // unchanged, `""` = clear it, any other string = set it.
-            applyWindowText(args.title, args.subtitle, args.message, currentWebView?.getUrl())
+            // unchanged; any present value (including `""`) claims that slot for
+            // the caller, so the URL fallback stops painting it.
+            applyWindowText(args.title, args.subtitle, args.message)
             val result = JSObject()
             result.put("set", true)
             invoke.resolve(result)
@@ -374,24 +393,50 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
     }
 
     /**
-     * Apply any of the three window-text labels that are non-null in one call —
-     * `null` = leave unchanged, `""` = clear, otherwise set. Operates on the
-     * current popup's [currentToolbar] / [currentMessageView], so it is shared
-     * by `open`'s initial chrome, the `patchWindowText` command, and the re-wire
-     * path (the empty-string-clears rule lives here, in one place).
+     * Apply the caller-supplied window text in one call — `null` = leave
+     * unchanged; any present value (including `""`) *claims* that slot for the
+     * caller and is shown verbatim (empty string clears the label). Operates on
+     * the current popup's [currentToolbar] / [currentMessageView], so it is
+     * shared by `open`'s initial chrome, the `patchWindowText` command, and the
+     * re-wire path. After applying, [renderUrlFallback] paints the page URL into
+     * the highest slot the caller still hasn't claimed.
      */
-    private fun applyWindowText(title: String?, subtitle: String?, message: String?, url: String?) {
-        title?.let { currentToolbar?.title = if (it.isEmpty()) url else it }
-        subtitle?.let { 
-            if (!it.isEmpty()) {
-                currentToolbar?.subtitle = it
-            } else if (!title.isNullOrEmpty()) {
-                currentToolbar?.subtitle = url
-            } else {
-                currentToolbar?.subtitle = null
-            }
+    private fun applyWindowText(title: String?, subtitle: String?, message: String?) {
+        title?.let {
+            titleClaimed = true
+            currentToolbar?.title = it.ifEmpty { null }
         }
-        message?.let { currentMessageView?.text = if (it.isEmpty()) null else it }
+        subtitle?.let {
+            subtitleClaimed = true
+            currentToolbar?.subtitle = it.ifEmpty { null }
+        }
+        message?.let { currentMessageView?.text = it.ifEmpty { null } }
+        renderUrlFallback()
+    }
+
+    /**
+     * Paint [currentUrl] into the highest slot the caller has not claimed: the
+     * toolbar title until a caller `title` arrives, then the subtitle until a
+     * caller `subtitle` arrives, then neither (both slots are caller-owned).
+     * Caller-claimed slots are never overwritten here — they hold the values
+     * set in [applyWindowText].
+     */
+    private fun renderUrlFallback() {
+        if (!titleClaimed) {
+            currentToolbar?.title = currentUrl.ifEmpty { null }
+        } else if (!subtitleClaimed) {
+            currentToolbar?.subtitle = currentUrl.ifEmpty { null }
+        }
+    }
+
+    /**
+     * Sync the URL fallback to a navigation. Called from the WebView client's
+     * `onPageStarted`; rewrites whichever slot still shows the URL and no-ops
+     * once both slots are claimed.
+     */
+    private fun onNavigate(newUrl: String) {
+        currentUrl = newUrl
+        renderUrlFallback()
     }
 
     private fun present(
@@ -407,6 +452,13 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
         webView.settings.domStorageEnabled = true
         // Capture so `evaluateJs` can target it; cleared on dismiss below.
         currentWebView = webView
+
+        // Reset the URL-fallback state machine for this fresh popup: the page
+        // URL starts in the title and falls through the slots as the caller
+        // claims them (see [renderUrlFallback]).
+        currentUrl = url
+        titleClaimed = false
+        subtitleClaimed = false
 
         // JS -> native bridge, reachable on any origin. Per-popup so a stacked
         // second `open` doesn't redirect the first popup's events into the
@@ -455,7 +507,8 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
         val colorNeutral4 = if (night) COLOR_NEUTRAL_4_DARK else COLOR_NEUTRAL_4_LIGHT
 
         val toolbar = Toolbar(activity).apply {
-            title = Uri.parse(url).host ?: url
+            // Title/subtitle text is driven by the URL-fallback state machine
+            // (applied via `applyWindowText` below), not set here.
             setTitleTextColor(colorNeutral1)
             setSubtitleTextColor(colorNeutral4)
             setBackgroundColor(colorBackground)
@@ -519,11 +572,11 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
         currentMessageView = messageView
 
         // Apply caller-supplied initial chrome before the dialog shows so the
-        // bar is correct on first paint (null = leave the default; title
-        // defaults to the URL host set above). URL under the title: with no
-        // caller subtitle, show the full URL so the user sees where the popup
-        // navigated (the title is only the host).
-        applyWindowText(initialTitle, initialSubtitle, initialMessage, url)
+        // bar is correct on first paint (null = leave unchanged). The URL
+        // fallback paints the page URL into the highest slot the caller hasn't
+        // claimed, so an `open` with no title/subtitle still shows where the
+        // popup navigated.
+        applyWindowText(initialTitle, initialSubtitle, initialMessage)
 
         val bottomBar = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -557,14 +610,20 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
                 if (initScript != null && !supportsDocumentStart) {
                     view.evaluateJavascript(initScript, null)
                 }
+                // Keep the URL fallback in sync with navigation: rewrite
+                // whichever slot still shows the URL (title until claimed, then
+                // subtitle). No-ops once the caller has claimed both. Done at
+                // start (commit time) so the bar updates as soon as the
+                // navigation begins, matching the desktop backend.
+                pageUrl?.let { onNavigate(it) }
             }
 
             override fun onPageFinished(view: WebView, pageUrl: String?) {
-                // Title is owned by the caller from now on — only refresh
-                // the nav-arrow enabled state. `canGoBack` / `canGoForward`
-                // are polled methods (no observable equivalent on
-                // `android.webkit.WebView`); `onPageFinished` is the
-                // standard hook every navigation hits.
+                // Refresh the nav-arrow enabled state. `canGoBack` /
+                // `canGoForward` are polled methods (no observable equivalent on
+                // `android.webkit.WebView`); `onPageFinished` is the standard
+                // hook every navigation hits. (The URL fallback is driven from
+                // `onPageStarted` above.)
                 backButton.isEnabled = view.canGoBack()
                 forwardButton.isEnabled = view.canGoForward()
             }

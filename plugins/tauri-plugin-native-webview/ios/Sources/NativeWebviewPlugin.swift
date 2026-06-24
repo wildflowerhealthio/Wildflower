@@ -108,9 +108,9 @@ class NativeWebviewPlugin: Plugin {
   private weak var currentWebView: WKWebView?
 
   /// The currently-presented popup controller, if any. Captured on `open`
-  /// so `setSubtitle` can update its chrome's subtitle label. Same `weak`
-  /// rationale as `currentWebView` — the controller's lifetime is the
-  /// UINavigationController's, not the plugin's.
+  /// so `applyWindowText` / `patchWindowText` can update its chrome labels.
+  /// Same `weak` rationale as `currentWebView` — the controller's lifetime is
+  /// the UINavigationController's, not the plugin's.
   private weak var currentController: NativeWebviewController?
 
   /// The currently-presented popup's message bridge. Captured on `open` so a
@@ -179,8 +179,9 @@ class NativeWebviewPlugin: Plugin {
       // `initScript` is `eval`'d into the current page (NOT document-start
       // for the just-loaded one — caveat documented in `desktop.rs`) and
       // also added to the user content controller so future loads inside
-      // this popup run it at document-start. Caller-supplied initial chrome
-      // re-applies via the existing patchWindowText path. (Task #7 re-wire.)
+      // this popup run it at document-start. `reopen` resets the URL-fallback
+      // claim state so the reused popup starts fresh (URL back in the title),
+      // then re-applies the caller's initial chrome. (Task #7 re-wire.)
       if let existing = self.currentWebView, let bridge = self.currentBridge {
         bridge.channel = args.nativeWebviewEventChannel
         if let initScript = args.initScript {
@@ -200,9 +201,10 @@ class NativeWebviewPlugin: Plugin {
             )
           )
         }
-        self.currentController?.applyChrome(
+        self.currentController?.reopen(
+          url: url.absoluteString,
           title: args.initialTitle,
-          subtitle: args.initialSubtitle ?? url.absoluteString,
+          subtitle: args.initialSubtitle,
           message: args.initialMessage
         )
         existing.load(URLRequest(url: url))
@@ -251,10 +253,11 @@ class NativeWebviewPlugin: Plugin {
         return
       }
       // Patch notation per field: `nil` (key absent) = leave the label
-      // unchanged, `""` = clear it, any other string = set it. `applyChrome`
-      // routes each through `updateTitle/Subtitle/Message`, which apply the
-      // empty-string-clears rule.
-      controller.applyChrome(title: args.title, subtitle: args.subtitle, message: args.message)
+      // unchanged; any present value (including `""`) *claims* that slot for
+      // the caller, so the URL fallback stops painting it. `applyWindowText`
+      // routes each through `updateTitle/Subtitle/Message` and re-renders the
+      // URL into whichever slot is still unclaimed.
+      controller.applyWindowText(title: args.title, subtitle: args.subtitle, message: args.message)
       invoke.resolve(["set": true])
     }
   }
@@ -317,18 +320,18 @@ class NativeWebviewPlugin: Plugin {
     // Capture so `evaluateJs` can target it; cleared in `onClose` below.
     currentWebView = webView
 
-    let browser = NativeWebviewController(webView: webView, initialHost: url.host)
-    // Capture so `setSubtitle` can target the controller's title view;
+    let browser = NativeWebviewController(webView: webView, initialUrl: url.absoluteString)
+    // Capture so `applyWindowText` can target the controller's chrome;
     // cleared in `onClose` below alongside `currentWebView`.
     currentController = browser
     // Apply caller-supplied initial chrome before presentation so the bar is
-    // correct on first paint (nil = leave the default; title defaults to the
-    // URL host set in the controller's init). URL under the title: with no
-    // caller subtitle, show the full URL so the user sees where the popup
-    // navigated (the title is only the host).
-    browser.applyChrome(
+    // correct on first paint (nil = leave unchanged). The controller's URL
+    // fallback shows the page URL in the highest slot the caller hasn't
+    // claimed, so an `open` with no title/subtitle still shows where the popup
+    // navigated.
+    browser.applyWindowText(
       title: initialTitle,
-      subtitle: initialSubtitle ?? url.absoluteString,
+      subtitle: initialSubtitle,
       message: initialMessage
     )
     browser.onClose = { [weak self] in
@@ -447,10 +450,11 @@ class WebViewTitleView: UIView {
     titleLabel.font = .systemFont(ofSize: 17, weight: .semibold)
     titleLabel.textAlignment = .center
     titleLabel.textColor = WildflowerColor.colorNeutral1
-    // Long hosts: truncate from the head so the registrable suffix
-    // (`example.test`) stays visible — the leftmost subdomain is the
-    // disposable part.
-    titleLabel.lineBreakMode = .byTruncatingHead
+    // The title slot holds the full URL until the caller claims it (see
+    // `NativeWebviewController`'s URL-fallback state machine), so truncate from
+    // the tail to keep the scheme + host — the most identifying part — visible;
+    // the path tail is the disposable end.
+    titleLabel.lineBreakMode = .byTruncatingTail
 
     subtitleLabel.font = .systemFont(ofSize: 11, weight: .regular)
     subtitleLabel.textAlignment = .center
@@ -495,10 +499,13 @@ class WebViewTitleView: UIView {
 ///
 /// - Left bar item: Close (dismisses the sheet, fires `onClose`).
 /// - Right bar item: Refresh (`webView.reload()`).
-/// - Title view: `WebViewTitleView` — caller-controlled title + subtitle.
-///   Defaulted to the URL host on construction; the plugin does NOT
-///   auto-update on navigation, so the caller drives any subsequent
-///   changes via `patchWindowText`.
+/// - Title view: `WebViewTitleView` — title + subtitle slots driven by the
+///   URL-fallback state machine. The current page URL falls through the
+///   highest slot the caller hasn't claimed (title, then subtitle); once the
+///   caller supplies a value via `patchWindowText` (or `open`'s initial chrome)
+///   that slot is theirs and the URL drops to the next, then to neither.
+///   `url`-KVO keeps whichever slot still shows the URL in sync with
+///   navigation. See `applyWindowText` / `renderUrlFallback`.
 /// - Bottom toolbar: Back / Forward (KVO-driven enabled state), then a
 ///   caller-controlled `message` label for status text (e.g.
 ///   "34 resources collected").
@@ -506,6 +513,7 @@ class NativeWebviewController: UIViewController, UIAdaptivePresentationControlle
   private let webView: WKWebView
   private var canGoBackObservation: NSKeyValueObservation?
   private var canGoForwardObservation: NSKeyValueObservation?
+  private var urlObservation: NSKeyValueObservation?
   private let titleView = WebViewTitleView()
   private let messageLabel = UILabel()
   private lazy var messageItem = UIBarButtonItem(customView: messageLabel)
@@ -525,14 +533,28 @@ class NativeWebviewController: UIViewController, UIAdaptivePresentationControlle
   /// Called after the sheet is dismissed via the Close button.
   var onClose: (() -> Void)?
 
-  init(webView: WKWebView, initialHost: String?) {
+  /// The content webview's current full URL — the value the URL fallback paints
+  /// into whichever slot the caller hasn't claimed. Updated by `onNavigate`
+  /// (driven by `url`-KVO) so the visible URL tracks navigation.
+  private var url: String
+  /// Whether the caller has supplied a `title` (via `open`'s initial chrome or
+  /// `patchWindowText` — any present value, including `""`). Once `true` the
+  /// title slot is caller-owned and the URL falls through to the subtitle.
+  private var titleClaimed = false
+  /// Whether the caller has supplied a `subtitle`. Once `true` — and the title
+  /// is also claimed — the URL is shown in neither slot.
+  private var subtitleClaimed = false
+
+  init(webView: WKWebView, initialUrl: String) {
     self.webView = webView
+    self.url = initialUrl
     super.init(nibName: nil, bundle: nil)
-    titleView.titleLabel.text = initialHost
     navigationItem.titleView = titleView
     messageLabel.font = .systemFont(ofSize: 13, weight: .regular)
     messageLabel.textColor = WildflowerColor.colorNeutral4
     messageLabel.lineBreakMode = .byTruncatingTail
+    // Paint the URL into the title slot before the caller claims anything.
+    renderUrlFallback()
   }
 
   @available(*, unavailable)
@@ -569,16 +591,20 @@ class NativeWebviewController: UIViewController, UIAdaptivePresentationControlle
     backItem.isEnabled = webView.canGoBack
     forwardItem.isEnabled = webView.canGoForward
 
-    // Title is owned by the caller from now on — observe only the nav
-    // arrow enabled state. URL KVO for title auto-update is gone on
-    // purpose: per the design, the host (sniffer / whatever) drives the
-    // title via `patchWindowText`. Initial value is the URL host set in init.
+    // Observe the nav-arrow enabled state and the page URL. The `url`
+    // observation feeds `onNavigate`, which re-renders the URL fallback so
+    // whichever slot still shows the URL (the title until claimed, then the
+    // subtitle) tracks navigation. Caller-claimed slots are left untouched.
     canGoBackObservation = webView.observe(\.canGoBack, options: [.new]) { [weak self] webView, _ in
       self?.backItem.isEnabled = webView.canGoBack
     }
     canGoForwardObservation = webView.observe(\.canGoForward, options: [.new]) {
       [weak self] webView, _ in
       self?.forwardItem.isEnabled = webView.canGoForward
+    }
+    urlObservation = webView.observe(\.url, options: [.new]) { [weak self] webView, _ in
+      guard let url = webView.url?.absoluteString else { return }
+      self?.onNavigate(url)
     }
   }
 
@@ -628,24 +654,68 @@ class NativeWebviewController: UIViewController, UIAdaptivePresentationControlle
     onClose?()
   }
 
-  /// Apply any of the three chrome labels that are non-nil in one call — `nil`
-  /// = leave unchanged, `""` = clear, otherwise set. Shared by `open`'s initial
-  /// chrome, the `patchWindowText` command, and the re-wire path so the patch
-  /// semantics live in one place.
-  func applyChrome(title: String?, subtitle: String?, message: String?) {
-    if let title = title { updateTitle(title) }
-    if let subtitle = subtitle { updateSubtitle(subtitle) }
+  /// Apply the caller-supplied window text in one call — `nil` = leave
+  /// unchanged; any present value (including `""`) *claims* that slot for the
+  /// caller and is shown verbatim. Shared by `open`'s initial chrome, the
+  /// `patchWindowText` command, and the re-wire path so the claim + patch
+  /// semantics live in one place. After applying, `renderUrlFallback` paints the
+  /// page URL into the highest slot the caller still hasn't claimed.
+  func applyWindowText(title: String?, subtitle: String?, message: String?) {
+    if let title = title {
+      titleClaimed = true
+      updateTitle(title)
+    }
+    if let subtitle = subtitle {
+      subtitleClaimed = true
+      updateSubtitle(subtitle)
+    }
     if let message = message { updateMessage(message) }
+    renderUrlFallback()
   }
 
-  /// Push a new title (URL-host slot) into the chrome. Called from the
-  /// plugin's `patchWindowText` command on the main thread. Empty string clears.
+  /// Paint the current page `url` into the highest slot the caller has not
+  /// claimed: the title until a caller `title` arrives, then the subtitle until
+  /// a caller `subtitle` arrives, then nowhere (both slots caller-owned).
+  /// Caller-claimed slots are never overwritten here — they hold the values set
+  /// in `applyWindowText`.
+  private func renderUrlFallback() {
+    if !titleClaimed {
+      updateTitle(url)
+    } else if !subtitleClaimed {
+      updateSubtitle(url)
+    }
+  }
+
+  /// Sync the URL fallback to a navigation. Driven by `url`-KVO; rewrites
+  /// whichever slot still shows the URL and no-ops once both slots are claimed.
+  func onNavigate(_ newUrl: String) {
+    url = newUrl
+    renderUrlFallback()
+  }
+
+  /// Reset the claim state for a re-`open()` against this live popup: the new
+  /// open starts with both slots unclaimed (URL back in the title) and a blank
+  /// message, then re-applies the caller's initial chrome. Mirrors what a fresh
+  /// `present()` shows, so reusing the popup is indistinguishable from
+  /// rebuilding it.
+  func reopen(url newUrl: String, title: String?, subtitle: String?, message: String?) {
+    url = newUrl
+    titleClaimed = false
+    subtitleClaimed = false
+    updateMessage("")
+    applyWindowText(title: title, subtitle: subtitle, message: message)
+  }
+
+  /// Write the title slot directly (no claim bookkeeping). Empty string clears.
+  /// Used by `applyWindowText` for a caller-claimed title and by
+  /// `renderUrlFallback` for the URL.
   func updateTitle(_ title: String) {
     titleView.titleLabel.text = title.isEmpty ? nil : title
   }
 
-  /// Push a new subtitle into the chrome's title view. Called from the
-  /// plugin's `patchWindowText` command on the main thread. Empty string clears.
+  /// Write the subtitle slot directly (no claim bookkeeping). Empty string
+  /// clears (hiding the row). Used by `applyWindowText` for a caller-claimed
+  /// subtitle and by `renderUrlFallback` for the URL.
   func updateSubtitle(_ subtitle: String) {
     titleView.setSubtitle(subtitle.isEmpty ? nil : subtitle)
   }
@@ -685,6 +755,7 @@ class NativeWebviewController: UIViewController, UIAdaptivePresentationControlle
   deinit {
     canGoBackObservation?.invalidate()
     canGoForwardObservation?.invalidate()
+    urlObservation?.invalidate()
     // `WKUserContentController` retains its script-message handlers strongly;
     // drop ours so the bridge (and the webview graph behind it) can deallocate,
     // matching the lifecycle `PopupMessageBridge`'s doc comment describes.

@@ -396,8 +396,7 @@ mod tests {
     /// for an already-closed popup (idempotent close).
     #[test]
     fn close_response_decodes_closed_by_request_flag() {
-        let live: CloseResponse =
-            serde_json::from_str(r#"{"closedByRequest":true}"#).expect("de");
+        let live: CloseResponse = serde_json::from_str(r#"{"closedByRequest":true}"#).expect("de");
         assert!(live.closed_by_request);
         let already: CloseResponse =
             serde_json::from_str(r#"{"closedByRequest":false}"#).expect("de");

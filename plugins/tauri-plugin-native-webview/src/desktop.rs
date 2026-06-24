@@ -87,221 +87,71 @@ const WINDOW_TEXT_FN: &str = "window.__nativeWebviewPatchWindowText";
 /// `canForward` on).
 const CHROME_NAV_STATE_FN: &str = "window.__nativeWebviewSetNavState";
 
-/// Full HTML document the chrome webview loads as its source — base64-encoded
-/// into a `data:text/html;base64,…` URL so quotes / angle-brackets / spaces
-/// don't break `Url::parse`. `__INITIAL_TITLE__` is plain-text-replaced at
-/// build time with the URL host so the chrome's first paint already has the
-/// title set (no `about:blank` + init-script race against `DOMContentLoaded`).
-const CHROME_HTML_TEMPLATE: &str = r#"<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<style>
-  * { box-sizing: border-box; }
-  /* App palette, following the OS appearance via prefers-color-scheme. Same
-     token names as the app (--color-background / --color-neutral-1 /
-     --color-neutral-4) for clear relatedness — redefined locally because the
-     chrome is a standalone data: document that doesn't inherit the app's CSS.
-     Light is the default; the media query swaps in the dark values. */
-  :root {
-    --color-background: #f7ecdd;
-    --color-neutral-1: #2c211d;
-    --color-neutral-4: #6c5b50;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --color-background: #221b16;
-      --color-neutral-1: #f3e9db;
-      --color-neutral-4: #b3a294;
-    }
-    /* No app token for the hover overlay; flip it to a light wash in dark. */
-    button:hover:not(:disabled) { background: rgba(255, 255, 255, 0.10); }
-  }
-  html, body { margin: 0; padding: 0; height: 100%; }
-  body {
-    background: var(--color-background);
-    color: var(--color-neutral-1);
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-    /* Two-column flex: nav left, message right. The title-stack is
-       absolutely positioned over the body's centre so it tracks the
-       window, not the available space between nav and message (those
-       siblings have asymmetric widths and would otherwise pull the
-       title off-centre). Asymmetric vertical padding — a bit more on
-       the bottom — gives the bar visual breathing room against the
-       content webview below. */
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 12px 12px;
-    user-select: none;
-  }
-  button {
-    background: transparent;
-    color: inherit;
-    border: 0;
-    border-radius: 6px;
-    padding: 6px 8px;
-    cursor: pointer;
-    font-size: 18px;
-    line-height: 1;
-    min-width: 32px;
-  }
-  button:hover:not(:disabled) { background: rgba(0, 0, 0, 0.08); }
-  button:disabled { opacity: 0.4; cursor: default; }
-  .nav { display: flex; gap: 2px; flex-shrink: 0; }
-  .title-stack {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    /* Cap so a long host doesn't bleed into the nav / message regions —
-       60% leaves ~20% on each side for siblings before the title clips. */
-    max-width: 60%;
-    gap: 2px;
-    /* Click-through: the title is a label, not an interactive surface;
-       sibling buttons should still receive clicks if they overlap. */
-    pointer-events: none;
-  }
-  #title {
-    font-size: 14px;
-    font-weight: 600;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    max-width: 100%;
-  }
-  #subtitle {
-    font-size: 11px;
-    color: var(--color-neutral-4);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    max-width: 100%;
-  }
-  #subtitle:empty { display: none; }
-  #message {
-    font-size: 12px;
-    color: var(--color-neutral-4);
-    flex-shrink: 0;
-    max-width: 30%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  #message:empty { display: none; }
-</style>
-</head>
-<body>
-  <div class="nav">
-    <button id="back" aria-label="Back" disabled>&#x2039;</button>
-    <button id="forward" aria-label="Forward" disabled>&#x203A;</button>
-    <button id="refresh" aria-label="Refresh">&#x21BB;</button>
-  </div>
-  <div class="title-stack">
-    <div id="title">__INITIAL_TITLE__</div>
-    <div id="subtitle">__INITIAL_SUBTITLE__</div>
-  </div>
-  <div id="message">__INITIAL_MESSAGE__</div>
-<script>
-(function() {
-  // Chrome → Rust: bounce through a fake custom-scheme nav.
-  // `on_navigation` on the Rust side intercepts, dispatches the action
-  // onto the content webview, and returns false so the actual nav is
-  // cancelled.
-  var trigger = function(action) {
-    window.location.href = 'x-nv-action://action/' + encodeURIComponent(action);
-  };
-  document.getElementById('back').addEventListener('click', function() { trigger('back'); });
-  document.getElementById('forward').addEventListener('click', function() { trigger('forward'); });
-  document.getElementById('refresh').addEventListener('click', function() { trigger('refresh'); });
+/// Rust → chrome URL push: keeps the URL-fallback's `url` in sync with the
+/// content webview's navigation, so whichever slot still shows the URL tracks
+/// page loads. Invoked from `on_page_load` (Started).
+const CHROME_SET_URL_FN: &str = "window.__nativeWebviewSetUrl";
 
-  // Tell Rust how tall this chrome bar wants to be. Subtitle-present
-  // pushes the bar from a compact title-only height up to a two-line
-  // height; Rust resizes the chrome + content webviews to match. Called
-  // on DOM ready and again whenever state changes, so the bar stays
-  // tightly fit to its current content. Constants here are paired with
-  // `CHROME_HEIGHT_BASE` on the Rust side — drift would either clip
-  // content or leave a gap above the content webview.
-  var reportHeight = function() {
-    var hasSubtitle = !!document.getElementById('subtitle').textContent;
-    var height = hasSubtitle ? 68 : 52;
-    window.location.href = 'x-nv-action://height/' + height;
-  };
+/// Rust → chrome reset push for an in-place re-open (see [`apply_rewire`]):
+/// clears the chrome's claim state + slots, seeds the new URL, and re-applies
+/// the caller's initial chrome. Defined by the chrome's inline script.
+const CHROME_RESET_TEXT_FN: &str = "window.__nativeWebviewResetWindowText";
 
-  // Rust pushes state by calling this via `webview.eval(...)`. Each call
-  // merges only the fields present, matching `PatchWindowTextRequest`'s
-  // `Option<String>` semantics (None = no change, "" = clear, set otherwise).
-  window.__nativeWebviewPatchWindowText = function(state) {
-    if (!state) return;
-    if (state.title != null) document.getElementById('title').textContent = state.title;
-    if (state.subtitle != null) document.getElementById('subtitle').textContent = state.subtitle;
-    if (state.message != null) document.getElementById('message').textContent = state.message;
-    reportHeight();
-  };
+/// Full HTML document the chrome webview loads as its source, kept as a
+/// standalone [`chrome.html`](./chrome.html) so it can be edited and reasoned
+/// about as HTML rather than a Rust string literal. It is base64-encoded into a
+/// `data:text/html;base64,…` URL at runtime (see [`build_chrome_data_url`]) so
+/// quotes / angle-brackets / spaces don't break `Url::parse`. The single
+/// `__INITIAL_STATE__` placeholder is replaced with a JSON object
+/// (`{url, title, subtitle, message}`) the chrome's inline script seeds its
+/// URL-fallback state machine from, so the bar is correct on first paint with
+/// no `about:blank` + init-script race.
+const CHROME_HTML_TEMPLATE: &str = include_str!("chrome.html");
 
-  // Rust pushes back/forward enabled state via this global. Tauri's Webview
-  // Rust API exposes no `can_go_back` / `can_go_forward` predicates, so we
-  // track navigation count + last action in Rust and call this on each page
-  // load. `null` for either field = leave as-is.
-  window.__nativeWebviewSetNavState = function(state) {
-    if (!state) return;
-    if (state.canBack != null) document.getElementById('back').disabled = !state.canBack;
-    if (state.canForward != null) document.getElementById('forward').disabled = !state.canForward;
-  };
+/// The `__INITIAL_STATE__` placeholder in [`CHROME_HTML_TEMPLATE`], replaced at
+/// runtime with the JSON the chrome's inline script seeds itself from.
+const CHROME_STATE_PLACEHOLDER: &str = "__INITIAL_STATE__";
 
-  // Initial height report — covers the title-on-open case before
-  // `patchWindowText` lands and ensures Rust's stored height matches whatever
-  // the chrome JS thinks it wants.
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', reportHeight);
-  } else {
-    reportHeight();
-  }
-})();
-</script>
-</body>
-</html>
-"#;
-
-/// Build the chrome webview's source URL — the full HTML doc above with the
-/// initial title / subtitle / message plain-text-substituted, base64-encoded
-/// into a `data:text/html;base64,…` URL so `Url::parse` accepts the document
-/// verbatim.
-///
-/// Escaping: each value is HTML-escaped before substitution. The title is
-/// typically the `url::Url::host_str` (already sanitised against most
-/// payloads), but a pathological host or a caller-supplied subtitle/message
-/// could otherwise inject markup into the chrome.
-fn build_chrome_data_url(title: &str, subtitle: &str, message: &str) -> Url {
-    let html = CHROME_HTML_TEMPLATE
-        .replace("__INITIAL_TITLE__", &html_escape(title))
-        .replace("__INITIAL_SUBTITLE__", &html_escape(subtitle))
-        .replace("__INITIAL_MESSAGE__", &html_escape(message));
-    let encoded = BASE64.encode(html.as_bytes());
-    let url_str = format!("data:text/html;base64,{encoded}");
-    Url::parse(&url_str).expect("data URL parses")
+/// The initial state the chrome's inline script seeds its URL-fallback state
+/// machine from. Serialised to JSON and substituted into
+/// [`CHROME_STATE_PLACEHOLDER`]. `title` / `subtitle` / `message` are `None`
+/// (→ JSON `null` → "caller hasn't claimed this slot") unless the caller
+/// supplied them on `open`; `url` is the full content URL the fallback paints
+/// into whichever slot is still unclaimed.
+#[derive(serde::Serialize)]
+struct InitialChromeState<'a> {
+    url: &'a str,
+    title: Option<&'a str>,
+    subtitle: Option<&'a str>,
+    message: Option<&'a str>,
 }
 
-/// HTML-escape the five characters that are significant in both element text
-/// and attribute contexts (the OWASP-recommended set): `&`, `<`, `>`, `"`, `'`.
+/// Build the chrome webview's source URL — [`CHROME_HTML_TEMPLATE`] with the
+/// initial-state JSON substituted in, base64-encoded into a
+/// `data:text/html;base64,…` URL.
 ///
-/// The values currently land inside `<div>` text nodes, where quotes are
-/// harmless — but escaping them too keeps this safe if a future edit to
-/// [`CHROME_HTML_TEMPLATE`] moves a substitution slot into an attribute (e.g.
-/// `title="…"`), which a `&`/`<`/`>`-only escape would silently turn into an
-/// injection point. `&` is replaced first so the entities emitted for the other
-/// characters aren't themselves re-escaped.
-fn html_escape(input: &str) -> String {
-    input
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&#x27;")
+/// No HTML-escaping of the caller values is needed: the chrome script assigns
+/// them via `textContent` (never `innerHTML`), so they can't inject markup.
+/// The one escape that matters is `<` in the JSON, which is replaced with its
+/// `<` unicode escape so a caller value containing `</script>` can't break
+/// out of the inline `<script>` element — JSON structure has no bare `<`, so a
+/// blanket replace is safe and `<` decodes back to `<` in the JS string.
+///
+/// Note on `data:` URLs: the `url` crate offers no structural constructor for
+/// opaque (non-special) schemes, so `Url::parse` is the only way to build one.
+/// The input here is a fixed `data:text/html;base64,` prefix followed by base64
+/// (whose alphabet `A–Za–z0–9+/=` is entirely URL-safe), so parsing cannot
+/// fail — but we surface the error through `crate::Result` rather than
+/// asserting with `.expect`, so a future template change that somehow produces
+/// an invalid URL fails the `open` cleanly instead of panicking.
+fn build_chrome_data_url(state: &InitialChromeState) -> crate::Result<Url> {
+    let json = serde_json::to_string(state)
+        .map_err(|error| crate::Error::Internal(error.to_string()))?
+        .replace('<', "\\u003c");
+    let html = CHROME_HTML_TEMPLATE.replace(CHROME_STATE_PLACEHOLDER, &json);
+    let encoded = BASE64.encode(html.as_bytes());
+    Url::parse(&format!("data:text/html;base64,{encoded}"))
+        .map_err(|error| crate::Error::Internal(error.to_string()))
 }
 
 /// Build the desktop backend.
@@ -494,30 +344,27 @@ fn present<R: Runtime>(
 
     let init_script = payload.init_script;
     let channel = payload.native_webview_event_channel;
-    // Chrome shown at first paint: caller-supplied title / subtitle / message,
-    // with the URL host as the title fallback. Baking these into the chrome
-    // HTML (rather than a post-open `patch_window_text`) means the bar is correct on
-    // first paint and sidesteps the race where a `patch_window_text` issued right
-    // after `open` finds the chrome webview not yet built. The subtitle drives
-    // the initial bar height: the chrome JS's `reportHeight` on DOMContentLoaded
-    // sees a non-empty `#subtitle` and reports the taller two-line height.
-    let initial_host = parsed_url.host_str().unwrap_or("").to_owned();
-    let could_use_host_as_subtitle = payload.initial_title.as_ref().is_some();
-    let title = payload.initial_title.unwrap_or(initial_host);
-    // URL under the title: when the caller gives no subtitle (and there is a
-    // title), fall back to the full URL so the user always sees where the popup
-    // navigated — the title is only the host. A caller-set subtitle (e.g. the
-    // sniffer's status line) takes precedence.
-    let subtitle = match payload.initial_subtitle {
-        Some(subtitle) => subtitle,
-        None if could_use_host_as_subtitle => parsed_url.as_str().to_owned(),
-        None => String::new(),
-    };
-    let message = payload.initial_message.unwrap_or_default();
+    // Chrome shown at first paint. The full content URL is the URL-fallback
+    // value the chrome JS paints into whichever slot the caller hasn't claimed
+    // (mirrors the mobile backends); the caller's initial title / subtitle /
+    // message ride alongside. Baking these into the chrome HTML (rather than a
+    // post-open `patch_window_text`) means the bar is correct on first paint and
+    // sidesteps the race where a `patch_window_text` issued right after `open`
+    // finds the chrome webview not yet built. When the URL lands in the subtitle
+    // (caller claimed the title but not the subtitle) the chrome JS's
+    // `reportHeight` reports the taller two-line height.
+    let initial_url = parsed_url.as_str().to_owned();
 
-    // Parent window — no built-in webview; children added below.
+    // Parent window — no built-in webview; children added below. The OS-level
+    // window title (taskbar / title bar) is the caller's initial title when
+    // given, else the content URL — never a hard-coded app name.
+    let window_title = payload
+        .initial_title
+        .as_ref()
+        .unwrap_or_else(|| &initial_url)
+        .clone();
     let window = WindowBuilder::new(app, WINDOW_LABEL)
-        .title("Wildflower")
+        .title(window_title)
         .inner_size(900.0, 700.0)
         .resizable(true)
         .build()?;
@@ -541,7 +388,12 @@ fn present<R: Runtime>(
     // clicks (`x-nv-action://action/<name>`) and chrome-driven height
     // reports (`x-nv-action://height/<logical_px>`), returning false to
     // cancel the (would-fail) navigation.
-    let chrome_url = build_chrome_data_url(&title, &subtitle, &message);
+    let chrome_url = build_chrome_data_url(&InitialChromeState {
+        url: &initial_url,
+        title: payload.initial_title.as_deref(),
+        subtitle: payload.initial_subtitle.as_deref(),
+        message: payload.initial_message.as_deref(),
+    })?;
     let app_for_actions = app.clone();
     let window_for_actions = window.clone();
     let chrome_builder = WebviewBuilder::new(
@@ -627,6 +479,15 @@ fn present<R: Runtime>(
     content_builder = content_builder.on_page_load(move |_webview, payload| {
         if !matches!(payload.event(), tauri::webview::PageLoadEvent::Started) {
             return;
+        }
+        // Keep the URL fallback in sync with this navigation — independent of
+        // the nav-button bookkeeping below, so it still fires if `NavState` is
+        // somehow absent. The chrome rewrites whichever slot still shows the
+        // URL and no-ops once both are caller-claimed.
+        if let Some(chrome) = app_for_loads.get_webview(CHROME_WEBVIEW_LABEL) {
+            if let Ok(arg) = serde_json::to_string(payload.url().as_str()) {
+                let _ = chrome.eval(format!("{CHROME_SET_URL_FN}({arg})"));
+            }
         }
         let Some(window) = app_for_loads.get_window(WINDOW_LABEL) else {
             return;
@@ -814,13 +675,18 @@ fn apply_rewire<R: Runtime>(
         let _ = content.eval(script);
     }
     if let Some(chrome) = app.get_webview(CHROME_WEBVIEW_LABEL) {
-        let chrome_payload = PatchWindowTextRequest {
-            title: payload.initial_title.clone(),
-            subtitle: payload.initial_subtitle.clone(),
-            message: payload.initial_message.clone(),
+        // A rewire is logically a fresh open, so RESET the chrome's URL-fallback
+        // state (claims + slots) and seed the new URL rather than merging a
+        // patch onto the prior popup's claims. The chrome script re-applies the
+        // caller's initial chrome from the same payload.
+        let reset = InitialChromeState {
+            url: parsed.as_str(),
+            title: payload.initial_title.as_deref(),
+            subtitle: payload.initial_subtitle.as_deref(),
+            message: payload.initial_message.as_deref(),
         };
-        if let Ok(json) = serde_json::to_string(&chrome_payload) {
-            let _ = chrome.eval(format!("{WINDOW_TEXT_FN}({json})"));
+        if let Ok(json) = serde_json::to_string(&reset) {
+            let _ = chrome.eval(format!("{CHROME_RESET_TEXT_FN}({json})"));
         }
     }
     let _ = content.navigate(parsed);
@@ -993,4 +859,59 @@ fn install_window_listeners<R: Runtime>(app: &AppHandle<R>, window: &tauri::Wind
         }
         _ => {}
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Decode the base64 `data:text/html` URL [`build_chrome_data_url`] produces
+    /// back to its HTML source so tests can inspect the seeded state.
+    fn decode_html(url: &Url) -> String {
+        let encoded = url
+            .as_str()
+            .split_once("base64,")
+            .expect("data URL carries a base64 payload")
+            .1;
+        let bytes = BASE64.decode(encoded).expect("valid base64");
+        String::from_utf8(bytes).expect("utf-8 HTML")
+    }
+
+    /// A caller-supplied title containing `</script>` must not break out of the
+    /// chrome's inline `<script>` element: `<` is unicode-escaped in the seeded
+    /// JSON (it decodes back to `<` inside the JS string, harmlessly).
+    #[test]
+    fn build_chrome_data_url_escapes_script_breakout() {
+        let url = build_chrome_data_url(&InitialChromeState {
+            url: "https://example.test/",
+            title: Some("</script><img src=x onerror=alert(1)>"),
+            subtitle: None,
+            message: None,
+        })
+        .expect("builds a data URL");
+        let html = decode_html(&url);
+        // No literal `</script>` from the caller value survives into the doc.
+        assert!(!html.contains("</script><img"));
+        assert!(html.contains("\\u003c/script>"));
+    }
+
+    /// Unclaimed slots ride as JSON `null` (the chrome reads `state.x != null`
+    /// to decide whether the caller has claimed that slot), and a claimed slot
+    /// plus the URL ride as their literal strings.
+    #[test]
+    fn build_chrome_data_url_seeds_url_and_claims() {
+        let url = build_chrome_data_url(&InitialChromeState {
+            url: "https://example.test/page",
+            title: None,
+            subtitle: Some("Collecting"),
+            message: None,
+        })
+        .expect("builds a data URL");
+        let html = decode_html(&url);
+        assert!(html.contains("\"url\":\"https://example.test/page\""));
+        assert!(html.contains("\"subtitle\":\"Collecting\""));
+        // Title unclaimed → null → the chrome paints the URL into the title.
+        assert!(html.contains("\"title\":null"));
+        assert!(html.contains("\"message\":null"));
+    }
 }

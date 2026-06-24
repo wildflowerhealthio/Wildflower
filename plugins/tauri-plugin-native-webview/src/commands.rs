@@ -68,11 +68,12 @@ pub(crate) async fn patch_window_text<R: Runtime>(
     subtitle: Option<String>,
     message: Option<String>,
 ) -> Result<()> {
-    app.native_webview().patch_window_text(PatchWindowTextRequest {
-        title,
-        subtitle,
-        message,
-    })
+    app.native_webview()
+        .patch_window_text(PatchWindowTextRequest {
+            title,
+            subtitle,
+            message,
+        })
 }
 
 /// Dismiss the currently-presented popup. Idempotent — succeeds with
