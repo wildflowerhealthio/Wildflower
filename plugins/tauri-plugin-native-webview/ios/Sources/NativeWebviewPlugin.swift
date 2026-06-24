@@ -116,6 +116,13 @@ class NativeWebviewPlugin: Plugin {
   /// close (Task #10 close→reopen race guard).
   private var pendingOpenAfterClose: (() -> Void)?
 
+  /// The `Invoke` whose `resolve` is owned by [`pendingOpenAfterClose`]. Held
+  /// separately so that if a *second* `open()` supersedes a still-queued one
+  /// (both during the same dismiss animation), the superseded invoke can be
+  /// rejected before its closure is overwritten — otherwise its JS promise
+  /// would hang forever (there's no timeout on `open`).
+  private var pendingInvoke: Invoke?
+
   @objc public func open(_ invoke: Invoke) throws {
     let args = try invoke.parseArgs(OpenArgs.self)
     guard let url = URL(string: args.url) else {
@@ -130,6 +137,13 @@ class NativeWebviewPlugin: Plugin {
       // logically continues with new wiring. Last-write-wins on rapid
       // repeats. (Task #10 race guard.)
       if let controller = self.currentController, controller.isBeingDismissed {
+        // Supersede any already-queued open: settle its promise so a caller
+        // doing two quick `open()`s during the dismiss animation doesn't get
+        // a permanently-hung `await` for the first one (last-write-wins would
+        // otherwise drop its `resolve`).
+        self.pendingInvoke?.reject(
+          "native-webview: superseded by a newer open() before the popup finished closing")
+        self.pendingInvoke = invoke
         self.pendingOpenAfterClose = { [weak self] in
           guard let self = self else { return }
           self.present(
@@ -155,6 +169,13 @@ class NativeWebviewPlugin: Plugin {
         bridge.channel = args.channel
         if let initScript = args.initScript {
           existing.evaluateJavaScript(initScript, completionHandler: nil)
+          // Drop the prior document-start script before re-adding so repeated
+          // re-wires don't stack N copies — otherwise every later page load in
+          // this popup would run the caller's init IIFE N+1 times (the
+          // sniffer's installSniffer would double-hook fetch/XHR). The plugin
+          // adds exactly one user script (the initScript), so clearing all is
+          // safe.
+          existing.configuration.userContentController.removeAllUserScripts()
           existing.configuration.userContentController.addUserScript(
             WKUserScript(
               source: initScript,
@@ -283,6 +304,12 @@ class NativeWebviewPlugin: Plugin {
     if let initialSubtitle = initialSubtitle { browser.updateSubtitle(initialSubtitle) }
     if let initialMessage = initialMessage { browser.updateMessage(initialMessage) }
     browser.onClose = { [weak self] in
+      // Read the latest (possibly rewired) channel BEFORE tearing the bridge
+      // down: a second `open()` rebinds `bridge.channel`, and the `Closed`
+      // echo must follow it to the most recent caller — otherwise a caller
+      // that re-opened with a fresh channel never sees the close on its new
+      // channel (matches desktop's `CurrentChannel` handling).
+      let closeChannel = self?.currentBridge?.channel ?? channel
       self?.currentWebView = nil
       self?.currentController = nil
       self?.currentBridge = nil
@@ -292,12 +319,13 @@ class NativeWebviewPlugin: Plugin {
       // `Closed` so the host's collector releases per-popup state.
       if let pending = self?.pendingOpenAfterClose {
         self?.pendingOpenAfterClose = nil
+        self?.pendingInvoke = nil
         pending()
       } else {
         // PopupEvent.closed (lowercase tag) — matches the `models.rs` shape.
         // `JsonObject` annotation pins the non-throwing overload (see above).
         let data: JsonObject = ["event": "closed"]
-        channel.send(data)
+        closeChannel.send(data)
       }
     }
 
@@ -537,13 +565,20 @@ class NativeWebviewController: UIViewController, UIAdaptivePresentationControlle
 
   /// Push a new bottom-bar message. Called from the plugin's `setChrome`
   /// command on the main thread. Empty string clears. The label's intrinsic
-  /// size resizes automatically inside the toolbar; the toolbar items are
-  /// rebuilt so an empty message drops the slot entirely (rather than
-  /// rendering a vestigial dot in the bar).
+  /// size resizes in place inside its `customView`, so the toolbar is only
+  /// rebuilt when the message's *presence* toggles (empty ⇄ non-empty) — the
+  /// slot appears or disappears then. The common case for status text (e.g.
+  /// "34 resources collected" → "35 resources collected") is non-empty →
+  /// non-empty, which just updates the label and skips a full `UIToolbar`
+  /// relayout the frequent sniffer pushes would otherwise force every tick.
   func updateMessage(_ message: String) {
+    let hadMessage = !(messageLabel.text?.isEmpty ?? true)
     messageLabel.text = message.isEmpty ? nil : message
     messageLabel.sizeToFit()
-    rebuildToolbarItems()
+    let hasMessage = !message.isEmpty
+    if hadMessage != hasMessage {
+      rebuildToolbarItems()
+    }
   }
 
   /// (Re)compose `toolbarItems` from the current `messageLabel.text` —

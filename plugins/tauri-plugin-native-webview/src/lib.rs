@@ -57,6 +57,7 @@ pub use models::{
 mod commands;
 mod error;
 mod models;
+mod url_scheme;
 
 #[cfg(desktop)]
 mod desktop;

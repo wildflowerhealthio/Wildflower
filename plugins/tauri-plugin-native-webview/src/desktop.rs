@@ -255,8 +255,8 @@ const CHROME_HTML_TEMPLATE: &str = r#"<!DOCTYPE html>
 ///
 /// Escaping: each value is HTML-escaped before substitution. The title is
 /// typically the `url::Url::host_str` (already sanitised against most
-/// payloads), but `<` / `>` / `&` in a pathological host or a caller-supplied
-/// subtitle/message could otherwise inject markup into the chrome.
+/// payloads), but a pathological host or a caller-supplied subtitle/message
+/// could otherwise inject markup into the chrome.
 fn build_chrome_data_url(title: &str, subtitle: &str, message: &str) -> Url {
     let html = CHROME_HTML_TEMPLATE
         .replace("__INITIAL_TITLE__", &html_escape(title))
@@ -267,15 +267,22 @@ fn build_chrome_data_url(title: &str, subtitle: &str, message: &str) -> Url {
     Url::parse(&url_str).expect("data URL parses")
 }
 
-/// Minimal HTML escape — covers the chars that change DOM structure if
-/// dropped raw into innerHTML / a static template. We don't need a full
-/// HTML attribute / JS escape here because the substitution lands inside a
-/// `<div>` text node only.
+/// HTML-escape the five characters that are significant in both element text
+/// and attribute contexts (the OWASP-recommended set): `&`, `<`, `>`, `"`, `'`.
+///
+/// The values currently land inside `<div>` text nodes, where quotes are
+/// harmless — but escaping them too keeps this safe if a future edit to
+/// [`CHROME_HTML_TEMPLATE`] moves a substitution slot into an attribute (e.g.
+/// `title="…"`), which a `&`/`<`/`>`-only escape would silently turn into an
+/// injection point. `&` is replaced first so the entities emitted for the other
+/// characters aren't themselves re-escaped.
 fn html_escape(input: &str) -> String {
     input
         .replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#x27;")
 }
 
 /// Build the desktop backend.
@@ -314,11 +321,12 @@ struct PluginState {
     /// follows a non-cancelled close. Read by `present()` to defer building or
     /// re-wiring against a doomed window.
     closing: AtomicBool,
-    /// The `OpenRequest` `present()` deferred while `closing == true`. The
-    /// `CloseRequested` handler takes it (`Option::take`) — if `Some`, it
-    /// cancels the close and replays the request against the existing
-    /// webviews; if `None`, the close proceeds.
-    pending_reopen: Mutex<Option<OpenRequest>>,
+    /// The deferred `present()` request while `closing == true`, paired with
+    /// its already-validated [`Url`] so the `CloseRequested` replay doesn't
+    /// re-parse. The handler takes it (`Option::take`) — if `Some`, it cancels
+    /// the close and replays the request against the existing webviews; if
+    /// `None`, the close proceeds.
+    pending_reopen: Mutex<Option<(OpenRequest, Url)>>,
 }
 
 /// Desktop handle to the native-webview plugin.
@@ -339,19 +347,19 @@ impl<R: Runtime> NativeWebview<R> {
     /// Off-main-thread callers block waiting for the main thread to drain
     /// the queue, which is safe (no self-wait).
     pub fn open(&self, payload: OpenRequest) -> crate::Result<()> {
-        Url::parse(&payload.url).map_err(|error| {
-            crate::Error::Internal(format!("invalid URL {}: {error}", payload.url))
-        })?;
+        // Validate + parse the URL exactly once here (http(s)-only — see
+        // [`crate::url_scheme`]) and thread the parsed `Url` through to
+        // `present`, so the build path doesn't re-parse and the scheme rule
+        // lives in a single place rather than at every call site.
+        let parsed = crate::url_scheme::parse_http_url(&payload.url)?;
         let app = self.0.clone();
         let (tx, rx) = std::sync::mpsc::sync_channel::<crate::Result<()>>(1);
-        self.0
-            .run_on_main_thread(move || {
-                // Best-effort send: rx is dropped only if `run_on_main_thread`
-                // returned an error AND the caller exited before we could
-                // send — in which case nobody is reading anyway.
-                let _ = tx.send(present(&app, payload));
-            })
-            .map_err(|error| crate::Error::Internal(error.to_string()))?;
+        self.0.run_on_main_thread(move || {
+            // Best-effort send: rx is dropped only if `run_on_main_thread`
+            // returned an error AND the caller exited before we could
+            // send — in which case nobody is reading anyway.
+            let _ = tx.send(present(&app, payload, parsed));
+        })?;
         rx.recv()
             .map_err(|error| crate::Error::Internal(error.to_string()))?
     }
@@ -364,9 +372,7 @@ impl<R: Runtime> NativeWebview<R> {
             .0
             .get_webview(CONTENT_WEBVIEW_LABEL)
             .ok_or_else(|| crate::Error::Internal("no native-webview popup open".to_owned()))?;
-        content
-            .eval(&payload.script)
-            .map_err(|error| crate::Error::Internal(error.to_string()))?;
+        content.eval(&payload.script)?;
         Ok(())
     }
 
@@ -388,9 +394,7 @@ impl<R: Runtime> NativeWebview<R> {
         // `__nativeWebviewSetChrome` reads.
         let json = serde_json::to_string(&payload)
             .map_err(|error| crate::Error::Internal(error.to_string()))?;
-        chrome
-            .eval(format!("{CHROME_STATE_FN}({json})"))
-            .map_err(|error| crate::Error::Internal(error.to_string()))?;
+        chrome.eval(format!("{CHROME_STATE_FN}({json})"))?;
         Ok(())
     }
 
@@ -407,9 +411,7 @@ impl<R: Runtime> NativeWebview<R> {
         if let Some(state) = self.0.try_state::<PluginState>() {
             state.closing.store(true, Ordering::SeqCst);
         }
-        window
-            .close()
-            .map_err(|error| crate::Error::Internal(error.to_string()))?;
+        window.close()?;
         Ok(())
     }
 }
@@ -428,18 +430,16 @@ impl<R: Runtime> NativeWebview<R> {
 ///   navigate.
 /// - **Fresh build**: construct the parent window, chrome + content child
 ///   webviews, and install the resize / close / destroy listeners.
-fn present<R: Runtime>(app: &AppHandle<R>, payload: OpenRequest) -> crate::Result<()> {
-    let parsed = Url::parse(&payload.url)
-        .map_err(|error| crate::Error::Internal(format!("invalid URL {}: {error}", payload.url)))?;
-
+fn present<R: Runtime>(app: &AppHandle<R>, payload: OpenRequest, parsed: Url) -> crate::Result<()> {
     // Close in flight: hand off to the `CloseRequested` handler, which will
     // either prevent the close + replay this request, or (if nothing else
     // intervenes) let the close land and a future fresh `open` build from
     // scratch. Always last-write-wins: a rapid double-`open` keeps the latest
-    // intent.
+    // intent. Stash the parsed `Url` alongside the payload so the replay
+    // doesn't re-parse.
     if let Some(state) = app.try_state::<PluginState>() {
         if state.closing.load(Ordering::SeqCst) {
-            *state.pending_reopen.lock().unwrap() = Some(payload);
+            *state.pending_reopen.lock().unwrap() = Some((payload, parsed));
             return Ok(());
         }
     }
@@ -473,15 +473,10 @@ fn present<R: Runtime>(app: &AppHandle<R>, payload: OpenRequest) -> crate::Resul
         .title("Wildflower")
         .inner_size(900.0, 700.0)
         .resizable(true)
-        .build()
-        .map_err(|error| crate::Error::Internal(error.to_string()))?;
+        .build()?;
 
-    let window_size = window
-        .inner_size()
-        .map_err(|error| crate::Error::Internal(error.to_string()))?;
-    let scale = window
-        .scale_factor()
-        .map_err(|error| crate::Error::Internal(error.to_string()))?;
+    let window_size = window.inner_size()?;
+    let scale = window.scale_factor()?;
     let logical_width = window_size.width as f64 / scale;
     let logical_height = window_size.height as f64 / scale;
 
@@ -536,10 +531,12 @@ fn present<R: Runtime>(app: &AppHandle<R>, payload: OpenRequest) -> crate::Resul
                     "refresh" => "location.reload()",
                     _ => return false,
                 };
-                // The user just went back — a forward slot now exists.
-                // The next page-load Started event resets this if it's a
-                // non-back navigation (we can't distinguish at the Rust
-                // layer, so any new load conservatively clears forward).
+                // The user just went back — a forward slot now exists, so
+                // enable Forward. This flag is sticky: we can't distinguish a
+                // back-induced load from a fresh navigation at the Rust layer,
+                // so `on_page_load` never clears it (see [`NavState`]). The
+                // worst case is a Forward button left enabled after the user
+                // clicks a new link, where pressing it is a no-op.
                 if value == "back" {
                     if let Some(window) = app_for_actions.get_window(WINDOW_LABEL) {
                         if let Some(state) = window.try_state::<NavState>() {
@@ -565,13 +562,11 @@ fn present<R: Runtime>(app: &AppHandle<R>, payload: OpenRequest) -> crate::Resul
         }
         false
     });
-    window
-        .add_child(
-            chrome_builder,
-            LogicalPosition::<f64>::new(0.0, 0.0),
-            LogicalSize::<f64>::new(logical_width, CHROME_HEIGHT_BASE),
-        )
-        .map_err(|error| crate::Error::Internal(error.to_string()))?;
+    window.add_child(
+        chrome_builder,
+        LogicalPosition::<f64>::new(0.0, 0.0),
+        LogicalSize::<f64>::new(logical_width, CHROME_HEIGHT_BASE),
+    )?;
 
     // Content webview: the external URL, with the caller's document-start
     // script (the browser-sniffer bundle in our usage).
@@ -617,16 +612,14 @@ fn present<R: Runtime>(app: &AppHandle<R>, payload: OpenRequest) -> crate::Resul
             ));
         }
     });
-    window
-        .add_child(
-            content_builder,
-            LogicalPosition::<f64>::new(0.0, CHROME_HEIGHT_BASE),
-            LogicalSize::<f64>::new(
-                logical_width,
-                (logical_height - CHROME_HEIGHT_BASE).max(0.0),
-            ),
-        )
-        .map_err(|error| crate::Error::Internal(error.to_string()))?;
+    window.add_child(
+        content_builder,
+        LogicalPosition::<f64>::new(0.0, CHROME_HEIGHT_BASE),
+        LogicalSize::<f64>::new(
+            logical_width,
+            (logical_height - CHROME_HEIGHT_BASE).max(0.0),
+        ),
+    )?;
 
     install_window_listeners(app, &window);
 
@@ -659,10 +652,14 @@ struct CurrentChannel(Mutex<Channel<PopupEvent>>);
 /// - `load_count`: increments on every content webview Started page load.
 ///   `canBack` = `load_count > 1`.
 /// - `can_forward`: set `true` when the chrome's Back button fires (we know
-///   the user just went back so a forward slot exists); reset `false` on
-///   each Started load (any non-back navigation invalidates the forward slot
-///   — we don't distinguish back/non-back at the Rust layer, so this is
-///   conservative).
+///   the user just went back so a forward slot exists). It is **not** reset on
+///   a Started load — `on_page_load` only reads it. We can't distinguish a
+///   back-induced load from a fresh link-click at the Rust layer, so rather
+///   than clear it on every load (which would wrongly disable Forward the
+///   instant a back-navigation commits) the flag stays sticky until the next
+///   [`apply_rewire`]. The cost is a Forward button that can linger enabled
+///   after the user clicks a new link, where pressing it is a harmless no-op
+///   `history.forward()` past the end.
 ///
 /// Reset on [`apply_rewire`] so a "second open" navigation starts fresh
 /// (you can't go back to the previous popup's history).
@@ -811,19 +808,16 @@ fn install_window_listeners<R: Runtime>(app: &AppHandle<R>, window: &tauri::Wind
                 return;
             };
             let pending = state.pending_reopen.lock().unwrap().take();
-            let Some(payload) = pending else {
+            let Some((payload, parsed)) = pending else {
                 return;
             };
             api.prevent_close();
             state.closing.store(false, Ordering::SeqCst);
-            // Replay the deferred open. Skip on either of: content webview
-            // gone (shouldn't happen — CloseRequested fires before
-            // teardown), or unparseable URL (already validated in the
-            // command layer, defensive only).
+            // Replay the deferred open against the live (cancelled-close)
+            // webviews. The parsed `Url` rode along in `pending_reopen`, so
+            // there's no re-parse here. Skip if the content webview is gone
+            // (shouldn't happen — CloseRequested fires before teardown).
             let Some(content) = app_window.get_webview(CONTENT_WEBVIEW_LABEL) else {
-                return;
-            };
-            let Ok(parsed) = Url::parse(&payload.url) else {
                 return;
             };
             apply_rewire(&app_window, &content, &payload, parsed);

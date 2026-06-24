@@ -20,6 +20,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
+import androidx.webkit.ScriptHandler
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import app.tauri.annotation.Command
@@ -124,6 +125,16 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
     private var currentBridge: Bridge? = null
 
     /**
+     * Handle for the WebView's installed document-start script, when the
+     * provider supports `DOCUMENT_START_SCRIPT`. Retained so a second `open()`
+     * against this popup can [ScriptHandler.remove] the prior script before
+     * adding the new one — otherwise each re-wire stacks another copy and every
+     * later page load runs the caller's init IIFE N+1 times (Task #7 re-wire).
+     * Cleared on dismiss.
+     */
+    private var currentDocStartScript: ScriptHandler? = null
+
+    /**
      * Set in [dismissDialog] before [Dialog.dismiss], cleared in the
      * `setOnDismissListener`. While true, [open] queues its request into
      * [pendingOpenAfterClose] rather than rewiring a doomed WebView —
@@ -143,6 +154,15 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
      */
     private var pendingOpenAfterClose: (() -> Unit)? = null
 
+    /**
+     * The [Invoke] whose `resolve` is owned by [pendingOpenAfterClose]. Held
+     * separately so a *second* `open()` that supersedes a still-queued one
+     * (both during the same dismiss) can reject the superseded invoke before
+     * its closure is overwritten — otherwise its JS promise hangs forever
+     * (there's no timeout on `open`). Task #10 last-write-wins fix.
+     */
+    private var pendingInvoke: Invoke? = null
+
     @Command
     fun open(invoke: Invoke) {
         val args = invoke.parseArgs(OpenArgs::class.java)
@@ -152,6 +172,14 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
             // the UI thread; `isClosing` covers the gap until the listener
             // fires.
             if (isClosing) {
+                // Supersede any already-queued open: settle its promise so two
+                // quick `open()`s during the dismiss don't leave the first one's
+                // `await` hung forever (last-write-wins would otherwise drop its
+                // `resolve`).
+                pendingInvoke?.reject(
+                    "native-webview: superseded by a newer open() before the popup finished closing"
+                )
+                pendingInvoke = invoke
                 pendingOpenAfterClose = {
                     present(
                         args.url,
@@ -183,7 +211,14 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
                 args.initScript?.let { script ->
                     existing.evaluateJavascript(script, null)
                     if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
-                        WebViewCompat.addDocumentStartJavaScript(existing, script, setOf("*"))
+                        // Remove the prior document-start script before adding
+                        // the new one so repeated re-wires don't stack copies —
+                        // otherwise every later page load runs the caller's init
+                        // IIFE N+1 times (the sniffer would double-hook
+                        // fetch/XHR). Task #7 re-wire.
+                        currentDocStartScript?.remove()
+                        currentDocStartScript =
+                            WebViewCompat.addDocumentStartJavaScript(existing, script, setOf("*"))
                     }
                 }
                 args.initialTitle?.let { currentToolbar?.title = if (it.isEmpty()) null else it }
@@ -328,7 +363,10 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
         val supportsDocumentStart =
             WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
         if (initScript != null && supportsDocumentStart) {
-            WebViewCompat.addDocumentStartJavaScript(webView, initScript, setOf("*"))
+            // Retain the handle so a later re-wire can remove this script
+            // before adding its replacement (Task #7).
+            currentDocStartScript =
+                WebViewCompat.addDocumentStartJavaScript(webView, initScript, setOf("*"))
         } else if (initScript != null) {
             // The `onPageStarted` fallback fires AFTER the JS context exists,
             // so a page's inline `<script>` tag in `<head>` that synchronously
@@ -537,10 +575,28 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
                 insets
             }
             setOnDismissListener {
+                // Read the latest (possibly rewired) channel BEFORE dropping the
+                // bridge: a second `open()` rebinds `bridge.channel`, and the
+                // `Closed` echo must follow it to the most recent caller —
+                // otherwise a caller that re-opened with a fresh channel never
+                // sees the close on its new channel (matches desktop's
+                // `CurrentChannel` handling). Task #7.
+                val closeChannel = currentBridge?.channel ?: channel
+                // Tear down THIS popup's WebView so an open→close cycle doesn't
+                // leak a fully-loaded WebView plus its `@JavascriptInterface`
+                // (which pins the Bridge → plugin → Activity) and its still-live
+                // JS/render thread. `webView` is the local captured at present()
+                // time, so we destroy exactly this dialog's instance. iOS tears
+                // down in `deinit`; Android matches here. Task: WebView leak.
+                webView.stopLoading()
+                webView.removeJavascriptInterface(MESSAGE_HANDLER_NAME)
+                (webView.parent as? ViewGroup)?.removeView(webView)
+                webView.destroy()
                 currentWebView = null
                 currentToolbar = null
                 currentMessageView = null
                 currentBridge = null
+                currentDocStartScript = null
                 isClosing = false
                 // If `open()` queued a replay during the dismiss, run it now
                 // and skip the `Closed` echo — the popup logically continues
@@ -549,12 +605,13 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
                 val pending = pendingOpenAfterClose
                 pendingOpenAfterClose = null
                 if (pending != null) {
+                    pendingInvoke = null
                     pending()
                 } else {
                     // PopupEvent.closed (lowercase tag) — matches the `models.rs` shape.
                     val payload = JSObject()
                     payload.put("event", "closed")
-                    channel.send(payload)
+                    closeChannel.send(payload)
                 }
             }
             show()
