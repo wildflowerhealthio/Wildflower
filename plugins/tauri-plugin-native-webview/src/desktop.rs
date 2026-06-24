@@ -77,36 +77,6 @@ const CHROME_HEIGHT_BASE: f64 = 52.0;
 ///   chrome + content webviews to match.
 const CHROME_ACTION_SCHEME: &str = "x-nv-action";
 
-/// Cap (ms) on how long the native webview window stays hidden waiting for the content's
-/// paint sentinel before it's revealed regardless — see the timeout fallback in
-/// [`present`]. Long enough to let a normal first paint win, short enough that a
-/// blank/hung page doesn't leave the native webview invisible.
-const REVEAL_TIMEOUT_MS: u64 = 500;
-
-/// Sentinel scheme the content webview's [`CONTENT_REVEAL_SCRIPT`] navigates to
-/// once the page has painted its first frame. Caught + cancelled by the content
-/// webview's `on_navigation` handler, which reveals the (initially hidden) native
-/// webview window. Kept in sync with the literal in [`CONTENT_REVEAL_SCRIPT`].
-const CONTENT_READY_SCHEME: &str = "x-nv-ready";
-
-/// Document-start script injected into the content webview: once the page has
-/// painted its first frame, navigate to the [`CONTENT_READY_SCHEME`] sentinel so
-/// the backend reveals the native webview window (built hidden to avoid the load-time
-/// white flash on dark mode). The double-`requestAnimationFrame` after
-/// `DOMContentLoaded` guarantees a frame has composited before we reveal. The
-/// sentinel navigation is caught + cancelled by the content webview's
-/// `on_navigation` handler, so the real page is never navigated away. Runs on
-/// every content load; the reveal is idempotent (`show()` no-ops once visible).
-const CONTENT_REVEAL_SCRIPT: &str = r#"(function () {
-  function signal() { try { window.location.href = 'x-nv-ready://painted'; } catch (e) {} }
-  function afterPaint() { requestAnimationFrame(function () { requestAnimationFrame(signal); }); }
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', afterPaint);
-  } else {
-    afterPaint();
-  }
-})();"#;
-
 /// Rust → chrome state push: this global is defined by the chrome's init
 /// script and invoked from Rust via `webview.eval(...)`.
 const WINDOW_TEXT_FN: &str = "window.__nativeWebviewPatchWindowText";
@@ -190,51 +160,47 @@ pub fn init<R: Runtime, C: DeserializeOwned>(
     app: &AppHandle<R>,
     _api: PluginApi<R, C>,
 ) -> crate::Result<NativeWebview<R>> {
-    // App-managed coordination between `close()`, `present()`, and the native
+    // App-managed coordination between `dispose()`, `present()`, and the native
     // webview window's `CloseRequested` handler — see [`PluginState`] for the race story.
     app.manage(PluginState {
-        closing: AtomicBool::new(false),
+        disposing: AtomicBool::new(false),
         pending_reopen: Mutex::new(None),
-        suppress_close_event: AtomicBool::new(false),
     });
     Ok(NativeWebview(app.clone()))
 }
 
-/// App-managed coordination state for the close/reopen race fix.
+/// App-managed coordination state for the dispose/reopen race fix.
 ///
-/// A "switch demos" sequence emits `SniffingComplete` → `close()` → and then
-/// `RequestSniffableWebView` → `open()` on the same main-thread bridge listener
-/// tick. `WebviewWindow::close()` only *queues* a `WindowMessage::Close` via the
-/// runtime's proxy (see `runtime-wry/lib.rs::WindowDispatcher::close`) and
-/// returns immediately, so the subsequent same-tick `present()` runs *before*
-/// the `CloseRequested` event fires. Without coordination, `present()` finds
-/// the doomed window via `get_webview` and navigates it in place — then the
-/// queued close destroys the native webview and the user sees nothing.
+/// A "switch demos" sequence emits `SniffingComplete` → `dispose()` → and then
+/// `RequestSniffableWebView` → `open_url()` on the same main-thread bridge
+/// listener tick. `WebviewWindow::close()` only *queues* a `WindowMessage::Close`
+/// via the runtime's proxy (see `runtime-wry/lib.rs::WindowDispatcher::close`)
+/// and returns immediately, so the subsequent same-tick `present()` runs
+/// *before* the `CloseRequested` event fires. Without coordination, `present()`
+/// finds the doomed window via `get_webview` and navigates it in place — then
+/// the queued dispose destroys the native webview and the user sees nothing.
 ///
-/// The fix is to make the close cancellable: `close()` flips `closing` to
+/// The fix is to make the dispose cancellable: `dispose()` flips `disposing` to
 /// `true` before asking the runtime to close, `present()` stashes its
-/// `OpenRequest` payload in `pending_reopen` when it sees `closing`, and the
+/// `OpenRequest` payload in `pending_reopen` when it sees `disposing`, and the
 /// window's `CloseRequested` handler reads `pending_reopen` to either
 /// `prevent_close()` + re-wire (channel + initScript + chrome + URL) the
-/// existing webviews, or let the close proceed when nothing is pending.
+/// existing webviews, or let the dispose proceed when nothing is pending.
+///
+/// Only `dispose()` arms this — `hide()` keeps the window alive (`window.hide()`
+/// fires no `CloseRequested`/`Destroyed`), so a `hide`+`open_url` sequence just
+/// navigates the live, hidden webview with no deferral.
 struct PluginState {
-    /// `true` between the `close()` call and the `Destroyed` event that
-    /// follows a non-cancelled close. Read by `present()` to defer building or
+    /// `true` between the `dispose()` call and the `Destroyed` event that
+    /// follows a non-cancelled dispose. Read by `present()` to defer building or
     /// re-wiring against a doomed window.
-    closing: AtomicBool,
-    /// The deferred `present()` request while `closing == true`, paired with
+    disposing: AtomicBool,
+    /// The deferred `present()` request while `disposing == true`, paired with
     /// its already-validated [`Url`] so the `CloseRequested` replay doesn't
     /// re-parse. The handler takes it (`Option::take`) — if `Some`, it cancels
-    /// the close and replays the request against the existing webviews; if
-    /// `None`, the close proceeds.
+    /// the dispose and replays the request against the existing webviews; if
+    /// `None`, the dispose proceeds.
     pending_reopen: Mutex<Option<(OpenRequest, Url)>>,
-    /// Set by `close(suppress_close_event = true)` before the runtime close so
-    /// the `Destroyed` handler skips the `NativeWebviewEvent::Closed` echo for exactly
-    /// that dismissal. Read-and-cleared (`swap`) when the destroy lands, and
-    /// also cleared on the `CloseRequested` replay path (a cancelled close must
-    /// not leak its suppression onto the next real close). User-initiated closes
-    /// (OS window X) never call `close()`, so this stays `false` and they emit.
-    suppress_close_event: AtomicBool,
 }
 
 /// Desktop handle to the native-webview plugin.
@@ -254,7 +220,7 @@ impl<R: Runtime> NativeWebview<R> {
     /// and `tx.send` already fired by the time `rx.recv()` is reached.
     /// Off-main-thread callers block waiting for the main thread to drain
     /// the queue, which is safe (no self-wait).
-    pub fn open(&self, payload: OpenRequest) -> crate::Result<()> {
+    pub fn open_url(&self, payload: OpenRequest) -> crate::Result<()> {
         // Validate + parse the URL exactly once here (http(s)-only — see
         // [`crate::url_scheme`]) and thread the parsed `Url` through to
         // `present`, so the build path doesn't re-parse and the scheme rule
@@ -306,25 +272,55 @@ impl<R: Runtime> NativeWebview<R> {
         Ok(())
     }
 
-    /// Dismiss the native webview window. Idempotent — no-op if not open.
+    /// Present the native webview window — reveal a freshly-built or
+    /// previously-hidden instance. The window is built hidden by [`open_url`],
+    /// so this is what makes it visible. Reveals immediately; a `show()` issued
+    /// before the content's first paint may briefly flash the window background
+    /// on macOS dark mode — accepted as the cost of separating presentation
+    /// from navigation. Idempotent — no-op if no window exists.
+    pub fn show(&self) -> crate::Result<()> {
+        if let Some(window) = self.0.get_window(WINDOW_LABEL) {
+            window.show()?;
+            let _ = window.set_focus();
+        }
+        Ok(())
+    }
+
+    /// Hide the native webview window — remove it from view but keep it (and its
+    /// child webviews) alive and running. `window.hide()` fires no
+    /// `CloseRequested`/`Destroyed`, so nothing is torn down and a later
+    /// [`open_url`]/[`show`] reuses the same live instance. Emits
+    /// [`NativeWebviewEvent::Hidden`] on the current channel. Idempotent — no-op
+    /// if no window exists.
+    pub fn hide(&self) -> crate::Result<()> {
+        let Some(window) = self.0.get_window(WINDOW_LABEL) else {
+            return Ok(());
+        };
+        window.hide()?;
+        // `Hidden` is emitted here directly: unlike a dispose, a hide produces
+        // no `Destroyed` event for the window listener to translate.
+        if let Some(state) = window.try_state::<CurrentChannel>() {
+            if let Ok(channel) = state.0.lock() {
+                let _ = channel.send(NativeWebviewEvent::Hidden);
+            }
+        }
+        Ok(())
+    }
+
+    /// Dispose the native webview window — tear it down and free its resources.
     ///
-    /// Flips [`PluginState::closing`] before asking the runtime to close so a
-    /// same-tick `open()` that races this close lands in the deferral branch
-    /// of [`present`] (queued into `pending_reopen`) rather than navigating
-    /// the doomed window. See [`PluginState`] for the full race story.
-    ///
-    /// `suppress_close_event` is recorded on
-    /// [`PluginState::suppress_close_event`] so the `Destroyed` handler skips
-    /// the `NativeWebviewEvent::Closed` echo for this host-initiated dismissal.
-    pub fn close(&self, suppress_close_event: bool) -> crate::Result<()> {
+    /// Flips [`PluginState::disposing`] before asking the runtime to close so a
+    /// same-tick `open_url()` that races this dispose lands in the deferral
+    /// branch of [`present`] (queued into `pending_reopen`) rather than building
+    /// against the doomed window. See [`PluginState`] for the full race story.
+    /// The `Destroyed` handler emits [`NativeWebviewEvent::Disposed`].
+    /// Idempotent — no-op if no window exists.
+    pub fn dispose(&self) -> crate::Result<()> {
         let Some(window) = self.0.get_window(WINDOW_LABEL) else {
             return Ok(());
         };
         if let Some(state) = self.0.try_state::<PluginState>() {
-            state
-                .suppress_close_event
-                .store(suppress_close_event, Ordering::SeqCst);
-            state.closing.store(true, Ordering::SeqCst);
+            state.disposing.store(true, Ordering::SeqCst);
         }
         window.close()?;
         Ok(())
@@ -335,9 +331,9 @@ impl<R: Runtime> NativeWebview<R> {
 /// the resize listener.
 ///
 /// Three branches:
-/// - **Closing in flight**: a `close()` was issued but `Destroyed` hasn't
+/// - **Disposing in flight**: a `dispose()` was issued but `Destroyed` hasn't
 ///   fired yet. Stash the request in [`PluginState::pending_reopen`] for the
-///   `CloseRequested` handler to replay against the live (cancelled-close)
+///   `CloseRequested` handler to replay against the live (cancelled-dispose)
 ///   webviews. See [`PluginState`].
 /// - **Already open**: replay the request against the existing webviews via
 ///   [`apply_rewire`] — replace the current channel, eval the new init
@@ -357,7 +353,7 @@ fn present<R: Runtime>(
     // intent. Stash the parsed `Url` alongside the payload so the replay
     // doesn't re-parse.
     if let Some(state) = app.try_state::<PluginState>() {
-        if state.closing.load(Ordering::SeqCst) {
+        if state.disposing.load(Ordering::SeqCst) {
             *lock_state(&state.pending_reopen, "pending-reopen")? = Some((payload, parsed_url));
             return Ok(());
         }
@@ -394,13 +390,10 @@ fn present<R: Runtime>(
         .as_ref()
         .unwrap_or(&initial_url)
         .clone();
-    // Built hidden, revealed only once the content webview has painted its first
-    // frame (the `CONTENT_READY_SCHEME` sentinel, handled below). This is what
-    // kills the dark-mode white flash: on macOS the WKWebView's own pre-paint
-    // background can't be recolored (Tauri's webview `background_color` is a
-    // no-op there), so the only reliable fix is to not show the window until its
-    // content is ready. Once revealed, the painted content webview covers the
-    // window, so the window's own background color is never visible.
+    // Built hidden; presented only by an explicit `show()` (navigation and
+    // presentation are separate concerns). It stays hidden through `open_url`
+    // so a background sniff never steals focus, and a user `hide()` keeps it
+    // alive and hidden while it keeps running.
     let window = WindowBuilder::new(app, WINDOW_LABEL)
         .title(window_title)
         .inner_size(900.0, 700.0)
@@ -501,25 +494,12 @@ fn present<R: Runtime>(
     if let Some(script) = init_script {
         content_builder = content_builder.initialization_script(script);
     }
-    // Reveal the native webview only once THIS content webview has painted its first
-    // frame. The window is built hidden; gating the reveal on the content's
-    // paint (not the chrome's) is what removes the dark-mode white flash, since
-    // macOS can't recolor the WKWebView's own pre-paint background. The injected
-    // script fires the `CONTENT_READY_SCHEME` sentinel after a double-rAF; the
-    // `on_navigation` handler catches it, shows the window, and cancels the nav
-    // so the real page is never touched. A timeout fallback below guarantees the
-    // window can't stay hidden if the page never paints.
-    content_builder = content_builder.initialization_script(CONTENT_REVEAL_SCRIPT);
-    let window_for_ready = window.clone();
-    content_builder = content_builder.on_navigation(move |url| {
-        if url.scheme() == CONTENT_READY_SCHEME {
-            if !window_for_ready.is_visible().unwrap_or(true) {
-                let _ = window_for_ready.show();
-            }
-            return false;
-        }
-        true
-    });
+    // The window is built hidden and presented only by an explicit `show()` —
+    // navigation (`open_url`) and presentation (`show`) are separate concerns,
+    // so there is no paint-gated auto-reveal. A `show()` issued before the
+    // content's first paint may briefly flash the window background on macOS
+    // dark mode; that's the accepted cost of the separation.
+    //
     // Update chrome back/forward enabled state on every page load. Started
     // (not Finished) so the state lands as soon as the navigation commits,
     // matching what a user would expect. We push the new state into the
@@ -581,24 +561,6 @@ fn present<R: Runtime>(
 
     install_window_listeners(app, &window);
 
-    // Safety net for the hidden-until-painted reveal: if the content never fires
-    // its paint sentinel (a blank/hung page, or a future capability change that
-    // blocks the injected script), reveal the window anyway after a short cap so
-    // it can't stay invisible. `show()` no-ops once the sentinel already
-    // revealed it. Window ops must run on the main thread.
-    let app_for_timeout = app.clone();
-    std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(REVEAL_TIMEOUT_MS));
-        let app_show = app_for_timeout.clone();
-        let _ = app_for_timeout.run_on_main_thread(move || {
-            if let Some(window) = app_show.get_window(WINDOW_LABEL) {
-                if !window.is_visible().unwrap_or(true) {
-                    let _ = window.show();
-                }
-            }
-        });
-    });
-
     Ok(())
 }
 
@@ -618,9 +580,10 @@ struct AppliedLayout(Mutex<Option<(f64, f64, f64)>>);
 /// Per-native-webview state holding the [`Channel<NativeWebviewEvent>`] the current
 /// native webview fires events on. Set per open by [`install_native_webview_state`] and re-bindable
 /// mid-native-webview: [`apply_rewire`] replaces the inner value when a second `open()`
-/// lands on an existing native webview, so subsequent events (including the eventual
-/// `NativeWebviewEvent::Closed` from the `Destroyed` event) route to the latest
-/// caller's channel.
+/// lands on an existing native webview, so subsequent events (including the
+/// `NativeWebviewEvent::Hidden` from a user dismissal and the
+/// `NativeWebviewEvent::Disposed` from the `Destroyed` event) route to the
+/// latest caller's channel.
 struct CurrentChannel(Mutex<Channel<NativeWebviewEvent>>);
 
 /// Per-native-webview state approximating the content webview's nav history for
@@ -831,21 +794,20 @@ fn apply_chrome_height<R: Runtime>(
 ///   the window) so they always tile the parent exactly. Reads the
 ///   currently-stored chrome height from [`ChromeHeight`] so subtitle-driven
 ///   height changes persist across resizes.
-/// - **CloseRequested**: if a `present()` raced this close (its payload sits
-///   in [`PluginState::pending_reopen`]), cancel the close via
-///   `api.prevent_close()` and replay the payload via [`apply_rewire`] —
-///   the native webview stays alive, the user sees a navigation instead of a close +
-///   reopen flicker. Otherwise let the close proceed.
-/// - **Destroyed**: fire `NativeWebviewEvent::Closed` on the current channel
-///   (the per-native-webview [`CurrentChannel`] state — re-bindable across rewires),
-///   UNLESS a host `close(suppress_close_event = true)` recorded
-///   suppression on [`PluginState::suppress_close_event`] (consumed read-and-
-///   clear here). The user dismisses the desktop native webview via the OS window X (the
-///   chrome bar has no Close button); without this hook the sniffer's
-///   collector would idle-timeout waiting for `SniffingComplete`. Matches the
-///   mobile path where the plugin's native chrome Close button fires `Closed`
-///   after the dismiss animation. Also clears [`PluginState::closing`] —
-///   a fresh `open()` after this point takes the build-fresh path.
+/// - **CloseRequested**: distinguishes a user dismissal from a host
+///   `dispose()`. When `disposing` is NOT set, the close came from the OS
+///   titlebar X — a user dismissal — so it's cancelled (`api.prevent_close()`),
+///   the window is hidden (kept alive + running), and `NativeWebviewEvent::Hidden`
+///   is emitted. When `disposing` IS set, a same-tick `open_url()` may have
+///   raced the dispose (its payload sits in [`PluginState::pending_reopen`]): if
+///   so, cancel the dispose and replay via [`apply_rewire`]; otherwise let the
+///   dispose land.
+/// - **Destroyed**: fire `NativeWebviewEvent::Disposed` on the current channel
+///   (the per-native-webview [`CurrentChannel`] state — re-bindable across
+///   rewires). Reached by a host `dispose()` or by app teardown destroying the
+///   window on exit (the app-teardown backstop). Clears
+///   [`PluginState::disposing`] so a fresh `open_url()` after this point takes
+///   the build-fresh path.
 ///
 /// `on_window_event` takes a `Fn(&WindowEvent) + Send + 'static`, so captures
 /// are clones. The channel is read from the per-native-webview [`CurrentChannel`] state
@@ -866,31 +828,44 @@ fn install_window_listeners<R: Runtime>(app: &AppHandle<R>, window: &tauri::Wind
             apply_chrome_height(&app_window, &window_clone, height);
         }
         WindowEvent::CloseRequested { api, .. } => {
-            // The race: `close()` was issued, then a same-tick `open()`
-            // stashed its payload into `pending_reopen` (see
-            // [`present`]). Take it now: `Some` means "cancel this close
-            // and replay the open against the live webviews"; `None`
-            // means "let the close land". Either way, `closing` is
-            // cleared so subsequent calls aren't stuck in the deferral
-            // branch.
             let Some(state) = app_window.try_state::<PluginState>() else {
                 return;
             };
+            // A close that `dispose()` did NOT initiate is a user dismissal (the
+            // OS titlebar X). Per the hide/dispose split a user dismissal HIDES
+            // — it keeps the native webview alive and running — so cancel the
+            // teardown, hide the window, and emit `Hidden`. Only an explicit
+            // `dispose()` (which sets `disposing`) is allowed to tear the window
+            // down. (App teardown destroys windows through a separate path that
+            // bypasses `prevent_close`, so the app-teardown backstop still
+            // reaches `Destroyed` → `Disposed`.)
+            if !state.disposing.load(Ordering::SeqCst) {
+                api.prevent_close();
+                let _ = window_clone.hide();
+                if let Some(channel_state) = window_clone.try_state::<CurrentChannel>() {
+                    if let Ok(channel) = channel_state.0.lock() {
+                        let _ = channel.send(NativeWebviewEvent::Hidden);
+                    }
+                }
+                return;
+            }
+            // `dispose()` is in flight. The race: a same-tick `open_url()`
+            // stashed its payload into `pending_reopen` (see [`present`]). Take
+            // it now: `Some` → cancel this dispose and replay the open against
+            // the live webviews; `None` → let the dispose land (→ `Destroyed`).
+            // Either way `disposing` is cleared so subsequent calls aren't stuck
+            // in the deferral branch.
             let pending = match state.pending_reopen.lock() {
                 Ok(mut guard) => guard.take(),
                 // Poisoned lock: we can't safely consult the deferral slot, so
-                // let the close proceed (no replay) rather than panicking here.
+                // let the dispose proceed (no replay) rather than panicking.
                 Err(_) => return,
             };
             let Some((payload, parsed)) = pending else {
                 return;
             };
             api.prevent_close();
-            state.closing.store(false, Ordering::SeqCst);
-            // The close that set this is being cancelled (we're re-wiring the
-            // live webviews instead of letting them die), so its suppression
-            // must not leak onto the next *real* close — clear it here.
-            state.suppress_close_event.store(false, Ordering::SeqCst);
+            state.disposing.store(false, Ordering::SeqCst);
             // Replay the deferred open against the live (cancelled-close)
             // webviews. The parsed `Url` rode along in `pending_reopen`, so
             // there's no re-parse here. Skip if the content webview is gone
@@ -904,28 +879,20 @@ fn install_window_listeners<R: Runtime>(app: &AppHandle<R>, window: &tauri::Wind
             let _ = apply_rewire(&app_window, &content, &payload, parsed);
         }
         WindowEvent::Destroyed => {
-            // A host-initiated `close(suppress_close_event = true)` recorded its
-            // intent on `PluginState`; consume it (read-and-clear) so this one
-            // destroy stays silent. Any other destroy (the OS window X, or a
-            // host close without suppression) finds `false` and emits.
-            let suppress = app_window
-                .try_state::<PluginState>()
-                .is_some_and(|state| state.suppress_close_event.swap(false, Ordering::SeqCst));
-            // Notify the *current* caller's channel handler that the native webview
-            // has gone away — read from the per-native-webview `CurrentChannel` state so
-            // a rewire before the close lands routes the event to the latest
-            // caller.
+            // The window was torn down — a host `dispose()`, or the app teardown
+            // destroying it on exit (the app-teardown backstop). Notify the
+            // *current* caller's channel that the native webview is gone — read
+            // from the per-native-webview `CurrentChannel` state so a rewire
+            // before the dispose lands routes the event to the latest caller.
             // Errors are swallowed: the window is gone either way, and the
-            // channel send is the only way to surface dismissal to the host.
-            if !suppress {
-                if let Some(state) = window_clone.try_state::<CurrentChannel>() {
-                    if let Ok(channel) = state.0.lock() {
-                        let _ = channel.send(NativeWebviewEvent::Closed);
-                    }
+            // channel send is the only way to surface the teardown to the host.
+            if let Some(state) = window_clone.try_state::<CurrentChannel>() {
+                if let Ok(channel) = state.0.lock() {
+                    let _ = channel.send(NativeWebviewEvent::Disposed);
                 }
             }
             if let Some(state) = app_window.try_state::<PluginState>() {
-                state.closing.store(false, Ordering::SeqCst);
+                state.disposing.store(false, Ordering::SeqCst);
                 // Drop any payload that raced a close-that-actually-landed.
                 // The caller's `open` resolved `opened: true`, but the
                 // window died before `CloseRequested` saw the payload — so

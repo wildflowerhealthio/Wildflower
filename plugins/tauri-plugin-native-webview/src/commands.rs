@@ -8,27 +8,29 @@ use tauri::{ipc::Channel, AppHandle, Runtime};
 use crate::models::{EvaluateJsRequest, NativeWebviewEvent, OpenRequest, PatchWindowTextRequest};
 use crate::{NativeWebviewExt, Result};
 
-/// Present the external `url` in a native webview, injecting `initScript`
-/// at document start on any origin (if provided).
+/// Ensure a native webview exists (creating it hidden if absent) and navigate it
+/// to `url`, injecting `initScript` at document start on any origin (if
+/// provided). Does **not** change visibility — content and presentation are
+/// separate concerns; call `show` to present.
 ///
 /// Invoked from the webview as
-/// `invoke('plugin:native-webview|open', { url, initScript, nativeWebviewEventChannel })`
+/// `invoke('plugin:native-webview|open_url', { url, initScript, nativeWebviewEventChannel })`
 /// where `nativeWebviewEventChannel` is a `new Channel<NativeWebviewEvent>()` the caller
 /// constructed to receive [`NativeWebviewEvent`] payloads from the native
 /// webview. Tauri maps the camelCase args to their snake_case parameters.
 ///
 /// Rust callers go through [`crate::NativeWebviewExt::native_webview`] +
-/// `open(OpenRequest { … })` directly — see `browser-sniffer-tauri-rust`'s
+/// `open_url(OpenRequest { … })` directly — see `browser-sniffer-tauri-rust`'s
 /// `sniffer_window::open_or_navigate` for the canonical Rust-side caller, which
 /// owns the channel handler instead of round-tripping events through JS.
 #[tauri::command]
-pub(crate) async fn open<R: Runtime>(
+pub(crate) async fn open_url<R: Runtime>(
     app: AppHandle<R>,
     url: String,
     init_script: Option<String>,
     native_webview_event_channel: Channel<NativeWebviewEvent>,
 ) -> Result<()> {
-    app.native_webview().open(OpenRequest {
+    app.native_webview().open_url(OpenRequest {
         url,
         init_script,
         native_webview_event_channel,
@@ -77,23 +79,38 @@ pub(crate) async fn patch_window_text<R: Runtime>(
         })
 }
 
-/// Dismiss the currently-presented native webview. Idempotent — succeeds with
-/// `closed_by_request: false` when no native webview is open. The dismiss animation runs
-/// asynchronously; the native side then emits its usual `NativeWebviewEvent::Closed`
-/// through the open channel once the animation finishes — unless
-/// `suppressCloseEvent` is `true`, in which case this one dismissal stays
-/// silent (a host that already observed the terminal event needn't see the
-/// echo). Omitted / `false` keeps the symmetric "every close emits" posture.
+/// Present the native webview — bring a freshly-created or previously-hidden
+/// instance to the foreground. Idempotent — succeeds with `shown: false` when
+/// none exists. Visibility only; `open_url` owns navigation. The native side
+/// presents the live instance (no re-navigation, no teardown).
 ///
-/// Invoked from the webview as
-/// `invoke('plugin:native-webview|close', { suppressCloseEvent? })`. JS callers
-/// that omit the arg get the default `false`. Rust callers go through
-/// [`crate::NativeWebviewExt::native_webview`] + `close(suppress_close_event)`.
+/// Invoked from the webview as `invoke('plugin:native-webview|show')`. Rust
+/// callers go through [`crate::NativeWebviewExt::native_webview`] + `show()`.
 #[tauri::command]
-pub(crate) async fn close<R: Runtime>(
-    app: AppHandle<R>,
-    suppress_close_event: Option<bool>,
-) -> Result<()> {
-    app.native_webview()
-        .close(suppress_close_event.unwrap_or(false))
+pub(crate) async fn show<R: Runtime>(app: AppHandle<R>) -> Result<()> {
+    app.native_webview().show()
+}
+
+/// Hide the currently-presented native webview — remove it from view but keep
+/// it alive and running. Idempotent — succeeds with `hidden: false` when none is
+/// visible. The native side emits [`NativeWebviewEvent::Hidden`] once hidden; a
+/// later `open` re-presents the same live instance.
+///
+/// Invoked from the webview as `invoke('plugin:native-webview|hide')`. Rust
+/// callers go through [`crate::NativeWebviewExt::native_webview`] + `hide()`.
+#[tauri::command]
+pub(crate) async fn hide<R: Runtime>(app: AppHandle<R>) -> Result<()> {
+    app.native_webview().hide()
+}
+
+/// Dispose the native webview — tear it down (visible or hidden) and free its
+/// resources. Idempotent — succeeds with `disposed: false` when none exists. The
+/// native side emits [`NativeWebviewEvent::Disposed`] once torn down; a later
+/// `open` builds a fresh instance.
+///
+/// Invoked from the webview as `invoke('plugin:native-webview|dispose')`. Rust
+/// callers go through [`crate::NativeWebviewExt::native_webview`] + `dispose()`.
+#[tauri::command]
+pub(crate) async fn dispose<R: Runtime>(app: AppHandle<R>) -> Result<()> {
+    app.native_webview().dispose()
 }

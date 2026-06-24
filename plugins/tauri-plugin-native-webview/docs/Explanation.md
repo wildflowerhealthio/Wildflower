@@ -6,12 +6,17 @@ A Tauri v2 plugin that presents an external URL in a **native, JavaScript-inject
 web view** with **native chrome**, instead of a Tauri `WebviewWindow` with
 fake in-page chrome.
 
-It exposes four commands, with a backend per platform:
+It exposes six commands, with a backend per platform. **Visibility, content, and
+liveness are independent concerns**: `open_url` navigates without presenting,
+`show`/`hide` toggle visibility while keeping the webview alive, and only
+`dispose` tears it down.
 
-- `open(url, initScript, nativeWebviewEventChannel, initialTitle?, initialSubtitle?, initialMessage?)` — present the native webview.
+- `open_url(url, initScript, nativeWebviewEventChannel, initialTitle?, initialSubtitle?, initialMessage?)` — ensure the native webview exists (created **hidden** if absent) and navigate it to `url`. Does **not** present it.
+- `show()` — present the native webview (a freshly-created or previously-hidden instance).
 - `evaluate_js(script)` — evaluate JS inside the open native webview.
 - `patch_window_text({title?, subtitle?, message?})` — update one or more of the chrome's title/subtitle/message labels.
-- `close(suppress_close_event = false)` — dismiss the native webview. Emits `NativeWebviewEvent::Closed` on the channel for the dismissal, unless `suppress_close_event` is `true` (a host that already observed the terminal event prompting the close passes `true` so the echo doesn't double-fire). User / OS dismissals always emit.
+- `hide()` — remove the native webview from view but keep it **alive and running** in the background. Emits `NativeWebviewEvent::Hidden`. A user dismissal (chrome Close, back, desktop titlebar X) routes here.
+- `dispose()` — tear the native webview down and free its resources. Emits `NativeWebviewEvent::Disposed`. Also reached by the teardown backstop (app teardown, or 5-minutes-hidden idle timeout on mobile).
 
 | Platform | Backend                                                           | Native chrome                                                          | JS injection (any origin)                                 | Bridge back to host                                      |
 | -------- | ----------------------------------------------------------------- | ---------------------------------------------------------------------- | --------------------------------------------------------- | -------------------------------------------------------- |
@@ -69,11 +74,11 @@ no capability — it issues no Tauri commands. The mobile backends avoid the
 ```text
 plugins/tauri-plugin-native-webview/
 ├── Cargo.toml                 — links, tauri-plugin build dep, url (desktop)
-├── build.rs                   — COMMANDS=["open","evaluate_js","patch_window_text","close"], ios_path + android_path
-├── permissions/default.toml   — default grant = open + evaluate-js + patch-window-text + close (hand-authored per-command grants)
+├── build.rs                   — COMMANDS=["open_url","evaluate_js","patch_window_text","show","hide","dispose"], ios_path + android_path
+├── permissions/default.toml   — default grant = open-url + evaluate-js + patch-window-text + show + hide + dispose (hand-authored per-command grants)
 ├── src/
 │   ├── lib.rs                 — init(), NativeWebviewExt, plugin wiring
-│   ├── commands.rs            — open / evaluate_js / patch_window_text / close IPC commands
+│   ├── commands.rs            — open_url / evaluate_js / patch_window_text / show / hide / dispose IPC commands
 │   ├── models.rs              — OpenRequest/OpenResponse, EvaluateJsRequest/EvaluateJsResponse, PatchWindowTextRequest/PatchWindowTextResponse, NativeWebviewEvent + tests
 │   ├── error.rs               — Error (PluginInvoke on mobile / Internal on desktop)
 │   ├── url_scheme.rs          — http(s)-only URL parse/validate, shared by both backends
@@ -86,25 +91,26 @@ plugins/tauri-plugin-native-webview/
     ├── build.gradle.kts · settings.gradle · proguard-rules.pro · .gitignore
     └── src/main/
         ├── AndroidManifest.xml
-        └── java/com/plugin/nativewebview/NativeWebviewPlugin.kt
+        └── java/io/wildflowerhealth/nativewebview/NativeWebviewPlugin.kt
 ```
 
 ## Round trip
 
 ```text
-[caller (Rust or JS)]  open(url, initScript, nativeWebviewEventChannel: Channel<NativeWebviewEvent>)
+[caller (Rust or JS)]  open_url(url, initScript, nativeWebviewEventChannel: Channel<NativeWebviewEvent>) ; show()
       │
       ▼
-[Rust] commands::open → NativeWebviewExt::open → platform backend
+[Rust] commands::open_url → NativeWebviewExt::open_url → platform backend (then show())
       │
-      ├─ iOS/Android: run_mobile_plugin("open", { url, initScript, nativeWebviewEventChannel })
-      │     → present native WebView (native chrome)
+      ├─ iOS/Android: run_mobile_plugin("openUrl", { url, initScript, nativeWebviewEventChannel }) ; run_mobile_plugin("show", ())
+      │     → build native WebView hidden (native chrome), navigate; show() presents it
       │     → caller's initScript injected at document start on ANY origin
       │     → page posts an opaque JSON string over the scoped native bridge
       │       (window.webkit.messageHandlers.nativeWebview / window.nativeWebview)
       │     → Swift/Kotlin channel.send({ event:"message", payload }) → Rust
       │       channel handler fires (caller-owned, no JS bridging)
-      │     → user dismiss via native chrome → channel.send({ event:"closed" })
+      │     → user dismiss via native chrome → hide (kept alive) → channel.send({ event:"hidden" })
+      │     → host dispose() (sniff done) → channel.send({ event:"disposed" })
       │
       └─ Desktop: parent Window + chrome/content child webviews; the content
             child gets initScript via initialization_script

@@ -49,7 +49,7 @@ pub(crate) fn open_or_navigate(app: &AppHandle, url: WebviewUrl) -> anyhow::Resu
     // webview's events to the same `native_webview_bridge` handler.
     let channel = app.state::<NativeWebviewChannel>().channel.clone();
     app.native_webview()
-        .open(OpenRequest {
+        .open_url(OpenRequest {
             url: parsed.to_string(),
             init_script: Some(bootstrap.to_owned()),
             native_webview_event_channel: channel,
@@ -57,7 +57,7 @@ pub(crate) fn open_or_navigate(app: &AppHandle, url: WebviewUrl) -> anyhow::Resu
             // presentation time. `initial_title` is left unset so the page URL
             // shows in the title (plugin URL-fallback); message stays empty
             // until a future step counts resources (e.g. "34 resources
-            // collected"). Applying it through `open` rather than a post-open
+            // collected"). Applying it through `open_url` rather than a post-open
             // `patch_window_text` means it paints with the native webview and
             // avoids the desktop race where `patch_window_text` lands before the chrome
             // webview is built.
@@ -65,7 +65,15 @@ pub(crate) fn open_or_navigate(app: &AppHandle, url: WebviewUrl) -> anyhow::Resu
             initial_subtitle: Some("Collecting Automatically".to_owned()),
             initial_message: None,
         })
-        .map_err(|error| anyhow::anyhow!("tauri-plugin-native-webview open failed: {error}"))?;
+        .map_err(|error| anyhow::anyhow!("tauri-plugin-native-webview open_url failed: {error}"))?;
+
+    // `RequestSniffableWebView` / `Open` is a request to *present* a sniffable
+    // webview, so make it visible after navigating. Visibility is separate from
+    // content under the hide/dispose model (`open_url` never presents on its
+    // own); a future background-only navigate would skip this `show`.
+    app.native_webview()
+        .show()
+        .map_err(|error| anyhow::anyhow!("tauri-plugin-native-webview show failed: {error}"))?;
 
     Ok(())
 }

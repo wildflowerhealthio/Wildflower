@@ -2,7 +2,14 @@
 //! native source trees so `tauri ios`/`tauri android` codegen links them into
 //! the host app: the `ios/` Swift package and the `android/` Kotlin library.
 
-const COMMANDS: &[&str] = &["open", "evaluate_js", "patch_window_text", "close"];
+const COMMANDS: &[&str] = &[
+    "open_url",
+    "evaluate_js",
+    "patch_window_text",
+    "show",
+    "hide",
+    "dispose",
+];
 
 fn main() {
     tauri_plugin::Builder::new(COMMANDS)

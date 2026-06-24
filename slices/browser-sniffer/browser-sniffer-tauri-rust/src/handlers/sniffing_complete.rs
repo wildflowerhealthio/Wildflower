@@ -2,22 +2,21 @@ use tauri::AppHandle;
 use tauri_plugin_log::log;
 use tauri_plugin_native_webview::NativeWebviewExt;
 
-/// Close the sniffer's native webview.
+/// Dispose the sniffer's native webview — the sniff is done, so free its
+/// resources.
 ///
-/// Unified across platforms now that the sniffer routes every open through
-/// `tauri-plugin-native-webview`: mobile dismisses the native sheet/dialog,
-/// desktop closes the multi-webview native-webview window. The plugin's `close`
-/// is itself idempotent (`{closedByRequest: false}` when nothing is open), so
-/// SPA-fired `SniffingComplete` without a live native webview lands harmlessly.
+/// `SniffingComplete` is the SPA's terminal signal: the collector has finished,
+/// so the native webview (its background runtime) should be torn down rather
+/// than merely hidden. Unified across platforms via `tauri-plugin-native-webview`:
+/// mobile tears down the native sheet/dialog, desktop destroys the multi-webview
+/// window. `dispose` is idempotent (`{disposed: false}` when nothing exists), so
+/// an `SniffingComplete` with no live native webview lands harmlessly.
+///
+/// A *user* dismissal is different — it `hide`s the native webview (keeping it
+/// alive and sniffing in the background) and never reaches here; only the SPA's
+/// `SniffingComplete` disposes.
 pub(crate) fn handle(app: &AppHandle) {
-    // This close is host-initiated by the `SniffingComplete` the host just
-    // observed and re-emitted on the bridge, so pass `suppress_close_event =
-    // true`: the plugin then skips the `NativeWebviewEvent::Closed` echo this
-    // dismissal produces, which `native_webview_bridge` would otherwise turn
-    // into a *second* `SniffingComplete`. A user / OS dismissal goes through the
-    // plugin without suppression and still emits. This keeps the "who closed it"
-    // knowledge in the close protocol rather than a cross-module flag.
-    if let Err(error) = app.native_webview().close(true) {
-        log::error!("[browser-sniffer] failed to dismiss the native webview: {error}");
+    if let Err(error) = app.native_webview().dispose() {
+        log::error!("[browser-sniffer] failed to dispose the native webview: {error}");
     }
 }

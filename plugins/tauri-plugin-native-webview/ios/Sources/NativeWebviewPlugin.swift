@@ -2,11 +2,11 @@ import Tauri
 import UIKit
 import WebKit
 
-/// Arguments decoded from `invoke('plugin:native-webview|open', { url, initScript, nativeWebviewEventChannel })`.
+/// Arguments decoded from `invoke('plugin:native-webview|open_url', { url, initScript, nativeWebviewEventChannel })`.
 /// Keys match `OpenRequest`'s camelCase serde wire shape; `initScript` is
 /// omitted when absent. `nativeWebviewEventChannel` is a Tauri `Channel<NativeWebviewEvent>`
 /// the caller receives native webview events on (`{"event":"message", "payload": …}` /
-/// `{"event":"closed"}`) — see `models.rs` `NativeWebviewEvent`.
+/// `{"event":"hidden"}` / `{"event":"disposed"}`) — see `models.rs` `NativeWebviewEvent`.
 class OpenArgs: Decodable {
   let url: String
   let initScript: String?
@@ -38,25 +38,19 @@ class PatchWindowTextArgs: Decodable {
   let message: String?
 }
 
-/// Arguments decoded from
-/// `invoke('plugin:native-webview|close', { suppressCloseEvent? })`. Matches
-/// `CloseRequest`'s camelCase serde wire shape. Optional with a `false` default
-/// (absent key = emit `Closed`); set `true` by a host that already observed the
-/// terminal event that prompted the close, so the resulting dismissal stays
-/// silent on the channel.
-class CloseArgs: Decodable {
-  let suppressCloseEvent: Bool?
-}
-
 /// Per-native-webview script message handler: holds the caller's [`Channel`] and
 /// forwards each `window.webkit.messageHandlers.nativeWebview.postMessage(...)`
 /// call as a `NativeWebviewEvent.message` payload. Per-native-webview (rather than plugin-
-/// singleton) so a stacked second `open` doesn't redirect the first native webview's
+/// singleton) so a stacked second `openUrl` doesn't redirect the first native webview's
 /// events into the second native webview's channel.
 ///
-/// `channel` is `var` so a second `open()` against an existing native webview can
-/// rebind it without rebuilding the webview — see `NativeWebviewPlugin.open`'s
+/// `channel` is `var` so a second `openUrl()` against an existing native webview can
+/// rebind it without rebuilding the webview — see `NativeWebviewPlugin.openUrl`'s
 /// re-wire branch.
+///
+/// `onActivity` is invoked for every inbound message so the plugin can reset its
+/// hidden-idle teardown backstop — any inbound bridge traffic counts as activity
+/// (see `NativeWebviewPlugin.resetIdleTimer`).
 ///
 /// `WKUserContentController` retains its script-message handlers strongly, and
 /// a native webview's `userContentController.add(handler, name: ...)` then retains the
@@ -65,6 +59,10 @@ class CloseArgs: Decodable {
 /// the cycle by removing this handler in the native webview controller's `deinit`.
 class NativeWebviewMessageBridge: NSObject, WKScriptMessageHandler {
   var channel: Channel
+  /// Called on every inbound message so the plugin resets its hidden-idle
+  /// teardown backstop. Weak-captures the plugin at the callsite to avoid a
+  /// retain cycle (the plugin owns the webview graph that retains this bridge).
+  var onActivity: (() -> Void)?
 
   init(channel: Channel) {
     self.channel = channel
@@ -84,6 +82,8 @@ class NativeWebviewMessageBridge: NSObject, WKScriptMessageHandler {
       let payload = message.body as? String
     else { return }
 
+    // Inbound bridge traffic is activity — push back the hidden-idle teardown.
+    onActivity?()
     let data: JsonObject = ["event": "message", "payload": payload]
     channel.send(data)
   }
@@ -91,56 +91,100 @@ class NativeWebviewMessageBridge: NSObject, WKScriptMessageHandler {
 
 /// Native web view plugin.
 ///
-/// `open` presents a `WKWebView` inside a `UINavigationController` (native
-/// Close button + the page URL as the title, until the caller claims it) as a
-/// page sheet. A document-start
-/// `WKUserScript` is injected into every page on every origin, and each ping it
-/// posts back is forwarded to the Rust caller through the per-native-webview
-/// [`Channel`] passed in `OpenArgs` (no JS-side bridge).
+/// `openUrl` ensures a `WKWebView` (inside a `UINavigationController` with a
+/// native Close button + the page URL as the title, until the caller claims it)
+/// exists — building it HIDDEN if absent — and navigates it to the requested
+/// URL. It does NOT present; `show` presents the (possibly previously-hidden)
+/// instance as a page sheet. A document-start `WKUserScript` is injected into
+/// every page on every origin, and each ping it posts back is forwarded to the
+/// Rust caller through the per-native-webview [`Channel`] passed in `OpenArgs`
+/// (no JS-side bridge).
+///
+/// Lifecycle: a USER dismissal (Close button or interactive sheet swipe) HIDES
+/// the instance (keeps it alive + running) and emits `hidden`; only an explicit
+/// `dispose` (or the teardown backstop) tears the webview down and emits
+/// `disposed`. While hidden, a 5-minute idle timer auto-`dispose`s if nothing
+/// resets it — see `resetIdleTimer`.
 class NativeWebviewPlugin: Plugin {
   /// `window.webkit.messageHandlers.<name>` the injected script posts to.
   static let messageHandlerName = "nativeWebview"
 
-  /// The currently-presented native webview, if any. Captured on `open` so
-  /// `evaluateJs` can `evaluateJavaScript(...)` into it; cleared on close to let
-  /// `evaluateJs` fail loudly with a "no native webview open" reject. Weak so a native
-  /// webview dismissed by other means (system back-swipe on the sheet, host app
-  /// teardown) doesn't keep the webview alive past its presentation.
-  private weak var currentWebView: WKWebView?
+  /// Hidden-idle teardown backstop: while the native webview is hidden, dispose
+  /// it if this many seconds pass with no activity (no inbound bridge message,
+  /// no command). Any activity resets the timer (see `resetIdleTimer`).
+  static let idleTeardownSeconds: TimeInterval = 5 * 60
 
-  /// The currently-presented native webview controller, if any. Captured on `open`
-  /// so `applyWindowText` / `patchWindowText` can update its chrome labels.
-  /// Same `weak` rationale as `currentWebView` — the controller's lifetime is
-  /// the UINavigationController's, not the plugin's.
-  private weak var currentController: NativeWebviewController?
+  /// The current native webview, if any. Captured on `openUrl` so `evaluateJs`
+  /// can `evaluateJavaScript(...)` into it; held STRONGLY so a hidden (dismissed
+  /// but not disposed) instance stays alive and running until an explicit
+  /// `dispose`. Cleared in `teardown()` (the only path that frees it) so
+  /// `evaluateJs` then fails loudly with a "no native webview open" reject.
+  private var currentWebView: WKWebView?
 
-  /// The currently-presented native webview's message bridge. Captured on `open` so a
-  /// subsequent `open()` against an existing native webview can re-bind its `channel`
-  /// without rebuilding the webview (Task #7 re-wire). Same weak rationale.
-  private weak var currentBridge: NativeWebviewMessageBridge?
+  /// The current native webview controller, if any. Captured on `openUrl` so
+  /// `applyWindowText` / `patchWindowText` can update its chrome labels, and so
+  /// `show` / `hide` can present / dismiss it. Held strongly for the same
+  /// keep-alive-while-hidden rationale as `currentWebView`.
+  private var currentController: NativeWebviewController?
 
-  /// Set when a same-tick `open()` arrives while a previous native webview is in its
-  /// dismiss animation (`controller.isBeingDismissed`). The pending closure
-  /// runs from `onClose` once the animation completes, presenting the new
-  /// native webview. When set, `onClose` suppresses the `Closed` channel echo — the
-  /// native webview logically continues with new wiring rather than firing a spurious
-  /// close (Task #10 close→reopen race guard).
-  private var onCloseFinishedHandler: (() -> Void)?
+  /// The current native webview's message bridge. Captured on `openUrl` so a
+  /// subsequent `openUrl()` against an existing native webview can re-bind its
+  /// `channel` without rebuilding the webview (re-wire). Held strongly for the
+  /// same keep-alive-while-hidden rationale.
+  private var currentBridge: NativeWebviewMessageBridge?
 
-  /// Set by a host `close(suppressCloseEvent: true)` before the dismiss so
-  /// `onClose` skips the `Closed` channel echo for exactly that dismissal.
-  /// Consumed (reset to `false`) the next time `onClose` fires — a user
-  /// dismissal (Close button, swipe) never sets it, so those still emit.
-  private var suppressNextCloseEvent = false
+  /// The `UINavigationController` wrapping `currentController`, retained so
+  /// `show` can re-present a previously-hidden instance and `hide` can dismiss
+  /// it without tearing it down. The webview graph lives under this controller.
+  private var currentNavigation: UINavigationController?
 
-  /// The `Invoke` whose `resolve` is owned by [`onCloseFinishedHandler`]. Held
-  /// separately so that if a *second* `open()` supersedes a still-queued one
-  /// (both during the same dismiss animation), the superseded invoke can be
+  /// Whether the current native webview is presently on screen. `openUrl`
+  /// preserves it (navigates in place); `show` sets it true, a user dismissal
+  /// and `hide` set it false. Tracked explicitly because a hidden instance is
+  /// kept alive, so "exists" and "is visible" are independent.
+  private var isVisible = false
+
+  /// Set when a same-tick `openUrl()` arrives while a previous native webview is
+  /// in its `dispose` teardown dismiss animation (`controller.isBeingDismissed`
+  /// during a dispose). The pending closure runs from `onDisposed` once the
+  /// animation completes, presenting a fresh native webview. When set,
+  /// `onDisposed` suppresses the `disposed` channel echo — the caller logically
+  /// continues with new wiring rather than firing a spurious teardown
+  /// (dispose→openUrl switch-demo race guard). A user-dismissal HIDE never arms
+  /// this (hide keeps the instance alive, so a following `openUrl` navigates in
+  /// place).
+  private var onDisposeFinishedHandler: (() -> Void)?
+
+  /// The `Invoke` whose `resolve` is owned by [`onDisposeFinishedHandler`]. Held
+  /// separately so that if a *second* `openUrl()` supersedes a still-queued one
+  /// (both during the same dispose animation), the superseded invoke can be
   /// rejected before its closure is overwritten — otherwise its JS promise
-  /// would hang forever (there's no timeout on `open`).
+  /// would hang forever (there's no timeout on `openUrl`).
   private var pendingInvoke: Invoke?
 
-  @objc public func open(_ invoke: Invoke) throws {
+  /// Set between a `dispose` (host command or idle backstop) and the
+  /// `handleDisposed` that completes its teardown. Distinguishes a dispose
+  /// teardown animation from a `hide` dismiss animation: a same-tick `openUrl`
+  /// queues a replay only when `isDisposing` is set (the instance is going
+  /// away), and rewires in place otherwise (a hide keeps the instance alive).
+  /// Without this, a `hide` + same-tick `openUrl` would wrongly queue a replay
+  /// onto `onDisposeFinishedHandler` that nothing ever runs (hide lands in
+  /// `handleHidden`, not `handleDisposed`), hanging the invoke.
+  private var isDisposing = false
+
+  /// Hidden-idle teardown timer. Armed by `hide` / a user dismissal (the only
+  /// states where an idle instance should be reclaimed), reset by any activity
+  /// (inbound bridge message or any command via `resetIdleTimer`), and
+  /// cancelled when the instance is shown or disposed. Fires on the main run
+  /// loop; the plugin's UI work is all main-thread.
+  private var idleTimer: Timer?
+
+  /// Ensure a native webview exists and navigate it to `url`. Builds the
+  /// webview HIDDEN if absent; on an existing instance, re-wires (channel /
+  /// initScript / chrome) and navigates in place, PRESERVING current visibility.
+  /// Never presents — call `show` to bring it to the foreground. Resolves with
+  /// `{opened: true}`. (Renamed from the former `open`.)
+  @objc public func openUrl(_ invoke: Invoke) throws {
     let args = try invoke.parseArgs(OpenArgs.self)
     guard let url = URL(string: args.url) else {
       invoke.reject("native-webview: invalid URL \(args.url)")
@@ -148,20 +192,26 @@ class NativeWebviewPlugin: Plugin {
     }
 
     DispatchQueue.main.async {
-      // Dismiss in flight (host `close()` or user swipe): queue a replay for
-      // when the controller finishes dismissing. `onClose` consumes the
-      // pending closure and suppresses the `Closed` echo so the native webview
-      // logically continues with new wiring. Last-write-wins on rapid
-      // repeats. (Task #10 race guard.)
-      if let controller = self.currentController, controller.isBeingDismissed {
-        // Supersede any already-queued open: settle its promise so a caller
-        // doing two quick `open()`s during the dismiss animation doesn't get
+      // Any command is activity — push back the hidden-idle teardown backstop.
+      self.resetIdleTimer()
+      // Dispose teardown in flight (a host `dispose()` whose dismiss animation
+      // hasn't completed): queue a replay for when the controller finishes
+      // tearing down, then present a fresh instance. `onDisposed` consumes the
+      // pending closure and suppresses the `disposed` echo so the caller
+      // logically continues with new wiring (dispose→openUrl switch-demo race
+      // guard). Last-write-wins on rapid repeats. A user-dismissal HIDE keeps
+      // the instance alive, so `isDisposing` stays false and it never reaches
+      // this branch — it falls through to the re-wire branch below and navigates
+      // in place even mid-hide-animation.
+      if self.isDisposing {
+        // Supersede any already-queued openUrl: settle its promise so a caller
+        // doing two quick `openUrl()`s during the dispose animation doesn't get
         // a permanently-hung `await` for the first one (last-write-wins would
         // otherwise drop its `resolve`).
         self.pendingInvoke?.reject(
           "native-webview: superseded by a newer open() before the popup finished closing")
         self.pendingInvoke = invoke
-        self.onCloseFinishedHandler = { [weak self] in
+        self.onDisposeFinishedHandler = { [weak self] in
           guard let self = self else { return }
           self.present(
             url: url,
@@ -175,14 +225,15 @@ class NativeWebviewPlugin: Plugin {
         }
         return
       }
-      // Already presented and not being dismissed: re-wire the existing
-      // native webview in place. Channel rebinds via `bridge.channel = …`; the new
-      // `initScript` is `eval`'d into the current page (NOT document-start
-      // for the just-loaded one — caveat documented in `desktop.rs`) and
-      // also added to the user content controller so future loads inside
-      // this native webview run it at document-start. `reopen` resets the URL-fallback
-      // claim state so the reused native webview starts fresh (URL back in the title),
-      // then re-applies the caller's initial chrome. (Task #7 re-wire.)
+      // Existing instance (visible OR hidden) and not being torn down: re-wire
+      // it in place, PRESERVING its current visibility (do NOT present here).
+      // Channel rebinds via `bridge.channel = …`; the new `initScript` is
+      // `eval`'d into the current page (NOT document-start for the just-loaded
+      // one — caveat documented in `desktop.rs`) and also added to the user
+      // content controller so future loads inside this native webview run it at
+      // document-start. `reopen` resets the URL-fallback claim state so the
+      // reused native webview starts fresh (URL back in the title), then
+      // re-applies the caller's initial chrome.
       if let existing = self.currentWebView, let bridge = self.currentBridge {
         bridge.channel = args.nativeWebviewEventChannel
         if let initScript = args.initScript {
@@ -212,6 +263,9 @@ class NativeWebviewPlugin: Plugin {
         invoke.resolve(["opened": true])
         return
       }
+      // No instance: build one HIDDEN (navigation and presentation are separate
+      // concerns — a background navigation never steals focus). `present`
+      // constructs the webview graph but does not call UIKit `present(_:)`.
       self.present(
         url: url,
         initScript: args.initScript,
@@ -224,13 +278,113 @@ class NativeWebviewPlugin: Plugin {
     }
   }
 
-  /// Evaluate JS inside the currently-presented native webview. Rejects if no
-  /// native webview is open (caller should `await invoke('plugin:native-webview|open',
-  /// …)` first). The evaluation itself is asynchronous and best-effort — its
-  /// return value and any thrown JS error are not surfaced.
+  /// Present the native webview — bring a freshly-built or previously-hidden
+  /// instance to the foreground as a page sheet. Resolves with `{shown: false}`
+  /// when no instance exists, `{shown: true}` once presented. Cancels the
+  /// hidden-idle teardown backstop (a visible webview is never idle-reclaimed).
+  @objc public func show(_ invoke: Invoke) throws {
+    DispatchQueue.main.async {
+      self.cancelIdleTimer()
+      guard let navigation = self.currentNavigation else {
+        invoke.resolve(["shown": false])
+        return
+      }
+      if self.isVisible {
+        // Already on screen — idempotent success.
+        invoke.resolve(["shown": true])
+        return
+      }
+      self.isVisible = true
+      self.topViewController()?.present(navigation, animated: true)
+      invoke.resolve(["shown": true])
+    }
+  }
+
+  /// Hide the native webview — remove it from view but keep it alive and
+  /// running (do NOT tear it down). Emits `NativeWebviewEvent.hidden` on the
+  /// channel and arms the hidden-idle teardown backstop. Resolves with
+  /// `{hidden: false}` when nothing was visible, `{hidden: true}` once hidden.
+  @objc public func hide(_ invoke: Invoke) throws {
+    DispatchQueue.main.async {
+      self.resetIdleTimer()
+      guard self.isVisible, let navigation = self.currentNavigation else {
+        invoke.resolve(["hidden": false])
+        return
+      }
+      // A host `hide()` lands in the same `handleHidden()` a user dismissal
+      // uses, so the `hidden` echo + idle-timer arming happen in exactly one
+      // place. UIKit does NOT call `presentationControllerDidDismiss` for a
+      // programmatic `dismiss(animated:)`, so `handleHidden` is invoked from the
+      // dismiss completion here (the swipe path calls it from the delegate),
+      // never double-fired.
+      navigation.dismiss(animated: true) { [weak self] in
+        self?.handleHidden()
+      }
+      invoke.resolve(["hidden": true])
+    }
+  }
+
+  /// Dispose the native webview — tear it down and free its resources (the
+  /// controller / WKWebView / bridge). Emits `NativeWebviewEvent.disposed` on
+  /// the channel and cancels the idle timer. Resolves with `{disposed: false}`
+  /// when none existed, `{disposed: true}` once torn down. Routes through the
+  /// controller's `requestDispose()` so a same-tick `openUrl` lands in the
+  /// deferral branch of `openUrl` rather than re-wiring a doomed webview.
+  @objc public func dispose(_ invoke: Invoke) throws {
+    DispatchQueue.main.async {
+      self.cancelIdleTimer()
+      guard let controller = self.currentController else {
+        invoke.resolve(["disposed": false])
+        return
+      }
+      // Arm the race guard so a same-tick `openUrl` queues a replay rather than
+      // re-wiring the doomed webview. Cleared in `handleDisposed`.
+      self.isDisposing = true
+      controller.requestDispose(wasVisible: self.isVisible)
+      invoke.resolve(["disposed": true])
+    }
+  }
+
+  /// (Re)arm the hidden-idle teardown backstop to fire `idleTeardownSeconds`
+  /// from now. Called on every activity — any inbound bridge message (via the
+  /// bridge's `onActivity`) and every command. The timer only runs while the
+  /// instance is HIDDEN (exists but not visible): when there's no instance, or
+  /// it's currently visible, this cancels any timer instead of arming one (a
+  /// visible webview is never idle-reclaimed). Main-thread only (Timer schedules
+  /// on the current run loop, and all the plugin's UI work is main-thread).
+  private func resetIdleTimer() {
+    idleTimer?.invalidate()
+    idleTimer = nil
+    guard self.currentController != nil, !self.isVisible else { return }
+    idleTimer = Timer.scheduledTimer(
+      withTimeInterval: NativeWebviewPlugin.idleTeardownSeconds,
+      repeats: false
+    ) { [weak self] _ in
+      guard let self = self, let controller = self.currentController, !self.isVisible
+      else { return }
+      // The instance has sat hidden + idle past the backstop — auto-dispose it
+      // (emits `disposed`), freeing the still-live (hidden) WebView and its JS
+      // thread. Arm the race guard for symmetry with a host `dispose`.
+      self.isDisposing = true
+      controller.requestDispose(wasVisible: false)
+    }
+  }
+
+  /// Cancel the hidden-idle teardown backstop (instance shown or disposed).
+  private func cancelIdleTimer() {
+    idleTimer?.invalidate()
+    idleTimer = nil
+  }
+
+  /// Evaluate JS inside the current native webview. Rejects if no native webview
+  /// exists (caller should `await invoke('plugin:native-webview|open_url', …)`
+  /// first). The evaluation itself is asynchronous and best-effort — its return
+  /// value and any thrown JS error are not surfaced.
   @objc public func evaluateJs(_ invoke: Invoke) throws {
     let args = try invoke.parseArgs(EvaluateJsArgs.self)
     DispatchQueue.main.async {
+      // Any command is activity — push back the hidden-idle teardown backstop.
+      self.resetIdleTimer()
       guard let webView = self.currentWebView else {
         invoke.reject("native-webview: no native webview open")
         return
@@ -263,26 +417,52 @@ class NativeWebviewPlugin: Plugin {
     }
   }
 
-  /// Dismiss the currently-presented native webview. Idempotent — resolves with
-  /// `{closedByRequest: false}` when no native webview is open. Delegates to the controller's
-  /// `requestClose()`, which routes through the same `dismiss` + `onClose`
-  /// pipeline the in-toolbar Close button uses.
-  ///
-  /// By default the host-initiated dismissal emits `NativeWebviewEvent::Closed` on the
-  /// channel just like the user-initiated one. When the caller passes
-  /// `suppressCloseEvent: true`, `onClose` skips that echo for this one
-  /// dismissal — the host already observed the terminal event that prompted the
-  /// close, so a second `Closed` would double-fire it.
-  @objc public func close(_ invoke: Invoke) throws {
-    let args = try invoke.parseArgs(CloseArgs.self)
-    DispatchQueue.main.async {
-      guard let controller = self.currentController else {
-        invoke.resolve(["closedByRequest": false])
-        return
-      }
-      self.suppressNextCloseEvent = args.suppressCloseEvent ?? false
-      controller.requestClose()
-      invoke.resolve(["closedByRequest": true])
+  /// React to the native webview being removed from view while kept alive — the
+  /// shared landing point for a USER dismissal (Close button or interactive
+  /// sheet swipe) and a host `hide()`. Marks the instance hidden, emits
+  /// `NativeWebviewEvent.hidden` on the latest channel, and arms the
+  /// hidden-idle teardown backstop. Does NOT tear anything down.
+  private func handleHidden() {
+    guard self.currentController != nil else { return }
+    self.isVisible = false
+    // NativeWebviewEvent.hidden (lowercase tag) — matches the `models.rs` shape.
+    // `JsonObject` annotation pins the non-throwing overload.
+    let data: JsonObject = ["event": "hidden"]
+    self.currentBridge?.channel.send(data)
+    // Now that it's hidden, start the idle backstop counting down.
+    self.resetIdleTimer()
+  }
+
+  /// React to the native webview being torn down — the landing point for a host
+  /// `dispose()`, the hidden-idle teardown backstop, and natural teardown
+  /// (controller deinit). Reads the latest (possibly re-wired) channel, frees
+  /// the captured state, and — unless a same-tick `openUrl` queued a replay —
+  /// emits `NativeWebviewEvent.disposed`.
+  private func handleDisposed() {
+    self.cancelIdleTimer()
+    // Read the latest (possibly re-wired) channel BEFORE clearing the bridge so
+    // the `disposed` echo follows a fresh `openUrl`'s channel to the most recent
+    // caller (matches desktop's `CurrentChannel` handling).
+    let disposeChannel = self.currentBridge?.channel
+    self.currentWebView = nil
+    self.currentController = nil
+    self.currentBridge = nil
+    self.currentNavigation = nil
+    self.isVisible = false
+    self.isDisposing = false
+    // If `openUrl()` queued a replay during the dispose teardown animation, run
+    // it now and skip the `disposed` echo — the caller logically continues with
+    // new wiring (switch-demo race guard). Otherwise this is a real teardown;
+    // emit `disposed` so the host's collector releases per-native-webview state.
+    if let pending = self.onDisposeFinishedHandler {
+      self.onDisposeFinishedHandler = nil
+      self.pendingInvoke = nil
+      pending()
+    } else {
+      // NativeWebviewEvent.disposed (lowercase tag) — matches the `models.rs`
+      // shape. `JsonObject` annotation pins the non-throwing overload.
+      let data: JsonObject = ["event": "disposed"]
+      disposeChannel?.send(data)
     }
   }
 
@@ -309,70 +489,54 @@ class NativeWebviewPlugin: Plugin {
     }
     let bridge = NativeWebviewMessageBridge(channel: channel)
     contentController.add(bridge, name: NativeWebviewPlugin.messageHandlerName)
-    // Capture so `open()`'s re-wire branch can swap `bridge.channel` without
-    // rebuilding the webview (Task #7).
+    // Capture so `openUrl()`'s re-wire branch can swap `bridge.channel` without
+    // rebuilding the webview, and so `handleHidden` / `handleDisposed` can read
+    // the latest channel.
     currentBridge = bridge
+    // Inbound bridge traffic is activity — reset the hidden-idle teardown.
+    bridge.onActivity = { [weak self] in self?.resetIdleTimer() }
 
     let configuration = WKWebViewConfiguration()
     configuration.userContentController = contentController
 
     let webView = WKWebView(frame: .zero, configuration: configuration)
     webView.load(URLRequest(url: url))
-    // Capture so `evaluateJs` can target it; cleared in `onClose` below.
+    // Capture so `evaluateJs` can target it; cleared in `handleDisposed`.
     currentWebView = webView
 
     let browser = NativeWebviewController(webView: webView, initialUrl: url.absoluteString)
     // Capture so `applyWindowText` can target the controller's chrome;
-    // cleared in `onClose` below alongside `currentWebView`.
+    // cleared in `handleDisposed` alongside `currentWebView`.
     currentController = browser
     // Apply caller-supplied initial chrome before presentation so the bar is
     // correct on first paint (nil = leave unchanged). The controller's URL
     // fallback shows the page URL in the highest slot the caller hasn't
-    // claimed, so an `open` with no title/subtitle still shows where the native webview
-    // navigated.
+    // claimed, so an `openUrl` with no title/subtitle still shows where the
+    // native webview navigated.
     browser.applyWindowText(
       title: initialTitle,
       subtitle: initialSubtitle,
       message: initialMessage
     )
-    browser.onClose = { [weak self] in
-      // Read the latest (possibly rewired) channel BEFORE tearing the bridge
-      // down: a second `open()` rebinds `bridge.channel`, and the `Closed`
-      // echo must follow it to the most recent caller — otherwise a caller
-      // that re-opened with a fresh channel never sees the close on its new
-      // channel (matches desktop's `CurrentChannel` handling).
-      let closeChannel = self?.currentBridge?.channel ?? channel
-      self?.currentWebView = nil
-      self?.currentController = nil
-      self?.currentBridge = nil
-      // Consume the host-close suppression flag regardless of which branch
-      // runs below, so it can never leak onto a later dismissal.
-      let suppress = self?.suppressNextCloseEvent ?? false
-      self?.suppressNextCloseEvent = false
-      // If `open()` queued a replay during the dismiss animation, run it
-      // now and skip the `Closed` echo — the native webview logically continues with
-      // new wiring (Task #10). Otherwise this is a real dismiss; emit
-      // `Closed` so the host's collector releases per-native-webview state — unless a
-      // host `close(suppressCloseEvent: true)` asked us to stay silent.
-      if let pending = self?.onCloseFinishedHandler {
-        self?.onCloseFinishedHandler = nil
-        self?.pendingInvoke = nil
-        pending()
-      } else if !suppress {
-        // NativeWebviewEvent.closed (lowercase tag) — matches the `models.rs` shape.
-        // `JsonObject` annotation pins the non-throwing overload (see above).
-        let data: JsonObject = ["event": "closed"]
-        closeChannel.send(data)
-      }
+    // A USER dismissal — the Close toolbar button or an interactive sheet
+    // swipe-to-dismiss — HIDES the instance (keeps it alive + running) and
+    // emits `hidden`. It does NOT tear down. Both affordances land here.
+    browser.onUserDismiss = { [weak self] in
+      self?.handleHidden()
+    }
+    // An explicit `dispose` (or the idle backstop / controller deinit) tears the
+    // webview down and emits `disposed`.
+    browser.onDispose = { [weak self] in
+      self?.handleDisposed()
     }
 
     let navigation = UINavigationController(rootViewController: browser)
     navigation.modalPresentationStyle = .pageSheet
-    // A `.pageSheet` is interactively swipe-dismissable. That gesture does
-    // NOT route through `requestClose()`, so register the controller as the
-    // sheet's presentation delegate to catch it and still fire `onClose`
-    // (see `presentationControllerDidDismiss`). Without this, a swipe-away
-    // never emits `NativeWebviewEvent::Closed` and the host's collector idle-times-out.
+    // A `.pageSheet` is interactively swipe-dismissable. That gesture does NOT
+    // route through the Close button, so register the controller as the sheet's
+    // presentation delegate to catch it and still HIDE + emit `hidden` (see
+    // `presentationControllerDidDismiss`). Without this, a swipe-away would
+    // silently leave a live-but-orphaned instance and never emit `hidden`.
     navigation.presentationController?.delegate = browser
     // Theme the native chrome to the app palette, tracking the OS appearance.
     let barAppearance = UINavigationBarAppearance()
@@ -395,7 +559,14 @@ class NativeWebviewPlugin: Plugin {
     // `toolbarItems` (back / forward) render. The view controller hides /
     // shows it on appear, but flipping it here too avoids a flash at open.
     navigation.isToolbarHidden = false
-    topViewController()?.present(navigation, animated: true)
+    // Build HIDDEN: capture the navigation controller so `show` can present it
+    // (and `hide` can dismiss it) without rebuilding, but do NOT present here —
+    // navigation (`openUrl`) and presentation (`show`) are separate concerns.
+    currentNavigation = navigation
+    isVisible = false
+    // The instance starts hidden; arm the idle-teardown backstop so a built-
+    // but-never-shown instance is eventually reclaimed. `show` cancels it.
+    resetIdleTimer()
   }
 
   /// The top-most presented view controller to present the native webview from.
@@ -498,12 +669,12 @@ class WebViewTitleView: UIView {
 
 /// Hosts the native webview's `WKWebView` with native chrome:
 ///
-/// - Left bar item: Close (dismisses the sheet, fires `onClose`).
+/// - Left bar item: Close (dismisses the sheet, fires `onUserDismiss` → HIDE).
 /// - Right bar item: Refresh (`webView.reload()`).
 /// - Title view: `WebViewTitleView` — title + subtitle slots driven by the
 ///   URL-fallback state machine. The current page URL falls through the
 ///   highest slot the caller hasn't claimed (title, then subtitle); once the
-///   caller supplies a value via `patchWindowText` (or `open`'s initial chrome)
+///   caller supplies a value via `patchWindowText` (or `openUrl`'s initial chrome)
 ///   that slot is theirs and the URL drops to the next, then to neither.
 ///   `url`-KVO keeps whichever slot still shows the URL in sync with
 ///   navigation. See `applyWindowText` / `renderUrlFallback`.
@@ -531,8 +702,21 @@ class NativeWebviewController: UIViewController, UIAdaptivePresentationControlle
     action: #selector(goForwardTapped)
   )
 
-  /// Called after the sheet is dismissed via the Close button.
-  var onClose: (() -> Void)?
+  /// Called when the user dismisses the sheet — the Close toolbar button or an
+  /// interactive swipe-to-dismiss. The plugin HIDES the instance (keeps it
+  /// alive + running) and emits `hidden`; nothing is torn down here.
+  var onUserDismiss: (() -> Void)?
+
+  /// Called when the webview is torn down — a host `dispose()`, the hidden-idle
+  /// backstop, or natural teardown (this controller's `deinit`). The plugin
+  /// frees its captured state and emits `disposed`.
+  var onDispose: (() -> Void)?
+
+  /// Guards against a double `onDispose` between `requestDispose` and `deinit`:
+  /// set once the instance has been disposed so the `deinit` backstop stays
+  /// silent (a normal hide leaves this `false`, so an eventual deallocation
+  /// without an explicit dispose still emits `disposed`).
+  private var didDispose = false
 
   /// The content webview's current full URL — the value the URL fallback paints
   /// into whichever slot the caller hasn't claimed. Updated by `onNavigate`
@@ -630,34 +814,47 @@ class NativeWebviewController: UIViewController, UIAdaptivePresentationControlle
   }
 
   @objc private func closeTapped() {
-    requestClose()
-  }
-
-  /// Programmatic close path shared by the in-toolbar Close button and the
-  /// plugin's host-initiated `close` command. Animates dismissal and fires
-  /// `onClose` on completion — so the channel's `NativeWebviewEvent::Closed` lands
-  /// once per native webview regardless of whether dismissal was user- or host-
-  /// initiated.
-  func requestClose() {
+    // The toolbar Close button is a USER dismissal — HIDE (keep alive), not a
+    // teardown. Animate the sheet away, then fire `onUserDismiss` from the
+    // completion. UIKit does NOT call `presentationControllerDidDismiss` for a
+    // programmatic `dismiss(animated:)`, so this does not double-emit with the
+    // swipe path.
     dismiss(animated: true) { [weak self] in
-      self?.onClose?()
+      self?.onUserDismiss?()
     }
   }
 
-  /// Interactive dismissal (swiping the page sheet down) bypasses
-  /// `requestClose()`, so UIKit reports it here instead. Route it through the
-  /// same `onClose` path so `NativeWebviewEvent::Closed` fires exactly once whether the
-  /// user tapped Close, the host called `close`, or the sheet was swiped away.
-  /// UIKit does NOT call this for programmatic `dismiss(animated:)`, so the
-  /// Close-button / host-`close` path (which fires `onClose` from its dismiss
-  /// completion) does not double-emit.
+  /// Tear the instance down — the landing point for a host `dispose()` and the
+  /// hidden-idle backstop. When the sheet is on screen (`wasVisible`), animate
+  /// it away first and fire `onDispose` from the dismiss completion; when it's
+  /// already hidden there is nothing to dismiss, so fire `onDispose` directly.
+  /// Marks `didDispose` so the `deinit` backstop stays silent. UIKit does NOT
+  /// call `presentationControllerDidDismiss` for this programmatic dismiss, so
+  /// the swipe path never double-fires.
+  func requestDispose(wasVisible: Bool) {
+    didDispose = true
+    if wasVisible {
+      dismiss(animated: true) { [weak self] in
+        self?.onDispose?()
+      }
+    } else {
+      onDispose?()
+    }
+  }
+
+  /// Interactive dismissal (swiping the page sheet down) bypasses the Close
+  /// button, so UIKit reports it here instead. It is a USER dismissal — route it
+  /// through the same `onUserDismiss` (HIDE) path. UIKit does NOT call this for
+  /// programmatic `dismiss(animated:)`, so the Close-button / host-`hide` /
+  /// host-`dispose` paths (which fire from their own dismiss completions) do not
+  /// double-emit.
   func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
-    onClose?()
+    onUserDismiss?()
   }
 
   /// Apply the caller-supplied window text in one call — `nil` = leave
   /// unchanged; any present value (including `""`) *claims* that slot for the
-  /// caller and is shown verbatim. Shared by `open`'s initial chrome, the
+  /// caller and is shown verbatim. Shared by `openUrl`'s initial chrome, the
   /// `patchWindowText` command, and the re-wire path so the claim + patch
   /// semantics live in one place. After applying, `renderUrlFallback` paints the
   /// page URL into the highest slot the caller still hasn't claimed.
@@ -694,7 +891,7 @@ class NativeWebviewController: UIViewController, UIAdaptivePresentationControlle
     renderUrlFallback()
   }
 
-  /// Reset the claim state for a re-`open()` against this live native webview: the new
+  /// Reset the claim state for a re-`openUrl()` against this live native webview: the new
   /// open starts with both slots unclaimed (URL back in the title) and a blank
   /// message, then re-applies the caller's initial chrome. Mirrors what a fresh
   /// `present()` shows, so reusing the native webview is indistinguishable from
@@ -757,6 +954,14 @@ class NativeWebviewController: UIViewController, UIAdaptivePresentationControlle
     canGoBackObservation?.invalidate()
     canGoForwardObservation?.invalidate()
     urlObservation?.invalidate()
+    // Natural-teardown backstop: if this controller is being deallocated without
+    // an explicit `dispose` having run (e.g. the host app tearing down its view
+    // hierarchy while the instance was still hidden), emit `disposed` so the
+    // host's collector still sees a terminal event. Skipped when `requestDispose`
+    // already fired (it set `didDispose`).
+    if !didDispose {
+      onDispose?()
+    }
     // `WKUserContentController` retains its script-message handlers strongly;
     // drop ours so the bridge (and the webview graph behind it) can deallocate,
     // matching the lifecycle `NativeWebviewMessageBridge`'s doc comment describes.

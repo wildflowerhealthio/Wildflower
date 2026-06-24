@@ -7,8 +7,8 @@ use serde::de::DeserializeOwned;
 use tauri::{plugin::PluginApi, AppHandle, Runtime};
 
 use crate::models::{
-    CloseRequest, CloseResponse, EvaluateJsRequest, EvaluateJsResponse, OpenRequest, OpenResponse,
-    PatchWindowTextRequest, PatchWindowTextResponse,
+    DisposeResponse, EvaluateJsRequest, EvaluateJsResponse, HideResponse, OpenRequest,
+    OpenResponse, PatchWindowTextRequest, PatchWindowTextResponse, ShowResponse,
 };
 
 #[cfg(target_os = "ios")]
@@ -41,15 +41,28 @@ pub fn init<R: Runtime, C: DeserializeOwned>(
 pub struct NativeWebview<R: Runtime>(tauri::plugin::PluginHandle<R>);
 
 impl<R: Runtime> NativeWebview<R> {
-    /// Present the native webview by invoking the Swift/Kotlin `open` command.
-    pub fn open(&self, payload: OpenRequest) -> crate::Result<()> {
+    /// Ensure a native webview exists (created hidden if absent) and navigate it
+    /// to `payload.url` by invoking the Swift/Kotlin `openUrl` command. Does not
+    /// change visibility — call [`show`](Self::show) to present.
+    pub fn open_url(&self, payload: OpenRequest) -> crate::Result<()> {
         // Validate the URL up front (http(s)-only — see [`crate::url_scheme`])
         // so every backend rejects a bad or non-http(s) URL the same way — the
         // Android native side otherwise hands an unvalidated string straight to
         // `WebView.loadUrl` and still resolves `opened: true`.
         crate::url_scheme::parse_http_url(&payload.url)?;
         self.0
-            .run_mobile_plugin::<OpenResponse>("open", payload)
+            .run_mobile_plugin::<OpenResponse>("openUrl", payload)
+            .map_err(|error| crate::Error::PluginInvoke(error.to_string()))?;
+        Ok(())
+    }
+
+    /// Present the native webview — bring a freshly-created or previously-hidden
+    /// instance to the foreground by invoking the Swift/Kotlin `show` command.
+    /// Idempotent — the native side resolves with `{shown: false}` if none
+    /// exists.
+    pub fn show(&self) -> crate::Result<()> {
+        self.0
+            .run_mobile_plugin::<ShowResponse>("show", ())
             .map_err(|error| crate::Error::PluginInvoke(error.to_string()))?;
         Ok(())
     }
@@ -77,20 +90,24 @@ impl<R: Runtime> NativeWebview<R> {
         Ok(())
     }
 
-    /// Dismiss the currently-presented native webview. Idempotent — the native side
-    /// resolves with `{closedByRequest: false}` if no native webview was open. The native
-    /// `dismiss` callback fires after the animation and lands a
-    /// `NativeWebviewEvent::Closed` on the open channel — unless
-    /// `suppress_close_event` is `true`, which makes that one dismissal silent
-    /// (the host already observed the terminal event that triggered the close).
-    pub fn close(&self, suppress_close_event: bool) -> crate::Result<()> {
+    /// Hide the currently-presented native webview — remove it from view but
+    /// keep it alive and running. Idempotent — the native side resolves with
+    /// `{hidden: false}` if none was visible. The native side emits
+    /// `NativeWebviewEvent::Hidden` on the open channel once hidden.
+    pub fn hide(&self) -> crate::Result<()> {
         self.0
-            .run_mobile_plugin::<CloseResponse>(
-                "close",
-                CloseRequest {
-                    suppress_close_event,
-                },
-            )
+            .run_mobile_plugin::<HideResponse>("hide", ())
+            .map_err(|error| crate::Error::PluginInvoke(error.to_string()))?;
+        Ok(())
+    }
+
+    /// Dispose the native webview — tear it down (visible or hidden) and free
+    /// its resources. Idempotent — the native side resolves with
+    /// `{disposed: false}` if none existed. The native side emits
+    /// `NativeWebviewEvent::Disposed` on the open channel once torn down.
+    pub fn dispose(&self) -> crate::Result<()> {
+        self.0
+            .run_mobile_plugin::<DisposeResponse>("dispose", ())
             .map_err(|error| crate::Error::PluginInvoke(error.to_string()))?;
         Ok(())
     }

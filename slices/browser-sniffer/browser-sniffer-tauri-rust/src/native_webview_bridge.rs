@@ -12,12 +12,13 @@
 //!   [`validate_native_webview_message`] checks the (untrusted) envelope — it
 //!   must target `BRIDGE_EVENT` AND carry an allowlisted data-plane `_tag` —
 //!   then emits its inner payload on the `BRIDGE_EVENT` channel (so SPA + Rust
-//!   listeners see the `{_tag:…}` shape directly); `NativeWebviewEvent::Closed`
-//!   → emit `{"_tag":"SniffingComplete"}` so the collector releases per-request
-//!   state. The plugin suppresses `Closed` for host-initiated closes (see
-//!   `sniffing_complete::handle`), so a delivered `Closed` is always a user / OS
-//!   dismissal. The channel is cloned and reused across every `open` — its
-//!   identifier is preserved by `Clone`, so the same handler fires for every
+//!   listeners see the `{_tag:…}` shape directly).
+//!   `NativeWebviewEvent::Hidden` / `NativeWebviewEvent::Disposed` are
+//!   lifecycle-only — the sniff's terminal `SniffingComplete` is SPA-driven, so
+//!   neither re-emits it: a hide keeps the native webview running and sniffing
+//!   in the background, and a dispose happens *because* the SPA already emitted
+//!   `SniffingComplete`. The channel is cloned and reused across every `open` —
+//!   its identifier is preserved by `Clone`, so the same handler fires for every
 //!   native webview.
 //!
 //! - **Host → native webview** ([`forward_to_native_webview`]). The bridge
@@ -30,13 +31,12 @@
 //!
 //! - **Mobile**: the native webview posts on the `webkit.messageHandlers` /
 //!   `@JavascriptInterface` bridges → Swift/Kotlin → `channel.send`. The
-//!   plugin's Swift/Kotlin emit `Message` (envelope JSON) and `Closed`.
+//!   plugin's Swift/Kotlin emit `Message` (envelope JSON) plus `Hidden` /
+//!   `Disposed` lifecycle events.
 //! - **Desktop**: content webview emits directly on `BRIDGE_EVENT`, so the
 //!   `Message` arm is never exercised. The plugin's desktop backend fires
-//!   `Closed` through the channel when the native webview window is destroyed
-//!   (user clicks the OS X), so the `Closed` arm still translates that to
-//!   `SniffingComplete` on the bridge — keeping collector idle-timeouts off
-//!   the happy path.
+//!   `Hidden` when the user dismisses the window (it's hidden, not destroyed,
+//!   and keeps running) and `Disposed` when the window is torn down.
 
 use std::borrow::Cow;
 use std::fmt;
@@ -247,19 +247,21 @@ fn dispatch_body(app: &AppHandle, body: &InvokeResponseBody) {
                 }
             }
         }
-        NativeWebviewEvent::Closed => {
-            // The plugin suppresses this echo for host-initiated closes
-            // (`sniffing_complete::handle` calls `close(suppress_close_event =
-            // true)`), so a `Closed` that reaches here is always a user / OS
-            // dismissal — emit `SniffingComplete` so the collector releases
-            // per-request state. Same shape as the in-page top bar's Close
-            // button emit on the legacy Tauri path.
-            if let Err(error) = app.emit(
-                BRIDGE_EVENT,
-                serde_json::json!({ "_tag": events::SNIFFING_COMPLETE }),
-            ) {
-                log::warn!("[browser-sniffer] failed to emit SniffingComplete on close: {error}");
-            }
+        NativeWebviewEvent::Hidden => {
+            // A user dismissal hid the native webview, but it stays alive and
+            // keeps sniffing in the background. This is NOT terminal — the SPA
+            // owns `SniffingComplete` — so emit nothing; collection continues
+            // until the SPA decides the sniff is done.
+            log::debug!(
+                "[browser-sniffer] native webview hidden; sniff continues in the background"
+            );
+        }
+        NativeWebviewEvent::Disposed => {
+            // The native webview was torn down — the host disposed it (after the
+            // SPA's own `SniffingComplete`) or the teardown backstop fired. The
+            // SPA already observed the terminal `SniffingComplete`, so there's
+            // nothing to re-emit here.
+            log::debug!("[browser-sniffer] native webview disposed");
         }
     }
 }

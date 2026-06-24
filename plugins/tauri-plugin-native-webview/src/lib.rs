@@ -51,8 +51,8 @@ use tauri::{
 
 pub use error::{Error, Result};
 pub use models::{
-    CloseRequest, CloseResponse, EvaluateJsRequest, EvaluateJsResponse, NativeWebviewEvent,
-    OpenRequest, OpenResponse, PatchWindowTextRequest, PatchWindowTextResponse,
+    DisposeResponse, EvaluateJsRequest, EvaluateJsResponse, HideResponse, NativeWebviewEvent,
+    OpenRequest, OpenResponse, PatchWindowTextRequest, PatchWindowTextResponse, ShowResponse,
 };
 
 mod commands;
@@ -88,10 +88,12 @@ impl<R: Runtime, T: Manager<R>> NativeWebviewExt<R> for T {
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("native-webview")
         .invoke_handler(tauri::generate_handler![
-            commands::open,
+            commands::open_url,
             commands::evaluate_js,
             commands::patch_window_text,
-            commands::close
+            commands::show,
+            commands::hide,
+            commands::dispose
         ])
         .setup(|app, api| {
             #[cfg(mobile)]

@@ -4,6 +4,8 @@ import android.app.Activity
 import android.app.Dialog
 import android.content.res.Configuration
 import android.graphics.Bitmap
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.MenuItem
@@ -15,6 +17,7 @@ import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toolbar
+import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -31,10 +34,10 @@ import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
 
 /**
- * Arguments decoded from `invoke('plugin:native-webview|open', { url, initScript, nativeWebviewEventChannel })`.
+ * Arguments decoded from `invoke('plugin:native-webview|open_url', { url, initScript, nativeWebviewEventChannel })`.
  * `nativeWebviewEventChannel` is a Tauri `Channel<NativeWebviewEvent>` the caller receives
- * native webview events on (`{"event":"message", "payload": …}` / `{"event":"closed"}`) —
- * matches the `models.rs` `NativeWebviewEvent` serde shape.
+ * native webview events on (`{"event":"message", "payload": …}` / `{"event":"hidden"}` /
+ * `{"event":"disposed"}`) — matches the `models.rs` `NativeWebviewEvent` serde shape.
  */
 @InvokeArg
 class OpenArgs {
@@ -75,24 +78,19 @@ class PatchWindowTextArgs {
 }
 
 /**
- * Arguments decoded from
- * `invoke('plugin:native-webview|close', { suppressCloseEvent? })`. Matches
- * `CloseRequest`'s camelCase serde wire shape. Defaults to `false` (absent key
- * = emit `Closed`); a host that already observed the terminal event prompting
- * the close sets `true` so the resulting dismissal stays silent on the channel.
- */
-@InvokeArg
-class CloseArgs {
-    var suppressCloseEvent: Boolean = false
-}
-
-/**
- * Android counterpart to the iOS `NativeWebviewPlugin`. Presents an
+ * Android counterpart to the iOS `NativeWebviewPlugin`. Hosts an
  * `android.webkit.WebView` in a fullscreen `Dialog` with a native `Toolbar`
  * (Close + the page URL as the title, until the caller claims it), injecting
- * the caller's document-start script on any
- * origin and forwarding the page's opaque JSON messages to the host webview via
- * the plugin event channel.
+ * the caller's document-start script on any origin and forwarding the page's
+ * opaque JSON messages to the host webview via the plugin event channel.
+ *
+ * Lifecycle (mirrors iOS / desktop): `openUrl` ensures a WebView exists (built
+ * with its `Dialog` NOT yet shown if absent) and navigates it; `show` presents
+ * the dialog. A USER dismissal (Toolbar Close / system back) HIDES it
+ * (`dialog.hide()` — kept alive + running) and emits `hidden`; only an explicit
+ * `dispose` (or the teardown backstop) destroys the WebView and emits
+ * `disposed`. While hidden, a 5-minute idle timer auto-`dispose`s unless reset
+ * by activity (inbound bridge message or any command).
  */
 @TauriPlugin
 class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
@@ -102,6 +100,14 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
 
         /** Menu item id for the top-toolbar Refresh action. */
         private const val MENU_ITEM_REFRESH = 1
+
+        /**
+         * Hidden-idle teardown backstop: while the native webview is hidden,
+         * dispose it if this many milliseconds pass with no activity (no inbound
+         * bridge message, no command). Any activity resets the timer (see
+         * [resetIdleTimer]).
+         */
+        private const val IDLE_TEARDOWN_MS = 5L * 60L * 1000L
 
         // App palette as 0xAARRGGBB ints, one pair per token. Same tokens as the
         // web app's --color-background / --color-neutral-1 / --color-neutral-4
@@ -115,13 +121,30 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
         private const val COLOR_NEUTRAL_4_DARK = 0xFFB3A294.toInt()
     }
 
+    /**
+     * The current native webview's `Dialog`, if any. Built (but not shown) by
+     * [present]; presented by [show] (`dialog.show()`); removed from view but
+     * KEPT ALIVE by a hide / user dismissal (`dialog.hide()`); destroyed by
+     * [dispose] (`dialog.dismiss()` + WebView teardown). Held across a hide so
+     * the same live instance can be re-presented.
+     */
     private var dialog: Dialog? = null
 
     /**
-     * The currently-presented native webview, if any. Captured on `open` so
-     * `evaluateJs` can `evaluateJavascript(...)` into it; cleared on dismiss so
-     * `evaluateJs` fails loudly with a "no native webview open" reject after the user has
-     * closed the native webview.
+     * Whether the current native webview is presently on screen. [openUrl]
+     * preserves it (navigates in place); [show] sets it true; a user dismissal
+     * and [hide] set it false. Tracked explicitly because a hidden instance is
+     * kept alive, so "exists" and "is visible" are independent — unlike the old
+     * design where `dialog.isShowing` was the sole liveness signal.
+     */
+    private var isVisible = false
+
+    /**
+     * The current native webview, if any. Captured on `openUrl` so
+     * `evaluateJs` can `evaluateJavascript(...)` into it; held across a hide
+     * (the WebView keeps running while hidden) and cleared only on dispose, so
+     * `evaluateJs` fails loudly with a "no native webview open" reject after the
+     * instance is disposed.
      */
     private var currentWebView: WebView? = null
 
@@ -172,61 +195,89 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
     private var currentDocStartScript: ScriptHandler? = null
 
     /**
-     * Set in [dismissDialog] before [Dialog.dismiss], cleared in the
-     * `setOnDismissListener`. While true, [open] queues its request into
-     * [onCloseFinishedHandler] rather than rewiring a doomed WebView —
+     * Set in [disposeDialog] before the dispose [Dialog.dismiss], cleared in the
+     * dispose's `setOnDismissListener`. While true, [openUrl] queues its request
+     * into [onDisposeFinishedHandler] rather than rewiring a doomed WebView —
      * `Dialog.dismiss()` only enqueues teardown via the UI thread, so a
-     * same-tick re-`open()` would otherwise see `isShowing == true` and a
-     * non-null `currentWebView` and incorrectly take the rewire branch
-     * (Task #10 race guard).
+     * same-tick re-`openUrl()` would otherwise see a non-null `currentWebView`
+     * and incorrectly take the rewire branch (dispose→openUrl switch-demo race
+     * guard).
+     *
+     * Crucially this is set ONLY by a dispose — a [hide] keeps the instance
+     * alive, so during a hide animation `isDisposing` stays false and a same-tick
+     * `openUrl` rewires in place instead of queuing a replay that would never run.
      */
-    private var isClosing = false
+    private var isDisposing = false
 
     /**
-     * Replay closure set by [open] when a dismiss is in flight; consumed by
-     * the `setOnDismissListener`. When set, the dismiss listener suppresses
-     * the `Closed` channel echo and runs the replay — the native webview logically
-     * continues with new wiring rather than firing a spurious close.
-     * Last-write-wins on rapid repeats.
+     * Replay closure set by [openUrl] when a dispose is in flight; consumed by
+     * the dispose's dismiss path. When set, the dispose suppresses the `disposed`
+     * channel echo and runs the replay — the caller logically continues with new
+     * wiring rather than firing a spurious teardown. Last-write-wins on rapid
+     * repeats.
      */
-    private var onCloseFinishedHandler: (() -> Unit)? = null
+    private var onDisposeFinishedHandler: (() -> Unit)? = null
 
     /**
-     * The [Invoke] whose `resolve` is owned by [onCloseFinishedHandler]. Held
-     * separately so a *second* `open()` that supersedes a still-queued one
-     * (both during the same dismiss) can reject the superseded invoke before
+     * The [Invoke] whose `resolve` is owned by [onDisposeFinishedHandler]. Held
+     * separately so a *second* `openUrl()` that supersedes a still-queued one
+     * (both during the same dispose) can reject the superseded invoke before
      * its closure is overwritten — otherwise its JS promise hangs forever
-     * (there's no timeout on `open`). Task #10 last-write-wins fix.
+     * (there's no timeout on `openUrl`).
      */
     private var pendingInvoke: Invoke? = null
 
     /**
-     * Set by a host `close(suppressCloseEvent = true)` before [dismissDialog]
-     * so the `setOnDismissListener` skips the `Closed` channel echo for exactly
-     * that dismissal. Consumed (reset to `false`) every time the listener fires
-     * — user dismissals (Toolbar Close, system back) never set it, so those
-     * still emit.
+     * UI-thread handler the hidden-idle teardown backstop posts on. The backstop
+     * runnable ([idleTeardownRunnable]) auto-`dispose`s the instance after
+     * [IDLE_TEARDOWN_MS] of inactivity while hidden; any activity (inbound bridge
+     * message or any command) reposts it via [resetIdleTimer]. Posting on the
+     * main looper keeps the teardown on the UI thread, where all the dialog /
+     * WebView work happens.
      */
-    private var suppressNextCloseEvent = false
+    private val idleHandler = Handler(Looper.getMainLooper())
 
+    /**
+     * The hidden-idle teardown action: auto-`dispose` the instance (emit
+     * `disposed`) if it has sat hidden + idle past [IDLE_TEARDOWN_MS]. Guards on
+     * still-hidden-and-present so a race with a `show` / `dispose` that landed
+     * first is a no-op. Posted / removed via [resetIdleTimer] / [cancelIdleTimer].
+     */
+    private val idleTeardownRunnable = Runnable {
+        if (dialog != null && !isVisible) {
+            disposeDialog()
+        }
+    }
+
+    /**
+     * Ensure a native webview exists and navigate it to `url`. Builds the
+     * WebView + its (not-yet-shown) `Dialog` if absent; on an existing instance
+     * (visible OR hidden) re-wires (channel / initScript / chrome) and navigates
+     * in place, PRESERVING current visibility. Never shows the dialog — call
+     * [show] to present it. Resolves with `{opened: true}`. (Renamed from the
+     * former `open`.)
+     */
     @Command
-    fun open(invoke: Invoke) {
+    fun openUrl(invoke: Invoke) {
         val args = invoke.parseArgs(OpenArgs::class.java)
         activity.runOnUiThread {
-            // Dismiss in flight: queue replay for the dismiss listener
-            // (Task #10 race guard). `Dialog.dismiss()` enqueues teardown to
-            // the UI thread; `isClosing` covers the gap until the listener
-            // fires.
-            if (isClosing) {
-                // Supersede any already-queued open: settle its promise so two
-                // quick `open()`s during the dismiss don't leave the first one's
-                // `await` hung forever (last-write-wins would otherwise drop its
-                // `resolve`).
+            // Any command is activity — push back the hidden-idle teardown backstop.
+            resetIdleTimer()
+            // Dispose in flight: queue replay for the dispose's dismiss path
+            // (switch-demo race guard). `Dialog.dismiss()` enqueues teardown to
+            // the UI thread; `isDisposing` covers the gap until the listener
+            // fires. A HIDE never sets `isDisposing`, so a same-tick `openUrl`
+            // during a hide animation skips this branch and rewires in place.
+            if (isDisposing) {
+                // Supersede any already-queued openUrl: settle its promise so two
+                // quick `openUrl()`s during the dispose don't leave the first
+                // one's `await` hung forever (last-write-wins would otherwise drop
+                // its `resolve`).
                 pendingInvoke?.reject(
                     "native-webview: superseded by a newer open() before the popup finished closing"
                 )
                 pendingInvoke = invoke
-                onCloseFinishedHandler = {
+                onDisposeFinishedHandler = {
                     present(
                         args.url,
                         args.initScript,
@@ -244,15 +295,15 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
             val existing = currentWebView
             val bridge = currentBridge
             val d = dialog
-            // Already presented and not in flight to close: rewire the
-            // existing native webview in place (Task #7). Channel rebinds via
-            // `bridge.channel = …`; the new `initScript` is `eval`'d into the
-            // current page (NOT document-start for the just-loaded one —
-            // caveat documented in `desktop.rs`) and also added via
-            // `WebViewCompat.addDocumentStartJavaScript` so future loads run
-            // it at document-start (when supported). Initial chrome
+            // Existing instance (visible OR hidden) and not being disposed:
+            // rewire it in place, PRESERVING its current visibility (do NOT show
+            // here). Channel rebinds via `bridge.channel = …`; the new
+            // `initScript` is `eval`'d into the current page (NOT document-start
+            // for the just-loaded one — caveat documented in `desktop.rs`) and
+            // also added via `WebViewCompat.addDocumentStartJavaScript` so future
+            // loads run it at document-start (when supported). Initial chrome
             // re-applies via the existing toolbar / message bindings.
-            if (existing != null && bridge != null && d != null && d.isShowing) {
+            if (existing != null && bridge != null && d != null) {
                 bridge.channel = args.nativeWebviewEventChannel
                 args.initScript?.let { script ->
                     existing.evaluateJavascript(script, null)
@@ -298,15 +349,17 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
     }
 
     /**
-     * Evaluate JS inside the currently-presented native webview. Rejects if no
-     * native webview is open (caller should `await invoke('plugin:native-webview|open',
-     * …)` first). The evaluation itself is asynchronous and best-effort — its
-     * return value and any thrown JS error are not surfaced.
+     * Evaluate JS inside the current native webview. Rejects if no native webview
+     * exists (caller should `await invoke('plugin:native-webview|open_url', …)`
+     * first). The evaluation itself is asynchronous and best-effort — its return
+     * value and any thrown JS error are not surfaced.
      */
     @Command
     fun evaluateJs(invoke: Invoke) {
         val args = invoke.parseArgs(EvaluateJsArgs::class.java)
         activity.runOnUiThread {
+            // Any command is activity — push back the hidden-idle teardown backstop.
+            resetIdleTimer()
             val webView = currentWebView
             if (webView == null) {
                 invoke.reject("native-webview: no native webview open")
@@ -331,6 +384,8 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
     fun patchWindowText(invoke: Invoke) {
         val args = invoke.parseArgs(PatchWindowTextArgs::class.java)
         activity.runOnUiThread {
+            // Any command is activity — push back the hidden-idle teardown backstop.
+            resetIdleTimer()
             val toolbar = currentToolbar
             val messageView = currentMessageView
             if (toolbar == null || messageView == null) {
@@ -350,47 +405,147 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
     }
 
     /**
-     * Dismiss the currently-presented native webview. Idempotent — resolves with
-     * `{closedByRequest: false}` when no native webview is open. Routes through
-     * [dismissDialog] so a same-tick reopen lands in the deferral branch of
-     * [open] rather than rewiring a doomed WebView.
-     *
-     * By default the dismiss emits `NativeWebviewEvent::Closed` on the channel (like a
-     * user dismissal). When the caller passes `suppressCloseEvent = true`, the
-     * `setOnDismissListener` skips that echo for this one dismissal — the host
-     * already observed the terminal event that prompted the close.
+     * Present the native webview — bring a freshly-built or previously-hidden
+     * instance to the foreground (`dialog.show()`). Resolves with
+     * `{shown: false}` when no instance exists, `{shown: true}` once presented.
+     * Cancels the hidden-idle teardown backstop (a visible webview is never
+     * idle-reclaimed).
      */
     @Command
-    fun close(invoke: Invoke) {
-        val args = invoke.parseArgs(CloseArgs::class.java)
+    fun show(invoke: Invoke) {
         activity.runOnUiThread {
+            cancelIdleTimer()
             val d = dialog
-            if (d == null || !d.isShowing) {
+            if (d == null) {
                 val result = JSObject()
-                result.put("closedByRequest",false)
+                result.put("shown", false)
                 invoke.resolve(result)
                 return@runOnUiThread
             }
-            suppressNextCloseEvent = args.suppressCloseEvent
-            dismissDialog()
+            // `dialog.show()` on an already-showing dialog is a no-op, so this is
+            // idempotent for an already-visible instance.
+            d.show()
+            isVisible = true
             val result = JSObject()
-            result.put("closedByRequest",true)
+            result.put("shown", true)
             invoke.resolve(result)
         }
     }
 
     /**
-     * Dismiss the native webview with the race guard ([isClosing]) set so a same-tick
-     * `open()` queues a replay via [onCloseFinishedHandler] rather than
-     * navigating the not-yet-torn-down WebView. Every dismiss path (host
-     * `close`, toolbar Close button, system back) must go through this — the
-     * existing onKeyListener for back was changed to call this helper too.
+     * Hide the native webview — remove it from view but keep it alive and
+     * running (do NOT tear it down). Routes through [hideDialog], which emits
+     * `NativeWebviewEvent::Hidden` and arms the hidden-idle teardown backstop.
+     * Resolves with `{hidden: false}` when nothing was visible, `{hidden: true}`
+     * once hidden.
      */
-    private fun dismissDialog() {
+    @Command
+    fun hide(invoke: Invoke) {
+        activity.runOnUiThread {
+            resetIdleTimer()
+            val d = dialog
+            if (d == null || !isVisible) {
+                val result = JSObject()
+                result.put("hidden", false)
+                invoke.resolve(result)
+                return@runOnUiThread
+            }
+            hideDialog()
+            val result = JSObject()
+            result.put("hidden", true)
+            invoke.resolve(result)
+        }
+    }
+
+    /**
+     * Dispose the native webview — tear it down and free its resources (the
+     * `Dialog`, the `WebView`, and its `@JavascriptInterface`). Routes through
+     * [disposeDialog] (which sets [isDisposing] so a same-tick `openUrl` queues a
+     * replay rather than rewiring a doomed WebView); the dispose's
+     * `setOnDismissListener` emits `NativeWebviewEvent::Disposed`. Resolves with
+     * `{disposed: false}` when none existed, `{disposed: true}` once torn down.
+     */
+    @Command
+    fun dispose(invoke: Invoke) {
+        activity.runOnUiThread {
+            cancelIdleTimer()
+            val d = dialog
+            if (d == null) {
+                val result = JSObject()
+                result.put("disposed", false)
+                invoke.resolve(result)
+                return@runOnUiThread
+            }
+            disposeDialog()
+            val result = JSObject()
+            result.put("disposed", true)
+            invoke.resolve(result)
+        }
+    }
+
+    /**
+     * Remove the native webview from view while keeping it alive — the shared
+     * landing point for a host [hide] and a USER dismissal (Toolbar Close /
+     * system back). Uses `dialog.hide()` (which does NOT fire
+     * `setOnDismissListener`, so nothing is torn down), emits `Hidden` on the
+     * latest channel, marks the instance hidden, and arms the idle backstop.
+     */
+    private fun hideDialog() {
         val d = dialog ?: return
-        if (!d.isShowing) return
-        isClosing = true
+        if (!isVisible) return
+        // `dialog.hide()` detaches the window but keeps the Dialog + its WebView
+        // alive and running — unlike `dismiss()`, it does NOT invoke the
+        // dismiss listener, so no teardown happens.
+        d.hide()
+        isVisible = false
+        // Emit `Hidden` on the latest (possibly re-wired) channel.
+        currentBridge?.let { bridge ->
+            val payload = JSObject()
+            payload.put("event", "hidden")
+            bridge.channel.send(payload)
+        }
+        // Now that it's hidden, start the idle backstop counting down.
+        resetIdleTimer()
+    }
+
+    /**
+     * Tear the native webview down with the race guard ([isDisposing]) set so a
+     * same-tick `openUrl()` queues a replay via [onDisposeFinishedHandler]
+     * rather than navigating the not-yet-torn-down WebView. Every teardown path
+     * (host `dispose`, the hidden-idle backstop) goes through this. The actual
+     * WebView teardown + `Disposed` emit happen in the `setOnDismissListener`
+     * `dispose()` triggers — `dialog.dismiss()` fires that listener whether the
+     * dialog was visible or hidden.
+     */
+    private fun disposeDialog() {
+        val d = dialog ?: return
+        cancelIdleTimer()
+        isDisposing = true
+        // `dismiss()` fires `setOnDismissListener` even for a hidden (but not
+        // dismissed) dialog, so a dispose of a hidden instance still tears down
+        // and emits `disposed`.
         d.dismiss()
+    }
+
+    /**
+     * (Re)arm the hidden-idle teardown backstop to fire [IDLE_TEARDOWN_MS] from
+     * now. Called on every activity — any inbound bridge message (via the
+     * bridge's `onActivity`) and every command. The backstop only matters while
+     * hidden; [idleTeardownRunnable] guards on still-hidden-and-present, and
+     * [show] / [dispose] cancel it outright.
+     */
+    private fun resetIdleTimer() {
+        idleHandler.removeCallbacks(idleTeardownRunnable)
+        // Only count down while a hidden instance exists; when visible or absent
+        // there is nothing to reclaim.
+        if (dialog != null && !isVisible) {
+            idleHandler.postDelayed(idleTeardownRunnable, IDLE_TEARDOWN_MS)
+        }
+    }
+
+    /** Cancel the hidden-idle teardown backstop (instance shown or disposed). */
+    private fun cancelIdleTimer() {
+        idleHandler.removeCallbacks(idleTeardownRunnable)
     }
 
     /**
@@ -398,7 +553,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
      * unchanged; any present value (including `""`) *claims* that slot for the
      * caller and is shown verbatim (empty string clears the label). Operates on
      * the current native webview's [currentToolbar] / [currentMessageView], so it is
-     * shared by `open`'s initial chrome, the `patchWindowText` command, and the
+     * shared by `openUrl`'s initial chrome, the `patchWindowText` command, and the
      * re-wire path. After applying, [renderUrlFallback] paints the page URL into
      * the highest slot the caller still hasn't claimed.
      */
@@ -469,6 +624,8 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
         val bridge = Bridge(channel)
         webView.addJavascriptInterface(bridge, MESSAGE_HANDLER_NAME)
         currentBridge = bridge
+        // Inbound bridge traffic is activity — reset the hidden-idle teardown.
+        bridge.onActivity = { resetIdleTimer() }
 
         // Caller-supplied document-start script (e.g. browser-sniffer's bundled
         // installSniffer IIFE), injected on ANY origin when the WebView provider
@@ -516,9 +673,10 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
             navigationIcon =
                 activity.getDrawable(R.drawable.nwv_ic_close)
                     ?.apply { setTint(colorNeutral1) }
-            // Route through [dismissDialog] so the close→reopen guard
-            // ([isClosing]) is set for user-initiated closes too.
-            setNavigationOnClickListener { dismissDialog() }
+            // The Toolbar Close button is a USER dismissal — HIDE (keep the
+            // instance alive + running) and emit `hidden`, NOT a teardown. Only
+            // an explicit `dispose` tears down.
+            setNavigationOnClickListener { hideDialog() }
             // Refresh action on the top-right. `OnMenuItemClickListener` fires
             // for any menu item; we dispatch by id rather than collecting per
             // item so the toolbar.menu surface can grow without re-plumbing.
@@ -672,11 +830,12 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
                         webView.goBack()
                         true
                     } else {
-                        // Was: return `false` to let Android's default dialog
-                        // back dismiss us. Now we consume + go through
-                        // [dismissDialog] so the `isClosing` race-guard is
-                        // set even on a system-back dismiss.
-                        dismissDialog()
+                        // System back at the root of history is a USER dismissal
+                        // — consume it and HIDE (keep alive + emit `hidden`)
+                        // through [hideDialog], NOT the default dialog dismiss
+                        // (which would tear the WebView down). Only an explicit
+                        // `dispose` tears down.
+                        hideDialog()
                         true
                     }
                 } else {
@@ -707,65 +866,96 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
                 // safe-area handling is the WebView page's problem).
                 insets
             }
+            // `dismiss()` fires ONLY from a [disposeDialog] (a host `dispose` or
+            // the hidden-idle backstop) — a [hideDialog] uses `dialog.hide()`,
+            // which does NOT invoke this listener. So this is unconditionally the
+            // teardown path: free the WebView and emit `disposed`.
             setOnDismissListener {
                 // Read the latest (possibly rewired) channel BEFORE dropping the
-                // bridge: a second `open()` rebinds `bridge.channel`, and the
-                // `Closed` echo must follow it to the most recent caller —
-                // otherwise a caller that re-opened with a fresh channel never
-                // sees the close on its new channel (matches desktop's
-                // `CurrentChannel` handling). Task #7.
-                val closeChannel = currentBridge?.channel ?: channel
-                // Tear down THIS native webview's WebView so an open→close cycle doesn't
+                // bridge: a re-wire rebinds `bridge.channel`, and the `disposed`
+                // echo must follow it to the most recent caller — otherwise a
+                // caller that re-opened with a fresh channel never sees the
+                // teardown on its new channel (matches desktop's `CurrentChannel`
+                // handling).
+                val disposeChannel = currentBridge?.channel ?: channel
+                // Tear down THIS native webview's WebView so a dispose doesn't
                 // leak a fully-loaded WebView plus its `@JavascriptInterface`
                 // (which pins the Bridge → plugin → Activity) and its still-live
                 // JS/render thread. `webView` is the local captured at present()
                 // time, so we destroy exactly this dialog's instance. iOS tears
-                // down in `deinit`; Android matches here. Task: WebView leak.
+                // down in its controller; Android matches here.
                 webView.stopLoading()
                 webView.removeJavascriptInterface(MESSAGE_HANDLER_NAME)
                 (webView.parent as? ViewGroup)?.removeView(webView)
                 webView.destroy()
+                cancelIdleTimer()
+                dialog = null
+                isVisible = false
                 currentWebView = null
                 currentToolbar = null
                 currentMessageView = null
                 currentBridge = null
                 currentDocStartScript = null
-                isClosing = false
-                // Consume the host-close suppression flag regardless of which
-                // branch runs below, so it can never leak onto a later dismissal.
-                val suppress = suppressNextCloseEvent
-                suppressNextCloseEvent = false
-                // If `open()` queued a replay during the dismiss, run it now
-                // and skip the `Closed` echo — the native webview logically continues
-                // with new wiring (Task #10). Otherwise this is a real
-                // dismiss; emit `Closed` — unless a host
-                // `close(suppressCloseEvent = true)` asked us to stay silent.
-                val pending = onCloseFinishedHandler
-                onCloseFinishedHandler = null
+                isDisposing = false
+                // If `openUrl()` queued a replay during the dispose, run it now
+                // and skip the `disposed` echo — the caller logically continues
+                // with new wiring (switch-demo race guard). Otherwise this is a
+                // real teardown; emit `disposed` so the host's collector releases
+                // per-native-webview state.
+                val pending = onDisposeFinishedHandler
+                onDisposeFinishedHandler = null
                 if (pending != null) {
                     pendingInvoke = null
                     pending()
-                } else if (!suppress) {
-                    // NativeWebviewEvent.closed (lowercase tag) — matches the `models.rs` shape.
+                } else {
+                    // NativeWebviewEvent.disposed (lowercase tag) — matches the `models.rs` shape.
                     val payload = JSObject()
-                    payload.put("event", "closed")
-                    closeChannel.send(payload)
+                    payload.put("event", "disposed")
+                    disposeChannel.send(payload)
                 }
             }
-            show()
+            // Build HIDDEN: do NOT call `show()` here — navigation (`openUrl`)
+            // and presentation (`show`) are separate concerns. The dialog is
+            // captured into `dialog` above; `show` presents it later.
         }
+        // The instance starts hidden; arm the idle-teardown backstop so a built-
+        // but-never-shown instance is eventually reclaimed. `show` cancels it.
+        isVisible = false
+        resetIdleTimer()
+    }
+
+    /**
+     * Natural-teardown backstop: when the host Activity is destroyed with a
+     * native webview still alive (visible or hidden), dispose it so the WebView
+     * + its `@JavascriptInterface` don't leak and the host's collector still
+     * sees a terminal `disposed`. Mirrors the iOS controller-`deinit` backstop.
+     * No-op when nothing exists. `dialog.dismiss()` (via [disposeDialog]) fires
+     * the dispose teardown synchronously on this same UI thread.
+     */
+    override fun onDestroy(activity: AppCompatActivity) {
+        if (dialog != null) {
+            disposeDialog()
+        }
+        super.onDestroy(activity)
     }
 
     /**
      * JS -> native bridge surface exposed as `window.nativeWebview`. Each native webview
      * gets its own `Bridge` so events route to the matching caller's channel.
      *
-     * `channel` is `var` so [open]'s rewire branch can swap it without
-     * rebuilding the WebView (Task #7). `postMessage` snapshots the channel
-     * at post time so an in-flight rebind doesn't reroute a message that was
-     * already queued under the previous binding.
+     * `channel` is `var` so [openUrl]'s rewire branch can swap it without
+     * rebuilding the WebView. `postMessage` snapshots the channel at post time so
+     * an in-flight rebind doesn't reroute a message that was already queued under
+     * the previous binding.
+     *
+     * `onActivity` is invoked for every inbound message so the plugin resets its
+     * hidden-idle teardown backstop — any inbound bridge traffic counts as
+     * activity (see [resetIdleTimer]).
      */
     inner class Bridge(var channel: Channel) {
+        /** Called on every inbound message so the plugin resets the idle timer. */
+        var onActivity: (() -> Unit)? = null
+
         @JavascriptInterface
         fun postMessage(json: String) {
             // The injected adapter posts an opaque JSON string (the sniffer's
@@ -778,8 +968,12 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
             // and the UI-thread send shouldn't reroute an in-flight message.
             val initializedChannel = channel
             // `@JavascriptInterface` callbacks run off the UI thread; hop back
-            // before sending on the channel.
-            activity.runOnUiThread { initializedChannel.send(payload) }
+            // before sending on the channel. Inbound traffic is activity — reset
+            // the hidden-idle teardown backstop on the UI thread too.
+            activity.runOnUiThread {
+                onActivity?.invoke()
+                initializedChannel.send(payload)
+            }
         }
     }
 }

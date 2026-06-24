@@ -22,12 +22,12 @@ use tauri_plugin_log::log;
 /// This also wires the native-webview bridge on every platform now that the
 /// sniffer routes through `tauri-plugin-native-webview` everywhere: a long-lived
 /// `Channel<NativeWebviewEvent>` whose handler re-emits the native webview's
-/// events onto `BRIDGE_EVENT` (the `Closed` arm fires on desktop too, when the
-/// native webview window is destroyed). Only the inbound `Click` /
-/// `CancelSnifferRequest` forwarding into the native webview via `evaluate_js`
-/// stays mobile-only — on desktop the content webview is a Tauri webview that
-/// receives `app.emit('bridge', …)` natively, so those forwarders are
-/// `cfg`-gated out.
+/// `Message` events onto `BRIDGE_EVENT` and logs its `Hidden` / `Disposed`
+/// lifecycle events (neither is terminal — the SPA owns `SniffingComplete`).
+/// Only the inbound `Click` / `CancelSnifferRequest` forwarding into the native
+/// webview via `evaluate_js` stays mobile-only — on desktop the content webview
+/// is a Tauri webview that receives `app.emit('bridge', …)` natively, so those
+/// forwarders are `cfg`-gated out.
 ///
 /// Decode failures inside each handler log at warn; tags this crate
 /// does not care about (sibling slices' bridge traffic) are dropped silently.
