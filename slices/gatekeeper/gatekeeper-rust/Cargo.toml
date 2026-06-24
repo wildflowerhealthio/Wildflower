@@ -13,6 +13,11 @@ serde_json.workspace = true
 utoipa.workspace = true
 utoipa-axum.workspace = true
 persistence-rust = { path = "../../persistence/persistence-rust" }
+# The shared forwarding-header provenance helpers (`served_origin_for`,
+# `request_provenance`) — gatekeeper-rust resolves token issuer URLs through
+# them, and apps-rust dispatches launches off the same provenance, so the
+# `Forwarded`-header (RFC 7239) contract lives in one place.
+shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = ["served-origin"] }
 parking_lot = "0.12"
 # jsonwebtoken 10 split the crypto backend out of the default features: `default`
 # only enables PEM parsing, so a signer backend must be selected explicitly.
@@ -43,7 +48,10 @@ workspace = true
 [dev-dependencies]
 persistence-rust = { path = "../../persistence/persistence-rust" }
 # The shared OpenAPI snapshot helper (assert/regenerate the committed spec). Only
-# the snapshot test uses it, so it's a dev-dependency with the opt-in feature.
+# the snapshot test uses it, so it's an extra dev-only feature on the existing
+# `[dependencies]` entry above (cargo unifies the feature set across both
+# tables, so the dev opt-in adds `openapi-snapshot` to the served-origin runtime
+# build).
 shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = ["openapi-snapshot"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync"] }
 proptest = "1"
