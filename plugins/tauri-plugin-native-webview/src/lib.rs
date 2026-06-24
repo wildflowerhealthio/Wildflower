@@ -1,5 +1,5 @@
 //! `tauri-plugin-native-webview` — present an external URL in a *native*,
-//! JavaScript-injectable web view popup, with native chrome.
+//! JavaScript-injectable native web view, with native chrome.
 //!
 //! Why this exists: the browser-sniffer slice currently opens external pages in
 //! a Tauri `WebviewWindow` and draws fake browser chrome (`injectBrowserTopBar`)
@@ -19,7 +19,7 @@
 //!   page sees a `__TAURI__` scoped to the event bus, unlike the mobile
 //!   backends. See `desktop.rs` and `docs/Explanation.md`.
 //!
-//! Usage (Rust caller — the canonical path; the popup bridge stays Rust-side):
+//! Usage (Rust caller — the canonical path; the native webview bridge stays Rust-side):
 //! ```ignore
 //! use tauri::ipc::Channel;
 //! use tauri_plugin_native_webview::{EvaluateJsRequest, NativeWebviewEvent, NativeWebviewExt, OpenRequest};
@@ -34,7 +34,7 @@
 //!     init_script: Some("/* document-start IIFE */".to_owned()),
 //!     native_webview_event_channel: native_webview_event_channel.clone(),
 //! })?;
-//! // Push a message into the popup later:
+//! // Push a message into the native webview later:
 //! app.native_webview().evaluate_js(EvaluateJsRequest {
 //!     script: "window.__nativeWebviewReceive('{\"event\":\"bridge\",\"payload\":…}')".to_owned(),
 //! })?;
@@ -42,7 +42,7 @@
 //!
 //! JS callers can also drive the plugin through `invoke('plugin:native-webview|open', { url, nativeWebviewEventChannel })`
 //! with a `new Channel<NativeWebviewEvent>()`, but the design point is to keep
-//! popup event bridging in Rust — see [`docs/Explanation.md`](../docs/Explanation.md).
+//! native webview event bridging in Rust — see [`docs/Explanation.md`](../docs/Explanation.md).
 
 use tauri::{
     plugin::{Builder, TauriPlugin},

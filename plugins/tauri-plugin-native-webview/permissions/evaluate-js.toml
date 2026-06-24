@@ -7,9 +7,9 @@
 [[permission]]
 identifier = "evaluate-js"
 description = """
-Allow evaluating caller-supplied JavaScript inside the currently-open popup
+Allow evaluating caller-supplied JavaScript inside the currently-open native
 webview (e.g. the host pushing a `window.__nativeWebviewReceive(...)` bridge
 message in). The script is run verbatim and not sandboxed; the call errors if
-no popup is open.
+no native webview is open.
 """
 commands.allow = ["evaluate_js"]

@@ -41,7 +41,7 @@ pub fn init<R: Runtime, C: DeserializeOwned>(
 pub struct NativeWebview<R: Runtime>(tauri::plugin::PluginHandle<R>);
 
 impl<R: Runtime> NativeWebview<R> {
-    /// Present the native popup by invoking the Swift/Kotlin `open` command.
+    /// Present the native webview by invoking the Swift/Kotlin `open` command.
     pub fn open(&self, payload: OpenRequest) -> crate::Result<()> {
         // Validate the URL up front (http(s)-only — see [`crate::url_scheme`])
         // so every backend rejects a bad or non-http(s) URL the same way — the
@@ -54,9 +54,9 @@ impl<R: Runtime> NativeWebview<R> {
         Ok(())
     }
 
-    /// Evaluate JS inside the currently-open native popup by invoking the
+    /// Evaluate JS inside the currently-open native webview by invoking the
     /// Swift/Kotlin `evaluateJs` command. The native side rejects with a string
-    /// error if no popup is open, surfaced here as
+    /// error if no native webview is open, surfaced here as
     /// [`Error::PluginInvoke`](crate::Error::PluginInvoke).
     pub fn evaluate_js(&self, payload: EvaluateJsRequest) -> crate::Result<()> {
         self.0
@@ -65,10 +65,10 @@ impl<R: Runtime> NativeWebview<R> {
         Ok(())
     }
 
-    /// Patch one or more of the popup's three labels (`title`,
+    /// Patch one or more of the native webview's three labels (`title`,
     /// `subtitle`, `message`). The native side resolves with `{set: true}`
     /// once the labels are applied on the UI thread; resolves with
-    /// `{set: false}` (not a hard reject) when no popup is open, which the
+    /// `{set: false}` (not a hard reject) when no native webview is open, which the
     /// host should treat as best-effort.
     pub fn patch_window_text(&self, payload: PatchWindowTextRequest) -> crate::Result<()> {
         self.0
@@ -77,8 +77,8 @@ impl<R: Runtime> NativeWebview<R> {
         Ok(())
     }
 
-    /// Dismiss the currently-presented popup. Idempotent — the native side
-    /// resolves with `{closedByRequest: false}` if no popup was open. The native
+    /// Dismiss the currently-presented native webview. Idempotent — the native side
+    /// resolves with `{closedByRequest: false}` if no native webview was open. The native
     /// `dismiss` callback fires after the animation and lands a
     /// `NativeWebviewEvent::Closed` on the open channel — unless
     /// `suppress_close_event` is `true`, which makes that one dismissal silent

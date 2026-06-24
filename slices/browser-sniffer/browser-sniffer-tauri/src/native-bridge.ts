@@ -84,7 +84,7 @@ const installReceiverIfMissing = (): void => {
 
 /**
  * Build a {@link TauriEventApi}-shaped event bus backed by the
- * `tauri-plugin-native-webview` bridge, for use INSIDE a native popup
+ * `tauri-plugin-native-webview` bridge, for use INSIDE a native webview
  * (iOS `WKWebView` / Android `android.webkit.WebView`) where `window.__TAURI__`
  * is deliberately absent.
  *
@@ -105,7 +105,7 @@ const installReceiverIfMissing = (): void => {
  * The helpers (`isRecord` — shared from `./is-record.ts` — plus `parseEnvelope`
  * / `resolvePoster`) capture no state and are inlined into the esbuild IIFE, so
  * the injected document-start script stays self-contained. If no native bridge is present
- * (e.g. the page is opened outside a native popup), `emit` drops silently and
+ * (e.g. the page is opened outside a native webview), `emit` drops silently and
  * `listen` still registers — the sniffer simply observes nothing.
  *
  * Multiple calls in the same JS context return functionally-equivalent buses

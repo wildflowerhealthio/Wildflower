@@ -212,7 +212,7 @@
 
         // Rust -> chrome: reset for an in-place re-open. A re-wire is logically a
         // fresh open, so clear the claims + slots, seed the new URL, then apply the
-        // caller's initial chrome — leaving the reused popup indistinguishable from
+        // caller's initial chrome — leaving the reused native webview indistinguishable from
         // a rebuilt one.
         window.__nativeWebviewResetWindowText = function (state) {
           titleClaimed = false

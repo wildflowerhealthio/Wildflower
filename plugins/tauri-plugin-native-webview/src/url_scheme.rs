@@ -1,6 +1,6 @@
 //! `http(s)`-only URL parsing shared by both plugin backends.
 //!
-//! The popup loads arbitrary external pages, so the scheme must be constrained
+//! The native webview loads arbitrary external pages, so the scheme must be constrained
 //! to `http` / `https` — `data:`, `file:`, `javascript:` etc. must never reach
 //! the webview. Both the desktop (`desktop::NativeWebview::open`) and mobile
 //! (`mobile::NativeWebview::open`) entry points validate through this single

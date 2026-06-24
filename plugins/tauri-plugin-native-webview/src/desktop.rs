@@ -1,11 +1,11 @@
 //! Desktop backend.
 //!
 //! Tauri's multi-webview-per-window API (`Window::add_child`, gated behind the
-//! `unstable` feature) lets us mirror the iOS/Android native popup layout on
+//! `unstable` feature) lets us mirror the iOS/Android native webview layout on
 //! desktop: a chrome bar (title / subtitle / message + back / forward /
 //! refresh) anchored at the top, and the external content webview below.
 //! The two webviews share the same parent `Window` so the OS treats them as
-//! one popup; resize is handled by [`on_window_event`] which re-lays the
+//! one native webview; resize is handled by [`on_window_event`] which re-lays the
 //! children on every resize tick.
 //!
 //! ## Chrome ↔ Rust IPC
@@ -77,21 +77,21 @@ const CHROME_HEIGHT_BASE: f64 = 52.0;
 ///   chrome + content webviews to match.
 const CHROME_ACTION_SCHEME: &str = "x-nv-action";
 
-/// Cap (ms) on how long the popup window stays hidden waiting for the content's
+/// Cap (ms) on how long the native webview window stays hidden waiting for the content's
 /// paint sentinel before it's revealed regardless — see the timeout fallback in
 /// [`present`]. Long enough to let a normal first paint win, short enough that a
-/// blank/hung page doesn't leave the popup invisible.
+/// blank/hung page doesn't leave the native webview invisible.
 const REVEAL_TIMEOUT_MS: u64 = 500;
 
 /// Sentinel scheme the content webview's [`CONTENT_REVEAL_SCRIPT`] navigates to
 /// once the page has painted its first frame. Caught + cancelled by the content
-/// webview's `on_navigation` handler, which reveals the (initially hidden) popup
-/// window. Kept in sync with the literal in [`CONTENT_REVEAL_SCRIPT`].
+/// webview's `on_navigation` handler, which reveals the (initially hidden) native
+/// webview window. Kept in sync with the literal in [`CONTENT_REVEAL_SCRIPT`].
 const CONTENT_READY_SCHEME: &str = "x-nv-ready";
 
 /// Document-start script injected into the content webview: once the page has
 /// painted its first frame, navigate to the [`CONTENT_READY_SCHEME`] sentinel so
-/// the backend reveals the popup window (built hidden to avoid the load-time
+/// the backend reveals the native webview window (built hidden to avoid the load-time
 /// white flash on dark mode). The double-`requestAnimationFrame` after
 /// `DOMContentLoaded` guarantees a frame has composited before we reveal. The
 /// sentinel navigation is caught + cancelled by the content webview's
@@ -190,8 +190,8 @@ pub fn init<R: Runtime, C: DeserializeOwned>(
     app: &AppHandle<R>,
     _api: PluginApi<R, C>,
 ) -> crate::Result<NativeWebview<R>> {
-    // App-managed coordination between `close()`, `present()`, and the popup
-    // window's `CloseRequested` handler — see [`PluginState`] for the race story.
+    // App-managed coordination between `close()`, `present()`, and the native
+    // webview window's `CloseRequested` handler — see [`PluginState`] for the race story.
     app.manage(PluginState {
         closing: AtomicBool::new(false),
         pending_reopen: Mutex::new(None),
@@ -209,7 +209,7 @@ pub fn init<R: Runtime, C: DeserializeOwned>(
 /// returns immediately, so the subsequent same-tick `present()` runs *before*
 /// the `CloseRequested` event fires. Without coordination, `present()` finds
 /// the doomed window via `get_webview` and navigates it in place — then the
-/// queued close destroys the popup and the user sees nothing.
+/// queued close destroys the native webview and the user sees nothing.
 ///
 /// The fix is to make the close cancellable: `close()` flips `closing` to
 /// `true` before asking the runtime to close, `present()` stashes its
@@ -241,7 +241,7 @@ struct PluginState {
 pub struct NativeWebview<R: Runtime>(AppHandle<R>);
 
 impl<R: Runtime> NativeWebview<R> {
-    /// Present the external URL in a popup `Window` with chrome + content
+    /// Present the external URL in a native-webview `Window` with chrome + content
     /// child webviews. Window creation is marshalled onto the main thread
     /// (required on macOS) and the result is propagated back through a
     /// `sync_channel`.
@@ -272,14 +272,14 @@ impl<R: Runtime> NativeWebview<R> {
             .map_err(|error| crate::Error::Internal(error.to_string()))?
     }
 
-    /// Evaluate JS in the content webview. Returns an error if no popup is
+    /// Evaluate JS in the content webview. Returns an error if no native webview is
     /// open (matches the mobile contract — `evaluate_js` is content-bound, so
     /// there's no graceful fallback).
     pub fn evaluate_js(&self, payload: EvaluateJsRequest) -> crate::Result<()> {
         let content = self
             .0
             .get_webview(CONTENT_WEBVIEW_LABEL)
-            .ok_or_else(|| crate::Error::Internal("no native-webview popup open".to_owned()))?;
+            .ok_or_else(|| crate::Error::Internal("no native-webview open".to_owned()))?;
         content.eval(&payload.script)?;
         Ok(())
     }
@@ -290,9 +290,9 @@ impl<R: Runtime> NativeWebview<R> {
     /// applies non-`null` fields and leaves the rest untouched — matching
     /// the iOS / Android `patchWindowText` semantics.
     ///
-    /// No-op if no popup is open. Returns `Ok` either way so callers can
-    /// fire speculatively across the popup lifecycle (mirrors mobile
-    /// `{set: false}` on a closed popup).
+    /// No-op if no native webview is open. Returns `Ok` either way so callers can
+    /// fire speculatively across the native webview lifecycle (mirrors mobile
+    /// `{set: false}` on a closed native webview).
     pub fn patch_window_text(&self, payload: PatchWindowTextRequest) -> crate::Result<()> {
         let Some(chrome) = self.0.get_webview(CHROME_WEBVIEW_LABEL) else {
             return Ok(());
@@ -306,7 +306,7 @@ impl<R: Runtime> NativeWebview<R> {
         Ok(())
     }
 
-    /// Dismiss the popup window. Idempotent — no-op if not open.
+    /// Dismiss the native webview window. Idempotent — no-op if not open.
     ///
     /// Flips [`PluginState::closing`] before asking the runtime to close so a
     /// same-tick `open()` that races this close lands in the deferral branch
@@ -331,7 +331,7 @@ impl<R: Runtime> NativeWebview<R> {
     }
 }
 
-/// Build the popup window with chrome + content child webviews and wire up
+/// Build the native webview window with chrome + content child webviews and wire up
 /// the resize listener.
 ///
 /// Three branches:
@@ -413,13 +413,13 @@ fn present<R: Runtime>(
     let logical_width = window_size.width as f64 / scale;
     let logical_height = window_size.height as f64 / scale;
 
-    // Install (first open) or reset (reopen) the popup's per-popup window
-    // state — chrome height, applied-layout cache, current channel, and nav
+    // Install (first open) or reset (reopen) the native webview's per-native-webview
+    // window state — chrome height, applied-layout cache, current channel, and nav
     // bookkeeping. Must precede `add_child` so the chrome's first height report
     // (fired on DOMContentLoaded) and the resize listener find the state
     // already present. The reset is load-bearing on a reopen — see
-    // [`install_popup_state`].
-    install_popup_state(&window, channel)?;
+    // [`install_native_webview_state`].
+    install_native_webview_state(&window, channel)?;
 
     // Chrome webview: HTML loaded directly via a base64 `data:` URL so the
     // chrome's DOM is in place at first paint — no `about:blank` +
@@ -501,7 +501,7 @@ fn present<R: Runtime>(
     if let Some(script) = init_script {
         content_builder = content_builder.initialization_script(script);
     }
-    // Reveal the popup only once THIS content webview has painted its first
+    // Reveal the native webview only once THIS content webview has painted its first
     // frame. The window is built hidden; gating the reveal on the content's
     // paint (not the chrome's) is what removes the dark-mode white flash, since
     // macOS can't recolor the WKWebView's own pre-paint background. The injected
@@ -602,8 +602,8 @@ fn present<R: Runtime>(
     Ok(())
 }
 
-/// Per-popup state holding the chrome's current logical-px height —
-/// (re)initialised by [`install_popup_state`] on each open. Read by the resize
+/// Per-native-webview state holding the chrome's current logical-px height —
+/// (re)initialised by [`install_native_webview_state`] on each open. Read by the resize
 /// listener (so window resize keeps the right vertical split) and written by
 /// the chrome → Rust height-report navigation.
 struct ChromeHeight(Mutex<f64>);
@@ -615,25 +615,25 @@ struct ChromeHeight(Mutex<f64>);
 /// across both webviews.
 struct AppliedLayout(Mutex<Option<(f64, f64, f64)>>);
 
-/// Per-popup state holding the [`Channel<NativeWebviewEvent>`] the current popup
-/// fires events on. Set per open by [`install_popup_state`] and re-bindable
-/// mid-popup: [`apply_rewire`] replaces the inner value when a second `open()`
-/// lands on an existing popup, so subsequent events (including the eventual
+/// Per-native-webview state holding the [`Channel<NativeWebviewEvent>`] the current
+/// native webview fires events on. Set per open by [`install_native_webview_state`] and re-bindable
+/// mid-native-webview: [`apply_rewire`] replaces the inner value when a second `open()`
+/// lands on an existing native webview, so subsequent events (including the eventual
 /// `NativeWebviewEvent::Closed` from the `Destroyed` event) route to the latest
 /// caller's channel.
 struct CurrentChannel(Mutex<Channel<NativeWebviewEvent>>);
 
-/// Per-popup state approximating the content webview's nav history for
-/// back/forward button enabled state. Initialised per fresh popup by
-/// [`install_popup_state`]. Tauri's `Webview` exposes no `can_go_back` /
+/// Per-native-webview state approximating the content webview's nav history for
+/// back/forward button enabled state. Initialised per fresh native webview by
+/// [`install_native_webview_state`]. Tauri's `Webview` exposes no `can_go_back` /
 /// `can_go_forward`, so we track:
 ///
 /// - `load_count`: increments on every content webview Started page load.
 ///   `canBack` = `load_count > 1`. It is NOT reset by [`apply_rewire`]: a
 ///   sniffer-driven navigation reuses the same content webview, whose
 ///   back-forward history persists across `navigate`, so Back must stay enabled
-///   once ≥2 pages have loaded. (Only a brand-new popup — fresh window + fresh
-///   webview via [`install_popup_state`] — starts the count at 0.)
+///   once ≥2 pages have loaded. (Only a brand-new native webview — fresh window + fresh
+///   webview via [`install_native_webview_state`] — starts the count at 0.)
 /// - `can_forward`: set `true` when the chrome's Back button fires (we know
 ///   the user just went back so a forward slot exists). It is **not** reset on
 ///   a Started load — `on_page_load` only reads it. We can't distinguish a
@@ -649,11 +649,11 @@ struct NavState {
     can_forward: AtomicBool,
 }
 
-/// Lock a popup-state mutex, mapping a poisoned lock to a surfaced
+/// Lock a native-webview-state mutex, mapping a poisoned lock to a surfaced
 /// [`crate::Error`] instead of an `unwrap` panic. A poisoned lock means another
 /// thread panicked while holding it — these critical sections are trivial
 /// assignments that never panic, so it is not expected to fire; surfacing it
-/// lets the `open` / `present` path fail cleanly (the popup simply doesn't
+/// lets the `open` / `present` path fail cleanly (the native webview simply doesn't
 /// open) rather than taking the whole process down. Event-handler closures
 /// that have no error channel to return to (resize / close / destroy) skip the
 /// update on a poisoned lock instead — see their call sites.
@@ -666,28 +666,28 @@ fn lock_state<'a, T>(
         .map_err(|_| crate::Error::Internal(format!("native-webview {what} state lock poisoned")))
 }
 
-/// Install — on the first open — or reset — on a reopen — the popup's
-/// per-popup window state ([`ChromeHeight`], [`AppliedLayout`],
+/// Install — on the first open — or reset — on a reopen — the native webview's
+/// per-native-webview window state ([`ChromeHeight`], [`AppliedLayout`],
 /// [`CurrentChannel`], [`NavState`]).
 ///
 /// **Why a reset, not just `manage`**: `window.manage` writes APP-GLOBAL state
 /// — a `Window`'s manager is the shared `AppManager`, not a per-window map —
 /// and the underlying `StateManager::set` is **set-once**: it no-ops when the
-/// type is already managed. The desktop popup is a single reusable window
+/// type is already managed. The desktop native webview is a single reusable window
 /// (label `native-webview`); once it has been closed and a later `open()`
 /// builds it afresh, these four types are still managed from the previous
-/// popup, so every `manage` below silently no-ops. Left at that, the reopened
-/// popup would inherit the prior popup's nav history (Back enabled with no
+/// native webview, so every `manage` below silently no-ops. Left at that, the reopened
+/// native webview would inherit the prior native webview's nav history (Back enabled with no
 /// history), chrome height, applied-layout cache, and — for a caller that
 /// varies the channel per open — route its `Closed` echo onto the stale
 /// channel. So we `manage` to create the cells the first time and
 /// unconditionally reset their contents on every open.
-fn install_popup_state<R: Runtime>(
+fn install_native_webview_state<R: Runtime>(
     window: &tauri::Window<R>,
     channel: Channel<NativeWebviewEvent>,
 ) -> crate::Result<()> {
     // `manage` returns `false` when the type was already managed (a reopen);
-    // the cell then still holds the previous popup's value, so reset it. A
+    // the cell then still holds the previous native webview's value, so reset it. A
     // poisoned lock here fails the open (see [`lock_state`]) rather than
     // panicking through a corrupt cell.
     if !window.manage(ChromeHeight(Mutex::new(CHROME_HEIGHT_BASE))) {
@@ -758,7 +758,7 @@ fn apply_rewire<R: Runtime>(
     if let Some(chrome) = app.get_webview(CHROME_WEBVIEW_LABEL) {
         // A rewire is logically a fresh open, so RESET the chrome's URL-fallback
         // state (claims + slots) and seed the new URL rather than merging a
-        // patch onto the prior popup's claims. The chrome script re-applies the
+        // patch onto the prior native webview's claims. The chrome script re-applies the
         // caller's initial chrome from the same payload.
         let reset = InitialChromeState {
             url: parsed.as_str(),
@@ -834,13 +834,13 @@ fn apply_chrome_height<R: Runtime>(
 /// - **CloseRequested**: if a `present()` raced this close (its payload sits
 ///   in [`PluginState::pending_reopen`]), cancel the close via
 ///   `api.prevent_close()` and replay the payload via [`apply_rewire`] —
-///   the popup stays alive, the user sees a navigation instead of a close +
+///   the native webview stays alive, the user sees a navigation instead of a close +
 ///   reopen flicker. Otherwise let the close proceed.
 /// - **Destroyed**: fire `NativeWebviewEvent::Closed` on the current channel
-///   (the per-popup [`CurrentChannel`] state — re-bindable across rewires),
+///   (the per-native-webview [`CurrentChannel`] state — re-bindable across rewires),
 ///   UNLESS a host `close(suppress_close_event = true)` recorded
 ///   suppression on [`PluginState::suppress_close_event`] (consumed read-and-
-///   clear here). The user dismisses the desktop popup via the OS window X (the
+///   clear here). The user dismisses the desktop native webview via the OS window X (the
 ///   chrome bar has no Close button); without this hook the sniffer's
 ///   collector would idle-timeout waiting for `SniffingComplete`. Matches the
 ///   mobile path where the plugin's native chrome Close button fires `Closed`
@@ -848,7 +848,7 @@ fn apply_chrome_height<R: Runtime>(
 ///   a fresh `open()` after this point takes the build-fresh path.
 ///
 /// `on_window_event` takes a `Fn(&WindowEvent) + Send + 'static`, so captures
-/// are clones. The channel is read from the per-popup [`CurrentChannel`] state
+/// are clones. The channel is read from the per-native-webview [`CurrentChannel`] state
 /// at fire time (not captured here) so rewires take effect.
 fn install_window_listeners<R: Runtime>(app: &AppHandle<R>, window: &tauri::Window<R>) {
     let app_window = app.clone();
@@ -899,7 +899,7 @@ fn install_window_listeners<R: Runtime>(app: &AppHandle<R>, window: &tauri::Wind
                 return;
             };
             // Best-effort in an event handler: a poisoned state lock can't be
-            // surfaced to a caller here, so a failed rewire leaves the popup
+            // surfaced to a caller here, so a failed rewire leaves the native webview
             // as-is rather than panicking.
             let _ = apply_rewire(&app_window, &content, &payload, parsed);
         }
@@ -911,8 +911,8 @@ fn install_window_listeners<R: Runtime>(app: &AppHandle<R>, window: &tauri::Wind
             let suppress = app_window
                 .try_state::<PluginState>()
                 .is_some_and(|state| state.suppress_close_event.swap(false, Ordering::SeqCst));
-            // Notify the *current* caller's channel handler that the popup
-            // has gone away — read from the per-popup `CurrentChannel` state so
+            // Notify the *current* caller's channel handler that the native webview
+            // has gone away — read from the per-native-webview `CurrentChannel` state so
             // a rewire before the close lands routes the event to the latest
             // caller.
             // Errors are swallowed: the window is gone either way, and the

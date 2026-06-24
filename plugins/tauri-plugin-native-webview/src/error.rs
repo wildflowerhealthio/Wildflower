@@ -15,7 +15,7 @@ pub enum Error {
     /// underlying message; only constructed on mobile targets.
     #[cfg(mobile)]
     PluginInvoke(String),
-    /// A desktop popup operation failed (URL parse, window build/navigate).
+    /// A desktop native-webview operation failed (URL parse, window build/navigate).
     /// Only constructed on desktop targets.
     #[cfg(desktop)]
     Internal(String),

@@ -7,7 +7,7 @@ mod bootstrap;
 pub mod events;
 mod handlers;
 mod model;
-mod popup_bridge;
+mod native_webview_bridge;
 mod sniffer_window;
 
 use shared_structures_rust::bridge::{BridgeEnvelope, BRIDGE_EVENT};
@@ -19,19 +19,20 @@ use tauri_plugin_log::log;
 /// Idempotent at the listener level — call once per app lifecycle from
 /// `setup()`.
 ///
-/// This also wires the popup bridge on every platform now that the sniffer
-/// routes through `tauri-plugin-native-webview` everywhere: a long-lived
-/// `Channel<NativeWebviewEvent>` whose handler re-emits the native popup's
+/// This also wires the native-webview bridge on every platform now that the
+/// sniffer routes through `tauri-plugin-native-webview` everywhere: a long-lived
+/// `Channel<NativeWebviewEvent>` whose handler re-emits the native webview's
 /// events onto `BRIDGE_EVENT` (the `Closed` arm fires on desktop too, when the
-/// popup window is destroyed). Only the inbound `Click` / `CancelSnifferRequest`
-/// forwarding into the popup via `evaluate_js` stays mobile-only — on desktop
-/// the content webview is a Tauri webview that receives `app.emit('bridge', …)`
-/// natively, so those forwarders are `cfg`-gated out.
+/// native webview window is destroyed). Only the inbound `Click` /
+/// `CancelSnifferRequest` forwarding into the native webview via `evaluate_js`
+/// stays mobile-only — on desktop the content webview is a Tauri webview that
+/// receives `app.emit('bridge', …)` natively, so those forwarders are
+/// `cfg`-gated out.
 ///
 /// Decode failures inside each handler log at warn; tags this crate
 /// does not care about (sibling slices' bridge traffic) are dropped silently.
 pub fn attach_browser_sniffer(app: &AppHandle) {
-    popup_bridge::install(app);
+    native_webview_bridge::install(app);
     // The bridge channel is shared across listeners with no automated
     // cross-process tag guard; log this crate's tag set at attach time so
     // the boot log shows who dispatches what. See the effect-messaging-tauri
@@ -62,7 +63,7 @@ pub fn attach_browser_sniffer(app: &AppHandle) {
             events::SNIFFING_COMPLETE => handlers::sniffing_complete::handle(&handle),
             #[cfg(any(target_os = "ios", target_os = "android"))]
             events::CLICK | events::CANCEL_SNIFFER_REQUEST => {
-                popup_bridge::forward_to_popup(&handle, payload);
+                native_webview_bridge::forward_to_native_webview(&handle, payload);
             }
             _ => {}
         }

@@ -3,15 +3,15 @@
 ## What this is
 
 A Tauri v2 plugin that presents an external URL in a **native, JavaScript-injectable
-web view popup** with **native chrome**, instead of a Tauri `WebviewWindow` with
+web view** with **native chrome**, instead of a Tauri `WebviewWindow` with
 fake in-page chrome.
 
 It exposes four commands, with a backend per platform:
 
-- `open(url, initScript, nativeWebviewEventChannel, initialTitle?, initialSubtitle?, initialMessage?)` — present the popup.
-- `evaluate_js(script)` — evaluate JS inside the open popup.
+- `open(url, initScript, nativeWebviewEventChannel, initialTitle?, initialSubtitle?, initialMessage?)` — present the native webview.
+- `evaluate_js(script)` — evaluate JS inside the open native webview.
 - `patch_window_text({title?, subtitle?, message?})` — update one or more of the chrome's title/subtitle/message labels.
-- `close(suppress_close_event = false)` — dismiss the popup. Emits `NativeWebviewEvent::Closed` on the channel for the dismissal, unless `suppress_close_event` is `true` (a host that already observed the terminal event prompting the close passes `true` so the echo doesn't double-fire). User / OS dismissals always emit.
+- `close(suppress_close_event = false)` — dismiss the native webview. Emits `NativeWebviewEvent::Closed` on the channel for the dismissal, unless `suppress_close_event` is `true` (a host that already observed the terminal event prompting the close passes `true` so the echo doesn't double-fire). User / OS dismissals always emit.
 
 | Platform | Backend                                                           | Native chrome                                                          | JS injection (any origin)                                 | Bridge back to host                                      |
 | -------- | ----------------------------------------------------------------- | ---------------------------------------------------------------------- | --------------------------------------------------------- | -------------------------------------------------------- |
@@ -47,7 +47,7 @@ via the windows crate) would require `unsafe` FFI, which this workspace forbids
 still real native webviews (WKWebView on macOS, WebView2 on Windows, webkit2gtk
 on Linux) — with document-start injection via `initialization_script`.
 
-To mirror the mobile popups' native chrome, the desktop backend builds a parent
+To mirror the mobile native webviews' native chrome, the desktop backend builds a parent
 `Window` (label `native-webview`) with **two child webviews** (via Tauri's
 `unstable` multi-webview-per-window API): a `data:`-HTML **chrome bar** child
 (`native-webview-chrome`) anchored at the top — drawing the host/subtitle/message
@@ -108,12 +108,12 @@ plugins/tauri-plugin-native-webview/
       │
       └─ Desktop: parent Window + chrome/content child webviews; the content
             child gets initScript via initialization_script
-            → present the popup with a plugin-drawn chrome bar
+            → present the native webview with a plugin-drawn chrome bar
             → caller's initScript injected at document start on the content child
             → (the content page is a Tauri webview, so the script uses the event
               bus directly — channel goes unused on desktop today)
 
-[caller]  evaluate_js(script)  // evaluateJavaScript into the popup webview
+[caller]  evaluate_js(script)  // evaluateJavaScript into the native webview
       │
       ▼
 [Rust] commands::evaluate_js → NativeWebviewExt::evaluate_js → platform backend
@@ -124,12 +124,12 @@ plugins/tauri-plugin-native-webview/
 
 `initScript` is **caller-supplied** — the plugin is content-agnostic. browser-sniffer
 passes its bundled `installSniffer` IIFE wrapped in a small adapter that posts
-to the platform bridge; `browser-sniffer-tauri-rust::popup_bridge` owns the
+to the platform bridge; `browser-sniffer-tauri-rust::native_webview_bridge` owns the
 `Channel<NativeWebviewEvent>` and re-emits onto its `BRIDGE_EVENT` bus.
 
 `evaluate_js` is the reverse direction — `browser-sniffer-tauri-rust` calls it on
 mobile when it sees `Click` / `CancelSnifferRequest` on `BRIDGE_EVENT`, wrapping
-the payload in a `window.__nativeWebviewReceive(...)` call the popup-side
+the payload in a `window.__nativeWebviewReceive(...)` call the native-webview-side
 transport parses. JS host code never touches the plugin.
 
 ## Why a Channel (not `trigger` + `addPluginListener`)

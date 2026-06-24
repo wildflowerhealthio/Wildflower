@@ -5,7 +5,7 @@ import WebKit
 /// Arguments decoded from `invoke('plugin:native-webview|open', { url, initScript, nativeWebviewEventChannel })`.
 /// Keys match `OpenRequest`'s camelCase serde wire shape; `initScript` is
 /// omitted when absent. `nativeWebviewEventChannel` is a Tauri `Channel<NativeWebviewEvent>`
-/// the caller receives popup events on (`{"event":"message", "payload": …}` /
+/// the caller receives native webview events on (`{"event":"message", "payload": …}` /
 /// `{"event":"closed"}`) — see `models.rs` `NativeWebviewEvent`.
 class OpenArgs: Decodable {
   let url: String
@@ -21,7 +21,7 @@ class OpenArgs: Decodable {
 
 /// Arguments decoded from `invoke('plugin:native-webview|evaluate_js', { script })`.
 /// Keys match `EvaluateJsRequest`'s camelCase serde wire shape. The host evaluates
-/// `script` verbatim in the popup webview — typically a
+/// `script` verbatim in the native webview — typically a
 /// `window.__nativeWebviewReceive(JSON.stringify(...))` call carrying a bridge
 /// envelope.
 class EvaluateJsArgs: Decodable {
@@ -48,22 +48,22 @@ class CloseArgs: Decodable {
   let suppressCloseEvent: Bool?
 }
 
-/// Per-popup script message handler: holds the caller's [`Channel`] and
+/// Per-native-webview script message handler: holds the caller's [`Channel`] and
 /// forwards each `window.webkit.messageHandlers.nativeWebview.postMessage(...)`
-/// call as a `NativeWebviewEvent.message` payload. Per-popup (rather than plugin-
-/// singleton) so a stacked second `open` doesn't redirect the first popup's
-/// events into the second popup's channel.
+/// call as a `NativeWebviewEvent.message` payload. Per-native-webview (rather than plugin-
+/// singleton) so a stacked second `open` doesn't redirect the first native webview's
+/// events into the second native webview's channel.
 ///
-/// `channel` is `var` so a second `open()` against an existing popup can
+/// `channel` is `var` so a second `open()` against an existing native webview can
 /// rebind it without rebuilding the webview — see `NativeWebviewPlugin.open`'s
 /// re-wire branch.
 ///
 /// `WKUserContentController` retains its script-message handlers strongly, and
-/// a popup's `userContentController.add(handler, name: ...)` then retains the
+/// a native webview's `userContentController.add(handler, name: ...)` then retains the
 /// handler back through the webview's configuration — the chain that
 /// historically required the `WeakScriptMessageHandler` indirection. We sidestep
-/// the cycle by removing this handler in the popup controller's `deinit`.
-class PopupMessageBridge: NSObject, WKScriptMessageHandler {
+/// the cycle by removing this handler in the native webview controller's `deinit`.
+class NativeWebviewMessageBridge: NSObject, WKScriptMessageHandler {
   var channel: Channel
 
   init(channel: Channel) {
@@ -89,41 +89,41 @@ class PopupMessageBridge: NSObject, WKScriptMessageHandler {
   }
 }
 
-/// Native web view popup plugin.
+/// Native web view plugin.
 ///
 /// `open` presents a `WKWebView` inside a `UINavigationController` (native
 /// Close button + the page URL as the title, until the caller claims it) as a
 /// page sheet. A document-start
 /// `WKUserScript` is injected into every page on every origin, and each ping it
-/// posts back is forwarded to the Rust caller through the per-popup
+/// posts back is forwarded to the Rust caller through the per-native-webview
 /// [`Channel`] passed in `OpenArgs` (no JS-side bridge).
 class NativeWebviewPlugin: Plugin {
   /// `window.webkit.messageHandlers.<name>` the injected script posts to.
   static let messageHandlerName = "nativeWebview"
 
-  /// The currently-presented popup webview, if any. Captured on `open` so
+  /// The currently-presented native webview, if any. Captured on `open` so
   /// `evaluateJs` can `evaluateJavaScript(...)` into it; cleared on close to let
-  /// `evaluateJs` fail loudly with a "no popup open" reject. Weak so a popup
-  /// dismissed by other means (system back-swipe on the sheet, host app
+  /// `evaluateJs` fail loudly with a "no native webview open" reject. Weak so a native
+  /// webview dismissed by other means (system back-swipe on the sheet, host app
   /// teardown) doesn't keep the webview alive past its presentation.
   private weak var currentWebView: WKWebView?
 
-  /// The currently-presented popup controller, if any. Captured on `open`
+  /// The currently-presented native webview controller, if any. Captured on `open`
   /// so `applyWindowText` / `patchWindowText` can update its chrome labels.
   /// Same `weak` rationale as `currentWebView` — the controller's lifetime is
   /// the UINavigationController's, not the plugin's.
   private weak var currentController: NativeWebviewController?
 
-  /// The currently-presented popup's message bridge. Captured on `open` so a
-  /// subsequent `open()` against an existing popup can re-bind its `channel`
+  /// The currently-presented native webview's message bridge. Captured on `open` so a
+  /// subsequent `open()` against an existing native webview can re-bind its `channel`
   /// without rebuilding the webview (Task #7 re-wire). Same weak rationale.
-  private weak var currentBridge: PopupMessageBridge?
+  private weak var currentBridge: NativeWebviewMessageBridge?
 
-  /// Set when a same-tick `open()` arrives while a previous popup is in its
+  /// Set when a same-tick `open()` arrives while a previous native webview is in its
   /// dismiss animation (`controller.isBeingDismissed`). The pending closure
   /// runs from `onClose` once the animation completes, presenting the new
-  /// popup. When set, `onClose` suppresses the `Closed` channel echo — the
-  /// popup logically continues with new wiring rather than firing a spurious
+  /// native webview. When set, `onClose` suppresses the `Closed` channel echo — the
+  /// native webview logically continues with new wiring rather than firing a spurious
   /// close (Task #10 close→reopen race guard).
   private var onCloseFinishedHandler: (() -> Void)?
 
@@ -150,7 +150,7 @@ class NativeWebviewPlugin: Plugin {
     DispatchQueue.main.async {
       // Dismiss in flight (host `close()` or user swipe): queue a replay for
       // when the controller finishes dismissing. `onClose` consumes the
-      // pending closure and suppresses the `Closed` echo so the popup
+      // pending closure and suppresses the `Closed` echo so the native webview
       // logically continues with new wiring. Last-write-wins on rapid
       // repeats. (Task #10 race guard.)
       if let controller = self.currentController, controller.isBeingDismissed {
@@ -176,12 +176,12 @@ class NativeWebviewPlugin: Plugin {
         return
       }
       // Already presented and not being dismissed: re-wire the existing
-      // popup in place. Channel rebinds via `bridge.channel = …`; the new
+      // native webview in place. Channel rebinds via `bridge.channel = …`; the new
       // `initScript` is `eval`'d into the current page (NOT document-start
       // for the just-loaded one — caveat documented in `desktop.rs`) and
       // also added to the user content controller so future loads inside
-      // this popup run it at document-start. `reopen` resets the URL-fallback
-      // claim state so the reused popup starts fresh (URL back in the title),
+      // this native webview run it at document-start. `reopen` resets the URL-fallback
+      // claim state so the reused native webview starts fresh (URL back in the title),
       // then re-applies the caller's initial chrome. (Task #7 re-wire.)
       if let existing = self.currentWebView, let bridge = self.currentBridge {
         bridge.channel = args.nativeWebviewEventChannel
@@ -189,7 +189,7 @@ class NativeWebviewPlugin: Plugin {
           existing.evaluateJavaScript(initScript, completionHandler: nil)
           // Drop the prior document-start script before re-adding so repeated
           // re-wires don't stack N copies — otherwise every later page load in
-          // this popup would run the caller's init IIFE N+1 times (the
+          // this native webview would run the caller's init IIFE N+1 times (the
           // sniffer's installSniffer would double-hook fetch/XHR). The plugin
           // adds exactly one user script (the initScript), so clearing all is
           // safe.
@@ -224,15 +224,15 @@ class NativeWebviewPlugin: Plugin {
     }
   }
 
-  /// Evaluate JS inside the currently-presented popup webview. Rejects if no
-  /// popup is open (caller should `await invoke('plugin:native-webview|open',
+  /// Evaluate JS inside the currently-presented native webview. Rejects if no
+  /// native webview is open (caller should `await invoke('plugin:native-webview|open',
   /// …)` first). The evaluation itself is asynchronous and best-effort — its
   /// return value and any thrown JS error are not surfaced.
   @objc public func evaluateJs(_ invoke: Invoke) throws {
     let args = try invoke.parseArgs(EvaluateJsArgs.self)
     DispatchQueue.main.async {
       guard let webView = self.currentWebView else {
-        invoke.reject("native-webview: no popup open")
+        invoke.reject("native-webview: no native webview open")
         return
       }
       webView.evaluateJavaScript(args.script, completionHandler: nil)
@@ -240,12 +240,12 @@ class NativeWebviewPlugin: Plugin {
     }
   }
 
-  /// Update one or more of the popup chrome's three labels
+  /// Update one or more of the native webview chrome's three labels
   /// (`title`, `subtitle`, `message`). Each field is independently
   /// optional: `nil` / absent = leave unchanged; empty string clears.
   /// Resolves with `{set: true}` once applied; `{set: false}` (not a
-  /// reject) when no popup is open, so callers can push speculatively
-  /// across the popup's lifecycle without retry plumbing.
+  /// reject) when no native webview is open, so callers can push speculatively
+  /// across the native webview's lifecycle without retry plumbing.
   @objc public func patchWindowText(_ invoke: Invoke) throws {
     let args = try invoke.parseArgs(PatchWindowTextArgs.self)
     DispatchQueue.main.async {
@@ -263,8 +263,8 @@ class NativeWebviewPlugin: Plugin {
     }
   }
 
-  /// Dismiss the currently-presented popup. Idempotent — resolves with
-  /// `{closedByRequest: false}` when no popup is open. Delegates to the controller's
+  /// Dismiss the currently-presented native webview. Idempotent — resolves with
+  /// `{closedByRequest: false}` when no native webview is open. Delegates to the controller's
   /// `requestClose()`, which routes through the same `dismiss` + `onClose`
   /// pipeline the in-toolbar Close button uses.
   ///
@@ -307,7 +307,7 @@ class NativeWebviewPlugin: Plugin {
         )
       )
     }
-    let bridge = PopupMessageBridge(channel: channel)
+    let bridge = NativeWebviewMessageBridge(channel: channel)
     contentController.add(bridge, name: NativeWebviewPlugin.messageHandlerName)
     // Capture so `open()`'s re-wire branch can swap `bridge.channel` without
     // rebuilding the webview (Task #7).
@@ -328,7 +328,7 @@ class NativeWebviewPlugin: Plugin {
     // Apply caller-supplied initial chrome before presentation so the bar is
     // correct on first paint (nil = leave unchanged). The controller's URL
     // fallback shows the page URL in the highest slot the caller hasn't
-    // claimed, so an `open` with no title/subtitle still shows where the popup
+    // claimed, so an `open` with no title/subtitle still shows where the native webview
     // navigated.
     browser.applyWindowText(
       title: initialTitle,
@@ -350,9 +350,9 @@ class NativeWebviewPlugin: Plugin {
       let suppress = self?.suppressNextCloseEvent ?? false
       self?.suppressNextCloseEvent = false
       // If `open()` queued a replay during the dismiss animation, run it
-      // now and skip the `Closed` echo — the popup logically continues with
+      // now and skip the `Closed` echo — the native webview logically continues with
       // new wiring (Task #10). Otherwise this is a real dismiss; emit
-      // `Closed` so the host's collector releases per-popup state — unless a
+      // `Closed` so the host's collector releases per-native-webview state — unless a
       // host `close(suppressCloseEvent: true)` asked us to stay silent.
       if let pending = self?.onCloseFinishedHandler {
         self?.onCloseFinishedHandler = nil
@@ -398,7 +398,7 @@ class NativeWebviewPlugin: Plugin {
     topViewController()?.present(navigation, animated: true)
   }
 
-  /// The top-most presented view controller to present the popup from.
+  /// The top-most presented view controller to present the native webview from.
   private func topViewController() -> UIViewController? {
     let keyWindow = UIApplication.shared.connectedScenes
       .compactMap { ($0 as? UIWindowScene)?.windows.first(where: { $0.isKeyWindow }) }
@@ -496,7 +496,7 @@ class WebViewTitleView: UIView {
   }
 }
 
-/// Hosts the popup `WKWebView` with native chrome:
+/// Hosts the native webview's `WKWebView` with native chrome:
 ///
 /// - Left bar item: Close (dismisses the sheet, fires `onClose`).
 /// - Right bar item: Refresh (`webView.reload()`).
@@ -636,7 +636,7 @@ class NativeWebviewController: UIViewController, UIAdaptivePresentationControlle
   /// Programmatic close path shared by the in-toolbar Close button and the
   /// plugin's host-initiated `close` command. Animates dismissal and fires
   /// `onClose` on completion — so the channel's `NativeWebviewEvent::Closed` lands
-  /// once per popup regardless of whether dismissal was user- or host-
+  /// once per native webview regardless of whether dismissal was user- or host-
   /// initiated.
   func requestClose() {
     dismiss(animated: true) { [weak self] in
@@ -694,10 +694,10 @@ class NativeWebviewController: UIViewController, UIAdaptivePresentationControlle
     renderUrlFallback()
   }
 
-  /// Reset the claim state for a re-`open()` against this live popup: the new
+  /// Reset the claim state for a re-`open()` against this live native webview: the new
   /// open starts with both slots unclaimed (URL back in the title) and a blank
   /// message, then re-applies the caller's initial chrome. Mirrors what a fresh
-  /// `present()` shows, so reusing the popup is indistinguishable from
+  /// `present()` shows, so reusing the native webview is indistinguishable from
   /// rebuilding it.
   func reopen(url newUrl: String, title: String?, subtitle: String?, message: String?) {
     url = newUrl
@@ -759,7 +759,7 @@ class NativeWebviewController: UIViewController, UIAdaptivePresentationControlle
     urlObservation?.invalidate()
     // `WKUserContentController` retains its script-message handlers strongly;
     // drop ours so the bridge (and the webview graph behind it) can deallocate,
-    // matching the lifecycle `PopupMessageBridge`'s doc comment describes.
+    // matching the lifecycle `NativeWebviewMessageBridge`'s doc comment describes.
     webView.configuration.userContentController.removeScriptMessageHandler(
       forName: NativeWebviewPlugin.messageHandlerName
     )

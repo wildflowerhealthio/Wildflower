@@ -1,5 +1,5 @@
 // Build-time bundler for the NATIVE sniffer bootstrap (iOS WKWebView / Android
-// WebView popups opened by `tauri-plugin-native-webview`).
+// WebView, opened by `tauri-plugin-native-webview`).
 //
 // Mirrors `build-tauri-bootstrap.mts` but bundles `src/native-sniffer-entry.ts`
 // (the bridge-backed transport — no `__TAURI__`, no BrowserTopBar) through the

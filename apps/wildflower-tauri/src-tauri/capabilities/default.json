@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the React SPA webview. Matches on `webviews` only (not `windows`) so the grant is narrowed to webviews literally labeled 'main' — any child webview added to the main window with a different label (e.g. the sniffer) doesn't inherit the broad core:default surface. Per Tauri 2 ACL semantics, `windows` and `webviews` match independently (OR), so listing `windows: ['main']` here would have broadened the grant to every webview inside the main window regardless of label. `allow-gatekeeper-current-token` gates the pull command that returns the Owner bearer; it must remain absent from `native-webview-window.json` (the sniffer popup's capability) so a hostile EHR page cannot reach the token even though it shares the JS context with the sniffer bootstrap.",
+  "description": "Capability for the React SPA webview. Matches on `webviews` only (not `windows`) so the grant is narrowed to webviews literally labeled 'main' — any child webview added to the main window with a different label (e.g. the sniffer) doesn't inherit the broad core:default surface. Per Tauri 2 ACL semantics, `windows` and `webviews` match independently (OR), so listing `windows: ['main']` here would have broadened the grant to every webview inside the main window regardless of label. `allow-gatekeeper-current-token` gates the pull command that returns the Owner bearer; it must remain absent from `native-webview-window.json` (the sniffer's native-webview capability) so a hostile EHR page cannot reach the token even though it shares the JS context with the sniffer bootstrap.",
   "webviews": ["main"],
   "permissions": [
     "core:default",

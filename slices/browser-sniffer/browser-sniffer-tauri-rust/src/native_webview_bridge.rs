@@ -1,39 +1,40 @@
-//! Rust-side bridge between `tauri-plugin-native-webview`'s popup and the
-//! sniffer's `BRIDGE_EVENT` event bus. Runs on all platforms now that the
-//! sniffer routes through the plugin on desktop too — only the `forward_to_popup`
-//! direction stays mobile-only.
+//! Rust-side bridge between `tauri-plugin-native-webview`'s native webview and
+//! the sniffer's `BRIDGE_EVENT` event bus. Runs on all platforms now that the
+//! sniffer routes through the plugin on desktop too — only the
+//! `forward_to_native_webview` direction stays mobile-only.
 //!
 //! ## Two halves
 //!
-//! - **Popup → host** ([`install`]). At app start we create a long-lived
-//!   `Channel<NativeWebviewEvent>` whose handler decodes each event the plugin's
-//!   Swift/Kotlin/desktop side sends and re-emits onto `BRIDGE_EVENT`:
-//!   `NativeWebviewEvent::Message` → [`validate_popup_message`] checks the (untrusted)
-//!   envelope — it must target `BRIDGE_EVENT` AND carry an allowlisted
-//!   data-plane `_tag` — then emits its inner payload on the `BRIDGE_EVENT`
-//!   channel (so SPA + Rust listeners see the `{_tag:…}` shape directly);
-//!   `NativeWebviewEvent::Closed` → emit `{"_tag":"SniffingComplete"}` so the collector
-//!   releases per-request state. The plugin suppresses `Closed` for
-//!   host-initiated closes (see `sniffing_complete::handle`), so a delivered
-//!   `Closed` is always a user / OS dismissal. The channel is cloned and reused
-//!   across every `open` — its identifier is preserved by `Clone`, so the same
-//!   handler fires for every popup.
+//! - **Native webview → host** ([`install`]). At app start we create a
+//!   long-lived `Channel<NativeWebviewEvent>` whose handler decodes each event
+//!   the plugin's Swift/Kotlin/desktop side sends and re-emits onto
+//!   `BRIDGE_EVENT`: `NativeWebviewEvent::Message` →
+//!   [`validate_native_webview_message`] checks the (untrusted) envelope — it
+//!   must target `BRIDGE_EVENT` AND carry an allowlisted data-plane `_tag` —
+//!   then emits its inner payload on the `BRIDGE_EVENT` channel (so SPA + Rust
+//!   listeners see the `{_tag:…}` shape directly); `NativeWebviewEvent::Closed`
+//!   → emit `{"_tag":"SniffingComplete"}` so the collector releases per-request
+//!   state. The plugin suppresses `Closed` for host-initiated closes (see
+//!   `sniffing_complete::handle`), so a delivered `Closed` is always a user / OS
+//!   dismissal. The channel is cloned and reused across every `open` — its
+//!   identifier is preserved by `Clone`, so the same handler fires for every
+//!   native webview.
 //!
-//! - **Host → popup** ([`forward_to_popup`]). The bridge listener in `lib.rs`
-//!   routes `Click` / `CancelSnifferRequest` here on mobile only — desktop
-//!   doesn't need this hop because the content webview is a Tauri webview
-//!   whose `__TAURI__.event.listen('bridge', …)` already receives Rust's
+//! - **Host → native webview** ([`forward_to_native_webview`]). The bridge
+//!   listener in `lib.rs` routes `Click` / `CancelSnifferRequest` here on mobile
+//!   only — desktop doesn't need this hop because the content webview is a Tauri
+//!   webview whose `__TAURI__.event.listen('bridge', …)` already receives Rust's
 //!   `app.emit('bridge', …)` natively.
 //!
 //! ## Platform notes
 //!
-//! - **Mobile**: native popup posts on the `webkit.messageHandlers` /
+//! - **Mobile**: the native webview posts on the `webkit.messageHandlers` /
 //!   `@JavascriptInterface` bridges → Swift/Kotlin → `channel.send`. The
 //!   plugin's Swift/Kotlin emit `Message` (envelope JSON) and `Closed`.
 //! - **Desktop**: content webview emits directly on `BRIDGE_EVENT`, so the
 //!   `Message` arm is never exercised. The plugin's desktop backend fires
-//!   `Closed` through the channel when the popup window is destroyed (user
-//!   clicks the OS X), so the `Closed` arm still translates that to
+//!   `Closed` through the channel when the native webview window is destroyed
+//!   (user clicks the OS X), so the `Closed` arm still translates that to
 //!   `SniffingComplete` on the bridge — keeping collector idle-timeouts off
 //!   the happy path.
 
@@ -51,11 +52,11 @@ use tauri_plugin_native_webview::NativeWebviewEvent;
 
 use crate::events;
 
-/// The web→host data-plane tags the sniffer popup page may raise on the bridge.
-/// See [`crate::events`] for the security rationale — control tags are excluded
-/// so an untrusted popup can't spoof them. [`tests::data_plane_tags_match_ts`]
-/// drift-guards the literals.
-const POPUP_DATA_PLANE_TAGS: &[&str] = &[
+/// The web→host data-plane tags the sniffer's native-webview page may raise on
+/// the bridge. See [`crate::events`] for the security rationale — control tags
+/// are excluded so an untrusted page can't spoof them.
+/// [`tests::data_plane_tags_match_ts`] drift-guards the literals.
+const NATIVE_WEBVIEW_DATA_PLANE_TAGS: &[&str] = &[
     events::PAGE_LOADED,
     events::RESPONSE_START,
     events::RESPONSE_DATA,
@@ -69,31 +70,32 @@ const POPUP_DATA_PLANE_TAGS: &[&str] = &[
 ///
 /// `Clone` on `Channel<T>` preserves the underlying handler (it's
 /// `Arc<ChannelInner>` under the hood), so the same handler fires no matter
-/// which popup invocation sent the event. Stored in Tauri's typemap and
+/// which native webview sent the event. Stored in Tauri's typemap and
 /// retrieved by `sniffer_window::open_or_navigate`.
-pub(crate) struct PopupChannel {
+pub(crate) struct NativeWebviewChannel {
     pub(crate) channel: Channel<NativeWebviewEvent>,
 }
 
-/// Build the channel, register its handler, and stash the [`PopupChannel`]
-/// state on the app. Call once from `attach_browser_sniffer`.
+/// Build the channel, register its handler, and stash the
+/// [`NativeWebviewChannel`] state on the app. Call once from
+/// `attach_browser_sniffer`.
 pub(crate) fn install(app: &AppHandle) {
     let app_handle = app.clone();
     let channel: Channel<NativeWebviewEvent> = Channel::new(move |body| {
         dispatch_body(&app_handle, &body);
         Ok(())
     });
-    app.manage(PopupChannel { channel });
+    app.manage(NativeWebviewChannel { channel });
 }
 
-/// The popup-side bridge envelope a `NativeWebviewEvent::Message` carries:
-/// `{"event":"bridge","payload":{"_tag":…}}`. `payload` is kept as a borrowed
-/// [`RawValue`] so a validated inner payload forwards verbatim — one parse, no
-/// intermediate `Value`, no deep clone (this runs once per streamed
+/// The native-webview-side bridge envelope a `NativeWebviewEvent::Message`
+/// carries: `{"event":"bridge","payload":{"_tag":…}}`. `payload` is kept as a
+/// borrowed [`RawValue`] so a validated inner payload forwards verbatim — one
+/// parse, no intermediate `Value`, no deep clone (this runs once per streamed
 /// `ResponseData` chunk on mobile). A missing / `null` `payload` decodes to
 /// `None` and is dropped as malformed.
 #[derive(Deserialize)]
-struct PopupEnvelope<'a> {
+struct NativeWebviewEnvelope<'a> {
     #[serde(borrow)]
     event: &'a str,
     #[serde(borrow, default)]
@@ -124,14 +126,14 @@ impl<'de> Deserialize<'de> for InnerPayload<'de> {
             type Value = InnerPayload<'de>;
 
             fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                f.write_str("a popup payload object with a unique string `_tag`")
+                f.write_str("a native-webview payload object with a unique string `_tag`")
             }
 
             fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
             where
                 A: MapAccess<'de>,
             {
-                // A popup payload has a handful of keys, so a linear
+                // A native-webview payload has a handful of keys, so a linear
                 // duplicate scan is cheaper than a set. Keys are borrowed
                 // (`&str`); an escaped key fails to borrow and drops the
                 // message — fail-closed, and legitimate keys never escape.
@@ -159,82 +161,89 @@ impl<'de> Deserialize<'de> for InnerPayload<'de> {
     }
 }
 
-/// Validate an untrusted popup `Message` envelope and return the inner payload
-/// to re-emit verbatim on `BRIDGE_EVENT`, or an `Err` describing why it was
-/// dropped (logged at warn by the caller).
+/// Validate an untrusted native-webview `Message` envelope and return the inner
+/// payload to re-emit verbatim on `BRIDGE_EVENT`, or an `Err` describing why it
+/// was dropped (logged at warn by the caller).
 ///
-/// Security (this is the load-bearing guard): the popup hosts an arbitrary
-/// third-party page that can reach the native bridge directly, so both the
-/// envelope `event` and the inner `_tag` are attacker-controlled. We require
+/// Security (this is the load-bearing guard): the native webview hosts an
+/// arbitrary third-party page that can reach the native bridge directly, so both
+/// the envelope `event` and the inner `_tag` are attacker-controlled. We require
 /// the envelope target the single multiplexed `BRIDGE_EVENT` channel AND the
 /// inner `_tag` be one of the sniffer's legitimate web→host data-plane tags
-/// ([`POPUP_DATA_PLANE_TAGS`]) — re-emitting anything else would let a hostile
-/// page fabricate a `ResponseData`/`ResponseStart`, prematurely raise
+/// ([`NATIVE_WEBVIEW_DATA_PLANE_TAGS`]) — re-emitting anything else would let a
+/// hostile page fabricate a `ResponseData`/`ResponseStart`, prematurely raise
 /// `SniffingComplete`, or spoof a sibling slice's control tag on the host bus.
-fn validate_popup_message(envelope_json: &str) -> Result<&RawValue, Cow<'static, str>> {
-    let envelope: PopupEnvelope = serde_json::from_str(envelope_json)
-        .map_err(|error| Cow::Owned(format!("undecodable popup message envelope: {error}")))?;
+fn validate_native_webview_message(envelope_json: &str) -> Result<&RawValue, Cow<'static, str>> {
+    let envelope: NativeWebviewEnvelope = serde_json::from_str(envelope_json).map_err(|error| {
+        Cow::Owned(format!(
+            "undecodable native-webview message envelope: {error}"
+        ))
+    })?;
     if envelope.event != BRIDGE_EVENT {
         return Err(Cow::Owned(format!(
-            "popup message envelope targeted unexpected event `{}`",
+            "native-webview message envelope targeted unexpected event `{}`",
             envelope.event
         )));
     }
     let Some(payload) = envelope.payload else {
         return Err(Cow::Borrowed(
-            "popup message envelope had a missing or null payload",
+            "native-webview message envelope had a missing or null payload",
         ));
     };
     let InnerPayload { tag } = serde_json::from_str(payload.get())
-        .map_err(|error| Cow::Owned(format!("popup message payload rejected: {error}")))?;
-    if !POPUP_DATA_PLANE_TAGS.contains(&tag) {
+        .map_err(|error| Cow::Owned(format!("native-webview message payload rejected: {error}")))?;
+    if !NATIVE_WEBVIEW_DATA_PLANE_TAGS.contains(&tag) {
         return Err(Cow::Owned(format!(
-            "popup message tag `{tag}` is not an allowed sniffer data-plane tag; dropping"
+            "native-webview message tag `{tag}` is not an allowed sniffer data-plane tag; dropping"
         )));
     }
     Ok(payload)
 }
 
 /// Decode a channel body and dispatch to the bridge bus. Decode / emit
-/// failures log at warn — popup event delivery is best-effort, the listener
-/// loop continues.
+/// failures log at warn — native-webview event delivery is best-effort, the
+/// listener loop continues.
 fn dispatch_body(app: &AppHandle, body: &InvokeResponseBody) {
     let json = match body {
         InvokeResponseBody::Json(string) => string,
         InvokeResponseBody::Raw(_) => {
-            log::warn!("[browser-sniffer] popup channel emitted raw bytes; dropping");
+            log::warn!("[browser-sniffer] native-webview channel emitted raw bytes; dropping");
             return;
         }
     };
     let event: NativeWebviewEvent = match serde_json::from_str(json) {
         Ok(event) => event,
         Err(error) => {
-            log::warn!("[browser-sniffer] undecodable popup channel payload dropped: {error}");
+            log::warn!(
+                "[browser-sniffer] undecodable native-webview channel payload dropped: {error}"
+            );
             return;
         }
     };
     match event {
         NativeWebviewEvent::Message { payload } => {
-            // `payload` is the popup-side bridge envelope:
+            // `payload` is the native-webview-side bridge envelope:
             // `{"event":"bridge","payload":{"_tag":"PageLoaded",…}}`. The
-            // popup-side `native-bridge.ts::makeNativeBridgeEventBus.emit`
+            // native-webview-side `native-bridge.ts::makeNativeBridgeEventBus.emit`
             // wraps every `installSniffer` emit in that envelope so a single
             // native bridge can carry multiple Tauri channels.
             //
-            // `validate_popup_message` checks the (untrusted) envelope and
-            // returns the inner `{_tag:…}` payload to re-emit verbatim on
+            // `validate_native_webview_message` checks the (untrusted) envelope
+            // and returns the inner `{_tag:…}` payload to re-emit verbatim on
             // `BRIDGE_EVENT` — so SPA + Rust listeners see the inner shape
-            // directly, matching the Tauri-popup path where there's no envelope
-            // wrapping. (Emitting the whole envelope would defeat the
+            // directly, matching the Tauri-webview path where there's no
+            // envelope wrapping. (Emitting the whole envelope would defeat the
             // collector's demux-by-`_tag`.)
-            match validate_popup_message(&payload) {
+            match validate_native_webview_message(&payload) {
                 Ok(inner_payload) => {
                     if let Err(error) = app.emit(BRIDGE_EVENT, inner_payload) {
-                        log::warn!("[browser-sniffer] failed to re-emit popup message: {error}");
+                        log::warn!(
+                            "[browser-sniffer] failed to re-emit native-webview message: {error}"
+                        );
                     }
                 }
                 Err(reason) => {
-                    log::warn!("[browser-sniffer] popup message dropped: {reason}");
+                    log::warn!("[browser-sniffer] native-webview message dropped: {reason}");
                 }
             }
         }
@@ -255,29 +264,29 @@ fn dispatch_body(app: &AppHandle, body: &InvokeResponseBody) {
     }
 }
 
-/// Forward a `BRIDGE_EVENT` payload string into the native popup as a
+/// Forward a `BRIDGE_EVENT` payload string into the native webview as a
 /// `window.__nativeWebviewReceive(...)` call. Only invoked on mobile from the
-/// bridge listener in `lib.rs` for the popup-bound tags
+/// bridge listener in `lib.rs` for the native-webview-bound tags
 /// ([`events::CLICK`](crate::events::CLICK) /
 /// [`events::CANCEL_SNIFFER_REQUEST`](crate::events::CANCEL_SNIFFER_REQUEST)).
 ///
 /// `payload_str` is the raw JSON of the bridge envelope as received by
 /// `app.listen(BRIDGE_EVENT, …)` (`{"_tag":"Click", …}`). It is wrapped in
-/// `{"event":"bridge","payload":<envelope>}` to match what the popup-side
-/// `makeNativeBridgeEventBus` `parseEnvelope` expects.
+/// `{"event":"bridge","payload":<envelope>}` to match what the
+/// native-webview-side `makeNativeBridgeEventBus` `parseEnvelope` expects.
 ///
 /// Mobile-only: on desktop the content webview is a Tauri webview, so
 /// `__TAURI__.event.listen('bridge', …)` inside it receives Rust's
 /// `app.emit('bridge', …)` natively — no `evaluateJavaScript` hop needed.
 #[cfg(any(target_os = "ios", target_os = "android"))]
-pub(crate) fn forward_to_popup(app: &AppHandle, payload_str: &str) {
+pub(crate) fn forward_to_native_webview(app: &AppHandle, payload_str: &str) {
     use serde::Serialize;
     use tauri_plugin_native_webview::{EvaluateJsRequest, NativeWebviewExt};
 
-    /// The envelope the popup-side `makeNativeBridgeEventBus::parseEnvelope`
+    /// The envelope the native-webview-side `makeNativeBridgeEventBus::parseEnvelope`
     /// expects: the bridge channel name plus the inbound payload forwarded
     /// verbatim as a borrowed `RawValue` — one parse, no intermediate `Value`,
-    /// no deep clone (the outbound mirror of [`PopupEnvelope`]).
+    /// no deep clone (the outbound mirror of [`NativeWebviewEnvelope`]).
     #[derive(Serialize)]
     struct OutboundEnvelope<'a> {
         event: &'a str,
@@ -291,7 +300,8 @@ pub(crate) fn forward_to_popup(app: &AppHandle, payload_str: &str) {
         Ok(value) => value,
         Err(error) => {
             log::warn!(
-                "[browser-sniffer] forward_to_popup: undecodable bridge payload dropped: {error}"
+                "[browser-sniffer] forward_to_native_webview: undecodable bridge payload dropped: \
+                 {error}"
             );
             return;
         }
@@ -302,12 +312,14 @@ pub(crate) fn forward_to_popup(app: &AppHandle, payload_str: &str) {
     }) {
         Ok(string) => string,
         Err(error) => {
-            log::warn!("[browser-sniffer] forward_to_popup: failed to encode envelope: {error}");
+            log::warn!(
+                "[browser-sniffer] forward_to_native_webview: failed to encode envelope: {error}"
+            );
             return;
         }
     };
-    // Two-stage stringify: the inner is the envelope the popup-side bridge
-    // transport parses; the outer (via `Value::String(...).to_string()`)
+    // Two-stage stringify: the inner is the envelope the native-webview-side
+    // bridge transport parses; the outer (via `Value::String(...).to_string()`)
     // quotes that string into a JS literal that survives `evaluateJavaScript`.
     // Quotes / backslashes inside the envelope would otherwise syntax-error
     // the injected script.
@@ -318,10 +330,11 @@ pub(crate) fn forward_to_popup(app: &AppHandle, payload_str: &str) {
         .native_webview()
         .evaluate_js(EvaluateJsRequest { script })
     {
-        // Popup may be closed (the SPA emits Cancel speculatively across the
-        // popup's lifecycle); the plugin rejects with "no popup open". Drop
-        // to debug — the collector retries on the next page event.
-        log::debug!("[browser-sniffer] forward_to_popup: plugin send rejected: {error}");
+        // The native webview may already be closed (the SPA emits Cancel
+        // speculatively across its lifecycle); the plugin then rejects because
+        // none is open. Drop to debug — the collector retries on the next page
+        // event.
+        log::debug!("[browser-sniffer] forward_to_native_webview: plugin send rejected: {error}");
     }
 }
 
@@ -330,7 +343,7 @@ mod tests {
     use shared_structures_rust::bridge::BRIDGE_EVENT;
     use tauri_plugin_native_webview::NativeWebviewEvent;
 
-    use super::{validate_popup_message, POPUP_DATA_PLANE_TAGS};
+    use super::{validate_native_webview_message, NATIVE_WEBVIEW_DATA_PLANE_TAGS};
     use crate::events;
 
     /// Drift guard: the Rust allowlist must match the sniffer's web→host
@@ -341,7 +354,7 @@ mod tests {
     #[test]
     fn data_plane_tags_match_ts() {
         assert_eq!(
-            POPUP_DATA_PLANE_TAGS,
+            NATIVE_WEBVIEW_DATA_PLANE_TAGS,
             [
                 "PageLoaded",
                 "ResponseStart",
@@ -361,7 +374,7 @@ mod tests {
         let json = format!(
             r#"{{"event":"{BRIDGE_EVENT}","payload":{{"_tag":"ResponseData","id":"r1","data":"AA=="}}}}"#
         );
-        let inner = validate_popup_message(&json).expect("allowlisted tag forwards");
+        let inner = validate_native_webview_message(&json).expect("allowlisted tag forwards");
         // The inner payload is returned untouched (not the whole envelope), so
         // the collector's demux-by-`_tag` sees `_tag`, not `event`.
         assert_eq!(
@@ -373,10 +386,10 @@ mod tests {
     /// Every allowlisted tag is accepted (guards a typo'd literal in the set).
     #[test]
     fn every_data_plane_tag_is_accepted() {
-        for tag in POPUP_DATA_PLANE_TAGS {
+        for tag in NATIVE_WEBVIEW_DATA_PLANE_TAGS {
             let json = format!(r#"{{"event":"{BRIDGE_EVENT}","payload":{{"_tag":"{tag}"}}}}"#);
             assert!(
-                validate_popup_message(&json).is_ok(),
+                validate_native_webview_message(&json).is_ok(),
                 "data-plane tag `{tag}` should be allowed"
             );
         }
@@ -395,8 +408,8 @@ mod tests {
         ] {
             let json = format!(r#"{{"event":"{BRIDGE_EVENT}","payload":{{"_tag":"{tag}"}}}}"#);
             assert!(
-                validate_popup_message(&json).is_err(),
-                "control tag `{tag}` must not be re-emitted from a popup message"
+                validate_native_webview_message(&json).is_err(),
+                "control tag `{tag}` must not be re-emitted from a native-webview message"
             );
         }
     }
@@ -406,7 +419,7 @@ mod tests {
     #[test]
     fn unexpected_event_name_is_rejected() {
         let json = r#"{"event":"some-other-event","payload":{"_tag":"ResponseData"}}"#;
-        assert!(validate_popup_message(json).is_err());
+        assert!(validate_native_webview_message(json).is_err());
     }
 
     /// A missing or explicit-null `payload` is dropped as malformed rather
@@ -415,9 +428,9 @@ mod tests {
     #[test]
     fn missing_or_null_payload_is_dropped() {
         let missing = format!(r#"{{"event":"{BRIDGE_EVENT}"}}"#);
-        assert!(validate_popup_message(&missing).is_err());
+        assert!(validate_native_webview_message(&missing).is_err());
         let null = format!(r#"{{"event":"{BRIDGE_EVENT}","payload":null}}"#);
-        assert!(validate_popup_message(&null).is_err());
+        assert!(validate_native_webview_message(&null).is_err());
     }
 
     /// A payload with no string `_tag` (or none at all) is dropped — there's
@@ -425,9 +438,9 @@ mod tests {
     #[test]
     fn payload_without_string_tag_is_dropped() {
         let no_tag = format!(r#"{{"event":"{BRIDGE_EVENT}","payload":{{"id":"r1"}}}}"#);
-        assert!(validate_popup_message(&no_tag).is_err());
+        assert!(validate_native_webview_message(&no_tag).is_err());
         let non_string = format!(r#"{{"event":"{BRIDGE_EVENT}","payload":{{"_tag":42}}}}"#);
-        assert!(validate_popup_message(&non_string).is_err());
+        assert!(validate_native_webview_message(&non_string).is_err());
     }
 
     /// Security: a payload with a duplicate top-level key is rejected. The
@@ -441,11 +454,11 @@ mod tests {
         let dup_tag = format!(
             r#"{{"event":"{BRIDGE_EVENT}","payload":{{"_tag":"SniffingComplete","_tag":"Log"}}}}"#
         );
-        assert!(validate_popup_message(&dup_tag).is_err());
+        assert!(validate_native_webview_message(&dup_tag).is_err());
         let dup_other = format!(
             r#"{{"event":"{BRIDGE_EVENT}","payload":{{"_tag":"ResponseData","id":"a","id":"b"}}}}"#
         );
-        assert!(validate_popup_message(&dup_other).is_err());
+        assert!(validate_native_webview_message(&dup_other).is_err());
     }
 
     /// Undecodable envelope JSON is an `Err`, not a panic. The bridge listener
@@ -453,7 +466,7 @@ mod tests {
     /// long-lived channel down.
     #[test]
     fn malformed_envelope_is_dropped_not_panicked() {
-        assert!(validate_popup_message("not-json").is_err());
+        assert!(validate_native_webview_message("not-json").is_err());
         // `NativeWebviewEvent` itself still rejects junk at the outer decode layer.
         assert!(serde_json::from_str::<NativeWebviewEvent>("not-json").is_err());
         assert!(serde_json::from_str::<NativeWebviewEvent>(r#"{"event":"unknown"}"#).is_err());

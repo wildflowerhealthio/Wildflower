@@ -33,7 +33,7 @@ import app.tauri.plugin.Plugin
 /**
  * Arguments decoded from `invoke('plugin:native-webview|open', { url, initScript, nativeWebviewEventChannel })`.
  * `nativeWebviewEventChannel` is a Tauri `Channel<NativeWebviewEvent>` the caller receives
- * popup events on (`{"event":"message", "payload": …}` / `{"event":"closed"}`) —
+ * native webview events on (`{"event":"message", "payload": …}` / `{"event":"closed"}`) —
  * matches the `models.rs` `NativeWebviewEvent` serde shape.
  */
 @InvokeArg
@@ -53,7 +53,7 @@ class OpenArgs {
 /**
  * Arguments decoded from `invoke('plugin:native-webview|evaluate_js', { script })`.
  * Keys match `EvaluateJsRequest`'s camelCase serde wire shape. The host evaluates
- * `script` verbatim in the popup WebView — typically a
+ * `script` verbatim in the native webview — typically a
  * `window.__nativeWebviewReceive(JSON.stringify(...))` call carrying a bridge
  * envelope.
  */
@@ -118,15 +118,15 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
     private var dialog: Dialog? = null
 
     /**
-     * The currently-presented popup WebView, if any. Captured on `open` so
+     * The currently-presented native webview, if any. Captured on `open` so
      * `evaluateJs` can `evaluateJavascript(...)` into it; cleared on dismiss so
-     * `evaluateJs` fails loudly with a "no popup open" reject after the user has
-     * closed the popup.
+     * `evaluateJs` fails loudly with a "no native webview open" reject after the user has
+     * closed the native webview.
      */
     private var currentWebView: WebView? = null
 
     /**
-     * Top toolbar of the current popup, if any. Captured so `patchWindowText` can
+     * Top toolbar of the current native webview, if any. Captured so `patchWindowText` can
      * update `title` and `subtitle` via `toolbar.title = …` / `toolbar.subtitle = …`
      * without re-walking the dialog's view tree. Cleared alongside
      * `currentWebView` on dismiss.
@@ -134,14 +134,14 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
     private var currentToolbar: Toolbar? = null
 
     /**
-     * Bottom-bar message label of the current popup, if any. Captured so
+     * Bottom-bar message label of the current native webview, if any. Captured so
      * `patchWindowText` can push status text (e.g. "34 resources collected") next
      * to the navigation arrows without re-walking the view tree.
      */
     private var currentMessageView: TextView? = null
 
     /**
-     * URL-fallback state machine for the current popup. The page URL is shown
+     * URL-fallback state machine for the current native webview. The page URL is shown
      * in the highest slot the caller has not yet claimed: the toolbar title
      * until a caller `title` arrives, then the subtitle until a caller
      * `subtitle` arrives, then neither slot. [currentUrl] tracks the live page
@@ -155,8 +155,8 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
     private var subtitleClaimed = false
 
     /**
-     * The currently-presented popup's JS-bridge. Captured so a second `open()`
-     * against an existing popup can rebind `bridge.channel = …` without
+     * The currently-presented native webview's JS-bridge. Captured so a second `open()`
+     * against an existing native webview can rebind `bridge.channel = …` without
      * rebuilding the WebView (Task #7 re-wire). Cleared on dismiss.
      */
     private var currentBridge: Bridge? = null
@@ -164,7 +164,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
     /**
      * Handle for the WebView's installed document-start script, when the
      * provider supports `DOCUMENT_START_SCRIPT`. Retained so a second `open()`
-     * against this popup can [ScriptHandler.remove] the prior script before
+     * against this native webview can [ScriptHandler.remove] the prior script before
      * adding the new one — otherwise each re-wire stacks another copy and every
      * later page load runs the caller's init IIFE N+1 times (Task #7 re-wire).
      * Cleared on dismiss.
@@ -185,7 +185,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
     /**
      * Replay closure set by [open] when a dismiss is in flight; consumed by
      * the `setOnDismissListener`. When set, the dismiss listener suppresses
-     * the `Closed` channel echo and runs the replay — the popup logically
+     * the `Closed` channel echo and runs the replay — the native webview logically
      * continues with new wiring rather than firing a spurious close.
      * Last-write-wins on rapid repeats.
      */
@@ -245,7 +245,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
             val bridge = currentBridge
             val d = dialog
             // Already presented and not in flight to close: rewire the
-            // existing popup in place (Task #7). Channel rebinds via
+            // existing native webview in place (Task #7). Channel rebinds via
             // `bridge.channel = …`; the new `initScript` is `eval`'d into the
             // current page (NOT document-start for the just-loaded one —
             // caveat documented in `desktop.rs`) and also added via
@@ -298,8 +298,8 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
     }
 
     /**
-     * Evaluate JS inside the currently-presented popup WebView. Rejects if no
-     * popup is open (caller should `await invoke('plugin:native-webview|open',
+     * Evaluate JS inside the currently-presented native webview. Rejects if no
+     * native webview is open (caller should `await invoke('plugin:native-webview|open',
      * …)` first). The evaluation itself is asynchronous and best-effort — its
      * return value and any thrown JS error are not surfaced.
      */
@@ -309,7 +309,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
         activity.runOnUiThread {
             val webView = currentWebView
             if (webView == null) {
-                invoke.reject("native-webview: no popup open")
+                invoke.reject("native-webview: no native webview open")
                 return@runOnUiThread
             }
             webView.evaluateJavascript(args.script, null)
@@ -320,12 +320,12 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
     }
 
     /**
-     * Update one or more of the popup chrome's three labels
+     * Update one or more of the native webview chrome's three labels
      * (`title`, `subtitle`, `message`). Each field is independently
      * optional: `null` / absent = leave unchanged; empty string clears.
      * Resolves with `{set: true}` once applied. Resolves with `{set: false}`
-     * (not a reject) when no popup is open, so the caller can push
-     * speculatively across the popup lifecycle without retry plumbing.
+     * (not a reject) when no native webview is open, so the caller can push
+     * speculatively across the native webview lifecycle without retry plumbing.
      */
     @Command
     fun patchWindowText(invoke: Invoke) {
@@ -350,8 +350,8 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
     }
 
     /**
-     * Dismiss the currently-presented popup. Idempotent — resolves with
-     * `{closedByRequest: false}` when no popup is open. Routes through
+     * Dismiss the currently-presented native webview. Idempotent — resolves with
+     * `{closedByRequest: false}` when no native webview is open. Routes through
      * [dismissDialog] so a same-tick reopen lands in the deferral branch of
      * [open] rather than rewiring a doomed WebView.
      *
@@ -380,7 +380,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
     }
 
     /**
-     * Dismiss the popup with the race guard ([isClosing]) set so a same-tick
+     * Dismiss the native webview with the race guard ([isClosing]) set so a same-tick
      * `open()` queues a replay via [onCloseFinishedHandler] rather than
      * navigating the not-yet-torn-down WebView. Every dismiss path (host
      * `close`, toolbar Close button, system back) must go through this — the
@@ -397,7 +397,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
      * Apply the caller-supplied window text in one call — `null` = leave
      * unchanged; any present value (including `""`) *claims* that slot for the
      * caller and is shown verbatim (empty string clears the label). Operates on
-     * the current popup's [currentToolbar] / [currentMessageView], so it is
+     * the current native webview's [currentToolbar] / [currentMessageView], so it is
      * shared by `open`'s initial chrome, the `patchWindowText` command, and the
      * re-wire path. After applying, [renderUrlFallback] paints the page URL into
      * the highest slot the caller still hasn't claimed.
@@ -454,17 +454,17 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
         // Capture so `evaluateJs` can target it; cleared on dismiss below.
         currentWebView = webView
 
-        // Reset the URL-fallback state machine for this fresh popup: the page
+        // Reset the URL-fallback state machine for this fresh native webview: the page
         // URL starts in the title and falls through the slots as the caller
         // claims them (see [renderUrlFallback]).
         currentUrl = url
         titleClaimed = false
         subtitleClaimed = false
 
-        // JS -> native bridge, reachable on any origin. Per-popup so a stacked
-        // second `open` doesn't redirect the first popup's events into the
-        // second popup's channel. Captured into [currentBridge] so a second
-        // `open()` against this popup can rebind `bridge.channel = …`
+        // JS -> native bridge, reachable on any origin. Per-native-webview so a stacked
+        // second `open` doesn't redirect the first native webview's events into the
+        // second native webview's channel. Captured into [currentBridge] so a second
+        // `open()` against this native webview can rebind `bridge.channel = …`
         // without rebuilding the WebView (Task #7).
         val bridge = Bridge(channel)
         webView.addJavascriptInterface(bridge, MESSAGE_HANDLER_NAME)
@@ -576,7 +576,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
         // bar is correct on first paint (null = leave unchanged). The URL
         // fallback paints the page URL into the highest slot the caller hasn't
         // claimed, so an `open` with no title/subtitle still shows where the
-        // popup navigated.
+        // native webview navigated.
         applyWindowText(initialTitle, initialSubtitle, initialMessage)
 
         val bottomBar = LinearLayout(activity).apply {
@@ -658,7 +658,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
             setContentView(layout)
             // System back: navigate WebView history when there is one, else
             // dismiss. Without this hook the Dialog's default back behaviour
-            // dismisses the popup outright — surprising when the sniffer has
+            // dismisses the native webview outright — surprising when the sniffer has
             // auto-navigated several pages deep and the user expects "back"
             // to undo the most recent navigation. Matches the in-toolbar
             // Back button's logic so software and hardware back agree.
@@ -715,7 +715,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
                 // sees the close on its new channel (matches desktop's
                 // `CurrentChannel` handling). Task #7.
                 val closeChannel = currentBridge?.channel ?: channel
-                // Tear down THIS popup's WebView so an open→close cycle doesn't
+                // Tear down THIS native webview's WebView so an open→close cycle doesn't
                 // leak a fully-loaded WebView plus its `@JavascriptInterface`
                 // (which pins the Bridge → plugin → Activity) and its still-live
                 // JS/render thread. `webView` is the local captured at present()
@@ -736,7 +736,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
                 val suppress = suppressNextCloseEvent
                 suppressNextCloseEvent = false
                 // If `open()` queued a replay during the dismiss, run it now
-                // and skip the `Closed` echo — the popup logically continues
+                // and skip the `Closed` echo — the native webview logically continues
                 // with new wiring (Task #10). Otherwise this is a real
                 // dismiss; emit `Closed` — unless a host
                 // `close(suppressCloseEvent = true)` asked us to stay silent.
@@ -757,7 +757,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
     }
 
     /**
-     * JS -> native bridge surface exposed as `window.nativeWebview`. Each popup
+     * JS -> native bridge surface exposed as `window.nativeWebview`. Each native webview
      * gets its own `Bridge` so events route to the matching caller's channel.
      *
      * `channel` is `var` so [open]'s rewire branch can swap it without

@@ -2,7 +2,7 @@
 
 [default]
 description = """
-Default grant for the native-webview plugin: present a popup over an external
+Default grant for the native-webview plugin: present a native webview over an external
 URL (`open`), evaluate JS inside it (`evaluate_js`), patch its title / subtitle /
 message chrome labels (`patch_window_text`), and dismiss it (`close`). Each of
 these references a hand-authored, richly-described per-command permission file

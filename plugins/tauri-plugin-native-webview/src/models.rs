@@ -4,7 +4,7 @@
 //! `camelCase` on the wire to match the Swift `Decodable` / Kotlin `@InvokeArg`
 //! sides.
 //!
-//! Popup events flow the other direction (native → Rust) through a Tauri
+//! Native webview events flow the other direction (native → Rust) through a Tauri
 //! [`Channel`] embedded in `OpenRequest` — see [`NativeWebviewEvent`]. The mobile
 //! plugin side (`NativeWebviewPlugin.swift` / `NativeWebviewPlugin.kt`) sends
 //! `{event,…}` payloads through the channel; Rust deserialises them and
@@ -15,7 +15,7 @@
 use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
 
-/// Arguments for opening the native webview popup.
+/// Arguments for opening the native webview.
 ///
 /// `OpenRequest` is `Serialize`-only (and so omits `PartialEq` / `Eq` /
 /// `Deserialize`) because [`Channel`] only serialises one way — its on-wire
@@ -38,11 +38,11 @@ pub struct OpenRequest {
     /// payloads through (`message` events plus the eventual `closed`). The same
     /// `Channel<NativeWebviewEvent>` instance can be reused across many `open`
     /// calls — its identifier is preserved on `Clone`, so a long-lived channel
-    /// registered at app start receives events from every popup it opens.
+    /// registered at app start receives events from every native webview it opens.
     pub native_webview_event_channel: Channel<NativeWebviewEvent>,
     /// Chrome title applied at presentation time. `None` falls back to the URL
     /// host. Applying chrome through `open` (rather than a post-open
-    /// `patch_window_text`) means the popup's first paint already shows it — and
+    /// `patch_window_text`) means the native webview's first paint already shows it — and
     /// avoids the desktop race where a `patch_window_text` fired right after `open`
     /// finds the chrome webview not yet built.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -56,16 +56,16 @@ pub struct OpenRequest {
     pub initial_message: Option<String>,
 }
 
-/// Result of an `open` invocation. `opened` is `true` once the native popup
+/// Result of an `open` invocation. `opened` is `true` once the native webview
 /// has been presented (the load itself proceeds asynchronously).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct OpenResponse {
-    /// Whether the native popup was presented.
+    /// Whether the native webview was presented.
     pub opened: bool,
 }
 
-/// Events the native (Swift / Kotlin) popup sends to its Rust caller through
+/// Events the native (Swift / Kotlin) webview sends to its Rust caller through
 /// the [`Channel`] embedded in [`OpenRequest`].
 ///
 /// Internally tagged on `event` (`{"event":"message","payload":"…"}` /
@@ -78,7 +78,7 @@ pub struct OpenResponse {
 #[serde(tag = "event")]
 pub enum NativeWebviewEvent {
     /// A `WKScriptMessageHandler` / `@JavascriptInterface` postMessage from
-    /// the popup webview. `payload` is the raw string the page posted — the
+    /// the native webview. `payload` is the raw string the page posted — the
     /// plugin is content-agnostic and forwards it verbatim.
     #[serde(rename = "message")]
     Message {
@@ -86,7 +86,7 @@ pub enum NativeWebviewEvent {
         /// parses on its own bus.
         payload: String,
     },
-    /// The popup was dismissed. Sent once per popup, after the sheet / dialog /
+    /// The native webview was dismissed. Sent once per native webview, after the sheet / dialog /
     /// window has finished its dismiss animation. Fired for user dismissals
     /// (iOS Close button or sheet swipe, Android Toolbar back / system back,
     /// desktop OS window X) and for host-initiated `close()` calls — UNLESS the
@@ -97,31 +97,31 @@ pub enum NativeWebviewEvent {
     Closed,
 }
 
-/// Arguments for evaluating JavaScript in the currently-open native popup.
+/// Arguments for evaluating JavaScript in the currently-open native webview.
 ///
 /// `script` is handed verbatim to the platform's evaluate-JS API
 /// (`WKWebView.evaluateJavaScript` on iOS, `WebView.evaluateJavascript` on
 /// Android, `Webview::eval` on desktop). Caller-trusted; the plugin does not
-/// sandbox or wrap it. Returns an error if no popup is currently open.
+/// sandbox or wrap it. Returns an error if no native webview is currently open.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct EvaluateJsRequest {
-    /// JS source to evaluate inside the popup webview.
+    /// JS source to evaluate inside the native webview.
     pub script: String,
 }
 
 /// Result of an `evaluate_js` invocation. `was_dispatched` is `true` once the
-/// script has been queued for evaluation on the popup's webview thread (the
+/// script has been queued for evaluation on the native webview's thread (the
 /// evaluation itself is asynchronous; the plugin does not surface its return
 /// value).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct EvaluateJsResponse {
-    /// Whether the script was dispatched to the popup webview.
+    /// Whether the script was dispatched to the native webview.
     pub was_dispatched: bool,
 }
 
-/// Arguments for updating the popup's three chrome labels. Each field is
+/// Arguments for updating the native webview's three chrome labels. Each field is
 /// independent:
 ///
 /// - `title` — top-chrome headline. Until the caller first sets it, the slot
@@ -152,13 +152,13 @@ pub struct PatchWindowTextRequest {
 }
 
 /// Result of a `patch_window_text` invocation. `set` is `true` once the labels have
-/// been applied to the popup's chrome (synchronous on the UI thread); `false`
-/// when no popup is open (not a hard error — the caller may push speculatively
-/// across the popup lifecycle without a retry dance).
+/// been applied to the native webview's chrome (synchronous on the UI thread); `false`
+/// when no native webview is open (not a hard error — the caller may push speculatively
+/// across the native webview lifecycle without a retry dance).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct PatchWindowTextResponse {
-    /// Whether the update was applied to a live popup chrome.
+    /// Whether the update was applied to a live native webview chrome.
     pub set: bool,
 }
 
@@ -187,14 +187,14 @@ pub struct CloseRequest {
 }
 
 /// Result of a `close` invocation. `closed_by_request` is `true` once the
-/// dismiss has been dispatched to the popup's view controller / dialog; `false`
-/// when no popup was open. Idempotent: a `close` against an already-dismissed
-/// popup succeeds with `closed_by_request: false`.
+/// dismiss has been dispatched to the native webview's view controller / dialog; `false`
+/// when no native webview was open. Idempotent: a `close` against an already-dismissed
+/// native webview succeeds with `closed_by_request: false`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct CloseResponse {
-    /// Whether this call dismissed a live popup (i.e. the close happened
-    /// because of this request). `false` when no popup was open.
+    /// Whether this call dismissed a live native webview (i.e. the close happened
+    /// because of this request). `false` when no native webview was open.
     pub closed_by_request: bool,
 }
 
@@ -267,7 +267,7 @@ mod tests {
 
     /// Initial-chrome fields ride under their camelCase keys when set — the
     /// sniffer's `open` sets `initialSubtitle` so the "Collecting Automatically"
-    /// status paints with the popup instead of via a post-open `patch_window_text`.
+    /// status paints with the native webview instead of via a post-open `patch_window_text`.
     #[test]
     fn open_request_serializes_initial_chrome_camel_case() {
         let json = serde_json::to_string(&OpenRequest {
@@ -371,7 +371,7 @@ mod tests {
     /// tags are pinned lowercase; drift here would silently swallow events
     /// at the Rust handler.
     #[test]
-    fn popup_event_message_round_trips_with_lowercase_tag() {
+    fn native_webview_event_message_round_trips_with_lowercase_tag() {
         let json = r#"{"event":"message","payload":"hello"}"#;
         let event: NativeWebviewEvent = serde_json::from_str(json).expect("de");
         assert_eq!(
@@ -386,7 +386,7 @@ mod tests {
 
     /// `NativeWebviewEvent::Closed` decodes from `{ "event":"closed" }` — no payload.
     #[test]
-    fn popup_event_closed_decodes_without_payload() {
+    fn native_webview_event_closed_decodes_without_payload() {
         let event: NativeWebviewEvent = serde_json::from_str(r#"{"event":"closed"}"#).expect("de");
         assert_eq!(event, NativeWebviewEvent::Closed);
         assert_eq!(
@@ -397,7 +397,7 @@ mod tests {
 
     /// `CloseResponse` decodes both arms of the native-side
     /// `{ "closedByRequest": … }` payload — `true` for a live dismiss, `false`
-    /// for an already-closed popup (idempotent close).
+    /// for an already-closed native webview (idempotent close).
     #[test]
     fn close_response_decodes_closed_by_request_flag() {
         let live: CloseResponse = serde_json::from_str(r#"{"closedByRequest":true}"#).expect("de");

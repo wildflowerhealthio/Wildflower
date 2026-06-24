@@ -6,7 +6,7 @@
 [[permission]]
 identifier = "close"
 description = """
-Allow dismissing the currently-open popup. Idempotent — succeeds as a no-op when
+Allow dismissing the currently-open native webview. Idempotent — succeeds as a no-op when
 nothing is open. Optionally accepts `suppressCloseEvent: true` so a host that
 already observed the terminal event prompting the close doesn't get the
 `Closed` echo back on its channel; user / OS dismissals always emit.

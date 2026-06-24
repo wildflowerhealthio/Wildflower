@@ -14,17 +14,17 @@
 //! tests in `browser-sniffer-tauri/tests/bootstrap.test.ts` round-trip
 //! the same bytes through jsdom.
 
-/// Desktop popup bootstrap IIFE — the `initialization_script` for the
-/// `WebviewWindow` sniffer popup. Built from `tauri-sniffer-entry.ts` by
-/// `scripts/build-tauri-bootstrap.mts`. Only referenced on desktop; on mobile
-/// the popup runs in `tauri-plugin-native-webview` with [`NATIVE_SNIFFER_BOOTSTRAP`]
+/// Desktop native-webview bootstrap IIFE — the `initialization_script` for the
+/// `WebviewWindow` sniffer native webview. Built from `tauri-sniffer-entry.ts`
+/// by `scripts/build-tauri-bootstrap.mts`. Only referenced on desktop; on mobile
+/// the sniffer runs in `tauri-plugin-native-webview` with [`NATIVE_SNIFFER_BOOTSTRAP`]
 /// instead, and including this would trip `dead_code` since the desktop
 /// `WebviewWindow` path is `cfg`-gated out.
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
 pub(crate) const SNIFFER_BOOTSTRAP: &str =
     include_str!("../../browser-sniffer-tauri/dist/tauri-bootstrap.js");
 
-/// Native popup bootstrap IIFE — the `initScript` arg passed to
+/// Native-webview bootstrap IIFE — the `initScript` arg passed to
 /// `tauri-plugin-native-webview::open` on iOS/Android. Built from
 /// `native-sniffer-entry.ts` by `scripts/build-native-bootstrap.mts`.
 ///

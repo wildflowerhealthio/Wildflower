@@ -1,6 +1,6 @@
 ## Default Permission
 
-Default grant for the native-webview plugin: present a popup over an external
+Default grant for the native-webview plugin: present a native webview over an external
 URL (`open`), evaluate JS inside it (`evaluate_js`), patch its title / subtitle /
 message chrome labels (`patch_window_text`), and dismiss it (`close`). Each of
 these references a hand-authored, richly-described per-command permission file
@@ -135,7 +135,7 @@ Denies the patch_window_text command without any pre-configured scope.
 </td>
 <td>
 
-Allow dismissing the currently-open popup. Idempotent — succeeds as a no-op when
+Allow dismissing the currently-open native webview. Idempotent — succeeds as a no-op when
 nothing is open. Optionally accepts `suppressCloseEvent: true` so a host that
 already observed the terminal event prompting the close doesn't get the
 `Closed` echo back on its channel; user / OS dismissals always emit.
@@ -152,10 +152,10 @@ already observed the terminal event prompting the close doesn't get the
 </td>
 <td>
 
-Allow evaluating caller-supplied JavaScript inside the currently-open popup
+Allow evaluating caller-supplied JavaScript inside the currently-open native
 webview (e.g. the host pushing a `window.__nativeWebviewReceive(...)` bridge
 message in). The script is run verbatim and not sandboxed; the call errors if
-no popup is open.
+no native webview is open.
 
 
 </td>
@@ -169,7 +169,7 @@ no popup is open.
 </td>
 <td>
 
-Allow presenting a native web view popup over an external `http(s)` URL: a
+Allow presenting a native web view over an external `http(s)` URL: a
 `WKWebView` (iOS), `android.webkit.WebView` (Android), or Tauri child webview
 (desktop) wrapped in native chrome, with the caller's document-start script
 injected on any origin and a `Channel<NativeWebviewEvent>` carrying message /
@@ -187,10 +187,10 @@ closed events back to the host. Non-`http(s)` schemes are rejected.
 </td>
 <td>
 
-Allow patching the popup chrome's three text labels — title, subtitle, and the
+Allow patching the native webview chrome's three text labels — title, subtitle, and the
 bottom-bar message. Each field is independent: omitted = leave unchanged, empty
-string = clear, otherwise set. A no-op (resolving "not set") when no popup is
-open, so the host can push speculatively across the popup lifecycle.
+string = clear, otherwise set. A no-op (resolving "not set") when no native webview is
+open, so the host can push speculatively across the native webview lifecycle.
 
 
 </td>
