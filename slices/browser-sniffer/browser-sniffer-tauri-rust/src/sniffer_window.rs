@@ -27,11 +27,12 @@ pub const SNIFFER_WEBVIEW_LABEL: &str = "browser-sniffer";
 ///
 /// The plugin's `open` is idempotent: a second call while a popup is up
 /// navigates the existing content webview to `url` rather than stacking a
-/// new presentation. Initial title is the URL host (set by the plugin
-/// itself); the sniffer passes `subtitle: "Collecting Automatically"` as the
-/// `open` request's `initial_subtitle` so it paints with the popup (rather
-/// than a post-open `set_chrome`, which on desktop would race the not-yet-built
-/// chrome webview).
+/// new presentation. The sniffer leaves `initial_title` unset (so the page URL
+/// shows in the title via the plugin's URL-fallback) and passes
+/// `subtitle: "Collecting Automatically"` as the `open` request's
+/// `initial_subtitle` so it paints with the popup (rather than a post-open
+/// `patch_window_text`, which on desktop would race the not-yet-built chrome
+/// webview).
 pub(crate) fn open_or_navigate(app: &AppHandle, url: WebviewUrl) -> anyhow::Result<()> {
     use tauri_plugin_native_webview::{NativeWebviewExt, OpenRequest};
 
@@ -68,13 +69,15 @@ pub(crate) fn open_or_navigate(app: &AppHandle, url: WebviewUrl) -> anyhow::Resu
         .open(OpenRequest {
             url: parsed.to_string(),
             init_script: Some(bootstrap.to_owned()),
-            channel,
+            native_webview_event_channel: channel,
             // Bake the sniffer's static status into the chrome subtitle at
-            // presentation time. Title defaults to the URL host; message stays
-            // empty until a future step counts resources (e.g. "34 resources
+            // presentation time. `initial_title` is left unset so the page URL
+            // shows in the title (plugin URL-fallback); message stays empty
+            // until a future step counts resources (e.g. "34 resources
             // collected"). Applying it through `open` rather than a post-open
-            // `set_chrome` means it paints with the popup and avoids the desktop
-            // race where `set_chrome` lands before the chrome webview is built.
+            // `patch_window_text` means it paints with the popup and avoids the
+            // desktop race where `patch_window_text` lands before the chrome
+            // webview is built.
             initial_title: None,
             initial_subtitle: Some("Collecting Automatically".to_owned()),
             initial_message: None,

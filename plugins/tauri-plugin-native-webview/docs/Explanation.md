@@ -6,16 +6,18 @@ A Tauri v2 plugin that presents an external URL in a **native, JavaScript-inject
 web view popup** with **native chrome**, instead of a Tauri `WebviewWindow` with
 fake in-page chrome.
 
-It exposes two commands — `open(url, initScript, channel)` and `send(script)` —
-with a trial backend per platform, all running **in parallel** with the existing
-`WebviewWindow` sniffer path on desktop (the mobile path now goes through this
-plugin):
+It exposes four commands, with a backend per platform:
 
-| Platform | Backend                                                      | Native chrome          | JS injection (any origin)                                 | Bridge back to host                              |
-| -------- | ------------------------------------------------------------ | ---------------------- | --------------------------------------------------------- | ------------------------------------------------ |
-| iOS      | Swift `WKWebView` in `UINavigationController` (`.pageSheet`) | Close + host title     | `WKUserScript(.atDocumentStart)`                          | `WKScriptMessageHandler` → `Channel<PopupEvent>` |
-| Android  | Kotlin `android.webkit.WebView` in a fullscreen `Dialog`     | `Toolbar` Close + host | `WebViewCompat.addDocumentStartJavaScript(…, setOf("*"))` | `@JavascriptInterface` → `Channel<PopupEvent>`   |
-| Desktop  | Tauri `WebviewWindow`                                        | OS window frame        | `initialization_script`                                   | event bus (page uses `__TAURI__.event` directly) |
+- `open(url, initScript, nativeWebviewEventChannel, initialTitle?, initialSubtitle?, initialMessage?)` — present the popup.
+- `evaluate_js(script)` — evaluate JS inside the open popup.
+- `patch_window_text({title?, subtitle?, message?})` — update one or more of the chrome's title/subtitle/message labels.
+- `close(suppress_close_event = false)` — dismiss the popup. Emits `NativeWebviewEvent::Closed` on the channel for the dismissal, unless `suppress_close_event` is `true` (a host that already observed the terminal event prompting the close passes `true` so the echo doesn't double-fire). User / OS dismissals always emit.
+
+| Platform | Backend                                                           | Native chrome                                                          | JS injection (any origin)                                 | Bridge back to host                                      |
+| -------- | ----------------------------------------------------------------- | ---------------------------------------------------------------------- | --------------------------------------------------------- | -------------------------------------------------------- |
+| iOS      | Swift `WKWebView` in `UINavigationController` (`.pageSheet`)      | Close + host title                                                     | `WKUserScript(.atDocumentStart)`                          | `WKScriptMessageHandler` → `Channel<NativeWebviewEvent>` |
+| Android  | Kotlin `android.webkit.WebView` in a fullscreen `Dialog`          | `Toolbar` Close + host                                                 | `WebViewCompat.addDocumentStartJavaScript(…, setOf("*"))` | `@JavascriptInterface` → `Channel<NativeWebviewEvent>`   |
+| Desktop  | Tauri parent `Window` + two child webviews (chrome bar + content) | Plugin-drawn chrome bar (host/subtitle/message + back/forward/refresh) | `initialization_script` on the content child              | event bus (page uses `__TAURI__.event` directly)         |
 
 ## Why
 
@@ -41,32 +43,41 @@ native chrome ourselves.
 
 A _non-Tauri_ native web view on desktop (raw `WKWebView` via objc2, `WebView2`
 via the windows crate) would require `unsafe` FFI, which this workspace forbids
-(`unsafe_code = "forbid"`). So the desktop trial presents Tauri's own
-`WebviewWindow` — still a real OS window with a native webview (WKWebView on
-macOS, WebView2 on Windows, webkit2gtk on Linux) and native window chrome — with
-document-start injection via `initialization_script`.
+(`unsafe_code = "forbid"`). So the desktop backend uses Tauri's own webviews —
+still real native webviews (WKWebView on macOS, WebView2 on Windows, webkit2gtk
+on Linux) — with document-start injection via `initialization_script`.
 
-The trade-off: a `WebviewWindow` is a Tauri webview, so `window.__TAURI__` is
+To mirror the mobile popups' native chrome, the desktop backend builds a parent
+`Window` (label `native-webview`) with **two child webviews** (via Tauri's
+`unstable` multi-webview-per-window API): a `data:`-HTML **chrome bar** child
+(`native-webview-chrome`) anchored at the top — drawing the host/subtitle/message
+labels plus back/forward/refresh — and the external **content** child
+(`native-webview-content`) below it. The plugin draws this chrome itself; it is
+not the OS window frame. Chrome → Rust IPC rides a custom-scheme `on_navigation`
+intercept (no `__TAURI__` commands), and Rust → chrome state push uses
+`Webview::eval`; see the `desktop.rs` module docs.
+
+The trade-off: the content child is a Tauri webview, so `window.__TAURI__` is
 present in the loaded page. It is scoped by
 `apps/wildflower-tauri/src-tauri/capabilities/native-webview-window.json` to the
-event bus only (mirroring the browser-sniffer posture). The mobile backends
-avoid that exposure entirely. Desktop already had native window chrome anyway, so
-the bigger desktop win remains gating `injectBrowserTopBar` to mobile (a later
-change).
+event bus only (mirroring the browser-sniffer posture). The chrome child needs
+no capability — it issues no Tauri commands. The mobile backends avoid the
+`__TAURI__` exposure entirely.
 
 ## Shape
 
 ```text
 plugins/tauri-plugin-native-webview/
 ├── Cargo.toml                 — links, tauri-plugin build dep, url (desktop)
-├── build.rs                   — COMMANDS=["open","send"], ios_path + android_path
-├── permissions/default.toml   — default grant = allow-open + allow-send
+├── build.rs                   — COMMANDS=["open","evaluate_js","patch_window_text","close"], ios_path + android_path
+├── permissions/default.toml   — default grant = open + evaluate-js + patch-window-text + close (hand-authored per-command grants)
 ├── src/
 │   ├── lib.rs                 — init(), NativeWebviewExt, plugin wiring
-│   ├── commands.rs            — open(url, initScript, channel) / send(script) IPC commands
-│   ├── models.rs              — OpenRequest/OpenResponse, SendRequest/SendResponse, PopupEvent + tests
+│   ├── commands.rs            — open / evaluate_js / patch_window_text / close IPC commands
+│   ├── models.rs              — OpenRequest/OpenResponse, EvaluateJsRequest/EvaluateJsResponse, PatchWindowTextRequest/PatchWindowTextResponse, NativeWebviewEvent + tests
 │   ├── error.rs               — Error (PluginInvoke on mobile / Internal on desktop)
-│   ├── desktop.rs             — WebviewWindow popup + initialization_script + window.eval for `send`
+│   ├── url_scheme.rs          — http(s)-only URL parse/validate, shared by both backends
+│   ├── desktop.rs             — parent Window + chrome/content child webviews, initialization_script on content, eval for evaluate_js/patch_window_text
 │   └── mobile.rs              — registers the Swift (iOS) / Kotlin (Android) plugin
 ├── ios/
 │   ├── Package.swift
@@ -81,12 +92,12 @@ plugins/tauri-plugin-native-webview/
 ## Round trip
 
 ```text
-[caller (Rust or JS)]  open(url, initScript, channel: Channel<PopupEvent>)
+[caller (Rust or JS)]  open(url, initScript, nativeWebviewEventChannel: Channel<NativeWebviewEvent>)
       │
       ▼
 [Rust] commands::open → NativeWebviewExt::open → platform backend
       │
-      ├─ iOS/Android: run_mobile_plugin("open", { url, initScript, channel })
+      ├─ iOS/Android: run_mobile_plugin("open", { url, initScript, nativeWebviewEventChannel })
       │     → present native WebView (native chrome)
       │     → caller's initScript injected at document start on ANY origin
       │     → page posts an opaque JSON string over the scoped native bridge
@@ -95,27 +106,28 @@ plugins/tauri-plugin-native-webview/
       │       channel handler fires (caller-owned, no JS bridging)
       │     → user dismiss via native chrome → channel.send({ event:"closed" })
       │
-      └─ Desktop: WebviewWindowBuilder(...).initialization_script(initScript)
-            → present WebviewWindow (OS chrome)
-            → caller's initScript injected at document start
-            → (the page is a Tauri webview, so the script uses the event bus
-              directly — channel goes unused on desktop today)
+      └─ Desktop: parent Window + chrome/content child webviews; the content
+            child gets initScript via initialization_script
+            → present the popup with a plugin-drawn chrome bar
+            → caller's initScript injected at document start on the content child
+            → (the content page is a Tauri webview, so the script uses the event
+              bus directly — channel goes unused on desktop today)
 
-[caller]  send(script)  // evaluateJavaScript into the popup webview
+[caller]  evaluate_js(script)  // evaluateJavaScript into the popup webview
       │
       ▼
-[Rust] commands::send → NativeWebviewExt::send → platform backend
+[Rust] commands::evaluate_js → NativeWebviewExt::evaluate_js → platform backend
       │
       ├─ iOS/Android: WKWebView.evaluateJavaScript / WebView.evaluateJavascript
-      └─ Desktop:     WebviewWindow.eval (looked up by WINDOW_LABEL)
+      └─ Desktop:     content child webview eval (looked up by CONTENT_WEBVIEW_LABEL)
 ```
 
 `initScript` is **caller-supplied** — the plugin is content-agnostic. browser-sniffer
 passes its bundled `installSniffer` IIFE wrapped in a small adapter that posts
 to the platform bridge; `browser-sniffer-tauri-rust::popup_bridge` owns the
-`Channel<PopupEvent>` and re-emits onto its `BRIDGE_EVENT` bus.
+`Channel<NativeWebviewEvent>` and re-emits onto its `BRIDGE_EVENT` bus.
 
-`send` is the reverse direction — `browser-sniffer-tauri-rust` calls it on
+`evaluate_js` is the reverse direction — `browser-sniffer-tauri-rust` calls it on
 mobile when it sees `Click` / `CancelSnifferRequest` on `BRIDGE_EVENT`, wrapping
 the payload in a `window.__nativeWebviewReceive(...)` call the popup-side
 transport parses. JS host code never touches the plugin.
@@ -127,7 +139,7 @@ subscribe via `addPluginListener('native-webview', 'message', …)`. That works
 but pins the bridging to the JS layer — every transport swap (e.g. a future
 HTTP transport for the collector) would have to re-route the JS half.
 
-`Channel<PopupEvent>` from `tauri::ipc` keeps the wire native→Rust. The caller
+`Channel<NativeWebviewEvent>` from `tauri::ipc` keeps the wire native→Rust. The caller
 (Rust) creates the channel with a Rust closure handler; the channel handle
 serialises as `"__CHANNEL__:<id>"` into the `open` invoke payload; Swift's
 `Channel: Decodable` / Kotlin's `ChannelDeserializer` re-wires it on the native
@@ -138,12 +150,13 @@ callback into the Rust closure. No JS detour, transport-agnostic.
 
 - **A typed guest-js package** — callers use `invoke` from `@tauri-apps/api`
   directly. Rust callers go through `NativeWebviewExt` / `OpenRequest` /
-  `SendRequest`.
-- **Desktop**: a structured error/result channel back from the popup (the build
-  is currently dispatched to the main thread and logged best-effort), an
-  open/close race sentinel like `sandboxed_webview`'s, and emitting
-  `PopupEvent::Closed` through the channel when the `WebviewWindow` is
-  dismissed.
+  `EvaluateJsRequest`.
+
+(The desktop open/close race sentinel and the `NativeWebviewEvent::Closed`-on-dismiss
+emission that earlier drafts deferred are now implemented — see `PluginState`
+and the `Destroyed` handler in `desktop.rs`. `open()` also propagates build
+errors back to the caller synchronously via a `sync_channel`, rather than
+logging best-effort.)
 
 ## Building / verifying (important)
 

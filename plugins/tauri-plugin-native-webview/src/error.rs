@@ -36,6 +36,17 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
+/// Lets every fallible `tauri::*` call in the desktop backend use `?` instead of
+/// a hand-rolled `.map_err(|error| Error::Internal(error.to_string()))` closure.
+/// Desktop-only because [`Error::Internal`] is the desktop variant; the mobile
+/// backend maps native failures to [`Error::PluginInvoke`] explicitly.
+#[cfg(desktop)]
+impl From<tauri::Error> for Error {
+    fn from(error: tauri::Error) -> Self {
+        Error::Internal(error.to_string())
+    }
+}
+
 impl Serialize for Error {
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
     where

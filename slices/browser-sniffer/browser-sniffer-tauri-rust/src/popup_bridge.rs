@@ -6,12 +6,12 @@
 //! ## Two halves
 //!
 //! - **Popup → host** ([`install`]). At app start we create a long-lived
-//!   `Channel<PopupEvent>` whose handler decodes each event the plugin's
+//!   `Channel<NativeWebviewEvent>` whose handler decodes each event the plugin's
 //!   Swift/Kotlin/desktop side sends and re-emits onto `BRIDGE_EVENT`:
-//!   `PopupEvent::Message` → emit the popup-side envelope's inner payload on
+//!   `NativeWebviewEvent::Message` → emit the popup-side envelope's inner payload on
 //!   the `BRIDGE_EVENT` channel (so SPA + Rust listeners see the `{_tag:…}`
 //!   shape directly), rejecting any other `event` name the (untrusted) popup
-//!   page might supply; `PopupEvent::Closed` → emit `{"_tag":"SniffingComplete"}` so
+//!   page might supply; `NativeWebviewEvent::Closed` → emit `{"_tag":"SniffingComplete"}` so
 //!   the collector releases per-request state on user-initiated close.
 //!   The channel is cloned and reused across every `open` — its identifier is
 //!   preserved by `Clone`, so the same handler fires for every popup.
@@ -40,7 +40,7 @@ use shared_structures_rust::bridge::BRIDGE_EVENT;
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_log::log;
-use tauri_plugin_native_webview::PopupEvent;
+use tauri_plugin_native_webview::NativeWebviewEvent;
 
 /// Managed state wrapping the [`Channel`] handed to each plugin `open` call.
 ///
@@ -49,9 +49,9 @@ use tauri_plugin_native_webview::PopupEvent;
 /// which popup invocation sent the event. Stored in Tauri's typemap and
 /// retrieved by `sniffer_window::open_or_navigate`.
 pub(crate) struct PopupChannel {
-    pub(crate) channel: Channel<PopupEvent>,
+    pub(crate) channel: Channel<NativeWebviewEvent>,
     /// Set by `sniffing_complete::handle` immediately before a host-initiated
-    /// close, and cleared on every `open`. When set, the `PopupEvent::Closed`
+    /// close, and cleared on every `open`. When set, the `NativeWebviewEvent::Closed`
     /// the close produces must NOT echo a second `SniffingComplete` onto the
     /// bridge — the host already observed the one that triggered the close. A
     /// user-initiated close (flag unset) still emits. See [`dispatch_body`].
@@ -62,7 +62,7 @@ pub(crate) struct PopupChannel {
 /// state on the app. Call once from `attach_browser_sniffer`.
 pub(crate) fn install(app: &AppHandle) {
     let app_handle = app.clone();
-    let channel: Channel<PopupEvent> = Channel::new(move |body| {
+    let channel: Channel<NativeWebviewEvent> = Channel::new(move |body| {
         dispatch_body(&app_handle, &body);
         Ok(())
     });
@@ -83,7 +83,7 @@ fn dispatch_body(app: &AppHandle, body: &InvokeResponseBody) {
             return;
         }
     };
-    let event: PopupEvent = match serde_json::from_str(json) {
+    let event: NativeWebviewEvent = match serde_json::from_str(json) {
         Ok(event) => event,
         Err(error) => {
             log::warn!("[browser-sniffer] undecodable popup channel payload dropped: {error}");
@@ -91,7 +91,7 @@ fn dispatch_body(app: &AppHandle, body: &InvokeResponseBody) {
         }
     };
     match event {
-        PopupEvent::Message { payload } => {
+        NativeWebviewEvent::Message { payload } => {
             // `payload` is the popup-side bridge envelope:
             // `{"event":"bridge","payload":{"_tag":"PageLoaded",…}}`. The
             // popup-side `native-bridge.ts::makeNativeBridgeEventBus.emit`
@@ -143,7 +143,7 @@ fn dispatch_body(app: &AppHandle, body: &InvokeResponseBody) {
                 log::warn!("[browser-sniffer] failed to re-emit popup message: {error}");
             }
         }
-        PopupEvent::Closed => {
+        NativeWebviewEvent::Closed => {
             // A host-initiated close (sniffing_complete::handle) already
             // delivered SniffingComplete to the host, so suppress exactly one
             // echo here to avoid a duplicate terminal event on the bridge. A
@@ -183,7 +183,7 @@ fn dispatch_body(app: &AppHandle, body: &InvokeResponseBody) {
 /// `app.emit('bridge', …)` natively — no `evaluateJavaScript` hop needed.
 #[cfg(any(target_os = "ios", target_os = "android"))]
 pub(crate) fn forward_to_popup(app: &AppHandle, payload_str: &str) {
-    use tauri_plugin_native_webview::{NativeWebviewExt, SendRequest};
+    use tauri_plugin_native_webview::{EvaluateJsRequest, NativeWebviewExt};
 
     let parsed: serde_json::Value = match serde_json::from_str(payload_str) {
         Ok(value) => value,
@@ -213,7 +213,10 @@ pub(crate) fn forward_to_popup(app: &AppHandle, payload_str: &str) {
     let quoted_envelope = serde_json::Value::String(envelope_json).to_string();
     let script = format!("window.__nativeWebviewReceive({quoted_envelope})");
 
-    if let Err(error) = app.native_webview().send(SendRequest { script }) {
+    if let Err(error) = app
+        .native_webview()
+        .evaluate_js(EvaluateJsRequest { script })
+    {
         // Popup may be closed (the SPA emits Cancel speculatively across the
         // popup's lifecycle); the plugin rejects with "no popup open". Drop
         // to debug — the collector retries on the next page event.
@@ -223,7 +226,7 @@ pub(crate) fn forward_to_popup(app: &AppHandle, payload_str: &str) {
 
 #[cfg(test)]
 mod tests {
-    use tauri_plugin_native_webview::PopupEvent;
+    use tauri_plugin_native_webview::NativeWebviewEvent;
 
     /// `dispatch_body` returns silently on undecodable JSON. The bridge
     /// listener relies on the channel handler never panicking, since a panic
@@ -234,7 +237,7 @@ mod tests {
     /// integration test in `wildflower-tauri` covers that end-to-end.
     #[test]
     fn dispatch_body_does_not_panic_on_malformed_input() {
-        assert!(serde_json::from_str::<PopupEvent>("not-json").is_err());
-        assert!(serde_json::from_str::<PopupEvent>(r#"{"event":"unknown"}"#).is_err());
+        assert!(serde_json::from_str::<NativeWebviewEvent>("not-json").is_err());
+        assert!(serde_json::from_str::<NativeWebviewEvent>(r#"{"event":"unknown"}"#).is_err());
     }
 }

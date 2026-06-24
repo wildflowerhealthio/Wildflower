@@ -1,7 +1,7 @@
 [package]
 name = "tauri-plugin-native-webview"
 version = "0.0.0"
-description = "Present an external URL in a native, JS-injectable web view popup (iOS today)."
+description = "Present an external URL in a native, JS-injectable web view popup (iOS, Android, desktop)."
 edition.workspace = true
 publish.workspace = true
 # Required for Tauri plugins that ship native (Swift/Kotlin) code: the value is a
