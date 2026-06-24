@@ -20,8 +20,11 @@
 //! a remote caller pick the redirect target. As defense-in-depth this module:
 //!
 //! - rejects an empty `x-public-origin`,
-//! - rejects any non-ASCII, control, whitespace, or `/` character (CR/LF, NUL,
-//!   path components, …) — those have no business in a host[:port] shape,
+//! - rejects any non-ASCII, control, whitespace, `/`, `\`, `@`, `?`, or `#`
+//!   character (CR/LF, NUL, path separators, the userinfo `@`, query/fragment
+//!   delimiters, …) — those have no business in a host[:port] shape and would
+//!   let a rendered `Location` resolve to a different authority than it looks
+//!   like (e.g. `trusted.example.com@evil.example.com` navigates to `evil`),
 //! - accepts `x-forwarded-proto` only as `http`/`https` (case-insensitive) and
 //!   otherwise reverts to the `https` default — keeps `javascript:`/`file:`
 //!   out of the rendered `Location`.
@@ -72,15 +75,14 @@ pub fn served_origin_for(headers: &HeaderMap, loopback_origin: &str) -> String {
     }
 }
 
-/// Whether the request was forwarded by the trusted front, as a bool. Derived
-/// from the same [`request_provenance`] read the rendered origin uses, so two
-/// callers reading the same headers can't disagree on what counts as
-/// forwarded.
+/// Whether the request was forwarded by the trusted front, as a bool. Gates on
+/// the same `x-public-origin` + [`safe_host`] check that [`request_provenance`]
+/// keys `Forwarded` on, so the two can't disagree on what counts as forwarded —
+/// but skips rendering the origin string a bool doesn't need.
 pub fn is_forwarded(headers: &HeaderMap) -> bool {
-    matches!(
-        request_provenance(headers),
-        RequestProvenance::Forwarded { .. }
-    )
+    try_get_header_str(headers, "x-public-origin")
+        .and_then(safe_host)
+        .is_some()
 }
 
 fn try_get_header_str<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
@@ -88,19 +90,24 @@ fn try_get_header_str<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str>
 }
 
 /// Accept a host[:port] shape: non-empty ASCII, no whitespace, no control
-/// chars, no `/`. Bounded character set rather than a full RFC 3986 parse —
-/// CR/LF / NUL / spaces / path segments are out, but legitimate host
-/// characters (letters, digits, `.`, `-`, `:` for ports, `[`/`]` for IPv6)
-/// pass through. Returns `None` for anything we wouldn't safely echo into a
-/// `Location` header.
+/// chars, and none of the URL-structural delimiters that would let the value
+/// resolve to a different authority than it appears to — `/` and `\` (path
+/// separators; the WHATWG URL parser folds `\` to `/` for http/https), `@`
+/// (userinfo delimiter, so `trusted.example.com@evil.example.com` navigates to
+/// `evil.example.com`), and `?` / `#` (query / fragment). Bounded character set
+/// rather than a full RFC 3986 parse — legitimate host characters (letters,
+/// digits, `.`, `-`, `:` for ports, `[`/`]` for IPv6) pass through. Returns
+/// `None` for anything we wouldn't safely echo into a `Location` header.
 fn safe_host(value: &str) -> Option<&str> {
     if value.is_empty() {
         return None;
     }
-    if value
-        .chars()
-        .any(|c| !c.is_ascii() || c.is_ascii_control() || c.is_ascii_whitespace() || c == '/')
-    {
+    if value.chars().any(|c| {
+        !c.is_ascii()
+            || c.is_ascii_control()
+            || c.is_ascii_whitespace()
+            || matches!(c, '/' | '\\' | '@' | '?' | '#')
+    }) {
         return None;
     }
     Some(value)
@@ -184,9 +191,28 @@ mod tests {
 
     #[test]
     fn is_forwarded_agrees_with_request_provenance() {
-        assert!(!is_forwarded(&HeaderMap::new()));
-        let h = headers(&[("x-public-origin", "demo.example.com")]);
-        assert!(is_forwarded(&h));
+        // `is_forwarded` no longer routes through `request_provenance` (it skips
+        // rendering the origin), so pin the invariant that the two still agree
+        // on every input — valid, absent, empty, and each rejected delimiter.
+        let cases: [&[(&str, &str)]; 6] = [
+            &[],
+            &[("x-public-origin", "demo.example.com")],
+            &[
+                ("x-public-origin", "demo.example.com"),
+                ("x-forwarded-proto", "http"),
+            ],
+            &[("x-public-origin", "")],
+            &[("x-public-origin", "trusted.example.com@evil.example.com")],
+            &[("x-public-origin", "demo.example.com/evil")],
+        ];
+        for pairs in cases {
+            let h = headers(pairs);
+            assert_eq!(
+                is_forwarded(&h),
+                matches!(request_provenance(&h), RequestProvenance::Forwarded { .. }),
+                "is_forwarded disagreed with request_provenance for {pairs:?}",
+            );
+        }
     }
 
     #[test]
@@ -220,6 +246,31 @@ mod tests {
                 RequestProvenance::Loopback,
                 "expected loopback fallback for {bad:?}",
             );
+        }
+    }
+
+    #[test]
+    fn public_origin_with_url_delimiters_reads_as_loopback() {
+        // `@` (userinfo), `\` (folded to `/` by the WHATWG URL parser for
+        // http/https), and `?` / `#` (query / fragment) each let a rendered
+        // `Location` resolve to a different authority than it looks like — e.g.
+        // `https://trusted.example.com@evil.example.com` navigates to
+        // `evil.example.com`. The validator rejects them, so the value falls
+        // back to loopback rather than into the redirect target.
+        for bad in [
+            "trusted.example.com@evil.example.com",
+            "demo.example.com\\evil.example.com",
+            "demo.example.com?goto=evil",
+            "demo.example.com#evil",
+        ] {
+            let h = headers(&[("x-public-origin", bad)]);
+            assert_eq!(
+                request_provenance(&h),
+                RequestProvenance::Loopback,
+                "expected loopback fallback for {bad:?}",
+            );
+            assert_eq!(served_origin_for(&h, LOOPBACK), LOOPBACK);
+            assert!(!is_forwarded(&h));
         }
     }
 
