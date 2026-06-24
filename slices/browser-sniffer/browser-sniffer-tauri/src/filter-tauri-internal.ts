@@ -1,6 +1,7 @@
 import type { TauriEventApi } from 'effect-messaging-tauri'
 
 import { BRIDGE_EVENT } from './install-sniffer.ts'
+import { isRecord } from './is-record.ts'
 
 /**
  * Outbound wrapper for the sniffer's multiplexed `BRIDGE_EVENT` channel.
@@ -22,14 +23,6 @@ import { BRIDGE_EVENT } from './install-sniffer.ts'
  */
 
 const TAURI_IPC_FALLBACK_WARN_PREFIX = 'IPC custom protocol failed'
-
-/**
- * Narrow an unknown wire payload to a string-keyed record. A real type
- * guard (not an assertion), so reading `record._tag` / `record.level`
- * downstream stays type-safe without an `as` cast.
- */
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  value !== null && typeof value === 'object'
 
 /**
  * Whether `record` is the `warn`-level `Log` Tauri emits (via the

@@ -1,20 +1,9 @@
-use std::sync::atomic::Ordering;
-
 use tauri::{AppHandle, Manager, WebviewUrl};
 
 #[cfg(any(target_os = "ios", target_os = "android"))]
 use crate::bootstrap::NATIVE_SNIFFER_BOOTSTRAP;
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
 use crate::bootstrap::SNIFFER_BOOTSTRAP;
-
-/// Label assigned to the legacy sniffer webview on desktop, before the
-/// plugin path took over. Kept exported for the existing
-/// `capabilities/browser-sniffer.json` capability that still mentions it
-/// (now a dead grant — the active capability is
-/// `native-webview-window.json`, which scopes the plugin's
-/// `native-webview-content` webview). Safe to drop with the capability
-/// JSON in a follow-up cleanup.
-pub const SNIFFER_WEBVIEW_LABEL: &str = "browser-sniffer";
 
 /// Present the sniffer popup via `tauri-plugin-native-webview` on every
 /// target. The plugin owns popup chrome (native toolbar on iOS / Android,
@@ -56,15 +45,8 @@ pub(crate) fn open_or_navigate(app: &AppHandle, url: WebviewUrl) -> anyhow::Resu
 
     // `Channel` clones share the same identifier and handler under an `Arc`,
     // so reusing the long-lived channel across opens routes every popup's
-    // events to the same `popup_bridge` handler. A fresh open also clears any
-    // stale host-close flag (e.g. a SniffingComplete that fired while no popup
-    // was open) so a later user-initiated close still emits its terminal
-    // SniffingComplete.
-    let channel = {
-        let popup = app.state::<PopupChannel>();
-        popup.host_close_pending.store(false, Ordering::SeqCst);
-        popup.channel.clone()
-    };
+    // events to the same `popup_bridge` handler.
+    let channel = app.state::<PopupChannel>().channel.clone();
     app.native_webview()
         .open(OpenRequest {
             url: parsed.to_string(),
@@ -85,19 +67,4 @@ pub(crate) fn open_or_navigate(app: &AppHandle, url: WebviewUrl) -> anyhow::Resu
         .map_err(|error| anyhow::anyhow!("tauri-plugin-native-webview open failed: {error}"))?;
 
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn label_is_browser_sniffer() {
-        // Internal label; integration tests in the wildflower-tauri layer
-        // (and the legacy capability JSON's `webviews` array) rely on it.
-        // The active runtime label is now `native-webview-content` from
-        // the plugin; this constant survives only for the legacy capability
-        // grant until that file is removed.
-        assert_eq!(SNIFFER_WEBVIEW_LABEL, "browser-sniffer");
-    }
 }

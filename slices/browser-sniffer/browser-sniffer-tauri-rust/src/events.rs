@@ -8,6 +8,24 @@ pub const REQUEST_SNIFFABLE_WEBVIEW: &str = "RequestSniffableWebView";
 pub const OPEN: &str = "Open";
 pub const SNIFFING_COMPLETE: &str = "SniffingComplete";
 
+/// Web→host *data-plane* tag literals the sniffer popup page legitimately
+/// posts over the bridge (the page-observation stream the SPA collector
+/// consumes). These are the ONLY inner `_tag`s `popup_bridge` will re-emit
+/// from an untrusted popup `Message`: the popup loads an arbitrary third-party
+/// URL whose scripts can reach the native bridge directly, so control tags
+/// (`SniffingComplete`, `Open`, `RequestSniffableWebView`) are deliberately
+/// excluded — re-emitting one would let a hostile page spoof a sibling slice's
+/// control event or prematurely end sniffing. Mirrors `browser-sniffer-core`'s
+/// `messages.ts` page→host set plus the `Log` console-shim tag from
+/// `install-sniffer.ts`; the drift guard in `popup_bridge::tests` pins them.
+pub const PAGE_LOADED: &str = "PageLoaded";
+pub const RESPONSE_START: &str = "ResponseStart";
+pub const RESPONSE_DATA: &str = "ResponseData";
+pub const RESPONSE_FINISHED: &str = "ResponseFinished";
+pub const REQUEST_ERROR: &str = "RequestError";
+pub const CANCELLED: &str = "Cancelled";
+pub const LOG: &str = "Log";
+
 /// Host→web tag literals this crate forwards into the native popup on
 /// mobile. On desktop these are picked up by the `WebviewWindow`'s own
 /// Tauri event-bus listener inside the popup — no Rust forwarding needed

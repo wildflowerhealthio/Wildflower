@@ -1,13 +1,11 @@
 // oxlint-disable no-underscore-dangle
 import type { TauriEventApi } from 'effect-messaging-tauri'
 
+import { isRecord } from './is-record.ts'
+
 /** Wire envelope carried over the native bridge: which channel + its payload. */
 type Envelope = { readonly event: string; readonly payload: unknown }
 type Handler = (event: { readonly payload: unknown }) => void
-
-/** Narrow an unknown to a string-keyed record without an `as` cast. */
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  value !== null && typeof value === 'object'
 
 /** Parse an inbound envelope; `undefined` for anything malformed. */
 const parseEnvelope = (json: string): Envelope | undefined => {
@@ -104,9 +102,9 @@ const installReceiverIfMissing = (): void => {
  *     `window.__nativeWebviewReceive(json)` with the same envelope; matching
  *     listeners receive `{ payload }`.
  *
- * The module-scope helpers (`isRecord` / `parseEnvelope` / `resolvePoster`)
- * capture no state and are inlined into the esbuild IIFE, so the injected
- * document-start script stays self-contained. If no native bridge is present
+ * The helpers (`isRecord` — shared from `./is-record.ts` — plus `parseEnvelope`
+ * / `resolvePoster`) capture no state and are inlined into the esbuild IIFE, so
+ * the injected document-start script stays self-contained. If no native bridge is present
  * (e.g. the page is opened outside a native popup), `emit` drops silently and
  * `listen` still registers — the sniffer simply observes nothing.
  *

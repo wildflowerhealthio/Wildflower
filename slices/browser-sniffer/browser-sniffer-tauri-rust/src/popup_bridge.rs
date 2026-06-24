@@ -8,13 +8,16 @@
 //! - **Popup → host** ([`install`]). At app start we create a long-lived
 //!   `Channel<NativeWebviewEvent>` whose handler decodes each event the plugin's
 //!   Swift/Kotlin/desktop side sends and re-emits onto `BRIDGE_EVENT`:
-//!   `NativeWebviewEvent::Message` → emit the popup-side envelope's inner payload on
-//!   the `BRIDGE_EVENT` channel (so SPA + Rust listeners see the `{_tag:…}`
-//!   shape directly), rejecting any other `event` name the (untrusted) popup
-//!   page might supply; `NativeWebviewEvent::Closed` → emit `{"_tag":"SniffingComplete"}` so
-//!   the collector releases per-request state on user-initiated close.
-//!   The channel is cloned and reused across every `open` — its identifier is
-//!   preserved by `Clone`, so the same handler fires for every popup.
+//!   `NativeWebviewEvent::Message` → [`validate_popup_message`] checks the (untrusted)
+//!   envelope — it must target `BRIDGE_EVENT` AND carry an allowlisted
+//!   data-plane `_tag` — then emits its inner payload on the `BRIDGE_EVENT`
+//!   channel (so SPA + Rust listeners see the `{_tag:…}` shape directly);
+//!   `NativeWebviewEvent::Closed` → emit `{"_tag":"SniffingComplete"}` so the collector
+//!   releases per-request state. The plugin suppresses `Closed` for
+//!   host-initiated closes (see `sniffing_complete::handle`), so a delivered
+//!   `Closed` is always a user / OS dismissal. The channel is cloned and reused
+//!   across every `open` — its identifier is preserved by `Clone`, so the same
+//!   handler fires for every popup.
 //!
 //! - **Host → popup** ([`forward_to_popup`]). The bridge listener in `lib.rs`
 //!   routes `Click` / `CancelSnifferRequest` here on mobile only — desktop
@@ -34,13 +37,31 @@
 //!   `SniffingComplete` on the bridge — keeping collector idle-timeouts off
 //!   the happy path.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::borrow::Cow;
 
+use serde::Deserialize;
+use serde_json::value::RawValue;
 use shared_structures_rust::bridge::BRIDGE_EVENT;
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_log::log;
 use tauri_plugin_native_webview::NativeWebviewEvent;
+
+use crate::events;
+
+/// The web→host data-plane tags the sniffer popup page may raise on the bridge.
+/// See [`crate::events`] for the security rationale — control tags are excluded
+/// so an untrusted popup can't spoof them. [`tests::data_plane_tags_match_ts`]
+/// drift-guards the literals.
+const POPUP_DATA_PLANE_TAGS: &[&str] = &[
+    events::PAGE_LOADED,
+    events::RESPONSE_START,
+    events::RESPONSE_DATA,
+    events::RESPONSE_FINISHED,
+    events::REQUEST_ERROR,
+    events::CANCELLED,
+    events::LOG,
+];
 
 /// Managed state wrapping the [`Channel`] handed to each plugin `open` call.
 ///
@@ -50,12 +71,6 @@ use tauri_plugin_native_webview::NativeWebviewEvent;
 /// retrieved by `sniffer_window::open_or_navigate`.
 pub(crate) struct PopupChannel {
     pub(crate) channel: Channel<NativeWebviewEvent>,
-    /// Set by `sniffing_complete::handle` immediately before a host-initiated
-    /// close, and cleared on every `open`. When set, the `NativeWebviewEvent::Closed`
-    /// the close produces must NOT echo a second `SniffingComplete` onto the
-    /// bridge — the host already observed the one that triggered the close. A
-    /// user-initiated close (flag unset) still emits. See [`dispatch_body`].
-    pub(crate) host_close_pending: AtomicBool,
 }
 
 /// Build the channel, register its handler, and stash the [`PopupChannel`]
@@ -66,10 +81,67 @@ pub(crate) fn install(app: &AppHandle) {
         dispatch_body(&app_handle, &body);
         Ok(())
     });
-    app.manage(PopupChannel {
-        channel,
-        host_close_pending: AtomicBool::new(false),
-    });
+    app.manage(PopupChannel { channel });
+}
+
+/// The popup-side bridge envelope a `NativeWebviewEvent::Message` carries:
+/// `{"event":"bridge","payload":{"_tag":…}}`. `payload` is kept as a borrowed
+/// [`RawValue`] so a validated inner payload forwards verbatim — one parse, no
+/// intermediate `Value`, no deep clone (this runs once per streamed
+/// `ResponseData` chunk on mobile). A missing / `null` `payload` decodes to
+/// `None` and is dropped as malformed.
+#[derive(Deserialize)]
+struct PopupEnvelope<'a> {
+    #[serde(borrow)]
+    event: &'a str,
+    #[serde(borrow, default)]
+    payload: Option<&'a RawValue>,
+}
+
+/// Just enough of the inner payload to read its discriminant for the allowlist
+/// check. A missing / non-string / escaped `_tag` fails to decode and the
+/// message is dropped (fail-closed: escape tricks can't slip past the
+/// allowlist, they only get rejected).
+#[derive(Deserialize)]
+struct TagPeek<'a> {
+    #[serde(rename = "_tag", borrow)]
+    tag: &'a str,
+}
+
+/// Validate an untrusted popup `Message` envelope and return the inner payload
+/// to re-emit verbatim on `BRIDGE_EVENT`, or an `Err` describing why it was
+/// dropped (logged at warn by the caller).
+///
+/// Security (this is the load-bearing guard): the popup hosts an arbitrary
+/// third-party page that can reach the native bridge directly, so both the
+/// envelope `event` and the inner `_tag` are attacker-controlled. We require
+/// the envelope target the single multiplexed `BRIDGE_EVENT` channel AND the
+/// inner `_tag` be one of the sniffer's legitimate web→host data-plane tags
+/// ([`POPUP_DATA_PLANE_TAGS`]) — re-emitting anything else would let a hostile
+/// page fabricate a `ResponseData`/`ResponseStart`, prematurely raise
+/// `SniffingComplete`, or spoof a sibling slice's control tag on the host bus.
+fn validate_popup_message(envelope_json: &str) -> Result<&RawValue, Cow<'static, str>> {
+    let envelope: PopupEnvelope = serde_json::from_str(envelope_json)
+        .map_err(|error| Cow::Owned(format!("undecodable popup message envelope: {error}")))?;
+    if envelope.event != BRIDGE_EVENT {
+        return Err(Cow::Owned(format!(
+            "popup message envelope targeted unexpected event `{}`",
+            envelope.event
+        )));
+    }
+    let Some(payload) = envelope.payload else {
+        return Err(Cow::Borrowed(
+            "popup message envelope had a missing or null payload",
+        ));
+    };
+    let TagPeek { tag } = serde_json::from_str(payload.get())
+        .map_err(|_| Cow::Borrowed("popup message payload missing a string `_tag`"))?;
+    if !POPUP_DATA_PLANE_TAGS.contains(&tag) {
+        return Err(Cow::Owned(format!(
+            "popup message tag `{tag}` is not an allowed sniffer data-plane tag; dropping"
+        )));
+    }
+    Ok(payload)
 }
 
 /// Decode a channel body and dispatch to the bridge bus. Decode / emit
@@ -98,68 +170,33 @@ fn dispatch_body(app: &AppHandle, body: &InvokeResponseBody) {
             // wraps every `installSniffer` emit in that envelope so a single
             // native bridge can carry multiple Tauri channels.
             //
-            // Re-emit on `envelope.event` with `envelope.payload` so SPA + Rust
-            // listeners see the inner `{_tag:…}` shape directly — matching the
-            // Tauri-popup path where there's no envelope wrapping. Emitting the
-            // whole envelope on `BRIDGE_EVENT` would defeat the collector's
-            // demux-by-`_tag`: it would see `payload.event` instead of
-            // `payload._tag` and silently drop every message.
-            let envelope: serde_json::Value = match serde_json::from_str(&payload) {
-                Ok(value) => value,
-                Err(error) => {
-                    log::warn!(
-                        "[browser-sniffer] undecodable popup message envelope dropped: {error}"
-                    );
-                    return;
+            // `validate_popup_message` checks the (untrusted) envelope and
+            // returns the inner `{_tag:…}` payload to re-emit verbatim on
+            // `BRIDGE_EVENT` — so SPA + Rust listeners see the inner shape
+            // directly, matching the Tauri-popup path where there's no envelope
+            // wrapping. (Emitting the whole envelope would defeat the
+            // collector's demux-by-`_tag`.)
+            match validate_popup_message(&payload) {
+                Ok(inner_payload) => {
+                    if let Err(error) = app.emit(BRIDGE_EVENT, inner_payload) {
+                        log::warn!("[browser-sniffer] failed to re-emit popup message: {error}");
+                    }
                 }
-            };
-            let Some(event_name) = envelope.get("event").and_then(|v| v.as_str()) else {
-                log::warn!(
-                    "[browser-sniffer] popup message envelope missing string `event` field; \
-                     dropping"
-                );
-                return;
-            };
-            // Security: the popup hosts an arbitrary third-party page that can
-            // reach the native bridge (`webkit.messageHandlers.nativeWebview` /
-            // the Android `@JavascriptInterface`) directly, so `event_name` is
-            // attacker-controlled. Re-emitting it verbatim would let a hostile
-            // page raise *any* internal Tauri event on the host bus (e.g. spoof
-            // `SniffingComplete` or another slice's control events). The sniffer
-            // only ever multiplexes the single `BRIDGE_EVENT` channel, so refuse
-            // anything else rather than forwarding an arbitrary event name.
-            if event_name != BRIDGE_EVENT {
-                log::warn!(
-                    "[browser-sniffer] popup message envelope targeted unexpected event \
-                     `{event_name}`; dropping"
-                );
-                return;
-            }
-            let inner_payload = envelope
-                .get("payload")
-                .cloned()
-                .unwrap_or(serde_json::Value::Null);
-            if let Err(error) = app.emit(BRIDGE_EVENT, inner_payload) {
-                log::warn!("[browser-sniffer] failed to re-emit popup message: {error}");
+                Err(reason) => {
+                    log::warn!("[browser-sniffer] popup message dropped: {reason}");
+                }
             }
         }
         NativeWebviewEvent::Closed => {
-            // A host-initiated close (sniffing_complete::handle) already
-            // delivered SniffingComplete to the host, so suppress exactly one
-            // echo here to avoid a duplicate terminal event on the bridge. A
-            // user-initiated close (flag unset) still emits so the collector
-            // releases per-request state. Same shape as the in-page top bar's
-            // Close button emit on the legacy Tauri path.
-            if app
-                .state::<PopupChannel>()
-                .host_close_pending
-                .swap(false, Ordering::SeqCst)
-            {
-                return;
-            }
+            // The plugin suppresses this echo for host-initiated closes
+            // (`sniffing_complete::handle` calls `close(suppress_close_event =
+            // true)`), so a `Closed` that reaches here is always a user / OS
+            // dismissal — emit `SniffingComplete` so the collector releases
+            // per-request state. Same shape as the in-page top bar's Close
+            // button emit on the legacy Tauri path.
             if let Err(error) = app.emit(
                 BRIDGE_EVENT,
-                serde_json::json!({ "_tag": "SniffingComplete" }),
+                serde_json::json!({ "_tag": events::SNIFFING_COMPLETE }),
             ) {
                 log::warn!("[browser-sniffer] failed to emit SniffingComplete on close: {error}");
             }
@@ -226,17 +263,116 @@ pub(crate) fn forward_to_popup(app: &AppHandle, payload_str: &str) {
 
 #[cfg(test)]
 mod tests {
+    use shared_structures_rust::bridge::BRIDGE_EVENT;
     use tauri_plugin_native_webview::NativeWebviewEvent;
 
-    /// `dispatch_body` returns silently on undecodable JSON. The bridge
-    /// listener relies on the channel handler never panicking, since a panic
-    /// would tear the long-lived channel down. Drift-guard at the unit level
-    /// so a future refactor doesn't accidentally make these paths throw.
-    ///
-    /// Can't exercise the happy path here without an `AppHandle`; the
-    /// integration test in `wildflower-tauri` covers that end-to-end.
+    use super::{validate_popup_message, POPUP_DATA_PLANE_TAGS};
+    use crate::events;
+
+    /// Drift guard: the Rust allowlist must match the sniffer's web→host
+    /// emit set (`browser-sniffer-core`'s `messages.ts` page→host tags plus
+    /// the `Log` console-shim tag in `install-sniffer.ts`). Adding a tag the
+    /// page emits without listing it here would silently drop that stream;
+    /// listing one the page can't emit would widen the spoofing surface.
     #[test]
-    fn dispatch_body_does_not_panic_on_malformed_input() {
+    fn data_plane_tags_match_ts() {
+        assert_eq!(
+            POPUP_DATA_PLANE_TAGS,
+            [
+                "PageLoaded",
+                "ResponseStart",
+                "ResponseData",
+                "ResponseFinished",
+                "RequestError",
+                "Cancelled",
+                "Log",
+            ]
+        );
+    }
+
+    /// Happy path: a `BRIDGE_EVENT` envelope wrapping an allowlisted
+    /// data-plane tag returns the inner payload verbatim for re-emit.
+    #[test]
+    fn allowlisted_tag_forwards_inner_payload() {
+        let json = format!(
+            r#"{{"event":"{BRIDGE_EVENT}","payload":{{"_tag":"ResponseData","id":"r1","data":"AA=="}}}}"#
+        );
+        let inner = validate_popup_message(&json).expect("allowlisted tag forwards");
+        // The inner payload is returned untouched (not the whole envelope), so
+        // the collector's demux-by-`_tag` sees `_tag`, not `event`.
+        assert_eq!(
+            inner.get(),
+            r#"{"_tag":"ResponseData","id":"r1","data":"AA=="}"#
+        );
+    }
+
+    /// Every allowlisted tag is accepted (guards a typo'd literal in the set).
+    #[test]
+    fn every_data_plane_tag_is_accepted() {
+        for tag in POPUP_DATA_PLANE_TAGS {
+            let json = format!(r#"{{"event":"{BRIDGE_EVENT}","payload":{{"_tag":"{tag}"}}}}"#);
+            assert!(
+                validate_popup_message(&json).is_ok(),
+                "data-plane tag `{tag}` should be allowed"
+            );
+        }
+    }
+
+    /// Security: a control tag the page must NOT be able to raise (it would
+    /// prematurely end sniffing) is rejected even though the envelope targets
+    /// the right channel. This is the spoofing hole the inner-`_tag` allowlist
+    /// closes — the old `event_name`-only check let it through.
+    #[test]
+    fn spoofed_control_tag_is_rejected() {
+        for tag in [
+            events::SNIFFING_COMPLETE,
+            events::OPEN,
+            events::REQUEST_SNIFFABLE_WEBVIEW,
+        ] {
+            let json = format!(r#"{{"event":"{BRIDGE_EVENT}","payload":{{"_tag":"{tag}"}}}}"#);
+            assert!(
+                validate_popup_message(&json).is_err(),
+                "control tag `{tag}` must not be re-emitted from a popup message"
+            );
+        }
+    }
+
+    /// An envelope targeting a different Tauri event name is refused — the
+    /// sniffer only ever multiplexes `BRIDGE_EVENT`.
+    #[test]
+    fn unexpected_event_name_is_rejected() {
+        let json = r#"{"event":"some-other-event","payload":{"_tag":"ResponseData"}}"#;
+        assert!(validate_popup_message(json).is_err());
+    }
+
+    /// A missing or explicit-null `payload` is dropped as malformed rather
+    /// than re-emitting `null` onto the bus (the old code forwarded
+    /// `Value::Null`).
+    #[test]
+    fn missing_or_null_payload_is_dropped() {
+        let missing = format!(r#"{{"event":"{BRIDGE_EVENT}"}}"#);
+        assert!(validate_popup_message(&missing).is_err());
+        let null = format!(r#"{{"event":"{BRIDGE_EVENT}","payload":null}}"#);
+        assert!(validate_popup_message(&null).is_err());
+    }
+
+    /// A payload with no string `_tag` (or none at all) is dropped — there's
+    /// no discriminant to allowlist against.
+    #[test]
+    fn payload_without_string_tag_is_dropped() {
+        let no_tag = format!(r#"{{"event":"{BRIDGE_EVENT}","payload":{{"id":"r1"}}}}"#);
+        assert!(validate_popup_message(&no_tag).is_err());
+        let non_string = format!(r#"{{"event":"{BRIDGE_EVENT}","payload":{{"_tag":42}}}}"#);
+        assert!(validate_popup_message(&non_string).is_err());
+    }
+
+    /// Undecodable envelope JSON is an `Err`, not a panic. The bridge listener
+    /// relies on the channel handler never panicking — a panic would tear the
+    /// long-lived channel down.
+    #[test]
+    fn malformed_envelope_is_dropped_not_panicked() {
+        assert!(validate_popup_message("not-json").is_err());
+        // `NativeWebviewEvent` itself still rejects junk at the outer decode layer.
         assert!(serde_json::from_str::<NativeWebviewEvent>("not-json").is_err());
         assert!(serde_json::from_str::<NativeWebviewEvent>(r#"{"event":"unknown"}"#).is_err());
     }

@@ -14,8 +14,6 @@ use shared_structures_rust::bridge::{BridgeEnvelope, BRIDGE_EVENT};
 use tauri::{AppHandle, Listener};
 use tauri_plugin_log::log;
 
-pub use crate::sniffer_window::SNIFFER_WEBVIEW_LABEL;
-
 /// Wire one listener on the multiplexed bridge event and route the
 /// CollectorBridge tags this crate cares about by the envelope's `_tag`.
 /// Idempotent at the listener level — call once per app lifecycle from
