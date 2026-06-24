@@ -679,6 +679,7 @@ dependencies = [
  "shared-structures-rust",
  "tauri",
  "tauri-plugin-log",
+ "tauri-plugin-native-webview",
  "url",
 ]
 

@@ -21,9 +21,10 @@ const LOG_TAG: &str = "Log";
 /// up by label to raise/focus it; an unknown label is a config drift
 /// and the focus call is skipped with a log.
 ///
-/// `cfg(desktop)`-gated because its only use is the desktop
-/// [`raise_main_window`]; mobile builds compile the no-op stub instead, so
-/// an ungated const would trip `dead_code` there.
+/// `cfg(desktop)`-only: the only consumer is `raise_main_window`, which
+/// is gated to desktop (iOS forbids unsolicited focus stealing and
+/// Android exposes the surface differently). The constant tags along
+/// with the function so mobile builds don't emit a `dead_code` warning.
 #[cfg(desktop)]
 const MAIN_WINDOW_LABEL: &str = "main";
 

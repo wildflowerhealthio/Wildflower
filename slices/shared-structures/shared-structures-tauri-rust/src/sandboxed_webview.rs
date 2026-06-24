@@ -26,7 +26,14 @@ pub const SANDBOXED_WEBVIEW_LABEL: &str = "sandboxed-webview";
 /// window for one or more event-loop ticks. Serialising the open/close decision
 /// against our own state (flip to `false` before asking Tauri to close) means a
 /// reopen that races a close always takes the build-fresh path rather than
-/// navigating a doomed window. Mirrors the sniffer's `SNIFFER_OPEN` rationale.
+/// navigating a doomed window.
+///
+/// Note: the sniffer originally had an equivalent `SNIFFER_OPEN` flag; that
+/// path has since moved to `tauri-plugin-native-webview`, which handles the
+/// close/reopen race internally via a cancelable-close (`CloseRequested` +
+/// `prevent_close()` + replay). This sentinel pattern remains the right fit
+/// for sandboxed_webview because callers here don't get a re-wire branch —
+/// they want a single sandboxed slot, naturally reused or rebuilt.
 static SANDBOXED_OPEN: AtomicBool = AtomicBool::new(false);
 
 /// Parse an `http(s)://`-only URL into a [`WebviewUrl`] suitable for

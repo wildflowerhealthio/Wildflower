@@ -3,7 +3,7 @@ import { describe, expect, test } from 'vite-plus/test'
 import type { TunnelState } from 'tunnel-react'
 
 import type { AppEntry } from '../../../queries.ts'
-import { launchTarget } from './launch-target.ts'
+import { launchTarget } from './-launch-target.ts'
 
 const app = (requiresTunnel: boolean): AppEntry => ({
   id: 'growth-chart',
