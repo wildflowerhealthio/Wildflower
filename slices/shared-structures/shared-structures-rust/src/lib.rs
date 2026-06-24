@@ -20,3 +20,13 @@ pub mod tunnel_service;
 /// stays free of `axum`/`async-trait`.
 #[cfg(feature = "health-check")]
 pub mod health_check;
+
+/// Forwarding-header provenance: `request_provenance` (Loopback vs Forwarded)
+/// and the rendered `served_origin_for`. One source of truth for the
+/// `x-public-origin` + `x-forwarded-proto` contract the trusted front sets on
+/// relayed requests, so gatekeeper-rust (token issuer URLs, discovery doc)
+/// and apps-rust (launch redirect target) can't drift apart on what counts as
+/// a forwarded request. Behind the `served-origin` feature so non-HTTP crates
+/// don't pull `axum`.
+#[cfg(feature = "served-origin")]
+pub mod served_origin;

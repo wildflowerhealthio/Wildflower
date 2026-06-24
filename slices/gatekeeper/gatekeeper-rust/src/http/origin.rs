@@ -1,30 +1,21 @@
+//! Gatekeeper's served-origin extractor — wraps the shared provenance helper
+//! from `shared_structures_rust::served_origin`.
+//!
+//! The function `served_origin_for` is the single source of truth: it lives in
+//! `shared-structures-rust` so gatekeeper-rust (issuer URLs / discovery doc)
+//! and apps-rust (launch redirect target) can't drift on what counts as a
+//! forwarded request. This module keeps the `ServedOrigin` axum extractor (it
+//! reaches into gatekeeper-rust's [`AppState`] for the configured
+//! `loopback_origin`, so it can't move to a state-agnostic crate without
+//! parameterizing).
+
 use std::convert::Infallible;
 
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
-use axum::http::HeaderMap;
+pub(crate) use shared_structures_rust::served_origin::served_origin_for;
 
 use crate::http::state::AppState;
-
-/// The origin a given request expects its answer to come from.
-///
-/// When a trusted front (e.g. the reverse-proxy tunnel) forwards a request it
-/// sets `x-public-origin` to the public host the client actually used, and
-/// `x-forwarded-proto` to that scheme; we echo those back so discovery
-/// documents and minted tokens reference the URL the caller really reached.
-/// With no such header the request came in over loopback, so we fall back to
-/// `loopback_origin` (the value pinned in [`GatekeeperConfig`](crate::GatekeeperConfig)).
-pub fn served_origin_for(headers: &HeaderMap, loopback_origin: &str) -> String {
-    if let Some(public_origin) = try_get_header_str(headers, "x-public-origin") {
-        let public_scheme = try_get_header_str(headers, "x-forwarded-proto").unwrap_or("https");
-        return format!("{public_scheme}://{public_origin}");
-    }
-    loopback_origin.to_string()
-}
-
-fn try_get_header_str<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
-    headers.get(name).and_then(|v| v.to_str().ok())
-}
 
 /// [`served_origin_for`] as an axum extractor: resolves the request's served
 /// origin from its forwarding headers and the configured loopback origin, so a
@@ -54,50 +45,5 @@ impl FromRequestParts<AppState> for ServedOrigin {
             &parts.headers,
             &state.loopback_origin,
         )))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use axum::http::{HeaderName, HeaderValue};
-
-    const LOOPBACK: &str = "http://127.0.0.1:5173";
-
-    fn headers(pairs: &[(&str, &str)]) -> HeaderMap {
-        let mut map = HeaderMap::new();
-        for (name, value) in pairs {
-            map.insert(
-                HeaderName::from_bytes(name.as_bytes()).unwrap(),
-                HeaderValue::from_str(value).unwrap(),
-            );
-        }
-        map
-    }
-
-    #[test]
-    fn forwarded_origin_uses_the_forwarded_scheme_and_host() {
-        let headers = headers(&[
-            ("x-public-origin", "emr.example.com"),
-            ("x-forwarded-proto", "http"),
-        ]);
-        assert_eq!(
-            served_origin_for(&headers, LOOPBACK),
-            "http://emr.example.com"
-        );
-    }
-
-    #[test]
-    fn forwarded_origin_defaults_to_https_without_a_proto_header() {
-        let headers = headers(&[("x-public-origin", "emr.example.com")]);
-        assert_eq!(
-            served_origin_for(&headers, LOOPBACK),
-            "https://emr.example.com"
-        );
-    }
-
-    #[test]
-    fn no_forwarding_headers_falls_back_to_the_loopback_origin() {
-        assert_eq!(served_origin_for(&HeaderMap::new(), LOOPBACK), LOOPBACK);
     }
 }
