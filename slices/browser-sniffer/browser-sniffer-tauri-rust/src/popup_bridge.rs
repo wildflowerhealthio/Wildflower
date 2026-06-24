@@ -38,7 +38,9 @@
 //!   the happy path.
 
 use std::borrow::Cow;
+use std::fmt;
 
+use serde::de::{self, MapAccess, Visitor};
 use serde::Deserialize;
 use serde_json::value::RawValue;
 use shared_structures_rust::bridge::BRIDGE_EVENT;
@@ -98,14 +100,63 @@ struct PopupEnvelope<'a> {
     payload: Option<&'a RawValue>,
 }
 
-/// Just enough of the inner payload to read its discriminant for the allowlist
-/// check. A missing / non-string / escaped `_tag` fails to decode and the
-/// message is dropped (fail-closed: escape tricks can't slip past the
-/// allowlist, they only get rejected).
-#[derive(Deserialize)]
-struct TagPeek<'a> {
-    #[serde(rename = "_tag", borrow)]
+/// Just enough of the inner payload to read its `_tag` discriminant for the
+/// allowlist check, while rejecting any duplicate top-level key.
+///
+/// Hand-written (rather than `#[derive(Deserialize)]`) so it fails on a
+/// duplicate of *any* key, not just the duplicate `_tag` serde's struct decode
+/// already catches: this guard re-emits the payload's raw bytes verbatim, so it
+/// must never accept bytes that a last-wins serde read and a first-wins
+/// downstream reader would interpret differently. A missing / non-string /
+/// escaped `_tag` also fails to decode and the message is dropped (fail-closed).
+struct InnerPayload<'a> {
     tag: &'a str,
+}
+
+impl<'de> Deserialize<'de> for InnerPayload<'de> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct PayloadVisitor;
+
+        impl<'de> Visitor<'de> for PayloadVisitor {
+            type Value = InnerPayload<'de>;
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a popup payload object with a unique string `_tag`")
+            }
+
+            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+            where
+                A: MapAccess<'de>,
+            {
+                // A popup payload has a handful of keys, so a linear
+                // duplicate scan is cheaper than a set. Keys are borrowed
+                // (`&str`); an escaped key fails to borrow and drops the
+                // message — fail-closed, and legitimate keys never escape.
+                let mut seen: Vec<&str> = Vec::new();
+                let mut tag: Option<&str> = None;
+                while let Some(key) = map.next_key::<&str>()? {
+                    if seen.contains(&key) {
+                        return Err(de::Error::custom(format!("duplicate key `{key}`")));
+                    }
+                    seen.push(key);
+                    if key == "_tag" {
+                        tag = Some(map.next_value::<&str>()?);
+                    } else {
+                        // Consume the value without parsing its tree, keeping
+                        // the zero-copy hot path intact.
+                        map.next_value::<&RawValue>()?;
+                    }
+                }
+                tag.map(|tag| InnerPayload { tag })
+                    .ok_or_else(|| de::Error::missing_field("_tag"))
+            }
+        }
+
+        deserializer.deserialize_map(PayloadVisitor)
+    }
 }
 
 /// Validate an untrusted popup `Message` envelope and return the inner payload
@@ -134,8 +185,8 @@ fn validate_popup_message(envelope_json: &str) -> Result<&RawValue, Cow<'static,
             "popup message envelope had a missing or null payload",
         ));
     };
-    let TagPeek { tag } = serde_json::from_str(payload.get())
-        .map_err(|_| Cow::Borrowed("popup message payload missing a string `_tag`"))?;
+    let InnerPayload { tag } = serde_json::from_str(payload.get())
+        .map_err(|error| Cow::Owned(format!("popup message payload rejected: {error}")))?;
     if !POPUP_DATA_PLANE_TAGS.contains(&tag) {
         return Err(Cow::Owned(format!(
             "popup message tag `{tag}` is not an allowed sniffer data-plane tag; dropping"
@@ -220,9 +271,23 @@ fn dispatch_body(app: &AppHandle, body: &InvokeResponseBody) {
 /// `app.emit('bridge', …)` natively — no `evaluateJavaScript` hop needed.
 #[cfg(any(target_os = "ios", target_os = "android"))]
 pub(crate) fn forward_to_popup(app: &AppHandle, payload_str: &str) {
+    use serde::Serialize;
     use tauri_plugin_native_webview::{EvaluateJsRequest, NativeWebviewExt};
 
-    let parsed: serde_json::Value = match serde_json::from_str(payload_str) {
+    /// The envelope the popup-side `makeNativeBridgeEventBus::parseEnvelope`
+    /// expects: the bridge channel name plus the inbound payload forwarded
+    /// verbatim as a borrowed `RawValue` — one parse, no intermediate `Value`,
+    /// no deep clone (the outbound mirror of [`PopupEnvelope`]).
+    #[derive(Serialize)]
+    struct OutboundEnvelope<'a> {
+        event: &'a str,
+        payload: &'a RawValue,
+    }
+
+    // We only re-wrap the payload, never inspect its tree, so parse it as a
+    // borrowed `RawValue`: this validates it's well-formed JSON (a malformed
+    // payload must not inject broken script) and lets us forward it verbatim.
+    let payload: &RawValue = match serde_json::from_str(payload_str) {
         Ok(value) => value,
         Err(error) => {
             log::warn!(
@@ -231,11 +296,10 @@ pub(crate) fn forward_to_popup(app: &AppHandle, payload_str: &str) {
             return;
         }
     };
-    let popup_envelope = serde_json::json!({
-        "event": BRIDGE_EVENT,
-        "payload": parsed,
-    });
-    let envelope_json = match serde_json::to_string(&popup_envelope) {
+    let envelope_json = match serde_json::to_string(&OutboundEnvelope {
+        event: BRIDGE_EVENT,
+        payload,
+    }) {
         Ok(string) => string,
         Err(error) => {
             log::warn!("[browser-sniffer] forward_to_popup: failed to encode envelope: {error}");
@@ -364,6 +428,24 @@ mod tests {
         assert!(validate_popup_message(&no_tag).is_err());
         let non_string = format!(r#"{{"event":"{BRIDGE_EVENT}","payload":{{"_tag":42}}}}"#);
         assert!(validate_popup_message(&non_string).is_err());
+    }
+
+    /// Security: a payload with a duplicate top-level key is rejected. The
+    /// validated `_tag` (serde last-wins) could otherwise disagree with the
+    /// verbatim-re-emitted raw bytes a first-wins downstream reader sees — a
+    /// duplicate `_tag` whose first occurrence is a rejected control tag must
+    /// not slip past the allowlist. We reject any duplicate key, not just
+    /// `_tag`, so the re-broadcast bytes are never attacker-shaped.
+    #[test]
+    fn duplicate_keys_are_rejected() {
+        let dup_tag = format!(
+            r#"{{"event":"{BRIDGE_EVENT}","payload":{{"_tag":"SniffingComplete","_tag":"Log"}}}}"#
+        );
+        assert!(validate_popup_message(&dup_tag).is_err());
+        let dup_other = format!(
+            r#"{{"event":"{BRIDGE_EVENT}","payload":{{"_tag":"ResponseData","id":"a","id":"b"}}}}"#
+        );
+        assert!(validate_popup_message(&dup_other).is_err());
     }
 
     /// Undecodable envelope JSON is an `Err`, not a panic. The bridge listener
