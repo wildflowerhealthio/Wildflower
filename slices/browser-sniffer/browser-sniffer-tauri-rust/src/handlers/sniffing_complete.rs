@@ -11,17 +11,17 @@ use crate::popup_bridge::PopupChannel;
 /// Unified across platforms now that the sniffer routes every open through
 /// `tauri-plugin-native-webview`: mobile dismisses the native sheet/dialog,
 /// desktop closes the multi-webview popup window. The plugin's `close` is
-/// itself idempotent (`{closed: false}` when nothing is open), so SPA-fired
-/// `SniffingComplete` without a live popup lands harmlessly.
+/// itself idempotent (`{closedByRequest: false}` when nothing is open), so
+/// SPA-fired `SniffingComplete` without a live popup lands harmlessly.
 pub(crate) fn handle(app: &AppHandle) {
     // This close is host-initiated by the SniffingComplete the host just
-    // observed, so flag it: the resulting PopupEvent::Closed must not re-emit a
-    // second SniffingComplete (see popup_bridge::dispatch_body).
+    // observed, so flag it: the resulting NativeWebviewEvent::Closed must not
+    // re-emit a second SniffingComplete (see popup_bridge::dispatch_body).
     app.state::<PopupChannel>()
         .host_close_pending
         .store(true, Ordering::SeqCst);
 
-    if let Err(error) = app.native_webview().close() {
+    if let Err(error) = app.native_webview().close(false) {
         log::error!("[browser-sniffer] failed to dismiss native popup: {error}");
     }
 }

@@ -124,13 +124,17 @@ pub struct EvaluateJsResponse {
 /// Arguments for updating the popup's three chrome labels. Each field is
 /// independent:
 ///
-/// - `title` — top-chrome headline (defaults to the URL host on open; the
-///   plugin does not auto-update on navigation, so the caller drives any
-///   subsequent changes).
-/// - `subtitle` — top-chrome secondary line under the title.
+/// - `title` — top-chrome headline. Until the caller first sets it, the slot
+///   shows the page URL (the URL-fallback), which tracks navigation; the first
+///   `title` the caller supplies *claims* the slot and the URL falls through to
+///   the subtitle.
+/// - `subtitle` — top-chrome secondary line under the title. Shows the page URL
+///   once the title is claimed but the subtitle isn't; the caller's first
+///   `subtitle` claims it and the URL is then shown in neither slot.
 /// - `message` — bottom-bar status line beside the back/forward buttons.
 ///
-/// `None` on any field means "leave unchanged"; `Some("")` clears that field.
+/// `None` on any field means "leave unchanged"; any present value (including
+/// `Some("")`) claims that slot — `Some("")` clears the visible label.
 /// Batching all three into one IPC keeps multi-field updates flicker-free.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -294,8 +298,8 @@ mod tests {
     }
 
     /// `EvaluateJsRequest` rides as `{ "script": … }` — the camelCase key matches
-    /// the Swift `SendArgs.script` / Kotlin `SendArgs.script` field. Drift
-    /// here would silently break decoding on-device.
+    /// the Swift `EvaluateJsArgs.script` / Kotlin `EvaluateJsArgs.script` field.
+    /// Drift here would silently break decoding on-device.
     #[test]
     fn evaluate_js_request_serializes_script_field() {
         let json = serde_json::to_string(&EvaluateJsRequest {
@@ -328,8 +332,8 @@ mod tests {
     }
 
     /// Each field rides as its camelCase key when set. The sniffer's typical
-    /// post-open call updates `subtitle` (and later `message`) without
-    /// touching `title`, which the plugin defaulted to the URL host on open.
+    /// post-open call updates `subtitle` (and later `message`) without touching
+    /// `title`, which is left unclaimed so the page URL shows there.
     #[test]
     fn patch_window_text_request_serializes_each_field_camel_case() {
         let json = serde_json::to_string(&PatchWindowTextRequest {

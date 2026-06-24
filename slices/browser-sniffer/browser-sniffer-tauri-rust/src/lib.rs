@@ -21,12 +21,14 @@ pub use crate::sniffer_window::SNIFFER_WEBVIEW_LABEL;
 /// Idempotent at the listener level — call once per app lifecycle from
 /// `setup()`.
 ///
-/// On mobile this also wires the popup bridge: a long-lived
-/// `Channel<PopupEvent>` whose handler re-emits the native popup's events
-/// onto `BRIDGE_EVENT`, plus inbound `Click` / `CancelSnifferRequest`
-/// forwarding into the popup via `plugin.send(...)`. Desktop keeps the
-/// `WebviewWindow` path — the channel is registered but its handler never
-/// fires there, and the inbound forwarders are `cfg`-gated out.
+/// This also wires the popup bridge on every platform now that the sniffer
+/// routes through `tauri-plugin-native-webview` everywhere: a long-lived
+/// `Channel<NativeWebviewEvent>` whose handler re-emits the native popup's
+/// events onto `BRIDGE_EVENT` (the `Closed` arm fires on desktop too, when the
+/// popup window is destroyed). Only the inbound `Click` / `CancelSnifferRequest`
+/// forwarding into the popup via `evaluate_js` stays mobile-only — on desktop
+/// the content webview is a Tauri webview that receives `app.emit('bridge', …)`
+/// natively, so those forwarders are `cfg`-gated out.
 ///
 /// Decode failures inside each handler log at warn; tags this crate
 /// does not care about (sibling slices' bridge traffic) are dropped silently.

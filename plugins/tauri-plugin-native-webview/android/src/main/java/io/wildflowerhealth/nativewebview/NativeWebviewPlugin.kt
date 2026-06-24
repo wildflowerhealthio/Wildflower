@@ -89,7 +89,8 @@ class CloseArgs {
 /**
  * Android counterpart to the iOS `NativeWebviewPlugin`. Presents an
  * `android.webkit.WebView` in a fullscreen `Dialog` with a native `Toolbar`
- * (Close + page host), injecting the caller's document-start script on any
+ * (Close + the page URL as the title, until the caller claims it), injecting
+ * the caller's document-start script on any
  * origin and forwarding the page's opaque JSON messages to the host webview via
  * the plugin event channel.
  */
@@ -350,7 +351,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
 
     /**
      * Dismiss the currently-presented popup. Idempotent — resolves with
-     * `{closed: false}` when no popup is open. Routes through
+     * `{closedByRequest: false}` when no popup is open. Routes through
      * [dismissDialog] so a same-tick reopen lands in the deferral branch of
      * [open] rather than rewiring a doomed WebView.
      *
@@ -513,7 +514,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
             setSubtitleTextColor(colorNeutral4)
             setBackgroundColor(colorBackground)
             navigationIcon =
-                activity.getDrawable(android.R.drawable.ic_menu_close_clear_cancel)
+                activity.getDrawable(R.drawable.nwv_ic_close)
                     ?.apply { setTint(colorNeutral1) }
             // Route through [dismissDialog] so the close→reopen guard
             // ([isClosing]) is set for user-initiated closes too.
@@ -522,7 +523,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
             // for any menu item; we dispatch by id rather than collecting per
             // item so the toolbar.menu surface can grow without re-plumbing.
             menu.add(0, MENU_ITEM_REFRESH, 0, "Refresh").apply {
-                icon = activity.getDrawable(android.R.drawable.ic_menu_rotate)
+                icon = activity.getDrawable(R.drawable.nwv_ic_refresh)
                     ?.apply { setTint(colorNeutral1) }
                 setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
             }
@@ -544,7 +545,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
         // driven from the `WebViewClient.onPageFinished` callback below
         // because `android.webkit.WebView` exposes no canGo* observable.
         val backButton = ImageButton(activity).apply {
-            setImageDrawable(activity.getDrawable(android.R.drawable.ic_media_previous))
+            setImageDrawable(activity.getDrawable(R.drawable.nwv_ic_chevron_left))
             setColorFilter(colorNeutral1)
             background = null
             contentDescription = "Back"
@@ -552,7 +553,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
             isEnabled = false
         }
         val forwardButton = ImageButton(activity).apply {
-            setImageDrawable(activity.getDrawable(android.R.drawable.ic_media_next))
+            setImageDrawable(activity.getDrawable(R.drawable.nwv_ic_chevron_right))
             setColorFilter(colorNeutral1)
             background = null
             contentDescription = "Forward"

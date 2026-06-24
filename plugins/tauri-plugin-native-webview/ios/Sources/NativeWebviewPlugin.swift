@@ -92,7 +92,8 @@ class PopupMessageBridge: NSObject, WKScriptMessageHandler {
 /// Native web view popup plugin.
 ///
 /// `open` presents a `WKWebView` inside a `UINavigationController` (native
-/// Close button + the page host as the title) as a page sheet. A document-start
+/// Close button + the page URL as the title, until the caller claims it) as a
+/// page sheet. A document-start
 /// `WKUserScript` is injected into every page on every origin, and each ping it
 /// posts back is forwarded to the Rust caller through the per-popup
 /// [`Channel`] passed in `OpenArgs` (no JS-side bridge).

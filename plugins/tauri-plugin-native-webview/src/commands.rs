@@ -59,8 +59,9 @@ pub(crate) async fn evaluate_js<R: Runtime>(app: AppHandle<R>, script: String) -
 ///
 /// Invoked from the webview as
 /// `invoke('plugin:native-webview|patch_window_text', { title?, subtitle?, message? })`.
-/// The plugin's `open` defaults `title` to the URL host; subsequent changes
-/// are caller-driven (the plugin doesn't auto-update on navigation).
+/// Until a slot is claimed by a caller value, it shows the page URL (which
+/// tracks navigation); the first value the caller sends for a slot claims it
+/// and the URL falls through to the next unclaimed slot.
 #[tauri::command]
 pub(crate) async fn patch_window_text<R: Runtime>(
     app: AppHandle<R>,

@@ -13,11 +13,11 @@ It exposes four commands, with a backend per platform:
 - `patch_window_text({title?, subtitle?, message?})` — update one or more of the chrome's title/subtitle/message labels.
 - `close(suppress_close_event = false)` — dismiss the popup. Emits `NativeWebviewEvent::Closed` on the channel for the dismissal, unless `suppress_close_event` is `true` (a host that already observed the terminal event prompting the close passes `true` so the echo doesn't double-fire). User / OS dismissals always emit.
 
-| Platform | Backend                                                           | Native chrome                                                          | JS injection (any origin)                                 | Bridge back to host                              |
-| -------- | ----------------------------------------------------------------- | ---------------------------------------------------------------------- | --------------------------------------------------------- | ------------------------------------------------ |
+| Platform | Backend                                                           | Native chrome                                                          | JS injection (any origin)                                 | Bridge back to host                                      |
+| -------- | ----------------------------------------------------------------- | ---------------------------------------------------------------------- | --------------------------------------------------------- | -------------------------------------------------------- |
 | iOS      | Swift `WKWebView` in `UINavigationController` (`.pageSheet`)      | Close + host title                                                     | `WKUserScript(.atDocumentStart)`                          | `WKScriptMessageHandler` → `Channel<NativeWebviewEvent>` |
 | Android  | Kotlin `android.webkit.WebView` in a fullscreen `Dialog`          | `Toolbar` Close + host                                                 | `WebViewCompat.addDocumentStartJavaScript(…, setOf("*"))` | `@JavascriptInterface` → `Channel<NativeWebviewEvent>`   |
-| Desktop  | Tauri parent `Window` + two child webviews (chrome bar + content) | Plugin-drawn chrome bar (host/subtitle/message + back/forward/refresh) | `initialization_script` on the content child              | event bus (page uses `__TAURI__.event` directly) |
+| Desktop  | Tauri parent `Window` + two child webviews (chrome bar + content) | Plugin-drawn chrome bar (host/subtitle/message + back/forward/refresh) | `initialization_script` on the content child              | event bus (page uses `__TAURI__.event` directly)         |
 
 ## Why
 
@@ -150,7 +150,7 @@ callback into the Rust closure. No JS detour, transport-agnostic.
 
 - **A typed guest-js package** — callers use `invoke` from `@tauri-apps/api`
   directly. Rust callers go through `NativeWebviewExt` / `OpenRequest` /
-  `SendRequest`.
+  `EvaluateJsRequest`.
 
 (The desktop open/close race sentinel and the `NativeWebviewEvent::Closed`-on-dismiss
 emission that earlier drafts deferred are now implemented — see `PluginState`

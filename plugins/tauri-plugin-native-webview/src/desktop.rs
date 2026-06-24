@@ -2,7 +2,7 @@
 //!
 //! Tauri's multi-webview-per-window API (`Window::add_child`, gated behind the
 //! `unstable` feature) lets us mirror the iOS/Android native popup layout on
-//! desktop: a chrome bar (URL host / subtitle / message + back / forward /
+//! desktop: a chrome bar (title / subtitle / message + back / forward /
 //! refresh) anchored at the top, and the external content webview below.
 //! The two webviews share the same parent `Window` so the OS treats them as
 //! one popup; resize is handled by [`on_window_event`] which re-lays the
@@ -10,9 +10,10 @@
 //!
 //! ## Chrome ↔ Rust IPC
 //!
-//! The chrome webview loads `about:blank` with an init script that builds its
-//! DOM. Communication with Rust stays inside the webview's own
-//! `on_navigation` hook — no `__TAURI__` event bus access required:
+//! The chrome webview loads its DOM from a base64 `data:text/html` URL (the
+//! [`CHROME_HTML_TEMPLATE`] document, see [`build_chrome_data_url`]).
+//! Communication with Rust stays inside the webview's own `on_navigation`
+//! hook — no `__TAURI__` event bus access required:
 //!
 //! - **Chrome → Rust**: button clicks set `window.location.href` to
 //!   `x-nv-action://action/<back|forward|refresh>`. Rust's `on_navigation`
@@ -23,7 +24,7 @@
 //!
 //! - **Rust → Chrome**: `webview.eval("window.__nativeWebviewPatchWindowText({...})")`.
 //!   `eval` is Rust-initiated and bypasses capability checks, so the chrome's
-//!   `about:blank` origin can be entirely outside the capability allowlist.
+//!   `data:` origin can be entirely outside the capability allowlist.
 //!
 //! Caveat vs. mobile: both webviews are Tauri webviews here, so the content
 //! one still has `window.__TAURI__`. The host app's capability JSON scopes it
@@ -75,6 +76,36 @@ const CHROME_HEIGHT_BASE: f64 = 52.0;
 ///   height (e.g. 48 collapsed, 64 with subtitle); Rust resizes the
 ///   chrome + content webviews to match.
 const CHROME_ACTION_SCHEME: &str = "x-nv-action";
+
+/// Cap (ms) on how long the popup window stays hidden waiting for the content's
+/// paint sentinel before it's revealed regardless — see the timeout fallback in
+/// [`present`]. Long enough to let a normal first paint win, short enough that a
+/// blank/hung page doesn't leave the popup invisible.
+const REVEAL_TIMEOUT_MS: u64 = 500;
+
+/// Sentinel scheme the content webview's [`CONTENT_REVEAL_SCRIPT`] navigates to
+/// once the page has painted its first frame. Caught + cancelled by the content
+/// webview's `on_navigation` handler, which reveals the (initially hidden) popup
+/// window. Kept in sync with the literal in [`CONTENT_REVEAL_SCRIPT`].
+const CONTENT_READY_SCHEME: &str = "x-nv-ready";
+
+/// Document-start script injected into the content webview: once the page has
+/// painted its first frame, navigate to the [`CONTENT_READY_SCHEME`] sentinel so
+/// the backend reveals the popup window (built hidden to avoid the load-time
+/// white flash on dark mode). The double-`requestAnimationFrame` after
+/// `DOMContentLoaded` guarantees a frame has composited before we reveal. The
+/// sentinel navigation is caught + cancelled by the content webview's
+/// `on_navigation` handler, so the real page is never navigated away. Runs on
+/// every content load; the reveal is idempotent (`show()` no-ops once visible).
+const CONTENT_REVEAL_SCRIPT: &str = r#"(function () {
+  function signal() { try { window.location.href = 'x-nv-ready://painted'; } catch (e) {} }
+  function afterPaint() { requestAnimationFrame(function () { requestAnimationFrame(signal); }); }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', afterPaint);
+  } else {
+    afterPaint();
+  }
+})();"#;
 
 /// Rust → chrome state push: this global is defined by the chrome's init
 /// script and invoked from Rust via `webview.eval(...)`.
@@ -361,12 +392,20 @@ fn present<R: Runtime>(
     let window_title = payload
         .initial_title
         .as_ref()
-        .unwrap_or_else(|| &initial_url)
+        .unwrap_or(&initial_url)
         .clone();
+    // Built hidden, revealed only once the content webview has painted its first
+    // frame (the `CONTENT_READY_SCHEME` sentinel, handled below). This is what
+    // kills the dark-mode white flash: on macOS the WKWebView's own pre-paint
+    // background can't be recolored (Tauri's webview `background_color` is a
+    // no-op there), so the only reliable fix is to not show the window until its
+    // content is ready. Once revealed, the painted content webview covers the
+    // window, so the window's own background color is never visible.
     let window = WindowBuilder::new(app, WINDOW_LABEL)
         .title(window_title)
         .inner_size(900.0, 700.0)
         .resizable(true)
+        .visible(false)
         .build()?;
 
     let window_size = window.inner_size()?;
@@ -462,6 +501,25 @@ fn present<R: Runtime>(
     if let Some(script) = init_script {
         content_builder = content_builder.initialization_script(script);
     }
+    // Reveal the popup only once THIS content webview has painted its first
+    // frame. The window is built hidden; gating the reveal on the content's
+    // paint (not the chrome's) is what removes the dark-mode white flash, since
+    // macOS can't recolor the WKWebView's own pre-paint background. The injected
+    // script fires the `CONTENT_READY_SCHEME` sentinel after a double-rAF; the
+    // `on_navigation` handler catches it, shows the window, and cancels the nav
+    // so the real page is never touched. A timeout fallback below guarantees the
+    // window can't stay hidden if the page never paints.
+    content_builder = content_builder.initialization_script(CONTENT_REVEAL_SCRIPT);
+    let window_for_ready = window.clone();
+    content_builder = content_builder.on_navigation(move |url| {
+        if url.scheme() == CONTENT_READY_SCHEME {
+            if !window_for_ready.is_visible().unwrap_or(true) {
+                let _ = window_for_ready.show();
+            }
+            return false;
+        }
+        true
+    });
     // Update chrome back/forward enabled state on every page load. Started
     // (not Finished) so the state lands as soon as the navigation commits,
     // matching what a user would expect. We push the new state into the
@@ -523,6 +581,24 @@ fn present<R: Runtime>(
 
     install_window_listeners(app, &window);
 
+    // Safety net for the hidden-until-painted reveal: if the content never fires
+    // its paint sentinel (a blank/hung page, or a future capability change that
+    // blocks the injected script), reveal the window anyway after a short cap so
+    // it can't stay invisible. `show()` no-ops once the sentinel already
+    // revealed it. Window ops must run on the main thread.
+    let app_for_timeout = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(REVEAL_TIMEOUT_MS));
+        let app_show = app_for_timeout.clone();
+        let _ = app_for_timeout.run_on_main_thread(move || {
+            if let Some(window) = app_show.get_window(WINDOW_LABEL) {
+                if !window.is_visible().unwrap_or(true) {
+                    let _ = window.show();
+                }
+            }
+        });
+    });
+
     Ok(())
 }
 
@@ -548,25 +624,26 @@ struct AppliedLayout(Mutex<Option<(f64, f64, f64)>>);
 struct CurrentChannel(Mutex<Channel<NativeWebviewEvent>>);
 
 /// Per-popup state approximating the content webview's nav history for
-/// back/forward button enabled state. Reset per open by [`install_popup_state`]
-/// (and again by [`apply_rewire`] on an in-place reopen). Tauri's `Webview`
-/// exposes no
-/// `can_go_back` / `can_go_forward`, so we track:
+/// back/forward button enabled state. Initialised per fresh popup by
+/// [`install_popup_state`]. Tauri's `Webview` exposes no `can_go_back` /
+/// `can_go_forward`, so we track:
 ///
 /// - `load_count`: increments on every content webview Started page load.
-///   `canBack` = `load_count > 1`.
+///   `canBack` = `load_count > 1`. It is NOT reset by [`apply_rewire`]: a
+///   sniffer-driven navigation reuses the same content webview, whose
+///   back-forward history persists across `navigate`, so Back must stay enabled
+///   once ≥2 pages have loaded. (Only a brand-new popup — fresh window + fresh
+///   webview via [`install_popup_state`] — starts the count at 0.)
 /// - `can_forward`: set `true` when the chrome's Back button fires (we know
 ///   the user just went back so a forward slot exists). It is **not** reset on
 ///   a Started load — `on_page_load` only reads it. We can't distinguish a
 ///   back-induced load from a fresh link-click at the Rust layer, so rather
 ///   than clear it on every load (which would wrongly disable Forward the
-///   instant a back-navigation commits) the flag stays sticky until the next
-///   [`apply_rewire`]. The cost is a Forward button that can linger enabled
-///   after the user clicks a new link, where pressing it is a harmless no-op
-///   `history.forward()` past the end.
-///
-/// Reset on [`apply_rewire`] so a "second open" navigation starts fresh
-/// (you can't go back to the previous popup's history).
+///   instant a back-navigation commits) the flag stays sticky. [`apply_rewire`]
+///   clears it, since a fresh navigation truncates the forward stack. The cost
+///   is a Forward button that can linger enabled after the user clicks a new
+///   link, where pressing it is a harmless no-op `history.forward()` past the
+///   end.
 struct NavState {
     load_count: Mutex<u32>,
     can_forward: AtomicBool,
@@ -662,12 +739,16 @@ fn apply_rewire<R: Runtime>(
             *lock_state(&state.0, "current-channel")? =
                 payload.native_webview_event_channel.clone();
         }
-        // Reset nav history bookkeeping — a rewire is logically a fresh
-        // "open" of the popup, so back/forward should start disabled. The
-        // pending `content.navigate(parsed)` call below fires a Started
-        // page load that bumps `load_count` back to 1.
+        // A rewire navigates the SAME content webview, whose WKWebView
+        // back-forward history PERSISTS across `navigate` (it pushes a new
+        // entry — `loadRequest`, see wry's `load_url`). So do NOT reset
+        // `load_count`: the cumulative count is what enables Back once ≥2 pages
+        // have loaded, and the pending `content.navigate(parsed)` below bumps it
+        // again. Resetting it here used to disable Back after every
+        // sniffer-driven navigation even though the previous page was still in
+        // history. Only `can_forward` is cleared — a fresh navigation truncates
+        // the forward stack.
         if let Some(state) = window.try_state::<NavState>() {
-            *lock_state(&state.load_count, "nav-load-count")? = 0;
             state.can_forward.store(false, Ordering::SeqCst);
         }
     }
