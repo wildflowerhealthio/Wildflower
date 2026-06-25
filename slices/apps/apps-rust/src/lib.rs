@@ -45,9 +45,9 @@
 //! tunnel-rust.
 //!
 //! With the resolved target in hand the handler either returns a `302` redirect
-//! (web/standalone) or, when an [`OnDeviceLaunchSink`] is installed (the Tauri
+//! (web/standalone) or, when an [`LaunchSink`] is installed (the Tauri
 //! host), hands the URL to the sink — which opens it in a native webview popup
-//! — and returns `204`. See [`OnDeviceLaunchSink`].
+//! — and returns `204`. See [`LaunchSink`].
 
 pub mod config;
 pub mod db;
@@ -66,7 +66,7 @@ pub use config::AppsConfig;
 pub use db::AppsStore;
 pub use domain::InternalApp;
 pub use http::AppsState;
-pub use launch_sink::{LoopbackCaller, OnDeviceLaunchSink};
+pub use launch_sink::{LoopbackCaller, LaunchSink};
 
 /// Result of [`setup_apps`]: the two routers a host needs to mount. The
 /// public one carries no auth (the webview reaches list + launch
@@ -99,7 +99,7 @@ pub fn setup_apps(
     conn: persistence_rust::Connection,
     config: &AppsConfig,
     tunnel: Arc<dyn TunnelService>,
-    launch_sink: Option<Arc<dyn OnDeviceLaunchSink>>,
+    launch_sink: Option<Arc<dyn LaunchSink>>,
 ) -> anyhow::Result<Apps> {
     // `AppsStore::new` owns the shared migration list — running it migrates
     // both the externals (`apps`) and internals (`internal_apps`) tables. The

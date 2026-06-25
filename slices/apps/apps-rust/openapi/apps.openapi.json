@@ -65,7 +65,7 @@
     "/apps/{id}": {
       "post": {
         "summary": "`POST /apps/{id}` — launch an app. `404` if no app has this id. Reachable\nunauthenticated (the webview follows the redirect).",
-        "description": "A host [`OnDeviceLaunchSink`](crate::OnDeviceLaunchSink) opens the resolved\nURL in a native popup *on this device*, which only helps the **local** caller\n— so the sink is used (returning `204`) only when the request came in over\nloopback. A\nrequest **forwarded by the trusted front** (the relay/tunnel sets\nthe `Forwarded` header) is a *remote* caller, for whom a host-side popup is\ninvisible; it gets the `302` redirect instead, the same as a host that\ninstalls no sink at all (web/standalone).",
+        "description": "A host [`LaunchSink`](crate::LaunchSink) opens the resolved URL in a native\npopup *on this device*, which only helps the **local** caller — so the sink\nis used (returning `204`) only when the request came in over loopback. A\nrequest **forwarded by the trusted front** (the relay/tunnel sets\nthe `Forwarded` header) is a *remote* caller, for whom a host-side popup is\ninvisible; it gets the `302` redirect instead, the same as a host that\ninstalls no sink at all (web/standalone).",
         "operationId": "handle_launch_app",
         "parameters": [
           {

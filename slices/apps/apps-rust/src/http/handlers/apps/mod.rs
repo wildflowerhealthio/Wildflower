@@ -4,7 +4,7 @@
 //! them so the served routes and the OpenAPI spec come from one place.
 //!
 //! `GET /apps` lists; `POST /apps/{id}` launches (302 to the resolved URL, or
-//! 204 when a host [`OnDeviceLaunchSink`](crate::OnDeviceLaunchSink) takes the
+//! 204 when a host [`LaunchSink`](crate::LaunchSink) takes the
 //! side-effect).
 
 mod launch;
@@ -42,7 +42,7 @@ mod tests {
         state, state_with_sink, state_with_tunnel, tunnel_at, tunnel_with_public_host, RecordingSink,
     };
     use crate::http::state::AppsState;
-    use crate::OnDeviceLaunchSink;
+    use crate::LaunchSink;
 
     /// The served public router, state not yet applied — the spec half of
     /// `split_for_parts` is irrelevant here.
@@ -328,7 +328,7 @@ mod tests {
         assert_eq!(res.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 
-    /// With an [`OnDeviceLaunchSink`] installed, a launch hands the resolved URL
+    /// With an [`LaunchSink`] installed, a launch hands the resolved URL
     /// to the sink and returns `204` (no redirect) — the host owns the side-effect.
     /// Exercised against the internal `patient-browser` row so the assertion
     /// pins the URL the sink receives to a fixed value (no random `{launch}`
@@ -336,7 +336,7 @@ mod tests {
     #[tokio::test]
     async fn launch_with_sink_204s_and_routes_the_url_to_the_sink() {
         let sink = Arc::new(RecordingSink::default());
-        let st = state_with_sink(Arc::clone(&sink) as Arc<dyn OnDeviceLaunchSink>);
+        let st = state_with_sink(Arc::clone(&sink) as Arc<dyn LaunchSink>);
         let res = router()
             .with_state(Arc::clone(&st))
             .oneshot(post("/apps/patient-browser"))
@@ -414,7 +414,7 @@ mod tests {
     #[tokio::test]
     async fn launch_with_sink_but_forwarded_request_302s_without_invoking_the_sink() {
         let sink = Arc::new(RecordingSink::default());
-        let st = state_with_sink(Arc::clone(&sink) as Arc<dyn OnDeviceLaunchSink>);
+        let st = state_with_sink(Arc::clone(&sink) as Arc<dyn LaunchSink>);
         st.store
             .insert_app(&app("app-y", AppUrl::OriginRelative("/y".to_owned())))
             .unwrap();

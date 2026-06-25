@@ -198,8 +198,8 @@ async fn run_server(
     // native webview popup via `tauri-plugin-native-webview` (the server 204s,
     // so the SPA stays mounted). This replaces the former `RequestTunnel` /
     // `RequestSandboxedWebView` bridge round-trips.
-    let launch_sink: Arc<dyn apps_rust::OnDeviceLaunchSink> =
-        Arc::new(launch_sink::TauriLaunchSink::new(app_handle.clone()));
+    let launch_sink: Arc<dyn apps_rust::LaunchSink> =
+        Arc::new(launch_sink::NativeWebviewLaunchSink::new(app_handle.clone()));
     let apps = setup_apps(
         db,
         &apps_config,

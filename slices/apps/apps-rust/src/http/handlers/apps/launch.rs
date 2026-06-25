@@ -32,7 +32,7 @@
 //!      `Forwarded` host can't make the two answers disagree.
 //!   3. Render the launch target (internal: from config; external: through
 //!      `AppUrl`).
-//!   4. Dispatch: when an [`OnDeviceLaunchSink`](crate::OnDeviceLaunchSink) is
+//!   4. Dispatch: when an [`LaunchSink`](crate::LaunchSink) is
 //!      installed (the Tauri host) *and* the caller is loopback (a local webview
 //!      that a host popup can actually serve), it hands the URL to the sink and
 //!      `204`s; otherwise it returns a `302` redirect for the browser to
@@ -63,10 +63,9 @@ use crate::LoopbackCaller;
 /// `POST /apps/{id}` — launch an app. `404` if no app has this id. Reachable
 /// unauthenticated (the webview follows the redirect).
 ///
-/// A host [`OnDeviceLaunchSink`](crate::OnDeviceLaunchSink) opens the resolved
-/// URL in a native popup *on this device*, which only helps the **local** caller
-/// — so the sink is used (returning `204`) only when the request came in over
-/// loopback. A
+/// A host [`LaunchSink`](crate::LaunchSink) opens the resolved URL in a native
+/// popup *on this device*, which only helps the **local** caller — so the sink
+/// is used (returning `204`) only when the request came in over loopback. A
 /// request **forwarded by the trusted front** (the relay/tunnel sets
 /// the `Forwarded` header) is a *remote* caller, for whom a host-side popup is
 /// invisible; it gets the `302` redirect instead, the same as a host that
@@ -236,9 +235,8 @@ fn redirect(location: String) -> Result<Response, HandlerError> {
         .map_err(|e| HandlerError::internal("redirect builder failed", e))
 }
 
-/// 204 No Content with an empty body — the response when a host
-/// [`OnDeviceLaunchSink`](crate::OnDeviceLaunchSink) has taken the launch (the
-/// host opened the URL; there's nothing for the SPA
+/// 204 No Content with an empty body — the response when a host [`LaunchSink`]
+/// has taken the launch (the host opened the URL; there's nothing for the SPA
 /// to follow). `StatusCode::NO_CONTENT.into_response()` already yields an empty
 /// body, so no header juggling is needed.
 fn no_content() -> Response {

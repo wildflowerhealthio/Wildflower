@@ -15,7 +15,7 @@ use shared_structures_rust::tunnel_service::{
 use crate::db::AppsStore;
 use crate::domain::AppEntry;
 use crate::http::state::AppsState;
-use crate::{LoopbackCaller, OnDeviceLaunchSink};
+use crate::{LoopbackCaller, LaunchSink};
 
 /// The loopback origin clients reach when the tunnel is down. The apps slice
 /// treats this and [`LOOPBACK_HOST`] as **independent** config values —
@@ -29,13 +29,13 @@ pub(crate) const LOOPBACK_ORIGIN: &str = "http://127.0.0.1:8080";
 /// internal row's `port` to render `http://{host}:{port}/`.
 pub(crate) const LOOPBACK_HOST: &str = "127.0.0.1";
 
-/// An [`OnDeviceLaunchSink`] stub that records the URLs it's handed, so a test
+/// An [`LaunchSink`] stub that records the URLs it's handed, so a test
 /// can assert the handler resolved the target and routed it to the sink (and
 /// returned `204`) instead of redirecting.
 #[derive(Default)]
 pub(crate) struct RecordingSink(pub(crate) Mutex<Vec<String>>);
 
-impl OnDeviceLaunchSink for RecordingSink {
+impl LaunchSink for RecordingSink {
     fn open(&self, _caller: LoopbackCaller, _app: &AppEntry, url: &str) {
         self.0.lock().expect("sink mutex").push(url.to_owned());
     }
@@ -108,8 +108,8 @@ pub(crate) fn state() -> Arc<AppsState> {
     state_with_tunnel(tunnel_unavailable())
 }
 
-/// Apps state with an [`OnDeviceLaunchSink`] installed (the Tauri-host shape).
-pub(crate) fn state_with_sink(sink: Arc<dyn OnDeviceLaunchSink>) -> Arc<AppsState> {
+/// Apps state with an [`LaunchSink`] installed (the Tauri-host shape).
+pub(crate) fn state_with_sink(sink: Arc<dyn LaunchSink>) -> Arc<AppsState> {
     let store = AppsStore::open_in_memory().expect("store");
     Arc::new(
         AppsState::new(store, LOOPBACK_ORIGIN, LOOPBACK_HOST, tunnel_unavailable())

@@ -1,4 +1,4 @@
-//! The Tauri host's [`apps_rust::OnDeviceLaunchSink`].
+//! The Tauri host's [`apps_rust::LaunchSink`].
 //!
 //! The apps launch handler (`POST /apps/{id}`) resolves the launch URL and,
 //! when a sink is installed, hands it here instead of returning a `302`. This
@@ -10,23 +10,23 @@
 //! only needs the finished URL.
 
 use apps_rust::domain::AppEntry;
-use apps_rust::{LoopbackCaller, OnDeviceLaunchSink};
+use apps_rust::{LoopbackCaller, LaunchSink};
 use tauri::AppHandle;
 use tauri_plugin_log::log;
 
 /// The host's launch sink: opens the resolved launch URL in a native webview
 /// popup. Holds the [`AppHandle`] the popup is opened through.
-pub struct TauriLaunchSink {
+pub struct NativeWebviewLaunchSink {
     app: AppHandle,
 }
 
-impl TauriLaunchSink {
+impl NativeWebviewLaunchSink {
     pub fn new(app: AppHandle) -> Self {
         Self { app }
     }
 }
 
-impl OnDeviceLaunchSink for TauriLaunchSink {
+impl LaunchSink for NativeWebviewLaunchSink {
     /// Open `url` in the shared native webview popup, titled with the app's
     /// name. Fire-and-forget: the underlying `tauri-plugin-native-webview`
     /// `open_url` does `run_on_main_thread(...)` then blocks on `rx.recv()` until

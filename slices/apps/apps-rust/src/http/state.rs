@@ -7,7 +7,7 @@ use std::sync::Arc;
 use shared_structures_rust::tunnel_service::TunnelService;
 
 use crate::db::AppsStore;
-use crate::OnDeviceLaunchSink;
+use crate::LaunchSink;
 
 /// Shared state threaded through the apps handlers. Held in an `Arc` and
 /// extracted via `State<Arc<AppsState>>` per the tunnel-rust pattern.
@@ -31,7 +31,7 @@ pub struct AppsState {
     /// Optional launch side-effect seam. When present (the Tauri host), a
     /// launch hands the resolved URL to the sink and `204`s instead of
     /// returning a `302`. `None` (web/standalone) keeps the redirect path.
-    pub(crate) launch_sink: Option<Arc<dyn OnDeviceLaunchSink>>,
+    pub(crate) launch_sink: Option<Arc<dyn LaunchSink>>,
 }
 
 impl AppsState {
@@ -50,10 +50,10 @@ impl AppsState {
         }
     }
 
-    /// Install the host's [`OnDeviceLaunchSink`] — a launch then opens the
+    /// Install the host's [`LaunchSink`] — a launch then opens the
     /// resolved URL through the sink and `204`s rather than returning a `302`.
     #[must_use]
-    pub fn with_launch_sink(mut self, sink: Arc<dyn OnDeviceLaunchSink>) -> Self {
+    pub fn with_launch_sink(mut self, sink: Arc<dyn LaunchSink>) -> Self {
         self.launch_sink = Some(sink);
         self
     }
