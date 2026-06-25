@@ -12,7 +12,7 @@ use utoipa::ToSchema;
 use crate::domain::{AppEntry, AppUrl};
 use crate::http::response_templates::{HandlerError, InvalidFieldBody};
 use crate::http::state::AppsState;
-use crate::id::random_id_21;
+use crate::id::mint_app_id;
 
 /// POST body — matches the TS `CreateAppBodySchema`. `requiresTunnel`
 /// uses the wire-camelCase the existing client speaks. `url` is read as a raw
@@ -54,10 +54,13 @@ pub(crate) async fn handle_create_app(
             message: e.to_string(),
         })?;
     let entry = AppEntry {
-        id: random_id_21(),
+        id: mint_app_id(),
         enabled: true,
         name: body.name,
-        subtitle: body.subtitle,
+        // An empty subtitle is treated as "none": the read schemas decode
+        // `subtitle` as a non-empty string, so a stored `""` would serialize as
+        // `"subtitle": ""` and break the whole catalogue decode.
+        subtitle: body.subtitle.filter(|s| !s.is_empty()),
         url,
         requires_tunnel: body.requires_tunnel,
     };

@@ -1,4 +1,4 @@
-//! The Tauri host's [`apps_rust::LaunchSink`].
+//! The Tauri host's [`apps_rust::OnDeviceLaunchSink`].
 //!
 //! The apps launch handler (`POST /apps/{id}`) resolves the launch URL and,
 //! when a sink is installed, hands it here instead of returning a `302`. This
@@ -10,7 +10,7 @@
 //! only needs the finished URL.
 
 use apps_rust::domain::AppEntry;
-use apps_rust::LaunchSink;
+use apps_rust::{LoopbackCaller, OnDeviceLaunchSink};
 use tauri::AppHandle;
 use tauri_plugin_log::log;
 
@@ -26,7 +26,7 @@ impl TauriLaunchSink {
     }
 }
 
-impl LaunchSink for TauriLaunchSink {
+impl OnDeviceLaunchSink for TauriLaunchSink {
     /// Open `url` in the shared native webview popup, titled with the app's
     /// name. Fire-and-forget: the underlying `tauri-plugin-native-webview`
     /// `open_url` does `run_on_main_thread(...)` then blocks on `rx.recv()` until
@@ -35,7 +35,11 @@ impl LaunchSink for TauriLaunchSink {
     /// rather than held on the request worker. The launch handler has already
     /// `204`d by the time the popup is constructed, and a failure here is
     /// logged (the handler can't surface it anyway).
-    fn open(&self, app: &AppEntry, url: &str) {
+    ///
+    /// The [`LoopbackCaller`] witness is unused here — its sole purpose is to
+    /// make this method uncallable for a forwarded (remote) caller, so a host
+    /// popup can never be opened for someone who can't see it.
+    fn open(&self, _caller: LoopbackCaller, app: &AppEntry, url: &str) {
         // Clone everything the spawned closure needs — `AppHandle`, `AppEntry`,
         // `String` — so the blocking task owns its inputs and the caller's
         // worker isn't parked.

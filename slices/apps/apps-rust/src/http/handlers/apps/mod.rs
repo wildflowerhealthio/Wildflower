@@ -4,7 +4,8 @@
 //! them so the served routes and the OpenAPI spec come from one place.
 //!
 //! `GET /apps` lists; `POST /apps/{id}` launches (302 to the resolved URL, or
-//! 204 when a host [`LaunchSink`](crate::LaunchSink) takes the side-effect).
+//! 204 when a host [`OnDeviceLaunchSink`](crate::OnDeviceLaunchSink) takes the
+//! side-effect).
 
 mod launch;
 mod list;
@@ -27,7 +28,7 @@ pub(crate) fn openapi_router() -> OpenApiRouter<Arc<AppsState>> {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
 
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
@@ -36,107 +37,17 @@ mod tests {
     use tower::ServiceExt;
 
     use super::*;
-    use crate::db::{AppsStore, InternalAppsStore};
     use crate::domain::{AppEntry, AppUrl};
-    use crate::http::state::AppsState;
-    use crate::LaunchSink;
-    use shared_structures_rust::tunnel_service::{
-        OfflineTunnel, TunnelLiveness, TunnelService, TunnelStatus,
+    use crate::http::handlers::test_utils::{
+        state, state_with_sink, state_with_tunnel, tunnel_at, tunnel_with_public_host, RecordingSink,
     };
-
-    /// Loopback host the synthetic internal-app launch URLs render against.
-    /// Matches the host portion of `LOOPBACK_ORIGIN` so the test reads
-    /// uniformly.
-    const LOOPBACK_HOST: &str = "127.0.0.1";
-
-    /// A [`LaunchSink`] stub that records the URLs it's handed, so a test can
-    /// assert the handler resolved the target and routed it to the sink (and
-    /// returned `204`) instead of redirecting.
-    #[derive(Default)]
-    struct RecordingSink(Mutex<Vec<String>>);
-
-    impl LaunchSink for RecordingSink {
-        fn open(&self, _app: &AppEntry, url: &str) {
-            self.0.lock().expect("sink mutex").push(url.to_owned());
-        }
-    }
-
-    /// A `TunnelService` stub for a tunnel that's up and verified at `origin` —
-    /// the success counterpart to the shared [`OfflineTunnel`], which already
-    /// models the can't-reach case (`try_start` fails, state stays `Off`).
-    /// `public_host` is reported through [`TunnelService::current_public_host`]
-    /// — the internal-app launch handler reads it to render the subdomain
-    /// URL for forwarded callers.
-    struct StubTunnel {
-        origin: String,
-        public_host: Option<String>,
-    }
-
-    #[async_trait::async_trait]
-    impl TunnelService for StubTunnel {
-        fn current_origin(&self) -> String {
-            self.origin.clone()
-        }
-        fn current_public_host(&self) -> Option<String> {
-            self.public_host.clone()
-        }
-        async fn try_start(&self) -> Result<String, String> {
-            Ok(self.origin.clone())
-        }
-        fn subscribe(&self) -> tokio::sync::watch::Receiver<TunnelLiveness> {
-            tokio::sync::watch::channel(TunnelLiveness {
-                settings_revision: None,
-                status: TunnelStatus::Verified,
-                origin: self.origin.clone(),
-                error: None,
-                dial_attempts: 0,
-            })
-            .1
-        }
-    }
-
-    fn tunnel_at(origin: &str) -> Arc<dyn TunnelService> {
-        Arc::new(StubTunnel {
-            origin: origin.to_string(),
-            public_host: None,
-        })
-    }
-
-    /// `TunnelService` with a configured `public_host` but no `try_start`
-    /// success — the live shape that drives the internal-app launch's
-    /// subdomain branch (forwarded caller → `https://<id>.<host>/`) without
-    /// needing the tunnel to actually be up.
-    fn tunnel_with_public_host(public_host: &str) -> Arc<dyn TunnelService> {
-        Arc::new(StubTunnel {
-            origin: "http://127.0.0.1:8080".to_owned(),
-            public_host: Some(public_host.to_owned()),
-        })
-    }
-
-    fn tunnel_unavailable() -> Arc<dyn TunnelService> {
-        Arc::new(OfflineTunnel::new("http://127.0.0.1:8080"))
-    }
+    use crate::http::state::AppsState;
+    use crate::OnDeviceLaunchSink;
 
     /// The served public router, state not yet applied — the spec half of
     /// `split_for_parts` is irrelevant here.
     fn router() -> Router<Arc<AppsState>> {
         openapi_router().split_for_parts().0
-    }
-
-    fn state() -> Arc<AppsState> {
-        state_with_tunnel(tunnel_unavailable())
-    }
-
-    fn state_with_tunnel(tunnel: Arc<dyn TunnelService>) -> Arc<AppsState> {
-        let store = AppsStore::open_in_memory().expect("store");
-        let internal_apps = InternalAppsStore::new(store.conn().clone());
-        Arc::new(AppsState::new(
-            store,
-            internal_apps,
-            "http://127.0.0.1:8080",
-            LOOPBACK_HOST,
-            tunnel,
-        ))
     }
 
     async fn send(state: &Arc<AppsState>, req: Request<Body>) -> (StatusCode, serde_json::Value) {
@@ -417,26 +328,15 @@ mod tests {
         assert_eq!(res.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 
-    /// With a [`LaunchSink`] installed, a launch hands the resolved URL to the
-    /// sink and returns `204` (no redirect) — the host owns the side-effect.
+    /// With an [`OnDeviceLaunchSink`] installed, a launch hands the resolved URL
+    /// to the sink and returns `204` (no redirect) — the host owns the side-effect.
     /// Exercised against the internal `patient-browser` row so the assertion
     /// pins the URL the sink receives to a fixed value (no random `{launch}`
     /// nonce).
     #[tokio::test]
     async fn launch_with_sink_204s_and_routes_the_url_to_the_sink() {
         let sink = Arc::new(RecordingSink::default());
-        let store = AppsStore::open_in_memory().expect("store");
-        let internal_apps = InternalAppsStore::new(store.conn().clone());
-        let st = Arc::new(
-            AppsState::new(
-                store,
-                internal_apps,
-                "http://127.0.0.1:8080",
-                LOOPBACK_HOST,
-                tunnel_unavailable(),
-            )
-            .with_launch_sink(Arc::clone(&sink) as Arc<dyn LaunchSink>),
-        );
+        let st = state_with_sink(Arc::clone(&sink) as Arc<dyn OnDeviceLaunchSink>);
         let res = router()
             .with_state(Arc::clone(&st))
             .oneshot(post("/apps/patient-browser"))
@@ -514,18 +414,7 @@ mod tests {
     #[tokio::test]
     async fn launch_with_sink_but_forwarded_request_302s_without_invoking_the_sink() {
         let sink = Arc::new(RecordingSink::default());
-        let store = AppsStore::open_in_memory().expect("store");
-        let internal_apps = InternalAppsStore::new(store.conn().clone());
-        let st = Arc::new(
-            AppsState::new(
-                store,
-                internal_apps,
-                "http://127.0.0.1:8080",
-                LOOPBACK_HOST,
-                tunnel_unavailable(),
-            )
-            .with_launch_sink(Arc::clone(&sink) as Arc<dyn LaunchSink>),
-        );
+        let st = state_with_sink(Arc::clone(&sink) as Arc<dyn OnDeviceLaunchSink>);
         st.store
             .insert_app(&app("app-y", AppUrl::OriginRelative("/y".to_owned())))
             .unwrap();

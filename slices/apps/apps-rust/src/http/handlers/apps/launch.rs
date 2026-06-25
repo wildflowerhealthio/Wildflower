@@ -1,8 +1,10 @@
 //! `POST /apps/{id}` — resolve an app id to a launch target.
 //!
-//! Two stores back the id-space:
+//! One store ([`AppsStore`](crate::db::AppsStore)) backs both halves of the
+//! id-space, across two tables:
 //!
-//!   * **Internals** ([`InternalAppsStore`](crate::db::InternalAppsStore)) —
+//!   * **Internals** (`internal_apps`, via
+//!     [`find_internal_app`](crate::db::AppsStore::find_internal_app)) —
 //!     locally-served apps with a fixed origin per row. A loopback caller
 //!     gets `http://{host}:{port}/` (from host config + the row's `port`);
 //!     a forwarded caller (one whose `Forwarded` header indicates the
@@ -30,9 +32,9 @@
 //!      `Forwarded` host can't make the two answers disagree.
 //!   3. Render the launch target (internal: from config; external: through
 //!      `AppUrl`).
-//!   4. Dispatch: when a [`LaunchSink`](crate::LaunchSink) is installed
-//!      (the Tauri host) *and* the caller is loopback (a local webview that
-//!      a host popup can actually serve), it hands the URL to the sink and
+//!   4. Dispatch: when an [`OnDeviceLaunchSink`](crate::OnDeviceLaunchSink) is
+//!      installed (the Tauri host) *and* the caller is loopback (a local webview
+//!      that a host popup can actually serve), it hands the URL to the sink and
 //!      `204`s; otherwise it returns a `302` redirect for the browser to
 //!      follow.
 //!
@@ -55,14 +57,16 @@ use shared_structures_rust::served_origin::{request_provenance, RequestProvenanc
 use crate::domain::{AppEntry, InternalApp, LaunchParams};
 use crate::http::response_templates::{AppNotFoundBody, HandlerError};
 use crate::http::state::AppsState;
-use crate::id::random_id_21;
+use crate::id::mint_launch_nonce;
+use crate::LoopbackCaller;
 
 /// `POST /apps/{id}` — launch an app. `404` if no app has this id. Reachable
 /// unauthenticated (the webview follows the redirect).
 ///
-/// A host [`LaunchSink`](crate::LaunchSink) opens the resolved URL in a native
-/// popup *on this device*, which only helps the **local** caller — so the sink
-/// is used (returning `204`) only when the request came in over loopback. A
+/// A host [`OnDeviceLaunchSink`](crate::OnDeviceLaunchSink) opens the resolved
+/// URL in a native popup *on this device*, which only helps the **local** caller
+/// — so the sink is used (returning `204`) only when the request came in over
+/// loopback. A
 /// request **forwarded by the trusted front** (the relay/tunnel sets
 /// the `Forwarded` header) is a *remote* caller, for whom a host-side popup is
 /// invisible; it gets the `302` redirect instead, the same as a host that
@@ -87,50 +91,63 @@ pub(crate) async fn handle_launch_app(
     // them disagree (a header that fails validation reads as Loopback).
     let provenance = request_provenance(&headers);
 
-    // Internals win on id collision (the only path that puts an internal
-    // and an external row at the same id is a pre-migration-002 edit; see
-    // the list-merge handler). The internal's launch URL is
-    // provenance-aware: a loopback caller redirects to the per-app
-    // loopback listener; a forwarded caller redirects to the public
-    // subdomain so the remote browser can follow it through the relay.
-    let (app, target) = if let Some(internal) = state
-        .internal_apps
-        .find(&id)
-        .map_err(|e| HandlerError::internal("internal_apps find lookup failed", e))?
-    {
-        let target = render_internal_target(&internal, &state, &provenance);
-        // The sink path only fires for loopback callers (see below), so the
-        // sink-bound `AppEntry` always carries the loopback URL — the host
-        // popup opens the local origin. That matches the redirect a no-sink
-        // loopback caller would chase, so loopback callers see one URL
-        // regardless of which dispatch fires.
-        (
-            internal.to_app_entry(&state.internal_apps_loopback_host),
-            target,
-        )
-    } else {
-        let external = state
-            .store
-            .find_app(&id)
-            .map_err(|e| HandlerError::internal("find_app lookup failed", e))?
-            .ok_or_else(|| HandlerError::NotFound { id: id.clone() })?;
-        let target = render_external_target(&state, &provenance, &external).await;
-        (external, target)
-    };
+    let (app, target) = resolve_launch_target(&state, &id, &provenance).await?;
 
-    match (&state.launch_sink, &provenance) {
+    // A `LoopbackCaller` witness is mintable only from a loopback provenance, so
+    // matching on `Some(caller)` is the loopback-only gate — the sink can't be
+    // opened for a forwarded (remote) caller because `open` won't take the call
+    // without the witness.
+    match (&state.launch_sink, LoopbackCaller::from_provenance(&provenance)) {
         // Loopback caller + a host sink: the host owns the side-effect — hand
         // it the resolved URL (it opens a native popup) and 204 so the SPA
         // stays mounted. The sink is contractually fire-and-forget (the Tauri
         // impl spawns the blocking webview-open onto a blocking thread, so
         // this call returns promptly). A forwarded (remote) request, or no
         // sink at all, falls through to the redirect.
-        (Some(sink), RequestProvenance::Loopback) => {
-            sink.open(&app, &target);
+        (Some(sink), Some(caller)) => {
+            sink.open(caller, &app, &target);
             Ok(no_content())
         }
         _ => redirect(target),
     }
+}
+
+/// Resolve `id` to its `(AppEntry, launch target)`. Internals win on id
+/// collision — looked up first (the only path that puts an internal and an
+/// external row at the same id is a pre-migration-002 edit; see the list-merge
+/// handler) — then externals; `404` if absent from both.
+///
+/// Internals get a provenance-aware fixed URL: a loopback caller redirects to
+/// the per-app loopback listener, a forwarded caller to the public subdomain so
+/// the remote browser can follow it through the relay. Externals resolve their
+/// `AppUrl` template through the tunnel/served origin.
+async fn resolve_launch_target(
+    state: &AppsState,
+    id: &str,
+    provenance: &RequestProvenance,
+) -> Result<(AppEntry, String), HandlerError> {
+    if let Some(internal) = state
+        .store
+        .find_internal_app(id)
+        .map_err(|e| HandlerError::internal("internal_apps find lookup failed", e))?
+    {
+        let target = render_internal_target(&internal, state, provenance);
+        // The sink path only fires for loopback callers, so the sink-bound
+        // `AppEntry` always carries the loopback URL — the host popup opens the
+        // local origin. That matches the redirect a no-sink loopback caller
+        // would chase, so loopback callers see one URL regardless of which
+        // dispatch fires.
+        let app = internal.to_app_entry(&state.internal_apps_loopback_host);
+        return Ok((app, target));
+    }
+
+    let external = state
+        .store
+        .find_app(id)
+        .map_err(|e| HandlerError::internal("find_app lookup failed", e))?
+        .ok_or_else(|| HandlerError::NotFound { id: id.to_owned() })?;
+    let target = render_external_target(state, provenance, &external).await;
+    Ok((external, target))
 }
 
 /// Render an internal app's launch target. A loopback caller (and a
@@ -163,7 +180,7 @@ async fn render_external_target(
     app: &AppEntry,
 ) -> String {
     let (origin, tunnel_unavailable) = resolve_origin(state, provenance, app.requires_tunnel).await;
-    let launch = random_id_21();
+    let launch = mint_launch_nonce();
     app.url.to_url_with_params(&LaunchParams {
         origin: &origin,
         launch: &launch,
@@ -219,8 +236,9 @@ fn redirect(location: String) -> Result<Response, HandlerError> {
         .map_err(|e| HandlerError::internal("redirect builder failed", e))
 }
 
-/// 204 No Content with an empty body — the response when a host [`LaunchSink`]
-/// has taken the launch (the host opened the URL; there's nothing for the SPA
+/// 204 No Content with an empty body — the response when a host
+/// [`OnDeviceLaunchSink`](crate::OnDeviceLaunchSink) has taken the launch (the
+/// host opened the URL; there's nothing for the SPA
 /// to follow). `StatusCode::NO_CONTENT.into_response()` already yields an empty
 /// body, so no header juggling is needed.
 fn no_content() -> Response {

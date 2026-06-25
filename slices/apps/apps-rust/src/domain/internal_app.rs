@@ -55,16 +55,14 @@ impl InternalApp {
 
     /// Render the public subdomain launch target
     /// `https://{id}.{public_host}/` — the URL a forwarded (remote) caller
-    /// can actually reach. The host's subdomain dispatch matches the same
-    /// shape on inbound forwarded requests, so the redirect and the dispatch
-    /// agree on what a launched app's origin looks like from the outside.
+    /// can actually reach. Delegates to the shared
+    /// [`shared_structures_rust::subdomain_host::subdomain_url`] so the host's
+    /// subdomain dispatch (which matches inbound forwarded requests via the
+    /// same module's `match_subdomain`) and this redirect can't drift on the
+    /// `<id>.<public_host>` shape.
     #[must_use]
     pub fn subdomain_url(&self, public_host: &str) -> String {
-        format!(
-            "https://{id}.{public_host}/",
-            id = self.id,
-            public_host = public_host,
-        )
+        shared_structures_rust::subdomain_host::subdomain_url(&self.id, public_host)
     }
 
     /// Materialize as the shared wire DTO so `GET /apps` can return

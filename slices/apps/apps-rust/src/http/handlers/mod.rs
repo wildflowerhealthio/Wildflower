@@ -6,6 +6,8 @@
 
 mod apps;
 mod apps_admin;
+#[cfg(test)]
+pub(crate) mod test_utils;
 
 use std::sync::Arc;
 

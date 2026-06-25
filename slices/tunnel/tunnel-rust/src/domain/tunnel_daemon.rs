@@ -114,7 +114,7 @@ impl Default for ProbeTiming {
     fn default() -> Self {
         Self {
             interval: Duration::from_millis(400),
-            verified_interval: Duration::from_secs(5),
+            verified_interval: Duration::from_secs(30),
             timeout: Duration::from_secs(3),
         }
     }

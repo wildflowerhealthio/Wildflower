@@ -14,6 +14,7 @@ members = [
   "slices/shared-structures/shared-structures-rust",
   "slices/shared-structures/shared-structures-tauri-rust",
   "slices/tunnel/tunnel-rust",
+  "slices/tunnel/tunneled-router-rust",
 ]
 
 [workspace.package]

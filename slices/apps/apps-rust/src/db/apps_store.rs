@@ -11,7 +11,7 @@ use persistence_rust::{build_insert_sql, sql_row, Connection, DbResult};
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, Value, ValueRef};
 use rusqlite::{params, OptionalExtension, ToSql};
 
-use crate::domain::{AppEntry, AppUrl};
+use crate::domain::{AppEntry, AppUrl, InternalApp};
 
 #[derive(Clone)]
 pub struct AppsStore {
@@ -131,6 +131,28 @@ impl AppsStore {
             .lock()
             .execute("DELETE FROM apps WHERE id = ?1", params![id])?;
         Ok(affected == 1)
+    }
+
+    /// All internal-app rows (the static, migration-seeded `internal_apps`
+    /// catalogue), in seed order. One store serves the whole slice — internals
+    /// are read-only (seeded by migration, not editable through the admin API).
+    ///
+    /// # Errors
+    ///
+    /// Returns any rusqlite error from the read.
+    pub fn list_internal_apps(&self) -> DbResult<Vec<InternalApp>> {
+        super::internal_apps::list_internal_apps(self.conn())
+    }
+
+    /// Single internal-app row by id, `None` when absent. Used by
+    /// `POST /apps/{id}` to dispatch a launch to the internal path before
+    /// falling through to the externals.
+    ///
+    /// # Errors
+    ///
+    /// Returns any rusqlite error other than `QueryReturnedNoRows`.
+    pub fn find_internal_app(&self, id: &str) -> DbResult<Option<InternalApp>> {
+        super::internal_apps::find_internal_app(self.conn(), id)
     }
 }
 
@@ -325,8 +347,10 @@ mod tests {
     }
 
     /// Seeded externals rows are first-class editable. The patch flow can
-    /// rename, re-point, and disable any of them. (Internal apps live in
-    /// a separate table — see [`InternalAppsStore`](super::InternalAppsStore).)
+    /// rename, re-point, and disable any of them. (Internal apps live in a
+    /// separate `internal_apps` table, read-only via
+    /// [`list_internal_apps`](Self::list_internal_apps) /
+    /// [`find_internal_app`](Self::find_internal_app).)
     #[test]
     fn seeded_rows_are_editable_through_replace_app() {
         let store = AppsStore::open_in_memory().unwrap();

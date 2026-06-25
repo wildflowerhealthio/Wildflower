@@ -59,6 +59,11 @@ shared-structures-rust = { path = "../../../slices/shared-structures/shared-stru
 # native-webview plugin.
 shared-structures-tauri-rust = { path = "../../../slices/shared-structures/shared-structures-tauri-rust" }
 tunnel-rust = { path = "../../../slices/tunnel/tunnel-rust" }
+# The general forwarded-subdomain router: binds each internal app on its
+# loopback port and dispatches inbound `<id>.<public-host>` forwarded requests
+# into the matching per-app router. Replaces the former in-app
+# `subdomain_dispatch` module.
+tunneled-router-rust = { path = "../../../slices/tunnel/tunneled-router-rust" }
 anyhow.workspace = true
 axum.workspace = true
 tokio = { workspace = true, features = ["full"] }
@@ -66,11 +71,6 @@ tauri-plugin-log = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-dialog = "2"
 tower-http.workspace = true
-# `ServiceExt::oneshot` — used by `subdomain_dispatch` to dispatch an inbound
-# forwarded request into a per-internal-app axum router (the same router the
-# loopback `:port` listener serves). `util` is the feature that brings the
-# `oneshot`/`MapResponse`/etc. service combinators.
-tower = { version = "0.5", features = ["util"] }
 dotenvy = "0.15.7"
 
 # Opt the host into the workspace lints (notably `unsafe_code = "forbid"`).
@@ -79,3 +79,6 @@ workspace = true
 
 [dev-dependencies]
 http-body-util = "0.1"
+# `ServiceExt::oneshot` — the api_stubs tests drive a router directly. (The
+# subdomain dispatch that used this at runtime now lives in tunneled-router-rust.)
+tower = { version = "0.5", features = ["util"] }

@@ -6944,6 +6944,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "tunneled-router-rust"
+version = "0.0.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "shared-structures-rust",
+ "tokio",
+ "tower",
+ "tracing",
+]
+
+[[package]]
 name = "typeid"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7549,6 +7561,7 @@ dependencies = [
  "tower",
  "tower-http 0.6.11",
  "tunnel-rust",
+ "tunneled-router-rust",
  "vendor-apps-rust",
 ]
 

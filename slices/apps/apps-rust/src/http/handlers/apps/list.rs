@@ -34,8 +34,8 @@ pub(crate) async fn handle_list_apps(
     State(state): State<Arc<AppsState>>,
 ) -> Result<Json<Vec<AppListEntry>>, HandlerError> {
     let internals = state
-        .internal_apps
-        .list()
+        .store
+        .list_internal_apps()
         .map_err(|e| HandlerError::internal("list internal_apps lookup failed", e))?;
     let externals = state
         .store

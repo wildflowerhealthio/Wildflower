@@ -89,14 +89,20 @@ const CreateAppBodySchema = Schema.Struct({
   name: Schema.NonEmptyString,
   url: AppUrlSchema,
   requiresTunnel: Schema.Boolean,
+  // Accepts the empty string, which the server treats as "no subtitle" (it
+  // normalizes `""` to none). The read schemas decode `subtitle` as a non-empty
+  // string, so a stored `""` would break the catalogue decode — see
+  // {@link AppEntrySchema}.
   subtitle: Schema.optional(Schema.String),
 })
 
 /**
  * Body for `UpdateApp`. All fields optional; `name`/`url` carry the same
  * non-empty / well-formed constraints as on create so a partial update cannot
- * relax them. An explicit `subtitle` (including the empty string) replaces the
- * stored subtitle.
+ * relax them. An explicit `subtitle` replaces the stored subtitle; the empty
+ * string `""` (or explicit `null`) **clears** it — the server normalizes empty
+ * to none so it never persists as `""` and round-trips through the non-empty
+ * read schema.
  */
 const UpdateAppBodySchema = Schema.Struct({
   enabled: Schema.optional(Schema.Boolean),

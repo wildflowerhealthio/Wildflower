@@ -1,22 +1,21 @@
-//! Shared HTTP state — the two store handles, the loopback origin used to
-//! build launch URLs, the host portion the internal-app listeners bind on,
-//! and the tunnel-launch resolver.
+//! Shared HTTP state — the store handle (serving both apps tables), the
+//! loopback origin used to build launch URLs, the host portion the internal-app
+//! listeners bind on, and the tunnel-launch resolver.
 
 use std::sync::Arc;
 
 use shared_structures_rust::tunnel_service::TunnelService;
 
-use crate::db::{AppsStore, InternalAppsStore};
-use crate::LaunchSink;
+use crate::db::AppsStore;
+use crate::OnDeviceLaunchSink;
 
 /// Shared state threaded through the apps handlers. Held in an `Arc` and
 /// extracted via `State<Arc<AppsState>>` per the tunnel-rust pattern.
 pub struct AppsState {
-    /// The externals catalogue — read + write, editable through the admin
-    /// API.
+    /// The apps store — serves both the externals (`apps`, read + write through
+    /// the admin API) and the read-only internals (`internal_apps`, seeded by
+    /// migration).
     pub(crate) store: AppsStore,
-    /// The internals catalogue — read-only at runtime, seeded by migration.
-    pub(crate) internal_apps: InternalAppsStore,
     /// e.g. `http://127.0.0.1:8080` — the origin clients reach when the tunnel
     /// is down. `LaunchApp` redirects non-tunnel apps here; a `requiresTunnel`
     /// launch that can't reach the tunnel falls back here with
@@ -32,20 +31,18 @@ pub struct AppsState {
     /// Optional launch side-effect seam. When present (the Tauri host), a
     /// launch hands the resolved URL to the sink and `204`s instead of
     /// returning a `302`. `None` (web/standalone) keeps the redirect path.
-    pub(crate) launch_sink: Option<Arc<dyn LaunchSink>>,
+    pub(crate) launch_sink: Option<Arc<dyn OnDeviceLaunchSink>>,
 }
 
 impl AppsState {
     pub fn new(
         store: AppsStore,
-        internal_apps: InternalAppsStore,
         loopback_origin: impl Into<String>,
         internal_apps_loopback_host: impl Into<String>,
         tunnel: Arc<dyn TunnelService>,
     ) -> Self {
         Self {
             store,
-            internal_apps,
             loopback_origin: loopback_origin.into(),
             internal_apps_loopback_host: internal_apps_loopback_host.into(),
             tunnel,
@@ -53,10 +50,10 @@ impl AppsState {
         }
     }
 
-    /// Install the host's [`LaunchSink`] — a launch then opens the resolved
-    /// URL through the sink and `204`s rather than returning a `302`.
+    /// Install the host's [`OnDeviceLaunchSink`] — a launch then opens the
+    /// resolved URL through the sink and `204`s rather than returning a `302`.
     #[must_use]
-    pub fn with_launch_sink(mut self, sink: Arc<dyn LaunchSink>) -> Self {
+    pub fn with_launch_sink(mut self, sink: Arc<dyn OnDeviceLaunchSink>) -> Self {
         self.launch_sink = Some(sink);
         self
     }

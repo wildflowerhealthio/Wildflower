@@ -2,7 +2,6 @@ mod api_stubs;
 mod bridge;
 mod launch_sink;
 mod spa;
-mod subdomain_dispatch;
 mod tunnel_adapters;
 
 use anyhow::Context;
@@ -13,15 +12,13 @@ use gatekeeper_rust::{
     layer_router_with_gatekeeper_auth_gating, setup_gatekeeper, GatekeeperConfig,
 };
 use shared_structures_rust::ServerRuntimeConfig;
-use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tauri::Manager;
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
-
-use crate::subdomain_dispatch::{maybe_dispatch_to_internal_subdomain, SubdomainDispatchState};
+use tunneled_router_rust::{TunneledRoute, TunneledRouterBuilder};
 
 // Loopback hostname/port for the embedded API server, derived at compile time
 // from the SINGLE SOURCE OF TRUTH
@@ -201,7 +198,7 @@ async fn run_server(
     // native webview popup via `tauri-plugin-native-webview` (the server 204s,
     // so the SPA stays mounted). This replaces the former `RequestTunnel` /
     // `RequestSandboxedWebView` bridge round-trips.
-    let launch_sink: Arc<dyn apps_rust::LaunchSink> =
+    let launch_sink: Arc<dyn apps_rust::OnDeviceLaunchSink> =
         Arc::new(launch_sink::TauriLaunchSink::new(app_handle.clone()));
     let apps = setup_apps(
         db,
@@ -266,73 +263,33 @@ async fn run_server(
         );
     }
 
-    // One dedicated loopback listener per internal app — each installed app
-    // gets its own origin (`http://{loopback_hostname}:{port}/`) so it
-    // becomes its own security context (own storage, own cookies, no
-    // Same-Origin Policy share with the API on the main port). The DB row's
-    // `port` is the source of truth for what we bind here; the apps slice
-    // reads the same value to render the launch target, so the redirect
-    // and the listener can't drift. Best-effort per-app bind: a port
-    // collision logs and is skipped (a future launch will redirect to a
-    // closed port and the SPA will surface a reachability error), but it
-    // must NOT abort the main `:loopback_port` listener that carries FHIR
-    // + gatekeeper + the apps catalogue itself.
-    //
-    // The same per-app routers populate the subdomain-dispatch map below:
-    // remote (forwarded) traffic arrives on the main API port without a
-    // per-app socket, so a request whose forwarded host is
-    // `<app-id>.<public-host>` is dispatched in software through the same
-    // router we serve loopback callers from. Built once, cloned both into
-    // the spawned listener and the dispatch map.
-    let internal_apps = apps
-        .internal_apps
-        .list()
-        .context("failed to list internal apps")?;
-    let mut internal_routers: HashMap<String, Router> = HashMap::new();
-    for internal in internal_apps {
+    // Each installed app gets its own dedicated loopback origin
+    // (`http://{loopback_hostname}:{port}/`) so it becomes its own security
+    // context (own storage, own cookies, no Same-Origin Policy share with the
+    // API on the main port), AND it's reachable remotely at
+    // `<app-id>.<public-host>` for forwarded (relayed) traffic that lands on
+    // the main API port without a per-app socket. The `tunneled-router-rust`
+    // builder owns both halves: it binds each loopback listener (best-effort —
+    // a port collision is logged and skipped without aborting startup; the
+    // route still participates in subdomain dispatch so remote traffic keeps
+    // working) and produces the dispatch layer. The DB row's `port` is the
+    // source of truth for the bind; the apps slice reads the same value to
+    // render the launch target, so the redirect and the listener can't drift.
+    let mut subdomain_router =
+        TunneledRouterBuilder::new(runtime.loopback_hostname.clone(), Arc::clone(&tunnel_service));
+    for internal in apps.internal_apps {
         let app_dir = installed_apps_dir.join(&internal.id);
         let router = vendor_apps_rust::setup_installed_app(&internal.id, app_dir)
             .layer(CorsLayer::very_permissive());
-        let bind_host = format!("{}:{}", runtime.loopback_hostname, internal.port);
-        match TcpListener::bind(&bind_host).await {
-            Ok(listener) => {
-                let id = internal.id.clone();
-                let serve_router = router.clone();
-                tauri_plugin_log::log::info!(
-                    "serving installed app {} on {}",
-                    internal.id,
-                    bind_host,
-                );
-                tokio::spawn(async move {
-                    if let Err(error) =
-                        axum::serve(listener, serve_router.into_make_service()).await
-                    {
-                        tauri_plugin_log::log::error!(
-                            "installed app {id} listener stopped: {error}",
-                        );
-                    }
-                });
-            }
-            Err(error) => {
-                // Likely the port is already taken. Log and continue so the
-                // main API stays up; launches to this app will redirect to
-                // a closed port until the user restarts. The dispatch map
-                // is still populated so remote forwarded traffic for this
-                // app continues to land on the right files.
-                tauri_plugin_log::log::error!(
-                    "failed to bind installed app {} listener on {bind_host}: {error}",
-                    internal.id,
-                );
-            }
-        }
-        internal_routers.insert(internal.id, router);
+        subdomain_router = subdomain_router.route(TunneledRoute {
+            id: internal.id,
+            router,
+            port: internal.port,
+        });
     }
-    let subdomain_dispatch_state = Arc::new(SubdomainDispatchState::new(
-        internal_routers,
-        Arc::clone(&tunnel_service),
-    ));
+    let subdomain_dispatch = subdomain_router.build().await;
 
-    let router = Router::new()
+    let api_router = Router::new()
         .merge(gatekeeper.router)
         .merge(gated_fhir_r4)
         .merge(gated_stubs)
@@ -349,17 +306,14 @@ async fn run_server(
         .merge(gated_apps_admin)
         .merge(gated_databases)
         .fallback(spa::handle_serving_spa_html)
-        .layer(CorsLayer::very_permissive())
-        // Subdomain dispatch runs BEFORE the merged API routes: a
-        // forwarded request whose `Forwarded` host matches
-        // `<internal-app-id>.<configured-public-host>` is handed straight
-        // to the per-app router. Loopback and apex-host traffic falls
-        // through to the API stack above. The layer is applied last so it
-        // wraps everything that came before it.
-        .layer(axum::middleware::from_fn_with_state(
-            subdomain_dispatch_state,
-            maybe_dispatch_to_internal_subdomain,
-        ));
+        .layer(CorsLayer::very_permissive());
+
+    // Subdomain dispatch wraps the whole API stack as the outermost layer, so
+    // it runs FIRST: a forwarded request whose `Forwarded` host matches
+    // `<internal-app-id>.<configured-public-host>` is handed straight to the
+    // per-app router; loopback and apex-host traffic falls through to the API
+    // stack above.
+    let router = subdomain_dispatch.wrap(api_router);
 
     axum::serve(
         listener,

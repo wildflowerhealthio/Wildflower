@@ -73,12 +73,19 @@ impl TunnelService for TunnelControl {
     /// treated as "unconfigured" (None) rather than surfaced: the only caller
     /// today (the host's subdomain dispatch) wants a permissive fallback —
     /// route to the regular API when it can't confirm a configured host.
+    ///
+    /// An empty stored value normalizes to `None` here at the single read point:
+    /// the callers (the inbound subdomain dispatch and the launch subdomain
+    /// redirect) would otherwise build a malformed `Some("")` host
+    /// (`https://patient-browser./`) — mirrors the `is_none_or(String::is_empty)`
+    /// defenses on the seed/persist side.
     fn current_public_host(&self) -> Option<String> {
         self.state
             .store
             .get_settings()
             .ok()
             .and_then(|s| s.public_host)
+            .filter(|host| !host.is_empty())
     }
 
     async fn try_start(&self) -> Result<String, String> {
@@ -271,6 +278,30 @@ mod tests {
         let daemon = TunnelDaemon::new_test(client, probe, "http://127.0.0.1:8080", 8080);
         daemon.reconcile(&store.get_settings().expect("read settings"));
         Arc::new(TunnelState { store, daemon })
+    }
+
+    #[tokio::test]
+    async fn current_public_host_normalizes_empty_to_none() {
+        let configured = TunnelControl::new(resumed_state(
+            Some("dev1.example.com"),
+            Some(relay()),
+            Arc::new(HoldUntilCancelRelayClient),
+            Arc::new(StubProbe::passing()),
+        ));
+        assert_eq!(
+            configured.current_public_host(),
+            Some("dev1.example.com".to_owned()),
+        );
+
+        // A stored empty string reads as unconfigured, not `Some("")` — else the
+        // launch redirect and inbound dispatch would build a malformed host.
+        let empty = TunnelControl::new(resumed_state(
+            Some(""),
+            Some(relay()),
+            Arc::new(HoldUntilCancelRelayClient),
+            Arc::new(StubProbe::passing()),
+        ));
+        assert_eq!(empty.current_public_host(), None);
     }
 
     #[tokio::test(start_paused = true)]

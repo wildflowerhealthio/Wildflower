@@ -8,13 +8,14 @@
 //!    request time. Editable through the admin surface (create / patch /
 //!    delete). Deletion of a seeded row sticks across upgrades — each seed
 //!    migration runs once per database.
-//!  - **Internals** ([`InternalAppsStore`]) — locally-served apps backed by
-//!    the `internal_apps` table. Each row owns a dedicated loopback `port`
-//!    the host binds a listener on; the launch handler renders the target
-//!    as `http://{host}:{port}/` from
-//!    [`AppsConfig::internal_apps_loopback_host`] + the row's `port`. The
-//!    seed migration is the only writer today; there is no admin surface
-//!    for internals.
+//!  - **Internals** (the `internal_apps` table, read through [`AppsStore`]'s
+//!    [`list_internal_apps`](AppsStore::list_internal_apps) /
+//!    [`find_internal_app`](AppsStore::find_internal_app)) — locally-served
+//!    apps. Each row owns a dedicated loopback `port` the host binds a listener
+//!    on; the launch handler renders the target as `http://{host}:{port}/` from
+//!    [`AppsConfig::internal_apps_loopback_host`] + the row's `port`. The seed
+//!    migration is the only writer today; there is no admin surface for
+//!    internals.
 //!
 //! Layered like `tunnel-rust` and `gatekeeper-rust`:
 //!
@@ -22,10 +23,9 @@
 //!    doubles as the externals row shape), [`domain::InternalApp`] (the
 //!    internals row shape and its `AppEntry` materializer), and
 //!    [`domain::AppUrl`] (the write-side URL validator).
-//!  - [`db`] — the SQLite stores ([`db::AppsStore`] + [`db::InternalAppsStore`])
-//!    built on the shared `persistence-rust` primitives, with the row
-//!    mappings generated directly off the domain types via
-//!    `persistence_rust::sql_row!`.
+//!  - [`db`] — the SQLite store ([`db::AppsStore`], serving both tables) built
+//!    on the shared `persistence-rust` primitives, with the row mappings
+//!    generated directly off the domain types via `persistence_rust::sql_row!`.
 //!  - [`http`] — the `/apps` wire contract, split into a public router
 //!    (list + launch) and an admin router (create / patch / delete).
 //!    `GET /apps` merges internals and externals into one uniform list;
@@ -45,9 +45,9 @@
 //! tunnel-rust.
 //!
 //! With the resolved target in hand the handler either returns a `302` redirect
-//! (web/standalone) or, when a [`LaunchSink`] is installed (the Tauri host),
-//! hands the URL to the sink — which opens it in a native webview popup — and
-//! returns `204`. See [`LaunchSink`].
+//! (web/standalone) or, when an [`OnDeviceLaunchSink`] is installed (the Tauri
+//! host), hands the URL to the sink — which opens it in a native webview popup
+//! — and returns `204`. See [`OnDeviceLaunchSink`].
 
 pub mod config;
 pub mod db;
@@ -63,10 +63,10 @@ use axum::Router;
 use shared_structures_rust::tunnel_service::TunnelService;
 
 pub use config::AppsConfig;
-pub use db::{AppsStore, InternalAppsStore};
+pub use db::AppsStore;
 pub use domain::InternalApp;
 pub use http::AppsState;
-pub use launch_sink::LaunchSink;
+pub use launch_sink::{LoopbackCaller, OnDeviceLaunchSink};
 
 /// Result of [`setup_apps`]: the two routers a host needs to mount. The
 /// public one carries no auth (the webview reaches list + launch
@@ -77,10 +77,10 @@ pub struct Apps {
     pub public_router: Router,
     pub admin_router: Router,
     pub state: Arc<AppsState>,
-    /// The internal-apps catalogue handle the host uses to discover which
-    /// internal apps it must bind a loopback listener for. Read-only; the
-    /// catalogue is seeded by migration.
-    pub internal_apps: InternalAppsStore,
+    /// The internal-apps catalogue the host uses to discover which internal apps
+    /// it must bind a loopback listener for. Materialized once at setup (the
+    /// catalogue is static — seeded by migration, read-only at runtime).
+    pub internal_apps: Vec<InternalApp>,
 }
 
 /// Build the apps router pair over the shared `conn`, mirroring
@@ -99,17 +99,19 @@ pub fn setup_apps(
     conn: persistence_rust::Connection,
     config: &AppsConfig,
     tunnel: Arc<dyn TunnelService>,
-    launch_sink: Option<Arc<dyn LaunchSink>>,
+    launch_sink: Option<Arc<dyn OnDeviceLaunchSink>>,
 ) -> anyhow::Result<Apps> {
     // `AppsStore::new` owns the shared migration list — running it migrates
-    // both the externals (`apps`) and internals (`internal_apps`) tables.
-    // The internals store is a thin read-only handle on the same connection
-    // built afterwards.
-    let store = AppsStore::new(conn.clone()).context("failed to open apps store")?;
-    let internal_apps = InternalAppsStore::new(conn);
+    // both the externals (`apps`) and internals (`internal_apps`) tables. The
+    // one store then serves both.
+    let store = AppsStore::new(conn).context("failed to open apps store")?;
+    // Materialize the static internals catalogue once for the host to bind
+    // listeners against (seeded by migration, read-only at runtime).
+    let internal_apps = store
+        .list_internal_apps()
+        .context("failed to list internal apps")?;
     let mut state = AppsState::new(
         store,
-        internal_apps.clone(),
         config.loopback_origin.clone(),
         config.internal_apps_loopback_host.clone(),
         tunnel,
