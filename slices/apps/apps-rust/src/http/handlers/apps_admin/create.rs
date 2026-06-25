@@ -7,7 +7,7 @@ use std::sync::Arc;
 use axum::extract::State;
 use axum::Json;
 use rand::distr::Alphanumeric;
-use rand::Rng;
+use rand::RngExt;
 use serde::Deserialize;
 use utoipa::ToSchema;
 

@@ -25,7 +25,7 @@ use axum::http::header::LOCATION;
 use axum::http::StatusCode;
 use axum::response::Response;
 use rand::distr::Alphanumeric;
-use rand::Rng;
+use rand::RngExt;
 
 use crate::domain::LaunchParams;
 use crate::http::response_templates::{AppNotFoundBody, HandlerError};

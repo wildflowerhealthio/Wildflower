@@ -22,7 +22,7 @@ persistence-rust = { path = "../../persistence/persistence-rust" }
 shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = [
   "tunnel-service",
 ] }
-rand = "0.9"
+rand = "0.10"
 tracing = "0.1"
 
 [lints]
