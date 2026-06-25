@@ -1,16 +1,15 @@
 /**
  * Narrow an unknown wire payload to a string-keyed record. A real type guard
- * (not an assertion), so reading `record._tag` / `record.level` / `record.event`
- * downstream stays type-safe without an `as` cast.
+ * (not an assertion), so downstream `record._tag` / `record.level` reads stay
+ * type-safe without an `as` cast.
  *
- * Shared by both bridge transports — the native-webview bridge
- * ({@link file://./native-bridge.ts}) and the Tauri-IPC filter
- * ({@link file://./filter-tauri-internal.ts}) — so the two transports' payload
- * narrowing can't silently drift. Arrays are excluded (`typeof [] === 'object'`
- * would otherwise admit them, leaving `record.level` / `record.payload` reads
- * as `undefined` off an array — a violated contract); a future tightening lands
- * in one place. Both entries bundle this via esbuild, so it stays
- * self-contained in each injected IIFE.
+ * Shared by both bridge transports (`./native-bridge.ts`,
+ * `./filter-tauri-internal.ts`) so their payload narrowing can't drift, and
+ * bundled into each injected IIFE by esbuild so it stays self-contained.
+ *
+ * Arrays are excluded deliberately: `typeof [] === 'object'` would otherwise
+ * admit them, and `record.level` / `record.payload` off an array reads
+ * `undefined` — a violated contract.
  */
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value)

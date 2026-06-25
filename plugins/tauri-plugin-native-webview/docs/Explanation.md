@@ -11,6 +11,11 @@ liveness are independent concerns**: `open_url` navigates without presenting,
 `show`/`hide` toggle visibility while keeping the webview alive, and only
 `dispose` tears it down.
 
+The cross-platform protocols the three backends share — the lifecycle, the
+dispose→open switch race, teardown backstops, the chrome URL-fallback, and the
+re-open rewire — live in [Lifecycle and Races.md](./Lifecycle%20and%20Races.md);
+the backends' inline comments point there rather than re-deriving them.
+
 - `open_url(url, initScript, nativeWebviewEventChannel, initialTitle?, initialSubtitle?, initialMessage?)` — ensure the native webview exists (created **hidden** if absent) and navigate it to `url`. Does **not** present it.
 - `show()` — present the native webview (a freshly-created or previously-hidden instance).
 - `evaluate_js(script)` — evaluate JS inside the open native webview.

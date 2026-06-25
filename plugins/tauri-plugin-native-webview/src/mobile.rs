@@ -44,11 +44,12 @@ impl<R: Runtime> NativeWebview<R> {
     /// Ensure a native webview exists (created hidden if absent) and navigate it
     /// to `payload.url` by invoking the Swift/Kotlin `openUrl` command. Does not
     /// change visibility — call [`show`](Self::show) to present.
+    ///
+    /// Validates the URL up front via [`crate::url_scheme::parse_http_url`] so
+    /// every backend rejects a non-http(s) URL identically: the Android native
+    /// side otherwise hands an unvalidated string straight to `WebView.loadUrl`
+    /// and still resolves `opened: true`.
     pub fn open_url(&self, payload: OpenRequest) -> crate::Result<()> {
-        // Validate the URL up front (http(s)-only — see [`crate::url_scheme`])
-        // so every backend rejects a bad or non-http(s) URL the same way — the
-        // Android native side otherwise hands an unvalidated string straight to
-        // `WebView.loadUrl` and still resolves `opened: true`.
         crate::url_scheme::parse_http_url(&payload.url)?;
         self.0
             .run_mobile_plugin::<OpenResponse>("openUrl", payload)
@@ -56,10 +57,8 @@ impl<R: Runtime> NativeWebview<R> {
         Ok(())
     }
 
-    /// Present the native webview — bring a freshly-created or previously-hidden
-    /// instance to the foreground by invoking the Swift/Kotlin `show` command.
-    /// Idempotent — the native side resolves with `{requestCausedShow: false}` if
-    /// none exists or it was already visible.
+    /// Present the native webview by invoking the Swift/Kotlin `show` command.
+    /// See [`ShowResponse`](crate::ShowResponse) for the idempotency contract.
     pub fn show(&self) -> crate::Result<()> {
         self.0
             .run_mobile_plugin::<ShowResponse>("show", ())
@@ -68,8 +67,8 @@ impl<R: Runtime> NativeWebview<R> {
     }
 
     /// Evaluate JS inside the currently-open native webview by invoking the
-    /// Swift/Kotlin `evaluateJs` command. The native side rejects with a string
-    /// error if no native webview is open, surfaced here as
+    /// Swift/Kotlin `evaluateJs` command. If no native webview is open the native
+    /// side rejects, surfaced here as
     /// [`Error::PluginInvoke`](crate::Error::PluginInvoke).
     pub fn evaluate_js(&self, payload: EvaluateJsRequest) -> crate::Result<()> {
         self.0
@@ -78,11 +77,10 @@ impl<R: Runtime> NativeWebview<R> {
         Ok(())
     }
 
-    /// Patch one or more of the native webview's three labels (`title`,
-    /// `subtitle`, `message`). The native side resolves with `{set: true}`
-    /// once the labels are applied on the UI thread; resolves with
-    /// `{set: false}` (not a hard reject) when no native webview is open, which the
-    /// host should treat as best-effort.
+    /// Patch the native webview's chrome labels by invoking the Swift/Kotlin
+    /// `patchWindowText` command. Best-effort: the native side resolves with
+    /// `{set: false}` (not a hard reject) when no native webview is open. See
+    /// [`PatchWindowTextRequest`](crate::PatchWindowTextRequest).
     pub fn patch_window_text(&self, payload: PatchWindowTextRequest) -> crate::Result<()> {
         self.0
             .run_mobile_plugin::<PatchWindowTextResponse>("patchWindowText", payload)
@@ -90,10 +88,9 @@ impl<R: Runtime> NativeWebview<R> {
         Ok(())
     }
 
-    /// Hide the currently-presented native webview — remove it from view but
-    /// keep it alive and running. Idempotent — the native side resolves with
-    /// `{requestCausedHide: false}` if none was visible. The native side emits
-    /// `NativeWebviewEvent::Hidden` on the open channel once hidden.
+    /// Hide the currently-presented native webview by invoking the Swift/Kotlin
+    /// `hide` command. Emits [`NativeWebviewEvent::Hidden`](crate::NativeWebviewEvent::Hidden)
+    /// on the open channel once hidden. See [`HideResponse`](crate::HideResponse).
     pub fn hide(&self) -> crate::Result<()> {
         self.0
             .run_mobile_plugin::<HideResponse>("hide", ())
@@ -101,10 +98,10 @@ impl<R: Runtime> NativeWebview<R> {
         Ok(())
     }
 
-    /// Dispose the native webview — tear it down (visible or hidden) and free
-    /// its resources. Idempotent — the native side resolves with
-    /// `{requestCausedDispose: false}` if none existed. The native side emits
-    /// `NativeWebviewEvent::Disposed` on the open channel once torn down.
+    /// Dispose the native webview by invoking the Swift/Kotlin `dispose` command.
+    /// Emits [`NativeWebviewEvent::Disposed`](crate::NativeWebviewEvent::Disposed)
+    /// on the open channel once torn down. See
+    /// [`DisposeResponse`](crate::DisposeResponse).
     pub fn dispose(&self) -> crate::Result<()> {
         self.0
             .run_mobile_plugin::<DisposeResponse>("dispose", ())

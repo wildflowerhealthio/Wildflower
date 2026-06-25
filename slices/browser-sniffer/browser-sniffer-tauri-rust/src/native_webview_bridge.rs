@@ -193,10 +193,8 @@ fn validate_native_webview_message(envelope_json: &str) -> Result<&RawValue, Cow
             "native-webview message envelope had a missing or null payload",
         ));
     };
-    // Second scan of the inner payload (the envelope was already parsed above):
-    // read its `_tag` for the allowlist and reject duplicate keys. Re-lexes the
-    // inner bytes — see [`NativeWebviewEnvelope`] on why this isn't a single
-    // end-to-end parse.
+    // Second scan: read the inner `_tag` for the allowlist and reject duplicate
+    // keys (see [`InnerPayload`]; [`NativeWebviewEnvelope`] on the two parses).
     let InnerPayload { tag } = serde_json::from_str(payload.get())
         .map_err(|error| Cow::Owned(format!("native-webview message payload rejected: {error}")))?;
     if !NATIVE_WEBVIEW_DATA_PLANE_TAGS.contains(&tag) {
@@ -229,34 +227,20 @@ enum BridgeAction<'a> {
 fn classify_event(event: &NativeWebviewEvent) -> BridgeAction<'_> {
     match event {
         NativeWebviewEvent::Message { payload } => {
-            // `payload` is the native-webview-side bridge envelope:
-            // `{"event":"bridge","payload":{"_tag":"PageLoaded",…}}`. The
-            // native-webview-side `native-bridge.ts::makeNativeBridgeEventBus.emit`
-            // wraps every `installSniffer` emit in that envelope so a single
-            // native bridge can carry multiple Tauri channels.
-            //
-            // `validate_native_webview_message` checks the (untrusted) envelope
-            // and returns the inner `{_tag:…}` payload to re-emit verbatim on
-            // `BRIDGE_EVENT` — so SPA + Rust listeners see the inner shape
-            // directly, matching the Tauri-webview path where there's no
-            // envelope wrapping. (Emitting the whole envelope would defeat the
-            // collector's demux-by-`_tag`.)
+            // `payload` is the native-webview-side bridge envelope
+            // ([`NativeWebviewEnvelope`]). The SPA sees the *inner* `{_tag:…}`
+            // payload, matching the unwrapped Tauri-webview path — see
+            // [`validate_native_webview_message`] for the unwrap + security check.
             match validate_native_webview_message(payload) {
                 Ok(inner_payload) => BridgeAction::ReEmit(inner_payload),
                 Err(reason) => BridgeAction::Drop(reason),
             }
         }
-        // A user dismissal hid the native webview, but it stays alive and keeps
-        // sniffing in the background. This is NOT terminal — the SPA owns
-        // `SniffingComplete` — so re-emit nothing; collection continues until
-        // the SPA decides the sniff is done.
+        // Hide keeps the webview alive and sniffing; dispose follows the SPA's
+        // own `SniffingComplete`. Neither is terminal — see [`BridgeAction::Lifecycle`].
         NativeWebviewEvent::Hidden => {
             BridgeAction::Lifecycle("native webview hidden; sniff continues in the background")
         }
-        // The native webview was torn down — the host disposed it (after the
-        // SPA's own `SniffingComplete`) or the teardown backstop fired. The SPA
-        // already observed the terminal `SniffingComplete`, so there's nothing
-        // to re-emit here.
         NativeWebviewEvent::Disposed => BridgeAction::Lifecycle("native webview disposed"),
     }
 }
@@ -350,11 +334,9 @@ pub(crate) fn forward_to_native_webview(app: &AppHandle, payload_str: &str) {
             return;
         }
     };
-    // Two-stage stringify: the inner is the envelope the native-webview-side
-    // bridge transport parses; the outer (via `Value::String(...).to_string()`)
-    // quotes that string into a JS literal that survives `evaluateJavaScript`.
-    // Quotes / backslashes inside the envelope would otherwise syntax-error
-    // the injected script.
+    // Two-stage stringify: `envelope_json` is what the native-webview bridge
+    // parses; quoting it as a JS string literal escapes quotes/backslashes that
+    // would otherwise syntax-error the injected `evaluateJavaScript` script.
     let quoted_envelope = serde_json::Value::String(envelope_json).to_string();
     let script = format!("window.__nativeWebviewReceive({quoted_envelope})");
 
@@ -363,16 +345,13 @@ pub(crate) fn forward_to_native_webview(app: &AppHandle, payload_str: &str) {
         .evaluate_js(EvaluateJsRequest { script })
     {
         // Two failure modes hide behind one reject. The SPA emits Cancel
-        // speculatively across its lifecycle, so when no native webview is open
-        // the plugin rejects with a "no native webview open" message — benign,
-        // expected, debug. Anything else (the webview crashed mid-sniff,
-        // `evaluate_js` threw, the channel is wedged) dropped a real user
-        // action — e.g. a `Click` / `CancelSnifferRequest` — and must stay
-        // visible at warn. We match the message string because the plugin's
-        // mobile `Error` carries only a string (`PluginInvoke`), not a kind; the
-        // iOS/Android `evaluate_js` both reject with "...no native webview open".
+        // speculatively, so a closed webview is benign/expected (debug);
+        // anything else dropped a real user action and stays at warn. We match
+        // the message string because the plugin's mobile `Error` carries only a
+        // string (`PluginInvoke`), not a kind.
+        const NO_WEBVIEW_OPEN: &str = "no native webview open";
         let message = error.to_string();
-        if message.contains("no native webview open") {
+        if message.contains(NO_WEBVIEW_OPEN) {
             log::debug!(
                 "[browser-sniffer] forward_to_native_webview: no native webview open (expected for \
                  a speculative Cancel): {error}"

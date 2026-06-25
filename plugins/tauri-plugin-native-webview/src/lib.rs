@@ -1,14 +1,10 @@
 //! `tauri-plugin-native-webview` — present an external URL in a *native*,
-//! JavaScript-injectable native web view, with native chrome.
+//! JavaScript-injectable web view, with native chrome.
 //!
-//! Why this exists: the browser-sniffer slice currently opens external pages in
-//! a Tauri `WebviewWindow` and draws fake browser chrome (`injectBrowserTopBar`)
-//! in-page, while exposing `window.__TAURI__` to arbitrary third-party origins.
-//! This plugin replaces that with a real native web view per platform, each
-//! drawing its own native chrome and injecting JS at document start on any
-//! origin — e.g. on iOS a `WKWebView` presented modally with a native toolbar,
-//! a `WKUserScript` at document start, and messages bridged back through a
-//! scoped `WKScriptMessageHandler` — with no `__TAURI__` exposure on mobile.
+//! Security note: unlike the browser-sniffer `WebviewWindow` path it replaces,
+//! the mobile backends draw native chrome and inject JS at document start on any
+//! origin **without** exposing `window.__TAURI__` to third-party pages. See
+//! `docs/Explanation.md` for the full rationale.
 //!
 //! Backends (all trial-level, running in parallel with the existing
 //! browser-sniffer `WebviewWindow` path):
@@ -77,7 +73,7 @@ use mobile::NativeWebview;
 
 /// Accessor for the plugin's managed backend from any [`Manager`].
 pub trait NativeWebviewExt<R: Runtime> {
-    /// The platform backend (`mobile::NativeWebview` on iOS, the no-op
+    /// The platform backend (`mobile::NativeWebview` on iOS/Android,
     /// `desktop::NativeWebview` elsewhere).
     fn native_webview(&self) -> &NativeWebview<R>;
 }

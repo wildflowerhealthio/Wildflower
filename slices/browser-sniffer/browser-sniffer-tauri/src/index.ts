@@ -41,8 +41,7 @@ if (tauriSnifferBootstrapScript.length < TAURI_SNIFFER_BOOTSTRAP_MIN_LENGTH) {
  * Toolbar + bottom bar on Android) owns those slots. When no bridge is
  * present the bundle no-ops.
  *
- * Same length guard as the Tauri bootstrap: a tiny file means the esbuild step
- * did not run.
+ * Same length guard as `tauriSnifferBootstrapScript` above.
  */
 const NATIVE_SNIFFER_BOOTSTRAP_MIN_LENGTH = 1000
 if (nativeSnifferBootstrapScript.length < NATIVE_SNIFFER_BOOTSTRAP_MIN_LENGTH) {

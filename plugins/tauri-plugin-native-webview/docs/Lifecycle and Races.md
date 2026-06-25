@@ -1,0 +1,142 @@
+# tauri-plugin-native-webview — Lifecycle & Races (Explanation)
+
+The canonical description of the cross-platform protocols the three backends
+(`desktop.rs`, `ios/Sources/NativeWebviewPlugin.swift`,
+`android/.../NativeWebviewPlugin.kt`) each implement. The backends are written to
+match this document section-for-section; their inline comments point here rather
+than re-deriving the rationale per platform. For the higher-level "what / why",
+see [Explanation.md](./Explanation.md).
+
+A note on whose state is whose: each backend tracks the live instance (the
+webview, its native chrome, its `Channel<NativeWebviewEvent>`) plus a small set
+of flags named identically across platforms where practical (`isVisible` /
+`is_visible`, `isDisposing` / `disposing`, the URL-fallback claim flags). The
+sections below name the concept; the per-platform field names follow it.
+
+## Visibility, liveness, and existence are independent
+
+A native webview has three orthogonal states, and the command surface keeps them
+separate:
+
+- **exists** — the instance (webview + chrome + channel binding) is built.
+- **is visible** — it is currently on screen.
+- **is alive / running** — its JS, timers, and network keep executing.
+
+`open_url` builds (if absent) and navigates **without** presenting — a background
+sniff never steals focus. `show` presents. `hide` removes from view but keeps the
+instance **alive and running**. Only `dispose` (or a teardown backstop) frees it.
+So a hidden instance is still live and still sniffing; "not visible" ≠ "torn
+down". This is why the backends track `is_visible` explicitly instead of reading
+it off the dialog/window/controller — `dialog.isShowing` and friends conflate
+visibility with existence.
+
+## User dismissal hides; only `dispose` tears down
+
+Every user-facing dismissal affordance routes to **hide**, keeping the instance
+alive so a later `open_url`/`show` reuses it. Only an explicit host `dispose`, or
+a teardown backstop, destroys it. The affordances, per platform:
+
+- **Desktop** — the OS titlebar X. `CloseRequested` fires; the handler
+  `prevent_close()`s and hides instead, unless a `dispose()` set `disposing`
+  first (see below). App teardown destroys the window through a path that
+  bypasses `prevent_close`, so the app-exit backstop still reaches `Destroyed` →
+  `Disposed`.
+- **iOS** — the Close toolbar button and the interactive sheet swipe-to-dismiss.
+  The Close button calls `dismiss(animated:)` then `onUserDismiss`; the swipe is
+  reported via `presentationControllerDidDismiss`. UIKit does **not** call
+  `presentationControllerDidDismiss` for a programmatic `dismiss`, so the
+  button / host-`hide` / host-`dispose` paths (which fire from their own dismiss
+  completions) never double-emit with the swipe path.
+- **Android** — the Toolbar Close button and system back at the root of history.
+  Both call the shared hide path, which uses `dialog.hide()` (NOT `dismiss()`, so
+  the dismiss listener — the teardown path — does not fire).
+
+A successful hide emits `NativeWebviewEvent::Hidden`; a teardown emits
+`Disposed`. The host's collector treats neither hide nor dispose as the sniff's
+terminal signal — the SPA owns `SniffingComplete` — so the bridge re-emits
+nothing for these lifecycle events.
+
+## The dispose→open "switch-demo" race
+
+Switching demos fires, on one main-thread tick: `SniffingComplete` → `dispose()`
+→ `RequestSniffableWebView` → `open_url()`. The teardown a `dispose()` starts is
+**asynchronous** (it only enqueues the actual destroy — `WindowMessage::Close` on
+desktop, the dismiss animation/listener on mobile), so the same-tick `open_url()`
+would otherwise find a still-present-but-doomed instance and re-wire it, only for
+the queued teardown to then destroy what the user just asked to see.
+
+The guard, identical in shape across platforms:
+
+1. `dispose()` sets a `disposing` / `isDisposing` flag **before** asking the
+   runtime to tear down.
+2. A same-tick `open_url()` that sees the flag set does **not** re-wire the doomed
+   instance — it stashes a deferred replay (the desktop `pending_reopen` payload;
+   the mobile `onDisposeFinishedHandler` closure) and returns.
+3. The teardown's completion handler (desktop `CloseRequested`/`Destroyed`, iOS
+   `handleDisposed`, Android dismiss listener) consumes the deferred replay: if
+   present, it cancels/absorbs the teardown and rebuilds with the new wiring **and
+   suppresses the `Disposed` echo** (the caller logically continued, it did not
+   tear down); if absent, the teardown proceeds and emits `Disposed`.
+4. The flag is cleared on that same completion, so later calls aren't stuck in the
+   deferral branch.
+
+Crucially a **hide** never arms this flag — a hidden instance stays alive, so a
+same-tick `open_url()` during a hide animation simply re-wires it in place. Mobile
+also holds the deferred replay's `Invoke` separately (`pendingInvoke`) so a second
+`open_url()` superseding a still-queued one can reject the superseded invoke
+rather than leaving its JS promise hung forever (there is no timeout on
+`open_url`).
+
+## Teardown backstops
+
+A hidden instance is alive but bounded, so an untrusted third-party page can't run
+forever after dismissal:
+
+- **Mobile** arms a **5-minute idle** timer (`idleTeardownSeconds` /
+  `IDLE_TEARDOWN_MS`) whenever the instance is hidden-and-present; any activity
+  (an inbound bridge message, or any command) resets it, and `show`/`dispose`
+  cancel it. On fire it auto-`dispose`s.
+- **Desktop** has no idle timer; instead it caps **absolute lifetime at 15
+  minutes** (`ABSOLUTE_TIMEOUT`) from each `open_url` (fresh build or reopen),
+  hidden or not. A generation counter (`PluginState::timeout_generation`) makes a
+  reopen/teardown supersede the previously-armed timer, so a stale timer is a
+  no-op. On fire it disposes like a host `dispose()`.
+
+Both ultimately route through `dispose`, so the host's collector sees the same
+terminal `Disposed`.
+
+## Chrome URL-fallback
+
+The native chrome has three caller-facing labels — **title**, **subtitle**,
+**message** — plus the live page URL. The page URL is painted into the **highest
+slot the caller has not yet claimed**: the title until the caller supplies a
+`title`, then the subtitle until the caller supplies a `subtitle`, then neither
+(both caller-owned). A caller value of any kind — including `""` — *claims* that
+slot (and `""` clears the visible label); `null`/absent leaves it unchanged.
+
+State per instance: the live `currentUrl` (updated on navigation), and
+`titleClaimed` / `subtitleClaimed` flags. `applyWindowText` records claims and
+sets caller values; `renderUrlFallback` paints the URL into the highest unclaimed
+slot; navigation calls back into `renderUrlFallback`. All three reset on a fresh
+build or a reopen (URL back in the title). The desktop backend bakes the initial
+state into the chrome's `data:`-HTML so the bar is correct on first paint (no
+post-open patch race); mobile applies it before presenting. Caller-claimed slots
+are never overwritten by the fallback.
+
+## Re-open rewire
+
+A second `open_url` against a still-live instance (the common "switch demos" tail,
+or a sniffer-driven navigation) **reuses** the webview rather than rebuilding it:
+
+- The event `Channel` is rebound to the new caller's channel, so subsequent
+  events (including the eventual `Hidden`/`Disposed`) reach the latest caller.
+- The caller's `init_script` is re-applied: `eval`'d into the current page (so
+  **not** document-start for the already-loaded page — a documented caveat) and
+  re-registered as the document-start script for future loads. Mobile removes the
+  prior document-start script first so repeated reopens don't stack N copies (the
+  sniffer would otherwise double-hook `fetch`/XHR).
+- The chrome URL-fallback claim state resets and the caller's initial chrome
+  re-applies (a reopen is logically a fresh open).
+- Back/forward history **persists** across the in-place navigation (it pushes a
+  new entry), so "Back" stays correct; only the forward-stack bookkeeping is
+  reset.

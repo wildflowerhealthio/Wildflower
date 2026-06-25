@@ -19,14 +19,10 @@ use tauri_plugin_log::log;
 /// Idempotent at the listener level — call once per app lifecycle from
 /// `setup()`.
 ///
-/// This also wires the native-webview bridge on every platform now that the
-/// sniffer routes through `tauri-plugin-native-webview` everywhere: a long-lived
-/// `Channel<NativeWebviewEvent>` whose handler re-emits the native webview's
-/// `Message` events onto `BRIDGE_EVENT` and logs its `Hidden` / `Disposed`
-/// lifecycle events (neither is terminal — the SPA owns `SniffingComplete`).
-/// Only the inbound `Click` / `CancelSnifferRequest` forwarding into the native
-/// webview via `evaluate_js` stays mobile-only — on desktop the content webview
-/// is a Tauri webview that receives `app.emit('bridge', …)` natively, so those
+/// This also wires the native-webview bridge (`native_webview_bridge::install`)
+/// on every platform. The inbound `Click` / `CancelSnifferRequest` forwarding
+/// into the native webview stays mobile-only — on desktop the content webview is
+/// a Tauri webview that receives `app.emit('bridge', …)` natively, so those
 /// forwarders are `cfg`-gated out.
 ///
 /// Decode failures inside each handler log at warn; tags this crate

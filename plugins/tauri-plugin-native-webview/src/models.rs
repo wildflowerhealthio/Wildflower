@@ -35,16 +35,15 @@ pub struct OpenRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub init_script: Option<String>,
     /// Channel the native (Swift / Kotlin) side sends [`NativeWebviewEvent`]
-    /// payloads through (`message` events plus `hidden` / `disposed`). The same
-    /// `Channel<NativeWebviewEvent>` instance can be reused across many `open`
-    /// calls — its identifier is preserved on `Clone`, so a long-lived channel
-    /// registered at app start receives events from every native webview it opens.
+    /// payloads through. Its identifier is preserved on `Clone`, so a long-lived
+    /// channel registered at app start can be reused across many `open` calls and
+    /// receives events from every native webview it opens.
     pub native_webview_event_channel: Channel<NativeWebviewEvent>,
-    /// Chrome title applied at presentation time. `None` falls back to the URL
-    /// host. Applying chrome through `open` (rather than a post-open
-    /// `patch_window_text`) means the native webview's first paint already shows it — and
-    /// avoids the desktop race where a `patch_window_text` fired right after `open`
-    /// finds the chrome webview not yet built.
+    /// Chrome title applied at presentation time; `None` falls back to the URL
+    /// host. Setting chrome through `open` (rather than a post-open
+    /// `patch_window_text`) paints it on first frame and avoids the desktop race
+    /// where a `patch_window_text` right after `open` finds the chrome webview
+    /// not yet built.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub initial_title: Option<String>,
     /// Chrome subtitle applied at presentation time. `None` leaves it empty.
@@ -72,15 +71,12 @@ pub struct OpenResponse {
 /// `{"event":"hidden"}` / `{"event":"disposed"}`) — the variant tags are pinned
 /// lowercase here so the Swift/Kotlin `channel.send([...])` callsites can
 /// hand-roll the dictionary without a generated `Codable`/`@Serializable`
-/// companion. Drift between the variant names and what the native sides emit
-/// would silently swallow events at deserialise time (the round-trip tests
-/// below guard the wire shape).
+/// companion. Drift between these tags and what the native sides emit would
+/// silently swallow events at deserialise time (the round-trip tests below
+/// guard the wire shape).
 ///
-/// Lifecycle: the native webview is presented by `open`, **hidden** (removed
-/// from view but kept alive and running) by a user dismissal or a host `hide`,
-/// and **disposed** (torn down, resources freed) only by a host `dispose` or the
-/// teardown backstop. Visibility, liveness, and existence are independent:
-/// hiding is not a teardown, so a hidden webview keeps executing until disposed.
+/// Visibility, liveness, and existence are independent: hiding is not a
+/// teardown, so a hidden webview keeps executing until disposed.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "event")]
 pub enum NativeWebviewEvent {
@@ -175,15 +171,13 @@ pub struct PatchWindowTextResponse {
     pub set: bool,
 }
 
-/// Result of a `show` invocation. `request_caused_show` is `true` only when this
-/// call actually brought a live native webview to the foreground (a hidden /
-/// freshly-built instance → visible); `false` when there was nothing to present
-/// (no instance, or one mid-dispose) OR it was *already* visible — `show` is
-/// idempotent, and an already-visible instance is no transition, so it reports
-/// `false`. A *transition* flag, matching its `request_caused_hide` /
-/// `request_caused_dispose` siblings. Visibility is independent of content:
-/// `open_url` navigates without presenting, and `show` presents without
-/// navigating.
+/// Result of a `show` invocation.
+///
+/// `request_caused_show` is a *transition* flag (like its
+/// [`HideResponse::request_caused_hide`] / [`DisposeResponse::request_caused_dispose`]
+/// siblings), not a visibility state: `true` only when this call brought a live
+/// instance to the foreground; `false` when nothing needed presenting (none
+/// exists, mid-dispose, or *already* visible). Wire key `requestCausedShow`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ShowResponse {
@@ -192,12 +186,12 @@ pub struct ShowResponse {
     pub request_caused_show: bool,
 }
 
-/// Result of a `hide` invocation. `request_caused_hide` is `true` only when this
-/// call actually hid a live, *visible* native webview (kept alive and running);
-/// `false` when there was nothing to hide — no instance, or one that was already
-/// hidden. It is a *transition* flag, not a state: an already-hidden instance
-/// reports `false` even though it is hidden. Idempotent. A hide that returns
-/// `true` emits [`NativeWebviewEvent::Hidden`] on the channel.
+/// Result of a `hide` invocation.
+///
+/// `request_caused_hide` is a *transition* flag (see [`ShowResponse`]): `true`
+/// only when this call hid a live, *visible* instance; `false` when nothing was
+/// visible to hide (none, or already hidden). A `true` result emits
+/// [`NativeWebviewEvent::Hidden`] on the channel. Wire key `requestCausedHide`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct HideResponse {
@@ -206,12 +200,12 @@ pub struct HideResponse {
     pub request_caused_hide: bool,
 }
 
-/// Result of a `dispose` invocation. `request_caused_dispose` is `true` only when
-/// this call tore down a live native webview (visible or hidden) and freed its
-/// resources; `false` when none existed. It is a *transition* flag. Idempotent:
-/// disposing an absent native webview succeeds with `request_caused_dispose:
-/// false`. A dispose that returns `true` emits [`NativeWebviewEvent::Disposed`]
-/// on the channel.
+/// Result of a `dispose` invocation.
+///
+/// `request_caused_dispose` is a *transition* flag (see [`ShowResponse`]): `true`
+/// only when this call tore down a live instance (visible or hidden) and freed
+/// its resources; `false` when none existed. A `true` result emits
+/// [`NativeWebviewEvent::Disposed`] on the channel. Wire key `requestCausedDispose`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct DisposeResponse {

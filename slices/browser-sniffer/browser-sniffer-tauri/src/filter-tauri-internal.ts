@@ -49,17 +49,16 @@ const isTauriIpcFallbackWarning = (record: Record<string, unknown>): boolean => 
 const makeFilteringEventBus = (eventBus: TauriEventApi): TauriEventApi => {
   let emitChain: Promise<void> = Promise.resolve()
 
-  // Capture the *native* console.error before `installSniffer` swaps
-  // `console.*` for Log-posting shims, so reporting a dropped emit can't
-  // re-enter console → post(Log) → emit and loop when the bridge is the
-  // thing that's failing.
+  // Capture the *native* console.error before `installSniffer` swaps `console.*`
+  // for Log-posting shims, so reporting a dropped emit can't re-enter
+  // console → post(Log) → emit and loop when the bridge itself is failing.
   const reportDroppedEmit = globalThis.console.error.bind(globalThis.console)
 
   const enqueueEmit = (eventName: string, payload?: unknown): Promise<void> => {
-    // `.catch` keeps the chain alive after a rejected emit (a poisoned
-    // chain drops every later message) while still surfacing it — a
-    // silently dropped `ResponseData` chunk would truncate the host's
-    // reassembly with no diagnostic.
+    // `.catch` keeps the chain alive after a rejected emit while still surfacing
+    // it: a poisoned chain would drop every later message, and a silently
+    // dropped `ResponseData` chunk truncates the host's reassembly with no
+    // diagnostic.
     emitChain = emitChain
       .then(() => eventBus.emit(eventName, payload))
       .catch((error: unknown) => {
@@ -79,10 +78,8 @@ const makeFilteringEventBus = (eventBus: TauriEventApi): TauriEventApi => {
       }
       return enqueueEmit(eventName, payload)
     },
-    // Forward through an arrow (not a bare method reference) so the
-    // underlying bus stays the receiver — symmetric with `emit` above and
-    // safe if a wrapped bus ever implements `listen` as a `this`-bound
-    // method.
+    // Arrow, not a bare method reference, so the underlying bus stays the
+    // receiver if it ever implements `listen` as a `this`-bound method.
     listen: (event, handler) => eventBus.listen(event, handler),
   }
 }
