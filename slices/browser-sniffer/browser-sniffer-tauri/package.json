@@ -21,7 +21,7 @@
     "./package.json": "./package.json"
   },
   "scripts": {
-    "build": "vp pack && node scripts/build-tauri-bootstrap.mts && node scripts/build-native-bootstrap.mts",
+    "build": "vp pack && vp run pack-tauri-bootstrap && vp run pack-native-bootstrap",
     "check": "vp check",
     "dev": "vp pack --watch",
     "generate-native-bootstrap": "node scripts/build-native-bootstrap.mts",

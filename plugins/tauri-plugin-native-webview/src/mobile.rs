@@ -1,14 +1,14 @@
 //! Mobile backend. Registers the native plugin — Swift `NativeWebviewPlugin` on
-//! iOS, Kotlin `NativeWebviewPlugin` on Android — and forwards `open` to it via
-//! `run_mobile_plugin`. Both targets present a native, JS-injectable web view
+//! iOS, Kotlin `NativeWebviewPlugin` on Android — and forwards `open_url` to it
+//! via `run_mobile_plugin`. Both targets present a native, JS-injectable web view
 //! (WKWebView / `android.webkit.WebView`) with native chrome.
 
 use serde::de::DeserializeOwned;
 use tauri::{plugin::PluginApi, AppHandle, Runtime};
 
 use crate::models::{
-    CloseRequest, CloseResponse, EvaluateJsRequest, EvaluateJsResponse, OpenRequest, OpenResponse,
-    PatchWindowTextRequest, PatchWindowTextResponse,
+    DisposeResponse, EvaluateJsRequest, EvaluateJsResponse, HideResponse, OpenRequest,
+    OpenResponse, PatchWindowTextRequest, PatchWindowTextResponse, ShowResponse,
 };
 
 #[cfg(target_os = "ios")]
@@ -41,22 +41,34 @@ pub fn init<R: Runtime, C: DeserializeOwned>(
 pub struct NativeWebview<R: Runtime>(tauri::plugin::PluginHandle<R>);
 
 impl<R: Runtime> NativeWebview<R> {
-    /// Present the native popup by invoking the Swift/Kotlin `open` command.
-    pub fn open(&self, payload: OpenRequest) -> crate::Result<()> {
-        // Validate the URL up front (http(s)-only — see [`crate::url_scheme`])
-        // so every backend rejects a bad or non-http(s) URL the same way — the
-        // Android native side otherwise hands an unvalidated string straight to
-        // `WebView.loadUrl` and still resolves `opened: true`.
+    /// Ensure a native webview exists (created hidden if absent) and navigate it
+    /// to `payload.url` by invoking the Swift/Kotlin `openUrl` command. Does not
+    /// change visibility — call [`show`](Self::show) to present.
+    ///
+    /// Validates the URL up front via [`crate::url_scheme::parse_http_url`] so
+    /// every backend rejects a non-http(s) URL identically: the Android native
+    /// side otherwise hands an unvalidated string straight to `WebView.loadUrl`
+    /// and still resolves `opened: true`.
+    pub fn open_url(&self, payload: OpenRequest) -> crate::Result<()> {
         crate::url_scheme::parse_http_url(&payload.url)?;
         self.0
-            .run_mobile_plugin::<OpenResponse>("open", payload)
+            .run_mobile_plugin::<OpenResponse>("openUrl", payload)
             .map_err(|error| crate::Error::PluginInvoke(error.to_string()))?;
         Ok(())
     }
 
-    /// Evaluate JS inside the currently-open native popup by invoking the
-    /// Swift/Kotlin `evaluateJs` command. The native side rejects with a string
-    /// error if no popup is open, surfaced here as
+    /// Present the native webview by invoking the Swift/Kotlin `show` command.
+    /// See [`ShowResponse`](crate::ShowResponse) for the idempotency contract.
+    pub fn show(&self) -> crate::Result<()> {
+        self.0
+            .run_mobile_plugin::<ShowResponse>("show", ())
+            .map_err(|error| crate::Error::PluginInvoke(error.to_string()))?;
+        Ok(())
+    }
+
+    /// Evaluate JS inside the currently-open native webview by invoking the
+    /// Swift/Kotlin `evaluateJs` command. If no native webview is open the native
+    /// side rejects, surfaced here as
     /// [`Error::PluginInvoke`](crate::Error::PluginInvoke).
     pub fn evaluate_js(&self, payload: EvaluateJsRequest) -> crate::Result<()> {
         self.0
@@ -65,11 +77,10 @@ impl<R: Runtime> NativeWebview<R> {
         Ok(())
     }
 
-    /// Patch one or more of the popup's three labels (`title`,
-    /// `subtitle`, `message`). The native side resolves with `{set: true}`
-    /// once the labels are applied on the UI thread; resolves with
-    /// `{set: false}` (not a hard reject) when no popup is open, which the
-    /// host should treat as best-effort.
+    /// Patch the native webview's chrome labels by invoking the Swift/Kotlin
+    /// `patchWindowText` command. Best-effort: the native side resolves with
+    /// `{set: false}` (not a hard reject) when no native webview is open. See
+    /// [`PatchWindowTextRequest`](crate::PatchWindowTextRequest).
     pub fn patch_window_text(&self, payload: PatchWindowTextRequest) -> crate::Result<()> {
         self.0
             .run_mobile_plugin::<PatchWindowTextResponse>("patchWindowText", payload)
@@ -77,20 +88,23 @@ impl<R: Runtime> NativeWebview<R> {
         Ok(())
     }
 
-    /// Dismiss the currently-presented popup. Idempotent — the native side
-    /// resolves with `{closedByRequest: false}` if no popup was open. The native
-    /// `dismiss` callback fires after the animation and lands a
-    /// `NativeWebviewEvent::Closed` on the open channel — unless
-    /// `suppress_close_event` is `true`, which makes that one dismissal silent
-    /// (the host already observed the terminal event that triggered the close).
-    pub fn close(&self, suppress_close_event: bool) -> crate::Result<()> {
+    /// Hide the currently-presented native webview by invoking the Swift/Kotlin
+    /// `hide` command. Emits [`NativeWebviewEvent::Hidden`](crate::NativeWebviewEvent::Hidden)
+    /// on the open channel once hidden. See [`HideResponse`](crate::HideResponse).
+    pub fn hide(&self) -> crate::Result<()> {
         self.0
-            .run_mobile_plugin::<CloseResponse>(
-                "close",
-                CloseRequest {
-                    suppress_close_event,
-                },
-            )
+            .run_mobile_plugin::<HideResponse>("hide", ())
+            .map_err(|error| crate::Error::PluginInvoke(error.to_string()))?;
+        Ok(())
+    }
+
+    /// Dispose the native webview by invoking the Swift/Kotlin `dispose` command.
+    /// Emits [`NativeWebviewEvent::Disposed`](crate::NativeWebviewEvent::Disposed)
+    /// on the open channel once torn down. See
+    /// [`DisposeResponse`](crate::DisposeResponse).
+    pub fn dispose(&self) -> crate::Result<()> {
+        self.0
+            .run_mobile_plugin::<DisposeResponse>("dispose", ())
             .map_err(|error| crate::Error::PluginInvoke(error.to_string()))?;
         Ok(())
     }

@@ -1,14 +1,10 @@
 //! `tauri-plugin-native-webview` — present an external URL in a *native*,
-//! JavaScript-injectable web view popup, with native chrome.
+//! JavaScript-injectable web view, with native chrome.
 //!
-//! Why this exists: the browser-sniffer slice currently opens external pages in
-//! a Tauri `WebviewWindow` and draws fake browser chrome (`injectBrowserTopBar`)
-//! in-page, while exposing `window.__TAURI__` to arbitrary third-party origins.
-//! This plugin replaces that with a real native web view per platform, each
-//! drawing its own native chrome and injecting JS at document start on any
-//! origin — e.g. on iOS a `WKWebView` presented modally with a native toolbar,
-//! a `WKUserScript` at document start, and messages bridged back through a
-//! scoped `WKScriptMessageHandler` — with no `__TAURI__` exposure on mobile.
+//! Security note: unlike the browser-sniffer `WebviewWindow` path it replaces,
+//! the mobile backends draw native chrome and inject JS at document start on any
+//! origin **without** exposing `window.__TAURI__` to third-party pages. See
+//! `docs/Explanation.md` for the full rationale.
 //!
 //! Backends (all trial-level, running in parallel with the existing
 //! browser-sniffer `WebviewWindow` path):
@@ -19,7 +15,7 @@
 //!   page sees a `__TAURI__` scoped to the event bus, unlike the mobile
 //!   backends. See `desktop.rs` and `docs/Explanation.md`.
 //!
-//! Usage (Rust caller — the canonical path; the popup bridge stays Rust-side):
+//! Usage (Rust caller — the canonical path; the native webview bridge stays Rust-side):
 //! ```ignore
 //! use tauri::ipc::Channel;
 //! use tauri_plugin_native_webview::{EvaluateJsRequest, NativeWebviewEvent, NativeWebviewExt, OpenRequest};
@@ -29,20 +25,25 @@
 //!     // body: tauri::ipc::InvokeResponseBody — deserialise as NativeWebviewEvent and dispatch.
 //!     Ok(())
 //! });
-//! app.native_webview().open(OpenRequest {
+//! app.native_webview().open_url(OpenRequest {
 //!     url: "https://example.test/".to_owned(),
 //!     init_script: Some("/* document-start IIFE */".to_owned()),
 //!     native_webview_event_channel: native_webview_event_channel.clone(),
+//!     initial_title: None,
+//!     initial_subtitle: None,
+//!     initial_message: None,
 //! })?;
-//! // Push a message into the popup later:
+//! // `open_url` navigates without presenting; reveal it with `show()`.
+//! app.native_webview().show()?;
+//! // Push a message into the native webview later:
 //! app.native_webview().evaluate_js(EvaluateJsRequest {
 //!     script: "window.__nativeWebviewReceive('{\"event\":\"bridge\",\"payload\":…}')".to_owned(),
 //! })?;
 //! ```
 //!
-//! JS callers can also drive the plugin through `invoke('plugin:native-webview|open', { url, nativeWebviewEventChannel })`
+//! JS callers can also drive the plugin through `invoke('plugin:native-webview|open_url', { url, nativeWebviewEventChannel })`
 //! with a `new Channel<NativeWebviewEvent>()`, but the design point is to keep
-//! popup event bridging in Rust — see [`docs/Explanation.md`](../docs/Explanation.md).
+//! native webview event bridging in Rust — see [`docs/Explanation.md`](../docs/Explanation.md).
 
 use tauri::{
     plugin::{Builder, TauriPlugin},
@@ -51,8 +52,8 @@ use tauri::{
 
 pub use error::{Error, Result};
 pub use models::{
-    CloseRequest, CloseResponse, EvaluateJsRequest, EvaluateJsResponse, NativeWebviewEvent,
-    OpenRequest, OpenResponse, PatchWindowTextRequest, PatchWindowTextResponse,
+    DisposeResponse, EvaluateJsRequest, EvaluateJsResponse, HideResponse, NativeWebviewEvent,
+    OpenRequest, OpenResponse, PatchWindowTextRequest, PatchWindowTextResponse, ShowResponse,
 };
 
 mod commands;
@@ -72,7 +73,7 @@ use mobile::NativeWebview;
 
 /// Accessor for the plugin's managed backend from any [`Manager`].
 pub trait NativeWebviewExt<R: Runtime> {
-    /// The platform backend (`mobile::NativeWebview` on iOS, the no-op
+    /// The platform backend (`mobile::NativeWebview` on iOS/Android,
     /// `desktop::NativeWebview` elsewhere).
     fn native_webview(&self) -> &NativeWebview<R>;
 }
@@ -88,10 +89,12 @@ impl<R: Runtime, T: Manager<R>> NativeWebviewExt<R> for T {
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("native-webview")
         .invoke_handler(tauri::generate_handler![
-            commands::open,
+            commands::open_url,
             commands::evaluate_js,
             commands::patch_window_text,
-            commands::close
+            commands::show,
+            commands::hide,
+            commands::dispose
         ])
         .setup(|app, api| {
             #[cfg(mobile)]

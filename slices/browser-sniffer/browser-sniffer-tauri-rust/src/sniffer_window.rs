@@ -1,5 +1,3 @@
-use std::sync::atomic::Ordering;
-
 use tauri::{AppHandle, Manager, WebviewUrl};
 
 #[cfg(any(target_os = "ios", target_os = "android"))]
@@ -7,97 +5,64 @@ use crate::bootstrap::NATIVE_SNIFFER_BOOTSTRAP;
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
 use crate::bootstrap::SNIFFER_BOOTSTRAP;
 
-/// Label assigned to the legacy sniffer webview on desktop, before the
-/// plugin path took over. Kept exported for the existing
-/// `capabilities/browser-sniffer.json` capability that still mentions it
-/// (now a dead grant — the active capability is
-/// `native-webview-window.json`, which scopes the plugin's
-/// `native-webview-content` webview). Safe to drop with the capability
-/// JSON in a follow-up cleanup.
-pub const SNIFFER_WEBVIEW_LABEL: &str = "browser-sniffer";
-
-/// Present the sniffer popup via `tauri-plugin-native-webview` on every
-/// target. The plugin owns popup chrome (native toolbar on iOS / Android,
-/// a multi-webview chrome bar on desktop), so the same call site works
-/// across platforms — only the document-start `installSniffer` bootstrap
+/// Present the sniffer's native webview via `tauri-plugin-native-webview` on
+/// every target. The plugin owns the native webview's chrome (native toolbar on
+/// iOS / Android, a multi-webview chrome bar on desktop), so the same call site
+/// works across platforms — only the document-start `installSniffer` bootstrap
 /// differs: mobile content webviews use the native-bridge variant
 /// (`webkit.messageHandlers.nativeWebview` / `window.nativeWebview`),
 /// desktop content webviews use the Tauri event-bus variant
 /// (`__TAURI__.event`).
 ///
-/// The plugin's `open` is idempotent: a second call while a popup is up
-/// navigates the existing content webview to `url` rather than stacking a
-/// new presentation. The sniffer leaves `initial_title` unset (so the page URL
-/// shows in the title via the plugin's URL-fallback) and passes
-/// `subtitle: "Collecting Automatically"` as the `open` request's
-/// `initial_subtitle` so it paints with the popup (rather than a post-open
-/// `patch_window_text`, which on desktop would race the not-yet-built chrome
-/// webview).
+/// The plugin's `open` is idempotent: a second call while a native webview is up
+/// navigates the existing content webview to `url` rather than stacking a new
+/// presentation. The subtitle goes through the `open` request's
+/// `initial_subtitle` rather than a post-open `patch_window_text` so it paints
+/// with the native webview — on desktop `patch_window_text` would race the
+/// not-yet-built chrome webview.
 pub(crate) fn open_or_navigate(app: &AppHandle, url: WebviewUrl) -> anyhow::Result<()> {
     use tauri_plugin_native_webview::{NativeWebviewExt, OpenRequest};
 
-    use crate::popup_bridge::PopupChannel;
+    use crate::native_webview_bridge::NativeWebviewChannel;
 
     let WebviewUrl::External(parsed) = url else {
         anyhow::bail!(
-            "non-External WebviewUrl handed to native popup path — only Uri sources are \
+            "non-External WebviewUrl handed to the native-webview path — only Uri sources are \
              supported today"
         )
     };
 
-    // The popup-side `installSniffer` IIFE — content-only, no in-page top
-    // bar. Both the desktop (Tauri) and mobile (native bridges) variants
-    // gate themselves on the appropriate transport and run the same
-    // sniffer body underneath.
+    // Per-target `installSniffer` IIFE; see `crate::bootstrap` for the variants.
     #[cfg(any(target_os = "ios", target_os = "android"))]
     let bootstrap = NATIVE_SNIFFER_BOOTSTRAP;
     #[cfg(not(any(target_os = "ios", target_os = "android")))]
     let bootstrap = SNIFFER_BOOTSTRAP;
 
-    // `Channel` clones share the same identifier and handler under an `Arc`,
-    // so reusing the long-lived channel across opens routes every popup's
-    // events to the same `popup_bridge` handler. A fresh open also clears any
-    // stale host-close flag (e.g. a SniffingComplete that fired while no popup
-    // was open) so a later user-initiated close still emits its terminal
-    // SniffingComplete.
-    let channel = {
-        let popup = app.state::<PopupChannel>();
-        popup.host_close_pending.store(false, Ordering::SeqCst);
-        popup.channel.clone()
-    };
+    // Reuse the long-lived channel across opens — its clone shares the handler
+    // under an `Arc`; see [`NativeWebviewChannel`].
+    let channel = app.state::<NativeWebviewChannel>().channel.clone();
     app.native_webview()
-        .open(OpenRequest {
+        .open_url(OpenRequest {
             url: parsed.to_string(),
             init_script: Some(bootstrap.to_owned()),
             native_webview_event_channel: channel,
-            // Bake the sniffer's static status into the chrome subtitle at
-            // presentation time. `initial_title` is left unset so the page URL
-            // shows in the title (plugin URL-fallback); message stays empty
-            // until a future step counts resources (e.g. "34 resources
-            // collected"). Applying it through `open` rather than a post-open
-            // `patch_window_text` means it paints with the popup and avoids the
-            // desktop race where `patch_window_text` lands before the chrome
-            // webview is built.
+            // `initial_title` unset → page URL shows via the plugin's
+            // URL-fallback; `initial_message` empty until a future step counts
+            // resources. See this fn's doc for why the subtitle goes through
+            // `open_url` rather than a post-open `patch_window_text`.
             initial_title: None,
             initial_subtitle: Some("Collecting Automatically".to_owned()),
             initial_message: None,
         })
-        .map_err(|error| anyhow::anyhow!("tauri-plugin-native-webview open failed: {error}"))?;
+        .map_err(|error| anyhow::anyhow!("tauri-plugin-native-webview open_url failed: {error}"))?;
+
+    // `RequestSniffableWebView` / `Open` is a request to *present* a sniffable
+    // webview, so make it visible after navigating. Visibility is separate from
+    // content under the hide/dispose model (`open_url` never presents on its
+    // own); a future background-only navigate would skip this `show`.
+    app.native_webview()
+        .show()
+        .map_err(|error| anyhow::anyhow!("tauri-plugin-native-webview show failed: {error}"))?;
 
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn label_is_browser_sniffer() {
-        // Internal label; integration tests in the wildflower-tauri layer
-        // (and the legacy capability JSON's `webviews` array) rely on it.
-        // The active runtime label is now `native-webview-content` from
-        // the plugin; this constant survives only for the legacy capability
-        // grant until that file is removed.
-        assert_eq!(SNIFFER_WEBVIEW_LABEL, "browser-sniffer");
-    }
 }

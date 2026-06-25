@@ -8,31 +8,28 @@ use tauri::{ipc::Channel, AppHandle, Runtime};
 use crate::models::{EvaluateJsRequest, NativeWebviewEvent, OpenRequest, PatchWindowTextRequest};
 use crate::{NativeWebviewExt, Result};
 
-/// Present the external `url` in a native webview popup, injecting `initScript`
-/// at document start on any origin (if provided).
+/// JS entry point for [`crate::NativeWebviewExt::native_webview`]'s `open_url`.
+/// Invoked as
+/// `invoke('plugin:native-webview|open_url', { url, initScript, nativeWebviewEventChannel })`,
+/// where `nativeWebviewEventChannel` is a `new Channel<NativeWebviewEvent>()` the
+/// caller constructed to receive [`NativeWebviewEvent`] payloads. Tauri maps the
+/// camelCase args to their snake_case parameters.
 ///
-/// Invoked from the webview as
-/// `invoke('plugin:native-webview|open', { url, initScript, nativeWebviewEventChannel })`
-/// where `nativeWebviewEventChannel` is a `new Channel<NativeWebviewEvent>()` the caller
-/// constructed to receive [`NativeWebviewEvent`] payloads from the popup
-/// webview. Tauri maps the camelCase args to their snake_case parameters.
-///
-/// Rust callers go through [`crate::NativeWebviewExt::native_webview`] +
-/// `open(OpenRequest { … })` directly — see `browser-sniffer-tauri-rust`'s
-/// `sniffer_window::open_or_navigate` for the canonical Rust-side caller, which
+/// The canonical Rust caller (`browser-sniffer-tauri-rust`'s
+/// `sniffer_window::open_or_navigate`) goes through the backend directly so it
 /// owns the channel handler instead of round-tripping events through JS.
 #[tauri::command]
-pub(crate) async fn open<R: Runtime>(
+pub(crate) async fn open_url<R: Runtime>(
     app: AppHandle<R>,
     url: String,
     init_script: Option<String>,
     native_webview_event_channel: Channel<NativeWebviewEvent>,
 ) -> Result<()> {
-    app.native_webview().open(OpenRequest {
+    app.native_webview().open_url(OpenRequest {
         url,
         init_script,
         native_webview_event_channel,
-        // JS callers drive window text through the `patchWindowText` command;
+        // JS callers drive window text through the `patch_window_text` command;
         // the initial-chrome fields are the Rust-caller convenience path.
         initial_title: None,
         initial_subtitle: None,
@@ -40,28 +37,20 @@ pub(crate) async fn open<R: Runtime>(
     })
 }
 
-/// Evaluate `script` inside the currently-open native popup webview.
-///
-/// Invoked from the webview as
-/// `invoke('plugin:native-webview|evaluate_js', { script })`. The caller owns
-/// the content (e.g. the browser-sniffer host emits
+/// JS entry point for `evaluate_js`. Invoked as
+/// `invoke('plugin:native-webview|evaluate_js', { script })`. The caller owns the
+/// content (e.g. the browser-sniffer host emits
 /// `window.__nativeWebviewReceive(JSON.stringify({ event, payload }))` to push
-/// bridge messages into the popup). Returns an error if no popup is open.
+/// bridge messages into the native webview). See [`EvaluateJsRequest`].
 #[tauri::command]
 pub(crate) async fn evaluate_js<R: Runtime>(app: AppHandle<R>, script: String) -> Result<()> {
     app.native_webview()
         .evaluate_js(EvaluateJsRequest { script })
 }
 
-/// Patch one or more of the popup's three window-text labels (`title`,
-/// `subtitle`, `message`). Each is `Option<String>`: omitted / `null` =
-/// leave unchanged, `""` = clear, otherwise set.
-///
-/// Invoked from the webview as
+/// JS entry point for `patch_window_text`. Invoked as
 /// `invoke('plugin:native-webview|patch_window_text', { title?, subtitle?, message? })`.
-/// Until a slot is claimed by a caller value, it shows the page URL (which
-/// tracks navigation); the first value the caller sends for a slot claims it
-/// and the URL falls through to the next unclaimed slot.
+/// See [`PatchWindowTextRequest`] for the per-slot claim/URL-fallback semantics.
 #[tauri::command]
 pub(crate) async fn patch_window_text<R: Runtime>(
     app: AppHandle<R>,
@@ -77,23 +66,28 @@ pub(crate) async fn patch_window_text<R: Runtime>(
         })
 }
 
-/// Dismiss the currently-presented popup. Idempotent — succeeds with
-/// `closed_by_request: false` when no popup is open. The dismiss animation runs
-/// asynchronously; the native side then emits its usual `NativeWebviewEvent::Closed`
-/// through the open channel once the animation finishes — unless
-/// `suppressCloseEvent` is `true`, in which case this one dismissal stays
-/// silent (a host that already observed the terminal event needn't see the
-/// echo). Omitted / `false` keeps the symmetric "every close emits" posture.
-///
-/// Invoked from the webview as
-/// `invoke('plugin:native-webview|close', { suppressCloseEvent? })`. JS callers
-/// that omit the arg get the default `false`. Rust callers go through
-/// [`crate::NativeWebviewExt::native_webview`] + `close(suppress_close_event)`.
+/// JS entry point for `show` — present a freshly-created or previously-hidden
+/// instance. Idempotent (`requestCausedShow: false` when nothing needed
+/// presenting). Invoked as `invoke('plugin:native-webview|show')`.
 #[tauri::command]
-pub(crate) async fn close<R: Runtime>(
-    app: AppHandle<R>,
-    suppress_close_event: Option<bool>,
-) -> Result<()> {
-    app.native_webview()
-        .close(suppress_close_event.unwrap_or(false))
+pub(crate) async fn show<R: Runtime>(app: AppHandle<R>) -> Result<()> {
+    app.native_webview().show()
+}
+
+/// JS entry point for `hide` — remove from view but keep alive. Idempotent
+/// (`requestCausedHide: false` when nothing was visible); emits
+/// [`NativeWebviewEvent::Hidden`] on a true transition. Invoked as
+/// `invoke('plugin:native-webview|hide')`.
+#[tauri::command]
+pub(crate) async fn hide<R: Runtime>(app: AppHandle<R>) -> Result<()> {
+    app.native_webview().hide()
+}
+
+/// JS entry point for `dispose` — tear down (visible or hidden) and free
+/// resources. Idempotent (`requestCausedDispose: false` when none existed);
+/// emits [`NativeWebviewEvent::Disposed`] on a true transition. Invoked as
+/// `invoke('plugin:native-webview|dispose')`.
+#[tauri::command]
+pub(crate) async fn dispose<R: Runtime>(app: AppHandle<R>) -> Result<()> {
+    app.native_webview().dispose()
 }

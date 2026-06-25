@@ -1,12 +1,16 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "native-webview-window",
-  "description": "Capability for the DESKTOP native-webview popup. The plugin builds a single `Window` (label 'native-webview') with two child webviews on desktop: 'native-webview-chrome' (a Tauri `about:blank` page that draws the host/subtitle/message + back/forward/refresh chrome bar) and 'native-webview-content' (the external URL with the caller's document-start script). Only 'native-webview-content' is granted here, and only `core:event:default` — so the browser-sniffer bridge transport can ride `BRIDGE_EVENT` from the loaded page (mirroring `browser-sniffer.json`'s posture). The page is deliberately NOT granted `log:default`: this is untrusted remote content (`remote.urls` = `https://*`/`http://*`), and a direct log grant would let any third-party page write attacker-controlled lines into the host's log stream. Any diagnostics the page needs to surface must instead ride the event bus so the host wraps and controls them. 'native-webview-chrome' is intentionally absent: chrome → Rust IPC goes through a custom-scheme `on_navigation` intercept (no `__TAURI__` commands), and Rust → chrome state push uses `Webview::eval`, which is Rust-initiated and bypasses capability checks. `remote.urls` is required so IPC from the Origin::Remote external page isn't rejected. On iOS/Android the popup is a separate WKWebView / android.webkit.WebView and this capability does not apply.",
+  "description": "Capability for the DESKTOP native webview. The plugin builds a single `Window` (label 'native-webview') with two child webviews on desktop: 'native-webview-chrome' (a Tauri webview built from a base64 `data:text/html` document that draws the host/subtitle/message + back/forward/refresh chrome bar) and 'native-webview-content' (the external URL with the caller's document-start script). Only 'native-webview-content' is granted here. It gets `core:event:allow-listen` + `core:event:allow-unlisten` (so it can RECEIVE host→web `Click` / `CancelSnifferRequest` on `BRIDGE_EVENT`) but deliberately NOT `core:event:allow-emit` / `allow-emit-to`: this is untrusted remote content (`remote.urls` = `https://*`/`http://*`), and a bus emit grant would let a hostile page forge control tags (`SniffingComplete` / `Open` / `RequestSniffableWebView`) that steer or prematurely end the trusted sniffer. Its web→host data-plane stream instead rides `allow-native-webview-data-plane` — the app-defined `native_webview_data_plane_emit` command, which allowlists the inner `_tag` host-side before re-broadcasting on `BRIDGE_EVENT` (the desktop counterpart of the mobile channel's `validate_native_webview_message` gate). The page is also deliberately NOT granted `log:default`: a direct log grant would let any third-party page write attacker-controlled lines into the host's log stream; diagnostics ride the gated data-plane `Log` tag instead. 'native-webview-chrome' is intentionally absent: chrome → Rust IPC goes through a custom-scheme `on_navigation` intercept (no `__TAURI__` commands), and Rust → chrome state push uses `Webview::eval`, which is Rust-initiated and bypasses capability checks. `remote.urls` is required so IPC from the Origin::Remote external page isn't rejected. On iOS/Android the native webview is a separate WKWebView / android.webkit.WebView and this capability does not apply.",
   "local": false,
   "windows": ["native-webview"],
   "webviews": ["native-webview-content"],
   "remote": {
     "urls": ["https://*", "http://*"]
   },
-  "permissions": ["core:event:default"]
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "allow-native-webview-data-plane"
+  ]
 }

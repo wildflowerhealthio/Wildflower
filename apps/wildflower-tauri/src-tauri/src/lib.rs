@@ -273,11 +273,18 @@ async fn run_server(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![bridge::gatekeeper_current_token])
+        .invoke_handler(tauri::generate_handler![
+            bridge::gatekeeper_current_token,
+            // Gated web→host data-plane transport for the desktop sniffer's
+            // untrusted content webview — allowlists the inner `_tag` so the page
+            // can't forge control tags it would otherwise reach via a bus `emit`
+            // grant. See capabilities/native-webview-window.json.
+            browser_sniffer_tauri_rust::native_webview_data_plane_emit
+        ])
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        // Native web view popup, presenting external URLs with native chrome
+        // Native web view, presenting external URLs with native chrome
         // and document-start JS injection — the native counterpart to the
         // browser-sniffer WebviewWindow path, which stays in place. iOS uses a
         // WKWebView, Android an android.webkit.WebView, desktop a Tauri
@@ -314,8 +321,11 @@ pub fn run() {
             // Wire the CollectorBridge.webToHost listeners that manage the
             // sniffer child webview lifecycle (open / navigate / close).
             // Sniffer-emitted data-plane events (`bridge:ResponseStart`
-            // etc.) reach the React SPA directly via the global Tauri
-            // event bus — no Rust forwarding is needed for them.
+            // etc.) reach the React SPA on the global Tauri event bus, but
+            // never straight from the untrusted content webview: the host
+            // allowlists their inner `_tag` first (the mobile channel's
+            // `validate_native_webview_message`, the desktop content webview's
+            // `native_webview_data_plane_emit` command) and re-broadcasts.
             browser_sniffer_tauri_rust::attach_browser_sniffer(app.handle());
 
             let error_handle = app.handle().clone();

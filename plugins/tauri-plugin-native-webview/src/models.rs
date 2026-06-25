@@ -1,10 +1,10 @@
 //! Wire shapes shared between the Rust command layer and the native (Swift /
-//! Kotlin) plugin. `OpenRequest` is what crosses `run_mobile_plugin("open", …)`;
+//! Kotlin) plugin. `OpenRequest` is what crosses `run_mobile_plugin("openUrl", …)`;
 //! `OpenResponse` is what the native side resolves back. Field names are
 //! `camelCase` on the wire to match the Swift `Decodable` / Kotlin `@InvokeArg`
 //! sides.
 //!
-//! Popup events flow the other direction (native → Rust) through a Tauri
+//! Native webview events flow the other direction (native → Rust) through a Tauri
 //! [`Channel`] embedded in `OpenRequest` — see [`NativeWebviewEvent`]. The mobile
 //! plugin side (`NativeWebviewPlugin.swift` / `NativeWebviewPlugin.kt`) sends
 //! `{event,…}` payloads through the channel; Rust deserialises them and
@@ -15,7 +15,7 @@
 use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
 
-/// Arguments for opening the native webview popup.
+/// Arguments for opening the native webview.
 ///
 /// `OpenRequest` is `Serialize`-only (and so omits `PartialEq` / `Eq` /
 /// `Deserialize`) because [`Channel`] only serialises one way — its on-wire
@@ -35,16 +35,15 @@ pub struct OpenRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub init_script: Option<String>,
     /// Channel the native (Swift / Kotlin) side sends [`NativeWebviewEvent`]
-    /// payloads through (`message` events plus the eventual `closed`). The same
-    /// `Channel<NativeWebviewEvent>` instance can be reused across many `open`
-    /// calls — its identifier is preserved on `Clone`, so a long-lived channel
-    /// registered at app start receives events from every popup it opens.
+    /// payloads through. Its identifier is preserved on `Clone`, so a long-lived
+    /// channel registered at app start can be reused across many `open` calls and
+    /// receives events from every native webview it opens.
     pub native_webview_event_channel: Channel<NativeWebviewEvent>,
-    /// Chrome title applied at presentation time. `None` falls back to the URL
-    /// host. Applying chrome through `open` (rather than a post-open
-    /// `patch_window_text`) means the popup's first paint already shows it — and
-    /// avoids the desktop race where a `patch_window_text` fired right after `open`
-    /// finds the chrome webview not yet built.
+    /// Chrome title applied at presentation time; `None` falls back to the URL
+    /// host. Setting chrome through `open` (rather than a post-open
+    /// `patch_window_text`) paints it on first frame and avoids the desktop race
+    /// where a `patch_window_text` right after `open` finds the chrome webview
+    /// not yet built.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub initial_title: Option<String>,
     /// Chrome subtitle applied at presentation time. `None` leaves it empty.
@@ -56,29 +55,33 @@ pub struct OpenRequest {
     pub initial_message: Option<String>,
 }
 
-/// Result of an `open` invocation. `opened` is `true` once the native popup
+/// Result of an `open` invocation. `opened` is `true` once the native webview
 /// has been presented (the load itself proceeds asynchronously).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct OpenResponse {
-    /// Whether the native popup was presented.
+    /// Whether the native webview was presented.
     pub opened: bool,
 }
 
-/// Events the native (Swift / Kotlin) popup sends to its Rust caller through
+/// Events the native (Swift / Kotlin) webview sends to its Rust caller through
 /// the [`Channel`] embedded in [`OpenRequest`].
 ///
 /// Internally tagged on `event` (`{"event":"message","payload":"…"}` /
-/// `{"event":"closed"}`) — the variant tags are pinned lowercase here so the
-/// Swift/Kotlin `channel.send([...])` callsites can hand-roll the dictionary
-/// without a generated `Codable`/`@Serializable` companion. Drift between the
-/// variant names and what the native sides emit would silently swallow events
-/// at deserialise time (the round-trip test below guards the wire shape).
+/// `{"event":"hidden"}` / `{"event":"disposed"}`) — the variant tags are pinned
+/// lowercase here so the Swift/Kotlin `channel.send([...])` callsites can
+/// hand-roll the dictionary without a generated `Codable`/`@Serializable`
+/// companion. Drift between these tags and what the native sides emit would
+/// silently swallow events at deserialise time (the round-trip tests below
+/// guard the wire shape).
+///
+/// Visibility, liveness, and existence are independent: hiding is not a
+/// teardown, so a hidden webview keeps executing until disposed.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "event")]
 pub enum NativeWebviewEvent {
     /// A `WKScriptMessageHandler` / `@JavascriptInterface` postMessage from
-    /// the popup webview. `payload` is the raw string the page posted — the
+    /// the native webview. `payload` is the raw string the page posted — the
     /// plugin is content-agnostic and forwards it verbatim.
     #[serde(rename = "message")]
     Message {
@@ -86,42 +89,48 @@ pub enum NativeWebviewEvent {
         /// parses on its own bus.
         payload: String,
     },
-    /// The popup was dismissed. Sent once per popup, after the sheet / dialog /
-    /// window has finished its dismiss animation. Fired for user dismissals
-    /// (iOS Close button or sheet swipe, Android Toolbar back / system back,
-    /// desktop OS window X) and for host-initiated `close()` calls — UNLESS the
-    /// `close()` set [`CloseRequest::suppress_close_event`], in which case that
-    /// one dismissal is silent (the host already observed the terminal event
-    /// that prompted the close).
-    #[serde(rename = "closed")]
-    Closed,
+    /// The native webview was **hidden** — removed from view but kept alive and
+    /// running. Fired for user dismissals (iOS Close button or sheet swipe,
+    /// Android Toolbar back / system back, desktop window X) and for a host
+    /// `hide()`. The webview keeps executing (timers, network, the caller's
+    /// injected script); nothing is torn down. A later `open` re-presents the
+    /// same live instance.
+    #[serde(rename = "hidden")]
+    Hidden,
+    /// The native webview was **disposed** — torn down and its resources
+    /// (WebView, bridge, channel binding) freed. Fired for a host `dispose()`
+    /// (the caller is done with it) and for the teardown backstop (app teardown
+    /// or the hidden-idle timeout). Terminal: the instance no longer exists, so
+    /// a subsequent `open` builds a fresh one.
+    #[serde(rename = "disposed")]
+    Disposed,
 }
 
-/// Arguments for evaluating JavaScript in the currently-open native popup.
+/// Arguments for evaluating JavaScript in the currently-open native webview.
 ///
 /// `script` is handed verbatim to the platform's evaluate-JS API
 /// (`WKWebView.evaluateJavaScript` on iOS, `WebView.evaluateJavascript` on
 /// Android, `Webview::eval` on desktop). Caller-trusted; the plugin does not
-/// sandbox or wrap it. Returns an error if no popup is currently open.
+/// sandbox or wrap it. Returns an error if no native webview is currently open.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct EvaluateJsRequest {
-    /// JS source to evaluate inside the popup webview.
+    /// JS source to evaluate inside the native webview.
     pub script: String,
 }
 
 /// Result of an `evaluate_js` invocation. `was_dispatched` is `true` once the
-/// script has been queued for evaluation on the popup's webview thread (the
+/// script has been queued for evaluation on the native webview's thread (the
 /// evaluation itself is asynchronous; the plugin does not surface its return
 /// value).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct EvaluateJsResponse {
-    /// Whether the script was dispatched to the popup webview.
+    /// Whether the script was dispatched to the native webview.
     pub was_dispatched: bool,
 }
 
-/// Arguments for updating the popup's three chrome labels. Each field is
+/// Arguments for updating the native webview's three chrome labels. Each field is
 /// independent:
 ///
 /// - `title` — top-chrome headline. Until the caller first sets it, the slot
@@ -152,50 +161,57 @@ pub struct PatchWindowTextRequest {
 }
 
 /// Result of a `patch_window_text` invocation. `set` is `true` once the labels have
-/// been applied to the popup's chrome (synchronous on the UI thread); `false`
-/// when no popup is open (not a hard error — the caller may push speculatively
-/// across the popup lifecycle without a retry dance).
+/// been applied to the native webview's chrome (synchronous on the UI thread); `false`
+/// when no native webview is open (not a hard error — the caller may push speculatively
+/// across the native webview lifecycle without a retry dance).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct PatchWindowTextResponse {
-    /// Whether the update was applied to a live popup chrome.
+    /// Whether the update was applied to a live native webview chrome.
     pub set: bool,
 }
 
-/// Arguments for a `close` invocation.
+/// Result of a `show` invocation.
 ///
-/// `suppress_close_event` lets a *host-initiated* close opt out of the
-/// `NativeWebviewEvent::Closed` echo: the caller that issued the close already observed
-/// the terminal event that triggered it (e.g. the browser-sniffer's
-/// `SniffingComplete`), so re-emitting `Closed` on the channel would double-fire
-/// the terminal observation. User / OS dismissals (the native chrome Close
-/// button, a sheet swipe, the OS window X) never set this — those are the only
-/// way the host learns of a dismissal, so they always emit `Closed`. JS
-/// `invoke('plugin:native-webview|close')` callers get the default `false`.
-///
-/// Serialised camelCase (`suppressCloseEvent`) so the Swift / Kotlin
-/// `parseArgs` callsites and the Rust mobile `run_mobile_plugin` payload agree
-/// on the wire shape.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct CloseRequest {
-    /// When `true`, the dismissal this close triggers does NOT emit
-    /// `NativeWebviewEvent::Closed` on the channel. Defaults to `false` (emit), so a
-    /// caller that doesn't care keeps the symmetric "every close emits" posture.
-    #[serde(default)]
-    pub suppress_close_event: bool,
-}
-
-/// Result of a `close` invocation. `closed_by_request` is `true` once the
-/// dismiss has been dispatched to the popup's view controller / dialog; `false`
-/// when no popup was open. Idempotent: a `close` against an already-dismissed
-/// popup succeeds with `closed_by_request: false`.
+/// `request_caused_show` is a *transition* flag (like its
+/// [`HideResponse::request_caused_hide`] / [`DisposeResponse::request_caused_dispose`]
+/// siblings), not a visibility state: `true` only when this call brought a live
+/// instance to the foreground; `false` when nothing needed presenting (none
+/// exists, mid-dispose, or *already* visible). Wire key `requestCausedShow`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct CloseResponse {
-    /// Whether this call dismissed a live popup (i.e. the close happened
-    /// because of this request). `false` when no popup was open.
-    pub closed_by_request: bool,
+pub struct ShowResponse {
+    /// Whether this call caused a live native webview to be presented. `false`
+    /// when nothing needed presenting (none exists, or it was already visible).
+    pub request_caused_show: bool,
+}
+
+/// Result of a `hide` invocation.
+///
+/// `request_caused_hide` is a *transition* flag (see [`ShowResponse`]): `true`
+/// only when this call hid a live, *visible* instance; `false` when nothing was
+/// visible to hide (none, or already hidden). A `true` result emits
+/// [`NativeWebviewEvent::Hidden`] on the channel. Wire key `requestCausedHide`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct HideResponse {
+    /// Whether this call caused a live, visible native webview to be hidden.
+    /// `false` when nothing was visible to hide.
+    pub request_caused_hide: bool,
+}
+
+/// Result of a `dispose` invocation.
+///
+/// `request_caused_dispose` is a *transition* flag (see [`ShowResponse`]): `true`
+/// only when this call tore down a live instance (visible or hidden) and freed
+/// its resources; `false` when none existed. A `true` result emits
+/// [`NativeWebviewEvent::Disposed`] on the channel. Wire key `requestCausedDispose`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DisposeResponse {
+    /// Whether this call caused a live native webview to be torn down. `false`
+    /// when none existed.
+    pub request_caused_dispose: bool,
 }
 
 #[cfg(test)]
@@ -267,7 +283,7 @@ mod tests {
 
     /// Initial-chrome fields ride under their camelCase keys when set — the
     /// sniffer's `open` sets `initialSubtitle` so the "Collecting Automatically"
-    /// status paints with the popup instead of via a post-open `patch_window_text`.
+    /// status paints with the native webview instead of via a post-open `patch_window_text`.
     #[test]
     fn open_request_serializes_initial_chrome_camel_case() {
         let json = serde_json::to_string(&OpenRequest {
@@ -371,7 +387,7 @@ mod tests {
     /// tags are pinned lowercase; drift here would silently swallow events
     /// at the Rust handler.
     #[test]
-    fn popup_event_message_round_trips_with_lowercase_tag() {
+    fn native_webview_event_message_round_trips_with_lowercase_tag() {
         let json = r#"{"event":"message","payload":"hello"}"#;
         let event: NativeWebviewEvent = serde_json::from_str(json).expect("de");
         assert_eq!(
@@ -384,51 +400,71 @@ mod tests {
         assert_eq!(serde_json::to_string(&event).expect("ser"), json);
     }
 
-    /// `NativeWebviewEvent::Closed` decodes from `{ "event":"closed" }` — no payload.
+    /// `NativeWebviewEvent::Hidden` decodes from `{ "event":"hidden" }` — no
+    /// payload. The native sides emit this on a user dismissal or host `hide`.
     #[test]
-    fn popup_event_closed_decodes_without_payload() {
-        let event: NativeWebviewEvent = serde_json::from_str(r#"{"event":"closed"}"#).expect("de");
-        assert_eq!(event, NativeWebviewEvent::Closed);
+    fn native_webview_event_hidden_decodes_without_payload() {
+        let event: NativeWebviewEvent = serde_json::from_str(r#"{"event":"hidden"}"#).expect("de");
+        assert_eq!(event, NativeWebviewEvent::Hidden);
         assert_eq!(
             serde_json::to_string(&event).expect("ser"),
-            r#"{"event":"closed"}"#
+            r#"{"event":"hidden"}"#
         );
     }
 
-    /// `CloseResponse` decodes both arms of the native-side
-    /// `{ "closedByRequest": … }` payload — `true` for a live dismiss, `false`
-    /// for an already-closed popup (idempotent close).
+    /// `NativeWebviewEvent::Disposed` decodes from `{ "event":"disposed" }` — no
+    /// payload. Emitted on a host `dispose` or the teardown backstop.
     #[test]
-    fn close_response_decodes_closed_by_request_flag() {
-        let live: CloseResponse = serde_json::from_str(r#"{"closedByRequest":true}"#).expect("de");
-        assert!(live.closed_by_request);
-        let already: CloseResponse =
-            serde_json::from_str(r#"{"closedByRequest":false}"#).expect("de");
-        assert!(!already.closed_by_request);
-    }
-
-    /// `CloseRequest` serialises the suppression flag as camelCase
-    /// `suppressCloseEvent` — the wire key the Swift `CloseArgs` /
-    /// Kotlin `CloseArgs` `parseArgs` callsites read. Drift here would make a
-    /// host-initiated `close(true)` silently emit `Closed` anyway (the native
-    /// side would decode the absent key as its `false` default).
-    #[test]
-    fn close_request_serialises_suppress_flag_camel_case() {
-        let suppress = CloseRequest {
-            suppress_close_event: true,
-        };
+    fn native_webview_event_disposed_decodes_without_payload() {
+        let event: NativeWebviewEvent =
+            serde_json::from_str(r#"{"event":"disposed"}"#).expect("de");
+        assert_eq!(event, NativeWebviewEvent::Disposed);
         assert_eq!(
-            serde_json::to_string(&suppress).expect("ser"),
-            r#"{"suppressCloseEvent":true}"#
+            serde_json::to_string(&event).expect("ser"),
+            r#"{"event":"disposed"}"#
         );
     }
 
-    /// An absent `suppressCloseEvent` decodes to `false` (the default), so a
-    /// JS `invoke('…|close')` with no args — or any caller on the old wire
-    /// shape — keeps the symmetric "every close emits `Closed`" posture.
+    /// `ShowResponse` decodes both arms of the native-side
+    /// `{ "requestCausedShow": … }` payload — `true` when this call presented a
+    /// live native webview, `false` when none existed or it was already visible.
+    /// The wire key must match the Swift/Kotlin emit (`requestCausedShow`); drift
+    /// here would silently break decoding on-device.
     #[test]
-    fn close_request_defaults_suppress_to_false() {
-        let default: CloseRequest = serde_json::from_str("{}").expect("de");
-        assert!(!default.suppress_close_event);
+    fn show_response_decodes_request_caused_show_flag() {
+        let live: ShowResponse = serde_json::from_str(r#"{"requestCausedShow":true}"#).expect("de");
+        assert!(live.request_caused_show);
+        let none: ShowResponse =
+            serde_json::from_str(r#"{"requestCausedShow":false}"#).expect("de");
+        assert!(!none.request_caused_show);
+    }
+
+    /// `HideResponse` decodes both arms of the native-side
+    /// `{ "requestCausedHide": … }` payload — `true` when a visible native
+    /// webview was hidden, `false` when none was visible (idempotent hide). The
+    /// wire key must match the Swift/Kotlin emit; drift here would silently
+    /// break decoding on-device.
+    #[test]
+    fn hide_response_decodes_request_caused_hide_flag() {
+        let live: HideResponse = serde_json::from_str(r#"{"requestCausedHide":true}"#).expect("de");
+        assert!(live.request_caused_hide);
+        let already: HideResponse =
+            serde_json::from_str(r#"{"requestCausedHide":false}"#).expect("de");
+        assert!(!already.request_caused_hide);
+    }
+
+    /// `DisposeResponse` decodes both arms of the native-side
+    /// `{ "requestCausedDispose": … }` payload — `true` when a live native
+    /// webview was torn down, `false` when none existed (idempotent dispose).
+    /// The wire key must match the Swift/Kotlin emit; drift here would silently
+    /// break decoding on-device.
+    #[test]
+    fn dispose_response_decodes_request_caused_dispose_flag() {
+        let live: DisposeResponse =
+            serde_json::from_str(r#"{"requestCausedDispose":true}"#).expect("de");
+        assert!(live.request_caused_dispose);
+        let already: DisposeResponse =
+            serde_json::from_str(r#"{"requestCausedDispose":false}"#).expect("de");
+        assert!(!already.request_caused_dispose);
     }
 }

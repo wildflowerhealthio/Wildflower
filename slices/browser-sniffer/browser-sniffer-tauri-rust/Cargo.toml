@@ -8,11 +8,15 @@ publish.workspace = true
 tauri = { version = "2", features = [] }
 tauri-plugin-log = "2"
 serde.workspace = true
-serde_json.workspace = true
+# `raw_value` lets `native_webview_bridge` forward an untrusted native-webview
+# message's inner payload as a borrowed `&RawValue` — one parse, no intermediate
+# `Value`, no deep clone — on the mobile streaming hot path. See
+# `native_webview_bridge.rs`.
+serde_json = { workspace = true, features = ["raw_value"] }
 shared-structures-rust = { path = "../../shared-structures/shared-structures-rust" }
 anyhow.workspace = true
 url = "2"
-# On iOS/Android the sniffer popup runs in the native-webview plugin (a real
+# On iOS/Android the sniffer runs in the native-webview plugin (a real
 # WKWebView / android.webkit.WebView with native chrome) instead of a Tauri
 # WebviewWindow — see `sniffer_window.rs` for the cfg-gated routing. Desktop
 # keeps the WebviewWindow path; the plugin compiles to a no-op shell on those

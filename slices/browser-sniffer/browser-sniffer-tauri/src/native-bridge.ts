@@ -1,13 +1,11 @@
 // oxlint-disable no-underscore-dangle
 import type { TauriEventApi } from 'effect-messaging-tauri'
 
+import { isRecord } from './is-record.ts'
+
 /** Wire envelope carried over the native bridge: which channel + its payload. */
 type Envelope = { readonly event: string; readonly payload: unknown }
 type Handler = (event: { readonly payload: unknown }) => void
-
-/** Narrow an unknown to a string-keyed record without an `as` cast. */
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  value !== null && typeof value === 'object'
 
 /** Parse an inbound envelope; `undefined` for anything malformed. */
 const parseEnvelope = (json: string): Envelope | undefined => {
@@ -23,48 +21,60 @@ const parseEnvelope = (json: string): Envelope | undefined => {
   return { event, payload: parsed.payload }
 }
 
-/** Resolve the platform's outbound poster once (iOS, else Android, else no-op). */
-const resolvePoster = (): ((message: string) => void) => {
-  const win = globalThis as typeof globalThis & {
-    readonly webkit?: {
-      readonly messageHandlers?: {
-        readonly nativeWebview?: { readonly postMessage: (message: string) => void }
-      }
-    }
-    readonly nativeWebview?: { readonly postMessage: (message: string) => void }
-  }
-  const iosHandler = win.webkit?.messageHandlers?.nativeWebview
-  // oxlint-disable-next-line unicorn/require-post-message-target-origin -- WKScriptMessageHandler.postMessage, not window.postMessage.
-  if (iosHandler !== undefined) return (message) => iosHandler.postMessage(message)
-  const androidHandler = win.nativeWebview
-  // oxlint-disable-next-line unicorn/require-post-message-target-origin -- Android @JavascriptInterface.postMessage, not window.postMessage.
-  if (androidHandler !== undefined) return (message) => androidHandler.postMessage(message)
-  return () => {}
+/** A native message handler exposed on the page — same `postMessage` shape on
+ *  both platforms (iOS `WKScriptMessageHandler`, Android `@JavascriptInterface`). */
+type NativeBridgeTarget = { readonly postMessage: (message: string) => void }
+
+/** The native-bridge globals the plugin injects, if present in this context. */
+type NativeBridgeGlobals = typeof globalThis & {
+  readonly webkit?: { readonly messageHandlers?: { readonly nativeWebview?: NativeBridgeTarget } }
+  readonly nativeWebview?: NativeBridgeTarget
 }
 
 /**
- * Module-scope listener registry. Shared across every
- * {@link makeNativeBridgeEventBus} call in the same JS context: the native
- * bridge has a single `window.__nativeWebviewReceive` global, so it dispatches
- * to one registry — multiple constructions read/write the same map rather than
- * orphaning the previous call's listeners (the prior behaviour silently
- * re-bound the global to a fresh map and stranded earlier `listen` calls).
+ * Resolve the platform's native bridge handler (iOS first, then Android), or
+ * `undefined` when neither is present (page isn't inside a native webview).
+ * Single source of truth for "which native handler do we talk to": both
+ * {@link resolvePoster} (outbound) and {@link hasNativeBridge} (presence gate)
+ * derive from it, so a handler-name change can't desync the two.
+ */
+const resolveBridgeTarget = (): NativeBridgeTarget | undefined => {
+  const win = globalThis as NativeBridgeGlobals
+  return win.webkit?.messageHandlers?.nativeWebview ?? win.nativeWebview
+}
+
+/** Whether a native bridge handler (iOS or Android) is present in this context. */
+const hasNativeBridge = (): boolean => resolveBridgeTarget() !== undefined
+
+/** Resolve the outbound poster: the native handler's `postMessage`, else no-op. */
+const resolvePoster = (): ((message: string) => void) => {
+  const target = resolveBridgeTarget()
+  if (target === undefined) return () => {}
+  // oxlint-disable-next-line unicorn/require-post-message-target-origin -- WKScriptMessageHandler / Android @JavascriptInterface postMessage, not window.postMessage.
+  return (message) => target.postMessage(message)
+}
+
+/**
+ * Module-scope listener registry, shared across every
+ * {@link makeNativeBridgeEventBus} call in the same JS context. The native
+ * bridge has a single `window.__nativeWebviewReceive` global dispatching to one
+ * registry, so the receiver is a singleton by design — multiple constructions
+ * read/write this map rather than orphaning earlier `listen` calls.
  *
- * Re-installs of the receiver (e.g. after a test clears `globalThis.
- * __nativeWebviewReceive` between cases) reset this map — see
- * {@link installReceiverIfMissing} — so test isolation is preserved.
+ * Cleared whenever the receiver is (re)installed — see
+ * {@link installReceiverIfMissing} — so tests that delete the global between
+ * cases get a clean slate.
  */
 const listeners = new Map<string, Set<Handler>>()
 
 /**
- * Install `window.__nativeWebviewReceive` if it isn't already. Idempotent on
- * re-call within a context; the receiver reads `listeners` (module scope) so
- * subsequent {@link makeNativeBridgeEventBus} calls share dispatch.
+ * Install `window.__nativeWebviewReceive` if absent (idempotent per context).
+ * The receiver reads the module-scope {@link listeners} so subsequent
+ * {@link makeNativeBridgeEventBus} calls share dispatch.
  *
- * A "missing global" path also clears `listeners` so a test's `delete
- * globalThis.__nativeWebviewReceive` between cases gives a clean slate. The
- * native plugin never deletes the receiver at runtime, so this branch is
- * effectively test-only in production.
+ * The install path clears {@link listeners} for test isolation; the native
+ * plugin never deletes the receiver at runtime, so this is effectively
+ * test-only in production.
  */
 const installReceiverIfMissing = (): void => {
   const receiverHost = globalThis as typeof globalThis & {
@@ -86,7 +96,7 @@ const installReceiverIfMissing = (): void => {
 
 /**
  * Build a {@link TauriEventApi}-shaped event bus backed by the
- * `tauri-plugin-native-webview` bridge, for use INSIDE a native popup
+ * `tauri-plugin-native-webview` bridge, for use INSIDE a native webview
  * (iOS `WKWebView` / Android `android.webkit.WebView`) where `window.__TAURI__`
  * is deliberately absent.
  *
@@ -94,7 +104,8 @@ const installReceiverIfMissing = (): void => {
  * {@link installSniffer} consumes today, so the sniffer body is reused
  * unchanged — only the transport swaps.
  *
- * Wire format (an envelope so one bridge can carry every multiplexed channel):
+ * Wire format ({@link Envelope}, so one bridge carries every multiplexed
+ * channel):
  *
  *   - **Web→Host** (`emit`): posts `JSON.stringify({ event, payload })` to the
  *     native handler — `window.webkit.messageHandlers.nativeWebview` on iOS,
@@ -104,15 +115,11 @@ const installReceiverIfMissing = (): void => {
  *     `window.__nativeWebviewReceive(json)` with the same envelope; matching
  *     listeners receive `{ payload }`.
  *
- * The module-scope helpers (`isRecord` / `parseEnvelope` / `resolvePoster`)
- * capture no state and are inlined into the esbuild IIFE, so the injected
- * document-start script stays self-contained. If no native bridge is present
- * (e.g. the page is opened outside a native popup), `emit` drops silently and
- * `listen` still registers — the sniffer simply observes nothing.
+ * If no native bridge is present (page opened outside a native webview), `emit`
+ * drops silently and `listen` still registers — the sniffer observes nothing.
  *
- * Multiple calls in the same JS context return functionally-equivalent buses
- * sharing the module-scope listener registry — the receiver is a singleton
- * by design (one `__nativeWebviewReceive` per context).
+ * Multiple calls in the same JS context share the module-scope listener
+ * registry; see {@link listeners} for why the receiver is a singleton.
  */
 const makeNativeBridgeEventBus = (): TauriEventApi => {
   const post = resolvePoster()
@@ -134,4 +141,4 @@ const makeNativeBridgeEventBus = (): TauriEventApi => {
   }
 }
 
-export { makeNativeBridgeEventBus }
+export { hasNativeBridge, makeNativeBridgeEventBus }

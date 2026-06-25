@@ -1,6 +1,6 @@
 //! `http(s)`-only URL parsing shared by both plugin backends.
 //!
-//! The popup loads arbitrary external pages, so the scheme must be constrained
+//! The native webview loads arbitrary external pages, so the scheme must be constrained
 //! to `http` / `https` — `data:`, `file:`, `javascript:` etc. must never reach
 //! the webview. Both the desktop (`desktop::NativeWebview::open`) and mobile
 //! (`mobile::NativeWebview::open`) entry points validate through this single
@@ -13,9 +13,8 @@
 
 use url::Url;
 
-/// Construct the target-appropriate error variant. The plugin gates its `Error`
-/// variants per target (`Internal` on desktop, `PluginInvoke` on mobile), so the
-/// shared helper picks the right one via a cfg-gated definition.
+/// Construct the target-appropriate [`crate::Error`] variant ([`Error::Internal`](crate::Error::Internal)
+/// on desktop, [`Error::PluginInvoke`](crate::Error::PluginInvoke) on mobile), which are themselves cfg-gated.
 #[cfg(desktop)]
 fn scheme_error(message: String) -> crate::Error {
     crate::Error::Internal(message)

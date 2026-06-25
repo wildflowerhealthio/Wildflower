@@ -7,9 +7,9 @@
 [[permission]]
 identifier = "patch-window-text"
 description = """
-Allow patching the popup chrome's three text labels — title, subtitle, and the
+Allow patching the native webview chrome's three text labels — title, subtitle, and the
 bottom-bar message. Each field is independent: omitted = leave unchanged, empty
-string = clear, otherwise set. A no-op (resolving "not set") when no popup is
-open, so the host can push speculatively across the popup lifecycle.
+string = clear, otherwise set. A no-op (resolving "not set") when no native webview is
+open, so the host can push speculatively across the native webview lifecycle.
 """
 commands.allow = ["patch_window_text"]
