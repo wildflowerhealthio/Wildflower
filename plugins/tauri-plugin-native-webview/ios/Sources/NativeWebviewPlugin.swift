@@ -285,6 +285,15 @@ class NativeWebviewPlugin: Plugin {
   @objc public func show(_ invoke: Invoke) throws {
     DispatchQueue.main.async {
       self.cancelIdleTimer()
+      // A dispose teardown is in flight (its dismiss animation hasn't completed
+      // and `handleDisposed` will free the controller / WKWebView). Presenting
+      // now races UIKit's "present while dismissal in progress" no-op while
+      // flipping `isVisible` true on a doomed instance — a shown-but-invisible
+      // desync. Mirror `openUrl`'s `isDisposing` guard: nothing presentable.
+      if self.isDisposing {
+        invoke.resolve(["shown": false])
+        return
+      }
       guard let navigation = self.currentNavigation else {
         invoke.resolve(["shown": false])
         return

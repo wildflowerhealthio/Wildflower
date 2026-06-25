@@ -21,23 +21,39 @@ const parseEnvelope = (json: string): Envelope | undefined => {
   return { event, payload: parsed.payload }
 }
 
-/** Resolve the platform's outbound poster once (iOS, else Android, else no-op). */
+/** A native message handler exposed on the page — same `postMessage` shape on
+ *  both platforms (iOS `WKScriptMessageHandler`, Android `@JavascriptInterface`). */
+type NativeBridgeTarget = { readonly postMessage: (message: string) => void }
+
+/** The native-bridge globals the plugin injects, if present in this context. */
+type NativeBridgeGlobals = typeof globalThis & {
+  readonly webkit?: { readonly messageHandlers?: { readonly nativeWebview?: NativeBridgeTarget } }
+  readonly nativeWebview?: NativeBridgeTarget
+}
+
+/**
+ * Resolve the platform's native bridge handler (iOS first, then Android), or
+ * `undefined` when neither is present (the page isn't inside a native webview).
+ * The single source of truth for "which native handler do we talk to" — both
+ * {@link resolvePoster} (outbound transport) and {@link hasNativeBridge}
+ * (presence check, used by `native-sniffer-entry.ts`) derive from it, so a
+ * handler-name change can't leave the gate and the poster resolving different
+ * shapes.
+ */
+const resolveBridgeTarget = (): NativeBridgeTarget | undefined => {
+  const win = globalThis as NativeBridgeGlobals
+  return win.webkit?.messageHandlers?.nativeWebview ?? win.nativeWebview
+}
+
+/** Whether a native bridge handler (iOS or Android) is present in this context. */
+const hasNativeBridge = (): boolean => resolveBridgeTarget() !== undefined
+
+/** Resolve the platform's outbound poster once (the native handler, else no-op). */
 const resolvePoster = (): ((message: string) => void) => {
-  const win = globalThis as typeof globalThis & {
-    readonly webkit?: {
-      readonly messageHandlers?: {
-        readonly nativeWebview?: { readonly postMessage: (message: string) => void }
-      }
-    }
-    readonly nativeWebview?: { readonly postMessage: (message: string) => void }
-  }
-  const iosHandler = win.webkit?.messageHandlers?.nativeWebview
-  // oxlint-disable-next-line unicorn/require-post-message-target-origin -- WKScriptMessageHandler.postMessage, not window.postMessage.
-  if (iosHandler !== undefined) return (message) => iosHandler.postMessage(message)
-  const androidHandler = win.nativeWebview
-  // oxlint-disable-next-line unicorn/require-post-message-target-origin -- Android @JavascriptInterface.postMessage, not window.postMessage.
-  if (androidHandler !== undefined) return (message) => androidHandler.postMessage(message)
-  return () => {}
+  const target = resolveBridgeTarget()
+  if (target === undefined) return () => {}
+  // oxlint-disable-next-line unicorn/require-post-message-target-origin -- WKScriptMessageHandler / Android @JavascriptInterface postMessage, not window.postMessage.
+  return (message) => target.postMessage(message)
 }
 
 /**
@@ -132,4 +148,4 @@ const makeNativeBridgeEventBus = (): TauriEventApi => {
   }
 }
 
-export { makeNativeBridgeEventBus }
+export { hasNativeBridge, makeNativeBridgeEventBus }

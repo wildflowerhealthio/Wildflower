@@ -15,7 +15,8 @@
       "Bash(vp test:*)",
       "Bash(npx expo-doctor)",
       "Bash(pnpm test *)",
-      "Bash(cargo check *)"
+      "Bash(cargo check *)",
+      "Bash(git check-ignore *)"
     ]
   }
 }

@@ -29,18 +29,23 @@
 //!     // body: tauri::ipc::InvokeResponseBody — deserialise as NativeWebviewEvent and dispatch.
 //!     Ok(())
 //! });
-//! app.native_webview().open(OpenRequest {
+//! app.native_webview().open_url(OpenRequest {
 //!     url: "https://example.test/".to_owned(),
 //!     init_script: Some("/* document-start IIFE */".to_owned()),
 //!     native_webview_event_channel: native_webview_event_channel.clone(),
+//!     initial_title: None,
+//!     initial_subtitle: None,
+//!     initial_message: None,
 //! })?;
+//! // `open_url` navigates without presenting; reveal it with `show()`.
+//! app.native_webview().show()?;
 //! // Push a message into the native webview later:
 //! app.native_webview().evaluate_js(EvaluateJsRequest {
 //!     script: "window.__nativeWebviewReceive('{\"event\":\"bridge\",\"payload\":…}')".to_owned(),
 //! })?;
 //! ```
 //!
-//! JS callers can also drive the plugin through `invoke('plugin:native-webview|open', { url, nativeWebviewEventChannel })`
+//! JS callers can also drive the plugin through `invoke('plugin:native-webview|open_url', { url, nativeWebviewEventChannel })`
 //! with a `new Channel<NativeWebviewEvent>()`, but the design point is to keep
 //! native webview event bridging in Rust — see [`docs/Explanation.md`](../docs/Explanation.md).
 

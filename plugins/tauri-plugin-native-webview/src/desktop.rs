@@ -32,8 +32,9 @@
 //! chrome webview doesn't appear in any capability — it doesn't need to,
 //! since it uses no Tauri commands.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
+use std::time::Duration;
 
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
@@ -49,6 +50,15 @@ use crate::models::{EvaluateJsRequest, NativeWebviewEvent, OpenRequest, PatchWin
 /// Label for the desktop native-webview parent window.
 /// `capabilities/native-webview-window.json` keys on it to scope the grant.
 const WINDOW_LABEL: &str = "native-webview";
+
+/// Absolute lifetime cap for a desktop native webview: no presented task may run
+/// longer than this, hidden or not. Desktop has no hidden-idle reclaim (mobile
+/// arms a 5-minute idle teardown via `idleTeardownSeconds` / `IDLE_TEARDOWN_MS`);
+/// without this, a user who dismisses the sniffer leaves an untrusted
+/// third-party page running indefinitely. Re-armed on every `open_url` (a fresh
+/// build or an in-place reopen each start a new task clock); a teardown or reopen
+/// makes the previously-armed timer a no-op via [`PluginState::timeout_generation`].
+const ABSOLUTE_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 /// Label for the chrome (top bar) child webview.
 const CHROME_WEBVIEW_LABEL: &str = "native-webview-chrome";
 /// Label for the content (external URL) child webview.
@@ -165,6 +175,7 @@ pub fn init<R: Runtime, C: DeserializeOwned>(
     app.manage(PluginState {
         disposing: AtomicBool::new(false),
         pending_reopen: Mutex::new(None),
+        timeout_generation: AtomicU64::new(0),
     });
     Ok(NativeWebview(app.clone()))
 }
@@ -201,6 +212,12 @@ struct PluginState {
     /// the dispose and replays the request against the existing webviews; if
     /// `None`, the dispose proceeds.
     pending_reopen: Mutex<Option<(OpenRequest, Url)>>,
+    /// Monotonic generation for the [`ABSOLUTE_TIMEOUT`] backstop. Bumped by
+    /// [`arm_absolute_timeout`] on every `open_url`; the spawned timer captures
+    /// the value at arm time and disposes only if it's still current at fire
+    /// time, so a reopen or teardown that advances it makes the stale timer a
+    /// no-op (no need to hold a join handle to cancel).
+    timeout_generation: AtomicU64,
 }
 
 /// Desktop handle to the native-webview plugin.
@@ -325,6 +342,47 @@ impl<R: Runtime> NativeWebview<R> {
         window.close()?;
         Ok(())
     }
+}
+
+/// Arm (or re-arm) the [`ABSOLUTE_TIMEOUT`] backstop for the current native
+/// webview. Bumps [`PluginState::timeout_generation`] so any previously-armed
+/// timer no-ops, captures the new generation, and spawns a thread that — after
+/// the timeout — marshals back to the main thread and disposes the window iff
+/// the generation is still current and a window still exists.
+///
+/// A parked thread (rather than the async runtime) keeps this dependency-free;
+/// at most one is live per presented native webview, for at most the timeout
+/// duration. The dispose mirrors a host `dispose()`: set `disposing` then
+/// `window.close()`, so the `CloseRequested` / `Destroyed` path emits
+/// `Disposed` and the host's collector releases per-native-webview state.
+fn arm_absolute_timeout<R: Runtime>(app: &AppHandle<R>) {
+    let Some(state) = app.try_state::<PluginState>() else {
+        return;
+    };
+    // Supersede any timer armed by a prior `open_url` and claim this generation.
+    let generation = state.timeout_generation.fetch_add(1, Ordering::SeqCst) + 1;
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(ABSOLUTE_TIMEOUT);
+        let handle = app.clone();
+        // Window ops are main-thread on macOS. A failed marshal (app shutting
+        // down) just drops the backstop — teardown is happening anyway.
+        let _ = app.run_on_main_thread(move || {
+            let Some(state) = handle.try_state::<PluginState>() else {
+                return;
+            };
+            // A reopen or teardown advanced the generation — this timer is stale.
+            if state.timeout_generation.load(Ordering::SeqCst) != generation {
+                return;
+            }
+            let Some(window) = handle.get_window(WINDOW_LABEL) else {
+                return;
+            };
+            // Absolute cap hit: dispose like a host `dispose()`.
+            state.disposing.store(true, Ordering::SeqCst);
+            let _ = window.close();
+        });
+    });
 }
 
 /// Build the native webview window with chrome + content child webviews and wire up
@@ -561,6 +619,9 @@ fn present<R: Runtime>(
 
     install_window_listeners(app, &window);
 
+    // Start the absolute-lifetime backstop for this freshly-built native webview.
+    arm_absolute_timeout(app);
+
     Ok(())
 }
 
@@ -734,6 +795,9 @@ fn apply_rewire<R: Runtime>(
         }
     }
     let _ = content.navigate(parsed);
+    // A reopen starts a new task clock — re-arm the absolute-lifetime backstop
+    // (and supersede the prior open's timer via the generation bump).
+    arm_absolute_timeout(app);
     Ok(())
 }
 
@@ -804,10 +868,10 @@ fn apply_chrome_height<R: Runtime>(
 ///   dispose land.
 /// - **Destroyed**: fire `NativeWebviewEvent::Disposed` on the current channel
 ///   (the per-native-webview [`CurrentChannel`] state — re-bindable across
-///   rewires). Reached by a host `dispose()` or by app teardown destroying the
-///   window on exit (the app-teardown backstop). Clears
-///   [`PluginState::disposing`] so a fresh `open_url()` after this point takes
-///   the build-fresh path.
+///   rewires). Reached by a host `dispose()`, the [`ABSOLUTE_TIMEOUT`] backstop,
+///   or app teardown destroying the window on exit (the app-teardown backstop).
+///   Clears [`PluginState::disposing`] so a fresh `open_url()` after this point
+///   takes the build-fresh path.
 ///
 /// `on_window_event` takes a `Fn(&WindowEvent) + Send + 'static`, so captures
 /// are clones. The channel is read from the per-native-webview [`CurrentChannel`] state

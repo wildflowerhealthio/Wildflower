@@ -12,18 +12,13 @@
 // injected somewhere without the plugin's message handler (nothing to send to).
 
 import { installSniffer } from './install-sniffer.ts'
-import { makeNativeBridgeEventBus } from './native-bridge.ts'
+import { hasNativeBridge, makeNativeBridgeEventBus } from './native-bridge.ts'
 
-interface NativeWebviewBridges {
-  readonly webkit?: { readonly messageHandlers?: { readonly nativeWebview?: unknown } }
-  readonly nativeWebview?: unknown
-}
-
-const win = globalThis as typeof globalThis & NativeWebviewBridges
-const hasNativeBridge =
-  win.webkit?.messageHandlers?.nativeWebview !== undefined || win.nativeWebview !== undefined
-
-if (hasNativeBridge) {
+// Gate on the same bridge resolution the transport uses (`hasNativeBridge` and
+// `resolvePoster` both derive from `native-bridge.ts`'s `resolveBridgeTarget`),
+// so the entry can't no-op on one shape while the poster would have resolved
+// another.
+if (hasNativeBridge()) {
   // No filtering wrapper here: the Tauri IPC-fallback `console.warn` the
   // desktop entry strips is a `__TAURI__` artifact that can't occur in a native
   // webview, and the native bridge's `postMessage` is synchronous, so emits are

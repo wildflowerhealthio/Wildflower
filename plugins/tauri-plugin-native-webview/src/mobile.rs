@@ -1,6 +1,6 @@
 //! Mobile backend. Registers the native plugin — Swift `NativeWebviewPlugin` on
-//! iOS, Kotlin `NativeWebviewPlugin` on Android — and forwards `open` to it via
-//! `run_mobile_plugin`. Both targets present a native, JS-injectable web view
+//! iOS, Kotlin `NativeWebviewPlugin` on Android — and forwards `open_url` to it
+//! via `run_mobile_plugin`. Both targets present a native, JS-injectable web view
 //! (WKWebView / `android.webkit.WebView`) with native chrome.
 
 use serde::de::DeserializeOwned;

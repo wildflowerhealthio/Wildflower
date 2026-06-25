@@ -415,6 +415,19 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
     fun show(invoke: Invoke) {
         activity.runOnUiThread {
             cancelIdleTimer()
+            // A dispose teardown is in flight: `disposeDialog`'s `dialog.dismiss()`
+            // only ENQUEUES the dismiss listener that destroys the WebView and
+            // nulls `dialog`, so a same-tick `show` would still read a non-null
+            // `dialog`, call `d.show()` on a doomed dialog, and flip `isVisible`
+            // true on an instance about to be torn down (blank dialog /
+            // use-after-destroy). Mirror `openUrl`'s `isDisposing` guard — there's
+            // nothing presentable, so resolve `{shown: false}`.
+            if (isDisposing) {
+                val result = JSObject()
+                result.put("shown", false)
+                invoke.resolve(result)
+                return@runOnUiThread
+            }
             val d = dialog
             if (d == null) {
                 val result = JSObject()
@@ -964,15 +977,23 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
             val payload = JSObject()
             payload.put("event", "message")
             payload.put("payload", json)
-            // Snapshot at post time: a rewire that lands between this hop
-            // and the UI-thread send shouldn't reroute an in-flight message.
+            // Snapshot at post time: a rewire that lands between this hop and
+            // the send shouldn't reroute an in-flight message.
             val initializedChannel = channel
-            // `@JavascriptInterface` callbacks run off the UI thread; hop back
-            // before sending on the channel. Inbound traffic is activity — reset
-            // the hidden-idle teardown backstop on the UI thread too.
+            // `Channel.send` routes the payload over JNI to the Rust-registered
+            // channel handler — it does NOT touch the host WebView, so it's
+            // thread-safe to call directly on this binder thread. Keeping it off
+            // the UI looper matters on the streaming hot path: a fast EHR stream
+            // posts hundreds of `ResponseData` chunks/sec, and queuing each
+            // behind pending UI/layout work would serialize all bridge traffic
+            // through the main looper (iOS doesn't hop — its handler is already
+            // main-thread). Posts arrive in call order, so FIFO is preserved.
+            initializedChannel.send(payload)
+            // Only the idle-timer reset needs the UI thread: it reads `dialog` /
+            // `isVisible` (UI-thread-owned) and posts on the main-looper Handler.
+            // Inbound traffic is activity — push back the hidden-idle teardown.
             activity.runOnUiThread {
                 onActivity?.invoke()
-                initializedChannel.send(payload)
             }
         }
     }
