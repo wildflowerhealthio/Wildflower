@@ -44,17 +44,17 @@
 //! reached). Depending only on the contract keeps apps-rust decoupled from
 //! tunnel-rust.
 //!
-//! With the resolved target in hand the handler either returns a `302` redirect
-//! (web/standalone) or, when an [`LaunchSink`] is installed (the Tauri
-//! host), hands the URL to the sink — which opens it in a native webview popup
-//! — and returns `204`. See [`LaunchSink`].
+//! With the resolved target in hand the handler dispatches on provenance: a
+//! forwarded (remote) caller gets a `302` redirect, while a loopback (local)
+//! caller is handed to the host's [`OnDeviceWebviewHandle`] — which opens the
+//! URL in a native webview popup — and gets a `204`. See
+//! [`OnDeviceWebviewHandle`].
 
 pub mod config;
 pub mod db;
 pub mod domain;
 pub mod http;
 mod id;
-mod launch_sink;
 
 use std::sync::Arc;
 
@@ -66,7 +66,7 @@ pub use config::AppsConfig;
 pub use db::AppsStore;
 pub use domain::InternalApp;
 pub use http::AppsState;
-pub use launch_sink::{LoopbackCaller, LaunchSink};
+pub use shared_structures_rust::OnDeviceWebviewHandle;
 
 /// Result of [`setup_apps`]: the two routers a host needs to mount. The
 /// public one carries no auth (the webview reaches list + launch
@@ -88,9 +88,9 @@ pub struct Apps {
 /// `setup_gatekeeper`. The host opens one database and passes it in, along with
 /// the `tunnel` service a `requires_tunnel` launch resolves its origin through.
 ///
-/// `launch_sink` is the optional host seam for the launch side-effect: `Some`
-/// (the Tauri host) makes a launch open the resolved URL through the sink and
-/// `204`; `None` (web/standalone) keeps the `302` redirect.
+/// `webview_handle` is the host seam for the on-device launch side-effect: a
+/// loopback launch opens the resolved URL through it and `204`s. The Tauri host
+/// passes a native-webview opener; a host with no native popup passes a no-op.
 ///
 /// # Errors
 ///
@@ -99,7 +99,7 @@ pub fn setup_apps(
     conn: persistence_rust::Connection,
     config: &AppsConfig,
     tunnel: Arc<dyn TunnelService>,
-    launch_sink: Option<Arc<dyn LaunchSink>>,
+    webview_handle: Arc<dyn OnDeviceWebviewHandle>,
 ) -> anyhow::Result<Apps> {
     // `AppsStore::new` owns the shared migration list — running it migrates
     // both the externals (`apps`) and internals (`internal_apps`) tables. The
@@ -110,15 +110,14 @@ pub fn setup_apps(
     let internal_apps = store
         .list_internal_apps()
         .context("failed to list internal apps")?;
-    let mut state = AppsState::new(
+    let state = AppsState::new(
         store,
         config.loopback_origin.clone(),
         config.internal_apps_loopback_host.clone(),
         tunnel,
+        webview_handle,
     );
-    if let Some(sink) = launch_sink {
-        state = state.with_launch_sink(sink);
-    }
+
     let state = Arc::new(state);
     Ok(Apps {
         public_router: http::public_router(Arc::clone(&state)),

@@ -32,10 +32,10 @@
 //!      `Forwarded` host can't make the two answers disagree.
 //!   3. Render the launch target (internal: from config; external: through
 //!      `AppUrl`).
-//!   4. Dispatch: when an [`LaunchSink`](crate::LaunchSink) is
-//!      installed (the Tauri host) *and* the caller is loopback (a local webview
-//!      that a host popup can actually serve), it hands the URL to the sink and
-//!      `204`s; otherwise it returns a `302` redirect for the browser to
+//!   4. Dispatch on provenance: a loopback (local) caller hands the URL to the
+//!      host's [`OnDeviceWebviewHandle`](crate::OnDeviceWebviewHandle) — which
+//!      opens a native popup a local webview can actually serve — and `204`s; a
+//!      forwarded (remote) caller gets a `302` redirect for the browser to
 //!      follow.
 //!
 //! `requires_tunnel` applies only to externals: the launch asks the tunnel
@@ -58,18 +58,17 @@ use crate::domain::{AppEntry, InternalApp, LaunchParams};
 use crate::http::response_templates::{AppNotFoundBody, HandlerError};
 use crate::http::state::AppsState;
 use crate::id::mint_launch_nonce;
-use crate::LoopbackCaller;
 
 /// `POST /apps/{id}` — launch an app. `404` if no app has this id. Reachable
 /// unauthenticated (the webview follows the redirect).
 ///
-/// A host [`LaunchSink`](crate::LaunchSink) opens the resolved URL in a native
-/// popup *on this device*, which only helps the **local** caller — so the sink
-/// is used (returning `204`) only when the request came in over loopback. A
-/// request **forwarded by the trusted front** (the relay/tunnel sets
-/// the `Forwarded` header) is a *remote* caller, for whom a host-side popup is
-/// invisible; it gets the `302` redirect instead, the same as a host that
-/// installs no sink at all (web/standalone).
+/// A loopback (local) caller hands the resolved URL to the host's
+/// [`OnDeviceWebviewHandle`](crate::OnDeviceWebviewHandle), which opens it in a
+/// native popup *on this device* (returning `204` so the SPA stays mounted) —
+/// that only helps a local caller, which is why it's gated on loopback. A
+/// request **forwarded by the trusted front** (the relay/tunnel sets the
+/// `Forwarded` header) is a *remote* caller, for whom a host-side popup is
+/// invisible; it gets the `302` redirect instead.
 #[utoipa::path(
     post,
     path = "/apps/{id}",
@@ -92,22 +91,22 @@ pub(crate) async fn handle_launch_app(
 
     let (app, target) = resolve_launch_target(&state, &id, &provenance).await?;
 
-    // A `LoopbackCaller` witness is mintable only from a loopback provenance, so
-    // matching on `Some(caller)` is the loopback-only gate — the sink can't be
-    // opened for a forwarded (remote) caller because `open` won't take the call
-    // without the witness.
-    match (&state.launch_sink, LoopbackCaller::from_provenance(&provenance)) {
-        // Loopback caller + a host sink: the host owns the side-effect — hand
-        // it the resolved URL (it opens a native popup) and 204 so the SPA
-        // stays mounted. The sink is contractually fire-and-forget (the Tauri
-        // impl spawns the blocking webview-open onto a blocking thread, so
-        // this call returns promptly). A forwarded (remote) request, or no
-        // sink at all, falls through to the redirect.
-        (Some(sink), Some(caller)) => {
-            sink.open(caller, &app, &target);
+    // The loopback-only rule lives in this match: only a loopback caller is
+    // handed to the on-device webview seam (a host popup is useless to a remote
+    // caller); a forwarded caller takes the redirect.
+    match &provenance {
+        // Loopback (local) caller: the host owns the side-effect — hand it the
+        // resolved URL (it opens a native popup) and 204 so the SPA stays
+        // mounted. The seam is contractually fire-and-forget (the Tauri impl
+        // spawns the blocking webview-open onto a blocking thread, so this call
+        // returns promptly).
+        RequestProvenance::Loopback => {
+            state
+                .on_device_webview_handle
+                .open(app.name.clone(), target.clone());
             Ok(no_content())
         }
-        _ => redirect(target),
+        RequestProvenance::Forwarded { .. } => redirect(target),
     }
 }
 
@@ -131,11 +130,10 @@ async fn resolve_launch_target(
         .map_err(|e| HandlerError::internal("internal_apps find lookup failed", e))?
     {
         let target = render_internal_target(&internal, state, provenance);
-        // The sink path only fires for loopback callers, so the sink-bound
-        // `AppEntry` always carries the loopback URL — the host popup opens the
-        // local origin. That matches the redirect a no-sink loopback caller
-        // would chase, so loopback callers see one URL regardless of which
-        // dispatch fires.
+        // Build the wire `AppEntry` — the handler reads its `name` for the popup
+        // chrome. The launch URL itself is the provenance-aware `target` above
+        // (loopback for a local caller, the public subdomain for a forwarded
+        // one), not `app.url`.
         let app = internal.to_app_entry(&state.internal_apps_loopback_host);
         return Ok((app, target));
     }
@@ -235,10 +233,11 @@ fn redirect(location: String) -> Result<Response, HandlerError> {
         .map_err(|e| HandlerError::internal("redirect builder failed", e))
 }
 
-/// 204 No Content with an empty body — the response when a host [`LaunchSink`]
-/// has taken the launch (the host opened the URL; there's nothing for the SPA
-/// to follow). `StatusCode::NO_CONTENT.into_response()` already yields an empty
-/// body, so no header juggling is needed.
+/// 204 No Content with an empty body — the response when the host's
+/// [`OnDeviceWebviewHandle`](crate::OnDeviceWebviewHandle) has taken the launch
+/// (the host opened the URL; there's nothing for the SPA to follow).
+/// `StatusCode::NO_CONTENT.into_response()` already yields an empty body, so no
+/// header juggling is needed.
 fn no_content() -> Response {
     StatusCode::NO_CONTENT.into_response()
 }

@@ -156,7 +156,11 @@ mod tests {
 
         // Happy path, case-insensitive on the whole host.
         assert_eq!(
-            match_subdomain("Patient-Browser.DEMO.example.com", "demo.example.com", is_known),
+            match_subdomain(
+                "Patient-Browser.DEMO.example.com",
+                "demo.example.com",
+                is_known
+            ),
             Some("patient-browser".to_owned()),
         );
         // No dot at all — no subdomain.
@@ -172,6 +176,9 @@ mod tests {
             None,
         );
         // IPv6 in brackets — no DNS subdomain to extract.
-        assert_eq!(match_subdomain("[::1]:8080", "demo.example.com", is_known), None);
+        assert_eq!(
+            match_subdomain("[::1]:8080", "demo.example.com", is_known),
+            None
+        );
     }
 }

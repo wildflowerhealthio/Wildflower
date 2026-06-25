@@ -70,7 +70,10 @@ mod tests {
     #[test]
     fn find_returns_some_for_a_seeded_id_and_none_otherwise() {
         let store = AppsStore::open_in_memory().unwrap();
-        assert!(store.find_internal_app("patient-browser").unwrap().is_some());
+        assert!(store
+            .find_internal_app("patient-browser")
+            .unwrap()
+            .is_some());
         assert!(store.find_internal_app("no-such-id").unwrap().is_none());
     }
 }

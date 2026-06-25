@@ -1,6 +1,6 @@
 mod api_stubs;
 mod bridge;
-mod launch_sink;
+mod native_webview_handle;
 mod spa;
 mod tunnel_adapters;
 
@@ -193,18 +193,20 @@ async fn run_server(
     };
     // `TunnelControl` implements `TunnelService`, so it's handed straight in.
     let tunnel_service: Arc<dyn tunnel_rust::TunnelService> = Arc::new(tunnel.control.clone());
-    // Install the host launch sink: the launch handler resolves the URL (origin
-    // + tunnel) server-side, then hands it to this sink, which opens it in a
-    // native webview popup via `tauri-plugin-native-webview` (the server 204s,
-    // so the SPA stays mounted). This replaces the former `RequestTunnel` /
-    // `RequestSandboxedWebView` bridge round-trips.
-    let launch_sink: Arc<dyn apps_rust::LaunchSink> =
-        Arc::new(launch_sink::NativeWebviewLaunchSink::new(app_handle.clone()));
+    // Install the host's on-device webview handle: the launch handler resolves
+    // the URL (origin + tunnel) server-side, then for a loopback caller hands it
+    // to this handle, which opens it in a native webview popup via
+    // `tauri-plugin-native-webview` (the server 204s, so the SPA stays mounted).
+    // This replaces the former `RequestTunnel` / `RequestSandboxedWebView`
+    // bridge round-trips.
+    let webview_handle: Arc<dyn apps_rust::OnDeviceWebviewHandle> = Arc::new(
+        native_webview_handle::NativeWebviewHandle::new(app_handle.clone()),
+    );
     let apps = setup_apps(
         db,
         &apps_config,
         Arc::clone(&tunnel_service),
-        Some(launch_sink),
+        webview_handle,
     )
     .context("failed to set up apps")?;
     let gated_apps_admin =
@@ -275,8 +277,10 @@ async fn run_server(
     // working) and produces the dispatch layer. The DB row's `port` is the
     // source of truth for the bind; the apps slice reads the same value to
     // render the launch target, so the redirect and the listener can't drift.
-    let mut subdomain_router =
-        TunneledRouterBuilder::new(runtime.loopback_hostname.clone(), Arc::clone(&tunnel_service));
+    let mut subdomain_router = TunneledRouterBuilder::new(
+        runtime.loopback_hostname.clone(),
+        Arc::clone(&tunnel_service),
+    );
     for internal in apps.internal_apps {
         let app_dir = installed_apps_dir.join(&internal.id);
         let router = vendor_apps_rust::setup_installed_app(&internal.id, app_dir)
@@ -391,9 +395,9 @@ pub fn run() {
             browser_sniffer_tauri_rust::attach_browser_sniffer(app.handle());
 
             let error_handle = app.handle().clone();
-            // The server task installs the apps launch sink once the apps slice
-            // is built; the sink opens launched apps in a native webview popup,
-            // so it needs an app handle.
+            // The server task installs the apps on-device webview handle once
+            // the apps slice is built; the handle opens launched apps in a
+            // native webview popup, so it needs an app handle.
             let server_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 let runtime = ServerRuntimeConfig {

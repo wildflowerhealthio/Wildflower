@@ -5,17 +5,16 @@
 //! module's own `openapi_router`.
 
 use std::sync::Arc;
-use std::sync::Mutex;
 
 use async_trait::async_trait;
+use shared_structures_rust::test_utils::RecordingStubWebviewHandle;
 use shared_structures_rust::tunnel_service::{
     OfflineTunnel, TunnelLiveness, TunnelService, TunnelStatus,
 };
 
 use crate::db::AppsStore;
-use crate::domain::AppEntry;
 use crate::http::state::AppsState;
-use crate::{LoopbackCaller, LaunchSink};
+use crate::OnDeviceWebviewHandle;
 
 /// The loopback origin clients reach when the tunnel is down. The apps slice
 /// treats this and [`LOOPBACK_HOST`] as **independent** config values —
@@ -28,18 +27,6 @@ pub(crate) const LOOPBACK_ORIGIN: &str = "http://127.0.0.1:8080";
 /// The host portion the internal-app listeners bind on — combined with each
 /// internal row's `port` to render `http://{host}:{port}/`.
 pub(crate) const LOOPBACK_HOST: &str = "127.0.0.1";
-
-/// An [`LaunchSink`] stub that records the URLs it's handed, so a test
-/// can assert the handler resolved the target and routed it to the sink (and
-/// returned `204`) instead of redirecting.
-#[derive(Default)]
-pub(crate) struct RecordingSink(pub(crate) Mutex<Vec<String>>);
-
-impl LaunchSink for RecordingSink {
-    fn open(&self, _caller: LoopbackCaller, _app: &AppEntry, url: &str) {
-        self.0.lock().expect("sink mutex").push(url.to_owned());
-    }
-}
 
 /// A `TunnelService` stub for a tunnel that's up and verified at `origin` — the
 /// success counterpart to the shared [`OfflineTunnel`], which models the
@@ -95,11 +82,28 @@ pub(crate) fn tunnel_unavailable() -> Arc<dyn TunnelService> {
     Arc::new(OfflineTunnel::new(LOOPBACK_ORIGIN))
 }
 
-/// Apps state over a fresh in-memory store with the given tunnel, using the
-/// shared loopback config constants.
-pub(crate) fn state_with_tunnel(tunnel: Arc<dyn TunnelService>) -> Arc<AppsState> {
+/// Apps state over a fresh in-memory store with a specific `tunnel` AND a
+/// caller-provided on-device webview handle, using the shared loopback config
+/// constants. Lets a test both drive the tunnel branch and assert what the
+/// handle received for a loopback launch.
+pub(crate) fn state_with_tunnel_and_handle(
+    tunnel: Arc<dyn TunnelService>,
+    webview_handle: Arc<dyn OnDeviceWebviewHandle>,
+) -> Arc<AppsState> {
     let store = AppsStore::open_in_memory().expect("store");
-    Arc::new(AppsState::new(store, LOOPBACK_ORIGIN, LOOPBACK_HOST, tunnel))
+    Arc::new(AppsState::new(
+        store,
+        LOOPBACK_ORIGIN,
+        LOOPBACK_HOST,
+        tunnel,
+        webview_handle,
+    ))
+}
+
+/// Apps state with the given tunnel and a throwaway recording handle — for
+/// tests that don't inspect what the handle received.
+pub(crate) fn state_with_tunnel(tunnel: Arc<dyn TunnelService>) -> Arc<AppsState> {
+    state_with_tunnel_and_handle(tunnel, Arc::new(RecordingStubWebviewHandle::default()))
 }
 
 /// Apps state with the offline tunnel — the default for tests that don't
@@ -108,11 +112,8 @@ pub(crate) fn state() -> Arc<AppsState> {
     state_with_tunnel(tunnel_unavailable())
 }
 
-/// Apps state with an [`LaunchSink`] installed (the Tauri-host shape).
-pub(crate) fn state_with_sink(sink: Arc<dyn LaunchSink>) -> Arc<AppsState> {
-    let store = AppsStore::open_in_memory().expect("store");
-    Arc::new(
-        AppsState::new(store, LOOPBACK_ORIGIN, LOOPBACK_HOST, tunnel_unavailable())
-            .with_launch_sink(sink),
-    )
+/// Apps state with the offline tunnel and a caller-provided handle — so a
+/// loopback launch's resolved URL can be read back off the handle.
+pub(crate) fn state_with_sink(webview_handle: Arc<dyn OnDeviceWebviewHandle>) -> Arc<AppsState> {
+    state_with_tunnel_and_handle(tunnel_unavailable(), webview_handle)
 }

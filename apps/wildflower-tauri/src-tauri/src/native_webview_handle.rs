@@ -1,32 +1,31 @@
-//! The Tauri host's [`apps_rust::LaunchSink`].
+//! The Tauri host's [`apps_rust::OnDeviceWebviewHandle`].
 //!
-//! The apps launch handler (`POST /apps/{id}`) resolves the launch URL and,
-//! when a sink is installed, hands it here instead of returning a `302`. This
-//! sink opens the resolved URL in a separate, less-privileged native webview
+//! The apps launch handler (`POST /apps/{id}`) resolves the launch URL and, for
+//! a loopback (local) caller, hands it here instead of returning a `302`. This
+//! handle opens the resolved URL in a separate, less-privileged native webview
 //! popup via [`tauri_plugin_native_webview`] — so the main SPA stays mounted
 //! and the user dismisses the popup from the plugin's native chrome (Close /
 //! Back / Forward). This replaces the former `RequestSandboxedWebView` bridge
 //! round-trip: the server already owns origin/tunnel resolution, so the host
 //! only needs the finished URL.
 
-use apps_rust::domain::AppEntry;
-use apps_rust::{LoopbackCaller, LaunchSink};
+use apps_rust::OnDeviceWebviewHandle;
 use tauri::AppHandle;
 use tauri_plugin_log::log;
 
-/// The host's launch sink: opens the resolved launch URL in a native webview
-/// popup. Holds the [`AppHandle`] the popup is opened through.
-pub struct NativeWebviewLaunchSink {
+/// The host's on-device webview handle: opens the resolved launch URL in a
+/// native webview popup. Holds the [`AppHandle`] the popup is opened through.
+pub struct NativeWebviewHandle {
     app: AppHandle,
 }
 
-impl NativeWebviewLaunchSink {
+impl NativeWebviewHandle {
     pub fn new(app: AppHandle) -> Self {
         Self { app }
     }
 }
 
-impl LaunchSink for NativeWebviewLaunchSink {
+impl OnDeviceWebviewHandle for NativeWebviewHandle {
     /// Open `url` in the shared native webview popup, titled with the app's
     /// name. Fire-and-forget: the underlying `tauri-plugin-native-webview`
     /// `open_url` does `run_on_main_thread(...)` then blocks on `rx.recv()` until
@@ -36,25 +35,23 @@ impl LaunchSink for NativeWebviewLaunchSink {
     /// `204`d by the time the popup is constructed, and a failure here is
     /// logged (the handler can't surface it anyway).
     ///
-    /// The [`LoopbackCaller`] witness is unused here — its sole purpose is to
-    /// make this method uncallable for a forwarded (remote) caller, so a host
-    /// popup can never be opened for someone who can't see it.
-    fn open(&self, _caller: LoopbackCaller, app: &AppEntry, url: &str) {
-        // Clone everything the spawned closure needs — `AppHandle`, `AppEntry`,
-        // `String` — so the blocking task owns its inputs and the caller's
-        // worker isn't parked.
+    /// The handler only calls this for a loopback (local) caller — a host popup
+    /// is useless to a remote one — so this impl doesn't re-check provenance.
+    fn open(&self, title: String, url: String) {
+        // Clone everything the spawned closure needs — the `AppHandle` and the
+        // two owned `String`s — so the blocking task owns its inputs and the
+        // caller's worker isn't parked.
         let handle = self.app.clone();
-        let app = app.clone();
-        let url = url.to_owned();
         tauri::async_runtime::spawn_blocking(move || {
-            if let Err(error) = open_app_in_native_webview(&handle, &app, &url) {
+            if let Err(error) = open_app_in_native_webview(&handle, title, url) {
                 log::error!("[launch] failed to open native webview for launch: {error}");
             }
         });
     }
 }
 
-/// Present `url` in the shared native webview popup, titled with `app.name`.
+/// Present `url` in the shared native webview popup, titled with `title` (the
+/// launched app's name).
 ///
 /// Validates the URL is `http(s)://` (defense-in-depth — the server already
 /// builds it from a trusted loopback/tunnel origin), then `open_url`s it and
@@ -66,14 +63,18 @@ impl LaunchSink for NativeWebviewLaunchSink {
 /// is self-contained and the user closes it from the native chrome. Both calls
 /// are idempotent: a second launch while a popup is up navigates the existing
 /// content webview and re-shows it rather than stacking a new presentation.
-fn open_app_in_native_webview(handle: &AppHandle, app: &AppEntry, url: &str) -> anyhow::Result<()> {
+fn open_app_in_native_webview(
+    handle: &AppHandle,
+    title: String,
+    url: String,
+) -> anyhow::Result<()> {
     use tauri::ipc::Channel;
     use tauri_plugin_native_webview::{NativeWebviewEvent, NativeWebviewExt, OpenRequest};
 
     // `resolve_http_url` enforces http(s)-only (rejecting `file:` / `javascript:`
     // and unparseable URLs). We only need it to gate the string; the plugin
     // re-parses it.
-    shared_structures_tauri_rust::resolve_http_url(url)
+    shared_structures_tauri_rust::resolve_http_url(&url)
         .map_err(|error| anyhow::anyhow!("launch URL rejected: {error}"))?;
 
     // No popup events to consume: native chrome owns the Close button and the
@@ -94,7 +95,7 @@ fn open_app_in_native_webview(handle: &AppHandle, app: &AppEntry, url: &str) -> 
             native_webview_event_channel: channel,
             // Native chrome defaults its title to the URL host (e.g. a bare
             // `127.0.0.1`); show the launched app's own name instead.
-            initial_title: Some(app.name.clone()),
+            initial_title: Some(title),
             initial_subtitle: None,
             initial_message: None,
         })

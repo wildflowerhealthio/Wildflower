@@ -155,7 +155,10 @@ mod tests {
         // Set a real subtitle, then patch it back to "" → cleared again.
         let (status, body) = send(
             &st,
-            patch(&format!("/apps/{id}"), serde_json::json!({ "subtitle": "hi" })),
+            patch(
+                &format!("/apps/{id}"),
+                serde_json::json!({ "subtitle": "hi" }),
+            ),
         )
         .await;
         assert_eq!(status, StatusCode::OK, "body: {body}");
@@ -163,7 +166,10 @@ mod tests {
 
         let (status, body) = send(
             &st,
-            patch(&format!("/apps/{id}"), serde_json::json!({ "subtitle": "" })),
+            patch(
+                &format!("/apps/{id}"),
+                serde_json::json!({ "subtitle": "" }),
+            ),
         )
         .await;
         assert_eq!(status, StatusCode::OK, "body: {body}");
