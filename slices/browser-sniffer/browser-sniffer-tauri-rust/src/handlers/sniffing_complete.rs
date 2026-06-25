@@ -9,7 +9,7 @@ use tauri_plugin_native_webview::NativeWebviewExt;
 /// so the native webview (its background runtime) should be torn down rather
 /// than merely hidden. Unified across platforms via `tauri-plugin-native-webview`:
 /// mobile tears down the native sheet/dialog, desktop destroys the multi-webview
-/// window. `dispose` is idempotent (`{disposed: false}` when nothing exists), so
+/// window. `dispose` is idempotent (`{requestCausedDispose: false}` when nothing exists), so
 /// an `SniffingComplete` with no live native webview lands harmlessly.
 ///
 /// A *user* dismissal is different — it `hide`s the native webview (keeping it

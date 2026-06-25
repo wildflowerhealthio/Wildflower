@@ -43,7 +43,7 @@ class PatchWindowTextArgs: Decodable {
 /// plugin singleton) so a stacked second `openUrl` doesn't redirect the first
 /// instance's events into the second's channel.
 ///
-/// `channel` is `var` for Re-open rewire — see docs/Lifecycle and Races.md.
+/// `channel` is `var` for Re-open rewire — see docs/Lifecycle and Races Explanation.md.
 ///
 /// iOS retain note: `WKUserContentController` retains its script-message handlers
 /// strongly, and `userContentController.add(handler, name:)` then retains the
@@ -81,7 +81,7 @@ class NativeWebviewMessageBridge: NSObject, WKScriptMessageHandler {
 }
 
 /// Native webview plugin — iOS backend of the cross-platform lifecycle protocol.
-/// See docs/Lifecycle and Races.md for the shared model; this type implements it
+/// See docs/Lifecycle and Races Explanation.md for the shared model; this type implements it
 /// with a `WKWebView` inside a `UINavigationController` presented as a page sheet.
 ///
 /// Orientation: `openUrl` builds (HIDDEN if absent) and navigates without
@@ -95,7 +95,7 @@ class NativeWebviewPlugin: Plugin {
   static let messageHandlerName = "nativeWebview"
 
   /// Idle teardown backstop duration (mobile 5-min idle) — see Teardown
-  /// backstops in docs/Lifecycle and Races.md.
+  /// backstops in docs/Lifecycle and Races Explanation.md.
   static let idleTeardownSeconds: TimeInterval = 5 * 60
 
   /// The current `WKWebView`, if any. Held STRONGLY so a hidden instance stays
@@ -121,18 +121,18 @@ class NativeWebviewPlugin: Plugin {
   /// Deferred replay armed by the dispose→open switch-demo race: a closure that
   /// presents the fresh instance, run from `handleDisposed` once teardown
   /// completes (and which then suppresses the `disposed` echo). See "The
-  /// dispose→open switch-demo race" in docs/Lifecycle and Races.md.
+  /// dispose→open \"switch-demo\" race" in docs/Lifecycle and Races Explanation.md.
   private var onDisposeFinishedHandler: (() -> Void)?
 
   /// The `Invoke` owned by [`onDisposeFinishedHandler`], held separately so a
   /// second `openUrl()` superseding a still-queued one can reject it (no timeout
-  /// on `openUrl`). See "The dispose→open switch-demo race".
+  /// on `openUrl`). See "The dispose→open \"switch-demo\" race".
   private var pendingInvoke: Invoke?
 
   /// The `disposing` flag of the switch-demo race guard: set between a `dispose`
   /// (host or idle backstop) and the `handleDisposed` that completes teardown. A
   /// same-tick `openUrl` queues a replay only when set; a `hide` leaves it false
-  /// and rewires in place. See "The dispose→open switch-demo race".
+  /// and rewires in place. See "The dispose→open \"switch-demo\" race".
   private var isDisposing = false
 
   /// Idle teardown timer (Teardown backstops). Fires on the main run loop.
@@ -154,7 +154,7 @@ class NativeWebviewPlugin: Plugin {
       // Dispose→open switch-demo race: a dispose teardown is in flight, so queue
       // a replay (run from `handleDisposed`) instead of re-wiring the doomed
       // instance. A HIDE never arms `isDisposing`, so it falls through to the
-      // Re-open rewire branch below. See docs/Lifecycle and Races.md.
+      // Re-open rewire branch below. See docs/Lifecycle and Races Explanation.md.
       if self.isDisposing {
         // Supersede any already-queued openUrl so its `await` isn't left hung
         // (last-write-wins would otherwise drop its `resolve`).
@@ -180,7 +180,7 @@ class NativeWebviewPlugin: Plugin {
       // place, PRESERVE visibility (do NOT present). The new `initScript` is
       // `eval`'d into the current page and re-registered as document-start for
       // future loads; `reopen` resets the URL-fallback claim state. See
-      // docs/Lifecycle and Races.md.
+      // docs/Lifecycle and Races Explanation.md.
       if let existing = self.currentWebView, let bridge = self.currentBridge {
         bridge.channel = args.nativeWebviewEventChannel
         if let initScript = args.initScript {
@@ -233,7 +233,7 @@ class NativeWebviewPlugin: Plugin {
       self.cancelIdleTimer()
       // Dispose teardown in flight: nothing presentable (presenting would race
       // UIKit's dismiss-in-progress no-op and desync `isVisible` on a doomed
-      // instance). See "The dispose→open switch-demo race".
+      // instance). See "The dispose→open \"switch-demo\" race".
       if self.isDisposing {
         invoke.resolve(["requestCausedShow": false])
         return
@@ -279,7 +279,7 @@ class NativeWebviewPlugin: Plugin {
   /// (controller / WKWebView / bridge). Emits `NativeWebviewEvent.disposed` and
   /// cancels the idle timer. Resolves `{requestCausedDispose: false}` when none
   /// existed, `true` once torn down. See "User dismissal hides; only `dispose`
-  /// tears down" in docs/Lifecycle and Races.md.
+  /// tears down" in docs/Lifecycle and Races Explanation.md.
   @objc public func dispose(_ invoke: Invoke) throws {
     DispatchQueue.main.async {
       self.cancelIdleTimer()
@@ -288,7 +288,7 @@ class NativeWebviewPlugin: Plugin {
         return
       }
       // Arm the switch-demo race guard before teardown; cleared in
-      // `handleDisposed`. See "The dispose→open switch-demo race".
+      // `handleDisposed`. See "The dispose→open \"switch-demo\" race".
       self.isDisposing = true
       controller.requestDispose(wasVisible: self.isVisible)
       invoke.resolve(["requestCausedDispose": true])
@@ -380,7 +380,7 @@ class NativeWebviewPlugin: Plugin {
   /// React to the instance being torn down — shared by a host `dispose()`, the
   /// idle backstop, and natural teardown (controller deinit). Frees captured
   /// state and, unless a switch-demo replay was queued, emits `disposed`. See
-  /// "The dispose→open switch-demo race".
+  /// "The dispose→open \"switch-demo\" race".
   private func handleDisposed() {
     self.cancelIdleTimer()
     // Read the latest (possibly re-wired) channel BEFORE clearing the bridge so
@@ -394,7 +394,7 @@ class NativeWebviewPlugin: Plugin {
     self.isVisible = false
     self.isDisposing = false
     // If a switch-demo replay was queued, run it and suppress the `disposed`
-    // echo; otherwise emit `disposed`. See "The dispose→open switch-demo race".
+    // echo; otherwise emit `disposed`. See "The dispose→open \"switch-demo\" race".
     if let pending = self.onDisposeFinishedHandler {
       self.onDisposeFinishedHandler = nil
       self.pendingInvoke = nil
@@ -632,7 +632,7 @@ class NativeWebviewController: UIViewController, UIAdaptivePresentationControlle
 
   /// Chrome URL-fallback state. `url` is the live page URL painted into the
   /// highest unclaimed slot; `titleClaimed` / `subtitleClaimed` record caller
-  /// claims. See Chrome URL-fallback in docs/Lifecycle and Races.md.
+  /// claims. See Chrome URL-fallback in docs/Lifecycle and Races Explanation.md.
   private var url: String
   private var titleClaimed = false
   private var subtitleClaimed = false

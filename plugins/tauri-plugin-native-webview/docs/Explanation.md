@@ -13,7 +13,7 @@ liveness are independent concerns**: `open_url` navigates without presenting,
 
 The cross-platform protocols the three backends share — the lifecycle, the
 dispose→open switch race, teardown backstops, the chrome URL-fallback, and the
-re-open rewire — live in [Lifecycle and Races.md](./Lifecycle%20and%20Races.md);
+re-open rewire — live in [Lifecycle and Races Explanation.md](./Lifecycle%20and%20Races%20Explanation.md);
 the backends' inline comments point there rather than re-deriving them.
 
 - `open_url(url, initScript, nativeWebviewEventChannel, initialTitle?, initialSubtitle?, initialMessage?)` — ensure the native webview exists (created **hidden** if absent) and navigate it to `url`. Does **not** present it.

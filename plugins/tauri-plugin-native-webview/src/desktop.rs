@@ -3,7 +3,7 @@
 //! chrome bar (title / subtitle / message + back / forward / refresh) anchored
 //! at the top and the external content webview below, sharing one parent
 //! `Window`. The cross-platform lifecycle/race protocols this implements live in
-//! [docs/Lifecycle and Races.md](../docs/Lifecycle%20and%20Races.md); the
+//! [docs/Lifecycle and Races Explanation.md](../docs/Lifecycle%20and%20Races%20Explanation.md); the
 //! higher-level "what / why" in [docs/Explanation.md](../docs/Explanation.md).
 //!
 //! ## Chrome ↔ Rust IPC
@@ -44,7 +44,7 @@ use crate::models::{EvaluateJsRequest, NativeWebviewEvent, OpenRequest, PatchWin
 /// `capabilities/native-webview-window.json` keys on it to scope the grant.
 const WINDOW_LABEL: &str = "native-webview";
 
-/// Teardown backstop — see docs/Lifecycle and Races.md § "Teardown backstops"
+/// Teardown backstop — see docs/Lifecycle and Races Explanation.md § "Teardown backstops"
 /// (desktop's absolute-lifetime cap; re-armed per `open_url` via
 /// [`arm_absolute_timeout`], superseded via [`PluginState::timeout_generation`]).
 const ABSOLUTE_TIMEOUT: Duration = Duration::from_secs(15 * 60);
@@ -78,12 +78,12 @@ const WINDOW_TEXT_FN: &str = "window.__nativeWebviewPatchWindowText";
 const CHROME_NAV_STATE_FN: &str = "window.__nativeWebviewSetNavState";
 
 /// Rust → chrome URL push, invoked from `on_page_load` (Started) to keep the
-/// URL-fallback in sync with navigation — see docs/Lifecycle and Races.md
+/// URL-fallback in sync with navigation — see docs/Lifecycle and Races Explanation.md
 /// § "Chrome URL-fallback".
 const CHROME_SET_URL_FN: &str = "window.__nativeWebviewSetUrl";
 
 /// Rust → chrome reset push for an in-place re-open (see [`apply_rewire`] and
-/// docs/Lifecycle and Races.md § "Re-open rewire"): clears the chrome's claim
+/// docs/Lifecycle and Races Explanation.md § "Re-open rewire"): clears the chrome's claim
 /// state + slots, seeds the new URL, re-applies the caller's initial chrome.
 const CHROME_RESET_TEXT_FN: &str = "window.__nativeWebviewResetWindowText";
 
@@ -99,7 +99,7 @@ const CHROME_HTML_TEMPLATE: &str = include_str!("chrome.html");
 /// runtime with the JSON the chrome's inline script seeds itself from.
 const CHROME_STATE_PLACEHOLDER: &str = "__INITIAL_STATE__";
 
-/// Seed state for the chrome's URL-fallback (see docs/Lifecycle and Races.md
+/// Seed state for the chrome's URL-fallback (see docs/Lifecycle and Races Explanation.md
 /// § "Chrome URL-fallback"), serialised to JSON and substituted into
 /// [`CHROME_STATE_PLACEHOLDER`]. Site-specific: a `None` slot serialises to JSON
 /// `null` = "caller hasn't claimed this slot".
@@ -119,7 +119,7 @@ struct InitialChromeState<'a> {
 /// `textContent`, never `innerHTML`); the one escape that matters is `<` in the
 /// JSON, replaced with its `<` unicode escape so a value containing
 /// `</script>` can't break out of the inline `<script>` (see the
-/// `escapes_script_breakout` test). Errors surface through `crate::Result`
+/// `build_chrome_data_url_escapes_script_breakout` test). Errors surface through `crate::Result`
 /// rather than `.expect` so a future template change that produces an invalid
 /// URL fails the `open` cleanly instead of panicking.
 fn build_chrome_data_url(state: &InitialChromeState) -> crate::Result<Url> {
@@ -147,7 +147,7 @@ pub fn init<R: Runtime, C: DeserializeOwned>(
 }
 
 /// App-managed coordination state for the dispose→open "switch-demo" race —
-/// see docs/Lifecycle and Races.md § "The dispose→open \"switch-demo\" race".
+/// see docs/Lifecycle and Races Explanation.md § "The dispose→open \"switch-demo\" race".
 ///
 /// Site-specific: `WebviewWindow::close()` only *queues* a `WindowMessage::Close`
 /// via the runtime proxy (`runtime-wry/lib.rs::WindowDispatcher::close`) and
@@ -171,7 +171,7 @@ pub struct NativeWebview<R: Runtime>(AppHandle<R>);
 
 impl<R: Runtime> NativeWebview<R> {
     /// Build (if absent) and navigate the native webview to `url` without
-    /// presenting it — see docs/Lifecycle and Races.md § "Visibility, liveness,
+    /// presenting it — see docs/Lifecycle and Races Explanation.md § "Visibility, liveness,
     /// and existence are independent". Window creation is marshalled onto the
     /// main thread (required on macOS); the result returns via a `sync_channel`.
     ///
@@ -227,7 +227,7 @@ impl<R: Runtime> NativeWebview<R> {
     }
 
     /// Present the native webview window (built hidden by [`open_url`]) — see
-    /// docs/Lifecycle and Races.md § "Visibility, liveness, and existence are
+    /// docs/Lifecycle and Races Explanation.md § "Visibility, liveness, and existence are
     /// independent". Reveals immediately; a `show()` before the content's first
     /// paint may briefly flash the window background on macOS dark mode —
     /// accepted. Idempotent — no-op if no window exists.
@@ -240,7 +240,7 @@ impl<R: Runtime> NativeWebview<R> {
     }
 
     /// Hide the window but keep it (and its child webviews) alive and running —
-    /// see docs/Lifecycle and Races.md § "User dismissal hides; only `dispose`
+    /// see docs/Lifecycle and Races Explanation.md § "User dismissal hides; only `dispose`
     /// tears down". Emits [`NativeWebviewEvent::Hidden`]. Idempotent — no-op if
     /// no window exists.
     ///
@@ -263,7 +263,7 @@ impl<R: Runtime> NativeWebview<R> {
     /// Dispose the native webview window — tear it down and free its resources;
     /// the `Destroyed` handler emits [`NativeWebviewEvent::Disposed`]. Flips
     /// [`PluginState::disposing`] before closing so a racing same-tick
-    /// `open_url()` defers — see [`PluginState`] and docs/Lifecycle and Races.md
+    /// `open_url()` defers — see [`PluginState`] and docs/Lifecycle and Races Explanation.md
     /// § "The dispose→open \"switch-demo\" race". Idempotent — no-op if no window.
     pub fn dispose(&self) -> crate::Result<()> {
         let Some(window) = self.0.get_window(WINDOW_LABEL) else {
@@ -313,10 +313,10 @@ fn arm_absolute_timeout<R: Runtime>(app: &AppHandle<R>) {
 
 /// Build or re-target the native webview. Three branches:
 /// - **Disposing in flight**: defer into [`PluginState::pending_reopen`] for the
-///   `CloseRequested` handler to replay — see docs/Lifecycle and Races.md
+///   `CloseRequested` handler to replay — see docs/Lifecycle and Races Explanation.md
 ///   § "The dispose→open \"switch-demo\" race".
 /// - **Already open**: replay onto the existing webviews via [`apply_rewire`] —
-///   see docs/Lifecycle and Races.md § "Re-open rewire".
+///   see docs/Lifecycle and Races Explanation.md § "Re-open rewire".
 /// - **Fresh build**: construct the parent window, chrome + content child
 ///   webviews, and install the resize / close / destroy listeners.
 fn present<R: Runtime>(
@@ -439,7 +439,7 @@ fn present<R: Runtime>(
     if let Some(script) = init_script {
         content_builder = content_builder.initialization_script(script);
     }
-    // Sync the chrome URL fallback (see docs/Lifecycle and Races.md § "Chrome
+    // Sync the chrome URL fallback (see docs/Lifecycle and Races Explanation.md § "Chrome
     // URL-fallback") + back/forward state on each page load. `Started` (not
     // `Finished`) so it lands as the navigation commits. See [`NavState`].
     let app_for_loads = app.clone();
@@ -509,7 +509,7 @@ struct AppliedLayout(Mutex<Option<(f64, f64, f64)>>);
 /// fire on. Set per open by [`install_native_webview_state`] and re-bound by
 /// [`apply_rewire`] so a second `open()` routes subsequent events (the `Hidden`
 /// from a dismissal, the `Disposed` from `Destroyed`) to the latest caller —
-/// see docs/Lifecycle and Races.md § "Re-open rewire".
+/// see docs/Lifecycle and Races Explanation.md § "Re-open rewire".
 struct CurrentChannel(Mutex<Channel<NativeWebviewEvent>>);
 
 /// Per-native-webview Rust-side approximation of the content webview's nav
@@ -590,7 +590,7 @@ fn install_native_webview_state<R: Runtime>(
 
 /// Replay an `open` request onto the existing chrome + content webviews
 /// (rebind channel, re-eval init script, re-apply initial chrome, navigate) —
-/// see docs/Lifecycle and Races.md § "Re-open rewire". The init script lands via
+/// see docs/Lifecycle and Races Explanation.md § "Re-open rewire". The init script lands via
 /// `eval` (not document-start: Tauri has no API to swap that hook post-build);
 /// harmless here since the sniffer's script is stable across opens.
 fn apply_rewire<R: Runtime>(
@@ -685,7 +685,7 @@ fn apply_chrome_height<R: Runtime>(
 /// - **Resized**: re-lay chrome (top) + content (rest) at the stored
 ///   [`ChromeHeight`] so they always tile the parent exactly.
 /// - **CloseRequested**: titlebar X (no `disposing`) → user dismissal: hide +
-///   emit `Hidden` (docs/Lifecycle and Races.md § "User dismissal hides; only
+///   emit `Hidden` (docs/Lifecycle and Races Explanation.md § "User dismissal hides; only
 ///   `dispose` tears down"). `disposing` set → resolve the dispose→open race via
 ///   [`PluginState::pending_reopen`] (§ "The dispose→open \"switch-demo\" race").
 /// - **Destroyed**: emit `Disposed` and clear [`PluginState::disposing`].

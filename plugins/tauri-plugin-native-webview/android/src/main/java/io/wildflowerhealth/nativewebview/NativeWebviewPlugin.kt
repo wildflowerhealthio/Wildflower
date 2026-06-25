@@ -84,7 +84,7 @@ class PatchWindowTextArgs {
  * page's opaque JSON messages to the host webview via the plugin event channel.
  *
  * The cross-platform lifecycle/race protocols this backend implements are
- * documented once in docs/Lifecycle and Races.md; the inline comments below
+ * documented once in docs/Lifecycle and Races Explanation.md; the inline comments below
  * point at its sections rather than re-deriving them per platform.
  */
 @TauriPlugin
@@ -96,7 +96,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
         /** Menu item id for the top-toolbar Refresh action. */
         private const val MENU_ITEM_REFRESH = 1
 
-        /** Teardown backstop — see docs/Lifecycle and Races.md § "Teardown backstops" (mobile 5-min idle). */
+        /** Teardown backstop — see docs/Lifecycle and Races Explanation.md § "Teardown backstops" (mobile 5-min idle). */
         private const val IDLE_TEARDOWN_MS = 5L * 60L * 1000L
 
         // App palette as 0xAARRGGBB ints, one pair per token. Same tokens as the
@@ -117,7 +117,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
     /**
      * Whether the current native webview is presently on screen. Tracked
      * explicitly because a hidden instance is kept alive — see
-     * docs/Lifecycle and Races.md § "Visibility, liveness, and existence are independent"
+     * docs/Lifecycle and Races Explanation.md § "Visibility, liveness, and existence are independent"
      * ([Dialog.isShowing] conflates visibility with existence).
      */
     private var isVisible = false
@@ -135,7 +135,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
     private var currentMessageView: TextView? = null
 
     /**
-     * Chrome URL-fallback state — see docs/Lifecycle and Races.md § "Chrome URL-fallback".
+     * Chrome URL-fallback state — see docs/Lifecycle and Races Explanation.md § "Chrome URL-fallback".
      * [currentUrl] tracks the live page URL (updated via [onNavigate]);
      * [titleClaimed] / [subtitleClaimed] flip true once the caller supplies that
      * field. All three reset per open ([present] or an in-place re-wire).
@@ -151,12 +151,12 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
      * Handle for the WebView's installed document-start script, when the provider
      * supports `DOCUMENT_START_SCRIPT`. Retained so a re-open can
      * [ScriptHandler.remove] the prior script before adding the new one — see
-     * docs/Lifecycle and Races.md § "Re-open rewire". Cleared on dismiss.
+     * docs/Lifecycle and Races Explanation.md § "Re-open rewire". Cleared on dismiss.
      */
     private var currentDocStartScript: ScriptHandler? = null
 
     /**
-     * Switch-demo race guard — see docs/Lifecycle and Races.md § "The dispose→open \"switch-demo\" race".
+     * Switch-demo race guard — see docs/Lifecycle and Races Explanation.md § "The dispose→open \"switch-demo\" race".
      * Set in [disposeDialog] before the dispose [Dialog.dismiss], cleared in the
      * dispose's `setOnDismissListener`; covers the gap during which
      * `Dialog.dismiss()` has only enqueued teardown. Set ONLY by a dispose, never
@@ -164,10 +164,10 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
      */
     private var isDisposing = false
 
-    /** Deferred replay closure for the switch-demo race — see docs/Lifecycle and Races.md § "The dispose→open \"switch-demo\" race". Last-write-wins. */
+    /** Deferred replay closure for the switch-demo race — see docs/Lifecycle and Races Explanation.md § "The dispose→open \"switch-demo\" race". Last-write-wins. */
     private var onDisposeFinishedHandler: (() -> Unit)? = null
 
-    /** The [Invoke] owned by [onDisposeFinishedHandler], held separately so a superseding `openUrl()` can reject it — see docs/Lifecycle and Races.md § "The dispose→open \"switch-demo\" race". */
+    /** The [Invoke] owned by [onDisposeFinishedHandler], held separately so a superseding `openUrl()` can reject it — see docs/Lifecycle and Races Explanation.md § "The dispose→open \"switch-demo\" race". */
     private var pendingInvoke: Invoke? = null
 
     /** Main-looper handler the idle teardown backstop posts on (keeps teardown on the UI thread). See [idleTeardownRunnable]. */
@@ -178,7 +178,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
         get() = dialog != null && !isVisible
 
     /**
-     * Teardown backstop action — see docs/Lifecycle and Races.md § "Teardown backstops".
+     * Teardown backstop action — see docs/Lifecycle and Races Explanation.md § "Teardown backstops".
      * Auto-`dispose`s the instance after [IDLE_TEARDOWN_MS] hidden + idle; guards
      * on [hasHiddenInstance] so a `show`/`dispose` that landed first is a no-op.
      */
@@ -201,7 +201,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
         activity.runOnUiThread {
             resetIdleTimer() // a command counts as activity
             // Dispose in flight — queue a deferred replay rather than rewiring a
-            // doomed WebView. See docs/Lifecycle and Races.md § "The dispose→open
+            // doomed WebView. See docs/Lifecycle and Races Explanation.md § "The dispose→open
             // \"switch-demo\" race".
             if (isDisposing) {
                 // Supersede any already-queued openUrl: reject its invoke so its
@@ -229,7 +229,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
             val bridge = currentBridge
             val d = dialog
             // Existing instance, not being disposed: rewire it in place — see
-            // docs/Lifecycle and Races.md § "Re-open rewire". (Visibility is
+            // docs/Lifecycle and Races Explanation.md § "Re-open rewire". (Visibility is
             // preserved; we do NOT show here.)
             if (existing != null && bridge != null && d != null) {
                 bridge.channel = args.nativeWebviewEventChannel
@@ -316,7 +316,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
                 invoke.resolve(result)
                 return@runOnUiThread
             }
-            // Chrome URL-fallback — see docs/Lifecycle and Races.md § "Chrome URL-fallback" (null = unchanged; any value, incl. "", claims the slot).
+            // Chrome URL-fallback — see docs/Lifecycle and Races Explanation.md § "Chrome URL-fallback" (null = unchanged; any value, incl. "", claims the slot).
             applyWindowText(args.title, args.subtitle, args.message)
             val result = JSObject()
             result.put("set", true)
@@ -337,7 +337,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
         activity.runOnUiThread {
             cancelIdleTimer()
             // Dispose teardown in flight — nothing presentable; showing the doomed
-            // dialog would be a use-after-destroy. See docs/Lifecycle and Races.md
+            // dialog would be a use-after-destroy. See docs/Lifecycle and Races Explanation.md
             // § "The dispose→open \"switch-demo\" race".
             if (isDisposing) {
                 val result = JSObject()
@@ -370,7 +370,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
 
     /**
      * Hide the native webview — remove it from view but keep it alive and
-     * running. Routes through [hideDialog]. See docs/Lifecycle and Races.md
+     * running. Routes through [hideDialog]. See docs/Lifecycle and Races Explanation.md
      * § "User dismissal hides; only `dispose` tears down". Resolves with
      * `{requestCausedHide: false}` when nothing was visible, `true` once hidden.
      */
@@ -396,7 +396,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
      * Dispose the native webview — tear it down and free its resources (the
      * `Dialog`, the `WebView`, and its `@JavascriptInterface`). Routes through
      * [disposeDialog]; the dispose's `setOnDismissListener` emits
-     * `NativeWebviewEvent::Disposed`. See docs/Lifecycle and Races.md
+     * `NativeWebviewEvent::Disposed`. See docs/Lifecycle and Races Explanation.md
      * § "User dismissal hides; only `dispose` tears down". Resolves with
      * `{requestCausedDispose: false}` when none existed, `true` once torn down.
      */
@@ -421,7 +421,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
     /**
      * Remove the native webview from view while keeping it alive — the shared
      * landing point for a host [hide] and a USER dismissal (Toolbar Close /
-     * system back). See docs/Lifecycle and Races.md § "User dismissal hides;
+     * system back). See docs/Lifecycle and Races Explanation.md § "User dismissal hides;
      * only `dispose` tears down". Android mechanism: `dialog.hide()` does NOT
      * fire `setOnDismissListener` (only `dismiss()` does), so nothing is torn
      * down. Emits `Hidden` on the latest channel and arms the idle backstop.
@@ -444,7 +444,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
      * Tear the native webview down — the single teardown path for host `dispose`
      * and the idle backstop. Sets [isDisposing] (the switch-demo race guard) then
      * `dialog.dismiss()`, whose `setOnDismissListener` does the actual WebView
-     * teardown + `Disposed` emit. See docs/Lifecycle and Races.md
+     * teardown + `Disposed` emit. See docs/Lifecycle and Races Explanation.md
      * § "The dispose→open \"switch-demo\" race". Android mechanism: `dismiss()`
      * fires the listener even for a hidden (not-dismissed) dialog, so a dispose
      * of a hidden instance still tears down.
@@ -459,7 +459,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
     /**
      * (Re)arm the idle teardown backstop to fire [IDLE_TEARDOWN_MS] from now,
      * but only while hidden. Called on every activity (inbound bridge message or
-     * any command). See docs/Lifecycle and Races.md § "Teardown backstops".
+     * any command). See docs/Lifecycle and Races Explanation.md § "Teardown backstops".
      */
     private fun resetIdleTimer() {
         idleHandler.removeCallbacks(idleTeardownRunnable)
@@ -475,7 +475,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
 
     /**
      * Apply caller-supplied window text and re-paint the URL fallback — see
-     * docs/Lifecycle and Races.md § "Chrome URL-fallback". `null` = leave
+     * docs/Lifecycle and Races Explanation.md § "Chrome URL-fallback". `null` = leave
      * unchanged; any present value (incl. `""`) claims that slot. Shared by
      * `openUrl`'s initial chrome, `patchWindowText`, and the re-wire path.
      */
@@ -492,7 +492,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
         renderUrlFallback()
     }
 
-    /** Paint [currentUrl] into the highest unclaimed slot — see docs/Lifecycle and Races.md § "Chrome URL-fallback". Claimed slots are never overwritten here. */
+    /** Paint [currentUrl] into the highest unclaimed slot — see docs/Lifecycle and Races Explanation.md § "Chrome URL-fallback". Claimed slots are never overwritten here. */
     private fun renderUrlFallback() {
         if (!titleClaimed) {
             currentToolbar?.title = currentUrl.ifEmpty { null }
@@ -501,7 +501,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
         }
     }
 
-    /** Sync the URL fallback to a navigation (called from `onPageStarted`) — see docs/Lifecycle and Races.md § "Chrome URL-fallback". */
+    /** Sync the URL fallback to a navigation (called from `onPageStarted`) — see docs/Lifecycle and Races Explanation.md § "Chrome URL-fallback". */
     private fun onNavigate(newUrl: String) {
         currentUrl = newUrl
         renderUrlFallback()
@@ -522,7 +522,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
         currentWebView = webView
 
         // Reset the URL-fallback state for this fresh native webview — see
-        // docs/Lifecycle and Races.md § "Chrome URL-fallback".
+        // docs/Lifecycle and Races Explanation.md § "Chrome URL-fallback".
         currentUrl = url
         titleClaimed = false
         subtitleClaimed = false
@@ -581,7 +581,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
                 activity.getDrawable(R.drawable.nwv_ic_close)
                     ?.apply { setTint(colorNeutral1) }
             // Toolbar Close is a USER dismissal — HIDE, not teardown. See
-            // docs/Lifecycle and Races.md § "User dismissal hides; only `dispose` tears down".
+            // docs/Lifecycle and Races Explanation.md § "User dismissal hides; only `dispose` tears down".
             setNavigationOnClickListener { hideDialog() }
             // Refresh action on the top-right. `OnMenuItemClickListener` fires
             // for any menu item; we dispatch by id rather than collecting per
@@ -637,7 +637,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
         currentMessageView = messageView
 
         // Apply caller-supplied initial chrome before the dialog shows so the bar
-        // is correct on first paint — see docs/Lifecycle and Races.md § "Chrome URL-fallback".
+        // is correct on first paint — see docs/Lifecycle and Races Explanation.md § "Chrome URL-fallback".
         applyWindowText(initialTitle, initialSubtitle, initialMessage)
 
         val bottomBar = LinearLayout(activity).apply {
@@ -673,7 +673,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
                     view.evaluateJavascript(initScript, null)
                 }
                 // Keep the URL fallback in sync with navigation (at commit time,
-                // matching desktop) — see docs/Lifecycle and Races.md § "Chrome URL-fallback".
+                // matching desktop) — see docs/Lifecycle and Races Explanation.md § "Chrome URL-fallback".
                 pageUrl?.let { onNavigate(it) }
             }
 
@@ -728,7 +728,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
                         true
                     } else {
                         // System back at the root of history is a USER dismissal —
-                        // HIDE, not teardown. See docs/Lifecycle and Races.md
+                        // HIDE, not teardown. See docs/Lifecycle and Races Explanation.md
                         // § "User dismissal hides; only `dispose` tears down".
                         hideDialog()
                         true
@@ -763,12 +763,12 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
             }
             // The unconditional teardown path: `dismiss()` fires this ONLY from a
             // [disposeDialog] — [hideDialog]'s `dialog.hide()` does not. Free the
-            // WebView and emit `disposed`. See docs/Lifecycle and Races.md
+            // WebView and emit `disposed`. See docs/Lifecycle and Races Explanation.md
             // § "User dismissal hides; only `dispose` tears down".
             setOnDismissListener {
                 // Read the latest (possibly rewired) channel BEFORE dropping the
                 // bridge so the `disposed` echo follows a re-open to its newest
-                // caller — see docs/Lifecycle and Races.md § "Re-open rewire".
+                // caller — see docs/Lifecycle and Races Explanation.md § "Re-open rewire".
                 val disposeChannel = currentBridge?.channel ?: channel
                 // Tear down THIS dialog's WebView (the `webView` local captured at
                 // present() time) so a dispose doesn't leak a fully-loaded WebView,
@@ -789,7 +789,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
                 isDisposing = false
                 // If `openUrl()` queued a replay during the dispose, run it and
                 // skip the `disposed` echo; otherwise emit `disposed`. See
-                // docs/Lifecycle and Races.md § "The dispose→open \"switch-demo\" race".
+                // docs/Lifecycle and Races Explanation.md § "The dispose→open \"switch-demo\" race".
                 val pending = onDisposeFinishedHandler
                 onDisposeFinishedHandler = null
                 if (pending != null) {
@@ -810,7 +810,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
     }
 
     /**
-     * Activity-destroy teardown backstop — see docs/Lifecycle and Races.md
+     * Activity-destroy teardown backstop — see docs/Lifecycle and Races Explanation.md
      * § "Teardown backstops". When the host Activity is destroyed with an
      * instance still alive, dispose it so it doesn't leak and the host still sees
      * a terminal `disposed`. Mirrors the iOS controller-`deinit` backstop;
@@ -827,7 +827,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
      * JS -> native bridge surface exposed as `window.nativeWebview`. Each native
      * webview gets its own `Bridge` so events route to the matching caller's
      * channel. `channel` is `var` so a re-open can swap it without rebuilding the
-     * WebView (see docs/Lifecycle and Races.md § "Re-open rewire"); [onActivity]
+     * WebView (see docs/Lifecycle and Races Explanation.md § "Re-open rewire"); [onActivity]
      * resets the idle teardown backstop (§ "Teardown backstops").
      */
     inner class Bridge(var channel: Channel) {
