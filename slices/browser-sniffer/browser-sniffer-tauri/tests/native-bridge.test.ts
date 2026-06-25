@@ -18,6 +18,17 @@ type BridgeGlobals = typeof globalThis & {
 
 const globals = globalThis as BridgeGlobals
 
+/**
+ * Invoke the installed native receiver global, re-reading it through a fresh
+ * `globalThis` view each call. Going through a fresh expression (not the
+ * module-scope `globals` binding) keeps an in-body `delete globals.__nativeWebviewReceive`
+ * from narrowing the call target to `undefined` — the receiver is reinstalled by
+ * a later `makeNativeBridgeEventBus()` that TS can't see into.
+ */
+const fireReceive = (json: string): void => {
+  ;(globalThis as BridgeGlobals).__nativeWebviewReceive?.(json)
+}
+
 /** A `postMessage` capture: the install fn plus the typed list of strings it received. */
 const capturePosts = (): {
   readonly posts: string[]
@@ -87,9 +98,7 @@ describe('makeNativeBridgeEventBus — inbound (listen)', () => {
     const handler = vi.fn()
     void bus.listen('bridge', handler)
 
-    globals.__nativeWebviewReceive?.(
-      JSON.stringify({ event: 'bridge', payload: { _tag: 'Click', x: 1, y: 2 } })
-    )
+    fireReceive(JSON.stringify({ event: 'bridge', payload: { _tag: 'Click', x: 1, y: 2 } }))
 
     expect(handler).toHaveBeenCalledTimes(1)
     expect(handler).toHaveBeenCalledWith({ payload: { _tag: 'Click', x: 1, y: 2 } })
@@ -100,7 +109,7 @@ describe('makeNativeBridgeEventBus — inbound (listen)', () => {
     const handler = vi.fn()
     void bus.listen('bridge', handler)
 
-    globals.__nativeWebviewReceive?.(JSON.stringify({ event: 'other', payload: {} }))
+    fireReceive(JSON.stringify({ event: 'other', payload: {} }))
 
     expect(handler).not.toHaveBeenCalled()
   })
@@ -111,7 +120,7 @@ describe('makeNativeBridgeEventBus — inbound (listen)', () => {
     const unlisten = await bus.listen('bridge', handler)
 
     unlisten()
-    globals.__nativeWebviewReceive?.(JSON.stringify({ event: 'bridge', payload: {} }))
+    fireReceive(JSON.stringify({ event: 'bridge', payload: {} }))
 
     expect(handler).not.toHaveBeenCalled()
   })
@@ -121,9 +130,45 @@ describe('makeNativeBridgeEventBus — inbound (listen)', () => {
     const handler = vi.fn()
     void bus.listen('bridge', handler)
 
-    expect(() => globals.__nativeWebviewReceive?.('not-json')).not.toThrow()
-    expect(() => globals.__nativeWebviewReceive?.('{"no":"event"}')).not.toThrow()
+    expect(() => fireReceive('not-json')).not.toThrow()
+    expect(() => fireReceive('{"no":"event"}')).not.toThrow()
     expect(handler).not.toHaveBeenCalled()
+  })
+})
+
+describe('makeNativeBridgeEventBus — singleton registry', () => {
+  test('two buses in the same context share one receiver registry', () => {
+    // A single native `__nativeWebviewReceive` global dispatches to one
+    // module-scope registry, so a second construction must NOT orphan the
+    // first's listener — both see the inbound envelope.
+    globals.nativeWebview = { postMessage: () => {} }
+    const firstHandler = vi.fn()
+    const secondHandler = vi.fn()
+    void makeNativeBridgeEventBus().listen('bridge', firstHandler)
+    void makeNativeBridgeEventBus().listen('bridge', secondHandler)
+
+    fireReceive(JSON.stringify({ event: 'bridge', payload: { _tag: 'PageLoaded' } }))
+
+    expect(firstHandler).toHaveBeenCalledTimes(1)
+    expect(secondHandler).toHaveBeenCalledTimes(1)
+  })
+
+  test('reinstalling the receiver (global deleted) clears stale listeners', () => {
+    const stale = vi.fn()
+    void makeNativeBridgeEventBus().listen('bridge', stale)
+
+    // A fresh JS context (the native plugin never deletes the receiver at
+    // runtime, but a test reset / re-injection does): with the global gone the
+    // next construction reinstalls the receiver and clears the registry, so the
+    // earlier listener can't linger and double-fire.
+    delete globals.__nativeWebviewReceive
+    const fresh = vi.fn()
+    void makeNativeBridgeEventBus().listen('bridge', fresh)
+
+    fireReceive(JSON.stringify({ event: 'bridge', payload: {} }))
+
+    expect(stale).not.toHaveBeenCalled()
+    expect(fresh).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -134,6 +179,10 @@ describe('makeNativeBridgeEventBus — round trip', () => {
         const { posts, postMessage } = capturePosts()
         globals.webkit = { messageHandlers: { nativeWebview: { postMessage } } }
 
+        // Reset the shared singleton receiver each iteration so the prior run's
+        // listener is cleared on this construction (see `installReceiverIfMissing`)
+        // rather than accumulating in the module-scope registry across runs.
+        delete globals.__nativeWebviewReceive
         const bus = makeNativeBridgeEventBus()
         const received: unknown[] = []
         void bus.listen('bridge', (event) => received.push(event.payload))
@@ -141,7 +190,7 @@ describe('makeNativeBridgeEventBus — round trip', () => {
 
         // Echo the exact wire bytes the page posted back through the inbound
         // receiver: the host re-broadcasts on the same channel.
-        globals.__nativeWebviewReceive?.(posts.at(-1) ?? '')
+        fireReceive(posts.at(-1) ?? '')
 
         expect(received).toHaveLength(1)
         // Compare JSON-encoded to sidestep -0/key-order edge cases.

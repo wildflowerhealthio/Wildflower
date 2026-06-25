@@ -9,14 +9,14 @@ A pure event-bus router. The Rust side listens on the multiplexed `BRIDGE_EVENT`
 | Tag                              | Effect                                                                                                                                                                                                                                                                             |
 | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `RequestSniffableWebView`        | Present the sniffer's native webview: `native_webview().open_url(...)` (navigate, building hidden if absent) then `native_webview().show()`. A second tag while it is up rebinds the existing native webview in place (channel + initScript + chrome + URL — see "Re-wire" below). |
-| `Open`                           | Same as `RequestSniffableWebView` plus URL-source resolution.                                                                                                                                                                                                                      |
+| `Open`                           | Decode the `Open` payload, resolve its `WebViewSource`, then `open_or_navigate` — identical in effect to `RequestSniffableWebView` (both resolve the source; the native webview is opened fresh if absent, else navigated in place). Distinct tag/payload so the SPA can drive a navigation independently of the initial present.                                                                                                                                                                                                                      |
 | `SniffingComplete`               | Dispose the native webview via `native_webview().dispose()` — the sniff is done, so its background runtime is torn down and resources freed. `SniffingComplete` is SPA-driven and terminal; the host doesn't re-emit it.                                                           |
 | `Click` / `CancelSnifferRequest` | **Mobile only**: forwarded into the native webview via `native_webview().evaluate_js(...)`. Desktop's native-webview content webview is still a Tauri webview (`__TAURI__.event.listen`) and receives Rust `app.emit('bridge', …)` directly.                                       |
 
-No Rust-side forwarding for the data plane. Sniffer-emitted `bridge:ResponseStart` / `ResponseData` / `PageLoaded` / etc. flow back over either:
+The data plane is host-mediated on **both** platforms: the content webview loads untrusted third-party content, so its web→host `bridge:ResponseStart` / `ResponseData` / `PageLoaded` / etc. never reach `BRIDGE_EVENT` straight from the page — the host allowlists the inner `_tag` (the data-plane set, excluding control tags) and re-broadcasts. Two transports, one gate:
 
-- **Mobile**: the native webview's native bridge (`webkit.messageHandlers.nativeWebview` / `window.nativeWebview`) into the plugin's per-native-webview `NativeWebviewMessageBridge` → `Channel<NativeWebviewEvent>` → `native_webview_bridge::dispatch_body` → `app.emit(BRIDGE_EVENT, inner_payload)`.
-- **Desktop**: the native webview's `__TAURI__.event.emit('bridge', …)` directly — main webview's `makeTauriTransport` listens on the same channel, and Tauri broadcasts to every webview AND to the Rust side.
+- **Mobile**: the native webview's native bridge (`webkit.messageHandlers.nativeWebview` / `window.nativeWebview`) into the plugin's per-native-webview `NativeWebviewMessageBridge` → `Channel<NativeWebviewEvent>` → `native_webview_bridge::dispatch_body` → `validate_native_webview_message` (allowlist) → `app.emit(BRIDGE_EVENT, inner_payload)`.
+- **Desktop**: the content webview is a Tauri webview but its capability withholds the bus `emit` grant, so its data plane rides the `native_webview_data_plane_emit` command → `data_plane_value_is_allowed` (the same allowlist) → `app.emit(BRIDGE_EVENT, payload)`. The main SPA webview's `makeTauriTransport` listens on the channel, and Tauri broadcasts the host re-emit to every webview AND the Rust side. See "Why the content webview can't emit control tags" below.
 
 `CollectorBridge` re-exports `BrowserSnifferBridge`'s webToHost schemas as its own hostToWeb messages, so tag names line up across the multiplexed channel either way.
 
@@ -26,16 +26,28 @@ The sniffer used to present the external URL in a Tauri `WebviewWindow`, drawing
 
 - **iOS**: real `WKWebView` in a `UINavigationController` (`.pageSheet`), native chrome (Close + page host + back/forward), document-start injection via `WKUserScript(.atDocumentStart, forMainFrameOnly: false)`, scoped JS↔native bridge through `WKScriptMessageHandler`. No `__TAURI__` exposure to the loaded page at all.
 - **Android**: `android.webkit.WebView` in a fullscreen `Dialog` + `Toolbar`, document-start injection via `WebViewCompat.addDocumentStartJavaScript(..., setOf("*"))`, scoped bridge via `@JavascriptInterface`. No `__TAURI__` exposure.
-- **Desktop**: a Tauri parent `Window` with two child webviews via `Window::add_child` — a chrome bar on top and the external URL underneath. The content webview is still a Tauri webview (so `__TAURI__` is present), scoped by `apps/wildflower-tauri/src-tauri/capabilities/native-webview-window.json` to the event bus only — matching the pre-plugin posture.
+- **Desktop**: a Tauri parent `Window` with two child webviews via `Window::add_child` — a chrome bar on top and the external URL underneath. The content webview is still a Tauri webview (so `__TAURI__` is present), scoped by `apps/wildflower-tauri/src-tauri/capabilities/native-webview-window.json` to event-bus `listen` (inbound `Click` / `CancelSnifferRequest`) plus the gated `native_webview_data_plane_emit` command — see below.
 
 The constraint that forced `WKWebView` / `WebView` (not `SFSafariViewController` / Chrome Custom Tabs): those in-app-browser components **cannot inject JavaScript**. Injection on any domain is the whole point of the sniffer.
+
+### Why the content webview can't emit control tags
+
+`withGlobalTauri: true` injects `__TAURI__` into every webview, including the content webview loading an arbitrary third-party page. Tauri's event ACL has no per-event-name scope, so a `core:event:allow-emit` grant is all-or-nothing: a page with it could call `__TAURI__.event.emit('bridge', {_tag:'SniffingComplete'})` and the host's `BRIDGE_EVENT` router would honor it — disposing the sniffer mid-capture, or steering it via `Open` / `RequestSniffableWebView`. Control tags are legitimately emitted only by the **trusted main SPA**, never the content webview.
+
+So the split is enforced at the transport/capability layer, not by event name (which can't separate them — both ride `BRIDGE_EVENT`):
+
+- The content webview's capability grants `core:event:allow-listen` + `allow-unlisten` (inbound only), **not** `allow-emit` / `allow-emit-to`.
+- Its data plane goes through `native_webview_data_plane_emit`, which allowlists the inner `_tag` to the data-plane set before re-broadcasting — so the page can reach data tags and nothing else.
+- The trusted main SPA keeps its `core:event:default` grant and emits control tags on `BRIDGE_EVENT` as before.
+
+This makes desktop match the mobile posture, where the page never had `__TAURI__` and its data plane was always gated through `validate_native_webview_message`.
 
 ## Two bootstrap variants
 
 The TS side ships two self-contained IIFEs and the Rust crate `include_str!`s the bytes of whichever variant matches the target:
 
 - `native-bootstrap.js` — used on iOS/Android. Builds a `TauriEventApi`-shaped event bus over the plugin's native bridge (`window.webkit.messageHandlers.nativeWebview` / `window.nativeWebview`) via `makeNativeBridgeEventBus`. No `__TAURI__` access.
-- `tauri-bootstrap.js` — used on desktop. Reads `globalThis.__TAURI__.event` directly. The content webview is a Tauri webview, so this works without any bridge.
+- `tauri-bootstrap.js` — used on desktop. Listens on `globalThis.__TAURI__.event` for inbound tags but routes outbound emits through the `globalThis.__TAURI__.core.invoke('native_webview_data_plane_emit', …)` command (the content webview holds no bus `emit` grant — see "Why the content webview can't emit control tags"). The content webview is a Tauri webview, so both globals are present.
 
 Both variants call `installSniffer(event)`, which wires fetch / XHR / console shims and registers a single `event.listen(BRIDGE_EVENT, …)` that demuxes inbound `Click` / `CancelSnifferRequest` by the payload's `_tag`. **No in-page `BrowserTopBar`** — the plugin draws native chrome on all three platforms, so the in-page bar is gone for good.
 
@@ -95,7 +107,7 @@ Doc-comments at the top of each file should be quick references useful on hover.
 ## Key file references
 
 - [`browser-sniffer-tauri-rust/src/lib.rs`](../browser-sniffer-tauri-rust/src/lib.rs) — entry point; wires the single bridge listener.
-- [`browser-sniffer-tauri-rust/src/sniffer_window.rs`](../browser-sniffer-tauri-rust/src/sniffer_window.rs) — the only file that calls `native_webview().open(...)`.
+- [`browser-sniffer-tauri-rust/src/sniffer_window.rs`](../browser-sniffer-tauri-rust/src/sniffer_window.rs) — the only file that calls `native_webview().open_url(...)`.
 - [`browser-sniffer-tauri-rust/src/native_webview_bridge.rs`](../browser-sniffer-tauri-rust/src/native_webview_bridge.rs) — channel handler: validates inbound native-webview `Message`s and re-emits them on `BRIDGE_EVENT`; logs `Hidden` / `Disposed` lifecycle events (non-terminal — `SniffingComplete` is SPA-driven).
 - [`browser-sniffer-tauri/src/install-sniffer.ts`](../browser-sniffer-tauri/src/install-sniffer.ts) — fetch / XHR / console shim emitting on `BRIDGE_EVENT` via `eventBus.emit`.
 - [`browser-sniffer-tauri/src/native-bridge.ts`](../browser-sniffer-tauri/src/native-bridge.ts) — `makeNativeBridgeEventBus`, the `TauriEventApi`-shaped bus over the plugin's native bridge.

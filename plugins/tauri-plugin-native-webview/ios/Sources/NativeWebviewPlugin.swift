@@ -265,6 +265,12 @@ class NativeWebviewPlugin: Plugin {
         invoke.resolve(["requestCausedHide": false])
         return
       }
+      // Flip `isVisible` synchronously (mirroring Android's `hideDialog`) so a
+      // second `hide()` racing this in-flight animated dismiss sees the new
+      // state and no-ops instead of dismissing again and double-emitting
+      // `hidden`. `handleHidden` re-sets it from the dismiss completion, which is
+      // idempotent.
+      self.isVisible = false
       // Host `hide()` shares `handleHidden()` with user dismissal, fired here
       // from the dismiss completion. See "User dismissal hides; only `dispose`
       // tears down".
@@ -370,6 +376,13 @@ class NativeWebviewPlugin: Plugin {
   /// "User dismissal hides; only `dispose` tears down".
   private func handleHidden() {
     guard self.currentController != nil else { return }
+    // A user swipe can fire `presentationControllerDidDismiss` *during* a
+    // `dispose()` whose own dismiss is still animating. Ignore it while
+    // disposing: otherwise we'd emit a spurious `hidden` and re-arm the idle
+    // timer `dispose` just cancelled, both ahead of the `disposed` that
+    // `handleDisposed` emits. Mirrors Android's `show()`-guards-on-`isDisposing`
+    // posture. See "The dispose→open \"switch-demo\" race".
+    guard !self.isDisposing else { return }
     self.isVisible = false
     // Lowercase tag matches `models.rs`; `JsonObject` pins the non-throwing send overload.
     let data: JsonObject = ["event": "hidden"]

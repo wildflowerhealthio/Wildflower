@@ -1,0 +1,22 @@
+"$schema" = "../gen/schemas/desktop-schema.json"
+
+[[permission]]
+identifier = "allow-native-webview-data-plane"
+description = """
+Grants the webview the right to invoke the app-defined
+`native_webview_data_plane_emit` command, the desktop sniffer content
+webview's gated web→host transport for its data-plane stream
+(`PageLoaded` / `ResponseStart` / `ResponseData` / `ResponseFinished` /
+`RequestError` / `Cancelled` / `Log`). The command allowlists the inner
+`_tag` host-side before re-broadcasting on the `bridge` event channel.
+
+SECURITY: this is granted to `native-webview-content` (untrusted remote
+content) *in place of* the bus `core:event:allow-emit` grant, not in
+addition to it. The whole point is that the page cannot emit on the
+`bridge` channel directly — if it could, it could forge control tags
+(`SniffingComplete` / `Open` / `RequestSniffableWebView`) that steer or
+prematurely end the trusted sniffer. The command's allowlist is the only
+sanctioned page→host emit path; do NOT re-add `core:event:allow-emit`
+(or `core:event:default`, which includes it) to that capability.
+"""
+commands.allow = ["native_webview_data_plane_emit"]

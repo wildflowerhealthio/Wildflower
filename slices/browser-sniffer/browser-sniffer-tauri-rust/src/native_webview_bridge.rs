@@ -33,10 +33,14 @@
 //!   `@JavascriptInterface` bridges → Swift/Kotlin → `channel.send`. The
 //!   plugin's Swift/Kotlin emit `Message` (envelope JSON) plus `Hidden` /
 //!   `Disposed` lifecycle events.
-//! - **Desktop**: content webview emits directly on `BRIDGE_EVENT`, so the
-//!   `Message` arm is never exercised. The plugin's desktop backend fires
-//!   `Hidden` when the user dismisses the window (it's hidden, not destroyed,
-//!   and keeps running) and `Disposed` when the window is torn down.
+//! - **Desktop**: the content webview is a Tauri webview, so the plugin
+//!   channel's `Message` arm is never exercised. Its web→host data-plane stream
+//!   instead rides the [`native_webview_data_plane_emit`] command (the page's
+//!   capability withholds a bus `emit` grant, so it can't reach `BRIDGE_EVENT`
+//!   directly — the desktop counterpart of the mobile `Message` allowlist gate).
+//!   The plugin's desktop backend still fires `Hidden` when the user dismisses
+//!   the window (it's hidden, not destroyed, and keeps running) and `Disposed`
+//!   when the window is torn down.
 
 use std::borrow::Cow;
 use std::fmt;
@@ -168,7 +172,8 @@ impl<'de> Deserialize<'de> for InnerPayload<'de> {
 /// payload to re-emit verbatim on `BRIDGE_EVENT`, or an `Err` describing why it
 /// was dropped (logged at warn by the caller).
 ///
-/// Security (this is the load-bearing guard): the native webview hosts an
+/// Security (the mobile path's load-bearing guard; the desktop content webview's
+/// counterpart is [`data_plane_value_is_allowed`]): the native webview hosts an
 /// arbitrary third-party page that can reach the native bridge directly, so both
 /// the envelope `event` and the inner `_tag` are attacker-controlled. We require
 /// the envelope target the single multiplexed `BRIDGE_EVENT` channel AND the
@@ -362,13 +367,77 @@ pub(crate) fn forward_to_native_webview(app: &AppHandle, payload_str: &str) {
     }
 }
 
+/// Validate a desktop content-webview data-plane payload before re-broadcasting
+/// it on `BRIDGE_EVENT`. The inner `_tag` must be one of the sniffer's
+/// allowlisted web→host data-plane tags ([`NATIVE_WEBVIEW_DATA_PLANE_TAGS`]) —
+/// the same gate the mobile [`validate_native_webview_message`] applies, so a
+/// hostile page can't fabricate a control tag (`SniffingComplete` / `Open` /
+/// `RequestSniffableWebView`) or a sibling slice's tag.
+///
+/// Unlike the mobile path this validates a parsed [`serde_json::Value`] rather
+/// than borrowed raw bytes, so the verbatim-re-emit / duplicate-key concern
+/// [`InnerPayload`] guards against does not apply here: the command re-emits the
+/// *same* `Value` it validated, so the bytes a downstream reader sees and the
+/// `_tag` we checked are necessarily the one and the same.
+fn data_plane_value_is_allowed(payload: &serde_json::Value) -> Result<(), Cow<'static, str>> {
+    let Some(tag) = payload.get("_tag").and_then(serde_json::Value::as_str) else {
+        return Err(Cow::Borrowed(
+            "desktop native-webview data-plane payload had a missing or non-string `_tag`",
+        ));
+    };
+    if !NATIVE_WEBVIEW_DATA_PLANE_TAGS.contains(&tag) {
+        return Err(Cow::Owned(format!(
+            "desktop native-webview data-plane tag `{tag}` is not an allowed sniffer data-plane \
+             tag; dropping"
+        )));
+    }
+    Ok(())
+}
+
+/// Desktop-only transport for the content webview's web→host data-plane stream.
+///
+/// On desktop the sniffer's content webview is a Tauri webview loading arbitrary
+/// third-party content, so it is **not** trusted to emit on `BRIDGE_EVENT`
+/// directly: `capabilities/native-webview-window.json` withholds the event-bus
+/// `emit` grant and instead allows only this command, which allowlists the inner
+/// `_tag` ([`data_plane_value_is_allowed`]) before re-broadcasting. That keeps
+/// the control plane (`SniffingComplete` / `Open` / `RequestSniffableWebView`,
+/// emitted by the trusted main SPA webview) off any surface the untrusted page
+/// can reach — the desktop counterpart of the mobile channel's
+/// [`validate_native_webview_message`] gate. Inbound `Click` /
+/// `CancelSnifferRequest` still ride the page's own `event.listen('bridge', …)`
+/// (an `allow-listen` grant), which page scripts can't spoof.
+///
+/// Best-effort, mirroring the mobile drop semantics: a rejected or unemittable
+/// payload is logged at warn and dropped — the page learns nothing about which
+/// tags are gated. Registered unconditionally in the app's `invoke_handler`; on
+/// mobile the native webview is a separate WKWebView / WebView that cannot reach
+/// Tauri commands, so it is desktop-only in practice.
+#[tauri::command]
+pub fn native_webview_data_plane_emit(app: AppHandle, payload: serde_json::Value) {
+    match data_plane_value_is_allowed(&payload) {
+        Ok(()) => {
+            if let Err(error) = app.emit(BRIDGE_EVENT, &payload) {
+                log::warn!(
+                    "[browser-sniffer] desktop native-webview data-plane re-emit failed: {error}"
+                );
+            }
+        }
+        Err(reason) => {
+            log::warn!(
+                "[browser-sniffer] desktop native-webview data-plane emit dropped: {reason}"
+            );
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use shared_structures_rust::bridge::BRIDGE_EVENT;
     use tauri_plugin_native_webview::NativeWebviewEvent;
 
     use super::{
-        classify_event, validate_native_webview_message, BridgeAction,
+        classify_event, data_plane_value_is_allowed, validate_native_webview_message, BridgeAction,
         NATIVE_WEBVIEW_DATA_PLANE_TAGS,
     };
     use crate::events;
@@ -486,6 +555,47 @@ mod tests {
             r#"{{"event":"{BRIDGE_EVENT}","payload":{{"_tag":"ResponseData","id":"a","id":"b"}}}}"#
         );
         assert!(validate_native_webview_message(&dup_other).is_err());
+    }
+
+    /// Desktop transport: an allowlisted data-plane tag passes the
+    /// [`super::native_webview_data_plane_emit`] gate, and every tag in the set
+    /// is accepted (guards a typo'd literal, mirroring the mobile path).
+    #[test]
+    fn desktop_data_plane_accepts_allowlisted_tags() {
+        for tag in NATIVE_WEBVIEW_DATA_PLANE_TAGS {
+            let payload = serde_json::json!({ "_tag": tag, "id": "r1" });
+            assert!(
+                data_plane_value_is_allowed(&payload).is_ok(),
+                "desktop data-plane tag `{tag}` should be allowed"
+            );
+        }
+    }
+
+    /// Desktop transport security: the same control tags the mobile
+    /// [`spoofed_control_tag_is_rejected`] guard blocks are rejected here too, so
+    /// a hostile content webview can't reach the command to forge them onto the
+    /// bus — the desktop counterpart of the mobile spoof-rejection guard.
+    #[test]
+    fn desktop_data_plane_rejects_spoofed_control_tags() {
+        for tag in [
+            events::SNIFFING_COMPLETE,
+            events::OPEN,
+            events::REQUEST_SNIFFABLE_WEBVIEW,
+        ] {
+            let payload = serde_json::json!({ "_tag": tag });
+            assert!(
+                data_plane_value_is_allowed(&payload).is_err(),
+                "control tag `{tag}` must not be re-emittable through the desktop command"
+            );
+        }
+    }
+
+    /// Desktop transport: a payload with no string `_tag` is dropped — there's no
+    /// discriminant to allowlist against (fail-closed, as the mobile path is).
+    #[test]
+    fn desktop_data_plane_rejects_missing_or_non_string_tag() {
+        assert!(data_plane_value_is_allowed(&serde_json::json!({ "id": "r1" })).is_err());
+        assert!(data_plane_value_is_allowed(&serde_json::json!({ "_tag": 42 })).is_err());
     }
 
     /// Dispatch classification: a `Message` wrapping an allowlisted data-plane

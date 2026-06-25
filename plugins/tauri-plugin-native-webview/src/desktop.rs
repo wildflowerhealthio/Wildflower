@@ -22,11 +22,12 @@
 //!   needs no capability entry.
 //!
 //! Caveat vs. mobile: both webviews are Tauri webviews here, so the content one
-//! still has `window.__TAURI__`; the host app's capability JSON scopes it to the
-//! event bus + log.
+//! still has `window.__TAURI__`; the host app's capability JSON scopes it to
+//! event-bus listen plus the gated `native_webview_data_plane_emit` command (no
+//! bus `emit`, no log) — see `capabilities/native-webview-window.json`.
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::Mutex;
+use std::sync::{Condvar, Mutex};
 use std::time::Duration;
 
 use base64::engine::general_purpose::STANDARD as BASE64;
@@ -142,6 +143,8 @@ pub fn init<R: Runtime, C: DeserializeOwned>(
         disposing: AtomicBool::new(false),
         pending_reopen: Mutex::new(None),
         timeout_generation: AtomicU64::new(0),
+        timeout_wait: Mutex::new(()),
+        timeout_changed: Condvar::new(),
     });
     Ok(NativeWebview(app.clone()))
 }
@@ -164,6 +167,15 @@ struct PluginState {
     /// Generation counter for the [`ABSOLUTE_TIMEOUT`] backstop (see
     /// [`arm_absolute_timeout`]).
     timeout_generation: AtomicU64,
+    /// Condvar mutex paired with [`Self::timeout_changed`]. Held only for the
+    /// brief predicate re-check inside the backstop thread's timed wait; carries
+    /// no data (the generation lives in the atomic).
+    timeout_wait: Mutex<()>,
+    /// Notified whenever [`Self::timeout_generation`] advances (a re-arm or a
+    /// teardown) so a parked backstop thread wakes the instant it's superseded
+    /// instead of lingering until [`ABSOLUTE_TIMEOUT`] — keeps ≤1 thread parked.
+    /// See [`arm_absolute_timeout`].
+    timeout_changed: Condvar,
 }
 
 /// Desktop handle to the native-webview plugin.
@@ -279,18 +291,40 @@ impl<R: Runtime> NativeWebview<R> {
 
 /// Arm (or re-arm) the [`ABSOLUTE_TIMEOUT`] backstop — see docs/Lifecycle and
 /// Races.md § "Teardown backstops". Bumps [`PluginState::timeout_generation`]
-/// (superseding any prior timer) and spawns a parked thread (no async runtime
-/// dependency; ≤1 live per presented webview) that disposes on fire iff its
-/// captured generation is still current. On fire it mirrors a host `dispose()`
-/// (set `disposing`, `window.close()`).
+/// (superseding any prior timer), wakes the prior generation's parked thread so
+/// it exits immediately, and spawns a parked thread (no async runtime
+/// dependency; ≤1 live across rapid reopens, since each re-arm releases the last)
+/// that disposes on fire iff its captured generation is still current. On fire it
+/// mirrors a host `dispose()` (set `disposing`, `window.close()`).
 fn arm_absolute_timeout<R: Runtime>(app: &AppHandle<R>) {
     let Some(state) = app.try_state::<PluginState>() else {
         return;
     };
     let generation = state.timeout_generation.fetch_add(1, Ordering::SeqCst) + 1;
+    // Release any prior generation's parked thread now that it's superseded.
+    state.timeout_changed.notify_all();
     let app = app.clone();
     std::thread::spawn(move || {
-        std::thread::sleep(ABSOLUTE_TIMEOUT);
+        let Some(state) = app.try_state::<PluginState>() else {
+            return;
+        };
+        // Park until ABSOLUTE_TIMEOUT elapses OR this generation is superseded
+        // (a re-arm or teardown bumps the generation and notifies). A poisoned
+        // condvar mutex just drops the backstop — teardown handles itself.
+        let Ok(guard) = state.timeout_wait.lock() else {
+            return;
+        };
+        let Ok((_guard, wait)) = state.timeout_changed.wait_timeout_while(
+            guard,
+            ABSOLUTE_TIMEOUT,
+            |()| state.timeout_generation.load(Ordering::SeqCst) == generation,
+        ) else {
+            return;
+        };
+        // Superseded before the timeout → this generation is stale, exit.
+        if !wait.timed_out() {
+            return;
+        }
         let handle = app.clone();
         // Window ops are main-thread on macOS. A failed marshal (app shutting
         // down) just drops the backstop — teardown is happening anyway.
@@ -298,7 +332,8 @@ fn arm_absolute_timeout<R: Runtime>(app: &AppHandle<R>) {
             let Some(state) = handle.try_state::<PluginState>() else {
                 return;
             };
-            // Stale (a reopen/teardown advanced the generation) → no-op.
+            // Stale (a reopen/teardown advanced the generation between the wait
+            // returning and this marshal) → no-op.
             if state.timeout_generation.load(Ordering::SeqCst) != generation {
                 return;
             }
@@ -498,11 +533,13 @@ fn present<R: Runtime>(
 /// the chrome → Rust height-report navigation.
 struct ChromeHeight(Mutex<f64>);
 
-/// Last `(logical_w, logical_h, chrome_height)` actually applied to the child
-/// webviews. `apply_chrome_height` short-circuits when the next layout matches,
-/// so a no-op resize tick or a message-only `patch_window_text` (which re-reports the
-/// same height) doesn't re-issue the four `set_position` / `set_size` calls
-/// across both webviews.
+/// Last `(logical_w, logical_h, chrome_height)` actually applied to **both**
+/// child webviews. `apply_chrome_height` short-circuits when the next layout
+/// matches, so a no-op resize tick or a message-only `patch_window_text` (which
+/// re-reports the same height) doesn't re-issue the four `set_position` /
+/// `set_size` calls across both webviews. Written only after both children were
+/// present and laid out — a layout attempted while a child was mid-rebuild is
+/// not recorded, so the next resize still reaches the now-present webview.
 struct AppliedLayout(Mutex<Option<(f64, f64, f64)>>);
 
 /// Per-native-webview state holding the [`Channel<NativeWebviewEvent>`] events
@@ -655,28 +692,43 @@ fn apply_chrome_height<R: Runtime>(
         }
     }
 
-    // Skip the relayout when nothing moved — see [`AppliedLayout`].
+    // Skip the relayout when the last *applied* layout matches — see [`AppliedLayout`].
     let next = (logical_w, logical_h, chrome_height);
     if let Some(applied) = window.try_state::<AppliedLayout>() {
         // A poisoned lock just forgoes the dedup (fall through + relayout).
-        if let Ok(mut guard) = applied.0.lock() {
+        if let Ok(guard) = applied.0.lock() {
             if *guard == Some(next) {
                 return;
             }
-            *guard = Some(next);
         }
     }
 
-    if let Some(chrome) = app.get_webview(CHROME_WEBVIEW_LABEL) {
+    // Lay out whichever children are present. Either can be momentarily absent
+    // mid-rebuild — a reopen tears the child webviews down and re-adds them.
+    let chrome = app.get_webview(CHROME_WEBVIEW_LABEL);
+    let content = app.get_webview(CONTENT_WEBVIEW_LABEL);
+    if let Some(chrome) = &chrome {
         let _ = chrome.set_position(LogicalPosition::<f64>::new(0.0, 0.0));
         let _ = chrome.set_size(LogicalSize::<f64>::new(logical_w, chrome_height));
     }
-    if let Some(content) = app.get_webview(CONTENT_WEBVIEW_LABEL) {
+    if let Some(content) = &content {
         let _ = content.set_position(LogicalPosition::<f64>::new(0.0, chrome_height));
         let _ = content.set_size(LogicalSize::<f64>::new(
             logical_w,
             (logical_h - chrome_height).max(0.0),
         ));
+    }
+
+    // Record the dedup key only once BOTH children were present and laid out: a
+    // key recorded while a child was still absent would make a later identical
+    // resize short-circuit and never place the now-present webview, leaving it
+    // mis-sized until some *different* resize. See [`AppliedLayout`].
+    if chrome.is_some() && content.is_some() {
+        if let Some(applied) = window.try_state::<AppliedLayout>() {
+            if let Ok(mut guard) = applied.0.lock() {
+                *guard = Some(next);
+            }
+        }
     }
 }
 
@@ -749,6 +801,12 @@ fn install_window_listeners<R: Runtime>(app: &AppHandle<R>, window: &tauri::Wind
             }
             if let Some(state) = app_window.try_state::<PluginState>() {
                 state.disposing.store(false, Ordering::SeqCst);
+                // Advance the generation + wake so the backstop thread for the
+                // now-destroyed webview exits immediately instead of parking out
+                // the full ABSOLUTE_TIMEOUT (its fire would no-op on the missing
+                // window anyway). See [`arm_absolute_timeout`].
+                state.timeout_generation.fetch_add(1, Ordering::SeqCst);
+                state.timeout_changed.notify_all();
                 // Drop any payload that raced a close-that-actually-landed (a
                 // tiny lossy edge only for off-main-thread close+open callers;
                 // the listener-thread case runs `present()` before the close).

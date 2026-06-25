@@ -28,9 +28,9 @@ pub const CANCELLED: &str = "Cancelled";
 pub const LOG: &str = "Log";
 
 /// Host→web tag literals this crate forwards into the native webview on
-/// mobile. On desktop these are picked up by the `WebviewWindow`'s own
-/// Tauri event-bus listener inside the native webview — no Rust forwarding needed
-/// — so the cfg(mobile) handlers in `lib.rs` are the only callers.
+/// mobile. On desktop these are picked up by the content webview's own Tauri
+/// event-bus listener (it holds an `allow-listen` grant) — no Rust forwarding
+/// needed — so the cfg(mobile) handlers in `lib.rs` are the only callers.
 pub const CLICK: &str = "Click";
 pub const CANCEL_SNIFFER_REQUEST: &str = "CancelSnifferRequest";
 
@@ -38,5 +38,6 @@ pub const CANCEL_SNIFFER_REQUEST: &str = "CancelSnifferRequest";
 /// `apps/wildflower-tauri/src-tauri/tauri.conf.json`. Re-exported so
 /// integration tests can drift-guard against a config rename; not
 /// referenced at runtime in this crate (the sniffer opens as a peer
-/// top-level `WebviewWindow`, not a child of the main window).
+/// top-level window — the plugin's `native-webview` window — not a child of the
+/// main window).
 pub const MAIN_WINDOW_LABEL: &str = "main";

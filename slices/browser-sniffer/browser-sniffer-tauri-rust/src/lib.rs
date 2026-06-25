@@ -14,6 +14,12 @@ use shared_structures_rust::bridge::{BridgeEnvelope, BRIDGE_EVENT};
 use tauri::{AppHandle, Listener};
 use tauri_plugin_log::log;
 
+/// The desktop content webview's gated web→host data-plane command. The app's
+/// `invoke_handler` registers it; `capabilities/native-webview-window.json`
+/// grants it only to the untrusted content webview in lieu of a bus `emit`
+/// grant. See [`native_webview_bridge::native_webview_data_plane_emit`].
+pub use native_webview_bridge::native_webview_data_plane_emit;
+
 /// Wire one listener on the multiplexed bridge event and route the
 /// CollectorBridge tags this crate cares about by the envelope's `_tag`.
 /// Idempotent at the listener level — call once per app lifecycle from
