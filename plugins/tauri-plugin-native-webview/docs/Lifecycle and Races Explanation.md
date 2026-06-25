@@ -111,7 +111,7 @@ The native chrome has three caller-facing labels — **title**, **subtitle**,
 **message** — plus the live page URL. The page URL is painted into the **highest
 slot the caller has not yet claimed**: the title until the caller supplies a
 `title`, then the subtitle until the caller supplies a `subtitle`, then neither
-(both caller-owned). A caller value of any kind — including `""` — *claims* that
+(both caller-owned). A caller value of any kind — including `""` — _claims_ that
 slot (and `""` clears the visible label); `null`/absent leaves it unchanged.
 
 State per instance: the live `currentUrl` (updated on navigation), and

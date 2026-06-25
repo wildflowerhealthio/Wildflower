@@ -14,6 +14,14 @@ import { tauriSnifferBootstrapScript } from '../src/index.ts'
  */
 const BRIDGE_EVENT = 'bridge'
 
+/**
+ * Gated host command the desktop bootstrap routes outbound data-plane emits
+ * through instead of `event.emit` (the content webview holds no bus `emit`
+ * grant). Hardcoded — like {@link BRIDGE_EVENT} — so the bootstrap's own copy
+ * can drift independently and this test catches it.
+ */
+const DATA_PLANE_EMIT_COMMAND = 'native_webview_data_plane_emit'
+
 interface EventListenEnvelope {
   readonly payload: unknown
 }
@@ -37,17 +45,22 @@ const resetSnifferGlobals = (): void => {
 }
 
 /**
- * Evaluate the IIFE bootstrap with a fake `__TAURI__.event` API attached
- * (or no `__TAURI__` at all, per options). Returns the emits the
- * bootstrap (and the wrapped sniffer) made plus a function to feed
- * inbound Tauri events at the bootstrap's listeners.
+ * Evaluate the IIFE bootstrap with a fake `__TAURI__` (`event` + `core.invoke`)
+ * attached (or no `__TAURI__` at all, per options). Returns the emits the
+ * bootstrap (and the wrapped sniffer) made plus a function to feed inbound Tauri
+ * events at the bootstrap's listeners.
+ *
+ * Outbound data-plane goes through `core.invoke(DATA_PLANE_EMIT_COMMAND, …)`
+ * (not `event.emit`), so the fake `invoke` is what captures `emits`; inbound
+ * still rides `event.listen`.
  */
 const bootBootstrap = (
-  options: { withTauri: boolean } = { withTauri: true }
+  options: { withTauri?: boolean; withCore?: boolean } = {}
 ): {
   emits: Array<{ event: string; payload: unknown }>
   fireInbound: (event: string, payload: unknown) => void
 } => {
+  const { withTauri = true, withCore = true } = options
   const emits: Array<{ event: string; payload: unknown }> = []
   const listeners = new Map<string, (event: EventListenEnvelope) => void>()
   const fakeEvent: TauriEventApi = {
@@ -59,12 +72,20 @@ const bootBootstrap = (
       return () => listeners.delete(event)
     },
   }
+  const fakeInvoke = async (command: string, args?: Record<string, unknown>): Promise<unknown> => {
+    // The gated data-plane command re-broadcasts its `payload` on BRIDGE_EVENT
+    // host-side; mirror that here so emits read the same as the old direct path.
+    if (command === DATA_PLANE_EMIT_COMMAND) {
+      emits.push({ event: BRIDGE_EVENT, payload: args?.payload })
+    }
+    return undefined
+  }
 
-  if (options.withTauri) {
+  if (withTauri) {
     Object.defineProperty(globalThis, TAURI_GLOBAL_SLOT, {
       configurable: true,
       writable: true,
-      value: { event: fakeEvent },
+      value: withCore ? { event: fakeEvent, core: { invoke: fakeInvoke } } : { event: fakeEvent },
     })
   }
 
@@ -103,7 +124,7 @@ describe('tauriSnifferBootstrapScript', () => {
     expect(declared).toEqual(['CancelSnifferRequest', 'Click'])
   })
 
-  it('installs the sniffer when window.__TAURI__.event is present', () => {
+  it('installs the sniffer when window.__TAURI__ event + core.invoke are present', () => {
     const { emits } = bootBootstrap()
     // installSniffer ran: its symbol-keyed state slot exists.
     expect(SNIFFER_STATE_SLOT in (globalThis as object)).toBe(true)
@@ -129,5 +150,13 @@ describe('tauriSnifferBootstrapScript', () => {
     bootBootstrap({ withTauri: false })
     const stateSlotPresent = SNIFFER_STATE_SLOT in (globalThis as object)
     expect(stateSlotPresent).toBe(false)
+  })
+
+  it('skips installSniffer when core.invoke is absent (no data-plane transport)', () => {
+    // The desktop sniffer's outbound data plane rides `core.invoke`, not
+    // `event.emit`; with `event` but no `core` there's no emit path, so the
+    // bootstrap no-ops rather than shimming with nowhere to send observations.
+    bootBootstrap({ withCore: false })
+    expect(SNIFFER_STATE_SLOT in (globalThis as object)).toBe(false)
   })
 })

@@ -314,11 +314,13 @@ fn arm_absolute_timeout<R: Runtime>(app: &AppHandle<R>) {
         let Ok(guard) = state.timeout_wait.lock() else {
             return;
         };
-        let Ok((_guard, wait)) = state.timeout_changed.wait_timeout_while(
-            guard,
-            ABSOLUTE_TIMEOUT,
-            |()| state.timeout_generation.load(Ordering::SeqCst) == generation,
-        ) else {
+        let Ok((_guard, wait)) =
+            state
+                .timeout_changed
+                .wait_timeout_while(guard, ABSOLUTE_TIMEOUT, |()| {
+                    state.timeout_generation.load(Ordering::SeqCst) == generation
+                })
+        else {
             return;
         };
         // Superseded before the timeout → this generation is stale, exit.
