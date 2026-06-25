@@ -18,7 +18,7 @@ jobs:
     name: Check Dependencies
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: cargo-deny — advisories
         uses: EmbarkStudios/cargo-deny-action@v2
         with:
