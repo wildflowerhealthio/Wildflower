@@ -279,9 +279,11 @@ class NativeWebviewPlugin: Plugin {
   }
 
   /// Present the native webview — bring a freshly-built or previously-hidden
-  /// instance to the foreground as a page sheet. Resolves with `{shown: false}`
-  /// when no instance exists, `{shown: true}` once presented. Cancels the
-  /// hidden-idle teardown backstop (a visible webview is never idle-reclaimed).
+  /// instance to the foreground as a page sheet. Resolves with
+  /// `{requestCausedShow: true}` only when this call actually presented it;
+  /// `{requestCausedShow: false}` when none exists or it was already visible (a
+  /// transition flag, matching `hide` / `dispose`). Cancels the hidden-idle
+  /// teardown backstop (a visible webview is never idle-reclaimed).
   @objc public func show(_ invoke: Invoke) throws {
     DispatchQueue.main.async {
       self.cancelIdleTimer()
@@ -291,33 +293,35 @@ class NativeWebviewPlugin: Plugin {
       // flipping `isVisible` true on a doomed instance — a shown-but-invisible
       // desync. Mirror `openUrl`'s `isDisposing` guard: nothing presentable.
       if self.isDisposing {
-        invoke.resolve(["shown": false])
+        invoke.resolve(["requestCausedShow": false])
         return
       }
       guard let navigation = self.currentNavigation else {
-        invoke.resolve(["shown": false])
+        invoke.resolve(["requestCausedShow": false])
         return
       }
       if self.isVisible {
-        // Already on screen — idempotent success.
-        invoke.resolve(["shown": true])
+        // Already on screen — `show` is idempotent, but no transition was
+        // caused, so report `false`.
+        invoke.resolve(["requestCausedShow": false])
         return
       }
       self.isVisible = true
       self.topViewController()?.present(navigation, animated: true)
-      invoke.resolve(["shown": true])
+      invoke.resolve(["requestCausedShow": true])
     }
   }
 
   /// Hide the native webview — remove it from view but keep it alive and
   /// running (do NOT tear it down). Emits `NativeWebviewEvent.hidden` on the
   /// channel and arms the hidden-idle teardown backstop. Resolves with
-  /// `{hidden: false}` when nothing was visible, `{hidden: true}` once hidden.
+  /// `{requestCausedHide: false}` when nothing was visible, `{requestCausedHide:
+  /// true}` once hidden.
   @objc public func hide(_ invoke: Invoke) throws {
     DispatchQueue.main.async {
       self.resetIdleTimer()
       guard self.isVisible, let navigation = self.currentNavigation else {
-        invoke.resolve(["hidden": false])
+        invoke.resolve(["requestCausedHide": false])
         return
       }
       // A host `hide()` lands in the same `handleHidden()` a user dismissal
@@ -329,28 +333,29 @@ class NativeWebviewPlugin: Plugin {
       navigation.dismiss(animated: true) { [weak self] in
         self?.handleHidden()
       }
-      invoke.resolve(["hidden": true])
+      invoke.resolve(["requestCausedHide": true])
     }
   }
 
   /// Dispose the native webview — tear it down and free its resources (the
   /// controller / WKWebView / bridge). Emits `NativeWebviewEvent.disposed` on
-  /// the channel and cancels the idle timer. Resolves with `{disposed: false}`
-  /// when none existed, `{disposed: true}` once torn down. Routes through the
-  /// controller's `requestDispose()` so a same-tick `openUrl` lands in the
-  /// deferral branch of `openUrl` rather than re-wiring a doomed webview.
+  /// the channel and cancels the idle timer. Resolves with
+  /// `{requestCausedDispose: false}` when none existed, `{requestCausedDispose:
+  /// true}` once torn down. Routes through the controller's `requestDispose()` so
+  /// a same-tick `openUrl` lands in the deferral branch of `openUrl` rather than
+  /// re-wiring a doomed webview.
   @objc public func dispose(_ invoke: Invoke) throws {
     DispatchQueue.main.async {
       self.cancelIdleTimer()
       guard let controller = self.currentController else {
-        invoke.resolve(["disposed": false])
+        invoke.resolve(["requestCausedDispose": false])
         return
       }
       // Arm the race guard so a same-tick `openUrl` queues a replay rather than
       // re-wiring the doomed webview. Cleared in `handleDisposed`.
       self.isDisposing = true
       controller.requestDispose(wasVisible: self.isVisible)
-      invoke.resolve(["disposed": true])
+      invoke.resolve(["requestCausedDispose": true])
     }
   }
 

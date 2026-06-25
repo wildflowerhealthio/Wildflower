@@ -407,9 +407,10 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
     /**
      * Present the native webview — bring a freshly-built or previously-hidden
      * instance to the foreground (`dialog.show()`). Resolves with
-     * `{shown: false}` when no instance exists, `{shown: true}` once presented.
-     * Cancels the hidden-idle teardown backstop (a visible webview is never
-     * idle-reclaimed).
+     * `{requestCausedShow: true}` only when this call actually presented it;
+     * `{requestCausedShow: false}` when no instance exists or it was already
+     * visible (a transition flag, matching `hide` / `dispose`). Cancels the
+     * hidden-idle teardown backstop (a visible webview is never idle-reclaimed).
      */
     @Command
     fun show(invoke: Invoke) {
@@ -421,26 +422,32 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
             // `dialog`, call `d.show()` on a doomed dialog, and flip `isVisible`
             // true on an instance about to be torn down (blank dialog /
             // use-after-destroy). Mirror `openUrl`'s `isDisposing` guard — there's
-            // nothing presentable, so resolve `{shown: false}`.
+            // nothing presentable, so resolve `{requestCausedShow: false}`.
             if (isDisposing) {
                 val result = JSObject()
-                result.put("shown", false)
+                result.put("requestCausedShow", false)
                 invoke.resolve(result)
                 return@runOnUiThread
             }
             val d = dialog
             if (d == null) {
                 val result = JSObject()
-                result.put("shown", false)
+                result.put("requestCausedShow", false)
                 invoke.resolve(result)
                 return@runOnUiThread
             }
-            // `dialog.show()` on an already-showing dialog is a no-op, so this is
-            // idempotent for an already-visible instance.
+            if (isVisible) {
+                // Already on screen — `dialog.show()` would be a no-op, and no
+                // transition is caused, so report `false`.
+                val result = JSObject()
+                result.put("requestCausedShow", false)
+                invoke.resolve(result)
+                return@runOnUiThread
+            }
             d.show()
             isVisible = true
             val result = JSObject()
-            result.put("shown", true)
+            result.put("requestCausedShow", true)
             invoke.resolve(result)
         }
     }
@@ -449,8 +456,8 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
      * Hide the native webview — remove it from view but keep it alive and
      * running (do NOT tear it down). Routes through [hideDialog], which emits
      * `NativeWebviewEvent::Hidden` and arms the hidden-idle teardown backstop.
-     * Resolves with `{hidden: false}` when nothing was visible, `{hidden: true}`
-     * once hidden.
+     * Resolves with `{requestCausedHide: false}` when nothing was visible,
+     * `{requestCausedHide: true}` once hidden.
      */
     @Command
     fun hide(invoke: Invoke) {
@@ -459,13 +466,13 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
             val d = dialog
             if (d == null || !isVisible) {
                 val result = JSObject()
-                result.put("hidden", false)
+                result.put("requestCausedHide", false)
                 invoke.resolve(result)
                 return@runOnUiThread
             }
             hideDialog()
             val result = JSObject()
-            result.put("hidden", true)
+            result.put("requestCausedHide", true)
             invoke.resolve(result)
         }
     }
@@ -476,7 +483,8 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
      * [disposeDialog] (which sets [isDisposing] so a same-tick `openUrl` queues a
      * replay rather than rewiring a doomed WebView); the dispose's
      * `setOnDismissListener` emits `NativeWebviewEvent::Disposed`. Resolves with
-     * `{disposed: false}` when none existed, `{disposed: true}` once torn down.
+     * `{requestCausedDispose: false}` when none existed, `{requestCausedDispose:
+     * true}` once torn down.
      */
     @Command
     fun dispose(invoke: Invoke) {
@@ -485,13 +493,13 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
             val d = dialog
             if (d == null) {
                 val result = JSObject()
-                result.put("disposed", false)
+                result.put("requestCausedDispose", false)
                 invoke.resolve(result)
                 return@runOnUiThread
             }
             disposeDialog()
             val result = JSObject()
-            result.put("disposed", true)
+            result.put("requestCausedDispose", true)
             invoke.resolve(result)
         }
     }

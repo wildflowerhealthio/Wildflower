@@ -58,8 +58,8 @@ impl<R: Runtime> NativeWebview<R> {
 
     /// Present the native webview — bring a freshly-created or previously-hidden
     /// instance to the foreground by invoking the Swift/Kotlin `show` command.
-    /// Idempotent — the native side resolves with `{shown: false}` if none
-    /// exists.
+    /// Idempotent — the native side resolves with `{requestCausedShow: false}` if
+    /// none exists or it was already visible.
     pub fn show(&self) -> crate::Result<()> {
         self.0
             .run_mobile_plugin::<ShowResponse>("show", ())
@@ -92,7 +92,7 @@ impl<R: Runtime> NativeWebview<R> {
 
     /// Hide the currently-presented native webview — remove it from view but
     /// keep it alive and running. Idempotent — the native side resolves with
-    /// `{hidden: false}` if none was visible. The native side emits
+    /// `{requestCausedHide: false}` if none was visible. The native side emits
     /// `NativeWebviewEvent::Hidden` on the open channel once hidden.
     pub fn hide(&self) -> crate::Result<()> {
         self.0
@@ -103,7 +103,7 @@ impl<R: Runtime> NativeWebview<R> {
 
     /// Dispose the native webview — tear it down (visible or hidden) and free
     /// its resources. Idempotent — the native side resolves with
-    /// `{disposed: false}` if none existed. The native side emits
+    /// `{requestCausedDispose: false}` if none existed. The native side emits
     /// `NativeWebviewEvent::Disposed` on the open channel once torn down.
     pub fn dispose(&self) -> crate::Result<()> {
         self.0

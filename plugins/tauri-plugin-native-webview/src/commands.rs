@@ -80,8 +80,9 @@ pub(crate) async fn patch_window_text<R: Runtime>(
 }
 
 /// Present the native webview — bring a freshly-created or previously-hidden
-/// instance to the foreground. Idempotent — succeeds with `shown: false` when
-/// none exists. Visibility only; `open_url` owns navigation. The native side
+/// instance to the foreground. Idempotent — succeeds with `requestCausedShow:
+/// false` when none exists or it was already visible. Visibility only; `open_url`
+/// owns navigation. The native side
 /// presents the live instance (no re-navigation, no teardown).
 ///
 /// Invoked from the webview as `invoke('plugin:native-webview|show')`. Rust
@@ -92,8 +93,9 @@ pub(crate) async fn show<R: Runtime>(app: AppHandle<R>) -> Result<()> {
 }
 
 /// Hide the currently-presented native webview — remove it from view but keep
-/// it alive and running. Idempotent — succeeds with `hidden: false` when none is
-/// visible. The native side emits [`NativeWebviewEvent::Hidden`] once hidden; a
+/// it alive and running. Idempotent — succeeds with `requestCausedHide: false`
+/// when none is visible. The native side emits [`NativeWebviewEvent::Hidden`]
+/// once hidden; a
 /// later `open` re-presents the same live instance.
 ///
 /// Invoked from the webview as `invoke('plugin:native-webview|hide')`. Rust
@@ -104,7 +106,8 @@ pub(crate) async fn hide<R: Runtime>(app: AppHandle<R>) -> Result<()> {
 }
 
 /// Dispose the native webview — tear it down (visible or hidden) and free its
-/// resources. Idempotent — succeeds with `disposed: false` when none exists. The
+/// resources. Idempotent — succeeds with `requestCausedDispose: false` when none
+/// exists. The
 /// native side emits [`NativeWebviewEvent::Disposed`] once torn down; a later
 /// `open` builds a fresh instance.
 ///

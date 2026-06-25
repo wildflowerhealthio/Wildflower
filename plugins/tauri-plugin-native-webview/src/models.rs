@@ -175,42 +175,49 @@ pub struct PatchWindowTextResponse {
     pub set: bool,
 }
 
-/// Result of a `show` invocation. `shown` is `true` once a live native webview
-/// (freshly created or previously hidden) was presented; `false` when none
-/// exists to show. Visibility is independent of content: `open_url` navigates
-/// without presenting, and `show` presents without navigating.
+/// Result of a `show` invocation. `request_caused_show` is `true` only when this
+/// call actually brought a live native webview to the foreground (a hidden /
+/// freshly-built instance → visible); `false` when there was nothing to present
+/// (no instance, or one mid-dispose) OR it was *already* visible — `show` is
+/// idempotent, and an already-visible instance is no transition, so it reports
+/// `false`. A *transition* flag, matching its `request_caused_hide` /
+/// `request_caused_dispose` siblings. Visibility is independent of content:
+/// `open_url` navigates without presenting, and `show` presents without
+/// navigating.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ShowResponse {
-    /// Whether this call presented a live native webview. `false` when none
-    /// exists.
-    pub shown: bool,
+    /// Whether this call caused a live native webview to be presented. `false`
+    /// when nothing needed presenting (none exists, or it was already visible).
+    pub request_caused_show: bool,
 }
 
-/// Result of a `hide` invocation. `hidden` is `true` once a live, visible native
-/// webview was removed from view (kept alive and running); `false` when none was
-/// visible. Idempotent: hiding an already-hidden / absent native webview
-/// succeeds with `hidden: false`. A successful hide emits
-/// [`NativeWebviewEvent::Hidden`] on the channel.
+/// Result of a `hide` invocation. `request_caused_hide` is `true` only when this
+/// call actually hid a live, *visible* native webview (kept alive and running);
+/// `false` when there was nothing to hide — no instance, or one that was already
+/// hidden. It is a *transition* flag, not a state: an already-hidden instance
+/// reports `false` even though it is hidden. Idempotent. A hide that returns
+/// `true` emits [`NativeWebviewEvent::Hidden`] on the channel.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct HideResponse {
-    /// Whether this call hid a live, visible native webview. `false` when none
-    /// was visible.
-    pub hidden: bool,
+    /// Whether this call caused a live, visible native webview to be hidden.
+    /// `false` when nothing was visible to hide.
+    pub request_caused_hide: bool,
 }
 
-/// Result of a `dispose` invocation. `disposed` is `true` once a live native
-/// webview (visible or hidden) was torn down and its resources freed; `false`
-/// when none existed. Idempotent: disposing an absent native webview succeeds
-/// with `disposed: false`. A successful dispose emits
-/// [`NativeWebviewEvent::Disposed`] on the channel.
+/// Result of a `dispose` invocation. `request_caused_dispose` is `true` only when
+/// this call tore down a live native webview (visible or hidden) and freed its
+/// resources; `false` when none existed. It is a *transition* flag. Idempotent:
+/// disposing an absent native webview succeeds with `request_caused_dispose:
+/// false`. A dispose that returns `true` emits [`NativeWebviewEvent::Disposed`]
+/// on the channel.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct DisposeResponse {
-    /// Whether this call tore down a live native webview. `false` when none
-    /// existed.
-    pub disposed: bool,
+    /// Whether this call caused a live native webview to be torn down. `false`
+    /// when none existed.
+    pub request_caused_dispose: bool,
 }
 
 #[cfg(test)]
@@ -424,36 +431,46 @@ mod tests {
         );
     }
 
-    /// `ShowResponse` decodes both arms of the native-side `{ "shown": … }`
-    /// payload — `true` when a live native webview was presented, `false` when
-    /// none existed to show.
+    /// `ShowResponse` decodes both arms of the native-side
+    /// `{ "requestCausedShow": … }` payload — `true` when this call presented a
+    /// live native webview, `false` when none existed or it was already visible.
+    /// The wire key must match the Swift/Kotlin emit (`requestCausedShow`); drift
+    /// here would silently break decoding on-device.
     #[test]
-    fn show_response_decodes_shown_flag() {
-        let live: ShowResponse = serde_json::from_str(r#"{"shown":true}"#).expect("de");
-        assert!(live.shown);
-        let none: ShowResponse = serde_json::from_str(r#"{"shown":false}"#).expect("de");
-        assert!(!none.shown);
+    fn show_response_decodes_request_caused_show_flag() {
+        let live: ShowResponse = serde_json::from_str(r#"{"requestCausedShow":true}"#).expect("de");
+        assert!(live.request_caused_show);
+        let none: ShowResponse =
+            serde_json::from_str(r#"{"requestCausedShow":false}"#).expect("de");
+        assert!(!none.request_caused_show);
     }
 
-    /// `HideResponse` decodes both arms of the native-side `{ "hidden": … }`
-    /// payload — `true` when a visible native webview was hidden, `false` when
-    /// none was visible (idempotent hide).
+    /// `HideResponse` decodes both arms of the native-side
+    /// `{ "requestCausedHide": … }` payload — `true` when a visible native
+    /// webview was hidden, `false` when none was visible (idempotent hide). The
+    /// wire key must match the Swift/Kotlin emit; drift here would silently
+    /// break decoding on-device.
     #[test]
-    fn hide_response_decodes_hidden_flag() {
-        let live: HideResponse = serde_json::from_str(r#"{"hidden":true}"#).expect("de");
-        assert!(live.hidden);
-        let already: HideResponse = serde_json::from_str(r#"{"hidden":false}"#).expect("de");
-        assert!(!already.hidden);
+    fn hide_response_decodes_request_caused_hide_flag() {
+        let live: HideResponse = serde_json::from_str(r#"{"requestCausedHide":true}"#).expect("de");
+        assert!(live.request_caused_hide);
+        let already: HideResponse =
+            serde_json::from_str(r#"{"requestCausedHide":false}"#).expect("de");
+        assert!(!already.request_caused_hide);
     }
 
-    /// `DisposeResponse` decodes both arms of the native-side `{ "disposed": … }`
-    /// payload — `true` when a live native webview was torn down, `false` when
-    /// none existed (idempotent dispose).
+    /// `DisposeResponse` decodes both arms of the native-side
+    /// `{ "requestCausedDispose": … }` payload — `true` when a live native
+    /// webview was torn down, `false` when none existed (idempotent dispose).
+    /// The wire key must match the Swift/Kotlin emit; drift here would silently
+    /// break decoding on-device.
     #[test]
-    fn dispose_response_decodes_disposed_flag() {
-        let live: DisposeResponse = serde_json::from_str(r#"{"disposed":true}"#).expect("de");
-        assert!(live.disposed);
-        let already: DisposeResponse = serde_json::from_str(r#"{"disposed":false}"#).expect("de");
-        assert!(!already.disposed);
+    fn dispose_response_decodes_request_caused_dispose_flag() {
+        let live: DisposeResponse =
+            serde_json::from_str(r#"{"requestCausedDispose":true}"#).expect("de");
+        assert!(live.request_caused_dispose);
+        let already: DisposeResponse =
+            serde_json::from_str(r#"{"requestCausedDispose":false}"#).expect("de");
+        assert!(!already.request_caused_dispose);
     }
 }
