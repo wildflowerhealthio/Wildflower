@@ -319,6 +319,61 @@ async fn authorize_disallowed_scope_redirects_invalid_scope() {
 }
 
 #[tokio::test]
+async fn authorize_accepts_smart_launch_and_aud_params() {
+    // SMART App Launch forwards `launch` (the EHR-minted nonce) and `aud`
+    // (the FHIR base URL the app expects) alongside the standard authorize
+    // params. They're optional (`#[serde(default)]`) and not validated today,
+    // so a request carrying them must validate exactly like one without them:
+    // park a pending request and 302 to the owner polling page — never an
+    // `error=` redirect back to the client.
+    let (g, _host_owner_token, db) = spin_up();
+    seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
+    let challenge = compute_code_challenge(CODE_VERIFIER);
+
+    let query = format!(
+        "response_type=code&code_challenge_method=S256&client_id=test-app&scope=read&\
+         code_challenge={challenge}&redirect_uri=https%3A%2F%2Fapp.example%2Fcb&state=xyz&\
+         launch=ehr-launch-nonce-123&aud=https%3A%2F%2Fapp.example%2Ffhir-r4"
+    );
+    let res = g
+        .router
+        .clone()
+        .oneshot(loopback_request(
+            Request::get(format!("/oauth/authorize?{query}")),
+            Body::empty(),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::FOUND);
+    let polling = res
+        .headers()
+        .get("location")
+        .and_then(|v| v.to_str().ok())
+        .expect("location")
+        .to_string();
+    assert!(
+        !polling.contains("error="),
+        "launch/aud must not trigger an error redirect, got {polling}"
+    );
+
+    // The pending request was actually parked: polling it reports `pending`
+    // (the owner hasn't approved yet), proving the SMART params didn't divert
+    // or reject the flow.
+    let request_id = polling.rsplit('/').next().expect("request id").to_string();
+    let res = g
+        .router
+        .clone()
+        .oneshot(loopback_request(
+            Request::get(format!("/oauth/authorize/{request_id}")),
+            Body::empty(),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(body_json(res.into_body()).await["status"], "pending");
+}
+
+#[tokio::test]
 async fn device_authorization_happy_path() {
     let (g, _host_owner_token, _db) = spin_up();
     let body = "client_id=wildflower-host&scope=wildflower%2Fadmin";
