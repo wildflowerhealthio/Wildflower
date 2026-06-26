@@ -37,7 +37,7 @@ vendor-apps-rust = { path = "../vendor-apps-rust" }
 # `CorsLayer::very_permissive` on each self-hosted app's router (its own origin
 # is cross-origin to the main API the SPA fetches from).
 tower-http.workspace = true
-rand = "0.9"
+rand = "0.10"
 tracing = "0.1"
 
 [lints]
