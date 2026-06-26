@@ -4,7 +4,7 @@
 //! of entropy, comfortably exceeding the §10.10 ≤ 2^-128 guess-probability
 //! target, and base64url (no padding) keeps the result URL-safe.
 
-use rand::RngCore;
+use rand::Rng;
 
 use crate::crypto_util::{base64, sha256};
 

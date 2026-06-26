@@ -49,7 +49,7 @@ jobs:
     if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # Detect whether the sniffer bootstrap source (or a lockfile) actually
       # changed. If so we regenerate the real IIFE below; otherwise we stub it,
@@ -89,7 +89,7 @@ jobs:
       # satisfy the crate's `bootstrap_is_non_empty` test.
       - name: Setup Node
         if: steps.filter.outputs.bootstrap == 'true'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '22'
       - name: Build Sniffer bootstrap

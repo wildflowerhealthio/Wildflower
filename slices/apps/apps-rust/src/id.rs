@@ -4,8 +4,7 @@
 //! place: [`mint_app_id`] for a created app's stable identity, and
 //! [`mint_launch_nonce`] for a per-launch SMART `{launch}` nonce.
 
-use rand::distr::Alphanumeric;
-use rand::Rng;
+use rand::{distr::Alphanumeric, RngExt};
 
 /// Length of a minted token, in chars. 21 ASCII alphanumeric chars is ~125 bits
 /// of entropy — a collision under sane workloads is astronomically unlikely.
