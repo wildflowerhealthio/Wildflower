@@ -33,10 +33,10 @@ http-errors = ["dep:axum", "dep:tracing"]
 # (gatekeeper-rust, apps-rust) enable it.
 served-origin = ["dep:axum"]
 # Opt-in: the `<id>.<public_host>` subdomain shape (`subdomain_host`,
-# `subdomain_url`, `match_subdomain`) shared by the apps slice's launch
-# redirect (producer) and the host's forwarded-request dispatch (consumer).
+# `subdomain_url`, `try_split_subdomain`) shared by the apps slice's launch
+# redirect (producer) and the host's forwarded-request reverse proxy (consumer).
 # Pure string code, no extra deps — enabled by apps-rust and the
-# tunneled-router-rust crate so the producer/consumer can't drift.
+# shared-structures-server-rust crate so the producer/consumer can't drift.
 subdomain-url = []
 
 [dependencies]

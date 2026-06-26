@@ -89,7 +89,7 @@ pub(crate) async fn handle_launch_app(
     // them disagree (a header that fails validation reads as Loopback).
     let provenance = request_provenance(&headers);
 
-    let (app, target) = resolve_launch_target(&state, &id, &provenance).await?;
+    let (app, target_url) = resolve_launch_target(&state, &id, &provenance).await?;
 
     // The loopback-only rule lives in this match: only a loopback caller is
     // handed to the on-device webview seam (a host popup is useless to a remote
@@ -103,10 +103,10 @@ pub(crate) async fn handle_launch_app(
         RequestProvenance::Loopback => {
             state
                 .on_device_webview_handle
-                .open(app.name.clone(), target.clone());
+                .open(app.name.clone(), target_url.clone());
             Ok(no_content())
         }
-        RequestProvenance::Forwarded { .. } => redirect(target),
+        RequestProvenance::Forwarded { .. } => redirect(target_url),
     }
 }
 
@@ -129,13 +129,13 @@ async fn resolve_launch_target(
         .find_internal_app(id)
         .map_err(|e| HandlerError::internal("internal_apps find lookup failed", e))?
     {
-        let target = render_internal_target(&internal, state, provenance);
+        let target_url = render_internal_target(&internal, state, provenance);
         // Build the wire `AppEntry` — the handler reads its `name` for the popup
-        // chrome. The launch URL itself is the provenance-aware `target` above
-        // (loopback for a local caller, the public subdomain for a forwarded
-        // one), not `app.url`.
-        let app = internal.to_app_entry(&state.internal_apps_loopback_host);
-        return Ok((app, target));
+        // chrome. The launch URL itself is the provenance-aware `target_url`
+        // above (loopback for a local caller, the public subdomain for a
+        // forwarded one), not `app.url`.
+        let app = internal.to_app_entry(&state.loopback_hostname);
+        return Ok((app, target_url));
     }
 
     let external = state
@@ -143,8 +143,8 @@ async fn resolve_launch_target(
         .find_app(id)
         .map_err(|e| HandlerError::internal("find_app lookup failed", e))?
         .ok_or_else(|| HandlerError::NotFound { id: id.to_owned() })?;
-    let target = render_external_target(state, provenance, &external).await;
-    Ok((external, target))
+    let target_url = render_external_target(state, provenance, &external).await;
+    Ok((external, target_url))
 }
 
 /// Render an internal app's launch target. A loopback caller (and a
@@ -164,7 +164,7 @@ fn render_internal_target(
             return internal.subdomain_url(&public_host);
         }
     }
-    internal.launch_url(&state.internal_apps_loopback_host)
+    internal.launch_url(&state.loopback_hostname)
 }
 
 /// Render an external app's launch target: resolve the served origin (or

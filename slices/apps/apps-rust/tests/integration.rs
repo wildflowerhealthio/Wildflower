@@ -22,7 +22,7 @@ use tower::ServiceExt;
 use shared_structures_rust::test_utils::RecordingStubWebviewHandle;
 
 const LOOPBACK_ORIGIN: &str = "http://127.0.0.1:8080";
-const LOOPBACK_HOST: &str = "127.0.0.1";
+const LOOPBACK_HOSTNAME: &str = "127.0.0.1";
 
 /// Spin up the slice plus the recording on-device webview handle, so a launch
 /// test can assert the URL a loopback launch routes to it.
@@ -35,7 +35,7 @@ fn spin_up_with_handle() -> (Apps, Arc<RecordingStubWebviewHandle>) {
     let db = Connection::open_in_memory().expect("open shared db");
     let config = AppsConfig {
         loopback_origin: LOOPBACK_ORIGIN.to_string(),
-        internal_apps_loopback_host: LOOPBACK_HOST.to_string(),
+        loopback_hostname: LOOPBACK_HOSTNAME.to_string(),
     };
     let handle = Arc::new(RecordingStubWebviewHandle::default());
     let apps = setup_apps(

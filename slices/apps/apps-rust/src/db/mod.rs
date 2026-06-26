@@ -6,10 +6,11 @@
 //!    internals accessors (`internal_apps`, seeded by migration —
 //!    `list_internal_apps` / `find_internal_app`).
 //!
-//! The internals' row mapping + queries live in the [`internal_apps`] module
-//! only because the `sql_row!`-generated `ALL_COLS` is module-scoped; the
-//! `AppsStore` methods delegate to them. There is no separate "row" type for
-//! either table: [`crate::domain::AppEntry`] (externals) and
+//! The internals' row mapping + read methods live in the [`internal_apps`]
+//! module — a second `impl AppsStore` block — only because the
+//! `sql_row!`-generated `ALL_COLS` is module-scoped and would collide with the
+//! externals' in `apps_store.rs`. There is no separate "row" type for either
+//! table: [`crate::domain::AppEntry`] (externals) and
 //! [`crate::domain::InternalApp`] (internals) double as the row mappings via
 //! `persistence_rust::sql_row!`.
 

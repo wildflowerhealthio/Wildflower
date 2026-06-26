@@ -8,7 +8,7 @@
 //!
 //! At read time the apps slice materializes an internal row into the wire
 //! shape ([`AppEntry`](super::AppEntry)) by building `http://{host}:{port}/`
-//! from [`AppsConfig::internal_apps_loopback_host`](crate::AppsConfig) and
+//! from [`AppsConfig::loopback_hostname`](crate::AppsConfig) and
 //! the row's `port`. The wire DTO stays the one shared shape; the "internal
 //! vs external" distinction is a storage-side fact.
 //!
@@ -45,7 +45,7 @@ pub struct InternalApp {
 impl InternalApp {
     /// Render the loopback launch target `http://{host}:{port}/`. `host` is
     /// the loopback hostname the host binds on (from
-    /// [`AppsConfig::internal_apps_loopback_host`](crate::AppsConfig)). The
+    /// [`AppsConfig::loopback_hostname`](crate::AppsConfig)). The
     /// path is the bare root: each internal app gets its own origin and is
     /// served from `/` on it.
     #[must_use]
@@ -57,8 +57,8 @@ impl InternalApp {
     /// `https://{id}.{public_host}/` — the URL a forwarded (remote) caller
     /// can actually reach. Delegates to the shared
     /// [`shared_structures_rust::subdomain_host::subdomain_url`] so the host's
-    /// subdomain dispatch (which matches inbound forwarded requests via the
-    /// same module's `match_subdomain`) and this redirect can't drift on the
+    /// subdomain reverse proxy (which splits inbound forwarded hosts via the
+    /// same module's `try_split_subdomain`) and this redirect can't drift on the
     /// `<id>.<public_host>` shape.
     #[must_use]
     pub fn subdomain_url(&self, public_host: &str) -> String {

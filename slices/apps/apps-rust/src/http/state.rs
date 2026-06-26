@@ -1,6 +1,6 @@
 //! Shared HTTP state — the store handle (serving both apps tables), the
-//! loopback origin used to build launch URLs, the host portion the internal-app
-//! listeners bind on, and the tunnel-launch resolver.
+//! loopback origin used to build launch URLs, the loopback hostname the
+//! internal-app listeners bind on, and the tunnel-launch resolver.
 
 use std::sync::Arc;
 
@@ -21,10 +21,10 @@ pub struct AppsState {
     /// launch that can't reach the tunnel falls back here with
     /// `?tunnel=unavailable` so the SPA can surface a banner.
     pub(crate) loopback_origin: String,
-    /// Host portion (no scheme, no port) the host binds each internal-app
+    /// Hostname portion (no scheme, no port) the host binds each internal-app
     /// listener on — combined with each internal row's `port` to render the
-    /// `http://{host}:{port}/` launch target.
-    pub(crate) internal_apps_loopback_host: String,
+    /// `http://{hostname}:{port}/` launch target.
+    pub(crate) loopback_hostname: String,
     /// The tunnel service a `requires_tunnel` launch resolves its origin
     /// through. The host wires the real tunnel slice; tests use a stub.
     pub(crate) tunnel: Arc<dyn TunnelService>,
@@ -39,14 +39,14 @@ impl AppsState {
     pub fn new(
         store: AppsStore,
         loopback_origin: impl Into<String>,
-        internal_apps_loopback_host: impl Into<String>,
+        loopback_hostname: impl Into<String>,
         tunnel: Arc<dyn TunnelService>,
         webview_handle: Arc<dyn OnDeviceWebviewHandle>,
     ) -> Self {
         Self {
             store,
             loopback_origin: loopback_origin.into(),
-            internal_apps_loopback_host: internal_apps_loopback_host.into(),
+            loopback_hostname: loopback_hostname.into(),
             tunnel,
             on_device_webview_handle: webview_handle,
         }

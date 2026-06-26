@@ -5,20 +5,20 @@ mod spa;
 mod tunnel_adapters;
 
 use anyhow::Context;
-use apps_rust::{setup_apps, AppsConfig};
+use apps_rust::{setup_apps, AppsConfig, SelfHostedAppsService};
 use axum::Router;
 use emr_rust::{setup_fhir_r4, EmrConfig};
 use gatekeeper_rust::{
     layer_router_with_gatekeeper_auth_gating, setup_gatekeeper, GatekeeperConfig,
 };
 use shared_structures_rust::ServerRuntimeConfig;
+use shared_structures_server_rust::{LoopbackHostname, ProxyTable, TunnelSubdomainReverseProxy};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tauri::Manager;
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
-use tunneled_router_rust::{TunneledRoute, TunneledRouterBuilder};
 
 // Loopback hostname/port for the embedded API server, derived at compile time
 // from the SINGLE SOURCE OF TRUTH
@@ -183,13 +183,13 @@ async fn run_server(
     // (POST/PATCH/DELETE) is owner-gated through the gatekeeper. A
     // `requires_tunnel` launch resolves to the tunnel's verified origin through
     // the tunnel service (else falls back to loopback + tunnel=unavailable).
-    // `internal_apps_loopback_host` is the host portion the host binds each
+    // `loopback_hostname` is the hostname portion the host binds each
     // internal-app listener on (see below) — the apps slice combines it with
-    // each internal-app row's `port` to render its `http://{host}:{port}/`
+    // each internal-app row's `port` to render its `http://{hostname}:{port}/`
     // launch target.
     let apps_config = AppsConfig {
         loopback_origin: loopback_origin.clone(),
-        internal_apps_loopback_host: runtime.loopback_hostname.clone(),
+        loopback_hostname: runtime.loopback_hostname.clone(),
     };
     // `TunnelControl` implements `TunnelService`, so it's handed straight in.
     let tunnel_service: Arc<dyn tunnel_rust::TunnelService> = Arc::new(tunnel.control.clone());
@@ -253,10 +253,11 @@ async fn run_server(
     // rejects non-local peers and auth rides the bearer header.
     //
     // Static "installed apps" are served from this directory under app-data at
-    // request time (see `vendor_apps_rust`). Created up front so it's a stable,
-    // discoverable place to drop an app's files into; an empty/missing dir just
-    // 404s. Best-effort — a creation failure only means the apps routes 404
-    // until it exists, so it must not abort server startup.
+    // request time (the apps slice's `SelfHostedAppsService` builds each app's
+    // file-serving router from its `<id>/` subdirectory here). Created up front
+    // so it's a stable, discoverable place to drop an app's files into; an
+    // empty/missing dir just 404s. Best-effort — a creation failure only means
+    // the apps routes 404 until it exists, so it must not abort server startup.
     let installed_apps_dir = runtime.app_data_dir.join("installed-apps");
     if let Err(error) = std::fs::create_dir_all(&installed_apps_dir) {
         tauri_plugin_log::log::warn!(
@@ -265,34 +266,15 @@ async fn run_server(
         );
     }
 
-    // Each installed app gets its own dedicated loopback origin
-    // (`http://{loopback_hostname}:{port}/`) so it becomes its own security
-    // context (own storage, own cookies, no Same-Origin Policy share with the
-    // API on the main port), AND it's reachable remotely at
-    // `<app-id>.<public-host>` for forwarded (relayed) traffic that lands on
-    // the main API port without a per-app socket. The `tunneled-router-rust`
-    // builder owns both halves: it binds each loopback listener (best-effort —
-    // a port collision is logged and skipped without aborting startup; the
-    // route still participates in subdomain dispatch so remote traffic keeps
-    // working) and produces the dispatch layer. The DB row's `port` is the
-    // source of truth for the bind; the apps slice reads the same value to
-    // render the launch target, so the redirect and the listener can't drift.
-    let mut subdomain_router = TunneledRouterBuilder::new(
-        runtime.loopback_hostname.clone(),
-        Arc::clone(&tunnel_service),
-    );
-    for internal in apps.internal_apps {
-        let app_dir = installed_apps_dir.join(&internal.id);
-        let router = vendor_apps_rust::setup_installed_app(&internal.id, app_dir)
-            .layer(CorsLayer::very_permissive());
-        subdomain_router = subdomain_router.route(TunneledRoute {
-            id: internal.id,
-            router,
-            port: internal.port,
-        });
-    }
-    let subdomain_dispatch = subdomain_router.build().await;
+    // The `id -> loopback port` table the reverse proxy reads per request and
+    // the apps slice registers each self-hosted app into. A cloneable `Arc`
+    // handle, so the registration the slice does is visible to the live proxy.
+    let proxy_table = ProxyTable::new();
+    let loopback = LoopbackHostname::new(runtime.loopback_hostname.clone());
 
+    // The whole API stack — built first because it's the reverse proxy's
+    // fallback, handed in at construction. A forwarded request that doesn't
+    // match a self-hosted subdomain (and every loopback request) runs this.
     let api_router = Router::new()
         .merge(gatekeeper.router)
         .merge(gated_fhir_r4)
@@ -312,16 +294,42 @@ async fn run_server(
         .fallback(spa::handle_serving_spa_html)
         .layer(CorsLayer::very_permissive());
 
-    // Subdomain dispatch wraps the whole API stack as the outermost layer, so
-    // it runs FIRST: a forwarded request whose `Forwarded` host matches
-    // `<internal-app-id>.<configured-public-host>` is handed straight to the
-    // per-app router; loopback and apex-host traffic falls through to the API
-    // stack above.
-    let router = subdomain_dispatch.wrap(api_router);
+    // The reverse proxy wraps the API stack as the outermost layer: a forwarded
+    // request whose `Forwarded` host matches `<app-id>.<configured-public-host>`
+    // is reverse-proxied to that app's loopback port (the same listener a local
+    // launch reaches); loopback and apex-host traffic runs the api_router.
+    let proxy = TunnelSubdomainReverseProxy::new(
+        loopback.clone(),
+        Arc::clone(&tunnel_service),
+        api_router,
+        proxy_table.clone(),
+    );
+
+    // The apps slice owns the self-hosted lifecycle. Each self-hosted app gets
+    // its own dedicated loopback origin (`http://{loopback_hostname}:{port}/`) —
+    // its own security context (own storage, own cookies, no Same-Origin Policy
+    // share with the main API) — and is registered into `proxy_table` so it's
+    // also reachable remotely at `<app-id>.<public-host>` for forwarded traffic.
+    // The DB row's `port` is the source of truth for the bind; the apps slice
+    // renders the launch target from the same value, so redirect and listener
+    // can't drift. Seed-driven today (the static `internal_apps` catalogue); the
+    // start/stop calls also work at runtime for restartless install. A failure
+    // to bring one app online must not abort startup, so it's logged and skipped.
+    let self_hosted = SelfHostedAppsService::new(loopback, installed_apps_dir, proxy_table);
+    for internal in &apps.internal_apps {
+        if let Err(error) = self_hosted.start(internal).await {
+            tauri_plugin_log::log::warn!("failed to start self-hosted app {}: {error}", internal.id);
+        }
+    }
+    // Hold the orchestrator for the process lifetime — dropping it would drop the
+    // running listeners' shutdown signals and take the self-hosted apps offline.
+    let _self_hosted = self_hosted;
 
     axum::serve(
         listener,
-        router.into_make_service_with_connect_info::<SocketAddr>(),
+        proxy
+            .into_router()
+            .into_make_service_with_connect_info::<SocketAddr>(),
     )
     .await?;
     Ok(())

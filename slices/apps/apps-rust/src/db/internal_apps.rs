@@ -2,39 +2,49 @@
 //!
 //! Internal apps are seeded by migration and not editable through the admin
 //! API, so this is read-only. There is **no separate store struct** — the whole
-//! apps slice is served by [`AppsStore`](super::AppsStore), which exposes
-//! [`list_internal_apps`](super::AppsStore::list_internal_apps) /
-//! [`find_internal_app`](super::AppsStore::find_internal_app) that delegate to
-//! the free functions here. They live in their own module only because the
-//! `sql_row!`-generated `ALL_COLS` is module-scoped and would collide with the
-//! `apps` table's in `apps_store.rs`.
+//! apps slice is served by [`AppsStore`](super::AppsStore); this module just
+//! adds a second `impl AppsStore` block with the internal-apps read methods. It
+//! lives in its own module only because the `sql_row!`-generated `ALL_COLS` is
+//! module-scoped and would collide with the `apps` table's in `apps_store.rs`.
 
-use persistence_rust::{sql_row, Connection, DbResult};
+use persistence_rust::{sql_row, DbResult};
 use rusqlite::{params, OptionalExtension};
 
+use super::AppsStore;
 use crate::domain::InternalApp;
 
-/// All internal-app rows, in seed/insertion order. Backs `GET /apps`'s merge of
-/// the internal catalogue into the wire response.
-pub(super) fn list_internal_apps(conn: &Connection) -> DbResult<Vec<InternalApp>> {
-    let conn = conn.lock();
-    let mut stmt = conn.prepare(&format!(
-        "SELECT {ALL_COLS} FROM internal_apps ORDER BY rowid"
-    ))?;
-    let rows = stmt.query_map([], |row| InternalApp::try_from(row))?;
-    rows.collect()
-}
+impl AppsStore {
+    /// All internal-app rows, in seed/insertion order. Backs `GET /apps`'s merge
+    /// of the internal catalogue into the wire response.
+    ///
+    /// # Errors
+    ///
+    /// Returns any rusqlite error from the read.
+    pub fn list_internal_apps(&self) -> DbResult<Vec<InternalApp>> {
+        let conn = self.conn().lock();
+        let mut stmt = conn.prepare(&format!(
+            "SELECT {ALL_COLS} FROM internal_apps ORDER BY rowid"
+        ))?;
+        let rows = stmt.query_map([], |row| InternalApp::try_from(row))?;
+        rows.collect()
+    }
 
-/// Single internal-app row by id, `None` when absent. Backs `POST /apps/{id}`'s
-/// internal-first launch dispatch.
-pub(super) fn find_internal_app(conn: &Connection, id: &str) -> DbResult<Option<InternalApp>> {
-    conn.lock()
-        .query_row(
-            &format!("SELECT {ALL_COLS} FROM internal_apps WHERE id = ?1"),
-            params![id],
-            |row| InternalApp::try_from(row),
-        )
-        .optional()
+    /// Single internal-app row by id, `None` when absent. Backs `POST /apps/{id}`'s
+    /// internal-first launch dispatch.
+    ///
+    /// # Errors
+    ///
+    /// Returns any rusqlite error other than `QueryReturnedNoRows`.
+    pub fn find_internal_app(&self, id: &str) -> DbResult<Option<InternalApp>> {
+        self.conn()
+            .lock()
+            .query_row(
+                &format!("SELECT {ALL_COLS} FROM internal_apps WHERE id = ?1"),
+                params![id],
+                |row| InternalApp::try_from(row),
+            )
+            .optional()
+    }
 }
 
 // Field names match the SQL column names; the macro derives `TryFrom<&Row>`

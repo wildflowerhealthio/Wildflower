@@ -27,6 +27,16 @@ shared-structures-rust = { path = "../../shared-structures/shared-structures-rus
   "served-origin",
   "subdomain-url",
 ] }
+# The server-side infra `SelfHostedAppsService` drives: `StaticHostsService`
+# binds each self-hosted app on its loopback port, `ProxyTable` registers it for
+# the host's subdomain reverse proxy.
+shared-structures-server-rust = { path = "../../shared-structures/shared-structures-server-rust" }
+# Builds the static-file-serving router for each self-hosted app from its on-disk
+# directory (same slice).
+vendor-apps-rust = { path = "../vendor-apps-rust" }
+# `CorsLayer::very_permissive` on each self-hosted app's router (its own origin
+# is cross-origin to the main API the SPA fetches from).
+tower-http.workspace = true
 rand = "0.9"
 tracing = "0.1"
 

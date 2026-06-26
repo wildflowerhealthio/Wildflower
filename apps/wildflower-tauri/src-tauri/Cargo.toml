@@ -39,10 +39,6 @@ reqwest = { version = "0.12", default-features = false, features = [
   "json",
 ] }
 apps-rust = { path = "../../../slices/apps/apps-rust" }
-# Serves the vendored patient-browser SPA from the host's loopback API; merged
-# into the public router in `run()`. The `GET /apps/patient-browser` launch
-# redirect lands on these routes.
-vendor-apps-rust = { path = "../../../slices/apps/vendor-apps-rust" }
 browser-sniffer-tauri-rust = { path = "../../../slices/browser-sniffer/browser-sniffer-tauri-rust" }
 # Native, JS-injectable web view (iOS, Android, desktop); runs in parallel
 # with the browser-sniffer WebviewWindow path. Registered in `run()`.
@@ -59,11 +55,11 @@ shared-structures-rust = { path = "../../../slices/shared-structures/shared-stru
 # native-webview plugin.
 shared-structures-tauri-rust = { path = "../../../slices/shared-structures/shared-structures-tauri-rust" }
 tunnel-rust = { path = "../../../slices/tunnel/tunnel-rust" }
-# The general forwarded-subdomain router: binds each internal app on its
-# loopback port and dispatches inbound `<id>.<public-host>` forwarded requests
-# into the matching per-app router. Replaces the former in-app
-# `subdomain_dispatch` module.
-tunneled-router-rust = { path = "../../../slices/tunnel/tunneled-router-rust" }
+# Server-side shared infra: the reverse proxy that dispatches inbound
+# `<id>.<public-host>` forwarded requests to each self-hosted app's loopback
+# port, plus the static-hosts runner the apps slice drives. Replaces the former
+# in-app `subdomain_dispatch` module.
+shared-structures-server-rust = { path = "../../../slices/shared-structures/shared-structures-server-rust" }
 anyhow.workspace = true
 axum.workspace = true
 tokio = { workspace = true, features = ["full"] }
@@ -80,5 +76,6 @@ workspace = true
 [dev-dependencies]
 http-body-util = "0.1"
 # `ServiceExt::oneshot` — the api_stubs tests drive a router directly. (The
-# subdomain dispatch that used this at runtime now lives in tunneled-router-rust.)
+# subdomain reverse proxy that used this at runtime now lives in
+# shared-structures-server-rust.)
 tower = { version = "0.5", features = ["util"] }

@@ -17,16 +17,16 @@ use crate::http::state::AppsState;
 use crate::OnDeviceWebviewHandle;
 
 /// The loopback origin clients reach when the tunnel is down. The apps slice
-/// treats this and [`LOOPBACK_HOST`] as **independent** config values —
-/// production wires `loopback_origin` and `internal_apps_loopback_host`
+/// treats this and [`LOOPBACK_HOSTNAME`] as **independent** config values —
+/// production wires `loopback_origin` and `loopback_hostname`
 /// separately and the slice never derives one from the other (the app could be
 /// served elsewhere) — so the fixtures carry both rather than splitting a host
 /// out of the origin.
 pub(crate) const LOOPBACK_ORIGIN: &str = "http://127.0.0.1:8080";
 
-/// The host portion the internal-app listeners bind on — combined with each
-/// internal row's `port` to render `http://{host}:{port}/`.
-pub(crate) const LOOPBACK_HOST: &str = "127.0.0.1";
+/// The hostname (no scheme, no port) the internal-app listeners bind on —
+/// combined with each internal row's `port` to render `http://{hostname}:{port}/`.
+pub(crate) const LOOPBACK_HOSTNAME: &str = "127.0.0.1";
 
 /// A `TunnelService` stub for a tunnel that's up and verified at `origin` — the
 /// success counterpart to the shared [`OfflineTunnel`], which models the
@@ -94,7 +94,7 @@ pub(crate) fn state_with_tunnel_and_handle(
     Arc::new(AppsState::new(
         store,
         LOOPBACK_ORIGIN,
-        LOOPBACK_HOST,
+        LOOPBACK_HOSTNAME,
         tunnel,
         webview_handle,
     ))

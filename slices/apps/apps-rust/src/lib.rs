@@ -13,7 +13,7 @@
 //!    [`find_internal_app`](AppsStore::find_internal_app)) — locally-served
 //!    apps. Each row owns a dedicated loopback `port` the host binds a listener
 //!    on; the launch handler renders the target as `http://{host}:{port}/` from
-//!    [`AppsConfig::internal_apps_loopback_host`] + the row's `port`. The seed
+//!    [`AppsConfig::loopback_hostname`] + the row's `port`. The seed
 //!    migration is the only writer today; there is no admin surface for
 //!    internals.
 //!
@@ -55,6 +55,7 @@ pub mod db;
 pub mod domain;
 pub mod http;
 mod id;
+mod self_hosted_apps;
 
 use std::sync::Arc;
 
@@ -66,6 +67,7 @@ pub use config::AppsConfig;
 pub use db::AppsStore;
 pub use domain::InternalApp;
 pub use http::AppsState;
+pub use self_hosted_apps::SelfHostedAppsService;
 pub use shared_structures_rust::OnDeviceWebviewHandle;
 
 /// Result of [`setup_apps`]: the two routers a host needs to mount. The
@@ -113,7 +115,7 @@ pub fn setup_apps(
     let state = AppsState::new(
         store,
         config.loopback_origin.clone(),
-        config.internal_apps_loopback_host.clone(),
+        config.loopback_hostname.clone(),
         tunnel,
         webview_handle,
     );

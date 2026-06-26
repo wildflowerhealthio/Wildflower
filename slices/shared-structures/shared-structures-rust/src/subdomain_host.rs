@@ -24,40 +24,30 @@ pub fn subdomain_host(id: &str, public_host: &str) -> String {
 
 /// Build the full public subdomain launch URL `https://<id>.<public_host>/`
 /// — the `Location` a forwarded (remote) caller is redirected to. The host
-/// part is exactly [`subdomain_host`], so [`match_subdomain`] is its inverse.
+/// part is exactly [`subdomain_host`], so [`try_split_subdomain`] is its inverse.
 #[must_use]
 pub fn subdomain_url(id: &str, public_host: &str) -> String {
     format!("https://{}/", subdomain_host(id, public_host))
 }
 
-/// Match an inbound host against `<id>.<public_host>` — the inverse of
-/// [`subdomain_host`]. Returns `Some(id)` when `inbound_host` is exactly
-/// `<id>.<public_host>` for some `id` accepted by `is_known_id`.
+/// Split an inbound host into its leftmost subdomain label when the remainder
+/// equals `public_host` — the inverse of [`subdomain_host`]. Returns
+/// `Some(label)` when `inbound_host` is exactly `<label>.<public_host>`, else
+/// `None`. The shape is checked but the label is *not* validated against any
+/// catalogue: callers filter it themselves, e.g.
+/// `try_split_subdomain(host, public).filter(|id| is_known(id))`.
 ///
 /// Case-insensitive on the host and **port-insensitive on both sides**: a
 /// `:port` suffix is stripped from `inbound_host` *and* `public_host` before
 /// comparison, so a deployment whose `public_host` carries a non-443 port
-/// (e.g. `demo.example.com:8443`) still matches an inbound
+/// (e.g. `demo.example.com:8443`) still splits an inbound
 /// `patient-browser.demo.example.com:8443`.
-///
-/// `is_known_id` is a callback rather than the catalogue directly so this
-/// function stays pure-string and easy to unit-test.
 #[must_use]
-pub fn match_subdomain(
-    inbound_host: &str,
-    public_host: &str,
-    is_known_id: impl Fn(&str) -> bool,
-) -> Option<String> {
+pub fn try_split_subdomain(inbound_host: &str, public_host: &str) -> Option<String> {
     let inbound_lower = strip_port(inbound_host).to_ascii_lowercase();
     let public_lower = strip_port(public_host).to_ascii_lowercase();
     let (leftmost, rest) = inbound_lower.split_once('.')?;
-    if rest != public_lower {
-        return None;
-    }
-    if !is_known_id(leftmost) {
-        return None;
-    }
-    Some(leftmost.to_owned())
+    (rest == public_lower).then(|| leftmost.to_owned())
 }
 
 /// Strip an optional `:port` suffix. IPv6 has its own bracketed form
@@ -83,26 +73,26 @@ mod tests {
     use std::collections::HashSet;
 
     /// The contract this module exists to enforce: every host the producer
-    /// emits, the matcher routes. Feeding `subdomain_host`'s output back
-    /// through `match_subdomain` must recover the id — including a
+    /// emits, the consumer splits back. Feeding `subdomain_host`'s output back
+    /// through `try_split_subdomain` must recover the id — including a
     /// `public_host` that carries a port.
     #[test]
-    fn producer_output_round_trips_through_the_matcher() {
+    fn producer_output_round_trips_through_the_split() {
         for (id, host) in [
             ("patient-browser", "demo.example.com"),
             ("labs", "demo.example.com"),
             ("patient-browser", "demo.example.com:8443"),
         ] {
             assert_eq!(
-                match_subdomain(&subdomain_host(id, host), host, |candidate| candidate == id),
+                try_split_subdomain(&subdomain_host(id, host), host),
                 Some(id.to_owned()),
-                "{id}.{host} should route back to {id}",
+                "{id}.{host} should split back to {id}",
             );
         }
     }
 
     /// `subdomain_url` is `https://<subdomain_host>/` — the same host shape
-    /// the matcher accepts, wrapped in scheme + root path.
+    /// the split accepts, wrapped in scheme + root path.
     #[test]
     fn subdomain_url_wraps_the_host_shape() {
         assert_eq!(
@@ -115,70 +105,58 @@ mod tests {
         );
     }
 
-    /// A `public_host` configured WITH a port matches an inbound host whether
-    /// or not the inbound carries the same port — the port-symmetry fix.
+    /// A `public_host` configured WITH a port splits an inbound host whether or
+    /// not the inbound carries the same port — the port-symmetry fix.
     #[test]
-    fn configured_port_matches_symmetrically() {
-        let known = |id: &str| id == "patient-browser";
+    fn configured_port_splits_symmetrically() {
         // Both sides carry the port.
         assert_eq!(
-            match_subdomain(
+            try_split_subdomain(
                 "patient-browser.demo.example.com:8443",
-                "demo.example.com:8443",
-                known,
+                "demo.example.com:8443"
             ),
             Some("patient-browser".to_owned()),
         );
         // Configured host has a port, inbound does not.
         assert_eq!(
-            match_subdomain(
-                "patient-browser.demo.example.com",
-                "demo.example.com:8443",
-                known,
-            ),
+            try_split_subdomain("patient-browser.demo.example.com", "demo.example.com:8443"),
             Some("patient-browser".to_owned()),
         );
         // Inbound has a port, configured host does not (the prior behavior).
         assert_eq!(
-            match_subdomain(
-                "patient-browser.demo.example.com:8443",
-                "demo.example.com",
-                known,
-            ),
+            try_split_subdomain("patient-browser.demo.example.com:8443", "demo.example.com"),
             Some("patient-browser".to_owned()),
         );
     }
 
     #[test]
-    fn match_subdomain_handles_edge_cases() {
-        let known: HashSet<&str> = ["patient-browser", "labs"].into_iter().collect();
-        let is_known = |id: &str| known.contains(id);
-
+    fn try_split_subdomain_handles_edge_cases() {
         // Happy path, case-insensitive on the whole host.
         assert_eq!(
-            match_subdomain(
-                "Patient-Browser.DEMO.example.com",
-                "demo.example.com",
-                is_known
-            ),
+            try_split_subdomain("Patient-Browser.DEMO.example.com", "demo.example.com"),
             Some("patient-browser".to_owned()),
         );
-        // No dot at all — no subdomain.
-        assert_eq!(match_subdomain("apex", "demo.example.com", is_known), None);
-        // Leftmost label not in the catalogue.
+        // The split is shape-only — an unknown label still splits; the caller's
+        // filter is what rejects it.
         assert_eq!(
-            match_subdomain("admin.demo.example.com", "demo.example.com", is_known),
-            None,
+            try_split_subdomain("admin.demo.example.com", "demo.example.com"),
+            Some("admin".to_owned()),
         );
+        let known: HashSet<&str> = ["patient-browser", "labs"].into_iter().collect();
+        assert_eq!(
+            try_split_subdomain("admin.demo.example.com", "demo.example.com")
+                .filter(|id| known.contains(id.as_str())),
+            None,
+            "the caller's is-known filter is the authority on a valid-shape label",
+        );
+        // No dot at all — no subdomain.
+        assert_eq!(try_split_subdomain("apex", "demo.example.com"), None);
         // Rest of host doesn't equal the configured public host.
         assert_eq!(
-            match_subdomain("patient-browser.attacker.com", "demo.example.com", is_known),
+            try_split_subdomain("patient-browser.attacker.com", "demo.example.com"),
             None,
         );
         // IPv6 in brackets — no DNS subdomain to extract.
-        assert_eq!(
-            match_subdomain("[::1]:8080", "demo.example.com", is_known),
-            None
-        );
+        assert_eq!(try_split_subdomain("[::1]:8080", "demo.example.com"), None);
     }
 }
