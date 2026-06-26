@@ -14,8 +14,8 @@
 //! app fetches discovery here, then follows links straight to gatekeeper
 //! for the authorize/token dance.
 //!
-//! Mirrors the (now-superseded) TypeScript implementation at
-//! `slices/emr/fhir-r4/src/http-api-implementation/smart-configuration.ts`.
+//! This is the sole discovery implementation; the former TypeScript twin in the
+//! fhir-r4 slice has been removed.
 
 use axum::extract::State;
 use axum::http::HeaderMap;
@@ -50,6 +50,20 @@ pub(crate) struct SmartConfiguration {
     associated_endpoints: Vec<&'static str>,
 }
 
+/// The SMART scopes advertised in discovery — the standard public SMART App
+/// Launch read set. Hand-curated (a `const`, built once) rather than enumerated
+/// from `scopes-rust`, so the public document never exposes the system's
+/// internal/admin scope vocabulary.
+const SCOPES_SUPPORTED: &[&str] = &[
+    "openid",
+    "profile",
+    "launch",
+    "launch/patient",
+    "patient/*.rs",
+    "user/*.rs",
+    "offline_access",
+];
+
 fn build_smart_configuration(origin: &str) -> SmartConfiguration {
     let host = format!("{origin}/fhir-r4");
     SmartConfiguration {
@@ -65,7 +79,10 @@ fn build_smart_configuration(origin: &str) -> SmartConfiguration {
         management_endpoint: format!("{host}/user/manage"),
         introspection_endpoint: format!("{host}/user/introspect"),
         revocation_endpoint: format!("{host}/user/revoke"),
-        scopes_supported: scopes_rust::SMART_SCOPES_SUPPORTED.to_vec(),
+        // A curated, FHIR-minded public set — deliberately *not* derived from
+        // the full internal scope catalog, so internal/admin scopes never leak
+        // into the public discovery document.
+        scopes_supported: SCOPES_SUPPORTED.to_vec(),
         response_types_supported: vec!["code"],
         grant_types_supported: vec!["authorization_code", "client_credentials"],
         token_endpoint_auth_methods_supported: vec!["client_secret_basic", "private_key_jwt"],
@@ -123,5 +140,21 @@ mod tests {
         assert!(doc.grant_types_supported.contains(&"authorization_code"));
         assert!(doc.response_types_supported.contains(&"code"));
         assert!(doc.code_challenge_methods_supported.contains(&"S256"));
+    }
+
+    #[test]
+    fn discovery_doc_advertises_curated_public_scopes() {
+        let doc = build_smart_configuration("https://example.com");
+        // The curated public SMART read set — standard SMART App Launch scopes,
+        // not the system's internal/admin vocabulary.
+        assert!(doc.scopes_supported.contains(&"openid"));
+        assert!(doc.scopes_supported.contains(&"patient/*.rs"));
+        assert!(doc.scopes_supported.contains(&"offline_access"));
+        // Internal/system-wide scopes are NOT advertised publicly.
+        assert!(!doc.scopes_supported.contains(&"system/*.cruds"));
+        assert!(!doc
+            .scopes_supported
+            .iter()
+            .any(|s| s.starts_with("wildflower/")));
     }
 }

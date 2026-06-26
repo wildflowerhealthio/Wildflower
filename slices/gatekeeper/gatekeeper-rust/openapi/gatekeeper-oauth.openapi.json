@@ -630,7 +630,7 @@
               "string",
               "null"
             ],
-            "description": "Present only when the grant carries [`scopes_rust::OFFLINE_ACCESS_SCOPE`]\n— the plaintext of the freshly-minted refresh-token generation (RFC 6749\n§5.1; only its hash is persisted)."
+            "description": "Present only when the grant carries [`scopes_rust::KnownScope::OfflineAccess`]\n— the plaintext of the freshly-minted refresh-token generation (RFC 6749\n§5.1; only its hash is persisted)."
           },
           "patient": {
             "type": [

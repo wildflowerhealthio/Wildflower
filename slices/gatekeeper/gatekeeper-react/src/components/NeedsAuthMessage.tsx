@@ -138,17 +138,19 @@ const NeedsAuthMessage = (): JSX.Element => {
       yield* Effect.sleep(MOUNT_DEBOUNCE)
       const client = yield* GatekeeperHttpApiClient
 
-      // Mirror the boot owner token's scope set (gatekeeper's
-      // `mint_host_owner_token`): `wildflower/admin` gates the `/access/*`
-      // admin surface and `system/*.cruds` is the SMART v2 full-FHIR wildcard
-      // HFS reads to authorize the WebView's FHIR calls. Must stay in sync
-      // with gatekeeper-rust's `OWNER_SCOPE` + `FULL_FHIR_ACCESS_SCOPE`; the
-      // device_authorization handler exact-matches each against the
-      // first-party client's `allowed_scopes`.
+      // Request the first-party client's full `allowed_scopes` set
+      // (gatekeeper-rust's `WILDFLOWER_LOCAL_GRANTED_SCOPES`):
+      // `system/*.cruds` is the full-FHIR wildcard HFS reads to authorize
+      // the WebView's FHIR calls, and `wildflower/*.cruds` is the
+      // full-Wildflower-resource grant that gates gatekeeper's `/access/*`
+      // admin surface. The device_authorization handler validates each
+      // requested scope by exact string against the first-party client's
+      // `allowed_scopes` and rejects the whole request with `invalid_scope`
+      // on any miss, so this set must match those scopes exactly.
       const auth = yield* client.oauth.DeviceAuthorization({
         payload: {
           client_id: FIRST_PARTY_CLIENT_ID,
-          scope: 'wildflower/admin system/*.cruds',
+          scope: 'system/*.cruds wildflower/*.cruds',
         },
       })
 

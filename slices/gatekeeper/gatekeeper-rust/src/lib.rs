@@ -28,6 +28,10 @@ pub(crate) mod seeding;
 
 use anyhow::Context;
 use chrono::Duration;
+use scopes_rust::{
+    AccessRights, ContextLevel, FhirResourceScope, ResourceType, Scope, WildflowerResourceScope,
+    WildflowerResourceType,
+};
 use tokio::sync::watch;
 use tokio::time::{interval, MissedTickBehavior};
 
@@ -41,6 +45,45 @@ pub use http::{
 /// uses this identity to mint Owner tokens for itself and to recognise its
 /// own client registration during bootstrap.
 pub const FIRST_PARTY_CLIENT_ID: &str = "wildflower-host";
+
+/// The maximal-access scopes that mark an Owner: full system FHIR access
+/// (`system/*.cruds`) **and** full Wildflower-resource access
+/// (`wildflower/*.cruds`). `require_owner_auth` treats a token as Owner iff it
+/// covers *every* one of these, gating the `/access/*` admin surface. (Replaced
+/// the bespoke `wildflower/admin` scope.)
+pub const WILDFLOWER_WIDEST_SCOPES: &[Scope] = &[
+    Scope::FhirResource(FhirResourceScope {
+        context: ContextLevel::System,
+        resource: ResourceType::Wildcard,
+        access: AccessRights::ALL,
+    }),
+    Scope::WildflowerResource(WildflowerResourceScope {
+        resource: WildflowerResourceType::Wildcard,
+        access: AccessRights::ALL,
+    }),
+];
+
+/// The scopes granted to the first-party host (`wildflower-host`): seeded as its
+/// client `allowed_scopes` and minted into the host owner token. The host is
+/// granted the widest scopes so local users can drive both the FHIR surface and
+/// the non-FHIR (Wildflower) APIs.
+///
+/// Spelled out independently of [`WILDFLOWER_WIDEST_SCOPES`] (the owner-defining
+/// set) even though the two currently coincide: the host's *grant* and the
+/// *owner definition* are distinct concepts that may diverge — e.g. the host
+/// could later be granted `offline_access` without that scope widening the
+/// `/access/*` owner gate.
+pub const WILDFLOWER_LOCAL_GRANTED_SCOPES: &[Scope] = &[
+    Scope::FhirResource(FhirResourceScope {
+        context: ContextLevel::System,
+        resource: ResourceType::Wildcard,
+        access: AccessRights::ALL,
+    }),
+    Scope::WildflowerResource(WildflowerResourceScope {
+        resource: WildflowerResourceType::Wildcard,
+        access: AccessRights::ALL,
+    }),
+];
 
 /// Lifetime of the host owner token minted at boot.
 const HOST_OWNER_TOKEN_TTL: Duration = Duration::hours(24);

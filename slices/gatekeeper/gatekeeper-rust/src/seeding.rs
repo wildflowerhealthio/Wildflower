@@ -1,6 +1,8 @@
-//! Idempotent first-boot seeding for the gatekeeper store: signing keys
-//! and the first-party host client. Each `ensure_*` is safe to call on
-//! every boot — they no-op when the relevant row already exists.
+//! First-boot seeding for the gatekeeper store: signing keys and the seeded
+//! OAuth clients. Safe to call on every boot — the signing key is inserted only
+//! when none exists (never rotated), and the seeded clients are *ensured*
+//! (re-applied as an upsert) so their definition always matches the code,
+//! correcting any drift in a store created by an older build.
 
 use anyhow::Context;
 use chrono::{Duration, Utc};
@@ -11,22 +13,24 @@ use crate::db::GatekeeperStore;
 use crate::domain::client::{AllowedGrantType, Client, ClientKind};
 use crate::domain::signing_key::SigningKey;
 use crate::domain::token::{mint_access_token, MintError, NewJwtArgs};
-use crate::FIRST_PARTY_CLIENT_ID;
-use scopes_rust::{FULL_FHIR_ACCESS_SCOPE, OWNER_SCOPE};
+use crate::{FIRST_PARTY_CLIENT_ID, WILDFLOWER_LOCAL_GRANTED_SCOPES};
 
 /// Wrap the shared `conn` in a gatekeeper store (applying migrations) and run
-/// every idempotent first-boot seeding step — signing key, first-party client.
+/// every first-boot seeding step — signing key, the first-party host client, and
+/// the bundled SMART sample-app clients (growth-chart, PRECISE-HBR). Safe to call
+/// on every boot.
 ///
 /// # Errors
 ///
-/// Returns an error if the store cannot be created (migrations) or if seeding
-/// the signing key or first-party client fails.
+/// Returns an error if the store cannot be created (migrations) or if any seeding
+/// step fails.
 pub fn open_and_seed_store(conn: Connection) -> anyhow::Result<GatekeeperStore> {
     let store = GatekeeperStore::new(conn).context("failed to open gatekeeper store")?;
     ensure_some_active_signing_key(&store).context("failed to seed signing key")?;
     ensure_first_party_client(&store).context("failed to seed first-party client")?;
     ensure_smart_growth_chart_client(&store)
         .context("failed to seed SMART growth-chart sample client")?;
+    ensure_precise_hbr_client(&store).context("failed to seed PRECISE-HBR client")?;
     Ok(store)
 }
 
@@ -55,17 +59,12 @@ fn ensure_some_active_signing_key(store: &GatekeeperStore) -> anyhow::Result<()>
 /// adjust here.
 const GROWTH_CHART_CLIENT_ID: &str = "growth_chart";
 
-/// Register the SMART growth-chart-app sample client if it isn't already
-/// in the store. Public client (no secret, PKCE-only) with the standard
-/// SMART App Launch scopes for a patient-context viewer. Idempotent.
+/// Ensure the SMART growth-chart-app sample client matches the code's
+/// definition: a public client (no secret, PKCE-only) with the standard SMART
+/// App Launch scopes for a patient-context viewer. Upserted on every boot so an
+/// older store's drifted definition is corrected (registration time and any
+/// admin disable are preserved).
 fn ensure_smart_growth_chart_client(store: &GatekeeperStore) -> anyhow::Result<()> {
-    if store
-        .client_by_id(GROWTH_CHART_CLIENT_ID)
-        .context("read growth-chart client")?
-        .is_some()
-    {
-        return Ok(());
-    }
     let client = Client {
         client_id: GROWTH_CHART_CLIENT_ID.to_string(),
         name: "SMART Growth Chart (sample)".to_string(),
@@ -100,29 +99,42 @@ fn ensure_smart_growth_chart_client(store: &GatekeeperStore) -> anyhow::Result<(
         disabled_at: None,
     };
     store
-        .register_client(&client)
-        .context("register growth-chart client")?;
+        .upsert_client(&client)
+        .context("seed growth-chart client")?;
     Ok(())
 }
 
-/// Register the `wildflower-host` first-party client if it isn't already in
-/// the store. Idempotent — safe to call on every boot.
-fn ensure_first_party_client(store: &GatekeeperStore) -> anyhow::Result<()> {
-    if store
-        .client_by_id(FIRST_PARTY_CLIENT_ID)
-        .context("read first-party client")?
-        .is_some()
-    {
-        return Ok(());
-    }
+/// `client_id` the PRECISE-HBR Risk Calculator SMART app presents to
+/// `/oauth/authorize` (a fixed UUID baked into its registration).
+const PRECISE_HBR_CLIENT_ID: &str = "cc344727-6f90-496c-94fd-c7829aa9a51d";
+
+/// Ensure the PRECISE-HBR Risk Calculator client matches the code's definition:
+/// a public SMART app (no secret, PKCE-only) granted the patient-context read
+/// scopes its risk calculation needs (conditions, medications, observations,
+/// procedures). Upserted on every boot (registration time and any admin disable
+/// preserved).
+fn ensure_precise_hbr_client(store: &GatekeeperStore) -> anyhow::Result<()> {
     let client = Client {
-        client_id: FIRST_PARTY_CLIENT_ID.to_string(),
-        name: "Wildflower (host)".to_string(),
+        client_id: PRECISE_HBR_CLIENT_ID.to_string(),
+        name: "PRECISE-HBR Risk Calculator".to_string(),
         kind: ClientKind::Public,
-        redirect_uris: JsonColumn(vec![]),
+        redirect_uris: JsonColumn(vec![url::Url::parse(
+            "https://hbr.alumicoin.cloud/callback",
+        )
+        .expect("PRECISE-HBR redirect URL is a hardcoded valid URL")]),
+        // SMART App Launch context + the patient-context FHIR reads the risk
+        // calculator pulls (demographics, observations, problems, medications,
+        // procedures), in canonical v2 letter form.
         allowed_scopes: JsonColumn(vec![
-            OWNER_SCOPE.to_string(),
-            FULL_FHIR_ACCESS_SCOPE.to_string(),
+            "openid".to_string(),
+            "fhirUser".to_string(),
+            "launch".to_string(),
+            "profile".to_string(),
+            "patient/Patient.rs".to_string(),
+            "patient/Observation.rs".to_string(),
+            "patient/Condition.rs".to_string(),
+            "patient/MedicationRequest.rs".to_string(),
+            "patient/Procedure.rs".to_string(),
         ]),
         allowed_grant_types: JsonColumn(AllowedGrantType::ALL.to_vec()),
         secret_hash: None,
@@ -130,8 +142,31 @@ fn ensure_first_party_client(store: &GatekeeperStore) -> anyhow::Result<()> {
         disabled_at: None,
     };
     store
-        .register_client(&client)
-        .context("register first-party client")?;
+        .upsert_client(&client)
+        .context("seed PRECISE-HBR client")?;
+    Ok(())
+}
+
+/// Ensure the `wildflower-host` first-party client matches the code's
+/// definition. Upserted on every boot so its `allowed_scopes` (and the rest of
+/// its policy) always match [`WILDFLOWER_LOCAL_GRANTED_SCOPES`], correcting a
+/// store seeded by an older build (registration time and any admin disable are
+/// preserved).
+fn ensure_first_party_client(store: &GatekeeperStore) -> anyhow::Result<()> {
+    let client = Client {
+        client_id: FIRST_PARTY_CLIENT_ID.to_string(),
+        name: "Wildflower (host)".to_string(),
+        kind: ClientKind::Public,
+        redirect_uris: JsonColumn(vec![]),
+        allowed_scopes: JsonColumn(scopes_rust::render_scopes(WILDFLOWER_LOCAL_GRANTED_SCOPES)),
+        allowed_grant_types: JsonColumn(AllowedGrantType::ALL.to_vec()),
+        secret_hash: None,
+        registered_at: Utc::now(),
+        disabled_at: None,
+    };
+    store
+        .upsert_client(&client)
+        .context("seed first-party client")?;
     Ok(())
 }
 
@@ -168,10 +203,11 @@ pub(crate) fn mint_host_owner_token(
     let key = store
         .active_signing_key()?
         .ok_or(HostTokenError::NoSigningKeys)?;
-    // Both scopes go in: OWNER_SCOPE gates gatekeeper's admin surface,
-    // FULL_FHIR_ACCESS_SCOPE gates HFS's FHIR surface. The token presents
-    // both to satisfy each ring's check.
-    let scope = [OWNER_SCOPE.to_string(), FULL_FHIR_ACCESS_SCOPE.to_string()];
+    // The host owner token carries the full set the local app is granted (the
+    // FHIR and Wildflower full-access wildcards): it gates HFS's FHIR surface and
+    // — since `require_owner_auth` checks coverage of every `WILDFLOWER_WIDEST_SCOPES`
+    // entry — gatekeeper's `/access/*` admin surface too.
+    let scope = scopes_rust::render_scopes(WILDFLOWER_LOCAL_GRANTED_SCOPES);
     Ok(mint_access_token(
         &key,
         &NewJwtArgs {

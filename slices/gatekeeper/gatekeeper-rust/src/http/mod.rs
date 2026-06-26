@@ -41,8 +41,11 @@ fn documented_router() -> OpenApiRouter<AppState> {
 /// Build the gatekeeper's public HTTP surface. Routes live at
 /// `/.well-known/jwks.json`, `/oauth/*`, and `/access/*` (Owner-only via
 /// bearer JWT) — the module owns its mount paths so the caller just
-/// `.merge()`s. The whole surface is gated by the loopback middleware —
-/// non-loopback peers receive 403 before any handler runs.
+/// `.merge()`s. This router carries **no** loopback-peer gate of its own —
+/// the host applies that defense-in-depth to the whole merged surface via
+/// [`layer_router_with_loopback_peer_gating`]. Mounting `router()` directly
+/// without that wrapper leaves `/oauth/*` and `/access/*` reachable from
+/// non-loopback peers.
 pub fn router(state: AppState) -> Router {
     let (documented, _spec) = documented_router().split_for_parts();
     let access = Router::new()
@@ -57,7 +60,6 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .merge(documented)
         .nest("/access", access)
-        .layer(axum_middleware::from_fn(middleware::require_loopback_peer))
         .with_state(state)
 }
 
@@ -76,7 +78,10 @@ pub fn layer_router_with_gatekeeper_auth_gating(
 ) -> Router {
     let gate = middleware::BearerGate {
         state,
-        exempt: exempt_paths.iter().map(|p| p.to_string()).collect(),
+        exempt: exempt_paths
+            .iter()
+            .map(|p| p.trim_end_matches('/').to_string())
+            .collect(),
     };
     router.layer(axum_middleware::from_fn_with_state(
         gate,

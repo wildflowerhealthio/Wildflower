@@ -36,8 +36,6 @@ pub async fn require_valid_bearer_token(
     if is_exempt(req.uri().path(), &gate.exempt) {
         return next.run(req).await;
     }
-    // TODO(transport): assumes the WebView reaches us over loopback HTTP; if
-    // it switches to tauri:// IPC, this gate must move.
     let Some(token) = try_bearer_token_from_headers(&headers) else {
         return response_templates::unauthorized();
     };

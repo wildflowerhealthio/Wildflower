@@ -103,6 +103,40 @@ describe('<NeedsAuthMessage> device flow', () => {
     expect(screen.getByText('Sign in on another device')).toBeTruthy()
   })
 
+  test("requests the first-party client's full allowed_scopes set", async () => {
+    // Captures the payload the flow hands to `DeviceAuthorization`. The
+    // requested scope must mirror gatekeeper-rust's
+    // `WILDFLOWER_LOCAL_GRANTED_SCOPES` exactly — the device_authorization
+    // handler exact-matches each requested scope and rejects the whole
+    // request with `invalid_scope` on any miss.
+    let capturedInput: unknown
+    layerHolder.current = makeClientLayer({
+      DeviceAuthorization: (input) => {
+        capturedInput = input
+        return Effect.succeed({
+          user_code: 'WDJB-MJHT',
+          device_code: 'dev-1',
+          verification_uri: 'https://example.com/device',
+          verification_uri_complete: 'https://example.com/device?code=WDJB-MJHT',
+          interval: 5,
+        })
+      },
+      TokenExchange: () => PENDING_FOREVER,
+    })
+
+    render(withTokenStore(<NeedsAuthMessage />))
+
+    await waitFor(
+      () => {
+        expect(capturedInput).toBeDefined()
+      },
+      { timeout: 2000 }
+    )
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test assertion: narrow the captured `unknown` to read the requested scope
+    const payload = (capturedInput as { readonly payload: { readonly scope: string } }).payload
+    expect(payload.scope).toBe('system/*.cruds wildflower/*.cruds')
+  })
+
   test('renders the failure view when device authorization errors', async () => {
     layerHolder.current = makeClientLayer({
       DeviceAuthorization: () => Effect.fail(new Error('device endpoint exploded')),

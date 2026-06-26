@@ -14,11 +14,8 @@ import { Effect, Layer } from 'effect'
 import { EmrStore, schema } from 'emr-core/livestore'
 import { Origin } from 'navigation-core'
 
-import { FhirPublicApi, FhirResourcesApi } from '../src/http-api-definition/index.ts'
-import {
-  FhirPublicApiHandlersLive,
-  FhirResourcesApiLive,
-} from '../src/http-api-implementation/index.ts'
+import { FhirResourcesApi } from '../src/http-api-definition/index.ts'
+import { FhirResourcesApiLive } from '../src/http-api-implementation/index.ts'
 
 const ORIGIN = 'http://localhost:8787'
 
@@ -41,20 +38,14 @@ const fetchLayerFor = (handler: (req: Request) => Promise<Response>): FetchLayer
 }
 
 const makeResourcesClientEffect = HttpApiClient.make(FhirResourcesApi, { baseUrl: ORIGIN })
-const makePublicClientEffect = HttpApiClient.make(FhirPublicApi, { baseUrl: ORIGIN })
 
 type ResourcesClient = Effect.Effect.Success<typeof makeResourcesClientEffect>
-type PublicClient = Effect.Effect.Success<typeof makePublicClientEffect>
 
 const makeResourcesClient = (httpClientLayer: FetchLayer): Promise<ResourcesClient> =>
   Effect.runPromise(makeResourcesClientEffect.pipe(Effect.provide(httpClientLayer)))
 
-const makePublicClient = (httpClientLayer: FetchLayer): Promise<PublicClient> =>
-  Effect.runPromise(makePublicClientEffect.pipe(Effect.provide(httpClientLayer)))
-
 interface Wired {
   readonly resources: Awaited<ReturnType<typeof makeResourcesClient>>
-  readonly public: Awaited<ReturnType<typeof makePublicClient>>
   readonly handler: (req: Request) => Promise<Response>
   readonly dispose: () => Promise<void>
   readonly store: Store<typeof schema, object>
@@ -76,11 +67,7 @@ const wireServer = async (): Promise<Wired> => {
     Layer.provide(EmrStore.layerFrom(store)),
     Layer.provide(originLayer)
   )
-  const publicLive = HttpApiBuilder.api(FhirPublicApi).pipe(
-    Layer.provide(FhirPublicApiHandlersLive),
-    Layer.provide(originLayer)
-  )
-  const merged = Layer.mergeAll(resourcesLive, publicLive, HttpServer.layerContext)
+  const merged = Layer.mergeAll(resourcesLive, HttpServer.layerContext)
   // `HttpApiBuilder.toWebHandler` wraps fetch `Request`s via
   // `HttpServerRequest.fromWeb`, which leaves `remoteAddress = None` since
   // a fetch `Request` has no TCP socket. Production paths
@@ -126,11 +113,9 @@ const wireServer = async (): Promise<Wired> => {
   const httpClientLayer = fetchLayerFor(handler)
 
   const resources = await makeResourcesClient(httpClientLayer)
-  const publicClient = await makePublicClient(httpClientLayer)
 
   return {
     resources,
-    public: publicClient,
     handler,
     store,
     dispose: async (): Promise<void> => {

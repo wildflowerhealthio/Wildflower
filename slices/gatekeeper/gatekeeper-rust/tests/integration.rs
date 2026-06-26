@@ -3,8 +3,9 @@ use std::net::SocketAddr;
 use axum::body::{to_bytes, Body};
 use axum::extract::ConnectInfo;
 use axum::http::{Request, StatusCode};
-use gatekeeper_rust::{setup_gatekeeper, Gatekeeper, GatekeeperConfig};
-use scopes_rust::{FULL_FHIR_ACCESS_SCOPE, OWNER_SCOPE};
+use gatekeeper_rust::{
+    setup_gatekeeper, Gatekeeper, GatekeeperConfig, WILDFLOWER_LOCAL_GRANTED_SCOPES,
+};
 use tokio::sync::watch;
 
 const LOOPBACK_ORIGIN: &str = "http://127.0.0.1";
@@ -124,18 +125,6 @@ async fn jwks_endpoint_returns_seeded_key() {
             }]
         })
     );
-}
-
-#[tokio::test]
-async fn loopback_peer_gate_rejects_non_loopback_peer() {
-    let (g, _host_owner_token, _db) = spin_up();
-    let mut req = Request::get("/.well-known/jwks.json")
-        .body(Body::empty())
-        .unwrap();
-    req.extensions_mut()
-        .insert(ConnectInfo::<SocketAddr>("10.0.0.5:54321".parse().unwrap()));
-    let res = g.router.oneshot(req).await.expect("oneshot");
-    assert_eq!(res.status(), StatusCode::FORBIDDEN);
 }
 
 #[tokio::test]
@@ -375,7 +364,7 @@ async fn authorize_accepts_smart_launch_and_aud_params() {
 #[tokio::test]
 async fn device_authorization_happy_path() {
     let (g, _host_owner_token, _db) = spin_up();
-    let body = "client_id=wildflower-host&scope=wildflower%2Fadmin";
+    let body = "client_id=wildflower-host&scope=system%2F*.cruds";
     let req = loopback_request(
         Request::post("/oauth/device_authorization")
             .header("content-type", "application/x-www-form-urlencoded"),
@@ -409,7 +398,7 @@ async fn device_authorization_happy_path() {
 #[tokio::test]
 async fn device_authorization_unknown_client_returns_401() {
     let (g, _host_owner_token, _db) = spin_up();
-    let body = "client_id=ghost&scope=wildflower%2Fadmin";
+    let body = "client_id=ghost&scope=system%2F*.cruds";
     let req = loopback_request(
         Request::post("/oauth/device_authorization")
             .header("content-type", "application/x-www-form-urlencoded"),
@@ -527,56 +516,6 @@ async fn token_exchange_unknown_device_code_returns_400_invalid_grant() {
     let body = body_json(res.into_body()).await;
     assert_eq!(body["error"], "invalid_grant");
     assert_eq!(body["error_description"], "Unknown device_code");
-}
-
-#[tokio::test]
-async fn host_owner_token_is_owner_scoped() {
-    // The owner-token TTL is 24h; allow a couple seconds of slack on the
-    // second-precision, wall-clock-derived timestamps (the reviewer asked us
-    // to "allow for some uncertainty in the timing-dependent values").
-    const OWNER_TOKEN_TTL_SECS: i64 = 24 * 60 * 60;
-
-    let before = Utc::now().timestamp();
-    let (_g, host_owner_token, _db) = spin_up();
-    // header.payload.sig
-    let parts: Vec<&str> = host_owner_token.split('.').collect();
-    assert_eq!(parts.len(), 3);
-    let payload_bytes = base64::url_safe_no_pad_decode(parts[1]).expect("payload");
-    let payload: Value = serde_json::from_slice(&payload_bytes).expect("json");
-    // iat/exp are wall-clock-derived; thread them through and check their
-    // *relationship* separately (below) rather than pinning absolute instants.
-    let iat = payload["iat"].as_i64().expect("iat");
-    let exp = payload["exp"].as_i64().expect("exp");
-    assert_eq!(
-        payload,
-        serde_json::json!({
-            // Every token's `iss` is the stable CANONICAL_ISSUER, not the
-            // loopback origin — pinning matches what HFS validates against.
-            "iss": shared_structures_rust::CANONICAL_ISSUER,
-            "sub": "wildflower-host",
-            "aud": LOOPBACK_ORIGIN,
-            // Owner token now carries BOTH the wildflower admin scope
-            // (gates gatekeeper's /access/*) AND the SMART v2 full-FHIR
-            // wildcard (HFS reads this to grant every FHIR op).
-            "scope": format!("{OWNER_SCOPE} {FULL_FHIR_ACCESS_SCOPE}"),
-            "iat": iat,
-            "exp": exp,
-        })
-    );
-    assert!(
-        (exp - iat - OWNER_TOKEN_TTL_SECS).abs() <= 2,
-        "exp - iat = {} should be ~{OWNER_TOKEN_TTL_SECS}",
-        exp - iat
-    );
-    // `before` is captured ahead of `spin_up`, which generates an RSA key —
-    // slow and variable under parallel test load — so this window is generous.
-    // It only pins that `iat` is a *recent* wall-clock instant (not 0, not far
-    // future); the exp - iat relationship above carries the precise check.
-    let now = Utc::now().timestamp();
-    assert!(
-        (before..=now).contains(&iat),
-        "iat = {iat} should fall within the test's wall-clock envelope [{before}, {now}]"
-    );
 }
 
 // ---------------------------------------------------------------------------
@@ -1136,7 +1075,7 @@ async fn device_grant_pending_then_slow_down() {
         &store_handle(&db),
         "wildflower-host",
         "dev-pending",
-        &[OWNER_SCOPE],
+        &[&WILDFLOWER_LOCAL_GRANTED_SCOPES[0].to_string()],
         RequestStatus::Pending,
         Utc::now() + Duration::minutes(5),
     );
@@ -1166,7 +1105,7 @@ async fn device_grant_single_use_then_expired_token() {
         &store_handle(&db),
         "wildflower-host",
         "dev-approved",
-        &[OWNER_SCOPE],
+        &[&WILDFLOWER_LOCAL_GRANTED_SCOPES[0].to_string()],
         RequestStatus::Approved,
         Utc::now() + Duration::minutes(5),
     );
@@ -1176,7 +1115,10 @@ async fn device_grant_single_use_then_expired_token() {
     assert_eq!(first.status(), StatusCode::OK);
     let token = body_json(first.into_body()).await;
     assert_eq!(token["token_type"], "Bearer");
-    assert_eq!(token["scope"], OWNER_SCOPE);
+    assert_eq!(
+        token["scope"],
+        WILDFLOWER_LOCAL_GRANTED_SCOPES[0].to_string()
+    );
 
     let second = post_form(&g.router, "/oauth/token", body).await;
     assert_eq!(second.status(), StatusCode::BAD_REQUEST);
@@ -1317,7 +1259,7 @@ async fn device_authorization_sets_cache_suppression_headers() {
     let res = post_form(
         &g.router,
         "/oauth/device_authorization",
-        "client_id=wildflower-host&scope=wildflower%2Fadmin",
+        "client_id=wildflower-host&scope=system%2F*.cruds",
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);

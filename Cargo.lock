@@ -2106,7 +2106,6 @@ dependencies = [
  "helios-auth",
  "helios-persistence",
  "helios-rest",
- "scopes-rust",
  "serde",
  "shared-structures-rust",
  "tokio",
@@ -6360,6 +6359,12 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 [[package]]
 name = "scopes-rust"
 version = "0.0.0"
+dependencies = [
+ "proptest",
+ "serde",
+ "serde_json",
+ "tracing",
+]
 
 [[package]]
 name = "seahash"
