@@ -1,7 +1,11 @@
 pub mod bridge;
 pub mod server_runtime_config;
+pub mod test_utils;
 
 pub use server_runtime_config::ServerRuntimeConfig;
+
+mod on_device_webview_handle;
+pub use on_device_webview_handle::OnDeviceWebviewHandle;
 
 #[cfg(feature = "http-errors")]
 pub mod http_errors;
@@ -29,3 +33,11 @@ pub mod health_check;
 /// Behind the `served-origin` feature so non-HTTP crates don't pull `axum`.
 #[cfg(feature = "served-origin")]
 pub mod served_origin;
+
+/// The `<id>.<public_host>` subdomain shape — one definition shared by the
+/// apps slice's internal-app launch redirect (producer) and the host's
+/// forwarded-request subdomain dispatch (consumer), so the URL a launch emits
+/// and the host the dispatcher matches can't drift apart. Behind the
+/// `subdomain-url` feature; pure string code, no extra deps.
+#[cfg(feature = "subdomain-url")]
+pub mod subdomain_host;

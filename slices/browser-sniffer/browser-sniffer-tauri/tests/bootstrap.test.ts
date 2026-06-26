@@ -9,16 +9,15 @@ import { tauriSnifferBootstrapScript } from '../src/index.ts'
 /**
  * Multiplexed bridge channel literal — pinned in
  * `effect-messaging-tauri/event-names.ts` and the sniffer's own copy in
- * `install-sniffer.ts`. Hardcoded here rather than imported so the
- * bootstrap's own copy can drift independently and the test catches it.
+ * `install-sniffer.ts`. Hardcoded rather than imported so the bootstrap's own
+ * copy can drift independently and the test catches it.
  */
 const BRIDGE_EVENT = 'bridge'
 
 /**
  * Gated host command the desktop bootstrap routes outbound data-plane emits
- * through instead of `event.emit` (the content webview holds no bus `emit`
- * grant). Hardcoded — like {@link BRIDGE_EVENT} — so the bootstrap's own copy
- * can drift independently and this test catches it.
+ * through instead of `event.emit`. Hardcoded — like {@link BRIDGE_EVENT} — to
+ * catch drift in the bootstrap's own copy.
  */
 const DATA_PLANE_EMIT_COMMAND = 'native_webview_data_plane_emit'
 
@@ -38,9 +37,6 @@ const TAURI_GLOBAL_SLOT = '__TAURI__'
  */
 const resetSnifferGlobals = (): void => {
   Reflect.deleteProperty(globalThis, TAURI_GLOBAL_SLOT)
-  // Symbol-keyed slot installed by `installSniffer()` to short-circuit
-  // a second install on the same page; clearing it lets the next test
-  // re-shim fetch/XHR/console cleanly.
   Reflect.deleteProperty(globalThis, SNIFFER_STATE_SLOT)
 }
 
@@ -126,12 +122,9 @@ describe('tauriSnifferBootstrapScript', () => {
 
   it('installs the sniffer when window.__TAURI__ event + core.invoke are present', () => {
     const { emits } = bootBootstrap()
-    // installSniffer ran: its symbol-keyed state slot exists.
     expect(SNIFFER_STATE_SLOT in (globalThis as object)).toBe(true)
-    // No `SniffingComplete` should land on boot — that tag is the
-    // terminal close signal, not something the bootstrap fires for itself.
-    // (Pre-multi-webview, the in-page top bar's Close button emitted it;
-    // now the plugin's chrome owns the close path.)
+    // No `SniffingComplete` on boot: it's the terminal close signal, now owned
+    // by the plugin's chrome (pre-multi-webview, the in-page top bar emitted it).
     const completedOnBoot = emits.find(
       (entry) =>
         entry.event === BRIDGE_EVENT &&
@@ -144,9 +137,8 @@ describe('tauriSnifferBootstrapScript', () => {
   })
 
   it('skips installSniffer when window.__TAURI__ is absent', () => {
-    // Without __TAURI__ there's no event bus to ride; the bootstrap
-    // no-ops rather than shimming fetch/XHR/console with nowhere to
-    // emit them. Symbol slot stays unset.
+    // Without __TAURI__ there's no event bus to ride; the bootstrap no-ops
+    // rather than shimming fetch/XHR/console with nowhere to emit them.
     bootBootstrap({ withTauri: false })
     const stateSlotPresent = SNIFFER_STATE_SLOT in (globalThis as object)
     expect(stateSlotPresent).toBe(false)

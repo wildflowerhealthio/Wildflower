@@ -353,8 +353,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
                 return@runOnUiThread
             }
             if (isVisible) {
-                // Already on screen — `dialog.show()` would be a no-op, and no
-                // transition is caused, so report `false`.
+                // Already on screen — no transition caused, so report `false`.
                 val result = JSObject()
                 result.put("requestCausedShow", false)
                 invoke.resolve(result)
@@ -518,17 +517,13 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
         val webView = WebView(activity)
         webView.settings.javaScriptEnabled = true
         webView.settings.domStorageEnabled = true
-        // Capture so `evaluateJs` can target it; cleared on dismiss below.
         currentWebView = webView
 
-        // Reset the URL-fallback state for this fresh native webview — see
-        // docs/Lifecycle and Races Explanation.md § "Chrome URL-fallback".
+        // Reset the URL-fallback state for this fresh native webview.
         currentUrl = url
         titleClaimed = false
         subtitleClaimed = false
 
-        // Per-native-webview JS -> native bridge (see [Bridge]). Captured into
-        // [currentBridge] so a re-`openUrl` can rebind its channel.
         val bridge = Bridge(channel)
         webView.addJavascriptInterface(bridge, MESSAGE_HANDLER_NAME)
         currentBridge = bridge
@@ -546,13 +541,12 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
             currentDocStartScript =
                 WebViewCompat.addDocumentStartJavaScript(webView, initScript, setOf("*"))
         } else if (initScript != null) {
-            // The `onPageStarted` fallback fires AFTER the JS context exists,
-            // so a page's inline `<script>` tag in `<head>` that synchronously
-            // calls `fetch`/`XMLHttpRequest` will run before our injection —
-            // those requests escape interception silently. WebView 83+ (API
-            // level varies) provides DOCUMENT_START_SCRIPT; flag the
-            // under-collection so an out-of-date device shows up in logs
-            // rather than just producing thin data.
+            // The `onPageStarted` fallback fires AFTER the JS context exists, so a
+            // page's inline `<head>` `<script>` that synchronously calls
+            // `fetch`/`XMLHttpRequest` runs before our injection — those requests
+            // escape interception silently. Log it so an out-of-date device
+            // (pre-WebView-83, no DOCUMENT_START_SCRIPT) surfaces rather than just
+            // producing thin data.
             android.util.Log.w(
                 "NativeWebview",
                 "WebViewFeature.DOCUMENT_START_SCRIPT unsupported on this device's " +
@@ -678,11 +672,8 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
             }
 
             override fun onPageFinished(view: WebView, pageUrl: String?) {
-                // Refresh the nav-arrow enabled state. `canGoBack` /
-                // `canGoForward` are polled methods (no observable equivalent on
-                // `android.webkit.WebView`); `onPageFinished` is the standard
-                // hook every navigation hits. (The URL fallback is driven from
-                // `onPageStarted` above.)
+                // Refresh the polled nav-arrow enabled state (see the bottom-bar
+                // setup above); `onPageFinished` is the hook every navigation hits.
                 backButton.isEnabled = view.canGoBack()
                 forwardButton.isEnabled = view.canGoForward()
             }

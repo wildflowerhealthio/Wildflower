@@ -35,7 +35,13 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(into = "String", try_from = "String")]
 pub enum AppUrl {
-    /// An absolute `https://` URL (off-device). May embed `{origin}`/`{launch}`.
+    /// An absolute URL the launch flow passes through verbatim (after any
+    /// `{origin}` / `{launch}` substitution). Parsed from `https://` strings
+    /// only — `http://` is rejected by [`FromStr`] (no-TLS / open-redirect
+    /// protection) — so an `External` is always a validated, off-device
+    /// `https://` target. (Internal apps don't use this variant: they render
+    /// their loopback / subdomain launch URL on demand in the launch handler
+    /// and carry no `AppUrl` at all.)
     External(String),
     /// An on-device target — the part that follows the served origin (a leading
     /// `/path`, `?query`, `#fragment`, or empty for the bare origin).
@@ -48,8 +54,6 @@ pub struct LaunchParams<'a> {
     pub origin: &'a str,
     /// Per-launch nonce substituted for `{launch}`.
     pub launch: &'a str,
-    /// When true, append `?tunnel=unavailable` so the SPA can surface a banner.
-    pub tunnel_unavailable: bool,
 }
 
 /// The error returned when a string isn't a valid [`AppUrl`] (see
@@ -116,9 +120,8 @@ impl FromStr for AppUrl {
 }
 
 impl AppUrl {
-    /// Render the concrete redirect target: substitute `{origin}` / `{launch}`,
-    /// resolve an origin-relative target against `params.origin`, and append
-    /// `?tunnel=unavailable` when the launch wanted a tunnel that isn't there.
+    /// Render the concrete redirect target: substitute `{origin}` / `{launch}`
+    /// and resolve an origin-relative target against `params.origin`.
     ///
     /// The result is safe by construction: an [`AppUrl::OriginRelative`] always
     /// renders same-origin and an [`AppUrl::External`] always stays on its
@@ -126,7 +129,7 @@ impl AppUrl {
     /// so no launch-time re-validation is needed.
     #[must_use]
     pub fn to_url_with_params(&self, params: &LaunchParams<'_>) -> String {
-        let base = match self {
+        match self {
             AppUrl::External(url) => url
                 .replace("{origin}", params.origin)
                 .replace("{launch}", params.launch),
@@ -135,11 +138,6 @@ impl AppUrl {
             AppUrl::OriginRelative(suffix) => {
                 format!("{}{}", params.origin, suffix).replace("{launch}", params.launch)
             }
-        };
-        if params.tunnel_unavailable {
-            append_query_flag(&base, "tunnel=unavailable")
-        } else {
-            base
         }
     }
 }
@@ -180,31 +178,12 @@ fn can_immediately_follow_origin(rest: &str) -> bool {
     rest.starts_with(['/', '?', '#'])
 }
 
-/// Append `flag` as a query parameter to `target`, before any `#fragment`.
-///
-/// Uses string manipulation rather than `url::Url`: some launch URLs (e.g.
-/// growth-chart, medication-viewer) carry raw colons / slashes in their `iss=`
-/// query values that round-tripping through `Url` would percent-encode —
-/// downstream consumers expect the un-encoded form.
-fn append_query_flag(target: &str, flag: &str) -> String {
-    let (base, hash) = match target.find('#') {
-        Some(idx) => (&target[..idx], &target[idx..]),
-        None => (target, ""),
-    };
-    let sep = if base.contains('?') { '&' } else { '?' };
-    format!("{base}{sep}{flag}{hash}")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn params<'a>(origin: &'a str, launch: &'a str, tunnel_unavailable: bool) -> LaunchParams<'a> {
-        LaunchParams {
-            origin,
-            launch,
-            tunnel_unavailable,
-        }
+    fn params<'a>(origin: &'a str, launch: &'a str) -> LaunchParams<'a> {
+        LaunchParams { origin, launch }
     }
 
     #[test]
@@ -300,13 +279,13 @@ mod tests {
     fn origin_relative_renders_same_origin_with_launch_substituted() {
         let url: AppUrl = "{origin}/x?launch={launch}".parse().unwrap();
         assert_eq!(
-            url.to_url_with_params(&params("http://127.0.0.1:8080", "NONCE", false)),
+            url.to_url_with_params(&params("http://127.0.0.1:8080", "NONCE")),
             "http://127.0.0.1:8080/x?launch=NONCE",
         );
         // A plain `/path` resolves against the origin too.
         let url: AppUrl = "/installed-apps/x".parse().unwrap();
         assert_eq!(
-            url.to_url_with_params(&params("http://127.0.0.1:8080", "n", false)),
+            url.to_url_with_params(&params("http://127.0.0.1:8080", "n")),
             "http://127.0.0.1:8080/installed-apps/x",
         );
     }
@@ -317,32 +296,8 @@ mod tests {
             .parse()
             .unwrap();
         assert_eq!(
-            url.to_url_with_params(&params("http://127.0.0.1:8080", "NONCE", false)),
+            url.to_url_with_params(&params("http://127.0.0.1:8080", "NONCE")),
             "https://host/launch.html?iss=http://127.0.0.1:8080/fhir-r4&launch=NONCE",
-        );
-    }
-
-    #[test]
-    fn tunnel_unavailable_flag_lands_before_any_fragment() {
-        let bare: AppUrl = "https://x/y".parse().unwrap();
-        assert_eq!(
-            bare.to_url_with_params(&params("o", "n", true)),
-            "https://x/y?tunnel=unavailable",
-        );
-        let with_query: AppUrl = "https://x/y?z=1".parse().unwrap();
-        assert_eq!(
-            with_query.to_url_with_params(&params("o", "n", true)),
-            "https://x/y?z=1&tunnel=unavailable",
-        );
-        let with_hash: AppUrl = "https://x/y#hash".parse().unwrap();
-        assert_eq!(
-            with_hash.to_url_with_params(&params("o", "n", true)),
-            "https://x/y?tunnel=unavailable#hash",
-        );
-        let with_query_hash: AppUrl = "https://x/y?z=1#hash".parse().unwrap();
-        assert_eq!(
-            with_query_hash.to_url_with_params(&params("o", "n", true)),
-            "https://x/y?z=1&tunnel=unavailable#hash",
         );
     }
 }

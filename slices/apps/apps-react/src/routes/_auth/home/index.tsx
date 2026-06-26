@@ -1,78 +1,43 @@
-import { createFileRoute } from '@tanstack/react-router'
-import { stripTrailingSlash } from 'kitchen-sink'
-import { useState, type JSX } from 'react'
-import { cn } from 'react-kitchen-sink'
+import { createFileRoute, useRouteContext } from '@tanstack/react-router'
+import { useRef, useState, type JSX } from 'react'
 import { AsyncErrorView, ItemList, PageHeader, type ItemListItem } from 'react-tundraish'
-import { tunnelStateQueryOptions, useTunnelStateQuery, type TunnelState } from 'tunnel-react'
 
 import { appsListQueryOptions, useAppsListQuery, type AppEntry } from '../../../queries.ts'
-import { useRequestTunnel } from '../../../runtime/use-request-tunnel.ts'
+import type { RouterContext } from '../../../router-context.ts'
 import { AppsEditor } from '../../../screens/apps-editor.tsx'
-import { launchTarget } from './-launch-target.ts'
-import pageLayout from '../../../styles/page.module.css'
+import { launchApp } from './-launch.ts'
 
 /**
- * Owner-facing apps landing. The route `loader` warms both queries in
- * parallel against the shared `QueryClient`; by the time the component
- * renders, `useAppsListQuery` / `useTunnelStateQuery` resolve
- * synchronously from cache. The router's own pending UI covers the
- * load window — no inline `<Suspense>` fallback, no `<CatchBoundary>`;
- * read failures propagate to the route's `errorComponent`. Mutations
- * triggered inside `<AppsEditor>` auto-invalidate the list query.
+ * Owner-facing apps landing. The route `loader` warms the apps-list query
+ * against the shared `QueryClient`; by the time the component renders,
+ * `useAppsListQuery` resolves synchronously from cache. The router's own
+ * pending UI covers the load window — no inline `<Suspense>` fallback, no
+ * `<CatchBoundary>`; read failures propagate to the route's `errorComponent`.
+ * Mutations triggered inside `<AppsEditor>` auto-invalidate the list query.
  */
 const AppsHomeScreen = (): JSX.Element => {
   const { data: apps } = useAppsListQuery()
-  const { data: tunnel } = useTunnelStateQuery()
-  return <AppsHomeBody apps={apps} tunnel={tunnel} />
+  return <AppsHomeBody apps={apps} />
 }
 
 interface AppsHomeBodyProps {
-  readonly tunnel: TunnelState
   readonly apps: readonly AppEntry[]
 }
 
-const AppsHomeBody = ({ tunnel, apps }: AppsHomeBodyProps): JSX.Element => {
+const AppsHomeBody = ({ apps }: AppsHomeBodyProps): JSX.Element => {
   const [editorOpen, setEditorOpen] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const requestTunnel = useRequestTunnel()
+  const formRef = useRef<HTMLFormElement | null>(null)
+  // Set only on the Tauri webview; its presence is the launch-arm signal —
+  // see `launchApp` and `RouterContext.apiBaseUrl`.
+  const apiBaseUrl = useRouteContext({
+    from: '__root__',
+    select: (context: RouterContext) => context.apiBaseUrl,
+  })
 
   const visible = apps.filter((app) => app.enabled)
 
-  const launch = async (app: AppEntry): Promise<void> => {
-    setError(null)
-    // LaunchApp is GET /apps/:id which returns a 302 redirect; we set
-    // window.location so the browser follows the redirect chain (and any
-    // tunnel-side origin swap) just as a normal app-shell click would.
-    //
-    // Origin policy:
-    //  - Non-tunnel apps always go through `window.location.origin`,
-    //    which the embedded shell pins to the loopback origin. That
-    //    keeps the redirect off the public tunnel even when one is up
-    //    (avoiding localtunnel's 511 captive-portal interstitial).
-    //  - Tunnel apps explicitly target `tunnel.servedOrigin` — the
-    //    server-resolved public URL — only while the tunnel is
-    //    `verified` (the one status where `servedOrigin` is the public
-    //    origin). For any other status `servedOrigin` is still the
-    //    loopback fallback, so we ask the host to bring the tunnel up via
-    //    the bridge and await its verified origin instead of redirecting
-    //    to loopback (which would silently bypass the tunnel). See
-    //    [`launchTarget`].
-    const launchPath = `/apps/${encodeURIComponent(app.id)}`
-    const target = launchTarget(app, tunnel)
-    if (target.via === 'loopback') {
-      window.location.href = `${stripTrailingSlash(window.location.origin)}${launchPath}`
-      return
-    }
-    if (target.via === 'served') {
-      window.location.href = `${stripTrailingSlash(target.origin)}${launchPath}`
-      return
-    }
-    const response = await requestTunnel()
-    if ('error' in response) {
-      setError(`Tunnel failed: ${response.error}`)
-      return
-    }
-    window.location.href = `${stripTrailingSlash(response.origin)}${launchPath}`
+  const launch = (app: AppEntry): void => {
+    void launchApp({ apiBaseUrl, pageOrigin: window.location.origin, form: formRef.current }, app)
   }
 
   return (
@@ -91,11 +56,6 @@ const AppsHomeBody = ({ tunnel, apps }: AppsHomeBodyProps): JSX.Element => {
           </button>
         }
       />
-      {error !== null ? (
-        <p className={cn(pageLayout['page__error'], 'text-body-3')} role="alert">
-          {error}
-        </p>
-      ) : null}
       {visible.length === 0 ? (
         <p className="text-body-2">No apps enabled. Tap Manage to turn some on.</p>
       ) : (
@@ -106,11 +66,18 @@ const AppsHomeBody = ({ tunnel, apps }: AppsHomeBodyProps): JSX.Element => {
             subtitle: app.subtitle,
             badge: app.requiresTunnel ? 'tunnel' : undefined,
             onClick: () => {
-              void launch(app)
+              launch(app)
             },
           }))}
         />
       )}
+      {/*
+       * The launch vehicle for the web/tunnel-browser arm: a single hidden
+       * form whose `action` is set per click so the browser follows the
+       * server's 302. Tauri launches bypass it (they `fetch` so the 204
+       * doesn't navigate the webview off the SPA) — see `launchApp`.
+       */}
+      <form ref={formRef} method="post" hidden />
       <AppsEditor
         open={editorOpen}
         apps={apps}
@@ -124,10 +91,7 @@ const AppsHomeBody = ({ tunnel, apps }: AppsHomeBodyProps): JSX.Element => {
 
 export const Route = createFileRoute('/_auth/home/')({
   loader: ({ context }) =>
-    Promise.all([
-      context.queryClient.ensureQueryData(appsListQueryOptions(context.runAuthed)),
-      context.queryClient.ensureQueryData(tunnelStateQueryOptions(context.runAuthed)),
-    ]),
+    context.queryClient.ensureQueryData(appsListQueryOptions(context.runAuthed)),
   component: AppsHomeScreen,
   errorComponent: ({ error }) => <AsyncErrorView error={error} title="Apps" />,
 })

@@ -2,12 +2,11 @@
  * Shared esbuild bundler for the sniffer document-start bootstraps. Both
  * `build-tauri-bootstrap.mts` (desktop `WebviewWindow` path, `__TAURI__`) and
  * `build-native-bootstrap.mts` (mobile `tauri-plugin-native-webview` path,
- * bridge transport) call {@link buildBootstrap} — the esbuild config,
- * generated-TS template, and dual-output writing are identical, so they live
- * here once.
+ * bridge transport) call {@link buildBootstrap}; the esbuild config,
+ * generated-TS template, and dual-output writing live here once.
  *
- * Each invocation writes two gitignored outputs (produced fresh on every
- * `vp install` via the package's `prepare` script):
+ * @remarks Each invocation writes two gitignored outputs (produced fresh on
+ * every `vp install` via the package's `prepare` script):
  *   - `src/<outBaseName>.generated.ts` — a `string` const for the TS exports in
  *     `src/index.ts` (and the tests). Lives under `src/` so the resolver finds
  *     it under `customConditions: ['source']`.

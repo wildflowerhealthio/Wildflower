@@ -10,10 +10,10 @@
 //! browser-sniffer `WebviewWindow` path):
 //! - **iOS** — Swift `WKWebView` in a `UINavigationController`, native chrome.
 //! - **Android** — Kotlin `android.webkit.WebView` in a `Dialog` + `Toolbar`.
-//! - **Desktop** — a Tauri `WebviewWindow` (a non-Tauri native webview would
-//!   need forbidden `unsafe` FFI); injection via `initialization_script`. The
-//!   page sees a `__TAURI__` scoped to the event bus, unlike the mobile
-//!   backends. See `desktop.rs` and `docs/Explanation.md`.
+//! - **Desktop** — Tauri webviews (a non-Tauri native webview would need
+//!   forbidden `unsafe` FFI); injection via `initialization_script`. The page
+//!   sees a `__TAURI__` scoped to the event bus, unlike the mobile backends. See
+//!   `desktop.rs` and `docs/Explanation.md`.
 //!
 //! Usage (Rust caller — the canonical path; the native webview bridge stays Rust-side):
 //! ```ignore

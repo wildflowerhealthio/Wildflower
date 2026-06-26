@@ -11,12 +11,12 @@ export default defineConfig({
   },
   run: {
     // The two sniffer bootstraps are emitted into `dist/`, but `vp pack` *cleans*
-    // `dist/` first — so the `build` script runs these AFTER `vp pack`, and they
-    // must never be cache-skipped. A cache hit after a pack that cleaned `dist/`
-    // would leave the bundles missing and the Rust `include_str!` would fail to
-    // compile (see `browser-sniffer-tauri-rust/src/bootstrap.rs`). `cache: false`
-    // forces a re-emit on every build. Kept as two single-command tasks (no
-    // `&&`) so the no-cache guarantee is unambiguous per task.
+    // `dist/` first — so the `build` script runs these AFTER `vp pack`. A cache
+    // hit after a pack that cleaned `dist/` would leave the bundles missing and
+    // the Rust `include_str!` would fail to compile (see
+    // `browser-sniffer-tauri-rust/src/bootstrap.rs`), so `cache: false` forces a
+    // re-emit. Kept as two single-command tasks (no `&&`) so the no-cache
+    // guarantee is unambiguous per task.
     tasks: {
       'pack-tauri-bootstrap': {
         command: 'node scripts/build-tauri-bootstrap.mts',

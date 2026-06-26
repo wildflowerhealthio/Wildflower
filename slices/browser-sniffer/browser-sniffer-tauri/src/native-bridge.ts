@@ -34,9 +34,9 @@ type NativeBridgeGlobals = typeof globalThis & {
 /**
  * Resolve the platform's native bridge handler (iOS first, then Android), or
  * `undefined` when neither is present (page isn't inside a native webview).
- * Single source of truth for "which native handler do we talk to": both
- * {@link resolvePoster} (outbound) and {@link hasNativeBridge} (presence gate)
- * derive from it, so a handler-name change can't desync the two.
+ *
+ * @remarks Single source of truth so {@link resolvePoster} (outbound) and
+ * {@link hasNativeBridge} (presence gate) can't desync on a handler-name change.
  */
 const resolveBridgeTarget = (): NativeBridgeTarget | undefined => {
   const win = globalThis as NativeBridgeGlobals
@@ -56,14 +56,13 @@ const resolvePoster = (): ((message: string) => void) => {
 
 /**
  * Module-scope listener registry, shared across every
- * {@link makeNativeBridgeEventBus} call in the same JS context. The native
- * bridge has a single `window.__nativeWebviewReceive` global dispatching to one
- * registry, so the receiver is a singleton by design — multiple constructions
- * read/write this map rather than orphaning earlier `listen` calls.
+ * {@link makeNativeBridgeEventBus} call in the same JS context. The single
+ * `window.__nativeWebviewReceive` global dispatches to one registry, so the
+ * receiver is a singleton by design — multiple constructions read/write this map
+ * rather than orphaning earlier `listen` calls.
  *
- * Cleared whenever the receiver is (re)installed — see
- * {@link installReceiverIfMissing} — so tests that delete the global between
- * cases get a clean slate.
+ * Cleared whenever the receiver is (re)installed; see
+ * {@link installReceiverIfMissing}.
  */
 const listeners = new Map<string, Set<Handler>>()
 
@@ -72,9 +71,8 @@ const listeners = new Map<string, Set<Handler>>()
  * The receiver reads the module-scope {@link listeners} so subsequent
  * {@link makeNativeBridgeEventBus} calls share dispatch.
  *
- * The install path clears {@link listeners} for test isolation; the native
- * plugin never deletes the receiver at runtime, so this is effectively
- * test-only in production.
+ * @remarks The install path clears {@link listeners}: the native plugin never
+ * deletes the receiver at runtime, so this only fires on a test reset.
  */
 const installReceiverIfMissing = (): void => {
   const receiverHost = globalThis as typeof globalThis & {
@@ -98,28 +96,23 @@ const installReceiverIfMissing = (): void => {
  * Build a {@link TauriEventApi}-shaped event bus backed by the
  * `tauri-plugin-native-webview` bridge, for use INSIDE a native webview
  * (iOS `WKWebView` / Android `android.webkit.WebView`) where `window.__TAURI__`
- * is deliberately absent.
+ * is deliberately absent. A drop-in for the `window.__TAURI__.event` bus
+ * {@link installSniffer} consumes, so the sniffer body is reused unchanged —
+ * only the transport swaps.
  *
- * It is a drop-in for the `window.__TAURI__.event` bus that
- * {@link installSniffer} consumes today, so the sniffer body is reused
- * unchanged — only the transport swaps.
- *
- * Wire format ({@link Envelope}, so one bridge carries every multiplexed
- * channel):
+ * @remarks Wire format ({@link Envelope}, so one bridge carries every
+ * multiplexed channel):
  *
  *   - **Web→Host** (`emit`): posts `JSON.stringify({ event, payload })` to the
  *     native handler — `window.webkit.messageHandlers.nativeWebview` on iOS,
- *     `window.nativeWebview` (an `@JavascriptInterface`) on Android. The native
- *     side forwards the string verbatim to the host webview.
+ *     `window.nativeWebview` (an `@JavascriptInterface`) on Android.
  *   - **Host→Web** (`listen`): the native side calls
  *     `window.__nativeWebviewReceive(json)` with the same envelope; matching
  *     listeners receive `{ payload }`.
  *
- * If no native bridge is present (page opened outside a native webview), `emit`
- * drops silently and `listen` still registers — the sniffer observes nothing.
- *
- * Multiple calls in the same JS context share the module-scope listener
- * registry; see {@link listeners} for why the receiver is a singleton.
+ * Outside a native webview, `emit` drops silently and `listen` still registers —
+ * the sniffer observes nothing. Multiple calls in one JS context share the
+ * module-scope {@link listeners} registry.
  */
 const makeNativeBridgeEventBus = (): TauriEventApi => {
   const post = resolvePoster()

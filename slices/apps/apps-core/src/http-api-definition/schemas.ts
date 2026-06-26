@@ -24,9 +24,16 @@ const AppUrlSchema = Schema.String.pipe(
 )
 
 /**
- * Wire shape for a single app. Mirrors the Rust server's `AppEntry` (see
- * `apps-rust`): no provenance tag — every app is just an app — with the launch
- * `url` as a first-class field.
+ * Wire shape for a single app on admin write responses (`POST /apps`,
+ * `PATCH /apps/:id`). Mirrors the Rust server's `AppEntry`: no provenance
+ * tag — every external app is just an app — with the launch `url` as a
+ * first-class field so an edited row round-trips back to the client.
+ *
+ * The public list (`GET /apps`) uses {@link AppListEntrySchema}, which
+ * **omits** `url`: the launch endpoint is the only thing that resolves a
+ * URL (and only at request time, so a forwarded caller and a loopback
+ * caller see the right origin), so the catalogue doesn't need to predict
+ * it.
  */
 const AppEntrySchema = Schema.Struct({
   id: Schema.String,
@@ -39,7 +46,19 @@ const AppEntrySchema = Schema.Struct({
   enabled: Schema.Boolean,
 })
 
-const AppListSchema = Schema.Array(AppEntrySchema)
+/**
+ * Wire shape for `GET /apps`. Projection of {@link AppEntrySchema} that
+ * omits the launch `url` (see there for why).
+ */
+const AppListEntrySchema = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  subtitle: Schema.optional(Schema.NonEmptyString),
+  requiresTunnel: Schema.Boolean,
+  enabled: Schema.Boolean,
+})
+
+const AppListSchema = Schema.Array(AppListEntrySchema)
 
 const AppIdPathSchema = Schema.Struct({ id: Schema.String })
 
@@ -69,14 +88,18 @@ const CreateAppBodySchema = Schema.Struct({
   name: Schema.NonEmptyString,
   url: AppUrlSchema,
   requiresTunnel: Schema.Boolean,
+  // Looser than the read schemas (non-empty): accepts `""`, which the server
+  // normalizes to "no subtitle" so it never persists as `""` and breaks the
+  // catalogue decode — see {@link AppEntrySchema}.
   subtitle: Schema.optional(Schema.String),
 })
 
 /**
  * Body for `UpdateApp`. All fields optional; `name`/`url` carry the same
  * non-empty / well-formed constraints as on create so a partial update cannot
- * relax them. An explicit `subtitle` (including the empty string) replaces the
- * stored subtitle.
+ * relax them. An explicit `subtitle` replaces the stored subtitle; the empty
+ * string `""` **clears** it — the server normalizes empty to none so it never
+ * persists as `""` and round-trips through the non-empty read schema.
  */
 const UpdateAppBodySchema = Schema.Struct({
   enabled: Schema.optional(Schema.Boolean),
@@ -89,6 +112,7 @@ const UpdateAppBodySchema = Schema.Struct({
 export {
   AppEntrySchema,
   AppIdPathSchema,
+  AppListEntrySchema,
   AppListSchema,
   AppNotFoundSchema,
   AppUrlSchema,

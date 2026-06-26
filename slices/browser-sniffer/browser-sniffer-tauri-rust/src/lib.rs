@@ -96,11 +96,9 @@ mod tests {
     /// `browser-sniffer-tauri`, or the tauri CI job's pnpm install)
     /// fails the test suite before reaching runtime.
     ///
-    /// Per-target: desktop checks `SNIFFER_BOOTSTRAP` (the `WebviewWindow`
-    /// path); mobile checks `NATIVE_SNIFFER_BOOTSTRAP` (the
-    /// `tauri-plugin-native-webview` path). The off-target constant is
-    /// `cfg`-gated out of `bootstrap.rs`, so referencing both here
-    /// unconditionally would fail to compile on the other target.
+    /// Split per-target because the off-target constant is `cfg`-gated out of
+    /// `bootstrap.rs`: desktop checks `SNIFFER_BOOTSTRAP`, mobile checks
+    /// `NATIVE_SNIFFER_BOOTSTRAP`.
     #[test]
     #[cfg(not(any(target_os = "ios", target_os = "android")))]
     fn bootstrap_is_non_empty() {

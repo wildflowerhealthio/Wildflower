@@ -55,9 +55,9 @@ pub use shared_structures_rust::tunnel_service::{TunnelLiveness, TunnelService, 
 
 /// What [`setup_tunnel`] hands back: the `/tunnel` HTTP router to mount plus the
 /// in-process [`TunnelControl`] seam. The composition root threads the control
-/// into the apps slice (launch-origin resolution) and the `RequestTunnel` bridge
-/// handler, so a tunnel-requiring launch can trigger the tunnel and read its
-/// live public origin without an HTTP round-trip.
+/// into the apps slice for launch-origin resolution, so a tunnel-requiring
+/// launch can trigger the tunnel and read its live public origin without an
+/// HTTP round-trip.
 pub struct Tunnel {
     pub router: Router,
     pub control: TunnelControl,

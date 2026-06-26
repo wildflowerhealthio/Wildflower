@@ -35,6 +35,15 @@ interface RouterContext extends BaseRouterContext.RouterContextWith<SliceService
    * the await is a microtask on every path that reaches here.
    */
   readonly transport: Promise<ReactTransport>
+  /**
+   * Absolute API origin, set only when the page is not served by the API
+   * server (the Tauri webview loads from the dev server / asset protocol while
+   * the API lives on the host's loopback origin) — the same value passed to
+   * {@link buildAppQueryRuntime}. Threaded into context so the apps launch
+   * POST can target the host server rather than the page origin. Omitted on
+   * web/embedded, where the page IS the API origin.
+   */
+  readonly apiBaseUrl?: string
 }
 
 /**

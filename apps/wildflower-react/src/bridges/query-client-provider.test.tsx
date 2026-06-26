@@ -77,9 +77,6 @@ vi.mock('tunnel-react', () => ({
 vi.mock('./collector-sender-forwarder.tsx', () => ({
   CollectorSenderForwarder: Passthrough,
 }))
-vi.mock('./apps-sender-forwarder.tsx', () => ({
-  AppsSenderForwarder: Passthrough,
-}))
 vi.mock('telemetry-web', () => ({
   ErrorBoundary: ({ children }: { readonly children?: ReactNode }): JSX.Element => <>{children}</>,
   Sentry: { captureException: () => {} },

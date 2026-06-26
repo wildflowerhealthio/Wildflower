@@ -8,14 +8,9 @@ import { tauriSnifferBootstrapScript } from './tauri-bootstrap.generated.ts'
  * hands them to the `tauri-plugin-native-webview` plugin's `init_script` —
  * this TS export exists for tests, devtools, and any non-Rust consumer.
  *
- * Gated on `window.__TAURI__.event`, the bundle runs `installSniffer` over
- * a filter-wrapped event bus. No in-page chrome is injected — the plugin's
- * chrome bar (above the content webview on desktop, native toolbar on
- * mobile) owns the title/subtitle/message + back/forward/refresh slots.
- * When `__TAURI__` is absent the bundle no-ops.
- *
- * Length guard: a file below ~1000 chars almost certainly means the esbuild
- * step did not run — surface it loudly instead of injecting a silent no-op.
+ * @remarks Length guard: a file below ~1000 chars almost certainly means the
+ * esbuild step did not run — surface it loudly instead of injecting a silent
+ * no-op.
  */
 const TAURI_SNIFFER_BOOTSTRAP_MIN_LENGTH = 1000
 if (tauriSnifferBootstrapScript.length < TAURI_SNIFFER_BOOTSTRAP_MIN_LENGTH) {
@@ -34,14 +29,7 @@ if (tauriSnifferBootstrapScript.length < TAURI_SNIFFER_BOOTSTRAP_MIN_LENGTH) {
  * the `tauri-plugin-native-webview` `open` command's `initScript` arg (and a
  * Rust crate may `include_str!` the matching `dist/native-bootstrap.js`).
  *
- * Gated on the native bridge (`window.webkit.messageHandlers.nativeWebview` /
- * `window.nativeWebview`), the bundle runs `installSniffer` over a
- * bridge-backed event bus. Like the Tauri bootstrap, no in-page chrome is
- * injected — the plugin's native chrome (UINavigationController on iOS,
- * Toolbar + bottom bar on Android) owns those slots. When no bridge is
- * present the bundle no-ops.
- *
- * Same length guard as `tauriSnifferBootstrapScript` above.
+ * @remarks Same length guard as {@link tauriSnifferBootstrapScript} above.
  */
 const NATIVE_SNIFFER_BOOTSTRAP_MIN_LENGTH = 1000
 if (nativeSnifferBootstrapScript.length < NATIVE_SNIFFER_BOOTSTRAP_MIN_LENGTH) {

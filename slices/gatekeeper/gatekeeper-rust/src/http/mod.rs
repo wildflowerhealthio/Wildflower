@@ -67,6 +67,25 @@ pub fn layer_router_with_gatekeeper_auth_gating(router: Router, state: AppState)
     ))
 }
 
+/// Wrap a router with the loopback gate — the same peer-address check the
+/// gatekeeper applies to its own surface ([`router`]). A request whose peer
+/// socket is not a loopback address — and, failing closed, any request with no
+/// `ConnectInfo` (i.e. the service wasn't mounted with
+/// `into_make_service_with_connect_info`) — gets a `403` before any handler
+/// runs.
+///
+/// Use to extend that defense-in-depth to other loopback-only routers — e.g.
+/// the host's merged `api_router`, every endpoint of which is meant to be
+/// reached only over the loopback socket (directly, or via the trusted front,
+/// which proxies relayed remote traffic from loopback too). A forwarded remote
+/// caller still passes — its peer is the loopback front — and is told apart
+/// downstream by the `Forwarded` header; only a genuinely non-loopback peer is
+/// rejected. (Stacking this on a router that already carries the gate — the
+/// gatekeeper's own — is a harmless, idempotent second check.)
+pub fn layer_router_with_loopback_gate(router: Router) -> Router {
+    router.layer(axum_middleware::from_fn(middleware::loopback_gate))
+}
+
 #[cfg(test)]
 mod openapi_tests {
     use utoipa::openapi::Info;

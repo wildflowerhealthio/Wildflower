@@ -13,7 +13,7 @@ use utoipa_axum::routes;
 
 use crate::http::state::AppsState;
 
-/// The public `/apps` routes (`GET /apps`, `GET /apps/{id}`) as an
+/// The public `/apps` routes (`GET /apps`, `POST /apps/{id}`) as an
 /// `OpenApiRouter`. Mounted by [`crate::http`]; `routes!` reads each handler's
 /// `#[utoipa::path]` for its method + path.
 pub(crate) fn openapi_router() -> OpenApiRouter<Arc<AppsState>> {
@@ -30,62 +30,22 @@ mod tests {
     use axum::http::{Request, StatusCode};
     use axum::Router;
     use http_body_util::BodyExt;
+    use shared_structures_rust::OnDeviceWebviewHandle;
     use tower::ServiceExt;
 
     use super::*;
-    use crate::db::AppsStore;
     use crate::domain::{AppEntry, AppUrl};
-    use crate::http::state::AppsState;
-    use shared_structures_rust::tunnel_service::{
-        OfflineTunnel, TunnelLiveness, TunnelService, TunnelStatus,
+    use crate::http::handlers::test_utils::{
+        state, state_with_sink, state_with_tunnel, state_with_tunnel_and_handle, tunnel_at,
+        tunnel_unavailable, tunnel_with_public_host,
     };
-
-    /// A `TunnelService` stub for a tunnel that's up and verified at `origin` —
-    /// the success counterpart to the shared [`OfflineTunnel`], which already
-    /// models the can't-reach case (`try_start` fails, state stays `Off`).
-    struct StubTunnel(String);
-
-    #[async_trait::async_trait]
-    impl TunnelService for StubTunnel {
-        fn current_origin(&self) -> String {
-            self.0.clone()
-        }
-        async fn try_start(&self) -> Result<String, String> {
-            Ok(self.0.clone())
-        }
-        fn subscribe(&self) -> tokio::sync::watch::Receiver<TunnelLiveness> {
-            tokio::sync::watch::channel(TunnelLiveness {
-                settings_revision: None,
-                status: TunnelStatus::Verified,
-                origin: self.0.clone(),
-                error: None,
-                dial_attempts: 0,
-            })
-            .1
-        }
-    }
-
-    fn tunnel_at(origin: &str) -> Arc<dyn TunnelService> {
-        Arc::new(StubTunnel(origin.to_string()))
-    }
-
-    fn tunnel_unavailable() -> Arc<dyn TunnelService> {
-        Arc::new(OfflineTunnel::new("http://127.0.0.1:8080"))
-    }
+    use crate::http::state::AppsState;
+    use shared_structures_rust::test_utils::RecordingStubWebviewHandle;
 
     /// The served public router, state not yet applied — the spec half of
     /// `split_for_parts` is irrelevant here.
     fn router() -> Router<Arc<AppsState>> {
         openapi_router().split_for_parts().0
-    }
-
-    fn state() -> Arc<AppsState> {
-        state_with_tunnel(tunnel_unavailable())
-    }
-
-    fn state_with_tunnel(tunnel: Arc<dyn TunnelService>) -> Arc<AppsState> {
-        let store = AppsStore::open_in_memory().expect("store");
-        Arc::new(AppsState::new(store, "http://127.0.0.1:8080", tunnel))
     }
 
     async fn send(state: &Arc<AppsState>, req: Request<Body>) -> (StatusCode, serde_json::Value) {
@@ -102,6 +62,32 @@ mod tests {
 
     fn get(uri: &str) -> Request<Body> {
         Request::builder().uri(uri).body(Body::empty()).unwrap()
+    }
+
+    /// A launch request — `POST /apps/{id}` with an empty body. No forwarding
+    /// header, so it reads as a direct loopback (local) caller.
+    fn post(uri: &str) -> Request<Body> {
+        Request::builder()
+            .method("POST")
+            .uri(uri)
+            .body(Body::empty())
+            .unwrap()
+    }
+
+    /// A launch request as the trusted front (relay/tunnel) would forward it:
+    /// `POST /apps/{id}` carrying the RFC 7239 `Forwarded` header with the
+    /// public `host`/`proto` — the same header `request_provenance` reads. Reads
+    /// as a remote caller rather than the local loopback webview.
+    fn post_forwarded(uri: &str) -> Request<Body> {
+        Request::builder()
+            .method("POST")
+            .uri(uri)
+            .header(
+                "forwarded",
+                "for=192.0.2.1;host=demo.example.com;proto=https",
+            )
+            .body(Body::empty())
+            .unwrap()
     }
 
     fn app(id: &str, url: AppUrl) -> AppEntry {
@@ -137,8 +123,12 @@ mod tests {
         }
     }
 
+    /// `GET /apps` deliberately omits `url` (the launch endpoint resolves
+    /// it per-request). An inserted row still appears in the list under
+    /// its id; the `url` it was written with shows up on launch / admin
+    /// responses, not here.
     #[tokio::test]
-    async fn list_apps_includes_inserted_rows() {
+    async fn list_apps_includes_inserted_rows_without_url() {
         let st = state();
         st.store
             .insert_app(&app("app-x", external("https://example.com/x")))
@@ -150,7 +140,11 @@ mod tests {
             .iter()
             .find(|v| v["id"] == "app-x")
             .expect("inserted row in list");
-        assert_eq!(found["url"], "https://example.com/x");
+        assert!(
+            found.get("url").is_none(),
+            "GET /apps must not expose url, got {found}",
+        );
+        assert_eq!(found["name"], "app-x");
     }
 
     #[tokio::test]
@@ -158,20 +152,22 @@ mod tests {
         let st = state();
         let res = router()
             .with_state(Arc::clone(&st))
-            .oneshot(get("/apps/no-such-thing"))
+            .oneshot(post("/apps/no-such-thing"))
             .await
             .unwrap();
         assert_eq!(res.status(), StatusCode::NOT_FOUND);
     }
 
-    /// A seeded app whose URL template substitutes `{origin}` resolves to a
-    /// same-origin redirect.
+    /// A forwarded launch of an internal app with `public_host` configured
+    /// redirects to the public subdomain — the URL a remote browser can
+    /// actually reach through the relay. Matches the subdomain shape the
+    /// host's inbound dispatch routes back to the same per-app router.
     #[tokio::test]
-    async fn launch_seeded_app_redirects_to_built_url() {
-        let st = state();
+    async fn launch_internal_app_forwarded_redirects_to_the_public_subdomain() {
+        let st = state_with_tunnel(tunnel_with_public_host("demo.example.com"));
         let res = router()
             .with_state(Arc::clone(&st))
-            .oneshot(get("/apps/patient-browser"))
+            .oneshot(post_forwarded("/apps/patient-browser"))
             .await
             .unwrap();
         assert_eq!(res.status(), StatusCode::FOUND);
@@ -181,86 +177,86 @@ mod tests {
             .expect("location header")
             .to_str()
             .unwrap();
-        assert_eq!(
-            location,
-            "http://127.0.0.1:8080/installed-apps/patient-browser/index.html"
-        );
+        assert_eq!(location, "https://patient-browser.demo.example.com/");
     }
 
-    /// When the tunnel can't be reached, a `requires_tunnel` launch falls back
-    /// to the loopback origin with the `tunnel=unavailable` flag so the SPA can
-    /// surface a banner.
+    /// A forwarded launch of an internal app with **no** `public_host`
+    /// configured has no reachable target (a loopback URL the remote browser
+    /// can't follow), so the launch fails with `503 LaunchUnavailable` rather
+    /// than handing back a dead redirect.
     #[tokio::test]
-    async fn launch_growth_chart_appends_tunnel_unavailable() {
+    async fn launch_internal_app_forwarded_without_public_host_is_503() {
         let st = state();
-        let res = router()
-            .with_state(Arc::clone(&st))
-            .oneshot(get("/apps/growth-chart"))
-            .await
-            .unwrap();
-        assert_eq!(res.status(), StatusCode::FOUND);
-        let location = res
-            .headers()
-            .get("location")
-            .expect("location header")
-            .to_str()
-            .unwrap();
-        assert!(
-            location.contains("tunnel=unavailable"),
-            "expected tunnel=unavailable in {location}",
+        let (status, body) = send(&st, post_forwarded("/apps/patient-browser")).await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(body["error"], "LaunchUnavailable");
+    }
+
+    /// When the tunnel can't be brought up, a `requires_tunnel` launch has no
+    /// reachable origin (the third-party https app can't reach the loopback FHIR
+    /// server — the whole reason it requires the tunnel), so it fails with
+    /// `503 LaunchUnavailable` and the host opens **no** popup, rather than
+    /// launching an app pointed at an origin that silently fails.
+    #[tokio::test]
+    async fn launch_requires_tunnel_app_with_tunnel_down_is_503() {
+        let handle = Arc::new(RecordingStubWebviewHandle::default());
+        let st = state_with_tunnel_and_handle(
+            tunnel_unavailable(),
+            Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>,
         );
+        let (status, body) = send(&st, post("/apps/growth-chart")).await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(body["error"], "LaunchUnavailable");
         assert!(
-            location.contains("iss=http://127.0.0.1:8080/fhir-r4"),
-            "expected loopback iss in {location}",
+            handle.0.lock().expect("handle mutex").is_empty(),
+            "no popup must open for an unreachable launch",
         );
     }
 
     /// When the tunnel service starts and returns a verified origin, a
-    /// `requires_tunnel` launch redirects there (no `tunnel=unavailable`).
+    /// `requires_tunnel` launch resolves there. A loopback caller `204`s and the
+    /// resolved URL goes to the on-device webview handle.
     #[tokio::test]
     async fn launch_growth_chart_resolves_to_the_verified_tunnel_origin() {
-        let st = state_with_tunnel(tunnel_at("https://dev1.example.com"));
+        let handle = Arc::new(RecordingStubWebviewHandle::default());
+        let st = state_with_tunnel_and_handle(
+            tunnel_at("https://dev1.example.com"),
+            Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>,
+        );
         let res = router()
             .with_state(Arc::clone(&st))
-            .oneshot(get("/apps/growth-chart"))
+            .oneshot(post("/apps/growth-chart"))
             .await
             .unwrap();
-        assert_eq!(res.status(), StatusCode::FOUND);
-        let location = res
-            .headers()
-            .get("location")
-            .expect("location header")
-            .to_str()
-            .unwrap();
+        assert_eq!(res.status(), StatusCode::NO_CONTENT);
+        let opened = handle.0.lock().expect("handle mutex").clone();
+        let [url] = opened.as_slice() else {
+            panic!("the handle must receive exactly one URL, got {opened:?}");
+        };
         assert!(
-            location.contains("iss=https://dev1.example.com/fhir-r4"),
-            "expected the verified tunnel origin in {location}",
-        );
-        assert!(
-            !location.contains("tunnel=unavailable"),
-            "a reachable tunnel must not flag unavailable: {location}",
+            url.contains("iss=https://dev1.example.com/fhir-r4"),
+            "expected the verified tunnel origin in {url}",
         );
     }
 
+    /// A loopback launch resolves the `{origin}` placeholder against the
+    /// loopback origin, `204`s, and hands the resolved URL to the on-device
+    /// webview handle.
     #[tokio::test]
     async fn launch_app_resolves_origin_placeholder() {
-        let st = state();
+        let handle = Arc::new(RecordingStubWebviewHandle::default());
+        let st = state_with_sink(Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>);
         st.store
             .insert_app(&app("app-y", AppUrl::OriginRelative("/y".to_owned())))
             .unwrap();
         let res = router()
             .with_state(Arc::clone(&st))
-            .oneshot(get("/apps/app-y"))
+            .oneshot(post("/apps/app-y"))
             .await
             .unwrap();
-        assert_eq!(res.status(), StatusCode::FOUND);
-        let location = res
-            .headers()
-            .get("location")
-            .expect("location header")
-            .to_str()
-            .unwrap();
-        assert_eq!(location, "http://127.0.0.1:8080/y");
+        assert_eq!(res.status(), StatusCode::NO_CONTENT);
+        let opened = handle.0.lock().expect("handle mutex").clone();
+        assert_eq!(opened, vec!["http://127.0.0.1:8080/y".to_string()]);
     }
 
     /// A row whose stored `url` no longer parses — only reachable by bypassing
@@ -281,9 +277,96 @@ mod tests {
             .unwrap();
         let res = router()
             .with_state(Arc::clone(&st))
-            .oneshot(get("/apps/app-bad"))
+            .oneshot(post("/apps/app-bad"))
             .await
             .unwrap();
         assert_eq!(res.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    /// A loopback launch `204`s (no redirect) and hands the resolved URL to the
+    /// on-device webview handle — the host owns the side-effect. Exercised
+    /// against the internal `patient-browser` row so the assertion pins the URL
+    /// the handle receives to a fixed value (no random `{launch}` nonce).
+    #[tokio::test]
+    async fn launch_loopback_204s_and_routes_the_url_to_the_handle() {
+        let handle = Arc::new(RecordingStubWebviewHandle::default());
+        let st = state_with_sink(Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>);
+        let res = router()
+            .with_state(Arc::clone(&st))
+            .oneshot(post("/apps/patient-browser"))
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::NO_CONTENT);
+        assert!(
+            res.headers().get("location").is_none(),
+            "a loopback launch must not carry a Location redirect",
+        );
+        let opened = handle.0.lock().expect("handle mutex").clone();
+        assert_eq!(
+            opened,
+            vec!["http://127.0.0.1:8081/".to_string()],
+            "the handle must receive the resolved launch URL",
+        );
+    }
+
+    /// A non-tunnel launch forwarded by the relay/tunnel resolves `{origin}`
+    /// against the *served* (public) origin, not loopback — otherwise the
+    /// browser would chase a `Location: http://127.0.0.1:…` it can't reach
+    /// from outside the host. Mirrors `gatekeeper_rust::served_origin_for`'s
+    /// header contract. Exercised against an `{origin}`-templated external
+    /// row (patient-browser moved out to the internal store, which is
+    /// loopback-only by construction and so doesn't exercise the
+    /// served-origin substitution).
+    #[tokio::test]
+    async fn launch_forwarded_request_redirects_to_the_served_public_origin() {
+        let st = state();
+        st.store
+            .insert_app(&app("app-y", AppUrl::OriginRelative("/y".to_owned())))
+            .unwrap();
+        let res = router()
+            .with_state(Arc::clone(&st))
+            .oneshot(post_forwarded("/apps/app-y"))
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::FOUND);
+        let location = res
+            .headers()
+            .get("location")
+            .expect("location header")
+            .to_str()
+            .unwrap();
+        assert_eq!(
+            location, "https://demo.example.com/y",
+            "a forwarded launch must redirect to the public origin (the Forwarded host/proto), not loopback",
+        );
+    }
+
+    /// A forwarded request from the relay/tunnel (a *remote* caller): the
+    /// host-side popup would be invisible to them, so the launch `302`s instead
+    /// of `204`ing — and the on-device webview handle is NOT invoked. Exercised
+    /// against an external `{origin}` app (an internal-app launch would still
+    /// 302, but to its fixed loopback origin — which a remote browser can't
+    /// reach; the assertion-friendly substitution path is the external one).
+    #[tokio::test]
+    async fn launch_forwarded_request_302s_without_invoking_the_handle() {
+        let handle = Arc::new(RecordingStubWebviewHandle::default());
+        let st = state_with_sink(Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>);
+        st.store
+            .insert_app(&app("app-y", AppUrl::OriginRelative("/y".to_owned())))
+            .unwrap();
+        let res = router()
+            .with_state(Arc::clone(&st))
+            .oneshot(post_forwarded("/apps/app-y"))
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::FOUND);
+        assert!(
+            res.headers().get("location").is_some(),
+            "a forwarded request takes the redirect path even with a handle installed",
+        );
+        assert!(
+            handle.0.lock().expect("handle mutex").is_empty(),
+            "the handle must not open a popup for a remote (forwarded) caller",
+        );
     }
 }

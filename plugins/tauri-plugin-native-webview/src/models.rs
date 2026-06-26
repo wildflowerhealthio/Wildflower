@@ -130,21 +130,13 @@ pub struct EvaluateJsResponse {
     pub was_dispatched: bool,
 }
 
-/// Arguments for updating the native webview's three chrome labels. Each field is
-/// independent:
-///
-/// - `title` — top-chrome headline. Until the caller first sets it, the slot
-///   shows the page URL (the URL-fallback), which tracks navigation; the first
-///   `title` the caller supplies *claims* the slot and the URL falls through to
-///   the subtitle.
-/// - `subtitle` — top-chrome secondary line under the title. Shows the page URL
-///   once the title is claimed but the subtitle isn't; the caller's first
-///   `subtitle` claims it and the URL is then shown in neither slot.
-/// - `message` — bottom-bar status line beside the back/forward buttons.
-///
-/// `None` on any field means "leave unchanged"; any present value (including
-/// `Some("")`) claims that slot — `Some("")` clears the visible label.
-/// Batching all three into one IPC keeps multi-field updates flicker-free.
+/// Arguments for updating the native webview's three chrome labels (`title` /
+/// `subtitle` top-chrome, `message` bottom-bar). Each field is independent:
+/// `None` = leave unchanged; any present value (including `Some("")`) *claims*
+/// that slot, and `Some("")` clears the visible label. Claiming a slot stops the
+/// page-URL fallback from painting there — see the Lifecycle & Races doc
+/// § "Chrome URL-fallback". Batching all three into one IPC keeps multi-field
+/// updates flicker-free.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct PatchWindowTextRequest {
@@ -314,8 +306,8 @@ mod tests {
     }
 
     /// `EvaluateJsRequest` rides as `{ "script": … }` — the camelCase key matches
-    /// the Swift `EvaluateJsArgs.script` / Kotlin `EvaluateJsArgs.script` field.
-    /// Drift here would silently break decoding on-device.
+    /// the Swift / Kotlin `EvaluateJsArgs.script` field (drift breaks on-device
+    /// decoding).
     #[test]
     fn evaluate_js_request_serializes_script_field() {
         let json = serde_json::to_string(&EvaluateJsRequest {
@@ -428,8 +420,7 @@ mod tests {
     /// `ShowResponse` decodes both arms of the native-side
     /// `{ "requestCausedShow": … }` payload — `true` when this call presented a
     /// live native webview, `false` when none existed or it was already visible.
-    /// The wire key must match the Swift/Kotlin emit (`requestCausedShow`); drift
-    /// here would silently break decoding on-device.
+    /// The `requestCausedShow` wire key must match the Swift/Kotlin emit.
     #[test]
     fn show_response_decodes_request_caused_show_flag() {
         let live: ShowResponse = serde_json::from_str(r#"{"requestCausedShow":true}"#).expect("de");
@@ -442,8 +433,7 @@ mod tests {
     /// `HideResponse` decodes both arms of the native-side
     /// `{ "requestCausedHide": … }` payload — `true` when a visible native
     /// webview was hidden, `false` when none was visible (idempotent hide). The
-    /// wire key must match the Swift/Kotlin emit; drift here would silently
-    /// break decoding on-device.
+    /// `requestCausedHide` wire key must match the Swift/Kotlin emit.
     #[test]
     fn hide_response_decodes_request_caused_hide_flag() {
         let live: HideResponse = serde_json::from_str(r#"{"requestCausedHide":true}"#).expect("de");
@@ -456,8 +446,7 @@ mod tests {
     /// `DisposeResponse` decodes both arms of the native-side
     /// `{ "requestCausedDispose": … }` payload — `true` when a live native
     /// webview was torn down, `false` when none existed (idempotent dispose).
-    /// The wire key must match the Swift/Kotlin emit; drift here would silently
-    /// break decoding on-device.
+    /// The `requestCausedDispose` wire key must match the Swift/Kotlin emit.
     #[test]
     fn dispose_response_decodes_request_caused_dispose_flag() {
         let live: DisposeResponse =

@@ -20,7 +20,7 @@ use std::sync::Arc;
 
 use axum::Router;
 
-/// Build the public `/apps` router (`GET /apps`, `GET /apps/{id}`). Owner
+/// Build the public `/apps` router (`GET /apps`, `POST /apps/{id}`). Owner
 /// auth is NOT applied — both endpoints are reachable by embedded webviews
 /// and iframes that can't easily carry a bearer token.
 pub fn public_router(state: Arc<AppsState>) -> Router {
