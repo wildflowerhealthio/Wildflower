@@ -48,8 +48,7 @@ const AppEntrySchema = Schema.Struct({
 
 /**
  * Wire shape for `GET /apps`. Projection of {@link AppEntrySchema} that
- * omits the launch `url`. Clients launching an app POST to `/apps/{id}`
- * and follow the resulting redirect — the URL is never read off the list.
+ * omits the launch `url` (see there for why).
  */
 const AppListEntrySchema = Schema.Struct({
   id: Schema.String,
@@ -89,10 +88,9 @@ const CreateAppBodySchema = Schema.Struct({
   name: Schema.NonEmptyString,
   url: AppUrlSchema,
   requiresTunnel: Schema.Boolean,
-  // Accepts the empty string, which the server treats as "no subtitle" (it
-  // normalizes `""` to none). The read schemas decode `subtitle` as a non-empty
-  // string, so a stored `""` would break the catalogue decode — see
-  // {@link AppEntrySchema}.
+  // Looser than the read schemas (non-empty): accepts `""`, which the server
+  // normalizes to "no subtitle" so it never persists as `""` and breaks the
+  // catalogue decode — see {@link AppEntrySchema}.
   subtitle: Schema.optional(Schema.String),
 })
 
@@ -100,9 +98,8 @@ const CreateAppBodySchema = Schema.Struct({
  * Body for `UpdateApp`. All fields optional; `name`/`url` carry the same
  * non-empty / well-formed constraints as on create so a partial update cannot
  * relax them. An explicit `subtitle` replaces the stored subtitle; the empty
- * string `""` (or explicit `null`) **clears** it — the server normalizes empty
- * to none so it never persists as `""` and round-trips through the non-empty
- * read schema.
+ * string `""` **clears** it — the server normalizes empty to none so it never
+ * persists as `""` and round-trips through the non-empty read schema.
  */
 const UpdateAppBodySchema = Schema.Struct({
   enabled: Schema.optional(Schema.Boolean),

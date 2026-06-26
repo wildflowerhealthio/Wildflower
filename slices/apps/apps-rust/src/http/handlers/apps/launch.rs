@@ -1,59 +1,22 @@
 //! `POST /apps/{id}` — resolve an app id to a launch target.
 //!
 //! One store ([`AppsStore`](crate::db::AppsStore)) backs both halves of the
-//! id-space, across two tables:
-//!
-//!   * **Internals** (`internal_apps`, via
-//!     [`find_internal_app`](crate::db::AppsStore::find_internal_app)) —
-//!     locally-served apps with a fixed origin per row. A loopback caller
-//!     gets `http://{host}:{port}/` (from host config + the row's `port`);
-//!     a forwarded caller (one whose `Forwarded` header indicates the
-//!     trusted front relayed the request) gets the matching public-origin
-//!     URL `https://{id}.{public_host}/` — the same shape the host's
-//!     subdomain dispatch matches inbound. So a remote browser launching
-//!     the app follows the redirect back through the relay rather than
-//!     chasing a loopback IP it can't reach. A forwarded launch with **no
-//!     public host configured** can't build a reachable subdomain, so it
-//!     fails with `503 LaunchUnavailable` rather than handing the remote
-//!     browser a loopback URL it can't follow. No `{origin}` / `{launch}`
-//!     substitution, no tunnel-up resolution: the launch URL is fixed per
-//!     row and the only variable is loopback-vs-subdomain.
-//!   * **Externals** ([`AppsStore`](crate::db::AppsStore)) — user-editable
-//!     rows carrying an [`AppUrl`] template with `{origin}` / `{launch}`
-//!     placeholders. The handler resolves the served origin through the
-//!     tunnel seam (see [`resolve_origin`]) and renders the target through
-//!     [`AppUrl::to_url_with_params`], which substitutes the placeholders
-//!     and is safe by construction.
-//!
-//! The flow:
+//! id-space: internals (`internal_apps`, locally-served) and externals (`apps`,
+//! user-editable). The flow:
 //!
 //!   1. Look up the id in internals first, then externals (404 if absent
 //!      from both).
 //!   2. Read the request's [`RequestProvenance`] *once* — both "is this a
-//!      remote caller?" (decides sink vs. redirect) and "what origin do we
-//!      render?" derive from the same single header read, so an empty/spoofed
-//!      `Forwarded` host can't make the two answers disagree.
-//!   3. Render the launch target (internal: from config; external: through
-//!      `AppUrl`). This step can fail with `503 LaunchUnavailable` when no
-//!      *reachable* target exists (a forwarded launch with no public host, or a
-//!      `requires_tunnel` app while the tunnel is down) — the launch returns the
-//!      error rather than a dead redirect / a popup pointed at an origin the
-//!      caller can't reach.
+//!      remote caller?" (sink vs. redirect) and "what origin do we render?"
+//!      derive from the same header read, so an empty/spoofed `Forwarded` host
+//!      can't make the two answers disagree.
+//!   3. Render the launch target (see [`render_internal_target`] /
+//!      [`render_external_target`]). Fails `503 LaunchUnavailable` when no
+//!      *reachable* target exists rather than emitting a dead redirect / a
+//!      popup pointed at an origin the caller can't reach.
 //!   4. Dispatch on provenance: a loopback (local) caller hands the URL to the
-//!      host's [`OnDeviceWebviewHandle`](crate::OnDeviceWebviewHandle) — which
-//!      opens a native popup a local webview can actually serve — and `204`s; a
-//!      forwarded (remote) caller gets a `302` redirect for the browser to
-//!      follow.
-//!
-//! `requires_tunnel` applies only to externals: the launch asks the tunnel
-//! to start and resolves to its live *verified* origin, or — when the tunnel
-//! can't be brought up — fails with `503 LaunchUnavailable`. (The third-party
-//! `https` app needs the tunnel to reach the user's FHIR server at all, so a
-//! popup/redirect pointed at the loopback origin would silently fail; the
-//! error lets the SPA surface the failure instead.) A non-tunnel external
-//! launch resolves to the *served* origin — loopback for a direct caller, the
-//! forwarded public origin for a request the trusted front relayed — so a
-//! redirect handed back to a remote browser is reachable.
+//!      host's [`OnDeviceWebviewHandle`](crate::OnDeviceWebviewHandle) and
+//!      `204`s; a forwarded (remote) caller gets a `302` redirect.
 
 use std::sync::Arc;
 
@@ -94,37 +57,29 @@ pub(crate) async fn handle_launch_app(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Response, HandlerError> {
-    // Single read of the forwarding headers — both decisions below derive
-    // from this one value, so an empty/spoofed `Forwarded` host can't make
-    // them disagree (a header that fails validation reads as Loopback).
+    // Single read: both decisions below derive from this one value, so an
+    // empty/spoofed `Forwarded` host can't make them disagree (a header that
+    // fails validation reads as Loopback).
     let provenance = request_provenance(&headers);
 
-    // Resolve before dispatching: an unreachable target (forwarded launch with
-    // no public host, or a `requires_tunnel` app while the tunnel is down) bails
-    // here with `503 LaunchUnavailable` rather than opening a doomed popup /
-    // emitting a dead redirect.
+    // Resolve before dispatching: an unreachable target bails here with
+    // `503 LaunchUnavailable` rather than opening a doomed popup / dead redirect.
     let (name, target_url) = resolve_launch_target(&state, &id, &provenance).await?;
 
-    // The loopback-only rule lives in this match: only a loopback caller is
-    // handed to the on-device webview seam (a host popup is useless to a remote
-    // caller); a forwarded caller takes the redirect.
-    //
-    // Defense-in-depth note: the popup is a host-side side-effect on the owner's
+    // Defense-in-depth: the popup is a host-side side-effect on the owner's
     // device, and `Loopback` here is only the *absence* of a valid `Forwarded`
     // header — header-derived, so it must not be the sole gate. The network-layer
     // backstop is the host's loopback-peer gate (gatekeeper's `loopback_gate`,
     // applied to the whole `api_router` in `wildflower-tauri/src/lib.rs`): a
-    // request from a non-loopback peer is rejected with 403 (and logged) before
-    // this handler runs, so a `Loopback` classification can only come from a
-    // genuine loopback peer (the trusted front relays remote callers from
-    // loopback too, but those always carry `Forwarded` and so read as
-    // `Forwarded`, not `Loopback`).
+    // request from a non-loopback peer is rejected with 403 before this handler
+    // runs, so a `Loopback` classification can only come from a genuine loopback
+    // peer (the trusted front relays remote callers from loopback too, but those
+    // always carry `Forwarded` and so read as `Forwarded`, not `Loopback`).
     match &provenance {
-        // Loopback (local) caller: the host owns the side-effect — hand it the
-        // resolved URL (it opens a native popup) and 204 so the SPA stays
-        // mounted. The seam is contractually fire-and-forget (the Tauri impl
-        // spawns the blocking webview-open onto a blocking thread, so this call
-        // returns promptly).
+        // Loopback (local) caller: hand the URL to the host (it opens a native
+        // popup) and 204 so the SPA stays mounted. The seam is contractually
+        // fire-and-forget (the Tauri impl spawns the blocking webview-open onto a
+        // blocking thread, so this call returns promptly).
         RequestProvenance::Loopback => {
             state.on_device_webview_handle.open(name, target_url);
             Ok(no_content())
@@ -139,11 +94,6 @@ pub(crate) async fn handle_launch_app(
 /// internal and an external row at the same id is a pre-migration-002 edit; see
 /// the list-merge handler) — then externals; `404` if absent from both,
 /// `503` if the matched app has no reachable target.
-///
-/// Internals get a provenance-aware fixed URL: a loopback caller redirects to
-/// the per-app loopback listener, a forwarded caller to the public subdomain so
-/// the remote browser can follow it through the relay. Externals resolve their
-/// `AppUrl` template through the tunnel/served origin.
 async fn resolve_launch_target(
     state: &AppsState,
     id: &str,
@@ -155,9 +105,6 @@ async fn resolve_launch_target(
         .map_err(|e| HandlerError::internal("internal_apps find lookup failed", e))?
     {
         let target_url = render_internal_target(&internal, state, provenance)?;
-        // Only the name escapes — the handler reads it for the popup chrome. The
-        // launch URL is the provenance-aware `target_url` above (loopback for a
-        // local caller, the public subdomain for a forwarded one).
         return Ok((internal.name, target_url));
     }
 
@@ -171,12 +118,11 @@ async fn resolve_launch_target(
 }
 
 /// Render an internal app's launch target. A loopback caller gets the loopback
-/// `http://{host}:{port}/`. A forwarded (remote) caller gets
-/// `https://{id}.{public_host}/` — the same subdomain shape the host's
-/// subdomain dispatch routes inbound — when a `public_host` is configured;
-/// with **no** `public_host` there is no reachable target (a loopback URL the
-/// remote browser can't follow), so the launch fails with
-/// `503 LaunchUnavailable` rather than handing back a dead redirect.
+/// `http://{host}:{port}/`. A forwarded (remote) caller gets the public
+/// `https://{id}.{public_host}/` — the same subdomain shape the host's inbound
+/// dispatch routes, so the remote browser can follow it through the relay. With
+/// **no** `public_host` configured there's no reachable target, so a forwarded
+/// launch fails `503 LaunchUnavailable` rather than handing back a loopback URL.
 fn render_internal_target(
     internal: &InternalApp,
     state: &AppsState,
@@ -243,11 +189,10 @@ async fn resolve_origin(
     })
 }
 
-/// 302 response with the given location, plus a `Content-Type` of
-/// `text/html; charset=utf-8` to match the TS contract (`HttpApiSchema.Text`
-/// with that content-type). The body is empty — the redirect is the whole
-/// signal. A failure here means the rendered URL contained a byte the header
-/// codec rejected; surfaces as a logged 500 (never a handler panic).
+/// 302 with an empty body. The `Content-Type` of `text/html; charset=utf-8`
+/// matches the TS contract (`HttpApiSchema.Text`). A failure here means the
+/// rendered URL contained a byte the header codec rejected; surfaces as a
+/// logged 500 (never a handler panic).
 fn redirect(location: String) -> Result<Response, HandlerError> {
     Response::builder()
         .status(StatusCode::FOUND)
@@ -257,11 +202,9 @@ fn redirect(location: String) -> Result<Response, HandlerError> {
         .map_err(|e| HandlerError::internal("redirect builder failed", e))
 }
 
-/// 204 No Content with an empty body — the response when the host's
+/// 204 No Content — the response when the host's
 /// [`OnDeviceWebviewHandle`](crate::OnDeviceWebviewHandle) has taken the launch
 /// (the host opened the URL; there's nothing for the SPA to follow).
-/// `StatusCode::NO_CONTENT.into_response()` already yields an empty body, so no
-/// header juggling is needed.
 fn no_content() -> Response {
     StatusCode::NO_CONTENT.into_response()
 }

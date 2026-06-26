@@ -95,15 +95,9 @@ async fn run_server(
 
     let fhir_r4_router =
         setup_fhir_r4(&runtime, &emr_config).context("failed to set up FHIR R4 router")?;
-    // `setup_gatekeeper` publishes the freshly-minted host owner token
-    // through the bridge's publisher; the bridge's resident task emits
-    // a contentless `AuthTokenIssued` notify to the webview on every
-    // page load and on every token change (the webview pulls the
-    // bearer via `gatekeeper_current_token`, which is capability-gated
-    // to the main webview). The same task forwards pending
-    // device-consent heads (and `null` clears) over
-    // `bridge:DeviceConsentRequested` and raises the desktop window on
-    // transitions to a pending head (see `bridge::attach_bridge`).
+    // `setup_gatekeeper` publishes the freshly-minted host owner token (and
+    // device-consent heads) through the bridge publishers; `bridge::attach_bridge`
+    // documents how the resident task delivers them to the webview.
     let gatekeeper = setup_gatekeeper(
         db.clone(),
         &gatekeeper_config,
@@ -195,12 +189,9 @@ async fn run_server(
     };
     // `TunnelControl` implements `TunnelService`, so it's handed straight in.
     let tunnel_service: Arc<dyn tunnel_rust::TunnelService> = Arc::new(tunnel.control.clone());
-    // Install the host's on-device webview handle: the launch handler resolves
-    // the URL (origin + tunnel) server-side, then for a loopback caller hands it
-    // to this handle, which opens it in a native webview popup via
-    // `tauri-plugin-native-webview` (the server 204s, so the SPA stays mounted).
-    // This replaces the former `RequestTunnel` / `RequestSandboxedWebView`
-    // bridge round-trips.
+    // Install the host's on-device webview handle: for a loopback caller the
+    // launch handler hands it the resolved URL to open in a native webview popup
+    // (the server 204s, so the SPA stays mounted). See `native_webview_handle`.
     let webview_handle: Arc<dyn apps_rust::OnDeviceWebviewHandle> = Arc::new(
         native_webview_handle::NativeWebviewHandle::new(app_handle.clone()),
     );
@@ -303,12 +294,9 @@ async fn run_server(
     // A genuinely non-loopback peer is rejected with `403` before any handler
     // runs, so even an ungated, CORS-permissive endpoint like `POST /apps/{id}`
     // (which can open a native popup on the owner's device) can't be driven by a
-    // non-loopback client — the redundant-and-safe belt-and-braces over the
-    // serve-loopback-only invariant. Applied outermost (after CORS) so it runs
-    // first. The gatekeeper's own surface already carries this gate; re-applying
-    // it to the merged router extends the same guarantee to the apps / fhir /
-    // tunnel / databases routes (a harmless idempotent second check on the
-    // gatekeeper routes).
+    // non-loopback client. Applied outermost (after CORS) so it runs first. See
+    // `layer_router_with_loopback_gate` for how forwarded callers pass and why
+    // re-gating the gatekeeper's already-gated routes is harmless.
     let api_router = layer_router_with_loopback_gate(api_router);
 
     // The reverse proxy wraps the API stack as the outermost layer: a forwarded

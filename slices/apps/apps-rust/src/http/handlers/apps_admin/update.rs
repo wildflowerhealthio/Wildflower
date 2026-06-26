@@ -35,14 +35,11 @@ pub(crate) struct UpdateAppBody {
 ///   * `Set(None)` — explicit `null` *or* the empty string `""`; clear the
 ///     subtitle.
 ///
-/// Without this, a plain `Option<Option<String>>` would collapse "absent"
-/// and "null" into the same `None`, and we'd have no way to ask the
-/// handler "clear the subtitle without touching anything else."
-///
-/// Empty collapses into the clear case so it never persists as `Some("")` —
-/// the read schemas decode `subtitle` as a non-empty string, and a stored
-/// `""` would serialize as `"subtitle": ""` and break the whole catalogue
-/// decode.
+/// A plain `Option<Option<String>>` would collapse "absent" and "null" into the
+/// same `None`, leaving no way to clear the subtitle without touching other
+/// fields. Empty collapses into the clear case so it never persists as
+/// `Some("")` — the read schemas decode `subtitle` as a non-empty string, so a
+/// stored `""` would serialize as `"subtitle": ""` and break the catalogue decode.
 #[derive(Debug, Default)]
 enum SubtitlePatch {
     #[default]
@@ -50,13 +47,11 @@ enum SubtitlePatch {
     Set(Option<String>),
 }
 
-/// Deserializer that distinguishes "key present but null" from "key
-/// absent". `Option::deserialize` returns `None` for null; without the
-/// `#[serde(default)]` on the parent, an absent key would error. We
-/// always read the body through `Option<Option<T>>`-shaped wrapper and
-/// project to [`SubtitlePatch`] — `Some(value)` means the key was
-/// present. An empty string is normalized to the clear case (`Set(None)`),
-/// so `""` and explicit `null` both clear.
+/// Deserializer that distinguishes "key present but null" from "key absent":
+/// `Option::deserialize` returns `None` for null, and the parent's
+/// `#[serde(default)]` supplies `Unchanged` for an absent key. Present values
+/// project to [`SubtitlePatch::Set`], with an empty string normalized to the
+/// clear case so `""` and explicit `null` both clear.
 fn deser_present_optional<'de, D>(d: D) -> Result<SubtitlePatch, D::Error>
 where
     D: serde::Deserializer<'de>,

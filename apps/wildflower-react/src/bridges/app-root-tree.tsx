@@ -37,8 +37,8 @@ const AppRootTree = ({ router, transportPromise }: AppRootTreeProps): JSX.Elemen
             <Fragment>
               {/*
                * NavigationBridgeHandler only needs `transport.sendMessage`
-               * (not the slice senders), so it sits beside the forwarders
-               * rather than buried inside them.
+               * (not the slice sender), so it sits beside the forwarder
+               * rather than buried inside it.
                */}
               <NavigationBridgeHandler sender={transport.sendMessage} />
               <CollectorSenderForwarder>{children}</CollectorSenderForwarder>

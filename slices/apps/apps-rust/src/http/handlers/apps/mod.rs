@@ -2,11 +2,6 @@
 //! webview consumes. One module per route handler (`list`, `launch`), each
 //! exposing a `#[utoipa::path]`-annotated handler; `openapi_router()` collects
 //! them so the served routes and the OpenAPI spec come from one place.
-//!
-//! `GET /apps` lists; `POST /apps/{id}` launches (302 to the resolved URL for a
-//! forwarded caller, or 204 when the host's
-//! [`OnDeviceWebviewHandle`](crate::OnDeviceWebviewHandle) opens it for a
-//! loopback caller).
 
 mod launch;
 mod list;
@@ -81,10 +76,8 @@ mod tests {
 
     /// A launch request as the trusted front (relay/tunnel) would forward it:
     /// `POST /apps/{id}` carrying the RFC 7239 `Forwarded` header with the
-    /// public `host`/`proto` — the same header
-    /// `shared_structures_rust::served_origin::request_provenance` reads to
-    /// resolve the served origin. Reads as a remote caller rather than the
-    /// local loopback webview.
+    /// public `host`/`proto` — the same header `request_provenance` reads. Reads
+    /// as a remote caller rather than the local loopback webview.
     fn post_forwarded(uri: &str) -> Request<Body> {
         Request::builder()
             .method("POST")

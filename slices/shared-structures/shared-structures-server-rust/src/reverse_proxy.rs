@@ -8,10 +8,9 @@
 //! with the orchestrator that starts the hosts, so registering a host at runtime
 //! is visible to the next forwarded request with no restart.
 //!
-//! Connection upgrades (WebSocket) are proxied too: a matched-subdomain request
-//! carrying an `Upgrade` header is handed to [`crate::upgrade`] — a connection
-//! splice — instead of the buffer-free streaming [`forward`] below (reqwest
-//! can't carry a `101` / raw upgrade).
+//! Connection upgrades (WebSocket) carrying an `Upgrade` header are handed to
+//! [`crate::upgrade`] — a connection splice — instead of the buffer-free
+//! streaming [`forward`] below (reqwest can't carry a `101` / raw upgrade).
 
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
@@ -132,8 +131,7 @@ pub struct TunnelSubdomainReverseProxy {
 impl TunnelSubdomainReverseProxy {
     /// Construct with the fallback router up front. Shares `table` with the
     /// caller (the orchestrator registers hosts on the same handle), subscribes
-    /// to `tunnel`'s liveness watch for the live public host (read `O(1)` per
-    /// request, no per-request settings query), and forwards to
+    /// to `tunnel`'s liveness watch for the live public host, and forwards to
     /// `{loopback}:{port}`.
     #[must_use]
     pub fn new(
@@ -154,7 +152,7 @@ impl TunnelSubdomainReverseProxy {
     }
 
     /// The router to serve: the fallback wrapped with the forwarding middleware
-    /// as the outermost layer (it runs before the fallback).
+    /// as the outermost layer, so it runs before the fallback.
     pub fn into_router(self) -> Router {
         self.fallback.layer(axum::middleware::from_fn_with_state(
             self.state,
@@ -179,7 +177,6 @@ async fn maybe_forward_to_subdomain(
         return next.run(req).await;
     };
     let port = match state.table.port_for(&app_id) {
-        // Matched the `<id>.<public_host>` shape and a host is registered.
         Ok(Some(port)) => port,
         // Matched the shape but no host is registered for that id — fall through
         // to the fallback rather than erroring here.
@@ -254,7 +251,6 @@ async fn forward(state: &ReverseProxyState, port: u16, req: Request) -> Response
         .client
         .request(parts.method.clone(), url.as_str())
         .headers(forwardable_headers(&parts.headers))
-        // Stream the inbound body straight through rather than buffering it.
         // reqwest frames the unknown-length stream chunked — the inbound
         // `content-length` is dropped in `forwardable_headers` so it can't conflict.
         .body(reqwest::Body::wrap_stream(body.into_data_stream()));

@@ -38,9 +38,6 @@ impl OnDeviceWebviewHandle for NativeWebviewHandle {
     /// The handler only calls this for a loopback (local) caller — a host popup
     /// is useless to a remote one — so this impl doesn't re-check provenance.
     fn open(&self, title: String, url: String) {
-        // Clone everything the spawned closure needs — the `AppHandle` and the
-        // two owned `String`s — so the blocking task owns its inputs and the
-        // caller's worker isn't parked.
         let handle = self.app.clone();
         tauri::async_runtime::spawn_blocking(move || {
             if let Err(error) = open_app_in_native_webview(&handle, title, url) {
@@ -84,9 +81,6 @@ fn open_app_in_native_webview(
     // reacts to `Hidden`/`Disposed`; the plugin's own teardown backstop reclaims
     // an idle-hidden popup.
     let channel: Channel<NativeWebviewEvent> = Channel::new(|_event| Ok(()));
-    // `open_url` builds (if absent) and navigates the content webview without
-    // presenting it; `show` reveals it. Two calls because the plugin's
-    // hide/dispose model keeps visibility independent of content.
     handle
         .native_webview()
         .open_url(OpenRequest {

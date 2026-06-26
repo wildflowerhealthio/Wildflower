@@ -57,9 +57,8 @@ pub(crate) async fn handle_create_app(
         id: mint_app_id(),
         enabled: true,
         name: body.name,
-        // An empty subtitle is treated as "none": the read schemas decode
-        // `subtitle` as a non-empty string, so a stored `""` would serialize as
-        // `"subtitle": ""` and break the whole catalogue decode.
+        // Empty subtitle → cleared: a stored `""` would break the catalogue
+        // decode (read schemas require a non-empty string). See `SubtitlePatch`.
         subtitle: body.subtitle.filter(|s| !s.is_empty()),
         url,
         requires_tunnel: body.requires_tunnel,

@@ -1,10 +1,8 @@
 //! `GET /apps` — return every persisted app row as a list of
 //! [`AppListEntry`]. Internals (locally served) come first, then externals
 //! (user-editable), both in their own seed/insertion order. The wire shape
-//! deliberately **omits the launch `url`**: the launch endpoint is the only
-//! thing that resolves a URL (and only at request time, so a forwarded
-//! caller and a loopback caller get the right origin), so the catalogue
-//! doesn't need to predict it.
+//! omits the launch `url` (resolved per-request at launch; see
+//! [`AppListEntry`]).
 //!
 //! When the user's `apps` row carries the same id as an internal seed
 //! (only possible when a pre-migration-002 edit prevented the guarded

@@ -58,12 +58,10 @@ pub(crate) struct InvalidFieldBody {
     pub(crate) message: String,
 }
 
-/// Wire shape for a 503 `LaunchUnavailable`. A launch that can't resolve a
-/// *reachable* target — a forwarded (remote) launch when no public host is
-/// configured, or a `requires_tunnel` app launched while the tunnel is down —
-/// returns this instead of a dead loopback redirect / a host popup pointed at
-/// an origin the caller can't reach, so the SPA can surface the failure rather
-/// than silently no-op.
+/// Wire shape for a 503 `LaunchUnavailable` — a launch with no *reachable*
+/// target (see [`HandlerError::Unavailable`]). The SPA surfaces the failure
+/// rather than following a dead redirect / a popup pointed at an unreachable
+/// origin.
 #[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct LaunchUnavailableBody {
     pub(crate) error: &'static str,

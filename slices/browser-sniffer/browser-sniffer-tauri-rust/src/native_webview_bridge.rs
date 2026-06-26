@@ -1,46 +1,22 @@
 //! Rust-side bridge between `tauri-plugin-native-webview`'s native webview and
-//! the sniffer's `BRIDGE_EVENT` event bus. Runs on all platforms now that the
-//! sniffer routes through the plugin on desktop too — only the
-//! `forward_to_native_webview` direction stays mobile-only.
+//! the sniffer's `BRIDGE_EVENT` event bus. See
+//! [`Tauri Host Explanation.md`](../../docs/Tauri%20Host%20Explanation.md) for
+//! the full data-plane / transport plumbing.
 //!
-//! ## Two halves
-//!
-//! - **Native webview → host** ([`install`]). At app start we create a
-//!   long-lived `Channel<NativeWebviewEvent>` whose handler decodes each event
-//!   the plugin's Swift/Kotlin/desktop side sends and re-emits onto
-//!   `BRIDGE_EVENT`: `NativeWebviewEvent::Message` →
-//!   [`validate_native_webview_message`] checks the (untrusted) envelope — it
-//!   must target `BRIDGE_EVENT` AND carry an allowlisted data-plane `_tag` —
-//!   then emits its inner payload on the `BRIDGE_EVENT` channel (so SPA + Rust
-//!   listeners see the `{_tag:…}` shape directly).
-//!   `NativeWebviewEvent::Hidden` / `NativeWebviewEvent::Disposed` are
-//!   lifecycle-only — the sniff's terminal `SniffingComplete` is SPA-driven, so
-//!   neither re-emits it: a hide keeps the native webview running and sniffing
-//!   in the background, and a dispose happens *because* the SPA already emitted
-//!   `SniffingComplete`. The channel is cloned and reused across every `open` —
-//!   its identifier is preserved by `Clone`, so the same handler fires for every
-//!   native webview.
-//!
-//! - **Host → native webview** ([`forward_to_native_webview`]). The bridge
-//!   listener in `lib.rs` routes `Click` / `CancelSnifferRequest` here on mobile
-//!   only — desktop doesn't need this hop because the content webview is a Tauri
-//!   webview whose `__TAURI__.event.listen('bridge', …)` already receives Rust's
+//! - **Native webview → host** ([`install`]): a long-lived
+//!   `Channel<NativeWebviewEvent>` decodes each plugin event and re-emits onto
+//!   `BRIDGE_EVENT`. `Message` is validated ([`validate_native_webview_message`])
+//!   and its inner payload forwarded; `Hidden` / `Disposed` are lifecycle-only
+//!   (the terminal `SniffingComplete` is SPA-driven, so neither re-emits it).
+//!   The channel is cloned and reused across opens — `Clone` preserves the
+//!   handler, so it fires for every native webview.
+//! - **Host → native webview** ([`forward_to_native_webview`]): mobile-only.
+//!   Desktop's content webview is a Tauri webview that receives
 //!   `app.emit('bridge', …)` natively.
-//!
-//! ## Platform notes
-//!
-//! - **Mobile**: the native webview posts on the `webkit.messageHandlers` /
-//!   `@JavascriptInterface` bridges → Swift/Kotlin → `channel.send`. The
-//!   plugin's Swift/Kotlin emit `Message` (envelope JSON) plus `Hidden` /
-//!   `Disposed` lifecycle events.
-//! - **Desktop**: the content webview is a Tauri webview, so the plugin
-//!   channel's `Message` arm is never exercised. Its web→host data-plane stream
-//!   instead rides the [`native_webview_data_plane_emit`] command (the page's
-//!   capability withholds a bus `emit` grant, so it can't reach `BRIDGE_EVENT`
-//!   directly — the desktop counterpart of the mobile `Message` allowlist gate).
-//!   The plugin's desktop backend still fires `Hidden` when the user dismisses
-//!   the window (it's hidden, not destroyed, and keeps running) and `Disposed`
-//!   when the window is torn down.
+//! - **Desktop data plane**: the content webview can't emit on `BRIDGE_EVENT`
+//!   (its capability withholds the `emit` grant), so it rides the
+//!   [`native_webview_data_plane_emit`] command — the desktop counterpart of
+//!   the mobile `Message` allowlist gate.
 
 use std::borrow::Cow;
 use std::fmt;
@@ -72,10 +48,9 @@ const NATIVE_WEBVIEW_DATA_PLANE_TAGS: &[&str] = &[
 
 /// Managed state wrapping the [`Channel`] handed to each plugin `open` call.
 ///
-/// `Clone` on `Channel<T>` preserves the underlying handler (it's
-/// `Arc<ChannelInner>` under the hood), so the same handler fires no matter
-/// which native webview sent the event. Stored in Tauri's typemap and
-/// retrieved by `sniffer_window::open_or_navigate`.
+/// `Clone` on `Channel<T>` preserves the underlying handler (`Arc<ChannelInner>`),
+/// so the same handler fires no matter which native webview sent the event.
+/// Stored in Tauri's typemap, retrieved by `sniffer_window::open_or_navigate`.
 pub(crate) struct NativeWebviewChannel {
     pub(crate) channel: Channel<NativeWebviewEvent>,
 }
@@ -93,13 +68,11 @@ pub(crate) fn install(app: &AppHandle) {
 }
 
 /// The native-webview-side bridge envelope a `NativeWebviewEvent::Message`
-/// carries: `{"event":"bridge","payload":{"_tag":…}}`. `payload` is kept as a
-/// borrowed [`RawValue`] so a validated inner payload **forwards verbatim** — no
-/// intermediate `Value`, no deep clone. Note this is *not* a single parse
-/// end-to-end: the envelope is parsed once here, then
-/// [`validate_native_webview_message`] scans the inner payload once more to read
-/// its `_tag` and reject duplicate keys. Forwarding is zero-copy; validation is
-/// not. This runs once per streamed `ResponseData` chunk on mobile. A missing /
+/// carries: `{"event":"bridge","payload":{"_tag":…}}`. `payload` is a borrowed
+/// [`RawValue`] so a validated inner payload **forwards verbatim** — no
+/// intermediate `Value`, no deep clone. The inner payload is scanned a second
+/// time by [`validate_native_webview_message`] to read its `_tag` and reject
+/// duplicate keys (forwarding is zero-copy; validation is not). A missing /
 /// `null` `payload` decodes to `None` and is dropped as malformed.
 #[derive(Deserialize)]
 struct NativeWebviewEnvelope<'a> {
@@ -112,12 +85,11 @@ struct NativeWebviewEnvelope<'a> {
 /// Just enough of the inner payload to read its `_tag` discriminant for the
 /// allowlist check, while rejecting any duplicate top-level key.
 ///
-/// Hand-written (rather than `#[derive(Deserialize)]`) so it fails on a
-/// duplicate of *any* key, not just the duplicate `_tag` serde's struct decode
-/// already catches: this guard re-emits the payload's raw bytes verbatim, so it
-/// must never accept bytes that a last-wins serde read and a first-wins
-/// downstream reader would interpret differently. A missing / non-string /
-/// escaped `_tag` also fails to decode and the message is dropped (fail-closed).
+/// Hand-written (not `#[derive(Deserialize)]`) so it fails on a duplicate of
+/// *any* key, not just `_tag`: this guard re-emits the raw bytes verbatim, so it
+/// must never accept bytes that last-wins serde and a first-wins downstream
+/// reader would interpret differently. A missing / non-string / escaped `_tag`
+/// also fails to decode and the message is dropped (fail-closed).
 struct InnerPayload<'a> {
     tag: &'a str,
 }
@@ -140,10 +112,10 @@ impl<'de> Deserialize<'de> for InnerPayload<'de> {
             where
                 A: MapAccess<'de>,
             {
-                // A native-webview payload has a handful of keys, so a linear
-                // duplicate scan is cheaper than a set. Keys are borrowed
-                // (`&str`); an escaped key fails to borrow and drops the
-                // message — fail-closed, and legitimate keys never escape.
+                // A payload has a handful of keys, so a linear duplicate scan
+                // beats a set. Keys are borrowed (`&str`); an escaped key fails
+                // to borrow and drops the message (fail-closed; legitimate keys
+                // never escape).
                 let mut seen: Vec<&str> = Vec::new();
                 let mut tag: Option<&str> = None;
                 while let Some(key) = map.next_key::<&str>()? {
@@ -172,15 +144,14 @@ impl<'de> Deserialize<'de> for InnerPayload<'de> {
 /// payload to re-emit verbatim on `BRIDGE_EVENT`, or an `Err` describing why it
 /// was dropped (logged at warn by the caller).
 ///
-/// Security (the mobile path's load-bearing guard; the desktop content webview's
-/// counterpart is [`data_plane_value_is_allowed`]): the native webview hosts an
-/// arbitrary third-party page that can reach the native bridge directly, so both
-/// the envelope `event` and the inner `_tag` are attacker-controlled. We require
-/// the envelope target the single multiplexed `BRIDGE_EVENT` channel AND the
-/// inner `_tag` be one of the sniffer's legitimate web→host data-plane tags
-/// ([`NATIVE_WEBVIEW_DATA_PLANE_TAGS`]) — re-emitting anything else would let a
-/// hostile page fabricate a `ResponseData`/`ResponseStart`, prematurely raise
-/// `SniffingComplete`, or spoof a sibling slice's control tag on the host bus.
+/// Security (the mobile path's load-bearing guard; desktop's counterpart is
+/// [`data_plane_value_is_allowed`]): the native webview hosts an arbitrary
+/// third-party page that can reach the native bridge directly, so both the
+/// envelope `event` and the inner `_tag` are attacker-controlled. We require the
+/// envelope target `BRIDGE_EVENT` AND the inner `_tag` be an allowlisted
+/// data-plane tag ([`NATIVE_WEBVIEW_DATA_PLANE_TAGS`]) — re-emitting anything
+/// else would let a hostile page fabricate a data event, prematurely raise
+/// `SniffingComplete`, or spoof a sibling slice's control tag.
 fn validate_native_webview_message(envelope_json: &str) -> Result<&RawValue, Cow<'static, str>> {
     let envelope: NativeWebviewEnvelope = serde_json::from_str(envelope_json).map_err(|error| {
         Cow::Owned(format!(
@@ -198,8 +169,8 @@ fn validate_native_webview_message(envelope_json: &str) -> Result<&RawValue, Cow
             "native-webview message envelope had a missing or null payload",
         ));
     };
-    // Second scan: read the inner `_tag` for the allowlist and reject duplicate
-    // keys (see [`InnerPayload`]; [`NativeWebviewEnvelope`] on the two parses).
+    // Read the inner `_tag` for the allowlist and reject duplicate keys (see
+    // [`InnerPayload`]).
     let InnerPayload { tag } = serde_json::from_str(payload.get())
         .map_err(|error| Cow::Owned(format!("native-webview message payload rejected: {error}")))?;
     if !NATIVE_WEBVIEW_DATA_PLANE_TAGS.contains(&tag) {
@@ -232,17 +203,13 @@ enum BridgeAction<'a> {
 fn classify_event(event: &NativeWebviewEvent) -> BridgeAction<'_> {
     match event {
         NativeWebviewEvent::Message { payload } => {
-            // `payload` is the native-webview-side bridge envelope
-            // ([`NativeWebviewEnvelope`]). The SPA sees the *inner* `{_tag:…}`
-            // payload, matching the unwrapped Tauri-webview path — see
-            // [`validate_native_webview_message`] for the unwrap + security check.
             match validate_native_webview_message(payload) {
                 Ok(inner_payload) => BridgeAction::ReEmit(inner_payload),
                 Err(reason) => BridgeAction::Drop(reason),
             }
         }
-        // Hide keeps the webview alive and sniffing; dispose follows the SPA's
-        // own `SniffingComplete`. Neither is terminal — see [`BridgeAction::Lifecycle`].
+        // Neither is terminal: hide keeps the webview sniffing, dispose follows
+        // the SPA's own `SniffingComplete`. See [`BridgeAction::Lifecycle`].
         NativeWebviewEvent::Hidden => {
             BridgeAction::Lifecycle("native webview hidden; sniff continues in the background")
         }
@@ -286,37 +253,30 @@ fn dispatch_body(app: &AppHandle, body: &InvokeResponseBody) {
 }
 
 /// Forward a `BRIDGE_EVENT` payload string into the native webview as a
-/// `window.__nativeWebviewReceive(...)` call. Only invoked on mobile from the
+/// `window.__nativeWebviewReceive(...)` call. Mobile-only, invoked from the
 /// bridge listener in `lib.rs` for the native-webview-bound tags
 /// ([`events::CLICK`](crate::events::CLICK) /
-/// [`events::CANCEL_SNIFFER_REQUEST`](crate::events::CANCEL_SNIFFER_REQUEST)).
+/// [`events::CANCEL_SNIFFER_REQUEST`](crate::events::CANCEL_SNIFFER_REQUEST));
+/// desktop's content webview receives `app.emit('bridge', …)` natively.
 ///
-/// `payload_str` is the raw JSON of the bridge envelope as received by
-/// `app.listen(BRIDGE_EVENT, …)` (`{"_tag":"Click", …}`). It is wrapped in
-/// `{"event":"bridge","payload":<envelope>}` to match what the
-/// native-webview-side `makeNativeBridgeEventBus` `parseEnvelope` expects.
-///
-/// Mobile-only: on desktop the content webview is a Tauri webview, so
-/// `__TAURI__.event.listen('bridge', …)` inside it receives Rust's
-/// `app.emit('bridge', …)` natively — no `evaluateJavaScript` hop needed.
+/// `payload_str` is the raw bridge envelope (`{"_tag":"Click", …}`), re-wrapped
+/// in `{"event":"bridge","payload":<envelope>}` to match the native-webview-side
+/// `makeNativeBridgeEventBus` `parseEnvelope`.
 #[cfg(any(target_os = "ios", target_os = "android"))]
 pub(crate) fn forward_to_native_webview(app: &AppHandle, payload_str: &str) {
     use serde::Serialize;
     use tauri_plugin_native_webview::{EvaluateJsRequest, NativeWebviewExt};
 
-    /// The envelope the native-webview-side `makeNativeBridgeEventBus::parseEnvelope`
-    /// expects: the bridge channel name plus the inbound payload forwarded
-    /// verbatim as a borrowed `RawValue` — one parse, no intermediate `Value`,
-    /// no deep clone (the outbound mirror of [`NativeWebviewEnvelope`]).
+    /// Outbound mirror of [`NativeWebviewEnvelope`]: payload forwarded verbatim
+    /// as a borrowed `RawValue` (no intermediate `Value`, no deep clone).
     #[derive(Serialize)]
     struct OutboundEnvelope<'a> {
         event: &'a str,
         payload: &'a RawValue,
     }
 
-    // We only re-wrap the payload, never inspect its tree, so parse it as a
-    // borrowed `RawValue`: this validates it's well-formed JSON (a malformed
-    // payload must not inject broken script) and lets us forward it verbatim.
+    // Parse as a borrowed `RawValue`: validates it's well-formed JSON (a
+    // malformed payload must not inject broken script) and forwards verbatim.
     let payload: &RawValue = match serde_json::from_str(payload_str) {
         Ok(value) => value,
         Err(error) => {
@@ -368,17 +328,13 @@ pub(crate) fn forward_to_native_webview(app: &AppHandle, payload_str: &str) {
 }
 
 /// Validate a desktop content-webview data-plane payload before re-broadcasting
-/// it on `BRIDGE_EVENT`. The inner `_tag` must be one of the sniffer's
-/// allowlisted web→host data-plane tags ([`NATIVE_WEBVIEW_DATA_PLANE_TAGS`]) —
-/// the same gate the mobile [`validate_native_webview_message`] applies, so a
-/// hostile page can't fabricate a control tag (`SniffingComplete` / `Open` /
-/// `RequestSniffableWebView`) or a sibling slice's tag.
+/// it on `BRIDGE_EVENT`. The inner `_tag` must be allowlisted
+/// ([`NATIVE_WEBVIEW_DATA_PLANE_TAGS`]) — the same gate mobile's
+/// [`validate_native_webview_message`] applies.
 ///
-/// Unlike the mobile path this validates a parsed [`serde_json::Value`] rather
-/// than borrowed raw bytes, so the verbatim-re-emit / duplicate-key concern
-/// [`InnerPayload`] guards against does not apply here: the command re-emits the
-/// *same* `Value` it validated, so the bytes a downstream reader sees and the
-/// `_tag` we checked are necessarily the one and the same.
+/// This validates a parsed [`serde_json::Value`] and re-emits that *same*
+/// `Value`, so the [`InnerPayload`] duplicate-key concern doesn't apply: the
+/// bytes a downstream reader sees and the `_tag` we checked are necessarily one.
 fn data_plane_value_is_allowed(payload: &serde_json::Value) -> Result<(), Cow<'static, str>> {
     let Some(tag) = payload.get("_tag").and_then(serde_json::Value::as_str) else {
         return Err(Cow::Borrowed(
@@ -396,23 +352,16 @@ fn data_plane_value_is_allowed(payload: &serde_json::Value) -> Result<(), Cow<'s
 
 /// Desktop-only transport for the content webview's web→host data-plane stream.
 ///
-/// On desktop the sniffer's content webview is a Tauri webview loading arbitrary
-/// third-party content, so it is **not** trusted to emit on `BRIDGE_EVENT`
-/// directly: `capabilities/native-webview-window.json` withholds the event-bus
-/// `emit` grant and instead allows only this command, which allowlists the inner
-/// `_tag` ([`data_plane_value_is_allowed`]) before re-broadcasting. That keeps
-/// the control plane (`SniffingComplete` / `Open` / `RequestSniffableWebView`,
-/// emitted by the trusted main SPA webview) off any surface the untrusted page
-/// can reach — the desktop counterpart of the mobile channel's
-/// [`validate_native_webview_message`] gate. Inbound `Click` /
-/// `CancelSnifferRequest` still ride the page's own `event.listen('bridge', …)`
-/// (an `allow-listen` grant), which page scripts can't spoof.
+/// The content webview is a Tauri webview loading arbitrary third-party content,
+/// so it is **not** trusted to emit on `BRIDGE_EVENT` directly:
+/// `capabilities/native-webview-window.json` withholds the `emit` grant and
+/// allows only this command, which allowlists the inner `_tag`
+/// ([`data_plane_value_is_allowed`]) before re-broadcasting — the desktop
+/// counterpart of the mobile [`validate_native_webview_message`] gate.
 ///
-/// Best-effort, mirroring the mobile drop semantics: a rejected or unemittable
-/// payload is logged at warn and dropped — the page learns nothing about which
-/// tags are gated. Registered unconditionally in the app's `invoke_handler`; on
-/// mobile the native webview is a separate WKWebView / WebView that cannot reach
-/// Tauri commands, so it is desktop-only in practice.
+/// Best-effort: a rejected or unemittable payload is logged at warn and dropped.
+/// Registered unconditionally in the app's `invoke_handler`, but desktop-only in
+/// practice — mobile's native webview can't reach Tauri commands.
 #[tauri::command]
 pub fn native_webview_data_plane_emit(app: AppHandle, payload: serde_json::Value) {
     match data_plane_value_is_allowed(&payload) {
@@ -471,8 +420,8 @@ mod tests {
             r#"{{"event":"{BRIDGE_EVENT}","payload":{{"_tag":"ResponseData","id":"r1","data":"AA=="}}}}"#
         );
         let inner = validate_native_webview_message(&json).expect("allowlisted tag forwards");
-        // The inner payload is returned untouched (not the whole envelope), so
-        // the collector's demux-by-`_tag` sees `_tag`, not `event`.
+        // Inner payload returned untouched (not the whole envelope), so the
+        // collector's demux-by-`_tag` sees `_tag`, not `event`.
         assert_eq!(
             inner.get(),
             r#"{"_tag":"ResponseData","id":"r1","data":"AA=="}"#
@@ -539,12 +488,11 @@ mod tests {
         assert!(validate_native_webview_message(&non_string).is_err());
     }
 
-    /// Security: a payload with a duplicate top-level key is rejected. The
-    /// validated `_tag` (serde last-wins) could otherwise disagree with the
-    /// verbatim-re-emitted raw bytes a first-wins downstream reader sees — a
-    /// duplicate `_tag` whose first occurrence is a rejected control tag must
-    /// not slip past the allowlist. We reject any duplicate key, not just
-    /// `_tag`, so the re-broadcast bytes are never attacker-shaped.
+    /// Security: a duplicate top-level key is rejected. The validated `_tag`
+    /// (serde last-wins) could otherwise disagree with the verbatim-re-emitted
+    /// bytes a first-wins downstream reader sees — a duplicate `_tag` whose first
+    /// occurrence is a rejected control tag must not slip past the allowlist. We
+    /// reject any duplicate key so the re-broadcast bytes are never attacker-shaped.
     #[test]
     fn duplicate_keys_are_rejected() {
         let dup_tag = format!(

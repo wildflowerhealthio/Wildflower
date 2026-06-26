@@ -57,7 +57,6 @@ impl StaticHostsService {
         S::Future: Send,
     {
         let StaticHostJob { id, port, service } = job;
-        // Replace any prior host on this id (drops its shutdown sender).
         self.stop(&id)?;
 
         let authority = self.hostname.authority(port);

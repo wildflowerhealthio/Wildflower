@@ -1,20 +1,20 @@
 //! `http(s)`-only URL parsing shared by both plugin backends.
 //!
-//! The native webview loads arbitrary external pages, so the scheme must be constrained
-//! to `http` / `https` — `data:`, `file:`, `javascript:` etc. must never reach
-//! the webview. Both the desktop (`desktop::NativeWebview::open`) and mobile
-//! (`mobile::NativeWebview::open`) entry points validate through this single
-//! function, so the scheme rule lives in exactly one place and the parsed
-//! [`Url`] is threaded onward instead of being re-derived per call site.
+//! The native webview loads arbitrary external pages, so the scheme is
+//! constrained to `http` / `https` — `data:`, `file:`, `javascript:` etc. must
+//! never reach the webview. Both backends' `open_url` validate through this one
+//! function and thread the parsed [`Url`] onward, so the scheme rule lives in a
+//! single place.
 //!
-//! Mirrors `shared_structures_tauri_rust::sandboxed_webview::resolve_http_url`
-//! in intent; kept local here so this self-contained plugin doesn't take a
-//! dependency on an app-level slice adapter (the layering points the other way).
+//! Mirrors `shared_structures_tauri_rust::sandboxed_webview::resolve_http_url`;
+//! kept local so this self-contained plugin doesn't depend on an app-level slice
+//! adapter (the layering points the other way).
 
 use url::Url;
 
-/// Construct the target-appropriate [`crate::Error`] variant ([`Error::Internal`](crate::Error::Internal)
-/// on desktop, [`Error::PluginInvoke`](crate::Error::PluginInvoke) on mobile), which are themselves cfg-gated.
+/// Construct the target-appropriate [`crate::Error`] variant:
+/// [`Error::Internal`](crate::Error::Internal) on desktop,
+/// [`Error::PluginInvoke`](crate::Error::PluginInvoke) on mobile.
 #[cfg(desktop)]
 fn scheme_error(message: String) -> crate::Error {
     crate::Error::Internal(message)

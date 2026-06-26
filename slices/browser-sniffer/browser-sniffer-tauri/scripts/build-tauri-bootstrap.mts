@@ -3,10 +3,10 @@
 // self-contained IIFE via the shared `buildBootstrap` helper. See
 // `build-bootstrap.mts` for the outputs written and why.
 //
-// CI's `tauri` lint/test job runs `pnpm install` (which triggers this via
-// `prepare`) before `cargo build`/`cargo nextest`, so the latest bytes are
-// always compiled in. Rust-only PRs that don't need a fresh bootstrap fall back
-// to a stub written by the workflow, just so `include_str!` resolves.
+// CI's `tauri` lint/test job runs `pnpm install` (triggering this via `prepare`)
+// before `cargo build`/`cargo nextest`, so the latest bytes are always compiled
+// in. Rust-only PRs fall back to a workflow-written stub just so `include_str!`
+// resolves.
 
 import { resolve } from 'node:path'
 

@@ -19,11 +19,11 @@ type BridgeGlobals = typeof globalThis & {
 const globals = globalThis as BridgeGlobals
 
 /**
- * Invoke the installed native receiver global, re-reading it through a fresh
- * `globalThis` view each call. Going through a fresh expression (not the
- * module-scope `globals` binding) keeps an in-body `delete globals.__nativeWebviewReceive`
- * from narrowing the call target to `undefined` — the receiver is reinstalled by
- * a later `makeNativeBridgeEventBus()` that TS can't see into.
+ * Invoke the installed native receiver global through a fresh `globalThis` view
+ * each call. A fresh expression (not the module-scope `globals` binding) keeps an
+ * in-body `delete globals.__nativeWebviewReceive` from narrowing the call target
+ * to `undefined` — TS can't see that a later `makeNativeBridgeEventBus()`
+ * reinstalls it.
  */
 const fireReceive = (json: string): void => {
   ;(globalThis as BridgeGlobals).__nativeWebviewReceive?.(json)
@@ -138,9 +138,8 @@ describe('makeNativeBridgeEventBus — inbound (listen)', () => {
 
 describe('makeNativeBridgeEventBus — singleton registry', () => {
   test('two buses in the same context share one receiver registry', () => {
-    // A single native `__nativeWebviewReceive` global dispatches to one
-    // module-scope registry, so a second construction must NOT orphan the
-    // first's listener — both see the inbound envelope.
+    // One `__nativeWebviewReceive` global dispatches to one module-scope
+    // registry, so a second construction must NOT orphan the first's listener.
     globals.nativeWebview = { postMessage: () => {} }
     const firstHandler = vi.fn()
     const secondHandler = vi.fn()
@@ -157,9 +156,9 @@ describe('makeNativeBridgeEventBus — singleton registry', () => {
     const stale = vi.fn()
     void makeNativeBridgeEventBus().listen('bridge', stale)
 
-    // A fresh JS context (the native plugin never deletes the receiver at
-    // runtime, but a test reset / re-injection does): with the global gone the
-    // next construction reinstalls the receiver and clears the registry, so the
+    // Simulate a fresh JS context (the plugin never deletes the receiver at
+    // runtime, but a test reset does): with the global gone, the next
+    // construction reinstalls the receiver and clears the registry, so the
     // earlier listener can't linger and double-fire.
     delete globals.__nativeWebviewReceive
     const fresh = vi.fn()
@@ -179,9 +178,9 @@ describe('makeNativeBridgeEventBus — round trip', () => {
         const { posts, postMessage } = capturePosts()
         globals.webkit = { messageHandlers: { nativeWebview: { postMessage } } }
 
-        // Reset the shared singleton receiver each iteration so the prior run's
-        // listener is cleared on this construction (see `installReceiverIfMissing`)
-        // rather than accumulating in the module-scope registry across runs.
+        // Reset the singleton receiver each iteration so the prior run's listener
+        // is cleared (see `installReceiverIfMissing`) rather than accumulating in
+        // the module-scope registry.
         delete globals.__nativeWebviewReceive
         const bus = makeNativeBridgeEventBus()
         const received: unknown[] = []

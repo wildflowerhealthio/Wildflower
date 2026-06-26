@@ -77,9 +77,8 @@ impl SelfHostedAppsService {
             .await
         {
             match error {
-                // Best-effort: the loopback listener didn't come up, but the
-                // reverse proxy can still route forwarded traffic once we
-                // register the id below.
+                // Best-effort: loopback bind failed, but the proxy registration
+                // below still routes forwarded traffic.
                 ServerError::Bind { .. } => {
                     tracing::warn!(
                         %error,

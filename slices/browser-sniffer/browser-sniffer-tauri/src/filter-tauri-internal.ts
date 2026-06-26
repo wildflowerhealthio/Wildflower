@@ -10,15 +10,12 @@ import { isRecord } from './is-record.ts'
  *   1. Drop Tauri's own IPC-fallback `console.warn` ("IPC custom protocol
  *      failed …"), which the console shim would otherwise re-post as a
  *      `Log` once per IPC call — noise, not a page observation.
- *   2. Serialize outbound emits on a Promise chain (one in-flight at a
- *      time). Tauri's macOS IPC transport reorders emits issued during
- *      its first `ipc://` → `WKScriptMessageHandler` fallback, which would
- *      scramble a streaming burst; the chain trades one round-trip per
- *      emit for FIFO. Rejected emits are reported, not swallowed, and
- *      don't poison the chain (see {@link makeFilteringEventBus}).
+ *   2. Serialize outbound emits on a Promise chain (one in-flight at a time):
+ *      Tauri's macOS IPC transport reorders emits issued during its first
+ *      `ipc://` → `WKScriptMessageHandler` fallback, scrambling a streaming
+ *      burst; the chain trades one round-trip per emit for FIFO. Rejected emits
+ *      are reported, not swallowed, and don't poison the chain.
  *
- * Tauri-internal IPC URLs are skipped at the shim source
- * (`install-sniffer.ts`'s `isTauriInternalUrl`), so they never reach here.
  * `listen` and non-`BRIDGE_EVENT` emits pass straight through.
  */
 
@@ -38,13 +35,11 @@ const isTauriIpcFallbackWarning = (record: Record<string, unknown>): boolean => 
 }
 
 /**
- * Wrap a {@link TauriEventApi} so outbound `BRIDGE_EVENT` emits are
- * serialized and the Tauri IPC-fallback warning is dropped (see this
- * module's header).
+ * Wrap a {@link TauriEventApi} so outbound `BRIDGE_EVENT` emits are serialized
+ * and the Tauri IPC-fallback warning is dropped (see this module's header).
  *
- * Closure state (the outbound emit-chain Promise) lives on the wrapper
- * instance — one wrapper per page is the intended use; tests construct a
- * fresh wrapper per case.
+ * @remarks The emit-chain Promise is per-wrapper closure state — one wrapper per
+ * page; tests construct a fresh wrapper per case.
  */
 const makeFilteringEventBus = (eventBus: TauriEventApi): TauriEventApi => {
   let emitChain: Promise<void> = Promise.resolve()
@@ -78,8 +73,7 @@ const makeFilteringEventBus = (eventBus: TauriEventApi): TauriEventApi => {
       }
       return enqueueEmit(eventName, payload)
     },
-    // Arrow, not a bare method reference, so the underlying bus stays the
-    // receiver if it ever implements `listen` as a `this`-bound method.
+    // Arrow (not a bare reference) so the underlying bus stays the receiver.
     listen: (event, handler) => eventBus.listen(event, handler),
   }
 }

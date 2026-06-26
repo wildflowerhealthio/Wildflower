@@ -4,14 +4,12 @@
 //! [`setup_apps`](crate::setup_apps), not via this config.
 
 /// What [`setup_apps`](crate::setup_apps) needs to stand up the slice: the
-/// loopback origin used as the launch redirect target (until a real tunnel
-/// seam reads `servedOrigin` from tunnel-rust), plus the loopback hostname the
-/// internal-apps listeners bind on.
+/// loopback origin used as the non-tunnel launch redirect target, plus the
+/// loopback hostname the internal-apps listeners bind on.
 #[derive(Debug, Clone, Default)]
 pub struct AppsConfig {
     /// e.g. `http://127.0.0.1:8080` — the origin clients reach when the
-    /// tunnel is down. Used by `LaunchApp` to build redirect targets and to
-    /// validate that a resolved app URL is launchable.
+    /// tunnel is down; a non-tunnel launch redirects here.
     pub loopback_origin: String,
     /// The hostname portion (no scheme, no port) the host binds each
     /// internal-app listener on — e.g. `127.0.0.1`. The apps slice combines

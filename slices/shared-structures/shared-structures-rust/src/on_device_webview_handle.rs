@@ -14,13 +14,10 @@
 //! generic on-device capability, and keeps the apps slice from depending on the
 //! Tauri host directly.
 //!
-//! ## Loopback-only
-//!
 //! A host-side popup only helps the *local* caller — opening one for a remote
-//! caller would pop a window on the host device for someone who can't see it.
-//! The launch handler enforces that by calling [`OnDeviceWebviewHandle::open`]
-//! only on the loopback arm of its provenance match; a forwarded caller takes
-//! the redirect instead.
+//! caller would pop a window on the host device for someone who can't see it —
+//! so the launch handler calls [`OnDeviceWebviewHandle::open`] only on the
+//! loopback arm of its provenance match.
 
 /// Host seam for opening a launch URL in an on-device native webview popup.
 ///

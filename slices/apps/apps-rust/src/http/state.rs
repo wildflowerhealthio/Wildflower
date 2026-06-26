@@ -17,10 +17,9 @@ pub struct AppsState {
     /// migration).
     pub(crate) store: AppsStore,
     /// e.g. `http://127.0.0.1:8080` — the origin clients reach when the tunnel
-    /// is down. `LaunchApp` redirects non-tunnel apps here. A `requires_tunnel`
-    /// launch that can't reach the tunnel does **not** fall back here — there's
-    /// no reachable origin for it, so the launch fails with
-    /// `503 LaunchUnavailable` instead.
+    /// is down; a non-tunnel launch redirects here. A `requires_tunnel` launch
+    /// does **not** fall back here (it fails `503` instead — there's no reachable
+    /// origin for it).
     pub(crate) loopback_origin: String,
     /// Hostname portion (no scheme, no port) the host binds each internal-app
     /// listener on — combined with each internal row's `port` to render the
@@ -29,10 +28,10 @@ pub struct AppsState {
     /// The tunnel service a `requires_tunnel` launch resolves its origin
     /// through. The host wires the real tunnel slice; tests use a stub.
     pub(crate) tunnel: Arc<dyn TunnelService>,
-    /// The on-device launch seam. A loopback launch hands the resolved URL to it
-    /// (the Tauri host opens a native webview popup) and `204`s; a forwarded
-    /// launch redirects instead. A host with no native popup supplies a no-op
-    /// handle (only forwarded callers reach such a host, so it's never invoked).
+    /// The on-device launch seam — a loopback launch hands the resolved URL to
+    /// it (the Tauri host opens a native webview popup). A host with no native
+    /// popup supplies a no-op handle (only forwarded callers reach such a host,
+    /// so it's never invoked).
     pub(crate) on_device_webview_handle: Arc<dyn OnDeviceWebviewHandle>,
 }
 

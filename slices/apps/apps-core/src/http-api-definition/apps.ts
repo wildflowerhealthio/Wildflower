@@ -11,11 +11,10 @@ import { AppIdPathSchema, AppListSchema, AppNotFoundSchema } from './schemas.ts'
 const httpApiGroup = HttpApiGroup.make('apps', { topLevel: false })
   .add(HttpApiEndpoint.get('ListApps', '/apps').addSuccess(AppListSchema))
   .add(
-    // `POST` rather than `GET`: launching now mutates host state (the server
-    // brings the tunnel up and either 302s the browser to the resolved URL or,
-    // on the Tauri host, opens a native popup and 204s). The success body is
-    // not exercised through this typed client — the SPA submits a raw POST and
-    // lets the browser follow the 302 — but the endpoint stays declared so the
+    // `POST` rather than `GET`: launching mutates host state (brings the tunnel
+    // up, then 302s the browser or, on the Tauri host, opens a native popup and
+    // 204s). The success body is never read through this typed client — the SPA
+    // POSTs raw and follows the 302 — but the endpoint stays declared so the
     // spec-drift test keeps the path/method pinned against the Rust server.
     HttpApiEndpoint.post('LaunchApp', '/apps/:id')
       .setPath(AppIdPathSchema)

@@ -16,16 +16,12 @@ use crate::db::AppsStore;
 use crate::http::state::AppsState;
 use crate::OnDeviceWebviewHandle;
 
-/// The loopback origin clients reach when the tunnel is down. The apps slice
-/// treats this and [`LOOPBACK_HOSTNAME`] as **independent** config values —
-/// production wires `loopback_origin` and `loopback_hostname`
-/// separately and the slice never derives one from the other (the app could be
-/// served elsewhere) — so the fixtures carry both rather than splitting a host
-/// out of the origin.
+/// The loopback origin clients reach when the tunnel is down. Independent of
+/// [`LOOPBACK_HOSTNAME`] (see [`AppsConfig`](crate::AppsConfig)), so the
+/// fixtures carry both rather than splitting a host out of the origin.
 pub(crate) const LOOPBACK_ORIGIN: &str = "http://127.0.0.1:8080";
 
-/// The hostname (no scheme, no port) the internal-app listeners bind on —
-/// combined with each internal row's `port` to render `http://{hostname}:{port}/`.
+/// The hostname (no scheme, no port) the internal-app listeners bind on.
 pub(crate) const LOOPBACK_HOSTNAME: &str = "127.0.0.1";
 
 /// A `TunnelService` stub for a tunnel that's up and verified at `origin` — the

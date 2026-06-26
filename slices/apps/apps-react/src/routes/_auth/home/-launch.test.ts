@@ -95,9 +95,9 @@ describe('launchApp', () => {
     })
 
     test('logs an unexpected status (non-2xx) instead of silently swallowing it', async () => {
-      // A launch of a just-deleted/disabled app would 404 — `fetch` resolves
-      // the response (not a rejection), so a `.catch`-only path would never
-      // see it. The `!response.ok` check is what surfaces this.
+      // A 404 (just-deleted/disabled app) resolves the fetch rather than
+      // rejecting, so a `.catch`-only path would miss it — `!response.ok`
+      // surfaces it.
       const fetchMock = vi
         .fn<typeof fetch>()
         .mockResolvedValue(new Response('not found', { status: 404 }))
@@ -108,9 +108,8 @@ describe('launchApp', () => {
         app
       )
 
-      // The log carries enough to diagnose: a "unexpected status" tag, the
-      // numeric status, and the fetch response `type` for the opaque-redirect
-      // case (here a normal `default`).
+      // Asserts the log carries the status and response `type` (the latter
+      // distinguishes the opaque-redirect case; here a normal `default`).
       expect(consoleError).toHaveBeenCalledWith(
         expect.stringContaining('unexpected status'),
         404,
@@ -174,7 +173,6 @@ describe('launchApp', () => {
       const fetchMock = vi.fn<typeof fetch>()
       vi.stubGlobal('fetch', fetchMock)
 
-      // No throw, no fetch, no submit — just returns.
       await launchApp(
         { apiBaseUrl: undefined, pageOrigin: 'https://app.example.com', form: null },
         app

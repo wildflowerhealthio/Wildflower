@@ -27,9 +27,8 @@ interface AppsHomeBodyProps {
 const AppsHomeBody = ({ apps }: AppsHomeBodyProps): JSX.Element => {
   const [editorOpen, setEditorOpen] = useState(false)
   const formRef = useRef<HTMLFormElement | null>(null)
-  // `apiBaseUrl` is set only on the Tauri webview, whose page is served from
-  // the dev server / asset protocol (no `/apps` route). Its presence is also
-  // the launch-arm signal — see `launchApp`.
+  // Set only on the Tauri webview; its presence is the launch-arm signal —
+  // see `launchApp` and `RouterContext.apiBaseUrl`.
   const apiBaseUrl = useRouteContext({
     from: '__root__',
     select: (context: RouterContext) => context.apiBaseUrl,
@@ -73,12 +72,10 @@ const AppsHomeBody = ({ apps }: AppsHomeBodyProps): JSX.Element => {
         />
       )}
       {/*
-       * The launch vehicle for web/tunnel browser launches (the page IS the
-       * API origin or a forwarded view of it): a single hidden form whose
-       * `action` is set per click; the browser follows the server's 302 to
-       * the resolved launch URL. Tauri launches bypass this form entirely
-       * and go through `fetch` so the 204 doesn't navigate the webview off
-       * the SPA. No fields — the app id rides in the path.
+       * The launch vehicle for the web/tunnel-browser arm: a single hidden
+       * form whose `action` is set per click so the browser follows the
+       * server's 302. Tauri launches bypass it (they `fetch` so the 204
+       * doesn't navigate the webview off the SPA) — see `launchApp`.
        */}
       <form ref={formRef} method="post" hidden />
       <AppsEditor

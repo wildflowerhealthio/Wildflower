@@ -27,11 +27,8 @@ const LOOPBACK_HOSTNAME: &str = "127.0.0.1";
 /// Spin up the slice plus the recording on-device webview handle, so a launch
 /// test can assert the URL a loopback launch routes to it.
 ///
-/// No tunnel in the integration harness (an [`OfflineTunnel`]): a
-/// `requires_tunnel` launch would fail with `503 LaunchUnavailable`, so the
-/// harness only launches non-tunnel apps. A loopback launch `204`s and routes
-/// the resolved URL to the handle (a forwarded caller would `302` instead, but
-/// the harness only issues loopback launches).
+/// No tunnel in the harness (an [`OfflineTunnel`]): a `requires_tunnel` launch
+/// would `503`, so the harness only issues loopback launches of non-tunnel apps.
 fn spin_up_with_handle() -> (Apps, Arc<RecordingStubWebviewHandle>) {
     let db = Connection::open_in_memory().expect("open shared db");
     let config = AppsConfig {

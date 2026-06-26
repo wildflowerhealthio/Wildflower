@@ -44,11 +44,10 @@ describe('nativeSnifferBootstrapScript', () => {
 
     boot()
 
-    // installSniffer ran: its symbol-keyed state slot exists.
     expect(SNIFFER_STATE_SLOT in (globalThis as object)).toBe(true)
-    // installSniffer posts a single-shot diagnostic Log on install, proving the
-    // bridge transport carries sniffer output. Everything posted is a valid
-    // bridge envelope `{ event: 'bridge', payload: { _tag } }`.
+    // installSniffer posts diagnostic `Log`s on install (e.g. "Shimming fetch"),
+    // proving the bridge transport carries sniffer output. Everything posted is a
+    // valid bridge envelope `{ event: 'bridge', payload }`.
     expect(posted.length).toBeGreaterThan(0)
     for (const raw of posted) {
       const envelope: unknown = JSON.parse(raw)

@@ -10,15 +10,10 @@
 //!   the same listener a local launch reaches — so a host has exactly one
 //!   listener regardless of who reaches it.
 //!
-//! ## Producer/consumer invariant
-//!
 //! The `<id>.<public_host>` shape this crate splits inbound hosts on is the
-//! shared [`shared_structures_rust::subdomain_host`] definition. A launch
-//! handler that redirects a forwarded caller emits `subdomain_url(id, host)`;
-//! this crate routes inbound hosts via `try_split_subdomain`. They are a matched
-//! pair — change the shape in the shared module and both move together. If they
-//! ever diverged, forwarded launches would fall through to the fallback,
-//! unreachable from a remote browser, with no error.
+//! shared [`shared_structures_rust::subdomain_host`] definition, a matched pair
+//! with the launch handler that produces it — see that module for the
+//! producer/consumer invariant.
 //!
 //! [`TunnelService`]: shared_structures_rust::tunnel_service::TunnelService
 

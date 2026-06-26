@@ -134,9 +134,8 @@ describe('CreateAppBodySchema', () => {
     )
   })
 
-  // The write side accepts the empty string; the server treats it as "no
-  // subtitle" (normalizes to none) so it never round-trips back as `""`, which
-  // the read schema rejects (see AppEntrySchema above).
+  // The write side accepts `""` (which the read schema rejects); the server
+  // normalizes it to "no subtitle" so it never round-trips back as `""`.
   it('accepts an empty-string subtitle (server clears it)', () => {
     const body = { name: 'X', url: 'https://example.com', requiresTunnel: false, subtitle: '' }
     expectRightToEqual(Schema.decodeUnknownEither(CreateAppBodySchema)(body), body)
@@ -168,9 +167,7 @@ describe('UpdateAppBodySchema', () => {
     )
   })
 
-  // An empty-string subtitle is the "clear it" signal: the write schema accepts
-  // it and the server normalizes to none, so it never persists as `""` (which
-  // the read schema rejects).
+  // Same empty-string-clears-it contract as on create (above).
   it('accepts an empty-string subtitle (clears it server-side)', () => {
     expectRightToEqual(Schema.decodeUnknownEither(UpdateAppBodySchema)({ subtitle: '' }), {
       subtitle: '',

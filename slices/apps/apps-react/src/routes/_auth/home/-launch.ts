@@ -3,7 +3,7 @@ import { stripTrailingSlash } from 'kitchen-sink'
 import type { AppEntry } from '../../../queries.ts'
 
 /**
- * Inputs the [`launchApp`] dispatch needs to pick — and reach — its arm.
+ * Inputs the {@link launchApp} dispatch needs to pick — and reach — its arm.
  *
  * - `apiBaseUrl`: the host API origin, set only on the Tauri webview whose
  *   page is served from the dev server / asset protocol (no `/apps` route).
@@ -40,9 +40,6 @@ export interface LaunchContext {
  *   `${pageOrigin}/apps/{id}`. The page IS the API origin, the server `302`s,
  *   and the browser follows the redirect to the resolved launch URL. A
  *   missing `form` ref is a no-op.
- *
- * Returned promise resolves once the dispatch is complete — tests can await
- * it; the click handler treats it as fire-and-forget.
  */
 export const launchApp = async (ctx: LaunchContext, app: AppEntry): Promise<void> => {
   const launchBase = stripTrailingSlash(ctx.apiBaseUrl ?? ctx.pageOrigin)
@@ -62,16 +59,10 @@ const submitForm = (form: HTMLFormElement | null, url: string): void => {
 
 const postLaunch = async (url: string): Promise<void> => {
   try {
-    // `redirect: 'manual'` so a server-side fallback to 302 (sink unexpectedly
-    // `None`, or the request read as forwarded) returns an opaque-redirect
-    // response we can see, rather than being transparently followed and the
-    // result discarded — fetch's default `follow` would swallow it silently.
     const response = await fetch(url, { method: 'POST', redirect: 'manual' })
     if (!response.ok) {
-      // 204 is the only expected status on the Tauri arm (sink owns the
-      // popup). Anything else — a real 4xx/5xx, or `opaqueredirect` from a
-      // stray 302 — means the popup didn't open, so log instead of silently
-      // swallowing.
+      // 204 is the only expected status here; anything else (4xx/5xx, or
+      // `opaqueredirect` from a stray 302) means the popup didn't open.
       // oxlint-disable-next-line no-console
       console.error(
         '[apps] launch fetch returned unexpected status',

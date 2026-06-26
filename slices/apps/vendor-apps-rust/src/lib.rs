@@ -1,40 +1,18 @@
 //! Host-side serving of static "installed apps" from a runtime directory.
+//! See `slices/apps/vendor-apps/README.md` for the design rationale
+//! (per-origin isolation, root-serving with no HTML rebase, the committed
+//! patient-browser config override).
 //!
-//! Each installed app runs on its **own dedicated loopback origin** —
-//! `http://{loopback_host}:{port}/` — and is served from the **root** of
-//! that origin. The host binds one loopback `TcpListener` per app and
-//! `axum::serve`s the [`Router`] this crate builds onto it.
-//! [`setup_installed_app`] returns that router, given the app's id and
+//! [`setup_installed_app`] returns the [`Router`] for one app given its id and
 //! the on-disk directory holding its files (e.g.
-//! `app-data/installed-apps/patient-browser/`).
+//! `app-data/installed-apps/patient-browser/`); the host binds one loopback
+//! `TcpListener` per app and `axum::serve`s the router at the root of that
+//! origin. A missing or empty directory just 404s. Static-file delivery (path
+//! traversal protection, content-type via `mime_guess`, directory →
+//! `index.html`) is delegated to [`tower_http::services::ServeDir`].
 //!
-//! Per-origin isolation matters because installed apps are third-party
-//! code that the Tauri webview eventually treats as SMART-on-FHIR clients:
-//! a distinct origin means a distinct security context (its own storage
-//! and cookies, no Same-Origin Policy share with the API on `:8080`).
-//! Serving at the root rather than under `/installed-apps/<id>/` also
-//! means the upstream build's root-absolute `/assets/`, `/img/`,
-//! `/config/` URLs are correct as-is — no HTML rebase is required.
-//!
-//! Two patient-browser-specific touches stay in place:
-//!
-//!  - `config/default.json5` is served from the committed, version-controlled
-//!    [`PATIENT_BROWSER_CONFIG`] regardless of what's on disk (so the
-//!    on-device FHIR URL lives in a readable file, not a brittle rewrite of
-//!    the upstream build).
-//!  - The `Cache-Control` middleware pins fingerprinted assets (`assets/`,
-//!    `img/`, fonts) for a year and keeps `index.html` / `config/*`
-//!    short-lived so a redeploy can repoint them.
-//!
-//! Static-file delivery (path traversal protection, content-type detection
-//! via `mime_guess`, directory → `index.html`) is delegated to
-//! [`tower_http::services::ServeDir`].
-//!
-//! When the app's directory is absent or empty the routes 404 — a fresh
-//! clone or CI serves nothing until the directory is populated (see
-//! slices/apps/vendor-apps/README). The crate has no Tauri/GTK dependency,
-//! so it compiles in the main Rust CI; only the host that binds the
-//! listener pulls in Tauri.
+//! The crate has no Tauri/GTK dependency, so it compiles in the main Rust CI;
+//! only the host that binds the listener pulls in Tauri.
 
 use std::path::PathBuf;
 
@@ -99,22 +77,18 @@ pub fn setup_installed_app(app_id: &str, app_dir: PathBuf) -> Router {
         );
     }
     router
-        // Everything else: the host-provided directory, served at root by
-        // ServeDir (traversal protection + mime_guess content types +
-        // directory → index.html resolution all handled there).
+        // Everything else: the host-provided directory, served at root by ServeDir.
         .fallback_service(ServeDir::new(app_dir).append_index_html_on_directories(true))
-        // After the file is fetched: intercept case-variant config-override
-        // requests (patient-browser only) and set Cache-Control. The middleware
-        // reads its app id from the `Extension` layered below so the
-        // closure doesn't need to capture it.
+        // Intercept case-variant config-override requests (patient-browser only)
+        // and set Cache-Control. The middleware reads its app id from the
+        // `Extension` layered below so the closure doesn't need to capture it.
         .layer(middleware::from_fn(cache_and_override))
         .layer(Extension(AppId(app_id.to_owned())))
 }
 
-/// Serve the committed patient-browser config inline. Returned as
-/// `application/json; charset=utf-8` with the short cache so a redeploy can
-/// repoint the on-device FHIR URL without clients pinning to a stale copy.
-/// Uses axum's tuple-into-response so no `.expect()` panic can leak from a
+/// Serve the committed patient-browser config inline, with the short cache so a
+/// redeploy can repoint the on-device FHIR URL without clients pinning a stale
+/// copy. Uses axum's tuple-into-response so no `.expect()` panic can leak from a
 /// response builder.
 async fn serve_patient_browser_config_override() -> impl IntoResponse {
     (

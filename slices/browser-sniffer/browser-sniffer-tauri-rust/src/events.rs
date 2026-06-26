@@ -9,16 +9,12 @@ pub const OPEN: &str = "Open";
 pub const SNIFFING_COMPLETE: &str = "SniffingComplete";
 
 /// Web→host *data-plane* tag literals the sniffer's native-webview page
-/// legitimately posts over the bridge (the page-observation stream the SPA
-/// collector consumes). These are the ONLY inner `_tag`s `native_webview_bridge`
-/// will re-emit from an untrusted native-webview `Message`: the native webview
-/// loads an arbitrary third-party URL whose scripts can reach the native bridge
-/// directly, so control tags (`SniffingComplete`, `Open`,
-/// `RequestSniffableWebView`) are deliberately excluded — re-emitting one would
-/// let a hostile page spoof a sibling slice's control event or prematurely end
-/// sniffing. Mirrors `browser-sniffer-core`'s `messages.ts` page→host set plus
-/// the `Log` console-shim tag from `install-sniffer.ts`; the drift guard in
-/// `native_webview_bridge::tests` pins them.
+/// legitimately posts (the page-observation stream the SPA collector consumes).
+/// These are the ONLY inner `_tag`s `native_webview_bridge` re-emits from an
+/// untrusted native-webview `Message` — control tags are deliberately excluded
+/// so a hostile page can't spoof them (see `native_webview_bridge`). Mirrors
+/// `browser-sniffer-core`'s `messages.ts` page→host set plus the `Log`
+/// console-shim tag; drift-guarded in `native_webview_bridge::tests`.
 pub const PAGE_LOADED: &str = "PageLoaded";
 pub const RESPONSE_START: &str = "ResponseStart";
 pub const RESPONSE_DATA: &str = "ResponseData";

@@ -290,7 +290,7 @@ impl<R: Runtime> NativeWebview<R> {
 }
 
 /// Arm (or re-arm) the [`ABSOLUTE_TIMEOUT`] backstop — see docs/Lifecycle and
-/// Races.md § "Teardown backstops". Bumps [`PluginState::timeout_generation`]
+/// Races Explanation.md § "Teardown backstops". Bumps [`PluginState::timeout_generation`]
 /// (superseding any prior timer), wakes the prior generation's parked thread so
 /// it exits immediately, and spawns a parked thread (no async runtime
 /// dependency; ≤1 live across rapid reopens, since each re-arm releases the last)
@@ -405,8 +405,8 @@ fn present<R: Runtime>(
     install_native_webview_state(&window, channel)?;
 
     // Chrome webview. The initial state is baked into the `data:` HTML (vs a
-    // post-open patch) so the bar is correct on first paint — see docs/Lifecycle
-    // and Races.md § "Chrome URL-fallback". `on_navigation` catches the
+    // post-open patch) so the bar is correct on first paint — see the Lifecycle
+    // & Races doc § "Chrome URL-fallback". `on_navigation` catches the
     // [`CHROME_ACTION_SCHEME`] clicks + height reports, returning false to cancel.
     let chrome_url = build_chrome_data_url(&InitialChromeState {
         url: &initial_url,

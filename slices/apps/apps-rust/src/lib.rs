@@ -33,22 +33,11 @@
 //!
 //! ## Launch / tunnel seam
 //!
-//! `POST /apps/{id}` resolves an internals launch directly to
-//! `http://{host}:{port}/` (loopback-only by construction — no tunnel
-//! involvement, no `{origin}` substitution). For externals it resolves a
-//! non-tunnel launch against [`AppsConfig::loopback_origin`] or the
-//! forwarded served origin; a `requires_tunnel` launch is resolved through
-//! the shared [`TunnelService`](shared_structures_rust::tunnel_service::TunnelService)
-//! contract, so the launch targets the live *verified* origin (or fails with
-//! `503 LaunchUnavailable` when the tunnel can't be brought up — there's no
-//! reachable origin to fall back to). Depending only on the contract keeps
-//! apps-rust decoupled from tunnel-rust.
-//!
-//! With the resolved target in hand the handler dispatches on provenance: a
-//! forwarded (remote) caller gets a `302` redirect, while a loopback (local)
-//! caller is handed to the host's [`OnDeviceWebviewHandle`] — which opens the
-//! URL in a native webview popup — and gets a `204`. See
-//! [`OnDeviceWebviewHandle`].
+//! `POST /apps/{id}` resolves a launch target and dispatches on provenance —
+//! see the launch handler module. A `requires_tunnel` launch resolves through
+//! the shared
+//! [`TunnelService`](shared_structures_rust::tunnel_service::TunnelService)
+//! contract, keeping apps-rust decoupled from tunnel-rust.
 
 pub mod config;
 pub mod db;

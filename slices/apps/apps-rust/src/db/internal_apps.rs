@@ -1,11 +1,8 @@
-//! Row mapping + read queries for the static `internal_apps` catalogue.
-//!
-//! Internal apps are seeded by migration and not editable through the admin
-//! API, so this is read-only. There is **no separate store struct** — the whole
-//! apps slice is served by [`AppsStore`](super::AppsStore); this module just
-//! adds a second `impl AppsStore` block with the internal-apps read methods. It
-//! lives in its own module only because the `sql_row!`-generated `ALL_COLS` is
-//! module-scoped and would collide with the `apps` table's in `apps_store.rs`.
+//! Read-only row mapping + queries for the static `internal_apps` catalogue
+//! (seeded by migration, not editable through the admin API). A second
+//! `impl AppsStore` block rather than a separate store — its own module only
+//! because the `sql_row!`-generated `ALL_COLS` would otherwise collide with the
+//! `apps` table's in `apps_store.rs`. See [`crate::db`].
 
 use persistence_rust::{sql_row, DbResult};
 use rusqlite::{params, OptionalExtension};

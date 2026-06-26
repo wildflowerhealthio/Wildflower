@@ -349,13 +349,9 @@ pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
                     if token.is_some() {
                         emit_auth_token_notify(&handle);
                     }
-                    // Also `borrow_and_update` on consent: a `__Ready`
-                    // that races a boot-time republish would otherwise
-                    // leave the just-delivered value unseen and the
-                    // `ConsentChanged` arm would immediately wake to
-                    // re-emit the same value (and re-fire the focus
-                    // path). A real later change still bumps the
-                    // version and wakes `changed` regardless.
+                    // `borrow_and_update` so a `__Ready` racing a boot-time
+                    // republish doesn't leave the value unseen and re-wake the
+                    // `ConsentChanged` arm (see the doc comment).
                     let consent = consent_rx.borrow_and_update().clone();
                     last_delivered_consent = consent.clone();
                     emit_device_consent(&handle, &consent);
@@ -378,12 +374,8 @@ pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
                     let is_some = consent.is_some();
                     last_delivered_consent = consent.clone();
                     emit_device_consent(&handle, &consent);
-                    // Raise the window only on the `None → Some`
-                    // transition — that's the "a new popup just
-                    // appeared" signal. `Some(A) → Some(B)` (the user
-                    // advancing through a queue they're already
-                    // looking at) and `Some → None` (a clear) leave
-                    // focus alone.
+                    // Raise the window only on `None → Some` — a brand-new
+                    // popup. See the doc comment's "Window focus" note.
                     if was_none && is_some {
                         raise_main_window(&handle);
                     }

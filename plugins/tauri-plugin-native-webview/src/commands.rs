@@ -1,7 +1,6 @@
-//! The IPC commands. Thin wrappers: each builds a typed request and hands
-//! off to the platform backend (`mobile::NativeWebview` on iOS/Android, the
-//! `desktop::NativeWebview` `WebviewWindow` backend elsewhere) via the
-//! [`NativeWebviewExt`] accessor.
+//! The IPC commands. Thin wrappers: each builds a typed request and hands off to
+//! the platform backend (`mobile::NativeWebview` on iOS/Android,
+//! `desktop::NativeWebview` elsewhere) via the [`NativeWebviewExt`] accessor.
 
 use tauri::{ipc::Channel, AppHandle, Runtime};
 

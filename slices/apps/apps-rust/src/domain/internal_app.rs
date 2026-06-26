@@ -6,15 +6,9 @@
 //! host is what binds the listener that serves the files. The seed migration
 //! is the only writer today; future internals land as additional migrations.
 //!
-//! At read time the apps slice projects an internal row into the catalogue
-//! wire row ([`AppListEntry`](super::AppListEntry)) for `GET /apps`. That row
-//! carries no launch `url`: the launch endpoint resolves the real,
-//! provenance-aware target at request time (loopback for a local caller, the
-//! public subdomain for a forwarded one), so the catalogue needn't predict it.
-//! The launch URL itself is rendered on demand via [`Self::launch_url`] /
-//! [`Self::subdomain_url`]. The "internal vs external" distinction is a
-//! storage-side fact.
-//!
+//! The launch URL is rendered on demand via [`Self::launch_url`] /
+//! [`Self::subdomain_url`] (the "internal vs external" distinction is a
+//! storage-side fact); `GET /apps` projects the row via [`Self::to_list_entry`].
 //! `requires_tunnel` doesn't apply — internal apps are loopback-only by
 //! construction.
 
