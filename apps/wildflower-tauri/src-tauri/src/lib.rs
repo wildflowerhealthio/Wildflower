@@ -323,7 +323,10 @@ async fn run_server(
     let self_hosted = SelfHostedAppsService::new(loopback, installed_apps_dir, proxy_table);
     for internal in &apps.internal_apps {
         if let Err(error) = self_hosted.start(internal).await {
-            tauri_plugin_log::log::warn!("failed to start self-hosted app {}: {error}", internal.id);
+            tauri_plugin_log::log::warn!(
+                "failed to start self-hosted app {}: {error}",
+                internal.id
+            );
         }
     }
     // Hold the orchestrator for the process lifetime — dropping it would drop the

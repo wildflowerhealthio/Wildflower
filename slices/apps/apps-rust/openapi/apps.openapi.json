@@ -342,7 +342,7 @@
       },
       "LaunchUnavailableBody": {
         "type": "object",
-        "description": "Wire shape for a 503 `LaunchUnavailable`. A launch that can't resolve a\n*reachable* target — a forwarded (remote) launch when no public host is\nconfigured, or a `requires_tunnel` app launched while the tunnel is down —\nreturns this instead of a dead loopback redirect / a host popup pointed at\nan origin the caller can't reach, so the SPA can surface the failure rather\nthan silently no-op.",
+        "description": "Wire shape for a 503 `LaunchUnavailable` — a launch with no *reachable*\ntarget (see [`HandlerError::Unavailable`]). The SPA surfaces the failure\nrather than following a dead redirect / a popup pointed at an unreachable\norigin.",
         "required": [
           "error",
           "reason"

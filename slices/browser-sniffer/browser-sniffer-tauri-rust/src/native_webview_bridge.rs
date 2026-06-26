@@ -202,12 +202,10 @@ enum BridgeAction<'a> {
 /// no-emit arms are unit-testable; [`dispatch_body`] performs the effects.
 fn classify_event(event: &NativeWebviewEvent) -> BridgeAction<'_> {
     match event {
-        NativeWebviewEvent::Message { payload } => {
-            match validate_native_webview_message(payload) {
-                Ok(inner_payload) => BridgeAction::ReEmit(inner_payload),
-                Err(reason) => BridgeAction::Drop(reason),
-            }
-        }
+        NativeWebviewEvent::Message { payload } => match validate_native_webview_message(payload) {
+            Ok(inner_payload) => BridgeAction::ReEmit(inner_payload),
+            Err(reason) => BridgeAction::Drop(reason),
+        },
         // Neither is terminal: hide keeps the webview sniffing, dispose follows
         // the SPA's own `SniffingComplete`. See [`BridgeAction::Lifecycle`].
         NativeWebviewEvent::Hidden => {
