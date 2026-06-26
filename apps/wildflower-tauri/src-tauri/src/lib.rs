@@ -55,11 +55,8 @@ async fn run_server(
     databases_rust::purge_pending_deletions(&runtime.app_data_dir)
         .context("failed to purge scheduled database deletions")?;
 
-    let loopback_host = format!("{}:{}", runtime.loopback_hostname, runtime.loopback_port);
-    let loopback_origin = format!(
-        "http://{}:{}",
-        runtime.loopback_hostname, runtime.loopback_port
-    );
+    let loopback_host = runtime.loopback_authority();
+    let loopback_origin = runtime.loopback_origin();
     let emr_config = EmrConfig {
         log_level: "debug".to_string(),
         db_file_path: runtime.app_data_dir.join(HEALTH_DATA_DB),
