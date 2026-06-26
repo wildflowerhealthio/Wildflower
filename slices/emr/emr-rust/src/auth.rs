@@ -51,3 +51,42 @@ pub(crate) fn build_auth(jwks_url: Option<&str>) -> (AuthConfig, Option<Arc<Auth
 
     (config, Some(state))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::build_auth;
+    use shared_structures_rust::CANONICAL_ISSUER;
+
+    #[test]
+    fn jwks_url_none_leaves_hfs_auth_off() {
+        let (config, state) = build_auth(None);
+        assert!(
+            !config.enabled,
+            "HFS auth must be disabled when no JWKS URL is configured"
+        );
+        assert!(
+            state.is_none(),
+            "no AuthMiddlewareState should be built without a JWKS URL"
+        );
+    }
+
+    #[test]
+    fn jwks_url_some_enables_auth_pinned_to_canonical_issuer() {
+        let url = "http://127.0.0.1:8080/.well-known/jwks.json";
+        let (config, state) = build_auth(Some(url));
+
+        assert!(config.enabled);
+        assert_eq!(config.jwks_url.as_deref(), Some(url));
+        // `iss` is pinned to the canonical issuer gatekeeper mints with, so a
+        // single `expected_issuer` accepts every gatekeeper-signed token.
+        assert_eq!(config.expected_issuer.as_deref(), Some(CANONICAL_ISSUER));
+        // `jti` replay-prevention stays off until gatekeeper writes a `jti`
+        // claim (see issue #218 / `mint_access_token`).
+        assert_eq!(config.jti_backend, "disabled");
+        // `aud` is intentionally left unvalidated by HFS: audience binding is
+        // enforced by gatekeeper's own bearer gate, not HFS. Asserted so that
+        // adding HFS-side audience validation later is a deliberate change.
+        assert!(config.expected_audience.is_none());
+        assert!(state.is_some());
+    }
+}
