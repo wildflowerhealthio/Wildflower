@@ -96,7 +96,7 @@ type SendableMessage<Bridges extends ReadonlyArray<AnyBridge>, Dir extends Direc
 
 /**
  * Union of decoded message types whose tags have a `urlParams` schema
- * declared on some wired bridge. The Expo transport's `initialMessages`
+ * declared on some wired bridge. The host transport's `initialMessages`
  * narrows to this so call sites can't pass a tag that has no URL form.
  *
  * @remarks

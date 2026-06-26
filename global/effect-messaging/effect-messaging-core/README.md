@@ -4,8 +4,8 @@ Platform-agnostic core of the cross-process bridge transport. Provides
 the `Bridge.make` factory for declaring typed bridges, the
 `BridgeTransport.makeHostTransport` / `makeWebTransport` Effects for
 wiring multiple bridges through a single dispatch fiber, and the
-`TransportAdapter` Tag the platform packages (`effect-messaging-react`,
-`effect-messaging-expo`) supply.
+`TransportAdapter` Tag the platform adapter package (`effect-messaging-react`)
+supplies.
 
 ## Concepts
 

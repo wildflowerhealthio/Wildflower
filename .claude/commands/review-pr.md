@@ -51,9 +51,9 @@ The cast on line 42 bypasses the project's type-safety rule and the input isn't 
 Multi-action comment (two distinct, both necessary):
 
 ```
-The log tag identifies this as the expo package, but the file lives in `-core`, and `serverLayer` is outdated since the daemon now takes a `startServer` Effect rather than a Layer.
+The log tag identifies this as the `-web` package, but the file lives in `-core`, and `serverLayer` is outdated since the daemon now takes a `startServer` Effect rather than a Layer.
 
-🚀 rename the tag to `[local-http-server-core]`
+🚀 rename the tag to `[tunnel-core]`
 
 😕 replace `serverLayer failed` with `startServer failed`
 ```

@@ -17,7 +17,7 @@ interface Service {
   readonly drainInitial: Effect.Effect<ReadonlyArray<string>>
   /**
    * Wire the platform's live-message source into `enqueue`. Detaches on
-   * scope close. Optional — the Expo host adapter omits this and the
+   * scope close. Optional — a host adapter may omit this and the
    * consumer wires the WebView's `onMessage` prop manually.
    */
   readonly attachBareSender?: (
@@ -26,7 +26,7 @@ interface Service {
 }
 
 /**
- * `Context.Tag` for the platform adapter. Aggregators (web/expo wrappers,
+ * `Context.Tag` for the platform adapter. Aggregators (web wrappers,
  * tests) provide it via `Layer.succeed(TransportAdapter, …)`.
  */
 class TransportAdapter extends Context.Tag('@effect-messaging/TransportAdapter')<

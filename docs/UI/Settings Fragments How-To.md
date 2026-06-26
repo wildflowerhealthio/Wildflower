@@ -98,7 +98,7 @@ Add a small `tests/settings-fragments.test.ts` that imports the items fragment a
 
 ### 6. Migrating a slice that previously had a top-level URL
 
-If the slice was at `/<slice>` before, the move is a **clean rename** — no redirect. The decision (issue #47) was that old paths 404 rather than alias forward, to keep slice boundaries crisp. If the slice had an expo navbar tab pointing at the old path, update `apps/wildflower-expo/src/components/tab-mapping.ts` to point the tab at the new `/settings/<slice>` path (or remove the tab if you want the slice to live exclusively under Settings).
+If the slice was at `/<slice>` before, the move is a **clean rename** — no redirect. The decision (issue #47) was that old paths 404 rather than alias forward, to keep slice boundaries crisp.
 
 ## Variations
 
@@ -111,7 +111,7 @@ If the slice was at `/<slice>` before, the move is a **clean rename** — no red
 - Section grouping / per-slice section headers — items render as one flat list.
 - Sort order — preserve fragment-declaration order; sorting is a future v2 concern.
 - Icons or structured `badge: { kind: 'info' | 'warn' | 'error'; label }` — both deferred. Today, `badge` is `ReactNode` per `ItemListItem`.
-- Per-item platform gating (`requires?: 'host:node' | 'host:expo'`) — also deferred.
+- Per-item platform gating (`requires?: 'host:node'`) — also deferred.
 
 ## See also
 

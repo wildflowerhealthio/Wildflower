@@ -13,7 +13,6 @@
       "Bash(ls -la :*)",
       "Bash(npx tsc:*)",
       "Bash(vp test:*)",
-      "Bash(npx expo-doctor)",
       "Bash(pnpm test *)",
       "Bash(cargo check *)",
       "Bash(git check-ignore *)",

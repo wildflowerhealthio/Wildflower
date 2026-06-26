@@ -25,7 +25,6 @@ const config = {
     '**/dist-html/**',
     '**/vendor/**',
     '**/Pods/**',
-    '**/.expo/**',
     '**/.claude/**',
     '**/.design-sync/**',
     '**/.pnpm-store/**',

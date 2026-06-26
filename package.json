@@ -16,14 +16,13 @@
   "scripts": {
     "dev": "vp run -r --parallel dev",
     "integration": "vp run -r --concurrency-limit 1 integration",
-    "jest": "vp run -r --concurrency-limit 1 jest",
     "lint:comments": "eslint ./apps ./global ./slices",
     "lint:docs": "markdownlint-cli2 --config .local.markdownlint-cli2.mjs",
     "pack": "vp run --cache -r build",
     "prepare": "vp config",
     "ready": "vp fmt && vp lint && vp run lint:comments && vp run lint:docs && vp run pack && vp run test:all",
-    "test:all": "vp test && vp run jest",
-    "test:changed": "FC_RISK_MAP=\"$(node scripts/risk-map.ts)\" vp test && vp run jest"
+    "test:all": "vp test",
+    "test:changed": "FC_RISK_MAP=\"$(node scripts/risk-map.ts)\" vp test"
   },
   "devDependencies": {
     "@effect/language-service": "catalog:",
@@ -32,7 +31,6 @@
     "@typescript/native-preview": "catalog:",
     "effect": "catalog:",
     "eslint": "^9.39.4",
-    "eslint-plugin-expo": "^1.0.0",
     "eslint-plugin-tsdoc": "^0.5.2",
     "markdownlint": "^0.40.0",
     "markdownlint-cli2": "^0.21.0",
@@ -52,7 +50,6 @@
       "@types/node": "^24",
       "typescript": "5.9.3",
       "react-dom": "19.1.0",
-      "@react-navigation/native": "^7.2.4",
       "@effect/ai": "0.35.0",
       "@effect/cli": "0.75.1",
       "@effect/cluster": "0.58.2",

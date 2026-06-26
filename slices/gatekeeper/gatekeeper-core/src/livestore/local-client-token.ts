@@ -25,7 +25,7 @@ type Table = State.SQLite.ClientDocumentTableDef<
  * in the same process as the gatekeeper (the `wildflower-host` client
  * registered by `seedFirstPartyClient`).
  *
- * Hosts that act as the owner — today, the Expo device app — mint a
+ * Hosts that act as the owner mint a
  * token at boot via `mintHostOwnerToken` and commit it here so the
  * embedded SPA can `useQuery` the row on first paint and authenticate
  * without a device-code round trip. The token can rotate during a

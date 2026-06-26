@@ -7,7 +7,7 @@ EMR domain — patient/observation/binary FHIR resources, plus the FHIR R4 wire 
 
 ## Why two packages
 
-`fhir-r4` is **not** suffixed `-core` because **there will never be a `fhir-r4-web`, `fhir-r4-node`, or `fhir-r4-react-native` adapter** — FHIR R4 is a wire protocol; clients consume the same JSON over the same HTTP regardless of platform. The slice-naming convention (`<name>-core` plus optional `-web`/`-node`/etc.) exists to enforce a layering boundary that doesn't apply here.
+`fhir-r4` is **not** suffixed `-core` because **there will never be a `fhir-r4-web` or `fhir-r4-node` adapter** — FHIR R4 is a wire protocol; clients consume the same JSON over the same HTTP regardless of platform. The slice-naming convention (`<name>-core` plus optional `-web`/`-node`/etc.) exists to enforce a layering boundary that doesn't apply here.
 
 `fhir-r4` is **not folded into `emr-core`** because the EMR domain model is **FHIR-version-agnostic**. A future `fhir-r5` or `fhir-r4b` (or any non-FHIR wire format) would sit alongside `fhir-r4` and consume the same `emr-core` row schemas. Folding the wire adapter into the core would entangle versioning concerns with the domain model.
 
@@ -25,7 +25,7 @@ fhir-r4  →  emr-core
 
 ## Layering rules
 
-- **`emr-core` is platform-neutral.** No DOM, no Node `fs`, no Expo APIs. (`@livestore/adapter-node` is a `devDependency` only — used in tests; not imported by source.)
+- **`emr-core` is platform-neutral.** No DOM, no Node `fs`. (`@livestore/adapter-node` is a `devDependency` only — used in tests; not imported by source.)
 - **`fhir-r4` is platform-neutral.** Same — the wire adapter doesn't reach for Node-specific globals. `page-token.ts` uses `Encoding` from `effect` rather than Node's `Buffer`.
 - **Tests live alongside code** in both packages (`*.test.ts` next to the file they cover) plus an out-of-process suite in `fhir-r4/tests/`.
 
