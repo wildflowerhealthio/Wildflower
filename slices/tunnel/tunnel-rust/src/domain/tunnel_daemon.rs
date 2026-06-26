@@ -201,6 +201,7 @@ impl TunnelDaemon {
             settings_revision: None,
             status: TunnelStatus::Off,
             origin: loopback_origin.clone(),
+            public_host: None,
             error: None,
             dial_attempts: 0,
         });
@@ -348,6 +349,11 @@ impl TunnelDaemon {
             settings_revision: Some(revision),
             status,
             origin,
+            // The bare public host (no scheme/port), normalized empty→None so a
+            // watch consumer reads the same value `current_public_host` returns.
+            // Fixed for this revision: `set_state` mutates the snapshot in place
+            // and never touches it, so it persists until the next reconcile.
+            public_host: settings.public_host.clone().filter(|h| !h.is_empty()),
             error,
             dial_attempts: 0,
         });
@@ -762,6 +768,25 @@ mod tests {
         let live = daemon.liveness();
         assert_eq!(live.settings_revision, Some(0));
         assert_eq!(live.status, TunnelStatus::Off);
+    }
+
+    #[tokio::test]
+    async fn reconcile_publishes_the_normalized_public_host_on_the_watch() {
+        let daemon = noop_daemon();
+        // A configured host rides on the liveness snapshot so a hot-path watch
+        // consumer (the subdomain reverse proxy) reads it without a settings query.
+        daemon.reconcile(&running_settings(1, Some("dev1.example.com")));
+        assert_eq!(
+            daemon.liveness().public_host.as_deref(),
+            Some("dev1.example.com"),
+        );
+        // An empty stored host normalizes to `None` — the same rule
+        // `current_public_host` applies — so a consumer never builds `Some("")`.
+        daemon.reconcile(&running_settings(2, Some("")));
+        assert_eq!(daemon.liveness().public_host, None);
+        // No public host at all is `None` too.
+        daemon.reconcile(&running_settings(3, None));
+        assert_eq!(daemon.liveness().public_host, None);
     }
 
     #[tokio::test]

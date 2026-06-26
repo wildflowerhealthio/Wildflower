@@ -58,6 +58,18 @@ pub(crate) struct InvalidFieldBody {
     pub(crate) message: String,
 }
 
+/// Wire shape for a 503 `LaunchUnavailable`. A launch that can't resolve a
+/// *reachable* target — a forwarded (remote) launch when no public host is
+/// configured, or a `requires_tunnel` app launched while the tunnel is down —
+/// returns this instead of a dead loopback redirect / a host popup pointed at
+/// an origin the caller can't reach, so the SPA can surface the failure rather
+/// than silently no-op.
+#[derive(Debug, Serialize, ToSchema)]
+pub(crate) struct LaunchUnavailableBody {
+    pub(crate) error: &'static str,
+    pub(crate) reason: String,
+}
+
 /// Error half of a `Result`-returning handler. Each variant renders one of
 /// the canned shapes through `IntoResponse`, so a fallible step bails with
 /// `?` instead of a `match` + `return` at every call site.
@@ -71,6 +83,9 @@ pub(crate) enum HandlerError {
     InvalidUrl { message: String },
     /// 400 — the submitted name was empty.
     InvalidName { message: String },
+    /// 503 — the launch can't resolve a reachable target (forwarded launch with
+    /// no public host, or a `requires_tunnel` app while the tunnel is down).
+    Unavailable { reason: String },
 }
 
 impl HandlerError {
@@ -104,6 +119,14 @@ impl IntoResponse for HandlerError {
                 Json(InvalidFieldBody {
                     error: "InvalidName",
                     message,
+                }),
+            )
+                .into_response(),
+            HandlerError::Unavailable { reason } => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(LaunchUnavailableBody {
+                    error: "LaunchUnavailable",
+                    reason,
                 }),
             )
                 .into_response(),

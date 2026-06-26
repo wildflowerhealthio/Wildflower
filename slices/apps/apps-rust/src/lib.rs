@@ -39,10 +39,10 @@
 //! non-tunnel launch against [`AppsConfig::loopback_origin`] or the
 //! forwarded served origin; a `requires_tunnel` launch is resolved through
 //! the shared [`TunnelService`](shared_structures_rust::tunnel_service::TunnelService)
-//! contract, so the launch targets the live *verified* origin (or falls
-//! back to loopback + `?tunnel=unavailable` when the tunnel can't be
-//! reached). Depending only on the contract keeps apps-rust decoupled from
-//! tunnel-rust.
+//! contract, so the launch targets the live *verified* origin (or fails with
+//! `503 LaunchUnavailable` when the tunnel can't be brought up — there's no
+//! reachable origin to fall back to). Depending only on the contract keeps
+//! apps-rust decoupled from tunnel-rust.
 //!
 //! With the resolved target in hand the handler dispatches on provenance: a
 //! forwarded (remote) caller gets a `302` redirect, while a loopback (local)

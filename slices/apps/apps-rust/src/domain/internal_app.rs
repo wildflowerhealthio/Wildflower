@@ -6,18 +6,21 @@
 //! host is what binds the listener that serves the files. The seed migration
 //! is the only writer today; future internals land as additional migrations.
 //!
-//! At read time the apps slice materializes an internal row into the wire
-//! shape ([`AppEntry`](super::AppEntry)) by building `http://{host}:{port}/`
-//! from [`AppsConfig::loopback_hostname`](crate::AppsConfig) and
-//! the row's `port`. The wire DTO stays the one shared shape; the "internal
-//! vs external" distinction is a storage-side fact.
+//! At read time the apps slice projects an internal row into the catalogue
+//! wire row ([`AppListEntry`](super::AppListEntry)) for `GET /apps`. That row
+//! carries no launch `url`: the launch endpoint resolves the real,
+//! provenance-aware target at request time (loopback for a local caller, the
+//! public subdomain for a forwarded one), so the catalogue needn't predict it.
+//! The launch URL itself is rendered on demand via [`Self::launch_url`] /
+//! [`Self::subdomain_url`]. The "internal vs external" distinction is a
+//! storage-side fact.
 //!
 //! `requires_tunnel` doesn't apply — internal apps are loopback-only by
 //! construction.
 
 use serde::{Deserialize, Serialize};
 
-use super::{AppEntry, AppUrl};
+use super::AppListEntry;
 
 /// A locally-served app: the row carries the catalogue fields plus the
 /// dedicated loopback `port` the host serves it on. Field names match the
@@ -65,20 +68,20 @@ impl InternalApp {
         shared_structures_rust::subdomain_host::subdomain_url(&self.id, public_host)
     }
 
-    /// Materialize as the shared wire DTO so `GET /apps` can return
-    /// internals and externals in one uniform list. `requires_tunnel` is
-    /// always false (internal apps are loopback-only). The `url` is built
-    /// via [`Self::launch_url`] and stored as an [`AppUrl::External`]
-    /// holding the loopback http string — see [`AppUrl::External`]'s
-    /// docstring for why that variant is used directly rather than parsed.
+    /// Project to the `GET /apps` catalogue row ([`AppListEntry`]) so internals
+    /// and externals return in one uniform list. The list row carries **no**
+    /// launch `url` — the launch endpoint resolves the real, provenance-aware
+    /// target at request time — so this builds the projection directly rather
+    /// than materializing a placeholder [`AppUrl`](super::AppUrl) every caller
+    /// would discard. `requires_tunnel` is always false (internal apps are
+    /// loopback-only).
     #[must_use]
-    pub fn to_app_entry(&self, host: &str) -> AppEntry {
-        AppEntry {
+    pub fn to_list_entry(&self) -> AppListEntry {
+        AppListEntry {
             id: self.id.clone(),
             enabled: self.enabled,
             name: self.name.clone(),
             subtitle: self.subtitle.clone(),
-            url: AppUrl::External(self.launch_url(host)),
             requires_tunnel: false,
         }
     }

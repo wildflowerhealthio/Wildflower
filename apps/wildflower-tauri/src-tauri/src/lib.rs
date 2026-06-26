@@ -9,7 +9,8 @@ use apps_rust::{setup_apps, AppsConfig, SelfHostedAppsService};
 use axum::Router;
 use emr_rust::{setup_fhir_r4, EmrConfig};
 use gatekeeper_rust::{
-    layer_router_with_gatekeeper_auth_gating, setup_gatekeeper, GatekeeperConfig,
+    layer_router_with_gatekeeper_auth_gating, layer_router_with_loopback_gate, setup_gatekeeper,
+    GatekeeperConfig,
 };
 use shared_structures_rust::ServerRuntimeConfig;
 use shared_structures_server_rust::{LoopbackHostname, ProxyTable, TunnelSubdomainReverseProxy};
@@ -182,7 +183,8 @@ async fn run_server(
     // unauthenticated like the rest of the launch path. The admin surface
     // (POST/PATCH/DELETE) is owner-gated through the gatekeeper. A
     // `requires_tunnel` launch resolves to the tunnel's verified origin through
-    // the tunnel service (else falls back to loopback + tunnel=unavailable).
+    // the tunnel service (or fails with 503 LaunchUnavailable when the tunnel
+    // can't be brought up — there's no reachable origin to fall back to).
     // `loopback_hostname` is the hostname portion the host binds each
     // internal-app listener on (see below) — the apps slice combines it with
     // each internal-app row's `port` to render its `http://{hostname}:{port}/`
@@ -293,6 +295,21 @@ async fn run_server(
         .merge(gated_databases)
         .fallback(spa::handle_serving_spa_html)
         .layer(CorsLayer::very_permissive());
+
+    // Defense-in-depth: gate the entire API surface on a loopback peer address.
+    // Every endpoint here is meant to be reached only over the loopback socket —
+    // directly, or relayed by the trusted front, which proxies remote callers
+    // from loopback (and is distinguished downstream by the `Forwarded` header).
+    // A genuinely non-loopback peer is rejected with `403` before any handler
+    // runs, so even an ungated, CORS-permissive endpoint like `POST /apps/{id}`
+    // (which can open a native popup on the owner's device) can't be driven by a
+    // non-loopback client — the redundant-and-safe belt-and-braces over the
+    // serve-loopback-only invariant. Applied outermost (after CORS) so it runs
+    // first. The gatekeeper's own surface already carries this gate; re-applying
+    // it to the merged router extends the same guarantee to the apps / fhir /
+    // tunnel / databases routes (a harmless idempotent second check on the
+    // gatekeeper routes).
+    let api_router = layer_router_with_loopback_gate(api_router);
 
     // The reverse proxy wraps the API stack as the outermost layer: a forwarded
     // request whose `Forwarded` host matches `<app-id>.<configured-public-host>`

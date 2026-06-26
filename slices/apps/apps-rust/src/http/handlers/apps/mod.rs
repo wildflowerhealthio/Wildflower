@@ -187,63 +187,42 @@ mod tests {
         assert_eq!(location, "https://patient-browser.demo.example.com/");
     }
 
-    /// A forwarded launch of an internal app falls back to the loopback URL
-    /// when `public_host` isn't configured — the redirect is degraded (a
-    /// remote browser can't follow it) but the catalogue stays consistent
-    /// and the launch handler doesn't error.
+    /// A forwarded launch of an internal app with **no** `public_host`
+    /// configured has no reachable target (a loopback URL the remote browser
+    /// can't follow), so the launch fails with `503 LaunchUnavailable` rather
+    /// than handing back a dead redirect.
     #[tokio::test]
-    async fn launch_internal_app_forwarded_falls_back_to_loopback_without_public_host() {
+    async fn launch_internal_app_forwarded_without_public_host_is_503() {
         let st = state();
-        let res = router()
-            .with_state(Arc::clone(&st))
-            .oneshot(post_forwarded("/apps/patient-browser"))
-            .await
-            .unwrap();
-        assert_eq!(res.status(), StatusCode::FOUND);
-        let location = res
-            .headers()
-            .get("location")
-            .expect("location header")
-            .to_str()
-            .unwrap();
-        assert_eq!(location, "http://127.0.0.1:8081/");
+        let (status, body) = send(&st, post_forwarded("/apps/patient-browser")).await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(body["error"], "LaunchUnavailable");
     }
 
-    /// When the tunnel can't be reached, a `requires_tunnel` launch falls back
-    /// to the loopback origin with the `tunnel=unavailable` flag so the SPA can
-    /// surface a banner. A loopback caller `204`s and the resolved URL goes to
-    /// the on-device webview handle.
+    /// When the tunnel can't be brought up, a `requires_tunnel` launch has no
+    /// reachable origin (the third-party https app can't reach the loopback FHIR
+    /// server — the whole reason it requires the tunnel), so it fails with
+    /// `503 LaunchUnavailable` and the host opens **no** popup, rather than
+    /// launching an app pointed at an origin that silently fails.
     #[tokio::test]
-    async fn launch_growth_chart_appends_tunnel_unavailable() {
+    async fn launch_requires_tunnel_app_with_tunnel_down_is_503() {
         let handle = Arc::new(RecordingStubWebviewHandle::default());
         let st = state_with_tunnel_and_handle(
             tunnel_unavailable(),
             Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>,
         );
-        let res = router()
-            .with_state(Arc::clone(&st))
-            .oneshot(post("/apps/growth-chart"))
-            .await
-            .unwrap();
-        assert_eq!(res.status(), StatusCode::NO_CONTENT);
-        let opened = handle.0.lock().expect("handle mutex").clone();
-        let [url] = opened.as_slice() else {
-            panic!("the handle must receive exactly one URL, got {opened:?}");
-        };
+        let (status, body) = send(&st, post("/apps/growth-chart")).await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(body["error"], "LaunchUnavailable");
         assert!(
-            url.contains("tunnel=unavailable"),
-            "expected tunnel=unavailable in {url}",
-        );
-        assert!(
-            url.contains("iss=http://127.0.0.1:8080/fhir-r4"),
-            "expected loopback iss in {url}",
+            handle.0.lock().expect("handle mutex").is_empty(),
+            "no popup must open for an unreachable launch",
         );
     }
 
     /// When the tunnel service starts and returns a verified origin, a
-    /// `requires_tunnel` launch resolves there (no `tunnel=unavailable`). A
-    /// loopback caller `204`s and the resolved URL goes to the on-device webview
-    /// handle.
+    /// `requires_tunnel` launch resolves there. A loopback caller `204`s and the
+    /// resolved URL goes to the on-device webview handle.
     #[tokio::test]
     async fn launch_growth_chart_resolves_to_the_verified_tunnel_origin() {
         let handle = Arc::new(RecordingStubWebviewHandle::default());
@@ -264,10 +243,6 @@ mod tests {
         assert!(
             url.contains("iss=https://dev1.example.com/fhir-r4"),
             "expected the verified tunnel origin in {url}",
-        );
-        assert!(
-            !url.contains("tunnel=unavailable"),
-            "a reachable tunnel must not flag unavailable: {url}",
         );
     }
 

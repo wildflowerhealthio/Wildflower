@@ -41,12 +41,8 @@ pub(crate) async fn handle_list_apps(
         .store
         .list_apps()
         .map_err(|e| HandlerError::internal("list_apps lookup failed", e))?;
-    let host = &state.loopback_hostname;
     let internal_ids: HashSet<&str> = internals.iter().map(|i| i.id.as_str()).collect();
-    let mut entries: Vec<AppListEntry> = internals
-        .iter()
-        .map(|i| AppListEntry::from(i.to_app_entry(host)))
-        .collect();
+    let mut entries: Vec<AppListEntry> = internals.iter().map(|i| i.to_list_entry()).collect();
     entries.extend(
         externals
             .into_iter()

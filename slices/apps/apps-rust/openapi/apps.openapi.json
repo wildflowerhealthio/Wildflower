@@ -94,6 +94,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "No reachable launch target (forwarded launch with no public host, or a requires_tunnel app while the tunnel is down)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LaunchUnavailableBody"
+                }
+              }
+            }
           }
         }
       },
@@ -326,6 +336,22 @@
             "type": "string"
           },
           "message": {
+            "type": "string"
+          }
+        }
+      },
+      "LaunchUnavailableBody": {
+        "type": "object",
+        "description": "Wire shape for a 503 `LaunchUnavailable`. A launch that can't resolve a\n*reachable* target — a forwarded (remote) launch when no public host is\nconfigured, or a `requires_tunnel` app launched while the tunnel is down —\nreturns this instead of a dead loopback redirect / a host popup pointed at\nan origin the caller can't reach, so the SPA can surface the failure rather\nthan silently no-op.",
+        "required": [
+          "error",
+          "reason"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "reason": {
             "type": "string"
           }
         }

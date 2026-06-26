@@ -143,6 +143,9 @@ mod tests {
                 settings_revision: None,
                 status: TunnelStatus::Off,
                 origin: self.current_origin(),
+                // The reverse proxy reads the public host off this watch, so the
+                // stub must carry it here (not only via `current_public_host`).
+                public_host: Some(self.public_host.clone()),
                 error: None,
                 dial_attempts: 0,
             })

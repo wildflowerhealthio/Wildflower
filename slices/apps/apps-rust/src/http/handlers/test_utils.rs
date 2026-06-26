@@ -54,6 +54,7 @@ impl TunnelService for StubTunnel {
             settings_revision: None,
             status: TunnelStatus::Verified,
             origin: self.origin.clone(),
+            public_host: self.public_host.clone(),
             error: None,
             dial_attempts: 0,
         })

@@ -23,7 +23,8 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum::Router;
 use shared_structures_rust::served_origin::{request_provenance, RequestProvenance};
-use shared_structures_rust::tunnel_service::TunnelService;
+use shared_structures_rust::tunnel_service::{TunnelLiveness, TunnelService};
+use tokio::sync::watch;
 
 use crate::error::ServerError;
 use crate::host_match::match_forwarded_origin;
@@ -102,9 +103,22 @@ impl ProxyTable {
 
 struct ReverseProxyState {
     table: ProxyTable,
-    tunnel: Arc<dyn TunnelService>,
+    /// The live public host, read `O(1)` off the tunnel's liveness watch on
+    /// every forwarded request. Subscribing once (rather than calling
+    /// [`TunnelService::current_public_host`] per request) keeps the hot path
+    /// off the tunnel slice's locked settings read. The public host only
+    /// changes on a settings write, which republishes the watch.
+    public_host_rx: watch::Receiver<TunnelLiveness>,
     loopback: LoopbackHostname,
     client: reqwest::Client,
+}
+
+impl ReverseProxyState {
+    /// The current configured public host (bare, no scheme/port), or `None` when
+    /// unconfigured — read straight off the liveness watch.
+    fn current_public_host(&self) -> Option<String> {
+        self.public_host_rx.borrow().public_host.clone()
+    }
 }
 
 /// Wraps a fallback router; reverse-proxies forwarded `<id>.<public_host>`
@@ -117,8 +131,9 @@ pub struct TunnelSubdomainReverseProxy {
 
 impl TunnelSubdomainReverseProxy {
     /// Construct with the fallback router up front. Shares `table` with the
-    /// caller (the orchestrator registers hosts on the same handle), reads
-    /// `tunnel` at request time for the live public host, and forwards to
+    /// caller (the orchestrator registers hosts on the same handle), subscribes
+    /// to `tunnel`'s liveness watch for the live public host (read `O(1)` per
+    /// request, no per-request settings query), and forwards to
     /// `{loopback}:{port}`.
     #[must_use]
     pub fn new(
@@ -130,9 +145,9 @@ impl TunnelSubdomainReverseProxy {
         Self {
             state: Arc::new(ReverseProxyState {
                 table,
-                tunnel,
+                public_host_rx: tunnel.subscribe(),
                 loopback,
-                client: reqwest::Client::new(),
+                client: proxy_client(),
             }),
             fallback,
         }
@@ -156,7 +171,7 @@ async fn maybe_forward_to_subdomain(
     let RequestProvenance::Forwarded { origin } = request_provenance(req.headers()) else {
         return next.run(req).await;
     };
-    let Some(public_host) = state.tunnel.current_public_host() else {
+    let Some(public_host) = state.current_public_host() else {
         // Public host unconfigured: no inbound subdomain can match.
         return next.run(req).await;
     };
@@ -182,6 +197,39 @@ async fn maybe_forward_to_subdomain(
         return crate::upgrade::forward_upgrade(&state.loopback, port, req).await;
     }
     forward(&state, port, req).await
+}
+
+/// How long to wait for a loopback upstream to accept the TCP connection
+/// before giving up with a `502`. Loopback dials either connect ~instantly or
+/// fail fast, so this only bounds a pathological half-open socket.
+const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// How long to wait between body chunks from a stalled upstream before failing
+/// the forward. An *inactivity* (read) timeout, deliberately **not** an overall
+/// request timeout: this proxy streams arbitrarily large bodies (multi-GiB
+/// up/downloads), so a total deadline would abort legitimate slow transfers.
+/// A live transfer keeps resetting it; only a truly hung upstream trips it.
+const READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// The HTTP client the reverse proxy forwards with. Configured for proxy
+/// semantics rather than reqwest's user-agent defaults:
+///
+/// * `redirect(Policy::none())` — a reverse proxy must **relay** an upstream
+///   `3xx` (status + `Location`) to the client, not chase it internally;
+///   reqwest's default follows up to 10 redirects (and would chase a
+///   `Location: http://127.0.0.1:…` *inside* the host).
+/// * `connect_timeout` + `read_timeout` — a loopback upstream that accepts the
+///   connection but never responds would otherwise hang the forwarded request
+///   (and tie up the worker) forever; instead it fails as a `502`.
+fn proxy_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .connect_timeout(CONNECT_TIMEOUT)
+        .read_timeout(READ_TIMEOUT)
+        .build()
+        // The builder only fails if the TLS backend / resolver can't initialize;
+        // a loopback HTTP proxy has neither, so this is infallible in practice.
+        .expect("reverse-proxy HTTP client builds")
 }
 
 /// Reverse-proxy `req` to `http://{loopback}:{port}` and return the upstream's
@@ -272,9 +320,9 @@ mod tests {
     use tokio::time::{timeout, Duration};
     use tower::util::ServiceExt;
 
-    /// `TunnelService` stub whose `current_public_host` is whatever the test
-    /// fixed it to (mirrors `TunnelControl`: a configured setting independent of
-    /// the daemon's liveness).
+    /// `TunnelService` stub that publishes a fixed `public_host` on its liveness
+    /// watch — the channel the proxy reads (mirrors `TunnelControl`: a configured
+    /// setting independent of the daemon's liveness).
     struct StubTunnel {
         public_host: Option<String>,
     }
@@ -284,9 +332,6 @@ mod tests {
         fn current_origin(&self) -> String {
             "http://127.0.0.1:8080".to_owned()
         }
-        fn current_public_host(&self) -> Option<String> {
-            self.public_host.clone()
-        }
         async fn try_start(&self) -> Result<String, String> {
             Err("not used".to_owned())
         }
@@ -295,6 +340,7 @@ mod tests {
                 settings_revision: None,
                 status: TunnelStatus::Off,
                 origin: self.current_origin(),
+                public_host: self.public_host.clone(),
                 error: None,
                 dial_attempts: 0,
             })
@@ -587,6 +633,68 @@ mod tests {
             .await
             .expect("oneshot");
         assert_eq!(res.status(), StatusCode::BAD_GATEWAY);
+    }
+
+    /// An upstream that always answers `302` with a `Location`, to prove the
+    /// proxy *relays* an upstream redirect rather than following it internally.
+    /// reqwest's default policy would chase up to 10 hops (and could follow a
+    /// `Location: http://127.0.0.1:…` *inside* the host); `proxy_client` disables
+    /// it so a reverse proxy hands the `302` straight back to the client.
+    async fn spawn_redirecting_upstream() -> u16 {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let app = Router::new().fallback(any(|| async {
+            (
+                StatusCode::FOUND,
+                [(
+                    axum::http::header::LOCATION,
+                    "https://elsewhere.example.com/landing",
+                )],
+            )
+                .into_response()
+        }));
+        tokio::spawn(async move {
+            axum::serve(listener, app.into_make_service())
+                .await
+                .unwrap();
+        });
+        port
+    }
+
+    /// A forwarded request whose upstream answers `302` gets the `302` (and its
+    /// `Location`) relayed verbatim — the proxy does not chase the redirect.
+    #[tokio::test]
+    async fn upstream_redirect_is_relayed_not_followed() {
+        let port = spawn_redirecting_upstream().await;
+        let table = ProxyTable::new();
+        table.register("patient-browser", port).unwrap();
+        let router = proxy_router(table, Some("demo.example.com"));
+
+        let res = router
+            .oneshot(request(
+                Method::GET,
+                "/",
+                &[(
+                    "forwarded",
+                    "host=patient-browser.demo.example.com;proto=https",
+                )],
+                "",
+            ))
+            .await
+            .expect("oneshot");
+
+        assert_eq!(
+            res.status(),
+            StatusCode::FOUND,
+            "the upstream 302 is relayed, not followed",
+        );
+        assert_eq!(
+            res.headers()
+                .get(axum::http::header::LOCATION)
+                .and_then(|v| v.to_str().ok()),
+            Some("https://elsewhere.example.com/landing"),
+            "the upstream Location is passed through verbatim",
+        );
     }
 
     /// Runtime hot-swap: registering makes a forwarded request reach the

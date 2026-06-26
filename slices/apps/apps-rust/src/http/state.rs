@@ -17,9 +17,10 @@ pub struct AppsState {
     /// migration).
     pub(crate) store: AppsStore,
     /// e.g. `http://127.0.0.1:8080` — the origin clients reach when the tunnel
-    /// is down. `LaunchApp` redirects non-tunnel apps here; a `requiresTunnel`
-    /// launch that can't reach the tunnel falls back here with
-    /// `?tunnel=unavailable` so the SPA can surface a banner.
+    /// is down. `LaunchApp` redirects non-tunnel apps here. A `requires_tunnel`
+    /// launch that can't reach the tunnel does **not** fall back here — there's
+    /// no reachable origin for it, so the launch fails with
+    /// `503 LaunchUnavailable` instead.
     pub(crate) loopback_origin: String,
     /// Hostname portion (no scheme, no port) the host binds each internal-app
     /// listener on — combined with each internal row's `port` to render the
