@@ -46,17 +46,38 @@ pub(crate) enum ConsentResult {
 /// SMART v2 scope in `allowed` is a superset of the approved scope (a
 /// wildcard type, broader permission bits, or both). See
 /// [`allowed_scope_covers`].
+///
+/// Each granted SMART v1 *word* scope (`.read`/`.write`/`.*`) additionally
+/// yields its v2 *letter* equivalent (`patient/Observation.read` also grants
+/// `patient/Observation.rs`). The word form is what clients request and the
+/// consent UI shows, but HFS's scope policy only enforces the letter form, so
+/// the minted token must carry both for the FHIR surface to honour the grant.
+/// See [`letter_scope_equivalent`]. The extras are appended (never
+/// substituted) and de-duplicated, so an already-letter grant is unchanged and
+/// the empty grant stays empty (the approve handlers treat "nothing granted"
+/// as a deny).
 pub(crate) fn grantable_scopes(
     approved: Vec<String>,
     requested: &HashSet<&str>,
     allowed: &HashSet<&str>,
 ) -> Vec<String> {
-    approved
+    let mut granted: Vec<String> = approved
         .into_iter()
         .filter(|s| {
             requested.contains(s.as_str()) && allowed.iter().any(|a| allowed_scope_covers(a, s))
         })
-        .collect()
+        .collect();
+
+    let mut letter_extras: Vec<String> = Vec::new();
+    for scope in &granted {
+        if let Some(letters) = letter_scope_equivalent(scope) {
+            if !granted.contains(&letters) && !letter_extras.contains(&letters) {
+                letter_extras.push(letters);
+            }
+        }
+    }
+    granted.extend(letter_extras);
+    granted
 }
 
 /// CRUDS permission bits, mirroring helios-auth's `SmartPermissions`
@@ -151,6 +172,38 @@ fn allowed_scope_covers(allowed: &str, requested: &str) -> bool {
     // `allowed` covers `requested` only when every requested permission bit
     // is also present in `allowed` (i.e. `requested` is a subset).
     req_bits & !allow_bits == 0
+}
+
+/// Render a CRUDS bit set back to canonical letter order (`c`, `r`, `u`, `d`,
+/// `s`), e.g. `READ | SEARCH` -> `"rs"`. Inverse of the letter half of
+/// [`smart_permission_bits`].
+fn render_permission_bits(bits: u8) -> String {
+    let mut out = String::with_capacity(5);
+    for (bit, ch) in [
+        (PERM_CREATE, 'c'),
+        (PERM_READ, 'r'),
+        (PERM_UPDATE, 'u'),
+        (PERM_DELETE, 'd'),
+        (PERM_SEARCH, 's'),
+    ] {
+        if bits & bit != 0 {
+            out.push(ch);
+        }
+    }
+    out
+}
+
+/// If `scope` is a SMART resource scope whose permission segment is a v1 word
+/// (`read`/`write`/`*`), return the equivalent v2 letter scope
+/// (`context/type.<letters>`). Returns `None` when `scope` isn't a SMART
+/// resource scope (`offline_access`, `wildflower/admin`, …) or its permissions
+/// are already in letter form — a letter segment maps to itself, so there's
+/// nothing to add.
+fn letter_scope_equivalent(scope: &str) -> Option<String> {
+    let (ctx, rest) = scope.split_once('/')?;
+    let (rtype, perms) = rest.split_once('.')?;
+    let letters = render_permission_bits(smart_permission_bits(perms)?);
+    (letters != perms).then(|| format!("{ctx}/{rtype}.{letters}"))
 }
 
 #[cfg(test)]
@@ -298,6 +351,76 @@ mod tests {
         let allowed = s(&["system/*.r"]);
         let granted = grantable_scopes(approved, &requested, &allowed);
         assert!(granted.is_empty());
+    }
+
+    #[test]
+    fn letter_equivalent_maps_v1_words_only() {
+        assert_eq!(
+            letter_scope_equivalent("patient/Observation.read").as_deref(),
+            Some("patient/Observation.rs")
+        );
+        assert_eq!(
+            letter_scope_equivalent("patient/Observation.write").as_deref(),
+            Some("patient/Observation.cud")
+        );
+        assert_eq!(
+            letter_scope_equivalent("patient/*.*").as_deref(),
+            Some("patient/*.cruds")
+        );
+        // Already letter-form, non-SMART, or unparseable → nothing to add.
+        assert_eq!(letter_scope_equivalent("system/Patient.rs"), None);
+        assert_eq!(letter_scope_equivalent("offline_access"), None);
+        assert_eq!(letter_scope_equivalent("patient/Observation.xyz"), None);
+    }
+
+    #[test]
+    fn grantable_adds_letter_equivalent_for_word_scopes() {
+        // The growth-chart case: a v1 `.read` scope is granted and its v2
+        // letter form is appended so HFS's scope policy can enforce it.
+        let approved = vec!["patient/Observation.read".to_string()];
+        let requested = s(&["patient/Observation.read"]);
+        let allowed = s(&["patient/Observation.read"]);
+        let granted = grantable_scopes(approved, &requested, &allowed);
+        assert_eq!(
+            granted,
+            vec!["patient/Observation.read", "patient/Observation.rs"]
+        );
+    }
+
+    #[test]
+    fn grantable_maps_write_and_wildcard_words() {
+        let approved = vec![
+            "patient/Observation.write".to_string(),
+            "patient/Patient.*".to_string(),
+        ];
+        let requested = s(&["patient/Observation.write", "patient/Patient.*"]);
+        let allowed = s(&["patient/*.*"]);
+        let granted = grantable_scopes(approved, &requested, &allowed);
+        assert_eq!(
+            granted,
+            vec![
+                "patient/Observation.write",
+                "patient/Patient.*",
+                "patient/Observation.cud",
+                "patient/Patient.cruds",
+            ]
+        );
+    }
+
+    #[test]
+    fn grantable_does_not_duplicate_existing_letter_form() {
+        // Owner approved both the word and the letter form — no third copy.
+        let approved = vec![
+            "patient/Observation.read".to_string(),
+            "patient/Observation.rs".to_string(),
+        ];
+        let requested = s(&["patient/Observation.read", "patient/Observation.rs"]);
+        let allowed = s(&["patient/*.cruds"]);
+        let granted = grantable_scopes(approved, &requested, &allowed);
+        assert_eq!(
+            granted,
+            vec!["patient/Observation.read", "patient/Observation.rs"]
+        );
     }
 }
 
