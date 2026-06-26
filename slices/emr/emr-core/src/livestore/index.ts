@@ -128,7 +128,7 @@ const SyncPayload = Schema.Struct({ authToken: Schema.String })
  * Minimal duck-typed shape for issuing read queries. Any `Store<TSchema>`
  * satisfies this regardless of which composed slice schema it was built
  * from, so the warmup function can be called from apps that compose the
- * EMR slice into a larger livestore schema (e.g. wildflower-expo) without
+ * EMR slice into a larger livestore schema without
  * the call site having to widen schema types.
  */
 type QueryRunner = {

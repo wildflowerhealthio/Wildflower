@@ -23,39 +23,38 @@ describe('configFromEnv', () => {
     })
   })
 
-  test.each([
-    { prefix: '' as const },
-    { prefix: 'EXPO_PUBLIC_' as const },
-    { prefix: 'VITE_' as const },
-  ])('reads env via "$prefix" prefix', ({ prefix }) => {
-    const env = {
-      [`${prefix}SENTRY_DSN`]: 'https://abc@sentry.io/123',
-      [`${prefix}SENTRY_ENVIRONMENT`]: 'staging',
-      [`${prefix}SENTRY_RELEASE`]: 'v1.2.3',
-      [`${prefix}SENTRY_TRACES_SAMPLE_RATE`]: '0.5',
-      [`${prefix}SENTRY_PROFILES_SAMPLE_RATE`]: '0.25',
-      [`${prefix}OTEL_SERVICE_NAME`]: 'svc',
-      [`${prefix}OTEL_SERVICE_VERSION`]: '9.9.9',
-      [`${prefix}OTEL_EXPORTER_OTLP_ENDPOINT`]: 'https://otel.example/v1',
-      [`${prefix}OTEL_DEBUG`]: 'true',
+  test.each([{ prefix: '' as const }, { prefix: 'VITE_' as const }])(
+    'reads env via "$prefix" prefix',
+    ({ prefix }) => {
+      const env = {
+        [`${prefix}SENTRY_DSN`]: 'https://abc@sentry.io/123',
+        [`${prefix}SENTRY_ENVIRONMENT`]: 'staging',
+        [`${prefix}SENTRY_RELEASE`]: 'v1.2.3',
+        [`${prefix}SENTRY_TRACES_SAMPLE_RATE`]: '0.5',
+        [`${prefix}SENTRY_PROFILES_SAMPLE_RATE`]: '0.25',
+        [`${prefix}OTEL_SERVICE_NAME`]: 'svc',
+        [`${prefix}OTEL_SERVICE_VERSION`]: '9.9.9',
+        [`${prefix}OTEL_EXPORTER_OTLP_ENDPOINT`]: 'https://otel.example/v1',
+        [`${prefix}OTEL_DEBUG`]: 'true',
+      }
+      expect(configFromEnv(env, prefix)).toEqual({
+        sentry: {
+          dsn: 'https://abc@sentry.io/123',
+          environment: 'staging',
+          release: 'v1.2.3',
+          tracesSampleRate: 0.5,
+          profilesSampleRate: 0.25,
+        },
+        otel: {
+          serviceName: 'svc',
+          serviceVersion: '9.9.9',
+          otlpEndpoint: 'https://otel.example/v1',
+          otlpHeaders: null,
+        },
+        debug: true,
+      })
     }
-    expect(configFromEnv(env, prefix)).toEqual({
-      sentry: {
-        dsn: 'https://abc@sentry.io/123',
-        environment: 'staging',
-        release: 'v1.2.3',
-        tracesSampleRate: 0.5,
-        profilesSampleRate: 0.25,
-      },
-      otel: {
-        serviceName: 'svc',
-        serviceVersion: '9.9.9',
-        otlpEndpoint: 'https://otel.example/v1',
-        otlpHeaders: null,
-      },
-      debug: true,
-    })
-  })
+  )
 
   test.each([
     { raw: undefined, label: 'undefined' },
@@ -101,21 +100,14 @@ describe('configFromEnv', () => {
 
   test('property: a configured prefix never reads keys from a different prefix', () => {
     fc.assert(
-      fc.property(
-        fc.string({ minLength: 1 }),
-        fc.string({ minLength: 1 }),
-        fc.string({ minLength: 1 }),
-        (bareDsn, viteDsn, expoDsn) => {
-          const env = {
-            SENTRY_DSN: bareDsn,
-            VITE_SENTRY_DSN: viteDsn,
-            EXPO_PUBLIC_SENTRY_DSN: expoDsn,
-          }
-          expect(configFromEnv(env, '').sentry.dsn).toBe(bareDsn)
-          expect(configFromEnv(env, 'VITE_').sentry.dsn).toBe(viteDsn)
-          expect(configFromEnv(env, 'EXPO_PUBLIC_').sentry.dsn).toBe(expoDsn)
+      fc.property(fc.string({ minLength: 1 }), fc.string({ minLength: 1 }), (bareDsn, viteDsn) => {
+        const env = {
+          SENTRY_DSN: bareDsn,
+          VITE_SENTRY_DSN: viteDsn,
         }
-      ),
+        expect(configFromEnv(env, '').sentry.dsn).toBe(bareDsn)
+        expect(configFromEnv(env, 'VITE_').sentry.dsn).toBe(viteDsn)
+      }),
       { numRuns: numRunsFor({ base: 100 }) }
     )
   })

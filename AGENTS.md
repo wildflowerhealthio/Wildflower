@@ -10,9 +10,9 @@ Read [AGENTS Explanation](./docs/Agents/Explanation.md) for what this file is an
 - **Node.js 22.12+ required** (`engines` in `package.json`)
 - **Vite+ owns the toolchain** — drive everything through `vp`. Never invoke `pnpm`, `npm`, or `yarn` directly. See the Vite+ block at the bottom of this file for command surface and pitfalls.
 - **Test utilities import from `vite-plus/test`**, not `vitest`
-- **Slices must respect their layering** — `slices/<name>/<name>-core` is the pure layer; `-web`, `-node`, `-react-native`, `-expo` are platform adapters that may import from `-core` but not vice-versa
+- **Slices must respect their layering** — `slices/<name>/<name>-core` is the pure layer; `-web`, `-node` are platform adapters that may import from `-core` but not vice-versa
 - **Changes MUST include corresponding test updates**
-- **Vitest is the default; Expo packages run on Jest** — those packages expose a `vp run jest` script, the root aggregates them via `vp run jest` (`vp run -r --concurrency-limit 1 jest`), and `vp run test:all` runs both Vitest and Jest suites.
+- **Vitest (via Vite+) is the test runner** — `vp test` runs the suite across all packages.
 
 ### Agents MUST read relevant docs before certain tasks
 
@@ -103,17 +103,15 @@ All docs follow the [four-kinds convention](./docs/Documentation/Explanation.md)
 - [CONTRIBUTING.md](./CONTRIBUTING.md) — Dev setup, code style, formatting, git workflow
 - [docs/Testing/](./docs/Testing/Testing%20Reference.md) — Property testing, unit testing, React testing, integration testing
 - [Documentation Reference](./docs/Documentation/Reference.md) — Naming rules for docs
-- [Dependency Sync How-To](./docs/Expo/Dependency%20Sync%20How-To.md) — Catalog + peer-range conventions for Expo/RN packages
 - [Version Override Explanation](./docs/Dependencies/Version%20Override%20Explanation.md) — Why `pnpm.overrides` exists and when to add/remove one
 
 ## Commands
 
 ```bash
 vp run dev           # Start the website dev server
-vp run ready         # Format, lint, test:all (Vitest + Jest), build (-r) — full pre-PR check
+vp run ready         # Format, lint, test, build (-r) — full pre-PR check
 vp test              # Run Vitest across all packages (Vitest projects mode wired in root vite.config.ts)
-vp run jest          # Run Jest across Expo packages (vp run -r --concurrency-limit 1 jest)
-vp run test:all      # Run Vitest then Jest (full test pass)
+vp run test:all      # Run the full Vitest test pass
 vp run test:changed  # Same as test:all but scales fast-check numRuns down for packages unchanged vs origin/main
 vp run build -r      # Build the monorepo
 vp check             # Format + lint + typecheck

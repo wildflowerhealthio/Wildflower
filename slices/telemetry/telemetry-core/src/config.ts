@@ -50,7 +50,7 @@ const emptyToNull = (raw: string | undefined): string | null => {
 
 const configFromEnv = (
   env: Readonly<Record<string, string | undefined>>,
-  prefix: '' | 'EXPO_PUBLIC_' | 'VITE_' = ''
+  prefix: '' | 'VITE_' = ''
 ): TelemetryConfig => {
   const p = prefix
   return {

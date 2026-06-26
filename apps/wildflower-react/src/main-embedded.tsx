@@ -30,9 +30,9 @@ renderApp({
   // `writeIssuedToken` flows into the gatekeeper page-bridge handler
   // so the host's `AuthTokenIssued` push lands in the token store.
   // `setActiveDeviceUserCode` is wired identically for
-  // `DeviceConsentRequested`; the Expo host doesn't emit it today, so
+  // `DeviceConsentRequested`; the host doesn't emit it today, so
   // the setter is dormant on embedded — kept wired so the page-bridge
-  // contract is environment-blind and a future Expo emitter just
+  // contract is environment-blind and a future host emitter just
   // works.
   makeTransport: (navigate, writeIssuedToken, setActiveDeviceUserCode) =>
     buildTransport(navigate, writeIssuedToken, setActiveDeviceUserCode),

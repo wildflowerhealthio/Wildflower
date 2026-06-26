@@ -4,9 +4,8 @@ import { defineConfig } from 'vite-plus'
 import baseConfig from './vite.config.base.ts'
 
 // Re-emit `viteSingleFile`'s inlined HTML as both a JS string export and a
-// `.d.ts` declaration. Lets downstream packages (`gatekeeper-expo`) import
-// `embeddable-html` and pass the bundled SPA into a `react-native-webview`
-// without shipping a separate static asset.
+// `.d.ts` declaration. Lets downstream packages import the bundled SPA as a
+// JS string without shipping a separate static asset.
 const emitHtmlAsModule = (): Plugin => ({
   name: 'single-file:emit-html-as-module',
   enforce: 'post',

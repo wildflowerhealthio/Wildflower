@@ -57,10 +57,8 @@ const isLoopbackBindHost = (host: string): boolean => LOOPBACK_BIND_HOST_RE.test
  *    `http`/`https`), they win — the tunnel case;
  *  - otherwise the `Host` header is echoed under `http://`, subject to
  *    the same DNS-shape check (so empty, whitespace, or comma-joined
- *    values fall back). The local server binds plain HTTP by convention
- *    (`apps/wildflower-node/src/index.ts` uses `node:http.createServer`,
- *    and the on-device Expo server is non-TLS), so the scheme is fixed
- *    rather than derived from the request;
+ *    values fall back). The local server binds plain HTTP by convention,
+ *    so the scheme is fixed rather than derived from the request;
  *  - with neither usable, the configured `Origin` fallback is returned.
  */
 const requestOriginFromConnection = (

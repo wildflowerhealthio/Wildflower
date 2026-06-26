@@ -18,7 +18,6 @@ const WORKSPACE_PACKAGE_PATTERNS = [
   'apps/*/package.json',
   'global/*/package.json',
   'global/effect-messaging/*/package.json',
-  'global/expo-effect-platform/example/package.json',
   'slices/**/package.json',
 ] as const
 

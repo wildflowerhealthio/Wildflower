@@ -1,15 +1,14 @@
 # Testing Reference
 
-Vitest across most packages; Expo packages run Jest with `jest-expo`. Property-based testing is the default approach.
+Vitest across all packages. Property-based testing is the default approach.
 
 ## Test Runners
 
-| Runner                  | Where it runs                                                                                        | How to invoke                                                                                                 |
-| ----------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| Vitest (via Vite+)      | Every non-Expo package                                                                               | `vp test` (Vitest projects mode wired in root `vite.config.ts`; works from the root or any package directory) |
-| Jest (with `jest-expo`) | `apps/wildflower`, `global/expo-effect-platform`, `global/expo-localtunnel`, `global/expo-tundraish` | `vp run jest` (in a package), `vp run jest` (root, fans out with `--concurrency-limit 1`)                     |
+| Runner             | Where it runs | How to invoke                                                                                                 |
+| ------------------ | ------------- | ------------------------------------------------------------------------------------------------------------- |
+| Vitest (via Vite+) | Every package | `vp test` (Vitest projects mode wired in root `vite.config.ts`; works from the root or any package directory) |
 
-`vp run test:all` runs Vitest then Jest for a complete pass; `vp run ready` includes it. For iterative work, `vp run test:changed` runs the same suites but scales `fast-check` `numRuns` down (× 0.2, floored at 10) for packages unchanged vs `origin/main` and their unaffected dependers — see [Property Testing Reference](./Property%20Testing%20Reference.md) for the `numRunsFor` helper.
+`vp run test:all` runs the full Vitest pass; `vp run ready` includes it. For iterative work, `vp run test:changed` runs the same suites but scales `fast-check` `numRuns` down (× 0.2, floored at 10) for packages unchanged vs `origin/main` and their unaffected dependers — see [Property Testing Reference](./Property%20Testing%20Reference.md) for the `numRunsFor` helper.
 
 ## When to Use Each Approach
 

@@ -2,7 +2,7 @@ import { Schema } from 'effect'
 import { Bridge, UrlParamMessage } from 'effect-messaging-core'
 
 /**
- * Host → Web: Expo host detected a back-navigation gesture (header chevron,
+ * Host → Web: the native host detected a back-navigation gesture (header chevron,
  * hardware back, swipe-back). The web side calls `navigate(-1)` so the
  * embedded SPA's history pops without popping the native screen.
  */
@@ -107,8 +107,7 @@ type NavigationBridge = Bridge.Bridge<
  * @remarks
  * Cross-process `console.<level>(...)` mirroring is handled by the
  * shared `LogBridge` in `effect-messaging-core`; consumers compose it
- * alongside this bridge via `useLogHostBinding()` from
- * `effect-messaging-expo`.
+ * alongside this bridge on the host side.
  */
 const NavigationBridge: NavigationBridge = Bridge.make({
   name: 'Navigation',

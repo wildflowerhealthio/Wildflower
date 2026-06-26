@@ -64,12 +64,12 @@ The adapter exposes the three `TransportAdapter` surfaces:
 
 The `attachLive` filter admits `event.origin === ''` alongside the
 same-origin check. Null origin appears for sandboxed iframes,
-`data:` documents, and `file://` documents (the Expo host case).
+`data:` documents, and `file://` documents (the native host case).
 Combined with `event.source === window`, this means the sender
 must be the same window object — but the bundle still relies on
 the host being trusted.
 
-The bundle is loaded by Expo from a controlled scheme; it must
+The bundle is loaded by the native host from a controlled scheme; it must
 never be loaded inside an attacker-controlled frame. Hosts that
 load this bundle in untrusted environments need to tighten
 `attachLive` to `event.origin === window.location.origin` only.
@@ -80,6 +80,5 @@ See issue #24 for the full embedding-contract threat model.
 
 `INITIAL_MESSAGES_WINDOW_GLOBAL` and
 `REACT_NATIVE_WEBVIEW_GLOBAL` live in `effect-messaging-core`'s
-`platform-adapter.ts`. The Expo adapter
-(`effect-messaging-expo`) imports the same constants so the
-two-side contract is one source of truth.
+`platform-adapter.ts`, so both sides of the bridge share one
+source of truth for the wire-format contract.

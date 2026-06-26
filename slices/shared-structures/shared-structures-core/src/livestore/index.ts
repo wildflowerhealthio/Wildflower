@@ -186,9 +186,8 @@ type ComposedLivestoreModule<
  * needs.
  *
  * Enforces a single composition path so two apps cannot independently
- * drift in spread order — slice-ordering drift between
- * `wildflower-node`'s and `wildflower-expo`'s schema files would break
- * cross-host LiveStore syncs.
+ * drift in spread order — slice-ordering drift between different hosts'
+ * schema files would break cross-host LiveStore syncs.
  *
  * The helper takes a tuple of slices (rather than a single varargs
  * spread) so the inferred `events` type is the intersection of every

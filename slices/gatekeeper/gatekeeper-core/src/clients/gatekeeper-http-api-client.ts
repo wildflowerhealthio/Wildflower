@@ -10,7 +10,7 @@ const sliceClient = defineSliceHttpClient({
 
 /**
  * Effect Service providing the resolved `GatekeeperApi` HttpApi client.
- * Adapter layers (`gatekeeper-react`, `gatekeeper-expo`) provide it; call
+ * Adapter layers (`gatekeeper-react`) provide it; call
  * sites consume Effect-natively.
  *
  * @example

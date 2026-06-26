@@ -94,9 +94,8 @@ const LogBridge: LogBridge = Bridge.make({
 
 /**
  * Default host-side handler record: dispatches each `Log` via
- * {@link defaultOnLog}. Compose into the host shell via
- * `useLogHostBinding()` from `effect-messaging-expo` (or directly here
- * if the consumer wants a non-React host).
+ * {@link defaultOnLog}. Compose into the host shell's message handlers
+ * (e.g. via a host-binding hook, or directly here for a non-React host).
  */
 const defaultLogHostHandlers: MessageHandler.HandlersFor<LogBridge['WebToHost']> = {
   Log: defaultOnLog,

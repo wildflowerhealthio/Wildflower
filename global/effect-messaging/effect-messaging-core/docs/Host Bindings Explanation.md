@@ -1,10 +1,10 @@
 # Host Bindings Explanation
 
-How an Expo (or web, eventually) shell composes typed message bridges from multiple slices into a single WebView transport.
+How a native or web shell composes typed message bridges from multiple slices into a single WebView transport.
 
 ## The Problem
 
-The wildflower-expo shell embeds an SPA in a `react-native-webview`. Four slices (`navigation`, `gatekeeper`, `collector`, `apps`) each declare a typed `Bridge` for cross-process messages. The shell has to:
+A native host shell embeds an SPA in a WebView. Four slices (`navigation`, `gatekeeper`, `collector`, `apps`) each declare a typed `Bridge` for cross-process messages. The shell has to:
 
 1. Wire every bridge's host-side inbound handler record into one `BridgeTransport`.
 2. Plumb URL-param initial messages (e.g. seed the SPA's first route).
@@ -94,12 +94,10 @@ The one handler that _replies_ — apps' `RequestTunnel`, which answers with `Tu
 
 The parallel-tuple invariant carries through `combine`, `single`, and `callTransportReady` without any `as unknown as` casts. `flattenTuples` (in [`global/kitchen-sink/src/types/flatten-tuples.ts`](../../../kitchen-sink/src/types/flatten-tuples.ts)) handles the four mapped-tuple flat-concats inside `combine` directly — TS reduces the recursive `readonly [...Head, ...flattenTuples<Rest>]` shape against the parallel-array consumer without a re-narrowing step. `single` builds its 1-tuples with literal `[x] as const` shapes that TS unifies against `Bridge.HandlersByBridge<readonly [B], 'WebToHost'>` structurally. `callTransportReady` distributes `MessageSender`'s outbound union over `Bridges[number]`, so the full-tuple sender is assignable into each narrow per-slot callback.
 
-The page-side flatten in `bridged-webview.tsx` reuses the same `flattenTuples` helper to collapse `initialMessages` into a single sequence before `appendMessagesToUrl`. The consumer (`BridgedWebView` for the prop, `AppShellWebView` further up) sees a clean Bindings-shaped API with no casts in the chain.
+The page-side flatten reuses the same `flattenTuples` helper to collapse `initialMessages` into a single sequence before `appendMessagesToUrl`. The consumer sees a clean Bindings-shaped API with no casts in the chain.
 
 ## See Also
 
 - [Effect Patterns Reference](../../../../docs/Effect/Patterns%20Reference.md) — Layer composition, generator syntax
 - [HttpApi Composition How-To](../../../../docs/Effect/HttpApi%20Composition%20How-To.md) — A related cross-package phantom-id cast pattern
 - `global/effect-messaging/effect-messaging-core/src/host-bindings.ts` — The `HostBindings` namespace
-- `global/effect-messaging/effect-messaging-expo/src/bridged-webview.tsx` — The shell component
-- `slices/*-expo/src/use-host-binding.ts` — Per-slice host-binding hooks

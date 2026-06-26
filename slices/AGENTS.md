@@ -10,16 +10,14 @@ Every slice follows the same naming structure:
 slices/<name>/
 ├── <name>-core            # Pure logic: schemas, HttpApi definitions, business rules
 ├── <name>-web             # Browser adapter (optional)
-├── <name>-node            # Node.js adapter (optional)
-├── <name>-react-native    # React Native adapter (optional)
-└── <name>-expo            # Expo-specific adapter (optional)
+└── <name>-node            # Node.js adapter (optional)
 ```
 
 Current slices: `apps`, `browser-sniffer`, `collector`, `emr`, `gatekeeper`, `navigation`, `telemetry`.
 
 ## Rules
 
-- **`<name>-core` is the pure layer** — no DOM, no Node `fs`, no Expo APIs, no platform-specific imports
+- **`<name>-core` is the pure layer** — no DOM, no Node `fs`, no platform-specific imports
 - **Platform adapters depend on `-core`, never the reverse**
 - **Compose `HttpApi` groups across slices via the phantom-id bridge pattern** — see [HttpApi Composition How-To](../docs/Effect/HttpApi%20Composition%20How-To.md)
 - **Don't use `topLevel: true` on multiple `HttpApiGroup`s under the same `HttpApi`** — name collision in the generated client. See [HttpApi Composition How-To](../docs/Effect/HttpApi%20Composition%20How-To.md).
