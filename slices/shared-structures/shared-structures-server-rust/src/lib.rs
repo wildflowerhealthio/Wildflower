@@ -27,6 +27,7 @@ mod host_match;
 mod params;
 mod reverse_proxy;
 mod static_hosts;
+mod upgrade;
 
 pub use error::ServerError;
 pub use params::{LoopbackHostname, StaticHostJob};

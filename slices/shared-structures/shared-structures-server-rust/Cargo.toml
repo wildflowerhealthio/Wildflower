@@ -24,7 +24,8 @@ shared-structures-rust = { path = "../shared-structures-rust", features = [
   "served-origin",
   "subdomain-url",
 ] }
-tokio = { workspace = true, features = ["net", "rt", "sync"] }
+# `io-util` for `copy_bidirectional` (the upgrade-splice path).
+tokio = { workspace = true, features = ["net", "rt", "sync", "io-util"] }
 # `tower::make::Shared` adapts any `Clone` tower `Service` into the `MakeService`
 # `axum::serve` wants, so `StaticHostsService` stays generic over the served
 # service rather than hardcoding `axum::Router`.
@@ -35,6 +36,13 @@ tower = { version = "0.5", features = ["util", "make"] }
 # (response) so bodies flow through without being buffered (GB-scale uploads /
 # downloads stay O(chunk) memory).
 reqwest = { version = "0.12", default-features = false, features = ["stream"] }
+# Connection-upgrade (WebSocket) proxying: reqwest can't carry a `101` / raw
+# upgrade, so a low-level hyper client connection does the upstream handshake and
+# both upgraded sockets are spliced. All already transitive (axum/reqwest), so no
+# new build cost.
+hyper = { version = "1", features = ["client", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+http-body-util = "0.1"
 # Typed `ServerError` distinguishing a recoverable bind failure from a poisoned
 # shared lock — the derive keeps Display/Error boilerplate out.
 thiserror = "2"
@@ -51,3 +59,6 @@ tokio = { workspace = true, features = ["rt", "macros", "sync", "time"] }
 # `StreamExt` / `stream::unfold` to build the lazy request/response body streams
 # the streaming perf tests push through the proxy.
 futures-util = "0.3"
+# A real WebSocket client to drive the end-to-end upgrade-proxy test through the
+# proxy. Already in the lock (transitive via axum's `ws`).
+tokio-tungstenite = "0.26"

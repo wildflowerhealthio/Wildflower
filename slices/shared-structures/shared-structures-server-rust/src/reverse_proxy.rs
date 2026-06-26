@@ -8,8 +8,10 @@
 //! with the orchestrator that starts the hosts, so registering a host at runtime
 //! is visible to the next forwarded request with no restart.
 //!
-//! Non-goal: WebSocket upgrades. An `Upgrade` request isn't a static-SPA
-//! concern; it falls through to the fallback rather than being forwarded.
+//! Connection upgrades (WebSocket) are proxied too: a matched-subdomain request
+//! carrying an `Upgrade` header is handed to [`crate::upgrade`] — a connection
+//! splice — instead of the buffer-free streaming [`forward`] below (reqwest
+//! can't carry a `101` / raw upgrade).
 
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
@@ -29,8 +31,9 @@ use crate::params::LoopbackHostname;
 
 /// Hop-by-hop headers (RFC 7230 §6.1) — meaningful only for a single transport
 /// hop, never forwarded. `host` is dropped separately (the HTTP client sets it
-/// to the upstream authority).
-fn is_hop_by_hop(name: &HeaderName) -> bool {
+/// to the upstream authority). Shared with [`crate::upgrade`] for relaying a
+/// declined-upgrade response.
+pub(crate) fn is_hop_by_hop(name: &HeaderName) -> bool {
     const HOP_BY_HOP: [&str; 8] = [
         "connection",
         "keep-alive",
@@ -173,6 +176,11 @@ async fn maybe_forward_to_subdomain(
             return next.run(req).await;
         }
     };
+    // Connection upgrades (WebSocket) can't go through the reqwest streaming
+    // path — splice the two connections instead.
+    if req.headers().contains_key(axum::http::header::UPGRADE) {
+        return crate::upgrade::forward_upgrade(&state.loopback, port, req).await;
+    }
     forward(&state, port, req).await
 }
 
@@ -853,5 +861,84 @@ mod tests {
             elapsed.as_secs_f64(),
             (TOTAL as f64 / 1024.0 / 1024.0) / elapsed.as_secs_f64(),
         );
+    }
+
+    // ---- connection upgrades (WebSocket) ----
+
+    /// An upstream that echoes WebSocket text/binary frames back to the sender.
+    async fn spawn_ws_echo_upstream() -> u16 {
+        use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
+
+        async fn ws_handler(ws: WebSocketUpgrade) -> Response {
+            ws.on_upgrade(|mut socket: WebSocket| async move {
+                while let Some(Ok(msg)) = socket.recv().await {
+                    let reply = match msg {
+                        Message::Text(t) => Message::Text(t),
+                        Message::Binary(b) => Message::Binary(b),
+                        Message::Close(_) => break,
+                        _ => continue,
+                    };
+                    if socket.send(reply).await.is_err() {
+                        break;
+                    }
+                }
+            })
+        }
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let app = Router::new().route("/ws", get(ws_handler));
+        tokio::spawn(async move {
+            axum::serve(listener, app.into_make_service())
+                .await
+                .unwrap();
+        });
+        port
+    }
+
+    /// A forwarded WebSocket to a registered subdomain is proxied end-to-end:
+    /// the `101` handshake is relayed and a message round-trips through the
+    /// spliced connections. (Drives a real client over a real socket — an
+    /// upgrade can't be exercised via `oneshot`.)
+    #[tokio::test]
+    async fn forwarded_websocket_is_proxied_end_to_end() {
+        use futures_util::SinkExt;
+        use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+        use tokio_tungstenite::tungstenite::Message as TMessage;
+
+        let upstream_port = spawn_ws_echo_upstream().await;
+        let table = ProxyTable::new();
+        table.register("patient-browser", upstream_port).unwrap();
+        let proxy = proxy_router(table, Some("demo.example.com"));
+
+        // Serve the proxy on a real port — an upgrade needs a real connection.
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let proxy_port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            axum::serve(listener, proxy.into_make_service())
+                .await
+                .unwrap();
+        });
+
+        // Open the WebSocket through the proxy, carrying the `Forwarded` header
+        // so it routes to the registered subdomain.
+        let mut request = format!("ws://127.0.0.1:{proxy_port}/ws")
+            .into_client_request()
+            .unwrap();
+        request.headers_mut().insert(
+            "forwarded",
+            "host=patient-browser.demo.example.com;proto=https"
+                .parse()
+                .unwrap(),
+        );
+
+        let (mut ws, _resp) = tokio_tungstenite::connect_async(request)
+            .await
+            .expect("websocket handshake through the proxy");
+        ws.send(TMessage::Text("hello-through-proxy".into()))
+            .await
+            .unwrap();
+        let echoed = ws.next().await.expect("a reply").expect("ok message");
+        assert_eq!(echoed, TMessage::Text("hello-through-proxy".into()));
     }
 }
