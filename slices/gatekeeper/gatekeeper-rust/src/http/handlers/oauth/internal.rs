@@ -322,8 +322,9 @@ pub struct IssueTokenInput<'a> {
     pub granted_scopes: &'a [String],
     /// SMART-on-FHIR patient context, if any.
     pub patient: Option<&'a str>,
-    /// Origin minting the token — used for the `iss` and (with `/fhir-r4`) the
-    /// `aud` claims.
+    /// Origin minting the token — feeds **only** the `aud` claim
+    /// (`{origin}/fhir-r4`). `iss` is always
+    /// [`shared_structures_rust::CANONICAL_ISSUER`], independent of `origin`.
     pub origin: &'a str,
 }
 
@@ -355,11 +356,17 @@ pub fn issue_token_response(
     // per-request — SMART clients commonly match `aud` to the FHIR base
     // URL they reached us at.
     let audience = format!("{}/fhir-r4", input.origin);
+    // Mint each granted scope alongside its alternate canonical form, so a
+    // v1-worded grant (`.read`/`.write`/`.*`) also carries its v2 letter spelling
+    // (`.rs`/`.cud`/`.cruds`): HFS's `SmartPermissions` reads only the letter
+    // grammar and would otherwise drop a `.read` scope, 403-ing the read. The
+    // app-facing `TokenResponse.scope` below stays the granted set as-is.
+    let token_scopes = scopes_rust::with_alternate_canonical_forms(input.granted_scopes);
     let signed = mint_access_token(
         &signing_key,
         &NewJwtArgs {
             client_id: input.client_id,
-            scope: input.granted_scopes,
+            scope: &token_scopes,
             ttl: ACCESS_TOKEN_TTL,
             origin: shared_structures_rust::CANONICAL_ISSUER,
             audience: Some(&audience),

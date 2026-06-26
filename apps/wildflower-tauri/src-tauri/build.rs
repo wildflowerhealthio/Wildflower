@@ -6,6 +6,7 @@ use std::path::Path;
 struct TauriSharedConfig {
     loopback_hostname: String,
     loopback_port: u16,
+    local_granted_scopes: String,
 }
 
 fn main() {
@@ -43,6 +44,10 @@ fn main() {
     println!(
         "cargo:rustc-env=WILDFLOWER_LOOPBACK_PORT={}",
         config.loopback_port
+    );
+    println!(
+        "cargo:rustc-env=WILDFLOWER_LOCAL_GRANTED_SCOPES={}",
+        config.local_granted_scopes
     );
 
     // Build-time tunnel seed: read the package-local `.env` (a sibling of this

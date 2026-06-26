@@ -63,6 +63,30 @@ impl Scope {
             (a, b) => a == b,
         }
     }
+
+    /// An equivalent alternate spelling of this scope — the same grant rendered
+    /// in its *other* canonical form — or `None` when it has no distinct
+    /// alternate. Today the only scopes with one are resource scopes whose access
+    /// is a SMART v1 word: they return the canonical v2 letter form
+    /// (`patient/Observation.read` → `patient/Observation.rs`, `.write` →
+    /// `.cud`, `.*` → `.cruds`). Non-resource scopes, and resource scopes already
+    /// in letter form, have none. The alternate covers exactly the same
+    /// operations; it exists so a consumer that parses only one spelling (e.g.
+    /// helios-auth's letter-only `SmartPermissions`) still honors the grant.
+    pub fn as_alternate_canonical_form(&self) -> Option<Scope> {
+        let alternate = match self {
+            Scope::FhirResource(r) => Scope::FhirResource(FhirResourceScope {
+                access: r.access.to_letter_bag_representation(),
+                ..r.clone()
+            }),
+            Scope::WildflowerResource(w) => Scope::WildflowerResource(WildflowerResourceScope {
+                access: w.access.to_letter_bag_representation(),
+                ..w.clone()
+            }),
+            Scope::Known(_) | Scope::Unknown(_) => return None,
+        };
+        (alternate != *self).then_some(alternate)
+    }
 }
 
 impl From<&str> for Scope {

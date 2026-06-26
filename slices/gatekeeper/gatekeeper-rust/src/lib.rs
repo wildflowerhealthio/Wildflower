@@ -63,10 +63,15 @@ pub const WILDFLOWER_WIDEST_SCOPES: &[Scope] = &[
     }),
 ];
 
-/// The scopes granted to the first-party host (`wildflower-host`): seeded as its
-/// client `allowed_scopes` and minted into the host owner token. The host is
-/// granted the widest scopes so local users can drive both the FHIR surface and
-/// the non-FHIR (Wildflower) APIs.
+/// The **default** scopes granted to the first-party host (`wildflower-host`):
+/// the widest set, so local users can drive both the FHIR surface and the
+/// non-FHIR (Wildflower) APIs. Rendered by [`default_local_granted_scopes`].
+///
+/// This is no longer the *live* source: the running Tauri app sources the host
+/// grant from `tauri-shared-config.json` and threads it via
+/// [`GatekeeperConfig::granted_scopes`], so the value can't drift from the TS
+/// shell's device-authorization request. This const is the fallback for
+/// standalone/test builds that don't thread one.
 ///
 /// Spelled out independently of [`WILDFLOWER_WIDEST_SCOPES`] (the owner-defining
 /// set) even though the two currently coincide: the host's *grant* and the
@@ -84,6 +89,14 @@ pub const WILDFLOWER_LOCAL_GRANTED_SCOPES: &[Scope] = &[
         access: AccessRights::ALL,
     }),
 ];
+
+/// The default host granted-scope wire strings — the rendered
+/// [`WILDFLOWER_LOCAL_GRANTED_SCOPES`]. Standalone and test builds seed
+/// [`GatekeeperConfig::granted_scopes`] from this; the live Tauri app sources
+/// the value from `tauri-shared-config.json` instead.
+pub fn default_local_granted_scopes() -> Vec<String> {
+    scopes_rust::render_scopes(WILDFLOWER_LOCAL_GRANTED_SCOPES)
+}
 
 /// Lifetime of the host owner token minted at boot.
 const HOST_OWNER_TOKEN_TTL: Duration = Duration::hours(24);
@@ -145,12 +158,33 @@ pub fn setup_gatekeeper(
     local_owner_token_tx: &watch::Sender<Option<String>>,
     active_device_user_code_tx: watch::Sender<Option<String>>,
 ) -> anyhow::Result<Gatekeeper> {
-    let store = seeding::open_and_seed_store(conn)?;
+    // The host owner token is minted from `granted_scopes` (the live app sources
+    // these from `tauri-shared-config.json`), but the `/access/*` owner gate
+    // still checks coverage of every `WILDFLOWER_WIDEST_SCOPES` entry. These were
+    // once the same compile-time const; now the JSON must keep covering WIDEST or
+    // the Owner UI silently 401s. Fail loudly at boot rather than at first
+    // `/access/*` call. (A read of WIDEST — the owner gate's own use is untouched.)
+    let granted: Vec<Scope> = config
+        .granted_scopes
+        .iter()
+        .map(|s| Scope::from(s.as_str()))
+        .collect();
+    assert!(
+        WILDFLOWER_WIDEST_SCOPES
+            .iter()
+            .all(|widest| granted.iter().any(|g| g.covers(widest))),
+        "granted_scopes (from tauri-shared-config.json) must cover every \
+         WILDFLOWER_WIDEST_SCOPES entry, or the host owner token can't pass the \
+         /access/* owner gate; got {:?}",
+        config.granted_scopes
+    );
+    let store = seeding::open_and_seed_store(conn, &config.granted_scopes)?;
     let host_owner_token = seeding::mint_host_owner_token(
         &store,
         shared_structures_rust::CANONICAL_ISSUER,
         &config.loopback_origin,
         HOST_OWNER_TOKEN_TTL,
+        &config.granted_scopes,
     )
     .context("failed to mint host owner token")?;
     local_owner_token_tx

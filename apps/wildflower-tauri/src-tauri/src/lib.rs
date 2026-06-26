@@ -35,6 +35,15 @@ const LOOPBACK_PORT: u16 = match u16::from_str_radix(env!("WILDFLOWER_LOOPBACK_P
     Err(_) => panic!("WILDFLOWER_LOOPBACK_PORT (from tauri-shared-config.json) must be a u16"),
 };
 
+// The host's granted-scope string, also sourced from
+// `apps/wildflower-tauri/tauri-shared-config.json` (re-emitted by `build.rs`).
+// The TS shell reads the same value as `WILDFLOWER_LOCAL_GRANTED_SCOPES`
+// (`vite.config.ts`), so the host's device-authorization request can't drift
+// from what gatekeeper seeds. gatekeeper seeds its first-party client's
+// `allowed_scopes` and mints the host owner token from this set (asserting it
+// covers `WILDFLOWER_WIDEST_SCOPES`).
+const LOCAL_GRANTED_SCOPES: &str = env!("WILDFLOWER_LOCAL_GRANTED_SCOPES");
+
 // Filenames of the host's SQLite databases under the shared app-data dir. These
 // are the single source of truth for each database's on-disk name: the slice
 // that opens it AND the data-management catalogue (`/databases`) reference the
@@ -68,6 +77,10 @@ async fn run_server(
     };
     let gatekeeper_config = GatekeeperConfig {
         loopback_origin: loopback_origin.clone(),
+        granted_scopes: LOCAL_GRANTED_SCOPES
+            .split_whitespace()
+            .map(str::to_owned)
+            .collect(),
     };
 
     // One shared SQLite database for all persistence-rust-backed slices

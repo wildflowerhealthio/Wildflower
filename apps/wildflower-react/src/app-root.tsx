@@ -131,6 +131,13 @@ interface RenderAppOptions {
    * page origin, as on web/embedded.
    */
   readonly apiBaseUrl?: string
+  /**
+   * The host's granted-scope string (e.g. `system/*.cruds wildflower/*.cruds`),
+   * sourced from the Tauri shell's `tauri-shared-config.json`. Threaded into
+   * router context so `NeedsAuthMessage` requests exactly the scopes
+   * gatekeeper-rust seeds for the first-party client. Omitted on web/embedded.
+   */
+  readonly localGrantedScopes?: string
 }
 
 /**
@@ -169,6 +176,7 @@ const renderApp = ({
   awaitAuthReady,
   makeTransport,
   apiBaseUrl,
+  localGrantedScopes,
 }: RenderAppOptions): void => {
   const { queryClient, runAuthed, runtimeLayer } = buildAppQueryRuntime(
     tokenStore.subscribable,
@@ -211,6 +219,9 @@ const renderApp = ({
       // Threaded so the apps launch POST reaches the host API origin — see
       // `RouterContext.apiBaseUrl`.
       apiBaseUrl,
+      // Threaded so `NeedsAuthMessage` requests exactly gatekeeper's seeded
+      // first-party scopes — see `RouterContext.localGrantedScopes`.
+      localGrantedScopes,
     },
     defaultPreload: 'intent',
   })

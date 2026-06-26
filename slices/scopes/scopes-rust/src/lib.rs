@@ -1,9 +1,9 @@
 //! OAuth 2.0 and SMART on FHIR scope primitives.
 //!
-//! [`scope`] is the structured, owned [`Scope`] model — parse, render, coverage,
-//! and enumeration ([`scopes_supported`]). [`smart`] keeps the string-facing
-//! grammar entry points (`grantable_scopes`, `allowed_scope_covers`) that
-//! gatekeeper's consent handlers call, implemented on top of the model.
+//! [`scope`] is the structured, owned [`Scope`] model — parse, render, and
+//! coverage. [`smart`] keeps the string-facing grammar entry points
+//! (`grantable_scopes`, `allowed_scope_covers`) that gatekeeper's consent
+//! handlers call, implemented on top of the model.
 
 pub mod scope;
 pub mod smart;
@@ -12,7 +12,7 @@ pub use scope::{
     AccessRights, ContextLevel, FhirResourceScope, KnownScope, ResourceType, Scope, UnknownScope,
     WildflowerResource, WildflowerResourceScope, WildflowerResourceType,
 };
-pub use smart::{allowed_scope_covers, grantable_scopes};
+pub use smart::{allowed_scope_covers, grantable_scopes, with_alternate_canonical_forms};
 
 /// Render a slice of [`Scope`]s to their canonical wire strings — the shape
 /// stored in client `allowed_scopes`/grant rows and minted into a token's

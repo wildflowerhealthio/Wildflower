@@ -10,12 +10,23 @@ type RunAuthed = BaseRouterContext.RunAuthedWith<GatekeeperHttpApiClient>
 
 /**
  * Slice-local router-context — `BaseRouterContext.RouterContextWith`
- * narrowed to this slice's client. `awaitAuthReady` is inherited only
- * to keep this structural context a faithful subset of the host app's
- * `RouterContext`; gatekeeper loaders don't read it — the gate
- * guarantees the token before the loader runs.
+ * narrowed to this slice's client, plus the optional host-threaded
+ * `localGrantedScopes`. `awaitAuthReady` is inherited only to keep this
+ * structural context a faithful subset of the host app's `RouterContext`;
+ * gatekeeper loaders don't read it — the gate guarantees the token before the
+ * loader runs.
  */
-type RouterContext = BaseRouterContext.RouterContextWith<GatekeeperHttpApiClient>
+type RouterContext = BaseRouterContext.RouterContextWith<GatekeeperHttpApiClient> & {
+  /**
+   * The host's granted-scope string (e.g. `system/*.cruds wildflower/*.cruds`),
+   * threaded from the Tauri shell's `tauri-shared-config.json` so the WebView's
+   * device-login request asks for exactly the scopes gatekeeper-rust seeds for
+   * the first-party client. Omitted on web/standalone builds, where
+   * {@link useGatekeeperLocalGrantedScopes} returns `undefined` and the caller
+   * falls back to the canonical default.
+   */
+  readonly localGrantedScopes?: string
+}
 
 /**
  * The gatekeeper slice's client layer, ready for the app to merge into
@@ -48,5 +59,18 @@ const sliceRuntimeLayer: Layer.Layer<
 const useGatekeeperRuntimeLayer = (): RuntimeLayer =>
   useRouteContext({ from: '__root__', select: (context: RouterContext) => context.runtimeLayer })
 
-export { sliceRuntimeLayer, useGatekeeperRuntimeLayer }
+/**
+ * The host's granted-scope string from router context (see
+ * {@link RouterContext.localGrantedScopes}). `NeedsAuthMessage` requests exactly
+ * this set at device login so it matches the first-party client's seeded
+ * `allowed_scopes`. `undefined` on standalone/web builds where the host context
+ * doesn't carry it — the caller falls back to the canonical default.
+ */
+const useGatekeeperLocalGrantedScopes = (): string | undefined =>
+  useRouteContext({
+    from: '__root__',
+    select: (context: RouterContext) => context.localGrantedScopes,
+  })
+
+export { sliceRuntimeLayer, useGatekeeperLocalGrantedScopes, useGatekeeperRuntimeLayer }
 export type { RouterContext, RunAuthed, RuntimeLayer }

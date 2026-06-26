@@ -133,13 +133,17 @@ pub struct AuthorizeParams {
     /// SMART App Launch nonce, set by the EHR (apps-rust generates it,
     /// the SMART app forwards it). Not currently looked up against a
     /// launch-context table — we trust whatever value the SMART app
-    /// echoes back and bind patient context at consent instead.
+    /// echoes back and bind patient context at consent instead. Binding it
+    /// (single-use, patient-bound) is tracked in
+    /// <https://github.com/Assessment-is/Wildflower/issues/257>.
     #[serde(default)]
     pub launch: Option<String>,
     /// SMART App Launch audience hint: the FHIR base URL the SMART app
     /// expects to call with the resulting token. Not currently validated
     /// against [`shared_structures_rust::CANONICAL_ISSUER`] — `aud`
     /// binding in minted tokens is per-request via `served_origin_for`.
+    /// Validating it is tracked in
+    /// <https://github.com/Assessment-is/Wildflower/issues/257>.
     #[serde(default)]
     pub aud: Option<String>,
 }
@@ -189,7 +193,9 @@ pub(super) async fn handle_authorize_request(
     // apps-rust) and `aud` (FHIR base URL the SMART app expects). We don't
     // look up `launch` against a launch-context table — patient binding
     // happens at consent — but we log it so an operator can correlate a
-    // SMART app's request back to the click that triggered it.
+    // SMART app's request back to the click that triggered it. Binding +
+    // validation is tracked in
+    // https://github.com/Assessment-is/Wildflower/issues/257.
     if params.launch.is_some() || params.aud.is_some() {
         tracing::info!(
             client_id = %params.client_id,
@@ -359,11 +365,16 @@ fn validate_requested_scopes(
         .split_whitespace()
         .map(str::to_string)
         .collect();
-    let allowed: HashSet<&str> = client.allowed_scopes.iter().map(String::as_str).collect();
-    if !requested_scopes
-        .iter()
-        .all(|s| allowed.contains(s.as_str()))
-    {
+    // Coverage-aware allowlist check, not exact string membership: a client
+    // allowed a broad or v1 scope (e.g. `patient/Observation.read`) also admits
+    // a narrower or v2 request it covers (`patient/Observation.rs`). Mirrors the
+    // consent path's `grantable_scopes`; the same intersection runs again there.
+    if !requested_scopes.iter().all(|requested| {
+        client
+            .allowed_scopes
+            .iter()
+            .any(|allowed| scopes_rust::allowed_scope_covers(allowed, requested))
+    }) {
         return Err(AuthorizeError::redirect(
             parsed_redirect,
             OAuthErrorCode::InvalidScope,

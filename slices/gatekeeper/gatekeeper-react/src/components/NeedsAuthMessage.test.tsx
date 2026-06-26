@@ -36,8 +36,14 @@ const layerHolder: { current: Layer.Layer<GatekeeperHttpApiClient> } = {
   current: Layer.die('no client layer set for test'),
 }
 
+// Stands in for the host-threaded `localGrantedScopes` router-context value.
+// `undefined` (the default) exercises the component's standalone fallback; a
+// set value proves the request forwards the injected config.
+const scopesHolder: { current: string | undefined } = { current: undefined }
+
 vi.mock('../router-context.ts', () => ({
   useGatekeeperRuntimeLayer: (): Layer.Layer<GatekeeperHttpApiClient> => layerHolder.current,
+  useGatekeeperLocalGrantedScopes: (): string | undefined => scopesHolder.current,
 }))
 
 // The device flow writes the issued token through the
@@ -63,6 +69,7 @@ const PENDING_FOREVER = Effect.never
 afterEach(() => {
   cleanup()
   setTokenMock.mockReset()
+  scopesHolder.current = undefined
 })
 
 describe('<NeedsAuthMessage> device flow', () => {
@@ -103,12 +110,9 @@ describe('<NeedsAuthMessage> device flow', () => {
     expect(screen.getByText('Sign in on another device')).toBeTruthy()
   })
 
-  test("requests the first-party client's full allowed_scopes set", async () => {
-    // Captures the payload the flow hands to `DeviceAuthorization`. The
-    // requested scope must mirror gatekeeper-rust's
-    // `WILDFLOWER_LOCAL_GRANTED_SCOPES` exactly — the device_authorization
-    // handler exact-matches each requested scope and rejects the whole
-    // request with `invalid_scope` on any miss.
+  // Captures the payload the flow hands to `DeviceAuthorization` so the
+  // requested scope can be asserted.
+  const captureDeviceAuthorizationScope = async (): Promise<string> => {
     let capturedInput: unknown
     layerHolder.current = makeClientLayer({
       DeviceAuthorization: (input) => {
@@ -133,8 +137,22 @@ describe('<NeedsAuthMessage> device flow', () => {
       { timeout: 2000 }
     )
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test assertion: narrow the captured `unknown` to read the requested scope
-    const payload = (capturedInput as { readonly payload: { readonly scope: string } }).payload
-    expect(payload.scope).toBe('system/*.cruds wildflower/*.cruds')
+    return (capturedInput as { readonly payload: { readonly scope: string } }).payload.scope
+  }
+
+  test('forwards the host-threaded granted scopes verbatim', async () => {
+    // The requested scope is whatever the host threads from
+    // `tauri-shared-config.json` (gatekeeper-rust seeds the same string), so the
+    // component must forward it — not a hardcoded literal.
+    scopesHolder.current = 'system/Patient.rs wildflower/Grant.r'
+    expect(await captureDeviceAuthorizationScope()).toBe('system/Patient.rs wildflower/Grant.r')
+  })
+
+  test('falls back to the canonical scopes when the host threads none', async () => {
+    // Standalone/web renders carry no `localGrantedScopes`; the fallback keeps
+    // the WebView's device-login request asking for the first-party set.
+    scopesHolder.current = undefined
+    expect(await captureDeviceAuthorizationScope()).toBe('system/*.cruds wildflower/*.cruds')
   })
 
   test('renders the failure view when device authorization errors', async () => {

@@ -93,6 +93,14 @@ impl AccessRights {
     pub(in crate::scope) fn contains(self, other: AccessRights) -> bool {
         other.bits() & !self.bits() == 0
     }
+
+    /// These same rights as a canonical v2 letter bag (`read` → `rs`,
+    /// `write` → `cud`, `*` → `cruds`). A value already in letter form is
+    /// returned unchanged. Lets a v1 word grant be re-emitted in the letter
+    /// grammar a v2-only validator can read.
+    pub(in crate::scope) fn to_letter_bag_representation(self) -> Self {
+        AccessRights(Repr::Letters(self.bits()))
+    }
 }
 
 impl fmt::Display for AccessRights {

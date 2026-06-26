@@ -44,6 +44,13 @@ interface RouterContext extends BaseRouterContext.RouterContextWith<SliceService
    * web/embedded, where the page IS the API origin.
    */
   readonly apiBaseUrl?: string
+  /**
+   * The host's granted-scope string (e.g. `system/*.cruds wildflower/*.cruds`),
+   * sourced from the Tauri shell's `tauri-shared-config.json`. Read by the
+   * gatekeeper slice's `NeedsAuthMessage` so the WebView's device-login request
+   * asks for exactly the scopes gatekeeper-rust seeds. Omitted on web/embedded.
+   */
+  readonly localGrantedScopes?: string
 }
 
 /**

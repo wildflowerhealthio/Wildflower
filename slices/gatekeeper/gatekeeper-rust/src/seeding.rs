@@ -13,7 +13,7 @@ use crate::db::GatekeeperStore;
 use crate::domain::client::{AllowedGrantType, Client, ClientKind};
 use crate::domain::signing_key::SigningKey;
 use crate::domain::token::{mint_access_token, MintError, NewJwtArgs};
-use crate::{FIRST_PARTY_CLIENT_ID, WILDFLOWER_LOCAL_GRANTED_SCOPES};
+use crate::FIRST_PARTY_CLIENT_ID;
 
 /// Wrap the shared `conn` in a gatekeeper store (applying migrations) and run
 /// every first-boot seeding step — signing key, the first-party host client, and
@@ -24,10 +24,14 @@ use crate::{FIRST_PARTY_CLIENT_ID, WILDFLOWER_LOCAL_GRANTED_SCOPES};
 ///
 /// Returns an error if the store cannot be created (migrations) or if any seeding
 /// step fails.
-pub fn open_and_seed_store(conn: Connection) -> anyhow::Result<GatekeeperStore> {
+pub fn open_and_seed_store(
+    conn: Connection,
+    granted_scopes: &[String],
+) -> anyhow::Result<GatekeeperStore> {
     let store = GatekeeperStore::new(conn).context("failed to open gatekeeper store")?;
     ensure_some_active_signing_key(&store).context("failed to seed signing key")?;
-    ensure_first_party_client(&store).context("failed to seed first-party client")?;
+    ensure_first_party_client(&store, granted_scopes)
+        .context("failed to seed first-party client")?;
     ensure_smart_growth_chart_client(&store)
         .context("failed to seed SMART growth-chart sample client")?;
     ensure_precise_hbr_client(&store).context("failed to seed PRECISE-HBR client")?;
@@ -149,16 +153,20 @@ fn ensure_precise_hbr_client(store: &GatekeeperStore) -> anyhow::Result<()> {
 
 /// Ensure the `wildflower-host` first-party client matches the code's
 /// definition. Upserted on every boot so its `allowed_scopes` (and the rest of
-/// its policy) always match [`WILDFLOWER_LOCAL_GRANTED_SCOPES`], correcting a
-/// store seeded by an older build (registration time and any admin disable are
-/// preserved).
-fn ensure_first_party_client(store: &GatekeeperStore) -> anyhow::Result<()> {
+/// its policy) always match the host's `granted_scopes` (the live app sources
+/// these from `tauri-shared-config.json`; see
+/// [`crate::default_local_granted_scopes`]), correcting a store seeded by an
+/// older build (registration time and any admin disable are preserved).
+fn ensure_first_party_client(
+    store: &GatekeeperStore,
+    granted_scopes: &[String],
+) -> anyhow::Result<()> {
     let client = Client {
         client_id: FIRST_PARTY_CLIENT_ID.to_string(),
         name: "Wildflower (host)".to_string(),
         kind: ClientKind::Public,
         redirect_uris: JsonColumn(vec![]),
-        allowed_scopes: JsonColumn(scopes_rust::render_scopes(WILDFLOWER_LOCAL_GRANTED_SCOPES)),
+        allowed_scopes: JsonColumn(granted_scopes.to_vec()),
         allowed_grant_types: JsonColumn(AllowedGrantType::ALL.to_vec()),
         secret_hash: None,
         registered_at: Utc::now(),
@@ -199,20 +207,21 @@ pub(crate) fn mint_host_owner_token(
     iss: &str,
     aud: &str,
     ttl: Duration,
+    granted_scopes: &[String],
 ) -> Result<String, HostTokenError> {
     let key = store
         .active_signing_key()?
         .ok_or(HostTokenError::NoSigningKeys)?;
-    // The host owner token carries the full set the local app is granted (the
-    // FHIR and Wildflower full-access wildcards): it gates HFS's FHIR surface and
-    // — since `require_owner_auth` checks coverage of every `WILDFLOWER_WIDEST_SCOPES`
-    // entry — gatekeeper's `/access/*` admin surface too.
-    let scope = scopes_rust::render_scopes(WILDFLOWER_LOCAL_GRANTED_SCOPES);
+    // The host owner token carries the host's granted scopes (by default the FHIR
+    // and Wildflower full-access wildcards): it gates HFS's FHIR surface and —
+    // since `require_owner_auth` checks coverage of every `WILDFLOWER_WIDEST_SCOPES`
+    // entry — gatekeeper's `/access/*` admin surface too. `setup_gatekeeper`
+    // asserts the granted set covers WIDEST before we reach here.
     Ok(mint_access_token(
         &key,
         &NewJwtArgs {
             client_id: FIRST_PARTY_CLIENT_ID,
-            scope: &scope,
+            scope: granted_scopes,
             ttl,
             origin: iss,
             audience: Some(aud),

@@ -10,6 +10,13 @@ pub use on_device_webview_handle::OnDeviceWebviewHandle;
 /// Canonical, build-time-fixed `iss` claim baked into every JWT minted by
 /// gatekeeper and the value HFS validates against on every FHIR request.
 ///
+/// A single, deliberate constant — Wildflower is single-tenant for now, so
+/// there is intentionally **no** per-deployment / env override path: every
+/// install shares this one issuer identity. This is a conscious choice, not an
+/// oversight; a multi-tenant / white-label story (a deployment-scoped issuer
+/// threaded to both mint and validate) is deferred until there's a second
+/// tenant to justify it.
+///
 /// Hardcoded for now: gatekeeper used to derive `iss` from the per-request
 /// origin, which meant a single `HFS_AUTH_ISSUER` couldn't accept both
 /// loopback-minted owner tokens (`http://127.0.0.1:...`) and tunnel-minted

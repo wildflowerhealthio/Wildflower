@@ -33,6 +33,7 @@ fn spin_up() -> (Gatekeeper, String, Connection) {
     let db = Connection::open_in_memory().expect("open shared db");
     let config = GatekeeperConfig {
         loopback_origin: LOOPBACK_ORIGIN.to_string(),
+        granted_scopes: gatekeeper_rust::default_local_granted_scopes(),
     };
     let (token_tx, token_rx) = watch::channel::<Option<String>>(None);
     let (active_device_tx, _active_device_rx) = watch::channel::<Option<String>>(None);
@@ -307,6 +308,46 @@ async fn authorize_disallowed_scope_redirects_invalid_scope() {
 }
 
 #[tokio::test]
+async fn authorize_allows_scope_covered_by_a_broader_allowed_scope() {
+    // The allowlist check is coverage-aware, not exact string membership: a
+    // client allowed the v1 `patient/Observation.read` also admits a request for
+    // the equivalent v2 `patient/Observation.rs`. With the old exact-match gate
+    // this redirected `invalid_scope`; now it parks a pending request like any
+    // allowed scope (no `error=` redirect back to the client).
+    let (g, _host_owner_token, db) = spin_up();
+    seed_client_with_redirect(
+        &db,
+        "test-app",
+        "https://app.example/cb",
+        &["patient/Observation.read"],
+    );
+    let challenge = compute_code_challenge(CODE_VERIFIER);
+    let query = format!(
+        "response_type=code&code_challenge_method=S256&client_id=test-app&\
+         scope=patient%2FObservation.rs&code_challenge={challenge}&\
+         redirect_uri=https%3A%2F%2Fapp.example%2Fcb&state=xyz"
+    );
+    let res = g
+        .router
+        .oneshot(loopback_request(
+            Request::get(format!("/oauth/authorize?{query}")),
+            Body::empty(),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::FOUND);
+    let location = res
+        .headers()
+        .get("location")
+        .and_then(|v| v.to_str().ok())
+        .expect("location");
+    assert!(
+        !location.contains("error="),
+        "a covered scope must not trigger an error redirect, got {location}"
+    );
+}
+
+#[tokio::test]
 async fn authorize_accepts_smart_launch_and_aud_params() {
     // SMART App Launch forwards `launch` (the EHR-minted nonce) and `aud`
     // (the FHIR base URL the app expects) alongside the standard authorize
@@ -393,6 +434,24 @@ async fn device_authorization_happy_path() {
     // The user_code is also a well-formed, human-typeable pairing code — a
     // relationship the opaque whole-value comparison above can't express.
     assert!(gatekeeper_rust::crypto_util::oauth_user_code::is_valid_oauth_user_code(&user_code));
+}
+
+#[tokio::test]
+async fn device_authorization_allows_scope_covered_by_client_wildcard() {
+    // Coverage-aware allowlist (not exact string membership): the host client is
+    // allowed `system/*.cruds`, which covers a request for the narrower
+    // `system/Observation.rs`. The old exact-match gate rejected this with
+    // `invalid_scope`; now it issues a device/user code pair like any allowed
+    // scope.
+    let (g, _host_owner_token, _db) = spin_up();
+    let body = "client_id=wildflower-host&scope=system%2FObservation.rs";
+    let req = loopback_request(
+        Request::post("/oauth/device_authorization")
+            .header("content-type", "application/x-www-form-urlencoded"),
+        Body::from(body),
+    );
+    let res = g.router.oneshot(req).await.expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
 }
 
 #[tokio::test]
@@ -720,6 +779,88 @@ async fn auth_code_grant_happy_path_end_to_end() {
         .is_empty());
     // No `offline_access` in the grant → no standing credential.
     assert!(token.get("refresh_token").is_none());
+}
+
+/// Decode a JWT's payload (the middle base64url-no-pad segment) to JSON. The
+/// signature isn't verified — fine for asserting claim *shape* in a test.
+fn decode_jwt_payload(token: &str) -> serde_json::Value {
+    let payload_b64 = token.split('.').nth(1).expect("jwt payload segment");
+    let bytes = base64::url_safe_no_pad_decode(payload_b64).expect("base64url payload");
+    serde_json::from_slice(&bytes).expect("payload json")
+}
+
+/// HFS authorizes FHIR reads off the token's `scope` claim, parsing only the
+/// SMART v2 letter grammar — so a v1-worded grant must be minted with its
+/// letter-form alternate alongside it. The app-facing `TokenResponse.scope`
+/// stays the granted set verbatim.
+#[tokio::test]
+async fn minted_jwt_scope_claim_carries_alternate_canonical_forms() {
+    let (g, host_owner_token, db) = spin_up();
+    seed_client_with_redirect(
+        &db,
+        "test-app",
+        "https://app.example/cb",
+        &["patient/Observation.read"],
+    );
+    let request_id = authorize_and_approve(
+        &g,
+        &host_owner_token,
+        "test-app",
+        "patient%2FObservation.read",
+        r#"{"approvedScopes":["patient/Observation.read"]}"#,
+    )
+    .await;
+
+    // Poll the approved request for the client redirect carrying the code.
+    let res = g
+        .router
+        .clone()
+        .oneshot(loopback_request(
+            Request::get(format!("/oauth/authorize/{request_id}")),
+            Body::empty(),
+        ))
+        .await
+        .expect("oneshot");
+    let status = body_json(res.into_body()).await;
+    let redirect = status["redirect"].as_str().expect("redirect");
+    let code = Url::parse(redirect)
+        .expect("redirect url")
+        .query_pairs()
+        .find(|(k, _)| k == "code")
+        .map(|(_, v)| v.into_owned())
+        .expect("code param");
+
+    // Redeem the code for a token.
+    let body = format!(
+        "grant_type=authorization_code&client_id=test-app&code={code}&\
+         code_verifier={CODE_VERIFIER}&redirect_uri=https%3A%2F%2Fapp.example%2Fcb"
+    );
+    let res = g
+        .router
+        .clone()
+        .oneshot(loopback_request(
+            Request::post("/oauth/token")
+                .header("content-type", "application/x-www-form-urlencoded"),
+            Body::from(body),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+    let token = body_json(res.into_body()).await;
+
+    // App-facing `scope` is the granted set, unexpanded.
+    assert_eq!(token["scope"], "patient/Observation.read");
+
+    // The signed JWT carries both the v1 word and its v2 letter twin.
+    let access_token = token["access_token"].as_str().expect("access_token");
+    let claims = decode_jwt_payload(access_token);
+    let scope_claim = claims["scope"].as_str().expect("scope claim");
+    let claim_scopes: Vec<&str> = scope_claim.split_whitespace().collect();
+    assert!(
+        claim_scopes.contains(&"patient/Observation.read")
+            && claim_scopes.contains(&"patient/Observation.rs"),
+        "JWT scope claim must carry both v1 and v2 forms, got {scope_claim:?}"
+    );
 }
 
 /// Drive `/authorize` → Owner consent approve for one request, returning the
