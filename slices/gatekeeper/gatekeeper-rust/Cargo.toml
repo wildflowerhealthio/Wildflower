@@ -13,6 +13,10 @@ serde_json.workspace = true
 utoipa.workspace = true
 utoipa-axum.workspace = true
 persistence-rust = { path = "../../persistence/persistence-rust" }
+# OAuth 2.0 / SMART on FHIR scope primitives (the v1↔v2 grammar and the
+# canonical scope strings) — gatekeeper is the canonical consumer; the crate
+# was extracted out of here so other slices (emr-rust) can share one grammar.
+scopes-rust = { path = "../../scopes/scopes-rust" }
 # The shared forwarding-header provenance helpers (`served_origin_for`,
 # `request_provenance`) — gatekeeper-rust resolves token issuer URLs through
 # them, and apps-rust dispatches launches off the same provenance, so the

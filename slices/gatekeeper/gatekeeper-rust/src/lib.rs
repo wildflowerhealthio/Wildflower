@@ -42,22 +42,6 @@ pub use http::{
 /// own client registration during bootstrap.
 pub const FIRST_PARTY_CLIENT_ID: &str = "wildflower-host";
 
-/// OAuth scope that grants Owner-level access to the gatekeeper's
-/// `/access/*` admin surface (client management, grant revocation, owner
-/// consent endpoints). **Not** a SMART v2 scope and not parseable by
-/// helios-auth's scope policy — `require_auth` does an exact-string match
-/// against this constant. Pairing it with [`FULL_FHIR_ACCESS_SCOPE`] in
-/// the owner token gives the host both admin and FHIR access without
-/// overloading either scope's meaning.
-pub const OWNER_SCOPE: &str = "wildflower/admin";
-
-/// SMART v2 wildcard meaning "create / read / update / delete / search on
-/// every resource type at the system access level". HFS's helios-auth scope
-/// policy parses this and grants every FHIR operation. Granted alongside
-/// [`OWNER_SCOPE`] in the boot owner token so the WebView's loopback FHIR
-/// calls pass HFS's per-operation scope check.
-pub const FULL_FHIR_ACCESS_SCOPE: &str = "system/*.cruds";
-
 /// Lifetime of the host owner token minted at boot.
 const HOST_OWNER_TOKEN_TTL: Duration = Duration::hours(24);
 

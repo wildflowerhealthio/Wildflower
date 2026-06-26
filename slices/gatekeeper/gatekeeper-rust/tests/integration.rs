@@ -3,9 +3,8 @@ use std::net::SocketAddr;
 use axum::body::{to_bytes, Body};
 use axum::extract::ConnectInfo;
 use axum::http::{Request, StatusCode};
-use gatekeeper_rust::{
-    setup_gatekeeper, Gatekeeper, GatekeeperConfig, FULL_FHIR_ACCESS_SCOPE, OWNER_SCOPE,
-};
+use gatekeeper_rust::{setup_gatekeeper, Gatekeeper, GatekeeperConfig};
+use scopes_rust::{FULL_FHIR_ACCESS_SCOPE, OWNER_SCOPE};
 use tokio::sync::watch;
 
 const LOOPBACK_ORIGIN: &str = "http://127.0.0.1";

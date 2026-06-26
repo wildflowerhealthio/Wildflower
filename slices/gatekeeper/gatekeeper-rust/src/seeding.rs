@@ -11,7 +11,8 @@ use crate::db::GatekeeperStore;
 use crate::domain::client::{AllowedGrantType, Client, ClientKind};
 use crate::domain::signing_key::SigningKey;
 use crate::domain::token::{mint_access_token, MintError, NewJwtArgs};
-use crate::{FIRST_PARTY_CLIENT_ID, FULL_FHIR_ACCESS_SCOPE, OWNER_SCOPE};
+use crate::FIRST_PARTY_CLIENT_ID;
+use scopes_rust::{FULL_FHIR_ACCESS_SCOPE, OWNER_SCOPE};
 
 /// Wrap the shared `conn` in a gatekeeper store (applying migrations) and run
 /// every idempotent first-boot seeding step — signing key, first-party client.

@@ -8,7 +8,7 @@ use crate::domain::token::{verify_jwt, VerifiedClaims, VerifyError, VerifyOption
 use crate::http::response_templates;
 use crate::http::served_origin_for;
 use crate::http::state::AppState;
-use crate::OWNER_SCOPE;
+use scopes_rust::OWNER_SCOPE;
 
 pub async fn require_owner_auth(
     State(state): State<AppState>,

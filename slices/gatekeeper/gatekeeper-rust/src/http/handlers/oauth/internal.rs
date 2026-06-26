@@ -25,11 +25,6 @@ pub const ACCESS_TOKEN_TTL: Duration = Duration::hours(1);
 /// deadline — past it the client re-runs the authorization flow.
 pub const REFRESH_TOKEN_FAMILY_TTL: Duration = Duration::days(90);
 
-/// Scope that opts a grant into refresh-token issuance (SMART on FHIR's
-/// `offline_access` convention). Without it `/token` responses carry no
-/// `refresh_token`.
-pub const OFFLINE_ACCESS_SCOPE: &str = "offline_access";
-
 /// Minimum polling interval the device-code flow enforces (RFC 8628 §3.5).
 pub const DEVICE_CODE_POLL_INTERVAL: Duration = Duration::seconds(5);
 
@@ -96,8 +91,8 @@ pub struct TokenResponse {
     pub token_type: String,
     pub expires_in: i64,
     pub scope: String,
-    /// Present only when the grant carries [`OFFLINE_ACCESS_SCOPE`] — the
-    /// plaintext of the freshly-minted refresh-token generation (RFC 6749
+    /// Present only when the grant carries [`scopes_rust::OFFLINE_ACCESS_SCOPE`]
+    /// — the plaintext of the freshly-minted refresh-token generation (RFC 6749
     /// §5.1; only its hash is persisted).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub refresh_token: Option<String>,

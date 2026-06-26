@@ -11,7 +11,7 @@ use super::client_auth::ClientCredentials;
 use super::error_codes::OAuthErrorCode;
 use super::internal::{
     issue_token_response, require_valid_client_for_token, IssueTokenInput, OAuthError, TokenError,
-    TokenResponse, DEVICE_CODE_POLL_INTERVAL, OFFLINE_ACCESS_SCOPE, REFRESH_TOKEN_FAMILY_TTL,
+    TokenResponse, DEVICE_CODE_POLL_INTERVAL, REFRESH_TOKEN_FAMILY_TTL,
 };
 use super::openapi::TokenRequestBody;
 use super::token_request::TokenRequest;
@@ -25,6 +25,7 @@ use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 use crate::http::state::AppState;
 use crate::http::ServedOrigin;
 use persistence_rust::JsonColumn;
+use scopes_rust::OFFLINE_ACCESS_SCOPE;
 
 /// Body of an RFC 6749 / RFC 8628 token endpoint request, dispatched by the
 /// wire-level `grant_type` field. Client credentials are not parsed here —

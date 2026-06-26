@@ -18,6 +18,9 @@ helios-auth = "=0.2.0"
 #   helios-audit       — audit sink trait (we use the null sink today)
 helios-audit = { version = "=0.2.0", default-features = false, features = ["R4"] }
 shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = ["served-origin"] }
+# Canonical SMART scope strings — the `/.well-known/smart-configuration`
+# `scopes_supported` list is the extracted `SMART_SCOPES_SUPPORTED` constant.
+scopes-rust = { path = "../../scopes/scopes-rust" }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net"] }
