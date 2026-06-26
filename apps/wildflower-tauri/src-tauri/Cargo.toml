@@ -50,7 +50,16 @@ persistence-rust = { path = "../../../slices/persistence/persistence-rust" }
 shared-structures-rust = { path = "../../../slices/shared-structures/shared-structures-rust", features = [
   "health-check",
 ] }
+# Provides `resolve_http_url`, the http(s)-only validator the apps launch flow
+# gates its `RequestSandboxedWebView { url }` on before handing the URL to the
+# native-webview plugin.
+shared-structures-tauri-rust = { path = "../../../slices/shared-structures/shared-structures-tauri-rust" }
 tunnel-rust = { path = "../../../slices/tunnel/tunnel-rust" }
+# Server-side shared infra: the reverse proxy that dispatches inbound
+# `<id>.<public-host>` forwarded requests to each self-hosted app's loopback
+# port, plus the static-hosts runner the apps slice drives. Replaces the former
+# in-app `subdomain_dispatch` module.
+shared-structures-server-rust = { path = "../../../slices/shared-structures/shared-structures-server-rust" }
 anyhow.workspace = true
 axum.workspace = true
 tokio = { workspace = true, features = ["full"] }
@@ -66,4 +75,7 @@ workspace = true
 
 [dev-dependencies]
 http-body-util = "0.1"
+# `ServiceExt::oneshot` — the api_stubs tests drive a router directly. (The
+# subdomain reverse proxy that used this at runtime now lives in
+# shared-structures-server-rust.)
 tower = { version = "0.5", features = ["util"] }

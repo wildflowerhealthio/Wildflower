@@ -713,9 +713,8 @@ class NativeWebviewController: UIViewController, UIAdaptivePresentationControlle
 
   override func viewWillAppear(_ animated: Bool) {
     super.viewWillAppear(animated)
-    // The toolbar is hidden by default on a freshly-created
-    // UINavigationController; reveal it here so the back/forward items
-    // render. Idempotent.
+    // Reveal the toolbar (hidden by default on a fresh UINavigationController) so
+    // the back/forward items render. Idempotent with the same call in `present`.
     navigationController?.setToolbarHidden(false, animated: false)
   }
 
@@ -838,10 +837,9 @@ class NativeWebviewController: UIViewController, UIAdaptivePresentationControlle
     }
   }
 
-  /// (Re)compose `toolbarItems` from the current `messageLabel.text` —
-  /// includes the message slot only when there's text to render. Single
-  /// writer for `toolbarItems` so we never end up with a stranded fixed
-  /// spacer or an empty-customView dot in the bar.
+  /// (Re)compose `toolbarItems` from the current `messageLabel.text` — the
+  /// single writer for `toolbarItems`, including the message slot only when
+  /// there's text to render (see the layout note in `viewDidLoad`).
   private func rebuildToolbarItems() {
     let flexible = UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil)
     let hasMessage = !(messageLabel.text?.isEmpty ?? true)

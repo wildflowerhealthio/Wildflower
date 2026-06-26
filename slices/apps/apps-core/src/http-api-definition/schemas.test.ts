@@ -133,6 +133,13 @@ describe('CreateAppBodySchema', () => {
       expect.objectContaining({ _tag: 'ParseError' })
     )
   })
+
+  // The write side accepts `""` (which the read schema rejects); the server
+  // normalizes it to "no subtitle" so it never round-trips back as `""`.
+  it('accepts an empty-string subtitle (server clears it)', () => {
+    const body = { name: 'X', url: 'https://example.com', requiresTunnel: false, subtitle: '' }
+    expectRightToEqual(Schema.decodeUnknownEither(CreateAppBodySchema)(body), body)
+  })
 })
 
 describe('UpdateAppBodySchema', () => {
@@ -158,6 +165,13 @@ describe('UpdateAppBodySchema', () => {
       Schema.decodeUnknownEither(UpdateAppBodySchema)({ url: 'data:text/html,<script>' }),
       expect.objectContaining({ _tag: 'ParseError' })
     )
+  })
+
+  // Same empty-string-clears-it contract as on create (above).
+  it('accepts an empty-string subtitle (clears it server-side)', () => {
+    expectRightToEqual(Schema.decodeUnknownEither(UpdateAppBodySchema)({ subtitle: '' }), {
+      subtitle: '',
+    })
   })
 })
 

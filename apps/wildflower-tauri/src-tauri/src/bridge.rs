@@ -1,10 +1,8 @@
 use std::sync::Arc;
 
-use apps_rust::bridge::{AppsHostToWeb, REQUEST_TUNNEL_TAG};
 use gatekeeper_rust::bridge::GatekeeperHostToWeb;
 use serde::Deserialize;
 use shared_structures_rust::bridge::BRIDGE_EVENT;
-use shared_structures_rust::tunnel_service::TunnelService;
 use tauri::{AppHandle, Emitter, Listener, Manager};
 use tauri_plugin_log::log;
 use tokio::sync::{watch, Notify};
@@ -351,13 +349,9 @@ pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
                     if token.is_some() {
                         emit_auth_token_notify(&handle);
                     }
-                    // Also `borrow_and_update` on consent: a `__Ready`
-                    // that races a boot-time republish would otherwise
-                    // leave the just-delivered value unseen and the
-                    // `ConsentChanged` arm would immediately wake to
-                    // re-emit the same value (and re-fire the focus
-                    // path). A real later change still bumps the
-                    // version and wakes `changed` regardless.
+                    // `borrow_and_update` so a `__Ready` racing a boot-time
+                    // republish doesn't leave the value unseen and re-wake the
+                    // `ConsentChanged` arm (see the doc comment).
                     let consent = consent_rx.borrow_and_update().clone();
                     last_delivered_consent = consent.clone();
                     emit_device_consent(&handle, &consent);
@@ -380,12 +374,8 @@ pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
                     let is_some = consent.is_some();
                     last_delivered_consent = consent.clone();
                     emit_device_consent(&handle, &consent);
-                    // Raise the window only on the `None → Some`
-                    // transition — that's the "a new popup just
-                    // appeared" signal. `Some(A) → Some(B)` (the user
-                    // advancing through a queue they're already
-                    // looking at) and `Some → None` (a clear) leave
-                    // focus alone.
+                    // Raise the window only on `None → Some` — a brand-new
+                    // popup. See the doc comment's "Window focus" note.
                     if was_none && is_some {
                         raise_main_window(&handle);
                     }
@@ -420,58 +410,6 @@ fn emit_device_consent(handle: &AppHandle, user_code: &Option<String>) {
     }
 }
 
-/// Wire the apps slice's `RequestTunnel` web→host handler onto the bridge.
-///
-/// The embedded SPA emits `bridge:RequestTunnel` when launching an app that
-/// needs a publicly-reachable origin while the tunnel isn't up yet. The host
-/// brings the tunnel up through the shared [`TunnelService`] (the same
-/// `tunnel.control` the launch HTTP path resolves through) and replies with
-/// `bridge:TunnelStarted { origin }` carrying the verified public origin, or
-/// `bridge:TunnelFailed { reason }`.
-///
-/// `try_start` is async — it awaits the `/health` verify — so each request is
-/// handled on a spawned task to keep the sync listener non-blocking. Multiple
-/// listeners share `BRIDGE_EVENT`; this one decodes only the envelope's `_tag`
-/// and acts solely on `RequestTunnel`, dropping every other tag (sibling
-/// slices' web→host traffic and the host→web echoes of our own replies), so it
-/// can't loop on its own `TunnelStarted`/`TunnelFailed` emit.
-pub fn attach_apps_tunnel_bridge(app: &AppHandle, tunnel: Arc<dyn TunnelService>) {
-    log::info!("[bridge] listening on '{BRIDGE_EVENT}' for tags: [{REQUEST_TUNNEL_TAG}]");
-    let handle = app.clone();
-    app.listen(BRIDGE_EVENT, move |event| {
-        if !is_request_tunnel(event.payload()) {
-            return;
-        }
-        let handle = handle.clone();
-        let tunnel = Arc::clone(&tunnel);
-        tauri::async_runtime::spawn(async move {
-            let reply = match tunnel.try_start().await {
-                Ok(origin) => AppsHostToWeb::TunnelStarted { origin },
-                Err(reason) => AppsHostToWeb::TunnelFailed { reason },
-            };
-            match handle.emit(BRIDGE_EVENT, &reply) {
-                Ok(()) => log::debug!("[bridge] apps tunnel reply delivered: {reply:?}"),
-                Err(error) => log::error!("[bridge] failed to emit apps tunnel reply: {error}"),
-            }
-        });
-    });
-}
-
-/// Whether a bridge envelope is the apps `RequestTunnel` web→host message.
-/// Decodes only the `_tag`, so host→web echoes (our own `TunnelStarted` /
-/// `TunnelFailed`) and sibling slices' traffic are ignored. An undecodable
-/// payload (missing/non-string `_tag`) is not a `RequestTunnel`.
-fn is_request_tunnel(payload: &str) -> bool {
-    #[derive(Deserialize)]
-    struct TagOnly {
-        #[serde(rename = "_tag")]
-        tag: String,
-    }
-    serde_json::from_str::<TagOnly>(payload)
-        .map(|m| m.tag == REQUEST_TUNNEL_TAG)
-        .unwrap_or(false)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -484,24 +422,6 @@ mod tests {
     fn tag_literals_match_the_ts_convention() {
         assert_eq!(READY_TAG, "__Ready");
         assert_eq!(LOG_TAG, "Log");
-    }
-
-    #[test]
-    fn is_request_tunnel_matches_only_the_request_tunnel_tag() {
-        // The web→host request the host acts on.
-        assert!(is_request_tunnel(r#"{"_tag":"RequestTunnel"}"#));
-        // Host→web echoes of our own replies must NOT re-trigger the handler
-        // (the listener shares the bridge event, so it sees its own emits).
-        assert!(!is_request_tunnel(
-            r#"{"_tag":"TunnelStarted","origin":"https://h"}"#
-        ));
-        assert!(!is_request_tunnel(
-            r#"{"_tag":"TunnelFailed","reason":"x"}"#
-        ));
-        // Sibling slices' traffic and malformed payloads are ignored.
-        assert!(!is_request_tunnel(r#"{"_tag":"AuthTokenIssued"}"#));
-        assert!(!is_request_tunnel(r#"{"_tag":42}"#));
-        assert!(!is_request_tunnel("not json"));
     }
 
     #[test]

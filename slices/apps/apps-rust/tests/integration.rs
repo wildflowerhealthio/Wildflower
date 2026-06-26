@@ -1,7 +1,8 @@
 //! End-to-end integration tests for the apps slice. Exercises both routers
 //! through `tower::ServiceExt::oneshot` so a regression in the wire
-//! contract — status codes, JSON shapes, the `Location` header on launch
-//! — fails the test rather than relying on unit-level handler coverage.
+//! contract — status codes, JSON shapes, and the launch target a loopback
+//! `204` routes to the on-device webview handle — fails the test rather than
+//! relying on unit-level handler coverage.
 //!
 //! Mirrors `gatekeeper-rust/tests/integration.rs`: one shared in-memory DB
 //! shared between the public and admin routers (so a row created or
@@ -18,16 +19,35 @@ use serde_json::Value;
 use shared_structures_rust::tunnel_service::OfflineTunnel;
 use tower::ServiceExt;
 
-const LOOPBACK_ORIGIN: &str = "http://127.0.0.1:8080";
+use shared_structures_rust::test_utils::RecordingStubWebviewHandle;
 
-fn spin_up() -> Apps {
+const LOOPBACK_ORIGIN: &str = "http://127.0.0.1:8080";
+const LOOPBACK_HOSTNAME: &str = "127.0.0.1";
+
+/// Spin up the slice plus the recording on-device webview handle, so a launch
+/// test can assert the URL a loopback launch routes to it.
+///
+/// No tunnel in the harness (an [`OfflineTunnel`]): a `requires_tunnel` launch
+/// would `503`, so the harness only issues loopback launches of non-tunnel apps.
+fn spin_up_with_handle() -> (Apps, Arc<RecordingStubWebviewHandle>) {
     let db = Connection::open_in_memory().expect("open shared db");
     let config = AppsConfig {
         loopback_origin: LOOPBACK_ORIGIN.to_string(),
+        loopback_hostname: LOOPBACK_HOSTNAME.to_string(),
     };
-    // No tunnel in the integration harness: `requires_tunnel` launches fall
-    // back to loopback + `?tunnel=unavailable`.
-    setup_apps(db, &config, Arc::new(OfflineTunnel::new(LOOPBACK_ORIGIN))).expect("setup_apps")
+    let handle = Arc::new(RecordingStubWebviewHandle::default());
+    let apps = setup_apps(
+        db,
+        &config,
+        Arc::new(OfflineTunnel::new(LOOPBACK_ORIGIN)),
+        handle.clone(),
+    )
+    .expect("setup_apps");
+    (apps, handle)
+}
+
+fn spin_up() -> Apps {
+    spin_up_with_handle().0
 }
 
 async fn body_json(body: Body) -> Value {
@@ -55,6 +75,12 @@ fn patch(uri: &str, body: serde_json::Value) -> Request<Body> {
 
 fn delete(uri: &str) -> Request<Body> {
     Request::delete(uri).body(Body::empty()).expect("build")
+}
+
+/// A launch request — `POST /apps/{id}` with an empty body (the launch carries
+/// no payload; the id is in the path).
+fn launch(uri: &str) -> Request<Body> {
+    Request::post(uri).body(Body::empty()).expect("build")
 }
 
 /// Fresh-install seed: every code-defined default app present and
@@ -94,7 +120,7 @@ async fn fresh_install_lists_the_default_set_without_fhir_sharing() {
 /// admin router shows up immediately through the public one.
 #[tokio::test]
 async fn apps_round_trip_between_routers() {
-    let apps = spin_up();
+    let (apps, handle) = spin_up_with_handle();
     let create_res = apps
         .admin_router
         .clone()
@@ -131,18 +157,14 @@ async fn apps_round_trip_between_routers() {
     let launch_res = apps
         .public_router
         .clone()
-        .oneshot(get(&format!("/apps/{id}")))
+        .oneshot(launch(&format!("/apps/{id}")))
         .await
         .expect("oneshot");
-    assert_eq!(launch_res.status(), StatusCode::FOUND);
+    assert_eq!(launch_res.status(), StatusCode::NO_CONTENT);
     assert_eq!(
-        launch_res
-            .headers()
-            .get("location")
-            .expect("location")
-            .to_str()
-            .unwrap(),
-        "https://example.com/launch",
+        handle.0.lock().expect("handle mutex").clone(),
+        vec!["https://example.com/launch".to_string()],
+        "a loopback launch routes the resolved URL to the on-device webview handle",
     );
 
     let delete_res = apps
@@ -171,18 +193,18 @@ async fn apps_round_trip_between_routers() {
     );
 }
 
-/// Every app is first-class: rename, URL swap, and disable land
+/// Every external app is first-class: rename, URL swap, and disable land
 /// successfully and persist into the public list.
 #[tokio::test]
-async fn seeded_app_is_fully_editable() {
+async fn seeded_external_app_is_fully_editable() {
     let apps = spin_up();
     let patch_res = apps
         .admin_router
         .clone()
         .oneshot(patch(
-            "/apps/patient-browser",
+            "/apps/api-docs",
             serde_json::json!({
-                "name": "Renamed Browser",
+                "name": "Renamed Docs",
                 "url": "https://example.com/replacement",
                 "enabled": false,
             }),
@@ -191,7 +213,7 @@ async fn seeded_app_is_fully_editable() {
         .expect("oneshot");
     assert_eq!(patch_res.status(), StatusCode::OK);
     let body = body_json(patch_res.into_body()).await;
-    assert_eq!(body["name"], "Renamed Browser");
+    assert_eq!(body["name"], "Renamed Docs");
     assert_eq!(body["url"], "https://example.com/replacement");
     assert_eq!(body["enabled"], false);
 
@@ -206,10 +228,70 @@ async fn seeded_app_is_fully_editable() {
         .as_array()
         .unwrap()
         .iter()
+        .find(|v| v["id"] == "api-docs")
+        .expect("api-docs in list");
+    assert_eq!(row["name"], "Renamed Docs");
+    // `url` doesn't ride on the public list; the edited URL round-trips
+    // through the admin PATCH response above, which is the contract clients
+    // rely on.
+    assert!(row.get("url").is_none(), "GET /apps must not expose url");
+}
+
+/// Internal apps appear in the public list under their id without a
+/// `url` field (the launch endpoint resolves the per-caller target — the
+/// catalogue stays provenance-free). The admin surface, which only
+/// operates on the externals table, cannot reach them (a PATCH 404s).
+#[tokio::test]
+async fn internal_app_appears_in_public_list_but_is_not_editable() {
+    let apps = spin_up();
+    let list_res = apps
+        .public_router
+        .clone()
+        .oneshot(get("/apps"))
+        .await
+        .expect("oneshot");
+    let list = body_json(list_res.into_body()).await;
+    let row = list
+        .as_array()
+        .unwrap()
+        .iter()
         .find(|v| v["id"] == "patient-browser")
         .expect("patient-browser in list");
-    assert_eq!(row["name"], "Renamed Browser");
-    assert_eq!(row["url"], "https://example.com/replacement");
+    assert_eq!(row["name"], "Patient Browser");
+    assert!(
+        row.get("url").is_none(),
+        "GET /apps must not expose url, got {row}",
+    );
+
+    let patch_res = apps
+        .admin_router
+        .clone()
+        .oneshot(patch(
+            "/apps/patient-browser",
+            serde_json::json!({ "name": "tampered" }),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(patch_res.status(), StatusCode::NOT_FOUND);
+}
+
+/// A loopback launch of an internal app `204`s and routes its dedicated
+/// loopback origin (`http://{host}:{port}/`, fixed, no `{origin}` substitution)
+/// to the on-device webview handle.
+#[tokio::test]
+async fn internal_app_launches_to_its_dedicated_loopback_origin() {
+    let (apps, handle) = spin_up_with_handle();
+    let res = apps
+        .public_router
+        .clone()
+        .oneshot(launch("/apps/patient-browser"))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::NO_CONTENT);
+    assert_eq!(
+        handle.0.lock().expect("handle mutex").clone(),
+        vec!["http://127.0.0.1:8081/".to_string()],
+    );
 }
 
 /// Every app is first-class — including for deletion. After a seeded id is

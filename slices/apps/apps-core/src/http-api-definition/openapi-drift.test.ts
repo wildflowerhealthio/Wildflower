@@ -24,15 +24,15 @@ defineSpecDriftTest({
   /** Endpoints compared — `(path, lowercase method)`. */
   scope: [
     ['/apps', 'get'],
-    ['/apps/{id}', 'get'],
+    ['/apps/{id}', 'post'],
   ],
   /**
-   * `get /apps/{id}` (LaunchApp) is a browser redirect: the server answers a
-   * 302 with a `Location` header and no JSON body, while the TS side models
+   * `post /apps/{id}` (LaunchApp) is a launch: the server answers a 302 (web)
+   * or 204 (Tauri host sink) with no JSON body, while the TS side models
    * success loosely as `200 text/html`. Its path parameter is still compared;
    * its responses are not.
    */
-  responsesNotCompared: new Set<string>(['get /apps/{id}']),
+  responsesNotCompared: new Set<string>(['post /apps/{id}']),
 })
 
 defineSpecDriftTest({

@@ -1,21 +1,16 @@
 /**
  * Entry point bundled by `scripts/build-tauri-bootstrap.mts` into the IIFE
  * injected into Tauri sniffer webviews via `initialization_script(...)` — today
- * the `tauri-plugin-native-webview` plugin's desktop content webview. The
- * plugin's chrome bar above the content owns title/subtitle/message +
- * back/forward/refresh, so this bootstrap stays content-only.
+ * the `tauri-plugin-native-webview` plugin's desktop content webview.
  *
  * `window.__TAURI__` is present because `tauri.conf.json` sets
  * `app.withGlobalTauri: true`, which Tauri prepends to every webview's init
- * scripts at runtime — no per-builder opt-in needed.
+ * scripts at runtime.
  *
- * Control/data split: because the content webview loads untrusted third-party
- * pages, its capability (`native-webview-window.json`) withholds the bus `emit`
- * grant, so the web→host data-plane stream rides the host-gated
- * `native_webview_data_plane_emit` command (see `command-event-bus.ts`) rather
- * than `event.emit`. Inbound `Click` / `CancelSnifferRequest` still use
- * `event.listen`. Both `__TAURI__.event` and `__TAURI__.core.invoke` must be
- * present, or we no-op.
+ * For the control/data split (outbound rides the host-gated
+ * `native_webview_data_plane_emit` command, inbound rides `event.listen`), see
+ * `command-event-bus.ts`. Both `__TAURI__.event` and `__TAURI__.core.invoke`
+ * must be present, or we no-op.
  */
 
 import type { TauriEventApi } from 'effect-messaging-tauri'
@@ -44,8 +39,6 @@ const core = tauri?.core
 if (event !== undefined && core !== undefined) {
   // Command-gated emit (data-plane out) + bus listen (control in), wrapped in
   // the FIFO / IPC-fallback-warn filter (see `filter-tauri-internal.ts`).
-  // Without both halves of the bridge we no-op: shimming fetch/XHR/console with
-  // no emit path just wastes cycles in arbitrary pages that load this script.
   const invoke: InvokeFn = (command, args) => core.invoke(command, args)
   installSniffer(makeFilteringEventBus(makeCommandEmitEventBus(event, invoke)))
 }

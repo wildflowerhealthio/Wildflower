@@ -11,11 +11,8 @@
  * via its Dialog header. Everything else (scope toggle, approve/decline
  * mutation, stale-denied clearing, mutation-error precedence) is shared.
  *
- * Visually this is the design-system "device authorization" card: an
- * intro line, the pairing code as a sunken dashed stub, the application
- * name over its `<code>` client id, the requested scopes, a side-by-side
- * Decline / Approve row, and a closing mono footnote. The skin lives in
- * `device-consent-form.module.css` (token-driven); the surrounding chrome
+ * Renders the design-system "device authorization" card; its skin lives in
+ * `device-consent-form.module.css` (token-driven). The surrounding chrome
  * (page shell + `PageHeader`, or the `Dialog`) is the caller's.
  */
 

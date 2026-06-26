@@ -208,6 +208,9 @@ const renderApp = ({
       runtimeLayer,
       awaitAuthReady: resolvedAwaitAuthReady,
       transport: transportPromise,
+      // Threaded so the apps launch POST reaches the host API origin — see
+      // `RouterContext.apiBaseUrl`.
+      apiBaseUrl,
     },
     defaultPreload: 'intent',
   })

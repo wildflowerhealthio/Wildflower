@@ -77,9 +77,7 @@ describe('DeviceConsentForm', () => {
     // Arrange / Act
     renderConsentForm(makeConsent(), vi.fn())
 
-    // Assert — the redesign's framing copy is present: the lead line, the
-    // "Pairing code" field eyebrow over the user code, and the closing
-    // reassurance footnote.
+    // Assert
     expect(screen.getByText('A new device is requesting access to your account.')).toBeDefined()
     expect(screen.getByText('Pairing code')).toBeDefined()
     expect(screen.getByText('Only approve devices you recognize.')).toBeDefined()

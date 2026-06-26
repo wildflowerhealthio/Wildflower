@@ -96,8 +96,15 @@ impl Default for Backoff {
 #[derive(Debug, Clone, Copy)]
 struct ProbeTiming {
     /// How long to wait before the first probe of an attempt (let the handshake
-    /// settle) and between subsequent probes.
+    /// settle) and between probes while the tunnel is not yet `Verified`. Short
+    /// so the initial verdict — and recovery from a transient failure — surface
+    /// quickly.
     interval: Duration,
+    /// How long to wait between re-probes once the tunnel has `Verified`. A
+    /// healthy steady-state only needs an occasional liveness check, so we slow
+    /// the cadence down rather than burning relay traffic on a back-to-back
+    /// `/health` poll.
+    verified_interval: Duration,
     /// How long a single probe may take before it counts as a failure — the
     /// "identify failures after 3 seconds" deadline.
     timeout: Duration,
@@ -106,7 +113,8 @@ struct ProbeTiming {
 impl Default for ProbeTiming {
     fn default() -> Self {
         Self {
-            interval: Duration::from_secs(1),
+            interval: Duration::from_millis(400),
+            verified_interval: Duration::from_secs(30),
             timeout: Duration::from_secs(3),
         }
     }
@@ -193,6 +201,7 @@ impl TunnelDaemon {
             settings_revision: None,
             status: TunnelStatus::Off,
             origin: loopback_origin.clone(),
+            public_host: None,
             error: None,
             dial_attempts: 0,
         });
@@ -340,6 +349,11 @@ impl TunnelDaemon {
             settings_revision: Some(revision),
             status,
             origin,
+            // The bare public host (no scheme/port), normalized empty→None so a
+            // watch consumer reads the same value `current_public_host` returns.
+            // Fixed for this revision: `set_state` mutates the snapshot in place
+            // and never touches it, so it persists until the next reconcile.
+            public_host: settings.public_host.clone().filter(|h| !h.is_empty()),
             error,
             dial_attempts: 0,
         });
@@ -530,18 +544,17 @@ where
     D: std::future::Future<Output = anyhow::Result<()>> + Unpin,
 {
     let health_url = format!("{public_origin}/health");
-    // First tick fires after `interval` (give the handshake a moment), then
-    // every `interval`. `Skip` keeps a slow probe from bursting catch-up ticks.
-    let mut ticker = tokio::time::interval_at(
-        tokio::time::Instant::now() + timing.interval,
-        timing.interval,
-    );
-    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    // First probe fires after `interval` (give the handshake a moment); the gap
+    // between subsequent probes depends on the last verdict — `verified_interval`
+    // while the tunnel is `Verified`, `interval` otherwise so a recovery is
+    // noticed quickly. Sleeping *after* each probe (rather than driving the loop
+    // off a fixed-period ticker) means a slow probe never bursts catch-up ticks.
+    let mut next_delay = timing.interval;
     loop {
         tokio::select! {
             result = &mut *dial => return result,
             () = cancel.cancelled() => return Ok(()),
-            _ = ticker.tick() => {
+            () = tokio::time::sleep(next_delay) => {
                 // Keep the dial and the cancel responsive *while the probe is in
                 // flight*: a probe may run up to `timeout`, and parking the whole
                 // loop on it would defer a reconcile's cancel (and noticing the
@@ -555,6 +568,10 @@ where
                 let (status, error) = match outcome {
                     Ok(()) => (TunnelStatus::Verified, None),
                     Err(reason) => (TunnelStatus::Unreachable, Some(reason)),
+                };
+                next_delay = match status {
+                    TunnelStatus::Verified => timing.verified_interval,
+                    _ => timing.interval,
                 };
                 set_state(
                     state, revision, status, error, loopback_origin, public_origin, attempt,
@@ -667,6 +684,7 @@ impl TunnelDaemon {
             },
             ProbeTiming {
                 interval: Duration::from_millis(1),
+                verified_interval: Duration::from_millis(1),
                 timeout: Duration::from_millis(50),
             },
         )
@@ -750,6 +768,25 @@ mod tests {
         let live = daemon.liveness();
         assert_eq!(live.settings_revision, Some(0));
         assert_eq!(live.status, TunnelStatus::Off);
+    }
+
+    #[tokio::test]
+    async fn reconcile_publishes_the_normalized_public_host_on_the_watch() {
+        let daemon = noop_daemon();
+        // A configured host rides on the liveness snapshot so a hot-path watch
+        // consumer (the subdomain reverse proxy) reads it without a settings query.
+        daemon.reconcile(&running_settings(1, Some("dev1.example.com")));
+        assert_eq!(
+            daemon.liveness().public_host.as_deref(),
+            Some("dev1.example.com"),
+        );
+        // An empty stored host normalizes to `None` — the same rule
+        // `current_public_host` applies — so a consumer never builds `Some("")`.
+        daemon.reconcile(&running_settings(2, Some("")));
+        assert_eq!(daemon.liveness().public_host, None);
+        // No public host at all is `None` too.
+        daemon.reconcile(&running_settings(3, None));
+        assert_eq!(daemon.liveness().public_host, None);
     }
 
     #[tokio::test]

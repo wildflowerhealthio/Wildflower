@@ -33,24 +33,11 @@
 //! ## Validation
 //!
 //! `host` is the client's `Host` header (nginx `$http_host` — the raw value, so
-//! it may carry a `:port` and isn't normalized), making it attacker-influenced;
+//! it may carry a `:port` and isn't normalized), making it attacker-influenced,
 //! and it lands directly in a `Location` the browser follows. As
-//! defense-in-depth this module:
-//!
-//! - rejects an empty `host`,
-//! - rejects any non-ASCII, control, whitespace, `/`, `\`, `@`, `?`, or `#`
-//!   character (CR/LF, NUL, path separators, the userinfo `@`, query/fragment
-//!   delimiters, …) — those have no business in a host[:port] shape and would
-//!   let a rendered `Location` resolve to a different authority than it looks
-//!   like (e.g. `trusted.example.com@evil.example.com` navigates to `evil`),
-//! - accepts `proto` only as `http`/`https` (case-insensitive) and otherwise
-//!   reverts to the `https` default — keeps `javascript:`/`file:` out of the
-//!   rendered `Location`.
-//!
-//! A header that fails validation reads as *unforwarded* (the request falls
-//! back to loopback). The validator is intentionally permissive on legitimate
-//! host shapes — letters/digits/`.`/`-`/`:`/`[`/`]` are allowed — the goal is
-//! a bounded character set, not a full RFC 3986 parse.
+//! defense-in-depth, [`safe_host`] / [`safe_scheme`] reject the characters and
+//! schemes that could redirect to a different authority; a header that fails
+//! validation reads as *unforwarded* (the request falls back to loopback).
 
 use axum::http::HeaderMap;
 

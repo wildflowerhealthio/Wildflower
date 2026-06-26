@@ -65,6 +65,13 @@ pub struct TunnelLiveness {
     /// The current most-available origin: the verified public origin while
     /// `Verified`, else the loopback fallback.
     pub origin: String,
+    /// The configured public host (bare, no scheme or port), normalized so an
+    /// empty stored value reads as `None` — independent of the liveness
+    /// `status`. Carried on the snapshot so a hot-path consumer (the host's
+    /// subdomain reverse proxy) can read it `O(1)` off the watch instead of a
+    /// locked SQLite read per forwarded request. See
+    /// [`TunnelService::current_public_host`], which exposes the same value.
+    pub public_host: Option<String>,
     /// A human-readable reason for `Misconfigured`/`Unreachable`, else `None`.
     pub error: Option<String>,
     /// How many times the tunnel has tried to *dial* the relay for the current
@@ -80,6 +87,26 @@ pub trait TunnelService: Send + Sync {
     /// The current most-available origin — the verified public origin while the
     /// tunnel is up, else the loopback fallback. A cheap, synchronous read.
     fn current_origin(&self) -> String;
+
+    /// The configured public host (bare, no scheme or port) the front
+    /// advertises — independent of whether the tunnel is currently `Verified`.
+    /// `None` when no public host is configured, in which case the tunnel
+    /// cannot be brought up at all.
+    ///
+    /// Distinct from [`Self::current_origin`], which conflates "tunnel down"
+    /// with "no public host configured": callers that need the public *name*
+    /// itself (e.g. to match an inbound forwarded request's subdomain against
+    /// the configured host) use this instead. Default returns `None` — only
+    /// the live tunnel slice needs to override it.
+    ///
+    /// The same value also rides on every [`TunnelLiveness`] snapshot
+    /// ([`TunnelLiveness::public_host`]); a hot-path consumer that already holds
+    /// a [`Self::subscribe`] receiver reads it from there `O(1)` rather than
+    /// paying this call's per-invocation cost (which, in the live slice, is a
+    /// locked settings read).
+    fn current_public_host(&self) -> Option<String> {
+        None
+    }
 
     /// Try to bring the tunnel up, returning the verified public origin once a
     /// reachability check confirms it, or a human-readable reason it couldn't.
@@ -108,6 +135,7 @@ impl OfflineTunnel {
             settings_revision: None,
             status: TunnelStatus::Off,
             origin: origin.clone(),
+            public_host: None,
             error: None,
             dial_attempts: 0,
         });

@@ -18,11 +18,28 @@ rusqlite.workspace = true
 utoipa.workspace = true
 utoipa-axum.workspace = true
 persistence-rust = { path = "../../persistence/persistence-rust" }
-# The tunnel service contract a `requires_tunnel` launch resolves through.
+# The tunnel service contract a `requires_tunnel` launch resolves through,
+# plus the shared forwarding-header provenance helper (`request_provenance`,
+# `served_origin_for`) the launch handler dispatches and renders against —
+# same contract gatekeeper-rust uses to resolve token issuer URLs.
 shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = [
   "tunnel-service",
+  "served-origin",
+  "subdomain-url",
 ] }
 rand = "0.10"
+
+# The server-side infra `SelfHostedAppsService` drives: `StaticHostsService`
+# binds each self-hosted app on its loopback port, `ProxyTable` registers it for
+# the host's subdomain reverse proxy.
+shared-structures-server-rust = { path = "../../shared-structures/shared-structures-server-rust" }
+# Builds the static-file-serving router for each self-hosted app from its on-disk
+# directory (same slice).
+vendor-apps-rust = { path = "../vendor-apps-rust" }
+# `CorsLayer::very_permissive` on each self-hosted app's router (its own origin
+# is cross-origin to the main API the SPA fetches from).
+tower-http.workspace = true
+
 tracing = "0.1"
 
 [lints]

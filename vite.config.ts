@@ -87,7 +87,6 @@ export default defineConfig({
       '**/coverage/**',
       '**/vendor/**',
       '**/test/snapshots/**',
-      'slices/apps/vendor-apps/src/generated-*.ts',
       '**/*.generated.ts',
       // Effect schemas generated from a service's OpenAPI spec
       // (`openapi-to-effect`); gitignored, reference-only.
@@ -127,7 +126,6 @@ export default defineConfig({
       '**/coverage/**',
       '**/vendor/**',
       '**/test/snapshots/**',
-      'slices/apps/vendor-apps/src/generated-*.ts',
       '**/*.generated.ts',
       // Effect schemas generated from a service's OpenAPI spec
       // (`openapi-to-effect`); gitignored, reference-only.

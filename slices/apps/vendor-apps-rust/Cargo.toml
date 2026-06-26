@@ -1,0 +1,33 @@
+[package]
+name = "vendor-apps-rust"
+version = "0.0.0"
+edition.workspace = true
+publish.workspace = true
+
+# Host-side serving for one "installed app" per loopback origin.
+# `setup_installed_app(app_id, app_dir)` hands back an axum router that serves
+# files from a host-provided directory at request time (rather than embedding
+# them at build time), at the **root** of the origin the host binds it on.
+# Each installed app runs on its own dedicated loopback origin; updating an app
+# — or dropping a new one in — needs no recompile. The patient-browser SMART
+# config is the one exception: it's embedded (committed) and served verbatim.
+# No tauri/GTK dependency, so it builds in the main (non-Tauri) Rust CI;
+# wildflower-tauri spawns one `axum::serve(listener, …)` per installed app and
+# points each at its directory under app-data. When the directory is
+# absent/empty the routes 404 — the crate still compiles.
+[dependencies]
+axum.workspace = true
+# `ServeDir` (with `mime_guess` content-type detection + traversal protection)
+# does the static file serving; we layer the committed patient-browser config
+# override on top. The workspace pins tower-http for `cors`; this crate adds
+# `fs` for `ServeDir`.
+tower-http = { workspace = true, features = ["fs"] }
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+http = "1"
+http-body-util = "0.1"
+tower = { version = "0.5", features = ["util"] }

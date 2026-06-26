@@ -14,7 +14,7 @@ use crate::http::response_templates::{AppNotFoundBody, HandlerError, InvalidFiel
 use crate::http::state::AppsState;
 
 /// PATCH body — all fields optional. Matches `UpdateAppBodySchema`. A
-/// `subtitle` of `Some(None)` (explicit null on the wire) clears the
+/// `subtitle` of explicit `null` *or* the empty string `""` clears the
 /// subtitle; a missing key leaves it alone — see [`SubtitlePatch`].
 #[derive(Debug, Default, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
@@ -31,12 +31,15 @@ pub(crate) struct UpdateAppBody {
 /// Tri-state subtitle patch:
 ///
 ///   * `Unchanged` — the key was absent from the body; keep what's stored.
-///   * `Set(Some)` — explicit non-null value; replace.
-///   * `Set(None)` — explicit `null`; clear the subtitle.
+///   * `Set(Some)` — explicit non-empty value; replace.
+///   * `Set(None)` — explicit `null` *or* the empty string `""`; clear the
+///     subtitle.
 ///
-/// Without this, a plain `Option<Option<String>>` would collapse "absent"
-/// and "null" into the same `None`, and we'd have no way to ask the
-/// handler "clear the subtitle without touching anything else."
+/// A plain `Option<Option<String>>` would collapse "absent" and "null" into the
+/// same `None`, leaving no way to clear the subtitle without touching other
+/// fields. Empty collapses into the clear case so it never persists as
+/// `Some("")` — the read schemas decode `subtitle` as a non-empty string, so a
+/// stored `""` would serialize as `"subtitle": ""` and break the catalogue decode.
 #[derive(Debug, Default)]
 enum SubtitlePatch {
     #[default]
@@ -44,17 +47,17 @@ enum SubtitlePatch {
     Set(Option<String>),
 }
 
-/// Deserializer that distinguishes "key present but null" from "key
-/// absent". `Option::deserialize` returns `None` for null; without the
-/// `#[serde(default)]` on the parent, an absent key would error. We
-/// always read the body through `Option<Option<T>>`-shaped wrapper and
-/// project to [`SubtitlePatch`] — `Some(value)` means the key was
-/// present.
+/// Deserializer that distinguishes "key present but null" from "key absent":
+/// `Option::deserialize` returns `None` for null, and the parent's
+/// `#[serde(default)]` supplies `Unchanged` for an absent key. Present values
+/// project to [`SubtitlePatch::Set`], with an empty string normalized to the
+/// clear case so `""` and explicit `null` both clear.
 fn deser_present_optional<'de, D>(d: D) -> Result<SubtitlePatch, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
-    Option::<String>::deserialize(d).map(SubtitlePatch::Set)
+    Option::<String>::deserialize(d)
+        .map(|subtitle| SubtitlePatch::Set(subtitle.filter(|s| !s.is_empty())))
 }
 
 /// `PATCH /apps/{id}` — partial update of any row. Owner-gated by the consumer.

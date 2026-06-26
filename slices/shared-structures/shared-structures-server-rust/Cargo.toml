@@ -1,0 +1,64 @@
+[package]
+name = "shared-structures-server-rust"
+version = "0.0.0"
+edition.workspace = true
+publish.workspace = true
+
+# Server-side shared infrastructure: the running counterpart to the pure
+# `shared-structures-rust` shapes. Two generic, app-agnostic services:
+#   - `StaticHostsService` — runs a set of routers, each on its own dedicated
+#     loopback port; start/stop hosts at runtime.
+#   - `TunnelSubdomainReverseProxy` — wraps a fallback router and reverse-proxies
+#     inbound forwarded `<id>.<public_host>` requests to the matching host's
+#     loopback port. The `<id>.<public_host>` shape is the shared
+#     `shared-structures-rust::subdomain_host` definition (producer + consumer +
+#     matcher all reachable from one crate, so they can't drift).
+[dependencies]
+axum.workspace = true
+# `request_provenance` (served-origin) classifies inbound requests as
+# loopback vs forwarded; `TunnelService` (tunnel-service) reads the live
+# public-host setting at request time; `subdomain_host` (subdomain-url) is the
+# shared `<id>.<public_host>` shape the reverse proxy splits inbound hosts with.
+shared-structures-rust = { path = "../shared-structures-rust", features = [
+  "tunnel-service",
+  "served-origin",
+  "subdomain-url",
+] }
+# `io-util` for `copy_bidirectional` (the upgrade-splice path).
+tokio = { workspace = true, features = ["net", "rt", "sync", "io-util"] }
+# `tower::make::Shared` adapts any `Clone` tower `Service` into the `MakeService`
+# `axum::serve` wants, so `StaticHostsService` stays generic over the served
+# service rather than hardcoding `axum::Router`.
+tower = { version = "0.5", features = ["util", "make"] }
+# The reverse proxy forwards to a host's loopback port over plain HTTP — no TLS
+# needed (loopback only), so default features (incl. default-tls) are off. The
+# `stream` feature gives `Body::wrap_stream` (request) and `bytes_stream`
+# (response) so bodies flow through without being buffered (GB-scale uploads /
+# downloads stay O(chunk) memory).
+reqwest = { version = "0.12", default-features = false, features = ["stream"] }
+# Connection-upgrade (WebSocket) proxying: reqwest can't carry a `101` / raw
+# upgrade, so a low-level hyper client connection does the upstream handshake and
+# both upgraded sockets are spliced. All already transitive (axum/reqwest), so no
+# new build cost.
+hyper = { version = "1", features = ["client", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+http-body-util = "0.1"
+# Typed `ServerError` distinguishing a recoverable bind failure from a poisoned
+# shared lock — the derive keeps Display/Error boilerplate out.
+thiserror = "2"
+tracing = "0.1"
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+# `TunnelService` test stubs implement an async-trait method; the proxy /
+# static-host tests stand up routers and drive them with `#[tokio::test]`.
+async-trait = "0.1"
+tokio = { workspace = true, features = ["rt", "macros", "sync", "time"] }
+# `StreamExt` / `stream::unfold` to build the lazy request/response body streams
+# the streaming perf tests push through the proxy.
+futures-util = "0.3"
+# A real WebSocket client to drive the end-to-end upgrade-proxy test through the
+# proxy. Already in the lock (transitive via axum's `ws`).
+tokio-tungstenite = "0.26"

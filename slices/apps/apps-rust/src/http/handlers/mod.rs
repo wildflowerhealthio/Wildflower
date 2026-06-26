@@ -6,6 +6,8 @@
 
 mod apps;
 mod apps_admin;
+#[cfg(test)]
+pub(crate) mod test_utils;
 
 use std::sync::Arc;
 
@@ -13,7 +15,7 @@ use utoipa_axum::router::OpenApiRouter;
 
 use crate::http::state::AppsState;
 
-/// Public `/apps` routes (`GET /apps`, `GET /apps/{id}`).
+/// Public `/apps` routes (`GET /apps`, `POST /apps/{id}`).
 pub(crate) fn public_openapi_router() -> OpenApiRouter<Arc<AppsState>> {
     apps::openapi_router()
 }

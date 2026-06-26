@@ -1,16 +1,19 @@
 mod api_stubs;
 mod bridge;
+mod native_webview_handle;
 mod spa;
 mod tunnel_adapters;
 
 use anyhow::Context;
-use apps_rust::{setup_apps, AppsConfig};
+use apps_rust::{setup_apps, AppsConfig, SelfHostedAppsService};
 use axum::Router;
 use emr_rust::{setup_fhir_r4, EmrConfig};
 use gatekeeper_rust::{
-    layer_router_with_gatekeeper_auth_gating, setup_gatekeeper, GatekeeperConfig,
+    layer_router_with_gatekeeper_auth_gating, layer_router_with_loopback_gate, setup_gatekeeper,
+    GatekeeperConfig,
 };
 use shared_structures_rust::ServerRuntimeConfig;
+use shared_structures_server_rust::{LoopbackHostname, ProxyTable, TunnelSubdomainReverseProxy};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tauri::Manager;
@@ -92,15 +95,9 @@ async fn run_server(
 
     let fhir_r4_router =
         setup_fhir_r4(&runtime, &emr_config).context("failed to set up FHIR R4 router")?;
-    // `setup_gatekeeper` publishes the freshly-minted host owner token
-    // through the bridge's publisher; the bridge's resident task emits
-    // a contentless `AuthTokenIssued` notify to the webview on every
-    // page load and on every token change (the webview pulls the
-    // bearer via `gatekeeper_current_token`, which is capability-gated
-    // to the main webview). The same task forwards pending
-    // device-consent heads (and `null` clears) over
-    // `bridge:DeviceConsentRequested` and raises the desktop window on
-    // transitions to a pending head (see `bridge::attach_bridge`).
+    // `setup_gatekeeper` publishes the freshly-minted host owner token (and
+    // device-consent heads) through the bridge publishers; `bridge::attach_bridge`
+    // documents how the resident task delivers them to the webview.
     let gatekeeper = setup_gatekeeper(
         db.clone(),
         &gatekeeper_config,
@@ -175,23 +172,36 @@ async fn run_server(
     let gated_tunnel =
         layer_router_with_gatekeeper_auth_gating(tunnel.router, gatekeeper.state.clone());
 
-    // The apps catalogue surface. `GET /apps` (list) and `GET /apps/{id}`
-    // (launch redirect) ride on the public router — the webview consumes
-    // them unauthenticated like the rest of the launch path. The admin
-    // surface (POST/PATCH/DELETE) is owner-gated through the gatekeeper.
-    // A `requires_tunnel` launch resolves to the tunnel's verified origin
-    // through the tunnel service (else falls back to loopback + tunnel=unavailable).
+    // The apps catalogue surface. `GET /apps` (list) and `POST /apps/{id}`
+    // (launch) ride on the public router — the webview consumes them
+    // unauthenticated like the rest of the launch path. The admin surface
+    // (POST/PATCH/DELETE) is owner-gated through the gatekeeper. A
+    // `requires_tunnel` launch resolves to the tunnel's verified origin through
+    // the tunnel service (or fails with 503 LaunchUnavailable when the tunnel
+    // can't be brought up — there's no reachable origin to fall back to).
+    // `loopback_hostname` is the hostname portion the host binds each
+    // internal-app listener on (see below) — the apps slice combines it with
+    // each internal-app row's `port` to render its `http://{hostname}:{port}/`
+    // launch target.
     let apps_config = AppsConfig {
         loopback_origin: loopback_origin.clone(),
+        loopback_hostname: runtime.loopback_hostname.clone(),
     };
     // `TunnelControl` implements `TunnelService`, so it's handed straight in.
     let tunnel_service: Arc<dyn tunnel_rust::TunnelService> = Arc::new(tunnel.control.clone());
-    // Wire the apps `RequestTunnel` web→host bridge handler now that the tunnel
-    // service exists: the SPA's launch path asks the host to bring the tunnel up
-    // (and awaits the verified origin) for an app that needs a public origin
-    // when the tunnel isn't already running.
-    bridge::attach_apps_tunnel_bridge(&app_handle, Arc::clone(&tunnel_service));
-    let apps = setup_apps(db, &apps_config, tunnel_service).context("failed to set up apps")?;
+    // Install the host's on-device webview handle: for a loopback caller the
+    // launch handler hands it the resolved URL to open in a native webview popup
+    // (the server 204s, so the SPA stays mounted). See `native_webview_handle`.
+    let webview_handle: Arc<dyn apps_rust::OnDeviceWebviewHandle> = Arc::new(
+        native_webview_handle::NativeWebviewHandle::new(app_handle.clone()),
+    );
+    let apps = setup_apps(
+        db,
+        &apps_config,
+        Arc::clone(&tunnel_service),
+        webview_handle,
+    )
+    .context("failed to set up apps")?;
     let gated_apps_admin =
         layer_router_with_gatekeeper_auth_gating(apps.admin_router, gatekeeper.state.clone());
 
@@ -234,7 +244,31 @@ async fn run_server(
     // `Authorization` — the one header the bearer clients need).
     // Trust doesn't come from CORS here anyway: the loopback gate
     // rejects non-local peers and auth rides the bearer header.
-    let router = Router::new()
+    //
+    // Static "installed apps" are served from this directory under app-data at
+    // request time (the apps slice's `SelfHostedAppsService` builds each app's
+    // file-serving router from its `<id>/` subdirectory here). Created up front
+    // so it's a stable, discoverable place to drop an app's files into; an
+    // empty/missing dir just 404s. Best-effort — a creation failure only means
+    // the apps routes 404 until it exists, so it must not abort server startup.
+    let installed_apps_dir = runtime.app_data_dir.join("installed-apps");
+    if let Err(error) = std::fs::create_dir_all(&installed_apps_dir) {
+        tauri_plugin_log::log::warn!(
+            "failed to create installed-apps dir {}: {error}",
+            installed_apps_dir.display()
+        );
+    }
+
+    // The `id -> loopback port` table the reverse proxy reads per request and
+    // the apps slice registers each self-hosted app into. A cloneable `Arc`
+    // handle, so the registration the slice does is visible to the live proxy.
+    let proxy_table = ProxyTable::new();
+    let loopback = LoopbackHostname::new(runtime.loopback_hostname.clone());
+
+    // The whole API stack — built first because it's the reverse proxy's
+    // fallback, handed in at construction. A forwarded request that doesn't
+    // match a self-hosted subdomain (and every loopback request) runs this.
+    let api_router = Router::new()
         .merge(gatekeeper.router)
         .merge(gated_fhir_r4)
         .merge(gated_stubs)
@@ -253,9 +287,57 @@ async fn run_server(
         .fallback(spa::handle_serving_spa_html)
         .layer(CorsLayer::very_permissive());
 
+    // Defense-in-depth: gate the entire API surface on a loopback peer address.
+    // Every endpoint here is meant to be reached only over the loopback socket —
+    // directly, or relayed by the trusted front, which proxies remote callers
+    // from loopback (and is distinguished downstream by the `Forwarded` header).
+    // A genuinely non-loopback peer is rejected with `403` before any handler
+    // runs, so even an ungated, CORS-permissive endpoint like `POST /apps/{id}`
+    // (which can open a native popup on the owner's device) can't be driven by a
+    // non-loopback client. Applied outermost (after CORS) so it runs first. See
+    // `layer_router_with_loopback_gate` for how forwarded callers pass and why
+    // re-gating the gatekeeper's already-gated routes is harmless.
+    let api_router = layer_router_with_loopback_gate(api_router);
+
+    // The reverse proxy wraps the API stack as the outermost layer: a forwarded
+    // request whose `Forwarded` host matches `<app-id>.<configured-public-host>`
+    // is reverse-proxied to that app's loopback port (the same listener a local
+    // launch reaches); loopback and apex-host traffic runs the api_router.
+    let proxy = TunnelSubdomainReverseProxy::new(
+        loopback.clone(),
+        Arc::clone(&tunnel_service),
+        api_router,
+        proxy_table.clone(),
+    );
+
+    // The apps slice owns the self-hosted lifecycle. Each self-hosted app gets
+    // its own dedicated loopback origin (`http://{loopback_hostname}:{port}/`) —
+    // its own security context (own storage, own cookies, no Same-Origin Policy
+    // share with the main API) — and is registered into `proxy_table` so it's
+    // also reachable remotely at `<app-id>.<public-host>` for forwarded traffic.
+    // The DB row's `port` is the source of truth for the bind; the apps slice
+    // renders the launch target from the same value, so redirect and listener
+    // can't drift. Seed-driven today (the static `internal_apps` catalogue); the
+    // start/stop calls also work at runtime for restartless install. A failure
+    // to bring one app online must not abort startup, so it's logged and skipped.
+    let self_hosted = SelfHostedAppsService::new(loopback, installed_apps_dir, proxy_table);
+    for internal in &apps.internal_apps {
+        if let Err(error) = self_hosted.start(internal).await {
+            tauri_plugin_log::log::warn!(
+                "failed to start self-hosted app {}: {error}",
+                internal.id
+            );
+        }
+    }
+    // Hold the orchestrator for the process lifetime — dropping it would drop the
+    // running listeners' shutdown signals and take the self-hosted apps offline.
+    let _self_hosted = self_hosted;
+
     axum::serve(
         listener,
-        router.into_make_service_with_connect_info::<SocketAddr>(),
+        proxy
+            .into_router()
+            .into_make_service_with_connect_info::<SocketAddr>(),
     )
     .await?;
     Ok(())
@@ -329,9 +411,9 @@ pub fn run() {
             browser_sniffer_tauri_rust::attach_browser_sniffer(app.handle());
 
             let error_handle = app.handle().clone();
-            // The server task wires the apps `RequestTunnel` bridge handler once
-            // the tunnel service is built, so it needs an app handle to listen
-            // on / emit through the bridge event bus.
+            // The server task installs the apps on-device webview handle once
+            // the apps slice is built; the handle opens launched apps in a
+            // native webview popup, so it needs an app handle.
             let server_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 let runtime = ServerRuntimeConfig {

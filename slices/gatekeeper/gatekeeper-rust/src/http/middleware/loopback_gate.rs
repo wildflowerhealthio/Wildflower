@@ -18,11 +18,21 @@ pub async fn loopback_gate(
     match connect_info.map(|Extension(ConnectInfo(addr))| addr.ip()) {
         // `IpAddr::is_loopback` already covers both V4 (127.0.0.0/8) and V6 (::1).
         Some(ip) if ip.is_loopback() => next.run(req).await,
-        Some(_) => (StatusCode::FORBIDDEN, "non-loopback peer rejected").into_response(),
+        // A non-loopback peer should be impossible — these servers bind loopback
+        // only, and the trusted front relays remote callers from loopback too —
+        // so reaching here means a real misconfiguration or probe. Log it (rather
+        // than failing silently) so the rejection is diagnosable.
+        Some(ip) => {
+            tracing::warn!(peer = %ip, "rejected non-loopback peer at the loopback gate");
+            (StatusCode::FORBIDDEN, "non-loopback peer rejected").into_response()
+        }
         // No ConnectInfo means we weren't mounted with
         // `into_make_service_with_connect_info`. Fail closed to avoid
         // accidentally serving non-loopback clients silently.
         // TODO(tunnel): tunnel-trusted peers will bypass this gate.
-        None => (StatusCode::FORBIDDEN, "no peer info").into_response(),
+        None => {
+            tracing::warn!("rejected request with no peer info at the loopback gate (fail closed)");
+            (StatusCode::FORBIDDEN, "no peer info").into_response()
+        }
     }
 }

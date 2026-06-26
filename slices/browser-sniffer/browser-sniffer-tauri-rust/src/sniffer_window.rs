@@ -56,10 +56,8 @@ pub(crate) fn open_or_navigate(app: &AppHandle, url: WebviewUrl) -> anyhow::Resu
         })
         .map_err(|error| anyhow::anyhow!("tauri-plugin-native-webview open_url failed: {error}"))?;
 
-    // `RequestSniffableWebView` / `Open` is a request to *present* a sniffable
-    // webview, so make it visible after navigating. Visibility is separate from
-    // content under the hide/dispose model (`open_url` never presents on its
-    // own); a future background-only navigate would skip this `show`.
+    // `open_url` never presents on its own (visibility is separate from content
+    // under the hide/dispose model), so `show` after navigating to present.
     app.native_webview()
         .show()
         .map_err(|error| anyhow::anyhow!("tauri-plugin-native-webview show failed: {error}"))?;

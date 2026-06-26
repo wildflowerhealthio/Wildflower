@@ -6,14 +6,14 @@ use std::sync::Arc;
 
 use axum::extract::State;
 use axum::Json;
-use rand::distr::Alphanumeric;
-use rand::RngExt;
+
 use serde::Deserialize;
 use utoipa::ToSchema;
 
 use crate::domain::{AppEntry, AppUrl};
 use crate::http::response_templates::{HandlerError, InvalidFieldBody};
 use crate::http::state::AppsState;
+use crate::id::mint_app_id;
 
 /// POST body — matches the TS `CreateAppBodySchema`. `requiresTunnel`
 /// uses the wire-camelCase the existing client speaks. `url` is read as a raw
@@ -58,7 +58,9 @@ pub(crate) async fn handle_create_app(
         id: mint_app_id(),
         enabled: true,
         name: body.name,
-        subtitle: body.subtitle,
+        // Empty subtitle → cleared: a stored `""` would break the catalogue
+        // decode (read schemas require a non-empty string). See `SubtitlePatch`.
+        subtitle: body.subtitle.filter(|s| !s.is_empty()),
         url,
         requires_tunnel: body.requires_tunnel,
     };
@@ -76,16 +78,4 @@ pub(crate) async fn handle_create_app(
         ));
     }
     Ok(Json(entry))
-}
-
-/// Generate a fresh random id — a 21-char base62-ish alphabet has ~125 bits of
-/// entropy, more than enough that a collision under sane workloads is
-/// astronomically unlikely (the create path still surfaces a collision as a 500
-/// to keep the guarantee blameable).
-fn mint_app_id() -> String {
-    rand::rng()
-        .sample_iter(&Alphanumeric)
-        .take(21)
-        .map(char::from)
-        .collect()
 }

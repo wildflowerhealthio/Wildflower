@@ -32,6 +32,12 @@ http-errors = ["dep:axum", "dep:tracing"]
 # crates don't pull `axum`; the slices that resolve a request's served origin
 # (gatekeeper-rust, apps-rust) enable it.
 served-origin = ["dep:axum"]
+# Opt-in: the `<id>.<public_host>` subdomain shape (`subdomain_host`,
+# `subdomain_url`, `try_split_subdomain`) shared by the apps slice's launch
+# redirect (producer) and the host's forwarded-request reverse proxy (consumer).
+# Pure string code, no extra deps — enabled by apps-rust and the
+# shared-structures-server-rust crate so the producer/consumer can't drift.
+subdomain-url = []
 
 [dependencies]
 # `serde` is non-optional: the always-on `bridge` module derives
