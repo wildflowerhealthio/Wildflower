@@ -64,10 +64,7 @@ pub fn setup_fhir_r4(runtime: &ServerRuntimeConfig, config: &EmrConfig) -> anyho
         .init_schema()
         .context("failed to init sqlite schema")?;
 
-    let loopback_origin = format!(
-        "http://{}:{}",
-        runtime.loopback_hostname, runtime.loopback_port
-    );
+    let loopback_origin = runtime.loopback_origin();
 
     let server_config = ServerConfig {
         base_url: format!("{loopback_origin}{FHIR_R4_PATH}"),

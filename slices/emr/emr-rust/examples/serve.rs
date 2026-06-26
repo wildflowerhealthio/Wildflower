@@ -28,7 +28,8 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let router = setup_fhir_r4(&runtime, &config)?;
-    let addr: SocketAddr = format!("{}:{}", runtime.loopback_hostname, runtime.loopback_port)
+    let addr: SocketAddr = runtime
+        .loopback_authority()
         .parse()
         .context("parse bind addr")?;
     let listener = TcpListener::bind(addr)
