@@ -57,22 +57,36 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .merge(documented)
         .nest("/access", access)
-        .layer(axum_middleware::from_fn(middleware::loopback_gate))
+        .layer(axum_middleware::from_fn(middleware::require_loopback_peer))
         .with_state(state)
 }
 
-/// Wrap a router (e.g. emr-rust's FHIR router) with JWT verification
-/// against the gatekeeper's signing keys. Any request missing or
-/// presenting an invalid bearer token gets 401.
-pub fn layer_router_with_gatekeeper_auth_gating(router: Router, state: AppState) -> Router {
-    router.layer(axum_middleware::from_fn_with_state(
+/// Wrap a router (e.g. emr-rust's FHIR router) with JWT verification against the
+/// gatekeeper's signing keys. Any request missing or presenting an invalid
+/// bearer token gets 401 — **except** requests whose path is listed in
+/// `exempt_paths`, which pass through untouched. The exemption exists for the
+/// FHIR/SMART discovery docs (`/fhir-r4/metadata`, `…/.well-known/smart-configuration`,
+/// etc.) a client must fetch *before* it holds a token. Matching is exact on the
+/// full request path with a trailing slash ignored (see `is_exempt`). Pass `&[]`
+/// to gate every path.
+pub fn layer_router_with_gatekeeper_auth_gating(
+    router: Router,
+    state: AppState,
+    exempt_paths: &[&str],
+) -> Router {
+    let gate = middleware::BearerGate {
         state,
+        exempt: exempt_paths.iter().map(|p| p.to_string()).collect(),
+    };
+    router.layer(axum_middleware::from_fn_with_state(
+        gate,
         middleware::require_valid_bearer_token,
     ))
 }
 
-/// Wrap a router with the loopback gate — the same peer-address check the
-/// gatekeeper applies to its own surface ([`router`]). A request whose peer
+/// Wrap a router with the loopback-peer gate ([`require_loopback_peer`]) — the
+/// same peer-address check the gatekeeper applies to its own surface
+/// ([`router`]). A request whose peer
 /// socket is not a loopback address — and, failing closed, any request with no
 /// `ConnectInfo` (i.e. the service wasn't mounted with
 /// `into_make_service_with_connect_info`) — gets a `403` before any handler
@@ -86,8 +100,8 @@ pub fn layer_router_with_gatekeeper_auth_gating(router: Router, state: AppState)
 /// downstream by the `Forwarded` header; only a genuinely non-loopback peer is
 /// rejected. (Stacking this on a router that already carries the gate — the
 /// gatekeeper's own — is a harmless, idempotent second check.)
-pub fn layer_router_with_loopback_gate(router: Router) -> Router {
-    router.layer(axum_middleware::from_fn(middleware::loopback_gate))
+pub fn layer_router_with_loopback_peer_gating(router: Router) -> Router {
+    router.layer(axum_middleware::from_fn(middleware::require_loopback_peer))
 }
 
 #[cfg(test)]

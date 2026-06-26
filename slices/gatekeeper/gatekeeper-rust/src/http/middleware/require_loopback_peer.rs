@@ -6,7 +6,14 @@ use axum::response::{IntoResponse, Response};
 use axum::Extension;
 use std::net::SocketAddr;
 
-pub async fn loopback_gate(
+/// Reject any request whose immediate socket peer isn't a loopback address.
+///
+/// The "peer" is the other end of *this* connection — a direct local client or
+/// the trusted front / reverse proxy / tunnel exit relaying a remote caller
+/// (all of which reach us over loopback). It says nothing about who originated
+/// the request upstream; forwarded callers are told apart downstream by the
+/// `Forwarded` header.
+pub async fn require_loopback_peer(
     // `ConnectInfo` is only populated when the service is mounted with
     // `into_make_service_with_connect_info`, so it's read through the
     // optional `Extension` extractor: `None` means no peer info rather than a

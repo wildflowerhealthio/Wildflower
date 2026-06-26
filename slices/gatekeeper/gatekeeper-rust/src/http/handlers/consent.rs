@@ -54,8 +54,7 @@ pub(crate) fn grantable_scopes(
     approved
         .into_iter()
         .filter(|s| {
-            requested.contains(s.as_str())
-                && allowed.iter().any(|a| allowed_scope_covers(a, s))
+            requested.contains(s.as_str()) && allowed.iter().any(|a| allowed_scope_covers(a, s))
         })
         .collect()
 }
@@ -119,13 +118,22 @@ mod tests {
     #[test]
     fn type_wildcard_covers_specific_type() {
         assert!(allowed_scope_covers("system/*.cruds", "system/Patient.r"));
-        assert!(allowed_scope_covers("system/*.cruds", "system/Observation.cruds"));
+        assert!(allowed_scope_covers(
+            "system/*.cruds",
+            "system/Observation.cruds"
+        ));
     }
 
     #[test]
     fn narrower_perms_covered_by_broader_perms() {
-        assert!(allowed_scope_covers("system/Patient.cruds", "system/Patient.rs"));
-        assert!(allowed_scope_covers("user/Observation.rs", "user/Observation.r"));
+        assert!(allowed_scope_covers(
+            "system/Patient.cruds",
+            "system/Patient.rs"
+        ));
+        assert!(allowed_scope_covers(
+            "user/Observation.rs",
+            "user/Observation.r"
+        ));
     }
 
     #[test]
@@ -136,8 +144,14 @@ mod tests {
 
     #[test]
     fn missing_perm_bit_rejects() {
-        assert!(!allowed_scope_covers("system/Patient.r", "system/Patient.cruds"));
-        assert!(!allowed_scope_covers("system/Patient.rs", "system/Patient.u"));
+        assert!(!allowed_scope_covers(
+            "system/Patient.r",
+            "system/Patient.cruds"
+        ));
+        assert!(!allowed_scope_covers(
+            "system/Patient.rs",
+            "system/Patient.u"
+        ));
     }
 
     #[test]

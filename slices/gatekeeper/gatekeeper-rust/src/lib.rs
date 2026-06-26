@@ -34,7 +34,7 @@ use tokio::time::{interval, MissedTickBehavior};
 pub use config::GatekeeperConfig;
 pub use db::GatekeeperStore;
 pub use http::{
-    layer_router_with_gatekeeper_auth_gating, layer_router_with_loopback_gate, AppState,
+    layer_router_with_gatekeeper_auth_gating, layer_router_with_loopback_peer_gating, AppState,
 };
 
 /// `client_id` of the host application's first-party OAuth client. The host

@@ -21,6 +21,21 @@ pub use crate::config::EmrConfig;
 
 const FHIR_R4_PATH: &str = "/fhir-r4";
 
+/// Paths under [`FHIR_R4_PATH`] that a gating layer mounted above
+/// [`setup_fhir_r4`]'s router must let through without a bearer token: the FHIR
+/// capabilities statement and the discovery docs a client fetches *before* it
+/// holds a token. Mirrors HFS's own `EXEMPT_PATHS` (helios-rest's
+/// `middleware/auth.rs`), prefixed with [`FHIR_R4_PATH`] — HFS already exempts
+/// these from its own auth, but the host's bearer gate above us must be told.
+pub const UNAUTHENTICATED_FHIR_PATHS: &[&str] = &[
+    "/fhir-r4/metadata",
+    "/fhir-r4/.well-known/smart-configuration",
+    "/fhir-r4/$versions",
+    "/fhir-r4/health",
+    "/fhir-r4/_liveness",
+    "/fhir-r4/_readiness",
+];
+
 /// Build the FHIR R4 [`Router`], opening the sqlite backend and initializing
 /// its schema.
 ///
@@ -86,4 +101,25 @@ pub fn setup_fhir_r4(runtime: &ServerRuntimeConfig, config: &EmrConfig) -> anyho
         .fallback_service(hfs_router);
 
     Ok(Router::new().nest(FHIR_R4_PATH, fhir_with_override))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{FHIR_R4_PATH, UNAUTHENTICATED_FHIR_PATHS};
+
+    #[test]
+    fn unauthenticated_paths_live_under_the_fhir_prefix() {
+        for path in UNAUTHENTICATED_FHIR_PATHS {
+            assert!(
+                path.starts_with(FHIR_R4_PATH),
+                "{path} must live under {FHIR_R4_PATH}"
+            );
+        }
+    }
+
+    #[test]
+    fn unauthenticated_paths_cover_smart_discovery() {
+        assert!(UNAUTHENTICATED_FHIR_PATHS.contains(&"/fhir-r4/metadata"));
+        assert!(UNAUTHENTICATED_FHIR_PATHS.contains(&"/fhir-r4/.well-known/smart-configuration"));
+    }
 }

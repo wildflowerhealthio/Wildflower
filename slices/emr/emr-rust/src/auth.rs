@@ -5,9 +5,7 @@
 use std::sync::Arc;
 
 use helios_audit::{sinks::NullSink, AuditSink, ExclusionFilter};
-use helios_auth::{
-    AuthConfig, DisabledJtiCache, JtiCache, JwksBearerAuthProvider, JwksCache,
-};
+use helios_auth::{AuthConfig, DisabledJtiCache, JtiCache, JwksBearerAuthProvider, JwksCache};
 use helios_rest::AuthMiddlewareState;
 use shared_structures_rust::CANONICAL_ISSUER;
 
@@ -20,9 +18,7 @@ use shared_structures_rust::CANONICAL_ISSUER;
 /// runs, so a blocking fetch would deadlock. HFS's `JwksCache` supports
 /// lazy fetching — the first request that needs a signing key triggers a
 /// fetch then.
-pub(crate) fn build_auth(
-    jwks_url: Option<&str>,
-) -> (AuthConfig, Option<Arc<AuthMiddlewareState>>) {
+pub(crate) fn build_auth(jwks_url: Option<&str>) -> (AuthConfig, Option<Arc<AuthMiddlewareState>>) {
     let Some(jwks_url) = jwks_url else {
         return (AuthConfig::default(), None);
     };

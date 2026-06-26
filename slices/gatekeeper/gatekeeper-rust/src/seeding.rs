@@ -52,7 +52,7 @@ fn ensure_some_active_signing_key(store: &GatekeeperStore) -> anyhow::Result<()>
 /// different identifier (the demo's config can be edited at boot time),
 /// the e2e run will surface the mismatch in the rejection log and we
 /// adjust here.
-const GROWTH_CHART_CLIENT_ID: &str = "growth_chart_app";
+const GROWTH_CHART_CLIENT_ID: &str = "growth_chart";
 
 /// Register the SMART growth-chart-app sample client if it isn't already
 /// in the store. Public client (no secret, PKCE-only) with the standard
@@ -86,7 +86,8 @@ fn ensure_smart_growth_chart_client(store: &GatekeeperStore) -> anyhow::Result<(
             "fhirUser".to_string(),
             "launch".to_string(),
             "launch/patient".to_string(),
-            "patient/*.rs".to_string(),
+            "patient/Observation.read".to_string(),
+            "patient/Patient.read".to_string(),
             "offline_access".to_string(),
         ]),
         allowed_grant_types: JsonColumn(vec![
@@ -169,10 +170,7 @@ pub(crate) fn mint_host_owner_token(
     // Both scopes go in: OWNER_SCOPE gates gatekeeper's admin surface,
     // FULL_FHIR_ACCESS_SCOPE gates HFS's FHIR surface. The token presents
     // both to satisfy each ring's check.
-    let scope = [
-        OWNER_SCOPE.to_string(),
-        FULL_FHIR_ACCESS_SCOPE.to_string(),
-    ];
+    let scope = [OWNER_SCOPE.to_string(), FULL_FHIR_ACCESS_SCOPE.to_string()];
     Ok(mint_access_token(
         &key,
         &NewJwtArgs {

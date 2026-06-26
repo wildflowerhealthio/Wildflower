@@ -128,7 +128,7 @@ async fn jwks_endpoint_returns_seeded_key() {
 }
 
 #[tokio::test]
-async fn loopback_gate_rejects_non_loopback_peer() {
+async fn loopback_peer_gate_rejects_non_loopback_peer() {
     let (g, _host_owner_token, _db) = spin_up();
     let mut req = Request::get("/.well-known/jwks.json")
         .body(Body::empty())
@@ -137,6 +137,45 @@ async fn loopback_gate_rejects_non_loopback_peer() {
         .insert(ConnectInfo::<SocketAddr>("10.0.0.5:54321".parse().unwrap()));
     let res = g.router.oneshot(req).await.expect("oneshot");
     assert_eq!(res.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn bearer_gate_exempts_listed_paths_but_gates_the_rest() {
+    use axum::routing::get;
+    use axum::Router;
+    use gatekeeper_rust::layer_router_with_gatekeeper_auth_gating;
+
+    let (g, _host_owner_token, _db) = spin_up();
+    // A trivial downstream router wrapped in the bearer gate with only the
+    // discovery path exempted — exercises the real middleware wiring (full path,
+    // exact match) rather than just the `is_exempt` helper.
+    let inner = Router::new()
+        .route("/fhir-r4/metadata", get(|| async { "ok" }))
+        .route("/fhir-r4/metadata-x", get(|| async { "ok" }))
+        .route("/fhir-r4/Patient", get(|| async { "ok" }));
+    let gated =
+        layer_router_with_gatekeeper_auth_gating(inner, g.state.clone(), &["/fhir-r4/metadata"]);
+
+    let status = |path: &'static str| {
+        let gated = gated.clone();
+        async move {
+            gated
+                .oneshot(Request::get(path).body(Body::empty()).unwrap())
+                .await
+                .expect("oneshot")
+                .status()
+        }
+    };
+
+    // Exempt path: served without any bearer token.
+    assert_eq!(status("/fhir-r4/metadata").await, StatusCode::OK);
+    // A path that merely shares a prefix is NOT exempt — still gated.
+    assert_eq!(
+        status("/fhir-r4/metadata-x").await,
+        StatusCode::UNAUTHORIZED
+    );
+    // A normal resource path is gated — 401 without a token.
+    assert_eq!(status("/fhir-r4/Patient").await, StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]
