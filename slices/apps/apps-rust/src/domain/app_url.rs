@@ -39,9 +39,9 @@ pub enum AppUrl {
     /// `{origin}` / `{launch}` substitution). Parsed from `https://` strings
     /// only — `http://` is rejected by [`FromStr`] (no-TLS / open-redirect
     /// protection) — so an `External` is always a validated, off-device
-    /// `https://` target. (Internal apps don't use this variant: they render
-    /// their loopback / subdomain launch URL on demand in the launch handler
-    /// and carry no `AppUrl` at all.)
+    /// `https://` target. (Self-hosted apps don't use this variant: they render
+    /// their loopback / subdomain launch URL on demand in the launch handler and
+    /// carry no `AppUrl` at all. Cloud apps carry one as their stored template.)
     External(String),
     /// An on-device target — the part that follows the served origin (a leading
     /// `/path`, `?query`, `#fragment`, or empty for the bare origin).

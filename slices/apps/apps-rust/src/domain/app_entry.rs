@@ -1,20 +1,20 @@
-//! `AppEntry` — the single shape used for an app on the wire AND in the
-//! database. Field names match the SQL column names so `sql_row!` in the
-//! `db/` layer can derive `TryFrom<&Row>` and the named-param array off the
-//! same struct definition.
+//! `AppEntry` — the **cloud app** wire shape: the create / update admin DTO and
+//! the launch-side materialization of a `cloud_apps` child joined onto its
+//! parent registry row. It is the only app shape that carries a launch `url`.
 //!
-//! Every app — whether shipped with the binary (seeded by the initial
-//! migration) or added by the user — is the same shape and equally editable;
-//! there is no provenance tag on the row.
+//! Post-registry-rebuild, cloud apps are the only user-editable kind, so this
+//! shape is the cloud-admin surface's request/response body. The `db/` layer
+//! builds it from a `apps` + `cloud_apps` JOIN (a hand-written mapping, not
+//! `sql_row!`, since `id` / `name` / `subtitle` / `enabled` come from the parent
+//! and `url` / `requires_tunnel` from the child).
 
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use super::app_url::AppUrl;
 
-/// One app as both the wire shape and the SQL row shape. Field names match
-/// column names so `sql_row!` in `db/` can generate the mapping without a
-/// separate row type.
+/// One **cloud app** on the wire — the admin create/update DTO and the launch
+/// handler's resolved shape.
 ///
 /// The `url` is a template: `{origin}` is replaced with the served origin
 /// at launch time, `{launch}` with a fresh per-launch nonce. A SMART-on-FHIR

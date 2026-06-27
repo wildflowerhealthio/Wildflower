@@ -62,6 +62,9 @@ tunnel-rust = { path = "../../../slices/tunnel/tunnel-rust" }
 shared-structures-server-rust = { path = "../../../slices/shared-structures/shared-structures-server-rust" }
 anyhow.workspace = true
 axum.workspace = true
+# Typed loopback base URL handed to `apps_rust::AppsConfig` (the apps slice
+# derives the launch origin + self-hosted hostname from it).
+url = "2"
 tokio = { workspace = true, features = ["full"] }
 tauri-plugin-log = "2"
 tauri-plugin-fs = "2"

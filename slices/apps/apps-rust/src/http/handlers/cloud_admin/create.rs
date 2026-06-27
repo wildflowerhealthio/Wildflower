@@ -1,6 +1,7 @@
-//! `POST /apps` — register a new app. Mints a fresh random id, parses the URL
-//! through the write-side filter (so an open-redirect never lands in the row),
-//! persists it, and returns the resulting [`AppEntry`].
+//! `POST /apps` — register a new **cloud** app. Mints a fresh random id, parses
+//! the URL through the write-side filter (so an open-redirect never lands in the
+//! row), appends it at the next display position, and returns the resulting
+//! [`AppEntry`]. Cloud is the only user-creatable kind.
 
 use std::sync::Arc;
 
@@ -29,13 +30,13 @@ pub(crate) struct CreateAppBody {
     subtitle: Option<String>,
 }
 
-/// `POST /apps` — create an app. Owner-gated by the consumer.
+/// `POST /apps` — create a cloud app. Owner-gated by the host.
 #[utoipa::path(
     post,
     path = "/apps",
     request_body = CreateAppBody,
     responses(
-        (status = 200, description = "The created app", body = AppEntry),
+        (status = 200, description = "The created cloud app", body = AppEntry),
         (status = 400, description = "Empty name (`InvalidName`) or bad url (`InvalidUrl`)", body = InvalidFieldBody),
     ),
 )]
@@ -64,16 +65,20 @@ pub(crate) async fn handle_create_app(
         url,
         requires_tunnel: body.requires_tunnel,
     };
+    let position = state
+        .store
+        .next_position()
+        .map_err(|e| HandlerError::internal("next_position failed", e))?;
     let inserted = state
         .store
-        .insert_app(&entry)
-        .map_err(|e| HandlerError::internal("insert_app failed", e))?;
+        .insert_cloud_app(&entry, position)
+        .map_err(|e| HandlerError::internal("insert_cloud_app failed", e))?;
     if !inserted {
         // 21-char random id collided — vanishingly unlikely, but surface it
         // as a logged 500 rather than silently returning the existing row.
         tracing::error!("app id collision on {}", entry.id);
         return Err(HandlerError::internal(
-            "insert_app id collision",
+            "insert_cloud_app id collision",
             "id already exists",
         ));
     }

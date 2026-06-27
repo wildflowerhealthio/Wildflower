@@ -47,6 +47,15 @@ pub(crate) struct AppNotFoundBody {
     pub(crate) id: String,
 }
 
+/// Wire shape for `AppNotEditable` (409) — the app exists but isn't a cloud app,
+/// so the cloud-admin update/delete surface can't touch it (system + self-hosted
+/// apps are not user-editable).
+#[derive(Debug, Serialize, ToSchema)]
+pub(crate) struct AppNotEditableBody {
+    pub(crate) error: &'static str,
+    pub(crate) id: String,
+}
+
 /// Wire shape for a 400 carrying a discriminant + human-readable reason.
 /// Reused for `InvalidUrl` (a bad app URL) and `InvalidName` (an empty name)
 /// — both are write-side field validations the client renders inline. The
@@ -77,6 +86,11 @@ pub(crate) enum HandlerError {
     Internal(InternalError),
     /// 404 — no app has this id.
     NotFound { id: String },
+    /// 409 — the app exists but isn't a cloud app, so the cloud-admin surface
+    /// can't edit/delete it (system + self-hosted apps are not user-editable).
+    NotEditable { id: String },
+    /// 401 — a loopback launch whose caller didn't pass the owner-auth gate.
+    Unauthorized,
     /// 400 — the submitted URL failed the write-side validator.
     InvalidUrl { message: String },
     /// 400 — the submitted name was empty.
@@ -104,6 +118,15 @@ impl IntoResponse for HandlerError {
                 }),
             )
                 .into_response(),
+            HandlerError::NotEditable { id } => (
+                StatusCode::CONFLICT,
+                Json(AppNotEditableBody {
+                    error: "AppNotEditable",
+                    id,
+                }),
+            )
+                .into_response(),
+            HandlerError::Unauthorized => StatusCode::UNAUTHORIZED.into_response(),
             HandlerError::InvalidUrl { message } => (
                 StatusCode::BAD_REQUEST,
                 Json(InvalidFieldBody {

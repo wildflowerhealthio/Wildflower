@@ -201,6 +201,7 @@ dependencies = [
  "tower",
  "tower-http 0.7.0",
  "tracing",
+ "url",
  "utoipa",
  "utoipa-axum",
 ]
@@ -8696,6 +8697,7 @@ dependencies = [
  "tower",
  "tower-http 0.7.0",
  "tunnel-rust",
+ "url",
 ]
 
 [[package]]

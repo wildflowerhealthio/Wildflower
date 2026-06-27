@@ -1,18 +1,21 @@
-//! `AppListEntry` — the wire shape for `GET /apps`. A projection of
-//! [`AppEntry`] that **omits the launch `url`**: clients don't need it for
-//! navigation (the launch endpoint is the only thing that resolves a URL,
-//! and only at launch time), and omitting it sidesteps the apex-vs-subdomain
-//! question for the catalogue entirely. Admin write responses
-//! (`POST /apps`, `PATCH /apps/{id}`) keep [`AppEntry`] so the edited row
-//! round-trips intact.
+//! `AppListEntry` — the wire shape for `GET /apps`. Built from the parent
+//! registry (`apps`) joined onto `cloud_apps` for `requires_tunnel`; **omits
+//! the launch `url`** (clients don't need it for navigation — the launch
+//! endpoint is the only thing that resolves a URL, and only at launch time).
+//!
+//! It carries the catalogue-display fields plus the per-row `provenance`,
+//! `localOnly`, `smart`, and `requiresTunnel` flags the homescreen renders as
+//! badges / decides the launch vehicle from. Admin write responses
+//! (`POST /apps`, `PATCH /apps/{id}`) keep [`AppEntry`](super::AppEntry) so the
+//! edited cloud row round-trips intact.
 
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use super::AppEntry;
+use super::Provenance;
 
-/// `GET /apps` row shape — id / enabled / name / optional subtitle /
-/// `requires_tunnel`. No `url`. See the module docs.
+/// `GET /apps` row shape — the catalogue entry. No launch `url`. See the module
+/// docs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AppListEntry {
@@ -21,17 +24,13 @@ pub struct AppListEntry {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub subtitle: Option<String>,
+    /// How this app's launch target resolves; see [`Provenance`].
+    pub provenance: Provenance,
+    /// The declared no-egress flag (a homescreen badge this pass).
+    pub local_only: bool,
+    /// Whether this is a SMART app (the parent row carries a `client_id`).
+    pub smart: bool,
+    /// Whether a launch needs the tunnel up (cloud apps only; `false` for
+    /// system / self-hosted).
     pub requires_tunnel: bool,
-}
-
-impl From<AppEntry> for AppListEntry {
-    fn from(entry: AppEntry) -> Self {
-        Self {
-            id: entry.id,
-            enabled: entry.enabled,
-            name: entry.name,
-            subtitle: entry.subtitle,
-            requires_tunnel: entry.requires_tunnel,
-        }
-    }
 }

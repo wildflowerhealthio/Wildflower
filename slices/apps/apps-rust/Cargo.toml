@@ -28,6 +28,9 @@ shared-structures-rust = { path = "../../shared-structures/shared-structures-rus
   "subdomain-url",
 ] }
 rand = "0.10"
+# The loopback base URL `AppsConfig` / `AppsState` carry; the origin + hostname
+# accessors derive from it (same crate/version gatekeeper-rust uses).
+url = "2"
 
 # The server-side infra `SelfHostedAppsService` drives: `StaticHostsService`
 # binds each self-hosted app on its loopback port, `ProxyTable` registers it for

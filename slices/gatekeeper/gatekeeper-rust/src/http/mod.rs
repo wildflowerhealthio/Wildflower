@@ -109,6 +109,24 @@ pub fn layer_router_with_loopback_peer_gating(router: Router) -> Router {
     router.layer(axum_middleware::from_fn(middleware::require_loopback_peer))
 }
 
+/// Whether `headers` carry a valid **Owner** bearer for `served_origin` — the
+/// non-middleware form of the
+/// [`require_owner_auth`](middleware::require_owner_auth) gate, for a slice that
+/// owner-gates a single in-handler action rather than wrapping a whole router.
+/// The apps slice wires this through `apps_rust::OwnerAuth` to gate the loopback
+/// launch popup. Returns `false` for a missing, invalid, or non-owner token.
+#[must_use]
+pub fn verify_owner_bearer(
+    state: &AppState,
+    headers: &axum::http::HeaderMap,
+    served_origin: &str,
+) -> bool {
+    let Some(token) = middleware::require_auth::try_bearer_token_from_headers(headers) else {
+        return false;
+    };
+    middleware::require_auth::verify_owner_token(state, served_origin, &token).is_ok()
+}
+
 #[cfg(test)]
 mod openapi_tests {
     use utoipa::openapi::Info;

@@ -15,7 +15,7 @@
 //!
 //! Today only the host's startup seed drives `start`; the runtime start/stop
 //! capability is here for restartless installation once an install surface
-//! exists. The existing `internal_apps` rows are still the only source of
+//! exists. The existing `self_hosted_apps` rows are still the only source of
 //! self-hosted apps (the table is read-only, seeded by migration).
 
 use std::path::PathBuf;
@@ -25,7 +25,7 @@ use shared_structures_server_rust::{
 };
 use tower_http::cors::CorsLayer;
 
-use crate::domain::InternalApp;
+use crate::domain::SelfHostedApp;
 
 /// Orchestrates the self-hosted apps' loopback listeners and reverse-proxy
 /// registrations. Constructed once by the host (held in scope for the process
@@ -64,7 +64,7 @@ impl SelfHostedAppsService {
     /// # Errors
     ///
     /// [`ServerError::LockPoisoned`] if a shared lock was poisoned.
-    pub async fn start(&self, app: &InternalApp) -> Result<(), ServerError> {
+    pub async fn start(&self, app: &SelfHostedApp) -> Result<(), ServerError> {
         let service =
             self_hosted_apps_rust::setup_installed_app(&app.id, self.apps_dir.join(&app.id))
                 .layer(CorsLayer::very_permissive());
@@ -221,11 +221,8 @@ mod tests {
             dir.clone(),
             table.clone(),
         );
-        let app = InternalApp {
+        let app = SelfHostedApp {
             id: "patient-browser".to_owned(),
-            enabled: true,
-            name: "Patient Browser".to_owned(),
-            subtitle: None,
             port,
         };
 

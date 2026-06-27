@@ -17,8 +17,8 @@ use crate::FIRST_PARTY_CLIENT_ID;
 
 /// Wrap the shared `conn` in a gatekeeper store (applying migrations) and run
 /// every first-boot seeding step — signing key, the first-party host client, and
-/// the bundled SMART sample-app clients (growth-chart, PRECISE-HBR). Safe to call
-/// on every boot.
+/// the bundled SMART sample-app clients (growth-chart, medication-viewer,
+/// PRECISE-HBR). Safe to call on every boot.
 ///
 /// # Errors
 ///
@@ -34,6 +34,8 @@ pub fn open_and_seed_store(
         .context("failed to seed first-party client")?;
     ensure_smart_growth_chart_client(&store)
         .context("failed to seed SMART growth-chart sample client")?;
+    ensure_smart_medication_viewer_client(&store)
+        .context("failed to seed SMART medication-viewer sample client")?;
     ensure_precise_hbr_client(&store).context("failed to seed PRECISE-HBR client")?;
     Ok(store)
 }
@@ -105,6 +107,58 @@ fn ensure_smart_growth_chart_client(store: &GatekeeperStore) -> anyhow::Result<(
     store
         .upsert_client(&client)
         .context("seed growth-chart client")?;
+    Ok(())
+}
+
+/// `client_id` the SMART medication-viewer sample at
+/// [mitre.github.io/smart-on-fhir-demo](https://mitre.github.io/smart-on-fhir-demo/)
+/// sends to `/oauth/authorize`. Pre-registered so the launch flow doesn't fail
+/// with `unknown_client` for the demo.
+const MEDICATION_VIEWER_CLIENT_ID: &str = "medication_viewer";
+
+/// Ensure the SMART medication-viewer sample client matches the code's
+/// definition: a public client (no secret, PKCE-only) with the standard SMART
+/// App Launch scopes for a patient-context viewer, plus the medication read it
+/// needs. Mirrors [`ensure_smart_growth_chart_client`]. Upserted on every boot so
+/// an older store's drifted definition is corrected (registration time and any
+/// admin disable are preserved).
+fn ensure_smart_medication_viewer_client(store: &GatekeeperStore) -> anyhow::Result<()> {
+    let client = Client {
+        client_id: MEDICATION_VIEWER_CLIENT_ID.to_string(),
+        name: "SMART Medication Viewer (sample)".to_string(),
+        kind: ClientKind::Public,
+        // mitre.github.io/smart-on-fhir-demo redirects back to the app's index
+        // after the OAuth dance; allowlist that exact URL so a spec'd SMART app
+        // callback is accepted.
+        redirect_uris: JsonColumn(vec![url::Url::parse(
+            "https://mitre.github.io/smart-on-fhir-demo/",
+        )
+        .expect("medication-viewer redirect URL is a hardcoded valid URL")]),
+        // The classic SMART App Launch scope set for a patient-context app
+        // (OIDC identity + launch context + patient FHIR read + refresh-token),
+        // plus the medication-request read this viewer pulls.
+        allowed_scopes: JsonColumn(vec![
+            "openid".to_string(),
+            "profile".to_string(),
+            "fhirUser".to_string(),
+            "launch".to_string(),
+            "launch/patient".to_string(),
+            "patient/Observation.read".to_string(),
+            "patient/Patient.read".to_string(),
+            "patient/MedicationRequest.read".to_string(),
+            "offline_access".to_string(),
+        ]),
+        allowed_grant_types: JsonColumn(vec![
+            AllowedGrantType::AuthorizationCode,
+            AllowedGrantType::RefreshToken,
+        ]),
+        secret_hash: None,
+        registered_at: Utc::now(),
+        disabled_at: None,
+    };
+    store
+        .upsert_client(&client)
+        .context("seed medication-viewer client")?;
     Ok(())
 }
 
