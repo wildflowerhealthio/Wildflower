@@ -63,7 +63,7 @@ jobs:
       # doesn't honor the `source` export condition). setup-vp already caches the
       # pnpm store, so this only covers build outputs.
       - name: Cache vp pack outputs
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: |
             node_modules/.vite/task-cache
