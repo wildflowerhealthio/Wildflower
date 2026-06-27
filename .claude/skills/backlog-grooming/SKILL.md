@@ -1,9 +1,9 @@
 ---
 name: backlog-grooming
-description: Groom an in-progress/backlog GitHub issue until an agent could implement it solo. Reads the repo + neighbour tickets, maps dependencies, dedups/splits, asks the human the design-only questions, then rewrites the issue to the gold-standard template and applies ripple edits. For items already in In Progress / Backlog — NOT raw intake/un-statused items (that is a separate promote protocol).
+description: Sweep the whole project board and clean up every item until an agent could implement each solo (skip only at the user's request). Reads the repo + neighbour tickets, maps dependencies, dedups/splits, asks the human the design-only questions, then rewrites issues to the gold-standard template and applies ripple edits. Cleanup action depends on Status — Intake/un-statused: refine + promote; Backlog/In Progress: specify to ready.
 ---
 
-> **⚠️ Scope:** Backlog grooming of items already triaged into **In Progress / Backlog**. It does **NOT** cover sweeping the **Intake / un-statused** column to refine and promote items — that is a distinct protocol.
+> **⚠️ Scope:** Sweep the **whole board** — read every item and clean up each one, skipping only at the user's request. The cleanup *action* depends on the item's Status: **Intake / un-statused** → refine and propose a Status + priority (promote onto the board proper); **Backlog / In Progress** → specify until an agent could build it solo.
 
 **🏅 Main objective:** leave each ticket **designed enough that an agent can work from it without the maintainer's support.** Along the way: make dependencies explicit, flag what can start independently, propose splits/nesting, set a useful-enough priority, and prune duplicates or already-solved work.
 
@@ -25,15 +25,18 @@ The maintainer "just fires tickets" — most arrive as a sentence. Grooming turn
 
 ---
 
-## Step 0 — Select the working set
+## Step 0 — Read the whole board
 
-Read the board **Status** via `gh` (see Repo facts) and groom items whose Status is **In Progress** or **Backlog**. Skip **Intake / un-statused** — promoting those is a separate protocol.
+Read **every** item on the board via `gh` (see Repo facts) with its **Status**. The goal is to clean up the *entire* board: work through all items (group by Status, order by priority) and **skip an item only when the user says to**.
 
-- **A bare ticket in the Backlog is a *top* refine target, not a skip.** An empty body sitting in the backlog is exactly what this protocol exists to fix — flesh it out with the maintainer's feedback. Bareness signals *needs grooming*, never *skip*.
-- If the human **names** specific ticket(s), groom those regardless of Status.
-- **Restricted-session fallback only:** if Status is unreadable (no `gh`), use the priority field + `🗓️` status labels as a rough proxy and **confirm the backlog/intake split with the human** before grooming — never silently treat a bare ticket as intake.
+- **Cleanup action depends on Status:**
+  - **Intake / un-statused** → refine, then propose a **Status + priority** (promote onto the board proper).
+  - **Backlog / In Progress** → specify until an agent could build it solo (the ready bar below).
+- **A bare ticket is a *top* refine target, not a skip** — an empty body is exactly what this protocol fixes; flesh it out with the maintainer's feedback. Bareness signals *needs grooming*, never *skip*.
+- If the human **names** specific ticket(s), start with those.
+- **Restricted-session fallback only:** if Status is unreadable (no `gh`), use the priority field + `🗓️` status labels as a rough proxy and confirm groupings with the human.
 
-**✅ Do** state which selection method you used. **🚫 Don't** groom an Intake/un-statused item as if it were backlog (that's the promote protocol).
+**✅ Do** state how you read the board and the order you'll work in. **🚫 Don't** silently skip items — surface the full list and let the user prune it.
 
 > `gh project item-list` / `list_issues` output can be large — parse it in a subagent rather than loading it all into context.
 
