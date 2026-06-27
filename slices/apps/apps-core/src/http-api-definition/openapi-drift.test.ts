@@ -44,5 +44,6 @@ defineSpecDriftTest({
     ['/apps', 'post'],
     ['/apps/{id}', 'patch'],
     ['/apps/{id}', 'delete'],
+    ['/apps/{id}/placement', 'patch'],
   ],
 })

@@ -24,10 +24,18 @@ const AppUrlSchema = Schema.String.pipe(
 )
 
 /**
- * Wire shape for a single app on admin write responses (`POST /apps`,
- * `PATCH /apps/:id`). Mirrors the Rust server's `AppEntry`: no provenance
- * tag — every external app is just an app — with the launch `url` as a
- * first-class field so an edited row round-trips back to the client.
+ * How an app's launch target resolves (mirrors the Rust `Provenance`):
+ * `system` (a shell route / compiled-in backend), `self-hosted` (served from
+ * the device on a dedicated isolated origin), or `cloud` (a remote origin
+ * reached through the tunnel). On the wire it's the lowercase-kebab string.
+ */
+const ProvenanceSchema = Schema.Literal('system', 'self-hosted', 'cloud')
+
+/**
+ * Wire shape for a single **cloud** app on admin write responses
+ * (`POST /apps`, `PATCH /apps/:id`). Mirrors the Rust server's `AppEntry`:
+ * the launch `url` is a first-class field so an edited row round-trips back
+ * to the client. Only cloud apps are editable through the admin surface.
  *
  * The public list (`GET /apps`) uses {@link AppListEntrySchema}, which
  * **omits** `url`: the launch endpoint is the only thing that resolves a
@@ -47,15 +55,42 @@ const AppEntrySchema = Schema.Struct({
 })
 
 /**
- * Wire shape for `GET /apps`. Projection of {@link AppEntrySchema} that
- * omits the launch `url` (see there for why).
+ * Wire shape for `GET /apps`. Carries the catalogue-display fields plus the
+ * registry flags the homescreen renders as badges — `provenance`, `localOnly`,
+ * `smart` — and `requiresTunnel`. Omits the launch `url` (the launch endpoint
+ * resolves it at request time). Mirrors the Rust `AppListEntry`.
  */
 const AppListEntrySchema = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
   subtitle: Schema.optional(Schema.NonEmptyString),
+  /** How this app's launch target resolves; see {@link ProvenanceSchema}. */
+  provenance: ProvenanceSchema,
+  /** The declared no-egress flag (a homescreen badge this pass). */
+  localOnly: Schema.Boolean,
+  /** Whether this is a SMART app (the registry row carries a `client_id`). */
+  smart: Schema.Boolean,
+  /** Whether a launch needs the tunnel up (cloud apps only). */
   requiresTunnel: Schema.Boolean,
   enabled: Schema.Boolean,
+})
+
+/**
+ * The parent registry row — the `PATCH /apps/:id/placement` response. Carries
+ * the registry fields including `position`; the kind-specific launch detail
+ * lives in the per-kind child tables (not on this shape). Mirrors the Rust
+ * `App`.
+ */
+const AppSchema = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  subtitle: Schema.optional(Schema.NullOr(Schema.String)),
+  enabled: Schema.Boolean,
+  position: Schema.Int,
+  provenance: ProvenanceSchema,
+  localOnly: Schema.Boolean,
+  /** Soft reference to a gatekeeper `clients.client_id`; absent for non-SMART. */
+  clientId: Schema.optional(Schema.NullOr(Schema.String)),
 })
 
 const AppListSchema = Schema.Array(AppListEntrySchema)
@@ -64,6 +99,16 @@ const AppIdPathSchema = Schema.Struct({ id: Schema.String })
 
 const AppNotFoundSchema = Schema.Struct({
   error: Schema.Literal('AppNotFound'),
+  id: Schema.String,
+})
+
+/**
+ * Body for `AppNotEditable` (409) — the app exists but isn't a cloud app, so
+ * the cloud-admin update/delete surface can't touch it (system + self-hosted
+ * apps are not user-editable). Mirrors the Rust `AppNotEditableBody`.
+ */
+const AppNotEditableSchema = Schema.Struct({
+  error: Schema.Literal('AppNotEditable'),
   id: Schema.String,
 })
 
@@ -109,14 +154,30 @@ const UpdateAppBodySchema = Schema.Struct({
   subtitle: Schema.optional(Schema.String),
 })
 
+/**
+ * Body for `PATCH /apps/:id/placement` — homescreen placement updates that
+ * apply to **any** provenance. Both fields optional: `enabled` toggles tile
+ * visibility, `position` sets the display order (drag-to-reorder). Distinct
+ * from {@link UpdateAppBodySchema}, which edits a cloud app's content. Mirrors
+ * the Rust `PlacementBody`.
+ */
+const PlacementBodySchema = Schema.Struct({
+  enabled: Schema.optional(Schema.Boolean),
+  position: Schema.optional(Schema.Int),
+})
+
 export {
   AppEntrySchema,
   AppIdPathSchema,
   AppListEntrySchema,
   AppListSchema,
+  AppNotEditableSchema,
   AppNotFoundSchema,
+  AppSchema,
   AppUrlSchema,
   CreateAppBodySchema,
   InvalidFieldSchema,
+  PlacementBodySchema,
+  ProvenanceSchema,
   UpdateAppBodySchema,
 }
