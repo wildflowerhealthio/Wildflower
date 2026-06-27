@@ -1,15 +1,23 @@
 import { Schema } from 'effect'
+import * as fc from 'fast-check'
 import { utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import {
   AppEntrySchema,
+  AppListEntrySchema,
+  AppNotEditableSchema,
   AppNotFoundSchema,
+  AppSchema,
   AppUrlSchema,
   CreateAppBodySchema,
   InvalidFieldSchema,
+  PlacementBodySchema,
+  ProvenanceSchema,
   UpdateAppBodySchema,
 } from './schemas.ts'
+
+const PROVENANCES = ['system', 'self-hosted', 'cloud'] as const
 
 const { expectLeftToEqual, expectRightToEqual } = utilityExpectations(expect)
 
@@ -204,6 +212,144 @@ describe('InvalidFieldSchema', () => {
   it('rejects any other error literal', () => {
     expectLeftToEqual(
       Schema.decodeUnknownEither(InvalidFieldSchema)({ error: 'Whatever', message: 'x' }),
+      expect.objectContaining({ _tag: 'ParseError' })
+    )
+  })
+})
+
+describe('ProvenanceSchema', () => {
+  it('accepts the three kebab values', () => {
+    for (const p of PROVENANCES) {
+      expectRightToEqual(Schema.decodeUnknownEither(ProvenanceSchema)(p), p)
+    }
+  })
+
+  it('rejects any non-provenance string', () => {
+    fc.assert(
+      fc.property(
+        fc.string().filter((s) => !(PROVENANCES as readonly string[]).includes(s)),
+        (s) => {
+          expect(Schema.decodeUnknownEither(ProvenanceSchema)(s)._tag).toBe('Left')
+        }
+      )
+    )
+  })
+})
+
+describe('AppListEntrySchema', () => {
+  // A well-formed `GET /apps` row: required flags + an optional non-empty
+  // subtitle. The launch `url` is never present on this shape.
+  const appListEntryArb = fc
+    .record({
+      id: fc.string({ minLength: 1 }),
+      name: fc.string({ minLength: 1 }),
+      provenance: fc.constantFrom(...PROVENANCES),
+      localOnly: fc.boolean(),
+      smart: fc.boolean(),
+      requiresTunnel: fc.boolean(),
+      enabled: fc.boolean(),
+    })
+    .chain((base) =>
+      fc
+        .option(fc.string({ minLength: 1 }), { nil: undefined })
+        .map((subtitle) => (subtitle === undefined ? base : { ...base, subtitle }))
+    )
+
+  it('decodes any well-formed row to itself', () => {
+    fc.assert(
+      fc.property(appListEntryArb, (entry) => {
+        expectRightToEqual(Schema.decodeUnknownEither(AppListEntrySchema)(entry), entry)
+      })
+    )
+  })
+
+  it('rejects an empty-string subtitle and a bad provenance', () => {
+    expectLeftToEqual(
+      Schema.decodeUnknownEither(AppListEntrySchema)({
+        id: 'x',
+        name: 'X',
+        subtitle: '',
+        provenance: 'cloud',
+        localOnly: false,
+        smart: true,
+        requiresTunnel: true,
+        enabled: true,
+      }),
+      expect.objectContaining({ _tag: 'ParseError' })
+    )
+    expectLeftToEqual(
+      Schema.decodeUnknownEither(AppListEntrySchema)({
+        id: 'x',
+        name: 'X',
+        provenance: 'external',
+        localOnly: false,
+        smart: false,
+        requiresTunnel: false,
+        enabled: true,
+      }),
+      expect.objectContaining({ _tag: 'ParseError' })
+    )
+  })
+})
+
+describe('AppSchema (placement response)', () => {
+  it('decodes a registry row with an integer position', () => {
+    const row = {
+      id: 'api-docs',
+      name: 'API Docs',
+      enabled: true,
+      position: 2,
+      provenance: 'system' as const,
+      localOnly: true,
+    }
+    expectRightToEqual(Schema.decodeUnknownEither(AppSchema)(row), row)
+  })
+
+  it('rejects a non-integer position', () => {
+    expectLeftToEqual(
+      Schema.decodeUnknownEither(AppSchema)({
+        id: 'x',
+        name: 'X',
+        enabled: true,
+        position: 1.5,
+        provenance: 'cloud',
+        localOnly: false,
+      }),
+      expect.objectContaining({ _tag: 'ParseError' })
+    )
+  })
+})
+
+describe('PlacementBodySchema', () => {
+  it('accepts an empty body and partial bodies', () => {
+    expectRightToEqual(Schema.decodeUnknownEither(PlacementBodySchema)({}), {})
+    expectRightToEqual(Schema.decodeUnknownEither(PlacementBodySchema)({ position: 3 }), {
+      position: 3,
+    })
+    expectRightToEqual(Schema.decodeUnknownEither(PlacementBodySchema)({ enabled: false }), {
+      enabled: false,
+    })
+  })
+
+  it('rejects a non-integer position', () => {
+    expectLeftToEqual(
+      Schema.decodeUnknownEither(PlacementBodySchema)({ position: 2.5 }),
+      expect.objectContaining({ _tag: 'ParseError' })
+    )
+  })
+})
+
+describe('AppNotEditableSchema', () => {
+  it('accepts the declared 409 payload', () => {
+    expectRightToEqual(
+      Schema.decodeUnknownEither(AppNotEditableSchema)({ error: 'AppNotEditable', id: 'api-docs' }),
+      { error: 'AppNotEditable', id: 'api-docs' }
+    )
+  })
+
+  it('rejects any other error literal', () => {
+    expectLeftToEqual(
+      Schema.decodeUnknownEither(AppNotEditableSchema)({ error: 'AppNotFound', id: 'x' }),
       expect.objectContaining({ _tag: 'ParseError' })
     )
   })

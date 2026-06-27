@@ -40,6 +40,7 @@
     "@typescript/native-preview": "catalog:",
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
+    "fast-check": "catalog:",
     "kitchen-sink": "workspace:*",
     "shared-structures-core": "workspace:*",
     "typescript": "catalog:",
