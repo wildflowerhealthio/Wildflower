@@ -11,7 +11,7 @@ use super::client_auth::ClientCredentials;
 use super::error_codes::OAuthErrorCode;
 use super::internal::{
     issue_token_response, require_valid_client_for_token, IssueTokenInput, OAuthError, TokenError,
-    TokenResponse, DEVICE_CODE_POLL_INTERVAL, OFFLINE_ACCESS_SCOPE, REFRESH_TOKEN_FAMILY_TTL,
+    TokenResponse, DEVICE_CODE_POLL_INTERVAL, REFRESH_TOKEN_FAMILY_TTL,
 };
 use super::openapi::TokenRequestBody;
 use super::token_request::TokenRequest;
@@ -25,6 +25,7 @@ use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 use crate::http::state::AppState;
 use crate::http::ServedOrigin;
 use persistence_rust::JsonColumn;
+use scopes_rust::KnownScope;
 
 /// Body of an RFC 6749 / RFC 8628 token endpoint request, dispatched by the
 /// wire-level `grant_type` field. Client credentials are not parsed here —
@@ -401,7 +402,7 @@ fn exchange_device_code(
     )
 }
 
-/// When the grant carries [`OFFLINE_ACCESS_SCOPE`], mint a new refresh-token
+/// When the grant carries [`KnownScope::OfflineAccess`], mint a new refresh-token
 /// family with its first token and return the token's plaintext for the
 /// response body. Grants without the scope get `Ok(None)` — no standing
 /// credential is created.
@@ -412,7 +413,10 @@ fn start_refresh_token_family_if_granted(
     patient: Option<&str>,
     authorization_code: Option<&str>,
 ) -> Result<Option<String>, TokenError> {
-    if !granted_scopes.iter().any(|s| s == OFFLINE_ACCESS_SCOPE) {
+    if !granted_scopes
+        .iter()
+        .any(|s| s == KnownScope::OfflineAccess.as_str())
+    {
         return Ok(None);
     }
     let plaintext = generate_refresh_token();

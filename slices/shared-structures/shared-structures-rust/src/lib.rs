@@ -7,6 +7,26 @@ pub use server_runtime_config::ServerRuntimeConfig;
 mod on_device_webview_handle;
 pub use on_device_webview_handle::OnDeviceWebviewHandle;
 
+/// Canonical, build-time-fixed `iss` claim baked into every JWT minted by
+/// gatekeeper and the value HFS validates against on every FHIR request.
+///
+/// A single, deliberate constant — Wildflower is single-tenant for now, so
+/// there is intentionally **no** per-deployment / env override path: every
+/// install shares this one issuer identity. This is a conscious choice, not an
+/// oversight; a multi-tenant / white-label story (a deployment-scoped issuer
+/// threaded to both mint and validate) is deferred until there's a second
+/// tenant to justify it.
+///
+/// Hardcoded for now: gatekeeper used to derive `iss` from the per-request
+/// origin, which meant a single `HFS_AUTH_ISSUER` couldn't accept both
+/// loopback-minted owner tokens (`http://127.0.0.1:...`) and tunnel-minted
+/// SMART app tokens (`https://<host>`). Pinning to a stable string skips
+/// the loopback-vs-tunnel branching at mint time and at validation time.
+/// SMART clients that compare a discovered `issuer` to the JWT's `iss` will
+/// see the same string in both places (the discovery override emits this
+/// constant too).
+pub const CANONICAL_ISSUER: &str = "https://wildflowerhealth.io";
+
 #[cfg(feature = "http-errors")]
 pub mod http_errors;
 

@@ -4,7 +4,6 @@ use axum::response::{IntoResponse, Response};
 use axum::Json;
 use chrono::Duration;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 use utoipa::ToSchema;
 
 use super::error_codes::OAuthErrorCode;
@@ -101,11 +100,16 @@ fn device_authorization(
     // fallback); confidential clients are verified here with a timing-safe
     // secret check, public clients pass through without a secret.
     let client = require_valid_client_for_token(&state.store, &presented_credentials)?;
-    let allowed: HashSet<&str> = client.allowed_scopes.iter().map(String::as_str).collect();
-    if !requested_scopes
-        .iter()
-        .all(|s| allowed.contains(s.as_str()))
-    {
+    // Coverage-aware allowlist check, not exact string membership: a client
+    // allowed a broad or v1 scope also admits a narrower or v2 request it
+    // covers. Mirrors `authorize.rs::validate_requested_scopes` and the consent
+    // path's `grantable_scopes`.
+    if !requested_scopes.iter().all(|requested| {
+        client
+            .allowed_scopes
+            .iter()
+            .any(|allowed| scopes_rust::allowed_scope_covers(allowed, requested))
+    }) {
         return Err(TokenError::bad_request(
             OAuthErrorCode::InvalidScope,
             Some("Scope not allowed for client"),

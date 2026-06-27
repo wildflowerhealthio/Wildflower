@@ -84,6 +84,24 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "launch",
+            "in": "query",
+            "description": "SMART App Launch nonce, set by the EHR (apps-rust generates it,\nthe SMART app forwards it). Not currently looked up against a\nlaunch-context table — we trust whatever value the SMART app\nechoes back and bind patient context at consent instead. Binding it\n(single-use, patient-bound) is tracked in\n<https://github.com/Assessment-is/Wildflower/issues/257>.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "aud",
+            "in": "query",
+            "description": "SMART App Launch audience hint: the FHIR base URL the SMART app\nexpects to call with the resulting token. Not currently validated\nagainst [`shared_structures_rust::CANONICAL_ISSUER`] — `aud`\nbinding in minted tokens is per-request via `served_origin_for`.\nValidating it is tracked in\n<https://github.com/Assessment-is/Wildflower/issues/257>.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -612,7 +630,7 @@
               "string",
               "null"
             ],
-            "description": "Present only when the grant carries [`OFFLINE_ACCESS_SCOPE`] — the\nplaintext of the freshly-minted refresh-token generation (RFC 6749\n§5.1; only its hash is persisted)."
+            "description": "Present only when the grant carries [`scopes_rust::KnownScope::OfflineAccess`]\n— the plaintext of the freshly-minted refresh-token generation (RFC 6749\n§5.1; only its hash is persisted)."
           },
           "patient": {
             "type": [

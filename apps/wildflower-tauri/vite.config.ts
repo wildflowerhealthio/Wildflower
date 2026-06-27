@@ -15,21 +15,28 @@ const sharedConfigPath = fileURLToPath(new URL('./tauri-shared-config.json', imp
 
 const isSharedConfig = (
   value: unknown
-): value is { loopback_hostname: string; loopback_port: number } =>
+): value is {
+  loopback_hostname: string
+  loopback_port: number
+  local_granted_scopes: string
+} =>
   typeof value === 'object' &&
   value !== null &&
   'loopback_hostname' in value &&
   typeof value.loopback_hostname === 'string' &&
   'loopback_port' in value &&
-  typeof value.loopback_port === 'number'
+  typeof value.loopback_port === 'number' &&
+  'local_granted_scopes' in value &&
+  typeof value.local_granted_scopes === 'string'
 
 const parsedConfig: unknown = JSON.parse(readFileSync(sharedConfigPath, 'utf8'))
 if (!isSharedConfig(parsedConfig)) {
   throw new Error(
-    `tauri-shared-config.json must declare string "loopback_hostname" and number "loopback_port" (at ${sharedConfigPath})`
+    `tauri-shared-config.json must declare string "loopback_hostname", number "loopback_port", and string "local_granted_scopes" (at ${sharedConfigPath})`
   )
 }
 const apiBaseUrl = `http://${parsedConfig.loopback_hostname}:${parsedConfig.loopback_port}`
+const localGrantedScopes = parsedConfig.local_granted_scopes
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -40,6 +47,7 @@ export default defineConfig({
   // sync with the Rust binding via `tauri-shared-config.json` (see above).
   define: {
     WILDFLOWER_LOOPBACK_ORIGIN: JSON.stringify(apiBaseUrl),
+    WILDFLOWER_LOCAL_GRANTED_SCOPES: JSON.stringify(localGrantedScopes),
   },
 
   // Match the rest of the monorepo (`vite.config.base.ts`): resolve

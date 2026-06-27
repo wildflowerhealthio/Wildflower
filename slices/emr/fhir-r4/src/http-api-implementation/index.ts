@@ -3,11 +3,10 @@ import { Layer } from 'effect'
 
 import type { EmrStore } from 'emr-core/livestore'
 import type { Origin } from 'navigation-core'
-import { FhirPublicApi, FhirResourcesApi } from '../http-api-definition/index.ts'
+import { FhirResourcesApi } from '../http-api-definition/index.ts'
 import * as Binary from './binary.ts'
 import * as Observation from './observation.ts'
 import * as Patient from './patient.ts'
-import * as SmartConfiguration from './smart-configuration.ts'
 
 const FhirResourcesApiHandlersLive = Layer.mergeAll(Patient.layer, Binary.layer, Observation.layer)
 
@@ -45,41 +44,11 @@ const FhirResourcesApiHandlersFor = <ParentId extends string>(): Layer.Layer<
     EmrStore | Origin
   >
 
-const FhirPublicApiHandlersLive = Layer.mergeAll(SmartConfiguration.layer)
-
-const FhirPublicApiLive = HttpApiBuilder.api(FhirPublicApi).pipe(
-  Layer.provide(FhirPublicApiHandlersLive)
-)
-
-type FhirPublicGroupNames = 'smart-well-known'
-
-const FhirPublicApiHandlersFor = <ParentId extends string>(): Layer.Layer<
-  HttpApiGroup.ApiGroup<ParentId, FhirPublicGroupNames>,
-  never,
-  Origin
-> =>
-  // Phantom-id bridge — same rationale as FhirResourcesApiHandlersFor; the
-  // `satisfies` clause pins the source layer's actual shape so a new
-  // requirement on `SmartConfiguration.layer` fails to compile before the
-  // cast widens the API-id phantom. Consumers composing this with the bare
-  // `*HandlersFor` helper must also provide `SmartConfigurationLive` (which
-  // itself requires `Origin`).
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  FhirPublicApiHandlersLive satisfies Layer.Layer<
-    HttpApiGroup.ApiGroup<'FhirPublicApi', FhirPublicGroupNames>,
-    never,
-    Origin
-  > as unknown as Layer.Layer<HttpApiGroup.ApiGroup<ParentId, FhirPublicGroupNames>, never, Origin>
-
 export {
   Binary,
   Observation,
   Patient,
-  SmartConfiguration,
   FhirResourcesApiHandlersLive,
   FhirResourcesApiHandlersFor,
   FhirResourcesApiLive,
-  FhirPublicApiHandlersLive,
-  FhirPublicApiHandlersFor,
-  FhirPublicApiLive,
 }

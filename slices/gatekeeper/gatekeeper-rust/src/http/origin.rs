@@ -13,7 +13,8 @@ use std::convert::Infallible;
 
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
-pub(crate) use shared_structures_rust::served_origin::served_origin_for;
+
+use shared_structures_rust::served_origin::served_origin_for;
 
 use crate::http::state::AppState;
 

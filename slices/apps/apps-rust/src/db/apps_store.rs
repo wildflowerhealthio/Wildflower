@@ -184,6 +184,7 @@ fn migrate(conn: &mut rusqlite::Connection) -> rusqlite::Result<()> {
 const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/001_initial_schema.sql"),
     include_str!("../migrations/002_internal_apps_table.sql"),
+    include_str!("../migrations/003_seed_precise_hbr.sql"),
 ];
 
 #[cfg(test)]
@@ -229,7 +230,13 @@ mod tests {
         let store = AppsStore::open_in_memory().unwrap();
         let rows = store.list_apps().unwrap();
         let ids: Vec<&str> = rows.iter().map(|r| r.id.as_str()).collect();
-        for expected in ["api-view", "api-docs", "growth-chart", "medication-viewer"] {
+        for expected in [
+            "api-view",
+            "api-docs",
+            "growth-chart",
+            "medication-viewer",
+            "precise-hbr",
+        ] {
             assert!(
                 ids.contains(&expected),
                 "missing seeded id {expected} in {ids:?}",

@@ -9,7 +9,7 @@ import { useEffect, useState, type JSX } from 'react'
 import { cn, useAuthTokenSetter } from 'react-kitchen-sink'
 import { Field, FieldDescription, pageLayoutStyles } from 'react-tundraish'
 
-import { useGatekeeperRuntimeLayer } from '../router-context.ts'
+import { useGatekeeperLocalGrantedScopes, useGatekeeperRuntimeLayer } from '../router-context.ts'
 import deviceCodeStyles from '../styles/device-code.module.css'
 import pageLayout from '../styles/page-layout.module.css'
 
@@ -132,6 +132,13 @@ const NeedsAuthMessage = (): JSX.Element => {
   // (`BearerToken | HttpClient | GatekeeperHttpApiClient`), provided once
   // by the app — not a one-shot query.
   const layer = useGatekeeperRuntimeLayer()
+  // Request the first-party client's full `allowed_scopes` set, threaded from
+  // the Tauri shell's `tauri-shared-config.json` (the single source gatekeeper
+  // also reads to seed those `allowed_scopes`), so the two can't drift. The
+  // device_authorization handler clears each requested scope by coverage against
+  // the seeded set, so this must stay within it. The literal fallback covers
+  // standalone/web renders where the host context carries no value.
+  const localGrantedScopes = useGatekeeperLocalGrantedScopes()
 
   useEffect(() => {
     const flow = Effect.gen(function* () {
@@ -139,7 +146,10 @@ const NeedsAuthMessage = (): JSX.Element => {
       const client = yield* GatekeeperHttpApiClient
 
       const auth = yield* client.oauth.DeviceAuthorization({
-        payload: { client_id: FIRST_PARTY_CLIENT_ID, scope: 'owner' },
+        payload: {
+          client_id: FIRST_PARTY_CLIENT_ID,
+          scope: localGrantedScopes ?? 'system/*.cruds wildflower/*.cruds',
+        },
       })
 
       yield* Effect.sync(() => {
@@ -194,7 +204,8 @@ const NeedsAuthMessage = (): JSX.Element => {
     // `AuthTokenStore`'s lifetime (returned from `useAuthTokenSetter`
     // and constructed once per `main-*` entry); including it in the
     // dep array makes the dependency explicit without churning.
-  }, [layer, setToken])
+    // `localGrantedScopes` is a stable string from router context.
+  }, [layer, setToken, localGrantedScopes])
 
   if (state.tag === 'starting') {
     return <p className="text-body-2">Starting sign-in…</p>

@@ -4,12 +4,10 @@
 //! request, and the code flow additionally mints an authorization code on
 //! approval; but they agree on the wire shapes the Owner UI posts and reads
 //! ([`ApproveBody`], [`ConsentResult`]), on the rule for which scopes an
-//! approval may actually grant ([`grantable_scopes`]), and on the deny path
-//! ([`deny_consent`]). Keeping those here stops the two trees from drifting —
-//! the divergence that once let the device path skip the `allowed_scopes`
-//! clamp the code path already had.
-
-use std::collections::HashSet;
+//! approval may actually grant ([`scopes_rust::grantable_scopes`]), and on
+//! the deny path ([`deny_consent`]). Keeping the wire shapes and deny path
+//! here stops the two trees from drifting — the divergence that once let the
+//! device path skip the `allowed_scopes` clamp the code path already had.
 
 use axum::Json;
 use serde::{Deserialize, Serialize};
@@ -34,22 +32,6 @@ pub(crate) struct ApproveBody {
 pub(crate) enum ConsentResult {
     Approved,
     Denied,
-}
-
-/// The scopes an Owner approval can actually grant: those that are both still
-/// requested by the pending request and within the client's *current*
-/// `allowed_scopes`. The Owner can only narrow, never widen, and the `allowed`
-/// clamp stops a stale request from granting a scope the client's policy no
-/// longer permits.
-pub(crate) fn grantable_scopes(
-    approved: Vec<String>,
-    requested: &HashSet<&str>,
-    allowed: &HashSet<&str>,
-) -> Vec<String> {
-    approved
-        .into_iter()
-        .filter(|s| requested.contains(s.as_str()) && allowed.contains(s.as_str()))
-        .collect()
 }
 
 /// Mark the pending request `request_id` denied and return the Owner-UI

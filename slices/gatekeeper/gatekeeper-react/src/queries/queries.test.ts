@@ -27,7 +27,7 @@ const GRANT_BODY = [
   {
     id: 'grant-1',
     clientId: 'client-a',
-    scopes: ['owner'],
+    scopes: ['system/*.cruds', 'wildflower/*.cruds'],
     redirectUri: 'https://example.com/cb',
     grantedAt: '2024-01-01T00:00:00.000Z',
     lastUsedAt: null,
@@ -55,7 +55,7 @@ const DEVICE_CONSENT_BODY = {
   userCode: 'WDJB-MJHT',
   clientId: 'client-a',
   clientName: 'Test Device',
-  requestedScopes: ['owner'],
+  requestedScopes: ['system/*.cruds', 'wildflower/*.cruds'],
 }
 
 // Wire shape mirrors `OAuthConsent.OAuthConsentSchema`.
@@ -185,7 +185,7 @@ describe('deviceConsentQueryOptions', () => {
 
     expect(consent.userCode).toBe('WDJB-MJHT')
     expect(consent.clientName).toBe('Test Device')
-    expect([...consent.requestedScopes]).toEqual(['owner'])
+    expect([...consent.requestedScopes]).toEqual(['system/*.cruds', 'wildflower/*.cruds'])
   })
 
   test('a failed read rejects ensureQueryData', async () => {

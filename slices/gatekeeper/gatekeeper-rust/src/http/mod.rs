@@ -12,7 +12,11 @@ mod page_paths;
 mod response_templates;
 mod state;
 
-pub(crate) use origin::{served_origin_for, ServedOrigin};
+pub(crate) use origin::ServedOrigin;
+// Re-export the shared pure resolver so existing `crate::http::served_origin_for`
+// imports keep working without leaking a `shared_structures_rust::` prefix into
+// every middleware that calls it.
+pub(crate) use shared_structures_rust::served_origin::served_origin_for;
 pub use state::AppState;
 
 use axum::middleware as axum_middleware;
@@ -37,8 +41,11 @@ fn documented_router() -> OpenApiRouter<AppState> {
 /// Build the gatekeeper's public HTTP surface. Routes live at
 /// `/.well-known/jwks.json`, `/oauth/*`, and `/access/*` (Owner-only via
 /// bearer JWT) — the module owns its mount paths so the caller just
-/// `.merge()`s. The whole surface is gated by the loopback middleware —
-/// non-loopback peers receive 403 before any handler runs.
+/// `.merge()`s. This router carries **no** loopback-peer gate of its own —
+/// the host applies that defense-in-depth to the whole merged surface via
+/// [`layer_router_with_loopback_peer_gating`]. Mounting `router()` directly
+/// without that wrapper leaves `/oauth/*` and `/access/*` reachable from
+/// non-loopback peers.
 pub fn router(state: AppState) -> Router {
     let (documented, _spec) = documented_router().split_for_parts();
     let access = Router::new()
@@ -53,22 +60,38 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .merge(documented)
         .nest("/access", access)
-        .layer(axum_middleware::from_fn(middleware::loopback_gate))
         .with_state(state)
 }
 
-/// Wrap a router (e.g. emr-rust's FHIR router) with JWT verification
-/// against the gatekeeper's signing keys. Any request missing or
-/// presenting an invalid bearer token gets 401.
-pub fn layer_router_with_gatekeeper_auth_gating(router: Router, state: AppState) -> Router {
-    router.layer(axum_middleware::from_fn_with_state(
+/// Wrap a router (e.g. emr-rust's FHIR router) with JWT verification against the
+/// gatekeeper's signing keys. Any request missing or presenting an invalid
+/// bearer token gets 401 — **except** requests whose path is listed in
+/// `exempt_paths`, which pass through untouched. The exemption exists for the
+/// FHIR/SMART discovery docs (`/fhir-r4/metadata`, `…/.well-known/smart-configuration`,
+/// etc.) a client must fetch *before* it holds a token. Matching is exact on the
+/// full request path with a trailing slash ignored (see `is_exempt`). Pass `&[]`
+/// to gate every path.
+pub fn layer_router_with_gatekeeper_auth_gating(
+    router: Router,
+    state: AppState,
+    exempt_paths: &[&str],
+) -> Router {
+    let gate = middleware::BearerGate {
         state,
+        exempt: exempt_paths
+            .iter()
+            .map(|p| p.trim_end_matches('/').to_string())
+            .collect(),
+    };
+    router.layer(axum_middleware::from_fn_with_state(
+        gate,
         middleware::require_valid_bearer_token,
     ))
 }
 
-/// Wrap a router with the loopback gate — the same peer-address check the
-/// gatekeeper applies to its own surface ([`router`]). A request whose peer
+/// Wrap a router with the loopback-peer gate ([`require_loopback_peer`]) — the
+/// same peer-address check the gatekeeper applies to its own surface
+/// ([`router`]). A request whose peer
 /// socket is not a loopback address — and, failing closed, any request with no
 /// `ConnectInfo` (i.e. the service wasn't mounted with
 /// `into_make_service_with_connect_info`) — gets a `403` before any handler
@@ -82,8 +105,8 @@ pub fn layer_router_with_gatekeeper_auth_gating(router: Router, state: AppState)
 /// downstream by the `Forwarded` header; only a genuinely non-loopback peer is
 /// rejected. (Stacking this on a router that already carries the gate — the
 /// gatekeeper's own — is a harmless, idempotent second check.)
-pub fn layer_router_with_loopback_gate(router: Router) -> Router {
-    router.layer(axum_middleware::from_fn(middleware::loopback_gate))
+pub fn layer_router_with_loopback_peer_gating(router: Router) -> Router {
+    router.layer(axum_middleware::from_fn(middleware::require_loopback_peer))
 }
 
 #[cfg(test)]

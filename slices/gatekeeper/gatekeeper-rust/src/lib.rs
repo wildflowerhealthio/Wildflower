@@ -28,13 +28,17 @@ pub(crate) mod seeding;
 
 use anyhow::Context;
 use chrono::Duration;
+use scopes_rust::{
+    AccessRights, ContextLevel, FhirResourceScope, ResourceType, Scope, WildflowerResourceScope,
+    WildflowerResourceType,
+};
 use tokio::sync::watch;
 use tokio::time::{interval, MissedTickBehavior};
 
 pub use config::GatekeeperConfig;
 pub use db::GatekeeperStore;
 pub use http::{
-    layer_router_with_gatekeeper_auth_gating, layer_router_with_loopback_gate, AppState,
+    layer_router_with_gatekeeper_auth_gating, layer_router_with_loopback_peer_gating, AppState,
 };
 
 /// `client_id` of the host application's first-party OAuth client. The host
@@ -42,9 +46,57 @@ pub use http::{
 /// own client registration during bootstrap.
 pub const FIRST_PARTY_CLIENT_ID: &str = "wildflower-host";
 
-/// OAuth scope that grants full Owner-level access to the gatekeeper's
-/// `/access/*` admin surface.
-pub const OWNER_SCOPE: &str = "owner";
+/// The maximal-access scopes that mark an Owner: full system FHIR access
+/// (`system/*.cruds`) **and** full Wildflower-resource access
+/// (`wildflower/*.cruds`). `require_owner_auth` treats a token as Owner iff it
+/// covers *every* one of these, gating the `/access/*` admin surface. (Replaced
+/// the bespoke `wildflower/admin` scope.)
+pub const WILDFLOWER_WIDEST_SCOPES: &[Scope] = &[
+    Scope::FhirResource(FhirResourceScope {
+        context: ContextLevel::System,
+        resource: ResourceType::Wildcard,
+        access: AccessRights::ALL,
+    }),
+    Scope::WildflowerResource(WildflowerResourceScope {
+        resource: WildflowerResourceType::Wildcard,
+        access: AccessRights::ALL,
+    }),
+];
+
+/// The **default** scopes granted to the first-party host (`wildflower-host`):
+/// the widest set, so local users can drive both the FHIR surface and the
+/// non-FHIR (Wildflower) APIs. Rendered by [`default_local_granted_scopes`].
+///
+/// This is no longer the *live* source: the running Tauri app sources the host
+/// grant from `tauri-shared-config.json` and threads it via
+/// [`GatekeeperConfig::granted_scopes`], so the value can't drift from the TS
+/// shell's device-authorization request. This const is the fallback for
+/// standalone/test builds that don't thread one.
+///
+/// Spelled out independently of [`WILDFLOWER_WIDEST_SCOPES`] (the owner-defining
+/// set) even though the two currently coincide: the host's *grant* and the
+/// *owner definition* are distinct concepts that may diverge — e.g. the host
+/// could later be granted `offline_access` without that scope widening the
+/// `/access/*` owner gate.
+pub const WILDFLOWER_LOCAL_GRANTED_SCOPES: &[Scope] = &[
+    Scope::FhirResource(FhirResourceScope {
+        context: ContextLevel::System,
+        resource: ResourceType::Wildcard,
+        access: AccessRights::ALL,
+    }),
+    Scope::WildflowerResource(WildflowerResourceScope {
+        resource: WildflowerResourceType::Wildcard,
+        access: AccessRights::ALL,
+    }),
+];
+
+/// The default host granted-scope wire strings — the rendered
+/// [`WILDFLOWER_LOCAL_GRANTED_SCOPES`]. Standalone and test builds seed
+/// [`GatekeeperConfig::granted_scopes`] from this; the live Tauri app sources
+/// the value from `tauri-shared-config.json` instead.
+pub fn default_local_granted_scopes() -> Vec<String> {
+    scopes_rust::render_scopes(WILDFLOWER_LOCAL_GRANTED_SCOPES)
+}
 
 /// Lifetime of the host owner token minted at boot.
 const HOST_OWNER_TOKEN_TTL: Duration = Duration::hours(24);
@@ -84,12 +136,13 @@ pub struct Gatekeeper {
 ///  - returns the `AppState` the caller passes to
 ///    [`layer_router_with_gatekeeper_auth_gating`] to wrap emr-rust.
 ///
-/// The boot-time host owner token is *always* minted against
-/// `config.loopback_origin`, because the host `WebView` reaches the API over
-/// loopback. Per-request handlers, by contrast, derive their `iss`/`aud`
-/// from [`served_origin_for`](crate::http::served_origin_for) — the origin
-/// the inbound request says it was targeting — falling back to
-/// `loopback_origin` when no public-origin header is present.
+/// Every minted token's `iss` is
+/// [`shared_structures_rust::CANONICAL_ISSUER`] — the same string HFS
+/// validates against, so any token (boot owner token or per-request OAuth
+/// token) passes HFS auth regardless of which transport it arrived over.
+/// Per-request `aud` is still derived from
+/// [`served_origin_for`](crate::http::served_origin_for) — useful for
+/// SMART clients that match `aud` to the FHIR base URL they discovered.
 ///
 /// The whole surface is gated by the loopback middleware — non-loopback
 /// peers receive 403 before any handler runs.
@@ -105,10 +158,35 @@ pub fn setup_gatekeeper(
     local_owner_token_tx: &watch::Sender<Option<String>>,
     active_device_user_code_tx: watch::Sender<Option<String>>,
 ) -> anyhow::Result<Gatekeeper> {
-    let store = seeding::open_and_seed_store(conn)?;
-    let host_owner_token =
-        seeding::mint_host_owner_token(&store, &config.loopback_origin, HOST_OWNER_TOKEN_TTL)
-            .context("failed to mint host owner token")?;
+    // The host owner token is minted from `granted_scopes` (the live app sources
+    // these from `tauri-shared-config.json`), but the `/access/*` owner gate
+    // still checks coverage of every `WILDFLOWER_WIDEST_SCOPES` entry. These were
+    // once the same compile-time const; now the JSON must keep covering WIDEST or
+    // the Owner UI silently 401s. Fail loudly at boot rather than at first
+    // `/access/*` call. (A read of WIDEST — the owner gate's own use is untouched.)
+    let granted: Vec<Scope> = config
+        .granted_scopes
+        .iter()
+        .map(|s| Scope::from(s.as_str()))
+        .collect();
+    assert!(
+        WILDFLOWER_WIDEST_SCOPES
+            .iter()
+            .all(|widest| granted.iter().any(|g| g.covers(widest))),
+        "granted_scopes (from tauri-shared-config.json) must cover every \
+         WILDFLOWER_WIDEST_SCOPES entry, or the host owner token can't pass the \
+         /access/* owner gate; got {:?}",
+        config.granted_scopes
+    );
+    let store = seeding::open_and_seed_store(conn, &config.granted_scopes)?;
+    let host_owner_token = seeding::mint_host_owner_token(
+        &store,
+        shared_structures_rust::CANONICAL_ISSUER,
+        &config.loopback_origin,
+        HOST_OWNER_TOKEN_TTL,
+        &config.granted_scopes,
+    )
+    .context("failed to mint host owner token")?;
     local_owner_token_tx
         .send(Some(host_owner_token))
         .context("token channel receiver dropped before host owner token issuance")?;

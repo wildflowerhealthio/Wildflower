@@ -3,7 +3,9 @@ use std::net::SocketAddr;
 use axum::body::{to_bytes, Body};
 use axum::extract::ConnectInfo;
 use axum::http::{Request, StatusCode};
-use gatekeeper_rust::{setup_gatekeeper, Gatekeeper, GatekeeperConfig};
+use gatekeeper_rust::{
+    setup_gatekeeper, Gatekeeper, GatekeeperConfig, WILDFLOWER_LOCAL_GRANTED_SCOPES,
+};
 use tokio::sync::watch;
 
 const LOOPBACK_ORIGIN: &str = "http://127.0.0.1";
@@ -31,6 +33,7 @@ fn spin_up() -> (Gatekeeper, String, Connection) {
     let db = Connection::open_in_memory().expect("open shared db");
     let config = GatekeeperConfig {
         loopback_origin: LOOPBACK_ORIGIN.to_string(),
+        granted_scopes: gatekeeper_rust::default_local_granted_scopes(),
     };
     let (token_tx, token_rx) = watch::channel::<Option<String>>(None);
     let (active_device_tx, _active_device_rx) = watch::channel::<Option<String>>(None);
@@ -126,15 +129,42 @@ async fn jwks_endpoint_returns_seeded_key() {
 }
 
 #[tokio::test]
-async fn loopback_gate_rejects_non_loopback_peer() {
+async fn bearer_gate_exempts_listed_paths_but_gates_the_rest() {
+    use axum::routing::get;
+    use axum::Router;
+    use gatekeeper_rust::layer_router_with_gatekeeper_auth_gating;
+
     let (g, _host_owner_token, _db) = spin_up();
-    let mut req = Request::get("/.well-known/jwks.json")
-        .body(Body::empty())
-        .unwrap();
-    req.extensions_mut()
-        .insert(ConnectInfo::<SocketAddr>("10.0.0.5:54321".parse().unwrap()));
-    let res = g.router.oneshot(req).await.expect("oneshot");
-    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+    // A trivial downstream router wrapped in the bearer gate with only the
+    // discovery path exempted — exercises the real middleware wiring (full path,
+    // exact match) rather than just the `is_exempt` helper.
+    let inner = Router::new()
+        .route("/fhir-r4/metadata", get(|| async { "ok" }))
+        .route("/fhir-r4/metadata-x", get(|| async { "ok" }))
+        .route("/fhir-r4/Patient", get(|| async { "ok" }));
+    let gated =
+        layer_router_with_gatekeeper_auth_gating(inner, g.state.clone(), &["/fhir-r4/metadata"]);
+
+    let status = |path: &'static str| {
+        let gated = gated.clone();
+        async move {
+            gated
+                .oneshot(Request::get(path).body(Body::empty()).unwrap())
+                .await
+                .expect("oneshot")
+                .status()
+        }
+    };
+
+    // Exempt path: served without any bearer token.
+    assert_eq!(status("/fhir-r4/metadata").await, StatusCode::OK);
+    // A path that merely shares a prefix is NOT exempt — still gated.
+    assert_eq!(
+        status("/fhir-r4/metadata-x").await,
+        StatusCode::UNAUTHORIZED
+    );
+    // A normal resource path is gated — 401 without a token.
+    assert_eq!(status("/fhir-r4/Patient").await, StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]
@@ -278,9 +308,104 @@ async fn authorize_disallowed_scope_redirects_invalid_scope() {
 }
 
 #[tokio::test]
+async fn authorize_allows_scope_covered_by_a_broader_allowed_scope() {
+    // The allowlist check is coverage-aware, not exact string membership: a
+    // client allowed the v1 `patient/Observation.read` also admits a request for
+    // the equivalent v2 `patient/Observation.rs`. With the old exact-match gate
+    // this redirected `invalid_scope`; now it parks a pending request like any
+    // allowed scope (no `error=` redirect back to the client).
+    let (g, _host_owner_token, db) = spin_up();
+    seed_client_with_redirect(
+        &db,
+        "test-app",
+        "https://app.example/cb",
+        &["patient/Observation.read"],
+    );
+    let challenge = compute_code_challenge(CODE_VERIFIER);
+    let query = format!(
+        "response_type=code&code_challenge_method=S256&client_id=test-app&\
+         scope=patient%2FObservation.rs&code_challenge={challenge}&\
+         redirect_uri=https%3A%2F%2Fapp.example%2Fcb&state=xyz"
+    );
+    let res = g
+        .router
+        .oneshot(loopback_request(
+            Request::get(format!("/oauth/authorize?{query}")),
+            Body::empty(),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::FOUND);
+    let location = res
+        .headers()
+        .get("location")
+        .and_then(|v| v.to_str().ok())
+        .expect("location");
+    assert!(
+        !location.contains("error="),
+        "a covered scope must not trigger an error redirect, got {location}"
+    );
+}
+
+#[tokio::test]
+async fn authorize_accepts_smart_launch_and_aud_params() {
+    // SMART App Launch forwards `launch` (the EHR-minted nonce) and `aud`
+    // (the FHIR base URL the app expects) alongside the standard authorize
+    // params. They're optional (`#[serde(default)]`) and not validated today,
+    // so a request carrying them must validate exactly like one without them:
+    // park a pending request and 302 to the owner polling page — never an
+    // `error=` redirect back to the client.
+    let (g, _host_owner_token, db) = spin_up();
+    seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
+    let challenge = compute_code_challenge(CODE_VERIFIER);
+
+    let query = format!(
+        "response_type=code&code_challenge_method=S256&client_id=test-app&scope=read&\
+         code_challenge={challenge}&redirect_uri=https%3A%2F%2Fapp.example%2Fcb&state=xyz&\
+         launch=ehr-launch-nonce-123&aud=https%3A%2F%2Fapp.example%2Ffhir-r4"
+    );
+    let res = g
+        .router
+        .clone()
+        .oneshot(loopback_request(
+            Request::get(format!("/oauth/authorize?{query}")),
+            Body::empty(),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::FOUND);
+    let polling = res
+        .headers()
+        .get("location")
+        .and_then(|v| v.to_str().ok())
+        .expect("location")
+        .to_string();
+    assert!(
+        !polling.contains("error="),
+        "launch/aud must not trigger an error redirect, got {polling}"
+    );
+
+    // The pending request was actually parked: polling it reports `pending`
+    // (the owner hasn't approved yet), proving the SMART params didn't divert
+    // or reject the flow.
+    let request_id = polling.rsplit('/').next().expect("request id").to_string();
+    let res = g
+        .router
+        .clone()
+        .oneshot(loopback_request(
+            Request::get(format!("/oauth/authorize/{request_id}")),
+            Body::empty(),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(body_json(res.into_body()).await["status"], "pending");
+}
+
+#[tokio::test]
 async fn device_authorization_happy_path() {
     let (g, _host_owner_token, _db) = spin_up();
-    let body = "client_id=wildflower-host&scope=owner";
+    let body = "client_id=wildflower-host&scope=system%2F*.cruds";
     let req = loopback_request(
         Request::post("/oauth/device_authorization")
             .header("content-type", "application/x-www-form-urlencoded"),
@@ -312,9 +437,27 @@ async fn device_authorization_happy_path() {
 }
 
 #[tokio::test]
+async fn device_authorization_allows_scope_covered_by_client_wildcard() {
+    // Coverage-aware allowlist (not exact string membership): the host client is
+    // allowed `system/*.cruds`, which covers a request for the narrower
+    // `system/Observation.rs`. The old exact-match gate rejected this with
+    // `invalid_scope`; now it issues a device/user code pair like any allowed
+    // scope.
+    let (g, _host_owner_token, _db) = spin_up();
+    let body = "client_id=wildflower-host&scope=system%2FObservation.rs";
+    let req = loopback_request(
+        Request::post("/oauth/device_authorization")
+            .header("content-type", "application/x-www-form-urlencoded"),
+        Body::from(body),
+    );
+    let res = g.router.oneshot(req).await.expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+}
+
+#[tokio::test]
 async fn device_authorization_unknown_client_returns_401() {
     let (g, _host_owner_token, _db) = spin_up();
-    let body = "client_id=ghost&scope=owner";
+    let body = "client_id=ghost&scope=system%2F*.cruds";
     let req = loopback_request(
         Request::post("/oauth/device_authorization")
             .header("content-type", "application/x-www-form-urlencoded"),
@@ -432,51 +575,6 @@ async fn token_exchange_unknown_device_code_returns_400_invalid_grant() {
     let body = body_json(res.into_body()).await;
     assert_eq!(body["error"], "invalid_grant");
     assert_eq!(body["error_description"], "Unknown device_code");
-}
-
-#[tokio::test]
-async fn host_owner_token_is_owner_scoped() {
-    // The owner-token TTL is 24h; allow a couple seconds of slack on the
-    // second-precision, wall-clock-derived timestamps (the reviewer asked us
-    // to "allow for some uncertainty in the timing-dependent values").
-    const OWNER_TOKEN_TTL_SECS: i64 = 24 * 60 * 60;
-
-    let before = Utc::now().timestamp();
-    let (_g, host_owner_token, _db) = spin_up();
-    // header.payload.sig
-    let parts: Vec<&str> = host_owner_token.split('.').collect();
-    assert_eq!(parts.len(), 3);
-    let payload_bytes = base64::url_safe_no_pad_decode(parts[1]).expect("payload");
-    let payload: Value = serde_json::from_slice(&payload_bytes).expect("json");
-    // iat/exp are wall-clock-derived; thread them through and check their
-    // *relationship* separately (below) rather than pinning absolute instants.
-    let iat = payload["iat"].as_i64().expect("iat");
-    let exp = payload["exp"].as_i64().expect("exp");
-    assert_eq!(
-        payload,
-        serde_json::json!({
-            "iss": LOOPBACK_ORIGIN,
-            "sub": "wildflower-host",
-            "aud": LOOPBACK_ORIGIN,
-            "scope": "owner",
-            "iat": iat,
-            "exp": exp,
-        })
-    );
-    assert!(
-        (exp - iat - OWNER_TOKEN_TTL_SECS).abs() <= 2,
-        "exp - iat = {} should be ~{OWNER_TOKEN_TTL_SECS}",
-        exp - iat
-    );
-    // `before` is captured ahead of `spin_up`, which generates an RSA key —
-    // slow and variable under parallel test load — so this window is generous.
-    // It only pins that `iat` is a *recent* wall-clock instant (not 0, not far
-    // future); the exp - iat relationship above carries the precise check.
-    let now = Utc::now().timestamp();
-    assert!(
-        (before..=now).contains(&iat),
-        "iat = {iat} should fall within the test's wall-clock envelope [{before}, {now}]"
-    );
 }
 
 // ---------------------------------------------------------------------------
@@ -681,6 +779,88 @@ async fn auth_code_grant_happy_path_end_to_end() {
         .is_empty());
     // No `offline_access` in the grant → no standing credential.
     assert!(token.get("refresh_token").is_none());
+}
+
+/// Decode a JWT's payload (the middle base64url-no-pad segment) to JSON. The
+/// signature isn't verified — fine for asserting claim *shape* in a test.
+fn decode_jwt_payload(token: &str) -> serde_json::Value {
+    let payload_b64 = token.split('.').nth(1).expect("jwt payload segment");
+    let bytes = base64::url_safe_no_pad_decode(payload_b64).expect("base64url payload");
+    serde_json::from_slice(&bytes).expect("payload json")
+}
+
+/// HFS authorizes FHIR reads off the token's `scope` claim, parsing only the
+/// SMART v2 letter grammar — so a v1-worded grant must be minted with its
+/// letter-form alternate alongside it. The app-facing `TokenResponse.scope`
+/// stays the granted set verbatim.
+#[tokio::test]
+async fn minted_jwt_scope_claim_carries_alternate_canonical_forms() {
+    let (g, host_owner_token, db) = spin_up();
+    seed_client_with_redirect(
+        &db,
+        "test-app",
+        "https://app.example/cb",
+        &["patient/Observation.read"],
+    );
+    let request_id = authorize_and_approve(
+        &g,
+        &host_owner_token,
+        "test-app",
+        "patient%2FObservation.read",
+        r#"{"approvedScopes":["patient/Observation.read"]}"#,
+    )
+    .await;
+
+    // Poll the approved request for the client redirect carrying the code.
+    let res = g
+        .router
+        .clone()
+        .oneshot(loopback_request(
+            Request::get(format!("/oauth/authorize/{request_id}")),
+            Body::empty(),
+        ))
+        .await
+        .expect("oneshot");
+    let status = body_json(res.into_body()).await;
+    let redirect = status["redirect"].as_str().expect("redirect");
+    let code = Url::parse(redirect)
+        .expect("redirect url")
+        .query_pairs()
+        .find(|(k, _)| k == "code")
+        .map(|(_, v)| v.into_owned())
+        .expect("code param");
+
+    // Redeem the code for a token.
+    let body = format!(
+        "grant_type=authorization_code&client_id=test-app&code={code}&\
+         code_verifier={CODE_VERIFIER}&redirect_uri=https%3A%2F%2Fapp.example%2Fcb"
+    );
+    let res = g
+        .router
+        .clone()
+        .oneshot(loopback_request(
+            Request::post("/oauth/token")
+                .header("content-type", "application/x-www-form-urlencoded"),
+            Body::from(body),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+    let token = body_json(res.into_body()).await;
+
+    // App-facing `scope` is the granted set, unexpanded.
+    assert_eq!(token["scope"], "patient/Observation.read");
+
+    // The signed JWT carries both the v1 word and its v2 letter twin.
+    let access_token = token["access_token"].as_str().expect("access_token");
+    let claims = decode_jwt_payload(access_token);
+    let scope_claim = claims["scope"].as_str().expect("scope claim");
+    let claim_scopes: Vec<&str> = scope_claim.split_whitespace().collect();
+    assert!(
+        claim_scopes.contains(&"patient/Observation.read")
+            && claim_scopes.contains(&"patient/Observation.rs"),
+        "JWT scope claim must carry both v1 and v2 forms, got {scope_claim:?}"
+    );
 }
 
 /// Drive `/authorize` → Owner consent approve for one request, returning the
@@ -1036,7 +1216,7 @@ async fn device_grant_pending_then_slow_down() {
         &store_handle(&db),
         "wildflower-host",
         "dev-pending",
-        &["owner"],
+        &[&WILDFLOWER_LOCAL_GRANTED_SCOPES[0].to_string()],
         RequestStatus::Pending,
         Utc::now() + Duration::minutes(5),
     );
@@ -1066,7 +1246,7 @@ async fn device_grant_single_use_then_expired_token() {
         &store_handle(&db),
         "wildflower-host",
         "dev-approved",
-        &["owner"],
+        &[&WILDFLOWER_LOCAL_GRANTED_SCOPES[0].to_string()],
         RequestStatus::Approved,
         Utc::now() + Duration::minutes(5),
     );
@@ -1076,7 +1256,10 @@ async fn device_grant_single_use_then_expired_token() {
     assert_eq!(first.status(), StatusCode::OK);
     let token = body_json(first.into_body()).await;
     assert_eq!(token["token_type"], "Bearer");
-    assert_eq!(token["scope"], "owner");
+    assert_eq!(
+        token["scope"],
+        WILDFLOWER_LOCAL_GRANTED_SCOPES[0].to_string()
+    );
 
     let second = post_form(&g.router, "/oauth/token", body).await;
     assert_eq!(second.status(), StatusCode::BAD_REQUEST);
@@ -1217,7 +1400,7 @@ async fn device_authorization_sets_cache_suppression_headers() {
     let res = post_form(
         &g.router,
         "/oauth/device_authorization",
-        "client_id=wildflower-host&scope=owner",
+        "client_id=wildflower-host&scope=system%2F*.cruds",
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);

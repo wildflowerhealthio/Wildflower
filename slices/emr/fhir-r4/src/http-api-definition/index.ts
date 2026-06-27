@@ -2,7 +2,6 @@ import { HttpApi, type HttpApiError } from '@effect/platform'
 import * as Binary from './binary.ts'
 import * as Observation from './observation.ts'
 import * as Patient from './patient.ts'
-import * as SmartConfiguration from './smart-configuration.ts'
 
 const FhirResourcesApiPrefix = '/fhir-r4'
 
@@ -16,20 +15,4 @@ const FhirResourcesApi: HttpApi.HttpApi<
   .add(Observation.httpApiGroup)
   .prefix(FhirResourcesApiPrefix)
 
-const FhirPublicApi: HttpApi.HttpApi<
-  'FhirPublicApi',
-  typeof SmartConfiguration.httpApiGroup,
-  HttpApiError.HttpApiDecodeError
-> = HttpApi.make('FhirPublicApi')
-  .add(SmartConfiguration.httpApiGroup)
-  .prefix(FhirResourcesApiPrefix)
-
-export {
-  FhirResourcesApi,
-  FhirPublicApi,
-  FhirResourcesApiPrefix,
-  Binary,
-  Observation,
-  Patient,
-  SmartConfiguration,
-}
+export { FhirResourcesApi, FhirResourcesApiPrefix, Binary, Observation, Patient }

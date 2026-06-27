@@ -9,8 +9,8 @@ use apps_rust::{setup_apps, AppsConfig, SelfHostedAppsService};
 use axum::Router;
 use emr_rust::{setup_fhir_r4, EmrConfig};
 use gatekeeper_rust::{
-    layer_router_with_gatekeeper_auth_gating, layer_router_with_loopback_gate, setup_gatekeeper,
-    GatekeeperConfig,
+    layer_router_with_gatekeeper_auth_gating, layer_router_with_loopback_peer_gating,
+    setup_gatekeeper, GatekeeperConfig,
 };
 use shared_structures_rust::ServerRuntimeConfig;
 use shared_structures_server_rust::{LoopbackHostname, ProxyTable, TunnelSubdomainReverseProxy};
@@ -35,6 +35,15 @@ const LOOPBACK_PORT: u16 = match u16::from_str_radix(env!("WILDFLOWER_LOOPBACK_P
     Err(_) => panic!("WILDFLOWER_LOOPBACK_PORT (from tauri-shared-config.json) must be a u16"),
 };
 
+// The host's granted-scope string, also sourced from
+// `apps/wildflower-tauri/tauri-shared-config.json` (re-emitted by `build.rs`).
+// The TS shell reads the same value as `WILDFLOWER_LOCAL_GRANTED_SCOPES`
+// (`vite.config.ts`), so the host's device-authorization request can't drift
+// from what gatekeeper seeds. gatekeeper seeds its first-party client's
+// `allowed_scopes` and mints the host owner token from this set (asserting it
+// covers `WILDFLOWER_WIDEST_SCOPES`).
+const LOCAL_GRANTED_SCOPES: &str = env!("WILDFLOWER_LOCAL_GRANTED_SCOPES");
+
 // Filenames of the host's SQLite databases under the shared app-data dir. These
 // are the single source of truth for each database's on-disk name: the slice
 // that opens it AND the data-management catalogue (`/databases`) reference the
@@ -55,23 +64,23 @@ async fn run_server(
     databases_rust::purge_pending_deletions(&runtime.app_data_dir)
         .context("failed to purge scheduled database deletions")?;
 
+    let loopback_host = runtime.loopback_authority();
+    let loopback_origin = runtime.loopback_origin();
     let emr_config = EmrConfig {
         log_level: "debug".to_string(),
         db_file_path: runtime.app_data_dir.join(HEALTH_DATA_DB),
+        // HFS-enforced auth: every FHIR request must carry a Bearer JWT
+        // signed by a gatekeeper-issued key. `iss` is pinned to
+        // [`shared_structures_rust::CANONICAL_ISSUER`] by both gatekeeper
+        // (at mint) and emr-rust (at validation).
+        jwks_url: Some(format!("{loopback_origin}/.well-known/jwks.json")),
     };
-    let loopback_host = format!("{}:{}", runtime.loopback_hostname, runtime.loopback_port);
-    let loopback_origin = format!(
-        "http://{}:{}",
-        runtime.loopback_hostname, runtime.loopback_port
-    );
-    // The host owner token is minted against this loopback origin (the
-    // WebView reaches the API over loopback). We bind 127.0.0.1 explicitly
-    // (the OS enforces loopback-only at the socket, so LAN peers can't reach
-    // the surface even before the loopback gate runs), so the WebView's
-    // `Host:` header is `127.0.0.1:<port>` — the same canonical form
-    // `served_origin_for` falls back to for un-forwarded requests.
     let gatekeeper_config = GatekeeperConfig {
         loopback_origin: loopback_origin.clone(),
+        granted_scopes: LOCAL_GRANTED_SCOPES
+            .split_whitespace()
+            .map(str::to_owned)
+            .collect(),
     };
 
     // One shared SQLite database for all persistence-rust-backed slices
@@ -106,12 +115,19 @@ async fn run_server(
     )
     .context("failed to set up gatekeeper")?;
 
-    let gated_fhir_r4 =
-        layer_router_with_gatekeeper_auth_gating(fhir_r4_router, gatekeeper.state.clone());
+    // The FHIR router carries discovery docs (metadata, SMART well-known) that a
+    // client fetches before it holds a token, so those paths are exempted from
+    // the bearer gate; every other `/fhir-r4/*` path still requires a token.
+    let gated_fhir_r4 = layer_router_with_gatekeeper_auth_gating(
+        fhir_r4_router,
+        gatekeeper.state.clone(),
+        emr_rust::UNAUTHENTICATED_FHIR_PATHS,
+    );
 
     let gated_stubs = layer_router_with_gatekeeper_auth_gating(
         api_stubs::app_shell_stub_router(),
         gatekeeper.state.clone(),
+        &[],
     );
 
     // The real `/tunnel` surface (replacing the former api_stubs stub). It's
@@ -170,7 +186,7 @@ async fn run_server(
     let tunnel = tunnel_rust::setup_tunnel(db.clone(), &tunnel_config, health_probe)
         .context("failed to set up tunnel")?;
     let gated_tunnel =
-        layer_router_with_gatekeeper_auth_gating(tunnel.router, gatekeeper.state.clone());
+        layer_router_with_gatekeeper_auth_gating(tunnel.router, gatekeeper.state.clone(), &[]);
 
     // The apps catalogue surface. `GET /apps` (list) and `POST /apps/{id}`
     // (launch) ride on the public router — the webview consumes them
@@ -203,7 +219,7 @@ async fn run_server(
     )
     .context("failed to set up apps")?;
     let gated_apps_admin =
-        layer_router_with_gatekeeper_auth_gating(apps.admin_router, gatekeeper.state.clone());
+        layer_router_with_gatekeeper_auth_gating(apps.admin_router, gatekeeper.state.clone(), &[]);
 
     // The data-management surface (`/databases`): export + delete the host's
     // SQLite databases. It owns no store — it works at the file level on the
@@ -232,6 +248,7 @@ async fn run_server(
     let gated_databases = layer_router_with_gatekeeper_auth_gating(
         databases_rust::setup_databases(&databases_config),
         gatekeeper.state.clone(),
+        &[],
     );
     // The webview page is NOT served from this origin — it loads from
     // the Vite dev server (`http://localhost:1420`) in dev and Tauri's
@@ -295,9 +312,9 @@ async fn run_server(
     // runs, so even an ungated, CORS-permissive endpoint like `POST /apps/{id}`
     // (which can open a native popup on the owner's device) can't be driven by a
     // non-loopback client. Applied outermost (after CORS) so it runs first. See
-    // `layer_router_with_loopback_gate` for how forwarded callers pass and why
-    // re-gating the gatekeeper's already-gated routes is harmless.
-    let api_router = layer_router_with_loopback_gate(api_router);
+    // `layer_router_with_loopback_peer_gating` for how forwarded callers pass and
+    // why re-gating the gatekeeper's already-gated routes is harmless.
+    let api_router = layer_router_with_loopback_peer_gating(api_router);
 
     // The reverse proxy wraps the API stack as the outermost layer: a forwarded
     // request whose `Forwarded` host matches `<app-id>.<configured-public-host>`

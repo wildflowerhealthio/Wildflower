@@ -1,0 +1,21 @@
+[package]
+name = "scopes-rust"
+version = "0.0.0"
+edition.workspace = true
+publish.workspace = true
+
+# OAuth 2.0 / SMART on FHIR scope primitives — the structured `Scope` model and
+# the canonical scope strings every slice shares. Kept lean: `serde` (scopes
+# serialize as their wire string, so stored/JWT bytes are unchanged) and the
+# `tracing` facade (to warn on dropped SMART search-parameter suffixes).
+[dependencies]
+serde.workspace = true
+tracing = "0.1"
+
+[dev-dependencies]
+serde_json = "1"
+proptest = "1"
+
+# Opt into the workspace lints (notably `unsafe_code = "forbid"`).
+[lints]
+workspace = true

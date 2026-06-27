@@ -56,6 +56,8 @@ const AuthorizeUrlParamsSchema = Schema.Struct({
   code_challenge: Schema.NonEmptyString,
   redirect_uri: Schema.NonEmptyString,
   state: Schema.String,
+  launch: Schema.optional(Schema.String),
+  aud: Schema.optional(Schema.String),
 })
 
 // Error response shapes per OAuth 2.0 §5.2 / RFC 8628 §3.5. One schema

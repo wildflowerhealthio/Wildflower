@@ -111,6 +111,15 @@ const AUTHORIZATION_REQUEST_TTL: Duration = Duration::minutes(5);
 /// RFC 7636 (PKCE). Stricter than the base spec: `state` is required (the
 /// spec merely recommends it), and PKCE with S256 is mandatory — both
 /// matching the OAuth 2.1 direction.
+///
+/// SMART App Launch extensions (`launch`, `aud`) are accepted as optional:
+/// a SMART app forwards the launch nonce we (apps-rust) handed it, and
+/// declares the FHIR base URL it expects the token to be valid for. We
+/// don't validate or look up either today — the launch nonce just rides
+/// along with the pending request so the consent UI can correlate, and
+/// `aud` is parked for future audience-binding. Without these fields the
+/// SMART app's request would still succeed (serde's `Query` extractor
+/// ignores extras), but we'd lose visibility into them.
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct AuthorizeParams {
@@ -121,6 +130,22 @@ pub struct AuthorizeParams {
     pub code_challenge: String,
     pub redirect_uri: String,
     pub state: String,
+    /// SMART App Launch nonce, set by the EHR (apps-rust generates it,
+    /// the SMART app forwards it). Not currently looked up against a
+    /// launch-context table — we trust whatever value the SMART app
+    /// echoes back and bind patient context at consent instead. Binding it
+    /// (single-use, patient-bound) is tracked in
+    /// <https://github.com/Assessment-is/Wildflower/issues/257>.
+    #[serde(default)]
+    pub launch: Option<String>,
+    /// SMART App Launch audience hint: the FHIR base URL the SMART app
+    /// expects to call with the resulting token. Not currently validated
+    /// against [`shared_structures_rust::CANONICAL_ISSUER`] — `aud`
+    /// binding in minted tokens is per-request via `served_origin_for`.
+    /// Validating it is tracked in
+    /// <https://github.com/Assessment-is/Wildflower/issues/257>.
+    #[serde(default)]
+    pub aud: Option<String>,
 }
 
 /// The authorization endpoint (RFC 6749 §3.1), the public front door of the
@@ -163,6 +188,22 @@ pub(super) async fn handle_authorize_request(
     Query(params): Query<AuthorizeParams>,
 ) -> Result<Response, AuthorizeError> {
     ensure_active_signing_key(&state)?;
+
+    // SMART App Launch params arrive here as `launch` (nonce minted by
+    // apps-rust) and `aud` (FHIR base URL the SMART app expects). We don't
+    // look up `launch` against a launch-context table — patient binding
+    // happens at consent — but we log it so an operator can correlate a
+    // SMART app's request back to the click that triggered it. Binding +
+    // validation is tracked in
+    // https://github.com/Assessment-is/Wildflower/issues/257.
+    if params.launch.is_some() || params.aud.is_some() {
+        tracing::info!(
+            client_id = %params.client_id,
+            launch = ?params.launch,
+            aud = ?params.aud,
+            "SMART App Launch parameters received at /oauth/authorize",
+        );
+    }
 
     // Validate in two phases: client/redirect_uri first (failures render a
     // local page), then the redirectable params (failures 302 back). Each
@@ -324,11 +365,16 @@ fn validate_requested_scopes(
         .split_whitespace()
         .map(str::to_string)
         .collect();
-    let allowed: HashSet<&str> = client.allowed_scopes.iter().map(String::as_str).collect();
-    if !requested_scopes
-        .iter()
-        .all(|s| allowed.contains(s.as_str()))
-    {
+    // Coverage-aware allowlist check, not exact string membership: a client
+    // allowed a broad or v1 scope (e.g. `patient/Observation.read`) also admits
+    // a narrower or v2 request it covers (`patient/Observation.rs`). Mirrors the
+    // consent path's `grantable_scopes`; the same intersection runs again there.
+    if !requested_scopes.iter().all(|requested| {
+        client
+            .allowed_scopes
+            .iter()
+            .any(|allowed| scopes_rust::allowed_scope_covers(allowed, requested))
+    }) {
         return Err(AuthorizeError::redirect(
             parsed_redirect,
             OAuthErrorCode::InvalidScope,

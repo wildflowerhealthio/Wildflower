@@ -51,7 +51,7 @@ const makeClient = (overrides: Partial<ClientRow> = {}): ClientRow => ({
   name: 'Wildflower (host)',
   kind: 'public',
   redirectUris: [],
-  allowedScopes: ['owner'],
+  allowedScopes: ['system/*.cruds', 'wildflower/*.cruds'],
   secretHash: null,
   registeredAt: DateTime.unsafeNow(),
   disabledAt: null,
@@ -68,7 +68,7 @@ test('mintAccessToken round-trips through verifyJwt', async () => {
   const token = await Effect.runPromise(
     mintAccessToken(signingKey, ORIGIN, {
       clientId: 'wildflower-host',
-      scope: ['owner'],
+      scope: ['system/*.cruds', 'wildflower/*.cruds'],
       ttl: Duration.minutes(1),
     })
   )
@@ -86,7 +86,7 @@ test('mintAccessToken round-trips through verifyJwt', async () => {
   if (Either.isRight(result)) {
     expect(result.right.sub).toBe('wildflower-host')
     expect(result.right.iss).toBe(ORIGIN)
-    expect(result.right.scope).toBe('owner')
+    expect(result.right.scope).toBe('system/*.cruds wildflower/*.cruds')
   }
 })
 
@@ -100,7 +100,7 @@ test('mintAccessToken issues a token whose verification fails when client is not
   const token = await Effect.runPromise(
     mintAccessToken(signingKey, ORIGIN, {
       clientId: 'wildflower-host',
-      scope: ['owner'],
+      scope: ['system/*.cruds', 'wildflower/*.cruds'],
       ttl: Duration.minutes(1),
     })
   )
@@ -127,7 +127,7 @@ test('mintAccessToken issues a token that fails verification once expired', asyn
   const token = await Effect.runPromise(
     mintAccessToken(signingKey, ORIGIN, {
       clientId: 'wildflower-host',
-      scope: ['owner'],
+      scope: ['system/*.cruds', 'wildflower/*.cruds'],
       ttl: Duration.seconds(-1),
     })
   )

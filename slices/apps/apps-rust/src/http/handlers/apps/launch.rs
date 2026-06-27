@@ -70,7 +70,7 @@ pub(crate) async fn handle_launch_app(
     // Defense-in-depth: the popup is a host-side side-effect on the owner's
     // device, and `Loopback` here is only the *absence* of a valid `Forwarded`
     // header — header-derived, so it must not be the sole gate. The network-layer
-    // backstop is the host's loopback-peer gate (gatekeeper's `loopback_gate`,
+    // backstop is the host's loopback-peer gate (gatekeeper's `require_loopback_peer`,
     // applied to the whole `api_router` in `wildflower-tauri/src/lib.rs`): a
     // request from a non-loopback peer is rejected with 403 before this handler
     // runs, so a `Loopback` classification can only come from a genuine loopback

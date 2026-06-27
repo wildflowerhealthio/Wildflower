@@ -65,6 +65,33 @@ impl GatekeeperStore {
             .execute(&build_insert_sql("clients", &params), &params)?;
         Ok(())
     }
+
+    /// Insert a client, or update its policy fields if one with the same
+    /// `client_id` already exists. Used by first-boot seeding so a seeded
+    /// client's definition always matches the code, even on a store created by an
+    /// older build. Uses `ON CONFLICT … DO UPDATE`, so it never deletes the row
+    /// (no FK cascade) and preserves `registered_at` and `disabled_at` — an
+    /// upgrade keeps the original registration time and any admin disable rather
+    /// than resurrecting the client.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `rusqlite::Error` if the upsert fails.
+    pub fn upsert_client(&self, client: &Client) -> DbResult<()> {
+        let params = make_named_sql_params(client);
+        let sql = format!(
+            "{} ON CONFLICT(client_id) DO UPDATE SET \
+             name = excluded.name, \
+             kind = excluded.kind, \
+             redirect_uris = excluded.redirect_uris, \
+             allowed_scopes = excluded.allowed_scopes, \
+             allowed_grant_types = excluded.allowed_grant_types, \
+             secret_hash = excluded.secret_hash",
+            build_insert_sql("clients", &params)
+        );
+        self.conn().lock().execute(&sql, &params)?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -123,5 +150,42 @@ mod tests {
                 .expect("row present");
             prop_assert_eq!(fetched, client);
         }
+    }
+
+    #[test]
+    fn upsert_updates_policy_but_preserves_registration_and_disable() {
+        let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
+        let registered_at = chrono::DateTime::from_timestamp(1_000, 0).unwrap();
+        let disabled_at = chrono::DateTime::from_timestamp(1_500, 0).unwrap();
+        let mut client = Client {
+            client_id: "c1".to_string(),
+            name: "First".to_string(),
+            kind: ClientKind::Public,
+            redirect_uris: JsonColumn(vec![]),
+            allowed_scopes: JsonColumn(vec!["openid".to_string()]),
+            allowed_grant_types: JsonColumn(AllowedGrantType::ALL.to_vec()),
+            secret_hash: None,
+            registered_at,
+            disabled_at: Some(disabled_at),
+        };
+        store.upsert_client(&client).expect("insert");
+
+        // Re-seed with drifted policy, a newer registered_at, and disabled_at
+        // cleared: the policy fields update, but registration time and the admin
+        // disable are preserved (the row is updated in place, never resurrected).
+        client.name = "Renamed".to_string();
+        client.allowed_scopes = JsonColumn(vec!["system/*.cruds".to_string()]);
+        client.registered_at = chrono::DateTime::from_timestamp(2_000, 0).unwrap();
+        client.disabled_at = None;
+        store.upsert_client(&client).expect("update");
+
+        let fetched = store
+            .client_by_id("c1")
+            .expect("query")
+            .expect("row present");
+        assert_eq!(fetched.name, "Renamed");
+        assert_eq!(fetched.allowed_scopes.0, vec!["system/*.cruds".to_string()]);
+        assert_eq!(fetched.registered_at, registered_at);
+        assert_eq!(fetched.disabled_at, Some(disabled_at));
     }
 }

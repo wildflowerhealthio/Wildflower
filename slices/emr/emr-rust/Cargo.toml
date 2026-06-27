@@ -7,9 +7,20 @@ publish.workspace = true
 [dependencies]
 anyhow.workspace = true
 axum.workspace = true
-helios-rest = { version = "=0.1.47", features = ["R4", "sqlite"] }
-helios-persistence = { version = "=0.1.47", features = ["R4", "sqlite"] }
-shared-structures-rust = { path = "../../shared-structures/shared-structures-rust" }
+serde.workspace = true
+# HFS (HeliosSoftware/hfs) crates pinned to 0.2.0. emr-rust embeds:
+#   helios-rest        — Axum router + handlers serving the FHIR REST surface
+helios-rest = { version = "=0.2.0", default-features = false, features = ["R4", "sqlite"] }
+#   helios-persistence — sqlite-backed storage backend
+helios-persistence = { version = "=0.2.0", default-features = false, features = ["R4", "sqlite"] }
+#   helios-auth        — JWT/JWKS bearer auth + SMART v2 scope policy
+helios-auth = "=0.2.0"
+#   helios-audit       — audit sink trait (we use the null sink today)
+helios-audit = { version = "=0.2.0", default-features = false, features = ["R4"] }
+shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = ["served-origin"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net"] }
 
 [lints]
 workspace = true

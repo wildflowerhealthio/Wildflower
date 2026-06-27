@@ -47,6 +47,11 @@ renderApp({
   // drift from the server. 127.0.0.1 matches the canonical `Host:` form
   // loopback requests carry to the gatekeeper.
   apiBaseUrl: WILDFLOWER_LOOPBACK_ORIGIN,
+  // The host's granted scopes, injected by Vite (`vite.config.ts`) from the same
+  // `tauri-shared-config.json` gatekeeper-rust reads to seed the first-party
+  // client — so `NeedsAuthMessage`'s device-login request can't drift from the
+  // seeded `allowed_scopes`.
+  localGrantedScopes: WILDFLOWER_LOCAL_GRANTED_SCOPES,
   // Same gate as embedded: wait for the transport's readiness signal
   // (so the host has had its chance to push `AuthTokenIssued`), then
   // take the first present token from the store.

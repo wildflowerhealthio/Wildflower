@@ -1,0 +1,189 @@
+//! CRUDS access rights — the permission half of every resource scope.
+//!
+//! This deliberately re-implements helios-auth's `SmartPermissions` rather than
+//! depending on it. Keeping `scopes-rust` a lean, helios-auth-free leaf crate
+//! lets every slice reason about scopes without pulling in helios-auth's
+//! transitive graph, and lets this model carry its own SMART v1/v2 handling (the
+//! word-vs-letter forms below) without coupling to helios-auth's representation.
+
+use std::fmt;
+
+/// CRUDS permission bits (`c`reate, `r`ead, `u`pdate, `d`elete, `s`earch),
+/// mirroring helios-auth's `SmartPermissions`. Permission segments are compared
+/// by set membership, not raw substring, so the v1 word `read` can't be misread
+/// as the v2 letter bag `{r, e, a, d}`.
+const PERM_CREATE: u8 = 0b0_0001;
+const PERM_READ: u8 = 0b0_0010;
+const PERM_UPDATE: u8 = 0b0_0100;
+const PERM_DELETE: u8 = 0b0_1000;
+const PERM_SEARCH: u8 = 0b1_0000;
+const PERM_ALL: u8 = PERM_CREATE | PERM_READ | PERM_UPDATE | PERM_DELETE | PERM_SEARCH;
+
+/// Canonical CRUDS letters in `c,r,u,d,s` order, paired with their bit — the one
+/// source of truth shared by letter-bag parsing and rendering.
+const CRUDS: [(u8, char); 5] = [
+    (PERM_CREATE, 'c'),
+    (PERM_READ, 'r'),
+    (PERM_UPDATE, 'u'),
+    (PERM_DELETE, 'd'),
+    (PERM_SEARCH, 's'),
+];
+
+/// A non-empty set of CRUDS access rights.
+///
+/// Coverage is always compared by the underlying CRUDS bit set, but the SMART
+/// v1 *word* forms (`read`/`write`/`*`) are preserved so they round-trip: per
+/// the SMART App Launch v1↔v2 back-compat rule, a grant requested as `read` is
+/// returned as `read` (not its `rs` letter equivalent). v2 letter bags render in
+/// canonical `c,r,u,d,s` order regardless of input order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct AccessRights(Repr);
+
+/// Private representation: the three SMART v1 words kept verbatim for round-trip,
+/// plus the v2 letter-bag bit set. Two values are equal iff they share this
+/// representation — so `read` and `rs` are distinct (they render differently)
+/// even though they cover the same operations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum Repr {
+    /// SMART v1 `read` (= `rs`).
+    Read,
+    /// SMART v1 `write` (= `cud`).
+    Write,
+    /// SMART v1 `*` (= `cruds`).
+    Star,
+    /// A v2 letter bag (canonical, non-empty).
+    Letters(u8),
+}
+
+impl AccessRights {
+    /// Every right, as the canonical v2 `cruds` letter bag.
+    pub const ALL: Self = AccessRights(Repr::Letters(PERM_ALL));
+
+    /// Normalize a permission segment. Accepts the SMART v2 letter bags (`rs`,
+    /// `cruds`) and the SMART v1 words (`read`/`write`/`*`), preserving which
+    /// form was given. Returns `None` for an empty or unrecognized segment (e.g.
+    /// a bag with a stray non-CRUDS letter).
+    pub(in crate::scope) fn parse_segment(perms: &str) -> Option<Self> {
+        match perms {
+            "read" => Some(AccessRights(Repr::Read)),
+            "write" => Some(AccessRights(Repr::Write)),
+            "*" => Some(AccessRights(Repr::Star)),
+            _ => {
+                let mut bits = 0u8;
+                for ch in perms.chars() {
+                    bits |= CRUDS.iter().find(|(_, c)| *c == ch).map(|(bit, _)| *bit)?;
+                }
+                (bits != 0).then_some(AccessRights(Repr::Letters(bits)))
+            }
+        }
+    }
+
+    /// The CRUDS bit set this grants, regardless of v1/v2 form.
+    pub(in crate::scope) fn bits(self) -> u8 {
+        match self.0 {
+            Repr::Read => PERM_READ | PERM_SEARCH,
+            Repr::Write => PERM_CREATE | PERM_UPDATE | PERM_DELETE,
+            Repr::Star => PERM_ALL,
+            Repr::Letters(bits) => bits,
+        }
+    }
+
+    /// Does `self` grant every right in `other`? Compared by CRUDS bits, so a v1
+    /// `read` covers a v2 `rs` and vice versa.
+    pub(in crate::scope) fn contains(self, other: AccessRights) -> bool {
+        other.bits() & !self.bits() == 0
+    }
+
+    /// These same rights as a canonical v2 letter bag (`read` → `rs`,
+    /// `write` → `cud`, `*` → `cruds`). A value already in letter form is
+    /// returned unchanged. Lets a v1 word grant be re-emitted in the letter
+    /// grammar a v2-only validator can read.
+    pub(in crate::scope) fn to_letter_bag_representation(self) -> Self {
+        AccessRights(Repr::Letters(self.bits()))
+    }
+}
+
+impl fmt::Display for AccessRights {
+    /// v1 words render verbatim; v2 letter bags render in canonical `c,r,u,d,s`
+    /// order.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0 {
+            Repr::Read => f.write_str("read"),
+            Repr::Write => f.write_str("write"),
+            Repr::Star => f.write_str("*"),
+            Repr::Letters(bits) => {
+                for (bit, ch) in CRUDS {
+                    if bits & bit != 0 {
+                        write!(f, "{ch}")?;
+                    }
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_segment_words_and_letters_share_bits_but_differ_in_form() {
+        // v1 `read` and v2 `rs` cover the same ops...
+        let read = AccessRights::parse_segment("read").unwrap();
+        let rs = AccessRights::parse_segment("rs").unwrap();
+        assert_eq!(read.bits(), rs.bits());
+        // ...but are distinct values, so each round-trips to the form it was given.
+        assert_ne!(read, rs);
+
+        let write = AccessRights::parse_segment("write").unwrap();
+        let cud = AccessRights::parse_segment("cud").unwrap();
+        assert_eq!(write.bits(), cud.bits());
+        assert_ne!(write, cud);
+
+        let star = AccessRights::parse_segment("*").unwrap();
+        assert_eq!(star.bits(), AccessRights::ALL.bits());
+        assert_ne!(star, AccessRights::ALL);
+
+        // `cruds` is the canonical v2 spelling of every right.
+        assert_eq!(
+            AccessRights::parse_segment("cruds"),
+            Some(AccessRights::ALL)
+        );
+    }
+
+    #[test]
+    fn parse_segment_rejects_empty_and_stray_letters() {
+        assert_eq!(AccessRights::parse_segment(""), None);
+        assert_eq!(AccessRights::parse_segment("rx"), None);
+    }
+
+    #[test]
+    fn display_renders_words_verbatim_and_letters_canonically() {
+        // v1 words round-trip unchanged.
+        assert_eq!(
+            AccessRights::parse_segment("read").unwrap().to_string(),
+            "read"
+        );
+        assert_eq!(
+            AccessRights::parse_segment("write").unwrap().to_string(),
+            "write"
+        );
+        assert_eq!(AccessRights::parse_segment("*").unwrap().to_string(), "*");
+        // letter bags sort into canonical c,r,u,d,s order.
+        assert_eq!(AccessRights::parse_segment("sr").unwrap().to_string(), "rs");
+        assert_eq!(AccessRights::ALL.to_string(), "cruds");
+    }
+
+    #[test]
+    fn contains_is_a_superset_check() {
+        let cruds = AccessRights::ALL;
+        let rs = AccessRights::parse_segment("rs").unwrap();
+        assert!(cruds.contains(rs));
+        assert!(!rs.contains(cruds));
+        // v1/v2 cross-form coverage works on bits: `read` and `rs` are mutual.
+        let read = AccessRights::parse_segment("read").unwrap();
+        assert!(read.contains(rs));
+        assert!(rs.contains(read));
+    }
+}

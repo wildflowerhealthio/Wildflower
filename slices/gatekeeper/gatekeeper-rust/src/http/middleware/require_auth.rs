@@ -8,7 +8,8 @@ use crate::domain::token::{verify_jwt, VerifiedClaims, VerifyError, VerifyOption
 use crate::http::response_templates;
 use crate::http::served_origin_for;
 use crate::http::state::AppState;
-use crate::OWNER_SCOPE;
+use crate::WILDFLOWER_WIDEST_SCOPES;
+use scopes_rust::Scope;
 
 pub async fn require_owner_auth(
     State(state): State<AppState>,
@@ -51,13 +52,29 @@ pub fn verify_owner_token(
     token: &str,
 ) -> Result<VerifiedClaims, VerifyError> {
     let claims = verify_auth_token_claims(state, origin, token)?;
-    let has_owner_scope = claims
+    // Owner = the token covers *every* maximal-access scope (full FHIR + full
+    // Wildflower), which gates gatekeeper's `/access/*` admin surface. (The
+    // retired `wildflower/admin` scope's job folded onto these wildcards.)
+    let token_claim_scopes: Vec<Scope> = claims
         .scope
         .as_deref()
         .unwrap_or("")
         .split_whitespace()
-        .any(|s| s == OWNER_SCOPE);
-    if !has_owner_scope {
+        .map(Scope::from)
+        .collect();
+    // `all()` over an empty slice is vacuously true, which would admit *every*
+    // token (even one carrying no scopes) to the `/access/*` admin surface. The
+    // owner-defining set must never be empty.
+    debug_assert!(
+        !WILDFLOWER_WIDEST_SCOPES.is_empty(),
+        "WILDFLOWER_WIDEST_SCOPES must be non-empty or the owner check fails open"
+    );
+    let grants_owner = WILDFLOWER_WIDEST_SCOPES.iter().all(|mandatory_scope| {
+        token_claim_scopes
+            .iter()
+            .any(|token_claim| token_claim.covers(mandatory_scope))
+    });
+    if !grants_owner {
         return Err(VerifyError::TokenRejected);
     }
     Ok(claims)
@@ -73,11 +90,15 @@ pub fn verify_auth_token_claims(
         .all_signing_keys()
         .map_err(VerifyError::KeyStoreUnavailable)?;
     let accepted = vec![format!("{origin}/fhir-r4"), origin.to_string()];
+    // `iss` is the stable [`shared_structures_rust::CANONICAL_ISSUER`] — same
+    // value gatekeeper writes into every minted token. `aud` is per-request:
+    // a token minted for one surface (loopback vs tunnel) is only accepted
+    // when presented to the surface it was scoped for.
     verify_jwt(
         token,
         &keys,
         &VerifyOptions {
-            expected_issuer: origin,
+            expected_issuer: shared_structures_rust::CANONICAL_ISSUER,
             accepted_audiences: &accepted,
         },
     )
