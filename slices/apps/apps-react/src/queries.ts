@@ -27,6 +27,7 @@ const useRunAuthed = (): RunAuthed =>
 type AppEntry = Schema.Schema.Type<typeof Schemas.AppListEntrySchema>
 type CreateAppPayload = Schema.Schema.Type<typeof Schemas.CreateAppBodySchema>
 type UpdateAppPayload = Schema.Schema.Type<typeof Schemas.UpdateAppBodySchema>
+type PlacementPayload = Schema.Schema.Type<typeof Schemas.PlacementBodySchema>
 
 /** Mutations invalidate this key on success so the next render refetches. */
 const APPS_LIST_QUERY_KEY = ['apps', 'list'] as const
@@ -104,6 +105,33 @@ const useAppsAdminDeleteMutation = (): UseMutationResult<
   })
 }
 
+/**
+ * Admin `UpdatePlacement` (PATCH /apps/:id/placement). Unlike
+ * {@link useAppsAdminUpdateMutation} (cloud-only content edits), placement
+ * applies to **any** provenance — it's the homescreen's drag-to-reorder /
+ * enable surface. Invalidates {@link APPS_LIST_QUERY_KEY} on success so the
+ * reordered list refetches.
+ */
+const useAppsPlacementMutation = (): UseMutationResult<
+  unknown,
+  Error,
+  { readonly id: string; readonly payload: PlacementPayload }
+> => {
+  const runAuthed = useRunAuthed()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, payload }) =>
+      runAuthed(
+        Effect.flatMap(AppsAdminHttpApiClient, (c) =>
+          c['apps-admin'].UpdatePlacement({ path: { id }, payload })
+        )
+      ),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: APPS_LIST_QUERY_KEY })
+    },
+  })
+}
+
 export {
   APPS_LIST_QUERY_KEY,
   appsListQueryOptions,
@@ -111,5 +139,6 @@ export {
   useAppsAdminDeleteMutation,
   useAppsAdminUpdateMutation,
   useAppsListQuery,
+  useAppsPlacementMutation,
 }
-export type { AppEntry, CreateAppPayload, UpdateAppPayload }
+export type { AppEntry, CreateAppPayload, PlacementPayload, UpdateAppPayload }

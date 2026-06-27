@@ -20,11 +20,16 @@ const formatError = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
 
 /**
- * Modal editor for the apps list. Every app can be toggled on/off or
- * removed, and new apps can be added. Writes are issued through the slice's
- * TanStack Query mutations (`useAppsAdmin{Update,Create,Delete}Mutation`),
- * which invalidate the cached apps list on success — the parent screen
- * re-renders with the new data without any prop drilling.
+ * Modal editor for the apps list. Only **cloud** apps are editable here —
+ * the cloud-admin `Update`/`Delete` surface `409 AppNotEditable` for system
+ * and self-hosted apps, so those rows render read-only (no enable-toggle, no
+ * Remove). Placement (reorder / enable for *any* provenance) lives on the
+ * homescreen via drag + the placement endpoint, not in this content editor.
+ * Cloud apps can be toggled on/off or removed, and new (cloud) apps can be
+ * added. Writes are issued through the slice's TanStack Query mutations
+ * (`useAppsAdmin{Update,Create,Delete}Mutation`), which invalidate the cached
+ * apps list on success — the parent screen re-renders with the new data
+ * without any prop drilling.
  *
  * Every input lives inside a `<fieldset disabled={busy}>` so the entire
  * form locks during an in-flight write, not just the submit button —
@@ -118,24 +123,38 @@ const AppsEditor = ({ open, apps, onClose }: AppsEditorProps): JSX.Element => {
                   </span>
                 ) : null}
               </div>
-              <div className={editorStyles['apps-editor__row-actions']}>
-                <Checkbox
-                  checked={app.enabled}
-                  label=""
-                  onChange={() => {
-                    toggle(app)
-                  }}
-                />
-                <button
-                  type="button"
-                  className="button-3 outline accent-red"
-                  onClick={() => {
-                    remove(app)
-                  }}
-                >
-                  Remove
-                </button>
-              </div>
+              {/*
+               * Only cloud apps are editable through the cloud-admin surface;
+               * the Update/Delete endpoints `409` for system/self-hosted. Those
+               * rows render read-only — a provenance tag stands in for the
+               * controls so the user can see why the row can't be edited.
+               * Enable/reorder for every provenance happens on the homescreen
+               * (the placement endpoint), not here.
+               */}
+              {app.provenance === 'cloud' ? (
+                <div className={editorStyles['apps-editor__row-actions']}>
+                  <Checkbox
+                    checked={app.enabled}
+                    label=""
+                    onChange={() => {
+                      toggle(app)
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="button-3 outline accent-red"
+                    onClick={() => {
+                      remove(app)
+                    }}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ) : (
+                <span className={cn(editorStyles['apps-editor__row-readonly'], 'text-body-3')}>
+                  {app.provenance === 'system' ? 'System' : 'Self-hosted'}
+                </span>
+              )}
             </div>
           ))}
         </section>

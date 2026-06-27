@@ -39,6 +39,18 @@ import { AppsEditor } from './apps-editor.tsx'
 // Helpers
 const NO_APPS: readonly AppEntry[] = []
 
+// A row of each provenance — `provenance` drives whether the editable controls
+// (enable-toggle + Remove) render. The other flags are the lightest valid wire
+// shape; the editor reads only `id`, `name`, `subtitle`, `enabled`, `provenance`.
+const makeApp = (overrides: Partial<AppEntry> & Pick<AppEntry, 'id' | 'provenance'>): AppEntry => ({
+  name: overrides.id,
+  enabled: true,
+  localOnly: false,
+  smart: false,
+  requiresTunnel: false,
+  ...overrides,
+})
+
 const renderEditor = (open: boolean): ReturnType<typeof render> =>
   render(<AppsEditor open={open} apps={NO_APPS} onClose={() => {}} />)
 
@@ -144,5 +156,62 @@ describe('<AppsEditor> mutation reset on open', () => {
     // open does not fire another reset (which would wipe an error from a
     // write the user just triggered in this same session).
     expect(updateStub.reset).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('<AppsEditor> provenance gating', () => {
+  beforeEach(() => {
+    resetAllStubs()
+    // oxlint-disable unicorn/consistent-function-scoping
+    HTMLDialogElement.prototype.showModal = function showModal(): void {
+      this.setAttribute('open', '')
+    }
+    HTMLDialogElement.prototype.close = function close(): void {
+      this.removeAttribute('open')
+    }
+    // oxlint-enable unicorn/consistent-function-scoping
+  })
+
+  afterEach(() => {
+    cleanup()
+    restoreOrDelete('showModal', originalShowModal)
+    restoreOrDelete('close', originalClose)
+  })
+
+  test('renders the enable-toggle + Remove only for cloud rows', () => {
+    const apps: readonly AppEntry[] = [
+      makeApp({ id: 'cloud-app', name: 'Cloud App', provenance: 'cloud' }),
+    ]
+    render(<AppsEditor open apps={apps} onClose={() => {}} />)
+
+    // The cloud row carries an editable surface: a checkbox + a Remove button.
+    expect(screen.getByRole('checkbox')).toBeDefined()
+    expect(screen.getByRole('button', { name: 'Remove' })).toBeDefined()
+  })
+
+  test('renders system / self-hosted rows read-only — no Remove, no toggle', () => {
+    const apps: readonly AppEntry[] = [
+      makeApp({ id: 'system-app', name: 'System App', provenance: 'system' }),
+      makeApp({ id: 'self-app', name: 'Self App', provenance: 'self-hosted' }),
+    ]
+    render(<AppsEditor open apps={apps} onClose={() => {}} />)
+
+    // Neither non-cloud row exposes the cloud-admin controls — those endpoints
+    // `409` for non-cloud apps, so firing them would always fail.
+    expect(screen.queryByRole('checkbox')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Remove' })).toBeNull()
+    // The rows still render (read-only), labelled by name.
+    expect(screen.getByText('System App')).toBeDefined()
+    expect(screen.getByText('Self App')).toBeDefined()
+  })
+
+  test('a cloud Remove click fires the delete mutation for that app', () => {
+    const apps: readonly AppEntry[] = [
+      makeApp({ id: 'cloud-app', name: 'Cloud App', provenance: 'cloud' }),
+    ]
+    render(<AppsEditor open apps={apps} onClose={() => {}} />)
+
+    screen.getByRole('button', { name: 'Remove' }).click()
+    expect(deleteStub.mutate).toHaveBeenCalledWith({ id: 'cloud-app' })
   })
 })
