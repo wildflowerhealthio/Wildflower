@@ -13,25 +13,29 @@ The maintainer "just fires tickets" — most arrive as a sentence. Grooming turn
 
 ## Repo facts (load-bearing)
 
-- **Repo:** `assessment-is/wildflower`. All GitHub access is via the `mcp__github__*` REST tools.
-- **🚫 The ProjectsV2 board is NOT readable here.** Org project boards are GraphQL-only, and the agent proxy returns `403 "GraphQL proxying is not enabled."` So **board Status / columns / iteration / ordering are invisible** in web sessions. REST (issues, labels, the priority custom field) works.
-- **Priority field:** surfaces via `issue_read` / `list_issues` as `field_values: [{field:"", value:"Low|Medium|High|Urgent"}]` (the field *name* comes back blank over REST).
-- **Status-proxy labels seen in use:** `🗓️ on-deck`, `🗓️ backlog`, `👀 needs human`, `📠 needs machine`, `👋 low context`, `improvement`, `fundementals`.
+- **Repo:** `assessment-is/wildflower`. Issues/comments are read & written via the `mcp__github__*` REST tools; the **board** is read via the `gh` CLI (below).
+- **Assumed environment: open network + an authenticated `gh` CLI** (`read:project`). Read the board *with its Status column* via GraphQL through `gh`:
+  - Items + field values (incl. **Status**): `gh project item-list 2 --owner Assessment-is --format json -L 200`
+  - Column/field defs: `gh project field-list 2 --owner Assessment-is --format json`
+  - Missing scope? `gh auth refresh -s read:project,project`.
+- **Restricted-session fallback:** in a sandbox where GraphQL is blocked (some web sessions return `403 "GraphQL proxying is not enabled."`) the board is unreadable — fall back to REST (`list_issues` → labels + the priority field) or a committed `board.json` snapshot, and **say which** you used.
+- **Priority field:** over REST it surfaces as `field_values: [{field:"", value:"Low|Medium|High|Urgent"}]` (name blank); via `gh` the field name is present.
+- **Status / workflow labels seen in use:** `🗓️ on-deck`, `🗓️ backlog`, `🎟️ intake`, `👀 needs human`, `📠 needs machine`, `👋 low context`, `👋 high context`, `improvement`, `fundementals`. (`🎟️ intake` marks intake items — out of scope for this protocol.)
 - **Gold-standard groomed tickets** to imitate: **#242** and **#218** (both "drafted from a design session" — full Motivation / Scope checklist / Key files / Dependencies / Out-of-scope / Tests / Verification). **#256** is a worked grooming example produced by this skill.
 
 ---
 
 ## Step 0 — Select the working set
 
-Because board Status is unreadable here, pick what to groom one of three ways (prefer the first that's available):
+Read the board **Status** via `gh` (see Repo facts) and groom items whose Status is **In Progress** or **Backlog**. Skip **Intake / un-statused** — promoting those is a separate protocol.
 
-1. **The human names the ticket(s).** Best signal — just groom those.
-2. **REST proxy for Status.** `list_issues` (owner `assessment-is`, repo `wildflower`) → filter `state: OPEN`, then rank by the **priority** field and **status-proxy labels** above. Treat a ticket with a priority value + an `🗓️` label as triaged/backlog; treat a bare ticket (no priority, no status label) as likely **intake → skip it** (out of scope). **Confirm the grouping with the human before grooming.**
-3. **Real Status via CI.** If reliable Status is needed, a GitHub **Action** can run the ProjectsV2 GraphQL query (GraphQL works on Actions runners) and commit a `board.json` the session reads. Document/propose this rather than guessing.
+- **A bare ticket in the Backlog is a *top* refine target, not a skip.** An empty body sitting in the backlog is exactly what this protocol exists to fix — flesh it out with the maintainer's feedback. Bareness signals *needs grooming*, never *skip*.
+- If the human **names** specific ticket(s), groom those regardless of Status.
+- **Restricted-session fallback only:** if Status is unreadable (no `gh`), use the priority field + `🗓️` status labels as a rough proxy and **confirm the backlog/intake split with the human** before grooming — never silently treat a bare ticket as intake.
 
-**✅ Do** state which selection method you used. **🚫 Don't** silently groom an intake/un-statused item as if it were backlog.
+**✅ Do** state which selection method you used. **🚫 Don't** groom an Intake/un-statused item as if it were backlog (that's the promote protocol).
 
-> `list_issues` returns a large payload — parse it in a subagent (it gets saved to a tool-results file) rather than loading it all into context.
+> `gh project item-list` / `list_issues` output can be large — parse it in a subagent rather than loading it all into context.
 
 ---
 
