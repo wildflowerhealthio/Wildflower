@@ -59,8 +59,9 @@ const SCOPES_SUPPORTED: &[&str] = &[
     "profile",
     "launch",
     "launch/patient",
-    "patient/*.rs",
-    "user/*.rs",
+    "patient/*.cruds",
+    "user/*.cruds",
+    "system/*.cruds",
     "offline_access",
 ];
 
@@ -90,6 +91,7 @@ fn build_smart_configuration(origin: &str) -> SmartConfiguration {
         capabilities: vec![
             "launch-ehr",
             "permission-patient",
+            "permission-v1",
             "permission-v2",
             "client-public",
             "client-confidential-symmetric",
@@ -148,10 +150,10 @@ mod tests {
         // The curated public SMART read set — standard SMART App Launch scopes,
         // not the system's internal/admin vocabulary.
         assert!(doc.scopes_supported.contains(&"openid"));
-        assert!(doc.scopes_supported.contains(&"patient/*.rs"));
+        assert!(doc.scopes_supported.contains(&"patient/*.cruds"));
         assert!(doc.scopes_supported.contains(&"offline_access"));
+        assert!(doc.scopes_supported.contains(&"system/*.cruds"));
         // Internal/system-wide scopes are NOT advertised publicly.
-        assert!(!doc.scopes_supported.contains(&"system/*.cruds"));
         assert!(!doc
             .scopes_supported
             .iter()
