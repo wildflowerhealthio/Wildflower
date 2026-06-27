@@ -1,5 +1,5 @@
 [package]
-name = "vendor-apps-rust"
+name = "self-hosted-apps-rust"
 version = "0.0.0"
 edition.workspace = true
 publish.workspace = true

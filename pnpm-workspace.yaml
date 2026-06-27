@@ -3,7 +3,7 @@ packages:
   - global/*
   - global/effect-messaging/*
   - slices/**
-  - '!slices/apps/vendor-apps/vendor/**'
+  - '!slices/apps/self-hosted-apps/vendor/**'
 
 catalog:
   '@effect/ai': 0.36.0

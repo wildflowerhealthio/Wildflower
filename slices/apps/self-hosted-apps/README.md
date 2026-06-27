@@ -1,4 +1,4 @@
-# vendor-apps
+# self-hosted-apps
 
 Home for vendored third-party FHIR apps served from the device. Today that's a
 single app: [`patient-browser`][upstream], a SMART-on-FHIR sample app.
@@ -7,14 +7,14 @@ single app: [`patient-browser`][upstream], a SMART-on-FHIR sample app.
 
 This directory holds the **vendored build** (under `vendor/`, gitignored) and
 these docs. There is no TypeScript package here anymore: the app is served by
-the sibling Rust crate [`vendor-apps-rust`](../vendor-apps-rust) at the root of
+the sibling Rust crate [`self-hosted-apps-rust`](../self-hosted-apps-rust) at the root of
 a dedicated loopback origin. (The former TS path — a base64-inlined
 `generated-patient-browser.ts` served from an `HttpApi` group at
 `/installed-apps/patient-browser` — has been removed.)
 
-## Host (Tauri) serving — `vendor-apps-rust`
+## Host (Tauri) serving — `self-hosted-apps-rust`
 
-[`vendor-apps-rust`](../vendor-apps-rust) serves files from a **runtime
+[`self-hosted-apps-rust`](../self-hosted-apps-rust) serves files from a **runtime
 directory** rather than embedding them in the binary:
 `setup_installed_app(app_id, app_dir)` returns an axum router that, for each
 `GET /{path}`, reads the matching file from `app_dir` at request time. The
@@ -34,7 +34,7 @@ as-is — there is **no HTML rebase**.
 
 The one patient-browser-specific touch is the **committed config override**:
 `/config/default.json5` is served from the handwritten, committed
-`vendor-apps-rust/patient-browser-config/default.json5` (embedded via
+`self-hosted-apps-rust/patient-browser-config/default.json5` (embedded via
 `include_str!`), overriding any copy on disk — so the on-device FHIR URL
 (`/fhir-r4`) and timeout live in a readable, version-controlled file rather than
 a brittle rewrite of the upstream build. The override is keyed on the app id;
@@ -55,7 +55,7 @@ The vendored build lives at `vendor/patient-browser/dist/` and is
 2. Build its production bundle (follow the upstream README; typically
    `npm install && npm run build`, which produces a `build/` or `dist/`
    directory).
-3. Copy the build output into `slices/apps/vendor-apps/vendor/patient-browser/dist/`
+3. Copy the build output into `slices/apps/self-hosted-apps/vendor/patient-browser/dist/`
    so that `index.html`, `assets/`, `img/`, and `config/r4.json5` all sit
    directly under that path.
 4. Copy that same `dist/` into `<app-data>/installed-apps/patient-browser/` for

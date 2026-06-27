@@ -65,8 +65,9 @@ impl SelfHostedAppsService {
     ///
     /// [`ServerError::LockPoisoned`] if a shared lock was poisoned.
     pub async fn start(&self, app: &InternalApp) -> Result<(), ServerError> {
-        let service = vendor_apps_rust::setup_installed_app(&app.id, self.apps_dir.join(&app.id))
-            .layer(CorsLayer::very_permissive());
+        let service =
+            self_hosted_apps_rust::setup_installed_app(&app.id, self.apps_dir.join(&app.id))
+                .layer(CorsLayer::very_permissive());
         if let Err(error) = self
             .static_hosts
             .start(StaticHostJob {
