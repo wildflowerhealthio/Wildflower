@@ -5,8 +5,9 @@ single app: [`patient-browser`][upstream], a SMART-on-FHIR sample app.
 
 [upstream]: https://github.com/smart-on-fhir/patient-browser
 
-This directory holds the **vendored build** (under `vendor/`, gitignored) and
-these docs. There is no TypeScript package here anymore: the app is served by
+This directory holds the **vendored builds** — one gitignored folder per app
+(e.g. `patient-browser/`), each containing the app's static files — plus these
+docs. There is no TypeScript package here anymore: the app is served by
 the sibling Rust crate [`self-hosted-apps-rust`](../self-hosted-apps-rust) at the root of
 a dedicated loopback origin. (The former TS path — a base64-inlined
 `generated-patient-browser.ts` served from an `HttpApi` group at
@@ -47,26 +48,32 @@ regardless; the rest of the routes 404 until the directory holds the build.
 
 ## Vendoring / updating the assets
 
-The vendored build lives at `vendor/patient-browser/dist/` and is
-**gitignored**, so neither a fresh clone nor CI has it. After pulling this slice
-(or whenever you bump the upstream), refresh it:
+Each app's static build lives directly under its own folder here (e.g.
+`patient-browser/`) and is **gitignored**, so neither a fresh clone nor CI has
+it. After pulling this slice (or whenever you bump the upstream), refresh it:
 
 1. Clone the upstream `patient-browser` repo somewhere outside this monorepo.
 2. Build its production bundle (follow the upstream README; typically
    `npm install && npm run build`, which produces a `build/` or `dist/`
    directory).
-3. Copy the build output into `slices/apps/self-hosted-apps/vendor/patient-browser/dist/`
+3. Copy the build output into `slices/apps/self-hosted-apps/patient-browser/`
    so that `index.html`, `assets/`, `img/`, and `config/r4.json5` all sit
    directly under that path.
-4. Copy that same `dist/` into `<app-data>/installed-apps/patient-browser/` for
+4. Copy those same files into `<app-data>/installed-apps/patient-browser/` for
    the host to serve (root-absolute URLs are already correct; no rebase).
 
-## TODO: pin the upstream
+## Temporary measure — cloud app store coming
 
-The upstream commit/tag is **not pinned yet**. We currently rely on whoever
-refreshes the bundle to grab a working `patient-browser` build, and there is no
-machinery in this repo that records which revision produced it. Before this can
-be reproduced by CI we need to either:
+This hand-copied, gitignored vendoring is a **stopgap** while we prepare a
+cloud "app store" the device pulls app builds from at install time, which will
+replace the manual copy above. Until then:
 
-- vendor the upstream as a git submodule pinned to a known commit, or
-- record the upstream commit hash in this README every time we refresh it.
+- the build is copied in by hand (steps above), and
+- the upstream commit/tag is **not pinned** — nothing in this repo records which
+  `patient-browser` revision produced the bundle, so note it by hand when you
+  refresh, until the app store makes provenance automatic.
+
+(An earlier attempt vendored the upstream as a git submodule under
+`slices/apps/vendor-apps/`; that pulled the upstream's entire working tree and
+`node_modules` into the pnpm workspace and was removed in favor of this
+static-files-only layout.)

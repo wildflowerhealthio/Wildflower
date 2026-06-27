@@ -1,3 +1,8 @@
-dist/
-node_modules/
-vendor/
+# Vendored third-party app builds live here, one folder per app (e.g.
+# patient-browser/), each holding the app's static `dist/` output copied in by
+# hand. They're gitignored — a fresh clone or CI won't have them — and are a
+# stopgap until the cloud app store ships. Only this directory's docs are
+# tracked; ignore everything else.
+/*
+!.gitignore
+!README.md
