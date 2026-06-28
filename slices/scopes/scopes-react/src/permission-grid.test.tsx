@@ -1,15 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
-import {
-  fhirBucket,
-  lettersAccess,
-  readAccess,
-  starAccess,
-  type FhirResourceScope,
-  type Grant,
-  type RequestEnvelope,
-  type Scope,
-} from 'scopes-core'
+import type { Envelope, Fhir, Grant, Scope } from 'scopes-core'
+import { AccessRights, Bucket } from 'scopes-core'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { buildGridRows } from './grid-model.ts'
@@ -19,10 +11,10 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
-const patient = fhirBucket('patient')
-const grant = (scopes: Scope[]): Grant => ({ subject: 'jordan', scopes })
+const patient = Bucket.fhir('patient')
+const grant = (scopes: Scope.Any[]): Grant.Any => ({ subject: 'jordan', scopes })
 
-const patientFhir = (name: string, access = lettersAccess(['r'])): FhirResourceScope => ({
+const patientFhir = (name: string, access = AccessRights.letters(['r'])): Fhir.Any => ({
   kind: 'fhir',
   context: 'patient',
   resource: name === '*' ? { kind: 'wildcard' } : { kind: 'known', name },
@@ -32,7 +24,7 @@ const patientFhir = (name: string, access = lettersAccess(['r'])): FhirResourceS
 describe('PermissionGrid', () => {
   it('renders the five CRUDS columns and a cell per action', () => {
     const rows = buildGridRows({
-      grant: grant([patientFhir('Observation', lettersAccess(['r']))]),
+      grant: grant([patientFhir('Observation', AccessRights.letters(['r']))]),
       envelope: null,
       bucket: patient,
       resources: ['Observation'],
@@ -61,8 +53,8 @@ describe('PermissionGrid', () => {
     // patient/*.r locks Read on every specific row.
     const rows = buildGridRows({
       grant: grant([
-        patientFhir('*', lettersAccess(['r'])),
-        patientFhir('Observation', lettersAccess([])),
+        patientFhir('*', AccessRights.letters(['r'])),
+        patientFhir('Observation', AccessRights.letters([])),
       ]),
       envelope: null,
       bucket: patient,
@@ -92,12 +84,12 @@ describe('PermissionGrid', () => {
   it('renders a v1 word row as a Read/Write multiselect instead of CRUDS cells', async () => {
     const onToggleWord = vi.fn()
     const user = userEvent.setup()
-    const envelope: RequestEnvelope = {
-      resources: [patientFhir('Observation', starAccess)],
+    const envelope: Envelope.Any = {
+      resources: [patientFhir('Observation', AccessRights.star)],
       flags: [],
     }
     const rows = buildGridRows({
-      grant: grant([patientFhir('Observation', readAccess)]),
+      grant: grant([patientFhir('Observation', AccessRights.read)]),
       envelope,
       bucket: patient,
       resources: ['Observation'],

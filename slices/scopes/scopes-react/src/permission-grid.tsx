@@ -1,16 +1,8 @@
 import type { JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { Chip, StatusBadge } from 'react-tundraish'
-import {
-  ACTION_ORDER,
-  bucketPrefix,
-  VERB,
-  WORD_COMPONENT_LABEL,
-  type Action,
-  type Bucket,
-  type Cell,
-  type WordComponent,
-} from 'scopes-core'
+import type { Envelope } from 'scopes-core'
+import { AccessRights, Bucket, Verbs, Words } from 'scopes-core'
 
 import { ActionPicker, type PickerItem } from './action-picker.tsx'
 import type { GridRow } from './grid-model.ts'
@@ -26,8 +18,8 @@ interface PermissionGridProps {
   /** Optional status badge, e.g. "No access". */
   readonly status?: string
   readonly rows: readonly GridRow[]
-  readonly onToggleCell: (bucket: Bucket, resource: string, action: Action) => void
-  readonly onToggleWord: (bucket: Bucket, resource: string, component: WordComponent) => void
+  readonly onToggleCell: (bucket: Bucket.Any, resource: string, action: AccessRights.Action) => void
+  readonly onToggleWord: (bucket: Bucket.Any, resource: string, component: Words.Component) => void
   /** The "current and future" note under the grid (shown when a wildcard row is present). */
   readonly wildcardNote?: string
   readonly className?: string
@@ -38,7 +30,7 @@ const GridCell = ({
   label,
   onToggle,
 }: {
-  readonly cell: Cell
+  readonly cell: Envelope.Cell
   readonly label: string
   readonly onToggle: () => void
 }): JSX.Element => {
@@ -99,9 +91,9 @@ const PermissionGrid = ({
           <th className={styles['corner']} scope="col">
             <span className={styles['sr-only']}>Resource</span>
           </th>
-          {ACTION_ORDER.map((action) => (
+          {AccessRights.ACTION_ORDER.map((action) => (
             <th key={action} scope="col" className={styles['col']}>
-              <span className={styles['verb']}>{VERB[action]}</span>
+              <span className={styles['verb']}>{Verbs.VERB[action]}</span>
               <code className={styles['letter']}>{action}</code>
             </th>
           ))}
@@ -111,7 +103,7 @@ const PermissionGrid = ({
         {rows.map((row) => {
           const wordItems: PickerItem[] = (row.words ?? []).map((w) => ({
             id: w.component,
-            label: WORD_COMPONENT_LABEL[w.component],
+            label: Words.LABEL[w.component],
             code: w.component,
             checked: w.cell.state === 'on' || w.cell.state === 'locked',
             locked: w.cell.state === 'locked',
@@ -119,13 +111,13 @@ const PermissionGrid = ({
             reason: w.cell.lockReason,
           }))
           return (
-            <tr key={`${bucketPrefix(row.bucket)}/${row.resource}`} className={styles['row']}>
+            <tr key={`${Bucket.prefix(row.bucket)}/${row.resource}`} className={styles['row']}>
               <th scope="row" className={styles['rowhead']}>
                 <span className={styles['label']}>{row.label}</span>
                 <code className={styles['code']}>{row.code}</code>
               </th>
               {row.form === 'word' ? (
-                <td colSpan={ACTION_ORDER.length} className={styles['word-cell']}>
+                <td colSpan={AccessRights.ACTION_ORDER.length} className={styles['word-cell']}>
                   <ActionPicker
                     items={wordItems}
                     direction="row"
@@ -138,12 +130,12 @@ const PermissionGrid = ({
                 </td>
               ) : (
                 (row.cells ?? []).map((cell, index) => {
-                  const action = ACTION_ORDER[index] ?? 'r'
+                  const action = AccessRights.ACTION_ORDER[index] ?? 'r'
                   return (
                     <td key={action} className={styles['td']}>
                       <GridCell
                         cell={cell}
-                        label={`${VERB[action]} ${row.label}`}
+                        label={`${Verbs.VERB[action]} ${row.label}`}
                         onToggle={() => {
                           onToggleCell(row.bucket, row.resource, action)
                         }}
