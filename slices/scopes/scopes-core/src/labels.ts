@@ -1,12 +1,12 @@
 /**
  * Display labels for scopes — the human-readable half of the picker. FHIR and
  * Wildflower resource types map strictly 1:1 to a label that names the *whole*
- * resource (never a sub-concept like "Observation = heart rate"); flag scopes
- * map to plain-language consent copy (`spec.md §7`). Resources missing from a
- * map fall back to the raw type so nothing is unnameable.
+ * resource (never a sub-concept); flag scopes map to plain-language consent copy
+ * (`spec.md §7`). Resources missing from a map fall back to the raw type.
  */
 
-import type { Context, FlagScope } from './model.ts'
+import type { KnownScope } from './model.ts'
+import type { Bucket } from './scope.ts'
 
 /** A resource's singular and plural display names. */
 export interface ResourceLabel {
@@ -41,7 +41,7 @@ export const WILDFLOWER_LABELS: Readonly<Record<string, ResourceLabel>> = {
 }
 
 /** Plain-language consent copy for each flag scope (`spec.md §7`). */
-export const FLAG_COPY: Readonly<Record<FlagScope, string>> = {
+export const FLAG_COPY: Readonly<Record<KnownScope, string>> = {
   openid: 'Confirm who you are',
   profile: 'Your basic profile details',
   fhirUser: 'Link to your patient record',
@@ -56,20 +56,16 @@ export const WILDCARD_LABEL = '✶ All record types'
 /** The required "current and future" note shown wherever a wildcard is selectable (`spec.md §4`). */
 export const WILDCARD_NOTE = 'Covers all current and future record types.'
 
-/**
- * The 1:1 display label for a resource in a context. `'*'` → the wildcard label;
- * Wildflower resources use the admin map; everything else uses the FHIR map and
- * falls back to the raw type if absent.
- */
-export const resourceLabel = (context: Context, resource: string): string => {
-  if (resource === '*') return WILDCARD_LABEL
-  if (context === 'wildflower') return WILDFLOWER_LABELS[resource]?.label ?? resource
-  return FHIR_LABELS[resource]?.label ?? resource
+/** The 1:1 display label for a resource name in a bucket (`*` → the wildcard label). */
+export const resourceLabel = (bucket: Bucket, name: string): string => {
+  if (name === '*') return WILDCARD_LABEL
+  if (bucket.kind === 'wildflower') return WILDFLOWER_LABELS[name]?.label ?? name
+  return FHIR_LABELS[name]?.label ?? name
 }
 
-/** The plural display label for a resource in a context (column/list headings). */
-export const resourcePlural = (context: Context, resource: string): string => {
-  if (resource === '*') return WILDCARD_LABEL
-  if (context === 'wildflower') return WILDFLOWER_LABELS[resource]?.plural ?? resource
-  return FHIR_LABELS[resource]?.plural ?? resource
+/** The plural display label for a resource name in a bucket. */
+export const resourcePlural = (bucket: Bucket, name: string): string => {
+  if (name === '*') return WILDCARD_LABEL
+  if (bucket.kind === 'wildflower') return WILDFLOWER_LABELS[name]?.plural ?? name
+  return FHIR_LABELS[name]?.plural ?? name
 }

@@ -38,7 +38,7 @@ export const verbLabel = (actions: Iterable<Action>): string =>
  * matches the v1 multiselect; a v2 (`letters`) scope reads its CRUDS verbs.
  */
 export const accessVerbLabel = (access: Access): string => {
-  if (access.form === 'word') {
+  if (access.kind !== 'letters') {
     const selected = wordComponentsOf(access)
     return sentenceJoin(
       WORD_COMPONENTS.filter((c) => selected[c]).map((c) => WORD_COMPONENT_LABEL[c])

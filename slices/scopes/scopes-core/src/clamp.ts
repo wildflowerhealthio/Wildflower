@@ -4,36 +4,52 @@
  * *disabling* out-of-envelope controls, never by silently dropping a selection.
  */
 
-import { accessHas, accessLetters, coversComponent, type WordComponent } from './access.ts'
-import type { Access, Action, Context, FlagScope, Grant, RequestEnvelope } from './model.ts'
+import {
+  accessForm,
+  accessHas,
+  accessLetters,
+  coversComponent,
+  type WordComponent,
+} from './access.ts'
+import type { Action, Grant, KnownScope, RequestEnvelope, RequestedResource } from './model.ts'
 import { effectiveCell } from './resolve.ts'
+import {
+  fhirBucket,
+  findResource,
+  flagScopes,
+  inBucket,
+  resourceScopeName,
+  resourceScopes,
+  wildflowerBucket,
+  type Bucket,
+} from './scope.ts'
 
-/** The requested permission for a (context, resource), with its `required` flag. */
-export const envelopePermissionFor = (
+/** The requested resource scope for a (bucket, resource), with its `required` flag. */
+export const envelopeResourceFor = (
   envelope: RequestEnvelope,
-  context: Context,
-  resource: string
-): RequestEnvelope['permissions'][number] | undefined =>
-  envelope.permissions.find((p) => p.context === context && p.resource === resource)
+  bucket: Bucket,
+  name: string
+): RequestedResource | undefined =>
+  envelope.resources.find((r) => inBucket(r, bucket) && resourceScopeName(r) === name)
 
 /**
- * Whether a (context, resource) row is edited as v1 *word* access (the
- * None/Read/Write/Both picker) or v2 *letters* (the CRUDS cells). In request
- * mode the form follows what the app asked for — "apps that use v1 expect v1";
- * in open mode it follows the grant's stored row, defaulting to v2.
+ * Whether a (bucket, resource) row is edited as v1 *word* access (the
+ * Read/Write multiselect) or v2 *letters* (the CRUDS cells). In request mode the
+ * form follows what the app asked for; in open mode it follows the grant's
+ * stored row, defaulting to v2.
  */
 export const resourceAccessForm = (
   grant: Grant,
   envelope: RequestEnvelope | null,
-  context: Context,
-  resource: string
-): Access['form'] => {
+  bucket: Bucket,
+  name: string
+): 'word' | 'letters' => {
   if (envelope !== null) {
-    const env = envelopePermissionFor(envelope, context, resource)
-    return env === undefined ? 'letters' : env.access.form
+    const env = envelopeResourceFor(envelope, bucket, name)
+    return env === undefined ? 'letters' : accessForm(env.access)
   }
-  const row = grant.permissions.find((p) => p.context === context && p.resource === resource)
-  return row === undefined ? 'letters' : row.access.form
+  const row = findResource(grant.scopes, bucket, name)
+  return row === undefined ? 'letters' : accessForm(row.access)
 }
 
 /** One of the four visual states a CRUDS cell can be in. */
@@ -45,31 +61,24 @@ export interface Cell {
   readonly lockReason: string | null
 }
 
-/**
- * Resolve one CRUDS cell for the grid, combining the request clamp (§2) and the
- * wildcard lock (§3):
- *
- * - **disabled** — request mode and the action wasn't requested (out of envelope).
- * - **locked** — covered by the live wildcard, or required by the app.
- * - **on / off** — editable, reflecting whether it's currently granted.
- */
+/** Resolve one CRUDS cell for the grid, combining the request clamp (§2) and wildcard lock (§3). */
 export const buildCell = (
   grant: Grant,
   envelope: RequestEnvelope | null,
-  context: Context,
-  resource: string,
+  bucket: Bucket,
+  name: string,
   action: Action
 ): Cell => {
   if (envelope !== null) {
-    const env = envelopePermissionFor(envelope, context, resource)
+    const env = envelopeResourceFor(envelope, bucket, name)
     if (env === undefined || !accessHas(env.access, action)) {
       return { state: 'disabled', lockReason: 'Not requested by the app' }
     }
   }
-  const eff = effectiveCell(grant.permissions, context, resource, action)
+  const eff = effectiveCell(grant.scopes, bucket, name, action)
   if (eff.locked) return { state: 'locked', lockReason: 'Granted by ✶ All record types' }
   if (envelope !== null) {
-    const env = envelopePermissionFor(envelope, context, resource)
+    const env = envelopeResourceFor(envelope, bucket, name)
     if (env?.required === true && accessHas(env.access, action)) {
       return { state: 'locked', lockReason: 'Required by the app' }
     }
@@ -77,58 +86,51 @@ export const buildCell = (
   return { state: eff.granted ? 'on' : 'off', lockReason: null }
 }
 
-/**
- * Resolve one v1 word component (Read / Write) for a row's multiselect, applying
- * the same §2 clamp as {@link buildCell}: a component the request doesn't cover
- * is **disabled**, a required scope's components are **locked**, otherwise
- * **on/off** by whether the grant currently selects it. (There is no wildcard
- * lock here — wildcards are v2-only.)
- */
+/** Resolve one v1 word component (Read / Write) for a row's multiselect (§2 clamp). */
 export const buildWordCell = (
   grant: Grant,
   envelope: RequestEnvelope | null,
-  context: Context,
-  resource: string,
+  bucket: Bucket,
+  name: string,
   component: WordComponent
 ): Cell => {
-  const current =
-    grant.permissions.find((p) => p.context === context && p.resource === resource)?.access ?? null
+  const current = findResource(grant.scopes, bucket, name)?.access ?? null
   if (envelope !== null) {
-    const env = envelopePermissionFor(envelope, context, resource)
+    const env = envelopeResourceFor(envelope, bucket, name)
     if (env === undefined || !coversComponent(env.access, component)) {
       return { state: 'disabled', lockReason: 'Not requested by the app' }
     }
-    if (env.required === true) {
-      return { state: 'locked', lockReason: 'Required by the app' }
-    }
+    if (env.required === true) return { state: 'locked', lockReason: 'Required by the app' }
   }
   return { state: coversComponent(current, component) ? 'on' : 'off', lockReason: null }
 }
 
 /** Whether a flag toggle is disabled (request mode + not requested, `spec.md §2/§7`). */
-export const flagDisabled = (envelope: RequestEnvelope | null, flag: FlagScope): boolean => {
+export const flagDisabled = (envelope: RequestEnvelope | null, flag: KnownScope): boolean => {
   if (envelope === null) return false
   return !envelope.flags.some((f) => f.scope === flag)
 }
 
 /** Whether a flag is required (request mode + marked required → locked on). */
-export const flagRequired = (envelope: RequestEnvelope | null, flag: FlagScope): boolean => {
+export const flagRequired = (envelope: RequestEnvelope | null, flag: KnownScope): boolean => {
   if (envelope === null) return false
   return envelope.flags.some((f) => f.scope === flag && f.required === true)
 }
 
 /**
- * The invariant `granted ⊆ requested` (`spec.md §2`). True in open mode (no
- * envelope). Checks every granted CRUDS letter and flag against the envelope.
- * Intended for tests/asserts.
+ * The invariant `granted ⊆ requested` (`spec.md §2`). True in open mode. Checks
+ * every granted CRUDS letter and flag against the envelope. For tests/asserts.
  */
 export const isWithinEnvelope = (grant: Grant, envelope: RequestEnvelope | null): boolean => {
   if (envelope === null) return true
-  const permissionsOk = grant.permissions.every((p) => {
-    const env = envelopePermissionFor(envelope, p.context, p.resource)
+  const resourcesOk = resourceScopes(grant.scopes).every((scope) => {
+    const bucket: Bucket = scope.kind === 'fhir' ? fhirBucket(scope.context) : wildflowerBucket
+    const env = envelopeResourceFor(envelope, bucket, resourceScopeName(scope))
     if (env === undefined) return false
-    return accessLetters(p.access).every((a) => accessHas(env.access, a))
+    return accessLetters(scope.access).every((a) => accessHas(env.access, a))
   })
-  const flagsOk = grant.flags.every((flag) => envelope.flags.some((f) => f.scope === flag))
-  return permissionsOk && flagsOk
+  const flagsOk = flagScopes(grant.scopes).every((flag) =>
+    envelope.flags.some((f) => f.scope === flag)
+  )
+  return resourcesOk && flagsOk
 }

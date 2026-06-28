@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vite-plus/test'
 
-import { wordAccess } from './access.ts'
+import { readAccess, starAccess, writeAccess } from './access.ts'
 import { accessVerbLabel, verbLabel } from './verbs.ts'
 
 describe('verbLabel — sentence-style join', () => {
@@ -17,8 +17,8 @@ describe('verbLabel — sentence-style join', () => {
   })
 
   test('accessVerbLabel labels a v1 word by its Read/Write parts', () => {
-    expect(accessVerbLabel(wordAccess('read'))).toBe('Read')
-    expect(accessVerbLabel(wordAccess('write'))).toBe('Write')
-    expect(accessVerbLabel(wordAccess('star'))).toBe('Read and Write')
+    expect(accessVerbLabel(readAccess)).toBe('Read')
+    expect(accessVerbLabel(writeAccess)).toBe('Write')
+    expect(accessVerbLabel(starAccess)).toBe('Read and Write')
   })
 })

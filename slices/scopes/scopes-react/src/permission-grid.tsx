@@ -3,11 +3,12 @@ import { cn } from 'react-kitchen-sink'
 import { Chip, StatusBadge } from 'react-tundraish'
 import {
   ACTION_ORDER,
+  bucketPrefix,
   VERB,
   WORD_COMPONENT_LABEL,
   type Action,
+  type Bucket,
   type Cell,
-  type Context,
   type WordComponent,
 } from 'scopes-core'
 
@@ -25,8 +26,8 @@ interface PermissionGridProps {
   /** Optional status badge, e.g. "No access". */
   readonly status?: string
   readonly rows: readonly GridRow[]
-  readonly onToggleCell: (context: Context, resource: string, action: Action) => void
-  readonly onToggleWord: (context: Context, resource: string, component: WordComponent) => void
+  readonly onToggleCell: (bucket: Bucket, resource: string, action: Action) => void
+  readonly onToggleWord: (bucket: Bucket, resource: string, component: WordComponent) => void
   /** The "current and future" note under the grid (shown when a wildcard row is present). */
   readonly wildcardNote?: string
   readonly className?: string
@@ -118,7 +119,7 @@ const PermissionGrid = ({
             reason: w.cell.lockReason,
           }))
           return (
-            <tr key={`${row.context}/${row.resource}`} className={styles['row']}>
+            <tr key={`${bucketPrefix(row.bucket)}/${row.resource}`} className={styles['row']}>
               <th scope="row" className={styles['rowhead']}>
                 <span className={styles['label']}>{row.label}</span>
                 <code className={styles['code']}>{row.code}</code>
@@ -131,8 +132,7 @@ const PermissionGrid = ({
                     ariaLabel={`Access for ${row.label}`}
                     onToggle={(id) => {
                       const item = (row.words ?? []).find((w) => w.component === id)
-                      if (item !== undefined)
-                        onToggleWord(row.context, row.resource, item.component)
+                      if (item !== undefined) onToggleWord(row.bucket, row.resource, item.component)
                     }}
                   />
                 </td>
@@ -145,7 +145,7 @@ const PermissionGrid = ({
                         cell={cell}
                         label={`${VERB[action]} ${row.label}`}
                         onToggle={() => {
-                          onToggleCell(row.context, row.resource, action)
+                          onToggleCell(row.bucket, row.resource, action)
                         }}
                       />
                     </td>
