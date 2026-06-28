@@ -126,9 +126,7 @@ Three workable options:
 const group = HttpApiGroup.make('pages')
   .add(HttpApiEndpoint.get('publicHome', '/').addSuccess(HtmlResponse))
   .add(
-    HttpApiEndpoint.get('adminHome', '/admin')
-      .addSuccess(HtmlResponse)
-      .middleware(RequireOperator) // this endpoint only
+    HttpApiEndpoint.get('adminHome', '/admin').addSuccess(HtmlResponse).middleware(RequireOperator) // this endpoint only
   )
 ```
 

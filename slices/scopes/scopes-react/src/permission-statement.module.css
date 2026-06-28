@@ -1,0 +1,96 @@
+/*
+ * The fluent consent row. The sentence flows inline; the verb token is a tappable
+ * pill that reveals the access editor beneath. Resource label reads as bold
+ * static text (the editable searchable picker is a later enrichment).
+ */
+
+.statement {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) 0;
+}
+
+.sentence {
+  margin: 0;
+  font-size: var(--font-size-3);
+  line-height: var(--line-height-3);
+  color: var(--color-foreground);
+}
+
+.subject {
+  font-weight: var(--font-weight-3);
+}
+
+.connector {
+  color: var(--color-neutral-4);
+}
+
+/*
+ * The verb token reads as an editable word *inside* the sentence — a soft
+ * accent tint with a dashed underline (the "you can change this" cue) rather
+ * than a heavy filled button, so the sentence stays the hero.
+ */
+.verb-token {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-2);
+  background: var(--color-accent-9);
+  color: var(--color-accent-3);
+  font-size: inherit;
+  font-weight: var(--font-weight-3);
+  cursor: pointer;
+}
+
+.verb-text {
+  text-decoration: underline dashed var(--color-accent-6);
+  text-underline-offset: 3px;
+}
+
+.verb-token:hover,
+.verb-token--open {
+  background: var(--color-accent-8);
+}
+
+.verb-token:focus-visible {
+  outline: 2px solid var(--color-accent-4);
+  outline-offset: 1px;
+}
+
+.caret {
+  font-size: var(--font-size-1);
+  color: var(--color-accent-6);
+}
+
+.resource-token {
+  font-weight: var(--font-weight-4);
+}
+
+.trailing {
+  margin-left: var(--space-3);
+  white-space: nowrap;
+}
+
+.badge {
+  vertical-align: middle;
+}
+
+.remove {
+  vertical-align: middle;
+}
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-left: var(--space-4);
+}
+
+.note {
+  margin: 0;
+  font-size: var(--font-size-2);
+  color: var(--color-neutral-4);
+}

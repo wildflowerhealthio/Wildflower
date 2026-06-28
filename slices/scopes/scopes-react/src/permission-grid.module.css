@@ -1,0 +1,179 @@
+/*
+ * The resource × CRUDS matrix. A real <table> so screen readers get row/column
+ * association for free; the four cell states are painted on native
+ * <button role="checkbox"> cells. Token roles follow react-tundraish's ramp:
+ * neutral-1/foreground = text, neutral-4 = muted text, neutral-5 = faint,
+ * divider = hairlines, accent-4 (rose) = focus.
+ */
+
+.grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.title {
+  font-family: var(--font-serif);
+  font-size: var(--font-size-5);
+  font-weight: var(--font-weight-3);
+  color: var(--color-foreground);
+  margin: 0;
+}
+
+.note {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-1);
+  color: var(--color-neutral-4);
+}
+
+.table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.col {
+  padding: var(--space-2);
+  text-align: center;
+  vertical-align: bottom;
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.verb {
+  display: block;
+  font-size: var(--font-size-1);
+  font-weight: var(--font-weight-3);
+  color: var(--color-neutral-3);
+}
+
+.letter {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-1);
+  color: var(--color-neutral-5);
+}
+
+.corner {
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.rowhead {
+  text-align: left;
+  padding: var(--space-3) var(--space-4) var(--space-3) 0;
+  border-bottom: 1px solid var(--color-divider);
+  white-space: nowrap;
+}
+
+.label {
+  display: block;
+  font-size: var(--font-size-3);
+  font-weight: var(--font-weight-3);
+  color: var(--color-foreground);
+}
+
+.code {
+  display: inline-block;
+  margin-top: var(--space-1);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-1);
+  color: var(--color-neutral-4);
+}
+
+.td {
+  text-align: center;
+  border-bottom: 1px solid var(--color-divider);
+  padding: var(--space-2);
+}
+
+.word-cell {
+  border-bottom: 1px solid var(--color-divider);
+  padding: var(--space-2);
+  text-align: center;
+}
+
+/* The cell control — a square box that paints its state. Empty cells read as
+ * input fills (raised); the painted states layer over that. */
+.cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: var(--radius-2);
+  border: 1px solid var(--color-neutral-6);
+  background: var(--color-raised);
+  cursor: pointer;
+  font-size: var(--font-size-3);
+  line-height: 1;
+}
+
+.glyph {
+  font-weight: var(--font-weight-4);
+}
+
+.cell--on {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-background);
+}
+
+.cell--off {
+  background: var(--color-raised);
+  color: transparent;
+}
+
+.cell--off:hover {
+  border-color: var(--color-accent-4);
+}
+
+/*
+ * Locked = granted by the wildcard or required by the app: an inherited,
+ * non-interactive check. Deliberately an OUTLINED check (dashed accent border,
+ * unfilled box) — not the solid accent of `on` — so "you can't change this
+ * here" reads at a glance.
+ */
+.cell--locked {
+  background: var(--color-background);
+  border-color: var(--color-accent);
+  border-style: dashed;
+  color: var(--color-accent);
+  cursor: not-allowed;
+}
+
+/* Disabled = out of the request envelope: greyed, unchecked, not clickable. */
+.cell--disabled {
+  background: var(--color-sunken);
+  border-color: var(--color-divider);
+  color: transparent;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.cell:focus-visible {
+  outline: 2px solid var(--color-accent-4);
+  outline-offset: 2px;
+}
+
+.wildcard-note {
+  font-size: var(--font-size-2);
+  color: var(--color-neutral-4);
+  margin: 0;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

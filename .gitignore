@@ -78,3 +78,7 @@ ds-bundle/
 .design-sync/.cache/
 .design-sync/learnings/
 .design-sync/node_modules
+
+# Local scratch: unzipped design handoff + the dev-only scopes-react preview
+# gallery (a Playwright screenshot harness). Not part of any package.
+scratchpad_design/
