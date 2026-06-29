@@ -53,11 +53,10 @@ its own. Wiring the auth-signal subscribable into `BearerToken` would
 send the `exp` string as a bogus bearer. The embedded path omits the
 override, so `BearerToken` defaults to its store's real-JWT subscribable.
 
-> The dev-only `?token=…` URL bootstrap (which used to seed `localStorage`)
-> was removed with #218 — JS can't set an `HttpOnly` cookie, so a token
-> painted on the URL can't become the `wf_auth` cookie. A server endpoint
-> that accepts a token and sets the cookie is the replacement, tracked as a
-> follow-up.
+There is no client-side `?token=` URL bootstrap: JS can't set an `HttpOnly`
+cookie, so a token on the URL can't become `wf_auth`. Bootstrapping a
+session from a URL would need a server endpoint that accepts the token and
+sets the cookie.
 
 ## `makeEmbeddedAuthTokenStore` — in-memory only
 
