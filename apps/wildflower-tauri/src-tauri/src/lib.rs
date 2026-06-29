@@ -114,12 +114,12 @@ async fn run_server(
 
     // Bind BEFORE minting/publishing the Owner token: `setup_gatekeeper`
     // pushes the freshly-minted token onto the bridge publisher, and the
-    // bridge emits a contentless `AuthTokenIssued` notify so the webview
-    // pulls via the capability-gated `gatekeeper_current_token` command.
-    // If the port were already taken, minting first would mean the next
-    // pull would return a full-Owner bearer while a *foreign* process
-    // owns `127.0.0.1:<port>`. Binding first guarantees the token is
-    // only ever minted once this process owns the port.
+    // bridge plants it as the webview's `wf_auth` cookie (and emits a
+    // contentless `AuthTokenIssued` notify to flip the page's
+    // auth-readiness signal). If the port were already taken, minting
+    // first would mean planting a full-Owner bearer cookie while a
+    // *foreign* process owns `127.0.0.1:<port>`. Binding first guarantees
+    // the token is only ever minted once this process owns the port.
     let listener = TcpListener::bind(&loopback_host)
         .await
         .with_context(|| format!("failed to bind to {loopback_host}"))?;
@@ -405,7 +405,6 @@ async fn run_server(
 pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
-            bridge::gatekeeper_current_token,
             // Gated web→host data-plane transport for the desktop sniffer's
             // untrusted content webview — allowlists the inner `_tag` so the page
             // can't forge control tags it would otherwise reach via a bus `emit`
