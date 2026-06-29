@@ -4,7 +4,7 @@ import { Chip, StatusBadge } from 'react-tundraish'
 import type { ScopeRequest } from 'scopes-core'
 import { AccessRights, ScopeContext, Verbs, Words } from 'scopes-core'
 
-import { ActionPicker, type PickerItem } from './action-picker.tsx'
+import { ActionPicker, type PickerItem } from '../molecules/action-picker.tsx'
 import type { GridRow } from './grid-model.ts'
 import styles from './permission-grid.module.css'
 

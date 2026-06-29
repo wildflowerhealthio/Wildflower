@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import type { PickerItem } from './action-picker.tsx'
+import type { PickerItem } from '../molecules/action-picker.tsx'
 import { PermissionStatement } from './permission-statement.tsx'
 
 afterEach(() => {

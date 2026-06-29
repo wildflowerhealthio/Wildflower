@@ -2,7 +2,7 @@ import type { JSX, ReactNode } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { StatusBadge } from 'react-tundraish'
 
-import { ActionPicker, type PickerItem } from './action-picker.tsx'
+import { ActionPicker, type PickerItem } from '../molecules/action-picker.tsx'
 import styles from './permission-statement.module.css'
 
 interface PermissionStatementProps {
