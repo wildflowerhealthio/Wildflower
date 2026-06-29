@@ -1,8 +1,8 @@
 import type { JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { Chip, StatusBadge } from 'react-tundraish'
-import type { Envelope } from 'scopes-core'
-import { AccessRights, Bucket, Verbs, Words } from 'scopes-core'
+import type { ScopeRequest } from 'scopes-core'
+import { AccessRights, ScopeContext, Verbs, Words } from 'scopes-core'
 
 import { ActionPicker, type PickerItem } from './action-picker.tsx'
 import type { GridRow } from './grid-model.ts'
@@ -19,12 +19,12 @@ interface PermissionGridProps {
   readonly status?: string
   readonly rows: readonly GridRow[]
   readonly onToggleCell: (
-    bucket: Bucket.Bucket,
+    scopeContext: ScopeContext.ScopeContext,
     resource: string,
     action: AccessRights.Action
   ) => void
   readonly onToggleWord: (
-    bucket: Bucket.Bucket,
+    scopeContext: ScopeContext.ScopeContext,
     resource: string,
     component: Words.Component
   ) => void
@@ -38,7 +38,7 @@ const GridCell = ({
   label,
   onToggle,
 }: {
-  readonly cell: Envelope.Cell
+  readonly cell: ScopeRequest.Cell
   readonly label: string
   readonly onToggle: () => void
 }): JSX.Element => {
@@ -69,7 +69,7 @@ const GridCell = ({
  * The resource × action matrix — the structured projection of a grant's resource
  * scopes. Columns are the five CRUDS verbs in canonical order (`spec.md §1`).
  * Each v2 row renders five cells in one of four states — **on**, **off**,
- * **locked** (required or wildcard-covered), **disabled** (out of envelope) —
+ * **locked** (required or wildcard-covered), **disabled** (out of scopeRequest) —
  * computed in `scopes-core` (`buildCell`); v1 (`word`) rows render the same
  * {@link ActionPicker} as the consent view, with Read/Write in place of the
  * cells. The `✶ All record types` wildcard row drives the §3 locking below it.
@@ -119,7 +119,10 @@ const PermissionGrid = ({
             reason: w.cell.lockReason,
           }))
           return (
-            <tr key={`${Bucket.prefix(row.bucket)}/${row.resource}`} className={styles['row']}>
+            <tr
+              key={`${ScopeContext.prefix(row.scopeContext)}/${row.resource}`}
+              className={styles['row']}
+            >
               <th scope="row" className={styles['rowhead']}>
                 <span className={styles['label']}>{row.label}</span>
                 <code className={styles['code']}>{row.code}</code>
@@ -132,7 +135,8 @@ const PermissionGrid = ({
                     ariaLabel={`Access for ${row.label}`}
                     onToggle={(id) => {
                       const item = (row.words ?? []).find((w) => w.component === id)
-                      if (item !== undefined) onToggleWord(row.bucket, row.resource, item.component)
+                      if (item !== undefined)
+                        onToggleWord(row.scopeContext, row.resource, item.component)
                     }}
                   />
                 </td>
@@ -145,7 +149,7 @@ const PermissionGrid = ({
                         cell={cell}
                         label={`${Verbs.VERB[action]} ${row.label}`}
                         onToggle={() => {
-                          onToggleCell(row.bucket, row.resource, action)
+                          onToggleCell(row.scopeContext, row.resource, action)
                         }}
                       />
                     </td>

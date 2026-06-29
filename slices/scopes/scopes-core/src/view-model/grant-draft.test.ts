@@ -17,7 +17,7 @@ const fhir = (
 })
 
 describe('GrantDraft.serialize — wildcard dedupe (§3)', () => {
-  test('a specific scope omits actions already in the same-bucket wildcard', () => {
+  test('a specific scope omits actions already in the same scope context wildcard', () => {
     const g = grant([
       fhir('patient', '*', AccessRights.letters(['r'])),
       fhir('patient', 'Observation', AccessRights.letters(['c', 'r'])),

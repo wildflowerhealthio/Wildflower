@@ -10,30 +10,38 @@
 import type { KnownScope } from '../domain/index.ts'
 import { AccessRights, Grant, Scope } from '../domain/index.ts'
 import * as Words from '../language/words.ts'
-import * as Bucket from './bucket.ts'
 import * as GrantDraft from './grant-draft.ts'
+import * as ScopeContext from './scope-context.ts'
 
-const matchesRow = (scope: Scope.Scope, bucket: Bucket.Bucket, name: string): boolean =>
-  Scope.isResource(scope) && Bucket.contains(bucket, scope) && Scope.resourceName(scope) === name
+const matchesRow = (
+  scope: Scope.Scope,
+  scopeContext: ScopeContext.ScopeContext,
+  name: string
+): boolean =>
+  Scope.isResource(scope) &&
+  ScopeContext.contains(scopeContext, scope) &&
+  Scope.resourceName(scope) === name
 
-/** Remove a (bucket, resource) row entirely (the consent "Remove" affordance). */
+/** Remove a (scope context, resource) row entirely (the consent "Remove" affordance). */
 export const removeResource = (
   scopes: readonly Scope.Scope[],
-  bucket: Bucket.Bucket,
+  scopeContext: ScopeContext.ScopeContext,
   name: string
-): Scope.Scope[] => scopes.filter((s) => !matchesRow(s, bucket, name))
+): Scope.Scope[] => scopes.filter((s) => !matchesRow(s, scopeContext, name))
 
 const upsertResource = (
   scopes: readonly Scope.Scope[],
-  bucket: Bucket.Bucket,
+  scopeContext: ScopeContext.ScopeContext,
   name: string,
   next: Scope.Scope
 ): Scope.Scope[] => {
-  const exists = scopes.some((s) => matchesRow(s, bucket, name))
-  return exists ? scopes.map((s) => (matchesRow(s, bucket, name) ? next : s)) : [...scopes, next]
+  const exists = scopes.some((s) => matchesRow(s, scopeContext, name))
+  return exists
+    ? scopes.map((s) => (matchesRow(s, scopeContext, name) ? next : s))
+    : [...scopes, next]
 }
 
-/** The resolved state of one (bucket, resource, action) cell (`spec.md §3`). */
+/** The resolved state of one (scope context, resource, action) cell (`spec.md §3`). */
 export type EffectiveCell = {
   /** Granted = covered by the wildcard, or held by the specific row. */
   readonly granted: boolean
@@ -42,10 +50,10 @@ export type EffectiveCell = {
   readonly source: 'wildcard' | 'specific' | 'none'
 }
 
-/** Resolve a single CRUDS cell against the bucket's wildcard + specific rows. */
+/** Resolve a single CRUDS cell against the scope context's wildcard + specific rows. */
 export const effectiveCell = (
   scopes: readonly Scope.Scope[],
-  bucket: Bucket.Bucket,
+  scopeContext: ScopeContext.ScopeContext,
   name: string,
   action: AccessRights.Action
 ): EffectiveCell => {
@@ -53,12 +61,12 @@ export const effectiveCell = (
   // wildcard, and must stay editable (untick Read on `*` to remove it
   // everywhere, §3). Only specific rows are locked by it.
   const isWildcardRow = name === '*'
-  const wildcard = GrantDraft.findWildcard(scopes, bucket)
+  const wildcard = GrantDraft.findWildcard(scopes, scopeContext)
   const coveredByWildcard =
     !isWildcardRow &&
     wildcard !== undefined &&
     AccessRights.lettersOf(wildcard.access).includes(action)
-  const specific = GrantDraft.findResource(scopes, bucket, name)
+  const specific = GrantDraft.findResource(scopes, scopeContext, name)
   const specificHas =
     specific !== undefined && AccessRights.lettersOf(specific.access).includes(action)
   return {
@@ -75,18 +83,18 @@ export const effectiveCell = (
  */
 export const toggleCell = (
   scopes: readonly Scope.Scope[],
-  bucket: Bucket.Bucket,
+  scopeContext: ScopeContext.ScopeContext,
   name: string,
   action: AccessRights.Action
 ): Scope.Scope[] => {
   const isWildcardRow = name === '*'
   if (!isWildcardRow) {
-    const wildcard = GrantDraft.findWildcard(scopes, bucket)
+    const wildcard = GrantDraft.findWildcard(scopes, scopeContext)
     if (wildcard !== undefined && AccessRights.lettersOf(wildcard.access).includes(action)) {
       return [...scopes] // locked by the wildcard — unchanged
     }
   }
-  const existing = GrantDraft.findResource(scopes, bucket, name)
+  const existing = GrantDraft.findResource(scopes, scopeContext, name)
   if (existing !== undefined && existing.access.kind !== 'letters') {
     return [...scopes] // word-form rows are edited via the v1 multiselect, not cells
   }
@@ -96,28 +104,28 @@ export const toggleCell = (
     index >= 0
       ? current.filter((a) => a !== action)
       : AccessRights.sortActions([...current, action])
-  if (nextLetters.length === 0 && !isWildcardRow) return removeResource(scopes, bucket, name)
-  const nextScope = Bucket.makeResource(bucket, name, AccessRights.letters(nextLetters))
-  return nextScope === null ? [...scopes] : upsertResource(scopes, bucket, name, nextScope)
+  if (nextLetters.length === 0 && !isWildcardRow) return removeResource(scopes, scopeContext, name)
+  const nextScope = ScopeContext.makeResource(scopeContext, name, AccessRights.letters(nextLetters))
+  return nextScope === null ? [...scopes] : upsertResource(scopes, scopeContext, name, nextScope)
 }
 
 /**
- * Toggle one v1 word component (Read or Write) on a (bucket, resource) row.
+ * Toggle one v1 word component (Read or Write) on a (scope context, resource) row.
  * Read + Write ⇒ `*`; one ⇒ that word; neither ⇒ the row is dropped.
  */
 export const toggleWordComponent = (
   scopes: readonly Scope.Scope[],
-  bucket: Bucket.Bucket,
+  scopeContext: ScopeContext.ScopeContext,
   name: string,
   component: Words.Component
 ): Scope.Scope[] => {
-  const current = GrantDraft.findResource(scopes, bucket, name)?.access ?? null
+  const current = GrantDraft.findResource(scopes, scopeContext, name)?.access ?? null
   const parts = { ...Words.of(current) }
   parts[component] = !parts[component]
   const access = Words.toAccess(parts)
-  if (access === null) return removeResource(scopes, bucket, name)
-  const nextScope = Bucket.makeResource(bucket, name, access)
-  return nextScope === null ? [...scopes] : upsertResource(scopes, bucket, name, nextScope)
+  if (access === null) return removeResource(scopes, scopeContext, name)
+  const nextScope = ScopeContext.makeResource(scopeContext, name, access)
+  return nextScope === null ? [...scopes] : upsertResource(scopes, scopeContext, name, nextScope)
 }
 
 /** Set a flag (Known) scope on or off, returning NEW scopes. */

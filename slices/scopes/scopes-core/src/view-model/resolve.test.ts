@@ -1,9 +1,9 @@
 import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { AccessRights, Bucket, Grant, GrantDraft, Resolve, Scope } from '../index.ts'
+import { AccessRights, ScopeContext, Grant, GrantDraft, Resolve, Scope } from '../index.ts'
 
-const b = Bucket.fhir('patient')
+const b = ScopeContext.fhir('patient')
 
 const fhir = (name: string, letters: AccessRights.Action[]): Scope.Scope => ({
   kind: 'fhir',
@@ -52,7 +52,7 @@ describe('Resolve.effectiveCell — wildcard union + lock (§3)', () => {
     })
   })
 
-  test('a FHIR patient wildcard does not cover the Wildflower bucket', () => {
+  test('a FHIR patient wildcard does not cover the Wildflower scope context', () => {
     const wf: Scope.Scope = {
       kind: 'wildflower',
       resource: { kind: 'wildcard' },
@@ -60,7 +60,7 @@ describe('Resolve.effectiveCell — wildcard union + lock (§3)', () => {
     }
     expect(Resolve.effectiveCell([fhir('*', ['r']), wf], b, 'Observation', 'r').granted).toBe(true)
     // but a different context's wildcard wouldn't:
-    const sysB = Bucket.fhir('system')
+    const sysB = ScopeContext.fhir('system')
     expect(Resolve.effectiveCell([fhir('*', ['r'])], sysB, 'Observation', 'r').granted).toBe(false)
   })
 })

@@ -10,8 +10,8 @@ interface ExclusionRowProps {
   readonly allowed: boolean
   /**
    * Whether this row can be widened in place via "+ Allow". Only true in open
-   * mode — in request mode you can't widen past the envelope, so no affordance
-   * is shown (`spec.md §8`).
+   * mode — in request mode you can't widen past the scope request, so no
+   * affordance is shown (`spec.md §8`).
    */
   readonly allowable: boolean
   /** Toggle the underlying permission in/out of the grant. */

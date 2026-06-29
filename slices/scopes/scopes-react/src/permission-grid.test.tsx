@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
-import type { Envelope, Fhir, GrantDraft, Scope } from 'scopes-core'
-import { AccessRights, Bucket } from 'scopes-core'
+import type { ScopeRequest, Fhir, GrantDraft, Scope } from 'scopes-core'
+import { AccessRights, ScopeContext } from 'scopes-core'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { buildGridRows } from './grid-model.ts'
@@ -11,7 +11,7 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
-const patient = Bucket.fhir('patient')
+const patient = ScopeContext.fhir('patient')
 const grant = (scopes: Scope.Scope[]): GrantDraft.GrantDraft => ({ subject: 'jordan', scopes })
 
 const patientFhir = (
@@ -28,8 +28,8 @@ describe('PermissionGrid', () => {
   it('renders the five CRUDS columns and a cell per action', () => {
     const rows = buildGridRows({
       grant: grant([patientFhir('Observation', AccessRights.letters(['r']))]),
-      envelope: null,
-      bucket: patient,
+      scopeRequest: null,
+      scopeContext: patient,
       resources: ['Observation'],
     })
     render(
@@ -59,8 +59,8 @@ describe('PermissionGrid', () => {
         patientFhir('*', AccessRights.letters(['r'])),
         patientFhir('Observation', AccessRights.letters([])),
       ]),
-      envelope: null,
-      bucket: patient,
+      scopeRequest: null,
+      scopeContext: patient,
       resources: ['Observation'],
       includeWildcard: false,
     })
@@ -87,14 +87,14 @@ describe('PermissionGrid', () => {
   it('renders a v1 word row as a Read/Write multiselect instead of CRUDS cells', async () => {
     const onToggleWord = vi.fn()
     const user = userEvent.setup()
-    const envelope: Envelope.Envelope = {
+    const scopeRequest: ScopeRequest.ScopeRequest = {
       resources: [patientFhir('Observation', AccessRights.star)],
       flags: [],
     }
     const rows = buildGridRows({
       grant: grant([patientFhir('Observation', AccessRights.read)]),
-      envelope,
-      bucket: patient,
+      scopeRequest,
+      scopeContext: patient,
       resources: ['Observation'],
     })
     render(

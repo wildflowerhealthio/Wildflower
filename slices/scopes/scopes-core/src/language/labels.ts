@@ -8,7 +8,7 @@
  */
 
 import type { KnownScope } from '../domain/index.ts'
-import type * as Bucket from '../view-model/bucket.ts'
+import type * as ScopeContext from '../view-model/scope-context.ts'
 
 /** A resource's singular and plural display names. */
 export type Resource = { readonly label: string; readonly plural: string }
@@ -55,16 +55,16 @@ export const WILDCARD = '✶ All record types'
 /** The required "current and future" note shown wherever a wildcard is selectable (`spec.md §4`). */
 export const WILDCARD_NOTE = 'Covers all current and future record types.'
 
-/** The 1:1 display label for a resource name in a bucket (`*` → the wildcard label). */
-export const resource = (bucket: Bucket.Bucket, name: string): string => {
+/** The 1:1 display label for a resource name in a scope context (`*` → the wildcard label). */
+export const resource = (scopeContext: ScopeContext.ScopeContext, name: string): string => {
   if (name === '*') return WILDCARD
-  if (bucket.kind === 'wildflower') return WILDFLOWER[name]?.label ?? name
+  if (scopeContext.kind === 'wildflower') return WILDFLOWER[name]?.label ?? name
   return FHIR[name]?.label ?? name
 }
 
-/** The plural display label for a resource name in a bucket. */
-export const plural = (bucket: Bucket.Bucket, name: string): string => {
+/** The plural display label for a resource name in a scope context. */
+export const plural = (scopeContext: ScopeContext.ScopeContext, name: string): string => {
   if (name === '*') return WILDCARD
-  if (bucket.kind === 'wildflower') return WILDFLOWER[name]?.plural ?? name
+  if (scopeContext.kind === 'wildflower') return WILDFLOWER[name]?.plural ?? name
   return FHIR[name]?.plural ?? name
 }

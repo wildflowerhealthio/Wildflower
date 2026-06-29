@@ -1,21 +1,21 @@
 /**
  * View-model assembly for {@link PermissionGrid}. Turns a {@link GrantDraft.GrantDraft} (+ an
- * optional request envelope) into renderable rows, so the grid component stays
+ * optional request scopeRequest) into renderable rows, so the grid component stays
  * presentational and the §2/§3 decisions live in `scopes-core`. Pure and
  * unit-tested independently of the DOM.
  */
 
-import { AccessRights, Bucket, Envelope, GrantDraft, Labels, Words } from 'scopes-core'
+import { AccessRights, ScopeContext, ScopeRequest, GrantDraft, Labels, Words } from 'scopes-core'
 
 /** One Read/Write item on a v1 (word) row. */
 export interface GridWordItem {
   readonly component: Words.Component
-  readonly cell: Envelope.Cell
+  readonly cell: ScopeRequest.Cell
 }
 
 /** One renderable grid row — either a 5-cell v2 row or a v1 Read/Write multiselect. */
 export interface GridRow {
-  readonly bucket: Bucket.Bucket
+  readonly scopeContext: ScopeContext.ScopeContext
   readonly resource: string
   /** The 1:1 display label (or the wildcard label for `*`). */
   readonly label: string
@@ -23,23 +23,23 @@ export interface GridRow {
   readonly code: string
   readonly form: 'word' | 'letters'
   /** v2 (`letters`) rows: one cell per CRUDS action, in canonical order. */
-  readonly cells?: readonly Envelope.Cell[]
+  readonly cells?: readonly ScopeRequest.Cell[]
   /** v1 (`word`) rows: the Read and Write components with their cell states. */
   readonly words?: readonly GridWordItem[]
 }
 
 const grantAccessFor = (
   grant: GrantDraft.GrantDraft,
-  bucket: Bucket.Bucket,
+  scopeContext: ScopeContext.ScopeContext,
   resource: string
 ): AccessRights.AccessRights | null =>
-  GrantDraft.findResource(grant.scopes, bucket, resource)?.access ?? null
+  GrantDraft.findResource(grant.scopes, scopeContext, resource)?.access ?? null
 
 /** Parameters for {@link buildGridRows}. */
 export interface BuildGridRowsParams {
   readonly grant: GrantDraft.GrantDraft
-  readonly envelope: Envelope.Envelope | null
-  readonly bucket: Bucket.Bucket
+  readonly scopeRequest: ScopeRequest.ScopeRequest | null
+  readonly scopeContext: ScopeContext.ScopeContext
   /** The resource types to render as rows (e.g. the catalog, or what was requested). */
   readonly resources: readonly string[]
   /** Prepend the live `*` wildcard row (open mode only — §2 hides it in request mode). */
@@ -48,59 +48,60 @@ export interface BuildGridRowsParams {
 
 const buildRow = (
   grant: GrantDraft.GrantDraft,
-  envelope: Envelope.Envelope | null,
-  bucket: Bucket.Bucket,
+  scopeRequest: ScopeRequest.ScopeRequest | null,
+  scopeContext: ScopeContext.ScopeContext,
   resource: string
 ): GridRow => {
-  const form = Envelope.accessForm(grant, envelope, bucket, resource)
-  const requested = envelope === null ? null : Envelope.resourceFor(envelope, bucket, resource)
-  const currentAccess = grantAccessFor(grant, bucket, resource) ?? requested?.access ?? null
+  const form = ScopeRequest.accessForm(grant, scopeRequest, scopeContext, resource)
+  const requested =
+    scopeRequest === null ? null : ScopeRequest.resourceFor(scopeRequest, scopeContext, resource)
+  const currentAccess = grantAccessFor(grant, scopeContext, resource) ?? requested?.access ?? null
   const code =
     currentAccess === null
-      ? `${Bucket.prefix(bucket)}/${resource}`
-      : Bucket.code(bucket, resource, currentAccess)
-  const label = Labels.resource(bucket, resource)
+      ? `${ScopeContext.prefix(scopeContext)}/${resource}`
+      : ScopeContext.code(scopeContext, resource, currentAccess)
+  const label = Labels.resource(scopeContext, resource)
 
   if (form === 'word') {
     return {
-      bucket,
+      scopeContext,
       resource,
       label,
       code,
       form,
       words: Words.COMPONENTS.map((component) => ({
         component,
-        cell: Envelope.buildWordCell(grant, envelope, bucket, resource, component),
+        cell: ScopeRequest.buildWordCell(grant, scopeRequest, scopeContext, resource, component),
       })),
     }
   }
   return {
-    bucket,
+    scopeContext,
     resource,
     label,
     code,
     form,
     cells: AccessRights.ACTION_ORDER.map((action) =>
-      Envelope.buildCell(grant, envelope, bucket, resource, action)
+      ScopeRequest.buildCell(grant, scopeRequest, scopeContext, resource, action)
     ),
   }
 }
 
 /**
- * Build the rows for one grid bucket. In request mode each resource is clamped
- * to the envelope (§2); in open mode the `*` wildcard row can lead the list and
+ * Build the rows for one grid scope context. In request mode each resource is clamped
+ * to the scopeRequest (§2); in open mode the `*` wildcard row can lead the list and
  * drives the union+lock of the rows below it (§3).
  */
 export const buildGridRows = ({
   grant,
-  envelope,
-  bucket,
+  scopeRequest,
+  scopeContext,
   resources,
   includeWildcard = false,
 }: BuildGridRowsParams): GridRow[] => {
-  const rows = resources.map((resource) => buildRow(grant, envelope, bucket, resource))
-  if (includeWildcard && envelope === null) {
-    return [buildRow(grant, null, bucket, '*'), ...rows]
+  const rows = resources.map((resource) => buildRow(grant, scopeRequest, scopeContext, resource))
+  if (includeWildcard && scopeRequest === null) {
+    return [buildRow(grant, null, scopeContext, '*'), ...rows]
   }
   return rows
 }

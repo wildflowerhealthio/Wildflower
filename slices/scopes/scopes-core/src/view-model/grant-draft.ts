@@ -10,7 +10,7 @@
 
 import type { Fhir } from '../domain/index.ts'
 import { AccessRights, Grant, Scope } from '../domain/index.ts'
-import * as Bucket from './bucket.ts'
+import * as ScopeContext from './scope-context.ts'
 
 /**
  * A subject plus a set of scopes (a `Vec<Scope>`). `subject` is a patient id, or
@@ -33,25 +33,25 @@ export const ALL_PATIENTS = 'all'
  */
 export const OFFERABLE_CONTEXTS: readonly Fhir.ContextLevel[] = ['patient', 'system']
 
-/** Find the resource scope for a (bucket, resource name), if granted. */
+/** Find the resource scope for a (scope context, resource name), if granted. */
 export const findResource = (
   scopes: readonly Scope.Scope[],
-  bucket: Bucket.Bucket,
+  scopeContext: ScopeContext.ScopeContext,
   name: string
 ): Scope.Resource | undefined =>
   Grant.resourceScopes(scopes).find(
-    (s) => Bucket.contains(bucket, s) && Scope.resourceName(s) === name
+    (s) => ScopeContext.contains(scopeContext, s) && Scope.resourceName(s) === name
   )
 
-/** The same-bucket `*` wildcard resource scope, if any. */
+/** The same scope context `*` wildcard resource scope, if any. */
 export const findWildcard = (
   scopes: readonly Scope.Scope[],
-  bucket: Bucket.Bucket
-): Scope.Resource | undefined => findResource(scopes, bucket, '*')
+  scopeContext: ScopeContext.ScopeContext
+): Scope.Resource | undefined => findResource(scopes, scopeContext, '*')
 
 /**
  * Serialize a draft's resource scopes with wildcard dedupe (`spec.md §3`): a
- * specific scope omits actions already covered by its same-bucket wildcard, and
+ * specific scope omits actions already covered by its same scope context wildcard, and
  * is dropped entirely when the wildcard covers it. Returns a sorted, deduped
  * array of resource scope strings.
  */
@@ -64,7 +64,7 @@ export const serialize = (grant: GrantDraft): string[] => {
       if (s !== '') out.push(s)
       continue
     }
-    const wildcard = findWildcard(grant.scopes, Bucket.of(scope))
+    const wildcard = findWildcard(grant.scopes, ScopeContext.of(scope))
     if (wildcard === undefined) {
       const s = Scope.scopeSerialize(scope)
       if (s !== '') out.push(s)

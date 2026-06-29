@@ -6,8 +6,8 @@
  *   {@link Scope} union and its {@link Fhir} / {@link Wildflower} /
  *   {@link KnownScope} / {@link UnknownScope} kinds, the {@link AccessRights}
  *   permission model, the {@link Grant} scope-set, and total (de)serialization.
- * - `view-model/` adds the editing model the UI renders from ({@link Bucket},
- *   {@link GrantDraft}, {@link Envelope}, {@link Resolve}) — none of it has a
+ * - `view-model/` adds the editing model the UI renders from ({@link ScopeContext},
+ *   {@link GrantDraft}, {@link ScopeRequest}, {@link Resolve}) — none of it has a
  *   `scopes-rust` counterpart.
  * - `language/` holds the terminology ({@link Labels}, {@link Verbs},
  *   {@link Words}) — the constants and word-assembly the picker reads from.

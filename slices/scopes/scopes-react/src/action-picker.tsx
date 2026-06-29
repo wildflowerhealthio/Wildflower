@@ -15,7 +15,7 @@ interface PickerItem {
   readonly checked: boolean
   /** Locked-on (required by the app, or wildcard-covered) — not editable. */
   readonly locked: boolean
-  /** Out of the request envelope — shown disabled, never hidden (`spec.md §2`). */
+  /** Outside the scope request — shown disabled, never hidden (`spec.md §2`). */
   readonly disabled: boolean
   /** Tooltip explaining a lock/disable. */
   readonly reason?: string | null
@@ -42,8 +42,8 @@ interface ActionPickerProps {
  * The access multiselect — the one editor both SMART forms share. v2 scopes pass
  * the five CRUDS verbs (each with its mono letter, `spec.md §1`); v1 scopes pass
  * the two coarse parts **Read** and **Write** (both ⇒ `*`). A `locked` row is
- * checked + disabled (required / wildcard-covered), a `disabled` row is out of
- * the request envelope. See {@link ActionPickerProps.variant} for the boxed vs
+ * checked + disabled (required / wildcard-covered), a `disabled` row is outside
+ * the scope request. See {@link ActionPickerProps.variant} for the boxed vs
  * plain looks.
  */
 const ActionPicker = ({

@@ -2,9 +2,9 @@ import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 
 import type { Fhir, GrantDraft, Scope } from '../index.ts'
-import { AccessRights, Bucket, Envelope } from '../index.ts'
+import { AccessRights, ScopeContext, ScopeRequest } from '../index.ts'
 
-const b = Bucket.fhir('patient')
+const b = ScopeContext.fhir('patient')
 const grant = (scopes: Scope.Scope[]): GrantDraft.GrantDraft => ({ subject: 'jordan', scopes })
 
 const fhir = (name: string, access = AccessRights.letters(['r'])): Fhir.FhirResourceScope => ({
@@ -14,8 +14,8 @@ const fhir = (name: string, access = AccessRights.letters(['r'])): Fhir.FhirReso
   access,
 })
 
-describe('Envelope.buildCell — clamp (§2) + wildcard lock (§3)', () => {
-  const envelope: Envelope.Envelope = {
+describe('ScopeRequest.buildCell — clamp (§2) + wildcard lock (§3)', () => {
+  const scopeRequest: ScopeRequest.ScopeRequest = {
     resources: [
       fhir('Observation', AccessRights.letters(['c', 'r', 's'])),
       { ...fhir('Condition', AccessRights.letters(['r'])), required: true },
@@ -23,16 +23,20 @@ describe('Envelope.buildCell — clamp (§2) + wildcard lock (§3)', () => {
     flags: [],
   }
 
-  test('out-of-envelope action → disabled', () => {
-    expect(Envelope.buildCell(grant([]), envelope, b, 'Observation', 'd').state).toBe('disabled')
+  test('action outside the request → disabled', () => {
+    expect(ScopeRequest.buildCell(grant([]), scopeRequest, b, 'Observation', 'd').state).toBe(
+      'disabled'
+    )
   })
 
-  test('a resource not in the envelope → disabled', () => {
-    expect(Envelope.buildCell(grant([]), envelope, b, 'Goal', 'r').state).toBe('disabled')
+  test('a resource not in the scope request → disabled', () => {
+    expect(ScopeRequest.buildCell(grant([]), scopeRequest, b, 'Goal', 'r').state).toBe('disabled')
   })
 
   test('requested + required → locked on', () => {
-    expect(Envelope.buildCell(grant([fhir('Condition')]), envelope, b, 'Condition', 'r')).toEqual({
+    expect(
+      ScopeRequest.buildCell(grant([fhir('Condition')]), scopeRequest, b, 'Condition', 'r')
+    ).toEqual({
       state: 'locked',
       lockReason: 'Required by the app',
     })
@@ -40,41 +44,44 @@ describe('Envelope.buildCell — clamp (§2) + wildcard lock (§3)', () => {
 
   test('requested + optional → on when granted, off when not', () => {
     expect(
-      Envelope.buildCell(grant([fhir('Observation')]), envelope, b, 'Observation', 'r').state
+      ScopeRequest.buildCell(grant([fhir('Observation')]), scopeRequest, b, 'Observation', 'r')
+        .state
     ).toBe('on')
-    expect(Envelope.buildCell(grant([]), envelope, b, 'Observation', 'r').state).toBe('off')
+    expect(ScopeRequest.buildCell(grant([]), scopeRequest, b, 'Observation', 'r').state).toBe('off')
   })
 
   test('open mode: wildcard-covered cell → locked', () => {
-    expect(Envelope.buildCell(grant([fhir('*')]), null, b, 'Observation', 'r')).toEqual({
+    expect(ScopeRequest.buildCell(grant([fhir('*')]), null, b, 'Observation', 'r')).toEqual({
       state: 'locked',
       lockReason: 'Granted by ✶ All record types',
     })
   })
 })
 
-describe('Envelope.buildWordCell — v1 Read/Write clamp (§2)', () => {
+describe('ScopeRequest.buildWordCell — v1 Read/Write clamp (§2)', () => {
   test('a component the request does not cover is disabled', () => {
-    const envelope: Envelope.Envelope = {
+    const scopeRequest: ScopeRequest.ScopeRequest = {
       resources: [fhir('Observation', AccessRights.read)],
       flags: [],
     }
-    expect(Envelope.buildWordCell(grant([]), envelope, b, 'Observation', 'write').state).toBe(
-      'disabled'
-    )
-    expect(Envelope.buildWordCell(grant([]), envelope, b, 'Observation', 'read').state).toBe('off')
+    expect(
+      ScopeRequest.buildWordCell(grant([]), scopeRequest, b, 'Observation', 'write').state
+    ).toBe('disabled')
+    expect(
+      ScopeRequest.buildWordCell(grant([]), scopeRequest, b, 'Observation', 'read').state
+    ).toBe('off')
   })
 
   test('required ⇒ locked; open mode ⇒ on/off by the grant', () => {
-    const envelope: Envelope.Envelope = {
+    const scopeRequest: ScopeRequest.ScopeRequest = {
       resources: [{ ...fhir('Observation', AccessRights.star), required: true }],
       flags: [],
     }
-    expect(Envelope.buildWordCell(grant([]), envelope, b, 'Observation', 'read').state).toBe(
-      'locked'
-    )
     expect(
-      Envelope.buildWordCell(
+      ScopeRequest.buildWordCell(grant([]), scopeRequest, b, 'Observation', 'read').state
+    ).toBe('locked')
+    expect(
+      ScopeRequest.buildWordCell(
         grant([fhir('Observation', AccessRights.read)]),
         null,
         b,
@@ -83,7 +90,7 @@ describe('Envelope.buildWordCell — v1 Read/Write clamp (§2)', () => {
       ).state
     ).toBe('on')
     expect(
-      Envelope.buildWordCell(
+      ScopeRequest.buildWordCell(
         grant([fhir('Observation', AccessRights.read)]),
         null,
         b,
@@ -94,53 +101,61 @@ describe('Envelope.buildWordCell — v1 Read/Write clamp (§2)', () => {
   })
 })
 
-describe('Envelope.accessForm', () => {
+describe('ScopeRequest.accessForm', () => {
   test('request mode follows the requested form (v1 stays v1)', () => {
-    const envelope: Envelope.Envelope = {
+    const scopeRequest: ScopeRequest.ScopeRequest = {
       resources: [fhir('Observation', AccessRights.star)],
       flags: [],
     }
-    expect(Envelope.accessForm(grant([]), envelope, b, 'Observation')).toBe('word')
+    expect(ScopeRequest.accessForm(grant([]), scopeRequest, b, 'Observation')).toBe('word')
   })
 
   test('open mode follows the grant row, defaulting to letters', () => {
-    expect(Envelope.accessForm(grant([]), null, b, 'Observation')).toBe('letters')
+    expect(ScopeRequest.accessForm(grant([]), null, b, 'Observation')).toBe('letters')
     expect(
-      Envelope.accessForm(grant([fhir('Observation', AccessRights.read)]), null, b, 'Observation')
+      ScopeRequest.accessForm(
+        grant([fhir('Observation', AccessRights.read)]),
+        null,
+        b,
+        'Observation'
+      )
     ).toBe('word')
   })
 })
 
 describe('flag clamping', () => {
-  const envelope: Envelope.Envelope = {
+  const scopeRequest: ScopeRequest.ScopeRequest = {
     resources: [],
     flags: [{ scope: 'openid', required: true }, { scope: 'profile' }],
   }
 
   test('required vs optional flags', () => {
-    expect(Envelope.flagRequired(envelope, 'openid')).toBe(true)
-    expect(Envelope.flagRequired(envelope, 'profile')).toBe(false)
+    expect(ScopeRequest.flagRequired(scopeRequest, 'openid')).toBe(true)
+    expect(ScopeRequest.flagRequired(scopeRequest, 'profile')).toBe(false)
   })
 
   test('not-requested flags are disabled; open mode never disables', () => {
-    expect(Envelope.flagDisabled(envelope, 'offline_access')).toBe(true)
-    expect(Envelope.flagDisabled(envelope, 'openid')).toBe(false)
-    expect(Envelope.flagDisabled(null, 'offline_access')).toBe(false)
+    expect(ScopeRequest.flagDisabled(scopeRequest, 'offline_access')).toBe(true)
+    expect(ScopeRequest.flagDisabled(scopeRequest, 'openid')).toBe(false)
+    expect(ScopeRequest.flagDisabled(null, 'offline_access')).toBe(false)
   })
 })
 
-describe('Envelope.isWithin — granted ⊆ requested (§2)', () => {
+describe('ScopeRequest.isWithin — granted ⊆ requested (§2)', () => {
   test('true in open mode', () => {
-    expect(Envelope.isWithin(grant([fhir('Observation', AccessRights.star)]), null)).toBe(true)
+    expect(ScopeRequest.isWithin(grant([fhir('Observation', AccessRights.star)]), null)).toBe(true)
   })
 
   test('false when a granted action exceeds the request', () => {
-    const envelope: Envelope.Envelope = {
+    const scopeRequest: ScopeRequest.ScopeRequest = {
       resources: [fhir('Observation', AccessRights.letters(['r']))],
       flags: [],
     }
     expect(
-      Envelope.isWithin(grant([fhir('Observation', AccessRights.letters(['r', 'c']))]), envelope)
+      ScopeRequest.isWithin(
+        grant([fhir('Observation', AccessRights.letters(['r', 'c']))]),
+        scopeRequest
+      )
     ).toBe(false)
   })
 
@@ -155,14 +170,14 @@ describe('Envelope.isWithin — granted ⊆ requested (§2)', () => {
         (requested, sub) => {
           const requestedSet = new Set(requested)
           const granted = sub.filter((a) => requestedSet.has(a))
-          const envelope: Envelope.Envelope = {
+          const scopeRequest: ScopeRequest.ScopeRequest = {
             resources: [fhir('Observation', AccessRights.letters(requested))],
             flags: [],
           }
           const g = grant(
             granted.length > 0 ? [fhir('Observation', AccessRights.letters(granted))] : []
           )
-          expect(Envelope.isWithin(g, envelope)).toBe(true)
+          expect(ScopeRequest.isWithin(g, scopeRequest)).toBe(true)
         }
       )
     )
