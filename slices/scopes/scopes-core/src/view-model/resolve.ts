@@ -9,9 +9,9 @@
 
 import type { KnownScope } from '../domain/index.ts'
 import { AccessRights, Grant, Scope } from '../domain/index.ts'
+import * as Words from '../language/words.ts'
 import * as Bucket from './bucket.ts'
 import * as GrantDraft from './grant-draft.ts'
-import * as Words from './words.ts'
 
 const matchesRow = (scope: Scope.Scope, bucket: Bucket.Bucket, name: string): boolean =>
   Scope.isResource(scope) && Bucket.contains(bucket, scope) && Scope.resourceName(scope) === name

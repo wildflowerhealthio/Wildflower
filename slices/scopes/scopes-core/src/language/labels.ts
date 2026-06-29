@@ -8,7 +8,7 @@
  */
 
 import type { KnownScope } from '../domain/index.ts'
-import type * as Bucket from './bucket.ts'
+import type * as Bucket from '../view-model/bucket.ts'
 
 /** A resource's singular and plural display names. */
 export type Resource = { readonly label: string; readonly plural: string }

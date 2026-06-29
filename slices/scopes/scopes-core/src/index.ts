@@ -7,8 +7,10 @@
  *   {@link KnownScope} / {@link UnknownScope} kinds, the {@link AccessRights}
  *   permission model, the {@link Grant} scope-set, and total (de)serialization.
  * - `view-model/` adds the editing model the UI renders from ({@link Bucket},
- *   {@link GrantDraft}, {@link Envelope}, {@link Resolve}, {@link Words},
- *   {@link Labels}, {@link Verbs}) — none of it has a `scopes-rust` counterpart.
+ *   {@link GrantDraft}, {@link Envelope}, {@link Resolve}) — none of it has a
+ *   `scopes-rust` counterpart.
+ * - `language/` holds the terminology ({@link Labels}, {@link Verbs},
+ *   {@link Words}) — the constants and word-assembly the picker reads from.
  * - `behaviour/` names the cross-cutting contracts the domain namespaces conform
  *   to ({@link ScopeSerializer}, {@link ScopeParser}).
  *
@@ -17,4 +19,5 @@
 
 export * from './behaviour/index.ts'
 export * from './domain/index.ts'
+export * from './language/index.ts'
 export * from './view-model/index.ts'

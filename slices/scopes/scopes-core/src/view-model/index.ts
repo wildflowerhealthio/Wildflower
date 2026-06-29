@@ -8,15 +8,12 @@
  * - {@link GrantDraft} — the editable `{subject, scopes}` picker state + wire serialization
  * - {@link Envelope} — the request-mode clamp (§2) and grid cell view-state
  * - {@link Resolve} — wildcard resolution (§3) and the grant mutations
- * - {@link Words} — the SMART v1 Read/Write multiselect components
- * - {@link Labels} — resource + flag display copy
- * - {@link Verbs} — the access summary written as a sentence
+ *
+ * The terminology layer (labels, verbs, words) lives in the sibling `language/`
+ * folder.
  */
 
 export * as Bucket from './bucket.ts'
 export * as GrantDraft from './grant-draft.ts'
 export * as Envelope from './envelope.ts'
 export * as Resolve from './resolve.ts'
-export * as Words from './words.ts'
-export * as Labels from './labels.ts'
-export * as Verbs from './verbs.ts'

@@ -10,10 +10,10 @@
 
 import type { KnownScope } from '../domain/index.ts'
 import { AccessRights, Grant, Scope } from '../domain/index.ts'
+import * as Words from '../language/words.ts'
 import * as Bucket from './bucket.ts'
 import * as GrantDraft from './grant-draft.ts'
 import * as Resolve from './resolve.ts'
-import * as Words from './words.ts'
 
 /** A requested resource scope, with its `required` flag (request mode). */
 export type RequestedResource = Scope.Resource & { readonly required?: boolean }
