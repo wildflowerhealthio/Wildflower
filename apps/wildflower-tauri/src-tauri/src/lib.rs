@@ -468,11 +468,8 @@ pub fn run() {
             // Hostname/port come from the shared `tauri-shared-config.json`
             // (see `LOOPBACK_HOSTNAME`/`LOOPBACK_PORT`), the same file the
             // TS `apiBaseUrl` reads.
-            let loopback_base_url = Url::parse(&format!(
-                "http://{}:{}",
-                LOOPBACK_HOSTNAME.to_string(),
-                LOOPBACK_PORT
-            ))?;
+            let loopback_base_url =
+                Url::parse(&format!("http://{}:{}", LOOPBACK_HOSTNAME, LOOPBACK_PORT))?;
 
             tauri::async_runtime::spawn(async move {
                 let runtime = ServerRuntimeConfig {

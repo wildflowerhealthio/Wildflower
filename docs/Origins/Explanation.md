@@ -19,7 +19,7 @@ arrive having been addressed two different ways:
   webview and other local clients use. It is `ServerRuntimeConfig.loopback_base_url`,
   parsed once at boot and threaded into every slice's config (apps, gatekeeper,
   emr, tunnel) so nothing reassembles it from a string.
-- **Served origin** — the origin the client *actually* reached. For a direct
+- **Served origin** — the origin the client _actually_ reached. For a direct
   loopback caller it is the loopback origin. For a request relayed by the
   trusted front it is the public `{scheme}://{host}` the browser used. A handler
   recovers it per request with [`served_origin_for`].
@@ -35,12 +35,12 @@ public `host`/`proto` onto that trailing element. The host/scheme we trust are
 therefore always in the **last** forwarded-element; any client-supplied elements
 sit to its left and are ignored. Trust comes from the loopback-socket gate (see
 [Loopback peer gating](#loopback-is-the-trust-boundary)), **not** from the header
-— the header only tells a gated-as-trusted request *which* public origin it used.
+— the header only tells a gated-as-trusted request _which_ public origin it used.
 
 Because the `host` ultimately derives from an attacker-influenced `Host` header
 and lands in a `Location` the browser follows, it is validated (`safe_host` /
 `safe_scheme`) against the delimiters that could redirect to a different
-authority. A header that fails validation reads as *unforwarded* and falls back
+authority. A header that fails validation reads as _unforwarded_ and falls back
 to the loopback origin. The parsing contract, the exact nginx directive, and the
 attack cases live on the [`served_origin`] module.
 
@@ -67,7 +67,7 @@ so the SMART app can actually reach them from where it is.
 ### Discovery is fetched before a token exists
 
 A SMART/FHIR client fetches the discovery documents (`smart-configuration`,
-`metadata`, `jwks.json`) *before* it holds a token, so a bearer gate mounted
+`metadata`, `jwks.json`) _before_ it holds a token, so a bearer gate mounted
 above the FHIR router must let those paths through unauthenticated. The canonical
 allow-list is [`UNAUTHENTICATED_FHIR_PATHS`] (emr-rust), which mirrors HFS's own
 `EXEMPT_PATHS`.

@@ -119,12 +119,16 @@ impl AppsStore {
     pub fn replace_home_screen(&self, entries: &[(String, bool)]) -> DbResult<()> {
         let guard = self.conn().lock();
         let tx = guard.unchecked_transaction()?;
-        for (position, (id, enabled)) in entries.iter().enumerate() {
-            let position = i64::try_from(position).expect("home-screen length fits i64");
-            tx.execute(
-                "UPDATE apps SET position = ?2, enabled = ?3 WHERE id = ?1",
-                params![id, position, enabled],
-            )?;
+        {
+            // Prepared once and reused across rows — `tx.execute` would re-parse
+            // and re-plan the UPDATE on every iteration. The block scopes `stmt`
+            // so it drops before `commit()` consumes the transaction.
+            let mut update_app_statement =
+                tx.prepare("UPDATE apps SET position = ?2, enabled = ?3 WHERE id = ?1")?;
+            for (position, (id, enabled)) in entries.iter().enumerate() {
+                let position = i64::try_from(position).expect("home-screen length fits i64");
+                update_app_statement.execute(params![id, position, enabled])?;
+            }
         }
         tx.commit()?;
         Ok(())
