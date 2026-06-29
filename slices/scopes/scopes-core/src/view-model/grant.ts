@@ -1,5 +1,5 @@
 /**
- * The {@link Any} grant — the single source of truth a picker edits. A subject
+ * The {@link Grant} grant — the single source of truth a picker edits. A subject
  * plus a `Vec<Scope>`; `scopes-rust` has no Grant type (a grant is conceptually
  * just a set of scopes), and `subject` (which patient) is purely a UI concern,
  * so this lives in the view-model, not `domain/`.
@@ -21,9 +21,9 @@ import * as Bucket from './bucket.ts'
  * sentences, the resource grid, the flag toggles) renders from this one object
  * (`spec.md §5`).
  */
-export type Any = {
+export type Grant = {
   readonly subject: string
-  readonly scopes: readonly Scope.Any[]
+  readonly scopes: readonly Scope.Scope[]
 }
 
 /** The subject sentinel for an all-patients (`system/`) grant. */
@@ -37,18 +37,18 @@ export const ALL_PATIENTS = 'all'
 export const OFFERABLE_CONTEXTS: readonly Fhir.ContextLevel[] = ['patient', 'system']
 
 /** The resource scopes (FHIR + Wildflower) in a scope list. */
-export const resourceScopes = (scopes: readonly Scope.Any[]): Scope.Resource[] =>
+export const resourceScopes = (scopes: readonly Scope.Scope[]): Scope.Resource[] =>
   scopes.filter(Scope.isResource)
 
 /** The flag (Known) scopes in a scope list. */
-export const flagScopes = (scopes: readonly Scope.Any[]): KnownScope.Any[] => {
-  const out: KnownScope.Any[] = []
+export const flagScopes = (scopes: readonly Scope.Scope[]): KnownScope.KnownScope[] => {
+  const out: KnownScope.KnownScope[] = []
   for (const s of scopes) if (s.kind === 'known') out.push(s.scope)
   return out
 }
 
 /** The unrecognized scopes, preserved verbatim. */
-export const unknownScopes = (scopes: readonly Scope.Any[]): string[] => {
+export const unknownScopes = (scopes: readonly Scope.Scope[]): string[] => {
   const out: string[] = []
   for (const s of scopes) if (s.kind === 'unknown') out.push(s.raw)
   return out
@@ -56,20 +56,20 @@ export const unknownScopes = (scopes: readonly Scope.Any[]): string[] => {
 
 /** Find the resource scope for a (bucket, resource name), if granted. */
 export const findResource = (
-  scopes: readonly Scope.Any[],
-  bucket: Bucket.Any,
+  scopes: readonly Scope.Scope[],
+  bucket: Bucket.Bucket,
   name: string
 ): Scope.Resource | undefined =>
   resourceScopes(scopes).find((s) => Bucket.contains(bucket, s) && Scope.resourceName(s) === name)
 
 /** The same-bucket `*` wildcard resource scope, if any. */
 export const findWildcard = (
-  scopes: readonly Scope.Any[],
-  bucket: Bucket.Any
+  scopes: readonly Scope.Scope[],
+  bucket: Bucket.Bucket
 ): Scope.Resource | undefined => findResource(scopes, bucket, '*')
 
 /** Whether the grant holds a given flag scope. */
-export const hasFlag = (scopes: readonly Scope.Any[], flag: KnownScope.Any): boolean =>
+export const hasFlag = (scopes: readonly Scope.Scope[], flag: KnownScope.KnownScope): boolean =>
   scopes.some((s) => s.kind === 'known' && s.scope === flag)
 
 /**
@@ -78,7 +78,7 @@ export const hasFlag = (scopes: readonly Scope.Any[], flag: KnownScope.Any): boo
  * is dropped entirely when the wildcard covers it. Returns a sorted, deduped
  * array of resource scope strings.
  */
-export const serialize = (grant: Any): string[] => {
+export const serialize = (grant: Grant): string[] => {
   const out: string[] = []
   for (const scope of resourceScopes(grant.scopes)) {
     const name = Scope.resourceName(scope)
@@ -111,7 +111,7 @@ export const serialize = (grant: Any): string[] => {
 }
 
 /** The full scope list a grant emits — resource scopes (deduped) + flags + preserved unknowns. */
-export const serializeAll = (grant: Any): string[] => [
+export const serializeAll = (grant: Grant): string[] => [
   ...serialize(grant),
   ...flagScopes(grant.scopes).toSorted(),
   ...unknownScopes(grant.scopes).toSorted(),

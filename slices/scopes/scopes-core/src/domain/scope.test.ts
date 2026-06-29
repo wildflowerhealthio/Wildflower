@@ -4,7 +4,11 @@ import { describe, expect, test } from 'vite-plus/test'
 import type { Fhir, Wildflower } from '../index.ts'
 import { AccessRights, Scope } from '../index.ts'
 
-const fhir = (context: Fhir.ContextLevel, name: string, access: AccessRights.Any): Scope.Any => ({
+const fhir = (
+  context: Fhir.ContextLevel,
+  name: string,
+  access: AccessRights.AccessRights
+): Scope.Scope => ({
   kind: 'fhir',
   context,
   resource: name === '*' ? { kind: 'wildcard' } : { kind: 'known', name },
@@ -58,9 +62,9 @@ describe('Scope.parse — total parse (mirrors Rust Scope)', () => {
         fc.constantFrom('Observation', 'Patient', '*'),
         access
       )
-      .map(([ctx, name, a]): Scope.Any => fhir(ctx, name, a))
+      .map(([ctx, name, a]): Scope.Scope => fhir(ctx, name, a))
     const wfArb = fc.tuple(fc.constantFrom<Wildflower.Resource>('Grant', 'Client'), access).map(
-      ([resource, a]): Scope.Any => ({
+      ([resource, a]): Scope.Scope => ({
         kind: 'wildflower',
         resource: { kind: 'known', resource },
         access: a,

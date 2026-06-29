@@ -5,7 +5,7 @@
  * normalizes to canonical `c,r,u,d,s` order.
  *
  * Namespace module (`import { AccessRights } from 'scopes-core'`): the access
- * union is {@link Any}, with `AccessRights.parse`, `AccessRights.letters`, …
+ * union is {@link AccessRights}, with `AccessRights.parse`, `AccessRights.letters`, …
  */
 
 /** A SMART v2 CRUDS permission letter. Canonical order is always `c r u d s`. */
@@ -21,7 +21,7 @@ export const ACTION_ORDER: readonly Action[] = ['c', 'r', 'u', 'd', 's']
  * load-bearing for the UI — `letters` renders the CRUDS cells, the words render
  * the Read/Write multiselect.
  */
-export type Any =
+export type AccessRights =
   | { readonly kind: 'read' }
   | { readonly kind: 'write' }
   | { readonly kind: 'star' }
@@ -33,9 +33,9 @@ const WRITE_LETTERS: readonly Action[] = ['c', 'u', 'd']
 const STAR_LETTERS: readonly Action[] = ['c', 'r', 'u', 'd', 's']
 
 /** The SMART v1 word accesses. */
-export const read: Any = { kind: 'read' }
-export const write: Any = { kind: 'write' }
-export const star: Any = { kind: 'star' }
+export const read: AccessRights = { kind: 'read' }
+export const write: AccessRights = { kind: 'write' }
+export const star: AccessRights = { kind: 'star' }
 
 /** Sort an arbitrary letter collection into canonical `c r u d s` order, deduped. */
 export const sortActions = (actions: Iterable<Action>): Action[] => {
@@ -44,7 +44,7 @@ export const sortActions = (actions: Iterable<Action>): Action[] => {
 }
 
 /** A v2 letter-bag access (canonical order, deduped). */
-export const letters = (actions: Iterable<Action>): Any => ({
+export const letters = (actions: Iterable<Action>): AccessRights => ({
   kind: 'letters',
   letters: sortActions(actions),
 })
@@ -53,7 +53,7 @@ export const letters = (actions: Iterable<Action>): Any => ({
  * The CRUDS letters this access grants, regardless of v1/v2 form — the common
  * currency for coverage/lock checks (mirrors Rust's `AccessRights::bits`).
  */
-export const lettersOf = (access: Any): readonly Action[] => {
+export const lettersOf = (access: AccessRights): readonly Action[] => {
   switch (access.kind) {
     case 'read':
       return READ_LETTERS
@@ -71,24 +71,25 @@ export const lettersOf = (access: Any): readonly Action[] => {
 }
 
 /** Whether the access grants nothing (an empty letter bag). */
-export const isEmpty = (access: Any): boolean =>
+export const isEmpty = (access: AccessRights): boolean =>
   access.kind === 'letters' && access.letters.length === 0
 
 /** Does `access` include `action`, by CRUDS bits? */
-export const has = (access: Any, action: Action): boolean => lettersOf(access).includes(action)
+export const has = (access: AccessRights, action: Action): boolean =>
+  lettersOf(access).includes(action)
 
 /** Is `subset`'s coverage a subset of `superset`'s, by CRUDS bits? */
-export const subsetOf = (subset: Any, superset: Any): boolean => {
+export const subsetOf = (subset: AccessRights, superset: AccessRights): boolean => {
   const covering = new Set(lettersOf(superset))
   return lettersOf(subset).every((a) => covering.has(a))
 }
 
 /** Whether the access is edited as a v1 `word` (Read/Write) or v2 `letters`. */
-export const form = (access: Any): 'word' | 'letters' =>
+export const form = (access: AccessRights): 'word' | 'letters' =>
   access.kind === 'letters' ? 'letters' : 'word'
 
 /** Render the access segment of a scope string: a v1 word, or canonical letters. */
-export const serialize = (access: Any): string => {
+export const serialize = (access: AccessRights): string => {
   switch (access.kind) {
     case 'read':
       return 'read'
@@ -111,7 +112,7 @@ export const serialize = (access: Any): string => {
  * `AccessRights::parse_segment`: `read`/`write`/`*` stay words; letter bags
  * normalize.
  */
-export const parse = (segment: string): Any | null => {
+export const parse = (segment: string): AccessRights | null => {
   if (segment === 'read') return read
   if (segment === 'write') return write
   if (segment === '*') return star

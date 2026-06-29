@@ -5,7 +5,7 @@
  * **not** reachable through the FHIR `*` wildcard — the set is closed.
  *
  * Namespace module (`import { Wildflower } from 'scopes-core'`): the scope value
- * is {@link Any}, with `Wildflower.parse`, `Wildflower.Resource`, …
+ * is {@link WildflowerResourceScope}, with `Wildflower.parse`, `Wildflower.Resource`, …
  */
 
 import * as AccessRights from './access-rights.ts'
@@ -30,10 +30,10 @@ export type ResourceType =
   | { readonly kind: 'known'; readonly resource: Resource }
 
 /** A `wildflower/Resource.perms` scope (Rust's `WildflowerResourceScope`). */
-export type Any = {
+export type WildflowerResourceScope = {
   readonly kind: 'wildflower'
   readonly resource: ResourceType
-  readonly access: AccessRights.Any
+  readonly access: AccessRights.AccessRights
 }
 
 /** Build a {@link ResourceType} from a name, or `null` for an unknown resource (the set is closed). */
@@ -48,7 +48,7 @@ export const resourceName = (resource: ResourceType): string =>
   resource.kind === 'wildcard' ? '*' : resource.resource
 
 /** Parse the `wildflower/Resource.perms` grammar, or `null` if `s` isn't one. */
-export const parse = (s: string): Any | null => {
+export const parse = (s: string): WildflowerResourceScope | null => {
   const slash = s.indexOf('/')
   if (slash <= 0) return null
   if (s.slice(0, slash) !== CONTEXT) return null
@@ -63,7 +63,7 @@ export const parse = (s: string): Any | null => {
 }
 
 /** Render to its `wildflower/Resource.perms` string; a scope granting nothing emits `''`. */
-export const serialize = (scope: Any): string => {
+export const serialize = (scope: WildflowerResourceScope): string => {
   const perms = AccessRights.serialize(scope.access)
   return perms === '' ? '' : `${CONTEXT}/${resourceName(scope.resource)}.${perms}`
 }

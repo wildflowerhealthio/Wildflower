@@ -18,8 +18,16 @@ interface PermissionGridProps {
   /** Optional status badge, e.g. "No access". */
   readonly status?: string
   readonly rows: readonly GridRow[]
-  readonly onToggleCell: (bucket: Bucket.Any, resource: string, action: AccessRights.Action) => void
-  readonly onToggleWord: (bucket: Bucket.Any, resource: string, component: Words.Component) => void
+  readonly onToggleCell: (
+    bucket: Bucket.Bucket,
+    resource: string,
+    action: AccessRights.Action
+  ) => void
+  readonly onToggleWord: (
+    bucket: Bucket.Bucket,
+    resource: string,
+    component: Words.Component
+  ) => void
   /** The "current and future" note under the grid (shown when a wildcard row is present). */
   readonly wildcardNote?: string
   readonly className?: string

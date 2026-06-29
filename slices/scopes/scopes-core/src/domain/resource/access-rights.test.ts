@@ -4,15 +4,15 @@ import { describe, expect, test } from 'vite-plus/test'
 import { AccessRights } from '../../index.ts'
 
 const actionArb = fc.constantFrom<AccessRights.Action>('c', 'r', 'u', 'd', 's')
-const lettersArb: fc.Arbitrary<AccessRights.Any> = fc
+const lettersArb: fc.Arbitrary<AccessRights.AccessRights> = fc
   .uniqueArray(actionArb, { minLength: 1 })
   .map((l) => AccessRights.letters(l))
-const wordArb: fc.Arbitrary<AccessRights.Any> = fc.constantFrom(
+const wordArb: fc.Arbitrary<AccessRights.AccessRights> = fc.constantFrom(
   AccessRights.read,
   AccessRights.write,
   AccessRights.star
 )
-const accessArb: fc.Arbitrary<AccessRights.Any> = fc.oneof(lettersArb, wordArb)
+const accessArb: fc.Arbitrary<AccessRights.AccessRights> = fc.oneof(lettersArb, wordArb)
 
 describe('sortActions', () => {
   test('canonicalizes order and dedupes', () => {

@@ -1,5 +1,5 @@
 /**
- * View-model assembly for {@link PermissionGrid}. Turns a {@link Grant.Any} (+ an
+ * View-model assembly for {@link PermissionGrid}. Turns a {@link Grant.Grant} (+ an
  * optional request envelope) into renderable rows, so the grid component stays
  * presentational and the §2/§3 decisions live in `scopes-core`. Pure and
  * unit-tested independently of the DOM.
@@ -15,7 +15,7 @@ export interface GridWordItem {
 
 /** One renderable grid row — either a 5-cell v2 row or a v1 Read/Write multiselect. */
 export interface GridRow {
-  readonly bucket: Bucket.Any
+  readonly bucket: Bucket.Bucket
   readonly resource: string
   /** The 1:1 display label (or the wildcard label for `*`). */
   readonly label: string
@@ -29,16 +29,17 @@ export interface GridRow {
 }
 
 const grantAccessFor = (
-  grant: Grant.Any,
-  bucket: Bucket.Any,
+  grant: Grant.Grant,
+  bucket: Bucket.Bucket,
   resource: string
-): AccessRights.Any | null => Grant.findResource(grant.scopes, bucket, resource)?.access ?? null
+): AccessRights.AccessRights | null =>
+  Grant.findResource(grant.scopes, bucket, resource)?.access ?? null
 
 /** Parameters for {@link buildGridRows}. */
 export interface BuildGridRowsParams {
-  readonly grant: Grant.Any
-  readonly envelope: Envelope.Any | null
-  readonly bucket: Bucket.Any
+  readonly grant: Grant.Grant
+  readonly envelope: Envelope.Envelope | null
+  readonly bucket: Bucket.Bucket
   /** The resource types to render as rows (e.g. the catalog, or what was requested). */
   readonly resources: readonly string[]
   /** Prepend the live `*` wildcard row (open mode only — §2 hides it in request mode). */
@@ -46,9 +47,9 @@ export interface BuildGridRowsParams {
 }
 
 const buildRow = (
-  grant: Grant.Any,
-  envelope: Envelope.Any | null,
-  bucket: Bucket.Any,
+  grant: Grant.Grant,
+  envelope: Envelope.Envelope | null,
+  bucket: Bucket.Bucket,
   resource: string
 ): GridRow => {
   const form = Envelope.accessForm(grant, envelope, bucket, resource)

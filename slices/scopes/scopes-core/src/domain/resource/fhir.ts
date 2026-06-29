@@ -4,13 +4,13 @@
  * (`scope/resource/fhir.rs`).
  *
  * Namespace module (`import { Fhir } from 'scopes-core'`): the scope value is
- * {@link Any}, with `Fhir.parse`, `Fhir.serialize`, `Fhir.ContextLevel`, …
+ * {@link FhirResourceScope}, with `Fhir.parse`, `Fhir.serialize`, `Fhir.ContextLevel`, …
  */
 
 import * as AccessRights from './access-rights.ts'
 
 /**
- * The access level a {@link Any} is relative to. `user` currently grants the
+ * The access level a {@link FhirResourceScope} is relative to. `user` currently grants the
  * same as `system`, but the three are modeled and compared **strictly** —
  * `user` never silently means `system`.
  */
@@ -29,11 +29,11 @@ export type ResourceType =
   | { readonly kind: 'known'; readonly name: string }
 
 /** A SMART `context/Type.perms` FHIR resource scope. */
-export type Any = {
+export type FhirResourceScope = {
   readonly kind: 'fhir'
   readonly context: ContextLevel
   readonly resource: ResourceType
-  readonly access: AccessRights.Any
+  readonly access: AccessRights.AccessRights
 }
 
 const isContextLevel = (s: string): s is ContextLevel =>
@@ -51,7 +51,7 @@ export const resourceName = (resource: ResourceType): string =>
  * Parse the `context/Type.perms` FHIR grammar (context ∈
  * `patient`/`user`/`system`), or `null` if `s` isn't one.
  */
-export const parse = (s: string): Any | null => {
+export const parse = (s: string): FhirResourceScope | null => {
   const slash = s.indexOf('/')
   if (slash <= 0) return null
   const ctx = s.slice(0, slash)
@@ -65,7 +65,7 @@ export const parse = (s: string): Any | null => {
 }
 
 /** Render to its `context/Type.perms` string; a scope granting nothing emits `''`. */
-export const serialize = (scope: Any): string => {
+export const serialize = (scope: FhirResourceScope): string => {
   const perms = AccessRights.serialize(scope.access)
   return perms === '' ? '' : `${scope.context}/${resourceName(scope.resource)}.${perms}`
 }

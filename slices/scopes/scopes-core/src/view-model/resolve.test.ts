@@ -5,21 +5,24 @@ import { AccessRights, Bucket, Grant, Resolve, Scope } from '../index.ts'
 
 const b = Bucket.fhir('patient')
 
-const fhir = (name: string, letters: AccessRights.Action[]): Scope.Any => ({
+const fhir = (name: string, letters: AccessRights.Action[]): Scope.Scope => ({
   kind: 'fhir',
   context: 'patient',
   resource: name === '*' ? { kind: 'wildcard' } : { kind: 'known', name },
   access: AccessRights.letters(letters),
 })
 
-const wordFhir = (name: string, access: AccessRights.Any): Scope.Any => ({
+const wordFhir = (name: string, access: AccessRights.AccessRights): Scope.Scope => ({
   kind: 'fhir',
   context: 'patient',
   resource: { kind: 'known', name },
   access,
 })
 
-const lettersAt = (scopes: readonly Scope.Any[], name: string): readonly AccessRights.Action[] => {
+const lettersAt = (
+  scopes: readonly Scope.Scope[],
+  name: string
+): readonly AccessRights.Action[] => {
   const row = Grant.findResource(scopes, b, name)
   return row === undefined ? [] : AccessRights.lettersOf(row.access)
 }
@@ -50,7 +53,7 @@ describe('Resolve.effectiveCell — wildcard union + lock (§3)', () => {
   })
 
   test('a FHIR patient wildcard does not cover the Wildflower bucket', () => {
-    const wf: Scope.Any = {
+    const wf: Scope.Scope = {
       kind: 'wildflower',
       resource: { kind: 'wildcard' },
       access: AccessRights.letters(['r']),

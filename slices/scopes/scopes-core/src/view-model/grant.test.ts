@@ -3,9 +3,13 @@ import { describe, expect, test } from 'vite-plus/test'
 import type { Fhir } from '../index.ts'
 import { AccessRights, Grant, Scope } from '../index.ts'
 
-const grant = (scopes: Scope.Any[]): Grant.Any => ({ subject: 'jordan', scopes })
+const grant = (scopes: Scope.Scope[]): Grant.Grant => ({ subject: 'jordan', scopes })
 
-const fhir = (context: Fhir.ContextLevel, name: string, access: AccessRights.Any): Scope.Any => ({
+const fhir = (
+  context: Fhir.ContextLevel,
+  name: string,
+  access: AccessRights.AccessRights
+): Scope.Scope => ({
   kind: 'fhir',
   context,
   resource: name === '*' ? { kind: 'wildcard' } : { kind: 'known', name },

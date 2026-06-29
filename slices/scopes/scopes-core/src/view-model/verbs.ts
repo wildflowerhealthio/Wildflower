@@ -42,7 +42,7 @@ export const label = (actions: Iterable<AccessRights.Action>): string =>
  * parts (`"Read"`, `"Write"`, `"Read and Write"`) so the sentence matches the v1
  * multiselect; a v2 (`letters`) scope reads its CRUDS verbs.
  */
-export const accessLabel = (access: AccessRights.Any): string => {
+export const accessLabel = (access: AccessRights.AccessRights): string => {
   if (access.kind !== 'letters') {
     const selected = Words.of(access)
     return sentenceJoin(Words.COMPONENTS.filter((c) => selected[c]).map((c) => Words.LABEL[c]))

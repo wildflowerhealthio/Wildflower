@@ -40,7 +40,7 @@ export const WILDFLOWER: Readonly<Record<string, Resource>> = {
 }
 
 /** Plain-language consent copy for each flag scope (`spec.md §7`). */
-export const FLAG: Readonly<Record<KnownScope.Any, string>> = {
+export const FLAG: Readonly<Record<KnownScope.KnownScope, string>> = {
   openid: 'Confirm who you are',
   profile: 'Your basic profile details',
   fhirUser: 'Link to your patient record',
@@ -56,14 +56,14 @@ export const WILDCARD = '✶ All record types'
 export const WILDCARD_NOTE = 'Covers all current and future record types.'
 
 /** The 1:1 display label for a resource name in a bucket (`*` → the wildcard label). */
-export const resource = (bucket: Bucket.Any, name: string): string => {
+export const resource = (bucket: Bucket.Bucket, name: string): string => {
   if (name === '*') return WILDCARD
   if (bucket.kind === 'wildflower') return WILDFLOWER[name]?.label ?? name
   return FHIR[name]?.label ?? name
 }
 
 /** The plural display label for a resource name in a bucket. */
-export const plural = (bucket: Bucket.Any, name: string): string => {
+export const plural = (bucket: Bucket.Bucket, name: string): string => {
   if (name === '*') return WILDCARD
   if (bucket.kind === 'wildflower') return WILDFLOWER[name]?.plural ?? name
   return FHIR[name]?.plural ?? name

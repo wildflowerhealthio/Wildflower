@@ -19,22 +19,22 @@ import * as Words from './words.ts'
 export type RequestedResource = Scope.Resource & { readonly required?: boolean }
 
 /** A requested flag scope, with its `required` flag. */
-export type RequestedFlag = { readonly scope: KnownScope.Any; readonly required?: boolean }
+export type RequestedFlag = { readonly scope: KnownScope.KnownScope; readonly required?: boolean }
 
 /**
  * What an app asked for (request mode). The grant is clamped so that
  * `granted ⊆ requested` at all times (`spec.md §2`); `required` scopes are
  * locked on. Absence of an envelope ⇒ open mode (the user builds freely).
  */
-export type Any = {
+export type Envelope = {
   readonly resources: readonly RequestedResource[]
   readonly flags: readonly RequestedFlag[]
 }
 
 /** The requested resource scope for a (bucket, resource), with its `required` flag. */
 export const resourceFor = (
-  envelope: Any,
-  bucket: Bucket.Any,
+  envelope: Envelope,
+  bucket: Bucket.Bucket,
   name: string
 ): RequestedResource | undefined =>
   envelope.resources.find((r) => Bucket.contains(bucket, r) && Scope.resourceName(r) === name)
@@ -46,9 +46,9 @@ export const resourceFor = (
  * row, defaulting to v2.
  */
 export const accessForm = (
-  grant: Grant.Any,
-  envelope: Any | null,
-  bucket: Bucket.Any,
+  grant: Grant.Grant,
+  envelope: Envelope | null,
+  bucket: Bucket.Bucket,
   name: string
 ): 'word' | 'letters' => {
   if (envelope !== null) {
@@ -70,9 +70,9 @@ export type Cell = {
 
 /** Resolve one CRUDS cell for the grid, combining the request clamp (§2) and wildcard lock (§3). */
 export const buildCell = (
-  grant: Grant.Any,
-  envelope: Any | null,
-  bucket: Bucket.Any,
+  grant: Grant.Grant,
+  envelope: Envelope | null,
+  bucket: Bucket.Bucket,
   name: string,
   action: AccessRights.Action
 ): Cell => {
@@ -95,9 +95,9 @@ export const buildCell = (
 
 /** Resolve one v1 word component (Read / Write) for a row's multiselect (§2 clamp). */
 export const buildWordCell = (
-  grant: Grant.Any,
-  envelope: Any | null,
-  bucket: Bucket.Any,
+  grant: Grant.Grant,
+  envelope: Envelope | null,
+  bucket: Bucket.Bucket,
   name: string,
   component: Words.Component
 ): Cell => {
@@ -113,13 +113,13 @@ export const buildWordCell = (
 }
 
 /** Whether a flag toggle is disabled (request mode + not requested, `spec.md §2/§7`). */
-export const flagDisabled = (envelope: Any | null, flag: KnownScope.Any): boolean => {
+export const flagDisabled = (envelope: Envelope | null, flag: KnownScope.KnownScope): boolean => {
   if (envelope === null) return false
   return !envelope.flags.some((f) => f.scope === flag)
 }
 
 /** Whether a flag is required (request mode + marked required → locked on). */
-export const flagRequired = (envelope: Any | null, flag: KnownScope.Any): boolean => {
+export const flagRequired = (envelope: Envelope | null, flag: KnownScope.KnownScope): boolean => {
   if (envelope === null) return false
   return envelope.flags.some((f) => f.scope === flag && f.required === true)
 }
@@ -128,7 +128,7 @@ export const flagRequired = (envelope: Any | null, flag: KnownScope.Any): boolea
  * The invariant `granted ⊆ requested` (`spec.md §2`). True in open mode. Checks
  * every granted CRUDS letter and flag against the envelope. For tests/asserts.
  */
-export const isWithin = (grant: Grant.Any, envelope: Any | null): boolean => {
+export const isWithin = (grant: Grant.Grant, envelope: Envelope | null): boolean => {
   if (envelope === null) return true
   const resourcesOk = Grant.resourceScopes(grant.scopes).every((scope) => {
     const env = resourceFor(envelope, Bucket.of(scope), Scope.resourceName(scope))

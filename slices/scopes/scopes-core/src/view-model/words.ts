@@ -21,29 +21,33 @@ export const LABEL: Readonly<Record<Component, string>> = {
   write: 'Write',
 }
 
-const COMPONENT_ACCESS: Readonly<Record<Component, AccessRights.Any>> = {
+const COMPONENT_ACCESS: Readonly<Record<Component, AccessRights.AccessRights>> = {
   read: AccessRights.read,
   write: AccessRights.write,
 }
 
 /** Does `access` fully cover this component's CRUDS bits? (`null` ⇒ no.) */
-export const covers = (access: AccessRights.Any | null, component: Component): boolean => {
+export const covers = (access: AccessRights.AccessRights | null, component: Component): boolean => {
   if (access === null) return false
   const have = new Set(AccessRights.lettersOf(access))
   return AccessRights.lettersOf(COMPONENT_ACCESS[component]).every((a) => have.has(a))
 }
 
 /** Which components a given access currently selects (by CRUDS bits). */
-export const of = (access: AccessRights.Any | null): Readonly<Record<Component, boolean>> => ({
+export const of = (
+  access: AccessRights.AccessRights | null
+): Readonly<Record<Component, boolean>> => ({
   read: covers(access, 'read'),
   write: covers(access, 'write'),
 })
 
 /**
- * Build the v1 word {@link AccessRights.Any} from a Read/Write selection: both ⇒
+ * Build the v1 word {@link AccessRights.AccessRights} from a Read/Write selection: both ⇒
  * `star`, one ⇒ that word, neither ⇒ `null` (the scope is dropped).
  */
-export const toAccess = (parts: Readonly<Record<Component, boolean>>): AccessRights.Any | null => {
+export const toAccess = (
+  parts: Readonly<Record<Component, boolean>>
+): AccessRights.AccessRights | null => {
   if (parts.read && parts.write) return AccessRights.star
   if (parts.read) return AccessRights.read
   if (parts.write) return AccessRights.write

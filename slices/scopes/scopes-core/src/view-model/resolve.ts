@@ -13,22 +13,22 @@ import * as Bucket from './bucket.ts'
 import * as Grant from './grant.ts'
 import * as Words from './words.ts'
 
-const matchesRow = (scope: Scope.Any, bucket: Bucket.Any, name: string): boolean =>
+const matchesRow = (scope: Scope.Scope, bucket: Bucket.Bucket, name: string): boolean =>
   Scope.isResource(scope) && Bucket.contains(bucket, scope) && Scope.resourceName(scope) === name
 
 /** Remove a (bucket, resource) row entirely (the consent "Remove" affordance). */
 export const removeResource = (
-  scopes: readonly Scope.Any[],
-  bucket: Bucket.Any,
+  scopes: readonly Scope.Scope[],
+  bucket: Bucket.Bucket,
   name: string
-): Scope.Any[] => scopes.filter((s) => !matchesRow(s, bucket, name))
+): Scope.Scope[] => scopes.filter((s) => !matchesRow(s, bucket, name))
 
 const upsertResource = (
-  scopes: readonly Scope.Any[],
-  bucket: Bucket.Any,
+  scopes: readonly Scope.Scope[],
+  bucket: Bucket.Bucket,
   name: string,
-  next: Scope.Any
-): Scope.Any[] => {
+  next: Scope.Scope
+): Scope.Scope[] => {
   const exists = scopes.some((s) => matchesRow(s, bucket, name))
   return exists ? scopes.map((s) => (matchesRow(s, bucket, name) ? next : s)) : [...scopes, next]
 }
@@ -44,8 +44,8 @@ export type EffectiveCell = {
 
 /** Resolve a single CRUDS cell against the bucket's wildcard + specific rows. */
 export const effectiveCell = (
-  scopes: readonly Scope.Any[],
-  bucket: Bucket.Any,
+  scopes: readonly Scope.Scope[],
+  bucket: Bucket.Bucket,
   name: string,
   action: AccessRights.Action
 ): EffectiveCell => {
@@ -74,11 +74,11 @@ export const effectiveCell = (
  * Specific rows that empty out are dropped; the wildcard row is kept.
  */
 export const toggleCell = (
-  scopes: readonly Scope.Any[],
-  bucket: Bucket.Any,
+  scopes: readonly Scope.Scope[],
+  bucket: Bucket.Bucket,
   name: string,
   action: AccessRights.Action
-): Scope.Any[] => {
+): Scope.Scope[] => {
   const isWildcardRow = name === '*'
   if (!isWildcardRow) {
     const wildcard = Grant.findWildcard(scopes, bucket)
@@ -106,11 +106,11 @@ export const toggleCell = (
  * Read + Write ⇒ `*`; one ⇒ that word; neither ⇒ the row is dropped.
  */
 export const toggleWordComponent = (
-  scopes: readonly Scope.Any[],
-  bucket: Bucket.Any,
+  scopes: readonly Scope.Scope[],
+  bucket: Bucket.Bucket,
   name: string,
   component: Words.Component
-): Scope.Any[] => {
+): Scope.Scope[] => {
   const current = Grant.findResource(scopes, bucket, name)?.access ?? null
   const parts = { ...Words.of(current) }
   parts[component] = !parts[component]
@@ -122,14 +122,16 @@ export const toggleWordComponent = (
 
 /** Set a flag (Known) scope on or off, returning NEW scopes. */
 export const setFlag = (
-  scopes: readonly Scope.Any[],
-  flag: KnownScope.Any,
+  scopes: readonly Scope.Scope[],
+  flag: KnownScope.KnownScope,
   on: boolean
-): Scope.Any[] => {
+): Scope.Scope[] => {
   const without = scopes.filter((s) => !(s.kind === 'known' && s.scope === flag))
   return on ? [...without, { kind: 'known', scope: flag }] : without
 }
 
 /** Toggle a flag (Known) scope. */
-export const toggleFlag = (scopes: readonly Scope.Any[], flag: KnownScope.Any): Scope.Any[] =>
-  setFlag(scopes, flag, !Grant.hasFlag(scopes, flag))
+export const toggleFlag = (
+  scopes: readonly Scope.Scope[],
+  flag: KnownScope.KnownScope
+): Scope.Scope[] => setFlag(scopes, flag, !Grant.hasFlag(scopes, flag))

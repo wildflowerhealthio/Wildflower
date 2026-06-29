@@ -12,9 +12,12 @@ afterEach(() => {
 })
 
 const patient = Bucket.fhir('patient')
-const grant = (scopes: Scope.Any[]): Grant.Any => ({ subject: 'jordan', scopes })
+const grant = (scopes: Scope.Scope[]): Grant.Grant => ({ subject: 'jordan', scopes })
 
-const patientFhir = (name: string, access = AccessRights.letters(['r'])): Fhir.Any => ({
+const patientFhir = (
+  name: string,
+  access = AccessRights.letters(['r'])
+): Fhir.FhirResourceScope => ({
   kind: 'fhir',
   context: 'patient',
   resource: name === '*' ? { kind: 'wildcard' } : { kind: 'known', name },
@@ -84,7 +87,7 @@ describe('PermissionGrid', () => {
   it('renders a v1 word row as a Read/Write multiselect instead of CRUDS cells', async () => {
     const onToggleWord = vi.fn()
     const user = userEvent.setup()
-    const envelope: Envelope.Any = {
+    const envelope: Envelope.Envelope = {
       resources: [patientFhir('Observation', AccessRights.star)],
       flags: [],
     }

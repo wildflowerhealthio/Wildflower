@@ -5,9 +5,9 @@ import type { Fhir, Grant, Scope } from '../index.ts'
 import { AccessRights, Bucket, Envelope } from '../index.ts'
 
 const b = Bucket.fhir('patient')
-const grant = (scopes: Scope.Any[]): Grant.Any => ({ subject: 'jordan', scopes })
+const grant = (scopes: Scope.Scope[]): Grant.Grant => ({ subject: 'jordan', scopes })
 
-const fhir = (name: string, access = AccessRights.letters(['r'])): Fhir.Any => ({
+const fhir = (name: string, access = AccessRights.letters(['r'])): Fhir.FhirResourceScope => ({
   kind: 'fhir',
   context: 'patient',
   resource: name === '*' ? { kind: 'wildcard' } : { kind: 'known', name },
@@ -15,7 +15,7 @@ const fhir = (name: string, access = AccessRights.letters(['r'])): Fhir.Any => (
 })
 
 describe('Envelope.buildCell — clamp (§2) + wildcard lock (§3)', () => {
-  const envelope: Envelope.Any = {
+  const envelope: Envelope.Envelope = {
     resources: [
       fhir('Observation', AccessRights.letters(['c', 'r', 's'])),
       { ...fhir('Condition', AccessRights.letters(['r'])), required: true },
@@ -55,7 +55,7 @@ describe('Envelope.buildCell — clamp (§2) + wildcard lock (§3)', () => {
 
 describe('Envelope.buildWordCell — v1 Read/Write clamp (§2)', () => {
   test('a component the request does not cover is disabled', () => {
-    const envelope: Envelope.Any = {
+    const envelope: Envelope.Envelope = {
       resources: [fhir('Observation', AccessRights.read)],
       flags: [],
     }
@@ -66,7 +66,7 @@ describe('Envelope.buildWordCell — v1 Read/Write clamp (§2)', () => {
   })
 
   test('required ⇒ locked; open mode ⇒ on/off by the grant', () => {
-    const envelope: Envelope.Any = {
+    const envelope: Envelope.Envelope = {
       resources: [{ ...fhir('Observation', AccessRights.star), required: true }],
       flags: [],
     }
@@ -96,7 +96,7 @@ describe('Envelope.buildWordCell — v1 Read/Write clamp (§2)', () => {
 
 describe('Envelope.accessForm', () => {
   test('request mode follows the requested form (v1 stays v1)', () => {
-    const envelope: Envelope.Any = {
+    const envelope: Envelope.Envelope = {
       resources: [fhir('Observation', AccessRights.star)],
       flags: [],
     }
@@ -112,7 +112,7 @@ describe('Envelope.accessForm', () => {
 })
 
 describe('flag clamping', () => {
-  const envelope: Envelope.Any = {
+  const envelope: Envelope.Envelope = {
     resources: [],
     flags: [{ scope: 'openid', required: true }, { scope: 'profile' }],
   }
@@ -135,7 +135,7 @@ describe('Envelope.isWithin — granted ⊆ requested (§2)', () => {
   })
 
   test('false when a granted action exceeds the request', () => {
-    const envelope: Envelope.Any = {
+    const envelope: Envelope.Envelope = {
       resources: [fhir('Observation', AccessRights.letters(['r']))],
       flags: [],
     }
@@ -155,7 +155,7 @@ describe('Envelope.isWithin — granted ⊆ requested (§2)', () => {
         (requested, sub) => {
           const requestedSet = new Set(requested)
           const granted = sub.filter((a) => requestedSet.has(a))
-          const envelope: Envelope.Any = {
+          const envelope: Envelope.Envelope = {
             resources: [fhir('Observation', AccessRights.letters(requested))],
             flags: [],
           }
