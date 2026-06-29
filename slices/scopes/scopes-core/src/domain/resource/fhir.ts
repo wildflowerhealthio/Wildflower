@@ -15,22 +15,22 @@ import * as AccessRights from './access-rights.ts'
  * same as `system`, but the three are modeled and compared **strictly** —
  * `user` never silently means `system`.
  */
-export type ContextLevel = 'patient' | 'user' | 'system'
+type ContextLevel = 'patient' | 'user' | 'system'
 
 /** The FHIR `ContextLevel`s in order. */
-export const CONTEXT_LEVELS: readonly ContextLevel[] = ['patient', 'user', 'system']
+const CONTEXT_LEVELS: readonly ContextLevel[] = ['patient', 'user', 'system']
 
 /**
  * The FHIR resource type a scope addresses — `*` or a named type. The wildcard
  * is a *live* wildcard: it covers current and future resource types of that
  * context (`spec.md §4`), never a snapshot.
  */
-export type ResourceType =
+type ResourceType =
   | { readonly kind: 'wildcard' }
   | { readonly kind: 'known'; readonly name: string }
 
 /** A SMART `context/Type.perms` FHIR resource scope. */
-export type FhirResourceScope = {
+type FhirResourceScope = {
   readonly kind: 'fhir'
   readonly context: ContextLevel
   readonly resource: ResourceType
@@ -41,18 +41,18 @@ const isContextLevel = (s: string): s is ContextLevel =>
   (CONTEXT_LEVELS as readonly string[]).includes(s)
 
 /** Build a {@link ResourceType} from a type string (`*` → wildcard). */
-export const resourceType = (name: string): ResourceType =>
+const resourceType = (name: string): ResourceType =>
   name === '*' ? { kind: 'wildcard' } : { kind: 'known', name }
 
 /** The display/serialization name of a {@link ResourceType} (`*` or the type). */
-export const resourceName = (resource: ResourceType): string =>
+const resourceName = (resource: ResourceType): string =>
   resource.kind === 'wildcard' ? '*' : resource.name
 
 /**
  * Parse the `context/Type.perms` FHIR grammar (context ∈
  * `patient`/`user`/`system`), or `null` if `s` isn't one.
  */
-export const scopeParse: ScopeParser<FhirResourceScope>['scopeParse'] = (s) => {
+const scopeParse: ScopeParser<FhirResourceScope>['scopeParse'] = (s) => {
   const slash = s.indexOf('/')
   if (slash <= 0) return null
   const ctx = s.slice(0, slash)
@@ -66,7 +66,18 @@ export const scopeParse: ScopeParser<FhirResourceScope>['scopeParse'] = (s) => {
 }
 
 /** Render to its `context/Type.perms` string; a scope granting nothing emits `''`. */
-export const scopeSerialize: ScopeSerializer<FhirResourceScope>['scopeSerialize'] = (scope) => {
+const scopeSerialize: ScopeSerializer<FhirResourceScope>['scopeSerialize'] = (scope) => {
   const perms = AccessRights.scopeSerialize(scope.access)
   return perms === '' ? '' : `${scope.context}/${resourceName(scope.resource)}.${perms}`
+}
+
+export {
+  type ContextLevel,
+  CONTEXT_LEVELS,
+  type ResourceType,
+  type FhirResourceScope,
+  resourceType,
+  resourceName,
+  scopeParse,
+  scopeSerialize,
 }

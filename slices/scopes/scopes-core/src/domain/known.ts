@@ -10,16 +10,10 @@
 import type { ScopeParser } from '../behaviour/index.ts'
 
 /** A broadly-known non-resource scope that matches exactly (Rust's `KnownScope`). */
-export type KnownScope =
-  | 'openid'
-  | 'profile'
-  | 'fhirUser'
-  | 'offline_access'
-  | 'launch'
-  | 'launch/patient'
+type KnownScope = 'openid' | 'profile' | 'fhirUser' | 'offline_access' | 'launch' | 'launch/patient'
 
 /** The canonical flag scopes in display order (`spec.md §7`). */
-export const ALL: readonly KnownScope[] = [
+const ALL: readonly KnownScope[] = [
   'openid',
   'profile',
   'fhirUser',
@@ -29,7 +23,9 @@ export const ALL: readonly KnownScope[] = [
 ]
 
 /** Whether a string is a known flag scope. */
-export const is = (s: string): s is KnownScope => (ALL as readonly string[]).includes(s)
+const is = (s: string): s is KnownScope => (ALL as readonly string[]).includes(s)
 
 /** Parse a known flag scope, or `null` if `s` isn't one. */
-export const scopeParse: ScopeParser<KnownScope>['scopeParse'] = (s) => (is(s) ? s : null)
+const scopeParse: ScopeParser<KnownScope>['scopeParse'] = (s) => (is(s) ? s : null)
+
+export { type KnownScope, ALL, is, scopeParse }

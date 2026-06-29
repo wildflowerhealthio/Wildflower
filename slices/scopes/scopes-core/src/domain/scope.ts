@@ -15,34 +15,34 @@ import * as Wildflower from './resource/wildflower.ts'
 import * as UnknownScope from './unknown.ts'
 
 /** The known-scope (flag) variant of the union (`Scope::Known` in Rust). */
-export type Known = { readonly kind: 'known'; readonly scope: KnownScope.KnownScope }
+type Known = { readonly kind: 'known'; readonly scope: KnownScope.KnownScope }
 
 /**
  * An OAuth 2.0 / SMART on FHIR scope — the four-kind union mirroring Rust's
  * `Scope`. Parsing is total: an unrecognized string is preserved verbatim as
  * `unknown`, never dropped.
  */
-export type Scope =
+type Scope =
   | Fhir.FhirResourceScope
   | Wildflower.WildflowerResourceScope
   | Known
   | UnknownScope.UnknownScope
 
 /** The two *resource* scope kinds — the editable ones (grid rows / consent statements). */
-export type Resource = Fhir.FhirResourceScope | Wildflower.WildflowerResourceScope
+type Resource = Fhir.FhirResourceScope | Wildflower.WildflowerResourceScope
 
 /** A flag (Known) scope. */
-export const known = (scope: KnownScope.KnownScope): Scope => ({ kind: 'known', scope })
+const known = (scope: KnownScope.KnownScope): Scope => ({ kind: 'known', scope })
 
 /** A preserved unknown scope. */
-export const unknown = (raw: string): Scope => UnknownScope.make(raw)
+const unknown = (raw: string): Scope => UnknownScope.make(raw)
 
 /** Whether a scope is a resource scope (FHIR or Wildflower). */
-export const isResource = (scope: Scope): scope is Resource =>
+const isResource = (scope: Scope): scope is Resource =>
   scope.kind === 'fhir' || scope.kind === 'wildflower'
 
 /** The display name of a resource scope's type (`*` or the type/resource name). */
-export const resourceName = (scope: Resource): string =>
+const resourceName = (scope: Resource): string =>
   scope.kind === 'fhir'
     ? Fhir.resourceName(scope.resource)
     : Wildflower.resourceName(scope.resource)
@@ -51,7 +51,7 @@ export const resourceName = (scope: Resource): string =>
  * Parse one scope string into its richest form — total (mirrors Rust's
  * `Scope::from`): known → wildflower → FHIR → unknown.
  */
-export const scopeParse = (s: string): Scope => {
+const scopeParse = (s: string): Scope => {
   const flag = KnownScope.scopeParse(s)
   if (flag !== null) return { kind: 'known', scope: flag }
   const wf = Wildflower.scopeParse(s)
@@ -62,13 +62,13 @@ export const scopeParse = (s: string): Scope => {
 }
 
 /** Parse a resource scope (FHIR or Wildflower), or `null` for a flag/unknown. */
-export const scopeParseResource: ScopeParser<Resource>['scopeParse'] = (s) => {
+const scopeParseResource: ScopeParser<Resource>['scopeParse'] = (s) => {
   const parsed = scopeParse(s)
   return isResource(parsed) ? parsed : null
 }
 
 /** Serialize one scope to its string form; resource scopes that grant nothing emit `''`. */
-export const scopeSerialize: ScopeSerializer<Scope>['scopeSerialize'] = (scope) => {
+const scopeSerialize: ScopeSerializer<Scope>['scopeSerialize'] = (scope) => {
   switch (scope.kind) {
     case 'fhir':
       return Fhir.scopeSerialize(scope)
@@ -83,4 +83,17 @@ export const scopeSerialize: ScopeSerializer<Scope>['scopeSerialize'] = (scope) 
       throw new Error(`unknown scope kind: ${String(exhaustive)}`)
     }
   }
+}
+
+export {
+  type Known,
+  type Scope,
+  type Resource,
+  known,
+  unknown,
+  isResource,
+  resourceName,
+  scopeParse,
+  scopeParseResource,
+  scopeSerialize,
 }

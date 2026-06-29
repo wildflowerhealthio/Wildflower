@@ -16,23 +16,23 @@ import * as Resolve from './resolve.ts'
 import * as ScopeContext from './scope-context.ts'
 
 /** A requested resource scope, with its `required` flag (request mode). */
-export type RequestedResource = Scope.Resource & { readonly required?: boolean }
+type RequestedResource = Scope.Resource & { readonly required?: boolean }
 
 /** A requested flag scope, with its `required` flag. */
-export type RequestedFlag = { readonly scope: KnownScope.KnownScope; readonly required?: boolean }
+type RequestedFlag = { readonly scope: KnownScope.KnownScope; readonly required?: boolean }
 
 /**
  * What an app asked for (request mode). The grant is clamped so that
  * `granted ⊆ requested` at all times (`spec.md §2`); `required` scopes are
  * locked on. Absence of a scope request ⇒ open mode (the user builds freely).
  */
-export type ScopeRequest = {
+type ScopeRequest = {
   readonly resources: readonly RequestedResource[]
   readonly flags: readonly RequestedFlag[]
 }
 
 /** The requested resource scope for a (scope context, resource), with its `required` flag. */
-export const resourceFor = (
+const resourceFor = (
   scopeRequest: ScopeRequest,
   scopeContext: ScopeContext.ScopeContext,
   name: string
@@ -47,7 +47,7 @@ export const resourceFor = (
  * form follows what the app asked for; in open mode it follows the grant's
  * stored row, defaulting to v2.
  */
-export const accessForm = (
+const accessForm = (
   grant: GrantDraft.GrantDraft,
   scopeRequest: ScopeRequest | null,
   scopeContext: ScopeContext.ScopeContext,
@@ -62,16 +62,16 @@ export const accessForm = (
 }
 
 /** One of the four visual states a CRUDS cell can be in. */
-export type CellState = 'on' | 'off' | 'locked' | 'disabled'
+type CellState = 'on' | 'off' | 'locked' | 'disabled'
 
 /** A resolved grid cell: its state plus the tooltip explaining a lock/disable. */
-export type Cell = {
+type Cell = {
   readonly state: CellState
   readonly lockReason: string | null
 }
 
 /** Resolve one CRUDS cell for the grid, combining the request clamp (§2) and wildcard lock (§3). */
-export const buildCell = (
+const buildCell = (
   grant: GrantDraft.GrantDraft,
   scopeRequest: ScopeRequest | null,
   scopeContext: ScopeContext.ScopeContext,
@@ -96,7 +96,7 @@ export const buildCell = (
 }
 
 /** Resolve one v1 word component (Read / Write) for a row's multiselect (§2 clamp). */
-export const buildWordCell = (
+const buildWordCell = (
   grant: GrantDraft.GrantDraft,
   scopeRequest: ScopeRequest | null,
   scopeContext: ScopeContext.ScopeContext,
@@ -115,19 +115,13 @@ export const buildWordCell = (
 }
 
 /** Whether a flag toggle is disabled (request mode + not requested, `spec.md §2/§7`). */
-export const flagDisabled = (
-  scopeRequest: ScopeRequest | null,
-  flag: KnownScope.KnownScope
-): boolean => {
+const flagDisabled = (scopeRequest: ScopeRequest | null, flag: KnownScope.KnownScope): boolean => {
   if (scopeRequest === null) return false
   return !scopeRequest.flags.some((f) => f.scope === flag)
 }
 
 /** Whether a flag is required (request mode + marked required → locked on). */
-export const flagRequired = (
-  scopeRequest: ScopeRequest | null,
-  flag: KnownScope.KnownScope
-): boolean => {
+const flagRequired = (scopeRequest: ScopeRequest | null, flag: KnownScope.KnownScope): boolean => {
   if (scopeRequest === null) return false
   return scopeRequest.flags.some((f) => f.scope === flag && f.required === true)
 }
@@ -136,10 +130,7 @@ export const flagRequired = (
  * The invariant `granted ⊆ requested` (`spec.md §2`). True in open mode. Checks
  * every granted CRUDS letter and flag against the scope request. For tests/asserts.
  */
-export const isWithin = (
-  grant: GrantDraft.GrantDraft,
-  scopeRequest: ScopeRequest | null
-): boolean => {
+const isWithin = (grant: GrantDraft.GrantDraft, scopeRequest: ScopeRequest | null): boolean => {
   if (scopeRequest === null) return true
   const resourcesOk = Grant.resourceScopes(grant.scopes).every((scope) => {
     const requested = resourceFor(scopeRequest, ScopeContext.of(scope), Scope.resourceName(scope))
@@ -150,4 +141,19 @@ export const isWithin = (
     scopeRequest.flags.some((f) => f.scope === flag)
   )
   return resourcesOk && flagsOk
+}
+
+export {
+  type RequestedResource,
+  type RequestedFlag,
+  type ScopeRequest,
+  resourceFor,
+  accessForm,
+  type CellState,
+  type Cell,
+  buildCell,
+  buildWordCell,
+  flagDisabled,
+  flagRequired,
+  isWithin,
 }

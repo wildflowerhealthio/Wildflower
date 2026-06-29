@@ -11,10 +11,10 @@ import type { KnownScope } from '../domain/index.ts'
 import type * as ScopeContext from '../view-model/scope-context.ts'
 
 /** A resource's singular and plural display names. */
-export type Resource = { readonly label: string; readonly plural: string }
+type Resource = { readonly label: string; readonly plural: string }
 
 /** Strict 1:1 FHIR `ResourceType` → display name. Extend as resources surface. */
-export const FHIR: Readonly<Record<string, Resource>> = {
+const FHIR: Readonly<Record<string, Resource>> = {
   Observation: { label: 'Observation', plural: 'Observations' },
   MedicationRequest: { label: 'Medication request', plural: 'Medication requests' },
   Appointment: { label: 'Appointment', plural: 'Appointments' },
@@ -32,7 +32,7 @@ export const FHIR: Readonly<Record<string, Resource>> = {
 }
 
 /** Strict 1:1 Wildflower admin `Resource` → display name. */
-export const WILDFLOWER: Readonly<Record<string, Resource>> = {
+const WILDFLOWER: Readonly<Record<string, Resource>> = {
   AuthorizationRequest: { label: 'Authorization request', plural: 'Authorization requests' },
   Grant: { label: 'Grant', plural: 'Grants' },
   Client: { label: 'Connected app', plural: 'Connected apps' },
@@ -40,7 +40,7 @@ export const WILDFLOWER: Readonly<Record<string, Resource>> = {
 }
 
 /** Plain-language consent copy for each flag scope (`spec.md §7`). */
-export const FLAG: Readonly<Record<KnownScope.KnownScope, string>> = {
+const FLAG: Readonly<Record<KnownScope.KnownScope, string>> = {
   openid: 'Confirm who you are',
   profile: 'Your basic profile details',
   fhirUser: 'Link to your patient record',
@@ -50,21 +50,23 @@ export const FLAG: Readonly<Record<KnownScope.KnownScope, string>> = {
 }
 
 /** The label shown for the live wildcard row (`spec.md §4`). */
-export const WILDCARD = '✶ All record types'
+const WILDCARD = '✶ All record types'
 
 /** The required "current and future" note shown wherever a wildcard is selectable (`spec.md §4`). */
-export const WILDCARD_NOTE = 'Covers all current and future record types.'
+const WILDCARD_NOTE = 'Covers all current and future record types.'
 
 /** The 1:1 display label for a resource name in a scope context (`*` → the wildcard label). */
-export const resource = (scopeContext: ScopeContext.ScopeContext, name: string): string => {
+const resource = (scopeContext: ScopeContext.ScopeContext, name: string): string => {
   if (name === '*') return WILDCARD
   if (scopeContext.kind === 'wildflower') return WILDFLOWER[name]?.label ?? name
   return FHIR[name]?.label ?? name
 }
 
 /** The plural display label for a resource name in a scope context. */
-export const plural = (scopeContext: ScopeContext.ScopeContext, name: string): string => {
+const plural = (scopeContext: ScopeContext.ScopeContext, name: string): string => {
   if (name === '*') return WILDCARD
   if (scopeContext.kind === 'wildflower') return WILDFLOWER[name]?.plural ?? name
   return FHIR[name]?.plural ?? name
 }
+
+export { type Resource, FHIR, WILDFLOWER, FLAG, WILDCARD, WILDCARD_NOTE, resource, plural }

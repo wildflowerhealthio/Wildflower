@@ -15,7 +15,7 @@ import * as Words from './words.ts'
  * The five user-facing verbs, strictly 1:1 with CRUDS (no merging, no
  * "view = read + search" collapse). See `spec.md §1`.
  */
-export const VERB: Readonly<Record<AccessRights.Action, string>> = {
+const VERB: Readonly<Record<AccessRights.Action, string>> = {
   c: 'Create',
   r: 'Read',
   u: 'Update',
@@ -34,7 +34,7 @@ const sentenceJoin = (parts: readonly string[]): string => {
  * A sentence-style label for a set of CRUDS actions, in canonical order:
  * `"Read"`, `"Read and Search"`, `"Create, Read and Search"`.
  */
-export const label = (actions: Iterable<AccessRights.Action>): string =>
+const label = (actions: Iterable<AccessRights.Action>): string =>
   sentenceJoin(AccessRights.sortActions(actions).map((a) => VERB[a]))
 
 /**
@@ -42,10 +42,12 @@ export const label = (actions: Iterable<AccessRights.Action>): string =>
  * parts (`"Read"`, `"Write"`, `"Read and Write"`) so the sentence matches the v1
  * multiselect; a v2 (`letters`) scope reads its CRUDS verbs.
  */
-export const accessLabel = (access: AccessRights.AccessRights): string => {
+const accessLabel = (access: AccessRights.AccessRights): string => {
   if (access.kind !== 'letters') {
     const selected = Words.of(access)
     return sentenceJoin(Words.COMPONENTS.filter((c) => selected[c]).map((c) => Words.LABEL[c]))
   }
   return label(AccessRights.lettersOf(access))
 }
+
+export { VERB, label, accessLabel }

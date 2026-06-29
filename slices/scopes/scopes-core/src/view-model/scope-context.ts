@@ -14,28 +14,28 @@ import type { Scope } from '../domain/index.ts'
 import { AccessRights, Fhir, Wildflower } from '../domain/index.ts'
 
 /** A group of resource scopes edited together: a FHIR context, or Wildflower admin. */
-export type ScopeContext =
+type ScopeContext =
   | { readonly kind: 'fhir'; readonly context: Fhir.ContextLevel }
   | { readonly kind: 'wildflower' }
 
 /** A FHIR scope context for a context level. */
-export const fhir = (context: Fhir.ContextLevel): ScopeContext => ({ kind: 'fhir', context })
+const fhir = (context: Fhir.ContextLevel): ScopeContext => ({ kind: 'fhir', context })
 
 /** The Wildflower admin scope context. */
-export const wildflower: ScopeContext = { kind: 'wildflower' }
+const wildflower: ScopeContext = { kind: 'wildflower' }
 
 /** Whether a resource scope belongs to a scope context. */
-export const contains = (scopeContext: ScopeContext, scope: Scope.Resource): boolean =>
+const contains = (scopeContext: ScopeContext, scope: Scope.Resource): boolean =>
   scopeContext.kind === 'fhir'
     ? scope.kind === 'fhir' && scope.context === scopeContext.context
     : scope.kind === 'wildflower'
 
 /** The scope context a resource scope belongs to. */
-export const of = (scope: Scope.Resource): ScopeContext =>
+const of = (scope: Scope.Resource): ScopeContext =>
   scope.kind === 'fhir' ? fhir(scope.context) : wildflower
 
 /** The context prefix of a scope context (`patient`/`user`/`system`/`wildflower`). */
-export const prefix = (scopeContext: ScopeContext): string =>
+const prefix = (scopeContext: ScopeContext): string =>
   scopeContext.kind === 'fhir' ? scopeContext.context : Wildflower.CONTEXT
 
 /**
@@ -43,7 +43,7 @@ export const prefix = (scopeContext: ScopeContext): string =>
  * access, or `null` if the name isn't a valid resource for that context (the
  * Wildflower set is closed).
  */
-export const makeResource = (
+const makeResource = (
   scopeContext: ScopeContext,
   name: string,
   access: AccessRights.AccessRights
@@ -61,7 +61,7 @@ export const makeResource = (
 }
 
 /** The live scope string for a (scope context, resource, access) — for grid `code` display. */
-export const code = (
+const code = (
   scopeContext: ScopeContext,
   name: string,
   access: AccessRights.AccessRights
@@ -71,3 +71,5 @@ export const code = (
     ? `${prefix(scopeContext)}/${name}`
     : `${prefix(scopeContext)}/${name}.${perms}`
 }
+
+export { type ScopeContext, fhir, wildflower, contains, of, prefix, makeResource, code }

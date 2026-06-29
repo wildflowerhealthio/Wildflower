@@ -10,10 +10,12 @@
 import type { ScopeSerializer } from '../behaviour/index.ts'
 
 /** A scope string the grammar didn't recognize, kept verbatim. */
-export type UnknownScope = { readonly kind: 'unknown'; readonly raw: string }
+type UnknownScope = { readonly kind: 'unknown'; readonly raw: string }
 
 /** Wrap a raw string as an unknown scope. */
-export const make = (raw: string): UnknownScope => ({ kind: 'unknown', raw })
+const make = (raw: string): UnknownScope => ({ kind: 'unknown', raw })
 
 /** Render an unknown scope — the raw string, unchanged. */
-export const scopeSerialize: ScopeSerializer<UnknownScope>['scopeSerialize'] = (scope) => scope.raw
+const scopeSerialize: ScopeSerializer<UnknownScope>['scopeSerialize'] = (scope) => scope.raw
+
+export { type UnknownScope, make, scopeSerialize }

@@ -18,23 +18,23 @@ import * as ScopeContext from './scope-context.ts'
  * sentences, the resource grid, the flag toggles) renders from this one object
  * (`spec.md §5`).
  */
-export type GrantDraft = {
+type GrantDraft = {
   readonly subject: string
   readonly scopes: readonly Scope.Scope[]
 }
 
 /** The subject sentinel for an all-patients (`system/`) grant. */
-export const ALL_PATIENTS = 'all'
+const ALL_PATIENTS = 'all'
 
 /**
  * Subject contexts offered when the user builds a grant from scratch (open /
  * device mode). `user/` is excluded — it is only ever *shown* when an app
  * requests it. `system` (all patients) is the elevated choice.
  */
-export const OFFERABLE_CONTEXTS: readonly Fhir.ContextLevel[] = ['patient', 'system']
+const OFFERABLE_CONTEXTS: readonly Fhir.ContextLevel[] = ['patient', 'system']
 
 /** Find the resource scope for a (scope context, resource name), if granted. */
-export const findResource = (
+const findResource = (
   scopes: readonly Scope.Scope[],
   scopeContext: ScopeContext.ScopeContext,
   name: string
@@ -44,7 +44,7 @@ export const findResource = (
   )
 
 /** The same scope context `*` wildcard resource scope, if any. */
-export const findWildcard = (
+const findWildcard = (
   scopes: readonly Scope.Scope[],
   scopeContext: ScopeContext.ScopeContext
 ): Scope.Resource | undefined => findResource(scopes, scopeContext, '*')
@@ -55,7 +55,7 @@ export const findWildcard = (
  * is dropped entirely when the wildcard covers it. Returns a sorted, deduped
  * array of resource scope strings.
  */
-export const serialize = (grant: GrantDraft): string[] => {
+const serialize = (grant: GrantDraft): string[] => {
   const out: string[] = []
   for (const scope of Grant.resourceScopes(grant.scopes)) {
     const name = Scope.resourceName(scope)
@@ -88,8 +88,18 @@ export const serialize = (grant: GrantDraft): string[] => {
 }
 
 /** The full scope list a draft emits — resource scopes (deduped) + flags + preserved unknowns. */
-export const serializeAll = (grant: GrantDraft): string[] => [
+const serializeAll = (grant: GrantDraft): string[] => [
   ...serialize(grant),
   ...Grant.knownScopes(grant.scopes).toSorted(),
   ...Grant.unknownScopes(grant.scopes).toSorted(),
 ]
+
+export {
+  type GrantDraft,
+  ALL_PATIENTS,
+  OFFERABLE_CONTEXTS,
+  findResource,
+  findWildcard,
+  serialize,
+  serializeAll,
+}

@@ -8,13 +8,13 @@
 import { AccessRights, ScopeContext, ScopeRequest, GrantDraft, Labels, Words } from 'scopes-core'
 
 /** One Read/Write item on a v1 (word) row. */
-export interface GridWordItem {
+interface GridWordItem {
   readonly component: Words.Component
   readonly cell: ScopeRequest.Cell
 }
 
 /** One renderable grid row — either a 5-cell v2 row or a v1 Read/Write multiselect. */
-export interface GridRow {
+interface GridRow {
   readonly scopeContext: ScopeContext.ScopeContext
   readonly resource: string
   /** The 1:1 display label (or the wildcard label for `*`). */
@@ -36,7 +36,7 @@ const grantAccessFor = (
   GrantDraft.findResource(grant.scopes, scopeContext, resource)?.access ?? null
 
 /** Parameters for {@link buildGridRows}. */
-export interface BuildGridRowsParams {
+interface BuildGridRowsParams {
   readonly grant: GrantDraft.GrantDraft
   readonly scopeRequest: ScopeRequest.ScopeRequest | null
   readonly scopeContext: ScopeContext.ScopeContext
@@ -92,7 +92,7 @@ const buildRow = (
  * to the scopeRequest (§2); in open mode the `*` wildcard row can lead the list and
  * drives the union+lock of the rows below it (§3).
  */
-export const buildGridRows = ({
+const buildGridRows = ({
   grant,
   scopeRequest,
   scopeContext,
@@ -105,3 +105,5 @@ export const buildGridRows = ({
   }
   return rows
 }
+
+export { type GridWordItem, type GridRow, type BuildGridRowsParams, buildGridRows }

@@ -23,7 +23,7 @@ const matchesRow = (
   Scope.resourceName(scope) === name
 
 /** Remove a (scope context, resource) row entirely (the consent "Remove" affordance). */
-export const removeResource = (
+const removeResource = (
   scopes: readonly Scope.Scope[],
   scopeContext: ScopeContext.ScopeContext,
   name: string
@@ -42,7 +42,7 @@ const upsertResource = (
 }
 
 /** The resolved state of one (scope context, resource, action) cell (`spec.md §3`). */
-export type EffectiveCell = {
+type EffectiveCell = {
   /** Granted = covered by the wildcard, or held by the specific row. */
   readonly granted: boolean
   /** Locked = covered by the wildcard (not independently removable on a row). */
@@ -58,7 +58,7 @@ const cellSource = (coveredByWildcard: boolean, specificHas: boolean): Effective
 }
 
 /** Resolve a single CRUDS cell against the scope context's wildcard + specific rows. */
-export const effectiveCell = (
+const effectiveCell = (
   scopes: readonly Scope.Scope[],
   scopeContext: ScopeContext.ScopeContext,
   name: string,
@@ -88,7 +88,7 @@ export const effectiveCell = (
  * no-op when the wildcard already covers the action (the cell is locked, §3).
  * Specific rows that empty out are dropped; the wildcard row is kept.
  */
-export const toggleCell = (
+const toggleCell = (
   scopes: readonly Scope.Scope[],
   scopeContext: ScopeContext.ScopeContext,
   name: string,
@@ -120,7 +120,7 @@ export const toggleCell = (
  * Toggle one v1 word component (Read or Write) on a (scope context, resource) row.
  * Read + Write ⇒ `*`; one ⇒ that word; neither ⇒ the row is dropped.
  */
-export const toggleWordComponent = (
+const toggleWordComponent = (
   scopes: readonly Scope.Scope[],
   scopeContext: ScopeContext.ScopeContext,
   name: string,
@@ -136,7 +136,7 @@ export const toggleWordComponent = (
 }
 
 /** Set a flag (Known) scope on or off, returning NEW scopes. */
-export const setFlag = (
+const setFlag = (
   scopes: readonly Scope.Scope[],
   flag: KnownScope.KnownScope,
   on: boolean
@@ -146,7 +146,15 @@ export const setFlag = (
 }
 
 /** Toggle a flag (Known) scope. */
-export const toggleFlag = (
-  scopes: readonly Scope.Scope[],
-  flag: KnownScope.KnownScope
-): Scope.Scope[] => setFlag(scopes, flag, !Grant.hasKnown(scopes, flag))
+const toggleFlag = (scopes: readonly Scope.Scope[], flag: KnownScope.KnownScope): Scope.Scope[] =>
+  setFlag(scopes, flag, !Grant.hasKnown(scopes, flag))
+
+export {
+  removeResource,
+  type EffectiveCell,
+  effectiveCell,
+  toggleCell,
+  toggleWordComponent,
+  setFlag,
+  toggleFlag,
+}

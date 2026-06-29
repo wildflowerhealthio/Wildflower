@@ -12,44 +12,39 @@ import type { ScopeParser, ScopeSerializer } from '../../behaviour/index.ts'
 import * as AccessRights from './access-rights.ts'
 
 /** A Wildflower-specific resource the gatekeeper governs (Rust's `WildflowerResource`). */
-export type Resource = 'AuthorizationRequest' | 'Grant' | 'Client' | 'RefreshToken'
+type Resource = 'AuthorizationRequest' | 'Grant' | 'Client' | 'RefreshToken'
 
 /** The closed set of Wildflower resources, in order. */
-export const RESOURCES: readonly Resource[] = [
-  'AuthorizationRequest',
-  'Grant',
-  'Client',
-  'RefreshToken',
-]
+const RESOURCES: readonly Resource[] = ['AuthorizationRequest', 'Grant', 'Client', 'RefreshToken']
 
 /** The fixed context segment all Wildflower scopes share (`wildflower/...`). */
-export const CONTEXT = 'wildflower'
+const CONTEXT = 'wildflower'
 
 /** The resource a Wildflower scope addresses (Rust's `WildflowerResourceType`). */
-export type ResourceType =
+type ResourceType =
   | { readonly kind: 'wildcard' }
   | { readonly kind: 'known'; readonly resource: Resource }
 
 /** A `wildflower/Resource.perms` scope (Rust's `WildflowerResourceScope`). */
-export type WildflowerResourceScope = {
+type WildflowerResourceScope = {
   readonly kind: 'wildflower'
   readonly resource: ResourceType
   readonly access: AccessRights.AccessRights
 }
 
 /** Build a {@link ResourceType} from a name, or `null` for an unknown resource (the set is closed). */
-export const resourceType = (name: string): ResourceType | null => {
+const resourceType = (name: string): ResourceType | null => {
   if (name === '*') return { kind: 'wildcard' }
   const resource = RESOURCES.find((r) => r === name)
   return resource === undefined ? null : { kind: 'known', resource }
 }
 
 /** The display/serialization name of a {@link ResourceType} (`*` or the resource). */
-export const resourceName = (resource: ResourceType): string =>
+const resourceName = (resource: ResourceType): string =>
   resource.kind === 'wildcard' ? '*' : resource.resource
 
 /** Parse the `wildflower/Resource.perms` grammar, or `null` if `s` isn't one. */
-export const scopeParse: ScopeParser<WildflowerResourceScope>['scopeParse'] = (s) => {
+const scopeParse: ScopeParser<WildflowerResourceScope>['scopeParse'] = (s) => {
   const slash = s.indexOf('/')
   if (slash <= 0) return null
   if (s.slice(0, slash) !== CONTEXT) return null
@@ -64,9 +59,19 @@ export const scopeParse: ScopeParser<WildflowerResourceScope>['scopeParse'] = (s
 }
 
 /** Render to its `wildflower/Resource.perms` string; a scope granting nothing emits `''`. */
-export const scopeSerialize: ScopeSerializer<WildflowerResourceScope>['scopeSerialize'] = (
-  scope
-) => {
+const scopeSerialize: ScopeSerializer<WildflowerResourceScope>['scopeSerialize'] = (scope) => {
   const perms = AccessRights.scopeSerialize(scope.access)
   return perms === '' ? '' : `${CONTEXT}/${resourceName(scope.resource)}.${perms}`
+}
+
+export {
+  type Resource,
+  RESOURCES,
+  CONTEXT,
+  type ResourceType,
+  type WildflowerResourceScope,
+  resourceType,
+  resourceName,
+  scopeParse,
+  scopeSerialize,
 }
