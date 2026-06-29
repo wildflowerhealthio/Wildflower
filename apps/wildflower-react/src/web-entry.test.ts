@@ -38,15 +38,6 @@ describe('makeWebEntryOptions', () => {
     expect(Effect.runSync(tokenStore.subscribable.get)).toBe(exp)
   })
 
-  test('bearerTokenSubscribable stays null even when authed (cookie auth, no header)', () => {
-    setExpCookie(futureExp())
-    const { bearerTokenSubscribable } = makeWebEntryOptions()
-    if (bearerTokenSubscribable === undefined) {
-      throw new Error('web entry must supply an explicit (null) bearer source')
-    }
-    expect(Effect.runSync(bearerTokenSubscribable.get)).toBe(null)
-  })
-
   test('awaitAuthReady resolves once the auth cookie is present', async () => {
     setExpCookie(futureExp())
     const { awaitAuthReady } = makeWebEntryOptions()

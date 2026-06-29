@@ -5,7 +5,6 @@ import { FhirResourcesApi } from '../http-api-definition/index.ts'
 const sliceClient = defineSliceHttpClient({
   name: 'FhirR4ResourcesHttpApiClient',
   api: FhirResourcesApi,
-  authType: 'bearer',
 })
 
 /**
@@ -24,7 +23,6 @@ const sliceClient = defineSliceHttpClient({
  */
 class FhirR4ResourcesHttpApiClient extends sliceClient.ClientTag<FhirR4ResourcesHttpApiClient>() {
   static readonly layer = sliceClient.makeLayerFactory(FhirR4ResourcesHttpApiClient)()
-  static readonly authType = sliceClient.authType
 }
 
 type FhirR4ResourcesHttpApiClientShape = typeof FhirR4ResourcesHttpApiClient.Service

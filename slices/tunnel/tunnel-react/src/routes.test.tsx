@@ -1,8 +1,7 @@
 import { HttpClient, HttpClientResponse } from '@effect/platform'
 import { QueryClient } from '@tanstack/react-query'
 import { createMemoryHistory, createRouter, type AnyRoute } from '@tanstack/react-router'
-import { Effect, Layer, pipe, SubscriptionRef } from 'effect'
-import { BearerToken } from 'kitchen-sink/auth-token'
+import { Effect, Layer, pipe } from 'effect'
 import type { TunnelAdminHttpApiClient } from 'tunnel-core/clients'
 import { Tunnel } from 'tunnel-core/http-api-definition'
 import { describe, expect, test } from 'vite-plus/test'
@@ -73,19 +72,12 @@ const stubHttpClientLayer = (options?: {
 // Mirrors the app's `buildRunAuthed`; kept local so the slice stays
 // app-independent.
 const makeRunAuthed = (httpLayer: Layer.Layer<HttpClient.HttpClient>): RunAuthed => {
-  const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>('token'))
   return <A, E>(
-    effect: Effect.Effect<A, E, BearerToken | HttpClient.HttpClient | TunnelAdminHttpApiClient>
+    effect: Effect.Effect<A, E, HttpClient.HttpClient | TunnelAdminHttpApiClient>
   ): Promise<A> =>
     Effect.runPromise(
       effect.pipe(
-        Effect.provide(
-          pipe(
-            sliceRuntimeLayer,
-            Layer.provideMerge(httpLayer),
-            Layer.provideMerge(Layer.succeed(BearerToken, tokenRef))
-          )
-        ),
+        Effect.provide(pipe(sliceRuntimeLayer, Layer.provideMerge(httpLayer))),
         Effect.scoped
       )
     )

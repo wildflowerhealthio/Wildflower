@@ -129,8 +129,8 @@ const NeedsAuthMessage = (): JSX.Element => {
   // Long-running device flow with retry — needs a fiber handle for
   // interrupt-on-unmount, which the promise-returning `runAuthed` can't
   // give. Runs against the composed `runtimeLayer` from router context
-  // (`BearerToken | HttpClient | GatekeeperHttpApiClient`), provided once
-  // by the app — not a one-shot query.
+  // (`HttpClient | GatekeeperHttpApiClient`), provided once by the app —
+  // not a one-shot query.
   const layer = useGatekeeperRuntimeLayer()
   // Request the first-party client's full `allowed_scopes` set, threaded from
   // the Tauri shell's `tauri-shared-config.json` (the single source gatekeeper

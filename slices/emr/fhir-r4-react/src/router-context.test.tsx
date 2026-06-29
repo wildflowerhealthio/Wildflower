@@ -1,8 +1,7 @@
 import { HttpClient, HttpClientResponse } from '@effect/platform'
 import { renderHook } from '@testing-library/react'
-import { Effect, Layer, pipe, SubscriptionRef } from 'effect'
+import { Effect, Layer, pipe } from 'effect'
 import { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
-import { BearerToken } from 'kitchen-sink/auth-token'
 import { describe, expect, test, vi } from 'vite-plus/test'
 
 import {
@@ -39,9 +38,8 @@ import {
  */
 
 // Builds the composed `runtimeLayer` the app would provide: the slice
-// client layer over `BearerToken | HttpClient`, with a stub transport.
+// client layer over `HttpClient`, with a stub transport.
 const buildRuntimeLayer = (options?: { readonly failing?: boolean }): RuntimeLayer => {
-  const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>('token'))
   const httpLayer = Layer.succeed(
     HttpClient.HttpClient,
     HttpClient.make((request) =>
@@ -62,11 +60,7 @@ const buildRuntimeLayer = (options?: { readonly failing?: boolean }): RuntimeLay
       )
     )
   )
-  return pipe(
-    sliceRuntimeLayer,
-    Layer.provideMerge(httpLayer),
-    Layer.provideMerge(Layer.succeed(BearerToken, tokenRef))
-  )
+  return pipe(sliceRuntimeLayer, Layer.provideMerge(httpLayer))
 }
 
 // Mutable holder the (hoisted) `useRouteContext` mock reads at render

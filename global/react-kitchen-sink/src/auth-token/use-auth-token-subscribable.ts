@@ -8,9 +8,10 @@ import { AuthTokenContext } from './auth-token-context.ts'
  * nearest `<AuthTokenProvider>`'s store. Throws when no provider is
  * in the tree.
  *
- * Use this when you need the Subscribable itself — e.g. inside a
- * per-slice runner hook that builds `Layer.succeed(BearerToken, subscribable)`
- * to feed into an Effect's layer composition.
+ * Use this when you need the Subscribable itself — e.g. to drive the
+ * auth-ready gate or the token-rotation cache invalidator. It carries
+ * the auth-readiness *signal* (web: the `wf_auth_exp` cookie hint;
+ * embedded: the host-pushed JWT), not a header injected into requests.
  */
 const useAuthTokenSubscribable = (): Subscribable.Subscribable<string | null> => {
   const store = useContext(AuthTokenContext)

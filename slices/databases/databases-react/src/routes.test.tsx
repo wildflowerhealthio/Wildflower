@@ -2,8 +2,7 @@ import { HttpClient, HttpClientResponse } from '@effect/platform'
 import { QueryClient } from '@tanstack/react-query'
 import { createMemoryHistory, createRouter, type AnyRoute } from '@tanstack/react-router'
 import type { Databases } from 'databases-core/http-api-definition'
-import { Effect, Layer, pipe, SubscriptionRef } from 'effect'
-import { BearerToken } from 'kitchen-sink/auth-token'
+import { Effect, Layer, pipe } from 'effect'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { DATABASES_QUERY_KEY, type RunAuthed } from './queries.ts'
@@ -88,17 +87,10 @@ const stubHttpClientLayer = (options?: {
 // Mirrors the app's `buildRunAuthed`; kept local so the slice stays
 // app-independent.
 const makeRunAuthed = (httpLayer: Layer.Layer<HttpClient.HttpClient>): RunAuthed => {
-  const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>('token'))
   return ((effect) =>
     Effect.runPromise(
       effect.pipe(
-        Effect.provide(
-          pipe(
-            sliceRuntimeLayer,
-            Layer.provideMerge(httpLayer),
-            Layer.provideMerge(Layer.succeed(BearerToken, tokenRef))
-          )
-        ),
+        Effect.provide(pipe(sliceRuntimeLayer, Layer.provideMerge(httpLayer))),
         Effect.scoped
       )
     )) as RunAuthed

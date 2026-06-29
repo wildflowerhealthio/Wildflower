@@ -3,10 +3,9 @@ import { QueryClient } from '@tanstack/react-query'
 import { AppsRouterContext } from 'apps-react'
 import { CollectorRouterContext } from 'collector-react'
 import { DatabasesRouterContext } from 'databases-react'
-import { Duration, Effect, Layer, pipe, type Subscribable } from 'effect'
+import { Duration, Effect, Layer, pipe } from 'effect'
 import { FhirR4ResourcesRouterContext } from 'fhir-r4-react'
 import { GatekeeperRouterContext } from 'gatekeeper-react'
-import { BearerToken } from 'kitchen-sink/auth-token'
 import type { BaseRouterContext } from 'shared-structures-react'
 import { TunnelRouterContext } from 'tunnel-react'
 
@@ -72,24 +71,21 @@ const buildQueryClient = (): QueryClient =>
   })
 
 /**
- * `BearerToken` reads through the live `Subscribable` per request, so
- * token rotation surfaces without rebuilding the runtime. `dispose` is
- * for tests; the app keeps the runtime for the page's lifetime.
+ * Builds the page-lifetime runtime layer + authed runner. Clients are
+ * tokenless — auth rides the `HttpOnly` `wf_auth` cookie that the
+ * platform `fetch` sends with same-origin requests.
  *
- * The `beforeLoad` auth gate (not the loaders) now guarantees a token
- * before any authed loader runs, so there's no `isTokenReady` reader
- * here anymore — loaders are plain `ensureQueryData` again.
+ * The `beforeLoad` auth gate (not the loaders) guarantees the auth
+ * signal is ready before any authed loader runs, so there's no
+ * `isTokenReady` reader here — loaders are plain `ensureQueryData`.
  */
 const buildRunAuthed = (
-  tokenSubscribable: Subscribable.Subscribable<string | null>,
   httpClientLayer: Layer.Layer<HttpClient.HttpClient>
 ): {
   readonly runAuthed: RunAuthed
   readonly runtimeLayer: RuntimeLayer
 } => {
-  const baseRuntimeLayer = Layer.succeed(BearerToken, tokenSubscribable).pipe(
-    Layer.provideMerge(Layer.merge(httpClientLayer, webTelemetryLayerFromEnv()))
-  )
+  const baseRuntimeLayer = Layer.merge(httpClientLayer, webTelemetryLayerFromEnv())
   const runtimeLayer: RuntimeLayer = Layer.provideMerge(
     Layer.mergeAll(
       TunnelRouterContext.sliceRuntimeLayer,

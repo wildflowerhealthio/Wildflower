@@ -18,9 +18,8 @@ import styles from './oauth-polling.module.css'
  * heartbeats until a terminal status), not a one-shot read, so it runs
  * through `react-kitchen-sink`'s generic `useStream` against the
  * composed `runtimeLayer` from router context — NOT a one-shot TanStack
- * query. The polling endpoint is public, but the layer pipes through the
- * same `BearerToken` plumbing as authed routes (which resolves to `null`
- * here and adds no header).
+ * query. The polling endpoint is public, and the tokenless client adds
+ * no `Authorization` header (auth, where needed, rides the cookie).
  */
 function OAuthPollingScreen({ id }: { readonly id: string }): JSX.Element {
   const runtimeLayer = useGatekeeperRuntimeLayer()

@@ -14,12 +14,11 @@
  * The signal is a `string | null` only so existing consumers
  * (`useAuthTokenSubscribable`, the auth-ready gate, the rotation
  * invalidator) keep working unchanged — its value is the `exp` string, not
- * a usable bearer, and the web runtime deliberately feeds `BearerToken` a
- * separate always-`null` source so no `Authorization` header is ever set.
+ * a usable bearer. HTTP clients are tokenless: no `Authorization` header is
+ * ever set, the cookie authenticates same-origin requests on its own.
  *
- * The **embedded WebView** keeps holding the raw JWT in memory and
- * attaching it as a header — `tauri://` fetches loopback cross-origin where
- * cookies don't travel cleanly (#218 point 8) — so
+ * The **embedded WebView** keeps holding the raw JWT in memory (the host
+ * pushes it) to drive the same auth-readiness signal —
  * {@link makeEmbeddedAuthTokenStore} is unchanged.
  *
  * See `slices/gatekeeper/docs/Auth Token Storage Explanation.md` for the
@@ -124,15 +123,15 @@ const makeWebAuthTokenStore = (): AuthTokenStore => {
 }
 
 /**
- * Build the embedded-WebView {@link AuthTokenStore}: a
- * `SubscriptionRef<string | null>` seeded with `null`, no persistence
- * subscriber, no cross-tab listener. The host's `AuthTokenIssued` handler
- * is the sole writer, and the held JWT is attached as an `Authorization`
- * header by the embedded HTTP client (cookies don't travel cleanly from
- * `tauri://` to the loopback origin — #218 point 8).
+ * Build the Tauri {@link AuthTokenStore}: a `SubscriptionRef<string | null>`
+ * seeded with `null`, no persistence subscriber, no cross-tab listener. The
+ * host's `AuthTokenIssued` bridge handler is the sole writer; the value drives
+ * the auth-readiness signal (the `beforeLoad` gate + the rotation
+ * invalidator). HTTP clients are tokenless — Tauri authenticates its loopback
+ * fetches via the `wf_auth` cookie the host syncs into the webview's cookie
+ * jar (`tauri://` JS can't manage that cookie itself).
  *
- * Used by `main-embedded` / `main-tauri`; see the Auth Token Storage
- * Explanation for why this store ignores `localStorage`.
+ * Used by `main-tauri`; see the Auth Token Storage Explanation.
  */
 const makeEmbeddedAuthTokenStore = (): AuthTokenStore => {
   const { subscribable, set: setToken } = makeSubscribableStore<string | null>(null)

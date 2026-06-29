@@ -1,7 +1,5 @@
-import { HttpClient, HttpClientResponse } from '@effect/platform'
-import { Effect, Layer, SubscriptionRef } from 'effect'
-import * as fc from 'fast-check'
-import { BearerToken } from 'kitchen-sink/auth-token'
+import { HttpClient, HttpClientRequest, HttpClientResponse } from '@effect/platform'
+import { Effect, Layer } from 'effect'
 import type { BaseRouterContext } from 'shared-structures-react'
 import { describe, expect, expectTypeOf, it } from 'vite-plus/test'
 
@@ -15,94 +13,67 @@ import type { RouterContext, RunAuthed, RuntimeLayer } from './router-context.ts
 expectTypeOf<RouterContext['awaitAuthReady']>().toEqualTypeOf<BaseRouterContext.AwaitAuthReady>()
 
 /**
- * Pins `runAuthed`: drives the real `buildRunAuthed` over a
- * `SubscriptionRef` token and a stub `HttpClient` so it runs offline.
+ * Pins `runAuthed`: drives the real `buildRunAuthed` over a stub
+ * `HttpClient` so it runs offline. Clients are tokenless — auth rides
+ * the same-origin cookie, so the runner supplies only `HttpClient`.
  */
 
-// Stub: never resolves a request; present only to satisfy the
-// `HttpClient.HttpClient` half of `runAuthed`'s requirement.
-const stubHttpClientLayer: Layer.Layer<HttpClient.HttpClient> = Layer.succeed(
-  HttpClient.HttpClient,
-  HttpClient.make((request) =>
-    Effect.succeed(HttpClientResponse.fromWeb(request, new Response(null, { status: 204 })))
+// Stub that records the outgoing `Authorization` header (or `undefined`)
+// and answers `204`.
+const capturingHttpClientLayer = (
+  captures: Array<string | undefined>
+): Layer.Layer<HttpClient.HttpClient> =>
+  Layer.succeed(
+    HttpClient.HttpClient,
+    HttpClient.make((request) => {
+      captures.push(request.headers['authorization'])
+      return Effect.succeed(
+        HttpClientResponse.fromWeb(request, new Response(null, { status: 204 }))
+      )
+    })
   )
-)
 
 const makeRunner = (
-  tokenRef: SubscriptionRef.SubscriptionRef<string | null>
+  captures: Array<string | undefined>
 ): {
   readonly runAuthed: RunAuthed
   readonly runtimeLayer: RuntimeLayer
-} => buildRunAuthed(tokenRef, stubHttpClientLayer)
+} => buildRunAuthed(capturingHttpClientLayer(captures))
 
-// Requires both services so the type carries `BearerToken | HttpClient`.
-const readTokenWithHttpInScope: Effect.Effect<
-  string | null,
-  never,
-  BearerToken | HttpClient.HttpClient
-> = Effect.gen(function* () {
-  yield* HttpClient.HttpClient
-  const tokenSubscribable = yield* BearerToken
-  return yield* tokenSubscribable.get
-})
+// Requires `HttpClient` and issues one request so the stub can record
+// the (absent) Authorization header.
+const fetchWithHttpInScope: Effect.Effect<number, never, HttpClient.HttpClient> = Effect.gen(
+  function* () {
+    const client = yield* HttpClient.HttpClient
+    const response = yield* client.execute(HttpClientRequest.get('/fixture'))
+    return response.status
+  }
+).pipe(Effect.orDie)
 
 describe('runAuthed router-context runner', () => {
-  const trackRunner = (tokenRef: SubscriptionRef.SubscriptionRef<string | null>): RunAuthed => {
-    const { runAuthed } = makeRunner(tokenRef)
-    return runAuthed
-  }
-
-  it('should supply the current bearer token to an effect requiring BearerToken + HttpClient', async () => {
+  it('should supply HttpClient to an effect requiring it', async () => {
     // Arrange
-    const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>('initial-token'))
-    const runAuthed = trackRunner(tokenRef)
+    const captures: Array<string | undefined> = []
+    const { runAuthed } = makeRunner(captures)
 
     // Act
-    const observed = await runAuthed(readTokenWithHttpInScope)
+    const status = await runAuthed(fetchWithHttpInScope)
 
     // Assert
-    expect(observed).toBe('initial-token')
+    expect(status).toBe(204)
   })
 
-  it('should supply a null token when the ref holds none', async () => {
+  it('should never attach an Authorization header (cookie auth)', async () => {
     // Arrange
-    const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>(null))
-    const runAuthed = trackRunner(tokenRef)
+    const captures: Array<string | undefined> = []
+    const { runAuthed } = makeRunner(captures)
 
     // Act
-    const observed = await runAuthed(readTokenWithHttpInScope)
+    await runAuthed(fetchWithHttpInScope)
+    await runAuthed(fetchWithHttpInScope)
 
     // Assert
-    expect(observed).toBeNull()
-  })
-
-  it('should observe a rotation written to the ref after the runtime was built', async () => {
-    // Build once, rotate after — token must surface without rebuild.
-    const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>('before'))
-    const runAuthed = trackRunner(tokenRef)
-    Effect.runSync(SubscriptionRef.set(tokenRef, 'after'))
-
-    // Act
-    const observed = await runAuthed(readTokenWithHttpInScope)
-
-    // Assert
-    expect(observed).toBe('after')
-  })
-
-  it('should always observe exactly the token the ref currently holds', async () => {
-    await fc.assert(
-      fc.asyncProperty(fc.option(fc.string(), { nil: null }), async (token) => {
-        // Arrange
-        const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>(token))
-        const { runAuthed } = makeRunner(tokenRef)
-
-        // Act
-        const observed = await runAuthed(readTokenWithHttpInScope)
-
-        // Assert
-        expect(observed).toBe(token)
-      })
-    )
+    expect(captures).toEqual([undefined, undefined])
   })
 
   // Type-level: a `satisfies` guard so dropping a field fails compile.
@@ -111,8 +82,7 @@ describe('runAuthed router-context runner', () => {
   // complete the structural context.
   it('should type RouterContext with queryClient, runAuthed, runtimeLayer, awaitAuthReady, transport', () => {
     // Arrange / Act
-    const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>(null))
-    const { runAuthed, runtimeLayer } = makeRunner(tokenRef)
+    const { runAuthed, runtimeLayer } = makeRunner([])
     const context = {
       queryClient: buildQueryClient(),
       runAuthed,

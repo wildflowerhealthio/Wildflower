@@ -9,8 +9,16 @@ Both factories return the same `AuthTokenStore` shape (a read-side
 page-bridge `AuthTokenIssued` handler, and the `auth-ready` gates are all
 environment-blind. Only the `main-*` entrypoint, which knows which
 environment it is in, picks a factory and threads the store through
-`renderApp`. The **one** place the environments diverge is the
-`BearerToken` source (see "What the web `subscribable` carries" below).
+`renderApp`. The **one** place the environments diverge is what the
+store's `subscribable` carries (see "What the web `subscribable` carries"
+below).
+
+HTTP clients are tokenless: no client attaches an `Authorization` header.
+Auth rides the same-origin `HttpOnly` `wf_auth` cookie the browser sends
+automatically. The store's `subscribable` exists only as the
+auth-readiness _signal_ — feeding `AuthTokenProvider`, the `auth-ready`
+gates, and the token-rotation cache invalidator — never as a header
+source.
 
 ## `makeWebAuthTokenStore` — cookie-derived (#218)
 
@@ -42,16 +50,15 @@ never loads. So the web store no longer _holds_ a token at all.
   which sends `Max-Age=0` clears), not a `setToken(null)` — JS can't
   delete the `HttpOnly` cookie.
 
-### What the web `subscribable` carries (and why `BearerToken` is separate)
+### What the web `subscribable` carries
 
 The web `subscribable`'s value is the **`exp` hint, not a usable
-bearer**. So the web entry deliberately feeds the Effect-side
-`BearerToken` a _separate_ always-`null` source
-(`makeWebEntryOptions().bearerTokenSubscribable`): no `Authorization`
-header is ever set, and the cookie authenticates same-origin requests on
-its own. Wiring the auth-signal subscribable into `BearerToken` would
-send the `exp` string as a bogus bearer. The embedded path omits the
-override, so `BearerToken` defaults to its store's real-JWT subscribable.
+bearer**. That is harmless because no client ever reads it as a header:
+clients are tokenless and the cookie authenticates same-origin requests
+on its own. The embedded store's `subscribable` carries the host-pushed
+real JWT instead, but it likewise drives only the readiness signal — the
+embedded WebView's requests authenticate the same way, never via a
+JS-attached header.
 
 There is no client-side `?token=` URL bootstrap: JS can't set an `HttpOnly`
 cookie, so a token on the URL can't become `wf_auth`. Bootstrapping a
@@ -70,6 +77,6 @@ context: a Metro reload and, depending on iOS policy, even a force-kill
 leave the previous session's token in storage. The LHS daemon mints a
 fresh token and re-pushes it on every boot via the gatekeeper bridge, so
 a `localStorage`-cached value can only ever be stale and racing the
-host's fresh push. A stale bearer surfacing as the store's initial value
+host's fresh push. A stale token surfacing as the store's initial value
 would resolve the auth-ready gate early and pin TanStack Query loaders
 on cached 401s.

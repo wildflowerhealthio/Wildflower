@@ -1,8 +1,7 @@
 import { HttpClient, HttpClientResponse } from '@effect/platform'
 import { QueryClient } from '@tanstack/react-query'
-import { Effect, Layer, pipe, SubscriptionRef } from 'effect'
+import { Effect, Layer, pipe } from 'effect'
 import type { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
-import { BearerToken } from 'kitchen-sink/auth-token'
 import { afterEach, describe, expect, test } from 'vite-plus/test'
 
 import { sliceRuntimeLayer } from '../router-context.ts'
@@ -100,19 +99,12 @@ afterEach(async () => {
 
 // Mirrors the app's `buildRunAuthed`; kept local so the slice has no app dep.
 const makeRunAuthed = (httpLayer: Layer.Layer<HttpClient.HttpClient>): RunAuthed => {
-  const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>('token'))
   return <A, E>(
-    effect: Effect.Effect<A, E, BearerToken | HttpClient.HttpClient | GatekeeperHttpApiClient>
+    effect: Effect.Effect<A, E, HttpClient.HttpClient | GatekeeperHttpApiClient>
   ): Promise<A> =>
     Effect.runPromise(
       effect.pipe(
-        Effect.provide(
-          pipe(
-            sliceRuntimeLayer,
-            Layer.provideMerge(httpLayer),
-            Layer.provideMerge(Layer.succeed(BearerToken, tokenRef))
-          )
-        ),
+        Effect.provide(pipe(sliceRuntimeLayer, Layer.provideMerge(httpLayer))),
         Effect.scoped
       )
     )

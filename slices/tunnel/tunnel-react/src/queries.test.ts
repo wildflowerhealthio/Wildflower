@@ -8,9 +8,8 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { act, cleanup, render, waitFor } from '@testing-library/react'
-import { Arbitrary, Effect, Layer, pipe, SubscriptionRef } from 'effect'
+import { Arbitrary, Effect, Layer, pipe } from 'effect'
 import * as fc from 'fast-check'
-import { BearerToken } from 'kitchen-sink/auth-token'
 import { numRunsFor } from 'kitchen-sink/test'
 import { createElement } from 'react'
 import { Tunnel } from 'tunnel-core/http-api-definition'
@@ -69,19 +68,12 @@ afterEach(async () => {
 
 // Mirrors `buildRunAuthed`; kept local so the slice has no app dep.
 const makeRunAuthed = (httpLayer: Layer.Layer<HttpClient.HttpClient>): RunAuthed => {
-  const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>('token'))
   return <A, E>(
-    effect: Effect.Effect<A, E, BearerToken | HttpClient.HttpClient | TunnelAdminHttpApiClient>
+    effect: Effect.Effect<A, E, HttpClient.HttpClient | TunnelAdminHttpApiClient>
   ): Promise<A> =>
     Effect.runPromise(
       effect.pipe(
-        Effect.provide(
-          pipe(
-            sliceRuntimeLayer,
-            Layer.provideMerge(httpLayer),
-            Layer.provideMerge(Layer.succeed(BearerToken, tokenRef))
-          )
-        ),
+        Effect.provide(pipe(sliceRuntimeLayer, Layer.provideMerge(httpLayer))),
         Effect.scoped
       )
     )

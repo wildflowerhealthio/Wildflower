@@ -1,46 +1,28 @@
-import { HttpApiClient, HttpClient, HttpClientRequest } from '@effect/platform'
+import type { HttpClient } from '@effect/platform'
+import { HttpApiClient } from '@effect/platform'
 import { DatabasesHttpApiClient } from 'databases-core/clients'
 import { DatabasesApi } from 'databases-core/http-api-definition'
-import { Effect, Layer } from 'effect'
-import { BearerToken } from 'kitchen-sink/auth-token'
+import { Layer } from 'effect'
 
 /**
  * Union of services a `DatabasesHttpApiClient` consumer needs in context. The
- * slice's layer leaves `HttpClient` and `BearerToken` unprovided so apps share
- * one of each across every slice's client layer.
+ * slice's layer leaves `HttpClient` unprovided so apps share one across every
+ * slice's client layer.
  */
-type DatabasesClientRequirements = HttpClient.HttpClient | DatabasesHttpApiClient | BearerToken
+type DatabasesClientRequirements = HttpClient.HttpClient | DatabasesHttpApiClient
 
 /**
- * Build a `DatabasesHttpApiClient` layer that reads the bearer token from the
- * {@link BearerToken} service on every request. The `transformClient` closes
- * over the Subscribable resolved at layer-resolution time; `Subscribable.get`
- * runs *per request*, so a token rotation surfaces immediately — no layer
- * rebuild, no client rebuild. Mirrors `tunnel-react/src/client/tunnel-client.ts`.
+ * Build a tokenless `DatabasesHttpApiClient` layer.
  *
- * The host serves `/databases` behind the gatekeeper Owner check, so this layer
- * always attaches a bearer when available.
+ * The host serves `/databases` behind the gatekeeper Owner check; auth rides
+ * the `HttpOnly` `wf_auth` cookie the browser sends with same-origin requests,
+ * so the client sets no `Authorization` header. Mirrors
+ * `tunnel-react/src/client/tunnel-client.ts`.
  */
 const buildDatabasesClientLayer = (): Layer.Layer<
   DatabasesHttpApiClient,
   never,
-  HttpClient.HttpClient | BearerToken
-> =>
-  Layer.effect(
-    DatabasesHttpApiClient,
-    Effect.gen(function* () {
-      const tokenSubscribable = yield* BearerToken
-      return yield* HttpApiClient.make(DatabasesApi, {
-        transformClient: (client) =>
-          HttpClient.mapRequestEffect(client, (request) =>
-            Effect.map(tokenSubscribable.get, (token) =>
-              token === null
-                ? request
-                : HttpClientRequest.setHeader(request, 'Authorization', `Bearer ${token}`)
-            )
-          ),
-      })
-    })
-  )
+  HttpClient.HttpClient
+> => Layer.effect(DatabasesHttpApiClient, HttpApiClient.make(DatabasesApi))
 
 export { buildDatabasesClientLayer, type DatabasesClientRequirements }

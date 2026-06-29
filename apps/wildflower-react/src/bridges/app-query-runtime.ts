@@ -1,6 +1,6 @@
 import { HttpClient, HttpClientRequest } from '@effect/platform'
 import type { QueryClient } from '@tanstack/react-query'
-import { Effect, Layer, type Subscribable } from 'effect'
+import { Effect, Layer } from 'effect'
 import { webHttpClientLayer } from 'telemetry-react'
 
 import {
@@ -63,18 +63,14 @@ const prependApiBaseUrl = (
 /**
  * Build the shared `QueryClient` + authed runner threaded into the
  * router context. Page-lifetime; one HTTP layer for every entry (the
- * embedded bridge carries only messages, not HTTP).
+ * embedded bridge carries only messages, not HTTP). Clients are
+ * tokenless — auth rides the same-origin `HttpOnly` `wf_auth` cookie.
  *
- * @param tokenSubscribable - The entry's `AuthTokenStore.subscribable`,
- *   used by the `BearerToken` Layer at request time. Rotation surfaces
- *   on the next request (the `Subscribable.get` read happens inside
- *   `HttpClient.mapRequestEffect`) without rebuilding the runtime.
  * @param apiBaseUrl - Absolute API origin for entries whose page isn't
  *   served by the API server (see {@link prependApiBaseUrl}). Omitted,
  *   requests stay relative to the page origin.
  */
 const buildAppQueryRuntime = (
-  tokenSubscribable: Subscribable.Subscribable<string | null>,
   apiBaseUrl?: string
 ): {
   readonly queryClient: QueryClient
@@ -86,7 +82,7 @@ const buildAppQueryRuntime = (
     apiBaseUrl === undefined
       ? webHttpClientLayer
       : prependApiBaseUrl(webHttpClientLayer, apiBaseUrl)
-  const { runAuthed, runtimeLayer } = buildRunAuthed(tokenSubscribable, httpClientLayer)
+  const { runAuthed, runtimeLayer } = buildRunAuthed(httpClientLayer)
   return { queryClient, runAuthed, runtimeLayer }
 }
 

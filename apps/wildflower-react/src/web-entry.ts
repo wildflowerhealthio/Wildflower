@@ -1,5 +1,4 @@
 import { makeAwaitWebAuthReady, makeWebAuthTokenStore } from 'gatekeeper-react'
-import { makeSubscribableStore } from 'react-kitchen-sink'
 import type { RenderAppOptions } from './app-root.tsx'
 import { stubTransport } from './bridges/transport-context.ts'
 
@@ -16,12 +15,9 @@ import { stubTransport } from './bridges/transport-context.ts'
  *
  * - `tokenStore`: cookie-derived (the real JWT is the `HttpOnly` `wf_auth`
  *   cookie, invisible to JS; the store tracks the readable `wf_auth_exp`
- *   hint). Drives the auth-ready gate and the rotation invalidator.
- * - `bearerTokenSubscribable`: an always-`null` source for the Effect-side
- *   `BearerToken`, so the web HTTP client sets **no** `Authorization`
- *   header — the cookie rides same-origin requests automatically (#218
- *   point 5). Kept separate from `tokenStore.subscribable`, whose value is
- *   the non-secret `exp` hint, never a usable bearer.
+ *   hint). Drives the auth-ready gate and the rotation invalidator. HTTP
+ *   clients are tokenless — the cookie rides same-origin requests
+ *   automatically, so no `Authorization` header is set.
  * - `awaitAuthReady`: ignores `transportReady` (standalone has no host
  *   handshake) and resolves against the store's subscribable — an authed
  *   signal resolves immediately, absent throws the device-login redirect.
@@ -32,15 +28,11 @@ import { stubTransport } from './bridges/transport-context.ts'
  */
 const makeWebEntryOptions = (): Pick<
   RenderAppOptions,
-  'tokenStore' | 'bearerTokenSubscribable' | 'awaitAuthReady' | 'makeTransport'
+  'tokenStore' | 'awaitAuthReady' | 'makeTransport'
 > => {
   const tokenStore = makeWebAuthTokenStore()
-  // A constant-`null` bearer source: the web path authenticates via the
-  // HttpOnly cookie, never a JS-attached header.
-  const nullBearer = makeSubscribableStore<string | null>(null)
   return {
     tokenStore,
-    bearerTokenSubscribable: nullBearer.subscribable,
     awaitAuthReady: () => makeAwaitWebAuthReady(tokenStore.subscribable),
     makeTransport: () => Promise.resolve(stubTransport),
   }

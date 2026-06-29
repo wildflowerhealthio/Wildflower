@@ -1,6 +1,5 @@
 import { HttpClient, HttpClientResponse } from '@effect/platform'
-import { Effect, Layer, SubscriptionRef } from 'effect'
-import { BearerToken } from 'kitchen-sink/auth-token'
+import { Effect, Layer } from 'effect'
 import { TunnelAdminHttpApiClient } from 'tunnel-core/clients'
 import { Tunnel } from 'tunnel-core/http-api-definition'
 import { describe, expect, test } from 'vite-plus/test'
@@ -12,10 +11,9 @@ const STATE_BODY = Tunnel.freshTunnelState
 
 // Stub the request transport with one that captures the outgoing
 // `Authorization` header and replies with a canned JSON body matching
-// the `TunnelStateViewSchema` shape. The bearer-attaching layer should
-// stamp the header from the `BearerToken` Subscribable at request time,
-// so flipping the token between two calls must surface as two distinct
-// captured values without rebuilding the client layer.
+// the `TunnelStateViewSchema` shape. The client is tokenless — auth
+// rides the same-origin cookie — so the captured header must always be
+// `undefined`.
 const capturingHttpClientLayer = (
   captures: Array<string | undefined>
 ): Layer.Layer<HttpClient.HttpClient> =>
@@ -38,7 +36,6 @@ const capturingHttpClientLayer = (
 describe('buildTunnelAdminClientLayer', () => {
   test('layer resolves to a TunnelAdminHttpApiClient', () => {
     const captures: Array<string | undefined> = []
-    const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>(null))
 
     const program = Effect.gen(function* () {
       const client = yield* TunnelAdminHttpApiClient
@@ -47,77 +44,33 @@ describe('buildTunnelAdminClientLayer', () => {
     })
 
     const layer = buildTunnelAdminClientLayer().pipe(
-      Layer.provideMerge(Layer.succeed(BearerToken, tokenRef)),
       Layer.provideMerge(capturingHttpClientLayer(captures))
     )
 
     Effect.runSync(program.pipe(Effect.provide(layer)))
   })
 
-  test('attaches Authorization: Bearer <token> on each request', async () => {
+  test('never sets an Authorization header (cookie auth)', async () => {
     const captures: Array<string | undefined> = []
-    const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>('alpha'))
 
     const program = Effect.gen(function* () {
       const client = yield* TunnelAdminHttpApiClient
       yield* client.tunnel.GetTunnel()
+      yield* client.tunnel.GetTunnel()
     })
 
     const layer = buildTunnelAdminClientLayer().pipe(
-      Layer.provideMerge(Layer.succeed(BearerToken, tokenRef)),
       Layer.provideMerge(capturingHttpClientLayer(captures))
     )
 
     await Effect.runPromise(program.pipe(Effect.provide(layer), Effect.scoped))
 
-    expect(captures).toEqual(['Bearer alpha'])
+    expect(captures).toEqual([undefined, undefined])
   })
 
-  test('rotates the token without rebuilding the layer', async () => {
-    const captures: Array<string | undefined> = []
-    const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>('alpha'))
-
-    const program = Effect.gen(function* () {
-      const client = yield* TunnelAdminHttpApiClient
-      yield* client.tunnel.GetTunnel()
-      yield* SubscriptionRef.set(tokenRef, 'beta')
-      yield* client.tunnel.GetTunnel()
-    })
-
-    const layer = buildTunnelAdminClientLayer().pipe(
-      Layer.provideMerge(Layer.succeed(BearerToken, tokenRef)),
-      Layer.provideMerge(capturingHttpClientLayer(captures))
-    )
-
-    await Effect.runPromise(program.pipe(Effect.provide(layer), Effect.scoped))
-
-    expect(captures).toEqual(['Bearer alpha', 'Bearer beta'])
-  })
-
-  test('omits Authorization when the token is null', async () => {
-    const captures: Array<string | undefined> = []
-    const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>(null))
-
-    const program = Effect.gen(function* () {
-      const client = yield* TunnelAdminHttpApiClient
-      yield* client.tunnel.GetTunnel()
-    })
-
-    const layer = buildTunnelAdminClientLayer().pipe(
-      Layer.provideMerge(Layer.succeed(BearerToken, tokenRef)),
-      Layer.provideMerge(capturingHttpClientLayer(captures))
-    )
-
-    await Effect.runPromise(program.pipe(Effect.provide(layer), Effect.scoped))
-
-    expect(captures.length).toBe(1)
-    expect(captures[0]).toBeUndefined()
-  })
-
-  test('ReplaceTunnel sends the full-replace body and the bearer header', async () => {
+  test('ReplaceTunnel sends the full-replace body and no Authorization header', async () => {
     const seenBodies: Array<unknown> = []
     const captures: Array<string | undefined> = []
-    const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>('alpha'))
 
     const httpClientLayer: Layer.Layer<HttpClient.HttpClient> = Layer.succeed(
       HttpClient.HttpClient,
@@ -159,22 +112,17 @@ describe('buildTunnelAdminClientLayer', () => {
       expect(result.settingsRevision).toBe(1)
     })
 
-    const layer = buildTunnelAdminClientLayer().pipe(
-      Layer.provideMerge(Layer.succeed(BearerToken, tokenRef)),
-      Layer.provideMerge(httpClientLayer)
-    )
+    const layer = buildTunnelAdminClientLayer().pipe(Layer.provideMerge(httpClientLayer))
 
     await Effect.runPromise(program.pipe(Effect.provide(layer), Effect.scoped))
 
-    expect(captures).toEqual(['Bearer alpha'])
+    expect(captures).toEqual([undefined])
     expect(seenBodies).toEqual([
       { settingsRevision: 0, publicHost: 'demo', requestedRunning: true },
     ])
   })
 
   test('ReplaceTunnel surfaces a 409 as the current snapshot in the error channel', async () => {
-    const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>('alpha'))
-
     // 409 returns the *current* snapshot (newer revision, no write applied).
     const conflictLayer: Layer.Layer<HttpClient.HttpClient> = Layer.succeed(
       HttpClient.HttpClient,
@@ -200,10 +148,7 @@ describe('buildTunnelAdminClientLayer', () => {
       )
     })
 
-    const layer = buildTunnelAdminClientLayer().pipe(
-      Layer.provideMerge(Layer.succeed(BearerToken, tokenRef)),
-      Layer.provideMerge(conflictLayer)
-    )
+    const layer = buildTunnelAdminClientLayer().pipe(Layer.provideMerge(conflictLayer))
 
     const result = await Effect.runPromise(program.pipe(Effect.provide(layer), Effect.scoped))
 
