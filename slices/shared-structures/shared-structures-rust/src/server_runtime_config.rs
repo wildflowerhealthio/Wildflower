@@ -2,8 +2,7 @@ use url::Url;
 
 #[derive(Debug, Clone)]
 pub struct ServerRuntimeConfig {
-    pub loopback_hostname: String,
-    pub loopback_port: u16,
+    pub loopback_base_url: Url,
     pub app_data_dir: std::path::PathBuf,
 }
 
@@ -12,7 +11,7 @@ impl ServerRuntimeConfig {
     /// `127.0.0.1:8080`. Parses as a [`std::net::SocketAddr`] when the
     /// hostname is an IP.
     pub fn loopback_authority(&self) -> String {
-        format!("{}:{}", self.loopback_hostname, self.loopback_port)
+        self.loopback_base_url.authority().to_string()
     }
 
     /// The HTTP-only loopback origin the embedded API server is reached at, e.g.
@@ -29,7 +28,6 @@ impl ServerRuntimeConfig {
     /// malformed one is a build error surfaced at first boot, not a runtime path.
     #[must_use]
     pub fn loopback_origin(&self) -> Url {
-        Url::parse(&format!("http://{}", self.loopback_authority()))
-            .expect("loopback hostname/port form a valid http:// URL")
+        self.loopback_base_url.clone()
     }
 }

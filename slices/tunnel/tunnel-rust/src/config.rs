@@ -17,9 +17,7 @@ pub struct TunnelConfig {
     /// e.g. `http://127.0.0.1:8080/` — the origin clients reach when the tunnel
     /// is down, as a typed [`Url`]. The daemon takes its bare origin string
     /// (`origin().ascii_serialization()`) at construction.
-    pub loopback_origin: Url,
-    /// The loopback server port the tunnel forwards to the relay.
-    pub local_port: u16,
+    pub loopback_base_url: Url,
     /// Build-time connection defaults seeded into a fresh row at startup (only
     /// where unconfigured), so settings survive a reinstall. The composition
     /// root populates this from the build environment.

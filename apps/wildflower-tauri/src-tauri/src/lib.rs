@@ -20,6 +20,7 @@ use tauri::Manager;
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
+use url::Url;
 
 // Loopback hostname/port for the embedded API server, derived at compile time
 // from the SINGLE SOURCE OF TRUTH
@@ -194,8 +195,7 @@ async fn run_server(
     }
 
     let tunnel_config = tunnel_rust::TunnelConfig {
-        loopback_origin: loopback_base_url.clone(),
-        local_port: runtime.loopback_port,
+        loopback_base_url: runtime.loopback_base_url.clone(),
         seed: tunnel_seed_from_build_env(),
     };
     // `setup_tunnel` hands back the `/tunnel` router plus the in-process
@@ -306,7 +306,12 @@ async fn run_server(
     // the apps slice registers each self-hosted app into. A cloneable `Arc`
     // handle, so the registration the slice does is visible to the live proxy.
     let proxy_table = ProxyTable::new();
-    let loopback = LoopbackHostname::new(runtime.loopback_hostname.clone());
+    let loopback = LoopbackHostname::new(
+        runtime
+            .loopback_base_url
+            .host_str()
+            .expect("loopback_base_url must have host"),
+    );
 
     // The whole API stack — built first because it's the reverse proxy's
     // fallback, handed in at construction. A forwarded request that doesn't
@@ -459,16 +464,22 @@ pub fn run() {
             // the apps slice is built; the handle opens launched apps in a
             // native webview popup, so it needs an app handle.
             let server_handle = app.handle().clone();
+
+            // Hostname/port come from the shared `tauri-shared-config.json`
+            // (see `LOOPBACK_HOSTNAME`/`LOOPBACK_PORT`), the same file the
+            // TS `apiBaseUrl` reads.
+            let loopback_base_url = Url::parse(&format!(
+                "http://{}:{}",
+                LOOPBACK_HOSTNAME.to_string(),
+                LOOPBACK_PORT
+            ))?;
+
             tauri::async_runtime::spawn(async move {
                 let runtime = ServerRuntimeConfig {
                     // Loopback-only: the OS rejects non-local peers at the
                     // socket, so the bearer secret is never the only thing
-                    // between LAN peers and FHIR health data. Hostname/port
-                    // come from the shared `tauri-shared-config.json` (see
-                    // `LOOPBACK_HOSTNAME`/`LOOPBACK_PORT`), the same file the
-                    // TS `apiBaseUrl` reads.
-                    loopback_hostname: LOOPBACK_HOSTNAME.to_string(),
-                    loopback_port: LOOPBACK_PORT,
+                    // between LAN peers and FHIR health data.
+                    loopback_base_url,
                     app_data_dir,
                 };
 

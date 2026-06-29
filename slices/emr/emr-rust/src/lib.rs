@@ -73,7 +73,11 @@ pub fn setup_fhir_r4(runtime: &ServerRuntimeConfig, config: &EmrConfig) -> anyho
     let server_config = ServerConfig {
         base_url: format!("{loopback_origin}{FHIR_R4_PATH}"),
         // The host param only expects the ip to bind to
-        host: runtime.loopback_hostname.clone(),
+        host: runtime
+            .loopback_base_url
+            .host()
+            .expect("loopback_base_url must have host")
+            .to_string(),
         log_level: config.log_level.clone(),
         ..ServerConfig::default()
     };
