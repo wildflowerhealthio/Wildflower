@@ -27,9 +27,20 @@ const useRunAuthed = (): RunAuthed =>
 type AppEntry = Schema.Schema.Type<typeof Schemas.AppListEntrySchema>
 type CreateAppPayload = Schema.Schema.Type<typeof Schemas.CreateAppBodySchema>
 type UpdateAppPayload = Schema.Schema.Type<typeof Schemas.UpdateAppBodySchema>
+type HomeScreenPayload = Schema.Schema.Type<typeof Schemas.HomeScreenSchema>
 
 /** Mutations invalidate this key on success so the next render refetches. */
 const APPS_LIST_QUERY_KEY = ['apps', 'list'] as const
+
+/**
+ * Shared `mutationKey` for every `PUT /home-screen` writer. The home screen's
+ * drag-reorder and the editor's enable toggle each call
+ * {@link useReplaceHomeScreenMutation} from their own component, so they hold
+ * *separate* mutation instances. Tagging both with this key lets either surface
+ * observe an in-flight home-screen write across components via `useIsMutating`,
+ * so a toggle can be blocked while a reorder is still landing (and vice versa).
+ */
+const HOME_SCREEN_MUTATION_KEY = ['apps', 'home-screen'] as const
 
 /** Shared by route `loader` (`ensureQueryData`) and {@link useAppsListQuery}. */
 const appsListQueryOptions = (
@@ -104,12 +115,39 @@ const useAppsAdminDeleteMutation = (): UseMutationResult<
   })
 }
 
+/**
+ * `ReplaceHomeScreen` (PUT /home-screen). Unlike {@link useAppsAdminUpdateMutation}
+ * (cloud-only content edits), this applies to **every** provenance — it's the
+ * homescreen's single writer of order + `enabled`. The payload is the full
+ * ordered list `[{ id, enabled }]` (array index = display position); the server
+ * renumbers + flips atomically. Invalidates {@link APPS_LIST_QUERY_KEY} on
+ * success so the reordered list refetches.
+ */
+const useReplaceHomeScreenMutation = (): UseMutationResult<unknown, Error, HomeScreenPayload> => {
+  const runAuthed = useRunAuthed()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationKey: HOME_SCREEN_MUTATION_KEY,
+    mutationFn: (payload) =>
+      runAuthed(
+        Effect.flatMap(AppsAdminHttpApiClient, (c) =>
+          c['apps-admin'].ReplaceHomeScreen({ payload })
+        )
+      ),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: APPS_LIST_QUERY_KEY })
+    },
+  })
+}
+
 export {
   APPS_LIST_QUERY_KEY,
+  HOME_SCREEN_MUTATION_KEY,
   appsListQueryOptions,
   useAppsAdminCreateMutation,
   useAppsAdminDeleteMutation,
   useAppsAdminUpdateMutation,
   useAppsListQuery,
+  useReplaceHomeScreenMutation,
 }
-export type { AppEntry, CreateAppPayload, UpdateAppPayload }
+export type { AppEntry, CreateAppPayload, HomeScreenPayload, UpdateAppPayload }

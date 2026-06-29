@@ -13,9 +13,8 @@ mod response_templates;
 mod state;
 
 pub(crate) use origin::ServedOrigin;
-// Re-export the shared pure resolver so existing `crate::http::served_origin_for`
-// imports keep working without leaking a `shared_structures_rust::` prefix into
-// every middleware that calls it.
+// Re-export so call sites read `crate::http::served_origin_for` without the
+// `shared_structures_rust::` prefix. See `docs/Origins/Explanation.md`.
 pub(crate) use shared_structures_rust::served_origin::served_origin_for;
 pub use state::AppState;
 
@@ -65,12 +64,12 @@ pub fn router(state: AppState) -> Router {
 
 /// Wrap a router (e.g. emr-rust's FHIR router) with JWT verification against the
 /// gatekeeper's signing keys. Any request missing or presenting an invalid
-/// bearer token gets 401 — **except** requests whose path is listed in
-/// `exempt_paths`, which pass through untouched. The exemption exists for the
-/// FHIR/SMART discovery docs (`/fhir-r4/metadata`, `…/.well-known/smart-configuration`,
-/// etc.) a client must fetch *before* it holds a token. Matching is exact on the
-/// full request path with a trailing slash ignored (see `is_exempt`). Pass `&[]`
-/// to gate every path.
+/// bearer token gets 401 — **except** requests whose path is in `exempt_paths`,
+/// which pass through untouched: the FHIR/SMART discovery docs a client fetches
+/// before it holds a token (canonical list `UNAUTHENTICATED_FHIR_PATHS` in
+/// emr-rust; see `docs/Origins/Explanation.md`). Matching is exact on the full
+/// request path with a trailing slash ignored (see `is_exempt`). Pass `&[]` to
+/// gate every path.
 pub fn layer_router_with_gatekeeper_auth_gating(
     router: Router,
     state: AppState,
@@ -89,24 +88,36 @@ pub fn layer_router_with_gatekeeper_auth_gating(
     ))
 }
 
-/// Wrap a router with the loopback-peer gate ([`require_loopback_peer`]) — the
-/// same peer-address check the gatekeeper applies to its own surface
-/// ([`router`]). A request whose peer
-/// socket is not a loopback address — and, failing closed, any request with no
-/// `ConnectInfo` (i.e. the service wasn't mounted with
-/// `into_make_service_with_connect_info`) — gets a `403` before any handler
-/// runs.
-///
-/// Use to extend that defense-in-depth to other loopback-only routers — e.g.
-/// the host's merged `api_router`, every endpoint of which is meant to be
-/// reached only over the loopback socket (directly, or via the trusted front,
-/// which proxies relayed remote traffic from loopback too). A forwarded remote
-/// caller still passes — its peer is the loopback front — and is told apart
-/// downstream by the `Forwarded` header; only a genuinely non-loopback peer is
-/// rejected. (Stacking this on a router that already carries the gate — the
-/// gatekeeper's own — is a harmless, idempotent second check.)
+/// Wrap a router with the loopback-peer gate
+/// ([`require_loopback_peer`](middleware::require_loopback_peer)) so a
+/// non-loopback peer — and, failing closed, any request with no `ConnectInfo`
+/// (the service wasn't mounted with `into_make_service_with_connect_info`) —
+/// gets a `403` before any handler runs. Extends the same defense-in-depth the
+/// gatekeeper applies to its own [`router`] to other loopback-only routers, e.g.
+/// the host's merged `api_router`; stacking it on a router that already carries
+/// the gate is a harmless, idempotent second check. For why a forwarded remote
+/// caller still passes, see [`require_loopback_peer`](middleware::require_loopback_peer)
+/// and `docs/Origins/Explanation.md`.
 pub fn layer_router_with_loopback_peer_gating(router: Router) -> Router {
     router.layer(axum_middleware::from_fn(middleware::require_loopback_peer))
+}
+
+/// Whether `headers` carry a valid **Owner** bearer for `served_origin` — the
+/// non-middleware form of the
+/// [`require_owner_auth`](middleware::require_owner_auth) gate, for a slice that
+/// owner-gates a single in-handler action rather than wrapping a whole router.
+/// The apps slice wires this through `apps_rust::OwnerAuth` to gate the loopback
+/// launch popup. Returns `false` for a missing, invalid, or non-owner token.
+#[must_use]
+pub fn verify_owner_bearer(
+    state: &AppState,
+    headers: &axum::http::HeaderMap,
+    served_origin: &str,
+) -> bool {
+    let Some(token) = middleware::require_auth::try_bearer_token_from_headers(headers) else {
+        return false;
+    };
+    middleware::require_auth::verify_owner_token(state, served_origin, &token).is_ok()
 }
 
 #[cfg(test)]

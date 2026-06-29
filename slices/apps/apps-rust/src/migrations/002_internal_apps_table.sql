@@ -1,8 +1,12 @@
--- Locally-served apps (internal apps) live in their own table. They have
--- no `url` column on the wire — the host materializes a launch target as
--- `http://{loopback_host}:{port}/` at read time — and they are NOT
--- editable through the admin API: there's no insert/update/delete surface
--- for this table at the moment, just the seed below.
+-- HISTORICAL run-once migration. Migration 004 DROPs `internal_apps` and the
+-- flat `apps` table and rebuilds into the parent registry + per-kind child
+-- tables, so nothing below survives a fresh install past 004 — it exists only so
+-- a database that applied 001..003 before 004 shipped replays the same ordered
+-- sequence. Do not delete or restructure it.
+--
+-- What it did at the time: locally-served ("internal") apps got their own table
+-- with no `url` column (the host materialized `http://{loopback_host}:{port}/`
+-- at read time) and no admin write surface — just the seed below.
 --
 -- The previous schema seeded `patient-browser` into the (external) `apps`
 -- table with an `{origin}/installed-apps/patient-browser/index.html` URL.
@@ -30,10 +34,8 @@ INSERT OR IGNORE INTO internal_apps (id, enabled, name, subtitle, port) VALUES
 -- Only remove the externals row if it still carries the original seeded
 -- URL. A user edit (rename, URL change, etc.) leaves the WHERE clause
 -- unmatched, so their row stays and the internal seed above lives
--- alongside it — distinct ids would collide but here both rows share
--- `patient-browser`. The READ-time merge (`GET /apps`) prefers the
--- internals row, so a stuck externals row only matters if the user
--- restores it manually.
+-- alongside it under the shared `patient-browser` id. (Moot post-004,
+-- which drops both tables; described for the historical record only.)
 DELETE FROM apps
     WHERE id = 'patient-browser'
       AND url = '{origin}/installed-apps/patient-browser/index.html';

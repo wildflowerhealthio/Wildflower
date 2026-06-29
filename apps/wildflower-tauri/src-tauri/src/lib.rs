@@ -5,12 +5,12 @@ mod spa;
 mod tunnel_adapters;
 
 use anyhow::Context;
-use apps_rust::{setup_apps, AppsConfig, SelfHostedAppsService};
+use apps_rust::{setup_apps, AppsConfig, OwnerAuth, SelfHostedAppsService};
 use axum::Router;
 use emr_rust::{setup_fhir_r4, EmrConfig};
 use gatekeeper_rust::{
     layer_router_with_gatekeeper_auth_gating, layer_router_with_loopback_peer_gating,
-    setup_gatekeeper, GatekeeperConfig,
+    setup_gatekeeper, verify_owner_bearer, GatekeeperConfig,
 };
 use shared_structures_rust::ServerRuntimeConfig;
 use shared_structures_server_rust::{LoopbackHostname, ProxyTable, TunnelSubdomainReverseProxy};
@@ -20,6 +20,7 @@ use tauri::Manager;
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
+use url::Url;
 
 // Loopback hostname/port for the embedded API server, derived at compile time
 // from the SINGLE SOURCE OF TRUTH
@@ -52,6 +53,23 @@ const LOCAL_GRANTED_SCOPES: &str = env!("WILDFLOWER_LOCAL_GRANTED_SCOPES");
 const HEALTH_DATA_DB: &str = "health-data.sqlite";
 const WILDFLOWER_DB: &str = "wildflower.sqlite";
 
+/// The host's [`apps_rust::OwnerAuth`]: a loopback launch is owner-gated by the
+/// same Owner-bearer check gatekeeper applies to its `/access/*` admin surface
+/// (delegated to [`verify_owner_bearer`]), so the on-device popup can't be driven
+/// by a non-owner local process even though it cleared the loopback-peer gate. A
+/// forwarded launch never reaches this — the launch handler skips the owner check
+/// for the front-trusted remote path.
+#[derive(Clone)]
+struct GatekeeperOwnerAuth {
+    state: gatekeeper_rust::AppState,
+}
+
+impl OwnerAuth for GatekeeperOwnerAuth {
+    fn is_owner(&self, headers: &axum::http::HeaderMap, served_origin: &str) -> bool {
+        verify_owner_bearer(&self.state, headers, served_origin)
+    }
+}
+
 async fn run_server(
     runtime: ServerRuntimeConfig,
     publishers: bridge::BridgePublishers,
@@ -64,8 +82,12 @@ async fn run_server(
     databases_rust::purge_pending_deletions(&runtime.app_data_dir)
         .context("failed to purge scheduled database deletions")?;
 
-    let loopback_host = runtime.loopback_authority();
-    let loopback_origin = runtime.loopback_origin();
+    let loopback_host = runtime.loopback_base_url_ref().authority().to_string();
+    // The typed loopback base URL is the single source threaded into every
+    // slice's config (apps / gatekeeper / emr / tunnel). `loopback_origin` is its
+    // bare origin string (no trailing slash) for the few sub-URLs built by hand.
+    let loopback_base_url = runtime.loopback_base_url();
+    let loopback_origin = loopback_base_url.origin().ascii_serialization();
     let emr_config = EmrConfig {
         log_level: "debug".to_string(),
         db_file_path: runtime.app_data_dir.join(HEALTH_DATA_DB),
@@ -76,7 +98,7 @@ async fn run_server(
         jwks_url: Some(format!("{loopback_origin}/.well-known/jwks.json")),
     };
     let gatekeeper_config = GatekeeperConfig {
-        loopback_origin: loopback_origin.clone(),
+        loopback_base_url: loopback_base_url.clone(),
         granted_scopes: LOCAL_GRANTED_SCOPES
             .split_whitespace()
             .map(str::to_owned)
@@ -173,8 +195,7 @@ async fn run_server(
     }
 
     let tunnel_config = tunnel_rust::TunnelConfig {
-        loopback_origin: loopback_origin.clone(),
-        local_port: runtime.loopback_port,
+        loopback_base_url: runtime.loopback_base_url(),
         seed: tunnel_seed_from_build_env(),
     };
     // `setup_tunnel` hands back the `/tunnel` router plus the in-process
@@ -188,20 +209,18 @@ async fn run_server(
     let gated_tunnel =
         layer_router_with_gatekeeper_auth_gating(tunnel.router, gatekeeper.state.clone(), &[]);
 
-    // The apps catalogue surface. `GET /apps` (list) and `POST /apps/{id}`
-    // (launch) ride on the public router — the webview consumes them
-    // unauthenticated like the rest of the launch path. The admin surface
-    // (POST/PATCH/DELETE) is owner-gated through the gatekeeper. A
-    // `requires_tunnel` launch resolves to the tunnel's verified origin through
-    // the tunnel service (or fails with 503 LaunchUnavailable when the tunnel
-    // can't be brought up — there's no reachable origin to fall back to).
-    // `loopback_hostname` is the hostname portion the host binds each
-    // internal-app listener on (see below) — the apps slice combines it with
-    // each internal-app row's `port` to render its `http://{hostname}:{port}/`
-    // launch target.
+    // The apps catalogue surface. `GET /apps` (list), the cloud-admin write
+    // surface (POST/PATCH/DELETE), and `PATCH /apps/{id}/placement` are
+    // owner-gated through the gatekeeper (`apps.gated_router`, below). The launch
+    // route `POST /apps/{id}` (`apps.launch_router`) is merged ungated at the
+    // router level: a loopback launch is owner-gated in-handler via `owner_auth`,
+    // a forwarded launch rides the front trust boundary. A `requires_tunnel`
+    // launch resolves to the tunnel's verified origin through the tunnel service
+    // (or fails 503 LaunchUnavailable when the tunnel can't be brought up). The
+    // apps slice derives the launch origin and the self-hosted listeners'
+    // hostname from `loopback_base_url`, so they can't drift.
     let apps_config = AppsConfig {
-        loopback_origin: loopback_origin.clone(),
-        loopback_hostname: runtime.loopback_hostname.clone(),
+        loopback_base_url: loopback_base_url.clone(),
     };
     // `TunnelControl` implements `TunnelService`, so it's handed straight in.
     let tunnel_service: Arc<dyn tunnel_rust::TunnelService> = Arc::new(tunnel.control.clone());
@@ -211,15 +230,22 @@ async fn run_server(
     let webview_handle: Arc<dyn apps_rust::OnDeviceWebviewHandle> = Arc::new(
         native_webview_handle::NativeWebviewHandle::new(app_handle.clone()),
     );
+    // The loopback launch owner-gate: the same Owner-bearer check the admin
+    // surface uses (a header-derived loopback provenance isn't a sufficient gate
+    // on its own — the network loopback-peer gate is the other half).
+    let owner_auth: Arc<dyn OwnerAuth> = Arc::new(GatekeeperOwnerAuth {
+        state: gatekeeper.state.clone(),
+    });
     let apps = setup_apps(
         db,
         &apps_config,
         Arc::clone(&tunnel_service),
         webview_handle,
+        owner_auth,
     )
     .context("failed to set up apps")?;
-    let gated_apps_admin =
-        layer_router_with_gatekeeper_auth_gating(apps.admin_router, gatekeeper.state.clone(), &[]);
+    let gated_apps =
+        layer_router_with_gatekeeper_auth_gating(apps.gated_router, gatekeeper.state.clone(), &[]);
 
     // The data-management surface (`/databases`): export + delete the host's
     // SQLite databases. It owns no store — it works at the file level on the
@@ -280,7 +306,12 @@ async fn run_server(
     // the apps slice registers each self-hosted app into. A cloneable `Arc`
     // handle, so the registration the slice does is visible to the live proxy.
     let proxy_table = ProxyTable::new();
-    let loopback = LoopbackHostname::new(runtime.loopback_hostname.clone());
+    let loopback = LoopbackHostname::new(
+        runtime
+            .loopback_base_url_ref()
+            .host_str()
+            .expect("loopback_base_url must have host"),
+    );
 
     // The whole API stack — built first because it's the reverse proxy's
     // fallback, handed in at construction. A forwarded request that doesn't
@@ -298,8 +329,12 @@ async fn run_server(
         .merge(shared_structures_rust::health_check::health_router(
             Arc::new(shared_structures_rust::health_check::AlwaysHealthy),
         ))
-        .merge(apps.public_router)
-        .merge(gated_apps_admin)
+        .merge(gated_apps)
+        // The launch route, merged AFTER the bearer-gated `gated_apps` so it
+        // stays ungated at the router level (axum layers only the routes present
+        // when `.layer()` ran). It's still under the outer loopback-peer gate;
+        // the launch handler owner-gates the loopback popup in-handler.
+        .merge(apps.launch_router)
         .merge(gated_databases)
         .fallback(spa::handle_serving_spa_html)
         .layer(CorsLayer::very_permissive());
@@ -334,16 +369,13 @@ async fn run_server(
     // also reachable remotely at `<app-id>.<public-host>` for forwarded traffic.
     // The DB row's `port` is the source of truth for the bind; the apps slice
     // renders the launch target from the same value, so redirect and listener
-    // can't drift. Seed-driven today (the static `internal_apps` catalogue); the
+    // can't drift. Seed-driven today (the static `self_hosted_apps` catalogue); the
     // start/stop calls also work at runtime for restartless install. A failure
     // to bring one app online must not abort startup, so it's logged and skipped.
     let self_hosted = SelfHostedAppsService::new(loopback, installed_apps_dir, proxy_table);
-    for internal in &apps.internal_apps {
-        if let Err(error) = self_hosted.start(internal).await {
-            tauri_plugin_log::log::warn!(
-                "failed to start self-hosted app {}: {error}",
-                internal.id
-            );
+    for app in &apps.self_hosted_apps {
+        if let Err(error) = self_hosted.start(app).await {
+            tauri_plugin_log::log::warn!("failed to start self-hosted app {}: {error}", app.id);
         }
     }
     // Hold the orchestrator for the process lifetime — dropping it would drop the
@@ -432,16 +464,19 @@ pub fn run() {
             // the apps slice is built; the handle opens launched apps in a
             // native webview popup, so it needs an app handle.
             let server_handle = app.handle().clone();
+
+            // Hostname/port come from the shared `tauri-shared-config.json`
+            // (see `LOOPBACK_HOSTNAME`/`LOOPBACK_PORT`), the same file the
+            // TS `apiBaseUrl` reads.
+            let loopback_base_url =
+                Url::parse(&format!("http://{}:{}", LOOPBACK_HOSTNAME, LOOPBACK_PORT))?;
+
             tauri::async_runtime::spawn(async move {
                 let runtime = ServerRuntimeConfig {
                     // Loopback-only: the OS rejects non-local peers at the
                     // socket, so the bearer secret is never the only thing
-                    // between LAN peers and FHIR health data. Hostname/port
-                    // come from the shared `tauri-shared-config.json` (see
-                    // `LOOPBACK_HOSTNAME`/`LOOPBACK_PORT`), the same file the
-                    // TS `apiBaseUrl` reads.
-                    loopback_hostname: LOOPBACK_HOSTNAME.to_string(),
-                    loopback_port: LOOPBACK_PORT,
+                    // between LAN peers and FHIR health data.
+                    loopback_base_url,
                     app_data_dir,
                 };
 

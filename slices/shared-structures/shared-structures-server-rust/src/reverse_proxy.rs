@@ -762,8 +762,6 @@ mod tests {
         assert_eq!(out.get("x-keep").map(|v| v.to_str().unwrap()), Some("yes"));
     }
 
-    // ---- streaming / performance ----
-
     /// Upstream whose handler fires `notify` the moment its first request-body
     /// chunk arrives, then drains the rest. Used to prove the proxy forwards
     /// bytes incrementally rather than buffering the whole body first.
@@ -966,8 +964,6 @@ mod tests {
             (TOTAL as f64 / 1024.0 / 1024.0) / elapsed.as_secs_f64(),
         );
     }
-
-    // ---- connection upgrades (WebSocket) ----
 
     /// An upstream that echoes WebSocket text/binary frames back to the sender.
     async fn spawn_ws_echo_upstream() -> u16 {

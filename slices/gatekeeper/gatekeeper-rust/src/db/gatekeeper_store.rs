@@ -61,6 +61,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/005_unique_pending_user_code.sql"),
     include_str!("../migrations/006_unique_grant_client_redirect.sql"),
     include_str!("../migrations/007_client_allowed_grant_types.sql"),
+    include_str!("../migrations/008_seed_sample_clients.sql"),
 ];
 
 #[cfg(test)]

@@ -67,10 +67,9 @@ pub struct TunnelLiveness {
     pub origin: String,
     /// The configured public host (bare, no scheme or port), normalized so an
     /// empty stored value reads as `None` — independent of the liveness
-    /// `status`. Carried on the snapshot so a hot-path consumer (the host's
-    /// subdomain reverse proxy) can read it `O(1)` off the watch instead of a
-    /// locked SQLite read per forwarded request. See
-    /// [`TunnelService::current_public_host`], which exposes the same value.
+    /// `status`. Mirrors [`TunnelService::current_public_host`]; carried on the
+    /// snapshot so a hot-path consumer (the subdomain reverse proxy) reads it
+    /// `O(1)` off the watch.
     pub public_host: Option<String>,
     /// A human-readable reason for `Misconfigured`/`Unreachable`, else `None`.
     pub error: Option<String>,

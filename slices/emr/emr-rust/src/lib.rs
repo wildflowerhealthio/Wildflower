@@ -44,10 +44,11 @@ pub const UNAUTHENTICATED_FHIR_PATHS: &[&str] = &[
 /// advertise the SMART App Launch grant + gatekeeper's authorize/token URLs,
 /// which HFS's built-in (Backend-Services-shaped) discovery doc doesn't.
 ///
-/// When [`EmrConfig::auth`] is `Some`, HFS auth is enabled: it validates the
+/// When [`EmrConfig::jwks_url`] is `Some`, HFS auth is enabled: it validates the
 /// JWT against the configured JWKS, enforces `iss`, parses SMART v2 scopes,
 /// and gates each FHIR operation against them. The discovery override and
-/// HFS's `/metadata` remain unauthenticated per the SMART spec.
+/// HFS's `/metadata` remain unauthenticated per the SMART spec — see
+/// [`UNAUTHENTICATED_FHIR_PATHS`].
 ///
 /// # Errors
 ///
@@ -64,12 +65,20 @@ pub fn setup_fhir_r4(runtime: &ServerRuntimeConfig, config: &EmrConfig) -> anyho
         .init_schema()
         .context("failed to init sqlite schema")?;
 
-    let loopback_origin = runtime.loopback_origin();
+    let loopback_base_url = runtime.loopback_base_url();
+    // The FHIR base URL is `<bare origin><FHIR_R4_PATH>` (e.g.
+    // `http://127.0.0.1:8080/fhir-r4`): take the origin without the `Url`'s
+    // trailing slash so the path isn't doubled.
+    let loopback_origin = loopback_base_url.origin().ascii_serialization();
 
     let server_config = ServerConfig {
         base_url: format!("{loopback_origin}{FHIR_R4_PATH}"),
         // The host param only expects the ip to bind to
-        host: runtime.loopback_hostname.clone(),
+        host: runtime
+            .loopback_base_url_ref()
+            .host()
+            .expect("loopback_base_url must have host")
+            .to_string(),
         log_level: config.log_level.clone(),
         ..ServerConfig::default()
     };
@@ -94,7 +103,7 @@ pub fn setup_fhir_r4(runtime: &ServerRuntimeConfig, config: &EmrConfig) -> anyho
             "/.well-known/smart-configuration",
             get(smart_configuration_handler),
         )
-        .with_state(SmartConfigState { loopback_origin })
+        .with_state(SmartConfigState { loopback_base_url })
         .fallback_service(hfs_router);
 
     Ok(Router::new().nest(FHIR_R4_PATH, fhir_with_override))

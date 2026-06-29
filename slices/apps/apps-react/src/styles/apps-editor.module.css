@@ -43,6 +43,17 @@
   gap: var(--space-3);
 }
 
+/* Read-only tag shown in place of the actions for non-cloud (system /
+ * self-hosted) rows, which the cloud-admin surface can't edit. */
+.apps-editor__row-readonly {
+  color: var(--color-neutral-5);
+  text-transform: uppercase;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-1);
+  letter-spacing: var(--letter-spacing-4);
+  white-space: nowrap;
+}
+
 .apps-editor__row-sub {
   color: var(--color-neutral-4);
   overflow-wrap: anywhere;

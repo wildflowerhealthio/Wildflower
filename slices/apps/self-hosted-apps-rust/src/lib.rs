@@ -1,5 +1,5 @@
 //! Host-side serving of static "installed apps" from a runtime directory.
-//! See `slices/apps/vendor-apps/README.md` for the design rationale
+//! See `slices/apps/self-hosted-apps/README.md` for the design rationale
 //! (per-origin isolation, root-serving with no HTML rebase, the committed
 //! patient-browser config override).
 //!
@@ -29,7 +29,7 @@ use axum::body::Body;
 
 /// App id of the vendored patient-browser SPA — the one app that gets the
 /// committed-config override today. Match is case-sensitive: the host
-/// passes the id from the seeded internal-apps row.
+/// passes the id from the seeded `self_hosted_apps` row.
 const PATIENT_BROWSER_ID: &str = "patient-browser";
 
 /// Mount-relative key of the patient-browser SMART config under its served
@@ -178,7 +178,7 @@ mod tests {
     impl TempRoot {
         fn new() -> Self {
             let dir = std::env::temp_dir().join(format!(
-                "vendor-apps-rust-test-{}-{}",
+                "self-hosted-apps-rust-test-{}-{}",
                 std::process::id(),
                 COUNTER.fetch_add(1, Ordering::SeqCst)
             ));

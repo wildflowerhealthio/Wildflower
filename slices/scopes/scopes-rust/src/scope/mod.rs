@@ -15,9 +15,7 @@
 //!
 //! Parsing (via [`From`]/[`FromStr`]) is **total** — it never fails, it falls
 //! back to `Unknown` — and prefers the richest representation. Rendering
-//! **round-trips**: SMART v1 word forms (`read`/`write`/`*`) come back verbatim
-//! (the SMART App Launch back-compat rule — a v1 grant is returned as v1), while
-//! v2 letter bags are normalized to canonical `c,r,u,d,s` order (`sr` → `rs`).
+//! **round-trips** (SMART v1↔v2 back-compat — see [`AccessRights`]).
 
 mod known;
 mod resource;
@@ -71,8 +69,8 @@ impl Scope {
     /// (`patient/Observation.read` → `patient/Observation.rs`, `.write` →
     /// `.cud`, `.*` → `.cruds`). Non-resource scopes, and resource scopes already
     /// in letter form, have none. The alternate covers exactly the same
-    /// operations; it exists so a consumer that parses only one spelling (e.g.
-    /// helios-auth's letter-only `SmartPermissions`) still honors the grant.
+    /// operations; emitting both lets a letter-only consumer honor a v1 grant
+    /// (see [`with_alternate_canonical_forms`](crate::with_alternate_canonical_forms)).
     pub fn as_alternate_canonical_form(&self) -> Option<Scope> {
         let alternate = match self {
             Scope::FhirResource(r) => Scope::FhirResource(FhirResourceScope {

@@ -192,6 +192,7 @@ dependencies = [
  "persistence-rust",
  "rand 0.10.1",
  "rusqlite",
+ "self-hosted-apps-rust",
  "serde",
  "serde_json",
  "shared-structures-rust",
@@ -200,9 +201,9 @@ dependencies = [
  "tower",
  "tower-http 0.7.0",
  "tracing",
+ "url",
  "utoipa",
  "utoipa-axum",
- "vendor-apps-rust",
 ]
 
 [[package]]
@@ -2109,6 +2110,7 @@ dependencies = [
  "serde",
  "shared-structures-rust",
  "tokio",
+ "url",
 ]
 
 [[package]]
@@ -6429,6 +6431,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "self-hosted-apps-rust"
+version = "0.0.0"
+dependencies = [
+ "axum",
+ "http",
+ "http-body-util",
+ "tokio",
+ "tower",
+ "tower-http 0.7.0",
+]
+
+[[package]]
 name = "semver"
 version = "1.0.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6678,6 +6692,7 @@ dependencies = [
  "tokio",
  "tower",
  "tracing",
+ "url",
  "utoipa",
 ]
 
@@ -8047,6 +8062,7 @@ dependencies = [
  "toml 0.9.5",
  "tower",
  "tracing",
+ "url",
  "utoipa",
  "utoipa-axum",
 ]
@@ -8301,18 +8317,6 @@ name = "vcpkg"
 version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
-
-[[package]]
-name = "vendor-apps-rust"
-version = "0.0.0"
-dependencies = [
- "axum",
- "http",
- "http-body-util",
- "tokio",
- "tower",
- "tower-http 0.7.0",
-]
 
 [[package]]
 name = "vergen"
@@ -8696,6 +8700,7 @@ dependencies = [
  "tower",
  "tower-http 0.7.0",
  "tunnel-rust",
+ "url",
 ]
 
 [[package]]

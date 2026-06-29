@@ -20,7 +20,7 @@ on:
       - 'apps/wildflower-tauri/**'
       # Non-Tauri, but wildflower-tauri merges its router, so a change here can
       # break the Tauri build/tests — run the GTK-enabled job too.
-      - 'slices/apps/vendor-apps-rust/**'
+      - 'slices/apps/self-hosted-apps-rust/**'
       - 'plugins/**'
       - 'slices/browser-sniffer/browser-sniffer-tauri-rust/**'
       - 'slices/browser-sniffer/browser-sniffer-tauri/**'

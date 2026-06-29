@@ -1,13 +1,9 @@
-//! Gatekeeper's served-origin extractor — wraps the shared provenance helper
-//! from `shared_structures_rust::served_origin`.
-//!
-//! The function `served_origin_for` is the single source of truth: it lives in
-//! `shared-structures-rust` so gatekeeper-rust (issuer URLs / discovery doc)
-//! and apps-rust (launch redirect target) can't drift on what counts as a
-//! forwarded request. This module keeps the `ServedOrigin` axum extractor (it
-//! reaches into gatekeeper-rust's [`AppState`] for the configured
-//! `loopback_origin`, so it can't move to a state-agnostic crate without
-//! parameterizing).
+//! Gatekeeper's served-origin axum extractor — wraps the shared
+//! [`served_origin_for`] resolver (the single source of truth in
+//! `shared-structures-rust`; see `docs/Origins/Explanation.md`). The extractor
+//! stays here because it reaches into gatekeeper's [`AppState`] for the
+//! `loopback_base_url` fallback, so it can't move to a state-agnostic crate
+//! without parameterizing.
 
 use std::convert::Infallible;
 
@@ -44,7 +40,7 @@ impl FromRequestParts<AppState> for ServedOrigin {
     ) -> Result<Self, Self::Rejection> {
         Ok(ServedOrigin(served_origin_for(
             &parts.headers,
-            &state.loopback_origin,
+            &state.loopback_base_url.origin().ascii_serialization(),
         )))
     }
 }

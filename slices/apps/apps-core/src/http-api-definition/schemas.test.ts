@@ -1,15 +1,23 @@
 import { Schema } from 'effect'
+import * as fc from 'fast-check'
 import { utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import {
   AppEntrySchema,
+  AppListEntrySchema,
+  AppNotEditableSchema,
   AppNotFoundSchema,
   AppUrlSchema,
   CreateAppBodySchema,
+  HomeScreenSchema,
   InvalidFieldSchema,
+  InvalidHomeScreenSchema,
+  ProvenanceSchema,
   UpdateAppBodySchema,
 } from './schemas.ts'
+
+const PROVENANCES = ['system', 'self-hosted', 'cloud'] as const
 
 const { expectLeftToEqual, expectRightToEqual } = utilityExpectations(expect)
 
@@ -148,8 +156,8 @@ describe('UpdateAppBodySchema', () => {
   })
 
   it('accepts partial field bodies', () => {
-    expectRightToEqual(Schema.decodeUnknownEither(UpdateAppBodySchema)({ enabled: false }), {
-      enabled: false,
+    expectRightToEqual(Schema.decodeUnknownEither(UpdateAppBodySchema)({ requiresTunnel: true }), {
+      requiresTunnel: true,
     })
   })
 
@@ -204,6 +212,141 @@ describe('InvalidFieldSchema', () => {
   it('rejects any other error literal', () => {
     expectLeftToEqual(
       Schema.decodeUnknownEither(InvalidFieldSchema)({ error: 'Whatever', message: 'x' }),
+      expect.objectContaining({ _tag: 'ParseError' })
+    )
+  })
+})
+
+describe('ProvenanceSchema', () => {
+  it('accepts the three kebab values', () => {
+    for (const p of PROVENANCES) {
+      expectRightToEqual(Schema.decodeUnknownEither(ProvenanceSchema)(p), p)
+    }
+  })
+
+  it('rejects any non-provenance string', () => {
+    fc.assert(
+      fc.property(
+        fc.string().filter((s) => !(PROVENANCES as readonly string[]).includes(s)),
+        (s) => {
+          expect(Schema.decodeUnknownEither(ProvenanceSchema)(s)._tag).toBe('Left')
+        }
+      )
+    )
+  })
+})
+
+describe('AppListEntrySchema', () => {
+  // A well-formed `GET /apps` row: required flags + an optional non-empty
+  // subtitle. The launch `url` is never present on this shape.
+  const appListEntryArb = fc
+    .record({
+      id: fc.string({ minLength: 1 }),
+      name: fc.string({ minLength: 1 }),
+      provenance: fc.constantFrom(...PROVENANCES),
+      localOnly: fc.boolean(),
+      smart: fc.boolean(),
+      requiresTunnel: fc.boolean(),
+      enabled: fc.boolean(),
+    })
+    .chain((base) =>
+      fc
+        .option(fc.string({ minLength: 1 }), { nil: undefined })
+        .map((subtitle) => (subtitle === undefined ? base : { ...base, subtitle }))
+    )
+
+  it('decodes any well-formed row to itself', () => {
+    fc.assert(
+      fc.property(appListEntryArb, (entry) => {
+        expectRightToEqual(Schema.decodeUnknownEither(AppListEntrySchema)(entry), entry)
+      })
+    )
+  })
+
+  it('rejects an empty-string subtitle and a bad provenance', () => {
+    expectLeftToEqual(
+      Schema.decodeUnknownEither(AppListEntrySchema)({
+        id: 'x',
+        name: 'X',
+        subtitle: '',
+        provenance: 'cloud',
+        localOnly: false,
+        smart: true,
+        requiresTunnel: true,
+        enabled: true,
+      }),
+      expect.objectContaining({ _tag: 'ParseError' })
+    )
+    expectLeftToEqual(
+      Schema.decodeUnknownEither(AppListEntrySchema)({
+        id: 'x',
+        name: 'X',
+        provenance: 'external',
+        localOnly: false,
+        smart: false,
+        requiresTunnel: false,
+        enabled: true,
+      }),
+      expect.objectContaining({ _tag: 'ParseError' })
+    )
+  })
+})
+
+describe('HomeScreenSchema', () => {
+  it('decodes an ordered list of { id, enabled } entries', () => {
+    const body = [
+      { id: 'patient-browser', enabled: true },
+      { id: 'api-view', enabled: false },
+    ]
+    expectRightToEqual(Schema.decodeUnknownEither(HomeScreenSchema)(body), body)
+  })
+
+  it('accepts an empty array', () => {
+    expectRightToEqual(Schema.decodeUnknownEither(HomeScreenSchema)([]), [])
+  })
+
+  it('rejects an entry missing enabled or with a non-boolean enabled', () => {
+    expectLeftToEqual(
+      Schema.decodeUnknownEither(HomeScreenSchema)([{ id: 'x' }]),
+      expect.objectContaining({ _tag: 'ParseError' })
+    )
+    expectLeftToEqual(
+      Schema.decodeUnknownEither(HomeScreenSchema)([{ id: 'x', enabled: 'yes' }]),
+      expect.objectContaining({ _tag: 'ParseError' })
+    )
+  })
+})
+
+describe('InvalidHomeScreenSchema', () => {
+  it('accepts the declared 400 payload', () => {
+    expectRightToEqual(
+      Schema.decodeUnknownEither(InvalidHomeScreenSchema)({
+        error: 'InvalidHomeScreen',
+        message: 'must list every app exactly once',
+      }),
+      { error: 'InvalidHomeScreen', message: 'must list every app exactly once' }
+    )
+  })
+
+  it('rejects any other error literal', () => {
+    expectLeftToEqual(
+      Schema.decodeUnknownEither(InvalidHomeScreenSchema)({ error: 'AppNotFound', message: 'x' }),
+      expect.objectContaining({ _tag: 'ParseError' })
+    )
+  })
+})
+
+describe('AppNotEditableSchema', () => {
+  it('accepts the declared 409 payload', () => {
+    expectRightToEqual(
+      Schema.decodeUnknownEither(AppNotEditableSchema)({ error: 'AppNotEditable', id: 'api-docs' }),
+      { error: 'AppNotEditable', id: 'api-docs' }
+    )
+  })
+
+  it('rejects any other error literal', () => {
+    expectLeftToEqual(
+      Schema.decodeUnknownEither(AppNotEditableSchema)({ error: 'AppNotFound', id: 'x' }),
       expect.objectContaining({ _tag: 'ParseError' })
     )
   })

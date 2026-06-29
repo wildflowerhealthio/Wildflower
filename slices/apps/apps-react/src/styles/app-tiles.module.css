@@ -1,0 +1,84 @@
+.app-tiles {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* Reorder-failure banner: a failed `PUT /home-screen` rolls the tiles back and
+ * surfaces here so the silent UI/server divergence is visible. */
+.app-tiles__error {
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3) var(--space-5);
+  border: 1px solid var(--color-red-5);
+  border-radius: var(--radius-4);
+  background: var(--color-red-2);
+  color: var(--color-red-9);
+}
+
+.app-tile {
+  background: var(--card-color-background);
+  border: 1px solid var(--card-color-border);
+  border-radius: var(--radius-4);
+  /* The whole tile is the drag handle; show the grab cursor and stop the
+   * browser's native touch-scroll from stealing the drag gesture. */
+  cursor: grab;
+  touch-action: none;
+}
+
+.app-tile--dragging {
+  opacity: 0.6;
+  /* Lift the dragged tile above its siblings while it's mid-move. */
+  z-index: 1;
+  cursor: grabbing;
+}
+
+.app-tile__launch {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-5) var(--space-7);
+  background: transparent;
+  border: none;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  cursor: inherit;
+}
+
+.app-tile__head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.app-tile__name {
+  font-size: var(--font-size-4);
+  font-weight: var(--font-weight-3);
+  color: var(--color-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-tile__subtitle {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-2);
+  color: var(--color-neutral-5);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-tile__pills {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}

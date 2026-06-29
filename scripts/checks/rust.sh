@@ -68,6 +68,10 @@ tauri_capable() {
   if have pkg-config && pkg-config --exists webkit2gtk-4.1; then
     return 0
   fi
+  if xcodebuild -version >/dev/null 2>&1; then
+    # macOS has a system WebKit, so the Tauri crates can build without webkit2gtk.
+    return 0
+  fi
   # In CI the GTK/webkit libs are installed on purpose, so a missing probe means
   # the runner is misconfigured — fail loud rather than silently passing the job
   # with zero Tauri coverage (the pre-script workflow ran `cargo clippy -p …`
@@ -75,10 +79,10 @@ tauri_capable() {
   # (CI unset) we still degrade gracefully so a frontend-only contributor isn't
   # blocked — CI remains the real gate on PRs.
   if [ -n "${CI:-}" ]; then
-    echo "checks/rust: GTK/webkit libs (webkit2gtk-4.1) not found in CI — refusing to skip the Tauri step." >&2
+    echo "checks/rust: GTK/webkit libs (webkit2gtk-4.1) and xcodebuild not found in CI — refusing to skip the Tauri step." >&2
     exit 1
   fi
-  echo "checks/rust: GTK/webkit libs not found — skipping Tauri step (CI still gates this on PRs)."
+  echo "checks/rust: GTK/webkit libs and xcodebuild not found — skipping Tauri step (CI still gates this on PRs)."
   return 1
 }
 

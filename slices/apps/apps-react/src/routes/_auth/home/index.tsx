@@ -1,11 +1,36 @@
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
 import { createFileRoute, useRouteContext } from '@tanstack/react-router'
-import { useRef, useState, type JSX } from 'react'
-import { AsyncErrorView, ItemList, PageHeader, type ItemListItem } from 'react-tundraish'
+import { useEffect, useRef, useState, type JSX } from 'react'
+import { AsyncErrorView, PageHeader } from 'react-tundraish'
 
-import { appsListQueryOptions, useAppsListQuery, type AppEntry } from '../../../queries.ts'
+import {
+  appsListQueryOptions,
+  useAppsListQuery,
+  useReplaceHomeScreenMutation,
+  type AppEntry,
+} from '../../../queries.ts'
 import type { RouterContext } from '../../../router-context.ts'
 import { AppsEditor } from '../../../screens/apps-editor.tsx'
 import { launchApp } from './-launch.ts'
+import { reorderApps } from './-reorder.ts'
+import { SortableAppTile } from './-tiles.tsx'
+import tileStyles from '../../../styles/app-tiles.module.css'
+
+const formatError = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error)
 
 /**
  * Owner-facing apps landing. The route `loader` warms the apps-list query
@@ -27,17 +52,73 @@ interface AppsHomeBodyProps {
 const AppsHomeBody = ({ apps }: AppsHomeBodyProps): JSX.Element => {
   const [editorOpen, setEditorOpen] = useState(false)
   const formRef = useRef<HTMLFormElement | null>(null)
+  const homeScreenMutation = useReplaceHomeScreenMutation()
   // Set only on the Tauri webview; its presence is the launch-arm signal —
   // see `launchApp` and `RouterContext.apiBaseUrl`.
   const apiBaseUrl = useRouteContext({
     from: '__root__',
     select: (context: RouterContext) => context.apiBaseUrl,
   })
+  // The loopback launch arm rides `runAuthed` so the owner bearer is attached
+  // (the host 401s an anonymous launch) — same runner the list read uses.
+  const runAuthed = useRouteContext({
+    from: '__root__',
+    select: (context: RouterContext) => context.runAuthed,
+  })
 
-  const visible = apps.filter((app) => app.enabled)
+  // Hold the **full** registry order in state; the home screen renders only the
+  // enabled subset (`visible`, below). A drag moves a tile within the full list
+  // and PUTs the whole thing to `/home-screen`, so disabled apps keep their
+  // slots. Re-seed whenever the server list changes (order *or* enabled) — the
+  // home-screen PUT invalidates the list query — so an enable/disable made in
+  // the editor is reflected here too.
+  const [order, setOrder] = useState<readonly AppEntry[]>(apps)
+  useEffect(() => {
+    setOrder(apps)
+    // `apps` is a fresh array each render; key the resync on the stable id +
+    // enabled sequence so it runs only when the server list actually changes,
+    // not on every render.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, [apps.map((app) => `${app.id}:${app.enabled ? 1 : 0}`).join(' ')])
+
+  const visible = order.filter((app) => app.enabled)
+
+  const sensors = useSensors(
+    // A small activation distance lets a plain click reach the tile's launch
+    // button instead of being swallowed as a (zero-distance) drag.
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  )
 
   const launch = (app: AppEntry): void => {
-    void launchApp({ apiBaseUrl, pageOrigin: window.location.origin, form: formRef.current }, app)
+    void launchApp(
+      { apiBaseUrl, runAuthed, pageOrigin: window.location.origin, form: formRef.current },
+      app
+    )
+  }
+
+  const onDragEnd = (event: DragEndEvent): void => {
+    const { active, over } = event
+    if (over === null) return
+    // Reorder within the full list (disabled apps keep their slots), then PUT the
+    // whole ordered set — the server's atomic renumber is the single writer (see
+    // the Rust `replace_home_screen`).
+    const next = reorderApps(order, String(active.id), String(over.id))
+    if (next === null) return
+    // Optimistic reorder. On failure the PUT doesn't invalidate the list (so the
+    // resync effect won't re-seed `order`), which would leave the tiles diverged
+    // from the server — so roll `order` back to its pre-drag value and surface
+    // the error in the banner below.
+    const previous = order
+    setOrder(next)
+    homeScreenMutation.mutate(
+      next.map((app) => ({ id: app.id, enabled: app.enabled })),
+      {
+        onError: () => {
+          setOrder(previous)
+        },
+      }
+    )
   }
 
   return (
@@ -56,26 +137,33 @@ const AppsHomeBody = ({ apps }: AppsHomeBodyProps): JSX.Element => {
           </button>
         }
       />
+      {homeScreenMutation.isError ? (
+        <p className={tileStyles['app-tiles__error']} role="alert">
+          Couldn't save the new order: {formatError(homeScreenMutation.error)}
+        </p>
+      ) : null}
       {visible.length === 0 ? (
         <p className="text-body-2">No apps enabled. Tap Manage to turn some on.</p>
       ) : (
-        <ItemList
-          items={visible.map<ItemListItem>((app) => ({
-            id: app.id,
-            title: app.name,
-            subtitle: app.subtitle,
-            badge: app.requiresTunnel ? 'tunnel' : undefined,
-            onClick: () => {
-              launch(app)
-            },
-          }))}
-        />
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+          <SortableContext
+            items={visible.map((app) => app.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            <ul className={tileStyles['app-tiles']}>
+              {visible.map((app) => (
+                <SortableAppTile key={app.id} app={app} onLaunch={launch} />
+              ))}
+            </ul>
+          </SortableContext>
+        </DndContext>
       )}
       {/*
        * The launch vehicle for the web/tunnel-browser arm: a single hidden
        * form whose `action` is set per click so the browser follows the
-       * server's 302. Tauri launches bypass it (they `fetch` so the 204
-       * doesn't navigate the webview off the SPA) — see `launchApp`.
+       * server's 302. The loopback (Tauri) arm bypasses it entirely — it
+       * launches through the authed Effect client so the owner bearer rides
+       * along and the host's 204 never navigates the webview — see `launchApp`.
        */}
       <form ref={formRef} method="post" hidden />
       <AppsEditor
@@ -89,9 +177,14 @@ const AppsHomeBody = ({ apps }: AppsHomeBodyProps): JSX.Element => {
   )
 }
 
-export const Route = createFileRoute('/_auth/home/')({
+const Route = createFileRoute('/_auth/home/')({
   loader: ({ context }) =>
     context.queryClient.ensureQueryData(appsListQueryOptions(context.runAuthed)),
   component: AppsHomeScreen,
   errorComponent: ({ error }) => <AsyncErrorView error={error} title="Apps" />,
 })
+
+// `AppsHomeBody` is exported for unit tests (the body renders independently of
+// the route loader); grouped with `Route` into one declaration for
+// `import/group-exports`.
+export { AppsHomeBody, Route }

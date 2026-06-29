@@ -10,8 +10,8 @@ pub struct EmrConfig {
     /// Bearer JWTs. `Some(url)` enables HFS auth (every FHIR request must
     /// carry a token, scopes enforced); `None` leaves HFS open and relies
     /// on whatever middleware wraps this router from outside (e.g. the
-    /// Tauri host's gatekeeper gating layer). The expected `iss` is
-    /// pinned to [`shared_structures_rust::CANONICAL_ISSUER`] — same value
-    /// gatekeeper writes into every minted token.
+    /// Tauri host's gatekeeper gating layer). Validated `iss` =
+    /// [`shared_structures_rust::CANONICAL_ISSUER`]; see
+    /// `docs/Origins/Explanation.md`.
     pub jwks_url: Option<String>,
 }

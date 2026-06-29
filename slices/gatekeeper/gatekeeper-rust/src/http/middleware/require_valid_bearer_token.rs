@@ -29,17 +29,19 @@ pub async fn require_valid_bearer_token(
     req: Request<Body>,
     next: Next,
 ) -> Response {
-    // FHIR/SMART discovery docs (metadata, smart-configuration, …) are fetched
-    // before the client holds a token, so exempt paths bypass the bearer check —
-    // they stay reachable to any local caller (still behind the loopback-peer
-    // gate on the merged `api_router`).
+    // Exempt paths (the discovery docs fetched before a client holds a token)
+    // bypass the bearer check, still behind the loopback-peer gate on the merged
+    // `api_router`. See `docs/Origins/Explanation.md`.
     if is_exempt(req.uri().path(), &gate.exempt) {
         return next.run(req).await;
     }
     let Some(token) = try_bearer_token_from_headers(&headers) else {
         return response_templates::unauthorized();
     };
-    let origin = served_origin_for(&headers, &gate.state.loopback_origin);
+    let origin = served_origin_for(
+        &headers,
+        &gate.state.loopback_base_url.origin().ascii_serialization(),
+    );
     if let Err(e) = verify_auth_token_claims(&gate.state, &origin, &token) {
         return response_templates::verify_error_response("verify_auth_token_claims failed", e);
     }

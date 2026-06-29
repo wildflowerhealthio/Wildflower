@@ -55,7 +55,7 @@ export default defineConfig({
       'global/react-kitchen-sink/vite.config.ts',
       'global/react-tundraish/vite.config.ts',
       'slices/**/vite.config.ts',
-      '!slices/apps/vendor-apps/vendor/**',
+      '!slices/apps/self-hosted-apps/**',
       '!**/node_modules/**',
     ],
   },

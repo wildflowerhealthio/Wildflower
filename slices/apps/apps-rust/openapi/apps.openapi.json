@@ -7,11 +7,11 @@
   "paths": {
     "/apps": {
       "get": {
-        "summary": "`GET /apps` — the full catalogue. Reachable unauthenticated by embedded\nwebviews and iframes that can't easily carry a bearer token.",
+        "summary": "`GET /apps` — the full catalogue in display order. Gating is applied by the\nhost (the slice exposes one router; there is no longer an ungated public\nsurface here).",
         "operationId": "handle_list_apps",
         "responses": {
           "200": {
-            "description": "Every persisted app, in seed/insertion order",
+            "description": "Every app in the registry, ordered by position",
             "content": {
               "application/json": {
                 "schema": {
@@ -26,7 +26,7 @@
         }
       },
       "post": {
-        "summary": "`POST /apps` — create an app. Owner-gated by the consumer.",
+        "summary": "`POST /apps` — create a cloud app. Owner-gated by the host.",
         "operationId": "handle_create_app",
         "requestBody": {
           "content": {
@@ -40,7 +40,7 @@
         },
         "responses": {
           "200": {
-            "description": "The created app",
+            "description": "The created cloud app",
             "content": {
               "application/json": {
                 "schema": {
@@ -64,8 +64,7 @@
     },
     "/apps/{id}": {
       "post": {
-        "summary": "`POST /apps/{id}` — launch an app. `404` if no app has this id. Reachable\nunauthenticated (the webview follows the redirect).",
-        "description": "A loopback (local) caller hands the resolved URL to the host's\n[`OnDeviceWebviewHandle`](crate::OnDeviceWebviewHandle), which opens it in a\nnative popup *on this device* (returning `204` so the SPA stays mounted) —\nthat only helps a local caller, which is why it's gated on loopback. A\nrequest **forwarded by the trusted front** (the relay/tunnel sets the\n`Forwarded` header) is a *remote* caller, for whom a host-side popup is\ninvisible; it gets the `302` redirect instead.",
+        "summary": "`POST /apps/{id}` — launch an app (`404` if no app has this id). See the\nmodule docs for the resolve-then-dispatch flow and the auth posture.",
         "operationId": "handle_launch_app",
         "parameters": [
           {
@@ -84,6 +83,9 @@
           },
           "302": {
             "description": "Redirect (Location header) to the resolved launch URL"
+          },
+          "401": {
+            "description": "A loopback launch whose caller is not the device owner"
           },
           "404": {
             "description": "No app has this id",
@@ -108,7 +110,7 @@
         }
       },
       "delete": {
-        "summary": "`DELETE /apps/{id}` — remove any row. Owner-gated by the consumer.",
+        "summary": "`DELETE /apps/{id}` — remove a cloud app. Owner-gated by the host.",
         "operationId": "handle_delete_app",
         "parameters": [
           {
@@ -141,11 +143,21 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "The app exists but is not a cloud app (system / self-hosted apps are not removable)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppNotEditableBody"
+                }
+              }
+            }
           }
         }
       },
       "patch": {
-        "summary": "`PATCH /apps/{id}` — partial update of any row. Owner-gated by the consumer.",
+        "summary": "`PATCH /apps/{id}` — partial update of a cloud app. Owner-gated by the host.",
         "operationId": "handle_update_app",
         "parameters": [
           {
@@ -170,7 +182,7 @@
         },
         "responses": {
           "200": {
-            "description": "The updated app",
+            "description": "The updated cloud app",
             "content": {
               "application/json": {
                 "schema": {
@@ -198,6 +210,60 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "The app exists but is not a cloud app (system / self-hosted apps are not editable)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppNotEditableBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/home-screen": {
+      "put": {
+        "summary": "`PUT /home-screen` — atomically reorder + enable/disable every app. Owner-gated\nby the host. The body must list **every** registry app exactly once (its order\nis the new display order); a missing / duplicated / unknown id is\n`400 InvalidHomeScreen`. Returns the resulting catalogue in its new order.",
+        "operationId": "handle_replace_home_screen",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/HomeScreenEntry"
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The whole catalogue in its new order",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AppListEntry"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body wasn't an exact permutation of the registry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidHomeScreenBody"
+                }
+              }
+            }
           }
         }
       }
@@ -207,7 +273,7 @@
     "schemas": {
       "AppEntry": {
         "type": "object",
-        "description": "One app as both the wire shape and the SQL row shape. Field names match\ncolumn names so `sql_row!` in `db/` can generate the mapping without a\nseparate row type.\n\nThe `url` is a template: `{origin}` is replaced with the served origin\nat launch time, `{launch}` with a fresh per-launch nonce. A SMART-on-FHIR\napp's URL might be\n`https://example/launch.html?iss={origin}/fhir-r4&launch={launch}`; a\nhand-rolled one might be `{origin}/some/path` or `https://other-host/x`.\nSee [`AppUrl`] for the accepted shapes.",
+        "description": "One **cloud app** on the wire — the admin create/update DTO and the launch\nhandler's resolved shape.\n\nThe `url` is a template: `{origin}` is replaced with the served origin\nat launch time, `{launch}` with a fresh per-launch nonce. A SMART-on-FHIR\napp's URL might be\n`https://example/launch.html?iss={origin}/fhir-r4&launch={launch}`; a\nhand-rolled one might be `{origin}/some/path` or `https://other-host/x`.\nSee [`AppUrl`] for the accepted shapes.",
         "required": [
           "id",
           "enabled",
@@ -243,11 +309,14 @@
       },
       "AppListEntry": {
         "type": "object",
-        "description": "`GET /apps` row shape — id / enabled / name / optional subtitle /\n`requires_tunnel`. No `url`. See the module docs.",
+        "description": "`GET /apps` row shape — the catalogue entry. No launch `url`. See the module\ndocs.",
         "required": [
           "id",
           "enabled",
           "name",
+          "provenance",
+          "localOnly",
+          "smart",
           "requiresTunnel"
         ],
         "properties": {
@@ -266,8 +335,37 @@
               "null"
             ]
           },
+          "provenance": {
+            "$ref": "#/components/schemas/Provenance",
+            "description": "How this app's launch target resolves; see [`Provenance`]."
+          },
+          "localOnly": {
+            "type": "boolean",
+            "description": "The declared no-egress flag (a homescreen badge this pass)."
+          },
+          "smart": {
+            "type": "boolean",
+            "description": "Whether this is a SMART app (the parent row carries a `client_id`)."
+          },
           "requiresTunnel": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether a launch needs the tunnel up (cloud apps only; `false` for\nsystem / self-hosted)."
+          }
+        }
+      },
+      "AppNotEditableBody": {
+        "type": "object",
+        "description": "Wire shape for `AppNotEditable` (409) — the app exists but isn't a cloud app,\nso the cloud-admin update/delete surface can't touch it (system + self-hosted\napps are not user-editable).",
+        "required": [
+          "error",
+          "id"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
           }
         }
       },
@@ -324,9 +422,41 @@
           }
         }
       },
+      "HomeScreenEntry": {
+        "type": "object",
+        "description": "One entry in the `PUT /home-screen` body: an app id and its desired `enabled`\nflag. The entry's index in the array is its new display `position`. Matches\nthe TS `HomeScreenEntrySchema`.",
+        "required": [
+          "id",
+          "enabled"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        }
+      },
       "InvalidFieldBody": {
         "type": "object",
         "description": "Wire shape for a 400 carrying a discriminant + human-readable reason.\nReused for `InvalidUrl` (a bad app URL) and `InvalidName` (an empty name)\n— both are write-side field validations the client renders inline. The\n`error` discriminant lets a client tell the two apart rather than seeing a\nURL-error tag for a name problem.",
+        "required": [
+          "error",
+          "message"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "InvalidHomeScreenBody": {
+        "type": "object",
+        "description": "Wire shape for a 400 `InvalidHomeScreen` — the `PUT /home-screen` body wasn't\nan exact permutation of the registry (a missing, duplicated, or unknown id),\nso the atomic reorder/enable can't be applied as a well-ordered whole. Matches\nthe TS `InvalidHomeScreenSchema`.",
         "required": [
           "error",
           "message"
@@ -356,16 +486,19 @@
           }
         }
       },
+      "Provenance": {
+        "type": "string",
+        "description": "How an app's launch target resolves. Serialized — wire + SQLite — as its\nkebab string (`\"system\"` / `\"self-hosted\"` / `\"cloud\"`).",
+        "enum": [
+          "system",
+          "self-hosted",
+          "cloud"
+        ]
+      },
       "UpdateAppBody": {
         "type": "object",
-        "description": "PATCH body — all fields optional. Matches `UpdateAppBodySchema`. A\n`subtitle` of explicit `null` *or* the empty string `\"\"` clears the\nsubtitle; a missing key leaves it alone — see [`SubtitlePatch`].",
+        "description": "PATCH body — all fields optional. Matches `UpdateAppBodySchema`. The\n`subtitle` tri-state is on [`SubtitlePatch`]. No `enabled`: that's homescreen\ncuration, owned by `PUT /home-screen`.",
         "properties": {
-          "enabled": {
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
           "name": {
             "type": [
               "string",

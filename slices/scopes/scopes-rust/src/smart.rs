@@ -14,13 +14,11 @@ use crate::scope::Scope;
 /// longer permits.
 ///
 /// Membership and coverage are compared **structurally** (each side is parsed to
-/// a [`Scope`]), and every kept scope is rendered back to its wire string. SMART
-/// v1 word scopes round-trip verbatim — a granted `patient/Observation.read`
-/// stays `patient/Observation.read` (the SMART back-compat rule: return v1 when
-/// v1 is requested and granted), while v2 letter bags are normalized to canonical
-/// order. The result is de-duplicated by rendered form, preserving first-seen
-/// order; an empty grant stays empty (the approve handlers treat "nothing
-/// granted" as a deny).
+/// a [`Scope`]), and every kept scope is rendered back to its wire string
+/// (SMART v1↔v2 back-compat — see [`AccessRights`](crate::AccessRights)). The
+/// result is de-duplicated by rendered form, preserving first-seen order; an
+/// empty grant stays empty (the approve handlers treat "nothing granted" as a
+/// deny).
 pub fn grantable_scopes(
     approved: Vec<String>,
     requested: &HashSet<&str>,
@@ -53,9 +51,8 @@ pub fn allowed_scope_covers(allowed: &str, requested: &str) -> bool {
 }
 
 /// Append each scope's equivalent alternate spelling, where it has one (see
-/// [`Scope::as_alternate_canonical_form`]). Today that means a resource scope in
-/// SMART v1 word form gains its canonical v2 letter form
-/// (`patient/Observation.read` → `…rs`, `.write` → `.cud`, `.*` → `.cruds`).
+/// [`Scope::as_alternate_canonical_form`]) — today, a resource scope in SMART v1
+/// word form gaining its canonical v2 letter form.
 ///
 /// Some consumers parse only one spelling — notably helios-auth's
 /// `SmartPermissions`, which HFS uses to authorize FHIR requests and which reads

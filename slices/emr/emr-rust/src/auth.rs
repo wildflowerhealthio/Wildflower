@@ -12,12 +12,11 @@ use shared_structures_rust::CANONICAL_ISSUER;
 /// Translate an optional JWKS URL into the `(AuthConfig, auth_state)`
 /// pair HFS's `create_app_with_auth` expects. `None` leaves HFS auth off.
 ///
-/// The expected `iss` is pinned to [`CANONICAL_ISSUER`] — same value
-/// gatekeeper writes into every minted token. The JWKS cache is *not*
-/// initial-fetched: gatekeeper's HTTP listener isn't bound yet when this
-/// runs, so a blocking fetch would deadlock. HFS's `JwksCache` supports
-/// lazy fetching — the first request that needs a signing key triggers a
-/// fetch then.
+/// `expected_issuer` = [`CANONICAL_ISSUER`]; see `docs/Origins/Explanation.md`.
+/// The JWKS cache is *not* initial-fetched: gatekeeper's HTTP listener isn't
+/// bound yet when this runs, so a blocking fetch would deadlock. HFS's
+/// `JwksCache` supports lazy fetching — the first request that needs a signing
+/// key triggers a fetch then.
 pub(crate) fn build_auth(jwks_url: Option<&str>) -> (AuthConfig, Option<Arc<AuthMiddlewareState>>) {
     let Some(jwks_url) = jwks_url else {
         return (AuthConfig::default(), None);
@@ -77,15 +76,13 @@ mod tests {
 
         assert!(config.enabled);
         assert_eq!(config.jwks_url.as_deref(), Some(url));
-        // `iss` is pinned to the canonical issuer gatekeeper mints with, so a
-        // single `expected_issuer` accepts every gatekeeper-signed token.
+        // `iss` = `CANONICAL_ISSUER`; see `docs/Origins/Explanation.md`.
         assert_eq!(config.expected_issuer.as_deref(), Some(CANONICAL_ISSUER));
         // `jti` replay-prevention stays off until gatekeeper writes a `jti`
         // claim (see issue #218 / `mint_access_token`).
         assert_eq!(config.jti_backend, "disabled");
-        // `aud` is intentionally left unvalidated by HFS: audience binding is
-        // enforced by gatekeeper's own bearer gate, not HFS. Asserted so that
-        // adding HFS-side audience validation later is a deliberate change.
+        // `aud` left unvalidated by HFS (gatekeeper's bearer gate enforces it).
+        // Asserted so adding HFS-side audience validation later is deliberate.
         assert!(config.expected_audience.is_none());
         assert!(state.is_some());
     }

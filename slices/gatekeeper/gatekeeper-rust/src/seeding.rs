@@ -1,8 +1,15 @@
-//! First-boot seeding for the gatekeeper store: signing keys and the seeded
-//! OAuth clients. Safe to call on every boot — the signing key is inserted only
-//! when none exists (never rotated), and the seeded clients are *ensured*
-//! (re-applied as an upsert) so their definition always matches the code,
-//! correcting any drift in a store created by an older build.
+//! First-boot seeding for the gatekeeper store: the signing key and the
+//! first-party host client. Safe to call on every boot — the signing key is
+//! inserted only when none exists (never rotated), and the first-party client is
+//! *ensured* (re-applied as an upsert) so its definition always matches the
+//! host's granted scopes, correcting any drift in a store created by an older
+//! build.
+//!
+//! The bundled SMART sample-app clients (growth-chart, medication-viewer →
+//! `my_web_app`, PRECISE-HBR) are seeded in SQL instead — migration
+//! `008_seed_sample_clients.sql` — since they're static definitions a migration
+//! can express. Only the runtime-derived seeds (the first-party client's scopes,
+//! the generated signing key) stay here.
 
 use anyhow::Context;
 use chrono::{Duration, Utc};
@@ -15,10 +22,10 @@ use crate::domain::signing_key::SigningKey;
 use crate::domain::token::{mint_access_token, MintError, NewJwtArgs};
 use crate::FIRST_PARTY_CLIENT_ID;
 
-/// Wrap the shared `conn` in a gatekeeper store (applying migrations) and run
-/// every first-boot seeding step — signing key, the first-party host client, and
-/// the bundled SMART sample-app clients (growth-chart, PRECISE-HBR). Safe to call
-/// on every boot.
+/// Wrap the shared `conn` in a gatekeeper store (applying migrations, which
+/// includes the SQL seed of the SMART sample-app clients) and run the
+/// runtime-derived first-boot seeding steps — the signing key and the first-party
+/// host client. Safe to call on every boot.
 ///
 /// # Errors
 ///
@@ -32,9 +39,6 @@ pub fn open_and_seed_store(
     ensure_some_active_signing_key(&store).context("failed to seed signing key")?;
     ensure_first_party_client(&store, granted_scopes)
         .context("failed to seed first-party client")?;
-    ensure_smart_growth_chart_client(&store)
-        .context("failed to seed SMART growth-chart sample client")?;
-    ensure_precise_hbr_client(&store).context("failed to seed PRECISE-HBR client")?;
     Ok(store)
 }
 
@@ -51,103 +55,6 @@ fn ensure_some_active_signing_key(store: &GatekeeperStore) -> anyhow::Result<()>
     store
         .insert_signing_key(&key)
         .context("insert signing key")?;
-    Ok(())
-}
-
-/// `client_id` the SMART growth-chart-app sample at
-/// [examples.smarthealthit.org](https://examples.smarthealthit.org/growth-chart-app/)
-/// sends to `/oauth/authorize`. Pre-registered so the launch flow doesn't
-/// fail with `unknown_client` for the demo. If the actual sample sends a
-/// different identifier (the demo's config can be edited at boot time),
-/// the e2e run will surface the mismatch in the rejection log and we
-/// adjust here.
-const GROWTH_CHART_CLIENT_ID: &str = "growth_chart";
-
-/// Ensure the SMART growth-chart-app sample client matches the code's
-/// definition: a public client (no secret, PKCE-only) with the standard SMART
-/// App Launch scopes for a patient-context viewer. Upserted on every boot so an
-/// older store's drifted definition is corrected (registration time and any
-/// admin disable are preserved).
-fn ensure_smart_growth_chart_client(store: &GatekeeperStore) -> anyhow::Result<()> {
-    let client = Client {
-        client_id: GROWTH_CHART_CLIENT_ID.to_string(),
-        name: "SMART Growth Chart (sample)".to_string(),
-        kind: ClientKind::Public,
-        // examples.smarthealthit.org redirects back to the app's index
-        // after the OAuth dance; allowlist that exact URL so a spec'd
-        // SMART app callback is accepted.
-        redirect_uris: JsonColumn(vec![url::Url::parse(
-            "https://examples.smarthealthit.org/growth-chart-app/",
-        )
-        .expect("growth-chart-app redirect URL is a hardcoded valid URL")]),
-        // The classic SMART App Launch scope set for a patient-context
-        // app: OIDC identity + launch context + patient FHIR read/search +
-        // refresh-token. Wildcard `patient/*.rs` covers narrower per-type
-        // requests via the consent intersection's wildcard support.
-        allowed_scopes: JsonColumn(vec![
-            "openid".to_string(),
-            "profile".to_string(),
-            "fhirUser".to_string(),
-            "launch".to_string(),
-            "launch/patient".to_string(),
-            "patient/Observation.read".to_string(),
-            "patient/Patient.read".to_string(),
-            "offline_access".to_string(),
-        ]),
-        allowed_grant_types: JsonColumn(vec![
-            AllowedGrantType::AuthorizationCode,
-            AllowedGrantType::RefreshToken,
-        ]),
-        secret_hash: None,
-        registered_at: Utc::now(),
-        disabled_at: None,
-    };
-    store
-        .upsert_client(&client)
-        .context("seed growth-chart client")?;
-    Ok(())
-}
-
-/// `client_id` the PRECISE-HBR Risk Calculator SMART app presents to
-/// `/oauth/authorize` (a fixed UUID baked into its registration).
-const PRECISE_HBR_CLIENT_ID: &str = "cc344727-6f90-496c-94fd-c7829aa9a51d";
-
-/// Ensure the PRECISE-HBR Risk Calculator client matches the code's definition:
-/// a public SMART app (no secret, PKCE-only) granted the patient-context read
-/// scopes its risk calculation needs (conditions, medications, observations,
-/// procedures). Upserted on every boot (registration time and any admin disable
-/// preserved).
-fn ensure_precise_hbr_client(store: &GatekeeperStore) -> anyhow::Result<()> {
-    let client = Client {
-        client_id: PRECISE_HBR_CLIENT_ID.to_string(),
-        name: "PRECISE-HBR Risk Calculator".to_string(),
-        kind: ClientKind::Public,
-        redirect_uris: JsonColumn(vec![url::Url::parse(
-            "https://hbr.alumicoin.cloud/callback",
-        )
-        .expect("PRECISE-HBR redirect URL is a hardcoded valid URL")]),
-        // SMART App Launch context + the patient-context FHIR reads the risk
-        // calculator pulls (demographics, observations, problems, medications,
-        // procedures), in canonical v2 letter form.
-        allowed_scopes: JsonColumn(vec![
-            "openid".to_string(),
-            "fhirUser".to_string(),
-            "launch".to_string(),
-            "profile".to_string(),
-            "patient/Patient.rs".to_string(),
-            "patient/Observation.rs".to_string(),
-            "patient/Condition.rs".to_string(),
-            "patient/MedicationRequest.rs".to_string(),
-            "patient/Procedure.rs".to_string(),
-        ]),
-        allowed_grant_types: JsonColumn(AllowedGrantType::ALL.to_vec()),
-        secret_hash: None,
-        registered_at: Utc::now(),
-        disabled_at: None,
-    };
-    store
-        .upsert_client(&client)
-        .context("seed PRECISE-HBR client")?;
     Ok(())
 }
 
@@ -199,9 +106,9 @@ pub(crate) enum HostTokenError {
 /// the host can hand the resulting token to the `WebView` via the
 /// navigation bridge and let the Owner UI call `/access/*` endpoints.
 ///
-/// `iss` is [`shared_structures_rust::CANONICAL_ISSUER`] (so HFS accepts
-/// it), `aud` is the loopback origin (so gatekeeper's `require_auth`
-/// middleware accepts it for WebView calls coming in over loopback).
+/// `iss` is [`shared_structures_rust::CANONICAL_ISSUER`]; `aud` is the loopback
+/// origin, so `require_auth` accepts it for WebView calls over loopback. See
+/// `docs/Origins/Explanation.md`.
 pub(crate) fn mint_host_owner_token(
     store: &GatekeeperStore,
     iss: &str,

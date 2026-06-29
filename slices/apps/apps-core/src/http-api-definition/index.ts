@@ -4,8 +4,9 @@ import * as Apps from './apps.ts'
 import * as Schemas from './schemas.ts'
 
 /**
- * Public surface — `ListApps` + `LaunchApp`. No auth; reachable by
- * embedded webviews and iframes that can't easily carry a bearer.
+ * Read + launch surface — `ListApps` + `LaunchApp`. Carries no TS-side
+ * middleware; the canonical host owner-gates `ListApps` and mounts `LaunchApp`
+ * ungated. See {@link Apps} and `docs/Apps/Explanation.md` §"Auth posture".
  */
 const AppsApi = HttpApi.make('AppsApi').add(Apps.httpApiGroup)
 

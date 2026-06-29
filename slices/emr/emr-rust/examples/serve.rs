@@ -15,8 +15,7 @@ async fn main() -> anyhow::Result<()> {
     std::fs::create_dir_all(&tmp).context("create temp dir")?;
 
     let runtime = ServerRuntimeConfig {
-        loopback_hostname: "127.0.0.1".to_string(),
-        loopback_port: 8080,
+        loopback_base_url: "http://127.0.0.1:8080".parse()?,
         app_data_dir: tmp.clone(),
     };
     let config = EmrConfig {
@@ -29,7 +28,8 @@ async fn main() -> anyhow::Result<()> {
 
     let router = setup_fhir_r4(&runtime, &config)?;
     let addr: SocketAddr = runtime
-        .loopback_authority()
+        .loopback_base_url_ref()
+        .authority()
         .parse()
         .context("parse bind addr")?;
     let listener = TcpListener::bind(addr)

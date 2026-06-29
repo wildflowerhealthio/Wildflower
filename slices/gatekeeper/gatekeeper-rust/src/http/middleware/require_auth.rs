@@ -20,11 +20,13 @@ pub async fn require_owner_auth(
     let Some(token) = try_bearer_token_from_headers(&headers) else {
         return response_templates::unauthorized();
     };
-    // Verify against the origin the request says it was targeting — loopback
-    // for a direct hit, the public origin when forwarded by the tunnel — so a
-    // token's `iss`/`aud` are checked against the same surface it was minted
-    // for. `loopback_origin` is the fallback for un-forwarded requests.
-    let origin = served_origin_for(&headers, &state.loopback_origin);
+    // Verify against the request's served origin (loopback for a direct hit,
+    // the forwarded public origin via the tunnel) so the token's `iss`/`aud`
+    // match the surface it was minted for. See `docs/Origins/Explanation.md`.
+    let origin = served_origin_for(
+        &headers,
+        &state.loopback_base_url.origin().ascii_serialization(),
+    );
     if let Err(e) = verify_owner_token(&state, &origin, &token) {
         return response_templates::verify_error_response("verify_owner_token failed", e);
     }
@@ -53,8 +55,8 @@ pub fn verify_owner_token(
 ) -> Result<VerifiedClaims, VerifyError> {
     let claims = verify_auth_token_claims(state, origin, token)?;
     // Owner = the token covers *every* maximal-access scope (full FHIR + full
-    // Wildflower), which gates gatekeeper's `/access/*` admin surface. (The
-    // retired `wildflower/admin` scope's job folded onto these wildcards.)
+    // Wildflower), which gates gatekeeper's `/access/*` admin surface — see
+    // [`WILDFLOWER_WIDEST_SCOPES`](crate::WILDFLOWER_WIDEST_SCOPES).
     let token_claim_scopes: Vec<Scope> = claims
         .scope
         .as_deref()
@@ -62,9 +64,8 @@ pub fn verify_owner_token(
         .split_whitespace()
         .map(Scope::from)
         .collect();
-    // `all()` over an empty slice is vacuously true, which would admit *every*
-    // token (even one carrying no scopes) to the `/access/*` admin surface. The
-    // owner-defining set must never be empty.
+    // Guard: an empty owner-defining set makes `all()` vacuously true, admitting
+    // every token (even a scope-less one) to `/access/*`.
     debug_assert!(
         !WILDFLOWER_WIDEST_SCOPES.is_empty(),
         "WILDFLOWER_WIDEST_SCOPES must be non-empty or the owner check fails open"
@@ -90,10 +91,9 @@ pub fn verify_auth_token_claims(
         .all_signing_keys()
         .map_err(VerifyError::KeyStoreUnavailable)?;
     let accepted = vec![format!("{origin}/fhir-r4"), origin.to_string()];
-    // `iss` is the stable [`shared_structures_rust::CANONICAL_ISSUER`] — same
-    // value gatekeeper writes into every minted token. `aud` is per-request:
-    // a token minted for one surface (loopback vs tunnel) is only accepted
-    // when presented to the surface it was scoped for.
+    // `iss` must equal [`shared_structures_rust::CANONICAL_ISSUER`]; `aud` is
+    // checked per-request against this origin (and its `/fhir-r4` base). See
+    // `docs/Origins/Explanation.md`.
     verify_jwt(
         token,
         &keys,

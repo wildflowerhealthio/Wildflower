@@ -84,8 +84,13 @@ pub fn setup_tunnel(
     let tunnel_daemon = TunnelDaemon::new(
         client,
         probe,
-        config.loopback_origin.clone(),
-        config.local_port,
+        // The daemon renders the loopback origin into `TunnelLiveness.origin` (a
+        // wire string), so hand it the bare origin (no trailing slash).
+        config.loopback_base_url.origin().ascii_serialization(),
+        config
+            .loopback_base_url
+            .port_or_known_default()
+            .expect("loopback_base_url has a known port"),
     );
 
     let state = Arc::new(TunnelState {

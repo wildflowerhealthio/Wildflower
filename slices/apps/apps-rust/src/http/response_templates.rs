@@ -47,6 +47,15 @@ pub(crate) struct AppNotFoundBody {
     pub(crate) id: String,
 }
 
+/// Wire shape for `AppNotEditable` (409) — the app exists but isn't a cloud app,
+/// so the cloud-admin update/delete surface can't touch it (system + self-hosted
+/// apps are not user-editable).
+#[derive(Debug, Serialize, ToSchema)]
+pub(crate) struct AppNotEditableBody {
+    pub(crate) error: &'static str,
+    pub(crate) id: String,
+}
+
 /// Wire shape for a 400 carrying a discriminant + human-readable reason.
 /// Reused for `InvalidUrl` (a bad app URL) and `InvalidName` (an empty name)
 /// — both are write-side field validations the client renders inline. The
@@ -68,6 +77,16 @@ pub(crate) struct LaunchUnavailableBody {
     pub(crate) reason: String,
 }
 
+/// Wire shape for a 400 `InvalidHomeScreen` — the `PUT /home-screen` body wasn't
+/// an exact permutation of the registry (a missing, duplicated, or unknown id),
+/// so the atomic reorder/enable can't be applied as a well-ordered whole. Matches
+/// the TS `InvalidHomeScreenSchema`.
+#[derive(Debug, Serialize, ToSchema)]
+pub(crate) struct InvalidHomeScreenBody {
+    pub(crate) error: &'static str,
+    pub(crate) message: String,
+}
+
 /// Error half of a `Result`-returning handler. Each variant renders one of
 /// the canned shapes through `IntoResponse`, so a fallible step bails with
 /// `?` instead of a `match` + `return` at every call site.
@@ -77,6 +96,11 @@ pub(crate) enum HandlerError {
     Internal(InternalError),
     /// 404 — no app has this id.
     NotFound { id: String },
+    /// 409 — the app exists but isn't a cloud app, so the cloud-admin surface
+    /// can't edit/delete it (system + self-hosted apps are not user-editable).
+    NotEditable { id: String },
+    /// 401 — a loopback launch whose caller didn't pass the owner-auth gate.
+    Unauthorized,
     /// 400 — the submitted URL failed the write-side validator.
     InvalidUrl { message: String },
     /// 400 — the submitted name was empty.
@@ -84,6 +108,9 @@ pub(crate) enum HandlerError {
     /// 503 — the launch can't resolve a reachable target (forwarded launch with
     /// no public host, or a `requires_tunnel` app while the tunnel is down).
     Unavailable { reason: String },
+    /// 400 — the `PUT /home-screen` body wasn't an exact permutation of the
+    /// registry (missing / duplicated / unknown id).
+    InvalidHomeScreen { message: String },
 }
 
 impl HandlerError {
@@ -104,6 +131,15 @@ impl IntoResponse for HandlerError {
                 }),
             )
                 .into_response(),
+            HandlerError::NotEditable { id } => (
+                StatusCode::CONFLICT,
+                Json(AppNotEditableBody {
+                    error: "AppNotEditable",
+                    id,
+                }),
+            )
+                .into_response(),
+            HandlerError::Unauthorized => StatusCode::UNAUTHORIZED.into_response(),
             HandlerError::InvalidUrl { message } => (
                 StatusCode::BAD_REQUEST,
                 Json(InvalidFieldBody {
@@ -125,6 +161,14 @@ impl IntoResponse for HandlerError {
                 Json(LaunchUnavailableBody {
                     error: "LaunchUnavailable",
                     reason,
+                }),
+            )
+                .into_response(),
+            HandlerError::InvalidHomeScreen { message } => (
+                StatusCode::BAD_REQUEST,
+                Json(InvalidHomeScreenBody {
+                    error: "InvalidHomeScreen",
+                    message,
                 }),
             )
                 .into_response(),

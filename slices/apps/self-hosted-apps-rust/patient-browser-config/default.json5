@@ -1,7 +1,7 @@
 // Handwritten Wildflower config for the embedded patient-browser SPA.
 //
 // This file is committed and served verbatim at
-// `/installed-apps/patient-browser/config/default.json5` by vendor-apps-rust's
+// `/installed-apps/patient-browser/config/default.json5` by self-hosted-apps-rust's
 // build.rs — it replaces the old approach of string-rewriting upstream's
 // `config/r4.json5` at build time, and overrides any `config/default.json5`
 // shipped in the vendored dist.

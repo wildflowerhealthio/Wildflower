@@ -24,11 +24,12 @@ use serde::Serialize;
 use shared_structures_rust::served_origin::served_origin_for;
 use shared_structures_rust::CANONICAL_ISSUER;
 
-/// State threaded to the discovery handler so it can fall back to the
-/// loopback origin when a request arrives without forwarding headers.
+/// State threaded to the discovery handler so it can fall back to the loopback
+/// origin when a request arrives without forwarding headers. Held as a typed
+/// [`Url`](url::Url) base URL; the handler derives the bare origin string from it.
 #[derive(Clone)]
 pub(crate) struct SmartConfigState {
-    pub loopback_origin: String,
+    pub loopback_base_url: url::Url,
 }
 
 #[derive(Debug, Serialize)]
@@ -68,10 +69,9 @@ const SCOPES_SUPPORTED: &[&str] = &[
 fn build_smart_configuration(origin: &str) -> SmartConfiguration {
     let host = format!("{origin}/fhir-r4");
     SmartConfiguration {
-        // `issuer` matches the `iss` claim gatekeeper writes into every
-        // minted token — SMART clients that compare the two see the same
-        // string. The endpoint URLs below stay per-request so the SMART
-        // app can actually reach them from where it is.
+        // `issuer` = `CANONICAL_ISSUER` (matches minted tokens' `iss`); the
+        // endpoint URLs below stay per-request, derived from the served origin.
+        // See `docs/Origins/Explanation.md`.
         issuer: CANONICAL_ISSUER.to_string(),
         jwks_uri: format!("{origin}/.well-known/jwks.json"),
         authorization_endpoint: format!("{origin}/oauth/authorize"),
@@ -80,9 +80,6 @@ fn build_smart_configuration(origin: &str) -> SmartConfiguration {
         management_endpoint: format!("{host}/user/manage"),
         introspection_endpoint: format!("{host}/user/introspect"),
         revocation_endpoint: format!("{host}/user/revoke"),
-        // A curated, FHIR-minded public set — deliberately *not* derived from
-        // the full internal scope catalog, so internal/admin scopes never leak
-        // into the public discovery document.
         scopes_supported: SCOPES_SUPPORTED.to_vec(),
         response_types_supported: vec!["code"],
         grant_types_supported: vec!["authorization_code", "client_credentials"],
@@ -106,7 +103,10 @@ pub(crate) async fn smart_configuration_handler(
     State(state): State<SmartConfigState>,
     headers: HeaderMap,
 ) -> Json<SmartConfiguration> {
-    let origin = served_origin_for(&headers, &state.loopback_origin);
+    let origin = served_origin_for(
+        &headers,
+        &state.loopback_base_url.origin().ascii_serialization(),
+    );
     Json(build_smart_configuration(&origin))
 }
 
@@ -129,8 +129,7 @@ mod tests {
             doc.jwks_uri,
             "https://ruth.wildflowerhealth.io/.well-known/jwks.json"
         );
-        // `issuer` is the canonical constant, not the per-request origin
-        // (matching the `iss` claim in gatekeeper-minted JWTs).
+        // `issuer` is the canonical constant, not the per-request origin.
         assert_eq!(doc.issuer, CANONICAL_ISSUER);
     }
 

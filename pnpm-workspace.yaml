@@ -3,7 +3,7 @@ packages:
   - global/*
   - global/effect-messaging/*
   - slices/**
-  - '!slices/apps/vendor-apps/vendor/**'
+  - '!slices/apps/self-hosted-apps/**'
 
 catalog:
   '@effect/ai': 0.36.0
@@ -22,6 +22,9 @@ catalog:
   '@effect/sql': 0.51.1
   '@effect/typeclass': 0.40.0
   '@effect/workflow': 0.18.2
+  '@dnd-kit/core': ^6.3.1
+  '@dnd-kit/sortable': ^10.0.0
+  '@dnd-kit/utilities': ^3.2.2
   '@fast-check/vitest': ^0.3.0
   '@fontsource-variable/hanken-grotesk': ^5.2.8
   '@fontsource-variable/newsreader': ^5.2.10
