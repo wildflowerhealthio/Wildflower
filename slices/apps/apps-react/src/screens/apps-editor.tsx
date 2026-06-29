@@ -77,8 +77,8 @@ const AppsEditor = ({ open, apps, onClose }: AppsEditorProps): JSX.Element => {
   // three mutations keeps the "one write at a time" guarantee the
   // original imperative flow had.
   const busy = homeScreenMutation.isPending || createMutation.isPending || deleteMutation.isPending
-  const submitError = homeScreenMutation.error ?? createMutation.error ?? deleteMutation.error
-  const errorMessage = submitError === null ? null : formatError(submitError)
+  const homeScreenError = homeScreenMutation.error ?? deleteMutation.error
+  const errorMessage = homeScreenError === null ? null : formatError(homeScreenError)
 
   // Enabled is homescreen-curation state: persist it by re-PUTting the whole
   // ordered list with this app's flag flipped (the single writer of `enabled`).
@@ -168,6 +168,12 @@ const AppsEditor = ({ open, apps, onClose }: AppsEditorProps): JSX.Element => {
 
         <section className={editorStyles['apps-editor__section']}>
           <h3 className="text-label-3">Add app</h3>
+
+          {createMutation.error !== null ? (
+            <p className="text-body-3" role="alert">
+              {formatError(createMutation.error)}
+            </p>
+          ) : null}
           <form
             className={editorStyles['apps-editor__form']}
             onSubmit={(event) => {
