@@ -104,32 +104,31 @@ impl AppsStore {
             .optional()
     }
 
-    /// Set a parent row's `enabled` flag. Returns `true` when a row matched.
-    /// Allowed for every provenance (the homescreen toggle works on any app).
+    /// Atomically rewrite the whole homescreen — the ordering **and** the
+    /// `enabled` flags — in one transaction. Each `(id, enabled)` at index `i`
+    /// sets that row's `position = i` and `enabled`. Because every row is
+    /// renumbered to its array index under one transaction, positions stay a
+    /// dense `0..n` permutation (no duplicate or gapped positions, the bug a
+    /// per-row "set this one's position" write caused) and a reorder can't be
+    /// observed half-applied. Backs `PUT /home-screen`, which validates that
+    /// `entries` lists every registry app exactly once before calling — this is
+    /// the single writer of `position`/`enabled` across every provenance.
     ///
     /// # Errors
     ///
-    /// Returns any rusqlite error from the update.
-    pub fn set_enabled(&self, id: &str, enabled: bool) -> DbResult<bool> {
-        let affected = self.conn().lock().execute(
-            "UPDATE apps SET enabled = ?2 WHERE id = ?1",
-            params![id, enabled],
-        )?;
-        Ok(affected == 1)
-    }
-
-    /// Set a parent row's display `position`. Returns `true` when a row matched.
-    /// Allowed for every provenance (drag-to-reorder works on any app).
-    ///
-    /// # Errors
-    ///
-    /// Returns any rusqlite error from the update.
-    pub fn set_position(&self, id: &str, position: i64) -> DbResult<bool> {
-        let affected = self.conn().lock().execute(
-            "UPDATE apps SET position = ?2 WHERE id = ?1",
-            params![id, position],
-        )?;
-        Ok(affected == 1)
+    /// Returns any rusqlite error from the transaction.
+    pub fn replace_home_screen(&self, entries: &[(String, bool)]) -> DbResult<()> {
+        let guard = self.conn().lock();
+        let tx = guard.unchecked_transaction()?;
+        for (position, (id, enabled)) in entries.iter().enumerate() {
+            let position = i64::try_from(position).expect("home-screen length fits i64");
+            tx.execute(
+                "UPDATE apps SET position = ?2, enabled = ?3 WHERE id = ?1",
+                params![id, position, enabled],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
     }
 
     /// The next free display position — `MAX(position) + 1`, or `0` for an empty
@@ -316,17 +315,43 @@ mod tests {
         assert!(store.find_app("no-such-id").unwrap().is_none());
     }
 
+    /// `replace_home_screen` renumbers every row to its array index and applies
+    /// each `enabled` flag, in one shot, for any provenance — and leaves the
+    /// positions a dense `0..n` permutation (no ties).
     #[test]
-    fn set_enabled_and_set_position_touch_any_provenance() {
+    fn replace_home_screen_renumbers_and_sets_enabled_for_any_provenance() {
         let store = AppsStore::open_in_memory().unwrap();
-        // A system app (api-docs) — enable/position writes are not provenance-gated.
-        assert!(store.set_enabled("api-docs", false).unwrap());
+        // Reverse the seeded order, disabling a system app (api-docs) along the way.
+        let entries: Vec<(String, bool)> = vec![
+            ("precise-hbr".to_owned(), true),
+            ("medication-viewer".to_owned(), true),
+            ("growth-chart".to_owned(), true),
+            ("api-docs".to_owned(), false),
+            ("api-view".to_owned(), true),
+            ("patient-browser".to_owned(), true),
+        ];
+        store.replace_home_screen(&entries).unwrap();
+
+        // Positions are exactly the array indices (dense 0..n, no duplicates).
+        for (position, (id, _)) in entries.iter().enumerate() {
+            let app = store.find_app(id).unwrap().unwrap();
+            assert_eq!(
+                app.position,
+                i64::try_from(position).unwrap(),
+                "{id} position"
+            );
+        }
+        // The enabled flag was applied (api-docs is a system app — not gated).
         assert!(!store.find_app("api-docs").unwrap().unwrap().enabled);
-        assert!(store.set_position("api-docs", 42).unwrap());
-        assert_eq!(store.find_app("api-docs").unwrap().unwrap().position, 42);
-        // Unknown id → false, not an error.
-        assert!(!store.set_enabled("ghost", true).unwrap());
-        assert!(!store.set_position("ghost", 1).unwrap());
+        // The list now reflects the new order.
+        let ids: Vec<String> = store
+            .list_app_entries()
+            .unwrap()
+            .into_iter()
+            .map(|e| e.id)
+            .collect();
+        let expected: Vec<String> = entries.iter().map(|(id, _)| id.clone()).collect();
+        assert_eq!(ids, expected);
     }
 
     #[test]

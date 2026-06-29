@@ -188,4 +188,60 @@ mod tests {
         assert_eq!(fetched.registered_at, registered_at);
         assert_eq!(fetched.disabled_at, Some(disabled_at));
     }
+
+    /// The SMART sample-app clients are seeded by migration `008` (not Rust), so a
+    /// freshly-migrated store has them — and every hand-written row decodes back to
+    /// a valid `Client`. This is the guard that the SQL seed's JSON columns and
+    /// `registered_at` text stay in the exact shape the store's read path parses
+    /// (a malformed value would fail `client_by_id`'s row mapping, not silently).
+    #[test]
+    fn migration_seeds_the_sample_smart_clients() {
+        let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
+        for client_id in [
+            "growth_chart",
+            "my_web_app",
+            "cc344727-6f90-496c-94fd-c7829aa9a51d",
+        ] {
+            let client = store
+                .client_by_id(client_id)
+                .expect("query (a decode failure surfaces here)")
+                .unwrap_or_else(|| panic!("{client_id} is seeded by migration 008"));
+            assert_eq!(client.client_id, client_id);
+            assert_eq!(client.kind, ClientKind::Public);
+            assert!(
+                client.secret_hash.is_none(),
+                "{client_id} is a public client"
+            );
+            assert!(!client.allowed_scopes.0.is_empty());
+            assert!(!client.redirect_uris.0.is_empty());
+            assert!(!client.allowed_grant_types.0.is_empty());
+        }
+
+        // `my_web_app` (the Medication Viewer registration) carries the exact
+        // scope + redirect from the review comment.
+        let mwa = store.client_by_id("my_web_app").unwrap().unwrap();
+        assert_eq!(
+            mwa.allowed_scopes.0,
+            vec![
+                "launch".to_string(),
+                "openid".to_string(),
+                "fhirUser".to_string(),
+                "patient/*.read".to_string(),
+            ],
+        );
+        assert_eq!(
+            mwa.redirect_uris.0[0].as_str(),
+            "https://mitre.github.io/smart-on-fhir-demo/index.html",
+        );
+        assert_eq!(
+            mwa.allowed_grant_types.0,
+            vec![
+                AllowedGrantType::AuthorizationCode,
+                AllowedGrantType::RefreshToken
+            ],
+        );
+
+        // The old `medication_viewer` id is gone — replaced by `my_web_app`.
+        assert!(store.client_by_id("medication_viewer").unwrap().is_none());
+    }
 }

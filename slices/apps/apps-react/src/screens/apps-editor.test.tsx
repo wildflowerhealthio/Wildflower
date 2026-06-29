@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/tes
 // `reset` (so we can assert it fires on open) and a settable `error` (so
 // we can plant a stale error the way a failed write would leave one
 // behind while `Dialog` keeps the children mounted).
-const { updateStub, createStub, deleteStub } = vi.hoisted(() => {
+const { homeScreenStub, createStub, deleteStub } = vi.hoisted(() => {
   const makeMutation = (): {
     readonly mutate: ReturnType<typeof vi.fn>
     readonly reset: ReturnType<typeof vi.fn>
@@ -21,14 +21,14 @@ const { updateStub, createStub, deleteStub } = vi.hoisted(() => {
     error: null,
   })
   return {
-    updateStub: makeMutation(),
+    homeScreenStub: makeMutation(),
     createStub: makeMutation(),
     deleteStub: makeMutation(),
   }
 })
 
 vi.mock('../queries.ts', () => ({
-  useAppsAdminUpdateMutation: () => updateStub,
+  useReplaceHomeScreenMutation: () => homeScreenStub,
   useAppsAdminCreateMutation: () => createStub,
   useAppsAdminDeleteMutation: () => deleteStub,
 }))
@@ -54,8 +54,16 @@ const makeApp = (overrides: Partial<AppEntry> & Pick<AppEntry, 'id' | 'provenanc
 const renderEditor = (open: boolean): ReturnType<typeof render> =>
   render(<AppsEditor open={open} apps={NO_APPS} onClose={() => {}} />)
 
+// The "Add app" form always renders a labelled "Requires tunnel" checkbox; a
+// per-row enable toggle is an *unlabelled* checkbox on top of it. Filter the
+// form's checkbox out so a row-control assertion isn't fooled by it.
+const rowToggles = (): readonly HTMLElement[] => {
+  const requiresTunnel = screen.queryByRole('checkbox', { name: 'Requires tunnel' })
+  return screen.getAllByRole('checkbox').filter((checkbox) => checkbox !== requiresTunnel)
+}
+
 const resetAllStubs = (): void => {
-  for (const stub of [updateStub, createStub, deleteStub]) {
+  for (const stub of [homeScreenStub, createStub, deleteStub]) {
     stub.mutate.mockClear()
     stub.reset.mockClear()
     stub.isPending = false
@@ -102,7 +110,7 @@ describe('<AppsEditor> mutation reset on open', () => {
 
   test('shows a settled mutation error while open', () => {
     // Arrange — a previous write failed; its error persists on the stub.
-    updateStub.error = new Error('toggle failed')
+    homeScreenStub.error = new Error('toggle failed')
 
     // Act
     renderEditor(true)
@@ -114,32 +122,32 @@ describe('<AppsEditor> mutation reset on open', () => {
   test('resets all three mutations when the dialog transitions to open', () => {
     // Arrange — start closed so the open-transition effect has not run.
     const { rerender } = renderEditor(false)
-    expect(updateStub.reset).not.toHaveBeenCalled()
+    expect(homeScreenStub.reset).not.toHaveBeenCalled()
 
     // Act — open the dialog.
     rerender(<AppsEditor open apps={NO_APPS} onClose={() => {}} />)
 
     // Assert — every mutation is reset on the open transition, so no
     // stale error from a prior session can leak into the fresh open.
-    expect(updateStub.reset).toHaveBeenCalledTimes(1)
+    expect(homeScreenStub.reset).toHaveBeenCalledTimes(1)
     expect(createStub.reset).toHaveBeenCalledTimes(1)
     expect(deleteStub.reset).toHaveBeenCalledTimes(1)
   })
 
   test('surfaces the alert from the live mutation error, not a stale snapshot', () => {
     // Arrange — open with a write error present on the mutation.
-    updateStub.error = new Error('write failed')
+    homeScreenStub.error = new Error('write failed')
     const { rerender } = renderEditor(true)
     expect(screen.getByRole('alert').textContent).toBe('write failed')
 
     // Act — react-query's `reset()` clears `mutation.error` and re-renders
     // subscribers. Drive that from the source the component reads: flip the
     // live mutation `error` to null and rerender.
-    updateStub.error = null
+    homeScreenStub.error = null
     rerender(<AppsEditor open apps={NO_APPS} onClose={() => {}} />)
 
     // Assert — the alert follows the live mutation error to null, proving
-    // the editor renders the alert off `updateMutation.error` rather than a
+    // the editor renders the alert off `homeScreenMutation.error` rather than a
     // value the test plants independently of the component.
     expect(screen.queryByRole('alert')).toBeNull()
   })
@@ -147,7 +155,7 @@ describe('<AppsEditor> mutation reset on open', () => {
   test('does not re-reset on re-renders while already open', () => {
     // Arrange — open once (one reset), then re-render still open.
     const { rerender } = renderEditor(true)
-    expect(updateStub.reset).toHaveBeenCalledTimes(1)
+    expect(homeScreenStub.reset).toHaveBeenCalledTimes(1)
 
     // Act — a no-op prop change that keeps `open` true.
     rerender(<AppsEditor open apps={NO_APPS} onClose={() => {}} />)
@@ -155,7 +163,7 @@ describe('<AppsEditor> mutation reset on open', () => {
     // Assert — the effect is keyed on the `open` transition, so staying
     // open does not fire another reset (which would wipe an error from a
     // write the user just triggered in this same session).
-    expect(updateStub.reset).toHaveBeenCalledTimes(1)
+    expect(homeScreenStub.reset).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -184,8 +192,9 @@ describe('<AppsEditor> provenance gating', () => {
     ]
     render(<AppsEditor open apps={apps} onClose={() => {}} />)
 
-    // The cloud row carries an editable surface: a checkbox + a Remove button.
-    expect(screen.getByRole('checkbox')).toBeDefined()
+    // The cloud row carries an editable surface: an enable toggle + a Remove
+    // button (the only Remove on screen).
+    expect(rowToggles()).toHaveLength(1)
     expect(screen.getByRole('button', { name: 'Remove' })).toBeDefined()
   })
 
@@ -197,8 +206,9 @@ describe('<AppsEditor> provenance gating', () => {
     render(<AppsEditor open apps={apps} onClose={() => {}} />)
 
     // Neither non-cloud row exposes the cloud-admin controls — those endpoints
-    // `409` for non-cloud apps, so firing them would always fail.
-    expect(screen.queryByRole('checkbox')).toBeNull()
+    // `409` for non-cloud apps, so firing them would always fail. (The only
+    // checkbox on screen is the Add-app form's "Requires tunnel".)
+    expect(rowToggles()).toHaveLength(0)
     expect(screen.queryByRole('button', { name: 'Remove' })).toBeNull()
     // The rows still render (read-only), labelled by name.
     expect(screen.getByText('System App')).toBeDefined()
@@ -213,5 +223,24 @@ describe('<AppsEditor> provenance gating', () => {
 
     screen.getByRole('button', { name: 'Remove' }).click()
     expect(deleteStub.mutate).toHaveBeenCalledWith({ id: 'cloud-app' })
+  })
+
+  test('toggling a cloud row PUTs the whole home screen with that flag flipped', () => {
+    // `enabled` is homescreen-curation state: the toggle re-PUTs the full list
+    // (every provenance, current order preserved) with only the toggled app's
+    // flag changed.
+    const apps: readonly AppEntry[] = [
+      makeApp({ id: 'sys', name: 'System', provenance: 'system', enabled: true }),
+      makeApp({ id: 'cloud-app', name: 'Cloud App', provenance: 'cloud', enabled: true }),
+    ]
+    render(<AppsEditor open apps={apps} onClose={() => {}} />)
+
+    const [toggle] = rowToggles()
+    expect(toggle).toBeDefined()
+    toggle?.click()
+    expect(homeScreenStub.mutate).toHaveBeenCalledWith([
+      { id: 'sys', enabled: true },
+      { id: 'cloud-app', enabled: false },
+    ])
   })
 })

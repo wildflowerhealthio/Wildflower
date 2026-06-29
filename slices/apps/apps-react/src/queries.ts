@@ -27,7 +27,7 @@ const useRunAuthed = (): RunAuthed =>
 type AppEntry = Schema.Schema.Type<typeof Schemas.AppListEntrySchema>
 type CreateAppPayload = Schema.Schema.Type<typeof Schemas.CreateAppBodySchema>
 type UpdateAppPayload = Schema.Schema.Type<typeof Schemas.UpdateAppBodySchema>
-type PlacementPayload = Schema.Schema.Type<typeof Schemas.PlacementBodySchema>
+type HomeScreenPayload = Schema.Schema.Type<typeof Schemas.HomeScreenSchema>
 
 /** Mutations invalidate this key on success so the next render refetches. */
 const APPS_LIST_QUERY_KEY = ['apps', 'list'] as const
@@ -106,24 +106,21 @@ const useAppsAdminDeleteMutation = (): UseMutationResult<
 }
 
 /**
- * Admin `UpdatePlacement` (PATCH /apps/:id/placement). Unlike
- * {@link useAppsAdminUpdateMutation} (cloud-only content edits), placement
- * applies to **any** provenance — it's the homescreen's drag-to-reorder /
- * enable surface. Invalidates {@link APPS_LIST_QUERY_KEY} on success so the
- * reordered list refetches.
+ * `ReplaceHomeScreen` (PUT /home-screen). Unlike {@link useAppsAdminUpdateMutation}
+ * (cloud-only content edits), this applies to **every** provenance — it's the
+ * homescreen's single writer of order + `enabled`. The payload is the full
+ * ordered list `[{ id, enabled }]` (array index = display position); the server
+ * renumbers + flips atomically. Invalidates {@link APPS_LIST_QUERY_KEY} on
+ * success so the reordered list refetches.
  */
-const useAppsPlacementMutation = (): UseMutationResult<
-  unknown,
-  Error,
-  { readonly id: string; readonly payload: PlacementPayload }
-> => {
+const useReplaceHomeScreenMutation = (): UseMutationResult<unknown, Error, HomeScreenPayload> => {
   const runAuthed = useRunAuthed()
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, payload }) =>
+    mutationFn: (payload) =>
       runAuthed(
         Effect.flatMap(AppsAdminHttpApiClient, (c) =>
-          c['apps-admin'].UpdatePlacement({ path: { id }, payload })
+          c['apps-admin'].ReplaceHomeScreen({ payload })
         )
       ),
     onSuccess: async () => {
@@ -139,6 +136,6 @@ export {
   useAppsAdminDeleteMutation,
   useAppsAdminUpdateMutation,
   useAppsListQuery,
-  useAppsPlacementMutation,
+  useReplaceHomeScreenMutation,
 }
-export type { AppEntry, CreateAppPayload, PlacementPayload, UpdateAppPayload }
+export type { AppEntry, CreateAppPayload, HomeScreenPayload, UpdateAppPayload }

@@ -1,10 +1,13 @@
+use url::Url;
+
 #[derive(Debug, Clone)]
 pub struct GatekeeperConfig {
     /// The HTTP-only loopback origin the embedded API server binds to, e.g.
-    /// `http://127.0.0.1:8080`. The fallback
-    /// [`served_origin_for`](crate::http::served_origin_for) returns when a
-    /// request carries no public-origin header.
-    pub loopback_origin: String,
+    /// `http://127.0.0.1:8080/`, as a typed [`Url`]. The fallback
+    /// [`served_origin_for`](crate::http::served_origin_for) returns (as its bare
+    /// `origin().ascii_serialization()`) when a request carries no public-origin
+    /// header.
+    pub loopback_origin: Url,
 
     /// The host's granted-scope wire strings — seeded as the first-party
     /// client's `allowed_scopes` and minted into the boot-time host owner token.

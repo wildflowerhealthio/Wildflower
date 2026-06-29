@@ -75,25 +75,27 @@ const AppListEntrySchema = Schema.Struct({
   enabled: Schema.Boolean,
 })
 
+const AppListSchema = Schema.Array(AppListEntrySchema)
+
 /**
- * The parent registry row — the `PATCH /apps/:id/placement` response. Carries
- * the registry fields including `position`; the kind-specific launch detail
- * lives in the per-kind child tables (not on this shape). Mirrors the Rust
- * `App`.
+ * One entry in the `PUT /home-screen` body: an app id and its desired `enabled`
+ * flag. The entry's **index in the array is its new display `position`**, so the
+ * order is implicit and a swap is well-ordered by construction. Mirrors the Rust
+ * `HomeScreenEntry`.
  */
-const AppSchema = Schema.Struct({
+const HomeScreenEntrySchema = Schema.Struct({
   id: Schema.String,
-  name: Schema.String,
-  subtitle: Schema.optional(Schema.NullOr(Schema.String)),
   enabled: Schema.Boolean,
-  position: Schema.Int,
-  provenance: ProvenanceSchema,
-  localOnly: Schema.Boolean,
-  /** Soft reference to a gatekeeper `clients.client_id`; absent for non-SMART. */
-  clientId: Schema.optional(Schema.NullOr(Schema.String)),
 })
 
-const AppListSchema = Schema.Array(AppListEntrySchema)
+/**
+ * Body for `PUT /home-screen` — the full ordered homescreen as `{ id, enabled }`
+ * entries. Must list **every** registry app exactly once (array order = display
+ * order); the server renumbers `position` to the array index and applies each
+ * `enabled` atomically. The single writer of order + enabled, across every
+ * provenance.
+ */
+const HomeScreenSchema = Schema.Array(HomeScreenEntrySchema)
 
 const AppIdPathSchema = Schema.Struct({ id: Schema.String })
 
@@ -147,7 +149,6 @@ const CreateAppBodySchema = Schema.Struct({
  * persists as `""` and round-trips through the non-empty read schema.
  */
 const UpdateAppBodySchema = Schema.Struct({
-  enabled: Schema.optional(Schema.Boolean),
   name: Schema.optional(Schema.NonEmptyString),
   url: Schema.optional(AppUrlSchema),
   requiresTunnel: Schema.optional(Schema.Boolean),
@@ -155,15 +156,14 @@ const UpdateAppBodySchema = Schema.Struct({
 })
 
 /**
- * Body for `PATCH /apps/:id/placement` — homescreen placement updates that
- * apply to **any** provenance. Both fields optional: `enabled` toggles tile
- * visibility, `position` sets the display order (drag-to-reorder). Distinct
- * from {@link UpdateAppBodySchema}, which edits a cloud app's content. Mirrors
- * the Rust `PlacementBody`.
+ * Body for `InvalidHomeScreen` (400) — the `PUT /home-screen` payload wasn't an
+ * exact permutation of the registry (a missing, duplicated, or unknown id), so
+ * the atomic reorder/enable can't be applied. Mirrors the Rust
+ * `InvalidHomeScreenBody`.
  */
-const PlacementBodySchema = Schema.Struct({
-  enabled: Schema.optional(Schema.Boolean),
-  position: Schema.optional(Schema.Int),
+const InvalidHomeScreenSchema = Schema.Struct({
+  error: Schema.Literal('InvalidHomeScreen'),
+  message: Schema.String,
 })
 
 export {
@@ -173,11 +173,12 @@ export {
   AppListSchema,
   AppNotEditableSchema,
   AppNotFoundSchema,
-  AppSchema,
   AppUrlSchema,
   CreateAppBodySchema,
+  HomeScreenEntrySchema,
+  HomeScreenSchema,
   InvalidFieldSchema,
-  PlacementBodySchema,
+  InvalidHomeScreenSchema,
   ProvenanceSchema,
   UpdateAppBodySchema,
 }

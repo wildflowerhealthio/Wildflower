@@ -44,7 +44,7 @@ impl FromRequestParts<AppState> for ServedOrigin {
     ) -> Result<Self, Self::Rejection> {
         Ok(ServedOrigin(served_origin_for(
             &parts.headers,
-            &state.loopback_origin,
+            &state.loopback_origin.origin().ascii_serialization(),
         )))
     }
 }

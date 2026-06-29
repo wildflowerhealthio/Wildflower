@@ -1,16 +1,17 @@
-//! The apps slice's HTTP surface — list, launch, placement, and the cloud-admin
-//! write surface — built as `utoipa_axum::OpenApiRouter`s, so the same
-//! `#[utoipa::path]`-annotated handlers that serve traffic also produce the
+//! The apps slice's HTTP surface — list, launch, home-screen, and the
+//! cloud-admin write surface — built as `utoipa_axum::OpenApiRouter`s, so the
+//! same `#[utoipa::path]`-annotated handlers that serve traffic also produce the
 //! committed OpenAPI snapshot (`openapi/apps.openapi.json`) that the TS
 //! spec-drift test reads.
 //!
 //! The surface is exposed as two routers so the host can gate them differently:
-//! [`gated_router`] (list + cloud-admin + placement) is wrapped by the host's
-//! bearer gate; [`launch_router`] (`POST /apps/{id}`) is mounted ungated at the
-//! router level — the launch handler owner-gates the loopback popup through
-//! [`owner_auth::OwnerAuth`] while a forwarded launch rides the front trust
-//! boundary. The bearer gate can't exempt the parameterized launch path from the
-//! gated `PATCH`/`DELETE /apps/{id}`, hence the split. See [`openapi_tests`].
+//! [`gated_router`] (list + cloud-admin + `PUT /home-screen`) is wrapped by the
+//! host's bearer gate; [`launch_router`] (`POST /apps/{id}`) is mounted ungated
+//! at the router level — the launch handler owner-gates the loopback popup
+//! through [`owner_auth::OwnerAuth`] while a forwarded launch rides the front
+//! trust boundary. The bearer gate can't exempt the parameterized launch path
+//! from the gated `PATCH`/`DELETE /apps/{id}`, hence the split. See
+//! [`openapi_tests`].
 
 mod handlers;
 pub mod owner_auth;
@@ -24,8 +25,8 @@ use std::sync::Arc;
 
 use axum::Router;
 
-/// Build the owner-gated `/apps` routes (`GET /apps`, `POST /apps`,
-/// `PATCH`/`DELETE /apps/{id}`, `PATCH /apps/{id}/placement`). Carries no
+/// Build the owner-gated routes (`GET /apps`, `POST /apps`,
+/// `PATCH`/`DELETE /apps/{id}`, `PUT /home-screen`). Carries no
 /// middleware — the host wraps it with its bearer gate.
 pub fn gated_router(state: Arc<AppsState>) -> Router {
     let (router, _spec) = handlers::gated_openapi_router().split_for_parts();

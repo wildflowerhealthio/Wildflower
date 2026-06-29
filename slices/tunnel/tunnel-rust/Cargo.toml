@@ -17,6 +17,9 @@ serde_json.workspace = true
 utoipa.workspace = true
 utoipa-axum.workspace = true
 rusqlite.workspace = true
+# The loopback origin flows in as a typed `Url` (from `ServerRuntimeConfig`); the
+# daemon takes its bare origin string at construction.
+url = { version = "2" }
 persistence-rust = { path = "../../persistence/persistence-rust" }
 # The tunnel service contract this slice implements (TunnelService + state types).
 shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = [

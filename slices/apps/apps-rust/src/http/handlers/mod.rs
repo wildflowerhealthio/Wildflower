@@ -1,13 +1,13 @@
 //! HTTP handlers for the apps slice. The routes are grouped into a
-//! [`gated_openapi_router`] (list, cloud-admin, placement — the host bearer-gates
-//! these) and a [`launch_openapi_router`] (`POST /apps/{id}` — mounted ungated at
-//! the router level), merged into [`openapi_router`] for the spec + handler
-//! tests. The served routes and the OpenAPI spec come from the same
-//! `#[utoipa::path]`-annotated handlers.
+//! [`gated_openapi_router`] (list, cloud-admin, home-screen — the host
+//! bearer-gates these) and a [`launch_openapi_router`] (`POST /apps/{id}` —
+//! mounted ungated at the router level), merged into [`openapi_router`] for the
+//! spec + handler tests. The served routes and the OpenAPI spec come from the
+//! same `#[utoipa::path]`-annotated handlers.
 
 mod apps;
 mod cloud_admin;
-mod placement;
+mod home_screen;
 #[cfg(test)]
 pub(crate) mod test_utils;
 
@@ -18,13 +18,13 @@ use utoipa_axum::routes;
 
 use crate::http::state::AppsState;
 
-/// The owner-gated `/apps` routes — everything except the launch:
+/// The owner-gated routes — everything except the launch:
 ///
 ///  - `GET /apps` (list) — see [`apps`];
 ///  - `POST /apps` (create) + `PATCH`/`DELETE /apps/{id}` (cloud admin) — see
 ///    [`cloud_admin`];
-///  - `PATCH /apps/{id}/placement` (reorder / enable, any provenance) — see
-///    [`placement`].
+///  - `PUT /home-screen` (atomic reorder / enable, any provenance) — see
+///    [`home_screen`].
 ///
 /// The host wraps these with its bearer gate. They're split from the launch
 /// route because the bearer gate can't exempt the parameterized `POST /apps/{id}`
@@ -37,7 +37,7 @@ pub(crate) fn gated_openapi_router() -> OpenApiRouter<Arc<AppsState>> {
             cloud_admin::update::handle_update_app,
             cloud_admin::delete::handle_delete_app
         ))
-        .routes(routes!(placement::handle_update_placement))
+        .routes(routes!(home_screen::handle_replace_home_screen))
 }
 
 /// The launch route (`POST /apps/{id}`), mounted **ungated** at the router level:
@@ -142,6 +142,15 @@ mod tests {
     fn patch(uri: &str, body: serde_json::Value) -> Request<Body> {
         Request::builder()
             .method("PATCH")
+            .uri(uri)
+            .header("content-type", "application/json")
+            .body(Body::from(body.to_string()))
+            .unwrap()
+    }
+
+    fn put_json(uri: &str, body: serde_json::Value) -> Request<Body> {
+        Request::builder()
+            .method("PUT")
             .uri(uri)
             .header("content-type", "application/json")
             .body(Body::from(body.to_string()))
@@ -479,7 +488,7 @@ mod tests {
 
         let (status, body) = send(
             &st,
-            patch("/apps/no-such-id", serde_json::json!({ "enabled": false })),
+            patch("/apps/no-such-id", serde_json::json!({ "name": "x" })),
         )
         .await;
         assert_eq!(status, StatusCode::NOT_FOUND);
@@ -490,7 +499,9 @@ mod tests {
         assert_eq!(body["error"], "AppNotFound");
     }
 
-    /// A seeded cloud app is fully editable through the cloud-admin surface.
+    /// A seeded cloud app's content (name / url) is editable through the
+    /// cloud-admin surface. (`enabled` is not a content field — see
+    /// `PUT /home-screen`.)
     #[tokio::test]
     async fn seeded_cloud_app_can_be_edited_and_deleted() {
         let st = state();
@@ -498,14 +509,13 @@ mod tests {
             &st,
             patch(
                 "/apps/growth-chart",
-                serde_json::json!({ "name": "Renamed", "url": "https://example.com/x", "enabled": false }),
+                serde_json::json!({ "name": "Renamed", "url": "https://example.com/x" }),
             ),
         )
         .await;
         assert_eq!(status, StatusCode::OK, "body: {body}");
         assert_eq!(body["name"], "Renamed");
         assert_eq!(body["url"], "https://example.com/x");
-        assert_eq!(body["enabled"], false);
 
         let (status, _) = send(&st, delete("/apps/growth-chart")).await;
         assert_eq!(status, StatusCode::OK);
@@ -560,7 +570,7 @@ mod tests {
             &st,
             patch(
                 &format!("/apps/{id}"),
-                serde_json::json!({ "enabled": true }),
+                serde_json::json!({ "requiresTunnel": true }),
             ),
         )
         .await;
@@ -576,38 +586,110 @@ mod tests {
         assert!(body.get("subtitle").is_none() || body["subtitle"].is_null());
     }
 
-    // ---- PATCH /apps/{id}/placement ---------------------------------------
+    // ---- PUT /home-screen -------------------------------------------------
 
-    /// Placement works on every provenance — reorder + disable a system app.
-    #[tokio::test]
-    async fn placement_reorders_and_disables_any_provenance() {
-        let st = state();
-        let (status, body) = send(
-            &st,
-            patch(
-                "/apps/api-docs/placement",
-                serde_json::json!({ "enabled": false, "position": 99 }),
-            ),
+    /// The full seeded set as `{ id, enabled }` entries, in the given id order.
+    fn home_screen_body(ordered: &[(&str, bool)]) -> serde_json::Value {
+        serde_json::Value::Array(
+            ordered
+                .iter()
+                .map(|(id, enabled)| serde_json::json!({ "id": id, "enabled": enabled }))
+                .collect(),
         )
-        .await;
-        assert_eq!(status, StatusCode::OK, "body: {body}");
-        assert_eq!(body["enabled"], false);
-        assert_eq!(body["position"], 99);
-        assert_eq!(body["provenance"], "system");
     }
 
+    /// `PUT /home-screen` reorders + disables across every provenance in one
+    /// shot, and returns the catalogue in the new order. Reverses the seed and
+    /// disables a system app (api-docs).
     #[tokio::test]
-    async fn placement_unknown_id_is_404() {
+    async fn home_screen_reorders_and_disables_any_provenance() {
+        let st = state();
+        let ordered = [
+            ("precise-hbr", true),
+            ("medication-viewer", true),
+            ("growth-chart", true),
+            ("api-docs", false),
+            ("api-view", true),
+            ("patient-browser", true),
+        ];
+        let (status, body) = send(&st, put_json("/home-screen", home_screen_body(&ordered))).await;
+        assert_eq!(status, StatusCode::OK, "body: {body}");
+
+        // The response is the catalogue in its new order.
+        let ids: Vec<&str> = body
+            .as_array()
+            .expect("array")
+            .iter()
+            .map(|v| v["id"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            ids,
+            vec![
+                "precise-hbr",
+                "medication-viewer",
+                "growth-chart",
+                "api-docs",
+                "api-view",
+                "patient-browser",
+            ],
+        );
+        let api_docs = body
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|v| v["id"] == "api-docs")
+            .unwrap();
+        assert_eq!(api_docs["enabled"], false, "api-docs was disabled");
+
+        // A follow-up GET sees the same order persisted.
+        let (_, list) = send(&st, get("/apps")).await;
+        let listed: Vec<&str> = list
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v["id"].as_str().unwrap())
+            .collect();
+        assert_eq!(listed, ids, "GET /apps reflects the new order");
+    }
+
+    /// A body that isn't an exact permutation of the registry (here a subset) is
+    /// rejected `400 InvalidHomeScreen` — nothing is reordered.
+    #[tokio::test]
+    async fn home_screen_rejects_a_partial_body() {
         let st = state();
         let (status, body) = send(
             &st,
-            patch(
-                "/apps/no-such-id/placement",
-                serde_json::json!({ "enabled": false }),
+            put_json(
+                "/home-screen",
+                home_screen_body(&[("api-view", true), ("api-docs", true)]),
             ),
         )
         .await;
-        assert_eq!(status, StatusCode::NOT_FOUND);
-        assert_eq!(body["error"], "AppNotFound");
+        assert_eq!(status, StatusCode::BAD_REQUEST, "body: {body}");
+        assert_eq!(body["error"], "InvalidHomeScreen");
+    }
+
+    /// A full-length body that swaps in an unknown id (so it's not a permutation)
+    /// is also `400` — guarding the "every app exactly once" invariant.
+    #[tokio::test]
+    async fn home_screen_rejects_an_unknown_id() {
+        let st = state();
+        let (status, body) = send(
+            &st,
+            put_json(
+                "/home-screen",
+                home_screen_body(&[
+                    ("patient-browser", true),
+                    ("api-view", true),
+                    ("api-docs", true),
+                    ("growth-chart", true),
+                    ("medication-viewer", true),
+                    ("ghost", true),
+                ]),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "body: {body}");
+        assert_eq!(body["error"], "InvalidHomeScreen");
     }
 }

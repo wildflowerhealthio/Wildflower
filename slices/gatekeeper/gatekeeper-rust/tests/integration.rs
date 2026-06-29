@@ -32,7 +32,7 @@ fn spin_up() -> (Gatekeeper, String, Connection) {
     // shared handle; `store_handle` clones it to reach the same database.
     let db = Connection::open_in_memory().expect("open shared db");
     let config = GatekeeperConfig {
-        loopback_origin: LOOPBACK_ORIGIN.to_string(),
+        loopback_origin: Url::parse(LOOPBACK_ORIGIN).expect("LOOPBACK_ORIGIN is a valid URL"),
         granted_scopes: gatekeeper_rust::default_local_granted_scopes(),
     };
     let (token_tx, token_rx) = watch::channel::<Option<String>>(None);

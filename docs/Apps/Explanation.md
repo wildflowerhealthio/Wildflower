@@ -7,10 +7,12 @@ PHI can and can't go when they launch one.
 
 An app is a thing the user launches from the homescreen. The interesting
 question about any app is **where it runs and whether the patient's data can
-leave the device when it does**. The old `internal`/`external` split answered a
-storage question (which table is the row in?), not that one — so it leaked a
-cross-table id-collision hack into the launch/list code and told the user
-nothing. The taxonomy below replaces it with two orthogonal axes.
+leave the device when it does**. Two orthogonal axes answer it: **provenance**
+(where the app is served from) and a set of **capability flags** (what it may do
+with PHI). Provenance fixes how a launch target resolves; the flags carry the
+privacy verdict. The storage layout follows from the taxonomy — a curated parent
+registry with one globally-unique `id` per app, plus a per-kind child table —
+rather than driving it.
 
 ## Group A — Provenance (one per app, fixed identity)
 
@@ -62,7 +64,11 @@ tables joined by `id`:
 
 - `cloud_apps` — `url` (the **only** place a launch URL is stored) and
   `requires_tunnel`.
-- `self_hosted_apps` — the stable dedicated `port`.
+- `self_hosted_apps` — the stable dedicated loopback `port`, the on-disk
+  `content_folder` the files are served from, and the public `subdomain` label
+  (`<subdomain>.<public_host>`). Folder and subdomain are explicit columns, not
+  derived from the `id`, so an app's identity, its served files, and its public
+  hostname are independent.
 - System apps have no child row.
 
 Read shapes (`GET /apps`, launch) **carry no `url`**: the server resolves the
@@ -77,8 +83,10 @@ cross-slice FK would couple the apps migrations to gatekeeper's schema and impos
 a migration ordering across slice boundaries, violating the slice layering. So
 the column is a plain reference: the apps slice derives `smart` from its presence
 alone and never reads the `clients` table. The invariant — every seeded
-`client_id` corresponds to a seeded gatekeeper client — is held by a cross-slice
-test, not by the database.
+`client_id` corresponds to a seeded gatekeeper client — is held by keeping the
+two SQL seed migrations in lockstep (the apps registry's `client_id`s in apps
+migration `004`, the gatekeeper sample clients in gatekeeper migration `008`),
+each guarded by its own seed test, rather than by the database.
 
 ## Auth posture and the remote trust boundary
 

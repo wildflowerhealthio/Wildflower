@@ -180,10 +180,14 @@ pub fn setup_gatekeeper(
         config.granted_scopes
     );
     let store = seeding::open_and_seed_store(conn, &config.granted_scopes)?;
+    // The owner token's `aud` is the bare loopback origin (no trailing slash) —
+    // the same string `served_origin_for` returns for a loopback request, so the
+    // mint and the `require_auth` validation agree on the audience.
+    let loopback_origin = config.loopback_origin.origin().ascii_serialization();
     let host_owner_token = seeding::mint_host_owner_token(
         &store,
         shared_structures_rust::CANONICAL_ISSUER,
-        &config.loopback_origin,
+        &loopback_origin,
         HOST_OWNER_TOKEN_TTL,
         &config.granted_scopes,
     )

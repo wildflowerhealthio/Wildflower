@@ -25,10 +25,10 @@
 //!    write-side URL validator).
 //!  - [`db`] — the SQLite store ([`db::AppsStore`], serving the parent registry
 //!    plus both child tables) built on the shared `persistence-rust` primitives.
-//!  - [`http`] — the single `/apps` router. `GET /apps` lists the registry in
-//!    display order; `POST /apps/{id}` dispatches the launch on the row's
-//!    provenance; the cloud-admin routes mutate cloud apps;
-//!    `PATCH /apps/{id}/placement` reorders / enables any app.
+//!  - [`http`] — the slice's routers. `GET /apps` lists the registry in display
+//!    order; `POST /apps/{id}` dispatches the launch on the row's provenance; the
+//!    cloud-admin routes mutate a cloud app's content; `PUT /home-screen`
+//!    atomically reorders / enables any app.
 //!
 //! ## Launch / tunnel seam
 //!
@@ -71,7 +71,7 @@ pub use shared_structures_rust::OnDeviceWebviewHandle;
 /// app (the table is static — seeded by migration, read-only at runtime).
 pub struct Apps {
     /// The owner-gated routes: `GET /apps`, `POST /apps`,
-    /// `PATCH`/`DELETE /apps/{id}`, `PATCH /apps/{id}/placement`. The host wraps
+    /// `PATCH`/`DELETE /apps/{id}`, `PUT /home-screen`. The host wraps
     /// this with its bearer gate.
     pub gated_router: Router,
     /// The launch route `POST /apps/{id}`, mounted ungated at the router level

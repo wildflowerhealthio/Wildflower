@@ -5,7 +5,7 @@ import { Checkbox, Dialog } from 'react-tundraish'
 import {
   useAppsAdminCreateMutation,
   useAppsAdminDeleteMutation,
-  useAppsAdminUpdateMutation,
+  useReplaceHomeScreenMutation,
   type AppEntry,
 } from '../queries.ts'
 import editorStyles from '../styles/apps-editor.module.css'
@@ -20,15 +20,15 @@ const formatError = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
 
 /**
- * Modal editor for the apps list. Only **cloud** apps are editable here —
- * the cloud-admin `Update`/`Delete` surface `409 AppNotEditable` for system
- * and self-hosted apps, so those rows render read-only (no enable-toggle, no
- * Remove). Placement (reorder / enable for *any* provenance) lives on the
- * homescreen via drag + the placement endpoint, not in this content editor.
- * Cloud apps can be toggled on/off or removed, and new (cloud) apps can be
- * added. Writes are issued through the slice's TanStack Query mutations
- * (`useAppsAdmin{Update,Create,Delete}Mutation`), which invalidate the cached
- * apps list on success — the parent screen re-renders with the new data
+ * Modal editor for the apps list. Only **cloud** apps expose controls here —
+ * the cloud-admin `Delete` surface `409 AppNotEditable`s system and self-hosted
+ * apps, so those rows render read-only (no enable-toggle, no Remove). The
+ * enable-toggle persists through `PUT /home-screen` (the single writer of order +
+ * `enabled`, all provenances) by re-PUTting the whole list with the one flag
+ * flipped; reordering itself lives on the homescreen drag. New (cloud) apps are
+ * created and cloud apps removed through the cloud-admin mutations. Writes are
+ * issued through the slice's TanStack Query mutations, which invalidate the
+ * cached apps list on success — the parent screen re-renders with the new data
  * without any prop drilling.
  *
  * Every input lives inside a `<fieldset disabled={busy}>` so the entire
@@ -44,7 +44,7 @@ const formatError = (error: unknown): string =>
  * clean slate.
  */
 const AppsEditor = ({ open, apps, onClose }: AppsEditorProps): JSX.Element => {
-  const updateMutation = useAppsAdminUpdateMutation()
+  const homeScreenMutation = useReplaceHomeScreenMutation()
   const createMutation = useAppsAdminCreateMutation()
   const deleteMutation = useAppsAdminDeleteMutation()
   const [newName, setNewName] = useState('')
@@ -60,28 +60,35 @@ const AppsEditor = ({ open, apps, onClose }: AppsEditorProps): JSX.Element => {
   // in a sync effect is safe — no `Effect.runFork` needed. The mutation
   // `reset` identities are stable across renders, so listing them keeps
   // the exhaustive-deps lint satisfied without re-running on every render.
-  const resetUpdate = updateMutation.reset
+  const resetHomeScreen = homeScreenMutation.reset
   const resetCreate = createMutation.reset
   const resetDelete = deleteMutation.reset
   useEffect(() => {
     if (!open) return
-    resetUpdate()
+    resetHomeScreen()
     resetCreate()
     resetDelete()
     setNewName('')
     setNewUrl('')
     setNewRequiresTunnel(false)
-  }, [open, resetUpdate, resetCreate, resetDelete])
+  }, [open, resetHomeScreen, resetCreate, resetDelete])
 
   // Any in-flight write locks the whole fieldset. Aggregating across the
   // three mutations keeps the "one write at a time" guarantee the
   // original imperative flow had.
-  const busy = updateMutation.isPending || createMutation.isPending || deleteMutation.isPending
-  const submitError = updateMutation.error ?? createMutation.error ?? deleteMutation.error
+  const busy = homeScreenMutation.isPending || createMutation.isPending || deleteMutation.isPending
+  const submitError = homeScreenMutation.error ?? createMutation.error ?? deleteMutation.error
   const errorMessage = submitError === null ? null : formatError(submitError)
 
+  // Enabled is homescreen-curation state: persist it by re-PUTting the whole
+  // ordered list with this app's flag flipped (the single writer of `enabled`).
   const toggle = (app: AppEntry): void => {
-    updateMutation.mutate({ id: app.id, payload: { enabled: !app.enabled } })
+    homeScreenMutation.mutate(
+      apps.map((entry) => ({
+        id: entry.id,
+        enabled: entry.id === app.id ? !entry.enabled : entry.enabled,
+      }))
+    )
   }
 
   const remove = (app: AppEntry): void => {

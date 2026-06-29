@@ -70,6 +70,13 @@ fn patch(uri: &str, body: serde_json::Value) -> Request<Body> {
         .expect("build")
 }
 
+fn put(uri: &str, body: serde_json::Value) -> Request<Body> {
+    Request::put(uri)
+        .header("content-type", "application/json")
+        .body(Body::from(body.to_string()))
+        .expect("build")
+}
+
 fn delete(uri: &str) -> Request<Body> {
     Request::delete(uri).body(Body::empty()).expect("build")
 }
@@ -187,7 +194,8 @@ async fn cloud_app_round_trip() {
     );
 }
 
-/// A seeded cloud app is fully editable; the edit persists into the public list.
+/// A seeded cloud app's content (name / url) is editable; the edit persists into
+/// the public list. (`enabled` is not a content field — that's `PUT /home-screen`.)
 #[tokio::test]
 async fn seeded_cloud_app_is_fully_editable() {
     let apps = spin_up();
@@ -199,7 +207,6 @@ async fn seeded_cloud_app_is_fully_editable() {
             serde_json::json!({
                 "name": "Renamed Chart",
                 "url": "https://example.com/replacement",
-                "enabled": false,
             }),
         ))
         .await
@@ -208,7 +215,6 @@ async fn seeded_cloud_app_is_fully_editable() {
     let body = body_json(patch_res.into_body()).await;
     assert_eq!(body["name"], "Renamed Chart");
     assert_eq!(body["url"], "https://example.com/replacement");
-    assert_eq!(body["enabled"], false);
 
     let list_res = router.clone().oneshot(get("/apps")).await.expect("oneshot");
     let list = body_json(list_res.into_body()).await;
@@ -267,34 +273,46 @@ async fn self_hosted_app_launches_to_its_loopback_origin() {
     );
 }
 
-/// `PATCH /apps/{id}/placement` reorders / disables any provenance and persists.
+/// `PUT /home-screen` atomically reorders + disables any provenance and persists
+/// — the positions come back a dense `0..n` permutation (no ties).
 #[tokio::test]
-async fn placement_reorders_a_system_app() {
+async fn home_screen_reorders_and_disables_a_system_app() {
     let apps = spin_up();
     let router = apps.combined_router();
+    // Move api-docs to the front and disable it; keep the rest in order.
+    let body = serde_json::json!([
+        { "id": "api-docs", "enabled": false },
+        { "id": "patient-browser", "enabled": true },
+        { "id": "api-view", "enabled": true },
+        { "id": "growth-chart", "enabled": true },
+        { "id": "medication-viewer", "enabled": true },
+        { "id": "precise-hbr", "enabled": true },
+    ]);
     let res = router
         .clone()
-        .oneshot(patch(
-            "/apps/api-docs/placement",
-            serde_json::json!({ "enabled": false, "position": 99 }),
-        ))
+        .oneshot(put("/home-screen", body))
         .await
         .expect("oneshot");
     assert_eq!(res.status(), StatusCode::OK);
-    let body = body_json(res.into_body()).await;
-    assert_eq!(body["enabled"], false);
-    assert_eq!(body["position"], 99);
 
-    // The list now reflects the disabled flag.
+    // The list now reflects the new order and the disabled flag.
     let list_res = router.clone().oneshot(get("/apps")).await.expect("oneshot");
     let list = body_json(list_res.into_body()).await;
-    let row = list
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|v| v["id"] == "api-docs")
-        .expect("api-docs in list");
-    assert_eq!(row["enabled"], false);
+    let arr = list.as_array().unwrap();
+    let ids: Vec<&str> = arr.iter().map(|v| v["id"].as_str().unwrap()).collect();
+    assert_eq!(
+        ids,
+        vec![
+            "api-docs",
+            "patient-browser",
+            "api-view",
+            "growth-chart",
+            "medication-viewer",
+            "precise-hbr",
+        ],
+    );
+    let api_docs = arr.iter().find(|v| v["id"] == "api-docs").unwrap();
+    assert_eq!(api_docs["enabled"], false);
 }
 
 /// A deleted seeded cloud app stays deleted (migration runner seeds once).

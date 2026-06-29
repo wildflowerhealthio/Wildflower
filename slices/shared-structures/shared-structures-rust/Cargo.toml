@@ -45,6 +45,11 @@ subdomain-url = []
 # (`wildflower-tauri`, `browser-sniffer-tauri-rust`, …) needs the
 # trait available unconditionally.
 serde = { workspace = true }
+# `url` is non-optional: the always-on `ServerRuntimeConfig::loopback_origin`
+# returns a `Url` — the single typed source the host threads into every slice's
+# config (apps / gatekeeper / emr / tunnel), so the loopback origin is parsed
+# once here rather than rebuilt from a string downstream.
+url = { version = "2" }
 utoipa = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 # Only for the `tunnel-service` contract (watch channel + async trait method).

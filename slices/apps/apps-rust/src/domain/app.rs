@@ -14,10 +14,13 @@ use utoipa::ToSchema;
 
 use super::Provenance;
 
-/// One parent registry row. The kind-specific launch fields live in the child
-/// tables / the compiled-in source, keyed by `id`. Also the
-/// `PATCH /apps/{id}/placement` response shape (camelCase on the wire), so it
-/// derives `Serialize` / `ToSchema`.
+/// One parent registry row, read by [`AppsStore::find_app`](crate::db::AppsStore)
+/// for launch dispatch (provenance lookup) and the cloud-admin existence /
+/// editability checks. The kind-specific launch fields live in the child tables /
+/// the compiled-in source, keyed by `id`. Not itself a wire response shape —
+/// `GET /apps` and `PUT /home-screen` speak [`AppListEntry`](super::AppListEntry)
+/// — but it keeps the camelCase serde rename so a stored row round-trips cleanly
+/// if ever serialized.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct App {

@@ -1,7 +1,7 @@
 //! [`SelfHostedAppsService`] — the apps-slice orchestrator for locally-served
 //! ("self-hosted") apps: the ones served from the user's device on a dedicated
-//! loopback port and reachable remotely at `<id>.<public_host>` through the
-//! tunnel.
+//! loopback port and reachable remotely at `<subdomain>.<public_host>` through
+//! the tunnel.
 //!
 //! It owns the per-app loopback listeners (via
 //! [`StaticHostsService`](shared_structures_server_rust::StaticHostsService)) and
@@ -34,16 +34,17 @@ use crate::domain::SelfHostedApp;
 pub struct SelfHostedAppsService {
     static_hosts: StaticHostsService,
     /// Shared with the host's reverse proxy — a registration here routes
-    /// forwarded `<id>.<public_host>` traffic to the app's loopback port.
+    /// forwarded `<subdomain>.<public_host>` traffic to the app's loopback port.
     proxy_table: ProxyTable,
-    /// The directory whose `<id>/` subdirectories hold each app's served files.
+    /// The directory whose per-app `content_folder` subdirectories hold each
+    /// app's served files.
     apps_dir: PathBuf,
 }
 
 impl SelfHostedAppsService {
     /// `loopback` is the hostname each app's listener binds on; `apps_dir` holds
-    /// the per-app `<id>/` file directories; `proxy_table` is shared with the
-    /// reverse proxy.
+    /// the per-app `content_folder` file directories; `proxy_table` is shared with
+    /// the reverse proxy.
     #[must_use]
     pub fn new(loopback: LoopbackHostname, apps_dir: PathBuf, proxy_table: ProxyTable) -> Self {
         Self {
@@ -65,9 +66,11 @@ impl SelfHostedAppsService {
     ///
     /// [`ServerError::LockPoisoned`] if a shared lock was poisoned.
     pub async fn start(&self, app: &SelfHostedApp) -> Result<(), ServerError> {
-        let service =
-            self_hosted_apps_rust::setup_installed_app(&app.id, self.apps_dir.join(&app.id))
-                .layer(CorsLayer::very_permissive());
+        let service = self_hosted_apps_rust::setup_installed_app(
+            &app.id,
+            self.apps_dir.join(&app.content_folder),
+        )
+        .layer(CorsLayer::very_permissive());
         if let Err(error) = self
             .static_hosts
             .start(StaticHostJob {
@@ -90,7 +93,7 @@ impl SelfHostedAppsService {
                 ServerError::LockPoisoned { .. } => return Err(error),
             }
         }
-        self.proxy_table.register(app.id.clone(), app.port)?;
+        self.proxy_table.register(app.subdomain.clone(), app.port)?;
         Ok(())
     }
 
@@ -224,6 +227,8 @@ mod tests {
         let app = SelfHostedApp {
             id: "patient-browser".to_owned(),
             port,
+            content_folder: "patient-browser".to_owned(),
+            subdomain: "patient-browser".to_owned(),
         };
 
         service.start(&app).await.unwrap();

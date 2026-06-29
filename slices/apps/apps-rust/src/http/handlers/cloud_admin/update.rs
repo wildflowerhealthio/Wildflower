@@ -1,7 +1,10 @@
-//! `PATCH /apps/{id}` — partial update of a **cloud** app. Any subset of
-//! `enabled` / `name` / `subtitle` / `url` / `requiresTunnel` is honoured; a
-//! present `url` is re-parsed. Only cloud apps are editable here: a system /
-//! self-hosted id that exists returns `409 AppNotEditable`, an unknown id `404`.
+//! `PATCH /apps/{id}` — partial update of a **cloud** app's *content*. Any subset
+//! of `name` / `subtitle` / `url` / `requiresTunnel` is honoured; a present `url`
+//! is re-parsed. Only cloud apps are editable here: a system / self-hosted id that
+//! exists returns `409 AppNotEditable`, an unknown id `404`.
+//!
+//! `enabled` is **not** edited here — homescreen curation (order + enabled, any
+//! provenance) lives on `PUT /home-screen`, the single writer of those fields.
 
 use std::sync::Arc;
 
@@ -18,11 +21,11 @@ use crate::http::state::AppsState;
 
 /// PATCH body — all fields optional. Matches `UpdateAppBodySchema`. A
 /// `subtitle` of explicit `null` *or* the empty string `""` clears the
-/// subtitle; a missing key leaves it alone — see [`SubtitlePatch`].
+/// subtitle; a missing key leaves it alone — see [`SubtitlePatch`]. No `enabled`:
+/// that's homescreen curation, owned by `PUT /home-screen`.
 #[derive(Debug, Default, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct UpdateAppBody {
-    enabled: Option<bool>,
     name: Option<String>,
     url: Option<String>,
     requires_tunnel: Option<bool>,
@@ -120,9 +123,6 @@ pub(crate) async fn handle_update_app(
         None => None,
     };
 
-    if let Some(enabled) = body.enabled {
-        existing.enabled = enabled;
-    }
     if let Some(name) = body.name {
         existing.name = name;
     }

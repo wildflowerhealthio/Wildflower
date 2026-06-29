@@ -82,7 +82,11 @@ async fn run_server(
         .context("failed to purge scheduled database deletions")?;
 
     let loopback_host = runtime.loopback_authority();
-    let loopback_origin = runtime.loopback_origin();
+    // The typed loopback base URL is the single source threaded into every
+    // slice's config (apps / gatekeeper / emr / tunnel). `loopback_origin` is its
+    // bare origin string (no trailing slash) for the few sub-URLs built by hand.
+    let loopback_base_url = runtime.loopback_origin();
+    let loopback_origin = loopback_base_url.origin().ascii_serialization();
     let emr_config = EmrConfig {
         log_level: "debug".to_string(),
         db_file_path: runtime.app_data_dir.join(HEALTH_DATA_DB),
@@ -93,7 +97,7 @@ async fn run_server(
         jwks_url: Some(format!("{loopback_origin}/.well-known/jwks.json")),
     };
     let gatekeeper_config = GatekeeperConfig {
-        loopback_origin: loopback_origin.clone(),
+        loopback_origin: loopback_base_url.clone(),
         granted_scopes: LOCAL_GRANTED_SCOPES
             .split_whitespace()
             .map(str::to_owned)
@@ -190,7 +194,7 @@ async fn run_server(
     }
 
     let tunnel_config = tunnel_rust::TunnelConfig {
-        loopback_origin: loopback_origin.clone(),
+        loopback_origin: loopback_base_url.clone(),
         local_port: runtime.loopback_port,
         seed: tunnel_seed_from_build_env(),
     };
@@ -216,9 +220,7 @@ async fn run_server(
     // apps slice derives the launch origin and the self-hosted listeners'
     // hostname from `loopback_base_url`, so they can't drift.
     let apps_config = AppsConfig {
-        loopback_base_url: loopback_origin
-            .parse()
-            .context("loopback origin must be a valid base URL")?,
+        loopback_base_url: loopback_base_url.clone(),
     };
     // `TunnelControl` implements `TunnelService`, so it's handed straight in.
     let tunnel_service: Arc<dyn tunnel_rust::TunnelService> = Arc::new(tunnel.control.clone());

@@ -8,11 +8,11 @@ import {
   AppListEntrySchema,
   AppNotEditableSchema,
   AppNotFoundSchema,
-  AppSchema,
   AppUrlSchema,
   CreateAppBodySchema,
+  HomeScreenSchema,
   InvalidFieldSchema,
-  PlacementBodySchema,
+  InvalidHomeScreenSchema,
   ProvenanceSchema,
   UpdateAppBodySchema,
 } from './schemas.ts'
@@ -156,8 +156,8 @@ describe('UpdateAppBodySchema', () => {
   })
 
   it('accepts partial field bodies', () => {
-    expectRightToEqual(Schema.decodeUnknownEither(UpdateAppBodySchema)({ enabled: false }), {
-      enabled: false,
+    expectRightToEqual(Schema.decodeUnknownEither(UpdateAppBodySchema)({ requiresTunnel: true }), {
+      requiresTunnel: true,
     })
   })
 
@@ -292,48 +292,45 @@ describe('AppListEntrySchema', () => {
   })
 })
 
-describe('AppSchema (placement response)', () => {
-  it('decodes a registry row with an integer position', () => {
-    const row = {
-      id: 'api-docs',
-      name: 'API Docs',
-      enabled: true,
-      position: 2,
-      provenance: 'system' as const,
-      localOnly: true,
-    }
-    expectRightToEqual(Schema.decodeUnknownEither(AppSchema)(row), row)
+describe('HomeScreenSchema', () => {
+  it('decodes an ordered list of { id, enabled } entries', () => {
+    const body = [
+      { id: 'patient-browser', enabled: true },
+      { id: 'api-view', enabled: false },
+    ]
+    expectRightToEqual(Schema.decodeUnknownEither(HomeScreenSchema)(body), body)
   })
 
-  it('rejects a non-integer position', () => {
+  it('accepts an empty array', () => {
+    expectRightToEqual(Schema.decodeUnknownEither(HomeScreenSchema)([]), [])
+  })
+
+  it('rejects an entry missing enabled or with a non-boolean enabled', () => {
     expectLeftToEqual(
-      Schema.decodeUnknownEither(AppSchema)({
-        id: 'x',
-        name: 'X',
-        enabled: true,
-        position: 1.5,
-        provenance: 'cloud',
-        localOnly: false,
-      }),
+      Schema.decodeUnknownEither(HomeScreenSchema)([{ id: 'x' }]),
+      expect.objectContaining({ _tag: 'ParseError' })
+    )
+    expectLeftToEqual(
+      Schema.decodeUnknownEither(HomeScreenSchema)([{ id: 'x', enabled: 'yes' }]),
       expect.objectContaining({ _tag: 'ParseError' })
     )
   })
 })
 
-describe('PlacementBodySchema', () => {
-  it('accepts an empty body and partial bodies', () => {
-    expectRightToEqual(Schema.decodeUnknownEither(PlacementBodySchema)({}), {})
-    expectRightToEqual(Schema.decodeUnknownEither(PlacementBodySchema)({ position: 3 }), {
-      position: 3,
-    })
-    expectRightToEqual(Schema.decodeUnknownEither(PlacementBodySchema)({ enabled: false }), {
-      enabled: false,
-    })
+describe('InvalidHomeScreenSchema', () => {
+  it('accepts the declared 400 payload', () => {
+    expectRightToEqual(
+      Schema.decodeUnknownEither(InvalidHomeScreenSchema)({
+        error: 'InvalidHomeScreen',
+        message: 'must list every app exactly once',
+      }),
+      { error: 'InvalidHomeScreen', message: 'must list every app exactly once' }
+    )
   })
 
-  it('rejects a non-integer position', () => {
+  it('rejects any other error literal', () => {
     expectLeftToEqual(
-      Schema.decodeUnknownEither(PlacementBodySchema)({ position: 2.5 }),
+      Schema.decodeUnknownEither(InvalidHomeScreenSchema)({ error: 'AppNotFound', message: 'x' }),
       expect.objectContaining({ _tag: 'ParseError' })
     )
   })

@@ -3,12 +3,13 @@ import { Schema } from 'effect'
 import {
   AppEntrySchema,
   AppIdPathSchema,
+  AppListSchema,
   AppNotEditableSchema,
   AppNotFoundSchema,
-  AppSchema,
   CreateAppBodySchema,
+  HomeScreenSchema,
   InvalidFieldSchema,
-  PlacementBodySchema,
+  InvalidHomeScreenSchema,
   UpdateAppBodySchema,
 } from './schemas.ts'
 
@@ -18,10 +19,10 @@ import {
  * applies `RequireAuthMiddleware` when adding `AppsAdminApi` to its
  * root `HttpApi`. Slice cores stay free of auth dependencies.
  *
- * Create / update / delete operate on **cloud** apps only: a system or
+ * Create / update / delete operate on **cloud** apps' content only: a system or
  * self-hosted app that exists returns `409 AppNotEditable`, an unknown id
- * `404`. A bad name/url is a `400 InvalidField`. `PATCH /apps/:id/placement`
- * is the exception — it reorders / enables **any** provenance (homescreen
+ * `404`. A bad name/url is a `400 InvalidField`. `PUT /home-screen` is the
+ * exception — it atomically reorders / enables **every** provenance (homescreen
  * curation), so it carries no editability gate.
  */
 const httpApiGroup = HttpApiGroup.make('apps-admin', { topLevel: false })
@@ -48,13 +49,14 @@ const httpApiGroup = HttpApiGroup.make('apps-admin', { topLevel: false })
       .addError(AppNotEditableSchema, { status: 409 })
   )
   .add(
-    // Reorder / enable any app (all provenances) — the registry-row placement,
-    // distinct from the cloud-only content edit above.
-    HttpApiEndpoint.patch('UpdatePlacement', '/apps/:id/placement')
-      .setPath(AppIdPathSchema)
-      .setPayload(PlacementBodySchema)
-      .addSuccess(AppSchema)
-      .addError(AppNotFoundSchema, { status: 404 })
+    // Atomically reorder + enable/disable every app (all provenances) — the full
+    // ordered homescreen, distinct from the cloud-only content edit above. The
+    // body must be an exact permutation of the registry (else `400`); the success
+    // is the catalogue in its new order.
+    HttpApiEndpoint.put('ReplaceHomeScreen', '/home-screen')
+      .setPayload(HomeScreenSchema)
+      .addSuccess(AppListSchema)
+      .addError(InvalidHomeScreenSchema, { status: 400 })
   )
 
 export { httpApiGroup }

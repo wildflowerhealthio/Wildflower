@@ -225,26 +225,18 @@
         }
       }
     },
-    "/apps/{id}/placement": {
-      "patch": {
-        "summary": "`PATCH /apps/{id}/placement` — reorder / enable any app. Owner-gated by the\nhost. `404` if the id doesn't exist.",
-        "operationId": "handle_update_placement",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "App id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
+    "/home-screen": {
+      "put": {
+        "summary": "`PUT /home-screen` — atomically reorder + enable/disable every app. Owner-gated\nby the host. The body must list **every** registry app exactly once (its order\nis the new display order); a missing / duplicated / unknown id is\n`400 InvalidHomeScreen`. Returns the resulting catalogue in its new order.",
+        "operationId": "handle_replace_home_screen",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/PlacementBody"
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/HomeScreenEntry"
+                }
               }
             }
           },
@@ -252,21 +244,24 @@
         },
         "responses": {
           "200": {
-            "description": "The updated registry row",
+            "description": "The whole catalogue in its new order",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/App"
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AppListEntry"
+                  }
                 }
               }
             }
           },
-          "404": {
-            "description": "No app has this id",
+          "400": {
+            "description": "The body wasn't an exact permutation of the registry",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AppNotFoundBody"
+                  "$ref": "#/components/schemas/InvalidHomeScreenBody"
                 }
               }
             }
@@ -277,57 +272,6 @@
   },
   "components": {
     "schemas": {
-      "App": {
-        "type": "object",
-        "description": "One parent registry row. The kind-specific launch fields live in the child\ntables / the compiled-in source, keyed by `id`. Also the\n`PATCH /apps/{id}/placement` response shape (camelCase on the wire), so it\nderives `Serialize` / `ToSchema`.",
-        "required": [
-          "id",
-          "name",
-          "enabled",
-          "position",
-          "provenance",
-          "localOnly"
-        ],
-        "properties": {
-          "id": {
-            "type": "string",
-            "description": "Stable id, globally unique across all kinds (the parent primary key, so\nthere is no cross-table id collision to resolve)."
-          },
-          "name": {
-            "type": "string"
-          },
-          "subtitle": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "`None` means \"no subtitle\"; the wire serializes it as an absent field."
-          },
-          "enabled": {
-            "type": "boolean"
-          },
-          "position": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Display order for `GET /apps` (`ORDER BY position`) and drag-to-reorder."
-          },
-          "provenance": {
-            "$ref": "#/components/schemas/Provenance",
-            "description": "How this app's launch target resolves; see [`Provenance`]."
-          },
-          "localOnly": {
-            "type": "boolean",
-            "description": "The declared no-egress flag (a UI badge this pass)."
-          },
-          "clientId": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Soft reference to a gatekeeper `clients.client_id`; `None` for non-SMART\napps. Its presence is what [`Self::smart`] reports."
-          }
-        }
-      },
       "AppEntry": {
         "type": "object",
         "description": "One **cloud app** on the wire — the admin create/update DTO and the launch\nhandler's resolved shape.\n\nThe `url` is a template: `{origin}` is replaced with the served origin\nat launch time, `{launch}` with a fresh per-launch nonce. A SMART-on-FHIR\napp's URL might be\n`https://example/launch.html?iss={origin}/fhir-r4&launch={launch}`; a\nhand-rolled one might be `{origin}/some/path` or `https://other-host/x`.\nSee [`AppUrl`] for the accepted shapes.",
@@ -479,9 +423,41 @@
           }
         }
       },
+      "HomeScreenEntry": {
+        "type": "object",
+        "description": "One entry in the `PUT /home-screen` body: an app id and its desired `enabled`\nflag. The entry's index in the array is its new display `position`. Matches\nthe TS `HomeScreenEntrySchema`.",
+        "required": [
+          "id",
+          "enabled"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        }
+      },
       "InvalidFieldBody": {
         "type": "object",
         "description": "Wire shape for a 400 carrying a discriminant + human-readable reason.\nReused for `InvalidUrl` (a bad app URL) and `InvalidName` (an empty name)\n— both are write-side field validations the client renders inline. The\n`error` discriminant lets a client tell the two apart rather than seeing a\nURL-error tag for a name problem.",
+        "required": [
+          "error",
+          "message"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "InvalidHomeScreenBody": {
+        "type": "object",
+        "description": "Wire shape for a 400 `InvalidHomeScreen` — the `PUT /home-screen` body wasn't\nan exact permutation of the registry (a missing, duplicated, or unknown id),\nso the atomic reorder/enable can't be applied as a well-ordered whole. Matches\nthe TS `InvalidHomeScreenSchema`.",
         "required": [
           "error",
           "message"
@@ -511,25 +487,6 @@
           }
         }
       },
-      "PlacementBody": {
-        "type": "object",
-        "description": "PATCH body — both fields optional. `enabled` toggles the homescreen\nvisibility; `position` sets the display order. An empty body is a no-op that\nstill returns the current row (so the client can re-read).",
-        "properties": {
-          "enabled": {
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
-          "position": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64"
-          }
-        }
-      },
       "Provenance": {
         "type": "string",
         "description": "How an app's launch target resolves. Serialized — wire + SQLite — as its\nkebab string (`\"system\"` / `\"self-hosted\"` / `\"cloud\"`).",
@@ -541,14 +498,8 @@
       },
       "UpdateAppBody": {
         "type": "object",
-        "description": "PATCH body — all fields optional. Matches `UpdateAppBodySchema`. A\n`subtitle` of explicit `null` *or* the empty string `\"\"` clears the\nsubtitle; a missing key leaves it alone — see [`SubtitlePatch`].",
+        "description": "PATCH body — all fields optional. Matches `UpdateAppBodySchema`. A\n`subtitle` of explicit `null` *or* the empty string `\"\"` clears the\nsubtitle; a missing key leaves it alone — see [`SubtitlePatch`]. No `enabled`:\nthat's homescreen curation, owned by `PUT /home-screen`.",
         "properties": {
-          "enabled": {
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
           "name": {
             "type": [
               "string",

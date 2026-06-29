@@ -64,7 +64,11 @@ pub fn setup_fhir_r4(runtime: &ServerRuntimeConfig, config: &EmrConfig) -> anyho
         .init_schema()
         .context("failed to init sqlite schema")?;
 
-    let loopback_origin = runtime.loopback_origin();
+    let loopback_base_url = runtime.loopback_origin();
+    // The FHIR base URL is `<bare origin><FHIR_R4_PATH>` (e.g.
+    // `http://127.0.0.1:8080/fhir-r4`): take the origin without the `Url`'s
+    // trailing slash so the path isn't doubled.
+    let loopback_origin = loopback_base_url.origin().ascii_serialization();
 
     let server_config = ServerConfig {
         base_url: format!("{loopback_origin}{FHIR_R4_PATH}"),
@@ -94,7 +98,9 @@ pub fn setup_fhir_r4(runtime: &ServerRuntimeConfig, config: &EmrConfig) -> anyho
             "/.well-known/smart-configuration",
             get(smart_configuration_handler),
         )
-        .with_state(SmartConfigState { loopback_origin })
+        .with_state(SmartConfigState {
+            loopback_origin: loopback_base_url,
+        })
         .fallback_service(hfs_router);
 
     Ok(Router::new().nest(FHIR_R4_PATH, fhir_with_override))

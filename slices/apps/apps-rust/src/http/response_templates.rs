@@ -77,6 +77,16 @@ pub(crate) struct LaunchUnavailableBody {
     pub(crate) reason: String,
 }
 
+/// Wire shape for a 400 `InvalidHomeScreen` — the `PUT /home-screen` body wasn't
+/// an exact permutation of the registry (a missing, duplicated, or unknown id),
+/// so the atomic reorder/enable can't be applied as a well-ordered whole. Matches
+/// the TS `InvalidHomeScreenSchema`.
+#[derive(Debug, Serialize, ToSchema)]
+pub(crate) struct InvalidHomeScreenBody {
+    pub(crate) error: &'static str,
+    pub(crate) message: String,
+}
+
 /// Error half of a `Result`-returning handler. Each variant renders one of
 /// the canned shapes through `IntoResponse`, so a fallible step bails with
 /// `?` instead of a `match` + `return` at every call site.
@@ -98,6 +108,9 @@ pub(crate) enum HandlerError {
     /// 503 — the launch can't resolve a reachable target (forwarded launch with
     /// no public host, or a `requires_tunnel` app while the tunnel is down).
     Unavailable { reason: String },
+    /// 400 — the `PUT /home-screen` body wasn't an exact permutation of the
+    /// registry (missing / duplicated / unknown id).
+    InvalidHomeScreen { message: String },
 }
 
 impl HandlerError {
@@ -148,6 +161,14 @@ impl IntoResponse for HandlerError {
                 Json(LaunchUnavailableBody {
                     error: "LaunchUnavailable",
                     reason,
+                }),
+            )
+                .into_response(),
+            HandlerError::InvalidHomeScreen { message } => (
+                StatusCode::BAD_REQUEST,
+                Json(InvalidHomeScreenBody {
+                    error: "InvalidHomeScreen",
+                    message,
                 }),
             )
                 .into_response(),

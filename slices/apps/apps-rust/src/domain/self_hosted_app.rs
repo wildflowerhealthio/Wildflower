@@ -1,7 +1,9 @@
 //! `SelfHostedApp` — the `self_hosted_apps` child row: a locally-served app's
-//! dedicated loopback `port`. The catalogue fields (name / subtitle / enabled)
-//! live on the parent [`App`](super::App) registry row; this child carries only
-//! what the launch handler needs to render the loopback / subdomain target.
+//! dedicated loopback `port`, its on-disk `content_folder`, and its public
+//! `subdomain` label. The catalogue fields (name / subtitle / enabled) live on
+//! the parent [`App`](super::App) registry row; this child carries only what the
+//! host needs to serve the files and what the launch handler needs to render the
+//! loopback / subdomain target.
 //!
 //! Not editable through the cloud-admin surface — the host binds the listener
 //! that serves the files, and the migration is the only writer. The launch URL
@@ -12,9 +14,9 @@
 /// struct.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SelfHostedApp {
-    /// Stable id — also the on-disk subdirectory name under the host's
-    /// `installed-apps/` dir (e.g. `patient-browser`). Matches the parent
-    /// registry row's id.
+    /// Stable id, matching the parent registry row's id. Identity only — the
+    /// served folder and the public subdomain are their own columns, so nothing
+    /// assumes they equal the id.
     pub id: String,
     /// The loopback TCP port the host binds this app on. Combined with the
     /// host-supplied loopback hostname at read time to produce the
@@ -22,6 +24,14 @@ pub struct SelfHostedApp {
     /// for the binding; the column makes the port stable across reinstalls (a
     /// SMART-on-FHIR origin-stability property).
     pub port: u16,
+    /// The on-disk subdirectory (under the host's `installed-apps/` dir) whose
+    /// files this app serves, e.g. `patient-browser`. Explicit rather than
+    /// derived from `id`, so the content location is decoupled from identity.
+    pub content_folder: String,
+    /// The public subdomain label this app is reachable at remotely, rendered as
+    /// `https://{subdomain}.{public_host}/` by [`Self::subdomain_url`] and used as
+    /// the reverse-proxy routing key. Explicit rather than derived from `id`.
+    pub subdomain: String,
 }
 
 impl SelfHostedApp {
@@ -33,14 +43,15 @@ impl SelfHostedApp {
         format!("http://{host}:{port}/", host = host, port = self.port)
     }
 
-    /// Render the public subdomain launch target `https://{id}.{public_host}/` —
-    /// the URL a forwarded (remote) caller can actually reach. Delegates to the
-    /// shared [`shared_structures_rust::subdomain_host::subdomain_url`] so the
-    /// host's subdomain reverse proxy (which splits inbound forwarded hosts via
-    /// the same module's `try_split_subdomain`) and this redirect can't drift on
-    /// the `<id>.<public_host>` shape.
+    /// Render the public subdomain launch target
+    /// `https://{subdomain}.{public_host}/` — the URL a forwarded (remote) caller
+    /// can actually reach. Delegates to the shared
+    /// [`shared_structures_rust::subdomain_host::subdomain_url`] so the host's
+    /// subdomain reverse proxy (which splits inbound forwarded hosts via the same
+    /// module's `try_split_subdomain`) and this redirect can't drift on the
+    /// `<subdomain>.<public_host>` shape.
     #[must_use]
     pub fn subdomain_url(&self, public_host: &str) -> String {
-        shared_structures_rust::subdomain_host::subdomain_url(&self.id, public_host)
+        shared_structures_rust::subdomain_host::subdomain_url(&self.subdomain, public_host)
     }
 }

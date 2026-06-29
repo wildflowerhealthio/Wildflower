@@ -24,7 +24,10 @@ pub async fn require_owner_auth(
     // for a direct hit, the public origin when forwarded by the tunnel — so a
     // token's `iss`/`aud` are checked against the same surface it was minted
     // for. `loopback_origin` is the fallback for un-forwarded requests.
-    let origin = served_origin_for(&headers, &state.loopback_origin);
+    let origin = served_origin_for(
+        &headers,
+        &state.loopback_origin.origin().ascii_serialization(),
+    );
     if let Err(e) = verify_owner_token(&state, &origin, &token) {
         return response_templates::verify_error_response("verify_owner_token failed", e);
     }

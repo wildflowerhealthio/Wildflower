@@ -8,6 +8,9 @@ publish.workspace = true
 anyhow.workspace = true
 axum.workspace = true
 serde.workspace = true
+# The loopback origin flows in as a typed `Url` (from `ServerRuntimeConfig`); the
+# discovery handler derives its bare origin string from it.
+url = { version = "2" }
 # HFS (HeliosSoftware/hfs) crates pinned to 0.2.0. emr-rust embeds:
 #   helios-rest        — Axum router + handlers serving the FHIR REST surface
 helios-rest = { version = "=0.2.0", default-features = false, features = ["R4", "sqlite"] }

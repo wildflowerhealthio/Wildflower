@@ -25,10 +25,11 @@ use shared_structures_rust::served_origin::served_origin_for;
 use shared_structures_rust::CANONICAL_ISSUER;
 
 /// State threaded to the discovery handler so it can fall back to the
-/// loopback origin when a request arrives without forwarding headers.
+/// loopback origin when a request arrives without forwarding headers. Held as a
+/// typed [`Url`](url::Url); the handler derives the bare origin string from it.
 #[derive(Clone)]
 pub(crate) struct SmartConfigState {
-    pub loopback_origin: String,
+    pub loopback_origin: url::Url,
 }
 
 #[derive(Debug, Serialize)]
@@ -106,7 +107,10 @@ pub(crate) async fn smart_configuration_handler(
     State(state): State<SmartConfigState>,
     headers: HeaderMap,
 ) -> Json<SmartConfiguration> {
-    let origin = served_origin_for(&headers, &state.loopback_origin);
+    let origin = served_origin_for(
+        &headers,
+        &state.loopback_origin.origin().ascii_serialization(),
+    );
     Json(build_smart_configuration(&origin))
 }
 

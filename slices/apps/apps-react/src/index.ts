@@ -7,9 +7,9 @@ export {
   useAppsAdminDeleteMutation,
   useAppsAdminUpdateMutation,
   useAppsListQuery,
-  useAppsPlacementMutation,
+  useReplaceHomeScreenMutation,
   type AppEntry,
   type CreateAppPayload,
-  type PlacementPayload,
+  type HomeScreenPayload,
   type UpdateAppPayload,
 } from './queries.ts'

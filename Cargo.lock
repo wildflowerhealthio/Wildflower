@@ -2110,6 +2110,7 @@ dependencies = [
  "serde",
  "shared-structures-rust",
  "tokio",
+ "url",
 ]
 
 [[package]]
@@ -6691,6 +6692,7 @@ dependencies = [
  "tokio",
  "tower",
  "tracing",
+ "url",
  "utoipa",
 ]
 
@@ -8060,6 +8062,7 @@ dependencies = [
  "toml 0.9.5",
  "tower",
  "tracing",
+ "url",
  "utoipa",
  "utoipa-axum",
 ]

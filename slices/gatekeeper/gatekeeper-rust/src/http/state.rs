@@ -10,14 +10,14 @@ use crate::db::GatekeeperStore;
 #[derive(Clone)]
 pub struct AppState {
     pub(crate) store: GatekeeperStore,
-    /// The HTTP-only loopback origin (e.g. `http://127.0.0.1:8080`), pinned
+    /// The HTTP-only loopback origin (e.g. `http://127.0.0.1:8080/`), pinned
     /// from [`GatekeeperConfig`](crate::GatekeeperConfig) at
     /// [`crate::setup_gatekeeper`]. This is *only* the fallback that
     /// [`served_origin_for`](crate::http::served_origin_for) returns for a
     /// loopback request — handlers derive the per-request `iss`/`aud` from
-    /// `served_origin_for(&headers, &state.loopback_origin)`, never from this
-    /// value directly.
-    pub(crate) loopback_origin: String,
+    /// `served_origin_for(&headers, &state.loopback_origin.origin().ascii_serialization())`,
+    /// never from this value directly.
+    pub(crate) loopback_origin: url::Url,
     /// Watch sender that publishes the `user_code` of the
     /// currently-active pending device-code consent request — the head
     /// the host webview surfaces in its non-dismissable popup. Handlers

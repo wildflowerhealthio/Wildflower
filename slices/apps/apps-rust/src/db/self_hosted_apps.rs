@@ -4,9 +4,11 @@
 //! because the `sql_row!`-generated `ALL_COLS` would otherwise collide with the
 //! parent `apps` table's in `apps_store.rs`. See [`crate::db`].
 //!
-//! The child carries only `id` + `port` — the catalogue fields (name, subtitle,
-//! enabled) live on the parent registry row. The host reads this to discover
-//! which loopback listeners to bind; the launch handler reads it for the port.
+//! The child carries `id`, the loopback `port`, the on-disk `content_folder`, and
+//! the public `subdomain` label — the catalogue fields (name, subtitle, enabled)
+//! live on the parent registry row. The host reads this to discover which loopback
+//! listeners to bind (and from which folder), and the proxy key (`subdomain`); the
+//! launch handler reads it for the port and subdomain.
 
 use persistence_rust::{sql_row, DbResult};
 use rusqlite::{params, OptionalExtension};
@@ -50,15 +52,20 @@ impl AppsStore {
 
 // Field names match the SQL column names; the macro derives `TryFrom<&Row>`
 // and `ALL_COLS` off the field list.
-sql_row!(SelfHostedApp { id, port });
+sql_row!(SelfHostedApp {
+    id,
+    port,
+    content_folder,
+    subdomain
+});
 
 #[cfg(test)]
 mod tests {
     use crate::db::AppsStore;
 
-    /// The store hands back the seeded child row with its port intact. The
-    /// catalogue fields live on the parent registry row (asserted in
-    /// `apps_store` tests).
+    /// The store hands back the seeded child row with its port, content folder,
+    /// and subdomain intact. The catalogue fields live on the parent registry row
+    /// (asserted in `apps_store` tests).
     #[test]
     fn list_returns_the_seeded_patient_browser_row() {
         let store = AppsStore::open_in_memory().unwrap();
@@ -68,6 +75,8 @@ mod tests {
             .find(|r| r.id == "patient-browser")
             .expect("patient-browser is seeded");
         assert_eq!(pb.port, 8081);
+        assert_eq!(pb.content_folder, "patient-browser");
+        assert_eq!(pb.subdomain, "patient-browser");
     }
 
     #[test]

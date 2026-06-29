@@ -37,10 +37,18 @@ CREATE TABLE cloud_apps (
     requires_tunnel INTEGER NOT NULL DEFAULT 0
 ) STRICT;
 
--- Self-hosted child: the stable dedicated loopback port the host serves it on.
+-- Self-hosted child: the stable dedicated loopback `port` the host serves it on,
+-- plus the on-disk `content_folder` (a subdirectory under the host's
+-- installed-apps dir holding the served files) and the `subdomain` label it's
+-- reachable at remotely (`<subdomain>.<public_host>`). Folder and subdomain are
+-- stored explicitly rather than derived from `id`, so an app's identity, the
+-- folder its content lives in, and its public hostname can each be set
+-- independently (the seeds happen to match `id`, but nothing assumes they do).
 CREATE TABLE self_hosted_apps (
-    id   TEXT PRIMARY KEY REFERENCES apps(id) ON DELETE CASCADE,
-    port INTEGER NOT NULL
+    id             TEXT PRIMARY KEY REFERENCES apps(id) ON DELETE CASCADE,
+    port           INTEGER NOT NULL,
+    content_folder TEXT NOT NULL,
+    subdomain      TEXT NOT NULL
 ) STRICT;
 
 -- Parent rows for every seeded app, in display order. System apps (api-view,
@@ -51,7 +59,7 @@ INSERT INTO apps (id, name, subtitle, enabled, position, provenance, local_only,
     ('api-view', 'API View', 'View patient records in your browser.', 1, 1, 'system', 1, NULL),
     ('api-docs', 'API Docs', 'View API documentation in your browser.', 1, 2, 'system', 1, NULL),
     ('growth-chart', 'Growth Chart', 'Interactive growth chart app.', 1, 3, 'cloud', 0, 'growth_chart'),
-    ('medication-viewer', 'Medication Viewer', 'A bare medication viewer app.', 1, 4, 'cloud', 0, 'medication_viewer'),
+    ('medication-viewer', 'Medication Viewer', 'A bare medication viewer app.', 1, 4, 'cloud', 0, 'my_web_app'),
     ('precise-hbr', 'PRECISE-HBR Risk Calculator', 'Assess risk of major bleeding after percutaneous coronary intervention', 1, 5, 'cloud', 0, 'cc344727-6f90-496c-94fd-c7829aa9a51d');
 
 INSERT INTO cloud_apps (id, url, requires_tunnel) VALUES
@@ -59,5 +67,5 @@ INSERT INTO cloud_apps (id, url, requires_tunnel) VALUES
     ('medication-viewer', 'https://mitre.github.io/smart-on-fhir-demo/launch.html?iss={origin}/fhir-r4&launch={launch}', 1),
     ('precise-hbr', 'https://hbr.alumicoin.cloud/launch?iss={origin}/fhir-r4&launch={launch}', 1);
 
-INSERT INTO self_hosted_apps (id, port) VALUES
-    ('patient-browser', 8081);
+INSERT INTO self_hosted_apps (id, port, content_folder, subdomain) VALUES
+    ('patient-browser', 8081, 'patient-browser', 'patient-browser');
