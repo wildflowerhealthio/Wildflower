@@ -8,6 +8,8 @@
 //! newtypes the registry stores: [`Provenance`] (the kebab discriminant) and
 //! [`AppUrl`] (the cloud launch template — used by the `cloud_apps` mapping).
 
+use std::collections::HashSet;
+
 use anyhow::Context;
 use persistence_rust::{sql_row, Connection, DbResult};
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, Value, ValueRef};
@@ -62,27 +64,7 @@ impl AppsStore {
     /// Returns any rusqlite error from the read.
     pub fn list_app_entries(&self) -> DbResult<Vec<AppListEntry>> {
         let conn = self.conn().lock();
-        let mut stmt = conn.prepare(
-            "SELECT a.id, a.enabled, a.name, a.subtitle, a.provenance, a.local_only, \
-             (a.client_id IS NOT NULL) AS smart, \
-             COALESCE(c.requires_tunnel, 0) AS requires_tunnel \
-             FROM apps a \
-             LEFT JOIN cloud_apps c ON c.id = a.id \
-             ORDER BY a.position",
-        )?;
-        let rows = stmt.query_map([], |row| {
-            Ok(AppListEntry {
-                id: row.get("id")?,
-                enabled: row.get("enabled")?,
-                name: row.get("name")?,
-                subtitle: row.get("subtitle")?,
-                provenance: row.get("provenance")?,
-                local_only: row.get("local_only")?,
-                smart: row.get("smart")?,
-                requires_tunnel: row.get("requires_tunnel")?,
-            })
-        })?;
-        rows.collect()
+        list_app_entries_on(&conn)
     }
 
     /// A single parent registry row by id, `None` when absent. Backs the launch
@@ -103,26 +85,61 @@ impl AppsStore {
             .optional()
     }
 
-    /// Atomically rewrite the whole homescreen — the ordering **and** the
-    /// `enabled` flags — in one transaction. Each `(id, enabled)` at index `i`
-    /// sets that row's `position = i` and `enabled`. Because every row is
-    /// renumbered to its array index under one transaction, positions stay a
-    /// dense `0..n` permutation (no duplicate or gapped positions, the bug a
-    /// per-row "set this one's position" write caused) and a reorder can't be
-    /// observed half-applied. Backs `PUT /home-screen`, which validates that
-    /// `entries` lists every registry app exactly once before calling — this is
-    /// the single writer of `position`/`enabled` across every provenance.
+    /// Atomically validate **and** rewrite the whole homescreen — the ordering
+    /// **and** the `enabled` flags — in one transaction. The body must list every
+    /// registry app exactly once; each `(id, enabled)` at index `i` sets that
+    /// row's `position = i` and `enabled`. Returns the resulting catalogue in its
+    /// new order (read inside the same transaction), or `Ok(None)` when `entries`
+    /// isn't an exact permutation of the live registry — the caller maps that to
+    /// `400 InvalidHomeScreen`.
+    ///
+    /// Validating against the live ids **inside** the transaction (rather than a
+    /// separate read the handler did before) closes the window where a concurrent
+    /// create/delete could land between the check and the renumber. Because every
+    /// row is renumbered to its array index under one transaction, positions stay
+    /// a dense `0..n` permutation (no duplicate or gapped positions) and a reorder
+    /// can't be observed half-applied. This is the single writer of
+    /// `position`/`enabled` across every provenance; `PUT /home-screen` is its
+    /// sole caller.
     ///
     /// # Errors
     ///
     /// Returns any rusqlite error from the transaction.
-    pub fn replace_home_screen(&self, entries: &[(String, bool)]) -> DbResult<()> {
+    pub fn replace_home_screen(
+        &self,
+        entries: &[(String, bool)],
+    ) -> DbResult<Option<Vec<AppListEntry>>> {
         let guard = self.conn().lock();
         let tx = guard.unchecked_transaction()?;
+
+        // Validate against the live registry under the same lock/transaction as
+        // the renumber: the body must be an exact permutation of the current ids.
+        let current_ids: HashSet<String> = {
+            let mut stmt = tx.prepare("SELECT id FROM apps")?;
+            let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+            rows.collect::<rusqlite::Result<HashSet<String>>>()?
+        };
+        let body_ids: HashSet<&str> = entries.iter().map(|(id, _)| id.as_str()).collect();
+        let id_set_changed = entries.len() != current_ids.len()
+            || body_ids.len() != entries.len()
+            || body_ids
+                .iter()
+                .any(|body_id| !current_ids.contains(*body_id));
+        if id_set_changed {
+            // Drop the transaction without committing (rolls back); nothing was
+            // written. The handler turns `None` into `400 InvalidHomeScreen`.
+            return Ok(None);
+        }
+
         {
+            // Move every row to a disjoint negative range first so the per-row
+            // renumber below never transiently collides with `UNIQUE(position)`
+            // (SQLite's UNIQUE is immediate, not deferrable): originals are `>= 0`
+            // and `-1 - position` is `<= -1`, so the two ranges never overlap.
+            tx.execute("UPDATE apps SET position = -1 - position", [])?;
             // Prepared once and reused across rows — `tx.execute` would re-parse
-            // and re-plan the UPDATE on every iteration. The block scopes `stmt`
-            // so it drops before `commit()` consumes the transaction.
+            // and re-plan the UPDATE on every iteration. The block scopes the
+            // statements so they drop before `commit()` consumes the transaction.
             let mut update_app_statement =
                 tx.prepare("UPDATE apps SET position = ?2, enabled = ?3 WHERE id = ?1")?;
             for (position, (id, enabled)) in entries.iter().enumerate() {
@@ -130,23 +147,43 @@ impl AppsStore {
                 update_app_statement.execute(params![id, position, enabled])?;
             }
         }
-        tx.commit()?;
-        Ok(())
-    }
 
-    /// The next free display position — `MAX(position) + 1`, or `0` for an empty
-    /// table. Used by the cloud-app create flow to append the new row.
-    ///
-    /// # Errors
-    ///
-    /// Returns any rusqlite error from the read.
-    pub fn next_position(&self) -> DbResult<i64> {
-        self.conn().lock().query_row(
-            "SELECT COALESCE(MAX(position) + 1, 0) FROM apps",
-            [],
-            |row| row.get(0),
-        )
+        // Read the new catalogue inside the transaction so the response can't
+        // reflect a write that landed after the renumber.
+        let updated_entry_list = list_app_entries_on(&tx)?;
+        tx.commit()?;
+        Ok(Some(updated_entry_list))
     }
+}
+
+/// The `GET /apps` projection against an arbitrary connection — shared by
+/// [`AppsStore::list_app_entries`] (which locks then calls this) and
+/// [`AppsStore::replace_home_screen`] (which calls it on its open transaction so
+/// the post-renumber read stays inside the same transaction). Hand-written (not
+/// `sql_row!`) because of the JOIN, the computed `smart` column, and the
+/// `requires_tunnel` alias.
+fn list_app_entries_on(conn: &rusqlite::Connection) -> DbResult<Vec<AppListEntry>> {
+    let mut stmt = conn.prepare(
+        "SELECT a.id, a.enabled, a.name, a.subtitle, a.provenance, a.local_only, \
+         (a.client_id IS NOT NULL) AS smart, \
+         COALESCE(c.requires_tunnel, 0) AS requires_tunnel \
+         FROM apps a \
+         LEFT JOIN cloud_apps c ON c.id = a.id \
+         ORDER BY a.position",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok(AppListEntry {
+            id: row.get("id")?,
+            enabled: row.get("enabled")?,
+            name: row.get("name")?,
+            subtitle: row.get("subtitle")?,
+            provenance: row.get("provenance")?,
+            local_only: row.get("local_only")?,
+            smart: row.get("smart")?,
+            requires_tunnel: row.get("requires_tunnel")?,
+        })
+    })?;
+    rows.collect()
 }
 
 impl ToSql for Provenance {
@@ -320,7 +357,9 @@ mod tests {
 
     /// `replace_home_screen` renumbers every row to its array index and applies
     /// each `enabled` flag, in one shot, for any provenance — and leaves the
-    /// positions a dense `0..n` permutation (no ties).
+    /// positions a dense `0..n` permutation (no ties). Reversing the seed (every
+    /// row changes position) also exercises the `UNIQUE(position)` collision-free
+    /// renumber.
     #[test]
     fn replace_home_screen_renumbers_and_sets_enabled_for_any_provenance() {
         let store = AppsStore::open_in_memory().unwrap();
@@ -333,7 +372,15 @@ mod tests {
             ("api-view".to_owned(), true),
             ("patient-browser".to_owned(), true),
         ];
-        store.replace_home_screen(&entries).unwrap();
+        let updated = store
+            .replace_home_screen(&entries)
+            .unwrap()
+            .expect("an exact permutation renumbers and returns the catalogue");
+
+        // The returned catalogue is in the new order.
+        let expected: Vec<String> = entries.iter().map(|(id, _)| id.clone()).collect();
+        let returned_ids: Vec<String> = updated.iter().map(|e| e.id.clone()).collect();
+        assert_eq!(returned_ids, expected);
 
         // Positions are exactly the array indices (dense 0..n, no duplicates).
         for (position, (id, _)) in entries.iter().enumerate() {
@@ -346,22 +393,53 @@ mod tests {
         }
         // The enabled flag was applied (api-docs is a system app — not gated).
         assert!(!store.find_app("api-docs").unwrap().unwrap().enabled);
-        // The list now reflects the new order.
+        // A follow-up list read agrees with the order returned inside the txn.
         let ids: Vec<String> = store
             .list_app_entries()
             .unwrap()
             .into_iter()
             .map(|e| e.id)
             .collect();
-        let expected: Vec<String> = entries.iter().map(|(id, _)| id.clone()).collect();
         assert_eq!(ids, expected);
     }
 
+    /// A body that isn't an exact permutation of the live registry returns
+    /// `Ok(None)` (→ `400`) and writes nothing — validation happens inside the
+    /// same transaction as the renumber.
     #[test]
-    fn next_position_returns_max_plus_one() {
+    fn replace_home_screen_rejects_a_non_permutation_without_writing() {
         let store = AppsStore::open_in_memory().unwrap();
-        // Six seeded rows at positions 0..=5.
-        assert_eq!(store.next_position().unwrap(), 6);
+        let before: Vec<String> = store
+            .list_app_entries()
+            .unwrap()
+            .into_iter()
+            .map(|e| e.id)
+            .collect();
+
+        // A subset (missing rows) — not a permutation.
+        let subset = vec![("api-view".to_owned(), true), ("api-docs".to_owned(), true)];
+        assert!(store.replace_home_screen(&subset).unwrap().is_none());
+
+        // A full-length body with a duplicated id (and a missing one) — also not
+        // a permutation.
+        let dup = vec![
+            ("patient-browser".to_owned(), true),
+            ("api-view".to_owned(), true),
+            ("api-docs".to_owned(), true),
+            ("growth-chart".to_owned(), true),
+            ("medication-viewer".to_owned(), true),
+            ("api-view".to_owned(), true),
+        ];
+        assert!(store.replace_home_screen(&dup).unwrap().is_none());
+
+        // The registry order is untouched.
+        let after: Vec<String> = store
+            .list_app_entries()
+            .unwrap()
+            .into_iter()
+            .map(|e| e.id)
+            .collect();
+        assert_eq!(before, after, "a rejected body must not reorder anything");
     }
 
     /// The compiled-in [`SYSTEM_APPS`] source list must agree with the seeded

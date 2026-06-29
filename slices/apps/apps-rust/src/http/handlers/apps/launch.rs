@@ -5,16 +5,21 @@
 //! *resolved*, while the *request's* [`RequestProvenance`] (loopback vs.
 //! forwarded) fixes how it's *dispatched*. The flow:
 //!
-//!   1. Look up the parent registry row (`404 AppNotFound` if absent).
-//!   2. Read the request's [`RequestProvenance`] *once*, so an empty/spoofed
-//!      `Forwarded` host can't make the sink-vs-redirect and which-origin
+//!   1. Read the request's [`RequestProvenance`] *once*, so an empty/spoofed
+//!      `Forwarded` host can't make the gate-vs-resolve and which-origin
 //!      decisions disagree.
-//!   3. Resolve the launch target by the app's provenance (System → compiled-in
+//!   2. Owner-gate a **loopback** request *before any lookup or side-effect*: an
+//!      unauthorized loopback caller `401`s before `find_app` or target
+//!      resolution, so it triggers no `tunnel.try_start()` and learns nothing
+//!      about whether the id exists (`404`) or is reachable (`503`). A forwarded
+//!      request skips the gate — the trusted front is its boundary.
+//!   3. Look up the parent registry row (`404 AppNotFound` if absent).
+//!   4. Resolve the launch target by the app's provenance (System → compiled-in
 //!      source, Self-Hosted → loopback/subdomain, Cloud → the stored template).
 //!      Fails `503 LaunchUnavailable` when no *reachable* target exists.
-//!   4. Dispatch on the request's provenance: loopback launches are owner-gated
-//!      and `204` after handing the URL to the host webview; forwarded launches
-//!      `302` with no owner check.
+//!   5. Dispatch on the request's provenance: a loopback launch `204`s after
+//!      handing the (already owner-checked) URL to the host webview; a forwarded
+//!      launch `302`s.
 //!
 //! The auth posture (loopback owner-gated, forwarded on the front trust
 //! boundary) is canonical in `docs/Apps/Explanation.md` §"Auth posture"; the
@@ -54,12 +59,24 @@ pub(crate) async fn handle_launch_app(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Response, HandlerError> {
-    // Read once (see module docs, step 2): a header that fails validation reads
+    // Read once (see module docs, step 1): a header that fails validation reads
     // as Loopback.
     let provenance = request_provenance(&headers);
 
-    // 404 before anything else — an unknown id is never an owner-auth or
-    // availability failure.
+    // Owner-gate a loopback request before any lookup or side-effect (module docs,
+    // step 2): an unauthorized loopback caller must trigger no `tunnel.try_start()`
+    // and must not learn whether the id exists (`404`) or is reachable (`503`). The
+    // header-derived `Loopback` is gated in tandem with the host's network-layer
+    // loopback-peer gate. A forwarded request rides the front trust boundary.
+    if matches!(provenance, RequestProvenance::Loopback)
+        && !state
+            .owner_auth
+            .is_owner(&headers, &state.loopback_origin())
+    {
+        return Err(HandlerError::Unauthorized);
+    }
+
+    // 404 before resolving — an unknown id is never an availability failure.
     let app = state
         .store
         .find_app(&id)
@@ -71,17 +88,9 @@ pub(crate) async fn handle_launch_app(
     let (name, target_url) = resolve_launch_target(&state, &app, &provenance).await?;
 
     match &provenance {
-        // Owner-gate the popup before handing the URL to the host webview, then
-        // `204` (the seam is contractually fire-and-forget). The header-derived
-        // `Loopback` is gated in tandem with the host's network-layer
-        // loopback-peer gate.
+        // The loopback caller was owner-checked above; hand the URL to the host
+        // webview and `204` (the seam is contractually fire-and-forget).
         RequestProvenance::Loopback => {
-            if !state
-                .owner_auth
-                .is_owner(&headers, &state.loopback_origin())
-            {
-                return Err(HandlerError::Unauthorized);
-            }
             state.on_device_webview_handle.open(name, target_url);
             Ok(no_content())
         }

@@ -18,7 +18,11 @@ pub mod owner_auth;
 mod response_templates;
 mod state;
 
-pub use owner_auth::{AllowOwner, OwnerAuth};
+pub use owner_auth::OwnerAuth;
+// Re-exported for tests (incl. the integration crate); the `#[deprecated]` is the
+// intended signal, so silence it on the re-export itself.
+#[allow(deprecated)]
+pub use owner_auth::StubOwnerAuth;
 pub use state::AppsState;
 
 use std::sync::Arc;

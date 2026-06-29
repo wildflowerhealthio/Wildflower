@@ -32,16 +32,21 @@ describe('tilePills', () => {
     expect(labels(makeApp({ provenance: 'system', localOnly: false }))).not.toContain('Local-Only')
   })
 
-  test('shows all three flags together in order (provenance, SMART, Local-Only)', () => {
-    expect(labels(makeApp({ provenance: 'cloud', smart: true, localOnly: true }))).toEqual([
-      'Cloud',
-      'SMART',
-      'Local-Only',
-    ])
+  test('adds Tunnel only when requiresTunnel', () => {
+    expect(labels(makeApp({ provenance: 'cloud', requiresTunnel: true }))).toContain('Tunnel')
+    expect(labels(makeApp({ provenance: 'cloud', requiresTunnel: false }))).not.toContain('Tunnel')
+  })
+
+  test('shows all flags together in order (provenance, SMART, Local-Only, Tunnel)', () => {
+    expect(
+      labels(makeApp({ provenance: 'cloud', smart: true, localOnly: true, requiresTunnel: true }))
+    ).toEqual(['Cloud', 'SMART', 'Local-Only', 'Tunnel'])
   })
 
   test('every pill carries a unique key', () => {
-    const pills = tilePills(makeApp({ provenance: 'cloud', smart: true, localOnly: true }))
+    const pills = tilePills(
+      makeApp({ provenance: 'cloud', smart: true, localOnly: true, requiresTunnel: true })
+    )
     const keys = pills.map((pill) => pill.key)
     expect(new Set(keys).size).toBe(keys.length)
   })

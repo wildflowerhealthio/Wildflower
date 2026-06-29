@@ -66,8 +66,9 @@ mod tests {
     use tower::ServiceExt;
 
     use super::test_utils::{
-        state, state_owner_denied, state_with_sink, state_with_tunnel,
-        state_with_tunnel_and_handle, tunnel_at, tunnel_unavailable, tunnel_with_public_host,
+        state, state_owner_denied, state_owner_denied_with_sink, state_with_sink,
+        state_with_tunnel, state_with_tunnel_and_handle, tunnel_at, tunnel_unavailable,
+        tunnel_with_public_host,
     };
     use crate::domain::{AppEntry, AppUrl};
     use crate::http::state::AppsState;
@@ -230,6 +231,38 @@ mod tests {
         assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
     }
 
+    /// The loopback owner gate runs *before* any lookup or side-effect: a denied
+    /// caller 401s without triggering the tunnel or revealing existence.
+    ///
+    /// `growth-chart` is `requires_tunnel`, so resolving it with the tunnel down
+    /// would `503` — that the denied launch is `401` proves resolution (and its
+    /// `tunnel.try_start`) never ran; the popup handle stays empty. An unknown id
+    /// likewise `401`s rather than `404`, so existence isn't an oracle either.
+    #[tokio::test]
+    async fn loopback_owner_gate_precedes_resolution_and_side_effects() {
+        let handle = Arc::new(RecordingStubWebviewHandle::default());
+        let st =
+            state_owner_denied_with_sink(Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>);
+
+        let res = send_raw(&st, post_launch("/apps/growth-chart")).await;
+        assert_eq!(
+            res.status(),
+            StatusCode::UNAUTHORIZED,
+            "denied loopback launch must 401 before the requires_tunnel 503",
+        );
+        assert!(
+            handle.0.lock().expect("handle mutex").is_empty(),
+            "a denied caller opens no popup",
+        );
+
+        let res = send_raw(&st, post_launch("/apps/no-such-thing")).await;
+        assert_eq!(
+            res.status(),
+            StatusCode::UNAUTHORIZED,
+            "denied loopback launch of an unknown id must 401, not 404",
+        );
+    }
+
     /// A forwarded launch skips the owner gate (front is the trust boundary).
     #[tokio::test]
     async fn forwarded_launch_skips_owner_gate() {
@@ -342,7 +375,7 @@ mod tests {
         let handle = Arc::new(RecordingStubWebviewHandle::default());
         let st = state_with_sink(Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>);
         st.store
-            .insert_cloud_app(&cloud("app-y", AppUrl::OriginRelative("/y".to_owned())), 99)
+            .insert_cloud_app(&cloud("app-y", AppUrl::OriginRelative("/y".to_owned())))
             .unwrap();
         let res = send_raw(&st, post_launch("/apps/app-y")).await;
         assert_eq!(res.status(), StatusCode::NO_CONTENT);
@@ -359,7 +392,7 @@ mod tests {
         let handle = Arc::new(RecordingStubWebviewHandle::default());
         let st = state_with_sink(Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>);
         st.store
-            .insert_cloud_app(&cloud("app-y", AppUrl::OriginRelative("/y".to_owned())), 99)
+            .insert_cloud_app(&cloud("app-y", AppUrl::OriginRelative("/y".to_owned())))
             .unwrap();
         let res = send_raw(&st, post_forwarded("/apps/app-y")).await;
         assert_eq!(res.status(), StatusCode::FOUND);

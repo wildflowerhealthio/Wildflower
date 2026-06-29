@@ -50,17 +50,25 @@ impl AppsStore {
     }
 
     /// Insert a fresh cloud app: the parent registry row (`provenance = 'cloud'`,
-    /// at `position`, not local-only, no `client_id`) AND its `cloud_apps` child,
-    /// in one transaction. Returns `false` when the id is already taken (the
-    /// parent `INSERT … ON CONFLICT(id) DO NOTHING` affects 0 rows → roll back so
-    /// no orphan child lands).
+    /// not local-only, no `client_id`) AND its `cloud_apps` child, in one
+    /// transaction. The new row is appended at `MAX(position) + 1`, computed
+    /// **inside** the transaction so two overlapping creates can't both read the
+    /// same next position and collide (the `UNIQUE(position)` constraint backstops
+    /// it regardless). Returns `false` when the id is already taken (the parent
+    /// `INSERT … ON CONFLICT(id) DO NOTHING` affects 0 rows → roll back so no
+    /// orphan child lands).
     ///
     /// # Errors
     ///
     /// Returns any rusqlite error from the insert.
-    pub fn insert_cloud_app(&self, app: &AppEntry, position: i64) -> DbResult<bool> {
+    pub fn insert_cloud_app(&self, app: &AppEntry) -> DbResult<bool> {
         let guard = self.conn().lock();
         let tx = guard.unchecked_transaction()?;
+        let position: i64 = tx.query_row(
+            "SELECT COALESCE(MAX(position) + 1, 0) FROM apps",
+            [],
+            |row| row.get(0),
+        )?;
         let affected = tx.execute(
             "INSERT INTO apps (id, name, subtitle, enabled, position, provenance, local_only, client_id) \
              VALUES (?1, ?2, ?3, ?4, ?5, 'cloud', 0, NULL) \
@@ -153,14 +161,14 @@ mod tests {
     fn insert_cloud_app_round_trips_through_find_cloud_app() {
         let store = AppsStore::open_in_memory().unwrap();
         let app = cloud("app-x", external("https://example.com/launch"));
-        let pos = store.next_position().unwrap();
-        assert!(store.insert_cloud_app(&app, pos).unwrap());
+        assert!(store.insert_cloud_app(&app).unwrap());
         let fetched = store.find_cloud_app("app-x").unwrap().expect("present");
         assert_eq!(fetched, app);
-        // And the parent registry row exists with cloud provenance at `pos`.
+        // And the parent registry row exists with cloud provenance, appended
+        // after the six seeded rows (positions 0..=5).
         let parent = store.find_app("app-x").unwrap().expect("parent");
         assert_eq!(parent.provenance, crate::domain::Provenance::Cloud);
-        assert_eq!(parent.position, pos);
+        assert_eq!(parent.position, 6);
         assert!(!parent.smart(), "inserted cloud app has no client_id");
     }
 
@@ -168,13 +176,14 @@ mod tests {
     fn insert_cloud_app_returns_false_on_duplicate_id() {
         let store = AppsStore::open_in_memory().unwrap();
         let app = cloud("app-x", external("https://example.com/x"));
-        assert!(store.insert_cloud_app(&app, 10).unwrap());
+        assert!(store.insert_cloud_app(&app).unwrap());
         assert!(
-            !store.insert_cloud_app(&app, 11).unwrap(),
+            !store.insert_cloud_app(&app).unwrap(),
             "second insert with the same id is a NO-OP",
         );
-        // The failed insert left no orphan child and didn't move the position.
-        assert_eq!(store.find_app("app-x").unwrap().unwrap().position, 10);
+        // The first insert appended after the six seeded rows (0..=5); the failed
+        // second insert left no orphan child and didn't move the position.
+        assert_eq!(store.find_app("app-x").unwrap().unwrap().position, 6);
     }
 
     /// A seeded cloud app's id can't be re-created — the parent PK rejects it and
@@ -183,7 +192,7 @@ mod tests {
     fn insert_cloud_app_rejects_a_seeded_id_without_orphaning_a_child() {
         let store = AppsStore::open_in_memory().unwrap();
         let app = cloud("growth-chart", external("https://example.com/x"));
-        assert!(!store.insert_cloud_app(&app, 99).unwrap());
+        assert!(!store.insert_cloud_app(&app).unwrap());
         // The original child url is untouched.
         let fetched = store.find_cloud_app("growth-chart").unwrap().unwrap();
         assert!(fetched.url.to_string().contains("growth-chart-app"));
@@ -193,7 +202,7 @@ mod tests {
     fn replace_cloud_app_writes_parent_and_child() {
         let store = AppsStore::open_in_memory().unwrap();
         let mut app = cloud("app-x", external("https://example.com/x"));
-        store.insert_cloud_app(&app, 0).unwrap();
+        store.insert_cloud_app(&app).unwrap();
 
         app.name = "Renamed".into();
         app.subtitle = Some("the new subtitle".into());

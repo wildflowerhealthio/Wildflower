@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/tes
 // `reset` (so we can assert it fires on open) and a settable `error` (so
 // we can plant a stale error the way a failed write would leave one
 // behind while `Dialog` keeps the children mounted).
-const { homeScreenStub, createStub, deleteStub } = vi.hoisted(() => {
+const { homeScreenStub, createStub, deleteStub, isMutatingRef } = vi.hoisted(() => {
   const makeMutation = (): {
     readonly mutate: ReturnType<typeof vi.fn>
     readonly reset: ReturnType<typeof vi.fn>
@@ -24,14 +24,27 @@ const { homeScreenStub, createStub, deleteStub } = vi.hoisted(() => {
     homeScreenStub: makeMutation(),
     createStub: makeMutation(),
     deleteStub: makeMutation(),
+    // Controls the mocked `useIsMutating` return — the count of in-flight
+    // home-screen PUTs the editor sees (its own + the home screen's drag).
+    isMutatingRef: { count: 0 },
   }
 })
 
 vi.mock('../queries.ts', () => ({
+  HOME_SCREEN_MUTATION_KEY: ['apps', 'home-screen'],
   useReplaceHomeScreenMutation: () => homeScreenStub,
   useAppsAdminCreateMutation: () => createStub,
   useAppsAdminDeleteMutation: () => deleteStub,
 }))
+
+// `busy` folds in `useIsMutating` for the shared home-screen key (so a toggle is
+// disabled while the home screen's drag PUT is still landing). Mock it to a
+// controllable in-flight count so the disabled-while-in-flight behaviour is
+// deterministic without a live QueryClient.
+vi.mock('@tanstack/react-query', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>()
+  return { ...actual, useIsMutating: () => isMutatingRef.count }
+})
 
 import type { AppEntry } from '../queries.ts'
 import { AppsEditor } from './apps-editor.tsx'
@@ -39,9 +52,10 @@ import { AppsEditor } from './apps-editor.tsx'
 // Helpers
 const NO_APPS: readonly AppEntry[] = []
 
-// A row of each provenance — `provenance` drives whether the editable controls
-// (enable-toggle + Remove) render. The other flags are the lightest valid wire
-// shape; the editor reads only `id`, `name`, `subtitle`, `enabled`, `provenance`.
+// A row of each provenance. Every row gets an enable-toggle; `provenance` drives
+// only whether `Remove` (cloud) or a read-only provenance tag (non-cloud) renders
+// beside it. The other flags are the lightest valid wire shape; the editor reads
+// only `id`, `name`, `subtitle`, `enabled`, `provenance`.
 const makeApp = (overrides: Partial<AppEntry> & Pick<AppEntry, 'id' | 'provenance'>): AppEntry => ({
   name: overrides.id,
   enabled: true,
@@ -69,6 +83,7 @@ const resetAllStubs = (): void => {
     stub.isPending = false
     stub.error = null
   }
+  isMutatingRef.count = 0
 }
 
 // jsdom does not implement the native <dialog> methods react-tundraish's
@@ -186,33 +201,69 @@ describe('<AppsEditor> provenance gating', () => {
     restoreOrDelete('close', originalClose)
   })
 
-  test('renders the enable-toggle + Remove only for cloud rows', () => {
+  test('renders an enable toggle for every provenance; Remove only for cloud', () => {
     const apps: readonly AppEntry[] = [
+      makeApp({ id: 'system-app', name: 'System App', provenance: 'system' }),
+      makeApp({ id: 'self-app', name: 'Self App', provenance: 'self-hosted' }),
       makeApp({ id: 'cloud-app', name: 'Cloud App', provenance: 'cloud' }),
     ]
     render(<AppsEditor open apps={apps} onClose={() => {}} />)
 
-    // The cloud row carries an editable surface: an enable toggle + a Remove
-    // button (the only Remove on screen).
-    expect(rowToggles()).toHaveLength(1)
-    expect(screen.getByRole('button', { name: 'Remove' })).toBeDefined()
+    // Every row exposes an enable toggle — `enabled` is homescreen curation,
+    // persisted via `PUT /home-screen`, which accepts all provenances.
+    expect(rowToggles()).toHaveLength(3)
+    // Only the cloud row is content-editable, so it's the only Remove on screen.
+    expect(screen.getAllByRole('button', { name: 'Remove' })).toHaveLength(1)
   })
 
-  test('renders system / self-hosted rows read-only — no Remove, no toggle', () => {
+  test('non-cloud rows show a read-only provenance tag (matching the tiles casing)', () => {
     const apps: readonly AppEntry[] = [
       makeApp({ id: 'system-app', name: 'System App', provenance: 'system' }),
       makeApp({ id: 'self-app', name: 'Self App', provenance: 'self-hosted' }),
     ]
     render(<AppsEditor open apps={apps} onClose={() => {}} />)
 
-    // Neither non-cloud row exposes the cloud-admin controls — those endpoints
-    // `409` for non-cloud apps, so firing them would always fail. (The only
-    // checkbox on screen is the Add-app form's "Requires tunnel".)
-    expect(rowToggles()).toHaveLength(0)
+    // The provenance tag shares `provenanceLabel` with the home tiles, so casing
+    // agrees — `Self-Hosted`, not `Self-hosted`.
+    expect(screen.getByText('System')).toBeDefined()
+    expect(screen.getByText('Self-Hosted')).toBeDefined()
+    expect(screen.queryByText('Self-hosted')).toBeNull()
+    // Still no Remove for non-cloud (content edits 409 for those kinds).
     expect(screen.queryByRole('button', { name: 'Remove' })).toBeNull()
-    // The rows still render (read-only), labelled by name.
-    expect(screen.getByText('System App')).toBeDefined()
-    expect(screen.getByText('Self App')).toBeDefined()
+  })
+
+  test('toggling a non-cloud row PUTs the whole home screen with that flag flipped', () => {
+    // The enable toggle persists for every provenance through the same
+    // `PUT /home-screen` writer — here disabling a system app.
+    const apps: readonly AppEntry[] = [
+      makeApp({ id: 'sys', name: 'System', provenance: 'system', enabled: true }),
+      makeApp({ id: 'cloud-app', name: 'Cloud App', provenance: 'cloud', enabled: true }),
+    ]
+    render(<AppsEditor open apps={apps} onClose={() => {}} />)
+
+    const [systemToggle] = rowToggles()
+    expect(systemToggle).toBeDefined()
+    systemToggle?.click()
+    expect(homeScreenStub.mutate).toHaveBeenCalledWith([
+      { id: 'sys', enabled: false },
+      { id: 'cloud-app', enabled: true },
+    ])
+  })
+
+  test('disables the toggles while a home-screen PUT is in flight', () => {
+    // A reorder PUT from the home screen (a *separate* mutation instance) shows
+    // up via the shared `useIsMutating` key — block toggling so it can't re-PUT
+    // the pre-reorder order and revert the drag.
+    isMutatingRef.count = 1
+    const apps: readonly AppEntry[] = [
+      makeApp({ id: 'cloud-app', name: 'Cloud App', provenance: 'cloud' }),
+    ]
+    const { container } = render(<AppsEditor open apps={apps} onClose={() => {}} />)
+
+    // The fieldset wrapping every control is disabled, so the row toggles can't
+    // fire mid-reorder.
+    const fieldset = container.querySelector('fieldset')
+    expect(fieldset?.disabled).toBe(true)
   })
 
   test('a cloud Remove click fires the delete mutation for that app', () => {
@@ -228,16 +279,17 @@ describe('<AppsEditor> provenance gating', () => {
   test('toggling a cloud row PUTs the whole home screen with that flag flipped', () => {
     // `enabled` is homescreen-curation state: the toggle re-PUTs the full list
     // (every provenance, current order preserved) with only the toggled app's
-    // flag changed.
+    // flag changed. Every row now has a toggle, so target the cloud row's (the
+    // second, in `apps` order).
     const apps: readonly AppEntry[] = [
       makeApp({ id: 'sys', name: 'System', provenance: 'system', enabled: true }),
       makeApp({ id: 'cloud-app', name: 'Cloud App', provenance: 'cloud', enabled: true }),
     ]
     render(<AppsEditor open apps={apps} onClose={() => {}} />)
 
-    const [toggle] = rowToggles()
-    expect(toggle).toBeDefined()
-    toggle?.click()
+    const cloudToggle = rowToggles()[1]
+    expect(cloudToggle).toBeDefined()
+    cloudToggle?.click()
     expect(homeScreenStub.mutate).toHaveBeenCalledWith([
       { id: 'sys', enabled: true },
       { id: 'cloud-app', enabled: false },

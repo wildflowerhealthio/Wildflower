@@ -3,6 +3,10 @@
 //! copied into each. Request-builder helpers (`post`/`get`/…) stay per-test
 //! module.
 
+// `StubOwnerAuth` is `#[deprecated]` to keep the no-op stub out of production
+// wiring; these fixtures are exactly the sanctioned test use, so silence it.
+#![allow(deprecated)]
+
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -13,7 +17,7 @@ use shared_structures_rust::tunnel_service::{
 use url::Url;
 
 use crate::db::AppsStore;
-use crate::http::owner_auth::{AllowOwner, OwnerAuth};
+use crate::http::owner_auth::{OwnerAuth, StubOwnerAuth};
 use crate::http::state::AppsState;
 use crate::OnDeviceWebviewHandle;
 
@@ -107,7 +111,11 @@ pub(crate) fn state_with_tunnel_and_handle(
     tunnel: Arc<dyn TunnelService>,
     webview_handle: Arc<dyn OnDeviceWebviewHandle>,
 ) -> Arc<AppsState> {
-    state_full(Arc::new(AllowOwner::default()), tunnel, webview_handle)
+    state_full(
+        Arc::new(StubOwnerAuth::always_allowed()),
+        tunnel,
+        webview_handle,
+    )
 }
 
 /// Apps state with the given tunnel, an allow-all owner gate, and a throwaway
@@ -133,8 +141,21 @@ pub(crate) fn state_with_sink(webview_handle: Arc<dyn OnDeviceWebviewHandle>) ->
 /// `401` branch.
 pub(crate) fn state_owner_denied() -> Arc<AppsState> {
     state_full(
-        Arc::new(AllowOwner::denied()),
+        Arc::new(StubOwnerAuth::always_denied()),
         tunnel_unavailable(),
         Arc::new(RecordingStubWebviewHandle::default()),
+    )
+}
+
+/// Apps state whose owner gate **denies**, with the offline tunnel and a
+/// caller-provided handle — lets a test assert a denied loopback launch neither
+/// opens the popup nor reaches the (down) tunnel.
+pub(crate) fn state_owner_denied_with_sink(
+    webview_handle: Arc<dyn OnDeviceWebviewHandle>,
+) -> Arc<AppsState> {
+    state_full(
+        Arc::new(StubOwnerAuth::always_denied()),
+        tunnel_unavailable(),
+        webview_handle,
     )
 }

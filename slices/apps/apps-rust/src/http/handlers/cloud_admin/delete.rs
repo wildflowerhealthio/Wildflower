@@ -9,7 +9,7 @@ use axum::Json;
 use serde::Serialize;
 use utoipa::ToSchema;
 
-use crate::domain::Provenance;
+use crate::http::handlers::cloud_admin::find_editable_cloud_app;
 use crate::http::response_templates::{AppNotEditableBody, AppNotFoundBody, HandlerError};
 use crate::http::state::AppsState;
 
@@ -33,15 +33,9 @@ pub(crate) async fn handle_delete_app(
     State(state): State<Arc<AppsState>>,
     Path(id): Path<String>,
 ) -> Result<Json<DeletedBody>, HandlerError> {
-    // Existence + editability first: 404 unknown, 409 non-cloud.
-    let parent = state
-        .store
-        .find_app(&id)
-        .map_err(|e| HandlerError::internal("find_app lookup failed", e))?
-        .ok_or_else(|| HandlerError::NotFound { id: id.clone() })?;
-    if parent.provenance != Provenance::Cloud {
-        return Err(HandlerError::NotEditable { id });
-    }
+    // Existence + editability first (404 unknown, 409 non-cloud), via the shared
+    // cloud-editability seam; the resolved entry is discarded — we delete by id.
+    find_editable_cloud_app(&state, &id)?;
     let deleted = state
         .store
         .delete_app(&id)

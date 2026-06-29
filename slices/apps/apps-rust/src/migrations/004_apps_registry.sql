@@ -18,7 +18,12 @@ CREATE TABLE apps (
     subtitle    TEXT,
     enabled     INTEGER NOT NULL DEFAULT 1,
     -- Display order for `GET /apps` (`ORDER BY position`) and drag-to-reorder.
-    position    INTEGER NOT NULL,
+    -- UNIQUE so the dense-`0..n` homescreen invariant is enforced, not assumed:
+    -- a concurrent create/reorder that would collide on a position fails the
+    -- constraint rather than silently producing a tie (`ORDER BY position` would
+    -- otherwise be non-deterministic). `replace_home_screen` renumbers through a
+    -- disjoint range to stay collision-free mid-transaction.
+    position    INTEGER NOT NULL UNIQUE,
     provenance  TEXT NOT NULL CHECK (provenance IN ('system', 'self-hosted', 'cloud')),
     local_only  INTEGER NOT NULL DEFAULT 0,
     -- Soft reference to gatekeeper `clients.client_id` (not an enforced FK); NULL
@@ -42,7 +47,10 @@ CREATE TABLE cloud_apps (
 -- docs/Apps/Explanation.md.
 CREATE TABLE self_hosted_apps (
     id             TEXT PRIMARY KEY REFERENCES apps(id) ON DELETE CASCADE,
-    port           INTEGER NOT NULL,
+    -- Reject out-of-range ports at write time: the domain reads `port` as a
+    -- `u16`, so a row outside `1..=65535` would fail the typed read and take out
+    -- the whole self-hosted kind (a 500 on launch, an error at host startup).
+    port           INTEGER NOT NULL CHECK (port BETWEEN 1 AND 65535),
     content_folder TEXT NOT NULL,
     subdomain      TEXT NOT NULL
 ) STRICT;

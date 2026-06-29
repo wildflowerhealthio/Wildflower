@@ -32,6 +32,16 @@ type HomeScreenPayload = Schema.Schema.Type<typeof Schemas.HomeScreenSchema>
 /** Mutations invalidate this key on success so the next render refetches. */
 const APPS_LIST_QUERY_KEY = ['apps', 'list'] as const
 
+/**
+ * Shared `mutationKey` for every `PUT /home-screen` writer. The home screen's
+ * drag-reorder and the editor's enable toggle each call
+ * {@link useReplaceHomeScreenMutation} from their own component, so they hold
+ * *separate* mutation instances. Tagging both with this key lets either surface
+ * observe an in-flight home-screen write across components via `useIsMutating`,
+ * so a toggle can be blocked while a reorder is still landing (and vice versa).
+ */
+const HOME_SCREEN_MUTATION_KEY = ['apps', 'home-screen'] as const
+
 /** Shared by route `loader` (`ensureQueryData`) and {@link useAppsListQuery}. */
 const appsListQueryOptions = (
   runAuthed: RunAuthed
@@ -117,6 +127,7 @@ const useReplaceHomeScreenMutation = (): UseMutationResult<unknown, Error, HomeS
   const runAuthed = useRunAuthed()
   const queryClient = useQueryClient()
   return useMutation({
+    mutationKey: HOME_SCREEN_MUTATION_KEY,
     mutationFn: (payload) =>
       runAuthed(
         Effect.flatMap(AppsAdminHttpApiClient, (c) =>
@@ -131,6 +142,7 @@ const useReplaceHomeScreenMutation = (): UseMutationResult<unknown, Error, HomeS
 
 export {
   APPS_LIST_QUERY_KEY,
+  HOME_SCREEN_MUTATION_KEY,
   appsListQueryOptions,
   useAppsAdminCreateMutation,
   useAppsAdminDeleteMutation,

@@ -4,8 +4,8 @@
 //!  - [`AppsStore`] serves the whole slice. It owns the shared migration list
 //!    (so constructing it migrates every table) and exposes:
 //!     - the parent `apps` registry reads + the atomic reorder/enable write
-//!       (`list_app_entries`, `find_app`, `replace_home_screen`,
-//!       `next_position`) — see [`apps_store`];
+//!       (`list_app_entries`, `find_app`, `replace_home_screen`) — see
+//!       [`apps_store`];
 //!     - the cloud-app CRUD (`find_cloud_app`, `insert_cloud_app`,
 //!       `replace_cloud_app`, `delete_app`) over `apps` + `cloud_apps` — see
 //!       [`cloud_apps`];

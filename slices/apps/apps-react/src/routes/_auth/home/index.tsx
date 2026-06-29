@@ -29,6 +29,9 @@ import { reorderApps } from './-reorder.ts'
 import { SortableAppTile } from './-tiles.tsx'
 import tileStyles from '../../../styles/app-tiles.module.css'
 
+const formatError = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error)
+
 /**
  * Owner-facing apps landing. The route `loader` warms the apps-list query
  * against the shared `QueryClient`; by the time the component renders,
@@ -102,8 +105,20 @@ const AppsHomeBody = ({ apps }: AppsHomeBodyProps): JSX.Element => {
     // the Rust `replace_home_screen`).
     const next = reorderApps(order, String(active.id), String(over.id))
     if (next === null) return
+    // Optimistic reorder. On failure the PUT doesn't invalidate the list (so the
+    // resync effect won't re-seed `order`), which would leave the tiles diverged
+    // from the server — so roll `order` back to its pre-drag value and surface
+    // the error in the banner below.
+    const previous = order
     setOrder(next)
-    homeScreenMutation.mutate(next.map((app) => ({ id: app.id, enabled: app.enabled })))
+    homeScreenMutation.mutate(
+      next.map((app) => ({ id: app.id, enabled: app.enabled })),
+      {
+        onError: () => {
+          setOrder(previous)
+        },
+      }
+    )
   }
 
   return (
@@ -122,6 +137,11 @@ const AppsHomeBody = ({ apps }: AppsHomeBodyProps): JSX.Element => {
           </button>
         }
       />
+      {homeScreenMutation.isError ? (
+        <p className={tileStyles['app-tiles__error']} role="alert">
+          Couldn't save the new order: {formatError(homeScreenMutation.error)}
+        </p>
+      ) : null}
       {visible.length === 0 ? (
         <p className="text-body-2">No apps enabled. Tap Manage to turn some on.</p>
       ) : (
@@ -157,9 +177,14 @@ const AppsHomeBody = ({ apps }: AppsHomeBodyProps): JSX.Element => {
   )
 }
 
-export const Route = createFileRoute('/_auth/home/')({
+const Route = createFileRoute('/_auth/home/')({
   loader: ({ context }) =>
     context.queryClient.ensureQueryData(appsListQueryOptions(context.runAuthed)),
   component: AppsHomeScreen,
   errorComponent: ({ error }) => <AsyncErrorView error={error} title="Apps" />,
 })
+
+// `AppsHomeBody` is exported for unit tests (the body renders independently of
+// the route loader); grouped with `Route` into one declaration for
+// `import/group-exports`.
+export { AppsHomeBody, Route }

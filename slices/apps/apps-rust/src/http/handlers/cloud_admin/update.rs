@@ -13,7 +13,8 @@ use axum::Json;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-use crate::domain::{AppEntry, AppUrl, Provenance};
+use crate::domain::{AppEntry, AppUrl};
+use crate::http::handlers::cloud_admin::find_editable_cloud_app;
 use crate::http::response_templates::{
     AppNotEditableBody, AppNotFoundBody, HandlerError, InvalidFieldBody,
 };
@@ -83,26 +84,12 @@ pub(crate) async fn handle_update_app(
     Path(id): Path<String>,
     Json(body): Json<UpdateAppBody>,
 ) -> Result<Json<AppEntry>, HandlerError> {
-    // Resolve existence + editability before validating the patch fields: a
-    // PATCH to an unknown id is a 404, and to a non-cloud id a 409, regardless
-    // of whether its body also carries a bad name/url — the
-    // missing/not-editable signal isn't masked by a 400.
-    let parent = state
-        .store
-        .find_app(&id)
-        .map_err(|e| HandlerError::internal("find_app lookup failed", e))?
-        .ok_or_else(|| HandlerError::NotFound { id: id.clone() })?;
-    if parent.provenance != Provenance::Cloud {
-        return Err(HandlerError::NotEditable { id });
-    }
-    // A cloud parent always has a cloud child; a missing one is a logged 500.
-    let mut existing = state
-        .store
-        .find_cloud_app(&id)
-        .map_err(|e| HandlerError::internal("find_cloud_app lookup failed", e))?
-        .ok_or_else(|| {
-            HandlerError::internal("cloud parent has no child row", format!("id={id}"))
-        })?;
+    // Resolve existence + editability before validating the patch fields (via the
+    // shared cloud-editability seam): a PATCH to an unknown id is a 404, and to a
+    // non-cloud id a 409, regardless of whether its body also carries a bad
+    // name/url — the missing/not-editable signal isn't masked by a 400. The
+    // returned cloud entry is the patch base.
+    let mut existing = find_editable_cloud_app(&state, &id)?;
 
     if let Some(name) = body.name.as_deref() {
         if name.is_empty() {

@@ -64,13 +64,9 @@ pub(crate) async fn handle_create_app(
         url,
         requires_tunnel: body.requires_tunnel,
     };
-    let position = state
-        .store
-        .next_position()
-        .map_err(|e| HandlerError::internal("next_position failed", e))?;
     let inserted = state
         .store
-        .insert_cloud_app(&entry, position)
+        .insert_cloud_app(&entry)
         .map_err(|e| HandlerError::internal("insert_cloud_app failed", e))?;
     if !inserted {
         // 21-char random id collided — vanishingly unlikely, but surface it

@@ -8,7 +8,6 @@
 //! which this handler is the sole caller of. The cloud-admin `PATCH /apps/{id}`
 //! edits only a cloud app's *content* — homescreen curation lives here.
 
-use std::collections::HashSet;
 use std::sync::Arc;
 
 use axum::extract::State;
@@ -48,30 +47,20 @@ pub(crate) async fn handle_replace_home_screen(
     Json(body): Json<Vec<HomeScreenEntry>>,
 ) -> Result<Json<Vec<AppListEntry>>, HandlerError> {
     // The home screen *is* the whole registry, reordered — so the body must be an
-    // exact permutation of the current ids. Validating up front (rather than
-    // letting unmatched UPDATEs silently no-op) is what guarantees the dense
-    // `0..n` result `replace_home_screen` documents.
-    let current = state
-        .store
-        .list_app_entries()
-        .map_err(|e| HandlerError::internal("list_app_entries lookup failed", e))?;
-    let current_ids: HashSet<&str> = current.iter().map(|e| e.id.as_str()).collect();
-    let body_ids: HashSet<&str> = body.iter().map(|e| e.id.as_str()).collect();
-    if body.len() != current.len() || body_ids != current_ids {
-        return Err(HandlerError::InvalidHomeScreen {
-            message: "home-screen body must list every app exactly once".to_owned(),
-        });
-    }
-
+    // exact permutation of the current ids. `replace_home_screen` validates that
+    // against the live registry **and** renumbers in one transaction (the
+    // dense-`0..n` guarantee can't be split across two lock acquisitions), and
+    // returns the resulting catalogue. `Ok(None)` means the body wasn't an exact
+    // permutation → `400 InvalidHomeScreen`.
     let entries: Vec<(String, bool)> = body.into_iter().map(|e| (e.id, e.enabled)).collect();
-    state
+    match state
         .store
         .replace_home_screen(&entries)
-        .map_err(|e| HandlerError::internal("replace_home_screen failed", e))?;
-
-    let updated = state
-        .store
-        .list_app_entries()
-        .map_err(|e| HandlerError::internal("list_app_entries re-read failed", e))?;
-    Ok(Json(updated))
+        .map_err(|e| HandlerError::internal("replace_home_screen failed", e))?
+    {
+        Some(updated) => Ok(Json(updated)),
+        None => Err(HandlerError::InvalidHomeScreen {
+            message: "home-screen body must list every app exactly once".to_owned(),
+        }),
+    }
 }

@@ -27,15 +27,25 @@ const PROVENANCE_PILL: Record<
 }
 
 /**
+ * The human label for a provenance — the single source of truth shared with the
+ * apps editor, so the home tile and the editor never disagree on casing.
+ */
+const provenanceLabel = (provenance: AppEntry['provenance']): string =>
+  PROVENANCE_PILL[provenance].label
+
+/**
  * The pills a tile shows for an app's registry flags: always the provenance,
- * plus `SMART` when `smart` and `Local-Only` when `localOnly`. Pure — derives
- * the list from the row so it can be unit-tested without rendering.
+ * plus `SMART` when `smart`, `Local-Only` when `localOnly`, and `Tunnel` when
+ * `requiresTunnel` (so a launch that needs the tunnel up is signalled before the
+ * user clicks into a `503`). Pure — derives the list from the row so it can be
+ * unit-tested without rendering.
  */
 const tilePills = (app: AppEntry): readonly Pill[] => {
   const provenance = PROVENANCE_PILL[app.provenance]
   const pills: Pill[] = [{ key: 'provenance', label: provenance.label, tone: provenance.tone }]
   if (app.smart) pills.push({ key: 'smart', label: 'SMART', tone: 'info' })
   if (app.localOnly) pills.push({ key: 'local-only', label: 'Local-Only', tone: 'success' })
+  if (app.requiresTunnel) pills.push({ key: 'tunnel', label: 'Tunnel', tone: 'warning' })
   return pills
 }
 
@@ -98,5 +108,5 @@ const SortableAppTile = ({ app, onLaunch }: SortableAppTileProps): JSX.Element =
   )
 }
 
-export { SortableAppTile, tilePills }
+export { provenanceLabel, SortableAppTile, tilePills }
 export type { Pill, SortableAppTileProps }

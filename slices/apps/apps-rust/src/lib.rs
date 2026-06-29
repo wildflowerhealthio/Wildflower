@@ -54,7 +54,10 @@ use shared_structures_rust::tunnel_service::TunnelService;
 pub use config::AppsConfig;
 pub use db::AppsStore;
 pub use domain::SelfHostedApp;
-pub use http::{AllowOwner, AppsState, OwnerAuth};
+pub use http::{AppsState, OwnerAuth};
+// Re-exported for the integration test crate; `#[deprecated]` is intentional.
+#[allow(deprecated)]
+pub use http::StubOwnerAuth;
 pub use self_hosted_apps::SelfHostedAppsService;
 pub use shared_structures_rust::OnDeviceWebviewHandle;
 

@@ -6,7 +6,7 @@
 
 use std::sync::Arc;
 
-use apps_rust::{setup_apps, AllowOwner, Apps, AppsConfig, OwnerAuth};
+use apps_rust::{setup_apps, Apps, AppsConfig, OwnerAuth};
 use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
 use persistence_rust::Connection;
@@ -31,7 +31,11 @@ fn spin_up_with_handle() -> (Apps, Arc<RecordingStubWebviewHandle>) {
         loopback_base_url: Url::parse(LOOPBACK_BASE_URL).expect("valid base url"),
     };
     let handle = Arc::new(RecordingStubWebviewHandle::default());
-    let owner_auth: Arc<dyn OwnerAuth> = Arc::new(AllowOwner::default());
+    // `StubOwnerAuth` is `#[deprecated]` to keep the no-op stub out of production
+    // wiring; this allow-all owner is the sanctioned test use, so scope the
+    // silence to exactly this construction rather than the whole crate.
+    #[allow(deprecated)]
+    let owner_auth: Arc<dyn OwnerAuth> = Arc::new(apps_rust::StubOwnerAuth::always_allowed());
     let apps = setup_apps(
         db,
         &config,
