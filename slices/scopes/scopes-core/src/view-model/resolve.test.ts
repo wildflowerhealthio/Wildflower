@@ -1,7 +1,7 @@
 import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { AccessRights, Bucket, Grant, Resolve, Scope } from '../index.ts'
+import { AccessRights, Bucket, Grant, GrantDraft, Resolve, Scope } from '../index.ts'
 
 const b = Bucket.fhir('patient')
 
@@ -23,7 +23,7 @@ const lettersAt = (
   scopes: readonly Scope.Scope[],
   name: string
 ): readonly AccessRights.Action[] => {
-  const row = Grant.findResource(scopes, b, name)
+  const row = GrantDraft.findResource(scopes, b, name)
   return row === undefined ? [] : AccessRights.lettersOf(row.access)
 }
 
@@ -112,7 +112,7 @@ describe('Resolve.toggleWordComponent — the v1 multiselect mutation', () => {
       'Observation',
       'write'
     )
-    expect(Grant.findResource(next, b, 'Observation')?.access).toEqual(AccessRights.star)
+    expect(GrantDraft.findResource(next, b, 'Observation')?.access).toEqual(AccessRights.star)
   })
 
   test('removing the only component drops the row', () => {
@@ -122,12 +122,12 @@ describe('Resolve.toggleWordComponent — the v1 multiselect mutation', () => {
       'Observation',
       'read'
     )
-    expect(Grant.findResource(next, b, 'Observation')).toBeUndefined()
+    expect(GrantDraft.findResource(next, b, 'Observation')).toBeUndefined()
   })
 
   test('toggling on an empty row creates that word', () => {
     const next = Resolve.toggleWordComponent([], b, 'Observation', 'write')
-    expect(Grant.findResource(next, b, 'Observation')?.access).toEqual(AccessRights.write)
+    expect(GrantDraft.findResource(next, b, 'Observation')?.access).toEqual(AccessRights.write)
   })
 
   test('removing Write from * leaves Read', () => {
@@ -137,15 +137,15 @@ describe('Resolve.toggleWordComponent — the v1 multiselect mutation', () => {
       'Observation',
       'write'
     )
-    expect(Grant.findResource(next, b, 'Observation')?.access).toEqual(AccessRights.read)
+    expect(GrantDraft.findResource(next, b, 'Observation')?.access).toEqual(AccessRights.read)
   })
 })
 
 describe('flags + removeResource', () => {
   test('setFlag / toggleFlag add and remove a Known scope', () => {
     const on = Resolve.setFlag([], 'openid', true)
-    expect(Grant.hasFlag(on, 'openid')).toBe(true)
-    expect(Grant.hasFlag(Resolve.toggleFlag(on, 'openid'), 'openid')).toBe(false)
+    expect(Grant.hasKnown(on, 'openid')).toBe(true)
+    expect(Grant.hasKnown(Resolve.toggleFlag(on, 'openid'), 'openid')).toBe(false)
   })
 
   test('removeResource drops only the named row', () => {

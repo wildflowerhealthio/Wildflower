@@ -9,9 +9,9 @@
  */
 
 import type { KnownScope } from '../domain/index.ts'
-import { AccessRights, Scope } from '../domain/index.ts'
+import { AccessRights, Grant, Scope } from '../domain/index.ts'
 import * as Bucket from './bucket.ts'
-import * as Grant from './grant.ts'
+import * as GrantDraft from './grant-draft.ts'
 import * as Resolve from './resolve.ts'
 import * as Words from './words.ts'
 
@@ -46,7 +46,7 @@ export const resourceFor = (
  * row, defaulting to v2.
  */
 export const accessForm = (
-  grant: Grant.Grant,
+  grant: GrantDraft.GrantDraft,
   envelope: Envelope | null,
   bucket: Bucket.Bucket,
   name: string
@@ -55,7 +55,7 @@ export const accessForm = (
     const env = resourceFor(envelope, bucket, name)
     return env === undefined ? 'letters' : AccessRights.form(env.access)
   }
-  const row = Grant.findResource(grant.scopes, bucket, name)
+  const row = GrantDraft.findResource(grant.scopes, bucket, name)
   return row === undefined ? 'letters' : AccessRights.form(row.access)
 }
 
@@ -70,7 +70,7 @@ export type Cell = {
 
 /** Resolve one CRUDS cell for the grid, combining the request clamp (§2) and wildcard lock (§3). */
 export const buildCell = (
-  grant: Grant.Grant,
+  grant: GrantDraft.GrantDraft,
   envelope: Envelope | null,
   bucket: Bucket.Bucket,
   name: string,
@@ -95,13 +95,13 @@ export const buildCell = (
 
 /** Resolve one v1 word component (Read / Write) for a row's multiselect (§2 clamp). */
 export const buildWordCell = (
-  grant: Grant.Grant,
+  grant: GrantDraft.GrantDraft,
   envelope: Envelope | null,
   bucket: Bucket.Bucket,
   name: string,
   component: Words.Component
 ): Cell => {
-  const current = Grant.findResource(grant.scopes, bucket, name)?.access ?? null
+  const current = GrantDraft.findResource(grant.scopes, bucket, name)?.access ?? null
   if (envelope !== null) {
     const env = resourceFor(envelope, bucket, name)
     if (env === undefined || !Words.covers(env.access, component)) {
@@ -128,14 +128,14 @@ export const flagRequired = (envelope: Envelope | null, flag: KnownScope.KnownSc
  * The invariant `granted ⊆ requested` (`spec.md §2`). True in open mode. Checks
  * every granted CRUDS letter and flag against the envelope. For tests/asserts.
  */
-export const isWithin = (grant: Grant.Grant, envelope: Envelope | null): boolean => {
+export const isWithin = (grant: GrantDraft.GrantDraft, envelope: Envelope | null): boolean => {
   if (envelope === null) return true
   const resourcesOk = Grant.resourceScopes(grant.scopes).every((scope) => {
     const env = resourceFor(envelope, Bucket.of(scope), Scope.resourceName(scope))
     if (env === undefined) return false
     return AccessRights.lettersOf(scope.access).every((a) => AccessRights.has(env.access, a))
   })
-  const flagsOk = Grant.flagScopes(grant.scopes).every((flag) =>
+  const flagsOk = Grant.knownScopes(grant.scopes).every((flag) =>
     envelope.flags.some((f) => f.scope === flag)
   )
   return resourcesOk && flagsOk

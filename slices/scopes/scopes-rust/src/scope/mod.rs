@@ -16,7 +16,11 @@
 //! Parsing (via [`From`]/[`FromStr`]) is **total** — it never fails, it falls
 //! back to `Unknown` — and prefers the richest representation. Rendering
 //! **round-trips** (SMART v1↔v2 back-compat — see [`AccessRights`]).
+//!
+//! A [`Grant`] is an ordered collection of these scopes — the structured form of
+//! the scope lists callers store, transmit, and check coverage against.
 
+mod grant;
 mod known;
 mod resource;
 mod unknown;
@@ -28,6 +32,7 @@ use std::str::FromStr;
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+pub use grant::Grant;
 pub use known::KnownScope;
 pub use resource::{
     AccessRights, ContextLevel, FhirResourceScope, ResourceType, WildflowerResource,

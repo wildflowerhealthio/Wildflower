@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
-import type { Envelope, Fhir, Grant, Scope } from 'scopes-core'
+import type { Envelope, Fhir, GrantDraft, Scope } from 'scopes-core'
 import { AccessRights, Bucket } from 'scopes-core'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
@@ -12,7 +12,7 @@ afterEach(() => {
 })
 
 const patient = Bucket.fhir('patient')
-const grant = (scopes: Scope.Scope[]): Grant.Grant => ({ subject: 'jordan', scopes })
+const grant = (scopes: Scope.Scope[]): GrantDraft.GrantDraft => ({ subject: 'jordan', scopes })
 
 const patientFhir = (
   name: string,

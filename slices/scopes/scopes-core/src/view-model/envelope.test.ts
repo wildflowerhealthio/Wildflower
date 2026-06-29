@@ -1,11 +1,11 @@
 import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 
-import type { Fhir, Grant, Scope } from '../index.ts'
+import type { Fhir, GrantDraft, Scope } from '../index.ts'
 import { AccessRights, Bucket, Envelope } from '../index.ts'
 
 const b = Bucket.fhir('patient')
-const grant = (scopes: Scope.Scope[]): Grant.Grant => ({ subject: 'jordan', scopes })
+const grant = (scopes: Scope.Scope[]): GrantDraft.GrantDraft => ({ subject: 'jordan', scopes })
 
 const fhir = (name: string, access = AccessRights.letters(['r'])): Fhir.FhirResourceScope => ({
   kind: 'fhir',

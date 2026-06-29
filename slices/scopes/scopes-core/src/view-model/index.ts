@@ -5,7 +5,7 @@
  * these namespaces add the *editing* model on top of `domain/`:
  *
  * - {@link Bucket} — addresses a grid/consent row (a FHIR context, or Wildflower)
- * - {@link Grant} — the `{subject, scopes}` aggregate + scope-list accessors + wire serialization
+ * - {@link GrantDraft} — the editable `{subject, scopes}` picker state + wire serialization
  * - {@link Envelope} — the request-mode clamp (§2) and grid cell view-state
  * - {@link Resolve} — wildcard resolution (§3) and the grant mutations
  * - {@link Words} — the SMART v1 Read/Write multiselect components
@@ -14,7 +14,7 @@
  */
 
 export * as Bucket from './bucket.ts'
-export * as Grant from './grant.ts'
+export * as GrantDraft from './grant-draft.ts'
 export * as Envelope from './envelope.ts'
 export * as Resolve from './resolve.ts'
 export * as Words from './words.ts'

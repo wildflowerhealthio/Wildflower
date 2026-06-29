@@ -5,9 +5,9 @@
  * - `domain/` is a faithful mirror of `scopes-rust`'s `scope/` module tree: the
  *   {@link Scope} union and its {@link Fhir} / {@link Wildflower} /
  *   {@link KnownScope} / {@link UnknownScope} kinds, the {@link AccessRights}
- *   permission model, and total (de)serialization.
+ *   permission model, the {@link Grant} scope-set, and total (de)serialization.
  * - `view-model/` adds the editing model the UI renders from ({@link Bucket},
- *   {@link Grant}, {@link Envelope}, {@link Resolve}, {@link Words},
+ *   {@link GrantDraft}, {@link Envelope}, {@link Resolve}, {@link Words},
  *   {@link Labels}, {@link Verbs}) — none of it has a `scopes-rust` counterpart.
  *
  * Every scope UI component renders from these pure namespaces.

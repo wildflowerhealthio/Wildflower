@@ -9,8 +9,8 @@ pub mod scope;
 pub mod smart;
 
 pub use scope::{
-    AccessRights, ContextLevel, FhirResourceScope, KnownScope, ResourceType, Scope, UnknownScope,
-    WildflowerResource, WildflowerResourceScope, WildflowerResourceType,
+    AccessRights, ContextLevel, FhirResourceScope, Grant, KnownScope, ResourceType, Scope,
+    UnknownScope, WildflowerResource, WildflowerResourceScope, WildflowerResourceType,
 };
 pub use smart::{allowed_scope_covers, grantable_scopes, with_alternate_canonical_forms};
 

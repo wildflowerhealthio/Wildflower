@@ -8,9 +8,9 @@
  */
 
 import type { KnownScope } from '../domain/index.ts'
-import { AccessRights, Scope } from '../domain/index.ts'
+import { AccessRights, Grant, Scope } from '../domain/index.ts'
 import * as Bucket from './bucket.ts'
-import * as Grant from './grant.ts'
+import * as GrantDraft from './grant-draft.ts'
 import * as Words from './words.ts'
 
 const matchesRow = (scope: Scope.Scope, bucket: Bucket.Bucket, name: string): boolean =>
@@ -53,12 +53,12 @@ export const effectiveCell = (
   // wildcard, and must stay editable (untick Read on `*` to remove it
   // everywhere, §3). Only specific rows are locked by it.
   const isWildcardRow = name === '*'
-  const wildcard = Grant.findWildcard(scopes, bucket)
+  const wildcard = GrantDraft.findWildcard(scopes, bucket)
   const coveredByWildcard =
     !isWildcardRow &&
     wildcard !== undefined &&
     AccessRights.lettersOf(wildcard.access).includes(action)
-  const specific = Grant.findResource(scopes, bucket, name)
+  const specific = GrantDraft.findResource(scopes, bucket, name)
   const specificHas =
     specific !== undefined && AccessRights.lettersOf(specific.access).includes(action)
   return {
@@ -81,12 +81,12 @@ export const toggleCell = (
 ): Scope.Scope[] => {
   const isWildcardRow = name === '*'
   if (!isWildcardRow) {
-    const wildcard = Grant.findWildcard(scopes, bucket)
+    const wildcard = GrantDraft.findWildcard(scopes, bucket)
     if (wildcard !== undefined && AccessRights.lettersOf(wildcard.access).includes(action)) {
       return [...scopes] // locked by the wildcard — unchanged
     }
   }
-  const existing = Grant.findResource(scopes, bucket, name)
+  const existing = GrantDraft.findResource(scopes, bucket, name)
   if (existing !== undefined && existing.access.kind !== 'letters') {
     return [...scopes] // word-form rows are edited via the v1 multiselect, not cells
   }
@@ -111,7 +111,7 @@ export const toggleWordComponent = (
   name: string,
   component: Words.Component
 ): Scope.Scope[] => {
-  const current = Grant.findResource(scopes, bucket, name)?.access ?? null
+  const current = GrantDraft.findResource(scopes, bucket, name)?.access ?? null
   const parts = { ...Words.of(current) }
   parts[component] = !parts[component]
   const access = Words.toAccess(parts)
@@ -134,4 +134,4 @@ export const setFlag = (
 export const toggleFlag = (
   scopes: readonly Scope.Scope[],
   flag: KnownScope.KnownScope
-): Scope.Scope[] => setFlag(scopes, flag, !Grant.hasFlag(scopes, flag))
+): Scope.Scope[] => setFlag(scopes, flag, !Grant.hasKnown(scopes, flag))

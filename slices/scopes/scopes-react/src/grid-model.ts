@@ -1,11 +1,11 @@
 /**
- * View-model assembly for {@link PermissionGrid}. Turns a {@link Grant.Grant} (+ an
+ * View-model assembly for {@link PermissionGrid}. Turns a {@link GrantDraft.GrantDraft} (+ an
  * optional request envelope) into renderable rows, so the grid component stays
  * presentational and the §2/§3 decisions live in `scopes-core`. Pure and
  * unit-tested independently of the DOM.
  */
 
-import { AccessRights, Bucket, Envelope, Grant, Labels, Words } from 'scopes-core'
+import { AccessRights, Bucket, Envelope, GrantDraft, Labels, Words } from 'scopes-core'
 
 /** One Read/Write item on a v1 (word) row. */
 export interface GridWordItem {
@@ -29,15 +29,15 @@ export interface GridRow {
 }
 
 const grantAccessFor = (
-  grant: Grant.Grant,
+  grant: GrantDraft.GrantDraft,
   bucket: Bucket.Bucket,
   resource: string
 ): AccessRights.AccessRights | null =>
-  Grant.findResource(grant.scopes, bucket, resource)?.access ?? null
+  GrantDraft.findResource(grant.scopes, bucket, resource)?.access ?? null
 
 /** Parameters for {@link buildGridRows}. */
 export interface BuildGridRowsParams {
-  readonly grant: Grant.Grant
+  readonly grant: GrantDraft.GrantDraft
   readonly envelope: Envelope.Envelope | null
   readonly bucket: Bucket.Bucket
   /** The resource types to render as rows (e.g. the catalog, or what was requested). */
@@ -47,7 +47,7 @@ export interface BuildGridRowsParams {
 }
 
 const buildRow = (
-  grant: Grant.Grant,
+  grant: GrantDraft.GrantDraft,
   envelope: Envelope.Envelope | null,
   bucket: Bucket.Bucket,
   resource: string
