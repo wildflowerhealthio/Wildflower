@@ -64,7 +64,7 @@ pub fn setup_fhir_r4(runtime: &ServerRuntimeConfig, config: &EmrConfig) -> anyho
         .init_schema()
         .context("failed to init sqlite schema")?;
 
-    let loopback_base_url = runtime.loopback_origin();
+    let loopback_base_url = runtime.loopback_base_url();
     // The FHIR base URL is `<bare origin><FHIR_R4_PATH>` (e.g.
     // `http://127.0.0.1:8080/fhir-r4`): take the origin without the `Url`'s
     // trailing slash so the path isn't doubled.
@@ -74,7 +74,7 @@ pub fn setup_fhir_r4(runtime: &ServerRuntimeConfig, config: &EmrConfig) -> anyho
         base_url: format!("{loopback_origin}{FHIR_R4_PATH}"),
         // The host param only expects the ip to bind to
         host: runtime
-            .loopback_base_url
+            .loopback_base_url_ref()
             .host()
             .expect("loopback_base_url must have host")
             .to_string(),

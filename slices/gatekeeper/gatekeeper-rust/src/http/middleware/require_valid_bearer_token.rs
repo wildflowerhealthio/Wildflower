@@ -41,7 +41,7 @@ pub async fn require_valid_bearer_token(
     };
     let origin = served_origin_for(
         &headers,
-        &gate.state.loopback_origin.origin().ascii_serialization(),
+        &gate.state.loopback_base_url.origin().ascii_serialization(),
     );
     if let Err(e) = verify_auth_token_claims(&gate.state, &origin, &token) {
         return response_templates::verify_error_response("verify_auth_token_claims failed", e);

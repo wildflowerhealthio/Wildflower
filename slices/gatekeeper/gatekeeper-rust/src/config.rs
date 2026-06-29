@@ -7,7 +7,7 @@ pub struct GatekeeperConfig {
     /// [`served_origin_for`](crate::http::served_origin_for) returns (as its bare
     /// `origin().ascii_serialization()`) when a request carries no public-origin
     /// header.
-    pub loopback_origin: Url,
+    pub loopback_base_url: Url,
 
     /// The host's granted-scope wire strings — seeded as the first-party
     /// client's `allowed_scopes` and minted into the boot-time host owner token.

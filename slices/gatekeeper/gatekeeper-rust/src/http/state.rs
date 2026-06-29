@@ -17,7 +17,7 @@ pub struct AppState {
     /// loopback request — handlers derive the per-request `iss`/`aud` from
     /// `served_origin_for(&headers, &state.loopback_origin.origin().ascii_serialization())`,
     /// never from this value directly.
-    pub(crate) loopback_origin: url::Url,
+    pub(crate) loopback_base_url: url::Url,
     /// Watch sender that publishes the `user_code` of the
     /// currently-active pending device-code consent request — the head
     /// the host webview surfaces in its non-dismissable popup. Handlers

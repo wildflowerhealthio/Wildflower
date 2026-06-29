@@ -82,11 +82,11 @@ async fn run_server(
     databases_rust::purge_pending_deletions(&runtime.app_data_dir)
         .context("failed to purge scheduled database deletions")?;
 
-    let loopback_host = runtime.loopback_authority();
+    let loopback_host = runtime.loopback_base_url_ref().authority().to_string();
     // The typed loopback base URL is the single source threaded into every
     // slice's config (apps / gatekeeper / emr / tunnel). `loopback_origin` is its
     // bare origin string (no trailing slash) for the few sub-URLs built by hand.
-    let loopback_base_url = runtime.loopback_origin();
+    let loopback_base_url = runtime.loopback_base_url();
     let loopback_origin = loopback_base_url.origin().ascii_serialization();
     let emr_config = EmrConfig {
         log_level: "debug".to_string(),
@@ -98,7 +98,7 @@ async fn run_server(
         jwks_url: Some(format!("{loopback_origin}/.well-known/jwks.json")),
     };
     let gatekeeper_config = GatekeeperConfig {
-        loopback_origin: loopback_base_url.clone(),
+        loopback_base_url: loopback_base_url.clone(),
         granted_scopes: LOCAL_GRANTED_SCOPES
             .split_whitespace()
             .map(str::to_owned)
@@ -195,7 +195,7 @@ async fn run_server(
     }
 
     let tunnel_config = tunnel_rust::TunnelConfig {
-        loopback_base_url: runtime.loopback_base_url.clone(),
+        loopback_base_url: runtime.loopback_base_url(),
         seed: tunnel_seed_from_build_env(),
     };
     // `setup_tunnel` hands back the `/tunnel` router plus the in-process
@@ -308,7 +308,7 @@ async fn run_server(
     let proxy_table = ProxyTable::new();
     let loopback = LoopbackHostname::new(
         runtime
-            .loopback_base_url
+            .loopback_base_url_ref()
             .host_str()
             .expect("loopback_base_url must have host"),
     );
