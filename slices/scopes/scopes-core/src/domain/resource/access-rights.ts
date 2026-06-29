@@ -5,8 +5,10 @@
  * normalizes to canonical `c,r,u,d,s` order.
  *
  * Namespace module (`import { AccessRights } from 'scopes-core'`): the access
- * union is {@link AccessRights}, with `AccessRights.parse`, `AccessRights.letters`, …
+ * union is {@link AccessRights}, with `AccessRights.scopeParse`, `AccessRights.letters`, …
  */
+
+import type { ScopeParser, ScopeSerializer } from '../../behaviour/index.ts'
 
 /** A SMART v2 CRUDS permission letter. Canonical order is always `c r u d s`. */
 export type Action = 'c' | 'r' | 'u' | 'd' | 's'
@@ -89,7 +91,7 @@ export const form = (access: AccessRights): 'word' | 'letters' =>
   access.kind === 'letters' ? 'letters' : 'word'
 
 /** Render the access segment of a scope string: a v1 word, or canonical letters. */
-export const serialize = (access: AccessRights): string => {
+export const scopeSerialize: ScopeSerializer<AccessRights>['scopeSerialize'] = (access) => {
   switch (access.kind) {
     case 'read':
       return 'read'
@@ -112,7 +114,7 @@ export const serialize = (access: AccessRights): string => {
  * `AccessRights::parse_segment`: `read`/`write`/`*` stay words; letter bags
  * normalize.
  */
-export const parse = (segment: string): AccessRights | null => {
+export const scopeParse: ScopeParser<AccessRights>['scopeParse'] = (segment) => {
   if (segment === 'read') return read
   if (segment === 'write') return write
   if (segment === '*') return star

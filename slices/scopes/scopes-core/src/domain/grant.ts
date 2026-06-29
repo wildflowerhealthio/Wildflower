@@ -27,16 +27,16 @@ export const make = (scopes: readonly Scope.Scope[]): Grant => ({ scopes })
  * richest {@link Scope}, falling back to `unknown`, so no input is ever dropped).
  */
 export const parse = (raw: Iterable<string>): Grant => ({
-  scopes: [...raw].map((s) => Scope.parse(s)),
+  scopes: [...raw].map((s) => Scope.scopeParse(s)),
 })
 
 /**
  * Render every scope to its canonical wire string — the list-level counterpart of
- * {@link Scope.serialize} (mirrors Rust's `Grant::render`). Order is preserved;
+ * {@link Scope.scopeSerialize} (mirrors Rust's `Grant::render`). Order is preserved;
  * the view-model's {@link GrantDraft.serialize} layers wildcard dedupe (`spec.md §3`)
  * on top.
  */
-export const render = (grant: Grant): string[] => grant.scopes.map((s) => Scope.serialize(s))
+export const render = (grant: Grant): string[] => grant.scopes.map((s) => Scope.scopeSerialize(s))
 
 /** The resource scopes (FHIR + Wildflower) in a scope list. */
 export const resourceScopes = (scopes: readonly Scope.Scope[]): Scope.Resource[] =>

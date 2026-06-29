@@ -5,9 +5,10 @@
  * richest representation; rendering round-trips.
  *
  * Namespace module (`import { Scope } from 'scopes-core'`): the union is
- * {@link Scope}, with `Scope.parse`, `Scope.serialize`, `Scope.Resource`, …
+ * {@link Scope}, with `Scope.scopeParse`, `Scope.scopeSerialize`, `Scope.Resource`, …
  */
 
+import type { ScopeParser, ScopeSerializer } from '../behaviour/index.ts'
 import * as KnownScope from './known.ts'
 import * as Fhir from './resource/fhir.ts'
 import * as Wildflower from './resource/wildflower.ts'
@@ -50,29 +51,29 @@ export const resourceName = (scope: Resource): string =>
  * Parse one scope string into its richest form — total (mirrors Rust's
  * `Scope::from`): known → wildflower → FHIR → unknown.
  */
-export const parse = (s: string): Scope => {
-  const flag = KnownScope.parse(s)
+export const scopeParse = (s: string): Scope => {
+  const flag = KnownScope.scopeParse(s)
   if (flag !== null) return { kind: 'known', scope: flag }
-  const wf = Wildflower.parse(s)
+  const wf = Wildflower.scopeParse(s)
   if (wf !== null) return wf
-  const fhir = Fhir.parse(s)
+  const fhir = Fhir.scopeParse(s)
   if (fhir !== null) return fhir
   return UnknownScope.make(s)
 }
 
 /** Parse a resource scope (FHIR or Wildflower), or `null` for a flag/unknown. */
-export const parseResource = (s: string): Resource | null => {
-  const parsed = parse(s)
+export const scopeParseResource: ScopeParser<Resource>['scopeParse'] = (s) => {
+  const parsed = scopeParse(s)
   return isResource(parsed) ? parsed : null
 }
 
 /** Serialize one scope to its string form; resource scopes that grant nothing emit `''`. */
-export const serialize = (scope: Scope): string => {
+export const scopeSerialize: ScopeSerializer<Scope>['scopeSerialize'] = (scope) => {
   switch (scope.kind) {
     case 'fhir':
-      return Fhir.serialize(scope)
+      return Fhir.scopeSerialize(scope)
     case 'wildflower':
-      return Wildflower.serialize(scope)
+      return Wildflower.scopeSerialize(scope)
     case 'known':
       return scope.scope
     case 'unknown':

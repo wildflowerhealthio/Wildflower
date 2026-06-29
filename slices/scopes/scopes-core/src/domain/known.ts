@@ -4,8 +4,10 @@
  * (`scope/known.rs`). These match exactly; they are never resource scopes.
  *
  * Namespace module (`import { KnownScope } from 'scopes-core'`): the enum is
- * {@link KnownScope}, with `KnownScope.parse`, `KnownScope.is`, `KnownScope.ALL`.
+ * {@link KnownScope}, with `KnownScope.scopeParse`, `KnownScope.is`, `KnownScope.ALL`.
  */
+
+import type { ScopeParser } from '../behaviour/index.ts'
 
 /** A broadly-known non-resource scope that matches exactly (Rust's `KnownScope`). */
 export type KnownScope =
@@ -30,4 +32,4 @@ export const ALL: readonly KnownScope[] = [
 export const is = (s: string): s is KnownScope => (ALL as readonly string[]).includes(s)
 
 /** Parse a known flag scope, or `null` if `s` isn't one. */
-export const parse = (s: string): KnownScope | null => (is(s) ? s : null)
+export const scopeParse: ScopeParser<KnownScope>['scopeParse'] = (s) => (is(s) ? s : null)

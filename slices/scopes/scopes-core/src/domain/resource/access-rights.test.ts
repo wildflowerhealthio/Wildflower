@@ -39,20 +39,20 @@ describe('serialize/parse round-trip', () => {
   test('canonical access round-trips through serialize → parse', () => {
     fc.assert(
       fc.property(accessArb, (access) => {
-        expect(AccessRights.parse(AccessRights.serialize(access))).toEqual(access)
+        expect(AccessRights.scopeParse(AccessRights.scopeSerialize(access))).toEqual(access)
       })
     )
   })
 
   test('v1 words render verbatim; letter bags render canonically', () => {
-    expect(AccessRights.serialize(AccessRights.read)).toBe('read')
-    expect(AccessRights.serialize(AccessRights.star)).toBe('*')
-    expect(AccessRights.serialize(AccessRights.letters(['s', 'r']))).toBe('rs')
+    expect(AccessRights.scopeSerialize(AccessRights.read)).toBe('read')
+    expect(AccessRights.scopeSerialize(AccessRights.star)).toBe('*')
+    expect(AccessRights.scopeSerialize(AccessRights.letters(['s', 'r']))).toBe('rs')
   })
 
   test('parse rejects empty and stray-letter segments', () => {
-    expect(AccessRights.parse('')).toBeNull()
-    expect(AccessRights.parse('rx')).toBeNull()
+    expect(AccessRights.scopeParse('')).toBeNull()
+    expect(AccessRights.scopeParse('rx')).toBeNull()
   })
 })
 

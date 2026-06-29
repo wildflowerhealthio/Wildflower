@@ -4,9 +4,10 @@
  * (`scope/resource/fhir.rs`).
  *
  * Namespace module (`import { Fhir } from 'scopes-core'`): the scope value is
- * {@link FhirResourceScope}, with `Fhir.parse`, `Fhir.serialize`, `Fhir.ContextLevel`, …
+ * {@link FhirResourceScope}, with `Fhir.scopeParse`, `Fhir.scopeSerialize`, `Fhir.ContextLevel`, …
  */
 
+import type { ScopeParser, ScopeSerializer } from '../../behaviour/index.ts'
 import * as AccessRights from './access-rights.ts'
 
 /**
@@ -51,7 +52,7 @@ export const resourceName = (resource: ResourceType): string =>
  * Parse the `context/Type.perms` FHIR grammar (context ∈
  * `patient`/`user`/`system`), or `null` if `s` isn't one.
  */
-export const parse = (s: string): FhirResourceScope | null => {
+export const scopeParse: ScopeParser<FhirResourceScope>['scopeParse'] = (s) => {
   const slash = s.indexOf('/')
   if (slash <= 0) return null
   const ctx = s.slice(0, slash)
@@ -59,13 +60,13 @@ export const parse = (s: string): FhirResourceScope | null => {
   const rest = s.slice(slash + 1)
   const dot = rest.lastIndexOf('.')
   if (dot <= 0) return null
-  const access = AccessRights.parse(rest.slice(dot + 1))
+  const access = AccessRights.scopeParse(rest.slice(dot + 1))
   if (access === null) return null
   return { kind: 'fhir', context: ctx, resource: resourceType(rest.slice(0, dot)), access }
 }
 
 /** Render to its `context/Type.perms` string; a scope granting nothing emits `''`. */
-export const serialize = (scope: FhirResourceScope): string => {
-  const perms = AccessRights.serialize(scope.access)
+export const scopeSerialize: ScopeSerializer<FhirResourceScope>['scopeSerialize'] = (scope) => {
+  const perms = AccessRights.scopeSerialize(scope.access)
   return perms === '' ? '' : `${scope.context}/${resourceName(scope.resource)}.${perms}`
 }

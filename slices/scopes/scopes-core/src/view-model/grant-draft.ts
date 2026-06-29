@@ -60,13 +60,13 @@ export const serialize = (grant: GrantDraft): string[] => {
   for (const scope of Grant.resourceScopes(grant.scopes)) {
     const name = Scope.resourceName(scope)
     if (name === '*') {
-      const s = Scope.serialize(scope)
+      const s = Scope.scopeSerialize(scope)
       if (s !== '') out.push(s)
       continue
     }
     const wildcard = findWildcard(grant.scopes, Bucket.of(scope))
     if (wildcard === undefined) {
-      const s = Scope.serialize(scope)
+      const s = Scope.scopeSerialize(scope)
       if (s !== '') out.push(s)
       continue
     }
@@ -75,12 +75,12 @@ export const serialize = (grant: GrantDraft): string[] => {
     if (own.every((a) => covered.has(a))) continue // fully covered by the wildcard
     if (scope.access.kind === 'letters') {
       const remaining = own.filter((a) => !covered.has(a))
-      const s = Scope.serialize({ ...scope, access: AccessRights.letters(remaining) })
+      const s = Scope.scopeSerialize({ ...scope, access: AccessRights.letters(remaining) })
       if (s !== '') out.push(s)
     } else {
       // A v1 word only partially covered can't be cleanly subtracted; emit it
       // whole (redundant emission is harmless, just less tidy).
-      const s = Scope.serialize(scope)
+      const s = Scope.scopeSerialize(scope)
       if (s !== '') out.push(s)
     }
   }

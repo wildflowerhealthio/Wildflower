@@ -5,9 +5,10 @@
  * **not** reachable through the FHIR `*` wildcard — the set is closed.
  *
  * Namespace module (`import { Wildflower } from 'scopes-core'`): the scope value
- * is {@link WildflowerResourceScope}, with `Wildflower.parse`, `Wildflower.Resource`, …
+ * is {@link WildflowerResourceScope}, with `Wildflower.scopeParse`, `Wildflower.Resource`, …
  */
 
+import type { ScopeParser, ScopeSerializer } from '../../behaviour/index.ts'
 import * as AccessRights from './access-rights.ts'
 
 /** A Wildflower-specific resource the gatekeeper governs (Rust's `WildflowerResource`). */
@@ -48,7 +49,7 @@ export const resourceName = (resource: ResourceType): string =>
   resource.kind === 'wildcard' ? '*' : resource.resource
 
 /** Parse the `wildflower/Resource.perms` grammar, or `null` if `s` isn't one. */
-export const parse = (s: string): WildflowerResourceScope | null => {
+export const scopeParse: ScopeParser<WildflowerResourceScope>['scopeParse'] = (s) => {
   const slash = s.indexOf('/')
   if (slash <= 0) return null
   if (s.slice(0, slash) !== CONTEXT) return null
@@ -57,13 +58,15 @@ export const parse = (s: string): WildflowerResourceScope | null => {
   if (dot <= 0) return null
   const resource = resourceType(rest.slice(0, dot))
   if (resource === null) return null
-  const access = AccessRights.parse(rest.slice(dot + 1))
+  const access = AccessRights.scopeParse(rest.slice(dot + 1))
   if (access === null) return null
   return { kind: 'wildflower', resource, access }
 }
 
 /** Render to its `wildflower/Resource.perms` string; a scope granting nothing emits `''`. */
-export const serialize = (scope: WildflowerResourceScope): string => {
-  const perms = AccessRights.serialize(scope.access)
+export const scopeSerialize: ScopeSerializer<WildflowerResourceScope>['scopeSerialize'] = (
+  scope
+) => {
+  const perms = AccessRights.scopeSerialize(scope.access)
   return perms === '' ? '' : `${CONTEXT}/${resourceName(scope.resource)}.${perms}`
 }

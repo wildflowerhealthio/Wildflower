@@ -15,36 +15,36 @@ const fhir = (
   access,
 })
 
-describe('Scope.parse — total parse (mirrors Rust Scope)', () => {
+describe('Scope.scopeParse — total parse (mirrors Rust Scope)', () => {
   test('classifies flag / fhir / wildflower / unknown', () => {
-    expect(Scope.parse('openid')).toEqual({ kind: 'known', scope: 'openid' })
-    expect(Scope.parse('launch/patient')).toEqual({ kind: 'known', scope: 'launch/patient' })
-    expect(Scope.parse('patient/Observation.rs')).toEqual(
+    expect(Scope.scopeParse('openid')).toEqual({ kind: 'known', scope: 'openid' })
+    expect(Scope.scopeParse('launch/patient')).toEqual({ kind: 'known', scope: 'launch/patient' })
+    expect(Scope.scopeParse('patient/Observation.rs')).toEqual(
       fhir('patient', 'Observation', AccessRights.letters(['r', 's']))
     )
-    expect(Scope.parse('system/*.cruds')).toEqual(
+    expect(Scope.scopeParse('system/*.cruds')).toEqual(
       fhir('system', '*', AccessRights.letters(['c', 'r', 'u', 'd', 's']))
     )
-    expect(Scope.parse('wildflower/Grant.read')).toEqual({
+    expect(Scope.scopeParse('wildflower/Grant.read')).toEqual({
       kind: 'wildflower',
       resource: { kind: 'known', resource: 'Grant' },
       access: AccessRights.read,
     })
-    expect(Scope.parse('wildflower/*.write')).toEqual({
+    expect(Scope.scopeParse('wildflower/*.write')).toEqual({
       kind: 'wildflower',
       resource: { kind: 'wildcard' },
       access: AccessRights.write,
     })
     // wildflower context + unknown resource ⇒ unknown (the set is closed, like Rust)
-    expect(Scope.parse('wildflower/Nope.cruds')).toEqual({
+    expect(Scope.scopeParse('wildflower/Nope.cruds')).toEqual({
       kind: 'unknown',
       raw: 'wildflower/Nope.cruds',
     })
-    expect(Scope.parse('patient/Observation.rx')).toEqual({
+    expect(Scope.scopeParse('patient/Observation.rx')).toEqual({
       kind: 'unknown',
       raw: 'patient/Observation.rx',
     })
-    expect(Scope.parse('totally-made-up')).toEqual({ kind: 'unknown', raw: 'totally-made-up' })
+    expect(Scope.scopeParse('totally-made-up')).toEqual({ kind: 'unknown', raw: 'totally-made-up' })
   })
 
   test('FHIR + Wildflower scopes round-trip through serialize → parse', () => {
@@ -72,15 +72,15 @@ describe('Scope.parse — total parse (mirrors Rust Scope)', () => {
     )
     fc.assert(
       fc.property(fc.oneof(fhirArb, wfArb), (scope) => {
-        expect(Scope.parse(Scope.serialize(scope))).toEqual(scope)
+        expect(Scope.scopeParse(Scope.scopeSerialize(scope))).toEqual(scope)
       })
     )
   })
 
   test('parseResource returns null for flags/unknowns, the scope otherwise', () => {
-    expect(Scope.parseResource('openid')).toBeNull()
-    expect(Scope.parseResource('mystery')).toBeNull()
-    expect(Scope.parseResource('patient/Observation.r')).toEqual(
+    expect(Scope.scopeParseResource('openid')).toBeNull()
+    expect(Scope.scopeParseResource('mystery')).toBeNull()
+    expect(Scope.scopeParseResource('patient/Observation.r')).toEqual(
       fhir('patient', 'Observation', AccessRights.letters(['r']))
     )
   })

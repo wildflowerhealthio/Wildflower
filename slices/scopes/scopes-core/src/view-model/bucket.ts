@@ -55,6 +55,6 @@ export const makeResource = (
 
 /** The live scope string for a (bucket, resource, access) — for grid `code` display. */
 export const code = (bucket: Bucket, name: string, access: AccessRights.AccessRights): string => {
-  const perms = AccessRights.serialize(access)
+  const perms = AccessRights.scopeSerialize(access)
   return perms === '' ? `${prefix(bucket)}/${name}` : `${prefix(bucket)}/${name}.${perms}`
 }

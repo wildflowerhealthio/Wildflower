@@ -9,9 +9,12 @@
  * - `view-model/` adds the editing model the UI renders from ({@link Bucket},
  *   {@link GrantDraft}, {@link Envelope}, {@link Resolve}, {@link Words},
  *   {@link Labels}, {@link Verbs}) — none of it has a `scopes-rust` counterpart.
+ * - `behaviour/` names the cross-cutting contracts the domain namespaces conform
+ *   to ({@link ScopeSerializer}, {@link ScopeParser}).
  *
  * Every scope UI component renders from these pure namespaces.
  */
 
+export * from './behaviour/index.ts'
 export * from './domain/index.ts'
 export * from './view-model/index.ts'
