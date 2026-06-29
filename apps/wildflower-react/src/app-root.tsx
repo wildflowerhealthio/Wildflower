@@ -94,7 +94,7 @@ interface RenderAppOptions {
   /** Browser history for web, memory history for embedded WebView. */
   readonly history: RouterHistory
   /** Tagged onto Sentry events to distinguish web/embedded crashes. */
-  readonly entry: 'main-web' | 'main-embedded' | 'main-single-web' | 'main-tauri'
+  readonly entry: 'main-web' | 'main-single-web' | 'main-tauri'
   /**
    * Environment-specific {@link AuthTokenStore}. Web entries pass
    * `makeWebAuthTokenStore()` (cookie-derived auth signal — the real JWT
