@@ -97,16 +97,29 @@ interface RenderAppOptions {
   readonly entry: 'main-web' | 'main-embedded' | 'main-single-web' | 'main-tauri'
   /**
    * Environment-specific {@link AuthTokenStore}. Web entries pass
-   * `makeWebAuthTokenStore()` (localStorage-backed); embedded passes
-   * `makeEmbeddedAuthTokenStore()` (in-memory only, see its docstring
-   * for the why). Threaded into `<AuthTokenProvider>` for descendants,
-   * into the `BearerToken` Layer for Effect-side HTTP clients, into
-   * the page-bridge handler via `makeTransport`, and into a
-   * token-rotation invalidator that flushes TanStack Query's cache
-   * when the bearer changes (so 401-pinned entries don't outlive the
-   * rotation).
+   * `makeWebAuthTokenStore()` (cookie-derived auth signal — the real JWT
+   * is the `HttpOnly` `wf_auth` cookie, invisible to JS); embedded passes
+   * `makeEmbeddedAuthTokenStore()` (in-memory raw JWT, see its docstring
+   * for the why). Threaded into `<AuthTokenProvider>` for descendants and
+   * into a token-rotation invalidator that flushes TanStack Query's cache
+   * when the auth signal changes (so 401-pinned entries don't outlive a
+   * sign-in or rotation). The `BearerToken` source is
+   * {@link bearerTokenSubscribable}, which is the store's subscribable
+   * *only* when omitted — the web path passes a separate always-`null`
+   * source so no `Authorization` header is set (the cookie rides instead).
    */
   readonly tokenStore: AuthTokenStore
+  /**
+   * Source for the Effect-side `BearerToken` (the `Authorization: Bearer`
+   * header injected per request). Defaults to {@link tokenStore}'s
+   * subscribable, which is correct for the embedded/Tauri path that holds a
+   * real JWT. The **web** entries override it with an always-`null` source:
+   * there the auth signal is a cookie-`exp` hint, not a usable bearer, and
+   * the `HttpOnly` cookie authenticates same-origin requests automatically,
+   * so a JS-attached header would be both wrong (it'd send the `exp`) and
+   * unnecessary (#218 point 5).
+   */
+  readonly bearerTokenSubscribable?: Subscribable.Subscribable<string | null>
   /**
    * Environment-specific auth-readiness factory, injected per entry.
    * Called once at `renderApp` time with `transportReady`; the
@@ -173,16 +186,22 @@ const renderApp = ({
   history,
   entry,
   tokenStore,
+  bearerTokenSubscribable,
   awaitAuthReady,
   makeTransport,
   apiBaseUrl,
   localGrantedScopes,
 }: RenderAppOptions): void => {
+  // The bearer source defaults to the store (embedded holds a real JWT); web
+  // overrides it with an always-`null` source so the HttpOnly cookie — not a
+  // JS-attached header — authenticates same-origin requests (#218 point 5).
   const { queryClient, runAuthed, runtimeLayer } = buildAppQueryRuntime(
-    tokenStore.subscribable,
+    bearerTokenSubscribable ?? tokenStore.subscribable,
     apiBaseUrl
   )
 
+  // Keyed on the auth *signal* (the store), not the bearer source: on web a
+  // sign-in flips the cookie-derived signal and should flush the cache.
   forkTokenRotationInvalidator(tokenStore.subscribable, queryClient)
 
   const routerHandle: { current: AnyRouter | null } = { current: null }

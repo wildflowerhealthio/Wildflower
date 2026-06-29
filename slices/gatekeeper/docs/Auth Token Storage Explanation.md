@@ -6,40 +6,58 @@ embedded one deliberately ignores `localStorage`.
 
 Both factories return the same `AuthTokenStore` shape (a read-side
 `subscribable` plus a `setToken` writer), so `AuthTokenProvider`, the
-`BearerToken` Layer, the page-bridge `AuthTokenIssued` handler, and the
-`auth-ready` gates are all environment-blind. Only the `main-*`
-entrypoint, which knows which environment it is in, picks a factory and
-threads the store through `renderApp`.
+page-bridge `AuthTokenIssued` handler, and the `auth-ready` gates are all
+environment-blind. Only the `main-*` entrypoint, which knows which
+environment it is in, picks a factory and threads the store through
+`renderApp`. The **one** place the environments diverge is the
+`BearerToken` source (see "What the web `subscribable` carries" below).
 
-## `makeWebAuthTokenStore` — `localStorage`-backed
+## `makeWebAuthTokenStore` — cookie-derived (#218)
 
 Used by the standalone web entries (`main-web` / `main-single-web`).
 
-- Seeds the underlying `SubscriptionRef` from the current
-  `localStorage` value at construction time.
-- `setToken` writes through to both the ref and `localStorage` in one
-  synchronous step — no forked subscriber, no microtask gap between the
-  call and the value being visible in storage.
-- A `'storage'` event listener mirrors cross-tab writes into the ref. A
-  current-value guard keeps the listener from storming the ref with a
-  value this tab just wrote (browsers don't fire `'storage'` on the
-  writing tab, but the guard hardens the contract against future spec
-  relaxations and any code path that writes `localStorage` outside
-  `setToken`).
-- Consumes a `?token=…` URL bootstrap parameter into `localStorage`
-  before construction (the dev flow that `wildflower-node` logs at
-  startup), then strips it from the address bar.
+On the web path the real access token is the **`HttpOnly` `wf_auth`
+cookie** the gatekeeper server sets at token issuance
+(`gatekeeper-rust` `http/cookies.rs`). It is invisible to JS and sent
+automatically on every request — including the initial document
+navigation, before any JS runs — which is the whole point of #218: the
+edge (and a future relay, #267) can read auth state even when the SPA
+never loads. So the web store no longer _holds_ a token at all.
 
-### Why the URL token is validated against a JWT shape
+- It derives an "authed until `exp`" signal from the readable companion
+  cookie **`wf_auth_exp`** (carrying just the non-secret unix `exp`,
+  never the signature). The `subscribable` yields that `exp` string while
+  it's in the future, else `null`.
+- It re-derives on `focus` / `visibilitychange` (cookies don't fire
+  `'storage'`, so this is how a sign-in or logout in another tab
+  surfaces) and arms a timer to flip the signal to `null` the moment the
+  hint expires.
+- `setToken` **ignores its argument** and just re-derives from the
+  cookie. JS can't write the `HttpOnly` `wf_auth`; the server already did
+  via `Set-Cookie` on the device-flow / refresh response. `NeedsAuthMessage`
+  calls `setToken(...)` on sign-in completion to flip the signal (then
+  reloads), so the same write seam works in both environments without the
+  shared component knowing which it's in.
+- **Clearing** the session is a server action (`POST /access/logout`,
+  which sends `Max-Age=0` clears), not a `setToken(null)` — JS can't
+  delete the `HttpOnly` cookie.
 
-The `?token=` query parameter is attacker-controllable. Before it is
-persisted it is checked against `/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/`
-(three non-empty base64url segments). A value that fails the check is
-treated as if no usable token was supplied: the existing stored token is
-left untouched, but the `?token=` param is still stripped from the URL
-so the malformed value can't linger in browser history or `Referer`
-headers. Dropping this guard is a security regression — a malformed
-`?token=` would otherwise clobber a previously-valid stored bearer.
+### What the web `subscribable` carries (and why `BearerToken` is separate)
+
+The web `subscribable`'s value is the **`exp` hint, not a usable
+bearer**. So the web entry deliberately feeds the Effect-side
+`BearerToken` a _separate_ always-`null` source
+(`makeWebEntryOptions().bearerTokenSubscribable`): no `Authorization`
+header is ever set, and the cookie authenticates same-origin requests on
+its own. Wiring the auth-signal subscribable into `BearerToken` would
+send the `exp` string as a bogus bearer. The embedded path omits the
+override, so `BearerToken` defaults to its store's real-JWT subscribable.
+
+> The dev-only `?token=…` URL bootstrap (which used to seed `localStorage`)
+> was removed with #218 — JS can't set an `HttpOnly` cookie, so a token
+> painted on the URL can't become the `wf_auth` cookie. A server endpoint
+> that accepts a token and sets the cookie is the replacement, tracked as a
+> follow-up.
 
 ## `makeEmbeddedAuthTokenStore` — in-memory only
 

@@ -44,10 +44,10 @@ export {
 } from './client/auth-ready.ts'
 
 export {
-  consumeUrlTokenIntoLocalStorage,
+  AUTH_EXP_COOKIE_NAME,
   makeEmbeddedAuthTokenStore,
   makeWebAuthTokenStore,
-  TOKEN_STORAGE_KEY,
+  readAuthedSignalFromCookie,
 } from './client/token-storage.ts'
 
 export {

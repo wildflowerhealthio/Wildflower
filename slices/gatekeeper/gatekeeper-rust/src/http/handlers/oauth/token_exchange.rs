@@ -22,6 +22,7 @@ use crate::domain::authorization_code::AuthorizationCode;
 use crate::domain::authorization_request::{GrantType, RequestStatus};
 use crate::domain::client::AllowedGrantType;
 use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
+use crate::http::cookies;
 use crate::http::state::AppState;
 use crate::http::ServedOrigin;
 use persistence_rust::JsonColumn;
@@ -71,7 +72,37 @@ pub(super) async fn handle_token_request(
     origin: ServedOrigin,
     request: TokenRequest<TokenPayload>,
 ) -> Response {
-    dispatch_token_request(&state, &origin, request).into_response()
+    // Only the owner's same-origin web-login grants plant the session cookie:
+    // the device-code grant (the SPA's poll) and the refresh-token grant (the
+    // SPA refreshing its own session). The authorization-code grant is a
+    // third-party SMART app redeeming a code — it must NOT plant an owner-origin
+    // cookie carrying the app's (lower-scoped) token. See #218.
+    let sets_session_cookie = matches!(
+        request.payload,
+        TokenPayload::DeviceCode { .. } | TokenPayload::RefreshToken { .. }
+    );
+    match dispatch_token_request(&state, &origin, request) {
+        Ok(token) if sets_session_cookie => {
+            let max_age = token.expires_in;
+            // The companion cookie carries the absolute `exp`; deriving it from
+            // `expires_in` here (rather than re-reading the JWT) keeps the hint
+            // and its `Max-Age` consistent. The companion is advisory, so the
+            // sub-second skew vs the JWT's own `exp` (minted a moment earlier) is
+            // immaterial.
+            let exp_unix = Utc::now().timestamp() + max_age;
+            let access_token = token.access_token.clone();
+            let mut response = token.into_response();
+            cookies::append_session_cookies(
+                response.headers_mut(),
+                &access_token,
+                max_age,
+                exp_unix,
+            );
+            response
+        }
+        Ok(token) => token.into_response(),
+        Err(error) => error.into_response(),
+    }
 }
 
 /// Parse the grant, resolve client credentials, and dispatch on `grant_type`,

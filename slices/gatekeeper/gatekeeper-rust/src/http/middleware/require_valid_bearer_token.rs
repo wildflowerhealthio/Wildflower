@@ -11,7 +11,7 @@ use crate::http::served_origin_for;
 use crate::http::state::AppState;
 
 use crate::http::middleware::require_auth::{
-    try_bearer_token_from_headers, verify_auth_token_claims,
+    try_access_token_from_request, verify_auth_token_claims,
 };
 
 /// State for [`require_valid_bearer_token`]: the gatekeeper [`AppState`] plus the
@@ -35,7 +35,7 @@ pub async fn require_valid_bearer_token(
     if is_exempt(req.uri().path(), &gate.exempt) {
         return next.run(req).await;
     }
-    let Some(token) = try_bearer_token_from_headers(&headers) else {
+    let Some(token) = try_access_token_from_request(&headers) else {
         return response_templates::unauthorized();
     };
     let origin = served_origin_for(

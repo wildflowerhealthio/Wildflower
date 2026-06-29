@@ -1,221 +1,126 @@
 import { Effect } from 'effect'
+import type { AuthTokenStore } from 'react-kitchen-sink'
 import { afterEach, beforeEach, describe, expect, test } from 'vite-plus/test'
 import {
-  consumeUrlTokenIntoLocalStorage,
+  AUTH_EXP_COOKIE_NAME,
   makeEmbeddedAuthTokenStore,
   makeWebAuthTokenStore,
-  TOKEN_STORAGE_KEY,
+  readAuthedSignalFromCookie,
 } from './token-storage.ts'
 
 /**
- * `token-storage.ts` runs `consumeUrlTokenIntoLocalStorage` at module
- * load; jsdom's default URL has no `?token=` so the module-level call is
- * a no-op. We re-drive the helper directly with controlled URLs to cover
- * the dev-mode bootstrap path documented in gatekeeper-core's README.
+ * The web store derives its auth signal from the readable `wf_auth_exp`
+ * companion cookie the server sets alongside the `HttpOnly` `wf_auth` JWT
+ * (#218). JS never sees the real token; these tests drive the cookie
+ * directly and assert the derived signal. A wide (1h) gap between `exp` and
+ * "now" keeps the future/past cases robust against test execution time.
  */
 
-// jsdom's `history.replaceState` only permits same-origin URLs, so the
-// test fixtures stay on the jsdom default origin (captured at module
-// load — vitest doesn't expose it as a constant).
-const ORIGIN = new URL(window.location.href).origin
+const unixSecs = (): number => Math.floor(Date.now() / 1000)
+const futureExp = (): string => String(unixSecs() + 3600)
+const pastExp = (): string => String(unixSecs() - 3600)
 
-const setLocation = (path: string): void => {
-  window.history.replaceState(null, '', `${ORIGIN}${path}`)
+const setExpCookie = (value: string): void => {
+  document.cookie = `${AUTH_EXP_COOKIE_NAME}=${value}; Path=/`
 }
 
-// JWT-shaped (three base64url segments) so it passes the `JWT_SHAPE`
-// guard inside `consumeUrlTokenIntoLocalStorage`.
-const FRESH_TOKEN = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyIn0.s1g-n4tur3_xyz'
+const clearCookies = (): void => {
+  for (const part of document.cookie.split(';')) {
+    const name = part.split('=')[0]?.trim()
+    if (name !== undefined && name !== '') document.cookie = `${name}=; Path=/; Max-Age=0`
+  }
+}
 
-describe('consumeUrlTokenIntoLocalStorage', () => {
-  beforeEach(() => {
-    window.localStorage.clear()
-    setLocation('/')
+const read = (store: AuthTokenStore): string | null => Effect.runSync(store.subscribable.get)
+
+beforeEach(clearCookies)
+afterEach(clearCookies)
+
+describe('readAuthedSignalFromCookie', () => {
+  test('returns the exp string while the hint is in the future', () => {
+    const exp = futureExp()
+    setExpCookie(exp)
+    expect(readAuthedSignalFromCookie()).toBe(exp)
   })
 
-  afterEach(() => {
-    window.localStorage.clear()
-    setLocation('/')
+  test('returns null when no companion cookie is present', () => {
+    expect(readAuthedSignalFromCookie()).toBe(null)
   })
 
-  test('writes ?token= into localStorage and strips it from the URL', () => {
-    setLocation(`/home?token=${FRESH_TOKEN}`)
-
-    consumeUrlTokenIntoLocalStorage()
-
-    expect(window.localStorage.getItem(TOKEN_STORAGE_KEY)).toBe(FRESH_TOKEN)
-    expect(window.location.href).toBe(`${ORIGIN}/home`)
+  test('returns null once the hint has expired', () => {
+    setExpCookie(pastExp())
+    expect(readAuthedSignalFromCookie()).toBe(null)
   })
 
-  test('overwrites a stale localStorage value with the URL token', () => {
-    window.localStorage.setItem(TOKEN_STORAGE_KEY, 'stale-token')
-    setLocation(`/home?token=${FRESH_TOKEN}`)
-
-    consumeUrlTokenIntoLocalStorage()
-
-    expect(window.localStorage.getItem(TOKEN_STORAGE_KEY)).toBe(FRESH_TOKEN)
+  test('returns null for a non-numeric exp', () => {
+    setExpCookie('not-a-number')
+    expect(readAuthedSignalFromCookie()).toBe(null)
   })
 
-  test('preserves other query parameters when stripping ?token=', () => {
-    setLocation(`/home?keep=yes&token=${FRESH_TOKEN}&also=ok`)
-
-    consumeUrlTokenIntoLocalStorage()
-
-    const url = new URL(window.location.href)
-    expect(url.searchParams.get('token')).toBe(null)
-    expect(url.searchParams.get('keep')).toBe('yes')
-    expect(url.searchParams.get('also')).toBe('ok')
-  })
-
-  test('no-op when ?token= is absent', () => {
-    window.localStorage.setItem(TOKEN_STORAGE_KEY, 'existing-token')
-    setLocation('/home?other=1')
-
-    consumeUrlTokenIntoLocalStorage()
-
-    expect(window.localStorage.getItem(TOKEN_STORAGE_KEY)).toBe('existing-token')
-    expect(window.location.href).toBe(`${ORIGIN}/home?other=1`)
-  })
-
-  test('no-op when ?token= is empty', () => {
-    window.localStorage.setItem(TOKEN_STORAGE_KEY, 'existing-token')
-    setLocation('/home?token=')
-
-    consumeUrlTokenIntoLocalStorage()
-
-    expect(window.localStorage.getItem(TOKEN_STORAGE_KEY)).toBe('existing-token')
-    expect(window.location.href).toBe(`${ORIGIN}/home?token=`)
-  })
-
-  test('rejects a malformed ?token= but still strips it from the URL', () => {
-    window.localStorage.setItem(TOKEN_STORAGE_KEY, FRESH_TOKEN)
-    setLocation('/home?token=not-a-jwt')
-
-    consumeUrlTokenIntoLocalStorage()
-
-    // The attacker-controllable malformed value must not clobber the
-    // previously-valid stored token...
-    expect(window.localStorage.getItem(TOKEN_STORAGE_KEY)).toBe(FRESH_TOKEN)
-    // ...but the param is still stripped so it can't linger in history.
-    expect(window.location.href).toBe(`${ORIGIN}/home`)
-  })
-
-  test('rejects a ?token= with too few segments', () => {
-    window.localStorage.setItem(TOKEN_STORAGE_KEY, FRESH_TOKEN)
-    setLocation('/home?token=only.two')
-
-    consumeUrlTokenIntoLocalStorage()
-
-    expect(window.localStorage.getItem(TOKEN_STORAGE_KEY)).toBe(FRESH_TOKEN)
-    expect(window.location.href).toBe(`${ORIGIN}/home`)
-  })
-
-  test('rejects an encoding-sensitive ?token= (space/plus) but still strips it', () => {
-    window.localStorage.setItem(TOKEN_STORAGE_KEY, FRESH_TOKEN)
-    // `a b+c` carries a space and a `+` (which the query decoder turns
-    // into another space) — it can't match the three-segment base64url
-    // shape, so a crafted link with junk like this must not clobber the
-    // stored bearer.
-    setLocation('/home?token=a b+c')
-
-    consumeUrlTokenIntoLocalStorage()
-
-    expect(window.localStorage.getItem(TOKEN_STORAGE_KEY)).toBe(FRESH_TOKEN)
-    expect(window.location.href).toBe(`${ORIGIN}/home`)
+  test('reads wf_auth_exp from among other cookies', () => {
+    const exp = futureExp()
+    document.cookie = 'other=1; Path=/'
+    setExpCookie(exp)
+    document.cookie = 'another=2; Path=/'
+    expect(readAuthedSignalFromCookie()).toBe(exp)
   })
 })
 
-/**
- * `makeWebAuthTokenStore()` calls `consumeUrlTokenIntoLocalStorage`
- * before constructing the underlying `SubscriptionRef`, so a
- * `?token=…` painted on the URL at construction time should land as
- * the store's initial value (with `localStorage` holding it and the
- * URL stripped). This is what `webAuthReadyEffect` resolves against
- * instead of redirecting on first paint.
- */
 describe('makeWebAuthTokenStore', () => {
-  beforeEach(() => {
-    window.localStorage.clear()
-    setLocation('/')
+  test('starts authed (the exp hint) when the cookie is present at construction', () => {
+    const exp = futureExp()
+    setExpCookie(exp)
+    expect(read(makeWebAuthTokenStore())).toBe(exp)
   })
 
-  afterEach(() => {
-    window.localStorage.clear()
-    setLocation('/')
+  test('starts unauthed (null) when no cookie is present', () => {
+    expect(read(makeWebAuthTokenStore())).toBe(null)
   })
 
-  test('seeds the store from ?token= on construction', async () => {
-    setLocation(`/home?token=${FRESH_TOKEN}`)
+  test('starts unauthed when the cookie is already expired', () => {
+    setExpCookie(pastExp())
+    expect(read(makeWebAuthTokenStore())).toBe(null)
+  })
 
+  test('setToken re-derives the signal from the cookie, ignoring its argument', () => {
     const store = makeWebAuthTokenStore()
+    expect(read(store)).toBe(null)
 
-    // URL was stripped at construction time
-    expect(window.location.href).toBe(`${ORIGIN}/home`)
-    // localStorage holds the URL token
-    expect(window.localStorage.getItem(TOKEN_STORAGE_KEY)).toBe(FRESH_TOKEN)
-    // The store's subscribable picked up the URL token as its initial value
-    const initial = await Effect.runPromise(store.subscribable.get)
-    expect(initial).toBe(FRESH_TOKEN)
+    // The server set the HttpOnly cookie on the device-flow response; the
+    // companion exp now reads back. JS can't (and must not) plant the JWT, so
+    // the value passed to setToken is intentionally ignored.
+    const exp = futureExp()
+    setExpCookie(exp)
+    store.setToken('a-raw-jwt-the-web-store-must-never-hold')
+
+    expect(read(store)).toBe(exp)
   })
 
-  test('?token= wins over a stale localStorage value at construction', async () => {
-    window.localStorage.setItem(TOKEN_STORAGE_KEY, 'stale-token')
-    setLocation(`/home?token=${FRESH_TOKEN}`)
-
-    const store = makeWebAuthTokenStore()
-
-    const initial = await Effect.runPromise(store.subscribable.get)
-    expect(initial).toBe(FRESH_TOKEN)
-  })
-
-  test('persists subsequent setToken writes back to localStorage synchronously', () => {
-    const store = makeWebAuthTokenStore()
-    store.setToken('written-via-setter')
-    // `setToken` writes to the ref AND `localStorage` in the same
-    // synchronous step — no microtask flush required.
-    expect(window.localStorage.getItem(TOKEN_STORAGE_KEY)).toBe('written-via-setter')
-  })
-
-  test('clearing the token via setToken(null) removes the localStorage key synchronously', () => {
-    window.localStorage.setItem(TOKEN_STORAGE_KEY, 'seeded')
-    const store = makeWebAuthTokenStore()
-    store.setToken(null)
-    expect(window.localStorage.getItem(TOKEN_STORAGE_KEY)).toBe(null)
+  test('the subscribable never carries a usable bearer — only the non-secret exp', () => {
+    const exp = futureExp()
+    setExpCookie(exp)
+    // A JWT has dots; the exp hint is bare digits. This guards the invariant
+    // that the web auth signal is not a token.
+    const signal = read(makeWebAuthTokenStore())
+    expect(signal).toBe(exp)
+    expect(signal?.includes('.')).toBe(false)
   })
 })
 
 /**
- * The embedded store ignores `localStorage` entirely on both reads
- * and writes — the host bridge is the sole writer. A stale value left
- * by a previous WebView session must NEVER surface as the embedded
- * store's initial value (the auth-ready gate would otherwise resolve
- * with a stale bearer and TanStack Query would pin 401s in cache).
+ * The embedded store holds the raw JWT in memory (the host bridge is the
+ * sole writer) and is unchanged by #218 — the embedded path keeps attaching
+ * the `Authorization` header because `tauri://` fetches loopback
+ * cross-origin where cookies don't travel cleanly (point 8).
  */
 describe('makeEmbeddedAuthTokenStore', () => {
-  beforeEach(() => {
-    window.localStorage.clear()
+  test('starts at null', () => {
+    expect(read(makeEmbeddedAuthTokenStore())).toBe(null)
   })
 
-  afterEach(() => {
-    window.localStorage.clear()
-  })
-
-  test('starts at null even when localStorage holds a stale token', async () => {
-    window.localStorage.setItem(TOKEN_STORAGE_KEY, 'stale-from-previous-session')
-
-    const store = makeEmbeddedAuthTokenStore()
-
-    const initial = await Effect.runPromise(store.subscribable.get)
-    expect(initial).toBe(null)
-  })
-
-  test('does not write to localStorage on setToken (in-memory only)', async () => {
+  test('setToken stores the raw token in memory', () => {
     const store = makeEmbeddedAuthTokenStore()
     store.setToken('from-host-bridge')
-    expect(window.localStorage.getItem(TOKEN_STORAGE_KEY)).toBe(null)
-    // The store itself reflects the write — the localStorage skip is
-    // policy, not a no-op.
-    const after = await Effect.runPromise(store.subscribable.get)
-    expect(after).toBe('from-host-bridge')
+    expect(read(store)).toBe('from-host-bridge')
   })
 })

@@ -4,6 +4,7 @@
 //! and middleware files are private implementation detail behind the route
 //! table.
 
+mod cookies;
 mod error_pages;
 mod handlers;
 mod middleware;
@@ -51,6 +52,7 @@ pub fn router(state: AppState) -> Router {
         .merge(handlers::grants::router())
         .merge(handlers::oauth_consents::router())
         .merge(handlers::devices::router())
+        .merge(handlers::logout::router())
         .layer(axum_middleware::from_fn_with_state(
             state.clone(),
             middleware::require_owner_auth,

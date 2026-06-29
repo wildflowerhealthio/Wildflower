@@ -75,9 +75,13 @@ not part of the page contract.
 The host process (gatekeeper-node, native shell, dev server) has direct
 access to the signing key and can mint an access token via
 `mintHostOwnerToken({ ttl })` (or `internal/jwt.ts:mintAccessToken` for
-ad-hoc cases). The browser consumes the token from a `?token=` query
-param at startup, stashes it in `localStorage`, and strips it from the
-URL via `history.replaceState`.
+ad-hoc cases).
+
+> **Web-path consumption superseded by #218.** The client-side
+> `?token=`→`localStorage` step was removed — the web SPA authenticates via
+> the `HttpOnly` `wf_auth` cookie the server sets at issuance, which JS
+> can't plant from a URL param. A server endpoint that accepts a token and
+> sets the cookie is the replacement (tracked follow-up).
 
 **This is a dev convenience, not a shipping pattern.** The long-term
 story for first-Owner onboarding (native shell, fresh deployment, CLI

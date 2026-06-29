@@ -183,9 +183,16 @@ Replaces the deleted PIN flow's "operator gets onto a cold deployment"
 mechanism. The host process (gatekeeper-node, native-shell wrapper, dev
 server) has direct access to the signing key, mints a short-lived
 access token via `internal/jwt.ts:mintAccessToken`, and hands the URL
-to a browser. The browser's root shell consumes the token from a
-`?token=` query param, stashes it in `localStorage`, and strips it
-from the URL via `history.replaceState`.
+to a browser.
+
+> **Superseded on the web path by #218.** The client-side
+> `?token=`→`localStorage` consumption (`consumeUrlTokenIntoLocalStorage`)
+> was **removed**: the web SPA no longer holds the token in JS — the real
+> token is the `HttpOnly` `wf_auth` cookie the server sets at issuance, and
+> JS can't write an `HttpOnly` cookie from a URL param. Re-bootstrapping a
+> token from a URL now needs a tiny server endpoint that accepts the token
+> and sets the cookie (a tracked follow-up). The embedded path is
+> unaffected.
 
 The token verifies normally because `wildflower-host` is a registered
 [`Client`](#client) and `'owner' ∈ scope`. No new endpoint, no

@@ -1,4 +1,5 @@
 import { makeAwaitWebAuthReady, makeWebAuthTokenStore } from 'gatekeeper-react'
+import { makeSubscribableStore } from 'react-kitchen-sink'
 import type { RenderAppOptions } from './app-root.tsx'
 import { stubTransport } from './bridges/transport-context.ts'
 
@@ -7,32 +8,39 @@ import { stubTransport } from './bridges/transport-context.ts'
  * and `main-single-web`), which differ only in `history`/`entry` and
  * their `instrument.ts` import — not in auth or transport behavior.
  *
- * Returns the three environment-specific options both web entries
- * share, leaving each entry to spread them into its own `renderApp`
- * call alongside the platform extras. It's a factory, not a wrapper
- * over `renderApp`, so the entries keep their explicit `renderApp` call
- * site (and embedded stays untouched).
+ * Returns the environment-specific options both web entries share,
+ * leaving each entry to spread them into its own `renderApp` call
+ * alongside the platform extras. It's a factory, not a wrapper over
+ * `renderApp`, so the entries keep their explicit `renderApp` call site
+ * (and embedded stays untouched).
  *
- * - `tokenStore`: `localStorage`-backed, with the `?token=…` URL
- *   bootstrap and cross-tab `'storage'` sync. Reads the initial token
- *   synchronously at construction time.
+ * - `tokenStore`: cookie-derived (the real JWT is the `HttpOnly` `wf_auth`
+ *   cookie, invisible to JS; the store tracks the readable `wf_auth_exp`
+ *   hint). Drives the auth-ready gate and the rotation invalidator.
+ * - `bearerTokenSubscribable`: an always-`null` source for the Effect-side
+ *   `BearerToken`, so the web HTTP client sets **no** `Authorization`
+ *   header — the cookie rides same-origin requests automatically (#218
+ *   point 5). Kept separate from `tokenStore.subscribable`, whose value is
+ *   the non-secret `exp` hint, never a usable bearer.
  * - `awaitAuthReady`: ignores `transportReady` (standalone has no host
- *   handshake) and resolves against the store's subscribable — present
- *   token resolves immediately, absent throws the device-login
- *   redirect.
- * - `makeTransport`: pre-resolved stub (no host bridge), so the
- *   `_auth` loader's `await context.transport` is a microtask. Both
- *   the `writeIssuedToken` and `setActiveDeviceUserCode` setters are
+ *   handshake) and resolves against the store's subscribable — an authed
+ *   signal resolves immediately, absent throws the device-login redirect.
+ * - `makeTransport`: pre-resolved stub (no host bridge), so the `_auth`
+ *   loader's `await context.transport` is a microtask. Both setters are
  *   ignored — there's no host to push `AuthTokenIssued` or
  *   `DeviceConsentRequested` from on standalone web.
  */
 const makeWebEntryOptions = (): Pick<
   RenderAppOptions,
-  'tokenStore' | 'awaitAuthReady' | 'makeTransport'
+  'tokenStore' | 'bearerTokenSubscribable' | 'awaitAuthReady' | 'makeTransport'
 > => {
   const tokenStore = makeWebAuthTokenStore()
+  // A constant-`null` bearer source: the web path authenticates via the
+  // HttpOnly cookie, never a JS-attached header.
+  const nullBearer = makeSubscribableStore<string | null>(null)
   return {
     tokenStore,
+    bearerTokenSubscribable: nullBearer.subscribable,
     awaitAuthReady: () => makeAwaitWebAuthReady(tokenStore.subscribable),
     makeTransport: () => Promise.resolve(stubTransport),
   }

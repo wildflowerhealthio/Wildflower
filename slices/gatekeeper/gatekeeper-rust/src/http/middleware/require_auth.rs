@@ -17,7 +17,7 @@ pub async fn require_owner_auth(
     req: Request<Body>,
     next: Next,
 ) -> Response {
-    let Some(token) = try_bearer_token_from_headers(&headers) else {
+    let Some(token) = try_access_token_from_request(&headers) else {
         return response_templates::unauthorized();
     };
     // Verify against the request's served origin (loopback for a direct hit,
@@ -31,6 +31,22 @@ pub async fn require_owner_auth(
         return response_templates::verify_error_response("verify_owner_token failed", e);
     }
     next.run(req).await
+}
+
+/// Extract the access token from a request, preferring the `Authorization:
+/// Bearer` header and falling back to the [`wf_auth`](crate::http::cookies)
+/// cookie when no bearer header is present.
+///
+/// The bearer branch preserves the embedded (Tauri) path, which keeps attaching
+/// the header from its JS-held token; the cookie branch serves the web path,
+/// where the token is `HttpOnly` and invisible to JS (see #218). Verification
+/// downstream is identical regardless of source — it verifies a token *string*.
+/// An empty cookie value (e.g. a just-cleared `wf_auth=`) is treated as absent.
+pub fn try_access_token_from_request(headers: &HeaderMap) -> Option<String> {
+    try_bearer_token_from_headers(headers).or_else(|| {
+        crate::http::cookies::cookie_value(headers, crate::http::cookies::AUTH_COOKIE_NAME)
+            .filter(|token| !token.is_empty())
+    })
 }
 
 pub fn try_bearer_token_from_headers(headers: &HeaderMap) -> Option<String> {

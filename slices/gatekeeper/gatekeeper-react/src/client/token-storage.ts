@@ -1,137 +1,138 @@
 /**
- * Per-entry {@link AuthTokenStore} factories for the gatekeeper bearer
- * token: {@link makeWebAuthTokenStore} (`localStorage`-backed, for the
+ * Per-entry {@link AuthTokenStore} factories for the gatekeeper auth
+ * signal: {@link makeWebAuthTokenStore} (cookie-driven, for the
  * standalone web entries) and {@link makeEmbeddedAuthTokenStore}
  * (in-memory only, for the in-WebView SPA). Both return the same
  * {@link AuthTokenStore} shape so every consumer is environment-blind;
  * only the `main-*` entrypoint picks a factory.
  *
- * See `slices/gatekeeper/docs/Auth Token Storage Explanation.md` for
- * the storage-policy rationale (why the embedded store ignores
- * `localStorage`, and why the URL token is JWT-shape validated).
+ * On the **web path** the real access token is the `HttpOnly` `wf_auth`
+ * cookie the server sets at token issuance (#218) — invisible to JS, sent
+ * automatically on every request. So the web store no longer *holds* the
+ * token: it derives an "authed until `exp`" signal from the readable
+ * companion cookie `wf_auth_exp` (carrying just the non-secret unix `exp`).
+ * The signal is a `string | null` only so existing consumers
+ * (`useAuthTokenSubscribable`, the auth-ready gate, the rotation
+ * invalidator) keep working unchanged — its value is the `exp` string, not
+ * a usable bearer, and the web runtime deliberately feeds `BearerToken` a
+ * separate always-`null` source so no `Authorization` header is ever set.
+ *
+ * The **embedded WebView** keeps holding the raw JWT in memory and
+ * attaching it as a header — `tauri://` fetches loopback cross-origin where
+ * cookies don't travel cleanly (#218 point 8) — so
+ * {@link makeEmbeddedAuthTokenStore} is unchanged.
+ *
+ * See `slices/gatekeeper/docs/Auth Token Storage Explanation.md` for the
+ * storage-policy rationale.
  */
 
-import { Effect, SubscriptionRef } from 'effect'
 import { makeSubscribableStore, type AuthTokenStore } from 'react-kitchen-sink'
 
-const TOKEN_STORAGE_KEY = 'gatekeeper:token'
-
 /**
- * A bearer token must look like a JWT before we persist it: exactly
- * three non-empty base64url segments separated by dots. The `?token=`
- * value is attacker-controllable, so a malformed value must not
- * clobber a previously-valid stored token.
+ * Name of the readable companion cookie the server sets alongside the
+ * `HttpOnly` `wf_auth` JWT (gatekeeper-rust `http/cookies.rs`). It carries
+ * just the token's unix `exp` so JS can derive auth state without ever
+ * holding the secret token.
  */
-const JWT_SHAPE = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/
+const AUTH_EXP_COOKIE_NAME = 'wf_auth_exp'
 
-/**
- * Dev-mode bootstrap: if the page was opened with a `?token=<value>`
- * query parameter, write it to `localStorage` under
- * {@link TOKEN_STORAGE_KEY} and strip the parameter from the address
- * bar via `history.replaceState` (so the token doesn't persist in
- * browser history or Referer headers).
- *
- * Writes directly to `localStorage` rather than going through any
- * store API because this runs *before* a store is constructed — the
- * goal is for the subsequent `localStorage.getItem` call inside
- * {@link makeWebAuthTokenStore} to pick the URL token up as the
- * store's initial value.
- *
- * The URL token is validated against {@link JWT_SHAPE} before being
- * persisted. A value that fails validation is treated as if no usable
- * token was supplied: the existing stored token is left untouched, but
- * the `?token=` param is still stripped from the address bar (matching
- * the success path) so the malformed value doesn't linger in history
- * or Referer headers.
- *
- * No-op outside the browser, when `?token=` is missing or empty, or
- * when `history.replaceState` is unavailable.
- *
- * Exported for tests; called automatically by
- * {@link makeWebAuthTokenStore}.
- */
-const consumeUrlTokenIntoLocalStorage = (): void => {
-  if (typeof window === 'undefined' || typeof window.localStorage === 'undefined') return
-  if (typeof window.history === 'undefined' || typeof window.history.replaceState !== 'function') {
-    return
-  }
-  const url = new URL(window.location.href)
-  const tokenFromUrl = url.searchParams.get('token')
-  if (tokenFromUrl === null || tokenFromUrl === '') return
-  if (JWT_SHAPE.test(tokenFromUrl)) {
-    window.localStorage.setItem(TOKEN_STORAGE_KEY, tokenFromUrl)
-  }
-  url.searchParams.delete('token')
-  window.history.replaceState(null, '', url.toString())
-}
+/** `setTimeout` clamps to a 32-bit delay; cap the expiry timer at it. */
+const MAX_TIMER_DELAY = 2_147_483_647
 
-const readInitialTokenFromLocalStorage = (): string | null => {
-  if (typeof window === 'undefined' || typeof window.localStorage === 'undefined') return null
-  return window.localStorage.getItem(TOKEN_STORAGE_KEY)
+/** Read a cookie value from `document.cookie`, or `null` if absent. */
+const readCookie = (name: string): string | null => {
+  if (typeof document === 'undefined') return null
+  for (const part of document.cookie.split(';')) {
+    const eq = part.indexOf('=')
+    if (eq === -1) continue
+    if (part.slice(0, eq).trim() === name) return part.slice(eq + 1).trim()
+  }
+  return null
 }
 
 /**
- * Persist a single token write into `localStorage`. Module-private —
- * the only writer is {@link makeWebAuthTokenStore}'s returned
- * `setToken`, so persistence runs synchronously alongside the ref
- * update; no forked subscriber, no microtask gap between
- * `setToken(...)` and the value being visible in `localStorage`.
+ * Derive the web auth signal from the `wf_auth_exp` cookie: the non-secret
+ * unix-`exp` string while it's still in the future, else `null`. JS never
+ * sees the real JWT (the `HttpOnly` `wf_auth`); this is only a
+ * presence/expiry hint. Exported for tests.
  */
-const writeTokenToLocalStorage = (token: string | null): void => {
-  if (typeof window === 'undefined' || typeof window.localStorage === 'undefined') return
-  if (token === null) {
-    window.localStorage.removeItem(TOKEN_STORAGE_KEY)
-  } else {
-    window.localStorage.setItem(TOKEN_STORAGE_KEY, token)
-  }
+const readAuthedSignalFromCookie = (): string | null => {
+  const exp = readCookie(AUTH_EXP_COOKIE_NAME)
+  if (exp === null || exp === '') return null
+  const expMs = Number(exp) * 1000
+  if (!Number.isFinite(expMs) || expMs <= Date.now()) return null
+  return exp
 }
 
 /**
- * Build the standalone-web {@link AuthTokenStore}: a `SubscriptionRef`
- * seeded from `localStorage` (after consuming any `?token=…` URL
- * bootstrap), whose `setToken` writes through to both the ref and
- * `localStorage`, with a `'storage'` listener mirroring cross-tab
- * writes. Call once per page load in the `main-*` entrypoint before
- * `renderApp`. See the Auth Token Storage Explanation for the policy
- * details.
+ * Build the standalone-web {@link AuthTokenStore}. The `subscribable` tracks
+ * the cookie-derived "authed until `exp`" signal; it re-derives when the tab
+ * regains focus/visibility (cookies don't fire `'storage'`, so this is how a
+ * sign-in or logout in another tab surfaces) and flips to `null` via a timer
+ * armed at `exp`. `setToken` ignores its argument — JS can't write the
+ * `HttpOnly` `wf_auth`; the server already did via `Set-Cookie` on the
+ * device-flow / refresh response — and just re-derives the signal from the
+ * cookie, which is what `NeedsAuthMessage` triggers on sign-in completion.
+ * Clearing the real session is a server action (`POST /access/logout`), not a
+ * `setToken(null)`. Call once per page load in the `main-*` entrypoint.
  */
 const makeWebAuthTokenStore = (): AuthTokenStore => {
-  consumeUrlTokenIntoLocalStorage()
+  let current = readAuthedSignalFromCookie()
+  const { subscribable, set } = makeSubscribableStore<string | null>(current)
 
-  const ref = Effect.runSync(SubscriptionRef.make(readInitialTokenFromLocalStorage()))
+  let expiryTimer: ReturnType<typeof setTimeout> | undefined
 
-  if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
-    window.addEventListener('storage', (event) => {
-      if (event.key !== TOKEN_STORAGE_KEY) return
-      const incoming = event.newValue
-      Effect.runFork(
-        Effect.gen(function* () {
-          const current = yield* SubscriptionRef.get(ref)
-          if (current !== incoming) {
-            yield* SubscriptionRef.set(ref, incoming)
-          }
-        })
-      )
-    })
+  const refresh = (): void => {
+    const next = readAuthedSignalFromCookie()
+    // Only publish on a real change so a focus/visibility tick on an
+    // unchanged cookie doesn't churn the rotation invalidator.
+    if (next !== current) {
+      current = next
+      set(next)
+    }
+    if (expiryTimer !== undefined) {
+      clearTimeout(expiryTimer)
+      expiryTimer = undefined
+    }
+    // Arm a timer to flip the signal to `null` the moment the hint expires,
+    // so the UI reflects expiry without waiting for a navigation.
+    if (next !== null && typeof setTimeout !== 'undefined') {
+      const delay = Math.max(0, Number(next) * 1000 - Date.now())
+      expiryTimer = setTimeout(refresh, Math.min(delay, MAX_TIMER_DELAY))
+    }
+  }
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener('focus', refresh)
+  }
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', refresh)
+  }
+  // Arm the initial expiry timer for an already-authed load (no `set`, so the
+  // invalidator's replayed-initial skip still holds).
+  if (current !== null && typeof setTimeout !== 'undefined') {
+    const delay = Math.max(0, Number(current) * 1000 - Date.now())
+    expiryTimer = setTimeout(refresh, Math.min(delay, MAX_TIMER_DELAY))
   }
 
   return {
-    subscribable: ref,
-    setToken: (token) => {
-      Effect.runSync(SubscriptionRef.set(ref, token))
-      writeTokenToLocalStorage(token)
+    subscribable,
+    setToken: () => {
+      refresh()
     },
   }
 }
 
 /**
  * Build the embedded-WebView {@link AuthTokenStore}: a
- * `SubscriptionRef<string | null>` seeded with `null`, no
- * `localStorage` read, no persistence subscriber, no cross-tab
- * listener. The host's `AuthTokenIssued` handler is the sole writer.
+ * `SubscriptionRef<string | null>` seeded with `null`, no persistence
+ * subscriber, no cross-tab listener. The host's `AuthTokenIssued` handler
+ * is the sole writer, and the held JWT is attached as an `Authorization`
+ * header by the embedded HTTP client (cookies don't travel cleanly from
+ * `tauri://` to the loopback origin — #218 point 8).
  *
- * Used by `main-embedded`; see the Auth Token Storage Explanation for
- * why this store ignores `localStorage`.
+ * Used by `main-embedded` / `main-tauri`; see the Auth Token Storage
+ * Explanation for why this store ignores `localStorage`.
  */
 const makeEmbeddedAuthTokenStore = (): AuthTokenStore => {
   const { subscribable, set: setToken } = makeSubscribableStore<string | null>(null)
@@ -139,8 +140,8 @@ const makeEmbeddedAuthTokenStore = (): AuthTokenStore => {
 }
 
 export {
-  consumeUrlTokenIntoLocalStorage,
+  AUTH_EXP_COOKIE_NAME,
   makeEmbeddedAuthTokenStore,
   makeWebAuthTokenStore,
-  TOKEN_STORAGE_KEY,
+  readAuthedSignalFromCookie,
 }

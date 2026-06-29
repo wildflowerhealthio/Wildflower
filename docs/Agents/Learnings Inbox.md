@@ -6,6 +6,12 @@ _Last triaged 2026-07-04 — durable lessons were promoted to `Strategies.md`, t
 
 <!-- Append new entries below this line -->
 
+## Cookie-auth on web: the `AuthTokenStore` read-signal and the `BearerToken` source must diverge
+
+**Discovered during**: claude/github-issue-218-42hl8q — Part A (cookie-based auth on the web path)
+**Learning**: `AuthTokenStore` couples one `subscribable` (read side, consumed by `useAuthTokenSubscribable` + the `auth-ready` gate + the rotation invalidator) with `setToken` (write side), and historically that subscribable WAS the bearer source — `renderApp` wired `tokenStore.subscribable` straight into `BearerToken`. Once the web token becomes an `HttpOnly` cookie (#218), JS can't hold it, so the web store's subscribable instead carries the **non-secret `exp` hint** (from the readable `wf_auth_exp` companion cookie) so the UI/auth-ready gate still see "authed/not". The trap: that hint is a `string | null`, so if you leave it wired to `BearerToken` the middleware happily sends `Authorization: Bearer <exp-digits>` — a bogus header. The fix is to **decouple** the two on web only: keep the auth-signal subscribable feeding `AuthTokenProvider` + the invalidator, but feed `BearerToken` a _separate_ always-`null` source (`makeWebEntryOptions().bearerTokenSubscribable`, defaulting to `tokenStore.subscribable` so embedded/Tauri — which holds a real JWT — is unchanged). Also: `NeedsAuthMessage` stays env-agnostic — its `setToken(access_token)` is interpreted by the web store as "re-derive from the cookie, ignore the arg" (it then full-page-reloads, so the post-login client state is rebuilt from the cookie anyway), and the embedded store stores the real JWT. Don't push env branching into the shared component.
+**Suggested destination**: Auth Token Storage Explanation.md (updated this session) / unsure
+
 ## rathole's `"Unable to listen for shutdown signal: channel closed"` is a teardown symptom, not a cause
 
 **Discovered during**: claude/pr-202-tunnel-seam — debugging tunnel launch flap
