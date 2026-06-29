@@ -50,6 +50,13 @@ export type EffectiveCell = {
   readonly source: 'wildcard' | 'specific' | 'none'
 }
 
+/** Where a resolved cell's grant comes from — the wildcard wins over a specific row. */
+const cellSource = (coveredByWildcard: boolean, specificHas: boolean): EffectiveCell['source'] => {
+  if (coveredByWildcard) return 'wildcard'
+  if (specificHas) return 'specific'
+  return 'none'
+}
+
 /** Resolve a single CRUDS cell against the scope context's wildcard + specific rows. */
 export const effectiveCell = (
   scopes: readonly Scope.Scope[],
@@ -72,7 +79,7 @@ export const effectiveCell = (
   return {
     granted: coveredByWildcard || specificHas,
     locked: coveredByWildcard,
-    source: coveredByWildcard ? 'wildcard' : specificHas ? 'specific' : 'none',
+    source: cellSource(coveredByWildcard, specificHas),
   }
 }
 
