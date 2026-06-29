@@ -98,8 +98,8 @@ const AppsHomeBody = ({ apps }: AppsHomeBodyProps): JSX.Element => {
     const { active, over } = event
     if (over === null) return
     // Reorder within the full list (disabled apps keep their slots), then PUT the
-    // whole ordered set — the server renumbers `position` to the array index and
-    // applies each `enabled` atomically, so positions can't end up tied.
+    // whole ordered set — the server's atomic renumber is the single writer (see
+    // the Rust `replace_home_screen`).
     const next = reorderApps(order, String(active.id), String(over.id))
     if (next === null) return
     setOrder(next)

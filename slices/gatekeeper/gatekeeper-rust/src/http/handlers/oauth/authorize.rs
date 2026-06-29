@@ -110,16 +110,8 @@ const AUTHORIZATION_REQUEST_TTL: Duration = Duration::minutes(5);
 /// Query parameters accepted at `/oauth/authorize` per RFC 6749 §4.1.1 +
 /// RFC 7636 (PKCE). Stricter than the base spec: `state` is required (the
 /// spec merely recommends it), and PKCE with S256 is mandatory — both
-/// matching the OAuth 2.1 direction.
-///
-/// SMART App Launch extensions (`launch`, `aud`) are accepted as optional:
-/// a SMART app forwards the launch nonce we (apps-rust) handed it, and
-/// declares the FHIR base URL it expects the token to be valid for. We
-/// don't validate or look up either today — the launch nonce just rides
-/// along with the pending request so the consent UI can correlate, and
-/// `aud` is parked for future audience-binding. Without these fields the
-/// SMART app's request would still succeed (serde's `Query` extractor
-/// ignores extras), but we'd lose visibility into them.
+/// matching the OAuth 2.1 direction. The optional SMART App Launch extensions
+/// (`launch`, `aud`) are documented on their fields below.
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct AuthorizeParams {
@@ -189,13 +181,9 @@ pub(super) async fn handle_authorize_request(
 ) -> Result<Response, AuthorizeError> {
     ensure_active_signing_key(&state)?;
 
-    // SMART App Launch params arrive here as `launch` (nonce minted by
-    // apps-rust) and `aud` (FHIR base URL the SMART app expects). We don't
-    // look up `launch` against a launch-context table — patient binding
-    // happens at consent — but we log it so an operator can correlate a
-    // SMART app's request back to the click that triggered it. Binding +
-    // validation is tracked in
-    // https://github.com/Assessment-is/Wildflower/issues/257.
+    // Log the SMART App Launch params (see the `launch` / `aud` field docs) so
+    // an operator can correlate a SMART app's request back to the click that
+    // triggered it.
     if params.launch.is_some() || params.aud.is_some() {
         tracing::info!(
             client_id = %params.client_id,

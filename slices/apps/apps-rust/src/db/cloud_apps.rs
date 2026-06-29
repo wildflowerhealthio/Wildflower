@@ -1,12 +1,10 @@
 //! Cloud-app reads + writes on the [`AppsStore`] — a second `impl AppsStore`
-//! block. A cloud app spans two tables: the parent `apps` registry row and the
-//! `cloud_apps` child (the `url` template + `requires_tunnel`). Every method
-//! speaks in [`AppEntry`], the cloud wire shape; the JOIN mapping is
-//! hand-written (not `sql_row!`) because `id` / `name` / `subtitle` / `enabled`
-//! come from the parent and `url` / `requires_tunnel` from the child.
-//!
-//! Its own module (rather than living in `apps_store.rs`) so it doesn't clash
-//! with that module's `sql_row!`-generated `ALL_COLS`. See [`crate::db`].
+//! block (its own module per [`crate::db`]). A cloud app spans two tables: the
+//! parent `apps` registry row and the `cloud_apps` child (the `url` template +
+//! `requires_tunnel`). Every method speaks in [`AppEntry`], the cloud wire
+//! shape; the JOIN mapping is hand-written (not `sql_row!`) because
+//! `id` / `name` / `subtitle` / `enabled` come from the parent and
+//! `url` / `requires_tunnel` from the child.
 
 use persistence_rust::DbResult;
 use rusqlite::{params, OptionalExtension, Row};
@@ -14,10 +12,9 @@ use rusqlite::{params, OptionalExtension, Row};
 use super::AppsStore;
 use crate::domain::AppEntry;
 
-/// Build a cloud [`AppEntry`] from a `apps` + `cloud_apps` JOIN row. The column
-/// order is fixed by the `SELECT` in [`AppsStore::find_cloud_app`]; `url` maps
-/// through [`AppUrl`](crate::domain::AppUrl)'s `FromSql`, so a tampered stored
-/// URL surfaces as a typed read error.
+/// Build a cloud [`AppEntry`] from an `apps` + `cloud_apps` JOIN row, reading
+/// columns by name (so it's order-independent of the `SELECT`). `url` maps
+/// through [`AppUrl`](crate::domain::AppUrl)'s `FromSql`.
 fn cloud_app_from_row(row: &Row<'_>) -> rusqlite::Result<AppEntry> {
     Ok(AppEntry {
         id: row.get("id")?,

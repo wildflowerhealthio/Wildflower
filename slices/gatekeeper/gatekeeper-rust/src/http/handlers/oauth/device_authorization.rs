@@ -100,10 +100,9 @@ fn device_authorization(
     // fallback); confidential clients are verified here with a timing-safe
     // secret check, public clients pass through without a secret.
     let client = require_valid_client_for_token(&state.store, &presented_credentials)?;
-    // Coverage-aware allowlist check, not exact string membership: a client
-    // allowed a broad or v1 scope also admits a narrower or v2 request it
-    // covers. Mirrors `authorize.rs::validate_requested_scopes` and the consent
-    // path's `grantable_scopes`.
+    // Coverage-aware allowlist check (a broad/v1 grant admits a narrower/v2
+    // request it covers) — the same check as
+    // `authorize.rs::validate_requested_scopes`; see there.
     if !requested_scopes.iter().all(|requested| {
         client
             .allowed_scopes

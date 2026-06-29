@@ -1,7 +1,7 @@
--- Seed the PRECISE-HBR Risk Calculator as a default external app. Lands as its
--- own run-once migration per the convention documented in 001: only installs
--- that have not yet applied this version get the row, and a user who later
--- edits or deletes it keeps that choice (INSERT OR IGNORE + run-once).
+-- HISTORICAL run-once migration (see 002's header). Seeds PRECISE-HBR into the
+-- flat `apps` table that migration 004 then DROPs and re-seeds into the registry,
+-- so this only matters for a database that applied 001..003 before 004 shipped.
+-- Run-once + INSERT OR IGNORE per the convention documented in 001. Do not delete.
 INSERT OR IGNORE INTO apps (id, enabled, name, subtitle, url, requires_tunnel) VALUES
     (
         'precise-hbr',

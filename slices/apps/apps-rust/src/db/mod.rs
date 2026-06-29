@@ -14,12 +14,16 @@
 //!       [`self_hosted_apps`].
 //!
 //! The cloud + self-hosted operations live in their own modules — further
-//! `impl AppsStore` blocks — only because each `sql_row!`-generated `ALL_COLS`
-//! is module-scoped and would collide if they shared a file with the parent's.
-//! There is no separate "row" type: [`crate::domain::App`] (parent),
-//! [`crate::domain::AppEntry`] (cloud) and [`crate::domain::SelfHostedApp`]
-//! (self-hosted) double as the row mappings via `persistence_rust::sql_row!`
-//! (or, for the JOINed shapes, a hand-written mapping).
+//! `impl AppsStore` blocks. **This is the one reason they are split:** each
+//! `sql_row!`-generated `ALL_COLS` is module-scoped and would collide if two of
+//! them shared a file. There is no separate "row" type: [`crate::domain::App`]
+//! (parent), [`crate::domain::AppEntry`] (cloud) and
+//! [`crate::domain::SelfHostedApp`] (self-hosted) double as the row mappings via
+//! `persistence_rust::sql_row!` (or, for the JOINed shapes, a hand-written
+//! mapping).
+//!
+//! For the provenance taxonomy these tables encode, see
+//! `docs/Apps/Explanation.md`.
 
 mod apps_store;
 mod cloud_apps;

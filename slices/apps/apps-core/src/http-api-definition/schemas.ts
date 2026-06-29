@@ -135,18 +135,16 @@ const CreateAppBodySchema = Schema.Struct({
   name: Schema.NonEmptyString,
   url: AppUrlSchema,
   requiresTunnel: Schema.Boolean,
-  // Looser than the read schemas (non-empty): accepts `""`, which the server
-  // normalizes to "no subtitle" so it never persists as `""` and breaks the
-  // catalogue decode — see {@link AppEntrySchema}.
+  // Looser than the read schemas (non-empty): empty `""` clears — see the Rust
+  // `SubtitlePatch`.
   subtitle: Schema.optional(Schema.String),
 })
 
 /**
  * Body for `UpdateApp`. All fields optional; `name`/`url` carry the same
  * non-empty / well-formed constraints as on create so a partial update cannot
- * relax them. An explicit `subtitle` replaces the stored subtitle; the empty
- * string `""` **clears** it — the server normalizes empty to none so it never
- * persists as `""` and round-trips through the non-empty read schema.
+ * relax them. An explicit `subtitle` replaces the stored subtitle; empty `""`
+ * **clears** it — see the Rust `SubtitlePatch` for the tri-state.
  */
 const UpdateAppBodySchema = Schema.Struct({
   name: Schema.optional(Schema.NonEmptyString),

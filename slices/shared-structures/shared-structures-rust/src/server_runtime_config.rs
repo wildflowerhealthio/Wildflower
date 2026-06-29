@@ -7,23 +7,23 @@ pub struct ServerRuntimeConfig {
 }
 
 impl ServerRuntimeConfig {
-    /// The HTTP-only loopback origin the embedded API server is reached at, e.g.
-    /// `http://127.0.0.1:8080/`, as a typed [`Url`]. Single source of truth the
-    /// host threads into every slice's config (apps / gatekeeper / emr / tunnel)
-    /// — keeping the scheme/host/port assembly in one place and parsed once, so
-    /// no downstream rebuilds it from a string. Consumers that need the bare
-    /// origin string take `loopback_origin().origin().ascii_serialization()`.
+    /// The loopback base URL the embedded API server is reached at, e.g.
+    /// `http://127.0.0.1:8080/`, as a typed [`Url`]. The single source of truth
+    /// the host threads into every slice's config (apps / gatekeeper / emr /
+    /// tunnel), parsed once so no downstream rebuilds it from a string. Consumers
+    /// that need the bare origin string take
+    /// `loopback_base_url().origin().ascii_serialization()`.
     ///
-    /// # Panics
-    ///
-    /// Panics if the configured hostname/port don't form a valid `http://` URL.
-    /// The values come from build-time config (`tauri-shared-config.json`), so a
-    /// malformed one is a build error surfaced at first boot, not a runtime path.
+    /// This is only the *loopback* origin — the origin a given request is
+    /// answered as (loopback vs. the forwarded public origin) is resolved per
+    /// request. See `docs/Origins/Explanation.md`.
     #[must_use]
     pub fn loopback_base_url(&self) -> Url {
         self.loopback_base_url.clone()
     }
 
+    /// Borrowing twin of [`Self::loopback_base_url`] for callers that only need
+    /// to read the `Url` (e.g. its `host()`) without taking an owned clone.
     pub fn loopback_base_url_ref(&self) -> &Url {
         &self.loopback_base_url
     }

@@ -1,4 +1,7 @@
-//! CRUDS access rights — the permission half of every resource scope.
+//! CRUDS access rights — the permission half of every resource scope. The
+//! `.cruds`/`.rs` letter and `read`/`write`/`*` word grammars follow the SMART
+//! App Launch spec:
+//! <https://build.fhir.org/ig/HL7/smart-app-launch/scopes-and-launch-context.html>.
 //!
 //! This deliberately re-implements helios-auth's `SmartPermissions` rather than
 //! depending on it. Keeping `scopes-rust` a lean, helios-auth-free leaf crate

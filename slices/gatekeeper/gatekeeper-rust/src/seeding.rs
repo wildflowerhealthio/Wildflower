@@ -106,9 +106,9 @@ pub(crate) enum HostTokenError {
 /// the host can hand the resulting token to the `WebView` via the
 /// navigation bridge and let the Owner UI call `/access/*` endpoints.
 ///
-/// `iss` is [`shared_structures_rust::CANONICAL_ISSUER`] (so HFS accepts
-/// it), `aud` is the loopback origin (so gatekeeper's `require_auth`
-/// middleware accepts it for WebView calls coming in over loopback).
+/// `iss` is [`shared_structures_rust::CANONICAL_ISSUER`]; `aud` is the loopback
+/// origin, so `require_auth` accepts it for WebView calls over loopback. See
+/// `docs/Origins/Explanation.md`.
 pub(crate) fn mint_host_owner_token(
     store: &GatekeeperStore,
     iss: &str,

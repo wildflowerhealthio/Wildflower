@@ -1,22 +1,25 @@
 //! `POST /apps/{id}` — resolve an app id to a launch target.
 //!
-//! The parent registry row's [`Provenance`](crate::domain::Provenance) fixes how
-//! the launch URL is resolved; the *request's* provenance (loopback vs.
-//! forwarded — a different axis) fixes how it's dispatched. The flow:
+//! Two orthogonal axes meet here: the parent registry row's
+//! [`Provenance`](crate::domain::Provenance) fixes how the launch URL is
+//! *resolved*, while the *request's* [`RequestProvenance`] (loopback vs.
+//! forwarded) fixes how it's *dispatched*. The flow:
 //!
 //!   1. Look up the parent registry row (`404 AppNotFound` if absent).
-//!   2. Read the request's [`RequestProvenance`] *once* — both "is this a
-//!      remote caller?" (sink vs. redirect) and "what origin do we render?"
-//!      derive from the same header read, so an empty/spoofed `Forwarded` host
-//!      can't make the two answers disagree.
+//!   2. Read the request's [`RequestProvenance`] *once*, so an empty/spoofed
+//!      `Forwarded` host can't make the sink-vs-redirect and which-origin
+//!      decisions disagree.
 //!   3. Resolve the launch target by the app's provenance (System → compiled-in
 //!      source, Self-Hosted → loopback/subdomain, Cloud → the stored template).
 //!      Fails `503 LaunchUnavailable` when no *reachable* target exists.
-//!   4. Dispatch on the *request's* provenance: a loopback (local) caller is
-//!      owner-gated (`401` if not the owner), then hands the URL to the host's
-//!      [`OnDeviceWebviewHandle`](crate::OnDeviceWebviewHandle) and `204`s; a
-//!      forwarded (remote) caller gets a `302` redirect (no owner check — the
-//!      trusted front is the boundary there).
+//!   4. Dispatch on the request's provenance: loopback launches are owner-gated
+//!      and `204` after handing the URL to the host webview; forwarded launches
+//!      `302` with no owner check.
+//!
+//! The auth posture (loopback owner-gated, forwarded on the front trust
+//! boundary) is canonical in `docs/Apps/Explanation.md` §"Auth posture"; the
+//! forwarded `<id>.<public_host>` subdomain dispatch in
+//! `docs/Origins/Explanation.md`.
 
 use std::sync::Arc;
 
@@ -32,16 +35,8 @@ use crate::http::response_templates::{AppNotFoundBody, HandlerError, LaunchUnava
 use crate::http::state::AppsState;
 use crate::id::mint_launch_nonce;
 
-/// `POST /apps/{id}` — launch an app. `404` if no app has this id.
-///
-/// A loopback (local) caller is owner-gated (the on-device popup is an
-/// owner-only side-effect on this device), then hands the resolved URL to the
-/// host's [`OnDeviceWebviewHandle`](crate::OnDeviceWebviewHandle), which opens it
-/// in a native popup *on this device* (returning `204` so the SPA stays
-/// mounted). A request **forwarded by the trusted front** (the relay/tunnel sets
-/// the `Forwarded` header) is a *remote* caller, for whom a host-side popup is
-/// invisible; it gets the `302` redirect instead, with no owner check (the front
-/// is the trust boundary for remote callers).
+/// `POST /apps/{id}` — launch an app (`404` if no app has this id). See the
+/// module docs for the resolve-then-dispatch flow and the auth posture.
 #[utoipa::path(
     post,
     path = "/apps/{id}",
@@ -59,9 +54,8 @@ pub(crate) async fn handle_launch_app(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Response, HandlerError> {
-    // Single read: both decisions below derive from this one value, so an
-    // empty/spoofed `Forwarded` host can't make them disagree (a header that
-    // fails validation reads as Loopback).
+    // Read once (see module docs, step 2): a header that fails validation reads
+    // as Loopback.
     let provenance = request_provenance(&headers);
 
     // 404 before anything else — an unknown id is never an owner-auth or
@@ -77,11 +71,10 @@ pub(crate) async fn handle_launch_app(
     let (name, target_url) = resolve_launch_target(&state, &app, &provenance).await?;
 
     match &provenance {
-        // Loopback (local) caller: owner-gate the popup (a header-derived
-        // `Loopback` is not a sufficient gate for an owner-only side-effect; the
-        // host's network-layer loopback-peer gate is the other half), then hand
-        // the URL to the host (it opens a native popup) and 204 so the SPA stays
-        // mounted. The seam is contractually fire-and-forget.
+        // Owner-gate the popup before handing the URL to the host webview, then
+        // `204` (the seam is contractually fire-and-forget). The header-derived
+        // `Loopback` is gated in tandem with the host's network-layer
+        // loopback-peer gate.
         RequestProvenance::Loopback => {
             if !state
                 .owner_auth
@@ -92,8 +85,6 @@ pub(crate) async fn handle_launch_app(
             state.on_device_webview_handle.open(name, target_url);
             Ok(no_content())
         }
-        // Forwarded (remote) caller: the front is the trust boundary, so no owner
-        // check; a host popup would be invisible to them, so 302 redirect.
         RequestProvenance::Forwarded { .. } => redirect(target_url),
     }
 }
@@ -174,12 +165,11 @@ fn render_system_target(
     }))
 }
 
-/// Render a self-hosted app's launch target. A loopback caller gets the loopback
-/// `http://{host}:{port}/`. A forwarded (remote) caller gets the public
-/// `https://{id}.{public_host}/` — the same subdomain shape the host's inbound
-/// dispatch routes, so the remote browser can follow it through the relay. With
-/// **no** `public_host` configured there's no reachable target, so a forwarded
-/// launch fails `503 LaunchUnavailable` rather than handing back a loopback URL.
+/// Render a self-hosted app's launch target: the loopback
+/// `http://{host}:{port}/` for a loopback caller, else the public subdomain (see
+/// [`SelfHostedApp::subdomain_url`] and `docs/Origins/Explanation.md`). A
+/// forwarded launch with **no** `public_host` configured has no reachable
+/// target, so it fails `503 LaunchUnavailable` rather than handing back loopback.
 fn render_self_hosted_target(
     child: &SelfHostedApp,
     state: &AppsState,

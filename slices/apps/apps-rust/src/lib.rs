@@ -3,18 +3,17 @@
 //! A curated app registry with one wire surface. A parent `apps` table holds
 //! one row per app (id / name / subtitle / enabled / position / provenance /
 //! local_only / client_id); per-kind child tables and a compiled-in source
-//! supply the launch target:
+//! supply the launch target. The provenance taxonomy (System / Self-Hosted /
+//! Cloud) and its privacy model are canonical in `docs/Apps/Explanation.md`;
+//! the mechanical mapping here:
 //!
-//!  - **System** apps ([`domain::SystemApp`]) — launch URL comes from the
-//!    compiled-in [`SYSTEM_APPS`](domain::SYSTEM_APPS) source list; no child
-//!    row.
-//!  - **Self-hosted** apps ([`domain::SelfHostedApp`], the `self_hosted_apps`
-//!    child) — locally-served on a dedicated loopback `port`; the launch handler
-//!    renders `http://{host}:{port}/` (loopback) or `https://{id}.{public_host}/`
-//!    (forwarded). Seeded by migration, read-only.
-//!  - **Cloud** apps ([`domain::AppEntry`], the `cloud_apps` child) — a remote
-//!    `https://` launch template substituted at launch. The only user-editable
-//!    kind (create / patch / delete through the cloud-admin surface).
+//!  - **System** ([`domain::SystemApp`]) — launch URL from the compiled-in
+//!    [`SYSTEM_APPS`](domain::SYSTEM_APPS) list; no child row.
+//!  - **Self-hosted** ([`domain::SelfHostedApp`], the `self_hosted_apps` child)
+//!    — seeded by migration, read-only.
+//!  - **Cloud** ([`domain::AppEntry`], the `cloud_apps` child) — the only
+//!    user-editable kind (create / patch / delete through the cloud-admin
+//!    surface).
 //!
 //! Layered like `tunnel-rust` and `gatekeeper-rust`:
 //!

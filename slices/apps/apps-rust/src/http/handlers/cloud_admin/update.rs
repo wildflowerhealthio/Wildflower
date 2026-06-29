@@ -19,10 +19,9 @@ use crate::http::response_templates::{
 };
 use crate::http::state::AppsState;
 
-/// PATCH body — all fields optional. Matches `UpdateAppBodySchema`. A
-/// `subtitle` of explicit `null` *or* the empty string `""` clears the
-/// subtitle; a missing key leaves it alone — see [`SubtitlePatch`]. No `enabled`:
-/// that's homescreen curation, owned by `PUT /home-screen`.
+/// PATCH body — all fields optional. Matches `UpdateAppBodySchema`. The
+/// `subtitle` tri-state is on [`SubtitlePatch`]. No `enabled`: that's homescreen
+/// curation, owned by `PUT /home-screen`.
 #[derive(Debug, Default, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct UpdateAppBody {
@@ -96,8 +95,7 @@ pub(crate) async fn handle_update_app(
     if parent.provenance != Provenance::Cloud {
         return Err(HandlerError::NotEditable { id });
     }
-    // A cloud parent always has a cloud child; treat a missing one as a logged
-    // 500 (schema inconsistency), not a 404.
+    // A cloud parent always has a cloud child; a missing one is a logged 500.
     let mut existing = state
         .store
         .find_cloud_app(&id)

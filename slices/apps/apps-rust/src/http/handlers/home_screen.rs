@@ -2,15 +2,11 @@
 //! `enabled` flags for the whole registry, every provenance, in one transaction.
 //!
 //! The body is the full ordered list `[{ id, enabled }]`: an entry's index in
-//! the array *is* its new display `position`, so the result is a dense `0..n`
-//! permutation — well-ordered by construction, with no per-row "set this one's
-//! position" write that could leave two rows sharing a position (the cause of
-//! the drag-to-reorder jumping). The write is one transaction, so a swap is
-//! never observed half-applied.
-//!
-//! This is the single writer of `position` + `enabled`. The cloud-admin
-//! `PATCH /apps/{id}` edits only a cloud app's *content* (name / url / subtitle /
-//! requiresTunnel) — homescreen curation lives here.
+//! the array *is* its new display `position`. The dense-`0..n` /
+//! single-writer / drag-reorder-bug rationale is canonical on
+//! [`AppsStore::replace_home_screen`](crate::db::AppsStore::replace_home_screen),
+//! which this handler is the sole caller of. The cloud-admin `PATCH /apps/{id}`
+//! edits only a cloud app's *content* — homescreen curation lives here.
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -53,8 +49,8 @@ pub(crate) async fn handle_replace_home_screen(
 ) -> Result<Json<Vec<AppListEntry>>, HandlerError> {
     // The home screen *is* the whole registry, reordered — so the body must be an
     // exact permutation of the current ids. Validating up front (rather than
-    // letting unmatched UPDATEs silently no-op) is what guarantees the result is
-    // a dense `0..n` with nothing dropped, duplicated, or invented.
+    // letting unmatched UPDATEs silently no-op) is what guarantees the dense
+    // `0..n` result `replace_home_screen` documents.
     let current = state
         .store
         .list_app_entries()

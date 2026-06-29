@@ -7,7 +7,8 @@
 //! elsewhere per [`provenance`](Provenance): a compiled-in
 //! [`SystemApp`](super::SystemApp) source, a `self_hosted_apps` child (`port`),
 //! or a `cloud_apps` child (`url`). `client_id` is a soft reference to the
-//! gatekeeper `clients` table — its presence is what makes an app "smart".
+//! gatekeeper `clients` table whose presence makes an app "smart" — see
+//! `docs/Apps/Explanation.md` §"`client_id` is a soft reference".
 
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;

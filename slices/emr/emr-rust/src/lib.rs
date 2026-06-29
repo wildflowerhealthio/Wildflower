@@ -44,10 +44,11 @@ pub const UNAUTHENTICATED_FHIR_PATHS: &[&str] = &[
 /// advertise the SMART App Launch grant + gatekeeper's authorize/token URLs,
 /// which HFS's built-in (Backend-Services-shaped) discovery doc doesn't.
 ///
-/// When [`EmrConfig::auth`] is `Some`, HFS auth is enabled: it validates the
+/// When [`EmrConfig::jwks_url`] is `Some`, HFS auth is enabled: it validates the
 /// JWT against the configured JWKS, enforces `iss`, parses SMART v2 scopes,
 /// and gates each FHIR operation against them. The discovery override and
-/// HFS's `/metadata` remain unauthenticated per the SMART spec.
+/// HFS's `/metadata` remain unauthenticated per the SMART spec — see
+/// [`UNAUTHENTICATED_FHIR_PATHS`].
 ///
 /// # Errors
 ///
@@ -102,9 +103,7 @@ pub fn setup_fhir_r4(runtime: &ServerRuntimeConfig, config: &EmrConfig) -> anyho
             "/.well-known/smart-configuration",
             get(smart_configuration_handler),
         )
-        .with_state(SmartConfigState {
-            loopback_origin: loopback_base_url,
-        })
+        .with_state(SmartConfigState { loopback_base_url })
         .fallback_service(hfs_router);
 
     Ok(Router::new().nest(FHIR_R4_PATH, fhir_with_override))

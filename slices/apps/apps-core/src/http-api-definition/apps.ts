@@ -2,11 +2,12 @@ import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from '@effect/platform'
 import { AppIdPathSchema, AppListSchema, AppNotFoundSchema } from './schemas.ts'
 
 /**
- * Public read/launch endpoints for the apps catalogue. Reachable by
- * embedded webviews and iframes that can't easily carry a bearer
- * token. Owner-mutating routes (create / update / delete / tunnel
- * config) live on `AppsAdminApi` and the consumer wraps that one in
- * `RequireAuthMiddleware`.
+ * Read + launch endpoints for the apps catalogue. This group carries no
+ * middleware; the canonical (Rust) host owner-gates `ListApps` and mounts
+ * `LaunchApp` ungated (a forwarded launch rides the front trust boundary, a
+ * loopback launch is owner-gated in-handler) — see `docs/Apps/Explanation.md`
+ * §"Auth posture". The client attaches a bearer that a gating host enforces and
+ * an ungated host ignores. The cloud-admin mutations live on `AppsAdminApi`.
  */
 const httpApiGroup = HttpApiGroup.make('apps', { topLevel: false })
   .add(HttpApiEndpoint.get('ListApps', '/apps').addSuccess(AppListSchema))

@@ -49,10 +49,8 @@ const httpApiGroup = HttpApiGroup.make('apps-admin', { topLevel: false })
       .addError(AppNotEditableSchema, { status: 409 })
   )
   .add(
-    // Atomically reorder + enable/disable every app (all provenances) — the full
-    // ordered homescreen, distinct from the cloud-only content edit above. The
-    // body must be an exact permutation of the registry (else `400`); the success
-    // is the catalogue in its new order.
+    // The full ordered homescreen (all provenances), distinct from the cloud-only
+    // content edit above — see {@link HomeScreenSchema}.
     HttpApiEndpoint.put('ReplaceHomeScreen', '/home-screen')
       .setPayload(HomeScreenSchema)
       .addSuccess(AppListSchema)

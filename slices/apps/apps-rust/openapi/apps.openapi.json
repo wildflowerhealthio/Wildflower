@@ -64,8 +64,7 @@
     },
     "/apps/{id}": {
       "post": {
-        "summary": "`POST /apps/{id}` — launch an app. `404` if no app has this id.",
-        "description": "A loopback (local) caller is owner-gated (the on-device popup is an\nowner-only side-effect on this device), then hands the resolved URL to the\nhost's [`OnDeviceWebviewHandle`](crate::OnDeviceWebviewHandle), which opens it\nin a native popup *on this device* (returning `204` so the SPA stays\nmounted). A request **forwarded by the trusted front** (the relay/tunnel sets\nthe `Forwarded` header) is a *remote* caller, for whom a host-side popup is\ninvisible; it gets the `302` redirect instead, with no owner check (the front\nis the trust boundary for remote callers).",
+        "summary": "`POST /apps/{id}` — launch an app (`404` if no app has this id). See the\nmodule docs for the resolve-then-dispatch flow and the auth posture.",
         "operationId": "handle_launch_app",
         "parameters": [
           {
@@ -498,7 +497,7 @@
       },
       "UpdateAppBody": {
         "type": "object",
-        "description": "PATCH body — all fields optional. Matches `UpdateAppBodySchema`. A\n`subtitle` of explicit `null` *or* the empty string `\"\"` clears the\nsubtitle; a missing key leaves it alone — see [`SubtitlePatch`]. No `enabled`:\nthat's homescreen curation, owned by `PUT /home-screen`.",
+        "description": "PATCH body — all fields optional. Matches `UpdateAppBodySchema`. The\n`subtitle` tri-state is on [`SubtitlePatch`]. No `enabled`: that's homescreen\ncuration, owned by `PUT /home-screen`.",
         "properties": {
           "name": {
             "type": [

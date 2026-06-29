@@ -1,15 +1,8 @@
-//! The `<id>.<public_host>` subdomain shape — one source of truth shared by
-//! the *producer* (the apps slice's internal-app launch redirect) and the
-//! *consumer* (the host's forwarded-request subdomain dispatch).
-//!
-//! A launched internal app reachable through the relay lives at
-//! `https://<id>.<public_host>/`. The launch handler emits that URL; the
-//! host's subdomain-dispatch middleware matches the same shape on inbound
-//! forwarded requests. Those two routines must agree exactly — if the join
-//! ever changed on one side only, forwarded launches would fall through to
-//! the API, unreachable from a remote browser, with no error. They used to
-//! be two independent string routines in two different crates; this module
-//! makes them one definition with a round-trip test pinning the agreement.
+//! The `<id>.<public_host>` subdomain shape — one source of truth shared by the
+//! *producer* (the apps slice's internal-app launch redirect, which emits
+//! `https://<id>.<public_host>/`) and the *consumer* (the host's
+//! forwarded-request subdomain dispatch), with a round-trip test pinning that
+//! they agree. See `docs/Origins/Explanation.md` for why the two must not drift.
 //!
 //! Behind the `subdomain-url` feature: pure string code, no extra deps, so a
 //! crate that only needs the shape doesn't pull anything new.

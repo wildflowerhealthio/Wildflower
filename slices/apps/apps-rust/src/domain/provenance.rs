@@ -1,15 +1,8 @@
 //! `Provenance` — how an app's launch target is resolved. Fixed per parent
 //! registry row (the `apps.provenance` column) and what the launch handler
-//! dispatches on:
-//!
-//!   * [`Provenance::System`] — a compiled-in [`SystemApp`](super::SystemApp)
-//!     source supplies the launch URL (no child table row).
-//!   * [`Provenance::SelfHosted`] — a `self_hosted_apps` child row carries the
-//!     dedicated loopback `port`; the launch handler renders
-//!     `http://{host}:{port}/` (loopback) or `https://{id}.{public_host}/`
-//!     (forwarded).
-//!   * [`Provenance::Cloud`] — a `cloud_apps` child row carries the remote
-//!     `https://` launch template substituted at launch.
+//! dispatches on. The provenance taxonomy and privacy model are canonical in
+//! `docs/Apps/Explanation.md`; the launch-resolution mechanics per variant are
+//! on the [`Provenance`] variants below.
 
 use std::fmt;
 use std::str::FromStr;

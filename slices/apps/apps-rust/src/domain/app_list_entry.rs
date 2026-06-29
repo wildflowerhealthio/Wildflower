@@ -1,7 +1,6 @@
 //! `AppListEntry` — the wire shape for `GET /apps`. Built from the parent
-//! registry (`apps`) joined onto `cloud_apps` for `requires_tunnel`; **omits
-//! the launch `url`** (clients don't need it for navigation — the launch
-//! endpoint is the only thing that resolves a URL, and only at launch time).
+//! registry (`apps`) joined onto `cloud_apps` for `requires_tunnel`; **omits the
+//! launch `url`** — read shapes carry no URL, see `docs/Apps/Explanation.md`.
 //!
 //! It carries the catalogue-display fields plus the per-row `provenance`,
 //! `localOnly`, `smart`, and `requiresTunnel` flags the homescreen renders as

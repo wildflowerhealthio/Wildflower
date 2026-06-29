@@ -1,9 +1,9 @@
-//! HTTP handlers for the apps slice. The routes are grouped into a
-//! [`gated_openapi_router`] (list, cloud-admin, home-screen — the host
-//! bearer-gates these) and a [`launch_openapi_router`] (`POST /apps/{id}` —
-//! mounted ungated at the router level), merged into [`openapi_router`] for the
-//! spec + handler tests. The served routes and the OpenAPI spec come from the
-//! same `#[utoipa::path]`-annotated handlers.
+//! HTTP handlers for the apps slice, grouped into a [`gated_openapi_router`]
+//! (list, cloud-admin, home-screen) and a [`launch_openapi_router`]
+//! (`POST /apps/{id}`), merged into [`openapi_router`] for the spec + handler
+//! tests. The served routes and the OpenAPI spec come from the same
+//! `#[utoipa::path]`-annotated handlers. The gating split is documented on the
+//! [`crate::http`] router builders these back.
 
 mod apps;
 mod cloud_admin;
@@ -18,17 +18,14 @@ use utoipa_axum::routes;
 
 use crate::http::state::AppsState;
 
-/// The owner-gated routes — everything except the launch:
+/// The owner-gated routes as an `OpenApiRouter` (the spec-bearing inner of
+/// [`gated_router`](super::gated_router), which documents the gating split):
 ///
 ///  - `GET /apps` (list) — see [`apps`];
 ///  - `POST /apps` (create) + `PATCH`/`DELETE /apps/{id}` (cloud admin) — see
 ///    [`cloud_admin`];
 ///  - `PUT /home-screen` (atomic reorder / enable, any provenance) — see
 ///    [`home_screen`].
-///
-/// The host wraps these with its bearer gate. They're split from the launch
-/// route because the bearer gate can't exempt the parameterized `POST /apps/{id}`
-/// launch from the gated `PATCH`/`DELETE /apps/{id}` without also gating it.
 pub(crate) fn gated_openapi_router() -> OpenApiRouter<Arc<AppsState>> {
     OpenApiRouter::new()
         .routes(routes!(apps::list::handle_list_apps))
@@ -40,11 +37,9 @@ pub(crate) fn gated_openapi_router() -> OpenApiRouter<Arc<AppsState>> {
         .routes(routes!(home_screen::handle_replace_home_screen))
 }
 
-/// The launch route (`POST /apps/{id}`), mounted **ungated** at the router level:
-/// a forwarded launch rides the host's network gate / front trust boundary, and a
-/// loopback launch is owner-gated *in-handler* via [`owner_auth`](super::owner_auth).
-/// Kept separate from [`gated_openapi_router`] so the host can gate everything
-/// else without gating the launch.
+/// The launch route (`POST /apps/{id}`) as an `OpenApiRouter` — the spec-bearing
+/// inner of [`launch_router`](super::launch_router), which documents why it's
+/// kept ungated and separate from [`gated_openapi_router`].
 pub(crate) fn launch_openapi_router() -> OpenApiRouter<Arc<AppsState>> {
     OpenApiRouter::new().routes(routes!(apps::launch::handle_launch_app))
 }
@@ -176,8 +171,6 @@ mod tests {
         }
     }
 
-    // ---- GET /apps ---------------------------------------------------------
-
     #[tokio::test]
     async fn list_apps_returns_all_seeded_apps_in_order() {
         let st = state();
@@ -220,8 +213,6 @@ mod tests {
         assert_eq!(api_view["localOnly"], true);
         assert_eq!(api_view["smart"], false);
     }
-
-    // ---- POST /apps/{id} launch -------------------------------------------
 
     #[tokio::test]
     async fn launch_unknown_id_is_404() {
@@ -403,8 +394,6 @@ mod tests {
         assert_eq!(res.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 
-    // ---- cloud admin (create / update / delete) ---------------------------
-
     #[tokio::test]
     async fn full_round_trip_create_update_delete() {
         let st = state();
@@ -585,8 +574,6 @@ mod tests {
         .await;
         assert!(body.get("subtitle").is_none() || body["subtitle"].is_null());
     }
-
-    // ---- PUT /home-screen -------------------------------------------------
 
     /// The full seeded set as `{ id, enabled }` entries, in the given id order.
     fn home_screen_body(ordered: &[(&str, bool)]) -> serde_json::Value {

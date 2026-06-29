@@ -29,7 +29,7 @@ use axum::body::Body;
 
 /// App id of the vendored patient-browser SPA — the one app that gets the
 /// committed-config override today. Match is case-sensitive: the host
-/// passes the id from the seeded internal-apps row.
+/// passes the id from the seeded `self_hosted_apps` row.
 const PATIENT_BROWSER_ID: &str = "patient-browser";
 
 /// Mount-relative key of the patient-browser SMART config under its served

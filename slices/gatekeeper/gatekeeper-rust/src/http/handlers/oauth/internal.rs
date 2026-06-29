@@ -350,17 +350,14 @@ pub fn issue_token_response(
                 Some("No JSON Web Keys available to sign token"),
             )
         })?;
-    // `iss` is the stable [`shared_structures_rust::CANONICAL_ISSUER`] so
-    // HFS's single `expected_issuer` accepts every token gatekeeper mints,
-    // independent of which transport the request arrived over. `aud` stays
-    // per-request — SMART clients commonly match `aud` to the FHIR base
-    // URL they reached us at.
+    // `iss` is the fixed [`shared_structures_rust::CANONICAL_ISSUER`]; `aud` is
+    // this request's origin. See `docs/Origins/Explanation.md`.
     let audience = format!("{}/fhir-r4", input.origin);
     // Mint each granted scope alongside its alternate canonical form, so a
-    // v1-worded grant (`.read`/`.write`/`.*`) also carries its v2 letter spelling
-    // (`.rs`/`.cud`/`.cruds`): HFS's `SmartPermissions` reads only the letter
-    // grammar and would otherwise drop a `.read` scope, 403-ing the read. The
-    // app-facing `TokenResponse.scope` below stays the granted set as-is.
+    // v1-worded grant also carries its v2 letter spelling — see
+    // [`scopes_rust::with_alternate_canonical_forms`] and scopes-rust's
+    // `AccessRights` for why. The app-facing `TokenResponse.scope` below stays
+    // the granted set as-is.
     let token_scopes = scopes_rust::with_alternate_canonical_forms(input.granted_scopes);
     let signed = mint_access_token(
         &signing_key,

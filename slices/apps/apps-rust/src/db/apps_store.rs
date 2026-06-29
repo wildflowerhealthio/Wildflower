@@ -1,9 +1,8 @@
 //! The `AppsStore` handle — wraps the shared SQLite connection, applies the
 //! per-namespace migrations onto it, and exposes the parent-registry (`apps`
-//! table) reads + reorder/enable writes. The kind-specific child operations
-//! live in sibling modules (`cloud_apps`, `self_hosted_apps`) as further
-//! `impl AppsStore` blocks — split out only because each `sql_row!`-generated
-//! `ALL_COLS` is module-scoped and would otherwise collide.
+//! table) reads + reorder/enable writes. The kind-specific child operations live
+//! in sibling modules (`cloud_apps`, `self_hosted_apps`); see [`crate::db`] for
+//! why they're split.
 //!
 //! This module also owns the rusqlite `ToSql`/`FromSql` glue for the two column
 //! newtypes the registry stores: [`Provenance`] (the kebab discriminant) and

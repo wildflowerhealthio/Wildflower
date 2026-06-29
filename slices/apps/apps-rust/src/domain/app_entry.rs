@@ -1,12 +1,12 @@
 //! `AppEntry` — the **cloud app** wire shape: the create / update admin DTO and
 //! the launch-side materialization of a `cloud_apps` child joined onto its
-//! parent registry row. It is the only app shape that carries a launch `url`.
+//! parent registry row. It is the only app shape that carries a launch `url`
+//! (read shapes carry none — see `docs/Apps/Explanation.md`).
 //!
-//! Post-registry-rebuild, cloud apps are the only user-editable kind, so this
-//! shape is the cloud-admin surface's request/response body. The `db/` layer
-//! builds it from a `apps` + `cloud_apps` JOIN (a hand-written mapping, not
-//! `sql_row!`, since `id` / `name` / `subtitle` / `enabled` come from the parent
-//! and `url` / `requires_tunnel` from the child).
+//! Cloud apps are the only user-editable kind, so this shape is the cloud-admin
+//! surface's request/response body. The `db/` layer builds it from the
+//! `apps` + `cloud_apps` JOIN (hand-written, not `sql_row!`; see the
+//! `db::cloud_apps` module).
 
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;

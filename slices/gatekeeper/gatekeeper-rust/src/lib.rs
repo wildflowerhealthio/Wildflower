@@ -1,25 +1,11 @@
 pub mod bridge;
 pub mod config;
-// NOTE: the modules below are NOT part of the host contract — the only
-// external consumer (the Tauri host) imports the curated crate-root
-// re-exports plus `bridge`. They would ideally all be `pub(crate)`, but a
-// web of module-level intra-doc links keeps most of them public:
-//
-//   * `crypto_util` (pub): tests/integration.rs reaches into
-//     `crypto_util::oauth_user_code::is_valid_oauth_user_code`, and its
-//     doc links to `[crate::domain::token]`.
-//   * `domain` (pub): its doc links to `[crate::db]` and `[crate::http]`.
-//   * `db` (pub): its docs link to `[crate::domain]`.
-//
-// Making any link *target* `pub(crate)` while a `pub` module's doc links
-// into it turns rustdoc's `private_intra_doc_links` warning on (and fails
-// `cargo doc -D warnings`). Narrowing these further means rephrasing those
-// doc links in crypto_util/mod.rs, domain/mod.rs and db/mod.rs — all outside
-// this change's file boundary.
-//   * `http` (pub): `domain`'s doc links to `[crate::http]`.
-//
-// Flagged for the orchestrator. `seeding` carries no inbound pub doc
-// links, so it is the one module narrowed here.
+// The modules below aren't part of the host contract (the Tauri host imports
+// the crate-root re-exports plus `bridge`), but they stay `pub` because a web of
+// cross-module intra-doc links references them: narrowing a link *target* to
+// `pub(crate)` while a `pub` module's doc links into it fails
+// `cargo doc -D warnings` (rustdoc's `private_intra_doc_links`). `seeding` has no
+// inbound doc links, so it is the one narrowed to `pub(crate)`.
 pub mod crypto_util;
 pub mod db;
 pub mod domain;
@@ -120,7 +106,7 @@ pub struct Gatekeeper {
 
 /// Build the gatekeeper-rust HTTP surface. Runs idempotent bootstrap
 /// (schema migrations, signing-key seed, first-party client seed), mints
-/// the boot-time host owner token against `config.loopback_origin`, and:
+/// the boot-time host owner token against `config.loopback_base_url`, and:
 ///
 ///  - publishes the host owner token on `local_owner_token_tx` so subscribers (e.g.
 ///    the `WebView` bridge listener) observe it the moment it exists;
@@ -137,13 +123,10 @@ pub struct Gatekeeper {
 ///  - returns the `AppState` the caller passes to
 ///    [`layer_router_with_gatekeeper_auth_gating`] to wrap emr-rust.
 ///
-/// Every minted token's `iss` is
-/// [`shared_structures_rust::CANONICAL_ISSUER`] — the same string HFS
-/// validates against, so any token (boot owner token or per-request OAuth
-/// token) passes HFS auth regardless of which transport it arrived over.
-/// Per-request `aud` is still derived from
-/// [`served_origin_for`](crate::http::served_origin_for) — useful for
-/// SMART clients that match `aud` to the FHIR base URL they discovered.
+/// Token claims follow the canonical model — `iss` is the fixed
+/// [`shared_structures_rust::CANONICAL_ISSUER`] and `aud` is the per-request
+/// served origin ([`served_origin_for`](crate::http::served_origin_for)). See
+/// `docs/Origins/Explanation.md`.
 ///
 /// The whole surface is gated by the loopback middleware — non-loopback
 /// peers receive 403 before any handler runs.
@@ -161,10 +144,9 @@ pub fn setup_gatekeeper(
 ) -> anyhow::Result<Gatekeeper> {
     // The host owner token is minted from `granted_scopes` (the live app sources
     // these from `tauri-shared-config.json`), but the `/access/*` owner gate
-    // still checks coverage of every `WILDFLOWER_WIDEST_SCOPES` entry. These were
-    // once the same compile-time const; now the JSON must keep covering WIDEST or
-    // the Owner UI silently 401s. Fail loudly at boot rather than at first
-    // `/access/*` call. (A read of WIDEST — the owner gate's own use is untouched.)
+    // still checks coverage of every `WILDFLOWER_WIDEST_SCOPES` entry. The JSON
+    // must keep covering WIDEST or the Owner UI silently 401s, so fail loudly at
+    // boot rather than at first `/access/*` call.
     let granted: Vec<Scope> = config
         .granted_scopes
         .iter()

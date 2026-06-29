@@ -1,8 +1,6 @@
 //! Read-only row mapping + queries for the `self_hosted_apps` child table
 //! (seeded by migration, not editable through the cloud-admin API). A second
-//! `impl AppsStore` block rather than a separate store — its own module only
-//! because the `sql_row!`-generated `ALL_COLS` would otherwise collide with the
-//! parent `apps` table's in `apps_store.rs`. See [`crate::db`].
+//! `impl AppsStore` block, its own module per [`crate::db`].
 //!
 //! The child carries `id`, the loopback `port`, the on-disk `content_folder`, and
 //! the public `subdomain` label — the catalogue fields (name, subtitle, enabled)

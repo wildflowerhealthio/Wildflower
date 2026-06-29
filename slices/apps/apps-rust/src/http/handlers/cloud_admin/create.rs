@@ -59,8 +59,7 @@ pub(crate) async fn handle_create_app(
         id: mint_app_id(),
         enabled: true,
         name: body.name,
-        // Empty subtitle → cleared: a stored `""` would break the catalogue
-        // decode (read schemas require a non-empty string). See `SubtitlePatch`.
+        // Empty `""` clears — see `SubtitlePatch`.
         subtitle: body.subtitle.filter(|s| !s.is_empty()),
         url,
         requires_tunnel: body.requires_tunnel,

@@ -4,14 +4,10 @@
 -- than migrating data. Run-once (index 3 = the 4th migration); a fresh install
 -- gets the full seeded set below.
 --
--- Parent `apps` is the curated homescreen list: one row per app, globally
--- unique `id` across all kinds (so there is no cross-table id-collision to
--- resolve), ordered by `position`. `provenance` fixes how the launch target is
--- resolved (System → compiled-in source, Self-Hosted → loopback/subdomain,
--- Cloud → the `cloud_apps.url` template). `local_only` is the declared
--- no-egress flag (badge only this pass). `client_id` is a soft reference to the
--- gatekeeper `clients` table (NOT an enforced cross-slice FK): its presence is
--- what makes an app a SMART app (`smart := client_id IS NOT NULL`).
+-- Parent `apps` is the curated homescreen list: one row per app, with a
+-- globally unique `id` across all kinds, ordered by `position`. The taxonomy
+-- these columns encode (provenance, local_only, the soft `client_id`) is
+-- canonical in docs/Apps/Explanation.md.
 DROP TABLE IF EXISTS internal_apps;
 DROP TABLE IF EXISTS apps;
 
@@ -25,7 +21,8 @@ CREATE TABLE apps (
     position    INTEGER NOT NULL,
     provenance  TEXT NOT NULL CHECK (provenance IN ('system', 'self-hosted', 'cloud')),
     local_only  INTEGER NOT NULL DEFAULT 0,
-    -- Soft reference to gatekeeper `clients.client_id`. NULL for non-SMART apps.
+    -- Soft reference to gatekeeper `clients.client_id` (not an enforced FK); NULL
+    -- for non-SMART apps. See docs/Apps/Explanation.md.
     client_id   TEXT
 ) STRICT;
 
@@ -37,13 +34,12 @@ CREATE TABLE cloud_apps (
     requires_tunnel INTEGER NOT NULL DEFAULT 0
 ) STRICT;
 
--- Self-hosted child: the stable dedicated loopback `port` the host serves it on,
--- plus the on-disk `content_folder` (a subdirectory under the host's
--- installed-apps dir holding the served files) and the `subdomain` label it's
--- reachable at remotely (`<subdomain>.<public_host>`). Folder and subdomain are
--- stored explicitly rather than derived from `id`, so an app's identity, the
--- folder its content lives in, and its public hostname can each be set
--- independently (the seeds happen to match `id`, but nothing assumes they do).
+-- Self-hosted child: the stable dedicated loopback `port`, the on-disk
+-- `content_folder` (a subdirectory under the host's installed-apps dir), and the
+-- public `subdomain` label (`<subdomain>.<public_host>`). Folder and subdomain
+-- are explicit columns, not derived from `id`, so identity / served files /
+-- public hostname are independent (the seeds happen to match `id`). See
+-- docs/Apps/Explanation.md.
 CREATE TABLE self_hosted_apps (
     id             TEXT PRIMARY KEY REFERENCES apps(id) ON DELETE CASCADE,
     port           INTEGER NOT NULL,
@@ -52,8 +48,8 @@ CREATE TABLE self_hosted_apps (
 ) STRICT;
 
 -- Parent rows for every seeded app, in display order. System apps (api-view,
--- api-docs) carry no child row — their launch URL comes from the compiled-in
--- `SystemApp` source list, which must stay in sync with these rows.
+-- api-docs) carry no child row; their launch URL comes from the compiled-in
+-- `SystemApp` list, which the store tests pin in sync with these rows.
 INSERT INTO apps (id, name, subtitle, enabled, position, provenance, local_only, client_id) VALUES
     ('patient-browser', 'Patient Browser', 'Browse patient records served from this device.', 1, 0, 'self-hosted', 1, NULL),
     ('api-view', 'API View', 'View patient records in your browser.', 1, 1, 'system', 1, NULL),

@@ -47,8 +47,8 @@ pub(crate) async fn handle_delete_app(
         .delete_app(&id)
         .map_err(|e| HandlerError::internal("delete_app failed", e))?;
     if !deleted {
-        // We just read the cloud parent under the same connection; it can't have
-        // vanished. Surface as a logged 500 rather than a misleading 404.
+        // Cloud parent read under the same connection — can't have vanished;
+        // logged 500, not a misleading 404.
         return Err(HandlerError::internal(
             "row vanished between find_app and delete_app",
             format!("id={id}"),

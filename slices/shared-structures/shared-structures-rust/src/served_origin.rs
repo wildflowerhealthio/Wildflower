@@ -1,17 +1,9 @@
 //! Forwarding-header provenance — `request_provenance` and the rendered
-//! `served_origin_for`.
-//!
-//! Two callers today derive identity from the same `Forwarded` header (RFC
-//! 7239) the trusted front sets on relayed requests:
-//!
-//! - **gatekeeper-rust** — token issuer URLs / discovery doc resolve through
-//!   [`served_origin_for`] so a minted token references the URL the caller
-//!   really reached, not the loopback API origin.
-//! - **apps-rust** — `POST /apps/{id}` reads provenance to decide *both* how to
-//!   dispatch (a host popup helps only the local caller, so a remote forwarded
-//!   request gets a 302 instead of the sink) *and* what to render into the
-//!   redirect's `Location` (the same forwarded origin). Both decisions read
-//!   from the same provenance so the empty-host edge can't make them disagree.
+//! [`served_origin_for`], the single source of truth for a request's served
+//! origin (loopback vs. the forwarded public origin). Consumers — gatekeeper's
+//! token/discovery URLs and apps-rust's launch redirect — resolve through it so
+//! they can't drift. See `docs/Origins/Explanation.md` for the model; this
+//! module owns the parsing contract and validation below.
 //!
 //! ## The contract
 //!
