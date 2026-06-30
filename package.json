@@ -30,7 +30,7 @@
     "@tanstack/virtual-file-routes": "catalog:",
     "@typescript/native-preview": "catalog:",
     "effect": "catalog:",
-    "eslint": "^9.39.4",
+    "eslint": "^10.6.0",
     "eslint-plugin-tsdoc": "^0.5.2",
     "markdownlint": "^0.40.0",
     "markdownlint-cli2": "^0.21.0",
