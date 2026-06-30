@@ -212,7 +212,10 @@ const AUTH_COOKIE_DOMAIN: &str = "127.0.0.1";
 /// handler), per the WebView2 deadlock note on `WebviewWindow::set_cookie`.
 #[cfg(desktop)]
 fn sync_auth_cookie(handle: &AppHandle, token: Option<&str>) {
-    use tauri::{Cookie, SameSite};
+    // `Cookie` is `tauri_runtime::Cookie` re-exported at `tauri::webview::Cookie`;
+    // `SameSite` comes from the `cookie` crate, which tauri re-exports at
+    // `tauri::webview::cookie`. Neither is re-exported at the tauri crate root.
+    use tauri::webview::{cookie::SameSite, Cookie};
 
     let Some(window) = handle.get_webview_window(MAIN_WINDOW_LABEL) else {
         log::warn!("[bridge] window '{MAIN_WINDOW_LABEL}' missing; wf_auth cookie sync skipped");
