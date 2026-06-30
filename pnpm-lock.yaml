@@ -37,8 +37,8 @@ catalogs:
       specifier: 0.4.0-dev.26
       version: 0.4.0-dev.26
     '@livestore/livestore':
-      specifier: 0.4.0-dev.26
-      version: 0.4.0-dev.26
+      specifier: 0.4.0
+      version: 0.4.0
     '@livestore/peer-deps':
       specifier: 0.4.0-dev.26
       version: 0.4.0-dev.26
@@ -865,7 +865,7 @@ importers:
         version: 0.4.0-dev.26(fa4e730f58d4240acb4a7259b6f5e07d)
       '@livestore/livestore':
         specifier: 'catalog:'
-        version: 0.4.0-dev.26(fa4e730f58d4240acb4a7259b6f5e07d)
+        version: 0.4.0(fa4e730f58d4240acb4a7259b6f5e07d)
       '@livestore/peer-deps':
         specifier: 'catalog:'
         version: 0.4.0-dev.26(46bbf2c9acb670edde8708c1f56e026a)
@@ -949,7 +949,7 @@ importers:
         version: 0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
       '@livestore/livestore':
         specifier: 'catalog:'
-        version: 0.4.0-dev.26(fa4e730f58d4240acb4a7259b6f5e07d)
+        version: 0.4.0(fa4e730f58d4240acb4a7259b6f5e07d)
       '@livestore/peer-deps':
         specifier: 'catalog:'
         version: 0.4.0-dev.26(46bbf2c9acb670edde8708c1f56e026a)
@@ -1183,7 +1183,7 @@ importers:
         version: 0.4.0-dev.26(fa4e730f58d4240acb4a7259b6f5e07d)
       '@livestore/livestore':
         specifier: 'catalog:'
-        version: 0.4.0-dev.26(fa4e730f58d4240acb4a7259b6f5e07d)
+        version: 0.4.0(fa4e730f58d4240acb4a7259b6f5e07d)
       '@livestore/peer-deps':
         specifier: 'catalog:'
         version: 0.4.0-dev.26(46bbf2c9acb670edde8708c1f56e026a)
@@ -1234,7 +1234,7 @@ importers:
         version: 0.4.0-dev.26(fa4e730f58d4240acb4a7259b6f5e07d)
       '@livestore/livestore':
         specifier: 'catalog:'
-        version: 0.4.0-dev.26(fa4e730f58d4240acb4a7259b6f5e07d)
+        version: 0.4.0(fa4e730f58d4240acb4a7259b6f5e07d)
       '@livestore/peer-deps':
         specifier: 'catalog:'
         version: 0.4.0-dev.26(46bbf2c9acb670edde8708c1f56e026a)
@@ -1342,7 +1342,7 @@ importers:
         version: 0.4.0-dev.26(fa4e730f58d4240acb4a7259b6f5e07d)
       '@livestore/livestore':
         specifier: 'catalog:'
-        version: 0.4.0-dev.26(fa4e730f58d4240acb4a7259b6f5e07d)
+        version: 0.4.0(fa4e730f58d4240acb4a7259b6f5e07d)
       '@livestore/peer-deps':
         specifier: 'catalog:'
         version: 0.4.0-dev.26(46bbf2c9acb670edde8708c1f56e026a)
@@ -1576,7 +1576,7 @@ importers:
         version: 0.4.0-dev.26(fa4e730f58d4240acb4a7259b6f5e07d)
       '@livestore/livestore':
         specifier: 'catalog:'
-        version: 0.4.0-dev.26(fa4e730f58d4240acb4a7259b6f5e07d)
+        version: 0.4.0(fa4e730f58d4240acb4a7259b6f5e07d)
       '@livestore/peer-deps':
         specifier: 'catalog:'
         version: 0.4.0-dev.26(46bbf2c9acb670edde8708c1f56e026a)
@@ -2735,6 +2735,29 @@ packages:
       '@standard-schema/spec': 1.1.0
       effect: 3.21.2
 
+  '@livestore/common@0.4.0':
+    resolution: {integrity: sha512-SKQ3JdvgDw9k5WM+TqEXqXVzORGNCzos8zO2G/+19H9Iz2Yp8D0je1J0l4/FWXsnQWwpzFly0YP75eWS59K7Ng==}
+    peerDependencies:
+      '@effect/ai': 0.35.0
+      '@effect/cli': 0.75.1
+      '@effect/cluster': 0.58.2
+      '@effect/experimental': 0.60.0
+      '@effect/opentelemetry': 0.63.0
+      '@effect/platform': 0.96.1
+      '@effect/platform-browser': 0.76.0
+      '@effect/platform-bun': 0.89.0
+      '@effect/platform-node': 0.106.0
+      '@effect/printer': 0.49.0
+      '@effect/printer-ansi': 0.49.0
+      '@effect/rpc': 0.75.1
+      '@effect/sql': 0.51.1
+      '@effect/typeclass': 0.40.0
+      '@effect/vitest': ^0.29.0
+      '@opentelemetry/api': 1.9.0
+      '@opentelemetry/resources': 2.2.0
+      '@standard-schema/spec': 1.1.0
+      effect: 3.21.2
+
   '@livestore/common@0.4.0-dev.26':
     resolution: {integrity: sha512-6aTiRm9L8CIq/c1xT/VZWOjPOXibFklVPYMU2WK5G+esCEmo+Elrq9s4iTX2x967WUz6v6SJI/z8HKe/3PNi1g==}
     peerDependencies:
@@ -2758,8 +2781,8 @@ packages:
       '@standard-schema/spec': 1.1.0
       effect: 3.21.2
 
-  '@livestore/livestore@0.4.0-dev.26':
-    resolution: {integrity: sha512-QVOAidopDC1zS2WkJEd2auV4QJ5ntcKUnJL8EYgwINinO4V46Dgp8WvJk4ZhkxWWXeWykZ3OxIPjeWxu3c8k8Q==}
+  '@livestore/livestore@0.4.0':
+    resolution: {integrity: sha512-g5RdJYJ23oK0obbXYAtrX8Mc3XJnNXy0YCRHnqIBkG03zc66jA4345dQKm8oS+pNl0XvTiuKmGh4LpZB7laQRQ==}
     peerDependencies:
       '@effect/ai': 0.35.0
       '@effect/cli': 0.75.1
@@ -2807,6 +2830,29 @@ packages:
       '@standard-schema/spec': 1.1.0
       effect: 3.21.2
 
+  '@livestore/utils@0.4.0':
+    resolution: {integrity: sha512-908HgyGyp/PuYGA2X6PBdkXjbTGAuPwi6VHiXhnLFiiOAaRJ6uYjqUIcrW7IkrR76+rkkTVx0xVcZsbtUHi00Q==}
+    peerDependencies:
+      '@effect/ai': 0.35.0
+      '@effect/cli': 0.75.1
+      '@effect/cluster': 0.58.2
+      '@effect/experimental': 0.60.0
+      '@effect/opentelemetry': 0.63.0
+      '@effect/platform': 0.96.1
+      '@effect/platform-browser': 0.76.0
+      '@effect/platform-bun': 0.89.0
+      '@effect/platform-node': 0.106.0
+      '@effect/printer': 0.49.0
+      '@effect/printer-ansi': 0.49.0
+      '@effect/rpc': 0.75.1
+      '@effect/sql': 0.51.1
+      '@effect/typeclass': 0.40.0
+      '@effect/vitest': ^0.29.0
+      '@opentelemetry/api': 1.9.0
+      '@opentelemetry/resources': 2.2.0
+      '@standard-schema/spec': 1.1.0
+      effect: 3.21.2
+
   '@livestore/utils@0.4.0-dev.26':
     resolution: {integrity: sha512-8N7399kdGhcTDLXvNrvapVavpx41n31UUHX/QtnHeKL3QJGTjsxYlGFe3hgn9F7Ng5ddzwD+TtWJrxic9lp2ig==}
     peerDependencies:
@@ -2832,6 +2878,29 @@ packages:
 
   '@livestore/wa-sqlite@0.4.0-dev.26':
     resolution: {integrity: sha512-8usOnejvIJL1RlATtDvrNo3r5PBWTNLNmTxzFrw3ucC6j9qqwBtL+gFKOHic9KDR4dvMu0FRroJ4R7OWuR0Tqg==}
+
+  '@livestore/webmesh@0.4.0':
+    resolution: {integrity: sha512-HrDCNLPWG/aupdXt7Y2HcseR9FIUU54/GvDniyndXMAq6xhehiSgwKvxbDhjWpl0I2UoOakfxyndT7a6JPtU8w==}
+    peerDependencies:
+      '@effect/ai': 0.35.0
+      '@effect/cli': 0.75.1
+      '@effect/cluster': 0.58.2
+      '@effect/experimental': 0.60.0
+      '@effect/opentelemetry': 0.63.0
+      '@effect/platform': 0.96.1
+      '@effect/platform-browser': 0.76.0
+      '@effect/platform-bun': 0.89.0
+      '@effect/platform-node': 0.106.0
+      '@effect/printer': 0.49.0
+      '@effect/printer-ansi': 0.49.0
+      '@effect/rpc': 0.75.1
+      '@effect/sql': 0.51.1
+      '@effect/typeclass': 0.40.0
+      '@effect/vitest': ^0.29.0
+      '@opentelemetry/api': 1.9.0
+      '@opentelemetry/resources': 2.2.0
+      '@standard-schema/spec': 1.1.0
+      effect: 3.21.2
 
   '@livestore/webmesh@0.4.0-dev.26':
     resolution: {integrity: sha512-Z5DLyZzMy+HaB/wUUKTq2mz/Q+C4MSS6X90OuaQGFA0e6TZE1WNe1j0biBM83ArZb9hrmEc70+ZZ9OJAcCWZig==}
@@ -5490,11 +5559,6 @@ packages:
   multipasta@0.2.7:
     resolution: {integrity: sha512-KPA58d68KgGil15oDqXjkUBEBYc00XvbPj5/X+dyzeo/lWm9Nc25pQRlf1D+gv4OpK7NM0J1odrbu9JNNGvynA==}
 
-  nanoid@3.3.12:
-    resolution: {integrity: sha512-ZB9RH/39qpq5Vu6Y+NmUaFhQR6pp+M2Xt76XBnEwDaGcVAqhlvxrl3B2bKS5D3NH3QR76v3aSrKaF/Kiy7lEtQ==}
-    engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
-    hasBin: true
-
   nanoid@3.3.15:
     resolution: {integrity: sha512-y7Wygv/7mEOvxTuEQDB8StXdMRBWf1kR/tlhAzBRUFkB2jfcLOAxO/SHmOO2zgz1pVgK29/kyupn059/bCHdjA==}
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
@@ -7015,6 +7079,30 @@ snapshots:
       '@standard-schema/spec': 1.1.0
       effect: 3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
 
+  '@livestore/common@0.4.0(fa4e730f58d4240acb4a7259b6f5e07d)':
+    dependencies:
+      '@effect/ai': 0.35.0(@effect/experimental@0.60.0(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/rpc@0.75.1(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+      '@effect/cli': 0.75.1(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/printer-ansi@0.49.0(@effect/typeclass@0.40.0(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/printer@0.49.0(@effect/typeclass@0.40.0(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+      '@effect/cluster': 0.58.2(feb2bd7138b8b2524181bb7720197364)
+      '@effect/experimental': 0.60.0(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+      '@effect/opentelemetry': 0.63.0(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@opentelemetry/api@1.9.0)(@opentelemetry/resources@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-logs@0.219.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@2.8.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.8.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@2.8.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@2.8.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.41.1)(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+      '@effect/platform': 0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+      '@effect/platform-browser': 0.76.0(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+      '@effect/platform-bun': 0.89.0(@effect/cluster@0.58.2(feb2bd7138b8b2524181bb7720197364))(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/rpc@0.75.1(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+      '@effect/platform-node': 0.106.0(@effect/cluster@0.58.2(feb2bd7138b8b2524181bb7720197364))(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/rpc@0.75.1(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+      '@effect/printer': 0.49.0(@effect/typeclass@0.40.0(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+      '@effect/printer-ansi': 0.49.0(@effect/typeclass@0.40.0(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+      '@effect/rpc': 0.75.1(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+      '@effect/sql': 0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+      '@effect/typeclass': 0.40.0(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+      '@effect/vitest': 0.29.0(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))(vitest@3.2.4(@types/debug@4.1.13)(@types/node@24.12.4)(jiti@2.7.0)(jsdom@29.1.1)(lightningcss@1.32.0)(terser@5.47.1)(yaml@2.9.0))
+      '@livestore/utils': 0.4.0(fa4e730f58d4240acb4a7259b6f5e07d)
+      '@livestore/webmesh': 0.4.0(fa4e730f58d4240acb4a7259b6f5e07d)
+      '@opentelemetry/api': 1.9.0
+      '@opentelemetry/resources': 2.2.0(@opentelemetry/api@1.9.0)
+      '@standard-schema/spec': 1.1.0
+      effect: 3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
+
   '@livestore/common@0.4.0-dev.26(fa4e730f58d4240acb4a7259b6f5e07d)':
     dependencies:
       '@effect/ai': 0.35.0(@effect/experimental@0.60.0(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/rpc@0.75.1(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
@@ -7039,7 +7127,7 @@ snapshots:
       '@standard-schema/spec': 1.1.0
       effect: 3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
 
-  '@livestore/livestore@0.4.0-dev.26(fa4e730f58d4240acb4a7259b6f5e07d)':
+  '@livestore/livestore@0.4.0(fa4e730f58d4240acb4a7259b6f5e07d)':
     dependencies:
       '@effect/ai': 0.35.0(@effect/experimental@0.60.0(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/rpc@0.75.1(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
       '@effect/cli': 0.75.1(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/printer-ansi@0.49.0(@effect/typeclass@0.40.0(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/printer@0.49.0(@effect/typeclass@0.40.0(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
@@ -7056,8 +7144,8 @@ snapshots:
       '@effect/sql': 0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
       '@effect/typeclass': 0.40.0(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
       '@effect/vitest': 0.29.0(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))(vitest@3.2.4(@types/debug@4.1.13)(@types/node@24.12.4)(jiti@2.7.0)(jsdom@29.1.1)(lightningcss@1.32.0)(terser@5.47.1)(yaml@2.9.0))
-      '@livestore/common': 0.4.0-dev.26(fa4e730f58d4240acb4a7259b6f5e07d)
-      '@livestore/utils': 0.4.0-dev.26(fa4e730f58d4240acb4a7259b6f5e07d)
+      '@livestore/common': 0.4.0(fa4e730f58d4240acb4a7259b6f5e07d)
+      '@livestore/utils': 0.4.0(fa4e730f58d4240acb4a7259b6f5e07d)
       '@opentelemetry/api': 1.9.0
       '@opentelemetry/resources': 2.2.0(@opentelemetry/api@1.9.0)
       '@standard-schema/spec': 1.1.0
@@ -7125,6 +7213,31 @@ snapshots:
       '@standard-schema/spec': 1.1.0
       effect: 3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
 
+  '@livestore/utils@0.4.0(fa4e730f58d4240acb4a7259b6f5e07d)':
+    dependencies:
+      '@effect/ai': 0.35.0(@effect/experimental@0.60.0(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/rpc@0.75.1(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+      '@effect/cli': 0.75.1(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/printer-ansi@0.49.0(@effect/typeclass@0.40.0(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/printer@0.49.0(@effect/typeclass@0.40.0(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+      '@effect/cluster': 0.58.2(feb2bd7138b8b2524181bb7720197364)
+      '@effect/experimental': 0.60.0(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+      '@effect/opentelemetry': 0.63.0(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@opentelemetry/api@1.9.0)(@opentelemetry/resources@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-logs@0.219.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@2.8.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.8.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@2.8.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@2.8.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.41.1)(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+      '@effect/platform': 0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+      '@effect/platform-browser': 0.76.0(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+      '@effect/platform-bun': 0.89.0(@effect/cluster@0.58.2(feb2bd7138b8b2524181bb7720197364))(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/rpc@0.75.1(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+      '@effect/platform-node': 0.106.0(@effect/cluster@0.58.2(feb2bd7138b8b2524181bb7720197364))(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/rpc@0.75.1(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+      '@effect/printer': 0.49.0(@effect/typeclass@0.40.0(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+      '@effect/printer-ansi': 0.49.0(@effect/typeclass@0.40.0(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+      '@effect/rpc': 0.75.1(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+      '@effect/sql': 0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+      '@effect/typeclass': 0.40.0(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+      '@effect/vitest': 0.29.0(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))(vitest@3.2.4(@types/debug@4.1.13)(@types/node@24.12.4)(jiti@2.7.0)(jsdom@29.1.1)(lightningcss@1.32.0)(terser@5.47.1)(yaml@2.9.0))
+      '@opentelemetry/api': 1.9.0
+      '@opentelemetry/resources': 2.2.0(@opentelemetry/api@1.9.0)
+      '@standard-schema/spec': 1.1.0
+      effect: 3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
+      nanoid: 5.0.9
+      pretty-bytes: 7.0.1
+      qrcode-generator: 2.0.4
+
   '@livestore/utils@0.4.0-dev.26(fa4e730f58d4240acb4a7259b6f5e07d)':
     dependencies:
       '@effect/ai': 0.35.0(@effect/experimental@0.60.0(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/rpc@0.75.1(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
@@ -7151,6 +7264,29 @@ snapshots:
       qrcode-generator: 2.0.4
 
   '@livestore/wa-sqlite@0.4.0-dev.26': {}
+
+  '@livestore/webmesh@0.4.0(fa4e730f58d4240acb4a7259b6f5e07d)':
+    dependencies:
+      '@effect/ai': 0.35.0(@effect/experimental@0.60.0(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/rpc@0.75.1(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+      '@effect/cli': 0.75.1(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/printer-ansi@0.49.0(@effect/typeclass@0.40.0(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/printer@0.49.0(@effect/typeclass@0.40.0(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+      '@effect/cluster': 0.58.2(feb2bd7138b8b2524181bb7720197364)
+      '@effect/experimental': 0.60.0(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+      '@effect/opentelemetry': 0.63.0(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@opentelemetry/api@1.9.0)(@opentelemetry/resources@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-logs@0.219.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@2.8.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.8.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@2.8.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@2.8.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.41.1)(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+      '@effect/platform': 0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+      '@effect/platform-browser': 0.76.0(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+      '@effect/platform-bun': 0.89.0(@effect/cluster@0.58.2(feb2bd7138b8b2524181bb7720197364))(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/rpc@0.75.1(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+      '@effect/platform-node': 0.106.0(@effect/cluster@0.58.2(feb2bd7138b8b2524181bb7720197364))(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/rpc@0.75.1(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+      '@effect/printer': 0.49.0(@effect/typeclass@0.40.0(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+      '@effect/printer-ansi': 0.49.0(@effect/typeclass@0.40.0(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+      '@effect/rpc': 0.75.1(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+      '@effect/sql': 0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+      '@effect/typeclass': 0.40.0(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+      '@effect/vitest': 0.29.0(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))(vitest@3.2.4(@types/debug@4.1.13)(@types/node@24.12.4)(jiti@2.7.0)(jsdom@29.1.1)(lightningcss@1.32.0)(terser@5.47.1)(yaml@2.9.0))
+      '@livestore/utils': 0.4.0(fa4e730f58d4240acb4a7259b6f5e07d)
+      '@opentelemetry/api': 1.9.0
+      '@opentelemetry/resources': 2.2.0(@opentelemetry/api@1.9.0)
+      '@standard-schema/spec': 1.1.0
+      effect: 3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
 
   '@livestore/webmesh@0.4.0-dev.26(fa4e730f58d4240acb4a7259b6f5e07d)':
     dependencies:
@@ -9818,8 +9954,6 @@ snapshots:
 
   multipasta@0.2.7: {}
 
-  nanoid@3.3.12: {}
-
   nanoid@3.3.15: {}
 
   nanoid@5.0.9: {}
@@ -9989,7 +10123,7 @@ snapshots:
 
   postcss@8.5.14:
     dependencies:
-      nanoid: 3.3.12
+      nanoid: 3.3.15
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
