@@ -47,9 +47,13 @@ const CryptoRandomLayerLive = <TByteArray extends ArrayLike<number>>(
 const cryptoRandomLayerFromWebCrypto = (
   crypto: typeof globalThis.crypto
 ): Layer.Layer<CryptoRandom> =>
-  CryptoRandomLayerLive<Uint8Array>(
+  // `@types/node` 26 tightens Web Crypto's `getRandomValues` to require an
+  // `ArrayBuffer`-backed view (`SharedArrayBuffer` is rejected per spec), so the
+  // byte array is `Uint8Array<ArrayBuffer>` rather than the default
+  // `Uint8Array<ArrayBufferLike>`. `new Uint8Array(1)` is already ArrayBuffer-backed.
+  CryptoRandomLayerLive<Uint8Array<ArrayBuffer>>(
     {
-      getRandomValues: (array: Uint8Array) => crypto.getRandomValues(array),
+      getRandomValues: (array: Uint8Array<ArrayBuffer>) => crypto.getRandomValues(array),
       randomUUID: () => crypto.randomUUID(),
     },
     new Uint8Array(1)

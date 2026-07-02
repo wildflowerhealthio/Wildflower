@@ -7,7 +7,7 @@ Read [AGENTS Explanation](./docs/Agents/Explanation.md) for what this file is an
 
 ## Critical Rules
 
-- **Node.js 22.12+ required** (`engines` in `package.json`)
+- **Node.js 26+ required** (`engines` in `package.json`)
 - **Vite+ owns the toolchain** — drive everything through `vp`. Never invoke `pnpm`, `npm`, or `yarn` directly. See the Vite+ block at the bottom of this file for command surface and pitfalls.
 - **Test utilities import from `vite-plus/test`**, not `vitest`
 - **Slices must respect their layering** — `slices/<name>/<name>-core` is the pure layer; `-web`, `-node` are platform adapters that may import from `-core` but not vice-versa

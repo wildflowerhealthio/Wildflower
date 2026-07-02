@@ -15,7 +15,7 @@ This guide covers general development practices for all packages in the Wildflow
 
 ### Prerequisites
 
-- Node.js 22.12+ (managed via `vp env`)
+- Node.js 26+ (managed via `vp env`)
 - The `vp` global binary (Vite+) — see [README.md](./README.md) for install
 - Understanding of TypeScript
 - Familiarity with Effect-TS (for slice cores and shared utilities)
