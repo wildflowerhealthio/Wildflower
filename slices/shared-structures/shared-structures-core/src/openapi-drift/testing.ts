@@ -15,7 +15,7 @@
 
 import * as fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import $RefParser from '@apidevtools/json-schema-ref-parser'
+import { dereference } from '@apidevtools/json-schema-ref-parser'
 import { type HttpApi, type HttpApiGroup, OpenApi } from '@effect/platform'
 import { expect, test } from 'vite-plus/test'
 import { collectSpecDrift, type OpenApiDoc, type SpecDriftOptions } from './index.ts'
@@ -68,8 +68,8 @@ export const defineSpecDriftTest = <
 
     // Resolve internal `$ref`s in place (delegated to a battle-tested resolver)
     // so the comparison only sees inlined schemas.
-    await $RefParser.dereference(client)
-    await $RefParser.dereference(server)
+    await dereference(client)
+    await dereference(server)
 
     const drift = collectSpecDrift(server, client, options)
 

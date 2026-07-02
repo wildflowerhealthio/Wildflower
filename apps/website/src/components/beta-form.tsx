@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { FormEvent, JSX } from 'react'
+import type { JSX, SyntheticEvent } from 'react'
 
 import styles from './beta-form.module.css'
 
@@ -30,7 +30,7 @@ function BetaForm({ variant }: { readonly variant: BetaFormVariant }): JSX.Eleme
   const copy = COPY[variant]
   const inputId = `beta-email-${variant}`
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>): void => {
+  const handleSubmit = (event: SyntheticEvent<HTMLFormElement>): void => {
     event.preventDefault()
     const form = event.currentTarget
     if (!form.checkValidity()) {
