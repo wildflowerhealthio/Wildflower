@@ -59,6 +59,16 @@ const base = defineConfig({
   ssr: { resolve: { conditions: ['source'] } },
   lint: { options: { typeAware: true, typeCheck: true } },
   fmt: {},
+  test: {
+    // Node 26 exposes a global `localStorage`/`sessionStorage` (inert unless
+    // `--localstorage-file` is passed). In Vitest's jsdom environment that
+    // global shadows jsdom's Web Storage — Vitest skips installing jsdom's copy
+    // because the key already exists on `globalThis` — so `window.localStorage`
+    // reads back `undefined`. `--no-experimental-webstorage` drops Node's global
+    // so jsdom installs its own. Vitest ignores `execArgv` on the root projects
+    // config, so each jsdom package spreads this via `test: { ...base.test, … }`.
+    execArgv: ['--no-experimental-webstorage'],
+  },
 })
 
 export default base

@@ -42,12 +42,12 @@
   },
   "overrides": {},
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=26.0.0"
   },
   "packageManager": "pnpm@10.33.0",
   "pnpm": {
     "overrides": {
-      "@types/node": "^24",
+      "@types/node": "^26",
       "typescript": "5.9.3",
       "react-dom": "19.2.7",
       "@effect/ai": "0.35.0",
@@ -68,10 +68,10 @@
       "@opentelemetry/api": "1.9.0",
       "@opentelemetry/resources": "2.2.0",
       "@standard-schema/spec": "1.1.0",
-      "effect": "3.21.2"
+      "effect": "3.21.4"
     },
     "patchedDependencies": {
-      "effect@3.21.2": "patches/effect@3.21.2.patch"
+      "effect@3.21.4": "patches/effect@3.21.4.patch"
     }
   }
 }

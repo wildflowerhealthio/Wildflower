@@ -4,6 +4,7 @@ import base from '../../vite.config.base.ts'
 export default defineConfig({
   ...base,
   test: {
+    ...base.test,
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
     environment: 'jsdom',
   },

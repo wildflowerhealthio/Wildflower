@@ -13,6 +13,7 @@ export default defineConfig({
     entry: { index: 'src/index.ts' },
   },
   test: {
+    ...base.test,
     environment: 'jsdom',
   },
 })
