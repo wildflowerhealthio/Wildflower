@@ -20,7 +20,8 @@ import { BaseResourceScope } from './scope.ts'
 class WildflowerResourceScope extends BaseResourceScope<
   Contexts.Wildflower,
   ResourceType.Wildflower,
-  Permission.Cruds.Interaction
+  Permission.Cruds.Interaction,
+  'wildflower'
 > {
   readonly kind = 'wildflower' as const
   readonly context: Contexts.Wildflower
@@ -32,7 +33,7 @@ class WildflowerResourceScope extends BaseResourceScope<
     Contexts.Wildflower,
     ResourceType.Wildflower,
     Permission.Cruds.Interaction,
-    WildflowerResourceScope
+    'wildflower'
   >({
     id: 'wildflower',
     emptyPermission: Permission.Cruds.empty,
@@ -58,7 +59,7 @@ class WildflowerResourceScope extends BaseResourceScope<
     Contexts.Wildflower,
     ResourceType.Wildflower,
     Permission.Cruds.Interaction,
-    WildflowerResourceScope
+    'wildflower'
   > {
     return WildflowerResourceScope.configuration
   }
@@ -66,7 +67,7 @@ class WildflowerResourceScope extends BaseResourceScope<
   withPermission(
     permission: Permission.Base<Permission.Cruds.Interaction>
   ): WildflowerResourceScope {
-    return WildflowerResourceScope.configuration.make(this.context, this.resource, permission)
+    return new WildflowerResourceScope(this.context, this.resource, permission)
   }
 
   static parse(s: string): WildflowerResourceScope | null {

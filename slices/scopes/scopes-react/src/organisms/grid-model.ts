@@ -1,109 +1,129 @@
 /**
- * View-model assembly for {@link PermissionGrid}. Turns a {@link GrantDraft.GrantDraft} (+ an
- * optional request scopeRequest) into renderable rows, so the grid component stays
- * presentational and the §2/§3 decisions live in `scopes-core`. Pure and
- * unit-tested independently of the DOM.
+ * The view-model for {@link PermissionGrid}: it projects one {@link Section} — a single
+ * scope variant, its context, and the resource rows it lists — over the editable
+ * {@link GrantDraft.GrantDraft} into a {@link Grid} (its columns + rows). The §2/§3
+ * decisions live in `scopes-core` ({@link Cell.forItem}); this file is pure projection,
+ * DOM-free and unit-tested on its own.
  */
 
-import { AccessRights, ScopeContext, ScopeRequest, GrantDraft, Labels, Words } from 'scopes-core'
+import { Cell } from 'scopes-core'
+import type { Scope, GrantDraft, ScopeRequest } from 'scopes-core'
 
-/** One Read/Write item on a v1 (word) row. */
-interface GridWordItem {
-  readonly component: Words.Component
-  readonly cell: ScopeRequest.Cell
+import type { PickerItem } from '../molecules/permission-picker.tsx'
+
+/** One selectable control on a grid row — a permission item plus its resolved cell state. */
+type GridItem = PickerItem
+
+/** One column header — an interaction from the section's permission style (`{ id, name, code }`). */
+interface GridColumn {
+  readonly id: string
+  readonly name: string
+  readonly code: string
 }
 
-/** One renderable grid row — either a 5-cell v2 row or a v1 Read/Write multiselect. */
+/** One rendered grid row — uniform across permission forms (5 cruds cells, or 2 v1 words). */
 interface GridRow {
-  readonly scopeContext: ScopeContext.ScopeContext
+  /** The row's resource, serialized (`Observation`, `*`) — the stable row key. */
   readonly resource: string
   /** The 1:1 display label (or the wildcard label for `*`). */
   readonly label: string
-  /** The live scope string for this row, shown in mono. */
+  /** The live scope string for this row, shown in mono (detail-only, `spec.md §2`). */
   readonly code: string
-  readonly form: 'word' | 'letters'
-  /** v2 (`letters`) rows: one cell per CRUDS action, in canonical order. */
-  readonly cells?: readonly ScopeRequest.Cell[]
-  /** v1 (`word`) rows: the Read and Write components with their cell states. */
-  readonly words?: readonly GridWordItem[]
+  /** Interaction cells (`grid`) or an inline multiselect (`inline`, v1 words). */
+  readonly layout: 'grid' | 'inline'
+  /** The row's controls, in display order. */
+  readonly items: readonly GridItem[]
 }
 
-const grantAccessFor = (
-  grant: GrantDraft.GrantDraft,
-  scopeContext: ScopeContext.ScopeContext,
-  resource: string
-): AccessRights.AccessRights | null =>
-  GrantDraft.findResource(grant.scopes, scopeContext, resource)?.access ?? null
-
-/** Parameters for {@link buildGridRows}. */
-interface BuildGridRowsParams {
-  readonly grant: GrantDraft.GrantDraft
-  readonly scopeRequest: ScopeRequest.ScopeRequest | null
-  readonly scopeContext: ScopeContext.ScopeContext
-  /** The resource types to render as rows (e.g. the catalog, or what was requested). */
-  readonly resources: readonly string[]
-  /** Prepend the live `*` wildcard row (open mode only — §2 hides it in request mode). */
-  readonly includeWildcard?: boolean
-}
-
-const buildRow = (
-  grant: GrantDraft.GrantDraft,
-  scopeRequest: ScopeRequest.ScopeRequest | null,
-  scopeContext: ScopeContext.ScopeContext,
-  resource: string
-): GridRow => {
-  const form = ScopeRequest.accessForm(grant, scopeRequest, scopeContext, resource)
-  const requested =
-    scopeRequest === null ? null : ScopeRequest.resourceFor(scopeRequest, scopeContext, resource)
-  const currentAccess = grantAccessFor(grant, scopeContext, resource) ?? requested?.access ?? null
-  const code =
-    currentAccess === null
-      ? `${ScopeContext.prefix(scopeContext)}/${resource}`
-      : ScopeContext.code(scopeContext, resource, currentAccess)
-  const label = Labels.resource(scopeContext, resource)
-
-  if (form === 'word') {
-    return {
-      scopeContext,
-      resource,
-      label,
-      code,
-      form,
-      words: Words.COMPONENTS.map((component) => ({
-        component,
-        cell: ScopeRequest.buildWordCell(grant, scopeRequest, scopeContext, resource, component),
-      })),
-    }
-  }
-  return {
-    scopeContext,
-    resource,
-    label,
-    code,
-    form,
-    cells: AccessRights.ACTION_ORDER.map((action) =>
-      ScopeRequest.buildCell(grant, scopeRequest, scopeContext, resource, action)
-    ),
-  }
+/** Everything {@link PermissionGrid} renders: the section's interaction columns + its projected rows. */
+interface Grid {
+  /** The interaction columns, in canonical order (`spec.md §1`) — 5 for cruds, 2 for v1 words. */
+  readonly columns: readonly GridColumn[]
+  readonly rows: readonly GridRow[]
 }
 
 /**
- * Build the rows for one grid scope context. In request mode each resource is clamped
- * to the scopeRequest (§2); in open mode the `*` wildcard row can lead the list and
- * drives the union+lock of the rows below it (§3).
+ * One grid section — a single scope variant, its context, and the resources it lists
+ * (`spec.md §1`). The `configuration` must be *one concrete variant*: narrow the
+ * {@link Scope.ScopeConfiguration} union by `.id` (a `switch`) before building a
+ * Section, so every read stays within that variant's homogeneous partition.
  */
-const buildGridRows = ({
-  grant,
-  scopeRequest,
-  scopeContext,
-  resources,
-  includeWildcard = false,
-}: BuildGridRowsParams): GridRow[] => {
-  const rows = resources.map((resource) => buildRow(grant, scopeRequest, scopeContext, resource))
-  if (includeWildcard && scopeRequest === null) {
-    return [buildRow(grant, null, scopeContext, '*'), ...rows]
-  }
-  return rows
+interface Section<
+  TContext extends Scope.Contexts.Context,
+  TResource extends Scope.ResourceType.Base,
+  TInteraction extends string,
+  TId extends Scope.ResourceScope.Any['kind'],
+> {
+  readonly configuration: Scope.ScopeConfiguration<TContext, TResource, TInteraction, TId>
+  /** The section's context — `new Fhir('patient')`, `new Wildflower()`, … */
+  readonly context: TContext
+  /** The resource names to list as rows (`spec.md §4`), e.g. `Scope.ResourceType.Fhir.catalog`. */
+  readonly catalog: readonly string[]
 }
 
-export { type GridWordItem, type GridRow, type BuildGridRowsParams, buildGridRows }
+/** Options for {@link buildGrid}. */
+interface GridOptions {
+  /** Prepend the live `*` wildcard row — open mode only (`spec.md §2/§3`). */
+  readonly includeWildcard?: boolean
+}
+
+/**
+ * Project a {@link Section} over the current draft into its {@link Grid}. Columns come off
+ * the section's permission style; each catalog resource becomes a row (a name the variant
+ * can't parse is skipped). In request mode each cell is clamped to `scopeRequest` (§2), and
+ * in open mode a leading `*` wildcard row drives the union + lock of the rows beneath it (§3).
+ */
+const buildGrid = <
+  TContext extends Scope.Contexts.Context,
+  TResource extends Scope.ResourceType.Base,
+  TInteraction extends string,
+  TId extends Scope.ResourceScope.Any['kind'],
+>(
+  section: Section<TContext, TResource, TInteraction, TId>,
+  grant: GrantDraft.GrantDraft,
+  scopeRequest: ScopeRequest.ScopeRequest | null,
+  { includeWildcard = false }: GridOptions = {}
+): Grid => {
+  const { configuration, context, catalog } = section
+
+  /** The rendered row for one resource of this section. */
+  const rowFor = (resource: TResource): GridRow => {
+    const stored = configuration
+      .select(grant)
+      .find((scope) => scope.hasContext(context) && scope.hasResource(resource))
+    return {
+      resource: resource.serialize(),
+      label: resource.singularLabel(),
+      code: stored?.serialize() ?? `${context.serialize()}/${resource.serialize()}`,
+      layout: configuration.emptyPermission.kind === 'cruds' ? 'grid' : 'inline',
+      items: configuration.emptyPermission.items.map((item) => ({
+        id: item.id,
+        name: item.name,
+        code: item.code,
+        cell: Cell.forItem(configuration, grant, scopeRequest, context, resource, item.id),
+      })),
+    }
+  }
+
+  const rows = catalog
+    .map((name) => configuration.parseResource(name))
+    .filter((resource): resource is TResource => resource !== null)
+    .map(rowFor)
+
+  const wildcard =
+    includeWildcard && scopeRequest === null ? configuration.parseResource('*') : null
+  return {
+    columns: configuration.emptyPermission.items,
+    rows: wildcard === null ? rows : [rowFor(wildcard), ...rows],
+  }
+}
+
+export {
+  type GridItem,
+  type GridColumn,
+  type GridRow,
+  type Grid,
+  type Section,
+  type GridOptions,
+  buildGrid,
+}

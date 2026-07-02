@@ -26,7 +26,7 @@ const fhirV2 = (name: string, l: Scope.Permission.Cruds.Interaction[]): Scope.Fh
 
 /** The stored permission for a patient (context, resource) row within a v2 partition. */
 const permAt = (
-  owned: readonly Scope.FhirV2[],
+  owned: Scope.MultiScope['fhirV2'],
   resource: Scope.ResourceType.Fhir
 ): Scope.Permission.Base<Scope.Permission.Cruds.Interaction> | undefined =>
   owned.find((s) => s.hasContext(patient) && s.hasResource(resource))?.permission
@@ -133,7 +133,7 @@ describe('ScopeConfiguration.toggleItem — v1 Read/Write words', () => {
   const readScope = (): Scope.FhirV1 =>
     new Scope.FhirV1(patient, obs, Scope.Permission.ReadWrite.read)
   const permAtV1 = (
-    owned: readonly Scope.FhirV1[]
+    owned: Scope.MultiScope['fhirV1']
   ): Scope.Permission.Base<Scope.Permission.ReadWrite.Interaction> | undefined =>
     owned.find((s) => s.hasContext(patient) && s.hasResource(obs))?.permission
 

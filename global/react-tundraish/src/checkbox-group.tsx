@@ -1,59 +1,56 @@
 import type { JSX, ReactNode } from 'react'
 import { cn } from 'react-kitchen-sink'
-import { Checkbox } from 'react-tundraish'
 
-import styles from './action-picker.module.css'
+import { Checkbox } from './checkbox.tsx'
+import styles from './checkbox-group.module.css'
 
-/** One selectable row: a CRUDS letter (v2) or a Read/Write component (v1). */
-interface PickerItem {
-  /** Stable id passed back to `onToggle` — a CRUDS letter or `'read'`/`'write'`. */
-  readonly id: string
-  /** The user-facing label (a verb, or "Read"/"Write"). */
+/** One selectable row in a {@link CheckboxGroup}. */
+interface CheckboxGroupItem<TId extends string> {
+  /** Stable id handed back to {@link CheckboxGroupProps.onToggle}. */
+  readonly id: TId
+  /** The user-facing label. */
   readonly label: ReactNode
-  /** Optional mono scope value shown beside the label. */
+  /** Optional mono value shown beside the label. */
   readonly code?: string
   readonly checked: boolean
-  /** Locked-on (required by the app, or wildcard-covered) — not editable. */
+  /** Checked but not editable (e.g. required or implied) — rendered disabled. */
   readonly locked: boolean
-  /** Outside the scope request — shown disabled, never hidden (`spec.md §2`). */
+  /** Not applicable in the current context — shown disabled, never hidden. */
   readonly disabled: boolean
-  /** Tooltip explaining a lock/disable. */
+  /** Tooltip / accessible explanation for a lock or disable. */
   readonly reason?: string | null
 }
 
-interface ActionPickerProps {
-  readonly items: readonly PickerItem[]
-  readonly onToggle: (id: string) => void
-  /** Accessible name for the group (e.g. "Actions on Observation"). */
+interface CheckboxGroupProps<TId extends string> {
+  readonly items: readonly CheckboxGroupItem<TId>[]
+  readonly onToggle: (id: TId) => void
+  /** Accessible name for the group (e.g. "Permissions on Observation"). */
   readonly ariaLabel?: string
-  /** Stack the rows (default) or lay them in a row (compact, for the grid). */
+  /** Stack the rows (default) or lay them out in a row (compact). */
   readonly direction?: 'column' | 'row'
   /**
-   * `boxed` (default) renders the design-system checkbox — used in the grid.
-   * `plain` renders an un-boxed checklist (a ✓ when selected, nothing when not)
-   * with the scope value right-aligned and the card sized to fit — the fluent
-   * consent-list style.
+   * `boxed` (default) renders the design-system checkbox. `plain` renders an
+   * un-boxed checklist (a ✓ when selected, nothing when not) with any `code`
+   * right-aligned and the card sized to fit.
    */
   readonly variant?: 'boxed' | 'plain'
   readonly className?: string
 }
 
 /**
- * The access multiselect — the one editor both SMART forms share. v2 scopes pass
- * the five CRUDS verbs (each with its mono letter, `spec.md §1`); v1 scopes pass
- * the two coarse parts **Read** and **Write** (both ⇒ `*`). A `locked` row is
- * checked + disabled (required / wildcard-covered), a `disabled` row is outside
- * the scope request. See {@link ActionPickerProps.variant} for the boxed vs
- * plain looks.
+ * A multi-select list of checkboxes. Each item is independently selectable; a
+ * `locked` item is checked + disabled (selected but not editable), a `disabled`
+ * item is inapplicable in the current context (shown, never hidden). See
+ * {@link CheckboxGroupProps.variant} for the boxed vs plain looks.
  */
-const ActionPicker = ({
+const CheckboxGroup = <TId extends string>({
   items,
   onToggle,
   ariaLabel,
   direction = 'column',
   variant = 'boxed',
   className,
-}: ActionPickerProps): JSX.Element => (
+}: CheckboxGroupProps<TId>): JSX.Element => (
   <div
     className={cn(
       styles['picker'],
@@ -115,4 +112,4 @@ const ActionPicker = ({
   </div>
 )
 
-export { ActionPicker, type ActionPickerProps, type PickerItem }
+export { CheckboxGroup, type CheckboxGroupProps, type CheckboxGroupItem }

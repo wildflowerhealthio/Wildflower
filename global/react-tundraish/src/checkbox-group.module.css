@@ -1,11 +1,9 @@
 /*
- * The access multiselect, shared by the v2 (CRUDS) and v1 (Read/Write) editors,
- * in two looks:
- *  - `boxed`  — design-system checkboxes (the grid).
- *  - `plain`  — un-boxed checklist (a ✓ when selected, nothing when not) with the
- *               scope value right-aligned and the card sized to fit (the fluent
- *               consent list).
- * `--row` lays the items horizontally for the compact grid placement.
+ * A multi-select checkbox group, in two looks:
+ *  - `boxed`  — design-system checkboxes.
+ *  - `plain`  — un-boxed checklist (a ✓ when selected, nothing when not) with an
+ *               optional mono value right-aligned and the card sized to fit.
+ * `--row` lays the items horizontally for compact placement.
  */
 
 .picker {

@@ -23,31 +23,39 @@ type Cell = {
 }
 
 /** The row for a (context, resource) within a variant's partition (exact match). */
-const rowFor = <S extends Scope.ResourceScope.Any>(
-  partition: readonly S[],
-  context: S['context'],
-  resource: S['resource']
-): S | undefined => partition.find((s) => s.hasContext(context) && s.hasResource(resource))
+const rowFor = <
+  TContext extends Scope.Contexts.Context,
+  TResource extends Scope.ResourceType.Base,
+  TInteraction extends string,
+>(
+  partition: readonly Scope.ResourceScope.Base<TContext, TResource, TInteraction>[],
+  context: TContext,
+  resource: TResource
+): Scope.ResourceScope.Base<TContext, TResource, TInteraction> | undefined =>
+  partition.find((s) => s.hasContext(context) && s.hasResource(resource))
 
 /**
  * Resolve one permission control for the grid within `configuration`'s variant. Order:
  * §2 clamp (outside the requested envelope ⇒ disabled) → §3 lock (a strictly-broader
  * scope covers it ⇒ locked) → §2 required (in the `required` subset ⇒ locked) → on/off.
  * `scopeRequest` is `null` for open mode; each partition is pulled from its
- * {@link Scope.MultiScope} via `configuration.select`.
+ * {@link Scope.MultiScope} via `configuration.select`. Its `context` / `resource` /
+ * `itemId` are the config's own `TContext` / `TResource` / `TInteraction` — same
+ * convention as {@link Scope.ScopeConfiguration.toggleItem}, so a variant-generic caller
+ * (the grid model) can pass them without an indexed-access cast.
  */
 const forItem = <
   TContext extends Scope.Contexts.Context,
   TResource extends Scope.ResourceType.Base,
   TInteraction extends string,
-  S extends Scope.ResourceScope.Any & Scope.ResourceScope.Base<TContext, TResource, TInteraction>,
+  TId extends Scope.ResourceScope.Any['kind'],
 >(
-  configuration: Scope.ScopeConfiguration<TContext, TResource, TInteraction, S>,
+  configuration: Scope.ScopeConfiguration<TContext, TResource, TInteraction, TId>,
   grant: Scope.MultiScope,
   scopeRequest: ScopeRequest.ScopeRequest | null,
-  context: S['context'],
-  resource: S['resource'],
-  itemId: S['permission']['items'][number]['id']
+  context: TContext,
+  resource: TResource,
+  itemId: TInteraction
 ): Cell => {
   // §2 clamp: a control outside the requested envelope is disabled.
   if (scopeRequest !== null) {

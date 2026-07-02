@@ -1,45 +1,40 @@
 import { render, screen } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
-import type { ScopeRequest, Fhir, GrantDraft, Scope } from 'scopes-core'
-import { AccessRights, ScopeContext } from 'scopes-core'
+import { Grant, type GrantDraft, Scope, type ScopeRequest } from 'scopes-core'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import { buildGridRows } from './grid-model.ts'
+import { buildGrid } from './grid-model.ts'
 import { PermissionGrid } from './permission-grid.tsx'
 
 afterEach(() => {
   document.body.innerHTML = ''
 })
 
-const patient = ScopeContext.fhir('patient')
-const grant = (scopes: Scope.Scope[]): GrantDraft.GrantDraft => ({ subject: 'jordan', scopes })
+const patient = new Scope.Contexts.Fhir('patient')
+const v2 = Scope.FhirV2.configuration
+const v1 = Scope.FhirV1.configuration
 
-const patientFhir = (
-  name: string,
-  access = AccessRights.letters(['r'])
-): Fhir.FhirResourceScope => ({
-  kind: 'fhir',
-  context: 'patient',
-  resource: name === '*' ? { kind: 'wildcard' } : { kind: 'known', name },
-  access,
+/** A one-patient draft over the given wire scope strings — the single source of truth (§5). */
+const draft = (scopes: string[]): GrantDraft.GrantDraft => ({
+  patient: 'jordan',
+  ...Grant.parse(scopes),
+})
+
+/** A request-mode envelope from wire scope strings. */
+const request = (requested: string[], required: string[] = []): ScopeRequest.ScopeRequest => ({
+  requested: Grant.parse(requested),
+  required: Grant.parse(required),
 })
 
 describe('PermissionGrid', () => {
-  it('renders the five CRUDS columns and a cell per action', () => {
-    const rows = buildGridRows({
-      grant: grant([patientFhir('Observation', AccessRights.letters(['r']))]),
-      scopeRequest: null,
-      scopeContext: patient,
-      resources: ['Observation'],
-    })
-    render(
-      <PermissionGrid
-        title="Health records"
-        rows={rows}
-        onToggleCell={vi.fn()}
-        onToggleWord={vi.fn()}
-      />
+  it('renders the interaction columns and a cell per interaction', () => {
+    const grid = buildGrid(
+      { configuration: v2, context: patient, catalog: ['Observation'] },
+      draft(['patient/Observation.r']),
+      null
     )
+
+    render(<PermissionGrid title="Health records" grid={grid} onToggleItem={vi.fn()} />)
 
     expect(screen.getByRole('columnheader', { name: /Create/ })).toBeDefined()
     // Read is granted → that cell is checked.
@@ -51,62 +46,40 @@ describe('PermissionGrid', () => {
   }, 15_000)
 
   it('toggles an editable cell but not a wildcard-locked one', async () => {
-    const onToggleCell = vi.fn()
+    const onToggleItem = vi.fn()
     const user = userEvent.setup()
     // patient/*.r locks Read on every specific row.
-    const rows = buildGridRows({
-      grant: grant([
-        patientFhir('*', AccessRights.letters(['r'])),
-        patientFhir('Observation', AccessRights.letters([])),
-      ]),
-      scopeRequest: null,
-      scopeContext: patient,
-      resources: ['Observation'],
-      includeWildcard: false,
-    })
-    render(
-      <PermissionGrid
-        title="Health records"
-        rows={rows}
-        onToggleCell={onToggleCell}
-        onToggleWord={vi.fn()}
-      />
+    const grid = buildGrid(
+      { configuration: v2, context: patient, catalog: ['Observation'] },
+      draft(['patient/*.r', 'patient/Observation.cruds']),
+      null
     )
+
+    render(<PermissionGrid title="Health records" grid={grid} onToggleItem={onToggleItem} />)
 
     // Locked cells fold the reason into the accessible name.
     const readCell = screen.getByRole('checkbox', { name: /^Read Observation/ })
     expect(readCell.getAttribute('aria-checked')).toBe('true')
     expect(readCell.getAttribute('aria-label')).toContain('All record types')
     await user.click(readCell) // locked → no-op
-    expect(onToggleCell).not.toHaveBeenCalled()
+    expect(onToggleItem).not.toHaveBeenCalled()
 
     await user.click(screen.getByRole('checkbox', { name: 'Create Observation' }))
-    expect(onToggleCell).toHaveBeenCalledWith(patient, 'Observation', 'c')
+    expect(onToggleItem).toHaveBeenCalledWith('Observation', 'c')
   })
 
-  it('renders a v1 word row as a Read/Write multiselect instead of CRUDS cells', async () => {
-    const onToggleWord = vi.fn()
+  it('renders a v1 word row as a Read/Write multiselect instead of interaction cells', async () => {
+    const onToggleItem = vi.fn()
     const user = userEvent.setup()
-    const scopeRequest: ScopeRequest.ScopeRequest = {
-      resources: [patientFhir('Observation', AccessRights.star)],
-      flags: [],
-    }
-    const rows = buildGridRows({
-      grant: grant([patientFhir('Observation', AccessRights.read)]),
-      scopeRequest,
-      scopeContext: patient,
-      resources: ['Observation'],
-    })
-    render(
-      <PermissionGrid
-        title="Health records"
-        rows={rows}
-        onToggleCell={vi.fn()}
-        onToggleWord={onToggleWord}
-      />
+    const grid = buildGrid(
+      { configuration: v1, context: patient, catalog: ['Observation'] },
+      draft(['patient/Observation.read']),
+      request(['patient/Observation.*'])
     )
 
-    // No CRUDS cell named "Read Observation" — the row is the Read/Write picker.
+    render(<PermissionGrid title="Health records" grid={grid} onToggleItem={onToggleItem} />)
+
+    // No interaction cell named "Read Observation" — the row is the Read/Write picker.
     expect(screen.queryByRole('checkbox', { name: 'Read Observation' })).toBeNull()
     const read = screen.getByRole<HTMLInputElement>('checkbox', { name: /Read/ })
     const write = screen.getByRole<HTMLInputElement>('checkbox', { name: /Write/ })
@@ -114,6 +87,6 @@ describe('PermissionGrid', () => {
     expect(write.checked).toBe(false)
 
     await user.click(write)
-    expect(onToggleWord).toHaveBeenCalledWith(patient, 'Observation', 'write')
+    expect(onToggleItem).toHaveBeenCalledWith('Observation', 'write')
   })
 })

@@ -122,3 +122,17 @@ describe('Scope.scopeParse — total parse (mirrors Rust Scope)', () => {
     expect(Scope.ResourceScope.isResourceScope(Scope.parse('patient/Observation.r'))).toBe(true)
   })
 })
+
+describe('Scope.ResourceType.Fhir.catalog — the labelled row set (spec.md §4)', () => {
+  test('is the labelled FHIR resources, wildcard excluded, each parsing to a Known', () => {
+    const catalog = Scope.ResourceType.Fhir.catalog
+    expect(catalog).toContain('Observation')
+    expect(catalog).toContain('Patient')
+    expect(catalog).not.toContain('*')
+    for (const name of catalog) {
+      const parsed = Scope.ResourceType.Fhir.parse(name)
+      expect(parsed).toBeInstanceOf(Scope.ResourceType.Fhir.Known)
+      expect(parsed?.serialize()).toBe(name)
+    }
+  })
+})

@@ -4,10 +4,13 @@
  * resolution (`spec.md §3`), editing, and serialization. A recipe is a *value* (held
  * as `Variant.configuration`) so callers pass it rather than branching on
  * `context.kind × permission.kind`. Its methods fold over a {@link MultiScope}: each
- * pulls its own partition via the typed {@link select} field (`S` is fixed per
- * instance, so the partition types as `readonly S[]` with no cast — sidestepping the
- * correlated-union limit a generic registry fold would hit). The TS core owns this
- * algebra — `scopes-rust` has no counterpart.
+ * pulls its own partition via the typed {@link select} field, keyed by the partition
+ * literal {@link id} (`'fhirV1' | 'fhirV2' | 'wildflower'`). The variant's element type
+ * is recovered as {@link VariantScope} — `Extract<AnyScope, { kind: TId }>` viewed
+ * through its {@link BaseResourceScope} facet — so every method reads on a single
+ * `Permission.Base<TInteraction>` with no `Cruds | ReadWrite` union to collapse, while
+ * `select` / `make` / `toggleItem` still return the *concrete* partition element that
+ * flows back into `grant[id]`. The TS core owns this algebra — `scopes-rust` has none.
  *
  * Namespace + type combo (`import { Scope } from 'scopes-core'` → `Scope.ScopeConfiguration`).
  */
@@ -15,46 +18,43 @@
 import { Equal } from 'effect'
 
 import type * as Contexts from './contexts'
-import type FhirV1 from './fhir-scope-v1.ts'
-import type FhirV2 from './fhir-scope-v2.ts'
 import type { MultiScope } from './multi-scope.ts'
 import type * as Permission from './permission'
 import type * as ResourceType from './resource-type'
 import type { BaseScope, BaseResourceScope } from './scope.ts'
-import type Wildflower from './wildflower-scope.ts'
-
-/** Any concrete resource-scope variant — the homogeneous element of a partition. */
-type AnyScope = FhirV1 | FhirV2 | Wildflower
 
 /**
- * The construction recipe for one *concrete* resource-scope variant, keyed to that
- * variant `TScope` so every part is variant-precise: `id` is its `kind`, `make` returns
- * the concrete scope (so it flows back into a `grant.<kind>` partition), {@link is}
- * narrows a flat list to `TScope[]`, and {@link select} pulls this variant's partition
- * out of a {@link MultiScope} (typed `readonly TScope[]`). Keying the permission to a
- * single `TInteraction` means the edit ops read on `Permission.Base<TInteraction>`
- * directly — never the `Cruds | ReadWrite` union, so nothing collapses.
+ * The construction recipe for one *concrete* resource-scope variant, keyed to its
+ * partition literal `TId` so every part is variant-precise: `id` is that literal, `make`
+ * returns a `BaseResourceScope<…, TId>` (so it flows back into a `grant[id]` partition),
+ * {@link is} narrows a flat list to the variant, and {@link select} pulls this variant's
+ * partition out of a {@link MultiScope} (typed `readonly BaseResourceScope<…, TId>[]`).
+ * Keying the permission to a single `TInteraction` means the edit ops read on
+ * `Permission.Base<TInteraction>` directly — never the `Cruds | ReadWrite` union, so
+ * nothing collapses.
  */
 class ScopeConfiguration<
   TContext extends Contexts.Context,
   TResourceType extends ResourceType.Base,
   TInteraction extends string,
-  TScope extends AnyScope & BaseResourceScope<TContext, TResourceType, TInteraction>,
+  TId extends string,
 > {
-  readonly id: TScope['kind']
+  readonly id: TId
   readonly emptyPermission: Permission.Base<TInteraction>
-  readonly is: (scope: BaseScope) => scope is TScope
+  readonly is: (
+    scope: BaseScope
+  ) => scope is BaseResourceScope<TContext, TResourceType, TInteraction, TId>
   readonly parseResource: (name: string) => TResourceType | null
   readonly select: (
     ms: MultiScope
-  ) => readonly (TScope & BaseResourceScope<TContext, TResourceType, TInteraction>)[]
+  ) => readonly BaseResourceScope<TContext, TResourceType, TInteraction, TId>[]
   readonly make: (
     context: TContext,
     resource: TResourceType,
     permission: Permission.Base<TInteraction>
-  ) => TScope & BaseResourceScope<TContext, TResourceType, TInteraction>
+  ) => BaseResourceScope<TContext, TResourceType, TInteraction, TId>
 
-  constructor(recipe: ScopeConfiguration.Recipe<TContext, TResourceType, TInteraction, TScope>) {
+  constructor(recipe: ScopeConfiguration.Recipe<TContext, TResourceType, TInteraction, TId>) {
     this.id = recipe.id
     this.emptyPermission = recipe.emptyPermission
     this.is = recipe.is
@@ -68,15 +68,15 @@ class ScopeConfiguration<
    * homogeneous partition `owned`, returning the NEW partition. A no-op when a
    * strictly-broader scope already covers the control (`spec.md §3`, self-guarded via
    * {@link scopesGrantInteraction}); a row emptied by the toggle is dropped. The row's
-   * permission is read on the `for…of` loop variable, so `TScope['permission']` never
-   * widens to the `Cruds | ReadWrite` union.
+   * permission is read on the `for…of` loop variable, so its `permission` never widens
+   * to the `Cruds | ReadWrite` union.
    */
   toggleItem(
-    owned: readonly (TScope & BaseResourceScope<TContext, TResourceType, TInteraction>)[],
+    owned: readonly BaseResourceScope<TContext, TResourceType, TInteraction, TId>[],
     context: TContext,
     resource: TResourceType,
     itemId: TInteraction
-  ): readonly (TScope & BaseResourceScope<TContext, TResourceType, TInteraction>)[] {
+  ): readonly BaseResourceScope<TContext, TResourceType, TInteraction, TId>[] {
     if (
       !ScopeConfiguration.scopesGrantInteraction<TContext, TResourceType, TInteraction>(
         owned,
@@ -156,7 +156,7 @@ class ScopeConfiguration<
     TResourceType extends ResourceType.Base,
     TInteraction extends string,
   >(
-    owned: readonly (AnyScope & BaseResourceScope<TContext, TResourceType, TInteraction>)[],
+    owned: readonly BaseResourceScope<TContext, TResourceType, TInteraction>[],
     context: TContext,
     resource: TResourceType,
     interaction: TInteraction
@@ -180,22 +180,23 @@ namespace ScopeConfiguration {
     TContext extends Contexts.Context,
     TResourceType extends ResourceType.Base,
     TInteraction extends string,
-    TScope extends AnyScope & BaseResourceScope<TContext, TResourceType, TInteraction>,
+    TId extends string,
   > = {
-    readonly id: TScope['kind']
+    readonly id: TId
     readonly emptyPermission: Permission.Base<TInteraction>
-    readonly is: (scope: BaseScope) => scope is TScope
-    readonly parseResource: (name: string) => TScope['resource'] | null
-    readonly select: (ms: MultiScope) => readonly TScope[]
+    readonly is: (
+      scope: BaseScope
+    ) => scope is BaseResourceScope<TContext, TResourceType, TInteraction, TId>
+    readonly parseResource: (name: string) => TResourceType | null
+    readonly select: (
+      ms: MultiScope
+    ) => readonly BaseResourceScope<TContext, TResourceType, TInteraction, TId>[]
     readonly make: (
       context: TContext,
       resource: TResourceType,
       permission: Permission.Base<TInteraction>
-    ) => TScope & BaseResourceScope<TContext, TResourceType, TInteraction>
+    ) => BaseResourceScope<TContext, TResourceType, TInteraction, TId>
   }
-
-  /** The union of the three variant recipes. */
-  export type Any = Wildflower['configuration'] | FhirV1['configuration'] | FhirV2['configuration']
 
   /** How a partition grants one (context, resource, interaction) cell (`spec.md §3`). */
   export type InteractionGrantedness = {

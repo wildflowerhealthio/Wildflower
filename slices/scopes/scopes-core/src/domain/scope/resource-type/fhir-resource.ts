@@ -120,6 +120,14 @@ namespace FhirResourceType {
 
     return null
   }
+
+  /**
+   * The labelled FHIR resource types the picker renders as rows (`spec.md §4`) — the
+   * keys of {@link fhirResourceLabels}, in canonical (insertion) order. The picker's
+   * counterpart to {@link WildflowerResourceType.Resource.all}. The `*` wildcard row is
+   * added by the grid in open mode (`spec.md §3`) and is deliberately not in the catalog.
+   */
+  export const catalog: readonly string[] = Object.keys(fhirResourceLabels)
 }
 
 export default FhirResourceType

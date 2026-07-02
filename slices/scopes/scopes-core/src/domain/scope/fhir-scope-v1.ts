@@ -10,7 +10,8 @@ import { BaseResourceScope } from './scope.ts'
 class FhirV1ResourceScope extends BaseResourceScope<
   Contexts.Fhir,
   ResourceType.Fhir,
-  ReadWritePermission.Interaction
+  ReadWritePermission.Interaction,
+  'fhirV1'
 > {
   readonly kind = 'fhirV1' as const
   readonly context: Contexts.Fhir
@@ -22,7 +23,7 @@ class FhirV1ResourceScope extends BaseResourceScope<
     Contexts.Fhir,
     ResourceType.Fhir,
     ReadWritePermission.Interaction,
-    FhirV1ResourceScope
+    'fhirV1'
   >({
     id: 'fhirV1',
     emptyPermission: ReadWritePermission.empty,
@@ -47,13 +48,13 @@ class FhirV1ResourceScope extends BaseResourceScope<
     Contexts.Fhir,
     ResourceType.Fhir,
     ReadWritePermission.Interaction,
-    FhirV1ResourceScope
+    'fhirV1'
   > {
     return FhirV1ResourceScope.configuration
   }
 
   withPermission(permission: ReadWritePermission): FhirV1ResourceScope {
-    return FhirV1ResourceScope.configuration.make(this.context, this.resource, permission)
+    return new FhirV1ResourceScope(this.context, this.resource, permission)
   }
 
   static parse(s: string): FhirV1ResourceScope | null {

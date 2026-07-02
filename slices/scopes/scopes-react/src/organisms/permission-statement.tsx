@@ -2,7 +2,6 @@ import type { JSX, ReactNode } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { StatusBadge } from 'react-tundraish'
 
-import { ActionPicker, type PickerItem } from '../molecules/action-picker.tsx'
 import styles from './permission-statement.module.css'
 
 interface PermissionStatementProps {
@@ -15,12 +14,11 @@ interface PermissionStatementProps {
   /** The 1:1 resource label, or "✶ everything" for the wildcard. */
   readonly resourceLabel: ReactNode
   /**
-   * The access multiselect rows shown when expanded. The same shape for both
-   * SMART forms — five CRUDS verbs (v2) or Read/Write (v1) — so the statement
-   * doesn't care which it's editing.
+   * The inline permission editor shown when expanded — the consumer supplies a
+   * `PermissionPicker` built from the row's permission style (v2 cells or v1
+   * Read/Write words), so the statement stays agnostic to which form it edits.
    */
-  readonly items: readonly PickerItem[]
-  readonly onToggleItem: (id: string) => void
+  readonly children: ReactNode
   /** Whether the inline access editor is expanded. */
   readonly open: boolean
   readonly onToggleOpen: () => void
@@ -37,18 +35,17 @@ interface PermissionStatementProps {
 /**
  * The plain-language consent row — one sentence that reads
  * "*\<subject\> can* **\<verbs\>** *\<connector\>* **\<resource\>**", with the
- * verbs token tappable to open the inline access multiselect ({@link
- * ActionPicker}). The same picker edits a v2 (CRUDS) or v1 (Read/Write) scope —
- * the statement just renders whatever items it's given. Technical scope strings
- * never appear here (plain language only, `spec.md §10`).
+ * verbs token tappable to reveal the inline permission editor supplied as
+ * `children` (a `PermissionPicker`). The statement stays agnostic to which form
+ * it edits. Technical scope strings never appear here (plain language only,
+ * `spec.md §10`).
  */
 const PermissionStatement = ({
   subjectPhrase,
   connector,
   verbText,
   resourceLabel,
-  items,
-  onToggleItem,
+  children,
   open,
   onToggleOpen,
   required = false,
@@ -96,12 +93,7 @@ const PermissionStatement = ({
 
       {open ? (
         <div className={styles['editor']}>
-          <ActionPicker
-            items={items}
-            onToggle={onToggleItem}
-            variant="plain"
-            ariaLabel="Edit access"
-          />
+          {children}
           {note !== undefined ? <p className={styles['note']}>{note}</p> : null}
         </div>
       ) : null}
