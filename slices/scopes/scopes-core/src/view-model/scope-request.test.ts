@@ -47,6 +47,15 @@ describe('ScopeRequest.isWithin — granted ⊆ requested (§2)', () => {
     expect(ScopeRequest.isWithin(grant([fhirV2('Observation', ['r', 'u'])]), req)).toBe(false)
   })
 
+  test('a wildcard request covers concrete grants beneath it', () => {
+    // `patient/*.rs` requested ⇒ `patient/Observation.r` is within (was a false negative
+    // under exact `(context, resource)` matching).
+    const req = request([fhirV2('*', ['r', 's'])])
+    expect(ScopeRequest.isWithin(grant([fhirV2('Observation', ['r'])]), req)).toBe(true)
+    // ...but an interaction the wildcard request lacks still exceeds it.
+    expect(ScopeRequest.isWithin(grant([fhirV2('Observation', ['c'])]), req)).toBe(false)
+  })
+
   test('a granted flag outside the requested flags fails', () => {
     const req = request([Scope.Known.openid])
     expect(ScopeRequest.isWithin(grant([Scope.Known.openid]), req)).toBe(true)

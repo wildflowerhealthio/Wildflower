@@ -24,15 +24,6 @@ class FhirContext extends Context {
   serialize(): string {
     return this.context
   }
-
-  supersetOf(other: Context): boolean {
-    if (!(other instanceof FhirContext)) return false
-    if (this.context === 'system') return true
-    if (this.context === 'user') return other.context === 'user' || other.context === 'patient'
-    if (this.context === 'patient') return other.context === 'patient'
-
-    return false
-  }
 }
 
 // oxlint-disable import/group-exports

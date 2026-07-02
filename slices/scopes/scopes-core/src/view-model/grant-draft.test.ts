@@ -50,6 +50,25 @@ describe('GrantDraft.serialize — dedupe (§3)', () => {
   })
 })
 
+describe('GrantDraft.initial — seed from required (§2)', () => {
+  test('open mode (null request) starts empty', () => {
+    const draft = GrantDraft.initial(null, 'jordan')
+    expect(draft.patient).toBe('jordan')
+    expect(GrantDraft.serializeAll(draft)).toEqual([])
+  })
+
+  test('request mode seeds the draft with the required scopes and flags', () => {
+    const request = {
+      requested: Grant.make([fhirV2('Observation', ['r', 'c']), Scope.Known.openid]),
+      required: Grant.make([fhirV2('Observation', ['r']), Scope.Known.openid]),
+    }
+    const draft = GrantDraft.initial(request, 'jordan')
+    // The required scope/flag are present, so a grid cell the picker locks on is backed by
+    // a real grant rather than emitting nothing.
+    expect(GrantDraft.serializeAll(draft)).toEqual(['patient/Observation.r', 'openid'])
+  })
+})
+
 describe('GrantDraft.serializeAll', () => {
   test('appends sorted flags and preserved unknowns', () => {
     const g = grant([

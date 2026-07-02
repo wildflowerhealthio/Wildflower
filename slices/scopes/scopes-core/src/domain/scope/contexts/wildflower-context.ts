@@ -22,10 +22,6 @@ class WildflowerContext extends Context {
   serialize(): string {
     return 'wildflower'
   }
-
-  supersetOf(other: Context): boolean {
-    return other instanceof WildflowerContext
-  }
 }
 
 // oxlint-disable import/group-exports

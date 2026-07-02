@@ -67,9 +67,14 @@ class ScopeConfiguration<
    * Toggle one interaction on a (context, resource) row within this variant's
    * homogeneous partition `owned`, returning the NEW partition. A no-op when a
    * strictly-broader scope already covers the control (`spec.md §3`, self-guarded via
-   * {@link scopesGrantInteraction}); a row emptied by the toggle is dropped. The row's
-   * permission is read on the `for…of` loop variable, so its `permission` never widens
-   * to the `Cruds | ReadWrite` union.
+   * {@link scopesGrantInteraction}); a row emptied by the toggle is dropped.
+   *
+   * `Grant.make` groups only by `.kind`, so a split list (`patient/Observation.r` +
+   * `patient/Observation.s`) can leave several rows for one (context, resource). Their
+   * permissions are *merged* before toggling — otherwise every matching row but the last
+   * is dropped, disagreeing with {@link serialize}, which folds the same duplicates. The
+   * merge is read on `emptyPermission.make`, so `permission` never widens to the
+   * `Cruds | ReadWrite` union.
    */
   toggleItem(
     owned: readonly BaseResourceScope<TContext, TResourceType, TInteraction, TId>[],
@@ -87,16 +92,15 @@ class ScopeConfiguration<
     )
       return owned
 
-    let next = this.emptyPermission.toggle(itemId)
-    for (const scope of owned) {
-      if (scope.hasContext(context) && scope.hasResource(resource)) {
-        next = scope.permission.toggle(itemId)
-      }
-    }
+    const owns = (scope: BaseResourceScope<TContext, TResourceType, TInteraction, TId>): boolean =>
+      scope.hasContext(context) && scope.hasResource(resource)
 
-    const others = owned.filter(
-      (scope) => !(scope.hasContext(context) && scope.hasResource(resource))
+    const merged = this.emptyPermission.make(
+      owned.filter(owns).flatMap((scope) => scope.permission.toArray())
     )
+    const next = merged.toggle(itemId)
+
+    const others = owned.filter((scope) => !owns(scope))
     return next.isEmpty() ? others : [...others, this.make(context, resource, next)]
   }
 
@@ -132,24 +136,35 @@ class ScopeConfiguration<
 
   /**
    * This variant's partition of `grant`, entirely within `allowed`'s (`spec.md §2`): every
-   * granted row has an `allowed` row for the same (context, resource) whose permission is a
-   * superset (via the permission's own `subsetOf`); `grant` and `allowed` are both {@link MultiScope}s.
+   * interaction of every granted row is covered by *some* `allowed` scope — via the same
+   * superset test as coverage/lock ({@link scopesGrantInteraction} → {@link isSupersetOf}),
+   * so a wildcard `allowed` row (`patient/*.rs`) authorizes the concrete rows beneath it
+   * rather than requiring an exact `(context, resource)` match. `grant` and `allowed` are
+   * both {@link MultiScope}s.
    */
   within(grant: MultiScope, allowed: MultiScope): boolean {
     const allowedPartition = this.select(allowed)
-    return this.select(grant).every((scope) => {
-      const row = allowedPartition.find(
-        (candidate) => candidate.hasContext(scope.context) && candidate.hasResource(scope.resource)
-      )
-      return row !== undefined && scope.permission.subsetOf(row.permission)
-    })
+    return this.select(grant).every((scope) =>
+      scope.permission
+        .toArray()
+        .every(
+          (interaction) =>
+            ScopeConfiguration.scopesGrantInteraction<TContext, TResourceType, TInteraction>(
+              allowedPartition,
+              scope.context,
+              scope.resource,
+              interaction
+            ).granted
+        )
+    )
   }
 
   /**
    * Resolve one interaction cell against a homogeneous partition `owned` (`spec.md §3`),
-   * folding every scope whose `includesInteraction` covers it. A strictly-broader scope
-   * (a same-context wildcard, or a higher-context grant) clears `grantedAtOwnResource` —
-   * the cell is granted but wildcard-locked. Static: no recipe is needed to read.
+   * folding every scope whose {@link isSupersetOf} covers it. Because `isSupersetOf` requires
+   * a **strictly-equal** context, the only cover that isn't at this exact resource is a
+   * same-context `*` wildcard row — which clears `grantedAtOwnResource`, marking the cell
+   * granted but wildcard-locked. Static: no recipe is needed to read.
    */
   static scopesGrantInteraction<
     TContext extends Contexts.Context,
@@ -164,10 +179,11 @@ class ScopeConfiguration<
     let granted = false
     let grantedAtOwnResource = true
     for (const scope of owned) {
-      if (!scope.includesInteraction(context, resource, interaction)) continue
+      if (!scope.isSupersetOf(context, resource, interaction)) continue
       granted = true
-      const exact = Equal.equals(scope.context, context) && Equal.equals(scope.resource, resource)
-      if (!exact) grantedAtOwnResource = false
+      // `isSupersetOf` already fixed the context as strictly equal, so a cover at a
+      // different resource can only be a same-context `*` wildcard — the lock.
+      if (!Equal.equals(scope.resource, resource)) grantedAtOwnResource = false
     }
     return { granted, grantedAtOwnResource }
   }
@@ -204,7 +220,7 @@ namespace ScopeConfiguration {
     readonly granted: boolean
     /**
      * No *strictly-broader* scope covers it — so it lives on its own row and is
-     * independently editable. `false` ⇒ a wildcard / higher-context scope covers it,
+     * independently editable. `false` ⇒ a same-context `*` wildcard scope covers it,
      * i.e. wildcard-locked (`spec.md §3`).
      */
     readonly grantedAtOwnResource: boolean

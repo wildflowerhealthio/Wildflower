@@ -8,7 +8,8 @@
  * Namespace module (`import { GrantDraft } from 'scopes-core'`).
  */
 
-import { Scope, type Grant } from '../domain/index.ts'
+import { Scope, Grant } from '../domain/index.ts'
+import type * as ScopeRequest from './scope-request.ts'
 
 /**
  * A patient plus a set of scopes. `patient` is a patient id, or `null` for an
@@ -17,6 +18,20 @@ import { Scope, type Grant } from '../domain/index.ts'
 type GrantDraft = {
   readonly patient: string | null
 } & Grant.Grant
+
+/**
+ * The starting picker draft. In request mode it is **seeded from `required`** so every
+ * mandatory control the grid locks on (`spec.md §2`) is actually present in the draft —
+ * without this a required cell renders locked-on while {@link serialize} emits nothing for
+ * it. In open mode (`scopeRequest` `null`) it starts empty. `patient` carries the UI subject.
+ */
+const initial = (
+  scopeRequest: ScopeRequest.ScopeRequest | null,
+  patient: string | null = null
+): GrantDraft => ({
+  patient,
+  ...(scopeRequest === null ? Grant.make([]) : scopeRequest.required),
+})
 
 /**
  * The draft's resource scopes as sorted, de-duplicated wire strings — {@link Scope.MultiScope.serialize}
@@ -33,4 +48,4 @@ const serializeAll = (grant: GrantDraft): string[] => [
   ...grant.unknown.map((u) => u.serialize()).toSorted(),
 ]
 
-export { type GrantDraft, serialize, serializeAll }
+export { type GrantDraft, initial, serialize, serializeAll }

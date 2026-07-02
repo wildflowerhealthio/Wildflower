@@ -7,6 +7,4 @@ export default abstract class Context implements Equal.Equal {
   abstract [Equal.symbol](that: Equal.Equal): boolean
 
   abstract serialize(): string
-
-  abstract supersetOf(other: Context): boolean
 }

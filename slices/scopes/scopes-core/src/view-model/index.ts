@@ -12,7 +12,8 @@
  * flag toggles on {@link Scope.Known} (`setFlag` / `toggleFlag`, §7). A row addresses the
  * domain via a {@link Scope.Contexts.Context} + its {@link Scope.ResourceType}; construction
  * goes through the row's {@link Scope.ScopeConfiguration}. Coverage, locking, and dedupe are
- * computed with the domain's `supersetOf` / `has` — always same-style, never converted.
+ * computed with the domain's `isSupersetOf` (strict context, wildcard-aware resource) / `has`
+ * — always same-style, never converted.
  */
 
 export * as GrantDraft from './grant-draft.ts'

@@ -73,6 +73,27 @@ describe('Scope.scopeParse — total parse (mirrors Rust Scope)', () => {
     expect(Scope.parse('totally-made-up')).toEqual({ kind: 'unknown', raw: 'totally-made-up' })
   })
 
+  test('parse strips a v2 `?`-search-parameter suffix (mirrors Rust strip_search_suffix)', () => {
+    expect(Scope.parse('patient/Observation.rs?category=vital-signs')).toEqual(
+      fhirV2('patient', 'Observation', new Scope.Permission.Cruds(['r', 's']))
+    )
+    // A bare `?` with no letters before it leaves an empty perms segment ⇒ unknown.
+    expect(Scope.parse('patient/Observation.?category=x')).toEqual({
+      kind: 'unknown',
+      raw: 'patient/Observation.?category=x',
+    })
+  })
+
+  test('parse splits type/perms on the first dot; a second dot is invalid (⇒ unknown)', () => {
+    // Rust splits type/perms on the *first* dot (`split_once('.')`); `a.b` is not a
+    // resource with perms `rs`, and multiple dots are rejected outright.
+    expect(Scope.parse('patient/a.b.rs')).toEqual({ kind: 'unknown', raw: 'patient/a.b.rs' })
+    // The single-dot form still parses (resource `Observation`, perms `rs`).
+    expect(Scope.parse('patient/Observation.rs')).toEqual(
+      fhirV2('patient', 'Observation', new Scope.Permission.Cruds(['r', 's']))
+    )
+  })
+
   test('FHIR + Wildflower scopes round-trip through serialize → parse', () => {
     const crudsArb: fc.Arbitrary<Scope.Permission.Cruds> = fc
       .uniqueArray(fc.constantFrom<Scope.Permission.Cruds.Interaction>('c', 'r', 'u', 'd', 's'), {

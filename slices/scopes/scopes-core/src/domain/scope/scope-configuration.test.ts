@@ -65,7 +65,10 @@ describe('ScopeConfiguration.effectiveCell — coverage + lock (§3)', () => {
     ).toEqual({ granted: true, grantedAtOwnResource: true })
   })
 
-  test('a higher context covers + locks a lower one (system ⊇ patient)', () => {
+  test('a different context does NOT cover — context is strict, matching scopes-rust', () => {
+    // `system/*.r` covering `patient/Observation.r` would diverge from Rust's
+    // `FhirResourceScope::covers` (strict `self.context == other.context`), silently
+    // dropping the patient scope the gatekeeper does not treat as covered.
     expect(
       Scope.ScopeConfiguration.scopesGrantInteraction(
         [fhirAt('system', '*', ['r'])],
@@ -73,10 +76,10 @@ describe('ScopeConfiguration.effectiveCell — coverage + lock (§3)', () => {
         obs,
         'r'
       )
-    ).toEqual({ granted: true, grantedAtOwnResource: false })
+    ).toEqual({ granted: false, grantedAtOwnResource: true })
   })
 
-  test('a lower context does NOT cover a higher one (patient ⊉ system)', () => {
+  test('a lower context does NOT cover a higher one either (patient ⊉ system)', () => {
     expect(
       Scope.ScopeConfiguration.scopesGrantInteraction(
         [fhirAt('patient', '*', ['r'])],
@@ -107,6 +110,18 @@ describe('ScopeConfiguration.toggleItem — interaction cells (v2)', () => {
   test('a wildcard-locked cell is a no-op', () => {
     const scopes = [fhirV2('*', ['r']), fhirV2('Observation', ['c'])]
     expect(v2.toggleItem(scopes, patient, obs, 'r')).toEqual(scopes)
+  })
+
+  test('merges duplicate rows for one (context, resource) before toggling', () => {
+    // `Grant.make` groups by kind only, so a split list can leave two rows for the same
+    // (context, resource). Toggling must merge them, not drop all but the last.
+    const split = [fhirV2('Observation', ['r']), fhirV2('Observation', ['s'])]
+    const added = v2.toggleItem(split, patient, obs, 'c')
+    expect(permAt(added, obs)?.toArray()).toEqual(['c', 'r', 's'])
+    // Toggling an interaction present on only one of the duplicates still removes it,
+    // keeping the merged remainder rather than resurrecting the dropped row.
+    const removed = v2.toggleItem(split, patient, obs, 'r')
+    expect(permAt(removed, obs)?.toArray()).toEqual(['s'])
   })
 
   test('toggling the same unlocked cell twice is identity on its letters (property)', () => {

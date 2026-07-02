@@ -44,22 +44,24 @@ abstract class BaseResourceScope<
   }
 
   /**
-   * Whether this scope *covers* a (context, resource, interaction) cell (`spec.md §3`):
-   * its context is a superset ({@link Contexts.Context.supersetOf} — `system ⊇ user ⊇
-   * patient`), its resource is a superset ({@link ResourceType.Base.supersetOf} — `*`
-   * ⊇ any known sibling), and its permission `has` the interaction. Same-style — `has`
-   * is false across styles, so nothing cross-style false-covers. A read-side predicate
-   * (`interaction` degrades to `string` at the boundary, like {@link BasePermission.has},
-   * so it reads on the `Cruds | ReadWrite` union without collapsing); the fold over a
-   * partition and the wildcard *lock* live in `ScopeConfiguration.scopesGrantInteraction`.
+   * Whether this scope is a superset of — i.e. *covers* — a (context, resource, interaction)
+   * cell (`spec.md §3`; mirrors `scopes-rust`'s `FhirResourceScope::covers`): its context is
+   * **strictly equal** (never hierarchical — `system` does *not* cover `patient`, matching
+   * Rust's `self.context == other.context`), its resource is a superset
+   * ({@link ResourceType.Base.supersetOf} — `*` ⊇ any known sibling), and its permission
+   * `has` the interaction. Same-style — `has` is false across styles, so nothing cross-style
+   * false-covers. A read-side predicate (`interaction` degrades to `string` at the boundary,
+   * like {@link BasePermission.has}, so it reads on the `Cruds | ReadWrite` union without
+   * collapsing); the fold over a partition and the wildcard *lock* live in
+   * `ScopeConfiguration.scopesGrantInteraction`.
    */
-  includesInteraction(
+  isSupersetOf(
     context: Contexts.Context,
     resource: ResourceType.Base,
     interaction: string
   ): boolean {
     return (
-      this.context.supersetOf(context) &&
+      Equal.equals(this.context, context) &&
       this.resource.supersetOf(resource) &&
       this.permission.has(interaction)
     )
@@ -69,13 +71,23 @@ abstract class BaseResourceScope<
     const slash = s.indexOf('/')
     if (slash <= 0) return null
 
-    const rest = s.slice(slash + 1)
-    const dot = rest.lastIndexOf('.')
-    if (dot <= 0) return null
     const context = s.slice(0, slash)
+    const rest = s.slice(slash + 1)
+
+    // Split type/perms on the FIRST dot (mirrors Rust's `rest.split_once('.')`).
+    const dot = rest.indexOf('.')
+    if (dot <= 0) return null
 
     const resource = rest.slice(0, dot)
-    const permissions = rest.slice(dot + 1)
+    let permissions = rest.slice(dot + 1)
+
+    // Drop a SMART v2 `?`-search-parameter suffix (mirrors Rust's `strip_search_suffix`).
+    const question = permissions.indexOf('?')
+    if (question >= 0) permissions = permissions.slice(0, question)
+
+    // A second dot leaves the type/perms boundary ambiguous — invalid (falls to Unknown).
+    if (permissions.includes('.')) return null
+
     return { context, resource, permissions } as const
   }
 }
