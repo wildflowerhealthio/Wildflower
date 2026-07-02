@@ -21,6 +21,7 @@ export default defineConfig({
   base: './',
   plugins: [react()],
   test: {
+    ...base.test,
     environment: 'jsdom',
   },
 })

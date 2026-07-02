@@ -10,6 +10,7 @@ export default defineConfig({
     entry: { index: 'src/index.ts' },
   },
   test: {
+    ...base.test,
     environment: 'jsdom',
     include: ['src/**/*.test.ts'],
     exclude: ['**/node_modules/**', '**/dist/**'],
