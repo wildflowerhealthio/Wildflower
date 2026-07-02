@@ -1,0 +1,76 @@
+/** SMART on FHIR v1 scope grammar: `context/Type.read|write|*` (readWrite permission style). */
+
+import * as Contexts from './contexts'
+import type * as Permission from './permission'
+import ReadWritePermission from './permission/read-write-permission-style.ts'
+import * as ResourceType from './resource-type'
+import { ScopeConfiguration } from './scope-configuration.ts'
+import { BaseResourceScope } from './scope.ts'
+
+class FhirV1ResourceScope extends BaseResourceScope<
+  Contexts.Fhir,
+  ResourceType.Fhir,
+  ReadWritePermission.Interaction
+> {
+  readonly kind = 'fhirV1' as const
+  readonly context: Contexts.Fhir
+  readonly resource: ResourceType.Fhir
+  readonly permission: Permission.Base<ReadWritePermission.Interaction>
+
+  /** The construction recipe for this variant (`spec.md §5` — passed to editors). */
+  static readonly configuration = new ScopeConfiguration<
+    Contexts.Fhir,
+    ResourceType.Fhir,
+    ReadWritePermission.Interaction,
+    FhirV1ResourceScope
+  >({
+    id: 'fhirV1',
+    emptyPermission: ReadWritePermission.empty,
+    is: (scope) => scope instanceof FhirV1ResourceScope,
+    parseResource: ResourceType.Fhir.parse,
+    select: (ms) => ms.fhirV1,
+    make: (context, resource, permission) => new FhirV1ResourceScope(context, resource, permission),
+  })
+
+  constructor(
+    context: Contexts.Fhir,
+    resource: ResourceType.Fhir,
+    permission: Permission.Base<ReadWritePermission.Interaction>
+  ) {
+    super()
+    this.context = context
+    this.resource = resource
+    this.permission = permission
+  }
+
+  get configuration(): ScopeConfiguration<
+    Contexts.Fhir,
+    ResourceType.Fhir,
+    ReadWritePermission.Interaction,
+    FhirV1ResourceScope
+  > {
+    return FhirV1ResourceScope.configuration
+  }
+
+  withPermission(permission: ReadWritePermission): FhirV1ResourceScope {
+    return FhirV1ResourceScope.configuration.make(this.context, this.resource, permission)
+  }
+
+  static parse(s: string): FhirV1ResourceScope | null {
+    const parts = BaseResourceScope.components(s)
+    if (parts === null) return null
+
+    const context = Contexts.Fhir.parse(parts.context)
+    if (context === null) return null
+
+    const resource = ResourceType.Fhir.parse(parts.resource)
+    if (resource === null) return null
+
+    const permission = ReadWritePermission.parse(parts.permissions)
+    if (permission === null) return null
+
+    return new FhirV1ResourceScope(context, resource, permission)
+  }
+}
+
+export default FhirV1ResourceScope

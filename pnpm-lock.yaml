@@ -105,6 +105,9 @@ catalogs:
     '@vitejs/plugin-react':
       specifier: ^5.0.4
       version: 5.2.0
+    effect:
+      specifier: 3.21.2
+      version: 3.21.2
     esbuild:
       specifier: ^0.28.1
       version: 0.28.1
@@ -1540,6 +1543,10 @@ importers:
         version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.22.3)(@types/node@26.1.0)(esbuild@0.28.1)(jiti@2.7.0)(jsdom@29.1.1)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@26.1.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
 
   slices/scopes/scopes-core:
+    dependencies:
+      effect:
+        specifier: 'catalog:'
+        version: 3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
     devDependencies:
       '@typescript/native-preview':
         specifier: 'catalog:'

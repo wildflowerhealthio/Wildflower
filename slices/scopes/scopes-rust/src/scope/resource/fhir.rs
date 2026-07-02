@@ -2,15 +2,16 @@
 
 use std::fmt;
 
-use super::AccessRights;
+use super::Permission;
 
 /// A SMART on FHIR resource scope: an access level, the FHIR resource type it
-/// addresses, and the CRUDS rights granted on it (`context/Type.perms`).
+/// addresses, and the permission (set of interactions) granted on it
+/// (`context/Type.perms`).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FhirResourceScope {
     pub context: ContextLevel,
     pub resource: ResourceType,
-    pub access: AccessRights,
+    pub permission: Permission,
 }
 
 /// The access level a [`FhirResourceScope`] is relative to. `User` currently
@@ -46,20 +47,20 @@ impl FhirResourceScope {
         if type_str.is_empty() {
             return None;
         }
-        let access = AccessRights::parse_segment(super::strip_search_suffix(s, perms_str))?;
+        let permission = Permission::parse_segment(super::strip_search_suffix(s, perms_str))?;
         Some(FhirResourceScope {
             context,
             resource: ResourceType::parse(type_str),
-            access,
+            permission,
         })
     }
 
     /// Does this (client-allowed) scope cover `other` (a requested scope)? Strict
-    /// context equality, wildcard-aware resource match, and a CRUDS superset.
+    /// context equality, wildcard-aware resource match, and a permission superset.
     pub(in crate::scope) fn covers(&self, other: &FhirResourceScope) -> bool {
         self.context == other.context
             && self.resource.covers(&other.resource)
-            && self.access.contains(other.access)
+            && self.permission.contains(other.permission)
     }
 }
 
@@ -113,7 +114,7 @@ impl fmt::Display for FhirResourceScope {
             "{}/{}.{}",
             self.context.as_str(),
             self.resource.name(),
-            self.access
+            self.permission
         )
     }
 }

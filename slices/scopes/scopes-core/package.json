@@ -16,6 +16,9 @@
     "dev": "vp pack --watch",
     "test": "vp test"
   },
+  "dependencies": {
+    "effect": "catalog:"
+  },
   "devDependencies": {
     "@typescript/native-preview": "catalog:",
     "fast-check": "catalog:",

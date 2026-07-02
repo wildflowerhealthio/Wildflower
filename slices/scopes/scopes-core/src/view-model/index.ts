@@ -1,19 +1,20 @@
 /**
- * The `view-model/` layer — the editing model the scope-picker UI renders from,
- * exported in the Effect-style namespace convention. None of this has a
- * `scopes-rust` counterpart: `scopes-rust` is the pure scope *grammar*, while
- * these namespaces add the *editing* model on top of `domain/`:
+ * The `view-model/` layer — the picker-facing projections over `domain/`, exported in
+ * the Effect-style namespace convention:
  *
- * - {@link ScopeContext} — addresses a grid/consent row (a FHIR context, or Wildflower)
- * - {@link GrantDraft} — the editable `{subject, scopes}` picker state + wire serialization
- * - {@link ScopeRequest} — the request-mode clamp (§2) and grid cell view-state
- * - {@link Resolve} — wildcard resolution (§3) and the grant mutations
+ * - {@link GrantDraft} — the editable `{patient, …partitions}` picker state + wire serialization
+ * - {@link ScopeRequest} — the request-mode envelope + `granted ⊆ requested` clamp (§2)
+ * - {@link Cell} — one permission control's resolved grid view-state (§2 clamp + §3 lock)
  *
- * The terminology layer (labels, verbs, words) lives in the sibling `language/`
- * folder.
+ * The editing/resolution/serialization algebra itself lives in the domain and is shared
+ * by all three: wildcard resolution, cell toggles, and §3 serialize dedupe on
+ * {@link Scope.ScopeConfiguration} (`scopesGrantInteraction` / `toggleItem` / `serialize`),
+ * flag toggles on {@link Scope.Known} (`setFlag` / `toggleFlag`, §7). A row addresses the
+ * domain via a {@link Scope.Contexts.Context} + its {@link Scope.ResourceType}; construction
+ * goes through the row's {@link Scope.ScopeConfiguration}. Coverage, locking, and dedupe are
+ * computed with the domain's `supersetOf` / `has` — always same-style, never converted.
  */
 
-export * as ScopeContext from './scope-context.ts'
 export * as GrantDraft from './grant-draft.ts'
 export * as ScopeRequest from './scope-request.ts'
-export * as Resolve from './resolve.ts'
+export * as Cell from './cell.ts'

@@ -7,17 +7,17 @@
 
 use std::fmt;
 
-use super::AccessRights;
+use super::Permission;
 
 /// The fixed context segment all Wildflower scopes share.
 pub(in crate::scope) const CONTEXT: &str = "wildflower";
 
-/// A scope addressing the app's own resources with a set of CRUDS rights, e.g.
-/// `wildflower/Grant.cruds` or `wildflower/*.cruds`.
+/// A scope addressing the app's own resources with a permission (set of
+/// interactions), e.g. `wildflower/Grant.cruds` or `wildflower/*.cruds`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct WildflowerResourceScope {
     pub resource: WildflowerResourceType,
-    pub access: AccessRights,
+    pub permission: Permission,
 }
 
 /// The resource a [`WildflowerResourceScope`] addresses: the `*` wildcard or one
@@ -50,14 +50,17 @@ impl WildflowerResourceScope {
         }
         let (type_str, perms_str) = rest.split_once('.')?;
         let resource = WildflowerResourceType::parse(type_str)?;
-        let access = AccessRights::parse_segment(super::strip_search_suffix(s, perms_str))?;
-        Some(WildflowerResourceScope { resource, access })
+        let permission = Permission::parse_segment(super::strip_search_suffix(s, perms_str))?;
+        Some(WildflowerResourceScope {
+            resource,
+            permission,
+        })
     }
 
     /// Does this (client-allowed) scope cover `other` (a requested scope)?
-    /// Wildcard-aware resource match plus a CRUDS superset.
+    /// Wildcard-aware resource match plus a permission superset.
     pub(in crate::scope) fn covers(&self, other: &WildflowerResourceScope) -> bool {
-        self.resource.covers(&other.resource) && self.access.contains(other.access)
+        self.resource.covers(&other.resource) && self.permission.contains(other.permission)
     }
 }
 
@@ -108,6 +111,6 @@ impl WildflowerResource {
 
 impl fmt::Display for WildflowerResourceScope {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{CONTEXT}/{}.{}", self.resource.name(), self.access)
+        write!(f, "{CONTEXT}/{}.{}", self.resource.name(), self.permission)
     }
 }

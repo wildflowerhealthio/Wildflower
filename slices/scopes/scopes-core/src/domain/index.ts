@@ -9,17 +9,15 @@
  * | {@link Grant}              | `scope/grant.rs`                       |
  * | {@link KnownScope}         | `scope/known.rs`                       |
  * | {@link UnknownScope}       | `scope/unknown.rs`                     |
- * | {@link AccessRights}       | `scope/resource/access_rights.rs`      |
+ * | {@link CrudsPermissionStyle} / {@link ReadWritePermissionStyle} | `scope/resource/permission.rs` (Rust split TBD) |
  * | {@link Fhir}               | `scope/resource/fhir.rs`               |
  * | {@link Wildflower}         | `scope/resource/wildflower.rs`         |
  *
- * The editing view-model (the subject-bearing {@link GrantDraft}, ScopeContexts,
- * request clamping, labels, verbs) lives in the sibling `view-model/` and
- * `language/` folders — none of it has a `scopes-rust` counterpart.
+ * Display copy (labels, verbs) lives *on* these classes (`resource.singularLabel()`,
+ * `permission.label()`, …). The editing view-model — the patient-bearing
+ * {@link GrantDraft}, request clamping, wildcard resolution — lives in the sibling
+ * `view-model/` folder and has no `scopes-rust` counterpart.
  */
 
-export * as Scope from './scope.ts'
+export * as Scope from './scope/index.ts'
 export * as Grant from './grant.ts'
-export * as KnownScope from './known.ts'
-export * as UnknownScope from './unknown.ts'
-export { AccessRights, Fhir, Wildflower } from './resource/index.ts'

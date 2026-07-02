@@ -36,7 +36,7 @@ impl Grant {
     }
 
     /// Render every scope to its canonical wire string (SMART v1↔v2 back-compat —
-    /// see [`AccessRights`](crate::AccessRights)). The list-level counterpart of
+    /// see [`Permission`](crate::Permission)). The list-level counterpart of
     /// [`Scope`]'s [`Display`](std::fmt::Display); shares [`render_scopes`](crate::render_scopes).
     pub fn render(&self) -> Vec<String> {
         crate::render_scopes(&self.scopes)

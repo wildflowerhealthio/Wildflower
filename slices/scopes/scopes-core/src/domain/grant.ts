@@ -5,7 +5,7 @@
  * string parses to its richest scope, never dropped) and rendering round-trips.
  *
  * The kind projections answer "what's in this grant?" without the caller
- * re-deriving them from a raw `Scope[]`. The editable, subject-bearing picker
+ * re-deriving them from a raw `Scope[]`. The editable, patient-bearing picker
  * state — and the ScopeContext-aware wildcard dedupe — live in the view-model
  * ({@link GrantDraft}), not here.
  *
@@ -13,51 +13,49 @@
  * {@link Grant}, with `Grant.parse`, `Grant.render`, `Grant.resourceScopes`, …
  */
 
-import type * as KnownScope from './known.ts'
-import * as Scope from './scope.ts'
+import { Equal, pipe, Array } from 'effect'
+import * as Scope from './scope/index.ts'
 
-/** An ordered set of {@link Scope}s — a parsed grant, in its original order. */
-type Grant = { readonly scopes: readonly Scope.Scope[] }
+/** An ordered set of {@link Scope}s — a parsed grant, in its original order. A {@link Scope.MultiScope}. */
+type Grant = Scope.MultiScope
 
 /** A grant over the given scopes. */
-const make = (scopes: readonly Scope.Scope[]): Grant => ({ scopes })
-
+const make = (scopes: readonly Scope.Any[]): Grant => ({
+  unknown: [],
+  known: [],
+  fhirV1: [],
+  fhirV2: [],
+  wildflower: [],
+  ...Array.groupBy(scopes, (s) => s.kind),
+})
 /**
  * Parse a list of scope strings into a grant — total (each string parses to its
  * richest {@link Scope}, falling back to `unknown`, so no input is ever dropped).
  */
-const parse = (raw: Iterable<string>): Grant => ({
-  scopes: [...raw].map((s) => Scope.scopeParse(s)),
-})
+const parse = (raw: Iterable<string>): Grant =>
+  pipe(
+    [...raw].map(
+      (s): Scope.Any => Scope.ResourceScope.parse(s) ?? Scope.Known.parse(s) ?? new Scope.Unknown(s)
+    ),
+    make
+  )
 
 /**
  * Render every scope to its canonical wire string — the list-level counterpart of
- * {@link Scope.scopeSerialize} (mirrors Rust's `Grant::render`). Order is preserved;
+ * {@link Scope.serialize} (mirrors Rust's `Grant::render`). Order is preserved;
  * the view-model's {@link GrantDraft.serialize} layers wildcard dedupe (`spec.md §3`)
  * on top.
  */
-const render = (grant: Grant): string[] => grant.scopes.map((s) => Scope.scopeSerialize(s))
+const render = (grant: Grant): string[] =>
+  [...grant.unknown, ...grant.known, ...grant.fhirV1, ...grant.fhirV2, ...grant.wildflower]
+    .map((s) => s.serialize())
+    .filter((s): s is string => s !== null && s !== '')
 
-/** The resource scopes (FHIR + Wildflower) in a scope list. */
-const resourceScopes = (scopes: readonly Scope.Scope[]): Scope.Resource[] =>
-  scopes.filter(Scope.isResource)
-
-/** The known (flag) scopes in a scope list, e.g. `openid` / `offline_access`. */
-const knownScopes = (scopes: readonly Scope.Scope[]): KnownScope.KnownScope[] => {
-  const out: KnownScope.KnownScope[] = []
-  for (const s of scopes) if (s.kind === 'known') out.push(s.scope)
-  return out
-}
-
-/** The unrecognized scopes, preserved verbatim. */
-const unknownScopes = (scopes: readonly Scope.Scope[]): string[] => {
-  const out: string[] = []
-  for (const s of scopes) if (s.kind === 'unknown') out.push(s.raw)
-  return out
-}
+/** The resource scopes (FHIR + Wildflower) in a scope list — the {@link Scope.MultiScope} fold. */
+const resourceScopes = Scope.MultiScope.resourceScopes
 
 /** Whether the scope list holds a given known (flag) scope. */
-const hasKnown = (scopes: readonly Scope.Scope[], flag: KnownScope.KnownScope): boolean =>
-  scopes.some((s) => s.kind === 'known' && s.scope === flag)
+const hasKnown = (scopes: readonly Scope.Base[], scope: Scope.Known): boolean =>
+  scopes.some(Equal.equals(scope))
 
-export { type Grant, make, parse, render, resourceScopes, knownScopes, unknownScopes, hasKnown }
+export { type Grant, make, parse, render, resourceScopes, hasKnown }

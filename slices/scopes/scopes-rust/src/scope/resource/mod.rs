@@ -1,17 +1,17 @@
-//! Resource scopes — the `context/Type.perms` shapes — and the CRUDS access
-//! rights they share.
+//! Resource scopes — the `context/Type.perms` shapes — and the [`Permission`]s
+//! (sets of interactions) they share.
 //!
 //! Grouped here so the FHIR ([`fhir`]) and Wildflower ([`wildflower`]) grammars
-//! and their permission machinery ([`access_rights`]) stay encapsulated: the
+//! and their permission machinery ([`permission`]) stay encapsulated: the
 //! submodules are private, only the scope types are re-exported up to
 //! [`scope`](crate::scope), and the helper methods are scoped no wider than
 //! `crate::scope`.
 
-mod access_rights;
 mod fhir;
+mod permission;
 mod wildflower;
 
-pub use access_rights::AccessRights;
+pub use permission::Permission;
 pub use fhir::{ContextLevel, FhirResourceScope, ResourceType};
 pub use wildflower::{WildflowerResource, WildflowerResourceScope, WildflowerResourceType};
 

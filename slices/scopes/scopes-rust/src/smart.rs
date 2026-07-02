@@ -15,7 +15,7 @@ use crate::scope::Scope;
 ///
 /// Membership and coverage are compared **structurally** (each side is parsed to
 /// a [`Scope`]), and every kept scope is rendered back to its wire string
-/// (SMART v1↔v2 back-compat — see [`AccessRights`](crate::AccessRights)). The
+/// (SMART v1↔v2 back-compat — see [`Permission`](crate::Permission)). The
 /// result is de-duplicated by rendered form, preserving first-seen order; an
 /// empty grant stays empty (the approve handlers treat "nothing granted" as a
 /// deny).
@@ -44,8 +44,8 @@ pub fn grantable_scopes(
 
 /// Does the client-allowed scope `allowed` cover the approved scope `requested`?
 /// Both sides are parsed to a [`Scope`] and compared with [`Scope::covers`]:
-/// resource scopes match by context + resource-type (wildcard-aware) + CRUDS
-/// subset; known and unknown scopes match exactly.
+/// resource scopes match by context + resource-type (wildcard-aware) +
+/// permission subset; known and unknown scopes match exactly.
 pub fn allowed_scope_covers(allowed: &str, requested: &str) -> bool {
     Scope::from(allowed).covers(&Scope::from(requested))
 }
@@ -191,8 +191,8 @@ mod tests {
 
     #[test]
     fn invalid_perm_segments_reject() {
-        // A stray non-CRUDS letter makes the segment unparseable, so the scope
-        // is `Unknown` and only matches the identical string.
+        // A stray non-interaction letter makes the segment unparseable, so the
+        // scope is `Unknown` and only matches the identical string.
         assert!(!allowed_scope_covers(
             "patient/Observation.rx",
             "patient/Observation.r"

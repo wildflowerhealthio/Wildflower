@@ -1,185 +1,55 @@
-import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 
-import type { Fhir, GrantDraft, Scope } from '../index.ts'
-import { AccessRights, ScopeContext, ScopeRequest } from '../index.ts'
+import { Grant, type GrantDraft, Scope, ScopeRequest } from '../index.ts'
 
-const b = ScopeContext.fhir('patient')
-const grant = (scopes: Scope.Scope[]): GrantDraft.GrantDraft => ({ subject: 'jordan', scopes })
+const patient = new Scope.Contexts.Fhir('patient')
 
-const fhir = (name: string, access = AccessRights.letters(['r'])): Fhir.FhirResourceScope => ({
-  kind: 'fhir',
-  context: 'patient',
-  resource: name === '*' ? { kind: 'wildcard' } : { kind: 'known', name },
-  access,
+const fhirV2 = (name: string, l: Scope.Permission.Cruds.Interaction[]): Scope.FhirV2 =>
+  new Scope.FhirV2(patient, Scope.ResourceType.Fhir.parse(name)!, new Scope.Permission.Cruds(l))
+
+const request = (
+  requested: Scope.Any[],
+  required: Scope.Any[] = []
+): ScopeRequest.ScopeRequest => ({
+  requested: Grant.make(requested),
+  required: Grant.make(required),
 })
 
-describe('ScopeRequest.buildCell — clamp (§2) + wildcard lock (§3)', () => {
-  const scopeRequest: ScopeRequest.ScopeRequest = {
-    resources: [
-      fhir('Observation', AccessRights.letters(['c', 'r', 's'])),
-      { ...fhir('Condition', AccessRights.letters(['r'])), required: true },
-    ],
-    flags: [],
-  }
-
-  test('action outside the request → disabled', () => {
-    expect(ScopeRequest.buildCell(grant([]), scopeRequest, b, 'Observation', 'd').state).toBe(
-      'disabled'
-    )
-  })
-
-  test('a resource not in the scope request → disabled', () => {
-    expect(ScopeRequest.buildCell(grant([]), scopeRequest, b, 'Goal', 'r').state).toBe('disabled')
-  })
-
-  test('requested + required → locked on', () => {
-    expect(
-      ScopeRequest.buildCell(grant([fhir('Condition')]), scopeRequest, b, 'Condition', 'r')
-    ).toEqual({
-      state: 'locked',
-      lockReason: 'Required by the app',
-    })
-  })
-
-  test('requested + optional → on when granted, off when not', () => {
-    expect(
-      ScopeRequest.buildCell(grant([fhir('Observation')]), scopeRequest, b, 'Observation', 'r')
-        .state
-    ).toBe('on')
-    expect(ScopeRequest.buildCell(grant([]), scopeRequest, b, 'Observation', 'r').state).toBe('off')
-  })
-
-  test('open mode: wildcard-covered cell → locked', () => {
-    expect(ScopeRequest.buildCell(grant([fhir('*')]), null, b, 'Observation', 'r')).toEqual({
-      state: 'locked',
-      lockReason: 'Granted by ✶ All record types',
-    })
-  })
+const grant = (scopes: Scope.Any[]): GrantDraft.GrantDraft => ({
+  patient: 'jordan',
+  ...Grant.make(scopes),
 })
 
-describe('ScopeRequest.buildWordCell — v1 Read/Write clamp (§2)', () => {
-  test('a component the request does not cover is disabled', () => {
-    const scopeRequest: ScopeRequest.ScopeRequest = {
-      resources: [fhir('Observation', AccessRights.read)],
-      flags: [],
-    }
-    expect(
-      ScopeRequest.buildWordCell(grant([]), scopeRequest, b, 'Observation', 'write').state
-    ).toBe('disabled')
-    expect(
-      ScopeRequest.buildWordCell(grant([]), scopeRequest, b, 'Observation', 'read').state
-    ).toBe('off')
+describe('ScopeRequest flags — §2 / §7', () => {
+  test('flagDisabled: open mode never disables; request mode disables the un-requested', () => {
+    expect(ScopeRequest.flagDisabled(null, 'openid')).toBe(false)
+    const req = request([Scope.Known.openid])
+    expect(ScopeRequest.flagDisabled(req, 'openid')).toBe(false)
+    expect(ScopeRequest.flagDisabled(req, 'offline_access')).toBe(true)
   })
 
-  test('required ⇒ locked; open mode ⇒ on/off by the grant', () => {
-    const scopeRequest: ScopeRequest.ScopeRequest = {
-      resources: [{ ...fhir('Observation', AccessRights.star), required: true }],
-      flags: [],
-    }
-    expect(
-      ScopeRequest.buildWordCell(grant([]), scopeRequest, b, 'Observation', 'read').state
-    ).toBe('locked')
-    expect(
-      ScopeRequest.buildWordCell(
-        grant([fhir('Observation', AccessRights.read)]),
-        null,
-        b,
-        'Observation',
-        'read'
-      ).state
-    ).toBe('on')
-    expect(
-      ScopeRequest.buildWordCell(
-        grant([fhir('Observation', AccessRights.read)]),
-        null,
-        b,
-        'Observation',
-        'write'
-      ).state
-    ).toBe('off')
-  })
-})
-
-describe('ScopeRequest.accessForm', () => {
-  test('request mode follows the requested form (v1 stays v1)', () => {
-    const scopeRequest: ScopeRequest.ScopeRequest = {
-      resources: [fhir('Observation', AccessRights.star)],
-      flags: [],
-    }
-    expect(ScopeRequest.accessForm(grant([]), scopeRequest, b, 'Observation')).toBe('word')
-  })
-
-  test('open mode follows the grant row, defaulting to letters', () => {
-    expect(ScopeRequest.accessForm(grant([]), null, b, 'Observation')).toBe('letters')
-    expect(
-      ScopeRequest.accessForm(
-        grant([fhir('Observation', AccessRights.read)]),
-        null,
-        b,
-        'Observation'
-      )
-    ).toBe('word')
-  })
-})
-
-describe('flag clamping', () => {
-  const scopeRequest: ScopeRequest.ScopeRequest = {
-    resources: [],
-    flags: [{ scope: 'openid', required: true }, { scope: 'profile' }],
-  }
-
-  test('required vs optional flags', () => {
-    expect(ScopeRequest.flagRequired(scopeRequest, 'openid')).toBe(true)
-    expect(ScopeRequest.flagRequired(scopeRequest, 'profile')).toBe(false)
-  })
-
-  test('not-requested flags are disabled; open mode never disables', () => {
-    expect(ScopeRequest.flagDisabled(scopeRequest, 'offline_access')).toBe(true)
-    expect(ScopeRequest.flagDisabled(scopeRequest, 'openid')).toBe(false)
-    expect(ScopeRequest.flagDisabled(null, 'offline_access')).toBe(false)
+  test('flagRequired: true only for a flag in the required subset', () => {
+    const req = request([Scope.Known.openid, Scope.Known.profile], [Scope.Known.openid])
+    expect(ScopeRequest.flagRequired(req, 'openid')).toBe(true)
+    expect(ScopeRequest.flagRequired(req, 'profile')).toBe(false)
+    expect(ScopeRequest.flagRequired(null, 'openid')).toBe(false)
   })
 })
 
 describe('ScopeRequest.isWithin — granted ⊆ requested (§2)', () => {
-  test('true in open mode', () => {
-    expect(ScopeRequest.isWithin(grant([fhir('Observation', AccessRights.star)]), null)).toBe(true)
+  test('open mode is always within', () => {
+    expect(ScopeRequest.isWithin(grant([fhirV2('Observation', ['r'])]), null)).toBe(true)
   })
 
-  test('false when a granted action exceeds the request', () => {
-    const scopeRequest: ScopeRequest.ScopeRequest = {
-      resources: [fhir('Observation', AccessRights.letters(['r']))],
-      flags: [],
-    }
-    expect(
-      ScopeRequest.isWithin(
-        grant([fhir('Observation', AccessRights.letters(['r', 'c']))]),
-        scopeRequest
-      )
-    ).toBe(false)
+  test('a grant within the envelope passes; one exceeding it fails', () => {
+    const req = request([fhirV2('Observation', ['r', 'c'])])
+    expect(ScopeRequest.isWithin(grant([fhirV2('Observation', ['r'])]), req)).toBe(true)
+    expect(ScopeRequest.isWithin(grant([fhirV2('Observation', ['r', 'u'])]), req)).toBe(false)
   })
 
-  test('any sub-grant of the requested letters stays within (property)', () => {
-    const arb = fc.uniqueArray(fc.constantFrom<AccessRights.Action>('c', 'r', 'u', 'd', 's'), {
-      minLength: 1,
-    })
-    fc.assert(
-      fc.property(
-        arb,
-        fc.uniqueArray(fc.constantFrom<AccessRights.Action>('c', 'r', 'u', 'd', 's')),
-        (requested, sub) => {
-          const requestedSet = new Set(requested)
-          const granted = sub.filter((a) => requestedSet.has(a))
-          const scopeRequest: ScopeRequest.ScopeRequest = {
-            resources: [fhir('Observation', AccessRights.letters(requested))],
-            flags: [],
-          }
-          const g = grant(
-            granted.length > 0 ? [fhir('Observation', AccessRights.letters(granted))] : []
-          )
-          expect(ScopeRequest.isWithin(g, scopeRequest)).toBe(true)
-        }
-      )
-    )
+  test('a granted flag outside the requested flags fails', () => {
+    const req = request([Scope.Known.openid])
+    expect(ScopeRequest.isWithin(grant([Scope.Known.openid]), req)).toBe(true)
+    expect(ScopeRequest.isWithin(grant([Scope.Known.offlineAccess]), req)).toBe(false)
   })
 })

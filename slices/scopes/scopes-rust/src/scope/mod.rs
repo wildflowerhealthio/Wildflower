@@ -15,7 +15,7 @@
 //!
 //! Parsing (via [`From`]/[`FromStr`]) is **total** — it never fails, it falls
 //! back to `Unknown` — and prefers the richest representation. Rendering
-//! **round-trips** (SMART v1↔v2 back-compat — see [`AccessRights`]).
+//! **round-trips** (SMART v1↔v2 back-compat — see [`Permission`]).
 //!
 //! A [`Grant`] is an ordered collection of these scopes — the structured form of
 //! the scope lists callers store, transmit, and check coverage against.
@@ -35,7 +35,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 pub use grant::Grant;
 pub use known::KnownScope;
 pub use resource::{
-    AccessRights, ContextLevel, FhirResourceScope, ResourceType, WildflowerResource,
+    ContextLevel, FhirResourceScope, Permission, ResourceType, WildflowerResource,
     WildflowerResourceScope, WildflowerResourceType,
 };
 pub use unknown::UnknownScope;
@@ -79,11 +79,11 @@ impl Scope {
     pub fn as_alternate_canonical_form(&self) -> Option<Scope> {
         let alternate = match self {
             Scope::FhirResource(r) => Scope::FhirResource(FhirResourceScope {
-                access: r.access.to_letter_bag_representation(),
+                permission: r.permission.to_interaction_set_representation(),
                 ..r.clone()
             }),
             Scope::WildflowerResource(w) => Scope::WildflowerResource(WildflowerResourceScope {
-                access: w.access.to_letter_bag_representation(),
+                permission: w.permission.to_interaction_set_representation(),
                 ..w.clone()
             }),
             Scope::Known(_) | Scope::Unknown(_) => return None,
@@ -159,10 +159,10 @@ mod tests {
     use super::*;
     use proptest::prelude::*;
 
-    /// `rs` access rights, built through the parser so these tests don't reach
-    /// into `AccessRights`' private representation.
-    fn rs() -> AccessRights {
-        AccessRights::parse_segment("rs").unwrap()
+    /// `rs` permission, built through the parser so these tests don't reach
+    /// into `Permission`'s private representation.
+    fn rs() -> Permission {
+        Permission::parse_segment("rs").unwrap()
     }
 
     #[test]
@@ -181,7 +181,7 @@ mod tests {
             Scope::FhirResource(FhirResourceScope {
                 context: ContextLevel::Patient,
                 resource: ResourceType::Known("Observation".to_string()),
-                access: AccessRights::parse_segment("read").unwrap(),
+                permission: Permission::parse_segment("read").unwrap(),
             })
         );
         assert_eq!(
@@ -189,7 +189,7 @@ mod tests {
             Scope::FhirResource(FhirResourceScope {
                 context: ContextLevel::System,
                 resource: ResourceType::Wildcard,
-                access: AccessRights::ALL,
+                permission: Permission::ALL,
             })
         );
     }
@@ -201,7 +201,7 @@ mod tests {
             Scope::from("wildflower/Grant.cruds"),
             Scope::WildflowerResource(WildflowerResourceScope {
                 resource: WildflowerResourceType::Known(WildflowerResource::Grant),
-                access: AccessRights::ALL,
+                permission: Permission::ALL,
             })
         );
         // ...whereas `system/Grant.cruds` is just a FHIR scope named "Grant" —
@@ -211,7 +211,7 @@ mod tests {
             Scope::FhirResource(FhirResourceScope {
                 context: ContextLevel::System,
                 resource: ResourceType::Known("Grant".to_string()),
-                access: AccessRights::ALL,
+                permission: Permission::ALL,
             })
         );
     }
@@ -263,7 +263,7 @@ mod tests {
             Scope::FhirResource(FhirResourceScope {
                 context: ContextLevel::Patient,
                 resource: ResourceType::Known("Observation".to_string()),
-                access: rs(),
+                permission: rs(),
             })
         );
         assert_eq!(scope.to_string(), "patient/Observation.rs");
@@ -324,8 +324,8 @@ mod tests {
         }
     }
 
-    /// Canonical CRUDS letters for a raw bit set, independent of `AccessRights`'
-    /// private representation.
+    /// Canonical interaction letters for a raw bit set, independent of
+    /// `Permission`'s private representation.
     fn canonical_letters(bits: u8) -> String {
         [(1u8, 'c'), (2, 'r'), (4, 'u'), (8, 'd'), (16, 's')]
             .into_iter()
