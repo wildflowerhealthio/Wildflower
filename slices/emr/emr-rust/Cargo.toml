@@ -17,9 +17,9 @@ helios-rest = { version = "=0.2.0", default-features = false, features = ["R4", 
 #   helios-persistence — sqlite-backed storage backend
 helios-persistence = { version = "=0.2.0", default-features = false, features = ["R4", "sqlite"] }
 #   helios-auth        — JWT/JWKS bearer auth + SMART v2 scope policy
-helios-auth = "=0.2.0"
+helios-auth = "=0.2.1"
 #   helios-audit       — audit sink trait (we use the null sink today)
-helios-audit = { version = "=0.2.0", default-features = false, features = ["R4"] }
+helios-audit = { version = "=0.2.1", default-features = false, features = ["R4"] }
 shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = ["served-origin"] }
 
 [dev-dependencies]
