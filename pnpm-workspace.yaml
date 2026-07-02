@@ -48,7 +48,7 @@ catalog:
   # copy of `@sentry/core` is installed. Divergent majors install two
   # side-by-side, and the mismatched `Client` types break
   # `setupEventContextTrace` / `SentrySampler` consumers (telemetry-node/web).
-  '@sentry/node': 10.12.0
+  '@sentry/node': 10.27.0
   '@sentry/opentelemetry': 10.12.0
   '@sentry/react': 10.12.0
   # Transitive peer of @effect/* required at install time (not declared by @livestore/peer-deps).
