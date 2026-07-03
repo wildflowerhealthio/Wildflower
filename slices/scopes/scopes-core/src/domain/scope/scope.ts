@@ -45,15 +45,14 @@ abstract class BaseResourceScope<
 
   /**
    * Whether this scope is a superset of — i.e. *covers* — a (context, resource, interaction)
-   * cell (`spec.md §3`; mirrors `scopes-rust`'s `FhirResourceScope::covers`): its context is
-   * **strictly equal** (never hierarchical — `system` does *not* cover `patient`, matching
-   * Rust's `self.context == other.context`), its resource is a superset
-   * ({@link ResourceType.Base.supersetOf} — `*` ⊇ any known sibling), and its permission
-   * `has` the interaction. Same-style — `has` is false across styles, so nothing cross-style
-   * false-covers. A read-side predicate (`interaction` degrades to `string` at the boundary,
-   * like {@link BasePermission.has}, so it reads on the `Cruds | ReadWrite` union without
-   * collapsing); the fold over a partition and the wildcard *lock* live in
-   * `ScopeConfiguration.scopesGrantInteraction`.
+   * cell (`spec.md §3`; mirrors `scopes-rust`'s `FhirResourceScope::covers`): its context
+   * covers the cell's ({@link Contexts.Context.covers} — **hierarchical** for FHIR, `system
+   * ⊇ user ⊇ patient`), its resource is a superset ({@link ResourceType.Base.supersetOf} —
+   * `*` ⊇ any known sibling), and its permission `has` the interaction. Same-style — `has`
+   * is false across styles, so nothing cross-style false-covers. A read-side predicate
+   * (`interaction` degrades to `string` at the boundary, like {@link BasePermission.has}, so
+   * it reads on the `Cruds | ReadWrite` union without collapsing); the fold over a partition
+   * and the wildcard *lock* live in `ScopeConfiguration.scopesGrantInteraction`.
    */
   isSupersetOf(
     context: Contexts.Context,
@@ -61,7 +60,7 @@ abstract class BaseResourceScope<
     interaction: string
   ): boolean {
     return (
-      Equal.equals(this.context, context) &&
+      this.context.covers(context) &&
       this.resource.supersetOf(resource) &&
       this.permission.has(interaction)
     )

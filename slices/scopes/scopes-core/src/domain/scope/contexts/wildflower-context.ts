@@ -22,6 +22,11 @@ class WildflowerContext extends Context {
   serialize(): string {
     return 'wildflower'
   }
+
+  /** The Wildflower context is a singleton — it covers only another Wildflower context. */
+  covers(other: Context): boolean {
+    return other instanceof WildflowerContext
+  }
 }
 
 // oxlint-disable import/group-exports

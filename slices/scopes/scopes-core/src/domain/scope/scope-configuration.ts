@@ -164,10 +164,11 @@ class ScopeConfiguration<
 
   /**
    * Resolve one interaction cell against a homogeneous partition `owned` (`spec.md §3`),
-   * folding every scope whose {@link isSupersetOf} covers it. Because `isSupersetOf` requires
-   * a **strictly-equal** context, the only cover that isn't at this exact resource is a
-   * same-context `*` wildcard row — which clears `grantedAtOwnResource`, marking the cell
-   * granted but wildcard-locked. Static: no recipe is needed to read.
+   * folding every scope whose {@link isSupersetOf} covers it (context **hierarchical** —
+   * `system ⊇ user ⊇ patient` — resource superset-aware). A cover at a *different resource*
+   * can only be a `*` wildcard row (a named resource covers only its exact self), which
+   * clears `grantedAtOwnResource` — the cell is granted but wildcard-locked. Static: no
+   * recipe is needed to read.
    */
   static scopesGrantInteraction<
     TContext extends Contexts.Context,
@@ -184,8 +185,8 @@ class ScopeConfiguration<
     for (const scope of owned) {
       if (!scope.isSupersetOf(context, resource, interaction)) continue
       granted = true
-      // `isSupersetOf` already fixed the context as strictly equal, so a cover at a
-      // different resource can only be a same-context `*` wildcard — the lock.
+      // A cover at a different resource can only be a `*` wildcard row (a named resource
+      // covers only its exact self), whatever its context — that is the wildcard lock.
       if (!Equal.equals(scope.resource, resource)) grantedAtOwnResource = false
     }
     return { granted, grantedAtOwnResource }

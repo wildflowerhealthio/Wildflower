@@ -74,4 +74,27 @@ describe('Cell.forItem — §2 clamp + §3 lock', () => {
     expect(Cell.forItem(v2, grant, req, patient, obs, 'r').state).toBe('on')
     expect(Cell.forItem(v2, grant, req, patient, obs, 'c').state).toBe('off')
   })
+
+  test('request mode: a higher-context request covers a lower-context cell (system ⊇ patient)', () => {
+    const fhirAt = (
+      level: Scope.Contexts.Fhir.Level,
+      name: string,
+      l: Scope.Permission.Cruds.Interaction[]
+    ): Scope.FhirV2 =>
+      new Scope.FhirV2(
+        new Scope.Contexts.Fhir(level),
+        Scope.ResourceType.Fhir.parse(name)!,
+        new Scope.Permission.Cruds(l)
+      )
+    const system = new Scope.Contexts.Fhir('system')
+    // A system/*.r request authorizes the concrete patient Observation.r cell...
+    expect(
+      Cell.forItem(v2, Grant.make([]), request([fhirAt('system', '*', ['r'])]), patient, obs, 'r')
+        .state
+    ).toBe('off')
+    // ...but a patient/*.r request does not reach a system-context cell (patient ⊉ system).
+    expect(
+      Cell.forItem(v2, Grant.make([]), request([fhirV2('*', ['r'])]), system, obs, 'r').state
+    ).toBe('disabled')
+  })
 })

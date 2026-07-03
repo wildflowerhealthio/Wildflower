@@ -115,9 +115,14 @@ mod tests {
     }
 
     #[test]
-    fn context_mismatch_rejects() {
-        assert!(!allowed_scope_covers("system/*.cruds", "user/Patient.r"));
+    fn context_hierarchy_covers_downward_only() {
+        // `system ⊇ user ⊇ patient`: a broader context covers a narrower one...
+        assert!(allowed_scope_covers("system/*.cruds", "user/Patient.r"));
+        assert!(allowed_scope_covers("system/*.cruds", "patient/Patient.r"));
+        assert!(allowed_scope_covers("user/*.cruds", "patient/Patient.r"));
+        // ...but a narrower context never reaches up.
         assert!(!allowed_scope_covers("patient/*.cruds", "user/Patient.r"));
+        assert!(!allowed_scope_covers("user/*.cruds", "system/Patient.r"));
     }
 
     #[test]

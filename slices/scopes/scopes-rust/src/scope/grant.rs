@@ -91,12 +91,15 @@ mod tests {
 
     #[test]
     fn covers_delegates_to_any_member_scope() {
-        // A `system/*.cruds` member covers a specific narrower request...
+        // A `system/*.cruds` member covers a specific narrower request — including
+        // narrower *contexts*, since `system ⊇ user ⊇ patient`...
         let grant = Grant::parse(["system/*.cruds", "openid"]);
         assert!(grant.covers(&Scope::from("system/Patient.r")));
+        assert!(grant.covers(&Scope::from("user/Patient.r")));
+        assert!(grant.covers(&Scope::from("patient/Observation.r")));
         assert!(grant.covers(&Scope::from("openid")));
-        // ...but nothing in the grant reaches a `user/` scope or an unrequested flag.
-        assert!(!grant.covers(&Scope::from("user/Patient.r")));
+        // ...but a narrower context never reaches up, and an unrequested flag is out.
+        assert!(!Grant::parse(["patient/*.cruds"]).covers(&Scope::from("user/Patient.r")));
         assert!(!grant.covers(&Scope::from("offline_access")));
         // The empty grant covers nothing.
         assert!(!Grant::default().covers(&Scope::from("openid")));

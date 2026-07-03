@@ -65,10 +65,10 @@ describe('ScopeConfiguration.effectiveCell — coverage + lock (§3)', () => {
     ).toEqual({ granted: true, grantedAtOwnResource: true })
   })
 
-  test('a different context does NOT cover — context is strict, matching scopes-rust', () => {
-    // `system/*.r` covering `patient/Observation.r` would diverge from Rust's
-    // `FhirResourceScope::covers` (strict `self.context == other.context`), silently
-    // dropping the patient scope the gatekeeper does not treat as covered.
+  test('a higher context covers + locks a lower one (system ⊇ patient), matching scopes-rust', () => {
+    // `system/*.r` covers `patient/Observation.r` — the hierarchical context coverage the
+    // gatekeeper's `FhirResourceScope::covers` applies (`self.context.covers(other.context)`);
+    // the `*` resource marks the cell wildcard-locked.
     expect(
       Scope.ScopeConfiguration.scopesGrantInteraction(
         [fhirAt('system', '*', ['r'])],
@@ -76,7 +76,7 @@ describe('ScopeConfiguration.effectiveCell — coverage + lock (§3)', () => {
         obs,
         'r'
       )
-    ).toEqual({ granted: false, grantedAtOwnResource: true })
+    ).toEqual({ granted: true, grantedAtOwnResource: false })
   })
 
   test('a lower context does NOT cover a higher one either (patient ⊉ system)', () => {

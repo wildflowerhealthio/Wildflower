@@ -24,6 +24,18 @@ class FhirContext extends Context {
   serialize(): string {
     return this.context
   }
+
+  /**
+   * Whether this context covers `other` — **hierarchical**, `system ⊇ user ⊇ patient`
+   * (a broader launch context grants everything a narrower one does), mirroring
+   * `scopes-rust`'s `ContextLevel::covers`. A non-FHIR context is never covered.
+   */
+  covers(other: Context): boolean {
+    if (!(other instanceof FhirContext)) return false
+    if (this.context === 'system') return true
+    if (this.context === 'user') return other.context === 'user' || other.context === 'patient'
+    return other.context === 'patient'
+  }
 }
 
 // oxlint-disable import/group-exports
@@ -33,9 +45,10 @@ namespace FhirContext {
   export namespace Level {
     export const all: readonly Level[] = ['patient', 'user', 'system']
     /**
-     * The access level a FHIR resource scope is relative to. `user` currently grants
-     * the same as `system`, but the three are modeled and compared **strictly** —
-     * `user` never silently means `system`.
+     * The access level a FHIR resource scope is relative to. The three stay distinct
+     * *values* (equality and serialization are exact — a `user` scope renders as `user`,
+     * never silently `system`); only coverage ({@link FhirContext.covers}) applies the
+     * `system ⊇ user ⊇ patient` order.
      */
     export const isContextLevel = (s: string): s is Level => (all as readonly string[]).includes(s)
   }

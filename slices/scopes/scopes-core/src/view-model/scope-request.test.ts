@@ -61,4 +61,31 @@ describe('ScopeRequest.isWithin — granted ⊆ requested (§2)', () => {
     expect(ScopeRequest.isWithin(grant([Scope.Known.openid]), req)).toBe(true)
     expect(ScopeRequest.isWithin(grant([Scope.Known.offlineAccess]), req)).toBe(false)
   })
+
+  test('context hierarchy: a lower-context grant is within a higher-context request', () => {
+    const fhirAt = (
+      level: Scope.Contexts.Fhir.Level,
+      name: string,
+      l: Scope.Permission.Cruds.Interaction[]
+    ): Scope.FhirV2 =>
+      new Scope.FhirV2(
+        new Scope.Contexts.Fhir(level),
+        Scope.ResourceType.Fhir.parse(name)!,
+        new Scope.Permission.Cruds(l)
+      )
+    // system/*.r covers patient/Observation.r (system ⊇ patient)...
+    expect(
+      ScopeRequest.isWithin(
+        grant([fhirV2('Observation', ['r'])]),
+        request([fhirAt('system', '*', ['r'])])
+      )
+    ).toBe(true)
+    // ...but a patient/*.r request does not cover a system/Observation.r grant (patient ⊉ system).
+    expect(
+      ScopeRequest.isWithin(
+        grant([fhirAt('system', 'Observation', ['r'])]),
+        request([fhirV2('*', ['r'])])
+      )
+    ).toBe(false)
+  })
 })

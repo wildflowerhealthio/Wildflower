@@ -11,8 +11,8 @@ mod fhir;
 mod permission;
 mod wildflower;
 
-pub use permission::Permission;
 pub use fhir::{ContextLevel, FhirResourceScope, ResourceType};
+pub use permission::Permission;
 pub use wildflower::{WildflowerResource, WildflowerResourceScope, WildflowerResourceType};
 
 /// Drop a SMART v2 `?`-search-parameter suffix from a perms segment, warning on
