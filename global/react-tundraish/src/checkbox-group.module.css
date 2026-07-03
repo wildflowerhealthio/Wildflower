@@ -33,7 +33,7 @@
   color: var(--color-foreground);
 }
 
-.code {
+.mono {
   font-family: var(--font-mono);
   font-size: var(--font-size-1);
   color: var(--color-neutral-5);
@@ -112,8 +112,8 @@
   color: var(--color-neutral-5);
 }
 
-/* Right-align the scope value into a column (stacked plain layout only). */
-.picker--plain:not(.picker--row) .code {
+/* Right-align the mono annotation into a column (stacked plain layout only). */
+.picker--plain:not(.picker--row) .mono {
   margin-left: auto;
   padding-left: var(--space-6);
 }

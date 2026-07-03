@@ -32,7 +32,7 @@ interface PermissionPickerProps {
 const toItem = ({ id, name, code, state, reason }: PickerItem): CheckboxGroupItem<string> => ({
   id,
   label: name,
-  code,
+  mono: code,
   checked: state === 'on' || state === 'locked',
   locked: state === 'locked',
   disabled: state === 'disabled',

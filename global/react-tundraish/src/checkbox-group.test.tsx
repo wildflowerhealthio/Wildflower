@@ -7,36 +7,36 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
-type Interactions = 'c' | 'r' | 'u' | 'd' | 's'
-type ReadWritePermissions = 'read' | 'write'
+type Item = 'one' | 'two' | 'three' | 'four' | 'five'
+type Pair = 'first' | 'second'
 
-const fiveItems: CheckboxGroupItem<Interactions>[] = [
-  { id: 'c', label: 'Create', code: 'c', checked: false, locked: false, disabled: false },
+const fiveItems: CheckboxGroupItem<Item>[] = [
+  { id: 'one', label: 'One', mono: '1', checked: false, locked: false, disabled: false },
   {
-    id: 'r',
-    label: 'Read',
-    code: 'r',
+    id: 'two',
+    label: 'Two',
+    mono: '2',
     checked: true,
     locked: true,
     disabled: false,
     reason: 'Required',
   },
   {
-    id: 'u',
-    label: 'Update',
-    code: 'u',
+    id: 'three',
+    label: 'Three',
+    mono: '3',
     checked: false,
     locked: false,
     disabled: true,
     reason: 'Not applicable',
   },
-  { id: 'd', label: 'Destroy', code: 'd', checked: false, locked: false, disabled: false },
-  { id: 's', label: 'Search', code: 's', checked: true, locked: false, disabled: false },
+  { id: 'four', label: 'Four', mono: '4', checked: false, locked: false, disabled: false },
+  { id: 'five', label: 'Five', mono: '5', checked: true, locked: false, disabled: false },
 ]
 
-const twoItems: CheckboxGroupItem<ReadWritePermissions>[] = [
-  { id: 'read', label: 'Read', code: 'read', checked: true, locked: false, disabled: false },
-  { id: 'write', label: 'Write', code: 'write', checked: false, locked: false, disabled: false },
+const twoItems: CheckboxGroupItem<Pair>[] = [
+  { id: 'first', label: 'First', mono: '1st', checked: true, locked: false, disabled: false },
+  { id: 'second', label: 'Second', mono: '2nd', checked: false, locked: false, disabled: false },
 ]
 
 describe('CheckboxGroup', () => {
@@ -48,8 +48,8 @@ describe('CheckboxGroup', () => {
   it('reflects each item checked state', () => {
     render(<CheckboxGroup items={twoItems} onToggle={vi.fn()} ariaLabel="Group" />)
     expect(screen.getAllByRole('checkbox')).toHaveLength(2)
-    expect(screen.getByRole<HTMLInputElement>('checkbox', { name: /Read/ }).checked).toBe(true)
-    expect(screen.getByRole<HTMLInputElement>('checkbox', { name: /Write/ }).checked).toBe(false)
+    expect(screen.getByRole<HTMLInputElement>('checkbox', { name: /First/ }).checked).toBe(true)
+    expect(screen.getByRole<HTMLInputElement>('checkbox', { name: /Second/ }).checked).toBe(false)
   })
 
   it('toggles an editable item by id', async () => {
@@ -57,9 +57,9 @@ describe('CheckboxGroup', () => {
     const user = userEvent.setup()
     render(<CheckboxGroup items={twoItems} onToggle={onToggle} ariaLabel="Group" />)
 
-    await user.click(screen.getByRole('checkbox', { name: /Write/ }))
+    await user.click(screen.getByRole('checkbox', { name: /Second/ }))
 
-    expect(onToggle).toHaveBeenCalledWith('write')
+    expect(onToggle).toHaveBeenCalledWith('second')
   })
 
   it('does not toggle a locked or disabled item', async () => {
@@ -67,11 +67,11 @@ describe('CheckboxGroup', () => {
     const user = userEvent.setup()
     render(<CheckboxGroup items={fiveItems} onToggle={onToggle} ariaLabel="Group" />)
 
-    await user.click(screen.getByRole('checkbox', { name: /Read/ })) // locked
-    await user.click(screen.getByRole('checkbox', { name: /Update/ })) // disabled
+    await user.click(screen.getByRole('checkbox', { name: /Two/ })) // locked
+    await user.click(screen.getByRole('checkbox', { name: /Three/ })) // disabled
 
     expect(onToggle).not.toHaveBeenCalled()
-    expect(screen.getByRole<HTMLInputElement>('checkbox', { name: /Read/ }).disabled).toBe(true)
-    expect(screen.getByRole<HTMLInputElement>('checkbox', { name: /Update/ }).disabled).toBe(true)
+    expect(screen.getByRole<HTMLInputElement>('checkbox', { name: /Two/ }).disabled).toBe(true)
+    expect(screen.getByRole<HTMLInputElement>('checkbox', { name: /Three/ }).disabled).toBe(true)
   })
 })

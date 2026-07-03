@@ -10,8 +10,8 @@ interface CheckboxGroupItem<TId extends string> {
   readonly id: TId
   /** The user-facing label. */
   readonly label: ReactNode
-  /** Optional mono value shown beside the label. */
-  readonly code?: string
+  /** Optional monospace annotation shown beside the label (a code, key, or unit). */
+  readonly mono?: string
   readonly checked: boolean
   /** Checked but not editable (e.g. required or implied) — rendered disabled. */
   readonly locked: boolean
@@ -30,8 +30,8 @@ interface CheckboxGroupProps<TId extends string> {
   readonly direction?: 'column' | 'row'
   /**
    * `boxed` (default) renders the design-system checkbox. `plain` renders an
-   * un-boxed checklist (a ✓ when selected, nothing when not) with any `code`
-   * right-aligned and the card sized to fit.
+   * un-boxed checklist (a ✓ when selected, nothing when not) with any `mono`
+   * annotation right-aligned and the card sized to fit.
    */
   readonly variant?: 'boxed' | 'plain'
   readonly className?: string
@@ -83,14 +83,14 @@ const CheckboxGroup = <TId extends string>({
               ✓
             </span>
             <span className={styles['name']}>{item.label}</span>
-            {item.code !== undefined ? <code className={styles['code']}>{item.code}</code> : null}
+            {item.mono !== undefined ? <code className={styles['mono']}>{item.mono}</code> : null}
           </label>
         )
       }
       const boxedLabel = (
         <span className={styles['row']}>
           <span className={styles['name']}>{item.label}</span>
-          {item.code !== undefined ? <code className={styles['code']}>{item.code}</code> : null}
+          {item.mono !== undefined ? <code className={styles['mono']}>{item.mono}</code> : null}
         </span>
       )
       return (
