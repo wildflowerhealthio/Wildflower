@@ -27,6 +27,19 @@ describe('GrantDraft.serialize — dedupe (§3)', () => {
     ).toEqual(['patient/*.rs'])
   })
 
+  test('a higher-context wildcard dedupes a lower-context specific row (hierarchical §3)', () => {
+    const systemAll = new Scope.FhirV2(
+      Scope.Contexts.Fhir.system,
+      Scope.ResourceType.Fhir.parse('*')!,
+      cruds(['r'])
+    )
+    // system/*.r covers patient/Observation.r (system ⊇ patient), so the specific row emits
+    // nothing — matching the wildcard lock the grid resolves for that cell.
+    expect(GrantDraft.serialize(grant([systemAll, fhirV2('Observation', ['r'])]))).toEqual([
+      'system/*.r',
+    ])
+  })
+
   test('a same-style v1 wildcard dedupes a v1 word row', () => {
     expect(
       GrantDraft.serialize(

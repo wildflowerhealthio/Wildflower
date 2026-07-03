@@ -114,15 +114,17 @@ class ScopeConfiguration<
     const owned = this.select(ms)
     const out: string[] = []
     for (const scope of owned) {
-      // §3 dedupe: the interactions a strictly-broader same-context scope (a `*` wildcard
-      // row) already grants — computed once as a single covering permission, then subtracted,
-      // rather than re-folding the whole partition per interaction.
+      // §3 dedupe: the interactions a strictly-broader scope already grants — a `*` wildcard
+      // row whose context *covers* this one (hierarchical, `system ⊇ user ⊇ patient`).
+      // Computed once as a single covering permission, then subtracted, rather than re-folding
+      // the whole partition per interaction. Matches `scopesGrantInteraction`'s lock rule
+      // (a cover clears `grantedAtOwnResource` only when its resource differs — a wildcard).
       const covered = this.emptyPermission.make(
         owned
           .filter(
             (other) =>
               other !== scope &&
-              Equal.equals(other.context, scope.context) &&
+              other.context.covers(scope.context) &&
               !Equal.equals(other.resource, scope.resource) &&
               other.resource.supersetOf(scope.resource)
           )
