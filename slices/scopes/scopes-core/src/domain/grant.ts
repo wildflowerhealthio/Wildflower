@@ -13,21 +13,14 @@
  * {@link Grant}, with `Grant.parse`, `Grant.render`, `Grant.resourceScopes`, …
  */
 
-import { Equal, pipe, Array } from 'effect'
+import { Equal, pipe } from 'effect'
 import * as Scope from './scope/index.ts'
 
 /** An ordered set of {@link Scope}s — a parsed grant, in its original order. A {@link Scope.MultiScope}. */
 type Grant = Scope.MultiScope
 
-/** A grant over the given scopes. */
-const make = (scopes: readonly Scope.Any[]): Grant => ({
-  unknown: [],
-  known: [],
-  fhirV1: [],
-  fhirV2: [],
-  wildflower: [],
-  ...Array.groupBy(scopes, (s) => s.kind),
-})
+/** A grant over the given scopes — partitioned by kind ({@link Scope.MultiScope.make}). */
+const make = Scope.MultiScope.make
 /**
  * Parse a list of scope strings into a grant — total (each string parses to its
  * richest {@link Scope}, falling back to `unknown`, so no input is ever dropped).

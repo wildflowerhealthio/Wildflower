@@ -1,4 +1,4 @@
-import Cruds from './cruds-permission-style.ts'
+import Cruds from './cruds-permission.ts'
 import {
   BasePermission as Base,
   type Interaction,

@@ -12,6 +12,8 @@
  * Namespace + type combo (`import { Scope } from 'scopes-core'` → `Scope.MultiScope`).
  */
 
+import { Array } from 'effect'
+
 import type * as Contexts from './contexts'
 import FhirV1 from './fhir-scope-v1.ts'
 import FhirV2 from './fhir-scope-v2.ts'
@@ -64,6 +66,22 @@ namespace MultiScope {
     FhirV2.configuration,
     Wildflower.configuration,
   ] as const
+
+  /**
+   * A {@link MultiScope} over a flat scope list, partitioned by `.kind` (kinds not present
+   * get an empty partition). The structured-form constructor shared by every bag of scopes;
+   * {@link Grant.make} re-exports it.
+   */
+  export const make = (
+    scopes: readonly (FhirV1 | FhirV2 | Wildflower | Known | Unknown)[]
+  ): MultiScope => ({
+    unknown: [],
+    known: [],
+    fhirV1: [],
+    fhirV2: [],
+    wildflower: [],
+    ...Array.groupBy(scopes, (s) => s.kind),
+  })
 
   /** The resource scopes (FHIR + Wildflower) across a bag's partitions, in kind order. */
   export const resourceScopes = (ms: MultiScope): AnyResourceScope[] => [

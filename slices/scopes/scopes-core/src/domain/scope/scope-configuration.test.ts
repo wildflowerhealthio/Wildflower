@@ -3,8 +3,8 @@ import { describe, expect, test } from 'vite-plus/test'
 
 import * as Scope from './index.ts'
 
-const patient = new Scope.Contexts.Fhir('patient')
-const system = new Scope.Contexts.Fhir('system')
+const patient = Scope.Contexts.Fhir.patient
+const system = Scope.Contexts.Fhir.system
 const obs = Scope.ResourceType.Fhir.parse('Observation')!
 const anyRecord = Scope.ResourceType.Fhir.parse('*')!
 const v2 = Scope.FhirV2.configuration

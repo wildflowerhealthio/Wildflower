@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vite-plus/test'
 
 import { Grant, type GrantDraft, Scope, ScopeRequest } from '../index.ts'
 
-const patient = new Scope.Contexts.Fhir('patient')
+const patient = Scope.Contexts.Fhir.patient
 
 const fhirV2 = (name: string, l: Scope.Permission.Cruds.Interaction[]): Scope.FhirV2 =>
   new Scope.FhirV2(patient, Scope.ResourceType.Fhir.parse(name)!, new Scope.Permission.Cruds(l))

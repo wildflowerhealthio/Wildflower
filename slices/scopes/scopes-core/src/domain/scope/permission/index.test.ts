@@ -1,10 +1,10 @@
 import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { Scope } from '../../../index.ts'
+import * as Permission from './index.ts'
 
-const Cruds = Scope.Permission.Cruds
-const ReadWrite = Scope.Permission.ReadWrite
+const Cruds = Permission.Cruds
+const ReadWrite = Permission.ReadWrite
 
 describe('Permission — shared editing surface (cruds)', () => {
   test('items are the five cruds cells in canonical order', () => {
@@ -48,10 +48,8 @@ describe('Permission — shared editing surface (cruds)', () => {
   test('toggling the same cell twice is identity (property)', () => {
     fc.assert(
       fc.property(
-        fc.uniqueArray(
-          fc.constantFrom<Scope.Permission.Cruds.Interaction>('c', 'r', 'u', 'd', 's')
-        ),
-        fc.constantFrom<Scope.Permission.Cruds.Interaction>('c', 'r', 'u', 'd', 's'),
+        fc.uniqueArray(fc.constantFrom<Permission.Cruds.Interaction>('c', 'r', 'u', 'd', 's')),
+        fc.constantFrom<Permission.Cruds.Interaction>('c', 'r', 'u', 'd', 's'),
         (start, id) => {
           const base = new Cruds(start)
           expect(base.toggle(id).toggle(id)).toEqual(base)

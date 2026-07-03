@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vite-plus/test'
 
 import { Cell, Grant, Scope, type ScopeRequest } from '../index.ts'
 
-const patient = new Scope.Contexts.Fhir('patient')
+const patient = Scope.Contexts.Fhir.patient
 const obs = Scope.ResourceType.Fhir.parse('Observation')!
 const cond = Scope.ResourceType.Fhir.parse('Condition')!
 const v2 = Scope.FhirV2.configuration

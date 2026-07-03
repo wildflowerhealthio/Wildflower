@@ -10,7 +10,7 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
-const patient = new Scope.Contexts.Fhir('patient')
+const patient = Scope.Contexts.Fhir.patient
 const v2 = Scope.FhirV2.configuration
 const v1 = Scope.FhirV1.configuration
 

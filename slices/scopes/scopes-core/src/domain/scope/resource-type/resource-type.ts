@@ -1,6 +1,6 @@
 import { Hash, Equal } from 'effect'
 
-abstract class BaseResourceType implements Hash.Hash, Equal.Equal {
+abstract class BaseResourceType implements Equal.Equal {
   abstract readonly kind: string;
 
   abstract [Hash.symbol](): number

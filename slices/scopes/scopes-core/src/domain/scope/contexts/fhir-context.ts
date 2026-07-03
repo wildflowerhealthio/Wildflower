@@ -50,11 +50,15 @@ namespace FhirContext {
      * never silently `system`); only coverage ({@link FhirContext.covers}) applies the
      * `system ⊇ user ⊇ patient` order.
      */
-    export const isContextLevel = (s: string): s is Level => (all as readonly string[]).includes(s)
+    export const is = (s: string): s is Level => (all as readonly string[]).includes(s)
   }
 
-  export const parse = (s: string): FhirContext | null =>
-    Level.isContextLevel(s) ? new FhirContext(s) : null
+  export const parse = (s: string): FhirContext | null => (Level.is(s) ? new FhirContext(s) : null)
+
+  /** The three FHIR contexts as shared singletons — prefer these to the constructor. */
+  export const patient = new FhirContext('patient')
+  export const user = new FhirContext('user')
+  export const system = new FhirContext('system')
 }
 
 export default FhirContext
