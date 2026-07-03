@@ -178,15 +178,41 @@ const renderApp = ({
   apiBaseUrl,
   localGrantedScopes,
 }: RenderAppOptions): void => {
-  // Clients are tokenless: the HttpOnly `wf_auth` cookie — not a JS-attached
-  // header — authenticates same-origin requests.
-  const { queryClient, runAuthed, runtimeLayer } = buildAppQueryRuntime(apiBaseUrl)
+  // Router isn't built until after the query runtime (its context needs the
+  // runtime), so the closures that navigate imperatively read it through this
+  // deferred cell, populated right after `createRouter`.
+  const routerHandle: { current: AnyRouter | null } = { current: null }
+
+  // Fires when an authed query/mutation ends in a 401 that outlived the
+  // boot-race retry — the cookie session is genuinely gone, so send the user to
+  // device login, preserving where they were as `returnTo`. The guard skips a
+  // redundant navigation when they're already on the device-login route.
+  const redirectToDeviceLogin = (): void => {
+    const router = routerHandle.current
+    if (router === null) return
+    if (router.state.location.pathname === '/gatekeeper/device-login') return
+    void router.navigate({
+      to: '/gatekeeper/device-login',
+      search: { returnTo: router.state.location.href },
+    })
+  }
+
+  // On the desktop (Tauri) the webview is auto-authenticated by the host's
+  // loopback-owner trust — there is no user login to fall back to, and driving
+  // the device-login flow would spawn a spurious "authorize this device" consent
+  // against the owner's own device. So a 401 there is anomalous (a boot-race
+  // before the host token is minted, or an expired host token), not a prompt to
+  // sign in — the query surfaces its error and the boot-race retry covers the
+  // common case. Web entries, which DO have a device-login flow, keep the
+  // redirect.
+  const onUnauthorized: () => void =
+    entry === 'main-tauri' ? () => undefined : redirectToDeviceLogin
+  const { queryClient, runAuthed, runtimeLayer } = buildAppQueryRuntime(apiBaseUrl, onUnauthorized)
 
   // Keyed on the auth *signal* (the store), not the bearer source: on web a
   // sign-in flips the cookie-derived signal and should flush the cache.
   forkTokenRotationInvalidator(tokenStore.subscribable, queryClient)
 
-  const routerHandle: { current: AnyRouter | null } = { current: null }
   const navigate = (to: NavTarget): void => {
     const router = routerHandle.current
     if (router === null) return

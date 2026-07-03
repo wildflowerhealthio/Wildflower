@@ -2287,7 +2287,7 @@ async fn bearer_header_takes_precedence_over_cookie() {
 }
 
 /// `POST /access/logout` is owner-gated (the cookie-sourced token satisfies the
-/// gate) and clears both session cookies with `Max-Age=0`.
+/// gate), clears both session cookies with `Max-Age=0`, and redirects to `/`.
 #[tokio::test]
 async fn logout_clears_session_cookies() {
     let (g, host_owner_token, _db) = spin_up();
@@ -2302,7 +2302,15 @@ async fn logout_clears_session_cookies() {
         ))
         .await
         .expect("oneshot");
-    assert_eq!(res.status(), StatusCode::NO_CONTENT);
+    // 303 downgrades the POST to a GET of `/`; the clearing cookies ride along.
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    assert_eq!(
+        res.headers()
+            .get(axum::http::header::LOCATION)
+            .and_then(|v| v.to_str().ok()),
+        Some("/"),
+        "logout must redirect home"
+    );
     let cookies = set_cookie_values(&res);
     assert!(
         cookies

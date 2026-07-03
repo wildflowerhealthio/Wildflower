@@ -64,20 +64,26 @@ const prependApiBaseUrl = (
  * Build the shared `QueryClient` + authed runner threaded into the
  * router context. Page-lifetime; one HTTP layer for every entry (the
  * embedded bridge carries only messages, not HTTP). Clients are
- * tokenless — auth rides the same-origin `HttpOnly` `wf_auth` cookie.
+ * tokenless — auth rides the `HttpOnly` `wf_auth` cookie (sent in
+ * credentialed mode so it also rides the Tauri webview's cross-origin
+ * loopback fetches).
  *
  * @param apiBaseUrl - Absolute API origin for entries whose page isn't
  *   served by the API server (see {@link prependApiBaseUrl}). Omitted,
  *   requests stay relative to the page origin.
+ * @param onUnauthorized - Invoked by the `QueryClient`'s cache when an
+ *   authed query/mutation ends in a 401 that survived the boot-race
+ *   retry — the entry uses it to send the user to device login.
  */
 const buildAppQueryRuntime = (
-  apiBaseUrl?: string
+  apiBaseUrl: string | undefined,
+  onUnauthorized: () => void
 ): {
   readonly queryClient: QueryClient
   readonly runAuthed: RunAuthed
   readonly runtimeLayer: RuntimeLayer
 } => {
-  const queryClient = buildQueryClient()
+  const queryClient = buildQueryClient(onUnauthorized)
   const httpClientLayer =
     apiBaseUrl === undefined
       ? webHttpClientLayer

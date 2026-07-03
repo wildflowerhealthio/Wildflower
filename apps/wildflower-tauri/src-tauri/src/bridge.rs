@@ -186,91 +186,27 @@ fn raise_main_window(handle: &AppHandle) {
 #[cfg(not(desktop))]
 fn raise_main_window(_handle: &AppHandle) {}
 
-/// Name of the `HttpOnly` session cookie gatekeeper-rust sets at token issuance
-/// (`gatekeeper-rust` `http/cookies.rs::AUTH_COOKIE_NAME`). Hardcoded here
-/// because that constant is crate-private — keep the two in sync.
-#[cfg(desktop)]
-const AUTH_COOKIE_NAME: &str = "wf_auth";
-
-/// Host the loopback API is served on. The cookie is scoped to this host (not
-/// the `tauri://` page origin) so it rides the webview's fetches to the API.
-#[cfg(desktop)]
-const AUTH_COOKIE_DOMAIN: &str = "127.0.0.1";
-
-/// Keep the main webview's `wf_auth` cookie in sync with the current Owner
-/// token so the SPA's loopback fetches authenticate by cookie — the page never
-/// holds the JWT. `Some` sets/refreshes it; `None` (logout, or the pre-mint
-/// boot window) deletes it.
-///
-/// The cookie is `SameSite=None; Secure`: the webview page origin
-/// (`tauri://localhost` in a build, the dev server in dev) is cross-site to the
-/// API origin (`http://127.0.0.1:<port>`), so only a `SameSite=None` cookie
-/// rides those cross-site fetches. `127.0.0.1` is a secure context, so `Secure`
-/// is permitted over loopback http.
-///
-/// Called from the bridge's resident async task (not a sync command / event
-/// handler), per the WebView2 deadlock note on `WebviewWindow::set_cookie`.
-#[cfg(desktop)]
-fn sync_auth_cookie(handle: &AppHandle, token: Option<&str>) {
-    // `Cookie` is `tauri_runtime::Cookie` re-exported at `tauri::webview::Cookie`;
-    // `SameSite` comes from the `cookie` crate, which tauri re-exports at
-    // `tauri::webview::cookie`. Neither is re-exported at the tauri crate root.
-    use tauri::webview::{cookie::SameSite, Cookie};
-
-    let Some(window) = handle.get_webview_window(MAIN_WINDOW_LABEL) else {
-        log::warn!("[bridge] window '{MAIN_WINDOW_LABEL}' missing; wf_auth cookie sync skipped");
-        return;
-    };
-    let result = match token {
-        Some(jwt) => {
-            let cookie = Cookie::build((AUTH_COOKIE_NAME, jwt.to_owned()))
-                .domain(AUTH_COOKIE_DOMAIN)
-                .path("/")
-                .http_only(true)
-                .secure(true)
-                .same_site(SameSite::None)
-                .build();
-            window.set_cookie(cookie)
-        }
-        None => {
-            let cookie = Cookie::build((AUTH_COOKIE_NAME, String::new()))
-                .domain(AUTH_COOKIE_DOMAIN)
-                .path("/")
-                .build();
-            window.delete_cookie(cookie)
-        }
-    };
-    if let Err(error) = result {
-        log::error!("[bridge] wf_auth cookie sync failed: {error}");
-    }
-}
-
-/// Mobile builds don't manage webview cookies from the host (Tauri's cookie
-/// API is desktop-only); the loopback-fetch credential path there is a
-/// follow-up. An empty stub keeps the resident task platform-blind.
-#[cfg(not(desktop))]
-fn sync_auth_cookie(_handle: &AppHandle, _token: Option<&str>) {}
-
 /// Wire the webview↔host bridge onto Tauri's event bus and return the
 /// publishers the server task feeds.
 ///
-/// - Token delivery: the bearer never reaches the JS side at all. The
-///   same resident task plants the JWT directly in the main webview's
-///   cookie jar via [`sync_auth_cookie`] (an `HttpOnly`, `SameSite=None;
-///   Secure` `wf_auth` cookie scoped to the loopback API host), so the
-///   SPA's fetches authenticate by cookie without ever reading it. The
-///   only thing that rides the multiplexed bridge channel is a
-///   contentless `bridge:AuthTokenIssued` notify, emitted whenever the
-///   webview signals `bridge:__Ready` (every page load and reload — the
-///   web side's auth-readiness signal is in-memory and resets on reload)
+/// - Token delivery: the bearer never reaches the JS side at all, and
+///   it isn't planted as a cookie either — the desktop webview
+///   authenticates by *connection provenance* (the host presents its own
+///   owner token for direct-loopback requests; see
+///   `inject_loopback_owner_token` in `lib.rs`, which reads the same
+///   token watch channel this bridge feeds). WKWebView won't carry a
+///   host-planted cross-site cookie anyway (wry drops `SameSite=None`;
+///   WebKit won't send a `Secure` cookie over http loopback). The only
+///   thing that rides the multiplexed bridge channel is a contentless
+///   `bridge:AuthTokenIssued` notify, emitted whenever the webview
+///   signals `bridge:__Ready` (every page load and reload — the web
+///   side's auth-readiness signal is in-memory and resets on reload)
 ///   **and** whenever the token changes on the watch channel
 ///   (mid-session re-mint). That notify only flips the page's
-///   auth-readiness signal; it carries no secret. The cookie is scoped
-///   to the API host, so sibling webviews on other origins (notably the
-///   browser-sniffer loading hostile EHR pages) never receive it.
-///   `Notify`'s single stored permit collapses a `__Ready` burst into
-///   one delivery, and a permit stored before the task first polls is
-///   not lost, so the boot race is covered.
+///   auth-readiness signal; it carries no secret. `Notify`'s single
+///   stored permit collapses a `__Ready` burst into one delivery, and a
+///   permit stored before the task first polls is not lost, so the boot
+///   race is covered.
 /// - Device-consent delivery: the same task forwards the active
 ///   pending device-consent head (or `null`) as
 ///   `bridge:DeviceConsentRequested` on `__Ready` *and* on every
@@ -374,12 +310,11 @@ pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
                     // delivery triggered by `__Ready` doesn't re-fire
                     // the `changed` arm for the same value.
                     let token = token_rx.borrow_and_update().clone();
-                    // Re-plant (or clear) the `wf_auth` cookie on every page
-                    // load — a reload starts with whatever the webview's
-                    // cookie jar already holds, and re-setting is idempotent;
-                    // `None` (pre-mint boot) deletes a cookie that isn't there,
-                    // which is harmless.
-                    sync_auth_cookie(&handle, token.as_deref());
+                    // Signal auth-readiness on every page load — the web side's
+                    // signal is in-memory and resets on reload. The token stays
+                    // host-side (the desktop authenticates by loopback
+                    // provenance, not a cookie), so only the contentless notify
+                    // is delivered.
                     if token.is_some() {
                         emit_auth_token_notify(&handle);
                     }
@@ -392,19 +327,15 @@ pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
                 }
                 Outcome::TokenChanged => {
                     let token = token_rx.borrow_and_update().clone();
-                    // Keep the cookie in lockstep with the live token:
-                    // `Some` (re-mint) refreshes it, `None` (logout) deletes
-                    // it — that delete is the whole logout-on-the-host path,
-                    // so this arm must run for `None` too.
-                    sync_auth_cookie(&handle, token.as_deref());
                     // The notify only flips the page's auth-readiness signal,
-                    // which is meaningful for `Some`. A `None` already cleared
-                    // the cookie above; the page learns it's logged out when
-                    // its loopback fetches start coming back 401, so there's
-                    // no contentless "logged out" notify to emit. A change
-                    // landing before the first page load emits into the void
-                    // (Tauri events aren't buffered) — harmless, the eventual
-                    // `__Ready` re-delivers the notify and re-plants the cookie.
+                    // meaningful for `Some` (a fresh / re-minted token). The
+                    // token stays host-side — the desktop authenticates by
+                    // loopback provenance, not a cookie — so a `None` (logout)
+                    // just stops the host injecting it and the page's loopback
+                    // fetches start coming back 401; there's no contentless
+                    // "logged out" notify to emit. A change landing before the
+                    // first page load emits into the void (Tauri events aren't
+                    // buffered) — harmless, the eventual `__Ready` re-delivers.
                     if token.is_some() {
                         emit_auth_token_notify(&handle);
                     }

@@ -42,7 +42,7 @@ type ItemListItemBase = {
  */
 type ItemListItem = ItemListItemBase &
   (
-    | { readonly href: string; readonly onClick?: never }
+    | { readonly href: string; readonly hard?: boolean; readonly onClick?: never }
     | { readonly href?: never; readonly onClick: () => void }
     | { readonly href?: never; readonly onClick?: never }
   )
@@ -117,7 +117,7 @@ const ItemListRow = ({ item }: { item: ItemListItem }): JSX.Element => {
           </span>
         )
       }
-      if (item.href.startsWith('/')) {
+      if (item.href.startsWith('/') && item.hard !== true) {
         return (
           <Link className={textClass} to={item.href}>
             {textChildren}

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use axum::body::Body;
 use axum::extract::{Request, State};
-use axum::http::HeaderMap;
+use axum::http::{header, HeaderMap, HeaderValue};
 use axum::middleware::Next;
 use axum::response::Response;
 
@@ -11,7 +11,7 @@ use crate::http::served_origin_for;
 use crate::http::state::AppState;
 
 use crate::http::middleware::require_auth::{
-    try_access_token_from_request, verify_auth_token_claims,
+    try_access_token_from_request, try_bearer_token_from_headers, verify_auth_token_claims,
 };
 
 /// State for [`require_valid_bearer_token`]: the gatekeeper [`AppState`] plus the
@@ -26,7 +26,7 @@ pub struct BearerGate {
 pub async fn require_valid_bearer_token(
     State(gate): State<BearerGate>,
     headers: HeaderMap,
-    req: Request<Body>,
+    mut req: Request<Body>,
     next: Next,
 ) -> Response {
     // Exempt paths (the discovery docs fetched before a client holds a token)
@@ -45,7 +45,28 @@ pub async fn require_valid_bearer_token(
     if let Err(e) = verify_auth_token_claims(&gate.state, &origin, &token) {
         return response_templates::verify_error_response("verify_auth_token_claims failed", e);
     }
+    // Normalize the just-verified token into an `Authorization: Bearer` header so
+    // a downstream service that reads *only* that header still authenticates —
+    // notably emr's JWKS-backed HFS auth on the FHIR router. When the token rode
+    // the `wf_auth` cookie (the web path) there is no bearer header for that
+    // inner check to find; a request that already carried one is left untouched.
+    ensure_bearer_header(req.headers_mut(), &token);
     next.run(req).await
+}
+
+/// If `headers` carries no `Authorization: Bearer`, insert one carrying `token`.
+/// Lets a cookie-sourced (already-verified) token satisfy a downstream check
+/// that reads only the bearer header, without disturbing a request that already
+/// presents a bearer. A `token` that can't form a valid header value is skipped
+/// — unreachable in practice, since the caller only passes a token the upstream
+/// verify already accepted.
+fn ensure_bearer_header(headers: &mut HeaderMap, token: &str) {
+    if try_bearer_token_from_headers(headers).is_some() {
+        return;
+    }
+    if let Ok(value) = HeaderValue::from_str(&format!("Bearer {token}")) {
+        headers.insert(header::AUTHORIZATION, value);
+    }
 }
 
 /// Whether `path` is in the exempt set. Exact match after trimming trailing
@@ -58,7 +79,8 @@ fn is_exempt(path: &str, exempt: &[String]) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::is_exempt;
+    use super::{ensure_bearer_header, is_exempt};
+    use axum::http::{header, HeaderMap, HeaderValue};
 
     fn exempt() -> Vec<String> {
         vec![
@@ -94,5 +116,34 @@ mod tests {
     #[test]
     fn empty_exempt_list_gates_everything() {
         assert!(!is_exempt("/fhir-r4/metadata", &[]));
+    }
+
+    fn bearer(headers: &HeaderMap) -> Option<&str> {
+        headers
+            .get(header::AUTHORIZATION)
+            .and_then(|v| v.to_str().ok())
+    }
+
+    #[test]
+    fn ensure_bearer_header_injects_a_cookie_sourced_token() {
+        // A request that authenticated by the `wf_auth` cookie carries no
+        // Authorization header; the gate injects the verified token so a
+        // bearer-only downstream (emr's HFS auth) accepts it.
+        let mut headers = HeaderMap::new();
+        ensure_bearer_header(&mut headers, "the.jwt.value");
+        assert_eq!(bearer(&headers), Some("Bearer the.jwt.value"));
+    }
+
+    #[test]
+    fn ensure_bearer_header_leaves_an_existing_bearer_untouched() {
+        // A request that already presents a bearer is left exactly as-is — the
+        // gate never overwrites the caller's own header.
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::AUTHORIZATION,
+            HeaderValue::from_static("Bearer original.jwt"),
+        );
+        ensure_bearer_header(&mut headers, "different.jwt");
+        assert_eq!(bearer(&headers), Some("Bearer original.jwt"));
     }
 }

@@ -95,7 +95,10 @@ describe('SettingsScreen', () => {
     expect(links.length).toBeGreaterThanOrEqual(2)
     for (const link of links) {
       const href = link.getAttribute('href') ?? ''
-      expect(href.startsWith('/settings/')).toBe(true)
+
+      const isSettingsPage  =href.startsWith('/settings/')
+      const isLogout = href === '/access/logout'
+      expect(isSettingsPage || isLogout).toBe(true)
     }
   })
 

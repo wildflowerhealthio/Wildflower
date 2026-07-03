@@ -15,6 +15,13 @@ const settingsItems: readonly SettingsItem[] = [
   ...tunnelSettingsItemsFragment,
   ...gatekeeperSettingsItemsFragment,
   ...databasesSettingsItemsFragment,
+  {
+    id: 'logout',
+    href: '/access/logout',
+    hard: true,
+    title: 'Logout',
+    subtitle: 'Log out of Wildflower and clear the session.',
+  },
 ]
 
 /**

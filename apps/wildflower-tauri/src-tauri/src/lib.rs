@@ -70,6 +70,58 @@ impl OwnerAuth for GatekeeperOwnerAuth {
     }
 }
 
+/// Desktop loopback-owner trust: the current host owner token, read per request
+/// to present on behalf of a direct-local caller. A `watch::Receiver` clone of
+/// the same channel `setup_gatekeeper` publishes the minted token on, so a
+/// mid-session re-mint is picked up on the next request.
+#[derive(Clone)]
+struct LoopbackOwnerTrust {
+    host_owner_token: tokio::sync::watch::Receiver<Option<String>>,
+}
+
+/// Present the host's own owner token on behalf of a **direct-local** request —
+/// one that reached the loopback API over a loopback socket peer AND without a
+/// `Forwarded` header (a tunnel-relayed remote caller carries one). WKWebView
+/// won't carry the host-planted `wf_auth` cookie cross-site (wry drops
+/// `SameSite=None`, and WebKit won't send a `Secure` cookie over http loopback),
+/// so the desktop webview authenticates on *connection provenance* instead: the
+/// host attaches its owner bearer, and the gatekeeper gate and emr's own JWKS
+/// bearer check both validate it normally — no slice-side special-casing.
+///
+/// SECURITY: this trusts *every* direct-loopback caller as owner, not only the
+/// webview — any local process on the machine reaches the same surface. That is
+/// the desktop single-user trust model (a local process running as the user can
+/// already read the app's data on disk). It stays gated on `!forwarded` so it
+/// never extends to tunnel-relayed remote callers, and skips the pre-auth
+/// login/discovery surface (`/oauth`, `/.well-known`) where a stray owner bearer
+/// could confuse client authentication. An existing `Authorization` header is
+/// left untouched. Applied inside the loopback-peer gate, so a non-loopback peer
+/// is already rejected before this runs.
+async fn inject_loopback_owner_token(
+    axum::extract::State(trust): axum::extract::State<LoopbackOwnerTrust>,
+    connect_info: Option<axum::Extension<axum::extract::ConnectInfo<SocketAddr>>>,
+    mut req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    use axum::http::{header, HeaderValue};
+
+    let peer_is_loopback = connect_info
+        .is_some_and(|axum::Extension(axum::extract::ConnectInfo(addr))| addr.ip().is_loopback());
+    let forwarded = shared_structures_rust::served_origin::is_forwarded(req.headers());
+    let already_authed = req.headers().contains_key(header::AUTHORIZATION);
+    let path = req.uri().path();
+    let is_public_surface = path.starts_with("/oauth") || path.starts_with("/.well-known");
+
+    if peer_is_loopback && !forwarded && !already_authed && !is_public_surface {
+        if let Some(token) = trust.host_owner_token.borrow().clone() {
+            if let Ok(value) = HeaderValue::from_str(&format!("Bearer {token}")) {
+                req.headers_mut().insert(header::AUTHORIZATION, value);
+            }
+        }
+    }
+    next.run(req).await
+}
+
 async fn run_server(
     runtime: ServerRuntimeConfig,
     publishers: bridge::BridgePublishers,
@@ -337,6 +389,17 @@ async fn run_server(
         .merge(apps.launch_router)
         .merge(gated_databases)
         .fallback(spa::handle_serving_spa_html)
+        // Desktop loopback-owner trust (see `inject_loopback_owner_token`):
+        // present the host owner token for a direct-local caller so the webview
+        // authenticates on connection provenance rather than the cross-site
+        // cookie WKWebView won't carry. Inner of CORS (which answers preflight
+        // first) and of the loopback-peer gate applied below.
+        .layer(axum::middleware::from_fn_with_state(
+            LoopbackOwnerTrust {
+                host_owner_token: publishers.host_owner_token_sender.subscribe(),
+            },
+            inject_loopback_owner_token,
+        ))
         .layer(CorsLayer::very_permissive());
 
     // Defense-in-depth: gate the entire API surface on a loopback peer address.
