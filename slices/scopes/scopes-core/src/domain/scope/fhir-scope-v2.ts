@@ -48,19 +48,13 @@ class FhirV2ResourceScope extends BaseResourceScope<
   }
 
   static parse(s: string): FhirV2ResourceScope | null {
-    const parts = BaseResourceScope.components(s)
-    if (parts === null) return null
-
-    const context = Contexts.Fhir.parse(parts.context)
-    if (context === null) return null
-
-    const resource = ResourceType.Fhir.parse(parts.resource)
-    if (resource === null) return null
-
-    const permission = Permission.Cruds.parse(parts.permissions)
-    if (permission === null) return null
-
-    return new FhirV2ResourceScope(context, resource, permission)
+    return ScopeConfiguration.parse(
+      s,
+      Contexts.Fhir.parse,
+      ResourceType.Fhir.parse,
+      (segment) => Permission.Cruds.parse(segment),
+      (context, resource, permission) => new FhirV2ResourceScope(context, resource, permission)
+    )
   }
 }
 

@@ -21,7 +21,7 @@ import type * as Contexts from './contexts'
 import type { MultiScope } from './multi-scope.ts'
 import type * as Permission from './permission'
 import type * as ResourceType from './resource-type'
-import type { BaseScope, BaseResourceScope } from './scope.ts'
+import { BaseResourceScope, type BaseScope } from './scope.ts'
 
 /**
  * The construction recipe for one *concrete* resource-scope variant, keyed to its
@@ -160,6 +160,44 @@ class ScopeConfiguration<
             ).granted
         )
     )
+  }
+
+  /**
+   * Parse a `context/Type.perms` string into a resource scope, or `null` if any segment
+   * fails — the shared skeleton behind every variant's `parse` ({@link BaseResourceScope.components}
+   * → context → resource → permission → `make`). Each variant supplies its own segment parsers
+   * and concrete constructor, so `TScope` is inferred from `make` and the return stays that
+   * variant's *concrete* scope (no base-view erasure). Static: reads without a recipe instance.
+   */
+  static parse<
+    TContext extends Contexts.Context,
+    TResourceType extends ResourceType.Base,
+    TInteraction extends string,
+    TScope,
+  >(
+    s: string,
+    parseContext: (segment: string) => TContext | null,
+    parseResource: (segment: string) => TResourceType | null,
+    parsePermission: (segment: string) => Permission.Base<TInteraction> | null,
+    make: (
+      context: TContext,
+      resource: TResourceType,
+      permission: Permission.Base<TInteraction>
+    ) => TScope
+  ): TScope | null {
+    const parts = BaseResourceScope.components(s)
+    if (parts === null) return null
+
+    const context = parseContext(parts.context)
+    if (context === null) return null
+
+    const resource = parseResource(parts.resource)
+    if (resource === null) return null
+
+    const permission = parsePermission(parts.permissions)
+    if (permission === null) return null
+
+    return make(context, resource, permission)
   }
 
   /**

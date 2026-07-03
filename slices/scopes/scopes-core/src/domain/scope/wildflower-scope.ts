@@ -62,19 +62,13 @@ class WildflowerResourceScope extends BaseResourceScope<
   }
 
   static parse(s: string): WildflowerResourceScope | null {
-    const parts = BaseResourceScope.components(s)
-    if (parts === null) return null
-
-    const context = Contexts.Wildflower.parse(parts.context)
-    if (context === null) return null
-
-    const resource = ResourceType.Wildflower.parse(parts.resource)
-    if (resource === null) return null
-
-    const permission = Permission.Cruds.parse(parts.permissions)
-    if (permission === null) return null
-
-    return new WildflowerResourceScope(context, resource, permission)
+    return ScopeConfiguration.parse(
+      s,
+      Contexts.Wildflower.parse,
+      ResourceType.Wildflower.parse,
+      (segment) => Permission.Cruds.parse(segment),
+      (context, resource, permission) => new WildflowerResourceScope(context, resource, permission)
+    )
   }
 }
 
