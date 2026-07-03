@@ -17,8 +17,14 @@ abstract class WildflowerResourceType extends BaseResourceType {
   }
 }
 
-/** Strict 1:1 Wildflower admin `Resource` → display name. */
-const RESOURCE_LABELS: Readonly<Record<string, { label: string; plural: string }>> = {
+/**
+ * Strict 1:1 Wildflower admin `Resource` → display name. Keyed by the closed
+ * {@link WildflowerResourceType.Resource} set, so the map is exhaustive and every
+ * lookup is total — adding a resource is a compile error until it's labelled.
+ */
+const RESOURCE_LABELS: Readonly<
+  Record<WildflowerResourceType.Resource, { label: string; plural: string }>
+> = {
   AuthorizationRequest: { label: 'Authorization request', plural: 'Authorization requests' },
   Grant: { label: 'Grant', plural: 'Grants' },
   Client: { label: 'Connected app', plural: 'Connected apps' },
@@ -64,9 +70,6 @@ namespace WildflowerResourceType {
   export class Wildcard extends WildflowerResourceType {
     kind = 'wildflowerWildcard' as const
 
-    /** The required "current and future" note shown wherever a wildcard is selectable (`spec.md §4`). */
-    static readonly NOTE = 'Covers all current and future record types.'
-
     serialize(): string {
       return '*'
     }
@@ -106,19 +109,9 @@ namespace WildflowerResourceType {
     /** Whether a string is one of the closed set of Wildflower admin resources. */
     export const is = (s: string): s is Resource => (all as readonly string[]).includes(s)
 
-    export const singularLabel = (r: Resource): string => {
-      if (r in RESOURCE_LABELS) return RESOURCE_LABELS[r].label
-      // oxlint-disable-next-line no-console
-      console.warn(`WildflowerResourceType.Resource.singularLabel: unknown resource ${r as string}`)
-      return r
-    }
+    export const singularLabel = (r: Resource): string => RESOURCE_LABELS[r].label
 
-    export const pluralLabel = (r: Resource): string => {
-      if (r in RESOURCE_LABELS) return RESOURCE_LABELS[r].plural
-      // oxlint-disable-next-line no-console
-      console.warn(`WildflowerResourceType.Resource.pluralLabel: unknown resource ${r as string}`)
-      return `${r}s`
-    }
+    export const pluralLabel = (r: Resource): string => RESOURCE_LABELS[r].plural
   }
 
   export const parse = (s: string): WildflowerResourceType | null => {

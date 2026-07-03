@@ -114,20 +114,23 @@ class ScopeConfiguration<
     const owned = this.select(ms)
     const out: string[] = []
     for (const scope of owned) {
-      const permission: Permission.Base<TInteraction> = scope.permission
-      let remainder = permission
-      for (const interaction of permission.toArray()) {
-        if (
-          !ScopeConfiguration.scopesGrantInteraction<TContext, TResourceType, TInteraction>(
-            owned,
-            scope.context,
-            scope.resource,
-            interaction
-          ).grantedAtOwnResource
-        ) {
-          remainder = remainder.withoutInteraction(interaction)
-        }
-      }
+      // §3 dedupe: the interactions a strictly-broader same-context scope (a `*` wildcard
+      // row) already grants — computed once as a single covering permission, then subtracted,
+      // rather than re-folding the whole partition per interaction.
+      const covered = this.emptyPermission.make(
+        owned
+          .filter(
+            (other) =>
+              other !== scope &&
+              Equal.equals(other.context, scope.context) &&
+              !Equal.equals(other.resource, scope.resource) &&
+              other.resource.supersetOf(scope.resource)
+          )
+          .flatMap((other) => other.permission.toArray())
+      )
+      const remainder = this.emptyPermission.make(
+        scope.permission.toArray().filter((interaction) => !covered.has(interaction))
+      )
       const serialized = this.make(scope.context, scope.resource, remainder).serialize()
       if (serialized !== null && serialized !== '') out.push(serialized)
     }

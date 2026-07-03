@@ -15,6 +15,7 @@ import { BasePermission } from './permission-style.ts'
 /** The two SMART v1 Read/Write interactions — FHIR-only. */
 class ReadWritePermissionStyle extends BasePermission<ReadWritePermissionStyle.Interaction> {
   kind = 'readWrite' as const
+  layout = 'inline' as const
   items = [
     { id: 'read', name: 'Read', code: 'read' },
     { id: 'write', name: 'Write', code: 'write' },
@@ -64,16 +65,9 @@ class ReadWritePermissionStyle extends BasePermission<ReadWritePermissionStyle.I
   }
 }
 
-// oxlint-disable import/group-exports
 namespace ReadWritePermissionStyle {
   /** A single v1 interaction — one of the two editable words. Both ⇒ `*`; neither ⇒ no scope. */
   export type Interaction = 'read' | 'write'
-  namespace Interaction {
-    export const READ: Interaction = 'read'
-    export const WRITE: Interaction = 'write'
-
-    export const isInteraction = (s: string): s is Interaction => s === READ || s === WRITE
-  }
 }
 
 export default ReadWritePermissionStyle

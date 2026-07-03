@@ -49,6 +49,12 @@ type InteractionId<T extends BasePermission<string>> = T extends BasePermission<
 abstract class BasePermission<TInteractions extends string> {
   abstract kind: string
   abstract items: ReadonlyArray<Interaction<TInteractions>>
+  /**
+   * How a picker lays this style out — a cell matrix (`grid`, the cruds interactions) or a
+   * single inline multiselect (`inline`, the v1 Read/Write words). The style owns its own
+   * layout so the grid model reads it directly instead of string-matching on `kind`.
+   */
+  abstract layout: 'grid' | 'inline'
 
   readonly interactions: ReadonlySet<TInteractions>
 

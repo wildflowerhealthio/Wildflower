@@ -86,6 +86,20 @@ const buildGrid = <
 ): Grid => {
   const { configuration, context, catalog } = section
 
+  // The wildcard row's label ("✶ All record types") comes from the domain, so the lock
+  // copy below doesn't duplicate it. Keyed by every {@link Cell.LockReason} kind, so the
+  // map stays exhaustive — a new kind is a compile error until it's given copy.
+  const wildcardLabel = configuration.parseResource('*')?.pluralLabel() ?? 'all record types'
+  const lockCopy: Record<Cell.LockReason['kind'], string> = {
+    wildcard: `Granted by the ${wildcardLabel} row — change it there`,
+    required: 'Required by the app',
+    notRequested: 'Not requested by the app',
+  }
+
+  /** Render `scopes-core`'s structured {@link Cell.LockReason} into the user-facing sentence. */
+  const describeLock = (reason: Cell.LockReason | null): string | null =>
+    reason === null ? null : lockCopy[reason.kind]
+
   /** The rendered row for one resource of this section. */
   const rowFor = (resource: TResource): GridRow => {
     const stored = configuration
@@ -95,13 +109,17 @@ const buildGrid = <
       resource: resource.serialize(),
       label: resource.singularLabel(),
       code: stored?.serialize() ?? `${context.serialize()}/${resource.serialize()}`,
-      layout: configuration.emptyPermission.kind === 'cruds' ? 'grid' : 'inline',
-      items: configuration.emptyPermission.items.map((item) => ({
-        id: item.id,
-        name: item.name,
-        code: item.code,
-        cell: Cell.forItem(configuration, grant, scopeRequest, context, resource, item.id),
-      })),
+      layout: configuration.emptyPermission.layout,
+      items: configuration.emptyPermission.items.map((item) => {
+        const cell = Cell.forItem(configuration, grant, scopeRequest, context, resource, item.id)
+        return {
+          id: item.id,
+          name: item.name,
+          code: item.code,
+          state: cell.state,
+          reason: describeLock(cell.lockReason),
+        }
+      }),
     }
   }
 

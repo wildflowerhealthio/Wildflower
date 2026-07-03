@@ -26,19 +26,21 @@ interface PermissionGridProps {
 }
 
 const GridCell = ({
-  cell,
+  state,
+  reason,
   label,
   onToggle,
 }: {
-  readonly cell: Cell.Cell
+  readonly state: Cell.State
+  readonly reason: string | null
   readonly label: string
   readonly onToggle: () => void
 }): JSX.Element => {
-  const checked = cell.state === 'on' || cell.state === 'locked'
-  const interactive = cell.state === 'on' || cell.state === 'off'
+  const checked = state === 'on' || state === 'locked'
+  const interactive = state === 'on' || state === 'off'
   // Fold the reason into the accessible name so assistive tech conveys WHY a
   // cell can't change (a disabled <button>'s `title` tooltip isn't reachable).
-  const accessibleName = cell.lockReason === null ? label : `${label} — ${cell.lockReason}`
+  const accessibleName = reason === null ? label : `${label} — ${reason}`
   return (
     <button
       type="button"
@@ -46,8 +48,8 @@ const GridCell = ({
       aria-checked={checked}
       aria-label={accessibleName}
       disabled={!interactive}
-      title={cell.lockReason ?? undefined}
-      className={cn(styles['cell'], styles[`cell--${cell.state}`])}
+      title={reason ?? undefined}
+      className={cn(styles['cell'], styles[`cell--${state}`])}
       onClick={interactive ? onToggle : undefined}
     >
       <span aria-hidden="true" className={styles['glyph']}>
@@ -124,7 +126,8 @@ const PermissionGrid = ({
                 row.items.map((item) => (
                   <td key={item.id} className={styles['td']}>
                     <GridCell
-                      cell={item.cell}
+                      state={item.state}
+                      reason={item.reason}
                       label={`${item.name} ${row.label}`}
                       onToggle={() => {
                         onToggleItem(row.resource, item.id)

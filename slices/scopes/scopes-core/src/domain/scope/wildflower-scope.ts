@@ -55,15 +55,6 @@ class WildflowerResourceScope extends BaseResourceScope<
     this.permission = permission
   }
 
-  get configuration(): ScopeConfiguration<
-    Contexts.Wildflower,
-    ResourceType.Wildflower,
-    Permission.Cruds.Interaction,
-    'wildflower'
-  > {
-    return WildflowerResourceScope.configuration
-  }
-
   withPermission(
     permission: Permission.Base<Permission.Cruds.Interaction>
   ): WildflowerResourceScope {

@@ -81,9 +81,6 @@ namespace FhirResourceType {
   export class Wildcard extends FhirResourceType {
     kind = 'fhirWildcard' as const
 
-    /** The required "current and future" note shown wherever a wildcard is selectable (`spec.md §4`). */
-    static readonly NOTE = 'Covers all current and future record types.'
-
     serialize(): string {
       return '*'
     }

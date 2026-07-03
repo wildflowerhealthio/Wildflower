@@ -43,15 +43,6 @@ class FhirV2ResourceScope extends BaseResourceScope<
     this.permission = permission
   }
 
-  get configuration(): ScopeConfiguration<
-    Contexts.Fhir,
-    ResourceType.Fhir,
-    Permission.Cruds.Interaction,
-    'fhirV2'
-  > {
-    return FhirV2ResourceScope.configuration
-  }
-
   withPermission(permission: Permission.Cruds): FhirV2ResourceScope {
     return new FhirV2ResourceScope(this.context, this.resource, permission)
   }

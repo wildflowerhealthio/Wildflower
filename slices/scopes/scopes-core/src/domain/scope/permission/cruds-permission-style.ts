@@ -13,11 +13,10 @@
 import { sentenceJoin } from '../../../language-util.ts'
 import { BasePermission } from './permission-style.ts'
 
-/** Sort an arbitrary interaction collection into canonical `c r u d s` order, deduped. */
-
 /** The five SMART v2 cruds interactions — used by FHIR v2 *and* Wildflower. */
 class CrudsPermission extends BasePermission<CrudsPermission.Interaction> {
   kind = 'cruds' as const
+  layout = 'grid' as const
   items = [
     { id: 'c', name: 'Create', code: 'c' },
     { id: 'r', name: 'Read', code: 'r' },
@@ -51,26 +50,13 @@ class CrudsPermission extends BasePermission<CrudsPermission.Interaction> {
   }
 
   label(): string {
-    const labels = this.toArray().map((id) => INTERACTION_LABELS[id])
-    return sentenceJoin(labels)
+    const byId = new Map(this.items.map((item) => [item.id, item.name]))
+    return sentenceJoin(this.toArray().map((id) => byId.get(id) ?? id))
   }
 }
 
-const INTERACTION_LABELS: Record<CrudsPermission.Interaction, string> = {
-  c: 'Create',
-  r: 'Read',
-  u: 'Update',
-  d: 'Destroy',
-  s: 'Search',
-} as const
-
-// oxlint-disable import/group-exports
 namespace CrudsPermission {
   export type Interaction = 'c' | 'r' | 'u' | 'd' | 's'
-  namespace Interaction {
-    export const all: readonly Interaction[] = ['c', 'r', 'u', 'd', 's']
-    export const LABELS = INTERACTION_LABELS
-  }
   export const empty = new CrudsPermission([])
 }
 

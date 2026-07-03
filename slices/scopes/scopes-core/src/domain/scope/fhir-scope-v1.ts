@@ -44,15 +44,6 @@ class FhirV1ResourceScope extends BaseResourceScope<
     this.permission = permission
   }
 
-  get configuration(): ScopeConfiguration<
-    Contexts.Fhir,
-    ResourceType.Fhir,
-    ReadWritePermission.Interaction,
-    'fhirV1'
-  > {
-    return FhirV1ResourceScope.configuration
-  }
-
   withPermission(permission: ReadWritePermission): FhirV1ResourceScope {
     return new FhirV1ResourceScope(this.context, this.resource, permission)
   }

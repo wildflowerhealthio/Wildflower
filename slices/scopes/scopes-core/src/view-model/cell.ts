@@ -16,10 +16,22 @@ import type * as ScopeRequest from './scope-request.ts'
 /** One of the four visual states a permission control (cell or word) can be in. */
 type State = 'on' | 'off' | 'locked' | 'disabled'
 
-/** A resolved grid cell: its state plus the tooltip explaining a lock/disable. */
+/**
+ * Why a control is locked or disabled — *structured data, not user-facing English*. Pure
+ * `scopes-core` stays copy-free (the presentation layer renders the sentence, so the
+ * `✶ All record types` label lives in exactly one place). `wildcard`: covered by the
+ * same-context `*` record-type row (`spec.md §3`). `required` / `notRequested`: inside /
+ * outside the app's request envelope (`spec.md §2`).
+ */
+type LockReason =
+  | { readonly kind: 'wildcard' }
+  | { readonly kind: 'required' }
+  | { readonly kind: 'notRequested' }
+
+/** A resolved grid cell: its state plus the structured reason for a lock/disable. */
 type Cell = {
   readonly state: State
-  readonly lockReason: string | null
+  readonly lockReason: LockReason | null
 }
 
 /** The row for a (context, resource) within a variant's partition (exact match). */
@@ -33,13 +45,6 @@ const rowFor = <
   resource: TResource
 ): Scope.ResourceScope.Base<TContext, TResource, TInteraction> | undefined =>
   partition.find((s) => s.hasContext(context) && s.hasResource(resource))
-
-/**
- * The §3 lock copy for a cell a same-context `✶` wildcard row grants. Because coverage
- * fixes the context strictly ({@link Scope.ScopeConfiguration.scopesGrantInteraction}), a
- * lock can *only* come from a `*` record-type row, so the reason is unambiguous.
- */
-const WILDCARD_LOCK_REASON = 'Granted by the ✶ All record types row — change it there'
 
 /**
  * Resolve one permission control for the grid within `configuration`'s variant. Order:
@@ -75,13 +80,13 @@ const forItem = <
   // §3: covered by a same-context `*` wildcard ⇒ locked on. A held grant is always shown,
   // so this precedes the §2 clamp below.
   if (!grantedness.grantedAtOwnResource) {
-    return { state: 'locked', lockReason: WILDCARD_LOCK_REASON }
+    return { state: 'locked', lockReason: { kind: 'wildcard' } }
   }
   // §2 required: a control in the required subset is locked on.
   if (scopeRequest !== null) {
     const required = rowFor(configuration.select(scopeRequest.required), context, resource)
     if (required !== undefined && required.permission.has(itemId)) {
-      return { state: 'locked', lockReason: 'Required by the app' }
+      return { state: 'locked', lockReason: { kind: 'required' } }
     }
   }
   // §2 clamp: a control outside the requested envelope is disabled — unless the draft
@@ -93,11 +98,11 @@ const forItem = <
       TInteraction
     >(configuration.select(scopeRequest.requested), context, resource, itemId).granted
     if (!requestable) {
-      return { state: 'disabled', lockReason: 'Not requested by the app' }
+      return { state: 'disabled', lockReason: { kind: 'notRequested' } }
     }
   }
   // on/off: not locked here, so `granted` is exactly "the stored row has this interaction".
   return { state: grantedness.granted ? 'on' : 'off', lockReason: null }
 }
 
-export { type State, type Cell, forItem }
+export { type State, type LockReason, type Cell, forItem }

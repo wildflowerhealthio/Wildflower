@@ -29,7 +29,7 @@ describe('Cell.forItem — §2 clamp + §3 lock', () => {
     const grant = Grant.make([fhirV2('*', ['r']), fhirV2('Observation', ['r'])])
     expect(Cell.forItem(v2, grant, null, patient, obs, 'r')).toEqual({
       state: 'locked',
-      lockReason: 'Granted by the ✶ All record types row — change it there',
+      lockReason: { kind: 'wildcard' },
     })
   })
 
@@ -64,7 +64,7 @@ describe('Cell.forItem — §2 clamp + §3 lock', () => {
     const req = request([fhirV2('Observation', ['r'])], [fhirV2('Observation', ['r'])])
     expect(Cell.forItem(v2, Grant.make([]), req, patient, obs, 'r')).toEqual({
       state: 'locked',
-      lockReason: 'Required by the app',
+      lockReason: { kind: 'required' },
     })
   })
 
