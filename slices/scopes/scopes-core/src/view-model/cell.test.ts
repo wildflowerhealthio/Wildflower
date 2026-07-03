@@ -86,7 +86,7 @@ describe('Cell.forItem — §2 clamp + §3 lock', () => {
         Scope.ResourceType.Fhir.parse(name)!,
         new Scope.Permission.Cruds(l)
       )
-    const system = new Scope.Contexts.Fhir('system')
+    const system = Scope.Contexts.Fhir.system
     // A system/*.r request authorizes the concrete patient Observation.r cell...
     expect(
       Cell.forItem(v2, Grant.make([]), request([fhirAt('system', '*', ['r'])]), patient, obs, 'r')
