@@ -2,7 +2,7 @@
 
 import * as Contexts from './contexts'
 import type * as Permission from './permission'
-import ReadWritePermission from './permission/read-write-permission-style.ts'
+import ReadWritePermission from './permission/read-write-permission.ts'
 import * as ResourceType from './resource-type'
 import { ScopeConfiguration } from './scope-configuration.ts'
 import { BaseResourceScope } from './scope.ts'

@@ -4,7 +4,7 @@
  * `WildflowerResourceType` (`scope/resource/wildflower.rs`). These resources are
  * **not** reachable through the FHIR `*` wildcard — the set is closed.
  *
- * Wildflower permissions are {@link CrudsPermissionStyle} permissions only — the
+ * Wildflower permissions are {@link CrudsPermission} permissions only — the
  * SMART v1 word forms (`read`/`write`/`*`) are FHIR-only, so `wildflower/Grant.read`
  * does not parse (it falls back to {@link UnknownScope}).
  *

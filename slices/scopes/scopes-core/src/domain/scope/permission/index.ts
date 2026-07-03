@@ -4,8 +4,8 @@ import {
   type Interaction,
   type Subtraction,
   type InteractionId,
-} from './permission-style.ts'
-import ReadWrite from './read-write-permission-style.ts'
+} from './permission.ts'
+import ReadWrite from './read-write-permission.ts'
 
 type Any = Cruds | ReadWrite
 

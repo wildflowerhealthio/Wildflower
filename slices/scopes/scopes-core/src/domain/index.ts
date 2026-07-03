@@ -9,7 +9,7 @@
  * | {@link Grant}              | `scope/grant.rs`                       |
  * | {@link KnownScope}         | `scope/known.rs`                       |
  * | {@link UnknownScope}       | `scope/unknown.rs`                     |
- * | {@link CrudsPermissionStyle} / {@link ReadWritePermissionStyle} | `scope/resource/permission.rs` (Rust split TBD) |
+ * | {@link CrudsPermission} / {@link ReadWritePermission} | `scope/resource/permission.rs` (Rust split TBD) |
  * | {@link Fhir}               | `scope/resource/fhir.rs`               |
  * | {@link Wildflower}         | `scope/resource/wildflower.rs`         |
  *

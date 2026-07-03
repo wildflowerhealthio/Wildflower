@@ -4,7 +4,7 @@ import { Scope } from '../../../index.ts'
 
 const ReadWrite = Scope.Permission.ReadWrite
 
-describe('ReadWritePermissionStyle — v1 word model', () => {
+describe('ReadWritePermission — v1 word model', () => {
   test('serialize the words (read/write/*); empty → null', () => {
     expect(ReadWrite.read.serialize()).toBe('read')
     expect(ReadWrite.write.serialize()).toBe('write')

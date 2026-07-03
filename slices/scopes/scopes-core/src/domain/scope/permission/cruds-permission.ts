@@ -1,17 +1,17 @@
 /**
- * The **cruds permission style** — a permission expressed as a set of v2 `cruds`
- * interactions. The single `cruds` letters are *interactions* (`c`reate, `r`ead,
- * `u`pdate, `d`elete, `s`earch); a {@link BasePermission} is any set of them, held as a
- * `Set` (the closest mirror of `scopes-rust`'s `u8` bit set) and canonicalized to
- * `c,r,u,d,s` order on serialize. The SMART v1 word style (`read`/`write`/`*`) is a
- * separate, FHIR-only concern ({@link ReadWritePermissionStyle}); the two are never
- * converted into one another — each is edited and compared in its own interactions.
+ * The **cruds permission** — a permission expressed as a set of v2 `cruds` interactions.
+ * The single `cruds` letters are *interactions* (`c`reate, `r`ead, `u`pdate, `d`elete,
+ * `s`earch); a {@link BasePermission} is any set of them, held as a `Set` (the closest
+ * mirror of `scopes-rust`'s `u8` bit set) and canonicalized to `c,r,u,d,s` order on
+ * serialize. The SMART v1 word form (`read`/`write`/`*`) is a separate, FHIR-only concern
+ * ({@link ReadWritePermission}); the two are never converted into one another — each is
+ * edited and compared in its own interactions.
  *
- * Namespace module (`import { CrudsPermissionStyle } from 'scopes-core'`).
+ * Namespace module (`import { CrudsPermission } from 'scopes-core'`).
  */
 
 import { sentenceJoin } from '../../../language-util.ts'
-import { BasePermission } from './permission-style.ts'
+import { BasePermission } from './permission.ts'
 
 /** The five SMART v2 cruds interactions — used by FHIR v2 *and* Wildflower. */
 class CrudsPermission extends BasePermission<CrudsPermission.Interaction> {

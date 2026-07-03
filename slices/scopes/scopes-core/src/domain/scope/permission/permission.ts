@@ -1,12 +1,12 @@
 /**
- * The **permission style** — the editable *form* of a resource scope's permission.
- * A style is generic over its interaction key `I` ({@link PermissionIdentity}), so
- * the picker, the grid cell builder, and the toggle op are written *once* on the
- * base {@link BasePermission} and read on the style's *own* `ReadonlySet<I>` (`'c'|…|'s'`
+ * The **base permission** — the editable *form* of a resource scope's permission.
+ * It is generic over its interaction key `I` ({@link PermissionIdentity}), so the
+ * picker, the grid cell builder, and the toggle op are written *once* on the base
+ * {@link BasePermission} and read on the form's *own* `ReadonlySet<I>` (`'c'|…|'s'`
  * for cruds, `'read'|'write'` for the v1 words). Two instances:
- * {@link CrudsPermissionStyle} (the five SMART v2 `cruds` interactions, used by FHIR
- * v2 *and* Wildflower) and {@link ReadWritePermissionStyle} (the two SMART v1
- * Read/Write words, FHIR-only).
+ * {@link CrudsPermission} (the five SMART v2 `cruds` interactions, used by FHIR v2
+ * *and* Wildflower) and {@link ReadWritePermission} (the two SMART v1 Read/Write
+ * words, FHIR-only).
  *
  * **No cross-style conversion.** The styles are never collapsed into a single
  * currency — a permission is only ever compared, subtracted, or toggled against

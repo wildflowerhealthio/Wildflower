@@ -3,7 +3,7 @@ import { CheckboxGroup, type CheckboxGroupItem } from 'react-tundraish'
 import type { Cell } from 'scopes-core'
 
 /**
- * One selectable control in a {@link PermissionPicker} — a permission-style item (its id,
+ * One selectable control in a {@link PermissionPicker} — a permission item (its id,
  * display name, and mono code) plus its resolved {@link Cell.State} and the pre-rendered
  * lock/disable `reason` copy. The grid model (`buildGrid`) resolves the cell via
  * `Cell.forItem` and renders the reason, so this component stays a pure presenter and the
