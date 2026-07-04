@@ -12,9 +12,8 @@ description: Expert-level JavaScript testing skill focused on writing high-quali
 3. avoid regressions
 4. challenge the code
 
-**🔧 Recommended tooling:** `vitest`, `fast-check`, `@fast-check/vitest`, `@testing-library/*`, `@vitest/browser-playwright`, `msw` installed as devDependencies.  
-**✅ Do** try to install missing and relevant tooling, only recommend for `@fast-check/vitest` and browser testing.  
-**✅ Do** highly recommend user to install missing and relevant tooling.  
+**🔧 Recommended tooling:** the test API from `vite-plus/test`, raw `fast-check`, the repo's `numRunsFor` helper from `kitchen-sink/test`, `@testing-library/*`, `@vitest/browser-playwright`, `msw`.  
+**⛔ Do NOT** use or install `@fast-check/vitest` or `@effect/vitest` in this repo. Their `it.prop` / `it.effect` register tests against the standalone `vitest` package's runner instance — a *different* module instance than `vite-plus/test`'s — so collection dies with `Error: Vitest failed to find the current suite. This is a bug in Vitest.` Zero files import either package; keep it that way. Use raw `fast-check` inside a normal `it(...)`/`test(...)` from `vite-plus/test` instead (see examples below).  
 **✅ Do** adapt yourself to missing tools.
 
 ## File and code layout
@@ -112,30 +111,36 @@ const age = computeAge(user)
 //...
 ```
 
-**👍 Prefer** leveraging `@fast-check/vitest`, if installed
+**👍 Prefer** driving unused/variable fields from `fast-check` arbitraries via `fc.assert`/`fc.property`
 
 ```ts
-import { describe } from 'vite-plus/test'
-import { it, fc } from '@fast-check/vitest'
+import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
+import { describe, expect, it } from 'vite-plus/test'
 
 describe('computeAge', () => {
-  it('should compute a positive age', ({ g }) => {
-    // Arrange
-    const user: User = {
-      name: g(fc.string), // unused
-      birthday: '2010-02-03',
-    }
+  it('should compute a positive age', () => {
+    fc.assert(
+      fc.property(fc.string(), (name) => {
+        // Arrange
+        const user: User = {
+          name, // unused
+          birthday: '2010-02-03',
+        }
 
-    // Act
-    const age = computeAge(user)
+        // Act
+        const age = computeAge(user)
 
-    // Assert
-    expect(age).toBeGreaterThan(0)
+        // Assert
+        expect(age).toBeGreaterThan(0)
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
   })
 })
 ```
 
-**👍 Prefer** leveraging `fast-check`, if installed but not `@fast-check/vitest`
+Why `numRunsFor`? It lets `vp run test:changed` scale the run count down for packages unchanged vs `origin/main`. Hardcoding `numRuns` defeats that — always route the count through `numRunsFor({ base: N })`.
 
 **👎 Avoid** writing tests depending on unstable values  
 Eg.: in the example above `computeAge` depends on the current date  
@@ -143,21 +148,31 @@ Remark: same for locales and plenty other platform dependent values
 
 **👍 Prefer** stubbing today using `vi.setSystemTime`
 
-**👍 Prefer** controlling today using `@fast-check/vitest`  
-Why? Contrary to `vi.setSystemTime` alone you check the code against one new today at each run, but if it happens to fail one day you will be reported with the exact date causing the problem
+**👍 Prefer** controlling today by generating the date with `fast-check`  
+Why? Contrary to `vi.setSystemTime` with a single hardcoded date, you check the code against one new today at each run, but if it happens to fail one day you will be reported (via the printed fast-check seed and counterexample) with the exact date causing the problem
 
 ```ts
-// Arrange
-vi.setSystemTime(g(fc.date, { min: new Date('2010-02-04'), noInvalidDate: true }))
-const user: User = {
-  name: g(fc.string), // unused
-  birthday: '2010-02-03',
-}
+fc.assert(
+  fc.property(
+    fc.date({ min: new Date('2010-02-04'), noInvalidDate: true }),
+    fc.string(),
+    (today, name) => {
+      // Arrange
+      vi.setSystemTime(today)
+      const user: User = {
+        name, // unused
+        birthday: '2010-02-03',
+      }
+      // Act / Assert...
+    }
+  ),
+  { numRuns: numRunsFor({ base: 100 }) }
+)
 ```
 
 **👎 Avoid** writing tests depending on random values or entities
 
-**👍 Prefer** controlling randomly generated values by relying on `@fast-check/vitest` if installed, or `fast-check` otherwise
+**👍 Prefer** controlling randomly generated values by relying on `fast-check`
 
 **✅ Do** use property based tests for any test with a notion of always or never  
 Eg.: name being "should always do x when y" or "should never do x when y"  
@@ -171,16 +186,21 @@ Why? Property-based testing and example-based testing are complementary. Propert
 ```ts
 // for all a, b, c strings
 // b is a substring of a + b + c
-it.prop([fc.string(), fc.string(), fc.string()])('should detect the substring', (a, b, c) => {
-  // Arrange
-  const text = a + b + c
-  const pattern = b
+it('should detect the substring', () => {
+  fc.assert(
+    fc.property(fc.string(), fc.string(), fc.string(), (a, b, c) => {
+      // Arrange
+      const text = a + b + c
+      const pattern = b
 
-  // Act
-  const result = isSubstring(text, pattern)
+      // Act
+      const result = isSubstring(text, pattern)
 
-  // Assert
-  expect(result).toBe(true)
+      // Assert
+      expect(result).toBe(true)
+    }),
+    { numRuns: numRunsFor({ base: 100 }) }
+  )
 })
 ```
 
@@ -201,9 +221,7 @@ it.prop([fc.string(), fc.string(), fc.string()])('should detect the substring', 
 
 All this section considers that we are in the context of property based tests!
 
-**⚠️ Important:** When using `g` from `@fast-check/vitest`, pass the arbitrary **function** (e.g., `fc.string`, `fc.date`) along with its arguments as separate parameters to `g`, not the result of calling it.  
-Correct: `g(fc.string)`, `g(fc.date, { min: new Date('2010-01-01') })`  
-Incorrect: `g(fc.string())`, `g(fc.date({ min: new Date('2010-01-01') }))`
+**⚠️ Important:** Declare arbitraries by **calling** the builder (e.g. `fc.string()`, `fc.date({ min: new Date('2010-01-01') })`) and pass them positionally to `fc.property`/`fc.asyncProperty`; the generated values arrive as the predicate's parameters.
 
 **❌ Don't** generate inputs directly  
 The risk being that you may end up rewriting the code being tested in the test
@@ -342,67 +360,40 @@ fc.assert(
 )
 ```
 
-## Equivalence `fast-check` and `@fast-check/vitest`
+## Property test forms (raw `fast-check` — the only supported style here)
 
-Example 1.
+> **⛔ Reminder:** `@fast-check/vitest` and `@effect/vitest` do **not** work in this repo (their `it.prop` / `it.effect` bind to the standalone `vitest` runner, a different module instance than `vite-plus/test`, and collection fails with `Vitest failed to find the current suite`). Always use the raw `fast-check` forms below inside an `it`/`test` imported from `vite-plus/test`.
 
-```ts
-// with @fast-check/vitest
-import { it, fc } from '@fast-check/vitest'
-it('...', ({ g }) => {
-  //...
-})
-
-// with fast-check
-import { it } from 'vite-plus/test'
-import fc from 'fast-check'
-it('...', () => {
-  fc.assert(
-    fc.property(fc.gen(), (g) => {
-      //...
-    })
-  )
-})
-```
-
-Example 2.
+Synchronous property — wrap `fc.property` in `fc.assert`:
 
 ```ts
-// with @fast-check/vitest
-import { it, fc } from '@fast-check/vitest'
-it.prop([...arbitraries])('...', (...values) => {
-  //...
-})
-
-// with fast-check
+import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { it } from 'vite-plus/test'
-import fc from 'fast-check'
+
 it('...', () => {
   fc.assert(
     fc.property(...arbitraries, (...values) => {
       //...
-    })
+    }),
+    { numRuns: numRunsFor({ base: 100 }) }
   )
 })
 ```
 
-Example 3. If the predicate of `it` or `it.prop` is asynchronous, when using only `fast-check` the property has to be instantiated via `asyncProperty` and `assert` has to be awaited.
+Asynchronous property — use `fc.asyncProperty` and **await** `fc.assert`:
 
 ```ts
-// with @fast-check/vitest
-import { it, fc } from '@fast-check/vitest'
-it.prop([...arbitraries])('...', async (...values) => {
-  //...
-})
-
-// with fast-check
+import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { it } from 'vite-plus/test'
-import fc from 'fast-check'
+
 it('...', async () => {
   await fc.assert(
     fc.asyncProperty(...arbitraries, async (...values) => {
       //...
-    })
+    }),
+    { numRuns: numRunsFor({ base: 100 }) }
   )
 })
 ```
@@ -411,29 +402,33 @@ it('...', async () => {
 
 ### Running tests for a specific package
 
-`npx vitest run <file>` runs ALL workspace projects, not just the one containing the file. To target a single package, pass its vitest config explicitly:
+Drive tests through `vp` (never invoke `pnpm`/`npm`/`npx`/`vitest` directly — Vite+ owns the toolchain). `vp test` runs the suite across all packages via the root `vite.config.ts` `test.projects` wiring. To target a single package, pass its config explicitly:
 
 ```bash
-npx vitest run --config global/effectful-store/vitest.config.ts --reporter=verbose
+vp test --config slices/collector/collector-core/vite.config.ts --reporter=verbose
 ```
 
-Each package has its own `vitest.config.ts` (or `vitest.unit.config.ts`). Check the package directory for the correct config file.
+Each package has its own **`vite.config.ts`** (there is no `vitest.config.ts` / `vitest.unit.config.ts`). These per-package configs are wired into the root `vite.config.ts` via Vitest's `test.projects` mode. Check the package directory for its `vite.config.ts` (its `test.include`/`test.exclude` govern which files run).
 
 ### Test file extension is `.test.ts`, not `.spec.ts`
 
 This project uses `.test.ts` colocated with source files (e.g., `foo.ts` → `foo.test.ts`). Do not use `.spec.ts`.
 
-### `@effect/vitest` and `@fast-check/vitest` both export `it`
+### Canonical property-test convention in this repo
 
-Many test files in this project use `@effect/vitest`'s `it` for `it.effect` (running Effect-based tests). Since `@fast-check/vitest` also exports `it` (for `it.prop`), you must alias one of them:
+Property tests import the test API from `vite-plus/test`, import fast-check as a namespace, and run properties inside a normal `it(...)`/`test(...)`:
 
 ```ts
-import { it } from '@effect/vitest' // it.effect for Effect tests
-import { it as fcIt, fc } from '@fast-check/vitest' // fcIt.prop for property tests
+import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
+import { describe, expect, it } from 'vite-plus/test'
 ```
 
-Use `it.effect(...)` for Effect generator tests and `fcIt.prop(...)` for property-based tests. Both work inside the same `describe`.
+- Synchronous: `fc.assert(fc.property(...arbs, (...values) => { ... }), { numRuns: numRunsFor({ base: 100 }) })`
+- Asynchronous: `await fc.assert(fc.asyncProperty(...arbs, async (...values) => { ... }), { numRuns: numRunsFor({ base: 100 }) })`
 
-### Avoid `effect`'s `FastCheck` re-export for new tests
+Always route the run count through `numRunsFor({ base: N })` (from `kitchen-sink/test`) rather than a hardcoded `numRuns`, so `vp run test:changed` can scale it down for packages unchanged vs `origin/main`. `base` is the full run count used when the package *has* changed. This is the convention used by ~91 test files. Canonical examples to mirror: `global/effect-messaging/effect-messaging-core/src/logging.test.ts` and `slices/collector/collector-core/src/registry.test.ts`.
 
-Some existing tests import `FastCheck as fc` from `effect` and use raw `fc.assert(fc.asyncProperty(...))`. Prefer importing from `@fast-check/vitest` instead — `fcIt.prop(...)` gives automatic seed reporting in test names and better vitest integration.
+### Do NOT use `@effect/vitest` or `@fast-check/vitest`
+
+Neither works in this repo — see the tooling note at the top. `@effect/vitest`'s `it.effect` and `@fast-check/vitest`'s `it.prop` register against the standalone `vitest` package's runner, a different module instance than `vite-plus/test`'s, so collection fails with `Vitest failed to find the current suite. This is a bug in Vitest.` Zero files import either. For Effect-based tests, run the effect inside a normal `it(...)` with `Effect.runPromise(...)` (or `Effect.runSync`), as the canonical logging example does. For property tests, use raw `fast-check` as above.
