@@ -118,6 +118,46 @@ Three workable options:
 
 `{ topLevel: true }` is designed for single-group APIs. If you find yourself reaching for it on a multi-group composition, that's a smell — the `HttpApi` should probably be split, or `topLevel` should come off.
 
+## Per-endpoint middleware
+
+`HttpApiGroup.make(...).middleware(M)` applies `M` to every endpoint in the group. When a group has mixed auth requirements — e.g. some HTML pages public, others operator-only — you don't have to split the group: `HttpApiEndpoint` also exposes `.middleware(M)`, chainable on the individual endpoint builder before `.add(...)`-ing it to the group.
+
+```ts
+const group = HttpApiGroup.make('pages')
+  .add(HttpApiEndpoint.get('publicHome', '/').addSuccess(HtmlResponse))
+  .add(
+    HttpApiEndpoint.get('adminHome', '/admin')
+      .addSuccess(HtmlResponse)
+      .middleware(RequireOperator) // this endpoint only
+  )
+```
+
+This keeps one logical page contract in one group and saves a phantom-id bridge that a group split would otherwise force.
+
+## `HttpApiBuilder.Router.use` handlers can only require `DefaultServices | Provided`
+
+`HttpApiBuilder.Router.use((router) => router.get('*', handler))` constrains `handler` to `Handler<unknown, DefaultServices | Provided>`, where:
+
+- `DefaultServices = HttpPlatform | Etag | FileSystem | Path`
+- `Provided = RouteContext | HttpServerRequest | ParsedSearchParams | Scope`
+
+Arbitrary application Tags (e.g. a runtime-configured `WebAssetsDir`) don't fit and won't typecheck inside the handler. Two ways out:
+
+1. **Close over a plain value.** Accept the value as a function parameter and close over it at Layer construction. Simple, but loses Tag-style DI — the runner can't wire the value through context.
+2. **Read the Tag at Layer-build time** via `Layer.unwrapEffect`:
+
+   ```ts
+   const StaticSpaLive = Layer.unwrapEffect(
+     Effect.map(WebAssetsDir, (dir) =>
+       HttpApiBuilder.Router.use((router) => router.get('*', makeHandler(dir)))
+     )
+   )
+   ```
+
+   The resulting Layer carries `WebAssetsDir` in its `R`, the inner handler closes over the resolved value (so it satisfies the `DefaultServices | Provided` bound), and the runner provides it via `Layer.succeed(WebAssetsDir, value)`. This is the right answer when you want the runner to wire the value through context.
+
+Option 2 generalizes to any Effect Layer that must read a Tag-bound value at construction time but can't surface that requirement through to a downstream API.
+
 ## See Also
 
 - [Effect Patterns Reference](./Patterns%20Reference.md) — Tag/Layer wiring used inside the handler implementations
