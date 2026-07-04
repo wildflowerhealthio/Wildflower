@@ -2,16 +2,6 @@
   "name": "wildflower-monorepo",
   "version": "0.0.0",
   "private": true,
-  "workspaces": {
-    "packages": [
-      "apps/*",
-      "domain/*",
-      "global/*",
-      "packages/*",
-      "slices/**",
-      "tools/*"
-    ]
-  },
   "type": "module",
   "scripts": {
     "dev": "vp run -r --parallel dev",

@@ -4,16 +4,22 @@ Vertical product slices. Each slice owns a feature end-to-end (HTTP API, store, 
 
 ## Slice Layout
 
-Every slice follows the same naming structure:
+Every slice is a `<name>-core` (usually) plus optional platform adapters. The suffix names the target:
 
 ```text
 slices/<name>/
-├── <name>-core            # Pure logic: schemas, HttpApi definitions, business rules
-├── <name>-web             # Browser adapter (optional)
-└── <name>-node            # Node.js adapter (optional)
+├── <name>-core            # Pure logic: schemas, HttpApi definitions, business rules (no DOM/fs/platform imports)
+├── <name>-react           # Browser UI adapter — the dominant web adapter
+├── <name>-rust            # Native/server Rust adapter
+├── <name>-tauri           # Tauri host adapter (TS side)
+├── <name>-tauri-rust      # Tauri host adapter (Rust side)
+├── <name>-node            # Node.js adapter
+└── <name>-web             # Browser (non-React) adapter — currently only telemetry
 ```
 
-Current slices: `apps`, `browser-sniffer`, `collector`, `emr`, `gatekeeper`, `navigation`, `telemetry`.
+Slices may also carry slice-specific packages (e.g. `collector-fundamentals`, `fhir-r4-client-collector`, `fhir-r4` / `fhir-r4-react` under `emr`). A few slices are Rust-only with no `-core` (`persistence`, `scopes`).
+
+Current slices: `apps`, `browser-sniffer`, `collector`, `databases`, `emr`, `gatekeeper`, `navigation`, `persistence`, `scopes`, `shared-structures`, `telemetry`, `tunnel`. Verify with `ls slices/` — this list can go stale.
 
 ## Rules
 

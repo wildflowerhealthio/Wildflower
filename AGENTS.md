@@ -10,7 +10,7 @@ Read [AGENTS Explanation](./docs/Agents/Explanation.md) for what this file is an
 - **Node.js 26+ required** (`engines` in `package.json`)
 - **Vite+ owns the toolchain** — drive everything through `vp`. Never invoke `pnpm`, `npm`, or `yarn` directly. See the Vite+ block at the bottom of this file for command surface and pitfalls.
 - **Test utilities import from `vite-plus/test`**, not `vitest`
-- **Slices must respect their layering** — `slices/<name>/<name>-core` is the pure layer; `-web`, `-node` are platform adapters that may import from `-core` but not vice-versa
+- **Slices must respect their layering** — `<name>-core` is the pure layer; adapters (`-react` browser UI, `-rust` native/server, `-tauri`/`-tauri-rust` Tauri host, `-node`, `-web`) may import from `-core`, never the reverse. Some slices (`persistence`, `scopes`) are Rust-only with no `-core`. See [slices/AGENTS.md](./slices/AGENTS.md).
 - **Changes MUST include corresponding test updates**
 - **Vitest (via Vite+) is the test runner** — `vp test` runs the suite across all packages.
 
@@ -21,6 +21,8 @@ Read [AGENTS Explanation](./docs/Agents/Explanation.md) for what this file is an
   - Supplement with [Unit Testing](./docs/Testing/Unit%20Testing%20How-To.md) and [Property Testing](./docs/Testing/Property%20Testing%20Reference.md) if needed
 
 - [Doc Comments](./docs/Documentation/Doc%20Comments%20Reference.md)
+
+- [Review Standards](./docs/Agents/Review%20Standards%20Reference.md) — **MUST read before opening any PR**
 
 ### Agents SHOULD Clarify before building or planning
 
@@ -93,7 +95,7 @@ All docs follow the [four-kinds convention](./docs/Documentation/Explanation.md)
 ## Agent Knowledge
 
 - Read [Agent Strategies](./docs/Agents/Strategies.md) at session start — curated lessons on context management, handoff docs, and large refactors
-- Scan [Learnings Inbox](./docs/Agents/Learnings%20Inbox.md) for recent relevant entries
+- Skim recent entries in the [Learnings Inbox](./docs/Agents/Learnings%20Inbox.md)
 - When you discover something non-obvious, append it to the Learnings Inbox
 - SHOULD NOT edit Strategies.md directly — learnings go through the inbox
 
@@ -108,15 +110,40 @@ All docs follow the [four-kinds convention](./docs/Documentation/Explanation.md)
 ## Commands
 
 ```bash
-vp run dev           # Start the website dev server
-vp run ready         # Format, lint, test, build (-r) — full pre-PR check
+vp run dev           # Start EVERY package's dev server in parallel (vp run -r --parallel dev), not just website
+vp run ready         # fmt + lint + lint:comments + lint:docs + pack + test:all — full pre-PR check (≈ CI's TS-side gates)
 vp test              # Run Vitest across all packages (Vitest projects mode wired in root vite.config.ts)
 vp run test:all      # Run the full Vitest test pass
 vp run test:changed  # Same as test:all but scales fast-check numRuns down for packages unchanged vs origin/main
-vp run build -r      # Build the monorepo
+vp run pack          # Build the monorepo (vp run --cache -r build; there is no root `build` script)
 vp check             # Format + lint + typecheck
-vp install           # Install/sync dependencies (run after pulling)
+vp install           # Install/sync dependencies (run after pulling or editing any package.json)
 ```
+
+## CI gates and pre-PR parity
+
+`vp run ready` covers the TypeScript side of CI. The full gate set (see `.github/workflows/`):
+
+- **TS format/lint/typecheck/test** — `vp check` + `vp test`. The enforced lint/format rules are oxlint+oxfmt, configured in `vite.config.ts` under the `lint:`/`fmt:` keys — **not** `eslint.config.mjs`, which runs only the informational TSDoc check (`lint:comments`, `continue-on-error`). Editing eslint config never fixes a lint failure.
+- **Rust fmt + clippy (`-D warnings`) + nextest** — `./scripts/checks/rust.sh` is the canonical Rust check; both the git hooks and CI (`ci-rust.yml`, `ci-rust-tauri.yml`) call it. It self-skips when `cargo` is absent, so a frontend-only change stays green locally while CI still gates it on PRs.
+- **cargo-deny** (licenses/advisories, `deny.toml`) gates new Rust deps.
+- **markdownlint-cli2** on all `.md` — run locally via `vp run lint:docs`.
+- **OpenAPI Rust↔TS drift** (`api-sync.yml`) — a committed snapshot per slice. Regenerate a stale one with `UPDATE_OPENAPI=1 cargo test -p <slice>-rust openapi_spec_snapshot_is_up_to_date`; the TS half is `vp test openapi-drift`.
+
+## Rust / Tauri
+
+Polyglot repo: a 15-member Cargo workspace (~207 `.rs` files) alongside the TS packages. `rust-toolchain.toml` pins the toolchain, auto-downloaded on the first `cargo` command (multi-minute, one-time — don't kill it). `Cargo.toml` sets `unsafe_code = "forbid"`, clippy runs with `-D warnings`, and cargo-deny gates new deps/licenses. Run all Rust checks via `./scripts/checks/rust.sh` (see CI gates above).
+
+## Fresh container bootstrap
+
+`.devcontainer/postCreateCommand.sh` installs a **global** `vp` (latest/unpinned) then runs `vp install`. The workspace pins vite-plus lower via the catalog, so for `vp test` in jsdom packages use the workspace-local binary `node_modules/.bin/vp` — the global `vp`'s bundled vitest can't resolve jsdom. Re-run `vp install` after any `package.json` edit.
+
+## Git hooks
+
+Installed via `vp config` (the `prepare` script), so a plain `git commit`/`git push` triggers real work — don't kill one that looks "hung":
+
+- **pre-commit** runs `vp run pack; vp staged`, where `vp staged` maps `*` → `vp check --fix`, `*.md` → `lint:docs`, `*.{rs,toml}` → `rust.sh pre-commit`.
+- **pre-push** runs `vp run pack; vp run test:changed; ./scripts/checks/rust.sh pre-push`.
 
 <!-- markdownlint-disable no-bare-urls -->
 <!--VITE PLUS START-->
