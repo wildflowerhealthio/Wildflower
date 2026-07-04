@@ -35,17 +35,12 @@ type Cell = {
 }
 
 /** The row for a (context, resource) within a variant's partition (exact match). */
-const rowFor = <
-  TContext extends Scope.Contexts.Context,
-  TResource extends Scope.ResourceType.Base,
-  TInteraction extends string,
-  TId extends Scope.ResourceScope.Any['kind'],
->(
-  partition: readonly Scope.ResourceScope.Base<TContext, TResource, TInteraction, TId>[],
-  context: TContext,
-  resource: TResource
-): Scope.ResourceScope.Base<TContext, TResource, TInteraction, TId> | undefined =>
-  partition.find((s) => s.hasContext(context) && s.hasResource(resource))
+const rowFor = <K extends Scope.MultiScope.Kind>(
+  owned: readonly Scope.MultiScope.ScopeOf<K>[],
+  context: Scope.MultiScope.ContextOf<K>,
+  resource: Scope.MultiScope.ResourceOf<K>
+): Scope.MultiScope.ScopeOf<K> | undefined =>
+  owned.find((s) => s.hasContext(context) && s.hasResource(resource))
 
 /**
  * Resolve one permission control for the grid within `configuration`'s variant. Order:
@@ -54,36 +49,26 @@ const rowFor = <
  * already granted ⇒ disabled) → on/off. Grantedness is computed **first**, so a control the
  * draft actually holds is always shown (`on`/`locked`), never hidden behind a disable —
  * "disabling, never hiding" (`spec.md §2`). `scopeRequest` is `null` for open mode; each
- * partition is pulled from its {@link Scope.MultiScope} via `configuration.select`. Its
- * `context` / `resource` / `itemId` are the config's own `TContext` / `TResource` /
- * `TInteraction` — same convention as {@link Scope.ScopeConfiguration.toggleItem}, so a
- * variant-generic caller (the grid model) can pass them without an indexed-access cast.
+ * partition is pulled from its {@link Scope.MultiScope} via {@link Scope.MultiScope.partition}.
+ * The whole cell is generic over the single partition literal `K`: `configuration`, `context`,
+ * `resource` and `itemId` are all recovered from it by indexed access
+ * ({@link Scope.MultiScope.ContextOf} …), so a variant-generic caller (the grid model) passes
+ * one variant's own values with no free `TContext` / `TResource` / `TInteraction` to mismatch.
  */
-const forItem = <
-  TContext extends Scope.Contexts.Context,
-  TResource extends Scope.ResourceType.Base,
-  TInteraction extends string,
-  TId extends Scope.ResourceScope.Any['kind'],
->(
-  configuration: Scope.ScopeConfiguration<
-    TContext,
-    TResource,
-    TInteraction,
-    TId,
-    Scope.ResourceScope.Base<TContext, TResource, TInteraction, TId>
-  >,
+const forItem = <K extends Scope.MultiScope.Kind>(
+  configuration: Scope.MultiScope.ConfigurationFor<K>,
   grant: Scope.MultiScope,
   scopeRequest: ScopeRequest.ScopeRequest | null,
-  context: TContext,
-  resource: TResource,
-  itemId: TInteraction
+  context: Scope.MultiScope.ContextOf<K>,
+  resource: Scope.MultiScope.ResourceOf<K>,
+  itemId: Scope.MultiScope.InteractionOf<K>
 ): Cell => {
   const grantedness = Scope.ScopeConfiguration.scopesGrantInteraction<
-    TContext,
-    TResource,
-    TInteraction,
-    TId
-  >(configuration.select(grant), context, resource, itemId)
+    Scope.MultiScope.ContextOf<K>,
+    Scope.MultiScope.ResourceOf<K>,
+    Scope.MultiScope.InteractionOf<K>,
+    K
+  >(Scope.MultiScope.partition(grant, configuration.id), context, resource, itemId)
 
   // §3: covered by a same-context `*` wildcard ⇒ locked on. A held grant is always shown,
   // so this precedes the §2 clamp below.
@@ -92,7 +77,11 @@ const forItem = <
   }
   // §2 required: a control in the required subset is locked on.
   if (scopeRequest !== null) {
-    const required = rowFor(configuration.select(scopeRequest.required), context, resource)
+    const required = rowFor(
+      Scope.MultiScope.partition(scopeRequest.required, configuration.id),
+      context,
+      resource
+    )
     if (required !== undefined && required.permission.has(itemId)) {
       return { state: 'locked', lockReason: { kind: 'required' } }
     }
@@ -101,11 +90,16 @@ const forItem = <
   // already grants it, in which case it stays visible (disabling never hides a live grant).
   if (scopeRequest !== null && !grantedness.granted) {
     const requestable = Scope.ScopeConfiguration.scopesGrantInteraction<
-      TContext,
-      TResource,
-      TInteraction,
-      TId
-    >(configuration.select(scopeRequest.requested), context, resource, itemId).granted
+      Scope.MultiScope.ContextOf<K>,
+      Scope.MultiScope.ResourceOf<K>,
+      Scope.MultiScope.InteractionOf<K>,
+      K
+    >(
+      Scope.MultiScope.partition(scopeRequest.requested, configuration.id),
+      context,
+      resource,
+      itemId
+    ).granted
     if (!requestable) {
       return { state: 'disabled', lockReason: { kind: 'notRequested' } }
     }

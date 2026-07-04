@@ -34,9 +34,8 @@ const flagRequired = (scopeRequest: ScopeRequest | null, flag: Scope.Known.Name)
 const isWithin = (grant: GrantDraft.GrantDraft, scopeRequest: ScopeRequest | null): boolean => {
   if (scopeRequest === null) return true
   return (
-    Scope.MultiScope.resourceConfigurations.every((configuration) =>
-      configuration.within(grant, scopeRequest.requested)
-    ) && grant.known.every((k) => scopeRequest.requested.known.some((r) => r.name === k.name))
+    Scope.MultiScope.within(grant, scopeRequest.requested) &&
+    grant.known.every((k) => scopeRequest.requested.known.some((r) => r.name === k.name))
   )
 }
 

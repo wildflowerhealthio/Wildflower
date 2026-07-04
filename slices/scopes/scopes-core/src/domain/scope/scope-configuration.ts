@@ -18,10 +18,9 @@
 import { Equal } from 'effect'
 
 import type * as Contexts from './contexts'
-import type { MultiScope } from './multi-scope.ts'
 import type * as Permission from './permission'
 import type * as ResourceType from './resource-type'
-import { type BaseScope, BaseResourceScope } from './scope.ts'
+import { BaseScope } from './scope.ts'
 
 /**
  * The construction recipe for one *concrete* resource-scope variant, keyed to its
@@ -38,39 +37,72 @@ class ScopeConfiguration<
   TResourceType extends ResourceType.Base,
   TInteraction extends string,
   TId extends string,
-  out S extends BaseResourceScope<TContext, TResourceType, TInteraction, TId>,
 > {
   readonly id: TId
+  // oxlint-disable typescript/no-explicit-any
   readonly permissionClass: {
     readonly empty: Permission.Base<TInteraction>
     readonly parse: (name: string) => Permission.Base<TInteraction> | null
-  }
+  } & (abstract new (...args: any[]) => Permission.Base<TInteraction>)
   readonly resourceClass: {
     readonly parse: (name: string) => TResourceType | null
-  }
+  } & (abstract new (...args: any[]) => TResourceType)
   readonly contextClass: {
     readonly parse: (name: string) => TContext | null
+  } & (abstract new (...args: any[]) => TContext)
+
+  is(scope: BaseScope): scope is BaseResourceScope<TContext, TResourceType, TInteraction, TId> {
+    return scope instanceof this.Instance
   }
-  readonly is: (
-    scope: BaseScope
-  ) => scope is BaseResourceScope<TContext, TResourceType, TInteraction, TId>
-  readonly select: (
-    ms: MultiScope
-  ) => readonly BaseResourceScope<TContext, TResourceType, TInteraction, TId>[]
-  readonly make: (
+  make(
     context: TContext,
     resource: TResourceType,
     permission: Permission.Base<TInteraction>
-  ) => S
+  ): BaseResourceScope<TContext, TResourceType, TInteraction, TId> {
+    return new this.Instance(context, resource, permission)
+  }
 
-  constructor(recipe: ScopeConfiguration.Recipe<TContext, TResourceType, TInteraction, TId, S>) {
+  readonly Instance
+
+  constructor(recipe: ScopeConfiguration.Recipe<TContext, TResourceType, TInteraction, TId>) {
     this.id = recipe.id
     this.permissionClass = recipe.permissionClass
     this.resourceClass = recipe.resourceClass
     this.contextClass = recipe.contextClass
-    this.is = recipe.is
-    this.select = recipe.select
-    this.make = recipe.make
+
+    // oxlint-disable-next-line typescript/no-this-alias
+    const scopeConfiguration = this
+    this.Instance = class Instance extends (
+      BaseResourceScope<TContext, TResourceType, TInteraction, TId>
+    ) {
+      kind: TId
+      context: TContext
+      resource: TResourceType
+      permission: Permission.Base<TInteraction>
+
+      constructor(
+        context: TContext,
+        resource: TResourceType,
+        permission: Permission.Base<TInteraction>
+      ) {
+        super()
+        this.kind = scopeConfiguration.id
+        this.context = context
+        this.resource = resource
+        this.permission = permission
+      }
+
+      static readonly configuration: ScopeConfiguration<
+        TContext,
+        TResourceType,
+        TInteraction,
+        TId
+      > = scopeConfiguration
+
+      withPermission(permission: Permission.Base<TInteraction>): Instance {
+        return new Instance(this.context, this.resource, permission)
+      }
+    }
   }
 
   /**
@@ -120,8 +152,9 @@ class ScopeConfiguration<
    * `patient/*.r` present ⇒ `patient/Observation.r` emits nothing for `r`), then
    * serializes; a row emptied by dedupe emits nothing. Order follows the partition.
    */
-  serialize(ms: MultiScope): string[] {
-    const owned = this.select(ms)
+  serialize(
+    owned: readonly BaseResourceScope<TContext, TResourceType, TInteraction, TId>[]
+  ): string[] {
     const out: string[] = []
     for (const scope of owned) {
       // §3 dedupe: the interactions a strictly-broader scope already grants — a `*` wildcard
@@ -149,7 +182,7 @@ class ScopeConfiguration<
     return out
   }
 
-  parse(s: string): S | null {
+  parse(s: string): BaseResourceScope<TContext, TResourceType, TInteraction, TId> | null {
     const parts = BaseResourceScope.components(s)
     if (parts === null) return null
 
@@ -173,9 +206,11 @@ class ScopeConfiguration<
    * rather than requiring an exact `(context, resource)` match. `grant` and `allowed` are
    * both {@link MultiScope}s.
    */
-  within(grant: MultiScope, allowed: MultiScope): boolean {
-    const allowedPartition = this.select(allowed)
-    return this.select(grant).every((scope) =>
+  within(
+    grantPartition: readonly BaseResourceScope<TContext, TResourceType, TInteraction, TId>[],
+    allowedPartition: readonly BaseResourceScope<TContext, TResourceType, TInteraction, TId>[]
+  ): boolean {
+    return grantPartition.every((scope) =>
       scope.permission
         .toArray()
         .every(
@@ -268,32 +303,20 @@ namespace ScopeConfiguration {
     TResourceType extends ResourceType.Base,
     TInteraction extends string,
     TId extends string,
-    out S extends BaseResourceScope<TContext, TResourceType, TInteraction, TId>,
   > = {
     readonly id: TId
     readonly permissionClass: {
       readonly empty: Permission.Base<TInteraction>
       readonly parse: (name: string) => Permission.Base<TInteraction> | null
-    }
+      // oxlint-disable typescript/no-explicit-any
+    } & (abstract new (...args: any[]) => Permission.Base<TInteraction>)
     readonly resourceClass: {
       readonly parse: (name: string) => TResourceType | null
-    }
+    } & (abstract new (...args: any[]) => TResourceType)
     readonly contextClass: {
       readonly parse: (name: string) => TContext | null
-    }
-
-    readonly is: (
-      scope: BaseScope
-    ) => scope is BaseResourceScope<TContext, TResourceType, TInteraction, TId>
-
-    readonly select: (
-      ms: MultiScope
-    ) => readonly BaseResourceScope<TContext, TResourceType, TInteraction, TId>[]
-    readonly make: (
-      context: TContext,
-      resource: TResourceType,
-      permission: Permission.Base<TInteraction>
-    ) => S
+    } & (abstract new (...args: any[]) => TContext)
+    // oxlint-enable typescript/no-explicit-any
   }
 
   /** How a partition grants one (context, resource, interaction) cell (`spec.md §3`). */
@@ -309,4 +332,85 @@ namespace ScopeConfiguration {
   }
 }
 
-export { ScopeConfiguration }
+abstract class BaseResourceScope<
+  // oxlint-disable typescript/no-unnecessary-type-parameters
+  TContext extends Contexts.Context,
+  TResourceType extends ResourceType.Base,
+  TInteraction extends string,
+  TId extends string,
+  // oxlint-enable typescript/no-unnecessary-type-parameters
+> extends BaseScope {
+  abstract readonly kind: TId
+  abstract readonly context: TContext
+  abstract readonly resource: TResourceType
+  abstract readonly permission: Permission.Base<TInteraction>
+
+  serialize(): string | null {
+    const context = this.context.serialize()
+    const resource = this.resource.serialize()
+    const permission = this.permission.serialize()
+
+    if (permission === null) return null
+
+    return `${context}/${resource}.${permission}`
+  }
+
+  hasContext<UContext extends Contexts.Context>(context: UContext): this is { context: UContext } {
+    return Equal.equals(this.context, context)
+  }
+
+  hasResource<UResource extends ResourceType.Base>(
+    resource: UResource
+  ): this is { resource: UResource } {
+    return Equal.equals(this.resource, resource)
+  }
+
+  /**
+   * Whether this scope is a superset of — i.e. *covers* — a (context, resource, interaction)
+   * cell (`spec.md §3`; mirrors `scopes-rust`'s `FhirResourceScope::covers`): its context
+   * covers the cell's ({@link Contexts.Context.covers} — **hierarchical** for FHIR, `system
+   * ⊇ user ⊇ patient`), its resource is a superset ({@link ResourceType.Base.supersetOf} —
+   * `*` ⊇ any known sibling), and its permission `has` the interaction. Same-style — `has`
+   * is false across styles, so nothing cross-style false-covers. A read-side predicate
+   * (`interaction` degrades to `string` at the boundary, like {@link BasePermission.has}, so
+   * it reads on the `Cruds | ReadWrite` union without collapsing); the fold over a partition
+   * and the wildcard *lock* live in `ScopeConfiguration.scopesGrantInteraction`.
+   */
+  isSupersetOf(
+    context: Contexts.Context,
+    resource: ResourceType.Base,
+    interaction: string
+  ): boolean {
+    return (
+      this.context.covers(context) &&
+      this.resource.supersetOf(resource) &&
+      this.permission.has(interaction)
+    )
+  }
+
+  static components(s: string): { context: string; resource: string; permissions: string } | null {
+    const slash = s.indexOf('/')
+    if (slash <= 0) return null
+
+    const context = s.slice(0, slash)
+    const rest = s.slice(slash + 1)
+
+    // Split type/perms on the FIRST dot (mirrors Rust's `rest.split_once('.')`).
+    const dot = rest.indexOf('.')
+    if (dot <= 0) return null
+
+    const resource = rest.slice(0, dot)
+    let permissions = rest.slice(dot + 1)
+
+    // Drop a SMART v2 `?`-search-parameter suffix (mirrors Rust's `strip_search_suffix`).
+    const question = permissions.indexOf('?')
+    if (question >= 0) permissions = permissions.slice(0, question)
+
+    // A second dot leaves the type/perms boundary ambiguous — invalid (falls to Unknown).
+    if (permissions.includes('.')) return null
+
+    return { context, resource, permissions } as const
+  }
+}
+
+export { ScopeConfiguration, BaseResourceScope }

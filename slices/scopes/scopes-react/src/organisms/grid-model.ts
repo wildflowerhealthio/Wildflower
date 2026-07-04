@@ -6,8 +6,8 @@
  * DOM-free and unit-tested on its own.
  */
 
-import { Cell } from 'scopes-core'
-import type { Scope, GrantDraft, ScopeRequest } from 'scopes-core'
+import { Cell, Scope } from 'scopes-core'
+import type { GrantDraft, ScopeRequest } from 'scopes-core'
 
 import type { PickerItem } from '../molecules/permission-picker.tsx'
 
@@ -44,25 +44,15 @@ interface Grid {
 
 /**
  * One grid section — a single scope variant, its context, and the resources it lists
- * (`spec.md §1`). The `configuration` must be *one concrete variant*: narrow the
- * {@link Scope.ScopeConfiguration} union by `.id` (a `switch`) before building a
- * Section, so every read stays within that variant's homogeneous partition.
+ * (`spec.md §1`). Generic over the single partition literal `K`: the `configuration` and
+ * `context` are recovered from it by indexed access, so a Section is always *one concrete
+ * variant* (narrow the {@link Scope.ScopeConfiguration} union by `.id` before building one)
+ * and every read stays within that variant's homogeneous partition.
  */
-interface Section<
-  TContext extends Scope.Contexts.Context,
-  TResource extends Scope.ResourceType.Base,
-  TInteraction extends string,
-  TId extends Scope.ResourceScope.Any['kind'],
-> {
-  readonly configuration: Scope.ScopeConfiguration<
-    TContext,
-    TResource,
-    TInteraction,
-    TId,
-    Scope.ResourceScope.Base<TContext, TResource, TInteraction, TId>
-  >
+interface Section<K extends Scope.MultiScope.Kind> {
+  readonly configuration: Scope.MultiScope.ConfigurationFor<K>
   /** The section's context — `new Fhir('patient')`, `new Wildflower()`, … */
-  readonly context: TContext
+  readonly context: Scope.MultiScope.ContextOf<K>
   /** The resource names to list as rows (`spec.md §4`), e.g. `Scope.ResourceType.Fhir.catalog`. */
   readonly catalog: readonly string[]
 }
@@ -79,13 +69,8 @@ interface GridOptions {
  * can't parse is skipped). In request mode each cell is clamped to `scopeRequest` (§2), and
  * in open mode a leading `*` wildcard row drives the union + lock of the rows beneath it (§3).
  */
-const buildGrid = <
-  TContext extends Scope.Contexts.Context,
-  TResource extends Scope.ResourceType.Base,
-  TInteraction extends string,
-  TId extends Scope.ResourceScope.Any['kind'],
->(
-  section: Section<TContext, TResource, TInteraction, TId>,
+const buildGrid = <K extends Scope.MultiScope.Kind>(
+  section: Section<K>,
   grant: GrantDraft.GrantDraft,
   scopeRequest: ScopeRequest.ScopeRequest | null,
   { includeWildcard = false }: GridOptions = {}
@@ -107,10 +92,10 @@ const buildGrid = <
     reason === null ? null : lockCopy[reason.kind]
 
   /** The rendered row for one resource of this section. */
-  const rowFor = (resource: TResource): GridRow => {
-    const stored = configuration
-      .select(grant)
-      .find((scope) => scope.hasContext(context) && scope.hasResource(resource))
+  const rowFor = (resource: Scope.MultiScope.ResourceOf<K>): GridRow => {
+    const stored = Scope.MultiScope.partition(grant, configuration.id).find(
+      (scope) => scope.hasContext(context) && scope.hasResource(resource)
+    )
     return {
       resource: resource.serialize(),
       label: resource.singularLabel(),
@@ -131,7 +116,7 @@ const buildGrid = <
 
   const rows = catalog
     .map((name) => configuration.resourceClass.parse(name))
-    .filter((resource): resource is TResource => resource !== null)
+    .filter((resource): resource is Scope.MultiScope.ResourceOf<K> => resource !== null)
     .map(rowFor)
 
   const wildcard =

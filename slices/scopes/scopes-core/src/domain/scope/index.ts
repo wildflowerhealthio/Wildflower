@@ -2,13 +2,13 @@ import * as Contexts from './contexts/index.ts'
 import * as Permission from './permission/index.ts'
 import * as ResourceType from './resource-type/index.ts'
 
-import { BaseScope, BaseResourceScope } from './scope.ts'
+import { BaseScope } from './scope.ts'
 
 import FhirV1 from './fhir-scope-v1.ts'
 import FhirV2 from './fhir-scope-v2.ts'
 import Known from './known.ts'
 import { MultiScope } from './multi-scope.ts'
-import { ScopeConfiguration } from './scope-configuration.ts'
+import { ScopeConfiguration, BaseResourceScope } from './scope-configuration.ts'
 import Unknown from './unknown.ts'
 import Wildflower from './wildflower-scope.ts'
 
