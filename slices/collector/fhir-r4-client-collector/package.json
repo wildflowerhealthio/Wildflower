@@ -27,7 +27,6 @@
     "test": "vp test"
   },
   "devDependencies": {
-    "@fast-check/vitest": "catalog:",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
     "browser-sniffer-core": "workspace:*",

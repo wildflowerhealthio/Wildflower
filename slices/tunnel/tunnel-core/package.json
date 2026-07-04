@@ -32,7 +32,6 @@
   },
   "devDependencies": {
     "@effect/platform": "catalog:",
-    "@fast-check/vitest": "catalog:",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
     "effect": "catalog:",
