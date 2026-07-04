@@ -6,7 +6,7 @@ import { FIRST_PARTY_CLIENT_ID } from 'gatekeeper-core/contexts'
 import { OAuth } from 'gatekeeper-core/http-api-definition'
 
 import { useEffect, useState, type JSX } from 'react'
-import { cn, useAuthTokenSetter } from 'react-kitchen-sink'
+import { AuthedUntil, cn, useAuthTokenSetter } from 'react-kitchen-sink'
 import { Field, FieldDescription, pageLayoutStyles } from 'react-tundraish'
 
 import { useGatekeeperLocalGrantedScopes, useGatekeeperRuntimeLayer } from '../router-context.ts'
@@ -125,7 +125,7 @@ const MOUNT_DEBOUNCE = Duration.millis(250)
  */
 const NeedsAuthMessage = (): JSX.Element => {
   const [state, setState] = useState<DeviceFlowState>({ tag: 'starting' })
-  const setToken = useAuthTokenSetter()
+  const setSignal = useAuthTokenSetter()
   // Long-running device flow with retry — needs a fiber handle for
   // interrupt-on-unmount, which the promise-returning `runAuthed` can't
   // give. Runs against the composed `runtimeLayer` from router context
@@ -178,7 +178,12 @@ const NeedsAuthMessage = (): JSX.Element => {
         )
 
       yield* Effect.sync(() => {
-        setToken(tokenResponse.access_token)
+        // Nudge the store to publish the freshly-authed signal. The web store
+        // ignores the argument and re-derives from the `wf_auth_exp` cookie the
+        // server just set (its source of truth); `AuthedUntil` is the honest
+        // value this sign-in just achieved. The full-page reload below rebuilds
+        // the store from the cookie anyway.
+        setSignal(AuthedUntil({ exp: Math.floor(Date.now() / 1000) + tokenResponse.expires_in }))
         // Full-page navigation (not a client-side route push) so the app
         // re-boots with the now-persisted bearer in place — matching the
         // "this page will reload automatically once you sign in" copy.
@@ -200,12 +205,12 @@ const NeedsAuthMessage = (): JSX.Element => {
     return (): void => {
       void Effect.runPromise(Fiber.interrupt(fiber))
     }
-    // `setToken`'s identity is stable for the surrounding
+    // `setSignal`'s identity is stable for the surrounding
     // `AuthTokenStore`'s lifetime (returned from `useAuthTokenSetter`
     // and constructed once per `main-*` entry); including it in the
     // dep array makes the dependency explicit without churning.
     // `localGrantedScopes` is a stable string from router context.
-  }, [layer, setToken, localGrantedScopes])
+  }, [layer, setSignal, localGrantedScopes])
 
   if (state.tag === 'starting') {
     return <p className="text-body-2">Starting sign-in…</p>

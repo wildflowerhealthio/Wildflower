@@ -1,4 +1,5 @@
 import {
+  HttpApiError,
   HttpClient,
   HttpClientError,
   HttpClientRequest,
@@ -11,8 +12,8 @@ import { describe, expect, expectTypeOf, it, vi } from 'vite-plus/test'
 import {
   buildQueryClient,
   buildRunAuthed,
+  isUnauthorizedError,
   isUnauthorizedFailure,
-  isUnauthorizedResponseError,
   unauthorizedRetrySchedule,
 } from './router-context.ts'
 import type { RouterContext, RunAuthed, RuntimeLayer } from './router-context.ts'
@@ -140,17 +141,24 @@ const asFiberFailure = async (error: unknown): Promise<Error> => {
   }
 }
 
-describe('isUnauthorizedResponseError', () => {
+describe('isUnauthorizedError', () => {
   it('is true only for a ResponseError carrying a 401', () => {
-    expect(isUnauthorizedResponseError(responseErrorWithStatus(401))).toBe(true)
-    expect(isUnauthorizedResponseError(responseErrorWithStatus(403))).toBe(false)
-    expect(isUnauthorizedResponseError(responseErrorWithStatus(500))).toBe(false)
+    expect(isUnauthorizedError(responseErrorWithStatus(401))).toBe(true)
+    expect(isUnauthorizedError(responseErrorWithStatus(403))).toBe(false)
+    expect(isUnauthorizedError(responseErrorWithStatus(500))).toBe(false)
   })
 
-  it('is false for values that are not a ResponseError', () => {
-    expect(isUnauthorizedResponseError(new Error('boom'))).toBe(false)
-    expect(isUnauthorizedResponseError(null)).toBe(false)
-    expect(isUnauthorizedResponseError({ response: { status: 401 } })).toBe(false)
+  it('is true for a typed HttpApiError.Unauthorized (a declared 401)', () => {
+    // Gatekeeper's `/access` endpoints declare 401 via `RequireAuthMiddleware`,
+    // so `HttpApiClient` decodes their 401s into this typed error, never a
+    // `ResponseError`. The detector must catch it or the redirect/retry miss it.
+    expect(isUnauthorizedError(new HttpApiError.Unauthorized())).toBe(true)
+  })
+
+  it('is false for values that are not a 401', () => {
+    expect(isUnauthorizedError(new Error('boom'))).toBe(false)
+    expect(isUnauthorizedError(null)).toBe(false)
+    expect(isUnauthorizedError({ response: { status: 401 } })).toBe(false)
   })
 })
 
@@ -272,6 +280,36 @@ describe('runAuthed boot-race integration', () => {
 
     // Assert
     expect(status).toBe(204)
+  })
+
+  it('stops applying the boot-race retry once an authed request has succeeded', async () => {
+    // Arrange — first request 204 (boots the runner), every later one 401.
+    let calls = 0
+    const layer = Layer.succeed(
+      HttpClient.HttpClient,
+      HttpClient.make((request) => {
+        calls += 1
+        return calls === 1
+          ? Effect.succeed(HttpClientResponse.fromWeb(request, new Response(null, { status: 204 })))
+          : Effect.fail(
+              new HttpClientError.ResponseError({
+                request,
+                response: HttpClientResponse.fromWeb(request, new Response(null, { status: 401 })),
+                reason: 'StatusCode',
+              })
+            )
+      })
+    )
+    const { runAuthed } = buildRunAuthed(layer)
+
+    // Act — boot, then a genuine post-boot 401.
+    expect(await runAuthed(fetchStatus)).toBe(204)
+    const callsAfterBoot = calls
+    await expect(runAuthed(fetchStatus)).rejects.toThrow()
+
+    // Assert — the post-boot 401 was sent exactly once (no boot-race re-sends):
+    // it's a real expiry, so it propagates immediately for the redirect.
+    expect(calls - callsAfterBoot).toBe(1)
   })
 })
 

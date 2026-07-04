@@ -6,6 +6,8 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { gatekeeperLogoutSettingsItem } from 'gatekeeper-react'
+import type { SettingsItem } from 'shared-structures-react'
 import { afterEach, describe, expect, test } from 'vite-plus/test'
 
 // The `/settings` auth gate now lives in the route's `beforeLoad`
@@ -25,12 +27,12 @@ import { SettingsIndex } from './settings/index.tsx'
  * so the macro tree's two screens render together. The router only
  * exists for link rendering — no navigation is exercised here.
  */
-const renderSettingsScreen = (): void => {
+const renderSettingsScreen = (platformSettingsItems: readonly SettingsItem[] = []): void => {
   const rootRoute = createRootRoute({ component: SettingsLayout })
   const indexRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/',
-    component: SettingsIndex,
+    component: () => <SettingsIndex platformSettingsItems={platformSettingsItems} />,
   })
   const router = createRouter({
     routeTree: rootRoute.addChildren([indexRoute]),
@@ -88,17 +90,14 @@ describe('SettingsScreen', () => {
     })
   })
 
-  test('every row links into /settings/<slice>/', async () => {
+  test('every slice row links into /settings/<slice>/', async () => {
     renderSettingsScreen()
     await screen.findByRole('navigation', { name: 'Primary' })
     const links = sliceRowLinks()
     expect(links.length).toBeGreaterThanOrEqual(2)
     for (const link of links) {
       const href = link.getAttribute('href') ?? ''
-
-      const isSettingsPage  =href.startsWith('/settings/')
-      const isLogout = href === '/access/logout'
-      expect(isSettingsPage || isLogout).toBe(true)
+      expect(href.startsWith('/settings/')).toBe(true)
     }
   })
 
@@ -109,5 +108,24 @@ describe('SettingsScreen', () => {
       expect(hrefs.has('/settings/tunnel')).toBe(true)
       expect(hrefs.has('/settings/gatekeeper')).toBe(true)
     })
+  })
+
+  test('renders the web logout row as a same-origin POST form when the entry provides it', async () => {
+    // The standalone-web entries thread `gatekeeperLogoutSettingsItem` into
+    // `platformSettingsItems`. It must render as a real `<form method="post">`
+    // — NOT a link — so it can't be driven as a forced-logout CSRF.
+    renderSettingsScreen([gatekeeperLogoutSettingsItem])
+    const button = await screen.findByRole('button', { name: /Logout/ })
+    const form = button.closest('form')
+    expect(form?.getAttribute('method')).toBe('post')
+    expect(form?.getAttribute('action')).toBe('/access/logout')
+  })
+
+  test('omits the logout row when the entry contributes no platform items', async () => {
+    // `main-tauri` passes `platformSettingsItems: []` — a cookie logout is a
+    // no-op under connection-provenance auth, so the row must not appear.
+    renderSettingsScreen([])
+    await screen.findByRole('navigation', { name: 'Primary' })
+    expect(screen.queryByRole('button', { name: /Logout/ })).toBeNull()
   })
 })

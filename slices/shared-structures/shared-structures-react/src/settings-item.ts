@@ -5,15 +5,19 @@ import type { ItemListItem } from 'react-tundraish'
  *
  * Each slice's `*-react` package exports
  * `<slice>SettingsItemsFragment: readonly SettingsItem[]`, which
- * `apps/wildflower-react/src/screens/settings-screen.tsx` concatenates
+ * `apps/wildflower-react/src/routes/settings/index.tsx` concatenates
  * and feeds straight into `<ItemList>` from `react-tundraish`. The
- * shape is the `href`-required branch of `ItemListItem` so no
- * transformation is needed.
+ * shape is the navigational (`href`) and form-submit (`formAction`,
+ * e.g. the web logout POST) branches of `ItemListItem` so no
+ * transformation is needed — the two variants a settings row can be.
  *
  * @remarks
  * Icons and a structured `{ kind, label }` badge are v2 concerns
  * (issue #47). Today, `badge` is `ReactNode` per `ItemListItem`.
  */
-type SettingsItem = Extract<ItemListItem, { readonly href: string }>
+type SettingsItem = Extract<
+  ItemListItem,
+  { readonly href: string } | { readonly formAction: string }
+>
 
 export type { SettingsItem }

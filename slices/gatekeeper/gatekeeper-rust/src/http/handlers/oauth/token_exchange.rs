@@ -25,6 +25,7 @@ use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 use crate::http::cookies;
 use crate::http::state::AppState;
 use crate::http::ServedOrigin;
+use crate::FIRST_PARTY_CLIENT_ID;
 use persistence_rust::JsonColumn;
 use scopes_rust::KnownScope;
 
@@ -72,17 +73,16 @@ pub(super) async fn handle_token_request(
     origin: ServedOrigin,
     request: TokenRequest<TokenPayload>,
 ) -> Response {
-    // Only the owner's same-origin web-login grants plant the session cookie:
-    // the device-code grant (the SPA's poll) and the refresh-token grant (the
-    // SPA refreshing its own session). The authorization-code grant is a
-    // third-party SMART app redeeming a code — it must NOT plant an owner-origin
-    // cookie carrying the app's (lower-scoped) token. See #218.
-    let sets_session_cookie = matches!(
-        request.payload,
-        TokenPayload::DeviceCode { .. } | TokenPayload::RefreshToken { .. }
-    );
+    // Whether to plant the owner-origin session cookie is a property of the
+    // *resolved* grant (its authenticated client), never of the wire
+    // `grant_type` — see [`DispatchedToken::plants_session_cookie`]. A
+    // third-party app's grant (auth-code redemption, or a refresh of its own
+    // lower-scoped token) must not overwrite the owner's `wf_auth`.
     match dispatch_token_request(&state, &origin, request) {
-        Ok(token) if sets_session_cookie => {
+        Ok(DispatchedToken {
+            response: token,
+            plants_session_cookie: true,
+        }) => {
             let max_age = token.expires_in;
             // The companion cookie carries the absolute `exp`; deriving it from
             // `expires_in` here (rather than re-reading the JWT) keeps the hint
@@ -97,45 +97,89 @@ pub(super) async fn handle_token_request(
                 &access_token,
                 max_age,
                 exp_unix,
+                // `Secure` only over HTTPS: the direct-loopback web path is plain
+                // http, where Safari would drop a `Secure` cookie. See #218.
+                origin.starts_with("https://"),
             );
             response
         }
-        Ok(token) => token.into_response(),
+        Ok(DispatchedToken { response: token, .. }) => token.into_response(),
         Err(error) => error.into_response(),
     }
 }
 
+/// A minted token plus whether this grant should plant the owner-origin session
+/// cookie (`wf_auth` + `wf_auth_exp`).
+///
+/// `plants_session_cookie` is `true` only for the **first-party owner client's**
+/// (`FIRST_PARTY_CLIENT_ID`) session grants — the device-code login and its
+/// refresh, the two ways the owner SPA establishes/renews its own web session.
+/// It is deliberately keyed on the resolved grant's authenticated client, not on
+/// the wire `grant_type`: a third-party SMART app also uses `refresh_token`, and
+/// planting its (lower-scoped) token as `wf_auth` would silently downgrade or
+/// force-logout the owner's session (a session-fixation vector). See #218.
+struct DispatchedToken {
+    response: TokenResponse,
+    plants_session_cookie: bool,
+}
+
 /// Parse the grant, resolve client credentials, and dispatch on `grant_type`,
-/// surfacing every failure as a [`TokenError`].
+/// surfacing every failure as a [`TokenError`]. On success, tags the response
+/// with whether the resolved grant plants the owner session cookie
+/// ([`DispatchedToken::plants_session_cookie`]).
 fn dispatch_token_request(
     state: &AppState,
     origin: &ServedOrigin,
     request: TokenRequest<TokenPayload>,
-) -> Result<TokenResponse, TokenError> {
+) -> Result<DispatchedToken, TokenError> {
     let TokenRequest {
         payload,
         credentials: presented_credentials,
     } = request;
+    // Each exchange below validates that the presented client owns the grant it
+    // redeems (the device request / refresh-token family), so after a successful
+    // exchange `presented_credentials.client_id` IS the resolved, authenticated
+    // client — the identity the cookie decision keys on.
+    let is_first_party = presented_credentials.client_id == FIRST_PARTY_CLIENT_ID;
     match payload {
         TokenPayload::AuthorizationCode {
             code,
             code_verifier,
             redirect_uri,
-        } => exchange_authorization_code(
-            state,
-            origin,
-            &presented_credentials,
-            &AuthorizationCodeGrant {
-                code: &code,
-                code_verifier: &code_verifier,
-                redirect_uri: &redirect_uri,
-            },
-        ),
+        } => {
+            let response = exchange_authorization_code(
+                state,
+                origin,
+                &presented_credentials,
+                &AuthorizationCodeGrant {
+                    code: &code,
+                    code_verifier: &code_verifier,
+                    redirect_uri: &redirect_uri,
+                },
+            )?;
+            // Auth-code redemption is the third-party SMART app path — never an
+            // owner web session, so it never plants the cookie (the owner SPA
+            // logs in via the device-code grant).
+            Ok(DispatchedToken {
+                response,
+                plants_session_cookie: false,
+            })
+        }
         TokenPayload::DeviceCode { device_code } => {
-            exchange_device_code(state, origin, &presented_credentials, &device_code)
+            let response =
+                exchange_device_code(state, origin, &presented_credentials, &device_code)?;
+            Ok(DispatchedToken {
+                response,
+                plants_session_cookie: is_first_party,
+            })
         }
         TokenPayload::RefreshToken { refresh_token } => {
-            exchange_refresh_token(state, origin, &presented_credentials, &refresh_token)
+            let response =
+                exchange_refresh_token(state, origin, &presented_credentials, &refresh_token)?;
+            Ok(DispatchedToken {
+                response,
+                plants_session_cookie: is_first_party,
+            })
         }
     }
 }

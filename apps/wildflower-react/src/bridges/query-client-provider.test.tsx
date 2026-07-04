@@ -4,6 +4,7 @@ import { createMemoryHistory, createRootRoute, createRoute } from '@tanstack/rea
 import { act, cleanup, screen, waitFor } from '@testing-library/react'
 import { Effect, Layer, SubscriptionRef } from 'effect'
 import type { JSX, ReactNode } from 'react'
+import { type AuthSignal, Unauthed } from 'react-kitchen-sink'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
 /**
@@ -46,6 +47,9 @@ vi.mock('gatekeeper-react', () => ({
 }))
 vi.mock('react-kitchen-sink', () => ({
   AuthTokenProvider: Passthrough,
+  // The test seeds the store with `Unauthed()`; the mock only needs a value the
+  // `SubscriptionRef` can hold (nothing asserts on it).
+  Unauthed: () => ({ _tag: 'Unauthed' }),
   // Mirror the real `cn` helper so the ErrorBoundary in `renderApp`'s
   // tree (`react-tundraish` reads `cn` via this re-export) doesn't
   // crash if the rendered subtree throws. Same identity-on-truthy
@@ -127,10 +131,10 @@ describe('in-memory QueryClientProvider', () => {
     // Construction matches `makeEmbeddedAuthTokenStore`'s shape: a
     // `SubscriptionRef<string | null>` starting at `null` plus a
     // synchronous setter that writes through it.
-    const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>(null))
+    const tokenRef = Effect.runSync(SubscriptionRef.make<AuthSignal>(Unauthed()))
     const tokenStore = {
       subscribable: tokenRef,
-      setToken: (t: string | null): void => Effect.runSync(SubscriptionRef.set(tokenRef, t)),
+      setSignal: (s: AuthSignal): void => Effect.runSync(SubscriptionRef.set(tokenRef, s)),
     }
     await act(async () => {
       renderApp({
@@ -139,6 +143,8 @@ describe('in-memory QueryClientProvider', () => {
         tokenStore,
         awaitAuthReady: () => () => Promise.resolve(),
         makeTransport: () => Promise.resolve(stubTransport),
+        platformSettingsItems: [],
+        makeOnUnauthorized: () => () => undefined,
       })
     })
 

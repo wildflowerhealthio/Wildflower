@@ -1,4 +1,9 @@
-export { gatekeeperSettingsItemsFragment } from './settings-fragments.ts'
+export {
+  gatekeeperLogoutSettingsItem,
+  gatekeeperSettingsItemsFragment,
+} from './settings-fragments.ts'
+
+export { buildDeviceLoginTarget, DEVICE_LOGIN_ROUTE } from './device-login-route.ts'
 
 export {
   buildGatekeeperClientLayer,

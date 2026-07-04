@@ -3,6 +3,7 @@ import { createMemoryHistory, createRootRoute, createRoute } from '@tanstack/rea
 import { act, cleanup, screen, waitFor } from '@testing-library/react'
 import { Effect, Layer, SubscriptionRef } from 'effect'
 import { useEffect, type JSX, type ReactNode } from 'react'
+import { type AuthSignal, Unauthed } from 'react-kitchen-sink'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
 /**
@@ -64,6 +65,9 @@ const { lifecycleSpy, makePassthrough } = vi.hoisted(() => {
 // publishes — the mocked AuthTokenProvider doesn't use it.
 vi.mock('react-kitchen-sink', () => ({
   AuthTokenProvider: makePassthrough('AuthTokenProvider'),
+  // The test seeds the store with `Unauthed()`; the mock only needs a value the
+  // `SubscriptionRef` can hold (nothing asserts on it).
+  Unauthed: () => ({ _tag: 'Unauthed' }),
   // Mirror the real `cn` helper so the ErrorBoundary in `renderApp`'s
   // tree (`react-tundraish` reads `cn` via this re-export) doesn't
   // crash if the rendered subtree throws.
@@ -202,10 +206,10 @@ describe('renderApp InnerWrap lifecycle', () => {
     const { stubTransport } = await import('../bridges/transport-context.ts')
     // Minimal in-memory `AuthTokenStore` — this test is about provider
     // lifetimes across navigation, not the bearer itself.
-    const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>(null))
+    const tokenRef = Effect.runSync(SubscriptionRef.make<AuthSignal>(Unauthed()))
     const tokenStore = {
       subscribable: tokenRef,
-      setToken: (t: string | null): void => Effect.runSync(SubscriptionRef.set(tokenRef, t)),
+      setSignal: (s: AuthSignal): void => Effect.runSync(SubscriptionRef.set(tokenRef, s)),
     }
     await act(async () => {
       renderApp({
@@ -214,6 +218,8 @@ describe('renderApp InnerWrap lifecycle', () => {
         tokenStore,
         awaitAuthReady: () => () => Promise.resolve(),
         makeTransport: () => Promise.resolve(stubTransport),
+        platformSettingsItems: [],
+        makeOnUnauthorized: () => () => undefined,
       })
     })
 

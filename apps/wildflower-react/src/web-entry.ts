@@ -1,4 +1,8 @@
-import { makeAwaitWebAuthReady, makeWebAuthTokenStore } from 'gatekeeper-react'
+import {
+  gatekeeperLogoutSettingsItem,
+  makeAwaitWebAuthReady,
+  makeWebAuthTokenStore,
+} from 'gatekeeper-react'
 import type { RenderAppOptions } from './app-root.tsx'
 import { stubTransport } from './bridges/transport-context.ts'
 
@@ -25,16 +29,23 @@ import { stubTransport } from './bridges/transport-context.ts'
  *   loader's `await context.transport` is a microtask. Both setters are
  *   ignored — there's no host to push `AuthTokenIssued` or
  *   `DeviceConsentRequested` from on standalone web.
+ * - `platformSettingsItems`: the web logout row — a same-origin `POST
+ *   /access/logout` form. Web-only: on Tauri the session is
+ *   connection-provenance, so a cookie logout is a no-op.
+ * - `makeOnUnauthorized`: standalone web HAS a device-login flow, so a 401 that
+ *   outlives the boot-race retry redirects the user there.
  */
 const makeWebEntryOptions = (): Pick<
   RenderAppOptions,
-  'tokenStore' | 'awaitAuthReady' | 'makeTransport'
+  'tokenStore' | 'awaitAuthReady' | 'makeTransport' | 'platformSettingsItems' | 'makeOnUnauthorized'
 > => {
   const tokenStore = makeWebAuthTokenStore()
   return {
     tokenStore,
     awaitAuthReady: () => makeAwaitWebAuthReady(tokenStore.subscribable),
     makeTransport: () => Promise.resolve(stubTransport),
+    platformSettingsItems: [gatekeeperLogoutSettingsItem],
+    makeOnUnauthorized: (redirectToDeviceLogin) => redirectToDeviceLogin,
   }
 }
 

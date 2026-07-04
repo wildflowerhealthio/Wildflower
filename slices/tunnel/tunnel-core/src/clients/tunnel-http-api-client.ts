@@ -1,25 +1,29 @@
-import { HttpApiClient } from '@effect/platform'
-import { Context, type Effect } from 'effect'
+import { defineSliceHttpClient } from 'shared-structures-core/http-api-definition'
 
 import { TunnelAdminApi } from '../http-api-definition/index.ts'
 
-// Type-only references to extract the resolved client shape; tree-shaken
-// at call sites. Mirrors `apps-core/clients` and `gatekeeper-core/clients`.
-
-// oxlint-disable no-underscore-dangle
-const _bareAdminClient = HttpApiClient.make(TunnelAdminApi)
-type TunnelAdminHttpApiClientShape = Effect.Effect.Success<typeof _bareAdminClient>
-// oxlint-enable no-underscore-dangle
+const sliceClient = defineSliceHttpClient({
+  name: 'TunnelAdminHttpApiClient',
+  api: TunnelAdminApi,
+})
 
 /**
- * Effect Service providing the resolved `TunnelAdminApi` (owner-only)
- * HttpApi client — `GetTunnel` + `ReplaceTunnel`. The host gates the
- * `/tunnel` surface (the Tauri app's Rust server checks the gatekeeper
- * Owner token), so the corresponding client layer must attach a bearer.
+ * Effect Service providing the resolved `TunnelAdminApi` (owner-only) HttpApi
+ * client — `GetTunnel` + `ReplaceTunnel`. The host gates the `/tunnel` surface
+ * behind the gatekeeper Owner check; auth rides the `HttpOnly` `wf_auth` cookie
+ * the browser sends with same-origin requests, so the client sets no
+ * `Authorization` header. Adapter layers (`tunnel-react`) provide `.layer`; call
+ * sites consume Effect-natively.
  */
-class TunnelAdminHttpApiClient extends Context.Tag('TunnelAdminHttpApiClient')<
-  TunnelAdminHttpApiClient,
-  TunnelAdminHttpApiClientShape
->() {}
+class TunnelAdminHttpApiClient extends sliceClient.ClientTag<TunnelAdminHttpApiClient>() {
+  static readonly layer = sliceClient.makeLayerFactory(TunnelAdminHttpApiClient)()
+}
+
+/**
+ * Resolved client shape — keyed off the Tag's `Service` accessor so a change to
+ * the underlying HttpApi flows through to consumers without re-deriving via
+ * `HttpApiClient.make`.
+ */
+type TunnelAdminHttpApiClientShape = typeof TunnelAdminHttpApiClient.Service
 
 export { TunnelAdminHttpApiClient, type TunnelAdminHttpApiClientShape }

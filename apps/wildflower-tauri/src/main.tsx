@@ -35,6 +35,19 @@ renderApp({
   // drift from the server. 127.0.0.1 matches the canonical `Host:` form
   // loopback requests carry to the gatekeeper.
   apiBaseUrl: WILDFLOWER_LOOPBACK_ORIGIN,
+  // No platform settings rows: the web logout row is meaningless here (the
+  // session is the host's loopback-owner trust, re-authenticated per request —
+  // clearing a cookie logs nothing out, and this origin doesn't serve
+  // `/access/logout`). The entry, not the settings route, encodes that.
+  platformSettingsItems: [],
+  // A 401 here is anomalous (a boot-race before the host token is minted, or an
+  // expired host token), NOT a prompt to sign in: the webview is
+  // host-authenticated by the loopback-owner trust, there's no user login to
+  // fall back to, and driving the device flow would spawn a spurious
+  // "authorize this device" consent against the owner's own device. So Tauri
+  // takes no 401 action — the query surfaces its error and the boot-race retry
+  // covers the common case.
+  makeOnUnauthorized: () => () => undefined,
   // The host's granted scopes, injected by Vite (`vite.config.ts`) from the same
   // `tauri-shared-config.json` gatekeeper-rust reads to seed the first-party
   // client — so `NeedsAuthMessage`'s device-login request can't drift from the

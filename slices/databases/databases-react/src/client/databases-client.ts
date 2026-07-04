@@ -1,8 +1,6 @@
 import type { HttpClient } from '@effect/platform'
-import { HttpApiClient } from '@effect/platform'
 import { DatabasesHttpApiClient } from 'databases-core/clients'
-import { DatabasesApi } from 'databases-core/http-api-definition'
-import { Layer } from 'effect'
+import type { Layer } from 'effect'
 
 /**
  * Union of services a `DatabasesHttpApiClient` consumer needs in context. The
@@ -14,15 +12,17 @@ type DatabasesClientRequirements = HttpClient.HttpClient | DatabasesHttpApiClien
 /**
  * Build a tokenless `DatabasesHttpApiClient` layer.
  *
- * The host serves `/databases` behind the gatekeeper Owner check; auth rides
- * the `HttpOnly` `wf_auth` cookie the browser sends with same-origin requests,
- * so the client sets no `Authorization` header. Mirrors
- * `tunnel-react/src/client/tunnel-client.ts`.
+ * `DatabasesHttpApiClient.layer` is produced by `defineSliceHttpClient`, which
+ * sets no `Authorization` header — auth rides the `HttpOnly` `wf_auth` cookie
+ * the browser sends with same-origin requests. This builder just re-exposes that
+ * layer under a `buildXClientLayer()` name matching the other slices. Leaves
+ * `HttpClient` unprovided: the host app supplies one shared across every slice's
+ * client layer via the composed `runtimeLayer`. Mirrors `tunnel-react`.
  */
 const buildDatabasesClientLayer = (): Layer.Layer<
   DatabasesHttpApiClient,
   never,
   HttpClient.HttpClient
-> => Layer.effect(DatabasesHttpApiClient, HttpApiClient.make(DatabasesApi))
+> => DatabasesHttpApiClient.layer
 
 export { buildDatabasesClientLayer, type DatabasesClientRequirements }

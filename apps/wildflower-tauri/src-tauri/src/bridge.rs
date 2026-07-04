@@ -306,18 +306,9 @@ pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
 
             match outcome {
                 Outcome::Ready => {
-                    // `borrow_and_update` marks the token seen so a
-                    // delivery triggered by `__Ready` doesn't re-fire
-                    // the `changed` arm for the same value.
-                    let token = token_rx.borrow_and_update().clone();
                     // Signal auth-readiness on every page load — the web side's
-                    // signal is in-memory and resets on reload. The token stays
-                    // host-side (the desktop authenticates by loopback
-                    // provenance, not a cookie), so only the contentless notify
-                    // is delivered.
-                    if token.is_some() {
-                        emit_auth_token_notify(&handle);
-                    }
+                    // signal is in-memory and resets on reload.
+                    notify_if_token_present(&handle, &mut token_rx);
                     // `borrow_and_update` so a `__Ready` racing a boot-time
                     // republish doesn't leave the value unseen and re-wake the
                     // `ConsentChanged` arm (see the doc comment).
@@ -325,21 +316,7 @@ pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
                     last_delivered_consent = consent.clone();
                     emit_device_consent(&handle, &consent);
                 }
-                Outcome::TokenChanged => {
-                    let token = token_rx.borrow_and_update().clone();
-                    // The notify only flips the page's auth-readiness signal,
-                    // meaningful for `Some` (a fresh / re-minted token). The
-                    // token stays host-side — the desktop authenticates by
-                    // loopback provenance, not a cookie — so a `None` (logout)
-                    // just stops the host injecting it and the page's loopback
-                    // fetches start coming back 401; there's no contentless
-                    // "logged out" notify to emit. A change landing before the
-                    // first page load emits into the void (Tauri events aren't
-                    // buffered) — harmless, the eventual `__Ready` re-delivers.
-                    if token.is_some() {
-                        emit_auth_token_notify(&handle);
-                    }
-                }
+                Outcome::TokenChanged => notify_if_token_present(&handle, &mut token_rx),
                 Outcome::ConsentChanged => {
                     let consent = consent_rx.borrow_and_update().clone();
                     let was_none = last_delivered_consent.is_none();
@@ -359,6 +336,24 @@ pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
     BridgePublishers {
         host_owner_token_sender,
         active_device_user_code_sender,
+    }
+}
+
+/// Read-and-mark the current host token and emit the contentless
+/// `AuthTokenIssued` notify iff it's present — the shared body of the `Ready`
+/// (page-load) and `TokenChanged` (re-mint) arms.
+///
+/// `borrow_and_update` marks the value seen so a delivery triggered by one arm
+/// doesn't re-fire the `changed` arm for the same value. The token stays
+/// host-side — the desktop authenticates by loopback provenance, not a cookie —
+/// so only the contentless notify travels, and only for `Some` (a fresh /
+/// re-minted token): a `None` (logout) just stops the host injecting it and the
+/// page's loopback fetches start coming back 401, with no "logged out" notify to
+/// emit. A change landing before the first page load emits into the void (Tauri
+/// events aren't buffered) — harmless, the eventual `__Ready` re-delivers.
+fn notify_if_token_present(handle: &AppHandle, token_rx: &mut watch::Receiver<Option<String>>) {
+    if token_rx.borrow_and_update().is_some() {
+        emit_auth_token_notify(handle);
     }
 }
 

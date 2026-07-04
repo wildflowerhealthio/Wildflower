@@ -1,4 +1,4 @@
-import { FetchHttpClient, type HttpClient, HttpClientError } from '@effect/platform'
+import { FetchHttpClient, HttpApiError, type HttpClient, HttpClientError } from '@effect/platform'
 import { MutationCache, QueryCache, QueryClient } from '@tanstack/react-query'
 import { AppsRouterContext } from 'apps-react'
 import { CollectorRouterContext } from 'collector-react'
@@ -78,23 +78,33 @@ const UNAUTHORIZED_RETRY_TIMES = 3
 const UNAUTHORIZED_RETRY_SPACING = Duration.millis(150)
 
 /**
- * A 401 surfaces as an `HttpClientError.ResponseError`: `HttpApiClient` maps an
- * undeclared status through its `statusOrElse`, and a raw `filterStatusOk` maps
- * any non-2xx — both to a `ResponseError` carrying the response. So the status,
- * not the reason, is the reliable 401 signal.
+ * True for either shape a 401 reaches us as:
+ *
+ * - an `HttpClientError.ResponseError` at status 401 — what `HttpApiClient`'s
+ *   `statusOrElse` (an *undeclared* status) or a raw `filterStatusOk` produce;
+ *   and
+ * - a typed `HttpApiError.Unauthorized` — what an endpoint that *declares* 401
+ *   via `RequireAuthMiddleware` (gatekeeper's `/access` surface — grants,
+ *   devices, consents) decodes its 401 into. `HttpApiClient` never surfaces
+ *   these as a `ResponseError`.
+ *
+ * Matching only the `ResponseError` shape left the boot-race retry and the
+ * device-login redirect silently blind to gatekeeper's own 401s. The status (or
+ * the typed error), not the reason, is the reliable 401 signal.
  */
-const isUnauthorizedResponseError = (error: unknown): boolean =>
-  error instanceof HttpClientError.ResponseError && error.response.status === 401
+const isUnauthorizedError = (error: unknown): boolean =>
+  (error instanceof HttpClientError.ResponseError && error.response.status === 401) ||
+  error instanceof HttpApiError.Unauthorized
 
 /**
  * The same test against the value a rejected `runAuthed` (i.e. a TanStack Query
  * `queryFn`/mutation) surfaces: `Effect.runPromise` rejects with a
- * `FiberFailure` wrapping the cause, so unwrap it to the underlying
- * `ResponseError` first. Used by both the QueryCache redirect and the
- * skip-retry-on-401 policy below.
+ * `FiberFailure` wrapping the cause, so unwrap it to the underlying error
+ * first. Used by both the QueryCache redirect and the skip-retry-on-401 policy
+ * below.
  */
 const isUnauthorizedFailure = (error: unknown): boolean =>
-  isUnauthorizedResponseError(unwrapFiberFailure(error))
+  isUnauthorizedError(unwrapFiberFailure(error))
 
 /**
  * Retry policy for the cookie-plant boot race: re-send only on a 401,
@@ -105,7 +115,7 @@ const isUnauthorizedFailure = (error: unknown): boolean =>
 const unauthorizedRetrySchedule = Schedule.intersect(
   Schedule.recurs(UNAUTHORIZED_RETRY_TIMES),
   Schedule.spaced(UNAUTHORIZED_RETRY_SPACING)
-).pipe(Schedule.whileInput(isUnauthorizedResponseError))
+).pipe(Schedule.whileInput(isUnauthorizedError))
 
 /**
  * In-memory only — no persister (PHI-adjacent). Warmed by route
@@ -173,20 +183,35 @@ const buildRunAuthed = (
     ),
     baseRuntimeLayer
   )
+  // The boot-race retry only covers the *boot window* — the gap between the
+  // page loading and the just-issued `wf_auth` cookie landing in the jar. Once
+  // any authed request has succeeded, the cookie is demonstrably present, so
+  // `booted` latches on and later 401s skip the retry entirely: a genuine
+  // session expiry then propagates immediately (no 4×150ms re-send per query)
+  // and the QueryCache `onError` redirect fires without delay. Without the
+  // latch the retry fired on every 401 for the page's whole lifetime — the
+  // steady-state cost the reviewer flagged.
+  let booted = false
   return {
-    // The boot-race retry sits *inside* the runner (before `provide`, so each
-    // re-send re-runs the request within the same built runtime), scoped to the
+    // The retry sits *inside* the runner (before `provide`, so each re-send
+    // re-runs the request within the same built runtime), scoped to the
     // cookie-authed surface: the device-login flow runs its own effects through
     // `useGatekeeperRuntimeLayer`, not `runAuthed`, so its expected 401/400
     // polling responses are untouched. A persistent 401 propagates unchanged so
     // the QueryCache `onError` can redirect to device login.
-    runAuthed: (effect, options) =>
-      pipe(
-        effect,
+    runAuthed: (effect, options) => {
+      const bootPhase = effect.pipe(
         Effect.retry(unauthorizedRetrySchedule),
-        Effect.provide(runtimeLayer),
-        (provided) => Effect.runPromise(provided, options)
-      ),
+        Effect.tap(() =>
+          Effect.sync(() => {
+            booted = true
+          })
+        )
+      )
+      return pipe(booted ? effect : bootPhase, Effect.provide(runtimeLayer), (provided) =>
+        Effect.runPromise(provided, options)
+      )
+    },
     runtimeLayer,
   }
 }
@@ -194,8 +219,8 @@ const buildRunAuthed = (
 export {
   buildQueryClient,
   buildRunAuthed,
+  isUnauthorizedError,
   isUnauthorizedFailure,
-  isUnauthorizedResponseError,
   unauthorizedRetrySchedule,
 }
 export type { RouterContext, RunAuthed, RuntimeLayer }

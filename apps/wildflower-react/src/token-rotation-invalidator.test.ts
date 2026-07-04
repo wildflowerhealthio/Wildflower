@@ -1,6 +1,12 @@
 import { QueryClient } from '@tanstack/react-query'
 import { Deferred, Effect, Fiber, SubscriptionRef } from 'effect'
-import type { AuthTokenStore } from 'react-kitchen-sink'
+import {
+  AuthedUntil,
+  type AuthSignal,
+  type AuthTokenStore,
+  HostAuthed,
+  Unauthed,
+} from 'react-kitchen-sink'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 
 import { forkTokenRotationInvalidator } from './app-root.tsx'
@@ -13,7 +19,7 @@ import { forkTokenRotationInvalidator } from './app-root.tsx'
  *  1. The replayed initial `SubscriptionRef` value is dropped, so a
  *     fresh subscribe does NOT flush the cache at boot (flushing before
  *     anything is cached is wasted work).
- *  2. Every *post-mount* `setToken(...)` rotation flushes the cache
+ *  2. Every *post-mount* `setSignal(...)` rotation flushes the cache
  *     exactly once, so 401-pinned entries from the previous bearer
  *     refetch under the new one.
  *
@@ -26,16 +32,16 @@ import { forkTokenRotationInvalidator } from './app-root.tsx'
 /**
  * Build an in-memory {@link AuthTokenStore} matching
  * `gatekeeper-react`'s `makeEmbeddedAuthTokenStore` shape: a
- * `SubscriptionRef<string | null>` seeded with `null` plus a
- * synchronous setter that writes through it. The invalidator is forked
- * against `store.subscribable` — the same read surface the production
- * wiring (`renderApp`) passes in.
+ * `SubscriptionRef<AuthSignal>` seeded `Unauthed` plus a synchronous setter
+ * that writes through it. The invalidator is forked against
+ * `store.subscribable` — the same read surface the production wiring
+ * (`renderApp`) passes in.
  */
 const makeInMemoryTokenStore = (): AuthTokenStore => {
-  const ref = Effect.runSync(SubscriptionRef.make<string | null>(null))
+  const ref = Effect.runSync(SubscriptionRef.make<AuthSignal>(Unauthed()))
   return {
     subscribable: ref,
-    setToken: (token) => Effect.runSync(SubscriptionRef.set(ref, token)),
+    setSignal: (signal) => Effect.runSync(SubscriptionRef.set(ref, signal)),
   }
 }
 
@@ -52,7 +58,7 @@ describe('forkTokenRotationInvalidator', () => {
     const fiber = forkTokenRotationInvalidator(tokenStore.subscribable, queryClient)
 
     // Yield the runtime enough turns for the forked fiber to subscribe
-    // and process the replayed initial `null` value. `Effect.yieldNow`
+    // and process the replayed initial `Unauthed` value. `Effect.yieldNow`
     // hands control back to the scheduler, draining any work the fiber
     // has queued — no arbitrary wall-clock sleep.
     await Effect.runPromise(Effect.repeatN(Effect.yieldNow(), 10))
@@ -62,7 +68,7 @@ describe('forkTokenRotationInvalidator', () => {
     await Effect.runPromise(Fiber.interrupt(fiber))
   })
 
-  test('flushes the cache exactly once per post-mount token rotation', async () => {
+  test('flushes the cache exactly once per post-mount rotation', async () => {
     const tokenStore = makeInMemoryTokenStore()
     const queryClient = new QueryClient()
 
@@ -78,12 +84,12 @@ describe('forkTokenRotationInvalidator', () => {
     const fiber = forkTokenRotationInvalidator(tokenStore.subscribable, queryClient)
 
     // Let the forked fiber subscribe to `changes` and consume (drop)
-    // the replayed initial `null` before we rotate — otherwise the
+    // the replayed initial `Unauthed` before we rotate — otherwise the
     // rotation would be the value the late subscriber replays-and-drops.
     await Effect.runPromise(Effect.repeatN(Effect.yieldNow(), 10))
 
-    // Post-mount rotation: the host pushes a fresh bearer.
-    tokenStore.setToken('rotated-bearer')
+    // Post-mount rotation: the host pushes a fresh signal.
+    tokenStore.setSignal(HostAuthed())
 
     // Block until the forked fiber has actually run the invalidation.
     await Effect.runPromise(Deferred.await(flushed))
@@ -111,15 +117,16 @@ describe('forkTokenRotationInvalidator', () => {
 
     const fiber = forkTokenRotationInvalidator(tokenStore.subscribable, queryClient)
 
-    // Let the fiber subscribe and drop the replayed initial `null`
+    // Let the fiber subscribe and drop the replayed initial `Unauthed`
     // before the first rotation (see the single-rotation test).
     await Effect.runPromise(Effect.repeatN(Effect.yieldNow(), 10))
 
-    tokenStore.setToken('bearer-1')
+    // Two *distinct* signals so each is a real change on `.changes`.
+    tokenStore.setSignal(AuthedUntil({ exp: 1000 }))
     await Effect.runPromise(Deferred.await(flushes[0]))
     expect(invalidateSpy).toHaveBeenCalledTimes(1)
 
-    tokenStore.setToken('bearer-2')
+    tokenStore.setSignal(AuthedUntil({ exp: 2000 }))
     await Effect.runPromise(Deferred.await(flushes[1]))
     expect(invalidateSpy).toHaveBeenCalledTimes(2)
 

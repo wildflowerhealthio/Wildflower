@@ -1,6 +1,6 @@
 import { act, cleanup, render, screen } from '@testing-library/react'
 import type { JSX, ReactNode } from 'react'
-import { AuthTokenProvider } from 'react-kitchen-sink'
+import { AuthTokenProvider, HostAuthed } from 'react-kitchen-sink'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
 import {
@@ -69,11 +69,11 @@ import { DeviceConsentModalHost } from './device-consent-modal-host.tsx'
 
 const renderWithProviders = (
   consentStore: ReturnType<typeof makeActiveDeviceUserCodeStore>,
-  options: { readonly initialToken?: string | null } = {}
+  options: { readonly authed?: boolean } = {}
 ): ReturnType<typeof makeEmbeddedAuthTokenStore> => {
   const tokenStore = makeEmbeddedAuthTokenStore()
-  if (options.initialToken !== undefined && options.initialToken !== null) {
-    tokenStore.setToken(options.initialToken)
+  if (options.authed === true) {
+    tokenStore.setSignal(HostAuthed())
   }
   render(
     <AuthTokenProvider store={tokenStore}>
@@ -110,14 +110,14 @@ describe('DeviceConsentModalHost', () => {
 
   test('renders nothing while the active userCode is null', () => {
     const store = makeActiveDeviceUserCodeStore()
-    renderWithProviders(store, { initialToken: 'jwt.token.here' })
+    renderWithProviders(store, { authed: true })
 
     expect(screen.queryByTestId('dialog')).toBeNull()
   })
 
   test('opens a non-dismissable dialog with the form when a userCode arrives', async () => {
     const store = makeActiveDeviceUserCodeStore()
-    renderWithProviders(store, { initialToken: 'jwt.token.here' })
+    renderWithProviders(store, { authed: true })
 
     await act(async () => {
       store.setActiveUserCode('ABC-123')
@@ -132,7 +132,7 @@ describe('DeviceConsentModalHost', () => {
 
   test('local handledUserCode closes the popup immediately on form.onDone, before the host clears', async () => {
     const store = makeActiveDeviceUserCodeStore()
-    renderWithProviders(store, { initialToken: 'jwt.token.here' })
+    renderWithProviders(store, { authed: true })
 
     await act(async () => {
       store.setActiveUserCode('ABC-123')
@@ -151,7 +151,7 @@ describe('DeviceConsentModalHost', () => {
 
   test('re-opens the popup against a genuinely new head', async () => {
     const store = makeActiveDeviceUserCodeStore()
-    renderWithProviders(store, { initialToken: 'jwt.token.here' })
+    renderWithProviders(store, { authed: true })
 
     await act(async () => {
       store.setActiveUserCode('ABC-123')

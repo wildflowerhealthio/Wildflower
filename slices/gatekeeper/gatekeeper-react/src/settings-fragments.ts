@@ -3,7 +3,7 @@ import type { SettingsItem } from 'shared-structures-react'
 /**
  * Menu entries the unified `/settings` screen renders for gatekeeper.
  *
- * `apps/wildflower-react/src/screens/settings-screen.tsx`
+ * `apps/wildflower-react/src/routes/settings/index.tsx`
  * concatenates this with every other slice's
  * `*SettingsItemsFragment` and feeds the result to `<ItemList>`.
  *
@@ -22,4 +22,28 @@ const gatekeeperSettingsItemsFragment: readonly SettingsItem[] = [
   },
 ]
 
-export { gatekeeperSettingsItemsFragment }
+/**
+ * The **web-only** "Logout" settings row. Ends the standalone-web session by
+ * POSTing to `/access/logout`, where gatekeeper-rust clears the `wf_auth` +
+ * `wf_auth_exp` cookies and 303s home.
+ *
+ * A real same-origin `<form method="post">` (the `formAction` variant), NOT a
+ * link: a GET logout would be CSRF-able, since a `SameSite=Lax` cookie IS
+ * carried on a cross-site top-level GET navigation. POST closes that hole.
+ *
+ * Deliberately NOT part of {@link gatekeeperSettingsItemsFragment}: it's
+ * meaningful only on the standalone-web entries. On Tauri the session is
+ * connection-provenance (the host's loopback-owner trust re-authenticates every
+ * request), so clearing a cookie is a no-op — and the page origin there doesn't
+ * even serve `/access/logout`. The web entries thread this into router context
+ * (`platformSettingsItems`); `main-tauri` passes none.
+ */
+const gatekeeperLogoutSettingsItem: SettingsItem = {
+  id: 'logout',
+  title: 'Logout',
+  subtitle: 'Log out of Wildflower and clear the session.',
+  formAction: '/access/logout',
+  method: 'post',
+}
+
+export { gatekeeperLogoutSettingsItem, gatekeeperSettingsItemsFragment }

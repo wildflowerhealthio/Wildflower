@@ -12,6 +12,7 @@ use crate::http::state::AppState;
 
 use crate::http::middleware::require_auth::{
     try_access_token_from_request, try_bearer_token_from_headers, verify_auth_token_claims,
+    AccessTokenSource,
 };
 
 /// State for [`require_valid_bearer_token`]: the gatekeeper [`AppState`] plus the
@@ -35,38 +36,41 @@ pub async fn require_valid_bearer_token(
     if is_exempt(req.uri().path(), &gate.exempt) {
         return next.run(req).await;
     }
-    let Some(token) = try_access_token_from_request(&headers) else {
+    let Some((token, source)) = try_access_token_from_request(&headers) else {
         return response_templates::unauthorized();
     };
     let origin = served_origin_for(
         &headers,
         &gate.state.loopback_base_url.origin().ascii_serialization(),
     );
-    if let Err(e) = verify_auth_token_claims(&gate.state, &origin, &token) {
+    if let Err(e) = verify_auth_token_claims(&gate.state, &origin, token) {
         return response_templates::verify_error_response("verify_auth_token_claims failed", e);
     }
-    // Normalize the just-verified token into an `Authorization: Bearer` header so
+    // Normalize a cookie-sourced token into an `Authorization: Bearer` header so
     // a downstream service that reads *only* that header still authenticates —
-    // notably emr's JWKS-backed HFS auth on the FHIR router. When the token rode
-    // the `wf_auth` cookie (the web path) there is no bearer header for that
-    // inner check to find; a request that already carried one is left untouched.
-    ensure_bearer_header(req.headers_mut(), &token);
+    // notably emr's JWKS-backed HFS auth on the FHIR router. A bearer-sourced
+    // request already carries that header, so it's skipped entirely (no
+    // `format!` + parse, no second header scan) — the token source is carried
+    // from extraction rather than re-derived here.
+    if source == AccessTokenSource::Cookie {
+        if let Ok(bearer) = HeaderValue::from_str(&format!("Bearer {token}")) {
+            ensure_bearer_header(req.headers_mut(), &bearer);
+        }
+    }
     next.run(req).await
 }
 
-/// If `headers` carries no `Authorization: Bearer`, insert one carrying `token`.
-/// Lets a cookie-sourced (already-verified) token satisfy a downstream check
-/// that reads only the bearer header, without disturbing a request that already
-/// presents a bearer. A `token` that can't form a valid header value is skipped
-/// — unreachable in practice, since the caller only passes a token the upstream
-/// verify already accepted.
-fn ensure_bearer_header(headers: &mut HeaderMap, token: &str) {
+/// If `headers` carries no `Authorization: Bearer`, insert `bearer`. Lets a
+/// cookie-sourced (already-verified) token — or, on desktop, the host's owner
+/// token — satisfy a downstream check that reads only the bearer header, without
+/// disturbing a request that already presents one. Shared by the FHIR bearer
+/// gate here and the Tauri loopback-owner-trust middleware, so the "insert a
+/// bearer only when absent" rule lives in exactly one place.
+pub fn ensure_bearer_header(headers: &mut HeaderMap, bearer: &HeaderValue) {
     if try_bearer_token_from_headers(headers).is_some() {
         return;
     }
-    if let Ok(value) = HeaderValue::from_str(&format!("Bearer {token}")) {
-        headers.insert(header::AUTHORIZATION, value);
-    }
+    headers.insert(header::AUTHORIZATION, bearer.clone());
 }
 
 /// Whether `path` is in the exempt set. Exact match after trimming trailing
@@ -125,25 +129,31 @@ mod tests {
     }
 
     #[test]
-    fn ensure_bearer_header_injects_a_cookie_sourced_token() {
+    fn ensure_bearer_header_injects_when_absent() {
         // A request that authenticated by the `wf_auth` cookie carries no
-        // Authorization header; the gate injects the verified token so a
+        // Authorization header; the gate injects the prebuilt bearer so a
         // bearer-only downstream (emr's HFS auth) accepts it.
         let mut headers = HeaderMap::new();
-        ensure_bearer_header(&mut headers, "the.jwt.value");
+        ensure_bearer_header(
+            &mut headers,
+            &HeaderValue::from_static("Bearer the.jwt.value"),
+        );
         assert_eq!(bearer(&headers), Some("Bearer the.jwt.value"));
     }
 
     #[test]
     fn ensure_bearer_header_leaves_an_existing_bearer_untouched() {
         // A request that already presents a bearer is left exactly as-is — the
-        // gate never overwrites the caller's own header.
+        // helper never overwrites the caller's own header.
         let mut headers = HeaderMap::new();
         headers.insert(
             header::AUTHORIZATION,
             HeaderValue::from_static("Bearer original.jwt"),
         );
-        ensure_bearer_header(&mut headers, "different.jwt");
+        ensure_bearer_header(
+            &mut headers,
+            &HeaderValue::from_static("Bearer different.jwt"),
+        );
         assert_eq!(bearer(&headers), Some("Bearer original.jwt"));
     }
 }

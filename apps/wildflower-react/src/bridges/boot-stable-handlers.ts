@@ -20,7 +20,7 @@ import { applyRootInsets } from '../styles/apply-root-insets.ts'
  * drop-all record for that bridge. Logging is web→host only on the
  * page side (no inbound handlers).
  *
- * `setToken` is the gatekeeper bridge's only piece of state — the
+ * `setSignal` is the gatekeeper bridge's only piece of state — the
  * entry's `AuthTokenStore` constructs it (`makeWebAuthTokenStore`
  * derives the auth signal from the `wf_auth_exp` cookie;
  * `makeEmbeddedAuthTokenStore` is in-memory, fed by the host) and the
@@ -37,7 +37,7 @@ import { applyRootInsets } from '../styles/apply-root-insets.ts'
  */
 const makeBootStableInitialHandlers = (
   navigate: (to: NavTarget) => void,
-  setToken: AuthTokenStore['setToken'],
+  setSignal: AuthTokenStore['setSignal'],
   setActiveDeviceUserCode: ActiveDeviceUserCodeStore['setActiveUserCode']
 ): Readonly<Record<string, BridgeHandlerRecord>> => ({
   [NavigationBridge.name]: makeNavigationWebHandlers({
@@ -45,7 +45,7 @@ const makeBootStableInitialHandlers = (
     applyInsets: applyRootInsets,
     applyColorScheme,
   }),
-  [GatekeeperBridge.name]: makeGatekeeperWebHandlers(setToken, setActiveDeviceUserCode),
+  [GatekeeperBridge.name]: makeGatekeeperWebHandlers(setSignal, setActiveDeviceUserCode),
 })
 
 export { makeBootStableInitialHandlers }

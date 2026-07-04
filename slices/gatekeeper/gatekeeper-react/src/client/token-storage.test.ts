@@ -1,126 +1,123 @@
-import { Effect } from 'effect'
-import type { AuthTokenStore } from 'react-kitchen-sink'
-import { afterEach, beforeEach, describe, expect, test } from 'vite-plus/test'
+import { Effect, Equal } from 'effect'
 import {
-  AUTH_EXP_COOKIE_NAME,
+  AuthedUntil,
+  type AuthSignal,
+  type AuthTokenStore,
+  HostAuthed,
+  Unauthed,
+} from 'react-kitchen-sink'
+import { afterEach, beforeEach, describe, expect, test } from 'vite-plus/test'
+
+import { clearAllCookies, futureAuthExp, pastAuthExp, setAuthExpCookie } from '../test-support.ts'
+import {
   makeEmbeddedAuthTokenStore,
   makeWebAuthTokenStore,
   readAuthedSignalFromCookie,
 } from './token-storage.ts'
 
 /**
- * The web store derives its auth signal from the readable `wf_auth_exp`
+ * The web store derives its {@link AuthSignal} from the readable `wf_auth_exp`
  * companion cookie the server sets alongside the `HttpOnly` `wf_auth` JWT
- * (#218). JS never sees the real token; these tests drive the cookie
- * directly and assert the derived signal. A wide (1h) gap between `exp` and
- * "now" keeps the future/past cases robust against test execution time.
+ * (#218). JS never sees the real token; these tests drive the cookie directly
+ * (via the shared `test-support` fixture) and assert the derived signal.
  */
 
-const unixSecs = (): number => Math.floor(Date.now() / 1000)
-const futureExp = (): string => String(unixSecs() + 3600)
-const pastExp = (): string => String(unixSecs() - 3600)
+const read = (store: AuthTokenStore): AuthSignal => Effect.runSync(store.subscribable.get)
 
-const setExpCookie = (value: string): void => {
-  document.cookie = `${AUTH_EXP_COOKIE_NAME}=${value}; Path=/`
-}
-
-const clearCookies = (): void => {
-  for (const part of document.cookie.split(';')) {
-    const name = part.split('=')[0]?.trim()
-    if (name !== undefined && name !== '') document.cookie = `${name}=; Path=/; Max-Age=0`
-  }
-}
-
-const read = (store: AuthTokenStore): string | null => Effect.runSync(store.subscribable.get)
-
-beforeEach(clearCookies)
-afterEach(clearCookies)
+beforeEach(clearAllCookies)
+afterEach(clearAllCookies)
 
 describe('readAuthedSignalFromCookie', () => {
-  test('returns the exp string while the hint is in the future', () => {
-    const exp = futureExp()
-    setExpCookie(exp)
-    expect(readAuthedSignalFromCookie()).toBe(exp)
+  test('returns AuthedUntil(exp) while the hint is in the future', () => {
+    const exp = futureAuthExp()
+    setAuthExpCookie(exp)
+    expect(Equal.equals(readAuthedSignalFromCookie(), AuthedUntil({ exp: Number(exp) }))).toBe(true)
   })
 
-  test('returns null when no companion cookie is present', () => {
-    expect(readAuthedSignalFromCookie()).toBe(null)
+  test('returns Unauthed when no companion cookie is present', () => {
+    expect(Equal.equals(readAuthedSignalFromCookie(), Unauthed())).toBe(true)
   })
 
-  test('returns null once the hint has expired', () => {
-    setExpCookie(pastExp())
-    expect(readAuthedSignalFromCookie()).toBe(null)
+  test('returns Unauthed once the hint has expired', () => {
+    setAuthExpCookie(pastAuthExp())
+    expect(Equal.equals(readAuthedSignalFromCookie(), Unauthed())).toBe(true)
   })
 
-  test('returns null for a non-numeric exp', () => {
-    setExpCookie('not-a-number')
-    expect(readAuthedSignalFromCookie()).toBe(null)
+  test('returns Unauthed for a non-numeric exp', () => {
+    setAuthExpCookie('not-a-number')
+    expect(Equal.equals(readAuthedSignalFromCookie(), Unauthed())).toBe(true)
+  })
+
+  test('returns Unauthed for an empty exp value', () => {
+    // A just-cleared companion (`wf_auth_exp=`) reads back empty — treated as
+    // absent, not `AuthedUntil(NaN)`.
+    setAuthExpCookie('')
+    expect(Equal.equals(readAuthedSignalFromCookie(), Unauthed())).toBe(true)
   })
 
   test('reads wf_auth_exp from among other cookies', () => {
-    const exp = futureExp()
+    const exp = futureAuthExp()
     document.cookie = 'other=1; Path=/'
-    setExpCookie(exp)
+    setAuthExpCookie(exp)
     document.cookie = 'another=2; Path=/'
-    expect(readAuthedSignalFromCookie()).toBe(exp)
+    expect(Equal.equals(readAuthedSignalFromCookie(), AuthedUntil({ exp: Number(exp) }))).toBe(true)
   })
 })
 
 describe('makeWebAuthTokenStore', () => {
-  test('starts authed (the exp hint) when the cookie is present at construction', () => {
-    const exp = futureExp()
-    setExpCookie(exp)
-    expect(read(makeWebAuthTokenStore())).toBe(exp)
+  test('starts AuthedUntil(exp) when the cookie is present at construction', () => {
+    const exp = futureAuthExp()
+    setAuthExpCookie(exp)
+    expect(Equal.equals(read(makeWebAuthTokenStore()), AuthedUntil({ exp: Number(exp) }))).toBe(
+      true
+    )
   })
 
-  test('starts unauthed (null) when no cookie is present', () => {
-    expect(read(makeWebAuthTokenStore())).toBe(null)
+  test('starts Unauthed when no cookie is present', () => {
+    expect(Equal.equals(read(makeWebAuthTokenStore()), Unauthed())).toBe(true)
   })
 
-  test('starts unauthed when the cookie is already expired', () => {
-    setExpCookie(pastExp())
-    expect(read(makeWebAuthTokenStore())).toBe(null)
+  test('starts Unauthed when the cookie is already expired', () => {
+    setAuthExpCookie(pastAuthExp())
+    expect(Equal.equals(read(makeWebAuthTokenStore()), Unauthed())).toBe(true)
   })
 
-  test('setToken re-derives the signal from the cookie, ignoring its argument', () => {
+  test('setSignal re-derives the signal from the cookie, ignoring its argument', () => {
     const store = makeWebAuthTokenStore()
-    expect(read(store)).toBe(null)
+    expect(Equal.equals(read(store), Unauthed())).toBe(true)
 
     // The server set the HttpOnly cookie on the device-flow response; the
     // companion exp now reads back. JS can't (and must not) plant the JWT, so
-    // the value passed to setToken is intentionally ignored.
-    const exp = futureExp()
-    setExpCookie(exp)
-    store.setToken('a-raw-jwt-the-web-store-must-never-hold')
+    // the argument to setSignal is intentionally ignored and the cookie wins.
+    const exp = futureAuthExp()
+    setAuthExpCookie(exp)
+    store.setSignal(HostAuthed())
 
-    expect(read(store)).toBe(exp)
+    expect(Equal.equals(read(store), AuthedUntil({ exp: Number(exp) }))).toBe(true)
   })
 
-  test('the subscribable never carries a usable bearer — only the non-secret exp', () => {
-    const exp = futureExp()
-    setExpCookie(exp)
-    // A JWT has dots; the exp hint is bare digits. This guards the invariant
-    // that the web auth signal is not a token.
+  test('the signal is a typed AuthedUntil carrying only the non-secret exp — never a JWT', () => {
+    const exp = futureAuthExp()
+    setAuthExpCookie(exp)
     const signal = read(makeWebAuthTokenStore())
-    expect(signal).toBe(exp)
-    expect(signal?.includes('.')).toBe(false)
+    expect(signal._tag).toBe('AuthedUntil')
+    if (signal._tag === 'AuthedUntil') expect(signal.exp).toBe(Number(exp))
   })
 })
 
 /**
- * The embedded store holds the raw JWT in memory (the host bridge is the
- * sole writer) and is unchanged by #218 — the embedded path keeps attaching
- * the `Authorization` header because `tauri://` fetches loopback
- * cross-origin where cookies don't travel cleanly (point 8).
+ * The embedded store holds no credential either: seeded `Unauthed`, its sole
+ * writer is the host's `AuthTokenIssued` bridge handler publishing `HostAuthed`.
+ * The credential is the `wf_auth` cookie the host syncs into the webview's jar.
  */
 describe('makeEmbeddedAuthTokenStore', () => {
-  test('starts at null', () => {
-    expect(read(makeEmbeddedAuthTokenStore())).toBe(null)
+  test('starts Unauthed', () => {
+    expect(Equal.equals(read(makeEmbeddedAuthTokenStore()), Unauthed())).toBe(true)
   })
 
-  test('setToken stores the raw token in memory', () => {
+  test('setSignal publishes the host-pushed signal', () => {
     const store = makeEmbeddedAuthTokenStore()
-    store.setToken('from-host-bridge')
-    expect(read(store)).toBe('from-host-bridge')
+    store.setSignal(HostAuthed())
+    expect(Equal.equals(read(store), HostAuthed())).toBe(true)
   })
 })

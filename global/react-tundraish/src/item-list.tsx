@@ -34,17 +34,26 @@ type ItemListItemBase = {
 }
 
 /**
- * Three interaction variants:
+ * Four interaction variants:
  * - `href` → navigates (TanStack `<Link>` for in-app paths, `<a>` for
  *   absolute URLs).
  * - `onClick` → button.
- * - neither → static, non-interactive row (e.g. a read-only feed entry).
+ * - `formAction` → a real same-origin `<form method="post">` submit (e.g.
+ *   logout, which MUST be a POST — a GET would be CSRF-able via a top-level
+ *   navigation). The browser posts and follows the handler's redirect.
+ * - none → static, non-interactive row (e.g. a read-only feed entry).
  */
 type ItemListItem = ItemListItemBase &
   (
-    | { readonly href: string; readonly hard?: boolean; readonly onClick?: never }
-    | { readonly href?: never; readonly onClick: () => void }
-    | { readonly href?: never; readonly onClick?: never }
+    | { readonly href: string; readonly onClick?: never; readonly formAction?: never }
+    | { readonly href?: never; readonly onClick: () => void; readonly formAction?: never }
+    | {
+        readonly href?: never
+        readonly onClick?: never
+        readonly formAction: string
+        readonly method: 'post'
+      }
+    | { readonly href?: never; readonly onClick?: never; readonly formAction?: never }
   )
 
 type ItemListProps = {
@@ -117,7 +126,7 @@ const ItemListRow = ({ item }: { item: ItemListItem }): JSX.Element => {
           </span>
         )
       }
-      if (item.href.startsWith('/') && item.hard !== true) {
+      if (item.href.startsWith('/')) {
         return (
           <Link className={textClass} to={item.href}>
             {textChildren}
@@ -128,6 +137,18 @@ const ItemListRow = ({ item }: { item: ItemListItem }): JSX.Element => {
         <a className={textClass} href={item.href}>
           {textChildren}
         </a>
+      )
+    }
+    if (item.formAction !== undefined) {
+      // A real same-origin form POST (e.g. logout). `display: contents` on the
+      // form lets the submit button fill the row exactly like an `onClick`
+      // button; the browser performs the POST and follows the handler's 303.
+      return (
+        <form method={item.method} action={item.formAction} className={styles['item-list__form']}>
+          <button type="submit" className={textClass} disabled={item.disabled}>
+            {textChildren}
+          </button>
+        </form>
       )
     }
     if (item.onClick !== undefined) {
