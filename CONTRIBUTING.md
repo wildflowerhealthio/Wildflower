@@ -16,7 +16,7 @@ This guide covers general development practices for all packages in the Wildflow
 ### Prerequisites
 
 - Node.js 26+ (managed via `vp env`)
-- The `vp` global binary (Vite+) — see [README.md](./README.md) for install
+- The `vp` global binary (Vite+) — install with `pnpm install -g vite-plus`, then `vp install` in the repo. The devcontainer does this automatically; see [.devcontainer/postCreateCommand.sh](./.devcontainer/postCreateCommand.sh) for the full bootstrap sequence.
 - Understanding of TypeScript
 - Familiarity with Effect-TS (for slice cores and shared utilities)
 - Knowledge of FHIR R4 (for store-related code)
@@ -33,12 +33,17 @@ vp install
 
 ## Project Structure
 
-This is a pnpm + Vite+ workspace organized into:
+This is a pnpm + Vite+ workspace (a polyglot repo — TS packages plus a Cargo workspace). Top-level directories:
 
-- **`apps/`** — User-facing applications (`website`, `wildflower-react`, `wildflower-tauri`, `wildflower-relay`)
+- **`apps/`** — User-facing applications: `website`, `wildflower-react` (SPA in the Tauri webview), `wildflower-tauri` (Tauri host, Rust in `src-tauri`), `wildflower-relay` (Rust tunnel relay)
 - **`global/`** — Project-agnostic shared utilities, copy-pastable to other projects
-- **`infrastructure/`** — Cross-slice infrastructure adapters (currently `fhir-r4-remote`)
-- **`slices/`** — Vertical product slices (`apps`, `collector`, `gatekeeper`, `store`, `telemetry`). Each slice is a `<name>-core` plus optional platform adapters (`-web`, `-node`)
+- **`slices/`** — Vertical product slices (`apps`, `browser-sniffer`, `collector`, `databases`, `emr`, `gatekeeper`, `navigation`, `persistence`, `scopes`, `shared-structures`, `telemetry`, `tunnel`). Each is a `<name>-core` plus optional platform adapters (`-react`, `-rust`, `-tauri`/`-tauri-rust`, `-node`, `-web`); a few are Rust-only
+- **`plugins/`** — Tauri plugins (`tauri-plugin-native-webview`)
+- **`scripts/`** — Shared check/build scripts (e.g. `scripts/checks/rust.sh`)
+- **`patches/`** — pnpm patch files applied via `pnpm.patchedDependencies`
+- **`docs/`** — Project documentation ([four-kinds convention](./docs/Documentation/Explanation.md))
+
+Package versions are governed by the pnpm workspace catalog in `pnpm-workspace.yaml` (which is authoritative for workspace membership — the npm `workspaces` field in `package.json` is not used).
 
 See [slices/AGENTS.md](./slices/AGENTS.md) for the slice layering rules.
 
@@ -47,11 +52,11 @@ See [slices/AGENTS.md](./slices/AGENTS.md) for the slice layering rules.
 All workflow runs through `vp`:
 
 ```bash
-vp run dev           # Start the website dev server
-vp run ready         # Format, lint, test, build (-r) — full pre-PR check
+vp run dev           # Start EVERY package's dev server in parallel (not just website)
+vp run ready         # fmt + lint + lint:comments + lint:docs + pack + test:all — full pre-PR check
 vp test              # Run Vitest across all packages (Vitest projects mode wired in root vite.config.ts)
 vp run test:all      # Run the full Vitest test pass
-vp run build -r      # Build the monorepo
+vp run pack          # Build the monorepo (no root `build` script exists)
 vp check             # Format + lint + typecheck
 vp install           # Install/sync dependencies
 vp fmt               # Format with Oxfmt
@@ -90,8 +95,8 @@ Order imports as follows:
 1. React and React-related libraries
 2. Third-party libraries
 3. Effect-TS imports
-4. Cross-slice imports (`domain/`, `infrastructure/`)
-5. Slice-core imports (`slices/<name>/<name>-core`)
+4. Workspace package imports — `global/` shared utilities and other slices' packages, imported by bare package name (e.g. `collector-core/http-api-definition`)
+5. Current slice's `-core` imports
 6. Local utility imports
 7. Relative imports
 8. Type imports (if using `import type`)
@@ -140,6 +145,8 @@ See [Effect Patterns Reference](./docs/Effect/Patterns%20Reference.md) for repos
 2. Use workspace references for internal dependencies
 3. Keep dependencies minimal
 4. Avoid version conflicts across packages
+
+Dependency versions are governed by the pnpm **catalog** in `pnpm-workspace.yaml` (`catalogMode: prefer`) plus `pnpm.overrides` in the root `package.json`. Prefer `catalog:` references so a version is pinned in one place. See [Version Override Explanation](./docs/Dependencies/Version%20Override%20Explanation.md) for when to add or remove an override.
 
 ### Peer Dependencies
 

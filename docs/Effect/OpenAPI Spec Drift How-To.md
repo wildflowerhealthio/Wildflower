@@ -39,6 +39,8 @@ In `slices/<slice>/<slice>-rust`:
    **always serialized** (no `#[serde(skip_serializing_if)]`), add
    `#[schema(required)]` — it's required-on-the-wire, and this overrides
    utoipa's Option-implies-optional default to match a TS `Schema.NullOr`.
+   utoipa 5.5 parses `#[schema(required)]` as a bool-or-true flag, so the bare
+   attribute reads as `required = true`.
 3. `#[utoipa::path(...)]` on each handler (method + `path` + `responses` +
    `request_body`), and assemble them with `utoipa_axum`'s `OpenApiRouter` +
    `routes!` so the spec is collected from the same routes that serve traffic
@@ -99,7 +101,14 @@ defineSpecDriftTest({
   `#[schema(required)]`; match a `Schema.optionalWith` (optional key) with a
   plain `Option<T>` (utoipa's default).
 - **Regenerate, don't hand-edit, the snapshot** — `UPDATE_OPENAPI=1 cargo test
--p <slice>-rust openapi_spec_snapshot_is_up_to_date`.
+-p <slice>-rust openapi_spec_snapshot_is_up_to_date`. The committed JSON must
+  stay byte-exact with `serde_json::to_string_pretty` (the Rust snapshot test
+  asserts equality), which is why it's excluded from oxfmt.
+- **Keep `defineSpecDriftTest` generic over `fromApi`'s `<Id, Groups, E, R>`.**
+  A materialized supertype like `HttpApi.HttpApi.Any` is _not_ assignable from a
+  concrete `HttpApi`, so the shared TS factory must stay generic over the API's
+  type parameters rather than narrowing its `clientApi` to `HttpApi.HttpApi.Any`
+  — otherwise concrete slice APIs won't type-check against it.
 
 ## See also
 
