@@ -239,6 +239,14 @@ Use markdown freely — these docs are viewed in hover windows that render it, a
 7. **`@remarks` speaks in terms of the params** — By this point the reader knows the inputs and outputs. Explain _why_, not _what_.
 8. **Big comments on small code are fine** — A small utility with many gotchas justifies a long `@remarks`.
 
+## Present Tense and Current State
+
+Doc comments describe the current state, in the present tense. Don't narrate history or compare against how the code used to behave — that context belongs in the commit message, not the hover tooltip.
+
+> Revise these docs to only speak in terms of the present state, don't compare to the past. — `ruthmarks151` (PR #258)
+
+When you change a module, reconcile its comments against the diff before pushing: command lists, counts, and "what this does NOT do" claims drift silently, and deferred-work notes are especially prone to describing work the same change already completed. See [Review Standards Reference](../Agents/Review%20Standards%20Reference.md) for the broader set of pre-push self-checks.
+
 ## Differences from JSDoc
 
 This project uses [TSDoc](https://tsdoc.org/) rather than JSDoc. Key differences:
