@@ -18,9 +18,6 @@ catalogs:
     '@effect/language-service':
       specifier: ^0.86.2
       version: 0.86.2
-    '@fast-check/vitest':
-      specifier: ^0.4.1
-      version: 0.4.1
     '@fontsource-variable/hanken-grotesk':
       specifier: ^5.2.8
       version: 5.2.8
@@ -857,9 +854,6 @@ importers:
       '@effect/platform':
         specifier: 0.96.1
         version: 0.96.1(effect@3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
-      '@fast-check/vitest':
-        specifier: 'catalog:'
-        version: 0.4.1(vitest@3.2.4(@types/debug@4.1.13)(@types/node@26.1.0)(jiti@2.7.0)(jsdom@29.1.1)(lightningcss@1.32.0)(terser@5.47.1)(yaml@2.9.0))
       '@livestore/common':
         specifier: 'catalog:'
         version: 0.4.0(71068cbe6d464c61d35ca680fdbf571e)
@@ -911,9 +905,6 @@ importers:
 
   slices/collector/collector-fundamentals:
     devDependencies:
-      '@fast-check/vitest':
-        specifier: 'catalog:'
-        version: 0.4.1(vitest@3.2.4(@types/debug@4.1.13)(@types/node@26.1.0)(jiti@2.7.0)(jsdom@29.1.1)(lightningcss@1.32.0)(terser@5.47.1)(yaml@2.9.0))
       '@types/node':
         specifier: ^26
         version: 26.1.0
@@ -1034,9 +1025,6 @@ importers:
 
   slices/collector/fhir-r4-client-collector:
     devDependencies:
-      '@fast-check/vitest':
-        specifier: 'catalog:'
-        version: 0.4.1(vitest@3.2.4(@types/debug@4.1.13)(@types/node@26.1.0)(jiti@2.7.0)(jsdom@29.1.1)(lightningcss@1.32.0)(terser@5.47.1)(yaml@2.9.0))
       '@types/node':
         specifier: ^26
         version: 26.1.0
@@ -1076,9 +1064,6 @@ importers:
       '@effect/platform':
         specifier: 0.96.1
         version: 0.96.1(effect@3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
-      '@fast-check/vitest':
-        specifier: 'catalog:'
-        version: 0.4.1(vitest@3.2.4(@types/debug@4.1.13)(@types/node@26.1.0)(jiti@2.7.0)(jsdom@29.1.1)(lightningcss@1.32.0)(terser@5.47.1)(yaml@2.9.0))
       '@types/node':
         specifier: ^26
         version: 26.1.0
@@ -1106,9 +1091,6 @@ importers:
       '@effect/platform':
         specifier: 0.96.1
         version: 0.96.1(effect@3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
-      '@fast-check/vitest':
-        specifier: 'catalog:'
-        version: 0.4.1(vitest@3.2.4(@types/debug@4.1.13)(@types/node@26.1.0)(jiti@2.7.0)(jsdom@29.1.1)(lightningcss@1.32.0)(terser@5.47.1)(yaml@2.9.0))
       '@tanstack/react-query':
         specifier: 'catalog:'
         version: 5.101.2(react@19.2.7)
@@ -1403,9 +1385,6 @@ importers:
       '@effect/platform':
         specifier: 0.96.1
         version: 0.96.1(effect@3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
-      '@fast-check/vitest':
-        specifier: 'catalog:'
-        version: 0.4.1(vitest@3.2.4(@types/debug@4.1.13)(@types/node@26.1.0)(jiti@2.7.0)(jsdom@29.1.1)(lightningcss@1.32.0)(terser@5.47.1)(yaml@2.9.0))
       '@tanstack/react-query':
         specifier: 'catalog:'
         version: 5.101.2(react@19.2.7)
@@ -1823,9 +1802,6 @@ importers:
       '@effect/platform':
         specifier: 0.96.1
         version: 0.96.1(effect@3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
-      '@fast-check/vitest':
-        specifier: 'catalog:'
-        version: 0.4.1(vitest@3.2.4(@types/debug@4.1.13)(@types/node@26.1.0)(jiti@2.7.0)(jsdom@29.1.1)(lightningcss@1.32.0)(terser@5.47.1)(yaml@2.9.0))
       '@types/node':
         specifier: ^26
         version: 26.1.0
@@ -1856,9 +1832,6 @@ importers:
       '@effect/platform':
         specifier: 0.96.1
         version: 0.96.1(effect@3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
-      '@fast-check/vitest':
-        specifier: 'catalog:'
-        version: 0.4.1(vitest@3.2.4(@types/debug@4.1.13)(@types/node@26.1.0)(jiti@2.7.0)(jsdom@29.1.1)(lightningcss@1.32.0)(terser@5.47.1)(yaml@2.9.0))
       '@tanstack/react-query':
         specifier: 'catalog:'
         version: 5.101.2(react@19.2.7)
@@ -2477,11 +2450,6 @@ packages:
     peerDependenciesMeta:
       '@noble/hashes':
         optional: true
-
-  '@fast-check/vitest@0.4.1':
-    resolution: {integrity: sha512-OX6TecB+ZzRfPc49jcPChcV1cf5aDu77CdDU8liecWVam7eD7mPvJNP50b9bBSTxVoGN5wzxrX9PIcCnqgC8bg==}
-    peerDependencies:
-      vitest: ^4.1.0
 
   '@fontsource-variable/hanken-grotesk@5.2.8':
     resolution: {integrity: sha512-K7hu09ZKReBc7EifRLeM4K94NZBrxFEg0nGcISmVwlFQOJo4EmYkLXTWEwr5JcNW4z2hr5zy8vLS2sxC8JDmrQ==}
@@ -6501,11 +6469,6 @@ snapshots:
       levn: 0.4.1
 
   '@exodus/bytes@1.15.1': {}
-
-  '@fast-check/vitest@0.4.1(vitest@3.2.4(@types/debug@4.1.13)(@types/node@26.1.0)(jiti@2.7.0)(jsdom@29.1.1)(lightningcss@1.32.0)(terser@5.47.1)(yaml@2.9.0))':
-    dependencies:
-      fast-check: 3.23.2
-      vitest: 3.2.4(@types/debug@4.1.13)(@types/node@26.1.0)(jiti@2.7.0)(jsdom@29.1.1)(lightningcss@1.32.0)(terser@5.47.1)(yaml@2.9.0)
 
   '@fontsource-variable/hanken-grotesk@5.2.8': {}
 

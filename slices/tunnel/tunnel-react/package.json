@@ -28,7 +28,6 @@
   },
   "devDependencies": {
     "@effect/platform": "catalog:",
-    "@fast-check/vitest": "catalog:",
     "@tanstack/react-query": "catalog:",
     "@tanstack/react-router": "catalog:",
     "@tanstack/router-plugin": "catalog:",
