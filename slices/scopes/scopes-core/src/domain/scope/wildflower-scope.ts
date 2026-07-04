@@ -33,12 +33,14 @@ class WildflowerResourceScope extends BaseResourceScope<
     Contexts.Wildflower,
     ResourceType.Wildflower,
     Permission.Cruds.Interaction,
-    'wildflower'
+    'wildflower',
+    WildflowerResourceScope
   >({
     id: 'wildflower',
-    emptyPermission: Permission.Cruds.empty,
+    permissionClass: Permission.Cruds,
+    resourceClass: ResourceType.Wildflower,
+    contextClass: Contexts.Wildflower,
     is: (scope) => scope instanceof WildflowerResourceScope,
-    parseResource: ResourceType.Wildflower.parse,
     select: (ms) => ms.wildflower,
     make: (context, resource, permission) =>
       new WildflowerResourceScope(context, resource, permission),
@@ -59,16 +61,6 @@ class WildflowerResourceScope extends BaseResourceScope<
     permission: Permission.Base<Permission.Cruds.Interaction>
   ): WildflowerResourceScope {
     return new WildflowerResourceScope(this.context, this.resource, permission)
-  }
-
-  static parse(s: string): WildflowerResourceScope | null {
-    return ScopeConfiguration.parse(
-      s,
-      Contexts.Wildflower.parse,
-      ResourceType.Wildflower.parse,
-      (segment) => Permission.Cruds.parse(segment),
-      (context, resource, permission) => new WildflowerResourceScope(context, resource, permission)
-    )
   }
 }
 

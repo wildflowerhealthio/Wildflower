@@ -23,12 +23,14 @@ class FhirV1ResourceScope extends BaseResourceScope<
     Contexts.Fhir,
     ResourceType.Fhir,
     ReadWritePermission.Interaction,
-    'fhirV1'
+    'fhirV1',
+    FhirV1ResourceScope
   >({
     id: 'fhirV1',
-    emptyPermission: ReadWritePermission.empty,
+    permissionClass: ReadWritePermission,
+    resourceClass: ResourceType.Fhir,
+    contextClass: Contexts.Fhir,
     is: (scope) => scope instanceof FhirV1ResourceScope,
-    parseResource: ResourceType.Fhir.parse,
     select: (ms) => ms.fhirV1,
     make: (context, resource, permission) => new FhirV1ResourceScope(context, resource, permission),
   })
@@ -46,16 +48,6 @@ class FhirV1ResourceScope extends BaseResourceScope<
 
   withPermission(permission: ReadWritePermission): FhirV1ResourceScope {
     return new FhirV1ResourceScope(this.context, this.resource, permission)
-  }
-
-  static parse(s: string): FhirV1ResourceScope | null {
-    return ScopeConfiguration.parse(
-      s,
-      Contexts.Fhir.parse,
-      ResourceType.Fhir.parse,
-      (segment) => ReadWritePermission.parse(segment),
-      (context, resource, permission) => new FhirV1ResourceScope(context, resource, permission)
-    )
   }
 }
 

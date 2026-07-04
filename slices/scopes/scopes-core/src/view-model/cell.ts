@@ -39,11 +39,12 @@ const rowFor = <
   TContext extends Scope.Contexts.Context,
   TResource extends Scope.ResourceType.Base,
   TInteraction extends string,
+  TId extends Scope.ResourceScope.Any['kind'],
 >(
-  partition: readonly Scope.ResourceScope.Base<TContext, TResource, TInteraction>[],
+  partition: readonly Scope.ResourceScope.Base<TContext, TResource, TInteraction, TId>[],
   context: TContext,
   resource: TResource
-): Scope.ResourceScope.Base<TContext, TResource, TInteraction> | undefined =>
+): Scope.ResourceScope.Base<TContext, TResource, TInteraction, TId> | undefined =>
   partition.find((s) => s.hasContext(context) && s.hasResource(resource))
 
 /**
@@ -64,7 +65,13 @@ const forItem = <
   TInteraction extends string,
   TId extends Scope.ResourceScope.Any['kind'],
 >(
-  configuration: Scope.ScopeConfiguration<TContext, TResource, TInteraction, TId>,
+  configuration: Scope.ScopeConfiguration<
+    TContext,
+    TResource,
+    TInteraction,
+    TId,
+    Scope.ResourceScope.Base<TContext, TResource, TInteraction, TId>
+  >,
   grant: Scope.MultiScope,
   scopeRequest: ScopeRequest.ScopeRequest | null,
   context: TContext,
@@ -74,7 +81,8 @@ const forItem = <
   const grantedness = Scope.ScopeConfiguration.scopesGrantInteraction<
     TContext,
     TResource,
-    TInteraction
+    TInteraction,
+    TId
   >(configuration.select(grant), context, resource, itemId)
 
   // §3: covered by a same-context `*` wildcard ⇒ locked on. A held grant is always shown,
@@ -95,7 +103,8 @@ const forItem = <
     const requestable = Scope.ScopeConfiguration.scopesGrantInteraction<
       TContext,
       TResource,
-      TInteraction
+      TInteraction,
+      TId
     >(configuration.select(scopeRequest.requested), context, resource, itemId).granted
     if (!requestable) {
       return { state: 'disabled', lockReason: { kind: 'notRequested' } }

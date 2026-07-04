@@ -22,7 +22,8 @@ namespace ResourceScope {
     TContext extends Contexts.Context,
     TResource extends ResourceType.Base,
     TPermission extends string,
-  > = BaseResourceScope<TContext, TResource, TPermission>
+    TId extends string,
+  > = BaseResourceScope<TContext, TResource, TPermission, TId>
 
   /** Whether a scope is a resource scope (FHIR or Wildflower), narrowing to {@link BaseResourceScope.Base}. */
   export const isResourceScope = (s: BaseScope): s is Any => {
@@ -30,13 +31,13 @@ namespace ResourceScope {
   }
 
   export const parse = (s: string): Any | null => {
-    const wf = Wildflower.parse(s)
+    const wf = Wildflower.configuration.parse(s)
     if (wf !== null) return wf
 
-    const fhirV1 = FhirV1.parse(s)
+    const fhirV1 = FhirV1.configuration.parse(s)
     if (fhirV1 !== null) return fhirV1
 
-    const fhirV2 = FhirV2.parse(s)
+    const fhirV2 = FhirV2.configuration.parse(s)
     if (fhirV2 !== null) return fhirV2
 
     return null

@@ -21,7 +21,7 @@ import type * as Contexts from './contexts'
 import type { MultiScope } from './multi-scope.ts'
 import type * as Permission from './permission'
 import type * as ResourceType from './resource-type'
-import { BaseResourceScope, type BaseScope } from './scope.ts'
+import { type BaseScope, BaseResourceScope } from './scope.ts'
 
 /**
  * The construction recipe for one *concrete* resource-scope variant, keyed to its
@@ -38,13 +38,22 @@ class ScopeConfiguration<
   TResourceType extends ResourceType.Base,
   TInteraction extends string,
   TId extends string,
+  out S extends BaseResourceScope<TContext, TResourceType, TInteraction, TId>,
 > {
   readonly id: TId
-  readonly emptyPermission: Permission.Base<TInteraction>
+  readonly permissionClass: {
+    readonly empty: Permission.Base<TInteraction>
+    readonly parse: (name: string) => Permission.Base<TInteraction> | null
+  }
+  readonly resourceClass: {
+    readonly parse: (name: string) => TResourceType | null
+  }
+  readonly contextClass: {
+    readonly parse: (name: string) => TContext | null
+  }
   readonly is: (
     scope: BaseScope
   ) => scope is BaseResourceScope<TContext, TResourceType, TInteraction, TId>
-  readonly parseResource: (name: string) => TResourceType | null
   readonly select: (
     ms: MultiScope
   ) => readonly BaseResourceScope<TContext, TResourceType, TInteraction, TId>[]
@@ -52,13 +61,14 @@ class ScopeConfiguration<
     context: TContext,
     resource: TResourceType,
     permission: Permission.Base<TInteraction>
-  ) => BaseResourceScope<TContext, TResourceType, TInteraction, TId>
+  ) => S
 
-  constructor(recipe: ScopeConfiguration.Recipe<TContext, TResourceType, TInteraction, TId>) {
+  constructor(recipe: ScopeConfiguration.Recipe<TContext, TResourceType, TInteraction, TId, S>) {
     this.id = recipe.id
-    this.emptyPermission = recipe.emptyPermission
+    this.permissionClass = recipe.permissionClass
+    this.resourceClass = recipe.resourceClass
+    this.contextClass = recipe.contextClass
     this.is = recipe.is
-    this.parseResource = recipe.parseResource
     this.select = recipe.select
     this.make = recipe.make
   }
@@ -83,7 +93,7 @@ class ScopeConfiguration<
     itemId: TInteraction
   ): readonly BaseResourceScope<TContext, TResourceType, TInteraction, TId>[] {
     if (
-      !ScopeConfiguration.scopesGrantInteraction<TContext, TResourceType, TInteraction>(
+      !ScopeConfiguration.scopesGrantInteraction<TContext, TResourceType, TInteraction, TId>(
         owned,
         context,
         resource,
@@ -95,7 +105,7 @@ class ScopeConfiguration<
     const owns = (scope: BaseResourceScope<TContext, TResourceType, TInteraction, TId>): boolean =>
       scope.hasContext(context) && scope.hasResource(resource)
 
-    const merged = this.emptyPermission.make(
+    const merged = this.permissionClass.empty.make(
       owned.filter(owns).flatMap((scope) => scope.permission.toArray())
     )
     const next = merged.toggle(itemId)
@@ -119,7 +129,7 @@ class ScopeConfiguration<
       // Computed once as a single covering permission, then subtracted, rather than re-folding
       // the whole partition per interaction. Matches `scopesGrantInteraction`'s lock rule
       // (a cover clears `grantedAtOwnResource` only when its resource differs — a wildcard).
-      const covered = this.emptyPermission.make(
+      const covered = this.permissionClass.empty.make(
         owned
           .filter(
             (other) =>
@@ -130,13 +140,29 @@ class ScopeConfiguration<
           )
           .flatMap((other) => other.permission.toArray())
       )
-      const remainder = this.emptyPermission.make(
+      const remainder = this.permissionClass.empty.make(
         scope.permission.toArray().filter((interaction) => !covered.has(interaction))
       )
       const serialized = this.make(scope.context, scope.resource, remainder).serialize()
       if (serialized !== null && serialized !== '') out.push(serialized)
     }
     return out
+  }
+
+  parse(s: string): S | null {
+    const parts = BaseResourceScope.components(s)
+    if (parts === null) return null
+
+    const context = this.contextClass.parse(parts.context)
+    if (context === null) return null
+
+    const resource = this.resourceClass.parse(parts.resource)
+    if (resource === null) return null
+
+    const permission = this.permissionClass.parse(parts.permissions)
+    if (permission === null) return null
+
+    return this.make(context, resource, permission)
   }
 
   /**
@@ -154,7 +180,7 @@ class ScopeConfiguration<
         .toArray()
         .every(
           (interaction) =>
-            ScopeConfiguration.scopesGrantInteraction<TContext, TResourceType, TInteraction>(
+            ScopeConfiguration.scopesGrantInteraction<TContext, TResourceType, TInteraction, TId>(
               allowedPartition,
               scope.context,
               scope.resource,
@@ -214,8 +240,9 @@ class ScopeConfiguration<
     TContext extends Contexts.Context,
     TResourceType extends ResourceType.Base,
     TInteraction extends string,
+    TId extends string,
   >(
-    owned: readonly BaseResourceScope<TContext, TResourceType, TInteraction>[],
+    owned: readonly BaseResourceScope<TContext, TResourceType, TInteraction, TId>[],
     context: TContext,
     resource: TResourceType,
     interaction: TInteraction
@@ -241,13 +268,24 @@ namespace ScopeConfiguration {
     TResourceType extends ResourceType.Base,
     TInteraction extends string,
     TId extends string,
+    out S extends BaseResourceScope<TContext, TResourceType, TInteraction, TId>,
   > = {
     readonly id: TId
-    readonly emptyPermission: Permission.Base<TInteraction>
+    readonly permissionClass: {
+      readonly empty: Permission.Base<TInteraction>
+      readonly parse: (name: string) => Permission.Base<TInteraction> | null
+    }
+    readonly resourceClass: {
+      readonly parse: (name: string) => TResourceType | null
+    }
+    readonly contextClass: {
+      readonly parse: (name: string) => TContext | null
+    }
+
     readonly is: (
       scope: BaseScope
     ) => scope is BaseResourceScope<TContext, TResourceType, TInteraction, TId>
-    readonly parseResource: (name: string) => TResourceType | null
+
     readonly select: (
       ms: MultiScope
     ) => readonly BaseResourceScope<TContext, TResourceType, TInteraction, TId>[]
@@ -255,7 +293,7 @@ namespace ScopeConfiguration {
       context: TContext,
       resource: TResourceType,
       permission: Permission.Base<TInteraction>
-    ) => BaseResourceScope<TContext, TResourceType, TInteraction, TId>
+    ) => S
   }
 
   /** How a partition grants one (context, resource, interaction) cell (`spec.md §3`). */

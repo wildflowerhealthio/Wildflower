@@ -16,7 +16,7 @@ abstract class BaseResourceScope<
   TResource extends ResourceType.Base,
   TInteraction extends string,
   // oxlint-disable-next-line typescript/no-unnecessary-type-parameters
-  TKind extends string = string,
+  TKind extends string,
 > extends BaseScope {
   abstract readonly kind: TKind
   abstract readonly context: TContext

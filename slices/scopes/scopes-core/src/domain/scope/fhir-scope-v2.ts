@@ -22,12 +22,14 @@ class FhirV2ResourceScope extends BaseResourceScope<
     Contexts.Fhir,
     ResourceType.Fhir,
     Permission.Cruds.Interaction,
-    'fhirV2'
+    'fhirV2',
+    FhirV2ResourceScope
   >({
     id: 'fhirV2',
-    emptyPermission: Permission.Cruds.empty,
+    permissionClass: Permission.Cruds,
+    resourceClass: ResourceType.Fhir,
+    contextClass: Contexts.Fhir,
     is: (scope) => scope instanceof FhirV2ResourceScope,
-    parseResource: ResourceType.Fhir.parse,
     select: (ms) => ms.fhirV2,
     make: (context, resource, permission) => new FhirV2ResourceScope(context, resource, permission),
   })
@@ -45,16 +47,6 @@ class FhirV2ResourceScope extends BaseResourceScope<
 
   withPermission(permission: Permission.Cruds): FhirV2ResourceScope {
     return new FhirV2ResourceScope(this.context, this.resource, permission)
-  }
-
-  static parse(s: string): FhirV2ResourceScope | null {
-    return ScopeConfiguration.parse(
-      s,
-      Contexts.Fhir.parse,
-      ResourceType.Fhir.parse,
-      (segment) => Permission.Cruds.parse(segment),
-      (context, resource, permission) => new FhirV2ResourceScope(context, resource, permission)
-    )
   }
 }
 

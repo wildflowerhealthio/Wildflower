@@ -58,7 +58,8 @@ describe('Scope.scopeParse — total parse (mirrors Rust Scope)', () => {
       ) satisfies Scope.ResourceScope.Base<
         Scope.Contexts.Wildflower,
         Scope.ResourceType.Wildflower,
-        Scope.Permission.Cruds.Interaction
+        Scope.Permission.Cruds.Interaction,
+        'wildflower'
       >
     )
     // wildflower context + unknown resource ⇒ unknown (the set is closed, like Rust)

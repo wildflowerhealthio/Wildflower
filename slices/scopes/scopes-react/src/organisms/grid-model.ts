@@ -54,7 +54,13 @@ interface Section<
   TInteraction extends string,
   TId extends Scope.ResourceScope.Any['kind'],
 > {
-  readonly configuration: Scope.ScopeConfiguration<TContext, TResource, TInteraction, TId>
+  readonly configuration: Scope.ScopeConfiguration<
+    TContext,
+    TResource,
+    TInteraction,
+    TId,
+    Scope.ResourceScope.Base<TContext, TResource, TInteraction, TId>
+  >
   /** The section's context — `new Fhir('patient')`, `new Wildflower()`, … */
   readonly context: TContext
   /** The resource names to list as rows (`spec.md §4`), e.g. `Scope.ResourceType.Fhir.catalog`. */
@@ -89,7 +95,7 @@ const buildGrid = <
   // The wildcard row's label ("✶ All record types") comes from the domain, so the lock
   // copy below doesn't duplicate it. Keyed by every {@link Cell.LockReason} kind, so the
   // map stays exhaustive — a new kind is a compile error until it's given copy.
-  const wildcardLabel = configuration.parseResource('*')?.pluralLabel() ?? 'all record types'
+  const wildcardLabel = configuration.resourceClass.parse('*')?.pluralLabel() ?? 'all record types'
   const lockCopy: Record<Cell.LockReason['kind'], string> = {
     wildcard: `Granted by the ${wildcardLabel} row — change it there`,
     required: 'Required by the app',
@@ -109,8 +115,8 @@ const buildGrid = <
       resource: resource.serialize(),
       label: resource.singularLabel(),
       code: stored?.serialize() ?? `${context.serialize()}/${resource.serialize()}`,
-      layout: configuration.emptyPermission.layout,
-      items: configuration.emptyPermission.items.map((item) => {
+      layout: configuration.permissionClass.empty.layout,
+      items: configuration.permissionClass.empty.items.map((item) => {
         const cell = Cell.forItem(configuration, grant, scopeRequest, context, resource, item.id)
         return {
           id: item.id,
@@ -124,14 +130,14 @@ const buildGrid = <
   }
 
   const rows = catalog
-    .map((name) => configuration.parseResource(name))
+    .map((name) => configuration.resourceClass.parse(name))
     .filter((resource): resource is TResource => resource !== null)
     .map(rowFor)
 
   const wildcard =
-    includeWildcard && scopeRequest === null ? configuration.parseResource('*') : null
+    includeWildcard && scopeRequest === null ? configuration.resourceClass.parse('*') : null
   return {
-    columns: configuration.emptyPermission.items,
+    columns: configuration.permissionClass.empty.items,
     rows: wildcard === null ? rows : [rowFor(wildcard), ...rows],
   }
 }
