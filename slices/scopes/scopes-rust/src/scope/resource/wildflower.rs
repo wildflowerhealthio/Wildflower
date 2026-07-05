@@ -41,8 +41,10 @@ pub enum WildflowerResource {
 
 impl WildflowerResourceScope {
     /// Parse the `wildflower/Resource.perms` grammar — fixed `wildflower`
-    /// context, the `*` wildcard or an explicit [`WildflowerResource`] — or
-    /// `None` if `s` isn't one.
+    /// context, the `*` wildcard or an explicit [`WildflowerResource`], and a
+    /// v2 letter-bag permission (the v1 words `read`/`write`/`*` are FHIR-only,
+    /// mirroring scopes-core's Cruds-only wildflower scopes) — or `None` if `s`
+    /// isn't one.
     pub(in crate::scope) fn parse(s: &str) -> Option<Self> {
         let (ctx_str, rest) = s.split_once('/')?;
         if ctx_str != CONTEXT {
@@ -50,7 +52,8 @@ impl WildflowerResourceScope {
         }
         let (type_str, perms_str) = rest.split_once('.')?;
         let resource = WildflowerResourceType::parse(type_str)?;
-        let permission = Permission::parse_segment(super::strip_search_suffix(s, perms_str))?;
+        let permission =
+            Permission::parse_letter_segment(super::strip_search_suffix(s, perms_str))?;
         Some(WildflowerResourceScope {
             resource,
             permission,

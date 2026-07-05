@@ -5,6 +5,7 @@
  * - {@link GrantDraft} — the editable `{patient, …partitions}` picker state + wire serialization
  * - {@link ScopeRequest} — the request-mode envelope + `granted ⊆ requested` clamp (§2)
  * - {@link Cell} — one permission control's resolved grid view-state (§2 clamp + §3 lock)
+ * - {@link Rows} — the request-aware row list for a grid section (row + wildcard-injection policy)
  *
  * The editing/resolution/serialization algebra itself lives in the domain and is shared
  * by all three: wildcard resolution, cell toggles, and §3 serialize dedupe on
@@ -19,3 +20,4 @@
 export * as GrantDraft from './grant-draft.ts'
 export * as ScopeRequest from './scope-request.ts'
 export * as Cell from './cell.ts'
+export * as Rows from './rows.ts'

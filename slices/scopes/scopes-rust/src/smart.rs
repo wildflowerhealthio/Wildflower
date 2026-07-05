@@ -45,7 +45,9 @@ pub fn grantable_scopes(
 /// Does the client-allowed scope `allowed` cover the approved scope `requested`?
 /// Both sides are parsed to a [`Scope`] and compared with [`Scope::covers`]:
 /// resource scopes match by context + resource-type (wildcard-aware) +
-/// permission subset; known and unknown scopes match exactly.
+/// permission subset within the same v1/v2 grammar (a word-form allowed scope
+/// never covers a letter-form request, or vice versa); known and unknown scopes
+/// match exactly.
 pub fn allowed_scope_covers(allowed: &str, requested: &str) -> bool {
     Scope::from(allowed).covers(&Scope::from(requested))
 }
@@ -115,12 +117,13 @@ mod tests {
     }
 
     #[test]
-    fn context_hierarchy_covers_downward_only() {
-        // `system ⊇ user ⊇ patient`: a broader context covers a narrower one...
+    fn context_hierarchy_only_system_covers_downward() {
+        // `system` covers every context...
         assert!(allowed_scope_covers("system/*.cruds", "user/Patient.r"));
         assert!(allowed_scope_covers("system/*.cruds", "patient/Patient.r"));
-        assert!(allowed_scope_covers("user/*.cruds", "patient/Patient.r"));
-        // ...but a narrower context never reaches up.
+        // ...but `user` and `patient` cover only themselves: a patient-launch
+        // scope is bound to the launch patient, not the user's own access.
+        assert!(!allowed_scope_covers("user/*.cruds", "patient/Patient.r"));
         assert!(!allowed_scope_covers("patient/*.cruds", "user/Patient.r"));
         assert!(!allowed_scope_covers("user/*.cruds", "system/Patient.r"));
     }
@@ -146,52 +149,51 @@ mod tests {
     }
 
     #[test]
-    fn v1_word_perms_map_to_their_letter_sets() {
+    fn v1_word_perms_cover_only_within_the_word_grammar() {
+        // `*` is the word-grammar superset of both words...
         assert!(allowed_scope_covers(
-            "patient/Observation.read",
-            "patient/Observation.r"
+            "patient/*.*",
+            "patient/Observation.read"
+        ));
+        assert!(allowed_scope_covers(
+            "patient/*.*",
+            "patient/Observation.write"
         ));
         assert!(allowed_scope_covers(
             "patient/Observation.read",
-            "patient/Observation.s"
+            "patient/Observation.read"
         ));
-        assert!(allowed_scope_covers(
+        // ...but the words are disjoint, and neither reaches up to `*`.
+        assert!(!allowed_scope_covers(
             "patient/Observation.read",
-            "patient/Observation.rs"
+            "patient/Observation.write"
         ));
         assert!(!allowed_scope_covers(
             "patient/Observation.read",
-            "patient/Observation.d"
-        ));
-        assert!(!allowed_scope_covers(
-            "patient/Observation.read",
-            "patient/Observation.c"
-        ));
-        assert!(allowed_scope_covers(
-            "patient/Observation.write",
-            "patient/Observation.cud"
-        ));
-        assert!(!allowed_scope_covers(
-            "patient/Observation.write",
-            "patient/Observation.r"
+            "patient/Observation.*"
         ));
     }
 
     #[test]
-    fn v1_and_v2_perms_interoperate_both_directions() {
-        assert!(allowed_scope_covers(
+    fn v1_and_v2_perms_never_cross_cover() {
+        // Same interaction bits, different grammars — coverage never bridges
+        // them (mirrors scopes-core's no-cross-style-conversion invariant).
+        assert!(!allowed_scope_covers(
             "patient/Patient.read",
             "patient/Patient.rs"
         ));
-        assert!(allowed_scope_covers(
+        assert!(!allowed_scope_covers(
             "patient/Patient.cruds",
             "patient/Patient.read"
         ));
-        assert!(allowed_scope_covers(
+        assert!(!allowed_scope_covers(
             "patient/Patient.*",
             "patient/Patient.cruds"
         ));
-        assert!(allowed_scope_covers("patient/*.*", "patient/Observation.d"));
+        assert!(!allowed_scope_covers(
+            "patient/*.*",
+            "patient/Observation.d"
+        ));
     }
 
     #[test]
@@ -266,7 +268,8 @@ mod tests {
             "patient/Observation.rs".to_string(),
         ];
         let requested = s(&["patient/Observation.read", "patient/Observation.rs"]);
-        let allowed = s(&["patient/*.cruds"]);
+        // Coverage is per-grammar, so allowing both forms takes both spellings.
+        let allowed = s(&["patient/*.cruds", "patient/*.*"]);
         let granted = grantable_scopes(approved, &requested, &allowed);
         assert_eq!(
             granted,
@@ -293,11 +296,6 @@ mod tests {
             with_alternate_canonical_forms(&v(&["system/*.*"])),
             v(&["system/*.*", "system/*.cruds"])
         );
-        // Wildflower resource scopes get the same treatment.
-        assert_eq!(
-            with_alternate_canonical_forms(&v(&["wildflower/Grant.read"])),
-            v(&["wildflower/Grant.read", "wildflower/Grant.rs"])
-        );
     }
 
     #[test]
@@ -315,6 +313,12 @@ mod tests {
         assert_eq!(
             with_alternate_canonical_forms(&v(&["openid", "offline_access", "launch/patient"])),
             v(&["openid", "offline_access", "launch/patient"])
+        );
+        // A v1-worded wildflower string parses as Unknown (the word grammar is
+        // FHIR-only), so it gains no alternate.
+        assert_eq!(
+            with_alternate_canonical_forms(&v(&["wildflower/Grant.read"])),
+            v(&["wildflower/Grant.read"])
         );
     }
 

@@ -40,11 +40,15 @@ const INTERACTIONS: [(u8, char); 5] = [
 
 /// A non-empty set of interactions — the permission half of every resource scope.
 ///
-/// Coverage is always compared by the underlying interaction bit set, but the
-/// SMART v1 *word* forms (`read`/`write`/`*`) are preserved so they round-trip:
-/// per the SMART App Launch v1↔v2 back-compat rule, a grant requested as `read`
-/// is returned as `read` (not its `rs` letter equivalent). v2 letter bags render
-/// in canonical `c,r,u,d,s` order regardless of input order.
+/// Coverage never crosses grammars: v1 words compare only against v1 words and
+/// v2 letter bags only against letter bags (within a grammar the comparison is
+/// by interaction bit set). This mirrors scopes-core's no-cross-style-conversion
+/// invariant — a client registered in one grammar authorizes requests in that
+/// grammar only. The SMART v1 *word* forms (`read`/`write`/`*`) are preserved so
+/// they round-trip: per the SMART App Launch v1↔v2 back-compat rule, a grant
+/// requested as `read` is returned as `read` (not its `rs` letter equivalent).
+/// v2 letter bags render in canonical `c,r,u,d,s` order regardless of input
+/// order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Permission(PermissionRepr);
 
@@ -90,6 +94,13 @@ impl Permission {
         }
     }
 
+    /// Normalize a SMART v2 letter-bag segment only — rejects the v1 words
+    /// (`read`/`write`/`*`). Wildflower scopes use the letter grammar
+    /// exclusively, mirroring scopes-core's `CrudsPermission.parse`.
+    pub(in crate::scope) fn parse_letter_segment(perms: &str) -> Option<Self> {
+        Self::parse_segment(perms).filter(|p| !p.is_word_form())
+    }
+
     /// The interaction bit set this grants, regardless of v1/v2 form.
     pub(in crate::scope) fn bits(self) -> u8 {
         match self.0 {
@@ -102,10 +113,21 @@ impl Permission {
         }
     }
 
-    /// Does `self` grant every interaction in `other`? Compared by interaction
-    /// bits, so a v1 `read` covers a v2 `rs` and vice versa.
+    /// Whether this permission was written in the SMART v1 word grammar
+    /// (`read`/`write`/`*`) rather than the v2 letter-bag grammar.
+    fn is_word_form(self) -> bool {
+        matches!(
+            self.0,
+            PermissionRepr::Read | PermissionRepr::Write | PermissionRepr::Star
+        )
+    }
+
+    /// Does `self` grant every interaction in `other`, **within the same
+    /// grammar**? v1 words compare only against v1 words (`*` ⊇ `read`/`write`),
+    /// letter bags only against letter bags; a cross-grammar pair is never
+    /// covered — mirroring scopes-core's no-cross-style-conversion invariant.
     pub(in crate::scope) fn contains(self, other: Permission) -> bool {
-        other.bits() & !self.bits() == 0
+        self.is_word_form() == other.is_word_form() && other.bits() & !self.bits() == 0
     }
 
     /// This same permission as a canonical v2 letter bag (`read` → `rs`,
@@ -187,14 +209,43 @@ mod tests {
     }
 
     #[test]
-    fn contains_is_a_superset_check() {
+    fn contains_is_a_superset_check_within_a_grammar() {
         let all = Permission::ALL;
         let rs = Permission::parse_segment("rs").unwrap();
         assert!(all.contains(rs));
         assert!(!rs.contains(all));
-        // v1/v2 cross-form coverage works on bits: `read` and `rs` are mutual.
+        // Within the word grammar, `*` is the superset of both words.
+        let star = Permission::parse_segment("*").unwrap();
         let read = Permission::parse_segment("read").unwrap();
-        assert!(read.contains(rs));
-        assert!(rs.contains(read));
+        let write = Permission::parse_segment("write").unwrap();
+        assert!(star.contains(read));
+        assert!(star.contains(write));
+        assert!(read.contains(read));
+        assert!(!read.contains(write));
+        assert!(!read.contains(star));
+    }
+
+    #[test]
+    fn contains_never_crosses_grammars() {
+        // Same bits, different grammars: neither direction covers.
+        let read = Permission::parse_segment("read").unwrap();
+        let rs = Permission::parse_segment("rs").unwrap();
+        assert!(!read.contains(rs));
+        assert!(!rs.contains(read));
+        // Even the full sets don't bridge: `*` vs `cruds`.
+        let star = Permission::parse_segment("*").unwrap();
+        assert!(!star.contains(Permission::ALL));
+        assert!(!Permission::ALL.contains(star));
+    }
+
+    #[test]
+    fn parse_letter_segment_rejects_v1_words() {
+        assert_eq!(Permission::parse_letter_segment("read"), None);
+        assert_eq!(Permission::parse_letter_segment("write"), None);
+        assert_eq!(Permission::parse_letter_segment("*"), None);
+        assert_eq!(
+            Permission::parse_letter_segment("cruds"),
+            Some(Permission::ALL)
+        );
     }
 }

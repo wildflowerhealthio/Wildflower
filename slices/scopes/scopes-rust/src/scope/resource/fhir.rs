@@ -14,12 +14,12 @@ pub struct FhirResourceScope {
     pub permission: Permission,
 }
 
-/// The access level a [`FhirResourceScope`] is relative to. Coverage is
-/// **hierarchical** — `System ⊇ User ⊇ Patient` (a broader launch context
-/// grants everything a narrower one does), matching the reach of the SMART
-/// launch contexts. The three stay distinct *values* (a `user` scope renders as
-/// `user`, never silently `system`); only [`covers`](ContextLevel::covers)
-/// applies the order.
+/// The access level a [`FhirResourceScope`] is relative to. `System` covers
+/// every context; `User` and `Patient` cover only themselves — a patient-launch
+/// scope is bound to the launch patient (possibly a record outside the user's
+/// own access), so neither is a subset of the other. The three stay distinct
+/// *values* (a `user` scope renders as `user`, never silently `system`); only
+/// [`covers`](ContextLevel::covers) applies the rule.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ContextLevel {
     Patient,
@@ -59,8 +59,9 @@ impl FhirResourceScope {
     }
 
     /// Does this (client-allowed) scope cover `other` (a requested scope)?
-    /// Hierarchical context (`system ⊇ user ⊇ patient`), wildcard-aware resource
-    /// match, and a permission superset.
+    /// Context coverage (`system` covers everything; `user`/`patient` only
+    /// themselves), wildcard-aware resource match, and a same-grammar
+    /// permission superset.
     pub(in crate::scope) fn covers(&self, other: &FhirResourceScope) -> bool {
         self.context.covers(other.context)
             && self.resource.covers(&other.resource)
@@ -86,20 +87,10 @@ impl ContextLevel {
         }
     }
 
-    /// Does this context grant everything `other` does? Hierarchical —
-    /// `System ⊇ User ⊇ Patient` — so a context always covers itself and any
-    /// narrower one, and never a broader one.
+    /// Does this context grant everything `other` does? `system` covers every
+    /// context; `user` and `patient` cover only themselves.
     pub(in crate::scope) fn covers(self, other: ContextLevel) -> bool {
-        self.reach() >= other.reach()
-    }
-
-    /// The breadth rank used by [`covers`](ContextLevel::covers): higher is broader.
-    fn reach(self) -> u8 {
-        match self {
-            ContextLevel::Patient => 0,
-            ContextLevel::User => 1,
-            ContextLevel::System => 2,
-        }
+        self == ContextLevel::System || self == other
     }
 }
 

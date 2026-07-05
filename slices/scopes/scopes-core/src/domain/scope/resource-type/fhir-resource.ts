@@ -3,8 +3,6 @@
  * v1 (`readWrite`) and v2 (`cruds`) grammars.
  */
 
-import { Equal, Hash } from 'effect'
-
 import BaseResourceType from './resource-type.ts'
 
 /**
@@ -66,11 +64,8 @@ namespace FhirResourceType {
       return fhirResourceLabels[this.name]?.plural ?? this.name
     }
 
-    [Hash.symbol](): number {
-      return Hash.combine(Hash.string(this.kind))(Hash.string(this.name))
-    }
-    [Equal.symbol](that: Equal.Equal): boolean {
-      return that instanceof Known && this.kind === that.kind && this.name === that.name
+    protected equalityKey(): string {
+      return this.name
     }
 
     static parse(name: string): Known | null {
@@ -93,12 +88,8 @@ namespace FhirResourceType {
       return '✶ All record types'
     }
 
-    [Hash.symbol](): number {
-      return Hash.string(this.kind)
-    }
-
-    [Equal.symbol](that: Equal.Equal): boolean {
-      return that instanceof Wildcard && this.kind === that.kind
+    protected equalityKey(): string {
+      return '*'
     }
 
     static parse(name: string): Wildcard | null {
@@ -117,6 +108,9 @@ namespace FhirResourceType {
 
     return null
   }
+
+  /** The `*` wildcard resource as a shared singleton — prefer this to `parse('*')`. */
+  export const wildcardResourceType: FhirResourceType = new Wildcard()
 
   /**
    * The labelled FHIR resource types the picker renders as rows (`spec.md §4`) — the

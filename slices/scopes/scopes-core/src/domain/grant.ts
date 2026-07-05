@@ -35,12 +35,15 @@ const parse = (raw: Iterable<string>): Grant =>
 
 /**
  * Render every scope to its canonical wire string — the list-level counterpart of
- * {@link Scope.serialize} (mirrors Rust's `Grant::render`). Order is preserved;
- * the view-model's {@link GrantDraft.serialize} layers wildcard dedupe (`spec.md §3`)
- * on top.
+ * {@link Scope.serialize}. Canonicalizes by kind partition (fhirV1 → fhirV2 →
+ * wildflower → known → unknown, the same grouping as {@link GrantDraft.serializeAll},
+ * which additionally sorts within the known/unknown groups); original order holds
+ * only *within* a partition. Unlike Rust's `Grant::render`, input order is NOT
+ * preserved across kinds — `MultiScope.make` partitions on parse. The view-model's
+ * {@link GrantDraft.serialize} layers wildcard dedupe (`spec.md §3`) on top.
  */
 const render = (grant: Grant): string[] =>
-  [...grant.unknown, ...grant.known, ...grant.fhirV1, ...grant.fhirV2, ...grant.wildflower]
+  [...grant.fhirV1, ...grant.fhirV2, ...grant.wildflower, ...grant.known, ...grant.unknown]
     .map((s) => s.serialize())
     .filter((s): s is string => s !== null && s !== '')
 

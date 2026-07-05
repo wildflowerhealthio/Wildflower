@@ -218,12 +218,15 @@ mod tests {
 
     #[test]
     fn parse_falls_back_to_unknown() {
-        // Retired admin scope, an unknown wildflower resource, and a stray-letter
-        // perm bag all preserve verbatim rather than misparse.
+        // Retired admin scope, an unknown wildflower resource, a stray-letter
+        // perm bag, and v1-worded wildflower scopes (the word grammar is
+        // FHIR-only) all preserve verbatim rather than misparse.
         for s in [
             "wildflower/admin",
             "wildflower/Nope.cruds",
             "patient/Observation.rx",
+            "wildflower/Grant.*",
+            "wildflower/*.write",
         ] {
             assert_eq!(Scope::from(s), Scope::Unknown(UnknownScope::new(s)));
         }
@@ -237,14 +240,8 @@ mod tests {
             Scope::from("patient/Observation.read").to_string(),
             "patient/Observation.read"
         );
-        assert_eq!(
-            Scope::from("wildflower/Grant.*").to_string(),
-            "wildflower/Grant.*"
-        );
-        assert_eq!(
-            Scope::from("wildflower/*.write").to_string(),
-            "wildflower/*.write"
-        );
+        assert_eq!(Scope::from("user/*.write").to_string(), "user/*.write");
+        assert_eq!(Scope::from("system/*.*").to_string(), "system/*.*");
         // v2 letter bags normalize to canonical c,r,u,d,s order.
         assert_eq!(
             Scope::from("patient/Observation.sr").to_string(),
@@ -273,9 +270,11 @@ mod tests {
     fn covers_fhir_rules() {
         let covers = |a: &str, b: &str| Scope::from(a).covers(&Scope::from(b));
         assert!(covers("system/*.cruds", "system/Patient.r")); // wildcard + perm subset
-        assert!(covers("patient/Observation.read", "patient/Observation.rs")); // v1 covers v2
-        assert!(covers("system/*.cruds", "user/Patient.r")); // context: system ⊇ user
-        assert!(covers("user/*.cruds", "patient/Observation.r")); // context: user ⊇ patient
+        assert!(covers("patient/*.*", "patient/Observation.read")); // v1 word subset
+        assert!(!covers("patient/Observation.read", "patient/Observation.rs")); // grammars never cross
+        assert!(!covers("patient/Observation.cruds", "patient/Observation.read")); // ...either way
+        assert!(covers("system/*.cruds", "user/Patient.r")); // context: system covers all
+        assert!(!covers("user/*.cruds", "patient/Observation.r")); // context: user ⊉ patient
         assert!(!covers("patient/*.cruds", "user/Patient.r")); // context: patient ⊉ user
         assert!(!covers("system/Patient.r", "system/Patient.cruds")); // perm not covered
         assert!(!covers("system/Patient.cruds", "system/*.cruds")); // specific !covers wildcard
@@ -284,13 +283,16 @@ mod tests {
     #[test]
     fn covers_wildflower_rules() {
         let covers = |a: &str, b: &str| Scope::from(a).covers(&Scope::from(b));
-        assert!(covers("wildflower/Grant.cruds", "wildflower/Grant.read")); // perm subset
-        assert!(covers("wildflower/*.cruds", "wildflower/Grant.read")); // wildcard covers any
-        assert!(!covers("wildflower/Grant.cruds", "wildflower/Client.read")); // explicit resource
-        assert!(!covers("wildflower/Grant.cruds", "wildflower/*.read")); // specific !covers wildcard
-                                                                         // FHIR full access does NOT reach Wildflower resources, and vice versa.
+        assert!(covers("wildflower/Grant.cruds", "wildflower/Grant.r")); // perm subset
+        assert!(covers("wildflower/*.cruds", "wildflower/Grant.r")); // wildcard covers any
+        assert!(!covers("wildflower/Grant.cruds", "wildflower/Client.r")); // explicit resource
+        assert!(!covers("wildflower/Grant.cruds", "wildflower/*.r")); // specific !covers wildcard
+                                                                      // FHIR full access does NOT reach Wildflower resources, and vice versa.
         assert!(!covers("system/*.cruds", "wildflower/Grant.cruds"));
         assert!(!covers("wildflower/Grant.cruds", "system/Grant.cruds"));
+        // Word-form wildflower strings parse as Unknown: exact-match only.
+        assert!(!covers("wildflower/Grant.cruds", "wildflower/Grant.read"));
+        assert!(covers("wildflower/Grant.read", "wildflower/Grant.read"));
     }
 
     #[test]

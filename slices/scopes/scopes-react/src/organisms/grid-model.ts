@@ -2,12 +2,13 @@
  * The view-model for {@link PermissionGrid}: it projects one {@link Section} — a single
  * scope variant, its context, and the resource rows it lists — over the editable
  * {@link GrantDraft.GrantDraft} into a {@link Grid} (its columns + rows). The §2/§3
- * decisions live in `scopes-core` ({@link Cell.forItem}); this file is pure projection,
- * DOM-free and unit-tested on its own.
+ * decisions and the row/wildcard policy live in `scopes-core` ({@link Rows.build});
+ * this file is pure presentation — labels and lock copy — DOM-free and unit-tested on
+ * its own.
  */
 
-import { Cell, Scope } from 'scopes-core'
-import type { GrantDraft, ScopeRequest } from 'scopes-core'
+import { Rows } from 'scopes-core'
+import type { Cell, GrantDraft, Scope, ScopeRequest } from 'scopes-core'
 
 import type { PickerItem } from '../molecules/permission-picker.tsx'
 
@@ -59,7 +60,10 @@ interface Section<K extends Scope.MultiScope.Kind> {
 
 /** Options for {@link buildGrid}. */
 interface GridOptions {
-  /** Prepend the live `*` wildcard row — open mode only (`spec.md §2/§3`). */
+  /**
+   * Offer the live `*` wildcard row — always in open mode; in request mode only when
+   * the app requested a wildcard at this context ({@link Rows.build}, `spec.md §2/§3`).
+   */
   readonly includeWildcard?: boolean
 }
 
@@ -67,7 +71,8 @@ interface GridOptions {
  * Project a {@link Section} over the current draft into its {@link Grid}. Columns come off
  * the section's permission style; each catalog resource becomes a row (a name the variant
  * can't parse is skipped). In request mode each cell is clamped to `scopeRequest` (§2), and
- * in open mode a leading `*` wildcard row drives the union + lock of the rows beneath it (§3).
+ * a leading `*` wildcard row — when {@link Rows.build}'s policy offers it — drives the
+ * union + lock of the rows beneath it (§3).
  */
 const buildGrid = <K extends Scope.MultiScope.Kind>(
   section: Section<K>,
@@ -80,7 +85,8 @@ const buildGrid = <K extends Scope.MultiScope.Kind>(
   // The wildcard row's label ("✶ All record types") comes from the domain, so the lock
   // copy below doesn't duplicate it. Keyed by every {@link Cell.LockReason} kind, so the
   // map stays exhaustive — a new kind is a compile error until it's given copy.
-  const wildcardLabel = configuration.resourceClass.parse('*')?.pluralLabel() ?? 'all record types'
+  const wildcardLabel =
+    configuration.resourceClass.wildcardResourceType?.pluralLabel() ?? 'all record types'
   const lockCopy: Record<Cell.LockReason['kind'], string> = {
     wildcard: `Granted by the ${wildcardLabel} row — change it there`,
     required: 'Required by the app',
@@ -91,18 +97,16 @@ const buildGrid = <K extends Scope.MultiScope.Kind>(
   const describeLock = (reason: Cell.LockReason | null): string | null =>
     reason === null ? null : lockCopy[reason.kind]
 
-  /** The rendered row for one resource of this section. */
-  const rowFor = (resource: Scope.MultiScope.ResourceOf<K>): GridRow => {
-    const stored = Scope.MultiScope.partition(grant, configuration.id).find(
-      (scope) => scope.hasContext(context) && scope.hasResource(resource)
-    )
-    return {
-      resource: resource.serialize(),
-      label: resource.singularLabel(),
-      code: stored?.serialize() ?? `${context.serialize()}/${resource.serialize()}`,
+  const rows = Rows.build(configuration, grant, scopeRequest, context, catalog, {
+    includeWildcard,
+  }).map(
+    (row): GridRow => ({
+      resource: row.resource.serialize(),
+      label: row.resource.singularLabel(),
+      code: row.stored?.serialize() ?? `${context.serialize()}/${row.resource.serialize()}`,
       layout: configuration.permissionClass.empty.layout,
       items: configuration.permissionClass.empty.items.map((item) => {
-        const cell = Cell.forItem(configuration, grant, scopeRequest, context, resource, item.id)
+        const cell = row.cellFor(item.id)
         return {
           id: item.id,
           name: item.name,
@@ -111,19 +115,12 @@ const buildGrid = <K extends Scope.MultiScope.Kind>(
           reason: describeLock(cell.lockReason),
         }
       }),
-    }
-  }
+    })
+  )
 
-  const rows = catalog
-    .map((name) => configuration.resourceClass.parse(name))
-    .filter((resource): resource is Scope.MultiScope.ResourceOf<K> => resource !== null)
-    .map(rowFor)
-
-  const wildcard =
-    includeWildcard && scopeRequest === null ? configuration.resourceClass.parse('*') : null
   return {
     columns: configuration.permissionClass.empty.items,
-    rows: wildcard === null ? rows : [rowFor(wildcard), ...rows],
+    rows,
   }
 }
 

@@ -10,7 +10,7 @@
  * Namespace module (`import { CrudsPermission } from 'scopes-core'`).
  */
 
-import { sentenceJoin } from '../../../language-util.ts'
+import { sentenceJoin } from 'kitchen-sink'
 import { BasePermission } from './permission.ts'
 
 /** The five SMART v2 cruds interactions — used by FHIR v2 *and* Wildflower. */

@@ -10,9 +10,15 @@ const cruds = (l: Scope.Permission.Cruds.Interaction[]): Scope.Permission.Cruds 
 describe('Grant.parse / render', () => {
   test('parse is total — nothing is dropped and every scope round-trips', () => {
     const raw = ['openid', 'patient/Observation.rs', 'wildflower/Grant.cruds', 'a_stray_unknown']
-    // `render` groups by kind (unknown, known, fhirV1, fhirV2, wildflower), so the
+    // `render` groups by kind (fhirV1, fhirV2, wildflower, known, unknown), so the
     // guarantee is totality + round-trip, not cross-kind order — compare as a multiset.
     expect([...Grant.render(Grant.parse(raw))].toSorted()).toEqual([...raw].toSorted())
+  })
+
+  test('render canonicalizes into partition order (resource scopes, then known, then unknown)', () => {
+    expect(
+      Grant.render(Grant.parse(['a_stray_unknown', 'openid', 'patient/Observation.rs']))
+    ).toEqual(['patient/Observation.rs', 'openid', 'a_stray_unknown'])
   })
 
   test('make partitions a scope list by kind', () => {

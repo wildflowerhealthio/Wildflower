@@ -1,6 +1,5 @@
 /** The fixed context segment all Wildflower scopes share (`wildflower/...`). */
 
-import { Equal, Hash } from 'effect'
 import Context from './context'
 
 class WildflowerContext extends Context {
@@ -11,12 +10,8 @@ class WildflowerContext extends Context {
     super()
   }
 
-  [Hash.symbol](): number {
-    return Hash.string(this.kind)
-  }
-
-  [Equal.symbol](that: Equal.Equal): boolean {
-    return that instanceof WildflowerContext && this.kind === that.kind
+  protected equalityKey(): string {
+    return ''
   }
 
   serialize(): string {

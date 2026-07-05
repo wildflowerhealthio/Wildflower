@@ -17,7 +17,8 @@
     "test": "vp test"
   },
   "dependencies": {
-    "effect": "catalog:"
+    "effect": "catalog:",
+    "kitchen-sink": "workspace:*"
   },
   "devDependencies": {
     "@typescript/native-preview": "catalog:",

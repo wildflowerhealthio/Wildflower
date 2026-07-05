@@ -1,4 +1,3 @@
-import { Hash, Equal } from 'effect'
 import BaseResourceType from './resource-type'
 
 abstract class WildflowerResourceType extends BaseResourceType {
@@ -54,12 +53,8 @@ namespace WildflowerResourceType {
       return Resource.pluralLabel(this.resource)
     }
 
-    [Hash.symbol](): number {
-      return Hash.combine(Hash.string(this.kind))(Hash.string(this.resource))
-    }
-
-    [Equal.symbol](that: Equal.Equal): boolean {
-      return that instanceof Known && this.kind === that.kind && this.resource === that.resource
+    protected equalityKey(): string {
+      return this.resource
     }
 
     static parse(s: string): Known | null {
@@ -82,12 +77,8 @@ namespace WildflowerResourceType {
       return '✶ All record types'
     }
 
-    [Hash.symbol](): number {
-      return Hash.string(this.kind)
-    }
-
-    [Equal.symbol](that: Equal.Equal): boolean {
-      return that instanceof Wildcard && this.kind === that.kind
+    protected equalityKey(): string {
+      return '*'
     }
 
     static parse(s: string): Wildcard | null {
@@ -123,6 +114,9 @@ namespace WildflowerResourceType {
 
     return null
   }
+
+  /** The `*` wildcard resource as a shared singleton — prefer this to `parse('*')`. */
+  export const wildcardResourceType: WildflowerResourceType = new Wildcard()
 }
 
 export default WildflowerResourceType

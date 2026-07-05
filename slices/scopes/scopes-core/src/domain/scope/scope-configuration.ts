@@ -3,14 +3,13 @@
  * resource-scope variant, plus the **partition operations** parameterized by it:
  * resolution (`spec.md §3`), editing, and serialization. A recipe is a *value* (held
  * as `Variant.configuration`) so callers pass it rather than branching on
- * `context.kind × permission.kind`. Its methods fold over a {@link MultiScope}: each
- * pulls its own partition via the typed {@link select} field, keyed by the partition
- * literal {@link id} (`'fhirV1' | 'fhirV2' | 'wildflower'`). The variant's element type
- * is recovered as {@link VariantScope} — `Extract<AnyScope, { kind: TId }>` viewed
- * through its {@link BaseResourceScope} facet — so every method reads on a single
- * `Permission.Base<TInteraction>` with no `Cruds | ReadWrite` union to collapse, while
- * `select` / `make` / `toggleItem` still return the *concrete* partition element that
- * flows back into `grant[id]`. The TS core owns this algebra — `scopes-rust` has none.
+ * `context.kind × permission.kind`. Its methods fold over one partition of a
+ * {@link MultiScope}, pulled by the caller via `MultiScope.partition(grant, id)` /
+ * indexed access on the partition literal {@link id} (`'fhirV1' | 'fhirV2' |
+ * 'wildflower'`) — so every method reads on a single `Permission.Base<TInteraction>`
+ * with no `Cruds | ReadWrite` union to collapse, while `make` / `toggleItem` still
+ * return the *concrete* partition element that flows back into `grant[id]`. The TS
+ * core owns this algebra — `scopes-rust` has none.
  *
  * Namespace + type combo (`import { Scope } from 'scopes-core'` → `Scope.ScopeConfiguration`).
  */
@@ -24,10 +23,9 @@ import { BaseScope } from './scope.ts'
 
 /**
  * The construction recipe for one *concrete* resource-scope variant, keyed to its
- * partition literal `TId` so every part is variant-precise: `id` is that literal, `make`
- * returns a `BaseResourceScope<…, TId>` (so it flows back into a `grant[id]` partition),
- * {@link is} narrows a flat list to the variant, and {@link select} pulls this variant's
- * partition out of a {@link MultiScope} (typed `readonly BaseResourceScope<…, TId>[]`).
+ * partition literal `TId` so every part is variant-precise: `id` is that literal and
+ * `make` returns a `BaseResourceScope<…, TId>` (so it flows back into a `grant[id]`
+ * partition, which callers pull via `MultiScope.partition`).
  * Keying the permission to a single `TInteraction` means the edit ops read on
  * `Permission.Base<TInteraction>` directly — never the `Cruds | ReadWrite` union, so
  * nothing collapses.
@@ -46,14 +44,13 @@ class ScopeConfiguration<
   } & (abstract new (...args: any[]) => Permission.Base<TInteraction>)
   readonly resourceClass: {
     readonly parse: (name: string) => TResourceType | null
+    /** The `*` wildcard resource singleton, when this variant has one (`spec.md §3/§4`). */
+    readonly wildcardResourceType?: TResourceType
   } & (abstract new (...args: any[]) => TResourceType)
   readonly contextClass: {
     readonly parse: (name: string) => TContext | null
   } & (abstract new (...args: any[]) => TContext)
 
-  is(scope: BaseScope): scope is BaseResourceScope<TContext, TResourceType, TInteraction, TId> {
-    return scope instanceof this.Instance
-  }
   make(
     context: TContext,
     resource: TResourceType,
@@ -98,10 +95,6 @@ class ScopeConfiguration<
         TInteraction,
         TId
       > = scopeConfiguration
-
-      withPermission(permission: Permission.Base<TInteraction>): Instance {
-        return new Instance(this.context, this.resource, permission)
-      }
     }
   }
 
@@ -158,10 +151,11 @@ class ScopeConfiguration<
     const out: string[] = []
     for (const scope of owned) {
       // §3 dedupe: the interactions a strictly-broader scope already grants — a `*` wildcard
-      // row whose context *covers* this one (hierarchical, `system ⊇ user ⊇ patient`).
-      // Computed once as a single covering permission, then subtracted, rather than re-folding
-      // the whole partition per interaction. Matches `scopesGrantInteraction`'s lock rule
-      // (a cover clears `grantedAtOwnResource` only when its resource differs — a wildcard).
+      // row whose context *covers* this one (`system` covers every context).
+      // Computed once as a single covering permission, then subtracted via
+      // `subtractCovered`, rather than re-folding the whole partition per interaction.
+      // Matches `scopesGrantInteraction`'s lock rule (a cover clears
+      // `grantedAtOwnResource` only when its resource differs — a wildcard).
       const covered = this.permissionClass.empty.make(
         owned
           .filter(
@@ -173,10 +167,13 @@ class ScopeConfiguration<
           )
           .flatMap((other) => other.permission.toArray())
       )
-      const remainder = this.permissionClass.empty.make(
-        scope.permission.toArray().filter((interaction) => !covered.has(interaction))
-      )
-      const serialized = this.make(scope.context, scope.resource, remainder).serialize()
+      const subtraction = scope.permission.subtractCovered(covered)
+      if (subtraction.kind === 'covered') continue
+      const emit =
+        subtraction.kind === 'whole'
+          ? scope
+          : this.make(scope.context, scope.resource, subtraction.value)
+      const serialized = emit.serialize()
       if (serialized !== null && serialized !== '') out.push(serialized)
     }
     return out
@@ -226,47 +223,9 @@ class ScopeConfiguration<
   }
 
   /**
-   * Parse a `context/Type.perms` string into a resource scope, or `null` if any segment
-   * fails — the shared skeleton behind every variant's `parse` ({@link BaseResourceScope.components}
-   * → context → resource → permission → `make`). Each variant supplies its own segment parsers
-   * and concrete constructor, so `TScope` is inferred from `make` and the return stays that
-   * variant's *concrete* scope (no base-view erasure). Static: reads without a recipe instance.
-   */
-  static parse<
-    TContext extends Contexts.Context,
-    TResourceType extends ResourceType.Base,
-    TInteraction extends string,
-    TScope,
-  >(
-    s: string,
-    parseContext: (segment: string) => TContext | null,
-    parseResource: (segment: string) => TResourceType | null,
-    parsePermission: (segment: string) => Permission.Base<TInteraction> | null,
-    make: (
-      context: TContext,
-      resource: TResourceType,
-      permission: Permission.Base<TInteraction>
-    ) => TScope
-  ): TScope | null {
-    const parts = BaseResourceScope.components(s)
-    if (parts === null) return null
-
-    const context = parseContext(parts.context)
-    if (context === null) return null
-
-    const resource = parseResource(parts.resource)
-    if (resource === null) return null
-
-    const permission = parsePermission(parts.permissions)
-    if (permission === null) return null
-
-    return make(context, resource, permission)
-  }
-
-  /**
    * Resolve one interaction cell against a homogeneous partition `owned` (`spec.md §3`),
-   * folding every scope whose {@link isSupersetOf} covers it (context **hierarchical** —
-   * `system ⊇ user ⊇ patient` — resource superset-aware). A cover at a *different resource*
+   * folding every scope whose {@link isSupersetOf} covers it (context coverage —
+   * `system` covers every context — resource superset-aware). A cover at a *different resource*
    * can only be a `*` wildcard row (a named resource covers only its exact self), which
    * clears `grantedAtOwnResource` — the cell is granted but wildcard-locked. Static: no
    * recipe is needed to read.
@@ -312,6 +271,8 @@ namespace ScopeConfiguration {
     } & (abstract new (...args: any[]) => Permission.Base<TInteraction>)
     readonly resourceClass: {
       readonly parse: (name: string) => TResourceType | null
+      /** The `*` wildcard resource singleton, when this variant has one (`spec.md §3/§4`). */
+      readonly wildcardResourceType?: TResourceType
     } & (abstract new (...args: any[]) => TResourceType)
     readonly contextClass: {
       readonly parse: (name: string) => TContext | null
@@ -368,8 +329,8 @@ abstract class BaseResourceScope<
   /**
    * Whether this scope is a superset of — i.e. *covers* — a (context, resource, interaction)
    * cell (`spec.md §3`; mirrors `scopes-rust`'s `FhirResourceScope::covers`): its context
-   * covers the cell's ({@link Contexts.Context.covers} — **hierarchical** for FHIR, `system
-   * ⊇ user ⊇ patient`), its resource is a superset ({@link ResourceType.Base.supersetOf} —
+   * covers the cell's ({@link Contexts.Context.covers} — for FHIR, `system` covers every
+   * context), its resource is a superset ({@link ResourceType.Base.supersetOf} —
    * `*` ⊇ any known sibling), and its permission `has` the interaction. Same-style — `has`
    * is false across styles, so nothing cross-style false-covers. A read-side predicate
    * (`interaction` degrades to `string` at the boundary, like {@link BasePermission.has}, so

@@ -41,7 +41,7 @@ describe('CrudsPermission — parse / serialize (v2 letter bags)', () => {
   })
 
   test('label reads as a sentence', () => {
-    expect(new Cruds(['c', 'r', 's']).label()).toBe('Create, Read and Search')
+    expect(new Cruds(['c', 'r', 's']).label()).toBe('Create, Read, and Search')
     expect(new Cruds(['r']).label()).toBe('Read')
   })
 })
