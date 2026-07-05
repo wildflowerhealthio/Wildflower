@@ -201,7 +201,7 @@ mod tests {
     }
 
     /// Cross-language contract: the web store (`gatekeeper-react`
-    /// `client/token-storage.ts`) derives its auth signal from
+    /// `client/auth-state-store.ts`) derives its auth signal from
     /// `AUTH_EXP_COOKIE_NAME`, but gatekeeper-rust owns the name it actually
     /// sets. A server-side rename that missed the TS side would silently leave
     /// the web store deriving `Unauthed` forever (#218). Pin the two literals
@@ -210,10 +210,10 @@ mod tests {
     fn auth_exp_cookie_name_matches_typescript_web_store() {
         let ts_path = concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../gatekeeper-react/src/client/token-storage.ts"
+            "/../gatekeeper-react/src/client/auth-state-store.ts"
         );
         let ts_src = std::fs::read_to_string(ts_path)
-            .expect("read gatekeeper-react client/token-storage.ts");
+            .expect("read gatekeeper-react client/auth-state-store.ts");
         // Extract the value from `const AUTH_EXP_COOKIE_NAME = '<value>'`.
         let ts_name = ts_src
             .lines()
@@ -225,7 +225,7 @@ mod tests {
                     .strip_prefix(['\'', '"'])?
                     .strip_suffix(['\'', '"'])
             })
-            .expect("AUTH_EXP_COOKIE_NAME literal not found in token-storage.ts — did it rename?");
+            .expect("AUTH_EXP_COOKIE_NAME literal not found in auth-state-store.ts — did it rename?");
         assert_eq!(
             ts_name, AUTH_EXP_COOKIE_NAME,
             "TS web store and gatekeeper-rust disagree on the wf_auth_exp cookie name"

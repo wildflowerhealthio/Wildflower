@@ -1,7 +1,7 @@
 import { Data } from 'effect'
 
 /**
- * The auth-readiness signal an app's {@link AuthTokenStore} publishes.
+ * The auth-readiness signal an app's {@link AuthStateStore} publishes.
  *
  * A tagged sum type so the platform modes are unrepresentable-wrong — unlike the
  * `string | null` it replaces, which overloaded one value with three
@@ -17,18 +17,18 @@ import { Data } from 'effect'
  *    credential and pushes a contentless "authed" notify).
  *
  * Generic auth-readiness infrastructure — no app-specific knowledge — so it
- * lives beside {@link AuthTokenStore}.
+ * lives beside {@link AuthStateStore}.
  */
-type AuthSignal = Data.TaggedEnum<{
+type AuthState = Data.TaggedEnum<{
   readonly Unauthed: Record<never, never>
   readonly AuthedUntil: { readonly exp: number }
   readonly HostAuthed: Record<never, never>
 }>
 
-const AuthSignal = Data.taggedEnum<AuthSignal>()
-const { Unauthed, AuthedUntil, HostAuthed, $is } = AuthSignal
+const AuthState = Data.taggedEnum<AuthState>()
+const { Unauthed, AuthedUntil, HostAuthed, $is } = AuthState
 
 /** Whether the signal represents an authenticated session (any non-`Unauthed`). */
-const isAuthed = (signal: AuthSignal): boolean => signal._tag !== 'Unauthed'
+const isAuthed = (signal: AuthState): boolean => signal._tag !== 'Unauthed'
 
-export { type AuthSignal, Unauthed, AuthedUntil, HostAuthed, isAuthed, $is }
+export { type AuthState, Unauthed, AuthedUntil, HostAuthed, isAuthed, $is }

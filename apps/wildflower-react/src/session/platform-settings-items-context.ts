@@ -10,7 +10,7 @@ import type { SettingsItem } from 'shared-structures-react'
  *
  * A React context (not TanStack router context) because this app's router
  * hooks are untyped — components read app-provided data through typed contexts
- * like this one, the same way `AuthTokenProvider` threads the auth store.
+ * like this one, the same way `AuthStateProvider` threads the auth store.
  * Defaults to `[]` so a component mounted outside a provider (e.g. an isolated
  * unit test) simply renders no platform rows.
  */

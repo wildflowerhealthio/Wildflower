@@ -1,12 +1,12 @@
 /**
- * Per-entry {@link AuthTokenStore} factories for the gatekeeper auth
- * signal: {@link makeWebAuthTokenStore} (cookie-driven, for the
- * standalone web entries) and {@link makeEmbeddedAuthTokenStore}
+ * Per-entry {@link AuthStateStore} factories for the gatekeeper auth
+ * signal: {@link makeWebAuthStateStore} (cookie-driven, for the
+ * standalone web entries) and {@link makeEmbeddedAuthStateStore}
  * (in-memory only, for the in-WebView SPA). Both return the same
- * {@link AuthTokenStore} shape so every consumer is environment-blind;
+ * {@link AuthStateStore} shape so every consumer is environment-blind;
  * only the `main-*` entrypoint picks a factory.
  *
- * The store publishes a typed {@link AuthSignal}, never a credential:
+ * The store publishes a typed {@link AuthState}, never a credential:
  *
  * - On the **web path** the real access token is the `HttpOnly` `wf_auth`
  *   cookie the server sets at token issuance (#218) — invisible to JS. So the
@@ -25,8 +25,8 @@
 import { Equal } from 'effect'
 import {
   AuthedUntil,
-  type AuthSignal,
-  type AuthTokenStore,
+  type AuthState,
+  type AuthStateStore,
   makeSubscribableStore,
   Unauthed,
 } from 'react-kitchen-sink'
@@ -51,12 +51,12 @@ const readCookie = (name: string): string | null => {
 }
 
 /**
- * Derive the web {@link AuthSignal} from the `wf_auth_exp` cookie:
+ * Derive the web {@link AuthState} from the `wf_auth_exp` cookie:
  * `AuthedUntil(exp)` while the non-secret unix `exp` is still in the future,
  * else `Unauthed`. JS never sees the real JWT (the `HttpOnly` `wf_auth`); this
  * is only a presence/expiry hint. Exported for tests.
  */
-const readAuthedSignalFromCookie = (): AuthSignal => {
+const readAuthedSignalFromCookie = (): AuthState => {
   const exp = readCookie(AUTH_EXP_COOKIE_NAME)
   if (exp === null || exp === '') return Unauthed()
   const expNum = Number(exp)
@@ -65,10 +65,10 @@ const readAuthedSignalFromCookie = (): AuthSignal => {
 }
 
 /**
- * Build the standalone-web {@link AuthTokenStore}. The `subscribable` tracks
+ * Build the standalone-web {@link AuthStateStore}. The `subscribable` tracks
  * the cookie-derived signal; it re-derives when the tab regains focus (cookies
  * don't fire `'storage'`, so this is how a sign-in or logout in another tab
- * surfaces). `setSignal` ignores its argument — JS can't write the `HttpOnly`
+ * surfaces). `setAuthState` ignores its argument — JS can't write the `HttpOnly`
  * `wf_auth`; the server already did via `Set-Cookie` on the device-flow /
  * refresh response — and just re-derives the signal from the cookie, which is
  * what `NeedsAuthMessage` triggers on sign-in completion. Clearing the real
@@ -80,14 +80,14 @@ const readAuthedSignalFromCookie = (): AuthSignal => {
  * freshness can read `exp` off the signal themselves. Call once per page load in
  * the `main-*` entrypoint.
  */
-const makeWebAuthTokenStore = (): AuthTokenStore => {
+const makeWebAuthStateStore = (): AuthStateStore => {
   let current = readAuthedSignalFromCookie()
-  const { subscribable, set } = makeSubscribableStore<AuthSignal>(current)
+  const { subscribable, set } = makeSubscribableStore<AuthState>(current)
 
   const refresh = (): void => {
     const next = readAuthedSignalFromCookie()
     // Publish only on a real change so a focus tick on an unchanged cookie
-    // doesn't churn the rotation invalidator. `AuthSignal` is a `Data` tagged
+    // doesn't churn the rotation invalidator. `AuthState` is a `Data` tagged
     // enum, so structural `Equal.equals` compares tag + `exp`.
     if (!Equal.equals(next, current)) {
       current = next
@@ -101,14 +101,14 @@ const makeWebAuthTokenStore = (): AuthTokenStore => {
 
   return {
     subscribable,
-    setSignal: () => {
+    setAuthState: () => {
       refresh()
     },
   }
 }
 
 /**
- * Build the Tauri {@link AuthTokenStore}: a `SubscriptionRef<AuthSignal>`
+ * Build the Tauri {@link AuthStateStore}: a `SubscriptionRef<AuthState>`
  * seeded `Unauthed`, no persistence subscriber, no cross-tab listener. The
  * host's `AuthTokenIssued` bridge handler is the sole writer (it publishes
  * `HostAuthed`); the value drives the auth-readiness signal (the `beforeLoad`
@@ -118,14 +118,14 @@ const makeWebAuthTokenStore = (): AuthTokenStore => {
  *
  * Used by `main-tauri`; see the Auth Token Storage Explanation.
  */
-const makeEmbeddedAuthTokenStore = (): AuthTokenStore => {
-  const { subscribable, set: setSignal } = makeSubscribableStore<AuthSignal>(Unauthed())
-  return { subscribable, setSignal }
+const makeEmbeddedAuthStateStore = (): AuthStateStore => {
+  const { subscribable, set: setAuthState } = makeSubscribableStore<AuthState>(Unauthed())
+  return { subscribable, setAuthState }
 }
 
 export {
   AUTH_EXP_COOKIE_NAME,
-  makeEmbeddedAuthTokenStore,
-  makeWebAuthTokenStore,
+  makeEmbeddedAuthStateStore,
+  makeWebAuthStateStore,
   readAuthedSignalFromCookie,
 }

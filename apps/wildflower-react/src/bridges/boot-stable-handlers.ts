@@ -4,7 +4,7 @@ import type { ActiveDeviceUserCodeStore } from 'gatekeeper-react'
 import { makeGatekeeperWebHandlers } from 'gatekeeper-react/web-bridge'
 import { NavigationBridge } from 'navigation-core'
 import { makeNavigationWebHandlers, type NavTarget } from 'navigation-react'
-import type { AuthTokenStore } from 'react-kitchen-sink'
+import type { AuthStateStore } from 'react-kitchen-sink'
 
 import { applyColorScheme } from '../styles/apply-color-scheme.ts'
 import { applyRootInsets } from '../styles/apply-root-insets.ts'
@@ -20,10 +20,10 @@ import { applyRootInsets } from '../styles/apply-root-insets.ts'
  * drop-all record for that bridge. Logging is web→host only on the
  * page side (no inbound handlers).
  *
- * `setSignal` is the gatekeeper bridge's only piece of state — the
- * entry's `AuthTokenStore` constructs it (`makeWebAuthTokenStore`
+ * `setAuthState` is the gatekeeper bridge's only piece of state — the
+ * entry's `AuthStateStore` constructs it (`makeWebAuthStateStore`
  * derives the auth signal from the `wf_auth_exp` cookie;
- * `makeEmbeddedAuthTokenStore` is in-memory, fed by the host) and the
+ * `makeEmbeddedAuthStateStore` is in-memory, fed by the host) and the
  * page-bridge handler flips it on every `AuthTokenIssued`.
  *
  * The navigation bridge's `SafeAreaInsetsChanged` and
@@ -37,7 +37,7 @@ import { applyRootInsets } from '../styles/apply-root-insets.ts'
  */
 const makeBootStableInitialHandlers = (
   navigate: (to: NavTarget) => void,
-  setSignal: AuthTokenStore['setSignal'],
+  setAuthState: AuthStateStore['setAuthState'],
   setActiveDeviceUserCode: ActiveDeviceUserCodeStore['setActiveUserCode']
 ): Readonly<Record<string, BridgeHandlerRecord>> => ({
   [NavigationBridge.name]: makeNavigationWebHandlers({
@@ -45,7 +45,7 @@ const makeBootStableInitialHandlers = (
     applyInsets: applyRootInsets,
     applyColorScheme,
   }),
-  [GatekeeperBridge.name]: makeGatekeeperWebHandlers(setSignal, setActiveDeviceUserCode),
+  [GatekeeperBridge.name]: makeGatekeeperWebHandlers(setAuthState, setActiveDeviceUserCode),
 })
 
 export { makeBootStableInitialHandlers }

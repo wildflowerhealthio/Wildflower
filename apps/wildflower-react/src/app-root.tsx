@@ -11,7 +11,7 @@ import {
 import type { NavTarget } from 'navigation-react'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { type AuthSignal, AuthTokenProvider, type AuthTokenStore } from 'react-kitchen-sink'
+import { type AuthState, AuthStateProvider, type AuthStateStore } from 'react-kitchen-sink'
 import { ErrorBoundary } from 'react-tundraish'
 import type { BaseRouterContext, SettingsItem } from 'shared-structures-react'
 import { Sentry } from 'telemetry-web'
@@ -29,7 +29,7 @@ import './styles/fonts.ts'
  * Per-entry transport factory. Receives a stable `navigate` closure
  * that delegates to the router instance (set after `createRouter`),
  * a `writeIssuedToken` writer threaded from the entry's
- * {@link AuthTokenStore}, and a `setActiveDeviceUserCode` writer
+ * {@link AuthStateStore}, and a `setActiveDeviceUserCode` writer
  * threaded from the in-app {@link ActiveDeviceUserCodeStore}; returns
  * the page's `BridgeTransport` (narrowed to the React-facing
  * `ReactTransport` surface). Web entries return a pre-resolved stub
@@ -40,7 +40,7 @@ import './styles/fonts.ts'
  */
 type MakeTransport = (
   navigate: (to: NavTarget) => void,
-  writeIssuedToken: AuthTokenStore['setSignal'],
+  writeIssuedToken: AuthStateStore['setAuthState'],
   setActiveDeviceUserCode: ActiveDeviceUserCodeStore['setActiveUserCode']
 ) => Promise<ReactTransport>
 
@@ -54,7 +54,7 @@ type MakeTransport = (
  * into the factory means the gate stays environment-agnostic and the
  * router context no longer needs its own `transportReady` field.
  *
- * The entry closes over its own {@link AuthTokenStore.subscribable}
+ * The entry closes over its own {@link AuthStateStore.subscribable}
  * here — `gatekeeper-react`'s `makeAwaitWebAuthReady` /
  * `makeAwaitEmbeddedAuthReady` take a subscribable and return the
  * shape `BaseRouterContext.AwaitAuthReady` expects.
@@ -81,7 +81,7 @@ type MakeAwaitAuthReady = (transportReady: Promise<void>) => BaseRouterContext.A
  * interrupt it.
  */
 const forkTokenRotationInvalidator = (
-  subscribable: Subscribable.Subscribable<AuthSignal>,
+  subscribable: Subscribable.Subscribable<AuthState>,
   queryClient: QueryClient
 ): Fiber.RuntimeFiber<void, never> =>
   Effect.runFork(
@@ -98,17 +98,17 @@ interface RenderAppOptions {
   /** Tagged onto Sentry events to distinguish web/embedded crashes. */
   readonly entry: 'main-web' | 'main-single-web' | 'main-tauri'
   /**
-   * Environment-specific {@link AuthTokenStore}. Web entries pass
-   * `makeWebAuthTokenStore()` (cookie-derived auth signal — the real JWT
+   * Environment-specific {@link AuthStateStore}. Web entries pass
+   * `makeWebAuthStateStore()` (cookie-derived auth signal — the real JWT
    * is the `HttpOnly` `wf_auth` cookie, invisible to JS); embedded passes
-   * `makeEmbeddedAuthTokenStore()` (in-memory raw JWT, see its docstring
-   * for the why). Threaded into `<AuthTokenProvider>` for descendants and
+   * `makeEmbeddedAuthStateStore()` (in-memory raw JWT, see its docstring
+   * for the why). Threaded into `<AuthStateProvider>` for descendants and
    * into a token-rotation invalidator that flushes TanStack Query's cache
    * when the auth signal changes (so 401-pinned entries don't outlive a
    * sign-in or rotation). HTTP clients are tokenless — auth rides the
    * same-origin `HttpOnly` `wf_auth` cookie, not a JS-attached header.
    */
-  readonly tokenStore: AuthTokenStore
+  readonly tokenStore: AuthStateStore
   /**
    * Environment-specific auth-readiness factory, injected per entry.
    * Called once at `renderApp` time with `transportReady`; the
@@ -151,17 +151,15 @@ interface RenderAppOptions {
    */
   readonly platformSettingsItems: readonly SettingsItem[]
   /**
-   * Per-entry 401 fallback factory. Receives `redirectToDeviceLogin` (which
-   * closes over the router built inside `renderApp`) and returns the
-   * `onUnauthorized` handler the QueryCache calls when an authed request ends in
-   * a 401 that outlived the boot-race retry. Web entries return the redirect
-   * (they have a device-login flow); `main-tauri` returns a no-op — the webview
-   * is host-authenticated, so there's no user login to fall back to and driving
-   * the device flow would spawn a spurious consent against the owner's own
-   * device. Injecting it keeps the platform decision at the entry seam instead
-   * of behind an `entry`-string branch in this shared code.
+   * Whether a 401 that outlives the boot-race retry should redirect the user to
+   * device login. Web entries set `true` (they have a device-login flow);
+   * `main-tauri` sets `false` — the webview is host-authenticated, so there's no
+   * user login to fall back to and driving the device flow would spawn a
+   * spurious consent against the owner's own device. Keeping the choice a flag at
+   * the entry seam keeps the platform decision out of an `entry`-string branch in
+   * this shared code.
    */
-  readonly makeOnUnauthorized: (redirectToDeviceLogin: () => void) => () => void
+  readonly redirectToDeviceLoginOnUnauthorized: boolean
 }
 
 /**
@@ -202,7 +200,7 @@ const renderApp = ({
   apiBaseUrl,
   localGrantedScopes,
   platformSettingsItems,
-  makeOnUnauthorized,
+  redirectToDeviceLoginOnUnauthorized,
 }: RenderAppOptions): void => {
   // Router isn't built until after the query runtime (its context needs the
   // runtime), so the closures that navigate imperatively read it through this
@@ -220,11 +218,11 @@ const renderApp = ({
     void router.navigate(buildDeviceLoginTarget(router.state.location.href))
   }
 
-  // Which 401 fallback this entry uses is the entry's decision, injected as
-  // `makeOnUnauthorized` — not an `entry`-string branch here. Web entries return
-  // `redirectToDeviceLogin`; `main-tauri` returns a no-op (see the field doc and
-  // the entrypoints). A new entry must state its own behavior at its seam.
-  const onUnauthorized = makeOnUnauthorized(redirectToDeviceLogin)
+  // Which 401 fallback this entry uses is the entry's decision, carried by the
+  // `redirectToDeviceLoginOnUnauthorized` flag — not an `entry`-string branch
+  // here. Web entries redirect; `main-tauri` takes no action (see the field doc
+  // and the entrypoints). A new entry must state its own behavior at its seam.
+  const onUnauthorized = redirectToDeviceLoginOnUnauthorized ? redirectToDeviceLogin : () => {}
   const { queryClient, runAuthed, runtimeLayer } = buildAppQueryRuntime(apiBaseUrl, onUnauthorized)
 
   // Keyed on the auth *signal* (the store), not the bearer source: on web a
@@ -246,7 +244,7 @@ const renderApp = ({
 
   const transportPromise = makeTransport(
     navigate,
-    tokenStore.setSignal,
+    tokenStore.setAuthState,
     activeDeviceUserCodeStore.setActiveUserCode
   )
   const transportReady = transportPromise.then(() => undefined)
@@ -292,7 +290,7 @@ const renderApp = ({
         }}
       >
         <QueryClientProvider client={queryClient}>
-          <AuthTokenProvider store={tokenStore}>
+          <AuthStateProvider store={tokenStore}>
             <ActiveDeviceUserCodeProvider store={activeDeviceUserCodeStore}>
               <AppRootTree
                 router={router}
@@ -300,7 +298,7 @@ const renderApp = ({
                 platformSettingsItems={platformSettingsItems}
               />
             </ActiveDeviceUserCodeProvider>
-          </AuthTokenProvider>
+          </AuthStateProvider>
         </QueryClientProvider>
       </ErrorBoundary>
     </StrictMode>

@@ -6,7 +6,7 @@ import { FIRST_PARTY_CLIENT_ID } from 'gatekeeper-core/contexts'
 import { OAuth } from 'gatekeeper-core/http-api-definition'
 
 import { useEffect, useState, type JSX } from 'react'
-import { AuthedUntil, cn, useAuthTokenSetter } from 'react-kitchen-sink'
+import { AuthedUntil, cn, useAuthStateSetter } from 'react-kitchen-sink'
 import { Field, FieldDescription, pageLayoutStyles } from 'react-tundraish'
 
 import { useGatekeeperLocalGrantedScopes, useGatekeeperRuntimeLayer } from '../router-context.ts'
@@ -108,8 +108,8 @@ const MOUNT_DEBOUNCE = Duration.millis(250)
 /**
  * Starts the RFC 8628 device-authorization flow, surfaces the `user_code`,
  * and polls `/oauth/token` until approval. On success writes the token via
- * the `AuthTokenStore` provided by the surrounding `<AuthTokenProvider>`
- * (resolved through {@link useAuthTokenSetter}), so the same write path
+ * the `AuthStateStore` provided by the surrounding `<AuthStateProvider>`
+ * (resolved through {@link useAuthStateSetter}), so the same write path
  * the page-bridge `AuthTokenIssued` handler takes also flows through here,
  * then navigates to the sanitized `?returnTo=` path (or
  * {@link POST_AUTH_DEFAULT_PATH}) with a full page load so the app reboots
@@ -125,7 +125,7 @@ const MOUNT_DEBOUNCE = Duration.millis(250)
  */
 const NeedsAuthMessage = (): JSX.Element => {
   const [state, setState] = useState<DeviceFlowState>({ tag: 'starting' })
-  const setSignal = useAuthTokenSetter()
+  const setAuthState = useAuthStateSetter()
   // Long-running device flow with retry — needs a fiber handle for
   // interrupt-on-unmount, which the promise-returning `runAuthed` can't
   // give. Runs against the composed `runtimeLayer` from router context
@@ -183,7 +183,7 @@ const NeedsAuthMessage = (): JSX.Element => {
         // server just set (its source of truth); `AuthedUntil` is the honest
         // value this sign-in just achieved. The full-page reload below rebuilds
         // the store from the cookie anyway.
-        setSignal(AuthedUntil({ exp: Math.floor(Date.now() / 1000) + tokenResponse.expires_in }))
+        setAuthState(AuthedUntil({ exp: Math.floor(Date.now() / 1000) + tokenResponse.expires_in }))
         // Full-page navigation (not a client-side route push) so the app
         // re-boots with the now-persisted bearer in place — matching the
         // "this page will reload automatically once you sign in" copy.
@@ -205,12 +205,12 @@ const NeedsAuthMessage = (): JSX.Element => {
     return (): void => {
       void Effect.runPromise(Fiber.interrupt(fiber))
     }
-    // `setSignal`'s identity is stable for the surrounding
-    // `AuthTokenStore`'s lifetime (returned from `useAuthTokenSetter`
+    // `setAuthState`'s identity is stable for the surrounding
+    // `AuthStateStore`'s lifetime (returned from `useAuthStateSetter`
     // and constructed once per `main-*` entry); including it in the
     // dep array makes the dependency explicit without churning.
     // `localGrantedScopes` is a stable string from router context.
-  }, [layer, setSignal, localGrantedScopes])
+  }, [layer, setAuthState, localGrantedScopes])
 
   if (state.tag === 'starting') {
     return <p className="text-body-2">Starting sign-in…</p>

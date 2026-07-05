@@ -1,7 +1,7 @@
 import { Effect } from 'effect'
 import type { MessageHandler } from 'effect-messaging-core'
 import type { GatekeeperBridge } from 'gatekeeper-core/bridge'
-import { type AuthTokenStore, HostAuthed } from 'react-kitchen-sink'
+import { type AuthStateStore, HostAuthed } from 'react-kitchen-sink'
 
 import type { ActiveDeviceUserCodeStore } from './active-device-consent/store.ts'
 
@@ -10,7 +10,7 @@ import type { ActiveDeviceUserCodeStore } from './active-device-consent/store.ts
  *
  * - `AuthTokenIssued`: contentless notify that the host has (or refreshed) an
  *   Owner session. The handler flips the auth-readiness signal by publishing
- *   `HostAuthed` into the {@link AuthTokenStore}; the actual credential is the
+ *   `HostAuthed` into the {@link AuthStateStore}; the actual credential is the
  *   `wf_auth` cookie the host syncs into the webview. The bearer never travels
  *   the bridge or the JS side, and the page holds no token, so `HostAuthed`
  *   (authed, no page-known expiry) is exactly the signal this platform can make.
@@ -26,12 +26,12 @@ import type { ActiveDeviceUserCodeStore } from './active-device-consent/store.ts
  * stores (Tauri) or no-op setters (web/single-web, where no host emits these).
  */
 const makeGatekeeperWebHandlers = (
-  setSignal: AuthTokenStore['setSignal'],
+  setAuthState: AuthStateStore['setAuthState'],
   setActiveDeviceUserCode: ActiveDeviceUserCodeStore['setActiveUserCode']
 ): MessageHandler.HandlersFor<(typeof GatekeeperBridge)['HostToWeb']> => ({
   AuthTokenIssued: () =>
     Effect.sync(() => {
-      setSignal(HostAuthed())
+      setAuthState(HostAuthed())
     }),
   DeviceConsentRequested: ({ userCode }) =>
     Effect.sync(() => {

@@ -5,9 +5,9 @@ import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import { numRunsFor } from 'kitchen-sink/test'
 import type { JSX, ReactNode } from 'react'
 import {
-  type AuthSignal,
-  AuthTokenProvider,
-  type AuthTokenStore,
+  type AuthState,
+  AuthStateProvider,
+  type AuthStateStore,
   Unauthed,
 } from 'react-kitchen-sink'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
@@ -52,19 +52,19 @@ vi.mock('../router-context.ts', () => ({
 }))
 
 // The device flow publishes the freshly-authed signal through the
-// `AuthTokenStore.setSignal` it pulled from the surrounding
-// `<AuthTokenProvider>` (via `useAuthTokenSetter`). Tests wrap the
+// `AuthStateStore.setAuthState` it pulled from the surrounding
+// `<AuthStateProvider>` (via `useAuthStateSetter`). Tests wrap the
 // rendered subject in `withTokenStore(...)` so the assertions can
-// observe the write through `setSignalMock` without poking
-// `token-storage` directly.
-const setSignalMock = vi.fn<(signal: AuthSignal) => void>()
-const tokenRef = Effect.runSync(SubscriptionRef.make<AuthSignal>(Unauthed()))
-const testTokenStore: AuthTokenStore = {
+// observe the write through `setAuthStateMock` without poking
+// `auth-state-store` directly.
+const setAuthStateMock = vi.fn<(signal: AuthState) => void>()
+const tokenRef = Effect.runSync(SubscriptionRef.make<AuthState>(Unauthed()))
+const testTokenStore: AuthStateStore = {
   subscribable: tokenRef,
-  setSignal: (signal) => setSignalMock(signal),
+  setAuthState: (signal) => setAuthStateMock(signal),
 }
 const withTokenStore = (children: ReactNode): JSX.Element => (
-  <AuthTokenProvider store={testTokenStore}>{children}</AuthTokenProvider>
+  <AuthStateProvider store={testTokenStore}>{children}</AuthStateProvider>
 )
 
 const { NeedsAuthMessage, sanitizeReturnTo } = await import('./NeedsAuthMessage.tsx')
@@ -73,7 +73,7 @@ const PENDING_FOREVER = Effect.never
 
 afterEach(() => {
   cleanup()
-  setSignalMock.mockReset()
+  setAuthStateMock.mockReset()
   scopesHolder.current = undefined
 })
 
@@ -206,11 +206,11 @@ describe('<NeedsAuthMessage> device flow', () => {
       // sign-in just achieved.
       await waitFor(
         () => {
-          expect(setSignalMock).toHaveBeenCalledTimes(1)
+          expect(setAuthStateMock).toHaveBeenCalledTimes(1)
         },
         { timeout: 2000 }
       )
-      expect(setSignalMock.mock.calls[0]?.[0]?._tag).toBe('AuthedUntil')
+      expect(setAuthStateMock.mock.calls[0]?.[0]?._tag).toBe('AuthedUntil')
       // No `?returnTo=` in the stub location, so sign-in lands on the default.
       expect(assignMock).toHaveBeenCalledWith('/home')
     } finally {

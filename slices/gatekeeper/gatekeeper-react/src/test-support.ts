@@ -1,6 +1,6 @@
 /**
  * Test-only fixture for the `wf_auth_exp` companion cookie the web auth store
- * reads. Extracted so `token-storage.test.ts` and the app's `web-entry.test.ts`
+ * reads. Extracted so `auth-state-store.test.ts` and the app's `web-entry.test.ts`
  * share ONE encoding of the cookie-hint contract — the name
  * ({@link AUTH_EXP_COOKIE_NAME}), `Path=/` scoping, and unix-seconds `exp`
  * format. Two independent copies would drift: a companion-cookie format change
@@ -8,7 +8,7 @@
  *
  * Not exported from the package index — imported via `gatekeeper-react/test-support`.
  */
-import { AUTH_EXP_COOKIE_NAME } from './client/token-storage.ts'
+import { AUTH_EXP_COOKIE_NAME } from './client/auth-state-store.ts'
 
 /**
  * A unix-seconds `exp` an hour in the future. The wide gap keeps the

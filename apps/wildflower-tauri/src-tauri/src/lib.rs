@@ -15,7 +15,7 @@ use gatekeeper_rust::{
 use shared_structures_rust::ServerRuntimeConfig;
 use shared_structures_server_rust::{LoopbackHostname, ProxyTable, TunnelSubdomainReverseProxy};
 use std::net::SocketAddr;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::Arc;
 use tauri::Manager;
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use tokio::net::TcpListener;
@@ -70,25 +70,17 @@ impl OwnerAuth for GatekeeperOwnerAuth {
     }
 }
 
-/// Desktop loopback-owner trust: the prebuilt owner `Authorization: Bearer`
-/// header presented on behalf of a direct-local caller. Shared (behind the
-/// `Arc<Mutex>`) so the `format!` + header-parse + full-JWT copy runs once per
-/// re-mint rather than on every request — the token only changes when
-/// `setup_gatekeeper` re-mints, which [`CachedOwnerBearer`] picks up via
-/// `watch::Receiver::has_changed`.
+/// Desktop loopback-owner trust: presents the host's owner `Authorization:
+/// Bearer` header on behalf of a direct-local caller. Holds a `watch::Receiver`
+/// for the minted host owner token; each request reads the current token off
+/// the channel and builds the header inline. The token only changes when
+/// `setup_gatekeeper` re-mints, and loopback owner traffic is low-volume, so
+/// rebuilding the short header string per request is negligible — not worth
+/// caching behind a lock.
 #[derive(Clone)]
 struct LoopbackOwnerTrust {
-    cache: Arc<Mutex<CachedOwnerBearer>>,
-}
-
-/// The cached owner bearer plus the channel it's derived from.
-struct CachedOwnerBearer {
-    /// The channel `setup_gatekeeper` publishes the minted host owner token on;
-    /// a mid-session re-mint is observed via `has_changed`/`borrow_and_update`.
+    /// The channel `setup_gatekeeper` publishes the minted host owner token on.
     token_rx: tokio::sync::watch::Receiver<Option<String>>,
-    /// Prebuilt `Authorization: Bearer <token>` for the current token — `None`
-    /// before the host mints one (or on the impossible header-parse failure).
-    header: Option<axum::http::HeaderValue>,
 }
 
 /// Present the host's own owner token on behalf of a **direct-local** request —
@@ -142,17 +134,13 @@ fn should_present_owner_token(
     peer_is_loopback && !forwarded && !is_public_surface
 }
 
-/// The current owner `Authorization: Bearer` header, rebuilding the cached value
-/// only when the host token has re-minted (`has_changed`), else cloning the
-/// cheap ref-counted `HeaderValue`. `None` before the host mints a token.
+/// The current owner `Authorization: Bearer` header, built from the latest
+/// token on the watch channel. `None` before the host mints a token (or on the
+/// impossible header-parse failure). `borrow()` takes `&self` and needs no lock,
+/// so concurrent loopback requests read the shared receiver freely.
 fn current_owner_bearer(trust: &LoopbackOwnerTrust) -> Option<axum::http::HeaderValue> {
-    let mut cache = trust.cache.lock().unwrap_or_else(PoisonError::into_inner);
-    if cache.header.is_none() || cache.token_rx.has_changed().unwrap_or(false) {
-        let token = cache.token_rx.borrow_and_update().clone();
-        cache.header =
-            token.and_then(|t| axum::http::HeaderValue::from_str(&format!("Bearer {t}")).ok());
-    }
-    cache.header.clone()
+    let token = trust.token_rx.borrow().clone();
+    token.and_then(|t| axum::http::HeaderValue::from_str(&format!("Bearer {t}")).ok())
 }
 
 async fn run_server(
@@ -429,10 +417,7 @@ async fn run_server(
         // first) and of the loopback-peer gate applied below.
         .layer(axum::middleware::from_fn_with_state(
             LoopbackOwnerTrust {
-                cache: Arc::new(Mutex::new(CachedOwnerBearer {
-                    token_rx: publishers.host_owner_token_sender.subscribe(),
-                    header: None,
-                })),
+                token_rx: publishers.host_owner_token_sender.subscribe(),
             },
             inject_loopback_owner_token,
         ))

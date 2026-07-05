@@ -7,7 +7,7 @@ import { Effect } from 'effect'
 import { Logging } from 'effect-messaging-core'
 import { makeTauriTransport } from 'effect-messaging-tauri'
 import { GatekeeperBridge } from 'gatekeeper-core/bridge'
-import { makeAwaitEmbeddedAuthReady, makeEmbeddedAuthTokenStore } from 'gatekeeper-react'
+import { makeAwaitEmbeddedAuthReady, makeEmbeddedAuthStateStore } from 'gatekeeper-react'
 import { makeGatekeeperWebHandlers } from 'gatekeeper-react/web-bridge'
 import { renderApp } from 'wildflower-react/app-root'
 import { bridges } from 'wildflower-react/bridges'
@@ -20,7 +20,7 @@ addOsColorSchemeListener()
 // webview's cookie jar (it rides loopback fetches), and the contentless
 // `AuthTokenIssued` notify the host emits on each `bridge:__Ready` and on
 // re-mint just flips this store's auth-readiness signal.
-const tokenStore = makeEmbeddedAuthTokenStore()
+const tokenStore = makeEmbeddedAuthStateStore()
 
 renderApp({
   history: createBrowserHistory(),
@@ -47,7 +47,7 @@ renderApp({
   // "authorize this device" consent against the owner's own device. So Tauri
   // takes no 401 action — the query surfaces its error and the boot-race retry
   // covers the common case.
-  makeOnUnauthorized: () => () => undefined,
+  redirectToDeviceLoginOnUnauthorized: false,
   // The host's granted scopes, injected by Vite (`vite.config.ts`) from the same
   // `tauri-shared-config.json` gatekeeper-rust reads to seed the first-party
   // client — so `NeedsAuthMessage`'s device-login request can't drift from the

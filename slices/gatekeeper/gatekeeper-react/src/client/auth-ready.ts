@@ -11,7 +11,7 @@ import {
   type Subscribable,
 } from 'effect'
 
-import { type AuthSignal, isAuthed } from 'react-kitchen-sink'
+import { type AuthState, isAuthed } from 'react-kitchen-sink'
 
 import { buildDeviceLoginTarget } from '../device-login-route.ts'
 
@@ -98,7 +98,7 @@ const withFiberFailureUnwrap = async (run: () => Promise<void>): Promise<void> =
  * can't drift on the route path or the `returnTo` param.
  */
 const webAuthReadyEffect = (
-  subscribable: Subscribable.Subscribable<AuthSignal>,
+  subscribable: Subscribable.Subscribable<AuthState>,
   returnTo?: string
 ): Effect.Effect<void, AnyRedirect> =>
   pipe(
@@ -125,7 +125,7 @@ const webAuthReadyEffect = (
  * transport-ready promise.
  */
 const embeddedAuthReadyEffect = (
-  subscribable: Subscribable.Subscribable<AuthSignal>
+  subscribable: Subscribable.Subscribable<AuthState>
 ): Effect.Effect<void, TokenTimeout> =>
   pipe(
     subscribable.changes,
@@ -158,7 +158,7 @@ const embeddedAuthReadyEffect = (
  * raw redirect sentinel and not a runtime shell.
  */
 const makeAwaitWebAuthReady =
-  (subscribable: Subscribable.Subscribable<AuthSignal>): ((returnTo?: string) => Promise<void>) =>
+  (subscribable: Subscribable.Subscribable<AuthState>): ((returnTo?: string) => Promise<void>) =>
   (returnTo) =>
     withFiberFailureUnwrap(() => Effect.runPromise(webAuthReadyEffect(subscribable, returnTo)))
 
@@ -166,7 +166,7 @@ const makeAwaitWebAuthReady =
  * Embedded (`main-embedded`) auth-readiness factory. The host flips the
  * SPA's auth signal over the gatekeeper bridge once the page-side transport
  * calls `transport.signalReady`, so on first paint the embedded
- * `AuthTokenStore.subscribable` is `Unauthed` AND the transport may not yet be
+ * `AuthStateStore.subscribable` is `Unauthed` AND the transport may not yet be
  * ready to even receive the host's `AuthTokenIssued` message.
  *
  * Closes over the entry-supplied `subscribable` and `transportReady`
@@ -180,7 +180,7 @@ const makeAwaitWebAuthReady =
  * unwrapped so callers see the raw `TokenTimeout` (or a defect-routed
  * equivalent) directly.
  *
- * @param subscribable - The entry's `AuthTokenStore.subscribable`.
+ * @param subscribable - The entry's `AuthStateStore.subscribable`.
  * @param transportReady - Promise that resolves once the page-side
  *   `BridgeTransport` has signalled the host (`signalReady`). The
  *   factory shape is what lets the route-level gate stay
@@ -190,7 +190,7 @@ const makeAwaitWebAuthReady =
  */
 const makeAwaitEmbeddedAuthReady =
   (
-    subscribable: Subscribable.Subscribable<AuthSignal>,
+    subscribable: Subscribable.Subscribable<AuthState>,
     transportReady: Promise<void>
   ): (() => Promise<void>) =>
   () =>

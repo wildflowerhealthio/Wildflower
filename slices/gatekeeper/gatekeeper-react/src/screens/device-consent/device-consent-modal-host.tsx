@@ -19,7 +19,7 @@ import {
   type JSX,
   type ReactNode,
 } from 'react'
-import { isAuthed, useAuthTokenSubscribable, useSubscribable } from 'react-kitchen-sink'
+import { isAuthed, useAuthStateSubscribable, useSubscribable } from 'react-kitchen-sink'
 import { Dialog } from 'react-tundraish'
 
 import { useActiveDeviceUserCode } from '../../active-device-consent/use-active-device-user-code.ts'
@@ -133,7 +133,7 @@ const DeviceConsentModalHost = (): JSX.Element | null => {
   // below, but only after a needless round-trip). Short-circuiting on
   // an unauthed signal keeps the modal genuinely inert in the
   // pre-auth window.
-  const authSubscribable = useAuthTokenSubscribable()
+  const authSubscribable = useAuthStateSubscribable()
   const authSignal = useSubscribable(authSubscribable)
   const activeUserCode = useActiveDeviceUserCode()
   // Local mirror of "what userCode did the user just approve/deny?",

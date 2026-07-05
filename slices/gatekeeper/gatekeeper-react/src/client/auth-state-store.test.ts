@@ -1,8 +1,8 @@
 import { Effect, Equal } from 'effect'
 import {
   AuthedUntil,
-  type AuthSignal,
-  type AuthTokenStore,
+  type AuthState,
+  type AuthStateStore,
   HostAuthed,
   Unauthed,
 } from 'react-kitchen-sink'
@@ -10,19 +10,19 @@ import { afterEach, beforeEach, describe, expect, test } from 'vite-plus/test'
 
 import { clearAllCookies, futureAuthExp, pastAuthExp, setAuthExpCookie } from '../test-support.ts'
 import {
-  makeEmbeddedAuthTokenStore,
-  makeWebAuthTokenStore,
+  makeEmbeddedAuthStateStore,
+  makeWebAuthStateStore,
   readAuthedSignalFromCookie,
-} from './token-storage.ts'
+} from './auth-state-store.ts'
 
 /**
- * The web store derives its {@link AuthSignal} from the readable `wf_auth_exp`
+ * The web store derives its {@link AuthState} from the readable `wf_auth_exp`
  * companion cookie the server sets alongside the `HttpOnly` `wf_auth` JWT
  * (#218). JS never sees the real token; these tests drive the cookie directly
  * (via the shared `test-support` fixture) and assert the derived signal.
  */
 
-const read = (store: AuthTokenStore): AuthSignal => Effect.runSync(store.subscribable.get)
+const read = (store: AuthStateStore): AuthState => Effect.runSync(store.subscribable.get)
 
 beforeEach(clearAllCookies)
 afterEach(clearAllCookies)
@@ -64,34 +64,34 @@ describe('readAuthedSignalFromCookie', () => {
   })
 })
 
-describe('makeWebAuthTokenStore', () => {
+describe('makeWebAuthStateStore', () => {
   test('starts AuthedUntil(exp) when the cookie is present at construction', () => {
     const exp = futureAuthExp()
     setAuthExpCookie(exp)
-    expect(Equal.equals(read(makeWebAuthTokenStore()), AuthedUntil({ exp: Number(exp) }))).toBe(
+    expect(Equal.equals(read(makeWebAuthStateStore()), AuthedUntil({ exp: Number(exp) }))).toBe(
       true
     )
   })
 
   test('starts Unauthed when no cookie is present', () => {
-    expect(Equal.equals(read(makeWebAuthTokenStore()), Unauthed())).toBe(true)
+    expect(Equal.equals(read(makeWebAuthStateStore()), Unauthed())).toBe(true)
   })
 
   test('starts Unauthed when the cookie is already expired', () => {
     setAuthExpCookie(pastAuthExp())
-    expect(Equal.equals(read(makeWebAuthTokenStore()), Unauthed())).toBe(true)
+    expect(Equal.equals(read(makeWebAuthStateStore()), Unauthed())).toBe(true)
   })
 
-  test('setSignal re-derives the signal from the cookie, ignoring its argument', () => {
-    const store = makeWebAuthTokenStore()
+  test('setAuthState re-derives the signal from the cookie, ignoring its argument', () => {
+    const store = makeWebAuthStateStore()
     expect(Equal.equals(read(store), Unauthed())).toBe(true)
 
     // The server set the HttpOnly cookie on the device-flow response; the
     // companion exp now reads back. JS can't (and must not) plant the JWT, so
-    // the argument to setSignal is intentionally ignored and the cookie wins.
+    // the argument to setAuthState is intentionally ignored and the cookie wins.
     const exp = futureAuthExp()
     setAuthExpCookie(exp)
-    store.setSignal(HostAuthed())
+    store.setAuthState(HostAuthed())
 
     expect(Equal.equals(read(store), AuthedUntil({ exp: Number(exp) }))).toBe(true)
   })
@@ -99,7 +99,7 @@ describe('makeWebAuthTokenStore', () => {
   test('the signal is a typed AuthedUntil carrying only the non-secret exp — never a JWT', () => {
     const exp = futureAuthExp()
     setAuthExpCookie(exp)
-    const signal = read(makeWebAuthTokenStore())
+    const signal = read(makeWebAuthStateStore())
     expect(signal._tag).toBe('AuthedUntil')
     if (signal._tag === 'AuthedUntil') expect(signal.exp).toBe(Number(exp))
   })
@@ -110,14 +110,14 @@ describe('makeWebAuthTokenStore', () => {
  * writer is the host's `AuthTokenIssued` bridge handler publishing `HostAuthed`.
  * The credential is the `wf_auth` cookie the host syncs into the webview's jar.
  */
-describe('makeEmbeddedAuthTokenStore', () => {
+describe('makeEmbeddedAuthStateStore', () => {
   test('starts Unauthed', () => {
-    expect(Equal.equals(read(makeEmbeddedAuthTokenStore()), Unauthed())).toBe(true)
+    expect(Equal.equals(read(makeEmbeddedAuthStateStore()), Unauthed())).toBe(true)
   })
 
-  test('setSignal publishes the host-pushed signal', () => {
-    const store = makeEmbeddedAuthTokenStore()
-    store.setSignal(HostAuthed())
+  test('setAuthState publishes the host-pushed signal', () => {
+    const store = makeEmbeddedAuthStateStore()
+    store.setAuthState(HostAuthed())
     expect(Equal.equals(read(store), HostAuthed())).toBe(true)
   })
 })

@@ -1,13 +1,13 @@
 import { act, cleanup, render, screen } from '@testing-library/react'
 import type { JSX, ReactNode } from 'react'
-import { AuthTokenProvider, HostAuthed } from 'react-kitchen-sink'
+import { AuthStateProvider, HostAuthed } from 'react-kitchen-sink'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
 import {
   ActiveDeviceUserCodeProvider,
   makeActiveDeviceUserCodeStore,
 } from '../../active-device-consent/index.ts'
-import { makeEmbeddedAuthTokenStore } from '../../client/token-storage.ts'
+import { makeEmbeddedAuthStateStore } from '../../client/auth-state-store.ts'
 
 vi.mock('react-tundraish', () => ({
   // Minimal Dialog stub: renders its children whenever `open`, and
@@ -70,17 +70,17 @@ import { DeviceConsentModalHost } from './device-consent-modal-host.tsx'
 const renderWithProviders = (
   consentStore: ReturnType<typeof makeActiveDeviceUserCodeStore>,
   options: { readonly authed?: boolean } = {}
-): ReturnType<typeof makeEmbeddedAuthTokenStore> => {
-  const tokenStore = makeEmbeddedAuthTokenStore()
+): ReturnType<typeof makeEmbeddedAuthStateStore> => {
+  const tokenStore = makeEmbeddedAuthStateStore()
   if (options.authed === true) {
-    tokenStore.setSignal(HostAuthed())
+    tokenStore.setAuthState(HostAuthed())
   }
   render(
-    <AuthTokenProvider store={tokenStore}>
+    <AuthStateProvider store={tokenStore}>
       <ActiveDeviceUserCodeProvider store={consentStore}>
         <DeviceConsentModalHost />
       </ActiveDeviceUserCodeProvider>
-    </AuthTokenProvider>
+    </AuthStateProvider>
   )
   return tokenStore
 }

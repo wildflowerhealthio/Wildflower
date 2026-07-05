@@ -3,7 +3,7 @@ import { BridgeTransport, Logging, TransportAdapter } from 'effect-messaging-cor
 import { makeHandlerCoordinator, WebPlatformAdapter } from 'effect-messaging-react'
 import type { ActiveDeviceUserCodeStore } from 'gatekeeper-react'
 import type { NavTarget } from 'navigation-react'
-import type { AuthTokenStore } from 'react-kitchen-sink'
+import type { AuthStateStore } from 'react-kitchen-sink'
 import { webTelemetryLayerFromEnv } from 'telemetry-web'
 
 import { makeBootStableInitialHandlers } from './boot-stable-handlers.ts'
@@ -22,7 +22,7 @@ const SIGNAL_READY_DEBUG_TIMEOUT_MS = 10_000
 
 const buildTransport = (
   navigate: (to: NavTarget) => void,
-  setSignal: AuthTokenStore['setSignal'],
+  setAuthState: AuthStateStore['setAuthState'],
   setActiveDeviceUserCode: ActiveDeviceUserCodeStore['setActiveUserCode']
 ): Promise<ReactTransport> => {
   const adapter = WebPlatformAdapter.make(bridges)
@@ -31,7 +31,7 @@ const buildTransport = (
 
   const { initialHandlers, connect } = makeHandlerCoordinator({
     bridges,
-    initial: makeBootStableInitialHandlers(navigate, setSignal, setActiveDeviceUserCode),
+    initial: makeBootStableInitialHandlers(navigate, setAuthState, setActiveDeviceUserCode),
   })
 
   return Effect.runPromise(

@@ -51,10 +51,10 @@ export {
 
 export {
   AUTH_EXP_COOKIE_NAME,
-  makeEmbeddedAuthTokenStore,
-  makeWebAuthTokenStore,
+  makeEmbeddedAuthStateStore,
+  makeWebAuthStateStore,
   readAuthedSignalFromCookie,
-} from './client/token-storage.ts'
+} from './client/auth-state-store.ts'
 
 export {
   ActiveDeviceUserCodeProvider,

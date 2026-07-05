@@ -12,7 +12,7 @@ import {
 } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
-import { AuthedUntil, type AuthSignal, HostAuthed, isAuthed, Unauthed } from 'react-kitchen-sink'
+import { AuthedUntil, type AuthState, HostAuthed, isAuthed, Unauthed } from 'react-kitchen-sink'
 import { describe, expect, test } from 'vite-plus/test'
 
 import {
@@ -29,13 +29,13 @@ import {
  * waits the host handshake up to `EMBEDDED_TOKEN_TIMEOUT` and is driven
  * here with `TestClock` so the 5s window is exercised without real time.
  *
- * The gate keys purely on the {@link AuthSignal} tag (`isAuthed`); the
+ * The gate keys purely on the {@link AuthState} tag (`isAuthed`); the
  * cookie-expiry logic that turns a stale hint into `Unauthed` lives in
- * `token-storage`'s `readAuthedSignalFromCookie` and is pinned there.
+ * `auth-state-store`'s `readAuthedSignalFromCookie` and is pinned there.
  */
 
-const makeRef = (initial: AuthSignal): Effect.Effect<SubscriptionRef.SubscriptionRef<AuthSignal>> =>
-  SubscriptionRef.make<AuthSignal>(initial)
+const makeRef = (initial: AuthState): Effect.Effect<SubscriptionRef.SubscriptionRef<AuthState>> =>
+  SubscriptionRef.make<AuthState>(initial)
 
 describe('webAuthReadyEffect', () => {
   test('resolves when the signal is authed (standalone web)', async () => {
@@ -86,8 +86,8 @@ describe('webAuthReadyEffect', () => {
 
   test('Right ↔ authed signal (property)', async () => {
     // Pins the gate's truth-table: a `Right` corresponds exactly to a
-    // non-`Unauthed` signal, across every `AuthSignal` variant.
-    const anySignal: fc.Arbitrary<AuthSignal> = fc.oneof(
+    // non-`Unauthed` signal, across every `AuthState` variant.
+    const anySignal: fc.Arbitrary<AuthState> = fc.oneof(
       fc.constant(Unauthed()),
       fc.constant(HostAuthed()),
       fc.integer().map((exp) => AuthedUntil({ exp }))
