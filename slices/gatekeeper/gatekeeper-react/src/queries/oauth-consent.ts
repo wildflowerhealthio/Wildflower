@@ -85,4 +85,4 @@ const useOAuthConsentMutation = (): UseMutationResult<
 }
 
 export { oauthConsentQueryOptions, useOAuthConsentMutation, useOAuthConsentQuery }
-export type { ApproveOAuthPayload, OAuthConsentResource }
+export type { ApproveOAuthPayload, OAuthConsentResource, OAuthConsentResult }

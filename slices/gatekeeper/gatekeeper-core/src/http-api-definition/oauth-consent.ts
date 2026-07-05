@@ -16,8 +16,15 @@ const ApproveOAuthConsentBody = Schema.Struct({
   patient: Schema.NullishOr(Schema.String),
 })
 
+/**
+ * The outcome of an OAuth consent decision. The `approved` arm carries an
+ * optional `redirect`: an authorization-code-flow approval returns the client
+ * callback URL the caller should navigate to (mirrors `scopes-rust`'s
+ * `redirect: Option<String>`, serde tag `status`, skipped when absent);
+ * device-flow and other approvals omit it.
+ */
 const OAuthConsentResultSchema = Schema.Union(
-  Schema.Struct({ status: Schema.Literal('approved') }),
+  Schema.Struct({ status: Schema.Literal('approved'), redirect: Schema.optional(Schema.String) }),
   Schema.Struct({ status: Schema.Literal('denied') }),
   Schema.Struct({ status: Schema.Literal('error'), message: Schema.String })
 )
