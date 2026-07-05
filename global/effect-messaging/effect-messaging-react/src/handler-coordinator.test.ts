@@ -38,8 +38,7 @@ const makeRecorder = (): {
     calls,
     registerHandlers: (handlers) =>
       Effect.sync(() => {
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-        calls.push(handlers as unknown as ReadonlyArray<BridgeHandlerRecord>)
+        calls.push(handlers)
       }),
   }
 }

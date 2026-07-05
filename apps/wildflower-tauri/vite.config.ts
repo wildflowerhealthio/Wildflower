@@ -38,7 +38,6 @@ if (!isSharedConfig(parsedConfig)) {
 const apiBaseUrl = `http://${parsedConfig.loopback_hostname}:${parsedConfig.loopback_port}`
 const localGrantedScopes = parsedConfig.local_granted_scopes
 
-// https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
 

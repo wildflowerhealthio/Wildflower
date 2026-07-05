@@ -32,7 +32,6 @@ describe('deepFreeze', () => {
   })
 
   it('does not recurse into function bodies but freezes the function value', () => {
-    // oxlint-disable-next-line eslint-plugin-unicorn/consistent-function-scoping
     const fn = (): number => 1
     deepFreeze(fn)
     expect(Object.isFrozen(fn)).toBe(true)
@@ -49,7 +48,7 @@ describe('deepFreeze', () => {
   })
 
   it('prevents reassignment of own properties at runtime', () => {
-    const o = { a: 1 } as { a: number }
+    const o = { a: 1 }
     deepFreeze(o)
     // Strict mode throws on writes to frozen properties.
     expect(() => {

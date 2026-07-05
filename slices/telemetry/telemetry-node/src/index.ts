@@ -7,7 +7,7 @@ import {
 import { getGlobalTracer, initNodeTelemetry, makeNodeTelemetryLayer } from './layer.ts'
 
 const configFromProcessEnv = (overrides?: TelemetryConfigOverrides): TelemetryConfig =>
-  mergeConfig(configFromEnv(process.env as Readonly<Record<string, string | undefined>>), overrides)
+  mergeConfig(configFromEnv(process.env), overrides)
 
 /**
  * Convenience: eagerly initialize telemetry from `process.env`. Call this at

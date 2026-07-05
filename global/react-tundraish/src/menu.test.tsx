@@ -9,9 +9,9 @@ afterEach(() => {
 })
 
 const buildItems = (overrides: Partial<Record<string, Partial<MenuItem>>> = {}): MenuItem[] => [
-  { id: 'rename', label: 'Rename', onSelect: vi.fn(), ...overrides.rename } as MenuItem,
-  { id: 'archive', label: 'Archive', onSelect: vi.fn(), ...overrides.archive } as MenuItem,
-  { id: 'delete', label: 'Delete', onSelect: vi.fn(), ...overrides.delete } as MenuItem,
+  { id: 'rename', label: 'Rename', onSelect: vi.fn(), ...overrides.rename },
+  { id: 'archive', label: 'Archive', onSelect: vi.fn(), ...overrides.archive },
+  { id: 'delete', label: 'Delete', onSelect: vi.fn(), ...overrides.delete },
 ]
 
 describe('Menu', () => {

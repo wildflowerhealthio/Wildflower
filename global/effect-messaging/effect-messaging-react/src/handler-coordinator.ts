@@ -27,6 +27,14 @@ interface UnconnectedCoordinator<Bridges extends ReadonlyArray<Bridge.AnyBridge>
   ) => HandlerCoordinator
 }
 
+// A complete record for a bridge with no installed handler: every
+// inbound tag warns-and-drops (the transport requires complete records).
+const dropAll = (bridge: Bridge.AnyBridge): BridgeHandlerRecord =>
+  Record.map(
+    bridge['HostToWeb'],
+    (_schema, tag) => () => HandlerHelpers.warnAboutDroppedTag(bridge.name, tag)
+  )
+
 /**
  * Build a {@link HandlerCoordinator} for a bridge tuple.
  *
@@ -53,14 +61,6 @@ const makeHandlerCoordinator = <const Bridges extends ReadonlyArray<Bridge.AnyBr
   readonly initial: Readonly<Record<string, BridgeHandlerRecord>>
 }): UnconnectedCoordinator<Bridges> => {
   const active = new Map<string, BridgeHandlerRecord>(Object.entries(config.initial))
-
-  // A complete record for a bridge with no installed handler: every
-  // inbound tag warns-and-drops (the transport requires complete records).
-  const dropAll = (bridge: Bridge.AnyBridge): BridgeHandlerRecord =>
-    Record.map(
-      bridge['HostToWeb'],
-      (_schema, tag) => () => HandlerHelpers.warnAboutDroppedTag(bridge.name, tag)
-    )
 
   const recompose = (): Bridge.HandlersByBridge<Bridges, 'HostToWeb'> => {
     const tuple = config.bridges.map((bridge) => active.get(bridge.name) ?? dropAll(bridge))
@@ -91,8 +91,7 @@ const makeHandlerCoordinator = <const Bridges extends ReadonlyArray<Bridge.AnyBr
         // The active map is string-keyed; the typed handler record erases
         // to the structural `BridgeHandlerRecord` for storage and is
         // re-narrowed in `recompose`.
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-        active.set(bridge.name, handlers as unknown as BridgeHandlerRecord)
+        active.set(bridge.name, handlers)
         return apply
       })
 
@@ -101,8 +100,7 @@ const makeHandlerCoordinator = <const Bridges extends ReadonlyArray<Bridge.AnyBr
       handlers: MessageHandler.HandlersFor<B['HostToWeb']>
     ): Effect.Effect<void, BridgeTransport.DuplicateTagError> =>
       Effect.suspend(() => {
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-        if (active.get(bridge.name) === (handlers as unknown as BridgeHandlerRecord)) {
+        if (active.get(bridge.name) === handlers) {
           active.delete(bridge.name)
         }
         return apply

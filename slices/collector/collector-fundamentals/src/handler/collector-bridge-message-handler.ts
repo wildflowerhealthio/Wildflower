@@ -123,6 +123,11 @@ interface CollectorBridgeMessageHandler<TResources> extends Service {
   ) => Effect.Effect<void, never, never>
 }
 
+const warnAndDrop = (event: { readonly url: string }): Effect.Effect<void, never, never> =>
+  Effect.logWarning(
+    `CollectorBridgeMessageHandler.PageLoaded: handler is done; ignoring (url=${event.url})`
+  )
+
 const make = <TResources>({
   scrapingPlan,
   sendMessage,
@@ -374,11 +379,6 @@ const make = <TResources>({
         })
         MutableHashMap.remove(inProgressResponses, event.id)
       })
-
-    const warnAndDrop = (event: { readonly url: string }): Effect.Effect<void, never, never> =>
-      Effect.logWarning(
-        `CollectorBridgeMessageHandler.PageLoaded: handler is done; ignoring (url=${event.url})`
-      )
 
     const PageLoaded: Service['PageLoaded'] = (event) =>
       // Atomic transition (serialized via SynchronizedRef):

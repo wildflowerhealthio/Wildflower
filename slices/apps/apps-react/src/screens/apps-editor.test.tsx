@@ -107,14 +107,12 @@ const restoreOrDelete = (
 describe('<AppsEditor> mutation reset on open', () => {
   beforeEach(() => {
     resetAllStubs()
-    // oxlint-disable unicorn/consistent-function-scoping
     HTMLDialogElement.prototype.showModal = function showModal(): void {
       this.setAttribute('open', '')
     }
     HTMLDialogElement.prototype.close = function close(): void {
       this.removeAttribute('open')
     }
-    // oxlint-enable unicorn/consistent-function-scoping
   })
 
   afterEach(() => {
@@ -185,14 +183,12 @@ describe('<AppsEditor> mutation reset on open', () => {
 describe('<AppsEditor> provenance gating', () => {
   beforeEach(() => {
     resetAllStubs()
-    // oxlint-disable unicorn/consistent-function-scoping
     HTMLDialogElement.prototype.showModal = function showModal(): void {
       this.setAttribute('open', '')
     }
     HTMLDialogElement.prototype.close = function close(): void {
       this.removeAttribute('open')
     }
-    // oxlint-enable unicorn/consistent-function-scoping
   })
 
   afterEach(() => {

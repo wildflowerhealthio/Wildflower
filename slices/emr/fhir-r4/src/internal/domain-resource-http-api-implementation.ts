@@ -18,6 +18,21 @@ import { buildDomainResourceHttpApiGroup } from './domain-resource-http-api-defi
 import { decodePageToken, encodePageToken } from './page-token.ts'
 import type { BaseSearchParams, SearchParamBindings } from './search-param-bindings.ts'
 
+// Absolute URL for a resource, used as a Bundle entry's `fullUrl`.
+const resourceFullUrl = (origin: string, type: string, id: string): URL =>
+  new URL(`${FhirResourcesApiPrefix}/${type}/${id}`, origin)
+
+// A `_pageToken`-carrying variant of the request URL for Bundle next/prev links.
+const cursorUrl = (
+  requestUrl: URL,
+  payload: { readonly offset: number; readonly count: number }
+): string => {
+  const u = new URL(requestUrl.toString())
+  u.searchParams.delete('_pageToken')
+  u.searchParams.set('_pageToken', encodePageToken(payload))
+  return u.toString()
+}
+
 /**
  * Build the per-resource handler `Layer` for the group produced by
  * {@link buildDomainResourceHttpApiGroup}. Handlers invoke the supplied
@@ -92,9 +107,6 @@ export function makeDomainResourceHandlerLayer<
 
   const DEFAULT_PAGE_SIZE = 10
 
-  const resourceFullUrl = (origin: string, type: string, id: string): URL =>
-    new URL(`${FhirResourcesApiPrefix}/${type}/${id}`, origin)
-
   const buildSearchsetBundle = (
     origin: string,
     resources: readonly ResourceWithId[],
@@ -161,16 +173,6 @@ export function makeDomainResourceHandlerLayer<
         },
       })
     )
-
-  const cursorUrl = (
-    requestUrl: URL,
-    payload: { readonly offset: number; readonly count: number }
-  ): string => {
-    const u = new URL(requestUrl.toString())
-    u.searchParams.delete('_pageToken')
-    u.searchParams.set('_pageToken', encodePageToken(payload))
-    return u.toString()
-  }
 
   const paginationLinks = (
     requestUrl: URL,

@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "identifier": "com.wildflower-tauri.app",
   "build": {
-    "beforeDevCommand": "pnpm dev",
+    "beforeDevCommand": "vp run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "pnpm build",
+    "beforeBuildCommand": "vp run build",
     "frontendDist": "../dist"
   },
   "app": {

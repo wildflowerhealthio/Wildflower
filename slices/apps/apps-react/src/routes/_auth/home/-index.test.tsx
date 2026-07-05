@@ -74,14 +74,12 @@ describe('<AppsHomeBody> reorder-failure banner', () => {
     homeScreenStub.isError = false
     homeScreenStub.error = null
     homeScreenStub.mutate.mockClear()
-    // oxlint-disable unicorn/consistent-function-scoping
     HTMLDialogElement.prototype.showModal = function showModal(): void {
       this.setAttribute('open', '')
     }
     HTMLDialogElement.prototype.close = function close(): void {
       this.removeAttribute('open')
     }
-    // oxlint-enable unicorn/consistent-function-scoping
   })
 
   afterEach(() => {

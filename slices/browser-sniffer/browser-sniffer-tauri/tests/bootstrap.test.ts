@@ -131,7 +131,7 @@ describe('tauriSnifferBootstrapScript', () => {
         entry.payload !== null &&
         typeof entry.payload === 'object' &&
         '_tag' in entry.payload &&
-        (entry.payload as { _tag: unknown })._tag === 'SniffingComplete'
+        entry.payload._tag === 'SniffingComplete'
     )
     expect(completedOnBoot, 'no SniffingComplete on boot').toBeUndefined()
   })

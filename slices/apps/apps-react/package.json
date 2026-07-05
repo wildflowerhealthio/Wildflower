@@ -42,6 +42,7 @@
     "tunnel-core": "workspace:*",
     "tunnel-react": "workspace:*",
     "typescript": "catalog:",
+    "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {

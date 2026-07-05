@@ -65,7 +65,7 @@ const buildRuntimeLayer = (options?: { readonly failing?: boolean }): RuntimeLay
 
 // Mutable holder the (hoisted) `useRouteContext` mock reads at render
 // time. `vi.hoisted` lifts it above the `vi.mock` factory.
-const layerHolder = vi.hoisted(() => ({ current: null as unknown }))
+const layerHolder: { current: RuntimeLayer | null } = vi.hoisted(() => ({ current: null }))
 
 vi.mock('@tanstack/react-router', () => ({
   useRouteContext: ({

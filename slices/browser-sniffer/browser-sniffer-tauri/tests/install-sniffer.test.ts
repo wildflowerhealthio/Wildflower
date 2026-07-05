@@ -1102,10 +1102,10 @@ describe('pageLoadHandler JSON-viewer retry', () => {
     XMLHttpRequest.prototype.open = vi.fn() as XMLHttpRequest['open']
     XMLHttpRequest.prototype.send = vi.fn() as XMLHttpRequest['send']
     rafQueue = []
-    window.requestAnimationFrame = ((cb: FrameRequestCallback): number => {
+    window.requestAnimationFrame = (cb: FrameRequestCallback): number => {
       rafQueue.push(cb)
       return rafQueue.length
-    }) as typeof window.requestAnimationFrame
+    }
     document.body.innerHTML = ''
     getMessages = setupEnv()
   })

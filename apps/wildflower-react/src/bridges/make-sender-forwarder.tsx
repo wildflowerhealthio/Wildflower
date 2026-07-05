@@ -38,7 +38,9 @@ const makeSliceSenderForwarder = (
   displayName: string,
   Provider: SliceSenderProvider
 ): ReactFC<SliceSenderForwarderProps> => {
-  // oxlint-disable-next-line react/only-export-components
+  // The rule misses that the body captures `Provider` (a JSX element name
+  // isn't tracked as a reference), so hoisting is impossible, not deferred.
+  // oxlint-disable-next-line unicorn/consistent-function-scoping react/only-export-components
   const SliceSenderForwarder = ({ children }: SliceSenderForwarderProps): JSX.Element => {
     const transport = useBridgeTransport()
     return <Provider send={transport.sendMessage}>{children}</Provider>

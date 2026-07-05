@@ -11,10 +11,7 @@ import { getGlobalTracer, initWebTelemetry, makeWebTelemetryLayer } from './laye
  * build time) and apply any caller-provided overrides.
  */
 const configFromViteEnv = (overrides?: TelemetryConfigOverrides): TelemetryConfig =>
-  mergeConfig(
-    configFromEnv(import.meta.env as Readonly<Record<string, string | undefined>>, 'VITE_'),
-    overrides
-  )
+  mergeConfig(configFromEnv(import.meta.env, 'VITE_'), overrides)
 
 /**
  * Convenience: eagerly initialize telemetry from `import.meta.env` (VITE_*

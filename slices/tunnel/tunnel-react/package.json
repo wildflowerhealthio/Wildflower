@@ -47,6 +47,7 @@
     "telemetry-react": "workspace:*",
     "tunnel-core": "workspace:*",
     "typescript": "catalog:",
+    "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {

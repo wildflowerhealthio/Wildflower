@@ -173,9 +173,8 @@ export function makeDomainResourcePersistence<
 
   // Same shape rationale as `idConflictColumn`: we know `id` is the column;
   // the `WhereParams` generic just doesn't expose it for generic tables.
-  const byId = (id: string): ByIdWhere =>
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- see comment
-    ({ id }) as unknown as ByIdWhere
+  // oxlint-disable-next-line unicorn/consistent-function-scoping
+  const byId = (id: string): ByIdWhere => ({ id })
 
   const upsertEventName = `v1.${resourceType}Upserted` as const
   const deleteEventName = `v1.${resourceType}Deleted` as const

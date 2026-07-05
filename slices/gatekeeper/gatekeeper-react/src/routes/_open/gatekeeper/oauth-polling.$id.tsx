@@ -1,7 +1,6 @@
 // This file route must keep its `export const Route` (the tanstackRouter
 // plugin keys off it), and `PollingResult` is exported separately as a
 // unit-test seam — so a consolidated single export isn't possible here.
-/* oxlint-disable import/group-exports -- file route needs `export const Route`; `PollingResult` is a test seam */
 import { createFileRoute } from '@tanstack/react-router'
 import { type AuthorizationStatus, pollAuthorizationStatus } from 'gatekeeper-core/clients'
 import { Suspense, useEffect, useMemo, type JSX } from 'react'
@@ -11,6 +10,16 @@ import { AsyncErrorView, Awaited } from 'react-tundraish'
 import { useGatekeeperRuntimeLayer } from '../../../router-context.ts'
 import pageLayout from '../../../styles/page-layout.module.css'
 import styles from './oauth-polling.module.css'
+
+const ErrorComponent = (error: unknown): JSX.Element => (
+  <div className={styles['poll']}>
+    <AsyncErrorView
+      error={error}
+      title="Authorization Error"
+      titleClassName={pageLayout['poll-declined']}
+    />
+  </div>
+)
 
 /**
  * SPA route that subscribes to `pollAuthorizationStatus(id)` and renders
@@ -37,19 +46,7 @@ function OAuthPollingScreen({ id }: { readonly id: string }): JSX.Element {
         fires for loader/beforeLoad failures) would never see it. Keep the
         inline boundary; don't "fix" it into an `errorComponent`.
       */}
-      <Awaited
-        promise={statusPromise}
-        resetKey={id}
-        errorComponent={(error) => (
-          <div className={styles['poll']}>
-            <AsyncErrorView
-              error={error}
-              title="Authorization Error"
-              titleClassName={pageLayout['poll-declined']}
-            />
-          </div>
-        )}
-      >
+      <Awaited promise={statusPromise} resetKey={id} errorComponent={ErrorComponent}>
         {(status) => <PollingResult status={status} />}
       </Awaited>
     </Suspense>
@@ -63,7 +60,7 @@ interface PollingResultProps {
 // Exported for unit tests: the deterministic status→view mapping each
 // stream emission flows into, tested directly without the Suspense/fiber
 // timing of the full stream subscription.
-export const PollingResult = ({ status }: PollingResultProps): JSX.Element => {
+const PollingResult = ({ status }: PollingResultProps): JSX.Element => {
   useEffect(() => {
     if (status.status === 'approved') {
       window.location.replace(status.redirect)
@@ -108,6 +105,8 @@ function OAuthPollingRoute(): JSX.Element {
   return <OAuthPollingScreen id={id} />
 }
 
-export const Route = createFileRoute('/_open/gatekeeper/oauth-polling/$id')({
+const Route = createFileRoute('/_open/gatekeeper/oauth-polling/$id')({
   component: OAuthPollingRoute,
 })
+
+export { Route, PollingResult }

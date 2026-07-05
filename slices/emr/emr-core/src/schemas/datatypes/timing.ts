@@ -22,14 +22,42 @@ const UnitOfTimeSchema = Schema.Literal('s', 'min', 'h', 'd', 'wk', 'mo', 'a')
 /** FHIR R4 `Timing.repeat.dayOfWeek`. */
 const DayOfWeekSchema = Schema.Literal('mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun')
 
+/** FHIR R4 `Timing.repeat.when` — the `EventTiming` value set (real-world
+ * events the schedule is tied to, e.g. meals and sleep). */
+const EventTimingSchema = Schema.Literal(
+  'MORN',
+  'MORN.early',
+  'MORN.late',
+  'NOON',
+  'AFT',
+  'AFT.early',
+  'AFT.late',
+  'EVE',
+  'EVE.early',
+  'EVE.late',
+  'NIGHT',
+  'PHS',
+  'HS',
+  'WAKE',
+  'C',
+  'CM',
+  'CD',
+  'CV',
+  'AC',
+  'ACM',
+  'ACD',
+  'ACV',
+  'PC',
+  'PCM',
+  'PCD',
+  'PCV'
+)
+
 /** FHIR R4 `TimingRepeat` — the per-period scheduling spec inside `Timing`.
  *
  * Note: `bounds[x]` is modeled as the (Period, Range) subset only.
  * `boundsDuration` is left out pending a registered `Duration` datatype;
  * unregistered slot semantics from PR #61 apply if a payload uses it.
- *
- * `when` values are left as `string` rather than a closed enum so consumers
- * aren't blocked on the full FHIR EventTiming value set.
  */
 const TimingRepeatSchema = StructNoContext({
   ...ElementSchema.fields,
@@ -47,7 +75,7 @@ const TimingRepeatSchema = StructNoContext({
   periodUnit: Schema.NullOr(UnitOfTimeSchema),
   dayOfWeek: Schema.Array(DayOfWeekSchema),
   timeOfDay: Schema.Array(TimeSchema),
-  when: Schema.Array(Schema.String),
+  when: Schema.Array(EventTimingSchema),
   offset: Schema.NullOr(Schema.Int.pipe(Schema.nonNegative())),
 })
 
@@ -79,6 +107,7 @@ registerDatatypeSchema(ResourceType, TimingSchema)
 
 export {
   DayOfWeekSchema,
+  EventTimingSchema,
   ResourceType,
   TimingRepeatSchema,
   TimingSchema as Schema,
