@@ -98,6 +98,7 @@ All docs follow the [four-kinds convention](./docs/Documentation/Explanation.md)
 - Skim recent entries in the [Learnings Inbox](./docs/Agents/Learnings%20Inbox.md)
 - When you discover something non-obvious, append it to the Learnings Inbox
 - SHOULD NOT edit Strategies.md directly — learnings go through the inbox
+- Mid-session "docs relevant to this path" nudges come from a PostToolUse hook — heed them; the mechanism is described in the [Doc Reminders Explanation](./docs/Agents/Doc%20Reminders%20Explanation.md)
 
 ## Key References
 
@@ -105,6 +106,7 @@ All docs follow the [four-kinds convention](./docs/Documentation/Explanation.md)
 - [CONTRIBUTING.md](./CONTRIBUTING.md) — Dev setup, code style, formatting, git workflow
 - [docs/Testing/](./docs/Testing/Testing%20Reference.md) — Property testing, unit testing, React testing, integration testing
 - [Documentation Reference](./docs/Documentation/Reference.md) — Naming rules for docs
+- [Bridge Explanation](./docs/Messaging/Bridge%20Explanation.md) — The webview ↔ host bridge; [Wire Pinning How-To](./docs/Messaging/Wire%20Pinning%20How-To.md) for TS ⇄ Rust wire shapes
 - [Version Override Explanation](./docs/Dependencies/Version%20Override%20Explanation.md) — Why `pnpm.overrides` exists and when to add/remove one
 
 ## Commands

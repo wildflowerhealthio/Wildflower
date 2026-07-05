@@ -1,0 +1,82 @@
+{
+  "$comment": "Path→doc mapping read by doc-reminders.mjs (PostToolUse hook). `pattern` is a JS regex tested against the repo-relative path (forward slashes). `tools`: 'edit' fires only on Edit/Write; 'any' also fires on Read/Grep/Glob. Each rule injects its `docs` lines into context at most once per session. Per-directory traps belong in that directory's AGENTS.md (auto-loaded), not here — this map is only for docs that path proximity alone won't surface.",
+  "rules": [
+    {
+      "id": "testing",
+      "tools": "edit",
+      "pattern": "\\.test\\.[jt]sx?$|(^|/)tests/",
+      "docs": [
+        "docs/Testing/Testing Reference.md — required reading before writing or changing tests; use the /javascript-testing-expert skill",
+        "docs/Testing/Unit Testing How-To.md and docs/Testing/Property Testing Reference.md — supplement as needed"
+      ]
+    },
+    {
+      "id": "testing-react",
+      "tools": "edit",
+      "pattern": "\\.test\\.tsx$",
+      "docs": [
+        "docs/Testing/React Testing Reference.md — component/hook testing conventions"
+      ]
+    },
+    {
+      "id": "markdown-docs",
+      "tools": "edit",
+      "pattern": "\\.md$",
+      "docs": [
+        "docs/Documentation/How-To.md — kind selection, naming (Title Case + kind suffix), placement",
+        "docs/Documentation/Reference.md — quick-lookup naming and cross-referencing rules; lint gate is `vp run lint:docs`"
+      ]
+    },
+    {
+      "id": "rust",
+      "tools": "edit",
+      "pattern": "\\.rs$|(^|/)Cargo\\.toml$",
+      "docs": [
+        "Run ./scripts/checks/rust.sh before pushing (fmt + clippy -D warnings + nextest); cargo-deny (deny.toml) gates new dependencies — see the Rust section of AGENTS.md"
+      ]
+    },
+    {
+      "id": "bridge",
+      "tools": "any",
+      "pattern": "(^|/)bridge(-[a-z-]+)?\\.(ts|rs)$|effect-messaging",
+      "docs": [
+        "docs/Messaging/Bridge Explanation.md — webview↔host bridge layering, FIFO channel, __Ready handshake, tag-uniqueness discipline",
+        "docs/Messaging/Wire Pinning How-To.md — required when adding/changing a message that crosses the TS⇄Rust boundary"
+      ]
+    },
+    {
+      "id": "http-api",
+      "tools": "any",
+      "pattern": "http-api|openapi|\\.openapi\\.json$",
+      "docs": [
+        "docs/Effect/HttpApi Composition How-To.md — phantom-id bridge, cross-slice composition, topLevel collision",
+        "docs/Effect/OpenAPI Spec Drift How-To.md — regenerating committed snapshots"
+      ]
+    },
+    {
+      "id": "effect-slice-core",
+      "tools": "edit",
+      "pattern": "^slices/[^/]+/[^/]+-core/src/.*\\.ts$",
+      "docs": [
+        "docs/Effect/Patterns Reference.md — repository pattern, generators, error wrappers, Layers",
+        "slices/AGENTS.md — layering rules (-core is pure; adapters import -core, never the reverse)"
+      ]
+    },
+    {
+      "id": "settings-ui",
+      "tools": "any",
+      "pattern": "(^|/)routes/.*settings|settings-fragment",
+      "docs": [
+        "docs/UI/Settings Fragments How-To.md — settings surface conventions, outside/inside twin routes"
+      ]
+    },
+    {
+      "id": "package-json",
+      "tools": "edit",
+      "pattern": "(^|/)package\\.json$",
+      "docs": [
+        "Run `vp install` after any package.json edit; for pnpm.overrides see docs/Dependencies/Version Override Explanation.md"
+      ]
+    }
+  ]
+}
