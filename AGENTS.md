@@ -142,10 +142,10 @@ Polyglot repo: a 15-member Cargo workspace (~207 `.rs` files) alongside the TS p
 
 ## Git hooks
 
-Installed via `vp config` (the `prepare` script), so a plain `git commit`/`git push` triggers real work — don't kill one that looks "hung":
+Installed via `vp config` (the `prepare` script), so a plain `git commit` triggers real work — don't kill one that looks "hung":
 
 - **pre-commit** runs `vp run pack; vp staged`, where `vp staged` maps `*` → `vp check --fix`, `*.md` → `lint:docs`, `*.{rs,toml}` → `rust.sh pre-commit`.
-- **pre-push** runs `vp run pack; vp run test:changed; ./scripts/checks/rust.sh pre-push`.
+- **There is no git pre-push hook.** Tests before a push are the pusher's responsibility: run `vp run test:changed` (and `./scripts/checks/rust.sh pre-push` when Rust changed) first. A Claude PreToolUse hook (`.claude/hooks/push-test-reminder.mjs`) holds the first `git push` of a session to ask whether those checks ran; retrying the push proceeds.
 
 <!-- markdownlint-disable no-bare-urls -->
 <!--VITE PLUS START-->

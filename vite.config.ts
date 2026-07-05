@@ -4,8 +4,10 @@ export default defineConfig({
   // reproduce the lint/format half of CI now that the workflows no longer run on
   // pushes to main (CI is a pre-merge gate only). `vp staged` runs each command
   // only when matching files are staged — the same "don't start an unrelated
-  // job" behaviour as the CI `paths:` filters. The matching tests run from
-  // `.vite-hooks/pre-push`.
+  // job" behaviour as the CI `paths:` filters. The matching tests have no git
+  // pre-push hook: they are the pusher's responsibility (`vp run test:changed`,
+  // `./scripts/checks/rust.sh pre-push`), with a Claude hook
+  // (.claude/hooks/push-test-reminder.mjs) reminding before a session's first push.
   staged: {
     // Format + lint + typecheck (mirrors the ci-typescript `vp check` step).
     '*': 'vp check --fix',
