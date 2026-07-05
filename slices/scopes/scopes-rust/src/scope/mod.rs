@@ -271,8 +271,14 @@ mod tests {
         let covers = |a: &str, b: &str| Scope::from(a).covers(&Scope::from(b));
         assert!(covers("system/*.cruds", "system/Patient.r")); // wildcard + perm subset
         assert!(covers("patient/*.*", "patient/Observation.read")); // v1 word subset
-        assert!(!covers("patient/Observation.read", "patient/Observation.rs")); // grammars never cross
-        assert!(!covers("patient/Observation.cruds", "patient/Observation.read")); // ...either way
+        assert!(!covers(
+            "patient/Observation.read",
+            "patient/Observation.rs"
+        )); // grammars never cross
+        assert!(!covers(
+            "patient/Observation.cruds",
+            "patient/Observation.read"
+        )); // ...either way
         assert!(covers("system/*.cruds", "user/Patient.r")); // context: system covers all
         assert!(!covers("user/*.cruds", "patient/Observation.r")); // context: user ⊉ patient
         assert!(!covers("patient/*.cruds", "user/Patient.r")); // context: patient ⊉ user
