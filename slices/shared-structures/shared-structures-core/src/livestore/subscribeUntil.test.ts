@@ -198,7 +198,6 @@ describe('subscribeUntil', () => {
       readonly subdomain: string
     }
     type Either = Pending | Ready
-    // oxlint-disable-next-line unicorn/consistent-function-scoping
     const isReady = (v: Either): v is Ready => v.kind === 'ready'
 
     const handle = makeFakeStore<Either>({ kind: 'pending', subdomain: null })

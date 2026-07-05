@@ -90,9 +90,10 @@
     "@testing-library/react": "^16.3.0",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
-    "@vitejs/plugin-react": "^5.0.4",
+    "@vitejs/plugin-react": "catalog:",
     "jsdom": "catalog:",
     "typescript": "catalog:",
+    "vite": "catalog:",
     "vite-plugin-singlefile": "^2.3.3",
     "vite-plus": "catalog:"
   }

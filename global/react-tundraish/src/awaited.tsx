@@ -1,5 +1,5 @@
-import { Await, CatchBoundary } from '@tanstack/react-router'
-import type { JSX, ReactNode } from 'react'
+import { Await, CatchBoundary, type ErrorRouteComponent } from '@tanstack/react-router'
+import { useMemo, type JSX, type ReactNode } from 'react'
 
 import { AsyncErrorView } from './async-error-view.tsx'
 
@@ -112,22 +112,17 @@ type AwaitedProps<T> = AwaitedBaseProps<T> & (AwaitedCustomErrorProps | AwaitedD
  * the two so the styling props can't be silently dropped.
  */
 const Awaited = <T,>(props: AwaitedProps<T>): JSX.Element => {
-  const { promise, resetKey = 0, children } = props
+  const { promise, resetKey = 0, children, errorComponent, errorTitle, errorTitleClassName } = props
+  const ErrorComponent = useMemo((): ErrorRouteComponent => {
+    return ({ error }) =>
+      errorComponent !== undefined ? (
+        errorComponent(error)
+      ) : (
+        <AsyncErrorView error={error} title={errorTitle} titleClassName={errorTitleClassName} />
+      )
+  }, [errorComponent, errorTitle, errorTitleClassName])
   return (
-    <CatchBoundary
-      getResetKey={() => resetKey}
-      errorComponent={({ error }) =>
-        props.errorComponent !== undefined ? (
-          props.errorComponent(error)
-        ) : (
-          <AsyncErrorView
-            error={error}
-            title={props.errorTitle}
-            titleClassName={props.errorTitleClassName}
-          />
-        )
-      }
-    >
+    <CatchBoundary getResetKey={() => resetKey} errorComponent={ErrorComponent}>
       <Await promise={promise}>{children}</Await>
     </CatchBoundary>
   )

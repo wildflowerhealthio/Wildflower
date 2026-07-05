@@ -65,8 +65,8 @@ const TimingRepeatSchema: Schema.Schema<
     timeOfDay: Schema.optionalWith(mutableEncoded(Schema.Array(TimeSchema)), {
       default: (): readonly string[] => [],
     }),
-    when: Schema.optionalWith(mutableEncoded(Schema.Array(Schema.String)), {
-      default: (): readonly string[] => [],
+    when: Schema.optionalWith(mutableEncoded(Schema.Array(StoreTiming.EventTimingSchema)), {
+      default: (): readonly (typeof StoreTiming.EventTimingSchema.Type)[] => [],
     }),
     offset: OrNullAsOptional(Schema.Int.pipe(Schema.nonNegative())),
   })

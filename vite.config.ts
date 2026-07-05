@@ -159,6 +159,11 @@ export default defineConfig({
 
       // Configured rules
       'eslint/no-underscore-dangle': ['error', { allow: ['_tag', '_count', '_pageToken'] }],
+      // Render props (`fallback={(error) => ...}`, `errorComponent={...}`) are
+      // invoked by the receiving component, not mounted as component types, so
+      // they don't remount on every render; only inline definitions used AS
+      // components remain flagged.
+      'react/no-unstable-nested-components': ['error'],
       'no-shadow': ['error', { allow: ['fc'] }],
       'import/max-dependencies': ['warn', { max: 15 }],
       '@typescript-eslint/no-empty-object-type': ['error', { allowInterfaces: 'always' }],
@@ -240,6 +245,15 @@ export default defineConfig({
         files: ['**/*.tsx'],
         rules: {
           'no-ternary': 'off',
+        },
+      },
+      {
+        // Test files freely hoist small helpers (fixtures, arrange-step
+        // builders) inside `describe`/`it` blocks for locality; enforcing
+        // module-scope placement there hurts readability for no runtime gain.
+        files: ['**/*.test.ts', '**/*.test.tsx', '**/*.test.mts', '**/*.test.cts'],
+        rules: {
+          'unicorn/consistent-function-scoping': 'off',
         },
       },
     ],

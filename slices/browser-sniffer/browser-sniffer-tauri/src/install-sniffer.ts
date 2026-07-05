@@ -438,7 +438,7 @@ const installSniffer = function (eventBus: TauriEventApi): void {
       internal: isTauriInternalUrl(urlStr),
     })
     nativeXHROpen.call(this, method, url, async ?? true, username ?? null, password ?? null)
-  } as XMLHttpRequest['open']
+  } satisfies XMLHttpRequest['open']
 
   XMLHttpRequest.prototype.send = function (
     this: XMLHttpRequest,
@@ -585,7 +585,7 @@ const installSniffer = function (eventBus: TauriEventApi): void {
     )
 
     nativeXHRSend.call(this, body ?? null)
-  } as XMLHttpRequest['send']
+  } satisfies XMLHttpRequest['send']
 
   // Page-content capture on window `load`. `PageLoaded` is just a
   // notification; the DOM body (`Element.outerHTML`, so XML serialises

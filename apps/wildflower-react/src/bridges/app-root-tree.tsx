@@ -1,7 +1,7 @@
 import { type AnyRouter, RouterProvider } from '@tanstack/react-router'
 import { HandlerCoordinatorContext } from 'effect-messaging-react'
 import { NavigationBridgeHandler } from 'navigation-react'
-import { Fragment, type JSX } from 'react'
+import { Fragment, useMemo, type JSX, type PropsWithChildren } from 'react'
 import { usePromiseOrDefault } from 'react-kitchen-sink'
 import type { SettingsItem } from 'shared-structures-react'
 
@@ -37,24 +37,27 @@ const AppRootTree = ({
 }: AppRootTreeProps): JSX.Element => {
   const transport = usePromiseOrDefault(transportPromise, stubTransport, () => stubTransport)
 
+  const InnerWrap = useMemo(
+    () =>
+      ({ children }: PropsWithChildren<object>): JSX.Element => (
+        <Fragment>
+          {/*
+           * NavigationBridgeHandler only needs `transport.sendMessage`
+           * (not the slice sender), so it sits beside the forwarder
+           * rather than buried inside it.
+           */}
+          <NavigationBridgeHandler sender={transport.sendMessage} />
+          <CollectorSenderForwarder>{children}</CollectorSenderForwarder>
+        </Fragment>
+      ),
+    [transport.sendMessage]
+  )
+
   return (
     <PlatformSettingsItemsProvider items={platformSettingsItems}>
       <TransportContext.Provider value={transport}>
         <HandlerCoordinatorContext.Provider value={transport.coordinator}>
-          <RouterProvider
-            router={router}
-            InnerWrap={({ children }) => (
-              <Fragment>
-                {/*
-                 * NavigationBridgeHandler only needs `transport.sendMessage`
-                 * (not the slice sender), so it sits beside the forwarder
-                 * rather than buried inside it.
-                 */}
-                <NavigationBridgeHandler sender={transport.sendMessage} />
-                <CollectorSenderForwarder>{children}</CollectorSenderForwarder>
-              </Fragment>
-            )}
-          />
+          <RouterProvider router={router} InnerWrap={InnerWrap} />
         </HandlerCoordinatorContext.Provider>
       </TransportContext.Provider>
     </PlatformSettingsItemsProvider>

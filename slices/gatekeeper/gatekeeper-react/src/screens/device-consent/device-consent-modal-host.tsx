@@ -14,6 +14,7 @@ import {
   Component,
   Suspense,
   useEffect,
+  useMemo,
   useState,
   type ErrorInfo,
   type JSX,
@@ -149,6 +150,16 @@ const DeviceConsentModalHost = (): JSX.Element | null => {
     setHandledUserCode(null)
   }, [activeUserCode])
 
+  const DeviceConsentErrorFallbackInstance = useMemo(
+    () => (error: unknown) => (
+      <DeviceConsentErrorFallback
+        error={error}
+        onDismiss={() => setHandledUserCode(activeUserCode)}
+      />
+    ),
+    [setHandledUserCode, activeUserCode]
+  )
+
   if (!isAuthed(authSignal)) return null
 
   const isOpen = activeUserCode !== null && activeUserCode !== handledUserCode
@@ -167,12 +178,7 @@ const DeviceConsentModalHost = (): JSX.Element | null => {
       {isOpen ? (
         <DeviceConsentBodyErrorBoundary
           resetKey={activeUserCode}
-          fallback={(error) => (
-            <DeviceConsentErrorFallback
-              error={error}
-              onDismiss={() => setHandledUserCode(activeUserCode)}
-            />
-          )}
+          fallback={DeviceConsentErrorFallbackInstance}
         >
           <Suspense fallback={null}>
             <DeviceConsentDialogBody

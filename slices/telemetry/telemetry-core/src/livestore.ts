@@ -122,13 +122,13 @@ const injectActiveOtelContext = <S extends StoreMethods>(store: S): S => {
   marker[INJECTED_MARKER] = true
 
   const origQuery = store.query.bind(store)
-  store.query = ((q: unknown, options?: Record<string, unknown>) => {
+  store.query = (q: unknown, options?: Record<string, unknown>) => {
     if (options?.otelContext !== undefined) return origQuery(q, options)
     return origQuery(q, { ...options, otelContext: otel.context.active() })
-  }) as S['query']
+  }
 
   const origCommit = store.commit.bind(store)
-  store.commit = ((...args: unknown[]) => {
+  store.commit = (...args: unknown[]) => {
     if (args.length === 0 || typeof args[0] === 'function') return origCommit(...args)
     const activeCtx = otel.context.active()
     const first = args[0]
@@ -137,10 +137,10 @@ const injectActiveOtelContext = <S extends StoreMethods>(store: S): S => {
       return origCommit({ ...first, otelContext: activeCtx }, ...args.slice(1))
     }
     return origCommit({ otelContext: activeCtx }, ...args)
-  }) as S['commit']
+  }
 
   const origSubscribe = store.subscribe.bind(store)
-  store.subscribe = ((...args: unknown[]) => {
+  store.subscribe = (...args: unknown[]) => {
     if (args.length < 2) return origSubscribe(...args)
     const activeCtx = otel.context.active()
     const second = args[1]
@@ -157,7 +157,7 @@ const injectActiveOtelContext = <S extends StoreMethods>(store: S): S => {
       return origSubscribe(args[0], { ...second, otelContext: activeCtx }, ...args.slice(2))
     }
     return origSubscribe(...args)
-  }) as S['subscribe']
+  }
 
   return store
 }

@@ -73,7 +73,7 @@ const makeHandlerRegistry = <
             // Each record's handlers accept their specific message type;
             // erase to the routing-site `Handler` shape (re-narrowed by
             // `_tag` at dispatch).
-            return Record.toEntries(handlers as MessageHandler.AnyHandlers)
+            return Record.toEntries(handlers satisfies MessageHandler.AnyHandlers)
           }
         ),
         Array.flatten,

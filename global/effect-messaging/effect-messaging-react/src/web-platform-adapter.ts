@@ -14,6 +14,8 @@ interface MessagingWindowGlobals {
   ReactNativeWebView?: { postMessage(data: string): void }
 }
 
+const winGlobals = (): Window & MessagingWindowGlobals => window
+
 /**
  * Build a {@link TransportAdapter} service for the page side.
  *
@@ -33,9 +35,6 @@ interface MessagingWindowGlobals {
  * no `urlParams` schemas contributes nothing to drainInitial.
  */
 const make = (bridges: ReadonlyArray<Bridge.AnyBridge>): TransportAdapter['Type'] => {
-  const winGlobals = (): Window & MessagingWindowGlobals =>
-    window as Window & MessagingWindowGlobals
-
   const bareSender: BareSenderFunction = (encoded) =>
     Effect.gen(function* () {
       const w = winGlobals()

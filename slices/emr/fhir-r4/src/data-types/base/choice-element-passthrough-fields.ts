@@ -39,6 +39,9 @@ const nullStubFor = <K extends Datatype.Name>(
             ),
   })
 
+// True for datatype names that carry a fhir-r4 wire schema in the registry.
+const isRegistered = (n: Datatype.Name): n is keyof typeof baseDatatypes => n in baseDatatypes
+
 /**
  * Builds the per-prefix `value[x]` / `effective[x]` choice fields for a FHIR
  * R4 wire-format struct. Each name in `datatypeNames` becomes an optional
@@ -71,8 +74,6 @@ const choiceElementSetPassthroughFields = <
       { default: LazyArg<Schema.Schema.Type<Datatype.SchemaFor<K>> | null> }
     >
   }
-
-  const isRegistered = (n: Datatype.Name): n is keyof typeof baseDatatypes => n in baseDatatypes
 
   const entries = datatypeNames.map((name) => {
     const key = `${prefix}${capitalize(name)}`

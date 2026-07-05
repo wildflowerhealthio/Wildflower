@@ -25,10 +25,11 @@
     "@testing-library/user-event": "^14.5.2",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
-    "@vitejs/plugin-react": "^5.0.4",
+    "@vitejs/plugin-react": "catalog:",
     "fast-check": "catalog:",
     "jsdom": "catalog:",
     "typescript": "~5.9.3",
+    "vite": "catalog:",
     "vite-plus": "catalog:"
   }
 }

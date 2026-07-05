@@ -87,13 +87,13 @@ const stubHttpClientLayer = (options?: {
 // Mirrors the app's `buildRunAuthed`; kept local so the slice stays
 // app-independent.
 const makeRunAuthed = (httpLayer: Layer.Layer<HttpClient.HttpClient>): RunAuthed => {
-  return ((effect) =>
+  return (effect) =>
     Effect.runPromise(
       effect.pipe(
         Effect.provide(pipe(sliceRuntimeLayer, Layer.provideMerge(httpLayer))),
         Effect.scoped
       )
-    )) as RunAuthed
+    )
 }
 
 const preloadDatabases = async (

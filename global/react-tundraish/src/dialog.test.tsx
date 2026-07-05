@@ -28,7 +28,6 @@ const restoreOrDelete = (
 }
 
 beforeEach(() => {
-  // oxlint-disable unicorn/consistent-function-scoping
   HTMLDialogElement.prototype.showModal = function showModal(): void {
     this.setAttribute('open', '')
   }
@@ -36,7 +35,6 @@ beforeEach(() => {
     this.removeAttribute('open')
     this.dispatchEvent(new Event('close'))
   }
-  // oxlint-enable unicorn/consistent-function-scoping
 })
 
 afterEach(() => {
