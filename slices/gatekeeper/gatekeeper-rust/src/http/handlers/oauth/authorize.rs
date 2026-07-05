@@ -354,9 +354,11 @@ fn validate_requested_scopes(
         .map(str::to_string)
         .collect();
     // Coverage-aware allowlist check, not exact string membership: a client
-    // allowed a broad or v1 scope (e.g. `patient/Observation.read`) also admits
-    // a narrower or v2 request it covers (`patient/Observation.rs`). Mirrors the
-    // consent path's `grantable_scopes`; the same intersection runs again there.
+    // allowed a broad scope (e.g. `patient/*.rs`) also admits a narrower
+    // same-grammar request it covers (`patient/Observation.r`). Coverage never
+    // crosses the v1 word / v2 letter grammars — a registration in one grammar
+    // authorizes requests in that grammar only. Mirrors the consent path's
+    // `grantable_scopes`; the same intersection runs again there.
     if !requested_scopes.iter().all(|requested| {
         client
             .allowed_scopes

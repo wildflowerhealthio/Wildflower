@@ -48,6 +48,7 @@ function AccountListBody({ remotes }: AccountListBodyProps): JSX.Element {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const { startImport } = useSyncRunner({
     onError: (e) => {
+      // oxlint-disable-next-line no-console
       console.error('Error during import:', unwrapCause(e))
       setImportError(e instanceof Error ? e.message : String(e))
     },

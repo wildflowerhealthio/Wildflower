@@ -1,0 +1,119 @@
+/*
+ * A multi-select checkbox group, in two looks:
+ *  - `boxed`  — design-system checkboxes.
+ *  - `plain`  — un-boxed checklist (a ✓ when selected, nothing when not) with an
+ *               optional mono value right-aligned and the card sized to fit.
+ * `--row` lays the items horizontally for compact placement.
+ */
+
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  background: var(--color-raised);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-3);
+}
+
+.picker--plain {
+  width: max-content;
+  max-width: 100%;
+}
+
+.picker--row {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: var(--space-5);
+  align-items: center;
+}
+
+.name {
+  font-size: var(--font-size-3);
+  color: var(--color-foreground);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-1);
+  color: var(--color-neutral-5);
+}
+
+/* ── boxed variant (grid) ─────────────────────────────────────────────────── */
+
+.cell {
+  display: block;
+}
+
+.row {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+
+/* ── plain variant (fluent consent list) ──────────────────────────────────── */
+
+.option {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-2);
+  cursor: pointer;
+}
+
+.option--locked {
+  cursor: not-allowed;
+}
+
+.picker--plain:not(.picker--row) .option:not(.option--locked):hover {
+  background: var(--color-sunken);
+}
+
+/* The native checkbox is the a11y control — visually hidden, but its :checked
+ * and :focus-visible drive the painted ✓ and the row's focus ring. */
+.input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+.option:has(.input:focus-visible) {
+  outline: 2px solid var(--color-accent-4);
+  outline-offset: 2px;
+}
+
+/* The un-boxed check — a ✓ shown only when selected; the column is always
+ * reserved so labels stay aligned whether or not they're checked. */
+.check {
+  flex: 0 0 auto;
+  width: 0.85em;
+  color: var(--color-accent);
+  font-weight: var(--font-weight-4);
+  visibility: hidden;
+}
+
+.option:has(.input:checked) .check {
+  visibility: visible;
+}
+
+.option--locked .check {
+  color: var(--color-neutral-5);
+}
+
+.option--locked .name {
+  color: var(--color-neutral-5);
+}
+
+/* Right-align the mono annotation into a column (stacked plain layout only). */
+.picker--plain:not(.picker--row) .mono {
+  margin-left: auto;
+  padding-left: var(--space-6);
+}

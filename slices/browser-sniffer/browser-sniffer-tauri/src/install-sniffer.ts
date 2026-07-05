@@ -10,7 +10,7 @@ import type {
   ResponseFinishedMessageBody,
   ResponseStartMessageBody,
 } from 'browser-sniffer-core'
-import type { Schema } from 'effect'
+import { type Schema, Match, Predicate } from 'effect'
 import type { Logging } from 'effect-messaging-core'
 import type { TauriEventApi } from 'effect-messaging-tauri'
 import type { JsonValue } from 'kitchen-sink/schema'
@@ -296,12 +296,13 @@ const installSniffer = function (eventBus: TauriEventApi): void {
     // `isTauriInternalUrl`). Pass the original input through unchanged so
     // we don't re-wrap a string in `new Request(...)` (which rejects the
     // custom `ipc:` scheme in some engines).
-    const probeUrl =
-      typeof request === 'string'
-        ? request
-        : request instanceof URL
-          ? request.toString()
-          : request.url
+    const probeUrl = Match.value(request).pipe(
+      Match.when(Predicate.isString, (s) => s),
+      Match.when(Match.instanceOf(URL), (u) => u.toString()),
+      Match.when({ url: Predicate.isString }, (r) => r.url),
+      Match.orElse((r) => r.toString())
+    )
+
     if (isTauriInternalUrl(probeUrl)) {
       return nativeFetch(request, init)
     }

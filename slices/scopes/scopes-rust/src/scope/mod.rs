@@ -15,8 +15,12 @@
 //!
 //! Parsing (via [`From`]/[`FromStr`]) is **total** — it never fails, it falls
 //! back to `Unknown` — and prefers the richest representation. Rendering
-//! **round-trips** (SMART v1↔v2 back-compat — see [`AccessRights`]).
+//! **round-trips** (SMART v1↔v2 back-compat — see [`Permission`]).
+//!
+//! A [`Grant`] is an ordered collection of these scopes — the structured form of
+//! the scope lists callers store, transmit, and check coverage against.
 
+mod grant;
 mod known;
 mod resource;
 mod unknown;
@@ -28,9 +32,10 @@ use std::str::FromStr;
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+pub use grant::Grant;
 pub use known::KnownScope;
 pub use resource::{
-    AccessRights, ContextLevel, FhirResourceScope, ResourceType, WildflowerResource,
+    ContextLevel, FhirResourceScope, Permission, ResourceType, WildflowerResource,
     WildflowerResourceScope, WildflowerResourceType,
 };
 pub use unknown::UnknownScope;
@@ -74,11 +79,11 @@ impl Scope {
     pub fn as_alternate_canonical_form(&self) -> Option<Scope> {
         let alternate = match self {
             Scope::FhirResource(r) => Scope::FhirResource(FhirResourceScope {
-                access: r.access.to_letter_bag_representation(),
+                permission: r.permission.to_interaction_set_representation(),
                 ..r.clone()
             }),
             Scope::WildflowerResource(w) => Scope::WildflowerResource(WildflowerResourceScope {
-                access: w.access.to_letter_bag_representation(),
+                permission: w.permission.to_interaction_set_representation(),
                 ..w.clone()
             }),
             Scope::Known(_) | Scope::Unknown(_) => return None,
@@ -154,10 +159,10 @@ mod tests {
     use super::*;
     use proptest::prelude::*;
 
-    /// `rs` access rights, built through the parser so these tests don't reach
-    /// into `AccessRights`' private representation.
-    fn rs() -> AccessRights {
-        AccessRights::parse_segment("rs").unwrap()
+    /// `rs` permission, built through the parser so these tests don't reach
+    /// into `Permission`'s private representation.
+    fn rs() -> Permission {
+        Permission::parse_segment("rs").unwrap()
     }
 
     #[test]
@@ -176,7 +181,7 @@ mod tests {
             Scope::FhirResource(FhirResourceScope {
                 context: ContextLevel::Patient,
                 resource: ResourceType::Known("Observation".to_string()),
-                access: AccessRights::parse_segment("read").unwrap(),
+                permission: Permission::parse_segment("read").unwrap(),
             })
         );
         assert_eq!(
@@ -184,7 +189,7 @@ mod tests {
             Scope::FhirResource(FhirResourceScope {
                 context: ContextLevel::System,
                 resource: ResourceType::Wildcard,
-                access: AccessRights::ALL,
+                permission: Permission::ALL,
             })
         );
     }
@@ -196,7 +201,7 @@ mod tests {
             Scope::from("wildflower/Grant.cruds"),
             Scope::WildflowerResource(WildflowerResourceScope {
                 resource: WildflowerResourceType::Known(WildflowerResource::Grant),
-                access: AccessRights::ALL,
+                permission: Permission::ALL,
             })
         );
         // ...whereas `system/Grant.cruds` is just a FHIR scope named "Grant" —
@@ -206,19 +211,22 @@ mod tests {
             Scope::FhirResource(FhirResourceScope {
                 context: ContextLevel::System,
                 resource: ResourceType::Known("Grant".to_string()),
-                access: AccessRights::ALL,
+                permission: Permission::ALL,
             })
         );
     }
 
     #[test]
     fn parse_falls_back_to_unknown() {
-        // Retired admin scope, an unknown wildflower resource, and a stray-letter
-        // perm bag all preserve verbatim rather than misparse.
+        // Retired admin scope, an unknown wildflower resource, a stray-letter
+        // perm bag, and v1-worded wildflower scopes (the word grammar is
+        // FHIR-only) all preserve verbatim rather than misparse.
         for s in [
             "wildflower/admin",
             "wildflower/Nope.cruds",
             "patient/Observation.rx",
+            "wildflower/Grant.*",
+            "wildflower/*.write",
         ] {
             assert_eq!(Scope::from(s), Scope::Unknown(UnknownScope::new(s)));
         }
@@ -232,14 +240,8 @@ mod tests {
             Scope::from("patient/Observation.read").to_string(),
             "patient/Observation.read"
         );
-        assert_eq!(
-            Scope::from("wildflower/Grant.*").to_string(),
-            "wildflower/Grant.*"
-        );
-        assert_eq!(
-            Scope::from("wildflower/*.write").to_string(),
-            "wildflower/*.write"
-        );
+        assert_eq!(Scope::from("user/*.write").to_string(), "user/*.write");
+        assert_eq!(Scope::from("system/*.*").to_string(), "system/*.*");
         // v2 letter bags normalize to canonical c,r,u,d,s order.
         assert_eq!(
             Scope::from("patient/Observation.sr").to_string(),
@@ -258,7 +260,7 @@ mod tests {
             Scope::FhirResource(FhirResourceScope {
                 context: ContextLevel::Patient,
                 resource: ResourceType::Known("Observation".to_string()),
-                access: rs(),
+                permission: rs(),
             })
         );
         assert_eq!(scope.to_string(), "patient/Observation.rs");
@@ -268,8 +270,18 @@ mod tests {
     fn covers_fhir_rules() {
         let covers = |a: &str, b: &str| Scope::from(a).covers(&Scope::from(b));
         assert!(covers("system/*.cruds", "system/Patient.r")); // wildcard + perm subset
-        assert!(covers("patient/Observation.read", "patient/Observation.rs")); // v1 covers v2
-        assert!(!covers("system/*.cruds", "user/Patient.r")); // strict context
+        assert!(covers("patient/*.*", "patient/Observation.read")); // v1 word subset
+        assert!(!covers(
+            "patient/Observation.read",
+            "patient/Observation.rs"
+        )); // grammars never cross
+        assert!(!covers(
+            "patient/Observation.cruds",
+            "patient/Observation.read"
+        )); // ...either way
+        assert!(covers("system/*.cruds", "user/Patient.r")); // context: system covers all
+        assert!(!covers("user/*.cruds", "patient/Observation.r")); // context: user ⊉ patient
+        assert!(!covers("patient/*.cruds", "user/Patient.r")); // context: patient ⊉ user
         assert!(!covers("system/Patient.r", "system/Patient.cruds")); // perm not covered
         assert!(!covers("system/Patient.cruds", "system/*.cruds")); // specific !covers wildcard
     }
@@ -277,13 +289,16 @@ mod tests {
     #[test]
     fn covers_wildflower_rules() {
         let covers = |a: &str, b: &str| Scope::from(a).covers(&Scope::from(b));
-        assert!(covers("wildflower/Grant.cruds", "wildflower/Grant.read")); // perm subset
-        assert!(covers("wildflower/*.cruds", "wildflower/Grant.read")); // wildcard covers any
-        assert!(!covers("wildflower/Grant.cruds", "wildflower/Client.read")); // explicit resource
-        assert!(!covers("wildflower/Grant.cruds", "wildflower/*.read")); // specific !covers wildcard
-                                                                         // FHIR full access does NOT reach Wildflower resources, and vice versa.
+        assert!(covers("wildflower/Grant.cruds", "wildflower/Grant.r")); // perm subset
+        assert!(covers("wildflower/*.cruds", "wildflower/Grant.r")); // wildcard covers any
+        assert!(!covers("wildflower/Grant.cruds", "wildflower/Client.r")); // explicit resource
+        assert!(!covers("wildflower/Grant.cruds", "wildflower/*.r")); // specific !covers wildcard
+                                                                      // FHIR full access does NOT reach Wildflower resources, and vice versa.
         assert!(!covers("system/*.cruds", "wildflower/Grant.cruds"));
         assert!(!covers("wildflower/Grant.cruds", "system/Grant.cruds"));
+        // Word-form wildflower strings parse as Unknown: exact-match only.
+        assert!(!covers("wildflower/Grant.cruds", "wildflower/Grant.read"));
+        assert!(covers("wildflower/Grant.read", "wildflower/Grant.read"));
     }
 
     #[test]
@@ -319,8 +334,8 @@ mod tests {
         }
     }
 
-    /// Canonical CRUDS letters for a raw bit set, independent of `AccessRights`'
-    /// private representation.
+    /// Canonical interaction letters for a raw bit set, independent of
+    /// `Permission`'s private representation.
     fn canonical_letters(bits: u8) -> String {
         [(1u8, 'c'), (2, 'r'), (4, 'u'), (8, 'd'), (16, 's')]
             .into_iter()

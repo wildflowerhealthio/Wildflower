@@ -235,6 +235,7 @@ const renderApp = ({
     <StrictMode>
       <ErrorBoundary
         onError={(error, info) => {
+          // oxlint-disable-next-line no-console
           console.error(`[${entry}] Uncaught error:`, error, info)
           Sentry.captureException(error, {
             extra: { componentStack: info.componentStack ?? undefined },

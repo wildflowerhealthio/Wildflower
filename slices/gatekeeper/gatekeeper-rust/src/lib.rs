@@ -15,7 +15,7 @@ pub(crate) mod seeding;
 use anyhow::Context;
 use chrono::Duration;
 use scopes_rust::{
-    AccessRights, ContextLevel, FhirResourceScope, ResourceType, Scope, WildflowerResourceScope,
+    ContextLevel, FhirResourceScope, Permission, ResourceType, Scope, WildflowerResourceScope,
     WildflowerResourceType,
 };
 use tokio::sync::watch;
@@ -42,11 +42,11 @@ pub const WILDFLOWER_WIDEST_SCOPES: &[Scope] = &[
     Scope::FhirResource(FhirResourceScope {
         context: ContextLevel::System,
         resource: ResourceType::Wildcard,
-        access: AccessRights::ALL,
+        permission: Permission::ALL,
     }),
     Scope::WildflowerResource(WildflowerResourceScope {
         resource: WildflowerResourceType::Wildcard,
-        access: AccessRights::ALL,
+        permission: Permission::ALL,
     }),
 ];
 
@@ -69,11 +69,11 @@ pub const WILDFLOWER_LOCAL_GRANTED_SCOPES: &[Scope] = &[
     Scope::FhirResource(FhirResourceScope {
         context: ContextLevel::System,
         resource: ResourceType::Wildcard,
-        access: AccessRights::ALL,
+        permission: Permission::ALL,
     }),
     Scope::WildflowerResource(WildflowerResourceScope {
         resource: WildflowerResourceType::Wildcard,
-        access: AccessRights::ALL,
+        permission: Permission::ALL,
     }),
 ];
 

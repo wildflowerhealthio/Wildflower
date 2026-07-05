@@ -356,7 +356,7 @@ pub fn issue_token_response(
     // Mint each granted scope alongside its alternate canonical form, so a
     // v1-worded grant also carries its v2 letter spelling — see
     // [`scopes_rust::with_alternate_canonical_forms`] and scopes-rust's
-    // `AccessRights` for why. The app-facing `TokenResponse.scope` below stays
+    // `Permission` for why. The app-facing `TokenResponse.scope` below stays
     // the granted set as-is.
     let token_scopes = scopes_rust::with_alternate_canonical_forms(input.granted_scopes);
     let signed = mint_access_token(

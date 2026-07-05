@@ -1,0 +1,85 @@
+{
+  "description": "Shared TS/Rust scope-semantics vectors, consumed by scopes-rust's tests/vectors.rs and scopes-core's scope-test-vectors.test.ts so the two grammars cannot silently drift. Semantics: permission coverage is same-grammar only (v1 words never cover v2 letter bags or vice versa); only the system context covers other contexts; wildflower scopes are letters-only (v1 words fall to unknown); letter bags canonicalize to c,r,u,d,s order; a ?search-parameter suffix is stripped.",
+  "parse": [
+    { "scope": "openid", "kind": "known", "rendered": "openid" },
+    { "scope": "offline_access", "kind": "known", "rendered": "offline_access" },
+    { "scope": "launch/patient", "kind": "known", "rendered": "launch/patient" },
+    { "scope": "patient/Observation.rs", "kind": "fhirV2", "rendered": "patient/Observation.rs" },
+    { "scope": "patient/Observation.sr", "kind": "fhirV2", "rendered": "patient/Observation.rs" },
+    {
+      "scope": "patient/Observation.read",
+      "kind": "fhirV1",
+      "rendered": "patient/Observation.read"
+    },
+    { "scope": "user/Patient.write", "kind": "fhirV1", "rendered": "user/Patient.write" },
+    { "scope": "system/*.*", "kind": "fhirV1", "rendered": "system/*.*" },
+    { "scope": "system/*.cruds", "kind": "fhirV2", "rendered": "system/*.cruds" },
+    {
+      "scope": "wildflower/Grant.cruds",
+      "kind": "wildflower",
+      "rendered": "wildflower/Grant.cruds"
+    },
+    { "scope": "wildflower/*.rs", "kind": "wildflower", "rendered": "wildflower/*.rs" },
+    { "scope": "wildflower/Grant.read", "kind": "unknown", "rendered": "wildflower/Grant.read" },
+    { "scope": "wildflower/Grant.*", "kind": "unknown", "rendered": "wildflower/Grant.*" },
+    { "scope": "wildflower/*.write", "kind": "unknown", "rendered": "wildflower/*.write" },
+    { "scope": "wildflower/Nope.cruds", "kind": "unknown", "rendered": "wildflower/Nope.cruds" },
+    { "scope": "system/Grant.cruds", "kind": "fhirV2", "rendered": "system/Grant.cruds" },
+    { "scope": "patient/Observation.rx", "kind": "unknown", "rendered": "patient/Observation.rx" },
+    { "scope": "a_stray_unknown", "kind": "unknown", "rendered": "a_stray_unknown" },
+    {
+      "scope": "patient/Observation.rs?category=x",
+      "kind": "fhirV2",
+      "rendered": "patient/Observation.rs"
+    }
+  ],
+  "coverage": [
+    { "allowed": "system/*.cruds", "requested": "system/Patient.r", "covers": true },
+    { "allowed": "system/*.cruds", "requested": "patient/Observation.r", "covers": true },
+    { "allowed": "system/*.cruds", "requested": "user/Observation.r", "covers": true },
+    { "allowed": "user/*.cruds", "requested": "user/Observation.r", "covers": true },
+    { "allowed": "user/*.cruds", "requested": "patient/Observation.r", "covers": false },
+    { "allowed": "patient/*.cruds", "requested": "user/Observation.r", "covers": false },
+    { "allowed": "user/*.cruds", "requested": "system/Observation.r", "covers": false },
+    { "allowed": "patient/Observation.rs", "requested": "patient/Observation.r", "covers": true },
+    { "allowed": "patient/Observation.r", "requested": "patient/Observation.rs", "covers": false },
+    { "allowed": "patient/Observation.cruds", "requested": "patient/*.cruds", "covers": false },
+    {
+      "allowed": "patient/Observation.read",
+      "requested": "patient/Observation.rs",
+      "covers": false
+    },
+    {
+      "allowed": "patient/Observation.cruds",
+      "requested": "patient/Observation.read",
+      "covers": false
+    },
+    { "allowed": "patient/*.*", "requested": "patient/Observation.cruds", "covers": false },
+    { "allowed": "patient/*.*", "requested": "patient/Observation.read", "covers": true },
+    { "allowed": "patient/*.*", "requested": "patient/Observation.write", "covers": true },
+    {
+      "allowed": "patient/Observation.read",
+      "requested": "patient/Observation.read",
+      "covers": true
+    },
+    {
+      "allowed": "patient/Observation.read",
+      "requested": "patient/Observation.write",
+      "covers": false
+    },
+    {
+      "allowed": "patient/Observation.read",
+      "requested": "patient/Observation.*",
+      "covers": false
+    },
+    { "allowed": "wildflower/*.cruds", "requested": "wildflower/Grant.r", "covers": true },
+    { "allowed": "wildflower/Grant.cruds", "requested": "wildflower/Grant.r", "covers": true },
+    { "allowed": "wildflower/Grant.cruds", "requested": "wildflower/Client.r", "covers": false },
+    { "allowed": "system/*.cruds", "requested": "wildflower/Grant.r", "covers": false },
+    { "allowed": "wildflower/Grant.cruds", "requested": "system/Grant.r", "covers": false },
+    { "allowed": "offline_access", "requested": "offline_access", "covers": true },
+    { "allowed": "offline_access", "requested": "openid", "covers": false },
+    { "allowed": "wildflower/Grant.read", "requested": "wildflower/Grant.read", "covers": true },
+    { "allowed": "wildflower/Grant.cruds", "requested": "wildflower/Grant.read", "covers": false }
+  ]
+}

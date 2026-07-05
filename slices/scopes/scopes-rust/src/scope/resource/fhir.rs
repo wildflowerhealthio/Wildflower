@@ -2,20 +2,24 @@
 
 use std::fmt;
 
-use super::AccessRights;
+use super::Permission;
 
 /// A SMART on FHIR resource scope: an access level, the FHIR resource type it
-/// addresses, and the CRUDS rights granted on it (`context/Type.perms`).
+/// addresses, and the permission (set of interactions) granted on it
+/// (`context/Type.perms`).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FhirResourceScope {
     pub context: ContextLevel,
     pub resource: ResourceType,
-    pub access: AccessRights,
+    pub permission: Permission,
 }
 
-/// The access level a [`FhirResourceScope`] is relative to. `User` currently
-/// grants the same as `System` (users don't exist yet), but the three are
-/// modeled and compared **strictly** — `user` never silently means `system`.
+/// The access level a [`FhirResourceScope`] is relative to. `System` covers
+/// every context; `User` and `Patient` cover only themselves — a patient-launch
+/// scope is bound to the launch patient (possibly a record outside the user's
+/// own access), so neither is a subset of the other. The three stay distinct
+/// *values* (a `user` scope renders as `user`, never silently `system`); only
+/// [`covers`](ContextLevel::covers) applies the rule.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ContextLevel {
     Patient,
@@ -46,20 +50,22 @@ impl FhirResourceScope {
         if type_str.is_empty() {
             return None;
         }
-        let access = AccessRights::parse_segment(super::strip_search_suffix(s, perms_str))?;
+        let permission = Permission::parse_segment(super::strip_search_suffix(s, perms_str))?;
         Some(FhirResourceScope {
             context,
             resource: ResourceType::parse(type_str),
-            access,
+            permission,
         })
     }
 
-    /// Does this (client-allowed) scope cover `other` (a requested scope)? Strict
-    /// context equality, wildcard-aware resource match, and a CRUDS superset.
+    /// Does this (client-allowed) scope cover `other` (a requested scope)?
+    /// Context coverage (`system` covers everything; `user`/`patient` only
+    /// themselves), wildcard-aware resource match, and a same-grammar
+    /// permission superset.
     pub(in crate::scope) fn covers(&self, other: &FhirResourceScope) -> bool {
-        self.context == other.context
+        self.context.covers(other.context)
             && self.resource.covers(&other.resource)
-            && self.access.contains(other.access)
+            && self.permission.contains(other.permission)
     }
 }
 
@@ -79,6 +85,12 @@ impl ContextLevel {
             ContextLevel::User => "user",
             ContextLevel::System => "system",
         }
+    }
+
+    /// Does this context grant everything `other` does? `system` covers every
+    /// context; `user` and `patient` cover only themselves.
+    pub(in crate::scope) fn covers(self, other: ContextLevel) -> bool {
+        self == ContextLevel::System || self == other
     }
 }
 
@@ -113,7 +125,7 @@ impl fmt::Display for FhirResourceScope {
             "{}/{}.{}",
             self.context.as_str(),
             self.resource.name(),
-            self.access
+            self.permission
         )
     }
 }

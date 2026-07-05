@@ -310,10 +310,48 @@ async fn authorize_disallowed_scope_redirects_invalid_scope() {
 #[tokio::test]
 async fn authorize_allows_scope_covered_by_a_broader_allowed_scope() {
     // The allowlist check is coverage-aware, not exact string membership: a
-    // client allowed the v1 `patient/Observation.read` also admits a request for
-    // the equivalent v2 `patient/Observation.rs`. With the old exact-match gate
-    // this redirected `invalid_scope`; now it parks a pending request like any
-    // allowed scope (no `error=` redirect back to the client).
+    // client allowed `patient/Observation.rs` also admits a request for the
+    // narrower `patient/Observation.r` it covers — parking a pending request
+    // like any allowed scope (no `error=` redirect back to the client).
+    let (g, _host_owner_token, db) = spin_up();
+    seed_client_with_redirect(
+        &db,
+        "test-app",
+        "https://app.example/cb",
+        &["patient/Observation.rs"],
+    );
+    let challenge = compute_code_challenge(CODE_VERIFIER);
+    let query = format!(
+        "response_type=code&code_challenge_method=S256&client_id=test-app&\
+         scope=patient%2FObservation.r&code_challenge={challenge}&\
+         redirect_uri=https%3A%2F%2Fapp.example%2Fcb&state=xyz"
+    );
+    let res = g
+        .router
+        .oneshot(loopback_request(
+            Request::get(format!("/oauth/authorize?{query}")),
+            Body::empty(),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::FOUND);
+    let location = res
+        .headers()
+        .get("location")
+        .and_then(|v| v.to_str().ok())
+        .expect("location");
+    assert!(
+        !location.contains("error="),
+        "a covered scope must not trigger an error redirect, got {location}"
+    );
+}
+
+#[tokio::test]
+async fn authorize_rejects_cross_grammar_scope_requests() {
+    // Deliberate decision: coverage never bridges the SMART v1 word and v2
+    // letter grammars (mirroring scopes-core). A client registered with the v1
+    // `patient/Observation.read` does NOT admit a request for the
+    // letter-equivalent `patient/Observation.rs` — v1 apps request v1 scopes.
     let (g, _host_owner_token, db) = spin_up();
     seed_client_with_redirect(
         &db,
@@ -336,14 +374,10 @@ async fn authorize_allows_scope_covered_by_a_broader_allowed_scope() {
         .await
         .expect("oneshot");
     assert_eq!(res.status(), StatusCode::FOUND);
-    let location = res
-        .headers()
-        .get("location")
-        .and_then(|v| v.to_str().ok())
-        .expect("location");
-    assert!(
-        !location.contains("error="),
-        "a covered scope must not trigger an error redirect, got {location}"
+    let location = res.headers().get("location").expect("location header");
+    assert_eq!(
+        location,
+        "https://app.example/cb?error=invalid_scope&state=xyz"
     );
 }
 

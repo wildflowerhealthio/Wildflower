@@ -41,6 +41,7 @@ const makeFakeBus = (): {
  * earlier chained emits have landed.
  */
 const flushChain = async (): Promise<void> => {
+  // oxlint-disable-next-line eslint/no-await-in-loop
   for (let i = 0; i < 8; i += 1) await Promise.resolve()
 }
 

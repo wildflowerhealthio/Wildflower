@@ -548,6 +548,25 @@ describe('fetch shim', () => {
       expect.objectContaining({ url: 'http://tauri.localhost.attacker.test/y' }),
     ])
   })
+
+  test('probes exotic request inputs via toString() (the Match.orElse fallback)', async () => {
+    // A request that is not a string, not a URL, and has no string `url` property
+    // falls to the probe's `Match.orElse((r) => r.toString())` branch. Its
+    // stringified form is Tauri-internal here, so the fetch must be handed
+    // straight to native, unsniffed, with the original input untouched.
+    const native = vi.fn().mockResolvedValue(new Response('ok', { status: 200 }))
+    window.fetch = native
+    installSnifferForTest()
+
+    // Deliberately outside the `RequestInfo | URL` union — the cast models an
+    // engine handing the shim an exotic request-like value.
+    const exotic = { toString: () => 'ipc://localhost/cmd' } as unknown as Request
+    await window.fetch(exotic)
+
+    expect(native).toHaveBeenCalledTimes(1)
+    expect(native).toHaveBeenCalledWith(exotic, undefined)
+    expect(withTag(getMessages(), 'ResponseStart')).toHaveLength(0)
+  })
 })
 
 describe('XHR shim', () => {
