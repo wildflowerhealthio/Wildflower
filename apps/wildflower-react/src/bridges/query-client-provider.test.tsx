@@ -4,6 +4,7 @@ import { createMemoryHistory, createRootRoute, createRoute } from '@tanstack/rea
 import { act, cleanup, screen, waitFor } from '@testing-library/react'
 import { Effect, Layer, SubscriptionRef } from 'effect'
 import type { JSX, ReactNode } from 'react'
+import { type AuthState, Unauthed } from 'react-kitchen-sink'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
 /**
@@ -26,7 +27,7 @@ const { Passthrough } = vi.hoisted(() => ({
 
 // The gatekeeper-react surface this test pokes is just the
 // `GatekeeperRouterContext.sliceRuntimeLayer` (consumed by
-// `router-context.ts`'s layer composition). The `AuthTokenStore` the
+// `router-context.ts`'s layer composition). The `AuthStateStore` the
 // test renders with is constructed inline in the test body below.
 // `ActiveDeviceUserCodeProvider` is mocked as a passthrough so the
 // modal-host wrapping in `renderApp` doesn't blow up the tree, and
@@ -45,7 +46,10 @@ vi.mock('gatekeeper-react', () => ({
   DeviceConsentModalHost: (): null => null,
 }))
 vi.mock('react-kitchen-sink', () => ({
-  AuthTokenProvider: Passthrough,
+  AuthStateProvider: Passthrough,
+  // The test seeds the store with `Unauthed()`; the mock only needs a value the
+  // `SubscriptionRef` can hold (nothing asserts on it).
+  Unauthed: () => ({ _tag: 'Unauthed' }),
   // Mirror the real `cn` helper so the ErrorBoundary in `renderApp`'s
   // tree (`react-tundraish` reads `cn` via this re-export) doesn't
   // crash if the rendered subtree throws. Same identity-on-truthy
@@ -122,15 +126,15 @@ describe('in-memory QueryClientProvider', () => {
     const { renderApp } = await import('../app-root.tsx')
 
     const { stubTransport } = await import('./transport-context.ts')
-    // Minimal in-memory `AuthTokenStore` — this test only pins the
+    // Minimal in-memory `AuthStateStore` — this test only pins the
     // `QueryClient` sharing contract, not anything about the bearer.
-    // Construction matches `makeEmbeddedAuthTokenStore`'s shape: a
+    // Construction matches `makeEmbeddedAuthStateStore`'s shape: a
     // `SubscriptionRef<string | null>` starting at `null` plus a
     // synchronous setter that writes through it.
-    const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>(null))
+    const tokenRef = Effect.runSync(SubscriptionRef.make<AuthState>(Unauthed()))
     const tokenStore = {
       subscribable: tokenRef,
-      setToken: (t: string | null): void => Effect.runSync(SubscriptionRef.set(tokenRef, t)),
+      setAuthState: (s: AuthState): void => Effect.runSync(SubscriptionRef.set(tokenRef, s)),
     }
     await act(async () => {
       renderApp({
@@ -139,6 +143,8 @@ describe('in-memory QueryClientProvider', () => {
         tokenStore,
         awaitAuthReady: () => () => Promise.resolve(),
         makeTransport: () => Promise.resolve(stubTransport),
+        platformSettingsItems: [],
+        redirectToDeviceLoginOnUnauthorized: false,
       })
     })
 

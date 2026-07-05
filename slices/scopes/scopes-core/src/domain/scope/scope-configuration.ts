@@ -5,8 +5,8 @@
  * as `Variant.configuration`) so callers pass it rather than branching on
  * `context.kind × permission.kind`. Its methods fold over one partition of a
  * {@link MultiScope}, pulled by the caller via `MultiScope.partition(grant, id)` /
- * indexed access on the partition literal {@link id} (`'fhirV1' | 'fhirV2' |
- * 'wildflower'`) — so every method reads on a single `Permission.Base<TInteraction>`
+ * indexed access on the partition literal {@link id} (`'fhirV1' | 'fhirV2' | 'wildflower'`)
+ * — so every method reads on a single `Permission.Base<TInteraction>`
  * with no `Cruds | ReadWrite` union to collapse, while `make` / `toggleItem` still
  * return the *concrete* partition element that flows back into `grant[id]`. The TS
  * core owns this algebra — `scopes-rust` has none.

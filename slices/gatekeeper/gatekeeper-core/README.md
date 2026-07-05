@@ -3,8 +3,8 @@
 The Gatekeeper system allows an authorized **Owner** on one device to issue
 **Grants** to OAuth Clients (registered in the `clients` table) who request
 access on a separate device, allowing them to access data in a system. The
-host browser bootstraps onto a fresh deployment via RFC 8628 device
-authorization or a one-shot bootstrap URL minted by the host process.
+host browser bootstraps onto a fresh deployment via the RFC 8628 device
+authorization flow; on-device shells receive a host-minted token directly.
 
 This package is the pure layer — schemas, HttpApi definitions, and business
 rules. Platform adapters (e.g. `gatekeeper-react`) wire it up. SMART-on-FHIR is
@@ -37,8 +37,9 @@ redirectUri)`. Grant lookups drive the auto-approve fast path.
 - `/.well-known/jwks.json` — public JWKs for token verification.
 - `/oauth/authorize` — OAuth 2.0 authorization endpoint. Always
   redirects to the polling page (`/gatekeeper/oauth-polling/:id`); the
-  browser's JS picks same-device-vs-cross-device based on
-  `localStorage` Bearer presence.
+  browser's JS picks same-device-vs-cross-device based on whether it's
+  already authenticated (the `wf_auth` cookie on web, the host-provided
+  token on device).
 - `/oauth/authorize/:id` — long-poll JSON status of an authorization
   request.
 - `/oauth/device_authorization` — RFC 8628 device flow: returns
@@ -73,23 +74,25 @@ not part of the page contract.
 ## Bootstrap URL (dev-mode workaround)
 
 The host process (gatekeeper-node, native shell, dev server) has direct
-access to the signing key and can mint an access token via
+access to the signing key and can mint an owner access token via
 `mintHostOwnerToken({ ttl })` (or `internal/jwt.ts:mintAccessToken` for
-ad-hoc cases). The browser consumes the token from a `?token=` query
-param at startup, stashes it in `localStorage`, and strips it from the
-URL via `history.replaceState`.
+ad-hoc cases).
 
-**This is a dev convenience, not a shipping pattern.** The long-term
-story for first-Owner onboarding (native shell, fresh deployment, CLI
-login) is unsettled; the device flow is the production path. Until that
-shakes out, the helpers live behind a dev gate at the call site (e.g.
-`apps/wildflower-node` only mints when `NODE_ENV !== 'production'`).
-The TTL is required at the call site (no silent default) so the
-minter — which has the dev-server / CI / shell context — can pick.
-`apps/wildflower-node` currently passes 1 hour: long enough to be less
-annoying than re-minting through every page reload, short enough that a
-leaked URL stops being useful within a working session. The value is a
-dev workaround; long-term TBD.
+The web SPA has no client-side URL-token consumption: it authenticates via
+the `HttpOnly` `wf_auth` cookie the server sets at issuance, which JS can't
+plant from a `?token=` param. Bootstrapping a web session from a URL would
+need a server endpoint that accepts a minted token and sets the cookie;
+until then the device flow is the path onto a cold web deployment. (The
+embedded/Tauri path receives the host-minted token over the gatekeeper
+bridge — see the Auth Token Storage Explanation.)
+
+**The minting helpers are a dev convenience, not a shipping pattern**, and
+the long-term story for first-Owner onboarding (native shell, fresh
+deployment, CLI login) is unsettled. They stay behind a dev gate at the
+call site (e.g. `apps/wildflower-node` only mints when
+`NODE_ENV !== 'production'`), and the TTL is required there (no silent
+default) so the minter — which has the dev-server / CI / shell context —
+can pick it.
 
 ## Row-await helper
 

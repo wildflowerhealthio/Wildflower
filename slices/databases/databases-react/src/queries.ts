@@ -12,7 +12,6 @@ import { useRouteContext } from '@tanstack/react-router'
 import { DatabasesHttpApiClient } from 'databases-core/clients'
 import type { Databases } from 'databases-core/http-api-definition'
 import { Effect, type Schema } from 'effect'
-import { BearerToken } from 'kitchen-sink/auth-token'
 
 import { buildDatabasesClientLayer } from './client/databases-client.ts'
 import type { RouterContext, RunAuthed } from './router-context.ts'
@@ -83,22 +82,16 @@ interface DatabaseExport {
  * Fetch a database export as raw bytes. The export endpoint
  * (`GET /databases/:id`) streams a binary SQLite snapshot, so it isn't part of
  * the JSON `DatabasesApi`; this hits it through the platform `HttpClient`
- * directly, attaching the bearer from {@link BearerToken} the same way the
- * generated client does. The caller hands the bytes to the browser (see the
- * settings screen's `saveBytesAsFile`).
+ * directly. Tokenless: auth rides the `HttpOnly` `wf_auth` cookie the browser
+ * sends with the same-origin request, like the generated client. The caller
+ * hands the bytes to the browser (see the settings screen's `saveBytesAsFile`).
  */
 const exportDatabaseEffect = (
   id: string
-): Effect.Effect<DatabaseExport, Error, HttpClient.HttpClient | BearerToken> =>
+): Effect.Effect<DatabaseExport, Error, HttpClient.HttpClient> =>
   Effect.gen(function* () {
     const client = yield* HttpClient.HttpClient
-    const tokenSubscribable = yield* BearerToken
-    const token = yield* tokenSubscribable.get
-    const baseRequest = HttpClientRequest.get(`/databases/${encodeURIComponent(id)}`)
-    const request =
-      token === null
-        ? baseRequest
-        : HttpClientRequest.setHeader(baseRequest, 'Authorization', `Bearer ${token}`)
+    const request = HttpClientRequest.get(`/databases/${encodeURIComponent(id)}`)
     // `filterStatusOk` fails the effect on a non-2xx response, so a `404`
     // (TOCTOU delete between list + click) or `500` (snapshot timeout) surfaces
     // as a mutation error instead of saving the JSON error body as a `.sqlite`

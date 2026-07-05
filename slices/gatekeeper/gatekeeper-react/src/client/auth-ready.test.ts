@@ -12,6 +12,7 @@ import {
 } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
+import { AuthedUntil, type AuthState, HostAuthed, isAuthed, Unauthed } from 'react-kitchen-sink'
 import { describe, expect, test } from 'vite-plus/test'
 
 import {
@@ -24,28 +25,32 @@ import {
 
 /**
  * Pins the injected `awaitAuthReady` cores the entries thread into the
- * router context. Web is a synchronous present/absent decision; embedded
+ * router context. Web is a synchronous authed/unauthed decision; embedded
  * waits the host handshake up to `EMBEDDED_TOKEN_TIMEOUT` and is driven
  * here with `TestClock` so the 5s window is exercised without real time.
+ *
+ * The gate keys purely on the {@link AuthState} tag (`isAuthed`); the
+ * cookie-expiry logic that turns a stale hint into `Unauthed` lives in
+ * `auth-state-store`'s `readAuthedSignalFromCookie` and is pinned there.
  */
 
-const makeRef = (
-  initial: string | null
-): Effect.Effect<SubscriptionRef.SubscriptionRef<string | null>> =>
-  SubscriptionRef.make<string | null>(initial)
+const makeRef = (initial: AuthState): Effect.Effect<SubscriptionRef.SubscriptionRef<AuthState>> =>
+  SubscriptionRef.make<AuthState>(initial)
 
 describe('webAuthReadyEffect', () => {
-  test('resolves when a token is already present (standalone web)', async () => {
+  test('resolves when the signal is authed (standalone web)', async () => {
     const result = await Effect.runPromise(
-      Effect.flatMap(makeRef('a-token'), (ref) => Effect.either(webAuthReadyEffect(ref)))
+      Effect.flatMap(makeRef(AuthedUntil({ exp: 9_999_999_999 })), (ref) =>
+        Effect.either(webAuthReadyEffect(ref))
+      )
     )
 
     expect(result).toStrictEqual(Either.void)
   })
 
-  test('rejects with a TanStack redirect to the device-login route when no token is present', async () => {
+  test('rejects with a TanStack redirect to the device-login route when unauthed', async () => {
     const result = await Effect.runPromise(
-      Effect.flatMap(makeRef(null), (ref) => Effect.either(webAuthReadyEffect(ref)))
+      Effect.flatMap(makeRef(Unauthed()), (ref) => Effect.either(webAuthReadyEffect(ref)))
     )
 
     expect(Either.isLeft(result)).toBe(true)
@@ -64,7 +69,7 @@ describe('webAuthReadyEffect', () => {
   test('bakes the supplied returnTo into the redirect search', async () => {
     const returnTo = '/home?tab=labs'
     const result = await Effect.runPromise(
-      Effect.flatMap(makeRef(null), (ref) => Effect.either(webAuthReadyEffect(ref, returnTo)))
+      Effect.flatMap(makeRef(Unauthed()), (ref) => Effect.either(webAuthReadyEffect(ref, returnTo)))
     )
 
     expect(Either.isLeft(result)).toBe(true)
@@ -79,26 +84,20 @@ describe('webAuthReadyEffect', () => {
     }
   })
 
-  test('treats the empty string as absent (rejects with a redirect)', async () => {
-    const result = await Effect.runPromise(
-      Effect.flatMap(makeRef(''), (ref) => Effect.either(webAuthReadyEffect(ref)))
+  test('Right ↔ authed signal (property)', async () => {
+    // Pins the gate's truth-table: a `Right` corresponds exactly to a
+    // non-`Unauthed` signal, across every `AuthState` variant.
+    const anySignal: fc.Arbitrary<AuthState> = fc.oneof(
+      fc.constant(Unauthed()),
+      fc.constant(HostAuthed()),
+      fc.integer().map((exp) => AuthedUntil({ exp }))
     )
-
-    expect(Either.isLeft(result)).toBe(true)
-    if (Either.isLeft(result)) expect(isRedirect(result.left)).toBe(true)
-  })
-
-  test('Right ↔ present-and-non-empty token (property)', async () => {
-    // Pins the truth-table for `isPresent`: a `Right` corresponds
-    // exactly to a non-null, non-empty token. `fc.string()` includes
-    // the empty string, so this also covers the empty-string-as-absent
-    // case across the rest of the input space.
     await fc.assert(
-      fc.asyncProperty(fc.option(fc.string(), { nil: null }), async (token) => {
+      fc.asyncProperty(anySignal, async (signal) => {
         const result = await Effect.runPromise(
-          Effect.flatMap(makeRef(token), (ref) => Effect.either(webAuthReadyEffect(ref)))
+          Effect.flatMap(makeRef(signal), (ref) => Effect.either(webAuthReadyEffect(ref)))
         )
-        expect(Either.isRight(result)).toBe(token !== null && token !== '')
+        expect(Either.isRight(result)).toBe(isAuthed(signal))
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )
@@ -106,9 +105,9 @@ describe('webAuthReadyEffect', () => {
 })
 
 describe('embeddedAuthReadyEffect', () => {
-  test('resolves immediately when a token already landed', async () => {
+  test('resolves immediately when the signal already landed authed', async () => {
     const program = Effect.gen(function* () {
-      const ref = yield* makeRef('host-token')
+      const ref = yield* makeRef(HostAuthed())
       return yield* Effect.either(embeddedAuthReadyEffect(ref))
     }).pipe(Effect.provide(TestContext.TestContext))
 
@@ -116,13 +115,13 @@ describe('embeddedAuthReadyEffect', () => {
     expect(result).toStrictEqual(Either.void)
   })
 
-  test('resolves once the host delivers the token within the window', async () => {
+  test('resolves once the host flips the signal within the window', async () => {
     const program = Effect.gen(function* () {
-      const ref = yield* makeRef(null)
+      const ref = yield* makeRef(Unauthed())
       const fiber = yield* Effect.fork(Effect.either(embeddedAuthReadyEffect(ref)))
-      // Advance partway, then the host delivers the token (bridge write).
+      // Advance partway, then the host flips the signal (bridge write).
       yield* TestClock.adjust(Duration.seconds(2))
-      yield* SubscriptionRef.set(ref, 'delivered')
+      yield* SubscriptionRef.set(ref, HostAuthed())
       yield* TestClock.adjust(Duration.seconds(1))
       return yield* Fiber.join(fiber)
     }).pipe(Effect.provide(TestContext.TestContext))
@@ -131,11 +130,11 @@ describe('embeddedAuthReadyEffect', () => {
     expect(result).toStrictEqual(Either.void)
   })
 
-  test('rejects with TokenTimeout when the window elapses with no token', async () => {
+  test('rejects with TokenTimeout when the window elapses still unauthed', async () => {
     const program = Effect.gen(function* () {
-      const ref = yield* makeRef(null)
+      const ref = yield* makeRef(Unauthed())
       const fiber = yield* Effect.fork(Effect.either(embeddedAuthReadyEffect(ref)))
-      // Push past the full timeout without ever delivering a token.
+      // Push past the full timeout without ever flipping the signal.
       yield* TestClock.adjust(Duration.sum(EMBEDDED_TOKEN_TIMEOUT, Duration.seconds(1)))
       return yield* Fiber.join(fiber)
     }).pipe(Effect.provide(TestContext.TestContext))

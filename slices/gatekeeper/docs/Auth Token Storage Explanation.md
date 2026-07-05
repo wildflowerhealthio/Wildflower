@@ -1,51 +1,82 @@
 # Auth Token Storage Explanation
 
-Why `gatekeeper-react`'s `client/token-storage.ts` ships **two**
-`AuthTokenStore` factories with different storage policies, and why the
+Why `gatekeeper-react`'s `client/auth-state-store.ts` ships **two**
+`AuthStateStore` factories with different storage policies, and why the
 embedded one deliberately ignores `localStorage`.
 
-Both factories return the same `AuthTokenStore` shape (a read-side
-`subscribable` plus a `setToken` writer), so `AuthTokenProvider`, the
-`BearerToken` Layer, the page-bridge `AuthTokenIssued` handler, and the
-`auth-ready` gates are all environment-blind. Only the `main-*`
-entrypoint, which knows which environment it is in, picks a factory and
-threads the store through `renderApp`.
+Both factories return the same `AuthStateStore` shape (a read-side
+`subscribable` plus a `setAuthState` writer), so `AuthStateProvider`, the
+page-bridge `AuthTokenIssued` handler, and the `auth-ready` gates are all
+environment-blind. Only the `main-*` entrypoint, which knows which
+environment it is in, picks a factory and threads the store through
+`renderApp`. The `subscribable` carries a typed
+[`AuthState`](../../../global/react-kitchen-sink/src/auth-state/auth-state.ts)
+(`Unauthed | AuthedUntil(exp) | HostAuthed`), never a credential — the
+**one** place the environments diverge is _which_ authed variant they
+publish (see "What the web `subscribable` carries" below).
 
-## `makeWebAuthTokenStore` — `localStorage`-backed
+HTTP clients are tokenless: no client attaches an `Authorization` header.
+Auth rides the same-origin `HttpOnly` `wf_auth` cookie the browser sends
+automatically. The store's `subscribable` exists only as the
+auth-readiness _signal_ — feeding `AuthStateProvider`, the `auth-ready`
+gates, and the token-rotation cache invalidator — never as a header
+source.
+
+## `makeWebAuthStateStore` — cookie-derived (#218)
 
 Used by the standalone web entries (`main-web` / `main-single-web`).
 
-- Seeds the underlying `SubscriptionRef` from the current
-  `localStorage` value at construction time.
-- `setToken` writes through to both the ref and `localStorage` in one
-  synchronous step — no forked subscriber, no microtask gap between the
-  call and the value being visible in storage.
-- A `'storage'` event listener mirrors cross-tab writes into the ref. A
-  current-value guard keeps the listener from storming the ref with a
-  value this tab just wrote (browsers don't fire `'storage'` on the
-  writing tab, but the guard hardens the contract against future spec
-  relaxations and any code path that writes `localStorage` outside
-  `setToken`).
-- Consumes a `?token=…` URL bootstrap parameter into `localStorage`
-  before construction (the dev flow that `wildflower-node` logs at
-  startup), then strips it from the address bar.
+On the web path the real access token is the **`HttpOnly` `wf_auth`
+cookie** the gatekeeper server sets at token issuance
+(`gatekeeper-rust` `http/cookies.rs`). It is invisible to JS and sent
+automatically on every request — including the initial document
+navigation, before any JS runs — which is the whole point of #218: the
+edge (and a future relay, #267) can read auth state even when the SPA
+never loads. So the web store no longer _holds_ a token at all.
 
-### Why the URL token is validated against a JWT shape
+- It derives `AuthedUntil(exp)` from the readable companion cookie
+  **`wf_auth_exp`** (carrying just the non-secret unix `exp`, never the
+  signature) while the `exp` is in the future, else `Unauthed`.
+- It re-derives on `focus` (cookies don't fire `'storage'`, so this is
+  how a sign-in or logout in another tab surfaces). There is **no
+  proactive expiry timer**: an `AuthedUntil(exp)` whose `exp` has passed
+  is re-derived to `Unauthed` on the next focus, or the next authed
+  request (which 401s and drives the device-login redirect). A consumer
+  wanting sub-focus freshness can compare the signal's `exp` to now.
+- `setAuthState` **ignores its argument** and just re-derives from the
+  cookie. JS can't write the `HttpOnly` `wf_auth`; the server already did
+  via `Set-Cookie` on the device-flow / refresh response. `NeedsAuthMessage`
+  calls `setAuthState(...)` on sign-in completion to flip the signal (then
+  reloads), so the same write seam works in both environments without the
+  shared component knowing which it's in.
+- **Clearing** the session is a server action (`POST /access/logout`,
+  which sends `Max-Age=0` clears), not a `setAuthState(Unauthed())` — JS
+  can't delete the `HttpOnly` cookie.
 
-The `?token=` query parameter is attacker-controllable. Before it is
-persisted it is checked against `/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/`
-(three non-empty base64url segments). A value that fails the check is
-treated as if no usable token was supplied: the existing stored token is
-left untouched, but the `?token=` param is still stripped from the URL
-so the malformed value can't linger in browser history or `Referer`
-headers. Dropping this guard is a security regression — a malformed
-`?token=` would otherwise clobber a previously-valid stored bearer.
+### What the web `subscribable` carries
 
-## `makeEmbeddedAuthTokenStore` — in-memory only
+The web `subscribable`'s value is `AuthedUntil(exp)` — the **non-secret
+`exp` hint, not a usable bearer**. That is harmless because no client
+ever reads it as a header: clients are tokenless and the cookie
+authenticates same-origin requests on its own. The embedded store's
+`subscribable` carries `HostAuthed` (authed, no page-known expiry): the
+host holds the credential and syncs the `wf_auth` cookie into the
+webview's jar, pushing only a contentless notify. Neither variant is a
+credential — both drive only the readiness signal, and both environments'
+requests authenticate via the cookie, never a JS-attached header.
 
-Used by the in-WebView SPA (`main-embedded`). Seeded with `null`, no
+There is no client-side `?token=` URL bootstrap: JS can't set an `HttpOnly`
+cookie, so a token on the URL can't become `wf_auth`. Bootstrapping a
+session from a URL would need a server endpoint that accepts the token and
+sets the cookie.
+
+## `makeEmbeddedAuthStateStore` — in-memory only
+
+Used by the in-WebView SPA (`main-embedded`). Seeded `Unauthed`, no
 `localStorage` read, no persistence subscriber, no cross-tab listener.
-The host's `AuthTokenIssued` bridge handler is the sole writer.
+The host's `AuthTokenIssued` bridge handler is the sole writer — it
+publishes `HostAuthed` (the host holds the credential; the page never
+does).
 
 The embedded store must **never** surface a `localStorage` value because
 the embedded WebView's `WKWebsiteDataStore` outlives the host's JS
@@ -53,6 +84,6 @@ context: a Metro reload and, depending on iOS policy, even a force-kill
 leave the previous session's token in storage. The LHS daemon mints a
 fresh token and re-pushes it on every boot via the gatekeeper bridge, so
 a `localStorage`-cached value can only ever be stale and racing the
-host's fresh push. A stale bearer surfacing as the store's initial value
+host's fresh push. A stale value surfacing as the store's initial signal
 would resolve the auth-ready gate early and pin TanStack Query loaders
 on cached 401s.

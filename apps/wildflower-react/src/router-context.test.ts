@@ -1,11 +1,21 @@
-import { HttpClient, HttpClientResponse } from '@effect/platform'
-import { Effect, Layer, SubscriptionRef } from 'effect'
-import * as fc from 'fast-check'
-import { BearerToken } from 'kitchen-sink/auth-token'
+import {
+  HttpApiError,
+  HttpClient,
+  HttpClientError,
+  HttpClientRequest,
+  HttpClientResponse,
+} from '@effect/platform'
+import { Duration, Effect, Either, Fiber, Layer, Ref, TestClock, TestContext } from 'effect'
 import type { BaseRouterContext } from 'shared-structures-react'
-import { describe, expect, expectTypeOf, it } from 'vite-plus/test'
+import { describe, expect, expectTypeOf, it, vi } from 'vite-plus/test'
 
-import { buildQueryClient, buildRunAuthed } from './router-context.ts'
+import {
+  buildQueryClient,
+  buildRunAuthed,
+  isUnauthorizedError,
+  isUnauthorizedFailure,
+  unauthorizedRetrySchedule,
+} from './router-context.ts'
 import type { RouterContext, RunAuthed, RuntimeLayer } from './router-context.ts'
 
 // Pins `RouterContext['awaitAuthReady']` to the shared structural type
@@ -15,94 +25,67 @@ import type { RouterContext, RunAuthed, RuntimeLayer } from './router-context.ts
 expectTypeOf<RouterContext['awaitAuthReady']>().toEqualTypeOf<BaseRouterContext.AwaitAuthReady>()
 
 /**
- * Pins `runAuthed`: drives the real `buildRunAuthed` over a
- * `SubscriptionRef` token and a stub `HttpClient` so it runs offline.
+ * Pins `runAuthed`: drives the real `buildRunAuthed` over a stub
+ * `HttpClient` so it runs offline. Clients are tokenless — auth rides
+ * the same-origin cookie, so the runner supplies only `HttpClient`.
  */
 
-// Stub: never resolves a request; present only to satisfy the
-// `HttpClient.HttpClient` half of `runAuthed`'s requirement.
-const stubHttpClientLayer: Layer.Layer<HttpClient.HttpClient> = Layer.succeed(
-  HttpClient.HttpClient,
-  HttpClient.make((request) =>
-    Effect.succeed(HttpClientResponse.fromWeb(request, new Response(null, { status: 204 })))
+// Stub that records the outgoing `Authorization` header (or `undefined`)
+// and answers `204`.
+const capturingHttpClientLayer = (
+  captures: Array<string | undefined>
+): Layer.Layer<HttpClient.HttpClient> =>
+  Layer.succeed(
+    HttpClient.HttpClient,
+    HttpClient.make((request) => {
+      captures.push(request.headers['authorization'])
+      return Effect.succeed(
+        HttpClientResponse.fromWeb(request, new Response(null, { status: 204 }))
+      )
+    })
   )
-)
 
 const makeRunner = (
-  tokenRef: SubscriptionRef.SubscriptionRef<string | null>
+  captures: Array<string | undefined>
 ): {
   readonly runAuthed: RunAuthed
   readonly runtimeLayer: RuntimeLayer
-} => buildRunAuthed(tokenRef, stubHttpClientLayer)
+} => buildRunAuthed(capturingHttpClientLayer(captures))
 
-// Requires both services so the type carries `BearerToken | HttpClient`.
-const readTokenWithHttpInScope: Effect.Effect<
-  string | null,
-  never,
-  BearerToken | HttpClient.HttpClient
-> = Effect.gen(function* () {
-  yield* HttpClient.HttpClient
-  const tokenSubscribable = yield* BearerToken
-  return yield* tokenSubscribable.get
-})
+// Requires `HttpClient` and issues one request so the stub can record
+// the (absent) Authorization header.
+const fetchWithHttpInScope: Effect.Effect<number, never, HttpClient.HttpClient> = Effect.gen(
+  function* () {
+    const client = yield* HttpClient.HttpClient
+    const response = yield* client.execute(HttpClientRequest.get('/fixture'))
+    return response.status
+  }
+).pipe(Effect.orDie)
 
 describe('runAuthed router-context runner', () => {
-  const trackRunner = (tokenRef: SubscriptionRef.SubscriptionRef<string | null>): RunAuthed => {
-    const { runAuthed } = makeRunner(tokenRef)
-    return runAuthed
-  }
-
-  it('should supply the current bearer token to an effect requiring BearerToken + HttpClient', async () => {
+  it('should supply HttpClient to an effect requiring it', async () => {
     // Arrange
-    const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>('initial-token'))
-    const runAuthed = trackRunner(tokenRef)
+    const captures: Array<string | undefined> = []
+    const { runAuthed } = makeRunner(captures)
 
     // Act
-    const observed = await runAuthed(readTokenWithHttpInScope)
+    const status = await runAuthed(fetchWithHttpInScope)
 
     // Assert
-    expect(observed).toBe('initial-token')
+    expect(status).toBe(204)
   })
 
-  it('should supply a null token when the ref holds none', async () => {
+  it('should never attach an Authorization header (cookie auth)', async () => {
     // Arrange
-    const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>(null))
-    const runAuthed = trackRunner(tokenRef)
+    const captures: Array<string | undefined> = []
+    const { runAuthed } = makeRunner(captures)
 
     // Act
-    const observed = await runAuthed(readTokenWithHttpInScope)
+    await runAuthed(fetchWithHttpInScope)
+    await runAuthed(fetchWithHttpInScope)
 
     // Assert
-    expect(observed).toBeNull()
-  })
-
-  it('should observe a rotation written to the ref after the runtime was built', async () => {
-    // Build once, rotate after — token must surface without rebuild.
-    const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>('before'))
-    const runAuthed = trackRunner(tokenRef)
-    Effect.runSync(SubscriptionRef.set(tokenRef, 'after'))
-
-    // Act
-    const observed = await runAuthed(readTokenWithHttpInScope)
-
-    // Assert
-    expect(observed).toBe('after')
-  })
-
-  it('should always observe exactly the token the ref currently holds', async () => {
-    await fc.assert(
-      fc.asyncProperty(fc.option(fc.string(), { nil: null }), async (token) => {
-        // Arrange
-        const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>(token))
-        const { runAuthed } = makeRunner(tokenRef)
-
-        // Act
-        const observed = await runAuthed(readTokenWithHttpInScope)
-
-        // Assert
-        expect(observed).toBe(token)
-      })
-    )
+    expect(captures).toEqual([undefined, undefined])
   })
 
   // Type-level: a `satisfies` guard so dropping a field fails compile.
@@ -111,10 +94,9 @@ describe('runAuthed router-context runner', () => {
   // complete the structural context.
   it('should type RouterContext with queryClient, runAuthed, runtimeLayer, awaitAuthReady, transport', () => {
     // Arrange / Act
-    const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>(null))
-    const { runAuthed, runtimeLayer } = makeRunner(tokenRef)
+    const { runAuthed, runtimeLayer } = makeRunner([])
     const context = {
-      queryClient: buildQueryClient(),
+      queryClient: buildQueryClient(() => undefined),
       runAuthed,
       runtimeLayer,
       awaitAuthReady: () => Promise.resolve(),
@@ -129,5 +111,260 @@ describe('runAuthed router-context runner', () => {
     expect(typeof context.awaitAuthReady).toBe('function')
     expect(context.transport).toBeInstanceOf(Promise)
     expect(context.queryClient).toBeDefined()
+  })
+})
+
+// A `ResponseError` carrying an empty body at `status` — the exact shape
+// `HttpApiClient`'s `statusOrElse` / a `filterStatusOk` produces for a
+// non-declared status, and the shape the 401 detection keys on.
+const responseErrorWithStatus = (status: number): HttpClientError.ResponseError => {
+  const request = HttpClientRequest.get('/fixture')
+  return new HttpClientError.ResponseError({
+    request,
+    response: HttpClientResponse.fromWeb(request, new Response(null, { status })),
+    reason: 'StatusCode',
+  })
+}
+
+// The value a rejected `runAuthed` (i.e. a TanStack Query `queryFn`) surfaces:
+// `Effect.runPromise` rejects with a `FiberFailure` wrapping the typed failure.
+// Reproduces that exact wrapping so the detectors are tested against what they
+// actually receive, not the bare error. Narrowed to `Error` (the `FiberFailure`
+// is one) so callers get its `Error`-typed shape without an unsafe assertion.
+const asFiberFailure = async (error: unknown): Promise<Error> => {
+  try {
+    await Effect.runPromise(Effect.fail(error))
+    throw new Error('expected the effect to fail')
+  } catch (caught) {
+    if (caught instanceof Error) return caught
+    throw new Error('expected a FiberFailure (Error) rejection', { cause: caught })
+  }
+}
+
+describe('isUnauthorizedError', () => {
+  it('is true only for a ResponseError carrying a 401', () => {
+    expect(isUnauthorizedError(responseErrorWithStatus(401))).toBe(true)
+    expect(isUnauthorizedError(responseErrorWithStatus(403))).toBe(false)
+    expect(isUnauthorizedError(responseErrorWithStatus(500))).toBe(false)
+  })
+
+  it('is true for a typed HttpApiError.Unauthorized (a declared 401)', () => {
+    // Gatekeeper's `/access` endpoints declare 401 via `RequireAuthMiddleware`,
+    // so `HttpApiClient` decodes their 401s into this typed error, never a
+    // `ResponseError`. The detector must catch it or the redirect/retry miss it.
+    expect(isUnauthorizedError(new HttpApiError.Unauthorized())).toBe(true)
+  })
+
+  it('is false for values that are not a 401', () => {
+    expect(isUnauthorizedError(new Error('boom'))).toBe(false)
+    expect(isUnauthorizedError(null)).toBe(false)
+    expect(isUnauthorizedError({ response: { status: 401 } })).toBe(false)
+  })
+})
+
+describe('isUnauthorizedFailure', () => {
+  it('unwraps a FiberFailure to recognize a wrapped 401', async () => {
+    expect(isUnauthorizedFailure(await asFiberFailure(responseErrorWithStatus(401)))).toBe(true)
+  })
+
+  it('is false for a FiberFailure wrapping a non-401 ResponseError', async () => {
+    expect(isUnauthorizedFailure(await asFiberFailure(responseErrorWithStatus(500)))).toBe(false)
+  })
+
+  it('is false for a FiberFailure wrapping an unrelated error', async () => {
+    expect(isUnauthorizedFailure(await asFiberFailure(new Error('nope')))).toBe(false)
+  })
+})
+
+describe('unauthorizedRetrySchedule (boot-race retry)', () => {
+  it('re-sends a persistent 401 the bounded number of times, then propagates', async () => {
+    // Arrange / Act — driven on TestClock so the spacing is exercised without
+    // real time.
+    const program = Effect.gen(function* () {
+      const attempts = yield* Ref.make(0)
+      const failing = Effect.flatMap(
+        Ref.updateAndGet(attempts, (n) => n + 1),
+        () => Effect.fail(responseErrorWithStatus(401))
+      )
+      const fiber = yield* Effect.fork(
+        Effect.either(Effect.retry(failing, unauthorizedRetrySchedule))
+      )
+      // Push past every spaced re-send.
+      yield* TestClock.adjust(Duration.millis(1000))
+      const result = yield* Fiber.join(fiber)
+      return { result, count: yield* Ref.get(attempts) }
+    }).pipe(Effect.provide(TestContext.TestContext))
+
+    const { result, count } = await Effect.runPromise(program)
+
+    // Assert — one initial send plus three re-sends, and it still fails.
+    expect(count).toBe(4)
+    expect(Either.isLeft(result)).toBe(true)
+  })
+
+  it('stops re-sending as soon as a 401 clears', async () => {
+    // Arrange / Act — 401 twice, then the cookie has landed and it succeeds.
+    const program = Effect.gen(function* () {
+      const attempts = yield* Ref.make(0)
+      const flaky = Effect.flatMap(
+        Ref.updateAndGet(attempts, (n) => n + 1),
+        (n) => (n <= 2 ? Effect.fail(responseErrorWithStatus(401)) : Effect.succeed('ok'))
+      )
+      const fiber = yield* Effect.fork(Effect.retry(flaky, unauthorizedRetrySchedule))
+      yield* TestClock.adjust(Duration.millis(1000))
+      return { value: yield* Fiber.join(fiber), count: yield* Ref.get(attempts) }
+    }).pipe(Effect.provide(TestContext.TestContext))
+
+    const { value, count } = await Effect.runPromise(program)
+
+    // Assert — resolved on the third attempt (two re-sends), no further sends.
+    expect(value).toBe('ok')
+    expect(count).toBe(3)
+  })
+
+  it('does not re-send a non-401 failure', async () => {
+    // Arrange / Act
+    const program = Effect.gen(function* () {
+      const attempts = yield* Ref.make(0)
+      const failing = Effect.flatMap(
+        Ref.updateAndGet(attempts, (n) => n + 1),
+        () => Effect.fail(responseErrorWithStatus(500))
+      )
+      const result = yield* Effect.either(Effect.retry(failing, unauthorizedRetrySchedule))
+      return { result, count: yield* Ref.get(attempts) }
+    }).pipe(Effect.provide(TestContext.TestContext))
+
+    const { result, count } = await Effect.runPromise(program)
+
+    // Assert — a single send, no re-send.
+    expect(Either.isLeft(result)).toBe(true)
+    expect(count).toBe(1)
+  })
+})
+
+// `HttpClient` stub whose first request fails with a 401 `ResponseError` and
+// whose second succeeds `204` — the boot-race shape (cookie lands between the
+// two sends).
+const flakyUnauthorizedThenOkLayer = (): Layer.Layer<HttpClient.HttpClient> => {
+  let calls = 0
+  return Layer.succeed(
+    HttpClient.HttpClient,
+    HttpClient.make((request) => {
+      calls += 1
+      return calls === 1
+        ? Effect.fail(
+            new HttpClientError.ResponseError({
+              request,
+              response: HttpClientResponse.fromWeb(request, new Response(null, { status: 401 })),
+              reason: 'StatusCode',
+            })
+          )
+        : Effect.succeed(HttpClientResponse.fromWeb(request, new Response(null, { status: 204 })))
+    })
+  )
+}
+
+// Issues one request and returns its status, requiring only `HttpClient`.
+const fetchStatus: Effect.Effect<number, HttpClientError.HttpClientError, HttpClient.HttpClient> =
+  Effect.flatMap(HttpClient.HttpClient, (client) =>
+    Effect.map(client.execute(HttpClientRequest.get('/fixture')), (response) => response.status)
+  )
+
+describe('runAuthed boot-race integration', () => {
+  it('re-sends a 401 and resolves once the request clears', async () => {
+    // Arrange
+    const { runAuthed } = buildRunAuthed(flakyUnauthorizedThenOkLayer())
+
+    // Act — the first send 401s; the runner re-sends and gets the 204.
+    const status = await runAuthed(fetchStatus)
+
+    // Assert
+    expect(status).toBe(204)
+  })
+
+  it('stops applying the boot-race retry once an authed request has succeeded', async () => {
+    // Arrange — first request 204 (boots the runner), every later one 401.
+    let calls = 0
+    const layer = Layer.succeed(
+      HttpClient.HttpClient,
+      HttpClient.make((request) => {
+        calls += 1
+        return calls === 1
+          ? Effect.succeed(HttpClientResponse.fromWeb(request, new Response(null, { status: 204 })))
+          : Effect.fail(
+              new HttpClientError.ResponseError({
+                request,
+                response: HttpClientResponse.fromWeb(request, new Response(null, { status: 401 })),
+                reason: 'StatusCode',
+              })
+            )
+      })
+    )
+    const { runAuthed } = buildRunAuthed(layer)
+
+    // Act — boot, then a genuine post-boot 401.
+    expect(await runAuthed(fetchStatus)).toBe(204)
+    const callsAfterBoot = calls
+    await expect(runAuthed(fetchStatus)).rejects.toThrow()
+
+    // Assert — the post-boot 401 was sent exactly once (no boot-race re-sends):
+    // it's a real expiry, so it propagates immediately for the redirect.
+    expect(calls - callsAfterBoot).toBe(1)
+  })
+})
+
+describe('buildQueryClient unauthorized redirect', () => {
+  it('invokes onUnauthorized when a query ends in a 401', async () => {
+    // Arrange
+    const onUnauthorized = vi.fn()
+    const queryClient = buildQueryClient(onUnauthorized)
+    const wrapped = await asFiberFailure(responseErrorWithStatus(401))
+
+    // Act — mirror a rejected authed queryFn.
+    await queryClient
+      .fetchQuery({
+        queryKey: ['unauthorized'],
+        queryFn: () => Promise.reject(wrapped),
+        retry: false,
+      })
+      .catch(() => undefined)
+
+    // Assert
+    expect(onUnauthorized).toHaveBeenCalledOnce()
+  })
+
+  it('does not invoke onUnauthorized for a non-401 failure', async () => {
+    // Arrange
+    const onUnauthorized = vi.fn()
+    const queryClient = buildQueryClient(onUnauthorized)
+    const wrapped = await asFiberFailure(responseErrorWithStatus(500))
+
+    // Act
+    await queryClient
+      .fetchQuery({
+        queryKey: ['server-error'],
+        queryFn: () => Promise.reject(wrapped),
+        retry: false,
+      })
+      .catch(() => undefined)
+
+    // Assert
+    expect(onUnauthorized).not.toHaveBeenCalled()
+  })
+
+  it('skips TanStack retry for a 401 but keeps the default count for other errors', async () => {
+    // Arrange
+    const queryClient = buildQueryClient(() => undefined)
+    const retry = queryClient.getDefaultOptions().queries?.retry
+    const wrapped401 = await asFiberFailure(responseErrorWithStatus(401))
+    const wrapped500 = await asFiberFailure(responseErrorWithStatus(500))
+
+    // Assert — 401: never; others: the default three attempts.
+    expect(typeof retry).toBe('function')
+    if (typeof retry === 'function') {
+      expect(retry(0, wrapped401)).toBe(false)
+      expect(retry(0, wrapped500)).toBe(true)
+      expect(retry(3, wrapped500)).toBe(false)
+    }
   })
 })

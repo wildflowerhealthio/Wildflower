@@ -9,8 +9,9 @@ use apps_rust::{setup_apps, AppsConfig, OwnerAuth, SelfHostedAppsService};
 use axum::Router;
 use emr_rust::{setup_fhir_r4, EmrConfig};
 use gatekeeper_rust::{
-    layer_router_with_gatekeeper_auth_gating, layer_router_with_loopback_peer_gating,
-    setup_gatekeeper, verify_owner_bearer, GatekeeperConfig,
+    ensure_bearer_header, is_pre_auth_public_path, layer_router_with_gatekeeper_auth_gating,
+    layer_router_with_loopback_peer_gating, setup_gatekeeper, verify_owner_bearer,
+    GatekeeperConfig,
 };
 use shared_structures_rust::ServerRuntimeConfig;
 use shared_structures_server_rust::{LoopbackHostname, ProxyTable, TunnelSubdomainReverseProxy};
@@ -70,6 +71,79 @@ impl OwnerAuth for GatekeeperOwnerAuth {
     }
 }
 
+/// Desktop loopback-owner trust: presents the host's owner `Authorization:
+/// Bearer` header on behalf of a direct-local caller. Holds a `watch::Receiver`
+/// for the minted host owner token; each request reads the current token off
+/// the channel and builds the header inline. The token only changes when
+/// `setup_gatekeeper` re-mints, and loopback owner traffic is low-volume, so
+/// rebuilding the short header string per request is negligible — not worth
+/// caching behind a lock.
+#[derive(Clone)]
+struct LoopbackOwnerTrust {
+    /// The channel `setup_gatekeeper` publishes the minted host owner token on.
+    token_rx: tokio::sync::watch::Receiver<Option<String>>,
+}
+
+/// Present the host's own owner token on behalf of a **direct-local** request —
+/// one that reached the loopback API over a loopback socket peer AND without a
+/// `Forwarded` header (a tunnel-relayed remote caller carries one). WKWebView
+/// won't carry the host-planted `wf_auth` cookie cross-site (wry drops
+/// `SameSite=None`, and WebKit won't send a `Secure` cookie over http loopback),
+/// so the desktop webview authenticates on *connection provenance* instead: the
+/// host attaches its owner bearer, and the gatekeeper gate and emr's own JWKS
+/// bearer check both validate it normally — no slice-side special-casing.
+///
+/// SECURITY: this trusts *every* direct-loopback caller as owner, not only the
+/// webview — any local process on the machine reaches the same surface. That is
+/// the desktop single-user trust model (a local process running as the user can
+/// already read the app's data on disk). It stays gated on `!forwarded` so it
+/// never extends to tunnel-relayed remote callers, and skips gatekeeper's
+/// pre-auth public surface ([`is_pre_auth_public_path`]) where a stray owner
+/// bearer could confuse client authentication. A request that already presents
+/// its own bearer is left untouched (via the shared [`ensure_bearer_header`]).
+/// Applied inside the loopback-peer gate, so a non-loopback peer is already
+/// rejected before this runs.
+async fn inject_loopback_owner_token(
+    axum::extract::State(trust): axum::extract::State<LoopbackOwnerTrust>,
+    connect_info: Option<axum::Extension<axum::extract::ConnectInfo<SocketAddr>>>,
+    mut req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let peer_is_loopback = connect_info
+        .is_some_and(|axum::Extension(axum::extract::ConnectInfo(addr))| addr.ip().is_loopback());
+    let forwarded = shared_structures_rust::served_origin::is_forwarded(req.headers());
+    let is_public_surface = is_pre_auth_public_path(req.uri().path());
+
+    if should_present_owner_token(peer_is_loopback, forwarded, is_public_surface) {
+        if let Some(bearer) = current_owner_bearer(&trust) {
+            ensure_bearer_header(req.headers_mut(), &bearer);
+        }
+    }
+    next.run(req).await
+}
+
+/// The stamp gate: present the owner bearer only for a **direct-local**,
+/// non-forwarded request that isn't on the pre-auth public surface. Pulled out
+/// as a pure conjunction so the security-critical rule is unit-tested — e.g. an
+/// inverted `forwarded` check (which would extend owner trust to tunnel-relayed
+/// remote callers) fails the test rather than shipping silently.
+fn should_present_owner_token(
+    peer_is_loopback: bool,
+    forwarded: bool,
+    is_public_surface: bool,
+) -> bool {
+    peer_is_loopback && !forwarded && !is_public_surface
+}
+
+/// The current owner `Authorization: Bearer` header, built from the latest
+/// token on the watch channel. `None` before the host mints a token (or on the
+/// impossible header-parse failure). `borrow()` takes `&self` and needs no lock,
+/// so concurrent loopback requests read the shared receiver freely.
+fn current_owner_bearer(trust: &LoopbackOwnerTrust) -> Option<axum::http::HeaderValue> {
+    let token = trust.token_rx.borrow().clone();
+    token.and_then(|t| axum::http::HeaderValue::from_str(&format!("Bearer {t}")).ok())
+}
+
 async fn run_server(
     runtime: ServerRuntimeConfig,
     publishers: bridge::BridgePublishers,
@@ -114,12 +188,12 @@ async fn run_server(
 
     // Bind BEFORE minting/publishing the Owner token: `setup_gatekeeper`
     // pushes the freshly-minted token onto the bridge publisher, and the
-    // bridge emits a contentless `AuthTokenIssued` notify so the webview
-    // pulls via the capability-gated `gatekeeper_current_token` command.
-    // If the port were already taken, minting first would mean the next
-    // pull would return a full-Owner bearer while a *foreign* process
-    // owns `127.0.0.1:<port>`. Binding first guarantees the token is
-    // only ever minted once this process owns the port.
+    // bridge plants it as the webview's `wf_auth` cookie (and emits a
+    // contentless `AuthTokenIssued` notify to flip the page's
+    // auth-readiness signal). If the port were already taken, minting
+    // first would mean planting a full-Owner bearer cookie while a
+    // *foreign* process owns `127.0.0.1:<port>`. Binding first guarantees
+    // the token is only ever minted once this process owns the port.
     let listener = TcpListener::bind(&loopback_host)
         .await
         .with_context(|| format!("failed to bind to {loopback_host}"))?;
@@ -337,6 +411,17 @@ async fn run_server(
         .merge(apps.launch_router)
         .merge(gated_databases)
         .fallback(spa::handle_serving_spa_html)
+        // Desktop loopback-owner trust (see `inject_loopback_owner_token`):
+        // present the host owner token for a direct-local caller so the webview
+        // authenticates on connection provenance rather than the cross-site
+        // cookie WKWebView won't carry. Inner of CORS (which answers preflight
+        // first) and of the loopback-peer gate applied below.
+        .layer(axum::middleware::from_fn_with_state(
+            LoopbackOwnerTrust {
+                token_rx: publishers.host_owner_token_sender.subscribe(),
+            },
+            inject_loopback_owner_token,
+        ))
         .layer(CorsLayer::very_permissive());
 
     // Defense-in-depth: gate the entire API surface on a loopback peer address.
@@ -405,7 +490,6 @@ async fn run_server(
 pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
-            bridge::gatekeeper_current_token,
             // Gated web→host data-plane transport for the desktop sniffer's
             // untrusted content webview — allowlists the inner `_tag` so the page
             // can't forge control tags it would otherwise reach via a bus `emit`
@@ -500,4 +584,25 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_present_owner_token;
+
+    /// The owner bearer is stamped only for a direct-local, non-forwarded request
+    /// off the pre-auth public surface. Each guard, flipped alone, must withhold
+    /// the stamp — most critically an inverted `forwarded` check must NOT extend
+    /// owner trust to a tunnel-relayed remote caller.
+    #[test]
+    fn owner_token_presented_only_for_direct_local_private_requests() {
+        // The one case that stamps: loopback peer, not forwarded, not public.
+        assert!(should_present_owner_token(true, false, false));
+        // Not a loopback peer → never (the loopback-peer gate rejects it anyway).
+        assert!(!should_present_owner_token(false, false, false));
+        // Forwarded (tunnel-relayed) → never, even from a loopback proxy peer.
+        assert!(!should_present_owner_token(true, true, false));
+        // Pre-auth public surface (`/oauth`, `/.well-known`) → never.
+        assert!(!should_present_owner_token(true, false, true));
+    }
 }

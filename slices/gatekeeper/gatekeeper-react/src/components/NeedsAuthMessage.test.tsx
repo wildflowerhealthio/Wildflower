@@ -4,7 +4,12 @@ import * as fc from 'fast-check'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import { numRunsFor } from 'kitchen-sink/test'
 import type { JSX, ReactNode } from 'react'
-import { AuthTokenProvider, type AuthTokenStore } from 'react-kitchen-sink'
+import {
+  type AuthState,
+  AuthStateProvider,
+  type AuthStateStore,
+  Unauthed,
+} from 'react-kitchen-sink'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 
 /**
@@ -46,20 +51,20 @@ vi.mock('../router-context.ts', () => ({
   useGatekeeperLocalGrantedScopes: (): string | undefined => scopesHolder.current,
 }))
 
-// The device flow writes the issued token through the
-// `AuthTokenStore.setToken` it pulled from the surrounding
-// `<AuthTokenProvider>` (via `useAuthTokenSetter`). Tests wrap the
+// The device flow publishes the freshly-authed signal through the
+// `AuthStateStore.setAuthState` it pulled from the surrounding
+// `<AuthStateProvider>` (via `useAuthStateSetter`). Tests wrap the
 // rendered subject in `withTokenStore(...)` so the assertions can
-// observe the write through `setTokenMock` without poking
-// `token-storage` directly.
-const setTokenMock = vi.fn<(token: string | null) => void>()
-const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>(null))
-const testTokenStore: AuthTokenStore = {
+// observe the write through `setAuthStateMock` without poking
+// `auth-state-store` directly.
+const setAuthStateMock = vi.fn<(signal: AuthState) => void>()
+const tokenRef = Effect.runSync(SubscriptionRef.make<AuthState>(Unauthed()))
+const testTokenStore: AuthStateStore = {
   subscribable: tokenRef,
-  setToken: (token) => setTokenMock(token),
+  setAuthState: (signal) => setAuthStateMock(signal),
 }
 const withTokenStore = (children: ReactNode): JSX.Element => (
-  <AuthTokenProvider store={testTokenStore}>{children}</AuthTokenProvider>
+  <AuthStateProvider store={testTokenStore}>{children}</AuthStateProvider>
 )
 
 const { NeedsAuthMessage, sanitizeReturnTo } = await import('./NeedsAuthMessage.tsx')
@@ -68,7 +73,7 @@ const PENDING_FOREVER = Effect.never
 
 afterEach(() => {
   cleanup()
-  setTokenMock.mockReset()
+  setAuthStateMock.mockReset()
   scopesHolder.current = undefined
 })
 
@@ -191,17 +196,21 @@ describe('<NeedsAuthMessage> device flow', () => {
             verification_uri_complete: 'https://example.com/device?code=WDJB-MJHT',
             interval: 5,
           }),
-        TokenExchange: () => Effect.succeed({ access_token: 'issued-token' }),
+        TokenExchange: () => Effect.succeed({ access_token: 'issued-token', expires_in: 3600 }),
       })
 
       render(withTokenStore(<NeedsAuthMessage />))
 
+      // The web store ignores the passed signal and re-derives from the cookie,
+      // but the value NeedsAuthMessage publishes is the honest `AuthedUntil` the
+      // sign-in just achieved.
       await waitFor(
         () => {
-          expect(setTokenMock).toHaveBeenCalledWith('issued-token')
+          expect(setAuthStateMock).toHaveBeenCalledTimes(1)
         },
         { timeout: 2000 }
       )
+      expect(setAuthStateMock.mock.calls[0]?.[0]?._tag).toBe('AuthedUntil')
       // No `?returnTo=` in the stub location, so sign-in lands on the default.
       expect(assignMock).toHaveBeenCalledWith('/home')
     } finally {

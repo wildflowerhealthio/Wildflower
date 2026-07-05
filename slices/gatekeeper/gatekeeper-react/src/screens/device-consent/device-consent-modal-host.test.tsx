@@ -1,13 +1,13 @@
 import { act, cleanup, render, screen } from '@testing-library/react'
 import type { JSX, ReactNode } from 'react'
-import { AuthTokenProvider } from 'react-kitchen-sink'
+import { AuthStateProvider, HostAuthed } from 'react-kitchen-sink'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
 import {
   ActiveDeviceUserCodeProvider,
   makeActiveDeviceUserCodeStore,
 } from '../../active-device-consent/index.ts'
-import { makeEmbeddedAuthTokenStore } from '../../client/token-storage.ts'
+import { makeEmbeddedAuthStateStore } from '../../client/auth-state-store.ts'
 
 vi.mock('react-tundraish', () => ({
   // Minimal Dialog stub: renders its children whenever `open`, and
@@ -69,18 +69,18 @@ import { DeviceConsentModalHost } from './device-consent-modal-host.tsx'
 
 const renderWithProviders = (
   consentStore: ReturnType<typeof makeActiveDeviceUserCodeStore>,
-  options: { readonly initialToken?: string | null } = {}
-): ReturnType<typeof makeEmbeddedAuthTokenStore> => {
-  const tokenStore = makeEmbeddedAuthTokenStore()
-  if (options.initialToken !== undefined && options.initialToken !== null) {
-    tokenStore.setToken(options.initialToken)
+  options: { readonly authed?: boolean } = {}
+): ReturnType<typeof makeEmbeddedAuthStateStore> => {
+  const tokenStore = makeEmbeddedAuthStateStore()
+  if (options.authed === true) {
+    tokenStore.setAuthState(HostAuthed())
   }
   render(
-    <AuthTokenProvider store={tokenStore}>
+    <AuthStateProvider store={tokenStore}>
       <ActiveDeviceUserCodeProvider store={consentStore}>
         <DeviceConsentModalHost />
       </ActiveDeviceUserCodeProvider>
-    </AuthTokenProvider>
+    </AuthStateProvider>
   )
   return tokenStore
 }
@@ -110,14 +110,14 @@ describe('DeviceConsentModalHost', () => {
 
   test('renders nothing while the active userCode is null', () => {
     const store = makeActiveDeviceUserCodeStore()
-    renderWithProviders(store, { initialToken: 'jwt.token.here' })
+    renderWithProviders(store, { authed: true })
 
     expect(screen.queryByTestId('dialog')).toBeNull()
   })
 
   test('opens a non-dismissable dialog with the form when a userCode arrives', async () => {
     const store = makeActiveDeviceUserCodeStore()
-    renderWithProviders(store, { initialToken: 'jwt.token.here' })
+    renderWithProviders(store, { authed: true })
 
     await act(async () => {
       store.setActiveUserCode('ABC-123')
@@ -132,7 +132,7 @@ describe('DeviceConsentModalHost', () => {
 
   test('local handledUserCode closes the popup immediately on form.onDone, before the host clears', async () => {
     const store = makeActiveDeviceUserCodeStore()
-    renderWithProviders(store, { initialToken: 'jwt.token.here' })
+    renderWithProviders(store, { authed: true })
 
     await act(async () => {
       store.setActiveUserCode('ABC-123')
@@ -151,7 +151,7 @@ describe('DeviceConsentModalHost', () => {
 
   test('re-opens the popup against a genuinely new head', async () => {
     const store = makeActiveDeviceUserCodeStore()
-    renderWithProviders(store, { initialToken: 'jwt.token.here' })
+    renderWithProviders(store, { authed: true })
 
     await act(async () => {
       store.setActiveUserCode('ABC-123')

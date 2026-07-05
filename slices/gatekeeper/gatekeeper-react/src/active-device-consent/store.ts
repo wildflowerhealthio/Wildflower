@@ -14,7 +14,7 @@
  * No persistence: the host re-delivers the current head on every
  * webview `bridge:__Ready` (page load and reload), so any locally
  * cached value can only ever be stale and would race the host's fresh
- * push. Mirrors the {@link makeEmbeddedAuthTokenStore} rationale.
+ * push. Mirrors the {@link makeEmbeddedAuthStateStore} rationale.
  */
 
 import type { Subscribable } from 'effect'

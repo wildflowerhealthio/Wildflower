@@ -153,36 +153,6 @@ pub struct BridgePublishers {
     pub active_device_user_code_sender: watch::Sender<Option<String>>,
 }
 
-/// Tauri managed state backing the [`gatekeeper_current_token`] command.
-///
-/// Holds a `watch::Receiver` clone fed by the same channel
-/// `setup_gatekeeper` publishes through, so a pull always reflects the
-/// latest minted token. Lives in [`tauri::App`] managed state and is
-/// reachable only from webviews whose capability grants
-/// `allow-gatekeeper-current-token` — the sniffer webview's capability
-/// must NOT include that permission, which is how the bearer stays
-/// off any surface a hostile EHR page can reach.
-pub struct GatekeeperTokenState {
-    token_rx: watch::Receiver<Option<String>>,
-}
-
-/// Capability-gated pull of the current Owner bearer token. The
-/// command emits no event — it only returns the watch channel's
-/// current value — so a hostile page in a webview without the matching
-/// `allow-gatekeeper-current-token` permission cannot reach it, and a
-/// page that *can* still receives no payload through the multiplexed
-/// `bridge` event channel.
-///
-/// `None` is the legitimate "no token yet" state during the brief
-/// window between the embedded server binding its loopback port and
-/// `setup_gatekeeper` minting the first token; callers should treat it
-/// the same as a yet-to-arrive `AuthTokenIssued` notify (wait and retry
-/// on the next notify).
-#[tauri::command]
-pub fn gatekeeper_current_token(state: tauri::State<'_, GatekeeperTokenState>) -> Option<String> {
-    state.token_rx.borrow().clone()
-}
-
 /// Raise the main webview window to the foreground so a freshly-arrived
 /// device-consent popup is visible to the operator (the whole point of
 /// the popup — a `verification_uri` could pair while the user is in
@@ -219,20 +189,24 @@ fn raise_main_window(_handle: &AppHandle) {}
 /// Wire the webview↔host bridge onto Tauri's event bus and return the
 /// publishers the server task feeds.
 ///
-/// - Token delivery: one resident task emits a contentless
-///   `bridge:AuthTokenIssued` notify whenever the webview signals
-///   `bridge:__Ready` (every page load and reload — the web side's
-///   token store is in-memory and resets on reload) **and** whenever
-///   the token itself changes on the watch channel (mid-session
-///   re-mint). The bearer itself never rides the multiplexed bridge
-///   channel — the webview pulls it via the capability-gated
-///   [`gatekeeper_current_token`] command, which sibling webviews
-///   (notably the browser-sniffer loading hostile EHR pages) cannot
-///   reach because their capability does not include
-///   `allow-gatekeeper-current-token`.
-///   `Notify`'s single stored permit collapses a `__Ready` burst into
-///   one delivery, and a permit stored before the task first polls is
-///   not lost, so the boot race is covered.
+/// - Token delivery: the bearer never reaches the JS side at all, and
+///   it isn't planted as a cookie either — the desktop webview
+///   authenticates by *connection provenance* (the host presents its own
+///   owner token for direct-loopback requests; see
+///   `inject_loopback_owner_token` in `lib.rs`, which reads the same
+///   token watch channel this bridge feeds). WKWebView won't carry a
+///   host-planted cross-site cookie anyway (wry drops `SameSite=None`;
+///   WebKit won't send a `Secure` cookie over http loopback). The only
+///   thing that rides the multiplexed bridge channel is a contentless
+///   `bridge:AuthTokenIssued` notify, emitted whenever the webview
+///   signals `bridge:__Ready` (every page load and reload — the web
+///   side's auth-readiness signal is in-memory and resets on reload)
+///   **and** whenever the token changes on the watch channel
+///   (mid-session re-mint). That notify only flips the page's
+///   auth-readiness signal; it carries no secret. `Notify`'s single
+///   stored permit collapses a `__Ready` burst into one delivery, and a
+///   permit stored before the task first polls is not lost, so the boot
+///   race is covered.
 /// - Device-consent delivery: the same task forwards the active
 ///   pending device-consent head (or `null`) as
 ///   `bridge:DeviceConsentRequested` on `__Ready` *and* on every
@@ -264,18 +238,8 @@ fn raise_main_window(_handle: &AppHandle) {}
 /// emit echoes, sibling slices' web→host traffic, …) are dropped
 /// silently.
 pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
-    let (host_owner_token_sender, token_rx) = watch::channel::<Option<String>>(None);
+    let (host_owner_token_sender, mut token_rx) = watch::channel::<Option<String>>(None);
     let (active_device_user_code_sender, mut consent_rx) = watch::channel::<Option<String>>(None);
-
-    // Expose the live token watcher to `gatekeeper_current_token` via
-    // Tauri managed state. The capability gate (only the main webview's
-    // capability allows the command) is what prevents sniffer-context
-    // pulls — keeping the bearer off the multiplexed event bus would be
-    // moot if any webview could invoke this.
-    app.manage(GatekeeperTokenState {
-        token_rx: token_rx.clone(),
-    });
-    let mut token_rx = token_rx;
 
     // The bridge channel is shared across listeners with no automated
     // cross-process tag guard; log this crate's tag set at attach time so
@@ -342,13 +306,9 @@ pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
 
             match outcome {
                 Outcome::Ready => {
-                    // `borrow_and_update` marks the token seen so a
-                    // delivery triggered by `__Ready` doesn't re-fire
-                    // the `changed` arm for the same value.
-                    let token = token_rx.borrow_and_update().clone();
-                    if token.is_some() {
-                        emit_auth_token_notify(&handle);
-                    }
+                    // Signal auth-readiness on every page load — the web side's
+                    // signal is in-memory and resets on reload.
+                    notify_if_token_present(&handle, &mut token_rx);
                     // `borrow_and_update` so a `__Ready` racing a boot-time
                     // republish doesn't leave the value unseen and re-wake the
                     // `ConsentChanged` arm (see the doc comment).
@@ -356,18 +316,7 @@ pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
                     last_delivered_consent = consent.clone();
                     emit_device_consent(&handle, &consent);
                 }
-                Outcome::TokenChanged => {
-                    let token = token_rx.borrow_and_update().clone();
-                    // A token change landing before the first page
-                    // load emits into the void (Tauri events aren't
-                    // buffered) — harmless, the eventual `__Ready`
-                    // re-delivers the notify and the webview pulls the
-                    // current value through the gated command.
-                    if token.is_none() {
-                        continue;
-                    }
-                    emit_auth_token_notify(&handle);
-                }
+                Outcome::TokenChanged => notify_if_token_present(&handle, &mut token_rx),
                 Outcome::ConsentChanged => {
                     let consent = consent_rx.borrow_and_update().clone();
                     let was_none = last_delivered_consent.is_none();
@@ -387,6 +336,24 @@ pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
     BridgePublishers {
         host_owner_token_sender,
         active_device_user_code_sender,
+    }
+}
+
+/// Read-and-mark the current host token and emit the contentless
+/// `AuthTokenIssued` notify iff it's present — the shared body of the `Ready`
+/// (page-load) and `TokenChanged` (re-mint) arms.
+///
+/// `borrow_and_update` marks the value seen so a delivery triggered by one arm
+/// doesn't re-fire the `changed` arm for the same value. The token stays
+/// host-side — the desktop authenticates by loopback provenance, not a cookie —
+/// so only the contentless notify travels, and only for `Some` (a fresh /
+/// re-minted token): a `None` (logout) just stops the host injecting it and the
+/// page's loopback fetches start coming back 401, with no "logged out" notify to
+/// emit. A change landing before the first page load emits into the void (Tauri
+/// events aren't buffered) — harmless, the eventual `__Ready` re-delivers.
+fn notify_if_token_present(handle: &AppHandle, token_rx: &mut watch::Receiver<Option<String>>) {
+    if token_rx.borrow_and_update().is_some() {
+        emit_auth_token_notify(handle);
     }
 }
 

@@ -19,7 +19,7 @@ import {
   type JSX,
   type ReactNode,
 } from 'react'
-import { useAuthTokenSubscribable, useSubscribable } from 'react-kitchen-sink'
+import { isAuthed, useAuthStateSubscribable, useSubscribable } from 'react-kitchen-sink'
 import { Dialog } from 'react-tundraish'
 
 import { useActiveDeviceUserCode } from '../../active-device-consent/use-active-device-user-code.ts'
@@ -131,10 +131,10 @@ const DeviceConsentModalHost = (): JSX.Element | null => {
   // suspended `useDeviceConsentQuery` into a tokenless fetch (401 →
   // thrown through Suspense → caught by the body's error boundary
   // below, but only after a needless round-trip). Short-circuiting on
-  // `token === null` keeps the modal genuinely inert in the
+  // an unauthed signal keeps the modal genuinely inert in the
   // pre-auth window.
-  const tokenSubscribable = useAuthTokenSubscribable()
-  const token = useSubscribable(tokenSubscribable)
+  const authSubscribable = useAuthStateSubscribable()
+  const authSignal = useSubscribable(authSubscribable)
   const activeUserCode = useActiveDeviceUserCode()
   // Local mirror of "what userCode did the user just approve/deny?",
   // tracked so the popup closes immediately on `onDone` without
@@ -149,7 +149,7 @@ const DeviceConsentModalHost = (): JSX.Element | null => {
     setHandledUserCode(null)
   }, [activeUserCode])
 
-  if (token === null) return null
+  if (!isAuthed(authSignal)) return null
 
   const isOpen = activeUserCode !== null && activeUserCode !== handledUserCode
 

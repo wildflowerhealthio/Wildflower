@@ -3,10 +3,10 @@
  *
  * Diffs the Rust/axum server's OpenAPI spec (emitted by `utoipa`, committed at
  * `apps-rust/openapi/apps.openapi.json`) against the TypeScript clients' specs
- * (`OpenApi.fromApi(AppsApi)` for the public surface, `OpenApi.fromApi(
- * AppsAdminApi)` for the admin one). The generic wire-shape comparison + the
- * parse/dereference/assert harness live in `shared-structures-core/openapi-drift`;
- * this file owns only the apps-specific scope and accepted differences.
+ * (`OpenApi.fromApi(AppsApi)` for the public surface, `OpenApi.fromApi(AppsAdminApi)`
+ * for the admin one). The generic wire-shape comparison + the parse/dereference/assert
+ * harness live in `shared-structures-core/openapi-drift`;this file owns only the
+ * apps-specific scope and accepted differences.
  *
  * Regenerate the committed server spec after a wire-type change with:
  *   UPDATE_OPENAPI=1 cargo test -p apps-rust openapi_spec_snapshot_is_up_to_date

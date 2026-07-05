@@ -1,9 +1,8 @@
 import type { HttpClient } from '@effect/platform'
 import { type QueryClient } from '@tanstack/react-query'
 import { type Effect, type Layer } from 'effect'
-import { type BearerToken } from 'kitchen-sink/auth-token'
 
-type RuntimeLayer = Layer.Layer<BearerToken | HttpClient.HttpClient, never, never>
+type RuntimeLayer = Layer.Layer<HttpClient.HttpClient, never, never>
 
 /**
  * Optional knobs for a `runAuthed` call. `signal` mirrors
@@ -18,8 +17,8 @@ interface RunAuthedOptions {
 
 /**
  * Run an authed Effect from a non-React call site (route loaders).
- * Supplies `BearerToken | HttpClient`; the caller still provides its
- * own slice client layer.
+ * Supplies `HttpClient`; the caller still provides its own slice
+ * client layer.
  */
 type RunAuthed = <A, E>(
   effect: Effect.Effect<A, E, Layer.Layer.Success<RuntimeLayer>>,
@@ -50,9 +49,9 @@ type AwaitAuthReady = (returnTo?: string) => Promise<void>
 /**
  * Generic runtime-layer shape parameterised over the extra services a
  * particular slice or app adds on top of {@link RuntimeLayer}'s base
- * (`BearerToken | HttpClient`). A slice instantiates this with its own
- * client (e.g. `RuntimeLayerWith<CollectorHttpApiClient>`); the host
- * app instantiates with a union of every slice's client.
+ * (`HttpClient`). A slice instantiates this with its own client (e.g.
+ * `RuntimeLayerWith<CollectorHttpApiClient>`); the host app instantiates
+ * with a union of every slice's client.
  */
 type RuntimeLayerWith<Extra> = Layer.Layer<Layer.Layer.Success<RuntimeLayer> | Extra, never, never>
 
@@ -89,8 +88,8 @@ interface RouterContextWith<Extra> {
 
 /**
  * Concrete base router-context — `RouterContextWith<never>`, i.e. no
- * slice services beyond the `BearerToken | HttpClient` floor. Kept as a
- * standalone interface so existing references (e.g.
+ * slice services beyond the `HttpClient` floor. Kept as a standalone
+ * interface so existing references (e.g.
  * `BaseRouterContext.RouterContext`) keep working without changing.
  */
 interface RouterContext extends RouterContextWith<never> {}

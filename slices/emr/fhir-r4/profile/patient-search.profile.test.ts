@@ -63,7 +63,7 @@ describe('Patient search profile workload', () => {
         `worker-${new Date().toISOString().replace(/[:.]/g, '-')}.cpuprofile`
       )
       fs.writeFileSync(outPath, JSON.stringify(stopResult.profile))
-      // eslint-disable-next-line no-console
+      // oxlint-disable-next-line no-console
       console.log(`[profile] worker cpuprofile written to ${outPath}`)
       await wired.dispose()
     }

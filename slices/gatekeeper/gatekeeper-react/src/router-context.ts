@@ -31,8 +31,7 @@ type RouterContext = BaseRouterContext.RouterContextWith<GatekeeperHttpApiClient
 /**
  * The gatekeeper slice's client layer, ready for the app to merge into
  * its composed `runtimeLayer` over `BaseRouterContext.RuntimeLayer`
- * (`BearerToken | HttpClient`). Bearer-attaching per request — see
- * {@link buildGatekeeperClientLayer}.
+ * (`HttpClient`). Tokenless — see {@link buildGatekeeperClientLayer}.
  */
 const sliceRuntimeLayer: Layer.Layer<
   GatekeeperHttpApiClient,

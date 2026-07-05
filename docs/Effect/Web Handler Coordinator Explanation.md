@@ -52,4 +52,4 @@ The console interceptor is installed **immediately after the transport is built 
 
 - [Effect Patterns Reference](./Patterns%20Reference.md)
 - `global/effect-messaging/effect-messaging-react/src/handler-coordinator.ts` — `makeHandlerCoordinator`, `useHandlerCoordinator`
-- `slices/gatekeeper/gatekeeper-react/src/client/token-storage.ts` — `authTokenRef` (the boot-stable `SubscriptionRef` exception)
+- `slices/gatekeeper/gatekeeper-react/src/client/auth-state-store.ts` — `authTokenRef` (the boot-stable `SubscriptionRef` exception)

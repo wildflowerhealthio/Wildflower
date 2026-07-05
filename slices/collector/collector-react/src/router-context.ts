@@ -7,7 +7,7 @@ import { buildCollectorClientLayer } from './client/collector-client.ts'
 
 /**
  * Extra services the collector router context layers on top of the
- * `BearerToken | HttpClient` floor. Beyond its own
+ * `HttpClient` floor. Beyond its own
  * {@link CollectorHttpApiClient}, the sync runner runs one long import
  * Effect whose forked per-resource FHIR writes require
  * {@link FhirR4ResourcesHttpApiClient}; that requirement bubbles up to
@@ -32,8 +32,7 @@ type RouterContext = BaseRouterContext.RouterContextWith<ExpectedClients>
 /**
  * The collector slice's client layer, ready for the app to merge into
  * its composed `runtimeLayer` over `BaseRouterContext.RuntimeLayer`
- * (`BearerToken | HttpClient`). Bearer-attaching per request — see
- * {@link buildCollectorClientLayer}.
+ * (`HttpClient`). Tokenless — see {@link buildCollectorClientLayer}.
  */
 const sliceRuntimeLayer: Layer.Layer<
   CollectorHttpApiClient,

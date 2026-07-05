@@ -3,31 +3,33 @@ import { type AnyRouter, createRouter, type RouterHistory } from '@tanstack/reac
 import { Effect, type Fiber, type Subscribable, Stream } from 'effect'
 import {
   ActiveDeviceUserCodeProvider,
+  buildDeviceLoginTarget,
+  DEVICE_LOGIN_ROUTE,
   makeActiveDeviceUserCodeStore,
   type ActiveDeviceUserCodeStore,
 } from 'gatekeeper-react'
 import type { NavTarget } from 'navigation-react'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { AuthTokenProvider, type AuthTokenStore } from 'react-kitchen-sink'
+import { type AuthState, AuthStateProvider, type AuthStateStore } from 'react-kitchen-sink'
 import { ErrorBoundary } from 'react-tundraish'
-import type { BaseRouterContext } from 'shared-structures-react'
+import type { BaseRouterContext, SettingsItem } from 'shared-structures-react'
 import { Sentry } from 'telemetry-web'
 
 import { buildAppQueryRuntime } from './bridges/app-query-runtime.ts'
 import { AppRootTree } from './bridges/app-root-tree.tsx'
 import type { ReactTransport } from './bridges/transport-context.ts'
-// Self-hosted Wildflower fonts — loaded here so every entry (web, single-web,
-// embedded, and the Tauri shell via `wildflower-react/app-root`) picks them up
-// through a single import.
-import './styles/fonts.ts'
 import { routeTree } from './routeTree.gen.ts'
+// Self-hosted Wildflower fonts — loaded here so every entry (web, single-web,
+// and the Tauri shell via `wildflower-react/app-root`) picks them up through a
+// single import.
+import './styles/fonts.ts'
 
 /**
  * Per-entry transport factory. Receives a stable `navigate` closure
  * that delegates to the router instance (set after `createRouter`),
  * a `writeIssuedToken` writer threaded from the entry's
- * {@link AuthTokenStore}, and a `setActiveDeviceUserCode` writer
+ * {@link AuthStateStore}, and a `setActiveDeviceUserCode` writer
  * threaded from the in-app {@link ActiveDeviceUserCodeStore}; returns
  * the page's `BridgeTransport` (narrowed to the React-facing
  * `ReactTransport` surface). Web entries return a pre-resolved stub
@@ -38,7 +40,7 @@ import { routeTree } from './routeTree.gen.ts'
  */
 type MakeTransport = (
   navigate: (to: NavTarget) => void,
-  writeIssuedToken: AuthTokenStore['setToken'],
+  writeIssuedToken: AuthStateStore['setAuthState'],
   setActiveDeviceUserCode: ActiveDeviceUserCodeStore['setActiveUserCode']
 ) => Promise<ReactTransport>
 
@@ -52,7 +54,7 @@ type MakeTransport = (
  * into the factory means the gate stays environment-agnostic and the
  * router context no longer needs its own `transportReady` field.
  *
- * The entry closes over its own {@link AuthTokenStore.subscribable}
+ * The entry closes over its own {@link AuthStateStore.subscribable}
  * here — `gatekeeper-react`'s `makeAwaitWebAuthReady` /
  * `makeAwaitEmbeddedAuthReady` take a subscribable and return the
  * shape `BaseRouterContext.AwaitAuthReady` expects.
@@ -79,7 +81,7 @@ type MakeAwaitAuthReady = (transportReady: Promise<void>) => BaseRouterContext.A
  * interrupt it.
  */
 const forkTokenRotationInvalidator = (
-  subscribable: Subscribable.Subscribable<string | null>,
+  subscribable: Subscribable.Subscribable<AuthState>,
   queryClient: QueryClient
 ): Fiber.RuntimeFiber<void, never> =>
   Effect.runFork(
@@ -94,19 +96,19 @@ interface RenderAppOptions {
   /** Browser history for web, memory history for embedded WebView. */
   readonly history: RouterHistory
   /** Tagged onto Sentry events to distinguish web/embedded crashes. */
-  readonly entry: 'main-web' | 'main-embedded' | 'main-single-web' | 'main-tauri'
+  readonly entry: 'main-web' | 'main-single-web' | 'main-tauri'
   /**
-   * Environment-specific {@link AuthTokenStore}. Web entries pass
-   * `makeWebAuthTokenStore()` (localStorage-backed); embedded passes
-   * `makeEmbeddedAuthTokenStore()` (in-memory only, see its docstring
-   * for the why). Threaded into `<AuthTokenProvider>` for descendants,
-   * into the `BearerToken` Layer for Effect-side HTTP clients, into
-   * the page-bridge handler via `makeTransport`, and into a
-   * token-rotation invalidator that flushes TanStack Query's cache
-   * when the bearer changes (so 401-pinned entries don't outlive the
-   * rotation).
+   * Environment-specific {@link AuthStateStore}. Web entries pass
+   * `makeWebAuthStateStore()` (cookie-derived auth signal — the real JWT
+   * is the `HttpOnly` `wf_auth` cookie, invisible to JS); embedded passes
+   * `makeEmbeddedAuthStateStore()` (in-memory raw JWT, see its docstring
+   * for the why). Threaded into `<AuthStateProvider>` for descendants and
+   * into a token-rotation invalidator that flushes TanStack Query's cache
+   * when the auth signal changes (so 401-pinned entries don't outlive a
+   * sign-in or rotation). HTTP clients are tokenless — auth rides the
+   * same-origin `HttpOnly` `wf_auth` cookie, not a JS-attached header.
    */
-  readonly tokenStore: AuthTokenStore
+  readonly tokenStore: AuthStateStore
   /**
    * Environment-specific auth-readiness factory, injected per entry.
    * Called once at `renderApp` time with `transportReady`; the
@@ -138,6 +140,26 @@ interface RenderAppOptions {
    * gatekeeper-rust seeds for the first-party client. Omitted on web/embedded.
    */
   readonly localGrantedScopes?: string
+  /**
+   * Platform-specific settings rows this entry contributes to the shared
+   * `/settings` list. Threaded into `AppRootTree`, which provides them to the
+   * tree for the settings route to append (see
+   * `session/platform-settings-items-context.ts`). Standalone-web entries pass
+   * the web logout item; `main-tauri` passes `[]`. Keeping the choice at the
+   * entry — the only place that knows the platform — means the settings route
+   * stays a dumb renderer with no `entry`-sniffing branch.
+   */
+  readonly platformSettingsItems: readonly SettingsItem[]
+  /**
+   * Whether a 401 that outlives the boot-race retry should redirect the user to
+   * device login. Web entries set `true` (they have a device-login flow);
+   * `main-tauri` sets `false` — the webview is host-authenticated, so there's no
+   * user login to fall back to and driving the device flow would spawn a
+   * spurious consent against the owner's own device. Keeping the choice a flag at
+   * the entry seam keeps the platform decision out of an `entry`-string branch in
+   * this shared code.
+   */
+  readonly redirectToDeviceLoginOnUnauthorized: boolean
 }
 
 /**
@@ -177,15 +199,36 @@ const renderApp = ({
   makeTransport,
   apiBaseUrl,
   localGrantedScopes,
+  platformSettingsItems,
+  redirectToDeviceLoginOnUnauthorized,
 }: RenderAppOptions): void => {
-  const { queryClient, runAuthed, runtimeLayer } = buildAppQueryRuntime(
-    tokenStore.subscribable,
-    apiBaseUrl
-  )
+  // Router isn't built until after the query runtime (its context needs the
+  // runtime), so the closures that navigate imperatively read it through this
+  // deferred cell, populated right after `createRouter`.
+  const routerHandle: { current: AnyRouter | null } = { current: null }
 
+  // Fires when an authed query/mutation ends in a 401 that outlived the
+  // boot-race retry — the cookie session is genuinely gone, so send the user to
+  // device login, preserving where they were as `returnTo`. The guard skips a
+  // redundant navigation when they're already on the device-login route.
+  const redirectToDeviceLogin = (): void => {
+    const router = routerHandle.current
+    if (router === null) return
+    if (router.state.location.pathname === DEVICE_LOGIN_ROUTE) return
+    void router.navigate(buildDeviceLoginTarget(router.state.location.href))
+  }
+
+  // Which 401 fallback this entry uses is the entry's decision, carried by the
+  // `redirectToDeviceLoginOnUnauthorized` flag — not an `entry`-string branch
+  // here. Web entries redirect; `main-tauri` takes no action (see the field doc
+  // and the entrypoints). A new entry must state its own behavior at its seam.
+  const onUnauthorized = redirectToDeviceLoginOnUnauthorized ? redirectToDeviceLogin : () => {}
+  const { queryClient, runAuthed, runtimeLayer } = buildAppQueryRuntime(apiBaseUrl, onUnauthorized)
+
+  // Keyed on the auth *signal* (the store), not the bearer source: on web a
+  // sign-in flips the cookie-derived signal and should flush the cache.
   forkTokenRotationInvalidator(tokenStore.subscribable, queryClient)
 
-  const routerHandle: { current: AnyRouter | null } = { current: null }
   const navigate = (to: NavTarget): void => {
     const router = routerHandle.current
     if (router === null) return
@@ -201,7 +244,7 @@ const renderApp = ({
 
   const transportPromise = makeTransport(
     navigate,
-    tokenStore.setToken,
+    tokenStore.setAuthState,
     activeDeviceUserCodeStore.setActiveUserCode
   )
   const transportReady = transportPromise.then(() => undefined)
@@ -247,11 +290,15 @@ const renderApp = ({
         }}
       >
         <QueryClientProvider client={queryClient}>
-          <AuthTokenProvider store={tokenStore}>
+          <AuthStateProvider store={tokenStore}>
             <ActiveDeviceUserCodeProvider store={activeDeviceUserCodeStore}>
-              <AppRootTree router={router} transportPromise={transportPromise} />
+              <AppRootTree
+                router={router}
+                transportPromise={transportPromise}
+                platformSettingsItems={platformSettingsItems}
+              />
             </ActiveDeviceUserCodeProvider>
-          </AuthTokenProvider>
+          </AuthStateProvider>
         </QueryClientProvider>
       </ErrorBoundary>
     </StrictMode>

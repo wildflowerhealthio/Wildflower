@@ -5,38 +5,33 @@ import { AppsAdminApi, AppsApi } from '../http-api-definition/index.ts'
 const publicHc = defineSliceHttpClient({
   name: 'AppsHttpApiClient',
   api: AppsApi,
-  authType: 'bearer',
 })
 
 const adminHc = defineSliceHttpClient({
   name: 'AppsAdminHttpApiClient',
   api: AppsAdminApi,
-  authType: 'bearer',
 })
 
 /**
  * Effect Service providing the resolved `AppsApi` HttpApi client —
- * `ListApps` + `LaunchApp`. Attaches a bearer: hosts that gate the
- * apps surface (e.g. the Tauri host's Rust server) reject anonymous
- * reads, and hosts that don't yet (wildflower-server) ignore the
- * header. Note `LaunchApp` is normally driven by a raw `POST` the
+ * `ListApps` + `LaunchApp`. Tokenless: hosts that gate the apps surface
+ * (e.g. the Tauri host's Rust server) authenticate via the request's
+ * cookie. Note `LaunchApp` is normally driven by a raw `POST` the
  * browser follows (the server 302s to the app, or 204s on the Tauri
  * host), not through this client.
  */
 class AppsHttpApiClient extends publicHc.ClientTag<AppsHttpApiClient>() {
   static readonly layer = publicHc.makeLayerFactory(AppsHttpApiClient)()
-  static readonly authType = publicHc.authType
 }
 
 /**
  * Effect Service providing the resolved `AppsAdminApi` (owner-only)
- * HttpApi client — app writes (create / update / delete). The composing app wraps
- * `AppsAdminApi` in `RequireAuthMiddleware`, so the corresponding
- * client layer must attach a bearer.
+ * HttpApi client — app writes (create / update / delete). The composing
+ * app wraps `AppsAdminApi` in `RequireAuthMiddleware`; auth rides the
+ * same-origin cookie the browser sends with each request.
  */
 class AppsAdminHttpApiClient extends adminHc.ClientTag<AppsAdminHttpApiClient>() {
   static readonly layer = adminHc.makeLayerFactory(AppsAdminHttpApiClient)()
-  static readonly authType = adminHc.authType
 }
 
 type AppsHttpApiClientShape = typeof AppsHttpApiClient.Service

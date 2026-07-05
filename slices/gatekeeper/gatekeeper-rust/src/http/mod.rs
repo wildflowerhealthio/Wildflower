@@ -4,6 +4,7 @@
 //! and middleware files are private implementation detail behind the route
 //! table.
 
+mod cookies;
 mod error_pages;
 mod handlers;
 mod middleware;
@@ -16,6 +17,9 @@ pub(crate) use origin::ServedOrigin;
 // Re-export so call sites read `crate::http::served_origin_for` without the
 // `shared_structures_rust::` prefix. See `docs/Origins/Explanation.md`.
 pub(crate) use shared_structures_rust::served_origin::served_origin_for;
+// The shared "insert an `Authorization: Bearer` only when absent" helper — the
+// FHIR bearer gate and the Tauri loopback-owner-trust middleware both use it.
+pub use middleware::ensure_bearer_header;
 pub use state::AppState;
 
 use axum::middleware as axum_middleware;
@@ -51,6 +55,7 @@ pub fn router(state: AppState) -> Router {
         .merge(handlers::grants::router())
         .merge(handlers::oauth_consents::router())
         .merge(handlers::devices::router())
+        .merge(handlers::logout::router())
         .layer(axum_middleware::from_fn_with_state(
             state.clone(),
             middleware::require_owner_auth,
@@ -102,6 +107,21 @@ pub fn layer_router_with_loopback_peer_gating(router: Router) -> Router {
     router.layer(axum_middleware::from_fn(middleware::require_loopback_peer))
 }
 
+/// Whether `path` is on the gatekeeper's **pre-auth public surface** — the
+/// discovery + OAuth routes a client reaches before it holds a token
+/// (`/.well-known/*` incl. `jwks.json`, and `/oauth/*`). The `/access/*` admin
+/// surface is Owner-gated and NOT public.
+///
+/// Owned here, beside [`router`] (which mounts these paths), so a consumer that
+/// must exclude the pre-auth surface can't drift from the routes. The desktop
+/// loopback-owner-trust middleware uses it to avoid stamping the owner bearer
+/// onto a pre-auth request, where a stray owner bearer could confuse client
+/// authentication.
+#[must_use]
+pub fn is_pre_auth_public_path(path: &str) -> bool {
+    path.starts_with("/oauth") || path.starts_with("/.well-known")
+}
+
 /// Whether `headers` carry a valid **Owner** bearer for `served_origin` — the
 /// non-middleware form of the
 /// [`require_owner_auth`](middleware::require_owner_auth) gate, for a slice that
@@ -117,7 +137,7 @@ pub fn verify_owner_bearer(
     let Some(token) = middleware::require_auth::try_bearer_token_from_headers(headers) else {
         return false;
     };
-    middleware::require_auth::verify_owner_token(state, served_origin, &token).is_ok()
+    middleware::require_auth::verify_owner_token(state, served_origin, token).is_ok()
 }
 
 #[cfg(test)]

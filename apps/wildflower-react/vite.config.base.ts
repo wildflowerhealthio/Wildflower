@@ -5,7 +5,7 @@ import monorepoBase from '../../vite.config.base.ts'
 import { routes } from './routes.config.ts'
 
 /**
- * Shared base. Both `vite.config.web.ts` and `vite.config.embedded.ts`
+ * Shared base. Both `vite.config.web.ts` and `vite.config.single-web.ts`
  * extend this with bundle-specific plugins / build options.
  *
  * `tanstackRouter` must run before `react()` so the generated route tree

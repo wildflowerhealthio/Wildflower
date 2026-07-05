@@ -1,6 +1,6 @@
 import { HttpClient, HttpClientRequest } from '@effect/platform'
 import type { QueryClient } from '@tanstack/react-query'
-import { Effect, Layer, type Subscribable } from 'effect'
+import { Effect, Layer } from 'effect'
 import { webHttpClientLayer } from 'telemetry-react'
 
 import {
@@ -63,30 +63,32 @@ const prependApiBaseUrl = (
 /**
  * Build the shared `QueryClient` + authed runner threaded into the
  * router context. Page-lifetime; one HTTP layer for every entry (the
- * embedded bridge carries only messages, not HTTP).
+ * embedded bridge carries only messages, not HTTP). Clients are
+ * tokenless — auth rides the `HttpOnly` `wf_auth` cookie (sent in
+ * credentialed mode so it also rides the Tauri webview's cross-origin
+ * loopback fetches).
  *
- * @param tokenSubscribable - The entry's `AuthTokenStore.subscribable`,
- *   used by the `BearerToken` Layer at request time. Rotation surfaces
- *   on the next request (the `Subscribable.get` read happens inside
- *   `HttpClient.mapRequestEffect`) without rebuilding the runtime.
  * @param apiBaseUrl - Absolute API origin for entries whose page isn't
  *   served by the API server (see {@link prependApiBaseUrl}). Omitted,
  *   requests stay relative to the page origin.
+ * @param onUnauthorized - Invoked by the `QueryClient`'s cache when an
+ *   authed query/mutation ends in a 401 that survived the boot-race
+ *   retry — the entry uses it to send the user to device login.
  */
 const buildAppQueryRuntime = (
-  tokenSubscribable: Subscribable.Subscribable<string | null>,
-  apiBaseUrl?: string
+  apiBaseUrl: string | undefined,
+  onUnauthorized: () => void
 ): {
   readonly queryClient: QueryClient
   readonly runAuthed: RunAuthed
   readonly runtimeLayer: RuntimeLayer
 } => {
-  const queryClient = buildQueryClient()
+  const queryClient = buildQueryClient(onUnauthorized)
   const httpClientLayer =
     apiBaseUrl === undefined
       ? webHttpClientLayer
       : prependApiBaseUrl(webHttpClientLayer, apiBaseUrl)
-  const { runAuthed, runtimeLayer } = buildRunAuthed(tokenSubscribable, httpClientLayer)
+  const { runAuthed, runtimeLayer } = buildRunAuthed(httpClientLayer)
   return { queryClient, runAuthed, runtimeLayer }
 }
 

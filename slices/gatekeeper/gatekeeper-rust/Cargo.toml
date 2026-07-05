@@ -38,6 +38,12 @@ uuid = { version = "1", features = ["v4"] }
 base64 = "0.22"
 percent-encoding = "2"
 serde_urlencoded = "0.7"
+# Typed `Set-Cookie` building + robust `Cookie`-header parsing for the web
+# session cookies (`wf_auth` / `wf_auth_exp`) — replaces hand-rolled string
+# formatting and a bespoke split(';')/split_once('=') parser. Already in the
+# lockfile (0.18.1, pulled transitively via tauri/wry), so this direct dep adds
+# no new version resolution.
+cookie = "0.18"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 tracing = "0.1"
 url = { version = "2", features = ["serde"] }

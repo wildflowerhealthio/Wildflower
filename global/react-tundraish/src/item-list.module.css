@@ -127,6 +127,16 @@ section > .item-list:not(:last-child) {
   cursor: not-allowed;
 }
 
+/*
+ * Form wrapper for a POST-action row (e.g. logout). `display: contents` so the
+ * enclosed submit button participates directly in the row flex — rendering
+ * identically to an `onClick` button row while performing a real same-origin
+ * form POST (a GET would be CSRF-able for a logout).
+ */
+.item-list__form {
+  display: contents;
+}
+
 .item-list__title-row {
   display: flex;
   align-items: center;

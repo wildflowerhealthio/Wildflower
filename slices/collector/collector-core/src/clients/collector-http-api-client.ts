@@ -5,7 +5,6 @@ import { CollectorApi } from '../http-api-definition/index.ts'
 const sliceClient = defineSliceHttpClient({
   name: 'CollectorHttpApiClient',
   api: CollectorApi,
-  authType: 'bearer',
 })
 
 /**
@@ -25,7 +24,6 @@ const sliceClient = defineSliceHttpClient({
  */
 class CollectorHttpApiClient extends sliceClient.ClientTag<CollectorHttpApiClient>() {
   static readonly layer = sliceClient.makeLayerFactory(CollectorHttpApiClient)()
-  static readonly authType = sliceClient.authType
 }
 
 type CollectorHttpApiClientShape = typeof CollectorHttpApiClient.Service

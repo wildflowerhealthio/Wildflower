@@ -6,6 +6,12 @@ _Last triaged 2026-07-04 — durable lessons were promoted to `Strategies.md`, t
 
 <!-- Append new entries below this line -->
 
+## Cookie-auth: clients are tokenless; the `AuthStateStore` subscribable is only a readiness signal
+
+**Discovered during**: claude/github-issue-218-42hl8q — Part A (cookie-based auth on the web path); later fully tokenless under #218
+**Learning**: No HTTP client attaches an `Authorization` header anymore — auth rides the same-origin `HttpOnly` `wf_auth` cookie the browser sends automatically (`FetchHttpClient` defaults to `credentials: 'same-origin'`). There is no client-side token-injection Tag; `defineSliceHttpClient` and every bespoke client build a plain tokenless `HttpApiClient.make(api)` requiring only `HttpClient.HttpClient`. The `AuthStateStore` `subscribable` survives but purely as the auth-readiness _signal_: it feeds `AuthStateProvider`, the `auth-ready` gate, and the token-rotation cache invalidator — never a request header. On web that signal is the non-secret `exp` hint from the readable `wf_auth_exp` companion cookie; on embedded/Tauri it's the host-pushed real JWT. Because nothing reads it as a header, the web `exp`-hint value is harmless (no risk of `Authorization: Bearer <exp-digits>`). `NeedsAuthMessage` stays env-agnostic — its `setToken(access_token)` is interpreted by the web store as "re-derive from the cookie, ignore the arg" (it then full-page-reloads), and the embedded store stores the real JWT. Don't push env branching into the shared component.
+**Suggested destination**: Auth Token Storage Explanation.md (updated this session) / unsure
+
 ## rathole's `"Unable to listen for shutdown signal: channel closed"` is a teardown symptom, not a cause
 
 **Discovered during**: claude/pr-202-tunnel-seam — debugging tunnel launch flap

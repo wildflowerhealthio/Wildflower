@@ -2,7 +2,7 @@
   "name": "fhir-r4-react",
   "version": "0.0.0",
   "private": true,
-  "description": "React surface for the FHIR R4 slice — a BearerToken-driven `buildFhirR4ResourcesClientLayer()` + structural router-context (`sliceRuntimeLayer`, `useFhirR4ResourcesRuntimeLayer`) the host app merges into its composed `runtimeLayer`, plus the `Patient` TanStack-Query read. Cross-slice consumers: `gatekeeper-react`'s patient picker (`usePatientsQuery`) and `collector-react`'s `useSyncRunner` (imperative per-resource PUT via the runtime layer). Mirrors gatekeeper-react's migrated pattern; names are FhirR4-specific so future FHIR-version slices can coexist.",
+  "description": "React surface for the FHIR R4 slice — a tokenless `buildFhirR4ResourcesClientLayer()` (cookie auth) + structural router-context (`sliceRuntimeLayer`, `useFhirR4ResourcesRuntimeLayer`) the host app merges into its composed `runtimeLayer`, plus the `Patient` TanStack-Query read. Cross-slice consumers: `gatekeeper-react`'s patient picker (`usePatientsQuery`) and `collector-react`'s `useSyncRunner` (imperative per-resource PUT via the runtime layer). Mirrors gatekeeper-react's migrated pattern; names are FhirR4-specific so future FHIR-version slices can coexist.",
   "type": "module",
   "exports": {
     ".": {

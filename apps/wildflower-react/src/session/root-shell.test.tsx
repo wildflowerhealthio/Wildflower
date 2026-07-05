@@ -3,6 +3,7 @@ import { createMemoryHistory, createRootRoute, createRoute } from '@tanstack/rea
 import { act, cleanup, screen, waitFor } from '@testing-library/react'
 import { Effect, Layer, SubscriptionRef } from 'effect'
 import { useEffect, type JSX, type ReactNode } from 'react'
+import { type AuthState, Unauthed } from 'react-kitchen-sink'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
 /**
@@ -10,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/tes
  * `<RootShell>` renders ONLY an `<Outlet />` — no slice client providers
  * nest there. The stack lives in two places:
  *
- *  - Above `<RouterProvider>`: `AuthTokenProvider` and the in-tree
+ *  - Above `<RouterProvider>`: `AuthStateProvider` and the in-tree
  *    `TransportContext.Provider` (the value is seeded by a promise
  *    resolved outside React; the tree itself doesn't build the
  *    transport).
@@ -61,9 +62,12 @@ const { lifecycleSpy, makePassthrough } = vi.hoisted(() => {
 // a passthrough. Mocks only need to satisfy the surface the modules
 // under test import. `authTokenRef` is a non-component export and is
 // reduced to a stub `Subscribable` that reports null and never
-// publishes — the mocked AuthTokenProvider doesn't use it.
+// publishes — the mocked AuthStateProvider doesn't use it.
 vi.mock('react-kitchen-sink', () => ({
-  AuthTokenProvider: makePassthrough('AuthTokenProvider'),
+  AuthStateProvider: makePassthrough('AuthStateProvider'),
+  // The test seeds the store with `Unauthed()`; the mock only needs a value the
+  // `SubscriptionRef` can hold (nothing asserts on it).
+  Unauthed: () => ({ _tag: 'Unauthed' }),
   // Mirror the real `cn` helper so the ErrorBoundary in `renderApp`'s
   // tree (`react-tundraish` reads `cn` via this re-export) doesn't
   // crash if the rendered subtree throws.
@@ -76,7 +80,7 @@ vi.mock('react-kitchen-sink', () => ({
   usePromiseOrDefault: <T,>(_promise: Promise<T>, fallback: T): T => fallback,
 }))
 // The `RootShell` lifecycle test only consumes the slice runtime
-// layer; the `AuthTokenStore` itself is constructed inline in the
+// layer; the `AuthStateStore` itself is constructed inline in the
 // test body below. `ActiveDeviceUserCodeProvider` is reduced to a
 // passthrough and `DeviceConsentModalHost` to nothing — the popup
 // surface isn't what's being pinned here, and the real Effect
@@ -171,11 +175,11 @@ const lifecycleEventsFor = (name: string): readonly ('mount' | 'unmount')[] =>
 
 describe('renderApp InnerWrap lifecycle', () => {
   // The providers that live around the router above its matched routes:
-  // `AuthTokenProvider` (just above `<RouterProvider>`) and the
+  // `AuthStateProvider` (just above `<RouterProvider>`) and the
   // `CollectorSenderForwarder` slice sender that nests inside `InnerWrap`.
   // The `TransportContext.Provider` is also above the router (in `AppRoot`)
   // but is a plain context provider with no React-tree work to pin.
-  const INNER_WRAP_PROVIDERS = ['AuthTokenProvider', 'CollectorSenderForwarder'] as const
+  const INNER_WRAP_PROVIDERS = ['AuthStateProvider', 'CollectorSenderForwarder'] as const
 
   // `renderApp` mounts into `document.getElementById('root')` via
   // `createRoot`, so the container must exist before each render and be
@@ -200,12 +204,12 @@ describe('renderApp InnerWrap lifecycle', () => {
     const history = createMemoryHistory({ initialEntries: ['/a'] })
 
     const { stubTransport } = await import('../bridges/transport-context.ts')
-    // Minimal in-memory `AuthTokenStore` — this test is about provider
+    // Minimal in-memory `AuthStateStore` — this test is about provider
     // lifetimes across navigation, not the bearer itself.
-    const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>(null))
+    const tokenRef = Effect.runSync(SubscriptionRef.make<AuthState>(Unauthed()))
     const tokenStore = {
       subscribable: tokenRef,
-      setToken: (t: string | null): void => Effect.runSync(SubscriptionRef.set(tokenRef, t)),
+      setAuthState: (s: AuthState): void => Effect.runSync(SubscriptionRef.set(tokenRef, s)),
     }
     await act(async () => {
       renderApp({
@@ -214,6 +218,8 @@ describe('renderApp InnerWrap lifecycle', () => {
         tokenStore,
         awaitAuthReady: () => () => Promise.resolve(),
         makeTransport: () => Promise.resolve(stubTransport),
+        platformSettingsItems: [],
+        redirectToDeviceLoginOnUnauthorized: false,
       })
     })
 

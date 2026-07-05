@@ -50,7 +50,7 @@ const renderCopy = (variant: ExplainerVariant, publicHost: string | null): React
  *     public host is configured; the host is emphasized in the copy.
  *   - "open without host" — the daemon is (or is becoming) reachable but
  *     no public host has been set yet; the same sentence runs without the
- *     trailing "at {host}" clause rather than rendering an awkward gap.
+ *     trailing "at \{host\}" clause rather than rendering an awkward gap.
  *   - "closed" — the resting state, describing the opt-in nature of the
  *     tunnel.
  *

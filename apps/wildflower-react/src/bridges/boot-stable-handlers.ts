@@ -1,11 +1,10 @@
-import { Effect } from 'effect'
 import type { BridgeHandlerRecord } from 'effect-messaging-react'
 import { GatekeeperBridge } from 'gatekeeper-core/bridge'
 import type { ActiveDeviceUserCodeStore } from 'gatekeeper-react'
 import { makeGatekeeperWebHandlers } from 'gatekeeper-react/web-bridge'
 import { NavigationBridge } from 'navigation-core'
 import { makeNavigationWebHandlers, type NavTarget } from 'navigation-react'
-import type { AuthTokenStore } from 'react-kitchen-sink'
+import type { AuthStateStore } from 'react-kitchen-sink'
 
 import { applyColorScheme } from '../styles/apply-color-scheme.ts'
 import { applyRootInsets } from '../styles/apply-root-insets.ts'
@@ -21,11 +20,11 @@ import { applyRootInsets } from '../styles/apply-root-insets.ts'
  * drop-all record for that bridge. Logging is web→host only on the
  * page side (no inbound handlers).
  *
- * `setToken` is the gatekeeper bridge's only piece of state — the
- * entry's `AuthTokenStore` constructs it (`makeWebAuthTokenStore`
- * persists to localStorage; `makeEmbeddedAuthTokenStore` is
- * in-memory) and the page-bridge handler writes through it on every
- * `AuthTokenIssued`.
+ * `setAuthState` is the gatekeeper bridge's only piece of state — the
+ * entry's `AuthStateStore` constructs it (`makeWebAuthStateStore`
+ * derives the auth signal from the `wf_auth_exp` cookie;
+ * `makeEmbeddedAuthStateStore` is in-memory, fed by the host) and the
+ * page-bridge handler flips it on every `AuthTokenIssued`.
  *
  * The navigation bridge's `SafeAreaInsetsChanged` and
  * `HostColorSchemeChanged` are wired to `applyRootInsets` and
@@ -36,16 +35,9 @@ import { applyRootInsets } from '../styles/apply-root-insets.ts'
  * from `addOsColorSchemeListener`, which writes the same attribute from
  * `prefers-color-scheme` at boot.
  */
-// No host emits `AuthTokenIssued` on the standalone-web or embedded
-// entries (the standalone path serves a stub transport, and the
-// embedded path is web-only). The handler is registered for
-// type-completeness; the no-op puller would only fire if a future host
-// started emitting on this transport.
-const noTokenAvailable = (): Effect.Effect<string | null> => Effect.succeed(null)
-
 const makeBootStableInitialHandlers = (
   navigate: (to: NavTarget) => void,
-  setToken: AuthTokenStore['setToken'],
+  setAuthState: AuthStateStore['setAuthState'],
   setActiveDeviceUserCode: ActiveDeviceUserCodeStore['setActiveUserCode']
 ): Readonly<Record<string, BridgeHandlerRecord>> => ({
   [NavigationBridge.name]: makeNavigationWebHandlers({
@@ -53,11 +45,7 @@ const makeBootStableInitialHandlers = (
     applyInsets: applyRootInsets,
     applyColorScheme,
   }),
-  [GatekeeperBridge.name]: makeGatekeeperWebHandlers(
-    setToken,
-    setActiveDeviceUserCode,
-    noTokenAvailable
-  ),
+  [GatekeeperBridge.name]: makeGatekeeperWebHandlers(setAuthState, setActiveDeviceUserCode),
 })
 
 export { makeBootStableInitialHandlers }

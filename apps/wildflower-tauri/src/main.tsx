@@ -3,12 +3,11 @@ import 'tundra-css'
 import 'react-tundraish/styles.css'
 import 'wildflower-react/instrument'
 import 'wildflower-react/global.css'
-import { invoke } from '@tauri-apps/api/core'
 import { Effect } from 'effect'
 import { Logging } from 'effect-messaging-core'
 import { makeTauriTransport } from 'effect-messaging-tauri'
 import { GatekeeperBridge } from 'gatekeeper-core/bridge'
-import { makeAwaitEmbeddedAuthReady, makeEmbeddedAuthTokenStore } from 'gatekeeper-react'
+import { makeAwaitEmbeddedAuthReady, makeEmbeddedAuthStateStore } from 'gatekeeper-react'
 import { makeGatekeeperWebHandlers } from 'gatekeeper-react/web-bridge'
 import { renderApp } from 'wildflower-react/app-root'
 import { bridges } from 'wildflower-react/bridges'
@@ -16,23 +15,12 @@ import { addOsColorSchemeListener } from 'wildflower-react/os-color-scheme-liste
 
 addOsColorSchemeListener()
 
-// Embedded-style store: in-memory, initial value `null`. The Rust host
-// re-notifies the bridge on every page load (sends a contentless
-// `AuthTokenIssued` on each `bridge:__Ready`), and the page-side
-// handler pulls the bearer via the capability-gated
-// `gatekeeper_current_token` command — so persisting a token here
-// could only ever serve a stale value, and the bearer never rides the
-// multiplexed bridge channel that sibling webviews can subscribe to.
-const tokenStore = makeEmbeddedAuthTokenStore()
-
-// Capability-gated pull of the current Owner bearer. The Tauri
-// capability ACL only includes `allow-gatekeeper-current-token` on the
-// `main` webview, so the browser-sniffer's shared JS context (which a
-// hostile EHR page can drive) cannot reach it. `Effect.promise` is
-// safe because the command implementation is infallible — it just
-// returns the watch channel's current value.
-const pullCurrentTokenFromHost = (): Effect.Effect<string | null> =>
-  Effect.promise(() => invoke<string | null>('gatekeeper_current_token'))
+// In-memory store, initial value `null`. On the Tauri path the SPA never
+// holds the bearer: the host plants the `wf_auth` cookie directly in the
+// webview's cookie jar (it rides loopback fetches), and the contentless
+// `AuthTokenIssued` notify the host emits on each `bridge:__Ready` and on
+// re-mint just flips this store's auth-readiness signal.
+const tokenStore = makeEmbeddedAuthStateStore()
 
 renderApp({
   history: createBrowserHistory(),
@@ -47,6 +35,19 @@ renderApp({
   // drift from the server. 127.0.0.1 matches the canonical `Host:` form
   // loopback requests carry to the gatekeeper.
   apiBaseUrl: WILDFLOWER_LOOPBACK_ORIGIN,
+  // No platform settings rows: the web logout row is meaningless here (the
+  // session is the host's loopback-owner trust, re-authenticated per request —
+  // clearing a cookie logs nothing out, and this origin doesn't serve
+  // `/access/logout`). The entry, not the settings route, encodes that.
+  platformSettingsItems: [],
+  // A 401 here is anomalous (a boot-race before the host token is minted, or an
+  // expired host token), NOT a prompt to sign in: the webview is
+  // host-authenticated by the loopback-owner trust, there's no user login to
+  // fall back to, and driving the device flow would spawn a spurious
+  // "authorize this device" consent against the owner's own device. So Tauri
+  // takes no 401 action — the query surfaces its error and the boot-race retry
+  // covers the common case.
+  redirectToDeviceLoginOnUnauthorized: false,
   // The host's granted scopes, injected by Vite (`vite.config.ts`) from the same
   // `tauri-shared-config.json` gatekeeper-rust reads to seed the first-party
   // client — so `NeedsAuthMessage`'s device-login request can't drift from the
@@ -68,8 +69,7 @@ renderApp({
       initial: {
         [GatekeeperBridge.name]: makeGatekeeperWebHandlers(
           writeIssuedToken,
-          setActiveDeviceUserCode,
-          pullCurrentTokenFromHost
+          setActiveDeviceUserCode
         ),
       },
     }).then((transport) => {

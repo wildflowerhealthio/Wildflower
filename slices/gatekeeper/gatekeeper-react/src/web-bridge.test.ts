@@ -1,50 +1,30 @@
-import { Effect } from 'effect'
+import { Effect, Equal } from 'effect'
+import { type AuthState, HostAuthed } from 'react-kitchen-sink'
 import { describe, expect, test, vi } from 'vite-plus/test'
+
 import { makeGatekeeperWebHandlers } from './web-bridge.ts'
 
 describe('makeGatekeeperWebHandlers', () => {
-  test('AuthTokenIssued pulls the current bearer and forwards a non-empty value through setToken', () => {
-    const setToken = vi.fn<(token: string | null) => void>()
+  test('AuthTokenIssued flips the auth-readiness signal to HostAuthed', () => {
+    const setAuthState = vi.fn<(signal: AuthState) => void>()
     const setActiveDeviceUserCode = vi.fn<(userCode: string | null) => void>()
-    const pull = vi.fn(() => Effect.succeed<string | null>('a-bearer'))
-    const handlers = makeGatekeeperWebHandlers(setToken, setActiveDeviceUserCode, pull)
+    const handlers = makeGatekeeperWebHandlers(setAuthState, setActiveDeviceUserCode)
 
     Effect.runSync(handlers.AuthTokenIssued({ _tag: 'AuthTokenIssued' }))
 
-    expect(pull).toHaveBeenCalledTimes(1)
-    expect(setToken).toHaveBeenCalledTimes(1)
-    expect(setToken).toHaveBeenCalledWith('a-bearer')
+    // `HostAuthed` — authed with no page-known expiry — is the only signal this
+    // platform can make: the credential is the host-synced cookie, never a JWT
+    // on the JS side.
+    expect(setAuthState).toHaveBeenCalledTimes(1)
+    const [signal] = setAuthState.mock.calls[0] ?? []
+    expect(signal !== undefined && Equal.equals(signal, HostAuthed())).toBe(true)
     expect(setActiveDeviceUserCode).not.toHaveBeenCalled()
   })
 
-  test('AuthTokenIssued leaves the store untouched when the pull resolves to null', () => {
-    const setToken = vi.fn<(token: string | null) => void>()
-    const setActiveDeviceUserCode = vi.fn<(userCode: string | null) => void>()
-    const pull = vi.fn(() => Effect.succeed<string | null>(null))
-    const handlers = makeGatekeeperWebHandlers(setToken, setActiveDeviceUserCode, pull)
-
-    Effect.runSync(handlers.AuthTokenIssued({ _tag: 'AuthTokenIssued' }))
-
-    expect(pull).toHaveBeenCalledTimes(1)
-    expect(setToken).not.toHaveBeenCalled()
-  })
-
-  test('AuthTokenIssued drops an empty-string pull without rotating the store', () => {
-    const setToken = vi.fn<(token: string | null) => void>()
-    const setActiveDeviceUserCode = vi.fn<(userCode: string | null) => void>()
-    const pull = vi.fn(() => Effect.succeed<string | null>(''))
-    const handlers = makeGatekeeperWebHandlers(setToken, setActiveDeviceUserCode, pull)
-
-    Effect.runSync(handlers.AuthTokenIssued({ _tag: 'AuthTokenIssued' }))
-
-    expect(setToken).not.toHaveBeenCalled()
-  })
-
   test('DeviceConsentRequested forwards a userCode into the active-consent setter', () => {
-    const setToken = vi.fn<(token: string | null) => void>()
+    const setAuthState = vi.fn<(signal: AuthState) => void>()
     const setActiveDeviceUserCode = vi.fn<(userCode: string | null) => void>()
-    const pull = vi.fn(() => Effect.succeed<string | null>(null))
-    const handlers = makeGatekeeperWebHandlers(setToken, setActiveDeviceUserCode, pull)
+    const handlers = makeGatekeeperWebHandlers(setAuthState, setActiveDeviceUserCode)
 
     Effect.runSync(
       handlers.DeviceConsentRequested({
@@ -55,15 +35,13 @@ describe('makeGatekeeperWebHandlers', () => {
 
     expect(setActiveDeviceUserCode).toHaveBeenCalledTimes(1)
     expect(setActiveDeviceUserCode).toHaveBeenCalledWith('ABC-123')
-    expect(setToken).not.toHaveBeenCalled()
-    expect(pull).not.toHaveBeenCalled()
+    expect(setAuthState).not.toHaveBeenCalled()
   })
 
   test('DeviceConsentRequested forwards null verbatim (the host-side clear sentinel)', () => {
-    const setToken = vi.fn<(token: string | null) => void>()
+    const setAuthState = vi.fn<(signal: AuthState) => void>()
     const setActiveDeviceUserCode = vi.fn<(userCode: string | null) => void>()
-    const pull = vi.fn(() => Effect.succeed<string | null>(null))
-    const handlers = makeGatekeeperWebHandlers(setToken, setActiveDeviceUserCode, pull)
+    const handlers = makeGatekeeperWebHandlers(setAuthState, setActiveDeviceUserCode)
 
     Effect.runSync(
       handlers.DeviceConsentRequested({ _tag: 'DeviceConsentRequested', userCode: null })

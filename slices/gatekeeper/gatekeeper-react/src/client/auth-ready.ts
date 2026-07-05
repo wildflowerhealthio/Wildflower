@@ -11,6 +11,10 @@ import {
   type Subscribable,
 } from 'effect'
 
+import { type AuthState, isAuthed } from 'react-kitchen-sink'
+
+import { buildDeviceLoginTarget } from '../device-login-route.ts'
+
 /**
  * Embedded WebView waited the full {@link EMBEDDED_TOKEN_TIMEOUT} for
  * the host to deliver an `AuthTokenIssued` over the gatekeeper bridge
@@ -21,8 +25,6 @@ class TokenTimeout extends Data.TaggedError('TokenTimeout')<Record<string, never
 
 /** How long the embedded entry waits for the host's bearer token. */
 const EMBEDDED_TOKEN_TIMEOUT = Duration.seconds(5)
-
-const isPresent = (token: string | null): token is string => token !== null && token !== ''
 
 /**
  * Reach through any `FiberFailure`-style wrapping to the underlying
@@ -91,12 +93,12 @@ const withFiberFailureUnwrap = async (run: () => Promise<void>): Promise<void> =
  * `Effect.fail`, so the failure channel carries TanStack's own
  * redirect sentinel. `Effect.runPromise` rejects with that sentinel;
  * the gate lets it bubble, which TanStack's `beforeLoad` machinery
- * interprets as a redirect. Keeping the destination literal inside
- * this module means the slice still owns the route path without
- * exporting a constant.
+ * interprets as a redirect. The destination comes from the shared
+ * {@link buildDeviceLoginTarget} so the gate and the app's 401 redirect
+ * can't drift on the route path or the `returnTo` param.
  */
 const webAuthReadyEffect = (
-  subscribable: Subscribable.Subscribable<string | null>,
+  subscribable: Subscribable.Subscribable<AuthState>,
   returnTo?: string
 ): Effect.Effect<void, AnyRedirect> =>
   pipe(
@@ -104,12 +106,10 @@ const webAuthReadyEffect = (
     // and `.changes` as a `Stream<T>` directly on the value (no
     // namespace helper). Read once for the synchronous web gate.
     subscribable.get,
-    Effect.flatMap((token) =>
-      isPresent(token)
+    Effect.flatMap((signal) =>
+      isAuthed(signal)
         ? Effect.void
-        : Effect.fail<AnyRedirect>(
-            redirect({ to: '/gatekeeper/device-login', search: { returnTo } })
-          )
+        : Effect.fail<AnyRedirect>(redirect(buildDeviceLoginTarget(returnTo)))
     )
   )
 
@@ -125,11 +125,11 @@ const webAuthReadyEffect = (
  * transport-ready promise.
  */
 const embeddedAuthReadyEffect = (
-  subscribable: Subscribable.Subscribable<string | null>
+  subscribable: Subscribable.Subscribable<AuthState>
 ): Effect.Effect<void, TokenTimeout> =>
   pipe(
     subscribable.changes,
-    Stream.filter(isPresent),
+    Stream.filter(isAuthed),
     Stream.runHead,
     Effect.timeoutFail({
       duration: EMBEDDED_TOKEN_TIMEOUT,
@@ -158,32 +158,29 @@ const embeddedAuthReadyEffect = (
  * raw redirect sentinel and not a runtime shell.
  */
 const makeAwaitWebAuthReady =
-  (
-    subscribable: Subscribable.Subscribable<string | null>
-  ): ((returnTo?: string) => Promise<void>) =>
+  (subscribable: Subscribable.Subscribable<AuthState>): ((returnTo?: string) => Promise<void>) =>
   (returnTo) =>
     withFiberFailureUnwrap(() => Effect.runPromise(webAuthReadyEffect(subscribable, returnTo)))
 
 /**
- * Embedded (`main-embedded`) auth-readiness factory. The host hands
- * the bearer token to the SPA over the gatekeeper bridge once the
- * page-side transport calls `transport.signalReady`, so on first
- * paint the embedded `AuthTokenStore.subscribable` is `null` AND the
- * transport may not yet be ready to even receive the host's
- * `AuthTokenIssued` message.
+ * Embedded (`main-embedded`) auth-readiness factory. The host flips the
+ * SPA's auth signal over the gatekeeper bridge once the page-side transport
+ * calls `transport.signalReady`, so on first paint the embedded
+ * `AuthStateStore.subscribable` is `Unauthed` AND the transport may not yet be
+ * ready to even receive the host's `AuthTokenIssued` message.
  *
  * Closes over the entry-supplied `subscribable` and `transportReady`
  * promise and returns the actual `awaitAuthReady` function the
  * route's `beforeLoad` calls. The returned function awaits
  * `transportReady` first (so the bridge handshake has had a chance to
  * flush the host's URL-param-encoded token messages), then waits the
- * ref going non-null for up to {@link EMBEDDED_TOKEN_TIMEOUT};
- * resolves on the first present value, rejects with
+ * signal becoming authed for up to {@link EMBEDDED_TOKEN_TIMEOUT};
+ * resolves on the first authed value, rejects with
  * {@link TokenTimeout} on timeout. Any `FiberFailure` wrapping is
  * unwrapped so callers see the raw `TokenTimeout` (or a defect-routed
  * equivalent) directly.
  *
- * @param subscribable - The entry's `AuthTokenStore.subscribable`.
+ * @param subscribable - The entry's `AuthStateStore.subscribable`.
  * @param transportReady - Promise that resolves once the page-side
  *   `BridgeTransport` has signalled the host (`signalReady`). The
  *   factory shape is what lets the route-level gate stay
@@ -193,7 +190,7 @@ const makeAwaitWebAuthReady =
  */
 const makeAwaitEmbeddedAuthReady =
   (
-    subscribable: Subscribable.Subscribable<string | null>,
+    subscribable: Subscribable.Subscribable<AuthState>,
     transportReady: Promise<void>
   ): (() => Promise<void>) =>
   () =>

@@ -39,6 +39,7 @@ impl OnDeviceWebviewHandle for NativeWebviewHandle {
     /// is useless to a remote one — so this impl doesn't re-check provenance.
     fn open(&self, title: String, url: String) {
         let handle = self.app.clone();
+
         tauri::async_runtime::spawn_blocking(move || {
             if let Err(error) = open_app_in_native_webview(&handle, title, url) {
                 log::error!("[launch] failed to open native webview for launch: {error}");
@@ -56,8 +57,8 @@ impl OnDeviceWebviewHandle for NativeWebviewHandle {
 /// independent of content, so building/navigating (`open_url`) and presenting
 /// (`show`) are two calls — mirroring the sniffer's present path. The apps
 /// launch flow has no host↔popup bridge of its own (no sniffing, no host→web
-/// reply), so it passes no `init_script` and a no-op event channel — the popup
-/// is self-contained and the user closes it from the native chrome. Both calls
+/// reply), so it injects no `init_script` and passes a no-op event channel — the
+/// popup is self-contained and the user closes it from the native chrome. Both calls
 /// are idempotent: a second launch while a popup is up navigates the existing
 /// content webview and re-shows it rather than stacking a new presentation.
 fn open_app_in_native_webview(
@@ -85,6 +86,8 @@ fn open_app_in_native_webview(
         .native_webview()
         .open_url(OpenRequest {
             url: url.to_owned(),
+            // No host↔popup bridge on the apps-launch path, so no document-start
+            // script is injected.
             init_script: None,
             native_webview_event_channel: channel,
             // Native chrome defaults its title to the URL host (e.g. a bare

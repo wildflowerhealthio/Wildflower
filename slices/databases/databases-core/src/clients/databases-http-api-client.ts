@@ -1,25 +1,29 @@
-import { HttpApiClient } from '@effect/platform'
-import { Context, type Effect } from 'effect'
+import { defineSliceHttpClient } from 'shared-structures-core/http-api-definition'
 
 import { DatabasesApi } from '../http-api-definition/index.ts'
 
-// Type-only references to extract the resolved client shape; tree-shaken at call
-// sites. Mirrors `apps-core/clients` and `tunnel-core/clients`.
-
-// oxlint-disable no-underscore-dangle
-const _bareClient = HttpApiClient.make(DatabasesApi)
-type DatabasesHttpApiClientShape = Effect.Effect.Success<typeof _bareClient>
-// oxlint-enable no-underscore-dangle
+const sliceClient = defineSliceHttpClient({
+  name: 'DatabasesHttpApiClient',
+  api: DatabasesApi,
+})
 
 /**
  * Effect Service providing the resolved `DatabasesApi` (owner-only) HttpApi
  * client — `ListDatabases` + `DeleteDatabase`. The host gates the `/databases`
- * surface (the Tauri app's Rust server checks the gatekeeper Owner token), so
- * the corresponding client layer must attach a bearer.
+ * surface behind the gatekeeper Owner check; auth rides the `HttpOnly` `wf_auth`
+ * cookie the browser sends with same-origin requests, so the client sets no
+ * `Authorization` header. Adapter layers (`databases-react`) provide `.layer`;
+ * call sites consume Effect-natively.
  */
-class DatabasesHttpApiClient extends Context.Tag('DatabasesHttpApiClient')<
-  DatabasesHttpApiClient,
-  DatabasesHttpApiClientShape
->() {}
+class DatabasesHttpApiClient extends sliceClient.ClientTag<DatabasesHttpApiClient>() {
+  static readonly layer = sliceClient.makeLayerFactory(DatabasesHttpApiClient)()
+}
+
+/**
+ * Resolved client shape — keyed off the Tag's `Service` accessor so a change to
+ * the underlying HttpApi flows through to consumers without re-deriving via
+ * `HttpApiClient.make`.
+ */
+type DatabasesHttpApiClientShape = typeof DatabasesHttpApiClient.Service
 
 export { DatabasesHttpApiClient, type DatabasesHttpApiClientShape }

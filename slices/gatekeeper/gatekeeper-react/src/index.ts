@@ -1,4 +1,9 @@
-export { gatekeeperSettingsItemsFragment } from './settings-fragments.ts'
+export {
+  gatekeeperLogoutSettingsItem,
+  gatekeeperSettingsItemsFragment,
+} from './settings-fragments.ts'
+
+export { buildDeviceLoginTarget, DEVICE_LOGIN_ROUTE } from './device-login-route.ts'
 
 export {
   buildGatekeeperClientLayer,
@@ -41,14 +46,15 @@ export {
   makeAwaitEmbeddedAuthReady,
   makeAwaitWebAuthReady,
   TokenTimeout,
+  unwrapFiberFailure,
 } from './client/auth-ready.ts'
 
 export {
-  consumeUrlTokenIntoLocalStorage,
-  makeEmbeddedAuthTokenStore,
-  makeWebAuthTokenStore,
-  TOKEN_STORAGE_KEY,
-} from './client/token-storage.ts'
+  AUTH_EXP_COOKIE_NAME,
+  makeEmbeddedAuthStateStore,
+  makeWebAuthStateStore,
+  readAuthedSignalFromCookie,
+} from './client/auth-state-store.ts'
 
 export {
   ActiveDeviceUserCodeProvider,

@@ -3,7 +3,14 @@ import tseslint from 'typescript-eslint'
 
 export default [
   {
-    ignores: ['**/dist/**', '**/dist-html/**', '**/coverage/**', '**/vendor/**', '**/tapes/**'],
+    ignores: [
+      '**/dist/**',
+      '**/dist-html/**',
+      '**/coverage/**',
+      '**/vendor/**',
+      '**/tapes/**',
+      '**/*.gen.*',
+    ],
   },
   {
     files: ['**/*.ts', '**/*.tsx'],

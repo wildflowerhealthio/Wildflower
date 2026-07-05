@@ -3,13 +3,18 @@ import { HandlerCoordinatorContext } from 'effect-messaging-react'
 import { NavigationBridgeHandler } from 'navigation-react'
 import { Fragment, type JSX } from 'react'
 import { usePromiseOrDefault } from 'react-kitchen-sink'
+import type { SettingsItem } from 'shared-structures-react'
 
+import { PlatformSettingsItemsProvider } from '../session/platform-settings-items.tsx'
 import { CollectorSenderForwarder } from './collector-sender-forwarder.tsx'
 import { stubTransport, TransportContext, type ReactTransport } from './transport-context.ts'
 
 interface AppRootTreeProps {
   readonly router: AnyRouter
   readonly transportPromise: Promise<ReactTransport>
+  /** The entry's platform-specific settings rows, provided to the tree so the
+   * `/settings` route can append them. See {@link PlatformSettingsItemsProvider}. */
+  readonly platformSettingsItems: readonly SettingsItem[]
 }
 
 /**
@@ -25,28 +30,34 @@ interface AppRootTreeProps {
  * `useLocation()` and emits `RouteChanged` through the current
  * transport's `sendMessage`.
  */
-const AppRootTree = ({ router, transportPromise }: AppRootTreeProps): JSX.Element => {
+const AppRootTree = ({
+  router,
+  transportPromise,
+  platformSettingsItems,
+}: AppRootTreeProps): JSX.Element => {
   const transport = usePromiseOrDefault(transportPromise, stubTransport, () => stubTransport)
 
   return (
-    <TransportContext.Provider value={transport}>
-      <HandlerCoordinatorContext.Provider value={transport.coordinator}>
-        <RouterProvider
-          router={router}
-          InnerWrap={({ children }) => (
-            <Fragment>
-              {/*
-               * NavigationBridgeHandler only needs `transport.sendMessage`
-               * (not the slice sender), so it sits beside the forwarder
-               * rather than buried inside it.
-               */}
-              <NavigationBridgeHandler sender={transport.sendMessage} />
-              <CollectorSenderForwarder>{children}</CollectorSenderForwarder>
-            </Fragment>
-          )}
-        />
-      </HandlerCoordinatorContext.Provider>
-    </TransportContext.Provider>
+    <PlatformSettingsItemsProvider items={platformSettingsItems}>
+      <TransportContext.Provider value={transport}>
+        <HandlerCoordinatorContext.Provider value={transport.coordinator}>
+          <RouterProvider
+            router={router}
+            InnerWrap={({ children }) => (
+              <Fragment>
+                {/*
+                 * NavigationBridgeHandler only needs `transport.sendMessage`
+                 * (not the slice sender), so it sits beside the forwarder
+                 * rather than buried inside it.
+                 */}
+                <NavigationBridgeHandler sender={transport.sendMessage} />
+                <CollectorSenderForwarder>{children}</CollectorSenderForwarder>
+              </Fragment>
+            )}
+          />
+        </HandlerCoordinatorContext.Provider>
+      </TransportContext.Provider>
+    </PlatformSettingsItemsProvider>
   )
 }
 

@@ -15,8 +15,9 @@ The Gatekeeper system allows an authorized **Owner** on one device to
 issue **Grants** to OAuth Clients (registered in the
 [`clients`](#client) table) requesting access on a separate device,
 allowing them to access data in a system. The host browser bootstraps
-onto a fresh deployment via either the RFC 8628 device authorization
-flow or a one-shot [bootstrap URL](#bootstrap-url).
+onto a fresh deployment via the RFC 8628 device authorization flow; an
+on-device shell (embedded/Tauri) instead receives a host-minted token
+directly (see [bootstrap URL](#bootstrap-url)).
 
 ## Roles
 
@@ -60,9 +61,9 @@ boundary.
 
 The `wildflower-host` first-party client is auto-seeded at startup by
 calling `seedFirstPartyClient` once the LiveStore is ready, with
-`kind: 'public'`, empty `redirectUris` (it gets tokens via the
-[bootstrap URL](#bootstrap-url), not OAuth redirects), and
-`allowedScopes: ['owner']`.
+`kind: 'public'`, empty `redirectUris` (it gets its token via the device
+flow or a host mint — see [bootstrap URL](#bootstrap-url) — not OAuth
+redirects), and `allowedScopes: ['owner']`.
 
 ### AuthorizationRequest
 
@@ -153,9 +154,11 @@ The authorization wall on every Owner-facing JSON endpoint
    verifies fine but doesn't pass this gate.
 
 HTML pages in the `gatekeeper-pages` group do **not** carry this
-middleware; they're public, and their JS gates UI client-side via the
-Bearer token in `localStorage` (which it uses on the JSON endpoints
-this middleware protects).
+middleware; they're public. The web SPA derives its auth state from the
+readable `wf_auth_exp` cookie and authenticates the JSON endpoints this
+middleware protects via the `HttpOnly` `wf_auth` cookie; the embedded/Tauri
+SPA sends an `Authorization: Bearer` header from its host-provided token
+instead.
 
 ### Device flow (RFC 8628)
 
@@ -181,18 +184,18 @@ the first successful token mint so a second poll returns `expired_token`.
 
 Replaces the deleted PIN flow's "operator gets onto a cold deployment"
 mechanism. The host process (gatekeeper-node, native-shell wrapper, dev
-server) has direct access to the signing key, mints a short-lived
-access token via `internal/jwt.ts:mintAccessToken`, and hands the URL
-to a browser. The browser's root shell consumes the token from a
-`?token=` query param, stashes it in `localStorage`, and strips it
-from the URL via `history.replaceState`.
+server) has direct access to the signing key and mints a short-lived owner
+access token via `internal/jwt.ts:mintAccessToken`. It verifies normally
+because `wildflower-host` is a registered [`Client`](#client) and
+`'owner' ∈ scope` — no new endpoint, no redemption table.
 
-The token verifies normally because `wildflower-host` is a registered
-[`Client`](#client) and `'owner' ∈ scope`. No new endpoint, no
-redemption table — the token's TTL (1 hour current dev default; the
-long-term value is unsettled) plus the URL strip plus a
-`Referrer-Policy: no-referrer` on static pages are the load-bearing
-defenses against URL leakage.
+The web SPA has no client-side URL-token consumption: its access token is
+the `HttpOnly` `wf_auth` cookie the server sets at token issuance, which JS
+can't plant from a `?token=` param. So a cold _web_ deployment is entered
+through the device flow; reviving a URL bootstrap would take a small server
+endpoint that accepts the minted token and sets the cookie. The
+embedded/Tauri path receives the host-minted token over the gatekeeper
+bridge instead.
 
 ### `gatekeeper-pages` group
 
@@ -279,7 +282,7 @@ holds.
 JWT claims (RFC 7519 §4.1.1, §4.1.3) — _who_ minted this token and _for
 whom_ it's intended. Today: `iss` is the `Origin` value (no path suffix);
 `aud` is `${origin}/fhir` for tokens minted off the OAuth code flow and
-just `origin` for tokens minted via the bootstrap URL.
+just `origin` for host-minted owner tokens.
 
 A loose intuition: **`iss` is "who I am, the signer"; `aud` is "who I'm
 talking to, the verifier."** A token signed for `aud=A` should not be
