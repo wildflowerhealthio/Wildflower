@@ -117,6 +117,14 @@ namespace WildflowerResourceType {
 
   /** The `*` wildcard resource as a shared singleton — prefer this to `parse('*')`. */
   export const wildcardResourceType: WildflowerResourceType = new Wildcard()
+
+  /**
+   * The labelled Wildflower admin resource types the picker lists as rows, in canonical
+   * order — the {@link Resource.all} set surfaced as scope-name strings. The Wildflower
+   * counterpart to {@link FhirResourceType.catalog}; the `*` wildcard row is injected by the
+   * grid, so it is deliberately not in the catalog.
+   */
+  export const catalog: readonly string[] = Resource.all
 }
 
 export default WildflowerResourceType
