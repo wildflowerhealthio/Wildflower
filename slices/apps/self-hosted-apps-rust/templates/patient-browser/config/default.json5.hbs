@@ -1,13 +1,18 @@
-// Handwritten Wildflower config for the embedded patient-browser SPA.
+// Handwritten Wildflower config TEMPLATE for the embedded patient-browser SPA.
 //
-// This file is committed and served verbatim at
-// `/installed-apps/patient-browser/config/default.json5` by self-hosted-apps-rust's
-// build.rs — it replaces the old approach of string-rewriting upstream's
-// `config/r4.json5` at build time, and overrides any `config/default.json5`
-// shipped in the vendored dist.
+// Committed under `templates/patient-browser/` and embedded at compile time
+// (`include_dir!` in self-hosted-apps-rust's lib.rs); rendered with Handlebars
+// per request and served at `/config/default.json5` on patient-browser's
+// origin, overriding any `config/default.json5` shipped in the vendored dist.
+//
+// Template variables (rendered per request from the caller's provenance):
+//   - `{{apiOrigin}}` -> the API origin the caller can reach: the loopback
+//     API origin (e.g. `http://127.0.0.1:8080`) for a direct/Tauri caller,
+//     or `https://<public_host>` (from the tunnel's configured public host)
+//     for a browser request forwarded by the trusted front.
 //
 // The two Wildflower-specific values are:
-//   - `url`     -> the on-device FHIR R4 server (was the public SMART sandbox)
+//   - `url`     -> the FHIR R4 server, `{{apiOrigin}}/fhir-r4`
 //   - `timeout` -> a long request timeout for slow local/first-load fetches
 //
 // TODO(needs upstream content): the previous build step served the FULL
@@ -18,7 +23,7 @@
 {
   server: {
     type: 'R4',
-    url: 'http://localhost:8080/fhir-r4',
+    url: '{{apiOrigin}}/fhir-r4',
     tags: [
       {
         key: 'synthea-5-2019',

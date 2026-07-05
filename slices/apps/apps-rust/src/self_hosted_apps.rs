@@ -19,7 +19,9 @@
 //! self-hosted apps (the table is read-only, seeded by migration).
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
+use shared_structures_rust::tunnel_service::TunnelService;
 use shared_structures_server_rust::{
     LoopbackHostname, ProxyTable, ServerError, StaticHostJob, StaticHostsService,
 };
@@ -39,18 +41,34 @@ pub struct SelfHostedAppsService {
     /// The directory whose per-app `content_folder` subdirectories hold each
     /// app's served files.
     apps_dir: PathBuf,
+    /// The per-request template-render inputs (loopback API origin + tunnel)
+    /// threaded to every app router, so each app's committed templates can
+    /// render `apiOrigin` per caller.
+    template_context: self_hosted_apps_rust::InstalledAppContext,
 }
 
 impl SelfHostedAppsService {
     /// `loopback` is the hostname each app's listener binds on; `apps_dir` holds
     /// the per-app `content_folder` file directories; `proxy_table` is shared with
-    /// the reverse proxy.
+    /// the reverse proxy. `loopback_api_origin` (no trailing slash) and `tunnel`
+    /// are the per-request template-render inputs each app router threads through
+    /// to render `apiOrigin` — loopback vs. forwarded — for its committed templates.
     #[must_use]
-    pub fn new(loopback: LoopbackHostname, apps_dir: PathBuf, proxy_table: ProxyTable) -> Self {
+    pub fn new(
+        loopback: LoopbackHostname,
+        apps_dir: PathBuf,
+        proxy_table: ProxyTable,
+        loopback_api_origin: String,
+        tunnel: Arc<dyn TunnelService>,
+    ) -> Self {
         Self {
             static_hosts: StaticHostsService::new(loopback),
             proxy_table,
             apps_dir,
+            template_context: self_hosted_apps_rust::InstalledAppContext {
+                loopback_api_origin,
+                tunnel,
+            },
         }
     }
 
@@ -69,6 +87,7 @@ impl SelfHostedAppsService {
         let service = self_hosted_apps_rust::setup_installed_app(
             &app.id,
             self.apps_dir.join(&app.content_folder),
+            self.template_context.clone(),
         )
         .layer(CorsLayer::very_permissive());
         if let Err(error) = self
@@ -223,6 +242,10 @@ mod tests {
             LoopbackHostname::new("127.0.0.1"),
             dir.clone(),
             table.clone(),
+            "http://127.0.0.1:8080".to_owned(),
+            Arc::new(StubTunnel {
+                public_host: "demo.example.com".to_owned(),
+            }),
         );
         let app = SelfHostedApp {
             id: "patient-browser".to_owned(),

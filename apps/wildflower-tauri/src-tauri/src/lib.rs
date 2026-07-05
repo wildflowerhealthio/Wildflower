@@ -457,7 +457,16 @@ async fn run_server(
     // can't drift. Seed-driven today (the static `self_hosted_apps` catalogue); the
     // start/stop calls also work at runtime for restartless install. A failure
     // to bring one app online must not abort startup, so it's logged and skipped.
-    let self_hosted = SelfHostedAppsService::new(loopback, installed_apps_dir, proxy_table);
+    // The loopback API origin + tunnel feed the per-request template rendering
+    // (`apiOrigin`) in each app's router — loopback callers get the loopback
+    // origin, forwarded callers `https://<public_host>`.
+    let self_hosted = SelfHostedAppsService::new(
+        loopback,
+        installed_apps_dir,
+        proxy_table,
+        loopback_origin,
+        Arc::clone(&tunnel_service),
+    );
     for app in &apps.self_hosted_apps {
         if let Err(error) = self_hosted.start(app).await {
             tauri_plugin_log::log::warn!("failed to start self-hosted app {}: {error}", app.id);

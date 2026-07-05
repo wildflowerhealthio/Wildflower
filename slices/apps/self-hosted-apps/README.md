@@ -33,17 +33,26 @@ no Same-Origin Policy share with the API). Serving at the root also means the
 upstream build's root-absolute `/assets/`, `/img/`, `/config/` URLs are correct
 as-is — there is **no HTML rebase**.
 
-The one patient-browser-specific touch is the **committed config override**:
-`/config/default.json5` is served from the handwritten, committed
-`self-hosted-apps-rust/patient-browser-config/default.json5` (embedded via
-`include_str!`), overriding any copy on disk — so the on-device FHIR URL
-(`/fhir-r4`) and timeout live in a readable, version-controlled file rather than
-a brittle rewrite of the upstream build. The override is keyed on the app id;
-other apps just get whatever's on disk.
+The one app-specific touch is the **committed templates tree**. Each file lives
+at `self-hosted-apps-rust/templates/<app-id>/<serve-path>.hbs` and is embedded
+into the binary at compile time via `include_dir!`; a matching template is
+rendered per request with Handlebars and served at `/<serve-path>` on that app's
+origin, winning (case-insensitively) over any same-path file on disk. Rendering
+is keyed on the request's provenance: a direct loopback caller (the Tauri
+webview) gets the loopback API origin (e.g. `http://127.0.0.1:8080`), while a
+request forwarded by the trusted front (nginx sets the `Forwarded` header before
+the request enters the tunnel) gets `https://<public_host>` from the tunnel's
+configured public host. That value is exposed to templates as the single
+`{{apiOrigin}}` variable. Today the only template is patient-browser's SMART
+config, `templates/patient-browser/config/default.json5.hbs`, whose FHIR `url` is
+`{{apiOrigin}}/fhir-r4` — so the on-device FHIR URL lives in a readable,
+version-controlled file rather than a brittle rewrite of the upstream build.
+Adding a new template file needs no code change, just a Rust rebuild (the tree
+is embedded at compile time), and other apps just get whatever's on disk.
 
 To run it, copy a patient-browser build into
 `<app-data>/installed-apps/patient-browser/` so that `index.html`, `assets/`,
-`img/`, etc. sit directly under it. The committed config is always served
+`img/`, etc. sit directly under it. The committed template is always served
 regardless; the rest of the routes 404 until the directory holds the build.
 
 ## Vendoring / updating the assets

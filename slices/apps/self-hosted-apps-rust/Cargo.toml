@@ -17,16 +17,37 @@ publish.workspace = true
 # absent/empty the routes 404 — the crate still compiles.
 [dependencies]
 axum.workspace = true
+# Request-time rendering of the committed `templates/<app-id>/…​.hbs` tree
+# (strict mode, HTML-escaping off — the outputs are json5/config, not HTML).
+handlebars.workspace = true
+# Embeds the whole `templates/` tree at compile time; adding a template file
+# needs no registry edit, but still needs a Rust rebuild to be picked up.
+include_dir.workspace = true
+# Content-type for rendered templates, keyed on the serve path's extension
+# (ServeDir does its own detection for plain files).
+mime_guess = "2"
+# `request_provenance` (the trusted front's `Forwarded` contract) picks the
+# per-request template origin; `TunnelService` supplies the public host for
+# forwarded callers. No Tauri/GTK anywhere in that dependency path.
+shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = [
+  "served-origin",
+  "tunnel-service",
+] }
 # `ServeDir` (with `mime_guess` content-type detection + traversal protection)
-# does the static file serving; we layer the committed patient-browser config
-# override on top. The workspace pins tower-http for `cors`; this crate adds
-# `fs` for `ServeDir`.
+# does the static file serving; we layer the committed template rendering on
+# top. The workspace pins tower-http for `cors`; this crate adds `fs` for
+# `ServeDir`.
 tower-http = { workspace = true, features = ["fs"] }
+# Render failures are logged, never panicked.
+tracing = "0.1"
 
 [lints]
 workspace = true
 
 [dev-dependencies]
+# The tests' stub `TunnelService` impl needs the same object-safe async trait
+# machinery the contract is declared with.
+async-trait = "0.1"
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 http = "1"
 http-body-util = "0.1"
