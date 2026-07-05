@@ -761,13 +761,36 @@ async fn auth_code_grant_happy_path_end_to_end() {
     );
     let res = g.router.clone().oneshot(approve).await.expect("oneshot");
     assert_eq!(res.status(), StatusCode::OK);
-    assert_eq!(
-        body_json(res.into_body()).await,
-        serde_json::json!({ "status": "approved" })
+    // The code-flow approve response carries the client callback URL so an
+    // approving surface that is itself the requesting client can finish the
+    // flow inline. It must point at the client's `redirect_uri` and carry both
+    // the redeemable `code` and the client's `state`.
+    let approve_body = body_json(res.into_body()).await;
+    assert_eq!(approve_body["status"], "approved");
+    let approve_redirect = approve_body["redirect"].as_str().expect("approve redirect");
+    assert!(
+        approve_redirect.starts_with("https://app.example/cb"),
+        "approve redirect should target the client redirect_uri, got {approve_redirect}"
     );
+    let (approve_code, approve_state) = {
+        let url = Url::parse(approve_redirect).expect("approve redirect url");
+        let code = url
+            .query_pairs()
+            .find(|(k, _)| k == "code")
+            .map(|(_, v)| v.into_owned())
+            .expect("approve code param");
+        let state = url
+            .query_pairs()
+            .find(|(k, _)| k == "state")
+            .map(|(_, v)| v.into_owned())
+            .expect("approve state param");
+        (code, state)
+    };
+    assert_eq!(approve_state, "xyz");
 
     // 3. The status poll now reports Approved and hands back the client
-    //    redirect carrying the redeemable `code`.
+    //    redirect carrying the redeemable `code`. It must agree with the code
+    //    the approve response already returned.
     let res = g
         .router
         .clone()
@@ -787,6 +810,10 @@ async fn auth_code_grant_happy_path_end_to_end() {
         .find(|(k, _)| k == "code")
         .map(|(_, v)| v.into_owned())
         .expect("code param");
+    assert_eq!(
+        code, approve_code,
+        "approve-response code and poll code must agree"
+    );
 
     // 4. /token redeems the code with the matching PKCE verifier.
     let body = format!(
@@ -813,6 +840,88 @@ async fn auth_code_grant_happy_path_end_to_end() {
         .is_empty());
     // No `offline_access` in the grant → no standing credential.
     assert!(token.get("refresh_token").is_none());
+}
+
+/// The Owner may *narrow* a requested scope at consent time: a request for
+/// `patient/Observation.rs` approved as the tighter `patient/Observation.s` is
+/// still ⊆ the request, so `grantable_scopes` keeps it (coverage, not exact
+/// equality). The flow must approve — not deny — and the minted token must
+/// carry the narrowed `patient/Observation.s`. Guards the covers-based
+/// `is_requested` change in `scopes_rust::grantable_scopes`.
+#[tokio::test]
+async fn auth_code_grant_owner_narrows_requested_scope() {
+    let (g, host_owner_token, db) = spin_up();
+    // The client is allowed the broader `.rs`; the request asks for `.rs`.
+    seed_client_with_redirect(
+        &db,
+        "test-app",
+        "https://app.example/cb",
+        &["patient/Observation.rs"],
+    );
+    let challenge = compute_code_challenge(CODE_VERIFIER);
+
+    // 1. /authorize parks a pending request for `patient/Observation.rs`.
+    let query = format!(
+        "response_type=code&code_challenge_method=S256&client_id=test-app&\
+         scope=patient%2FObservation.rs&code_challenge={challenge}&\
+         redirect_uri=https%3A%2F%2Fapp.example%2Fcb&state=xyz"
+    );
+    let res = g
+        .router
+        .clone()
+        .oneshot(loopback_request(
+            Request::get(format!("/oauth/authorize?{query}")),
+            Body::empty(),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::FOUND);
+    let polling = res
+        .headers()
+        .get("location")
+        .and_then(|v| v.to_str().ok())
+        .expect("location")
+        .to_string();
+    let request_id = polling.rsplit('/').next().expect("request id").to_string();
+
+    // 2. Owner approves the *narrowed* `.s` — tighter than the requested `.rs`.
+    let approve = loopback_request(
+        Request::post(format!("/access/oauth-consents/{request_id}/approve"))
+            .header("host", "127.0.0.1")
+            .header("authorization", format!("Bearer {host_owner_token}"))
+            .header("content-type", "application/json"),
+        Body::from(r#"{"approvedScopes":["patient/Observation.s"]}"#),
+    );
+    let res = g.router.clone().oneshot(approve).await.expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+    // Approved (NOT denied): the narrowed scope is covered by the request.
+    let approve_body = body_json(res.into_body()).await;
+    assert_eq!(approve_body["status"], "approved");
+    let code = Url::parse(approve_body["redirect"].as_str().expect("redirect"))
+        .expect("redirect url")
+        .query_pairs()
+        .find(|(k, _)| k == "code")
+        .map(|(_, v)| v.into_owned())
+        .expect("code param");
+
+    // 3. /token redeems the code; the grant carries the narrowed `.s`.
+    let body = format!(
+        "grant_type=authorization_code&client_id=test-app&code={code}&\
+         code_verifier={CODE_VERIFIER}&redirect_uri=https%3A%2F%2Fapp.example%2Fcb"
+    );
+    let res = g
+        .router
+        .clone()
+        .oneshot(loopback_request(
+            Request::post("/oauth/token")
+                .header("content-type", "application/x-www-form-urlencoded"),
+            Body::from(body),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+    let token = body_json(res.into_body()).await;
+    assert_eq!(token["scope"], "patient/Observation.s");
 }
 
 /// Decode a JWT's payload (the middle base64url-no-pad segment) to JSON. The

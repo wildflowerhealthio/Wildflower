@@ -27,10 +27,20 @@ pub(crate) struct ApproveBody {
 }
 
 /// Result the Owner UI sees after approving or denying a consent prompt.
+///
+/// A code-flow approval carries the client callback URL (`code` + `state`
+/// appended to the client's `redirect_uri`) so the approving surface can
+/// complete the flow directly when the approver *is* the requesting client —
+/// no separate poll of `/oauth/authorize/{id}` needed. Device-flow approvals
+/// have no client `redirect_uri`, so `redirect` is `None` and (thanks to
+/// `skip_serializing_if`) omitted from the wire entirely.
 #[derive(Debug, Serialize)]
 #[serde(tag = "status", rename_all = "lowercase")]
 pub(crate) enum ConsentResult {
-    Approved,
+    Approved {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        redirect: Option<String>,
+    },
     Denied,
 }
 

@@ -12,6 +12,7 @@ use super::internal::{
 use crate::crypto_util::random_token::generate_authorization_code;
 use crate::domain::authorization_code::AuthorizationCode;
 use crate::http::handlers::consent::{deny_consent, ApproveBody, ConsentResult};
+use crate::http::handlers::oauth::build_client_redirect_url;
 use crate::http::response_templates::HandlerError;
 use crate::http::state::AppState;
 use persistence_rust::{JsonColumn, UriColumn};
@@ -98,5 +99,15 @@ async fn handle_approve_oauth_consent(
         body.patient.as_deref(),
     )
     .map_err(|e| HandlerError::internal("upsert_grant failed", e))?;
-    Ok(Json(ConsentResult::Approved))
+
+    // Hand back the client callback URL so an approving surface that *is* the
+    // requesting client can complete the flow inline, without polling
+    // `/oauth/authorize/{id}`. Mirrors the `Approved` arm of
+    // `authorization_status`. A request with no `client_state` isn't a
+    // code-flow redirect target, so there's no redirect to build — the client
+    // falls back to the polling stream.
+    let redirect = request.client_state.as_deref().map(|client_state| {
+        build_client_redirect_url(&redirect_uri, &authorization_code.code, client_state)
+    });
+    Ok(Json(ConsentResult::Approved { redirect }))
 }
