@@ -62,8 +62,9 @@ pub fn try_access_token_from_request(headers: &HeaderMap) -> Option<(&str, Acces
     if let Some(bearer) = try_bearer_token_from_headers(headers) {
         return Some((bearer, AccessTokenSource::Bearer));
     }
-    let cookie = crate::http::cookies::cookie_value(headers, crate::http::cookies::AUTH_COOKIE_NAME)
-        .filter(|token| !token.is_empty())?;
+    let cookie =
+        crate::http::cookies::cookie_value(headers, crate::http::cookies::AUTH_COOKIE_NAME)
+            .filter(|token| !token.is_empty())?;
     Some((cookie, AccessTokenSource::Cookie))
 }
 

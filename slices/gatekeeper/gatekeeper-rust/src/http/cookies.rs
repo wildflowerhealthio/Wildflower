@@ -100,7 +100,10 @@ pub(crate) fn append_session_cookies(
 /// used when the owner session ends (`POST /access/logout`). `secure` must match
 /// the set form's `Secure` so Safari accepts the clear over http loopback too.
 pub(crate) fn append_clear_session_cookies(headers: &mut HeaderMap, secure: bool) {
-    append_cookie(headers, &session_cookie(AUTH_COOKIE_NAME, "", true, 0, secure));
+    append_cookie(
+        headers,
+        &session_cookie(AUTH_COOKIE_NAME, "", true, 0, secure),
+    );
     append_cookie(
         headers,
         &session_cookie(AUTH_EXP_COOKIE_NAME, "", false, 0, secure),
@@ -225,7 +228,9 @@ mod tests {
                     .strip_prefix(['\'', '"'])?
                     .strip_suffix(['\'', '"'])
             })
-            .expect("AUTH_EXP_COOKIE_NAME literal not found in auth-state-store.ts — did it rename?");
+            .expect(
+                "AUTH_EXP_COOKIE_NAME literal not found in auth-state-store.ts — did it rename?",
+            );
         assert_eq!(
             ts_name, AUTH_EXP_COOKIE_NAME,
             "TS web store and gatekeeper-rust disagree on the wf_auth_exp cookie name"

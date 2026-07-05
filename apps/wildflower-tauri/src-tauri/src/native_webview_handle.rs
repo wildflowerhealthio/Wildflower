@@ -61,7 +61,11 @@ impl OnDeviceWebviewHandle for NativeWebviewHandle {
 /// popup is self-contained and the user closes it from the native chrome. Both calls
 /// are idempotent: a second launch while a popup is up navigates the existing
 /// content webview and re-shows it rather than stacking a new presentation.
-fn open_app_in_native_webview(handle: &AppHandle, title: String, url: String) -> anyhow::Result<()> {
+fn open_app_in_native_webview(
+    handle: &AppHandle,
+    title: String,
+    url: String,
+) -> anyhow::Result<()> {
     use tauri::ipc::Channel;
     use tauri_plugin_native_webview::{NativeWebviewEvent, NativeWebviewExt, OpenRequest};
 

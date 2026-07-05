@@ -103,7 +103,9 @@ pub(super) async fn handle_token_request(
             );
             response
         }
-        Ok(DispatchedToken { response: token, .. }) => token.into_response(),
+        Ok(DispatchedToken {
+            response: token, ..
+        }) => token.into_response(),
         Err(error) => error.into_response(),
     }
 }

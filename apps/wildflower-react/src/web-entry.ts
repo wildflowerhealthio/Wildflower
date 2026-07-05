@@ -29,8 +29,8 @@ import { stubTransport } from './bridges/transport-context.ts'
  *   loader's `await context.transport` is a microtask. Both setters are
  *   ignored — there's no host to push `AuthTokenIssued` or
  *   `DeviceConsentRequested` from on standalone web.
- * - `platformSettingsItems`: the web logout row — a same-origin `POST
- *   /access/logout` form. Web-only: on Tauri the session is
+ * - `platformSettingsItems`: the web logout row — a same-origin
+ *   `POST /access/logout` form. Web-only: on Tauri the session is
  *   connection-provenance, so a cookie logout is a no-op.
  * - `redirectToDeviceLoginOnUnauthorized`: standalone web HAS a device-login
  *   flow, so a 401 that outlives the boot-race retry redirects the user there.

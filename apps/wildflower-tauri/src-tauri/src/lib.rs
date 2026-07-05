@@ -10,7 +10,8 @@ use axum::Router;
 use emr_rust::{setup_fhir_r4, EmrConfig};
 use gatekeeper_rust::{
     ensure_bearer_header, is_pre_auth_public_path, layer_router_with_gatekeeper_auth_gating,
-    layer_router_with_loopback_peer_gating, setup_gatekeeper, verify_owner_bearer, GatekeeperConfig,
+    layer_router_with_loopback_peer_gating, setup_gatekeeper, verify_owner_bearer,
+    GatekeeperConfig,
 };
 use shared_structures_rust::ServerRuntimeConfig;
 use shared_structures_server_rust::{LoopbackHostname, ProxyTable, TunnelSubdomainReverseProxy};
