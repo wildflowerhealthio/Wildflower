@@ -162,14 +162,17 @@ pub fn setup_gatekeeper(
         config.granted_scopes
     );
     let store = seeding::open_and_seed_store(conn, &config.granted_scopes)?;
-    // The owner token's `aud` is the bare loopback origin (no trailing slash) —
-    // the same string `served_origin_for` returns for a loopback request, so the
-    // mint and the `require_auth` validation agree on the audience.
-    let loopback_origin = config.loopback_base_url.origin().ascii_serialization();
+    // The owner token's `aud` is [`shared_structures_rust::CANONICAL_ISSUER`],
+    // like its `iss`: the host presents this one token over loopback (the
+    // provenance-injected bearer) AND at the tunnel origin (the popup's seeded
+    // `wf_auth` cookie, #256), so a served-origin audience can't work — it
+    // would bind the token to exactly one of the two. `require_auth` accepts
+    // the canonical audience alongside the per-request served-origin pair. See
+    // `docs/Origins/Explanation.md`.
     let host_owner_token = seeding::mint_host_owner_token(
         &store,
         shared_structures_rust::CANONICAL_ISSUER,
-        &loopback_origin,
+        shared_structures_rust::CANONICAL_ISSUER,
         HOST_OWNER_TOKEN_TTL,
         &config.granted_scopes,
     )

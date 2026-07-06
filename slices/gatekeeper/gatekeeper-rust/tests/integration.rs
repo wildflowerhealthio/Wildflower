@@ -190,6 +190,28 @@ async fn access_grants_with_owner_token_returns_empty_list() {
     assert_eq!(body, serde_json::json!([]));
 }
 
+/// The host owner token must authenticate on a FORWARDED (tunnel-origin)
+/// request too — it rides the `wf_auth` cookie seeded into the cloud-app popup
+/// (#256), where the served origin is the tunnel public host, not loopback.
+/// Its canonical `aud` (= `CANONICAL_ISSUER`) is what makes one token valid on
+/// both; a served-origin audience would 401 here.
+#[tokio::test]
+async fn access_grants_with_owner_token_passes_on_forwarded_tunnel_origin() {
+    let (g, host_owner_token, _db) = spin_up();
+    let req = loopback_request(
+        Request::get("/access/grants")
+            .header("host", "127.0.0.1")
+            .header(
+                "forwarded",
+                "host=ruth.wildflowerhealth.example;proto=https",
+            )
+            .header("authorization", format!("Bearer {host_owner_token}")),
+        Body::empty(),
+    );
+    let res = g.router.oneshot(req).await.expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+}
+
 #[tokio::test]
 async fn get_unknown_grant_returns_404() {
     let (g, host_owner_token, _db) = spin_up();

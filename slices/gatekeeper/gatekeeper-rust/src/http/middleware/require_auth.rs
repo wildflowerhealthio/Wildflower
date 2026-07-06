@@ -125,10 +125,20 @@ pub fn verify_auth_token_claims(
         .store
         .all_signing_keys()
         .map_err(VerifyError::KeyStoreUnavailable)?;
-    let accepted = vec![format!("{origin}/fhir-r4"), origin.to_string()];
+    let accepted = vec![
+        format!("{origin}/fhir-r4"),
+        origin.to_string(),
+        // The host owner token's canonical audience: the host presents that
+        // one token over loopback AND at the tunnel origin (the popup's
+        // seeded `wf_auth` cookie, #256), so it can't carry a served-origin
+        // `aud`. Only gatekeeper mints tokens, and only the host owner token
+        // uses the canonical audience (OAuth-minted tokens always get
+        // `{origin}/fhir-r4`).
+        shared_structures_rust::CANONICAL_ISSUER.to_string(),
+    ];
     // `iss` must equal [`shared_structures_rust::CANONICAL_ISSUER`]; `aud` is
-    // checked per-request against this origin (and its `/fhir-r4` base). See
-    // `docs/Origins/Explanation.md`.
+    // checked per-request against this origin (and its `/fhir-r4` base), plus
+    // the canonical audience. See `docs/Origins/Explanation.md`.
     verify_jwt(
         token,
         &keys,
