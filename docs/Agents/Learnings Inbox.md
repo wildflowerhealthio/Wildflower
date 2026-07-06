@@ -6,6 +6,18 @@ _Last triaged 2026-07-04 — durable lessons were promoted to `Strategies.md`, t
 
 <!-- Append new entries below this line -->
 
+## Tauri `Webview::set_cookie` must not be called from a main-thread event handler; queue it from off-main and let FIFO order the navigate
+
+**Discovered during**: claude/issue-256-implementation — seeding the owner `wf_auth` cookie into the native-webview popup
+**Learning**: wry's macOS `set_cookie`/`cookies_for_url` block by re-entrantly pumping the main `NSRunLoop` (`wait_for_blocking_operation`) until the `WKHTTPCookieStore` completion fires. Tauri's `Webview::set_cookie` sends a `WebviewMessage::SetCookie` to the main loop — but `send_user_message` executes **inline** when already on the main thread, so calling it from inside a `run_on_main_thread` callback (or any event handler) nests the run-loop pump inside tao's event handler: observed as both child webviews' "web content process terminated" and a hard app deadlock. From a NON-main thread the message queues normally and the main loop handles it on a clean iteration. `SetCookie` has no reply channel (fire-and-forget), but the loop is FIFO — `set_cookie`, `set_cookie`, `navigate` queued in order guarantees every cookie commits before the navigation's first request. So: build the webview at `about:blank` on the main thread, then seed + navigate from the caller thread.
+**Suggested destination**: plugins/tauri-plugin-native-webview/docs/Explanation.md (applied this session) / Strategies.md
+
+## NSHTTPCookie boolean properties are presence-keyed: `cookie::Cookie::set_http_only(false)` makes the cookie HttpOnly on macOS
+
+**Discovered during**: claude/issue-256-implementation — the JS-readable `wf_auth_exp` companion landed HttpOnly in the popup
+**Learning**: The `cookie` crate records `set_http_only(false)` / `set_secure(false)` as `Some(false)`, and wry's macOS conversion (`cookie_into_wkwebview`) inserts the NSHTTPCookie `"HttpOnly"`/`Secure` property for **any** `Some`, with string value "TRUE"/"FALSE" — but Foundation keys off the property's _presence_, so a `Some(false)` cookie comes out HttpOnly. (The crate's `to_string()` renders `Some(false)` as no attribute, so `Set-Cookie`-based paths are immune; only the typed-Cookie → NSHTTPCookie path hits this.) When building a `cookie::Cookie` destined for `Webview::set_cookie`, set boolean attributes only when true and leave them `None` otherwise, and pin `cookie.http_only() == None` (not `Some(false)`) in tests.
+**Suggested destination**: unsure (native-webview plugin docs; wry upstream issue candidate)
+
 ## Vite+ 0.2 upgrade: peer deps dodge `pnpm.overrides`; every plugin-hosting package must declare `vite: catalog:`; the vitest alias line is dead
 
 **Discovered during**: vite-plus 0.1.21 → 0.2.2 / @vitejs/plugin-react 5 → 6 upgrade
