@@ -210,6 +210,7 @@ fn open_app_in_native_webview(
     // reacts to `Hidden`/`Disposed`; the plugin's own teardown backstop reclaims
     // an idle-hidden popup.
     let channel: Channel<NativeWebviewEvent> = Channel::new(|_event| Ok(()));
+    let seeded = !cookies.is_empty();
     handle
         .native_webview()
         .open_url(OpenRequest {
@@ -226,6 +227,24 @@ fn open_app_in_native_webview(
             cookies,
         })
         .map_err(|error| anyhow::anyhow!("tauri-plugin-native-webview open_url failed: {error}"))?;
+    // Desktop `open_url` returns only after build + cookie seed + navigate, so
+    // a read-back here observes the store the first request just rode. Names
+    // only (never values); a mismatch with what was seeded is the smoking gun
+    // for a platform cookie-write failure.
+    #[cfg(desktop)]
+    if seeded {
+        if let Ok(parsed) = tauri::Url::parse(&url) {
+            match handle.native_webview().content_cookie_names_for_url(parsed) {
+                Ok(Some(names)) => log::info!(
+                    "[launch] popup cookie store for the launch URL now holds: {names:?}"
+                ),
+                Ok(None) => log::warn!("[launch] cookie read-back: no content webview open"),
+                Err(error) => log::warn!("[launch] cookie read-back failed: {error}"),
+            }
+        }
+    }
+    #[cfg(not(desktop))]
+    let _ = seeded;
     handle
         .native_webview()
         .show()

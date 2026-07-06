@@ -253,6 +253,25 @@ impl<R: Runtime> NativeWebview<R> {
             .map_err(|error| crate::Error::Internal(error.to_string()))?
     }
 
+    /// Cookie **names** currently visible to the content webview for `url` —
+    /// a read-back for verifying the pre-navigation cookie seeding (see
+    /// [`OpenRequest`]'s `cookies`). Names only, never values: the point is
+    /// observability ("did `wf_auth` land?"), not exfiltrating the jar.
+    /// `Ok(None)` when no content webview is open. Desktop-only (mobile has no
+    /// equivalent surface; wry's Android cookie read is a stub anyway).
+    pub fn content_cookie_names_for_url(&self, url: Url) -> crate::Result<Option<Vec<String>>> {
+        let Some(content) = self.0.get_webview(CONTENT_WEBVIEW_LABEL) else {
+            return Ok(None);
+        };
+        let cookies = content.cookies_for_url(url)?;
+        Ok(Some(
+            cookies
+                .iter()
+                .map(|cookie| cookie.name().to_owned())
+                .collect(),
+        ))
+    }
+
     /// Evaluate JS in the content webview. Returns an error if no native webview is
     /// open (matches the mobile contract — `evaluate_js` is content-bound, so
     /// there's no graceful fallback).
