@@ -45,7 +45,7 @@ type Options = {
  * {@link Options.includeWildcard} applies. `scopeRequest` is `null` for open mode.
  */
 const build = <K extends Scope.MultiScope.Kind>(
-  configuration: Scope.MultiScope.ConfigurationFor<K>,
+  configuration: Scope.MultiScope.ResourceScopeConfigurationFor<K>,
   grant: Scope.MultiScope,
   scopeRequest: ScopeRequest.ScopeRequest | null,
   context: Scope.MultiScope.ContextOf<K>,

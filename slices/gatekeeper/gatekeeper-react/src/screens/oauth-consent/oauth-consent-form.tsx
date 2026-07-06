@@ -4,15 +4,14 @@ import { useMemo, useState } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { Field, pageLayoutStyles, RadioGroup } from 'react-tundraish'
 import { GrantDraft, Scope } from 'scopes-core'
-import type { GrantDraft as GrantDraftModel, ScopeRequest } from 'scopes-core'
+import type { GrantDraft as GrantDraftModel } from 'scopes-core'
 import {
-  buildGrid,
   ExclusionRow,
   FlagToggleRow,
   PermissionGrid,
   PermissionPicker,
   PermissionStatement,
-  type Grid,
+  Grid,
 } from 'scopes-react'
 
 import { useOAuthConsentMutation } from '../../queries/index.ts'
@@ -37,40 +36,6 @@ interface OAuthConsentFormProps {
 /** Which projection the form is showing — plain-language statements or the resource×interaction grid. */
 type View = 'plain' | 'detail'
 
-/** Project one section's grid over the current draft ({@link buildGrid} per section variant). */
-const buildSectionGrid = (
-  section: ConsentSection,
-  draft: GrantDraftModel.GrantDraft,
-  request: ScopeRequest.ScopeRequest
-): Grid<
-  Scope.MultiScope.ResourceOf<Scope.MultiScope.Kind>,
-  Scope.MultiScope.InteractionOf<Scope.MultiScope.Kind>
-> => buildGrid(section.section, draft, request, { includeWildcard: true })
-
-/**
- * Apply one cell toggle to the draft. The grid hands back the section variant's own typed
- * resource and interaction (from {@link buildGrid}), so this delegates straight to
- * {@link GrantDraft.toggleItem} within the variant's own partition — no re-parse, no cast.
- */
-const applyToggle = <K extends Scope.MultiScope.Kind>(
-  section: {
-    readonly configuration: Scope.MultiScope.ConfigurationFor<K>
-    readonly context: Scope.MultiScope.ContextOf<K>
-  },
-  draft: GrantDraftModel.GrantDraft,
-  resource: Scope.MultiScope.ResourceOf<K>,
-  itemId: Scope.MultiScope.InteractionOf<K>
-): GrantDraftModel.GrantDraft =>
-  GrantDraft.toggleItem(draft, section.configuration, section.context, resource, itemId)
-
-/** Apply a cell toggle for a section of any variant (delegates to {@link applyToggle}). */
-const applyToggleForSection = (
-  section: ConsentSection,
-  draft: GrantDraftModel.GrantDraft,
-  resource: Scope.MultiScope.ResourceOf<Scope.MultiScope.Kind>,
-  itemId: Scope.MultiScope.InteractionOf<Scope.MultiScope.Kind>
-): GrantDraftModel.GrantDraft => applyToggle(section.section, draft, resource, itemId)
-
 /** Whether a section addresses the launch patient's own records (FHIR, patient context). */
 const isPatientSection = (section: ConsentSection): boolean =>
   section.kind !== 'wildflower' && section.section.context.serialize() === 'patient'
@@ -85,7 +50,7 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
   // is requested.
   const hasPatientScope = useMemo(
     () =>
-      [...request.requested.fhirV1, ...request.requested.fhirV2].some((scope) =>
+      Scope.MultiScope.fhirScopes(request.requested).some((scope) =>
         scope.hasContext(Scope.Contexts.Fhir.patient)
       ) || request.requested.known.some((known) => known.name === 'launch/patient'),
     [request]
@@ -106,7 +71,7 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
     () =>
       sections.map((section) => ({
         section,
-        grid: buildSectionGrid(section, draft, request),
+        grid: Grid.make(section.section, draft, request, { includeWildcard: true }),
       })),
     [sections, draft, request]
   )
@@ -123,7 +88,15 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
     resource: Scope.MultiScope.ResourceOf<Scope.MultiScope.Kind>,
     itemId: Scope.MultiScope.InteractionOf<Scope.MultiScope.Kind>
   ): void => {
-    setDraft((previous) => applyToggleForSection(section, previous, resource, itemId))
+    setDraft((previous) =>
+      GrantDraft.toggleItem(
+        previous,
+        section.section.configuration,
+        section.section.context,
+        resource,
+        itemId
+      )
+    )
   }
 
   const toggleUnknown = (raw: string): void => {

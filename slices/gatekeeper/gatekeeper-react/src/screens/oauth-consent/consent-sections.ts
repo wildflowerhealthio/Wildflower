@@ -15,7 +15,7 @@
 
 import { Grant, Scope } from 'scopes-core'
 import type { ScopeRequest } from 'scopes-core'
-import type { Section } from 'scopes-react'
+import type { Grid } from 'scopes-react'
 
 import type { Consent } from './types.ts'
 
@@ -28,7 +28,7 @@ type ConsentSectionOf<K extends Scope.MultiScope.Kind> = {
   readonly title: string
   /** Section tag chip (`FHIR` / `Admin`). */
   readonly chip: string
-  readonly section: Section<K>
+  readonly section: Grid.Section<K>
 }
 
 /** A derived consent section over any resource variant — a discriminated union on {@link ConsentSectionOf.kind}. */
@@ -92,7 +92,7 @@ const fhirTitle = (level: Scope.Contexts.Fhir.Level, multipleContexts: boolean):
 const fhirSectionsFor = <K extends 'fhirV1' | 'fhirV2'>(
   request: ScopeRequest.ScopeRequest,
   kind: K,
-  configuration: Scope.MultiScope.ConfigurationFor<K>,
+  configuration: Scope.MultiScope.ResourceScopeConfigurationFor<K>,
   multipleContexts: boolean
 ): ConsentSectionOf<K>[] => {
   const partition = Scope.MultiScope.partition(request.requested, kind)

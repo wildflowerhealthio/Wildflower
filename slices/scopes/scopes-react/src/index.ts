@@ -21,15 +21,7 @@ export {
   type PickerItem,
   type PermissionPickerProps,
 } from './molecules/permission-picker.tsx'
-export {
-  buildGrid,
-  type Grid,
-  type GridColumn,
-  type Section,
-  type GridOptions,
-  type GridRow,
-  type GridItem,
-} from './organisms/grid-model.ts'
+export * as Grid from './organisms/grid-model.ts'
 export { PermissionGrid, type PermissionGridProps } from './organisms/permission-grid.tsx'
 export {
   PermissionStatement,

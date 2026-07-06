@@ -13,17 +13,17 @@ import type { Cell, GrantDraft, Scope, ScopeRequest } from 'scopes-core'
 import type { PickerItem } from '../molecules/permission-picker.tsx'
 
 /** One selectable control on a grid row — a permission item plus its resolved cell state. */
-type GridItem<TInteractions extends string> = PickerItem<TInteractions>
+type Item<TInteractions extends string> = PickerItem<TInteractions>
 
 /** One column header — an interaction from the section's permission style (`{ id, name, code }`). */
-interface GridColumn<TInteractions extends string> {
+interface Column<TInteractions extends string> {
   readonly id: TInteractions
   readonly name: string
   readonly code: string
 }
 
 /** One rendered grid row — uniform across permission forms (5 cruds cells, or 2 v1 words). */
-interface GridRow<TResource extends Scope.ResourceType.Any, TInteractions extends string> {
+interface Row<TResource extends Scope.ResourceType.Any, TInteractions extends string> {
   /** The row's typed resource (`Observation`, the `*` wildcard, …) — serialize it for the row key. */
   readonly resource: TResource
   /** The 1:1 display label (or the wildcard label for `*`). */
@@ -33,32 +33,32 @@ interface GridRow<TResource extends Scope.ResourceType.Any, TInteractions extend
   /** Interaction cells (`grid`) or an inline multiselect (`inline`, v1 words). */
   readonly layout: 'grid' | 'inline'
   /** The row's controls, in display order. */
-  readonly items: readonly GridItem<TInteractions>[]
+  readonly items: readonly Item<TInteractions>[]
 }
 
 /** Everything {@link PermissionGrid} renders: the section's interaction columns + its projected rows. */
 interface Grid<TResource extends Scope.ResourceType.Any, TInteractions extends string> {
   /** The interaction columns, in canonical order (`spec.md §1`) — 5 for cruds, 2 for v1 words. */
-  readonly columns: readonly GridColumn<TInteractions>[]
-  readonly rows: readonly GridRow<TResource, TInteractions>[]
+  readonly columns: readonly Column<TInteractions>[]
+  readonly rows: readonly Row<TResource, TInteractions>[]
 }
 
 /**
  * One grid section — a single scope variant, its context, and the resources it lists
  * (`spec.md §1`). Generic over the single partition literal `K`: the `configuration` and
  * `context` are recovered from it by indexed access, so a Section is always *one concrete
- * variant* (narrow the {@link Scope.ScopeConfiguration} union by `.id` before building one)
+ * variant* (narrow the {@link Scope.ResourceScopeConfiguration} union by `.id` before building one)
  * and every read stays within that variant's homogeneous partition.
  */
 interface Section<K extends Scope.MultiScope.Kind> {
-  readonly configuration: Scope.MultiScope.ConfigurationFor<K>
+  readonly configuration: Scope.MultiScope.ResourceScopeConfigurationFor<K>
   /** The section's context — `new Fhir('patient')`, `new Wildflower()`, … */
   readonly context: Scope.MultiScope.ContextOf<K>
   /** The resource names to list as rows (`spec.md §4`), e.g. `Scope.ResourceType.Fhir.catalog`. */
   readonly catalog: readonly string[]
 }
 
-/** Options for {@link buildGrid}. */
+/** Options for {@link make}. */
 interface GridOptions {
   /**
    * Offer the live `*` wildcard row — always in open mode; in request mode only when
@@ -74,7 +74,7 @@ interface GridOptions {
  * a leading `*` wildcard row — when {@link Rows.build}'s policy offers it — drives the
  * union + lock of the rows beneath it (§3).
  */
-const buildGrid = <K extends Scope.MultiScope.Kind>(
+const make = <K extends Scope.MultiScope.Kind>(
   section: Section<K>,
   grant: GrantDraft.GrantDraft,
   scopeRequest: ScopeRequest.ScopeRequest | null,
@@ -100,7 +100,7 @@ const buildGrid = <K extends Scope.MultiScope.Kind>(
   const rows = Rows.build(configuration, grant, scopeRequest, context, catalog, {
     includeWildcard,
   }).map(
-    (row): GridRow<Scope.MultiScope.ResourceOf<K>, Scope.MultiScope.InteractionOf<K>> => ({
+    (row): Row<Scope.MultiScope.ResourceOf<K>, Scope.MultiScope.InteractionOf<K>> => ({
       resource: row.resource,
       label: row.resource.singularLabel(),
       code: row.stored?.serialize() ?? `${context.serialize()}/${row.resource.serialize()}`,
@@ -124,12 +124,4 @@ const buildGrid = <K extends Scope.MultiScope.Kind>(
   }
 }
 
-export {
-  type GridItem,
-  type GridColumn,
-  type GridRow,
-  type Grid,
-  type Section,
-  type GridOptions,
-  buildGrid,
-}
+export { type Item, type Column, type Row, type Grid, type Section, type GridOptions, make }

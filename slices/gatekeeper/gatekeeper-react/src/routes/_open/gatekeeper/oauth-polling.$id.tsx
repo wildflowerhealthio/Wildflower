@@ -2,11 +2,14 @@
 // plugin keys off it), and `PollingResult` is exported separately as a
 // unit-test seam — so a consolidated single export isn't possible here.
 import { createFileRoute } from '@tanstack/react-router'
-import { type AuthorizationStatus, pollAuthorizationStatus } from 'gatekeeper-core/clients'
+import {
+  type AuthorizationStatus,
+  type AuthorizationStatusError,
+  pollAuthorizationStatus,
+} from 'gatekeeper-core/clients'
 import {
   Component,
   Suspense,
-  useEffect,
   useMemo,
   useState,
   type ErrorInfo,
@@ -17,11 +20,12 @@ import {
   cn,
   isAuthed,
   useAuthStateSubscribable,
-  useStream,
+  useStreamWithDefault,
   useSubscribable,
 } from 'react-kitchen-sink'
-import { AsyncErrorView, Awaited } from 'react-tundraish'
+import { AsyncErrorView } from 'react-tundraish'
 
+import { Match, Stream } from 'effect'
 import { useOAuthConsentQuery } from '../../../queries/index.ts'
 import type { OAuthConsentResult } from '../../../queries/index.ts'
 import { useGatekeeperRuntimeLayer } from '../../../router-context.ts'
@@ -50,58 +54,94 @@ const ErrorComponent = (error: unknown): JSX.Element => (
  */
 function OAuthPollingScreen({ id }: { readonly id: string }): JSX.Element {
   const runtimeLayer = useGatekeeperRuntimeLayer()
-  const stream = useMemo(() => pollAuthorizationStatus(id), [id])
-  const statusPromise = useStream(stream, runtimeLayer)
-
-  return (
-    <Suspense fallback={<PollingSpinner />}>
-      {/*
-        Unlike the query routes, this one surfaces a read failure through
-        the inline `<Awaited errorTitle>` boundary, NOT a route
-        `errorComponent`. The route has no `loader` — the data is a
-        long-lived `Stream` whose rejection is delivered as the promise
-        this `<Awaited>` boundary owns, so a route `errorComponent` (which
-        fires for loader/beforeLoad failures) would never see it. Keep the
-        inline boundary; don't "fix" it into an `errorComponent`.
-      */}
-      <Awaited promise={statusPromise} resetKey={id} errorComponent={ErrorComponent}>
-        {(status) => <PollingResult status={status} id={id} />}
-      </Awaited>
-    </Suspense>
+  const stream = useMemo(
+    () =>
+      pollAuthorizationStatus(id).pipe(
+        // Fold every typed error the poll can fail with into a terminal
+        // `error` status, so the stream never rejects and `PollingResult`'s
+        // `error` branch renders the message. Exhaustive over the union: the
+        // two declared endpoint errors (discriminated on `error`) plus the
+        // framework transport/decode errors (discriminated on `_tag`).
+        Stream.catchAll(
+          Match.type<AuthorizationStatusError>().pipe(
+            Match.withReturnType<Stream.Stream<AuthorizationStatus, never>>(),
+            Match.when({ error: 'AuthorizationRequestNotFound' }, ({ id: notFoundId }) =>
+              Stream.succeed({
+                status: 'error',
+                message: `Authorization request "${notFoundId}" was not found.`,
+              })
+            ),
+            Match.when({ error: 'server_error' }, ({ error_description }) =>
+              Stream.succeed({
+                status: 'error',
+                message: error_description ?? 'The authorization server encountered an error.',
+              })
+            ),
+            Match.tag('RequestError', () =>
+              Stream.succeed({
+                status: 'error',
+                message: 'Could not reach the authorization server.',
+              })
+            ),
+            Match.tag('ResponseError', () =>
+              Stream.succeed({
+                status: 'error',
+                message: 'The authorization server returned an unexpected response.',
+              })
+            ),
+            Match.tag('ParseError', 'HttpApiDecodeError', () =>
+              Stream.succeed({
+                status: 'error',
+                message: 'The authorization status response could not be parsed.',
+              })
+            ),
+            Match.exhaustive
+          )
+        ),
+        Stream.provideLayer(runtimeLayer)
+      ),
+    [id, runtimeLayer]
   )
-}
 
-interface PollingResultProps {
-  readonly status: AuthorizationStatus
-  readonly id: string
-}
+  const status = useStreamWithDefault<
+    | {
+        readonly status: 'pending'
+      }
+    | {
+        readonly status: 'denied'
+        readonly redirect: string | null | undefined
+      }
+    | {
+        readonly status: 'approved'
+        readonly redirect: string
+      }
+    | {
+        readonly status: 'error'
+        readonly message: string
+      }
+    | {
+        status: 'error'
+        message: string
+      }
+    | {
+        readonly status: 'initial-loading'
+      }
+  >(
+    stream,
+    useMemo(() => ({ status: 'initial-loading' }), [])
+  )
 
-// Exported for unit tests: the deterministic status→view mapping each
-// stream emission flows into, tested directly without the Suspense/fiber
-// timing of the full stream subscription.
-const PollingResult = ({ status, id }: PollingResultProps): JSX.Element => {
-  useEffect(() => {
-    if (status.status === 'approved') {
-      window.location.replace(status.redirect)
-    }
-  }, [status])
-
-  if (status.status === 'denied') {
-    return <DeclinedView />
-  }
-  if (status.status === 'error') {
-    return (
-      <div className={styles['poll']}>
-        <h1 className={cn(pageLayout['poll-declined'], 'text-heading-6')}>Authorization Error</h1>
-        <p className="text-body-2">{status.message}</p>
-      </div>
-    )
-  }
-  // Pending heartbeat or post-approved-pre-redirect. An already-authenticated
-  // viewer can consent inline here; an unauthenticated one keeps waiting for a
-  // phone-side approval — `PendingView` decides between the two. Either way the
-  // polling stream stays mounted, so a phone approval still advances the page.
-  return <PendingView id={id} />
+  return Match.value(status).pipe(
+    Match.when({ status: 'initial-loading' }, () => <PollingSpinner />),
+    Match.when({ status: 'pending' }, () => <PendingView id={id} />),
+    Match.when({ status: 'approved' }, ({ redirect }) => {
+      window.location.replace(redirect)
+      return <PollingSpinner />
+    }),
+    Match.when({ status: 'denied' }, () => <DeclinedView />),
+    Match.when({ status: 'error' }, ({ message }) => ErrorComponent(message)),
+    Match.exhaustive
+  )
 }
 
 /** The declined terminal copy, shared by `PollingResult`'s `denied` branch and
@@ -252,4 +292,4 @@ const Route = createFileRoute('/_open/gatekeeper/oauth-polling/$id')({
   component: OAuthPollingRoute,
 })
 
-export { Route, PollingResult, PendingView }
+export { Route, PendingView }

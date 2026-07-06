@@ -41,15 +41,15 @@ type Cell = {
  * and {@link Rows.build} (a whole grid section), so a row's five cells don't re-scan the
  * partitions five times each.
  *
- * The folds reproduce {@link Scope.ScopeConfiguration.scopesGrantInteraction} exactly:
+ * The folds reproduce {@link Scope.ResourceScopeConfiguration.scopesGrantInteraction} exactly:
  * a scope contributes to a cell iff its context covers the section's and its resource is
  * the cell's own (`key`) or the `*` wildcard bucket; the wildcard bucket covering a
  * non-wildcard row is precisely the §3 wildcard lock. The `required` fold is
  * exact-context and unions duplicate rows for one resource (consistent with
- * {@link Scope.ScopeConfiguration.toggleItem}'s merge).
+ * {@link Scope.ResourceScopeConfiguration.toggleItem}'s merge).
  */
 const resolver = <K extends Scope.MultiScope.Kind>(
-  configuration: Scope.MultiScope.ConfigurationFor<K>,
+  configuration: Scope.MultiScope.ResourceScopeConfigurationFor<K>,
   grant: Scope.MultiScope,
   scopeRequest: ScopeRequest.ScopeRequest | null,
   context: Scope.MultiScope.ContextOf<K>
@@ -133,7 +133,7 @@ const resolver = <K extends Scope.MultiScope.Kind>(
  * resolver (or {@link Rows.build}) once instead.
  */
 const forItem = <K extends Scope.MultiScope.Kind>(
-  configuration: Scope.MultiScope.ConfigurationFor<K>,
+  configuration: Scope.MultiScope.ResourceScopeConfigurationFor<K>,
   grant: Scope.MultiScope,
   scopeRequest: ScopeRequest.ScopeRequest | null,
   context: Scope.MultiScope.ContextOf<K>,

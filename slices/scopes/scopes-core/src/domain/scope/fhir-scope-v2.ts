@@ -2,11 +2,11 @@
 
 import * as Contexts from './contexts'
 import * as Permission from './permission'
+import { ResourceScopeConfiguration } from './resource-scope-configuration.ts'
+import { type BaseResourceScope } from './resource-scope-configuration.ts'
 import * as ResourceType from './resource-type'
-import { ScopeConfiguration } from './scope-configuration.ts'
-import { type BaseResourceScope } from './scope-configuration.ts'
 
-const FhirV2ResourceScopeConfiguration = new ScopeConfiguration<
+const FhirV2ResourceScopeConfiguration = new ResourceScopeConfiguration<
   Contexts.Fhir,
   ResourceType.Fhir,
   Permission.Cruds.Interaction,

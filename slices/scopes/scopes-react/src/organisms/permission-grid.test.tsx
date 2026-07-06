@@ -3,7 +3,7 @@ import { userEvent } from '@testing-library/user-event'
 import { Grant, type GrantDraft, Scope, type ScopeRequest } from 'scopes-core'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import { buildGrid } from './grid-model.ts'
+import * as Grid from './grid-model.ts'
 import { PermissionGrid } from './permission-grid.tsx'
 
 afterEach(() => {
@@ -28,7 +28,7 @@ const request = (requested: string[], required: string[] = []): ScopeRequest.Sco
 
 describe('PermissionGrid', () => {
   it('renders the interaction columns and a cell per interaction', () => {
-    const grid = buildGrid(
+    const grid = Grid.make(
       { configuration: v2, context: patient, catalog: ['Observation'] },
       draft(['patient/Observation.r']),
       null
@@ -49,7 +49,7 @@ describe('PermissionGrid', () => {
     const onToggleItem = vi.fn()
     const user = userEvent.setup()
     // patient/*.r locks Read on every specific row.
-    const grid = buildGrid(
+    const grid = Grid.make(
       { configuration: v2, context: patient, catalog: ['Observation'] },
       draft(['patient/*.r', 'patient/Observation.cruds']),
       null
@@ -71,7 +71,7 @@ describe('PermissionGrid', () => {
   it('renders a v1 word row as a Read/Write multiselect instead of interaction cells', async () => {
     const onToggleItem = vi.fn()
     const user = userEvent.setup()
-    const grid = buildGrid(
+    const grid = Grid.make(
       { configuration: v1, context: patient, catalog: ['Observation'] },
       draft(['patient/Observation.read']),
       request(['patient/Observation.*'])

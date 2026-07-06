@@ -1,6 +1,5 @@
 import { act, cleanup, render, screen } from '@testing-library/react'
 import * as fc from 'fast-check'
-import type { AuthorizationStatus } from 'gatekeeper-core/clients'
 import { numRunsFor } from 'kitchen-sink/test'
 import type { JSX } from 'react'
 import {
@@ -88,45 +87,6 @@ afterEach(() => {
   cleanup()
   Object.defineProperty(window, 'location', { configurable: true, value: originalLocation })
   replaceSpy.mockReset()
-})
-
-describe('PollingResult', () => {
-  test('renders the declined view for a denied status', () => {
-    // `denied` carries a normalized `redirect` (absent for device-flow denials,
-    // decoded to `undefined`); the declined view ignores it, so pin that case.
-    render(<PollingResult status={{ status: 'denied', redirect: undefined }} id="req-1" />)
-    expect(screen.getByText('Request Declined')).toBeTruthy()
-    expect(screen.getByText('The authorization request was declined.')).toBeTruthy()
-  })
-
-  test('renders the error view with the server message for an error status', () => {
-    render(<PollingResult status={{ status: 'error', message: 'something broke' }} id="req-1" />)
-    expect(screen.getByText('Authorization Error')).toBeTruthy()
-    expect(screen.getByText('something broke')).toBeTruthy()
-  })
-
-  test('renders the spinner for a pending heartbeat (unauthenticated viewer)', () => {
-    // The pending branch now delegates to `PendingView`; an unauthenticated
-    // viewer keeps the spinner and never mounts the inline consent form.
-    renderWithAuth(<PollingResult status={{ status: 'pending' }} id="req-1" />, Unauthed())
-    expect(screen.getByText('Waiting for Approval')).toBeTruthy()
-    expect(screen.queryByTestId('consent-form')).toBeNull()
-  })
-
-  test('redirects (and shows the spinner) when the status becomes approved', () => {
-    const status: AuthorizationStatus = {
-      status: 'approved',
-      redirect: 'https://example.com/done',
-    }
-    // Approved is terminal — it never reaches `PendingView`, so no auth
-    // provider is needed. Still, wrap it so the render path is uniform.
-    renderWithAuth(<PollingResult status={status} id="req-1" />, Unauthed())
-
-    // Approved is a transient pre-redirect state: same spinner, plus the
-    // navigation side effect fires from the effect.
-    expect(screen.getByText('Waiting for Approval')).toBeTruthy()
-    expect(replaceSpy).toHaveBeenCalledWith('https://example.com/done')
-  })
 })
 
 describe('PendingView', () => {

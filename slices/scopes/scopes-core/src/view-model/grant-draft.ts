@@ -65,7 +65,7 @@ const resourcePartitionUpdaters: {
 
 /**
  * Toggle one interaction cell on a draft, returning the NEW draft — delegates the partition
- * edit to the variant's {@link Scope.ScopeConfiguration.toggleItem} (add / remove, split-row
+ * edit to the variant's {@link Scope.ResourceScopeConfiguration.toggleItem} (add / remove, split-row
  * merge, emptied-row drop, wildcard-lock no-op all live there) and writes the resulting
  * partition back immutably via {@link resourcePartitionUpdaters}. Generic over the single
  * partition literal `K`, so `configuration`, `context`, `resource` and `itemId` are all the
@@ -73,7 +73,7 @@ const resourcePartitionUpdaters: {
  */
 const toggleItem = <K extends Scope.MultiScope.Kind>(
   draft: GrantDraft,
-  configuration: Scope.MultiScope.ConfigurationFor<K>,
+  configuration: Scope.MultiScope.ResourceScopeConfigurationFor<K>,
   context: Scope.MultiScope.ContextOf<K>,
   resource: Scope.MultiScope.ResourceOf<K>,
   itemId: Scope.MultiScope.InteractionOf<K>

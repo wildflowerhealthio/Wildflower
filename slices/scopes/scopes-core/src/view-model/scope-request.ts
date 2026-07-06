@@ -28,8 +28,8 @@ const flagRequired = (scopeRequest: ScopeRequest | null, flag: Scope.Known.Name)
 
 /**
  * The invariant `granted ⊆ requested` (`spec.md §2`). True in open mode. Every resource
- * partition must be {@link Scope.ScopeConfiguration.within} the requested envelope, and
- * every granted flag must be requested.
+ * partition must be {@link Scope.ResourceScopeConfiguration.within} the requested envelope,
+ * and every granted flag must be requested.
  */
 const isWithin = (grant: GrantDraft.GrantDraft, scopeRequest: ScopeRequest | null): boolean => {
   if (scopeRequest === null) return true
