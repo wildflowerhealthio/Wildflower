@@ -16,16 +16,17 @@ use axum::response::{IntoResponse, Response};
 use http_body_util::Empty;
 use hyper_util::rt::TokioIo;
 use tokio::net::TcpStream;
+use url::Url;
 
-use crate::params::LoopbackHostname;
+use crate::params::loopback_authority;
 use crate::reverse_proxy::is_hop_by_hop;
 
-/// Proxy an `Upgrade` request (e.g. WebSocket) to `http://{loopback}:{port}` by
-/// splicing the two upgraded connections. Returns the upstream's `101` (which
-/// drives the inbound upgrade), or relays the upstream's response if it declines
-/// the upgrade. A connect/handshake failure is a `502`.
+/// Proxy an `Upgrade` request (e.g. WebSocket) to the `{host}:{port}` picked out
+/// of `loopback_base_url` by splicing the two upgraded connections. Returns the
+/// upstream's `101` (which drives the inbound upgrade), or relays the upstream's
+/// response if it declines the upgrade. A connect/handshake failure is a `502`.
 pub(crate) async fn forward_upgrade(
-    loopback: &LoopbackHostname,
+    loopback_base_url: &Url,
     port: u16,
     mut req: Request,
 ) -> Response {
@@ -33,7 +34,7 @@ pub(crate) async fn forward_upgrade(
     // resolves once we return the `101` below and the server performs the upgrade.
     let inbound_upgrade = hyper::upgrade::on(&mut req);
 
-    let addr = loopback.authority(port);
+    let addr = loopback_authority(loopback_base_url, port);
     let stream = match TcpStream::connect(&addr).await {
         Ok(stream) => stream,
         Err(error) => {

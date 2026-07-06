@@ -14,7 +14,7 @@ use gatekeeper_rust::{
     GatekeeperConfig,
 };
 use shared_structures_rust::ServerRuntimeConfig;
-use shared_structures_server_rust::{LoopbackHostname, ProxyTable, TunnelSubdomainReverseProxy};
+use shared_structures_server_rust::{ProxyTable, TunnelSubdomainReverseProxy};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tauri::Manager;
@@ -380,12 +380,6 @@ async fn run_server(
     // the apps slice registers each self-hosted app into. A cloneable `Arc`
     // handle, so the registration the slice does is visible to the live proxy.
     let proxy_table = ProxyTable::new();
-    let loopback = LoopbackHostname::new(
-        runtime
-            .loopback_base_url_ref()
-            .host_str()
-            .expect("loopback_base_url must have host"),
-    );
 
     // The whole API stack — built first because it's the reverse proxy's
     // fallback, handed in at construction. A forwarded request that doesn't
@@ -441,7 +435,7 @@ async fn run_server(
     // is reverse-proxied to that app's loopback port (the same listener a local
     // launch reaches); loopback and apex-host traffic runs the api_router.
     let proxy = TunnelSubdomainReverseProxy::new(
-        loopback.clone(),
+        loopback_base_url.clone(),
         Arc::clone(&tunnel_service),
         api_router,
         proxy_table.clone(),
@@ -461,10 +455,9 @@ async fn run_server(
     // (`apiOrigin`) in each app's router — loopback callers get the loopback
     // origin, forwarded callers `https://<public_host>`.
     let self_hosted = SelfHostedAppsService::new(
-        loopback,
+        &loopback_base_url,
         installed_apps_dir,
         proxy_table,
-        loopback_origin,
         Arc::clone(&tunnel_service),
     );
     for app in &apps.self_hosted_apps {

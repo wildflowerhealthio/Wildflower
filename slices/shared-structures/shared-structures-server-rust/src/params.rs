@@ -1,31 +1,20 @@
-//! Typed parameters for the server infra — a bare loopback hostname and a
-//! single static-host job — so "host vs hostname vs origin" is unmistakable at
-//! the call site.
+//! Typed parameters for the server infra — the loopback bind/forward authority
+//! helper and a single static-host job — so "host vs hostname vs origin" is
+//! unmistakable at the call site.
 
-/// A bare loopback hostname — no scheme, no port (e.g. `127.0.0.1`). Distinct
-/// from a loopback *origin* (`http://127.0.0.1:8080`) and from a `host:port`
-/// authority; the type never holds a port on its own. Combined with a per-job
-/// `port` to form a bind address or a forward target via [`Self::authority`].
-#[derive(Debug, Clone)]
-pub struct LoopbackHostname(String);
+use url::Url;
 
-impl LoopbackHostname {
-    #[must_use]
-    pub fn new(hostname: impl Into<String>) -> Self {
-        Self(hostname.into())
-    }
-
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-
-    /// `{hostname}:{port}` — the one place a port is joined onto the hostname
-    /// (the listener bind address and the reverse-proxy forward target).
-    #[must_use]
-    pub(crate) fn authority(&self, port: u16) -> String {
-        format!("{}:{}", self.0, port)
-    }
+/// The `{host}:{port}` authority a loopback listener binds on (or a reverse-proxy
+/// forward targets), built from the host's loopback base `url` and a per-job
+/// `port`. This is the one place a port is joined onto the loopback host, and the
+/// only place the base URL is reduced to a string — right at the OS/reqwest
+/// boundary. The base URL's *own* port is ignored; each static host carries its
+/// own. Falls back to `127.0.0.1` only if the URL somehow carries no host (a
+/// non-special scheme the loopback URL never uses), matching
+/// `ServerRuntimeConfig`'s loopback derivation.
+#[must_use]
+pub(crate) fn loopback_authority(url: &Url, port: u16) -> String {
+    format!("{}:{}", url.host_str().unwrap_or("127.0.0.1"), port)
 }
 
 /// One static host to serve on a dedicated loopback port: a stable `id` (also

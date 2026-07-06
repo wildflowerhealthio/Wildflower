@@ -47,6 +47,9 @@ http-body-util = "0.1"
 # shared lock — the derive keeps Display/Error boilerplate out.
 thiserror = "2"
 tracing = "0.1"
+# The loopback base URL threaded in from the host; the bind / forward authority
+# (`{host}:{port}`) is picked out of it only at the OS/reqwest boundary.
+url = { version = "2" }
 
 [lints]
 workspace = true

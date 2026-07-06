@@ -24,10 +24,11 @@ use axum::Router;
 use shared_structures_rust::served_origin::{request_provenance, RequestProvenance};
 use shared_structures_rust::tunnel_service::{TunnelLiveness, TunnelService};
 use tokio::sync::watch;
+use url::Url;
 
 use crate::error::ServerError;
 use crate::host_match::match_forwarded_origin;
-use crate::params::LoopbackHostname;
+use crate::params::loopback_authority;
 
 /// Hop-by-hop headers (RFC 7230 §6.1) — meaningful only for a single transport
 /// hop, never forwarded. `host` is dropped separately (the HTTP client sets it
@@ -108,7 +109,7 @@ struct ReverseProxyState {
     /// off the tunnel slice's locked settings read. The public host only
     /// changes on a settings write, which republishes the watch.
     public_host_rx: watch::Receiver<TunnelLiveness>,
-    loopback: LoopbackHostname,
+    loopback_base_url: Url,
     client: reqwest::Client,
 }
 
@@ -131,11 +132,11 @@ pub struct TunnelSubdomainReverseProxy {
 impl TunnelSubdomainReverseProxy {
     /// Construct with the fallback router up front. Shares `table` with the
     /// caller (the orchestrator registers hosts on the same handle), subscribes
-    /// to `tunnel`'s liveness watch for the live public host, and forwards to
-    /// `{loopback}:{port}`.
+    /// to `tunnel`'s liveness watch for the live public host, and forwards to the
+    /// `{host}:{port}` picked out of `loopback_base_url`.
     #[must_use]
     pub fn new(
-        loopback: LoopbackHostname,
+        loopback_base_url: Url,
         tunnel: Arc<dyn TunnelService>,
         fallback: Router,
         table: ProxyTable,
@@ -144,7 +145,7 @@ impl TunnelSubdomainReverseProxy {
             state: Arc::new(ReverseProxyState {
                 table,
                 public_host_rx: tunnel.subscribe(),
-                loopback,
+                loopback_base_url,
                 client: proxy_client(),
             }),
             fallback,
@@ -191,7 +192,7 @@ async fn maybe_forward_to_subdomain(
     // Connection upgrades (WebSocket) can't go through the reqwest streaming
     // path — splice the two connections instead.
     if req.headers().contains_key(axum::http::header::UPGRADE) {
-        return crate::upgrade::forward_upgrade(&state.loopback, port, req).await;
+        return crate::upgrade::forward_upgrade(&state.loopback_base_url, port, req).await;
     }
     forward(&state, port, req).await
 }
@@ -243,7 +244,7 @@ async fn forward(state: &ReverseProxyState, port: u16, req: Request) -> Response
         .unwrap_or("/");
     let url = format!(
         "http://{}{}",
-        state.loopback.authority(port),
+        loopback_authority(&state.loopback_base_url, port),
         path_and_query
     );
 
@@ -389,7 +390,7 @@ mod tests {
             public_host: public_host.map(str::to_owned),
         });
         TunnelSubdomainReverseProxy::new(
-            LoopbackHostname::new("127.0.0.1"),
+            Url::parse("http://127.0.0.1").unwrap(),
             tunnel,
             fallback_router(),
             table,

@@ -11,13 +11,15 @@ use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 use tower::make::Shared;
 use tower::Service;
+use url::Url;
 
 use crate::error::ServerError;
-use crate::params::{LoopbackHostname, StaticHostJob};
+use crate::params::{loopback_authority, StaticHostJob};
 
-/// Runs static hosts — each a tower [`Service`] bound on `{hostname}:{port}` —
-/// and lets the caller start and stop them at runtime. The bind hostname is
-/// fixed at construction; each [`start`](Self::start) job carries its own port.
+/// Runs static hosts — each a tower [`Service`] bound on `{host}:{port}` — and
+/// lets the caller start and stop them at runtime. The loopback base URL the bind
+/// host is picked out of is fixed at construction; each [`start`](Self::start)
+/// job carries its own port.
 ///
 /// Each running host owns a graceful-shutdown signal; dropping the service (or
 /// calling [`stop`](Self::stop)) winds the host's listener down. This is the
@@ -25,7 +27,7 @@ use crate::params::{LoopbackHostname, StaticHostJob};
 /// slice today only the startup seed drives it, but the same calls work at
 /// runtime.
 pub struct StaticHostsService {
-    hostname: LoopbackHostname,
+    loopback_base_url: Url,
     /// `id -> graceful-shutdown signal`. Dropping the sender (on `stop` or when
     /// the whole service drops) resolves the host's shutdown future, so the
     /// listener drains and ends.
@@ -34,9 +36,9 @@ pub struct StaticHostsService {
 
 impl StaticHostsService {
     #[must_use]
-    pub fn new(hostname: LoopbackHostname) -> Self {
+    pub fn new(loopback_base_url: Url) -> Self {
         Self {
-            hostname,
+            loopback_base_url,
             running: Mutex::new(HashMap::new()),
         }
     }
@@ -59,7 +61,7 @@ impl StaticHostsService {
         let StaticHostJob { id, port, service } = job;
         self.stop(&id)?;
 
-        let authority = self.hostname.authority(port);
+        let authority = loopback_authority(&self.loopback_base_url, port);
         let listener = TcpListener::bind(&authority)
             .await
             .map_err(|source| ServerError::Bind {
@@ -141,7 +143,7 @@ mod tests {
     /// running; stopping it clears the running state and is idempotent.
     #[tokio::test]
     async fn start_serves_then_stop_clears_running_state() {
-        let svc = StaticHostsService::new(LoopbackHostname::new("127.0.0.1"));
+        let svc = StaticHostsService::new(Url::parse("http://127.0.0.1").unwrap());
         let port = free_port().await;
 
         svc.start(StaticHostJob {
@@ -176,7 +178,7 @@ mod tests {
     /// Two hosts run independently; stopping one leaves the other running.
     #[tokio::test]
     async fn hosts_are_independent() {
-        let svc = StaticHostsService::new(LoopbackHostname::new("127.0.0.1"));
+        let svc = StaticHostsService::new(Url::parse("http://127.0.0.1").unwrap());
         let (p1, p2) = (free_port().await, free_port().await);
 
         svc.start(StaticHostJob {
@@ -205,7 +207,7 @@ mod tests {
     /// host is not recorded as running.
     #[tokio::test]
     async fn start_on_a_taken_port_returns_a_bind_error() {
-        let svc = StaticHostsService::new(LoopbackHostname::new("127.0.0.1"));
+        let svc = StaticHostsService::new(Url::parse("http://127.0.0.1").unwrap());
         let port = free_port().await;
 
         svc.start(StaticHostJob {

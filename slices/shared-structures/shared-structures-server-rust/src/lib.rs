@@ -25,6 +25,6 @@ mod static_hosts;
 mod upgrade;
 
 pub use error::ServerError;
-pub use params::{LoopbackHostname, StaticHostJob};
+pub use params::StaticHostJob;
 pub use reverse_proxy::{ProxyTable, TunnelSubdomainReverseProxy};
 pub use static_hosts::StaticHostsService;
