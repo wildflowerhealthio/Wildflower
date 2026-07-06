@@ -1,120 +1,165 @@
 //! Host-side serving of static "installed apps" from a runtime directory.
 //! See `slices/apps/self-hosted-apps/README.md` for the design rationale
 //! (per-origin isolation, root-serving with no HTML rebase, the committed
-//! patient-browser config override).
+//! per-app templates).
 //!
-//! [`setup_installed_app`] returns the [`Router`] for one app given its id and
+//! [`setup_installed_app`] returns the [`Router`] for one app given its id,
 //! the on-disk directory holding its files (e.g.
-//! `app-data/installed-apps/patient-browser/`); the host binds one loopback
-//! `TcpListener` per app and `axum::serve`s the router at the root of that
-//! origin. A missing or empty directory just 404s. Static-file delivery (path
-//! traversal protection, content-type via `mime_guess`, directory →
-//! `index.html`) is delegated to [`tower_http::services::ServeDir`].
+//! `app-data/installed-apps/patient-browser/`), and an [`InstalledAppContext`];
+//! the host binds one loopback `TcpListener` per app and `axum::serve`s the
+//! router at the root of that origin. A missing or empty directory just 404s.
+//! Static-file delivery (path traversal protection, content-type via
+//! `mime_guess`, directory → `index.html`) is delegated to
+//! [`tower_http::services::ServeDir`].
+//!
+//! ## Committed templates
+//!
+//! The `templates/` tree next to this crate is embedded at compile time
+//! (`include_dir!`): `templates/<app-id>/<serve-path>.hbs` is rendered with
+//! Handlebars per request and served at `/<serve-path>` on that app's origin,
+//! winning over any same-path file in the runtime directory. Rendering is
+//! per-request because the one template variable, `apiOrigin`, depends on how
+//! the caller reached us: a direct loopback caller (the Tauri webview) gets
+//! the loopback API origin, while a request forwarded by the trusted front
+//! (carrying its `Forwarded` header — see `shared_structures_rust::
+//! served_origin`) gets `https://<public_host>` from the tunnel. Today the
+//! only template is patient-browser's SMART config at `/config/default.json5`.
 //!
 //! The crate has no Tauri/GTK dependency, so it compiles in the main Rust CI;
 //! only the host that binds the listener pulls in Tauri.
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use axum::extract::Request;
-use axum::http::{header, HeaderValue, StatusCode};
+use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
 use axum::{Extension, Router};
+use handlebars::Handlebars;
+use include_dir::{include_dir, Dir};
+use shared_structures_rust::served_origin::{request_provenance, RequestProvenance};
+use shared_structures_rust::tunnel_service::TunnelService;
 use tower_http::services::ServeDir;
 
 #[cfg(test)]
 use axum::body::Body;
 
-/// App id of the vendored patient-browser SPA — the one app that gets the
-/// committed-config override today. Match is case-sensitive: the host
-/// passes the id from the seeded `self_hosted_apps` row.
-const PATIENT_BROWSER_ID: &str = "patient-browser";
+/// The committed per-app template tree, embedded at compile time. Layout:
+/// `<app-id>/<serve-path>.hbs` renders at `/<serve-path>` on that app's
+/// origin. Adding a template file needs no code change — but does need a
+/// Rust rebuild to be embedded.
+static TEMPLATES: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/templates");
 
-/// Mount-relative key of the patient-browser SMART config under its served
-/// root. Matched case-insensitively in the middleware so e.g.
-/// `Config/Default.JSON5` still hits the override.
-const PATIENT_BROWSER_CONFIG_KEY_LOWER: &str = "config/default.json5";
-
-/// The committed, version-controlled SMART config for patient-browser. Embedded
-/// (it's tiny and authoritative — the on-device FHIR URL + timeout) and served
-/// at `/config/default.json5` so it survives whatever dist the directory
-/// happens to hold.
-const PATIENT_BROWSER_CONFIG: &str = include_str!("../patient-browser-config/default.json5");
+/// The name of the one variable every template can reference: the API origin
+/// (scheme://host[:port], no trailing slash) reachable by the caller.
+const API_ORIGIN_VAR: &str = "apiOrigin";
 
 /// Fingerprinted bundles (`assets/`, `img/`, fonts) never change for a given
 /// build, so they cache for a year. `index.html` and `config/*` are the
 /// rotation points a redeploy can repoint, so they stay short-lived with
-/// revalidation.
+/// revalidation. Rendered templates are always short-lived — their content
+/// varies with tunnel configuration, so clients must not pin them.
 const IMMUTABLE_CACHE_CONTROL: &str = "public, max-age=31536000, immutable";
 const SHORT_CACHE_CONTROL: &str = "public, max-age=60, must-revalidate";
 
-/// The app id of the router being served, propagated through axum's
-/// request extensions so the response-transform middleware can decide
-/// whether the patient-browser config override applies — no per-app
-/// captured-closure middleware required.
+/// What the host must supply for per-request template rendering.
 #[derive(Clone)]
-struct AppId(String);
+pub struct InstalledAppContext {
+    /// The API origin a *loopback* caller reaches (e.g. `http://127.0.0.1:8080`,
+    /// no trailing slash) — the host's `loopback_base_url` origin.
+    pub loopback_api_origin: String,
+    /// Supplies the configured public host for *forwarded* callers, so a
+    /// browser loading the app through `https://<id>.<public_host>` gets an
+    /// `apiOrigin` of `https://<public_host>`.
+    pub tunnel: Arc<dyn TunnelService>,
+}
+
+/// Everything the render middleware needs, threaded through axum's request
+/// extensions so no per-app captured-closure middleware is required. The
+/// registry's template names are the app's *lowercased* serve paths, so a
+/// case-variant request (`Config/Default.JSON5`) still hits its template.
+#[derive(Clone)]
+struct TemplateState {
+    registry: Arc<Handlebars<'static>>,
+    context: InstalledAppContext,
+}
 
 /// Router serving one installed app from `app_dir` at the root of its
-/// loopback origin. `app_id` selects any app-specific behavior (today
-/// only `patient-browser`'s config override).
+/// loopback origin. `app_id` selects the committed template subtree
+/// (`templates/<app-id>/`) rendered for this app; apps without one are pure
+/// static serving.
 ///
 /// `app_dir` is the directory whose children are the app's served files
 /// (e.g. `index.html`, `assets/…`); it need not exist yet — a missing file
 /// (or missing directory) is a plain 404.
-pub fn setup_installed_app(app_id: &str, app_dir: PathBuf) -> Router {
-    let mut router = Router::new();
-    if app_id == PATIENT_BROWSER_ID {
-        // The committed SMART config wins over any on-disk file at this
-        // path. Registered as a fixed route (case-sensitive at the axum
-        // layer) — the middleware below catches case-variant requests
-        // that fall through to ServeDir.
-        router = router.route(
-            &format!("/{PATIENT_BROWSER_CONFIG_KEY_LOWER}"),
-            get(serve_patient_browser_config_override),
-        );
-    }
-    router
-        // Everything else: the host-provided directory, served at root by ServeDir.
+pub fn setup_installed_app(app_id: &str, app_dir: PathBuf, context: InstalledAppContext) -> Router {
+    Router::new()
+        // Anything without a committed template: the host-provided directory,
+        // served at root by ServeDir.
         .fallback_service(ServeDir::new(app_dir).append_index_html_on_directories(true))
-        // Intercept case-variant config-override requests (patient-browser only)
-        // and set Cache-Control. The middleware reads its app id from the
-        // `Extension` layered below so the closure doesn't need to capture it.
-        .layer(middleware::from_fn(cache_and_override))
-        .layer(Extension(AppId(app_id.to_owned())))
+        // Render committed templates (winning over same-path disk files,
+        // case-insensitively) and set Cache-Control on everything else.
+        .layer(middleware::from_fn(render_and_cache))
+        .layer(Extension(TemplateState {
+            registry: Arc::new(registry_for(app_id)),
+            context,
+        }))
 }
 
-/// Serve the committed patient-browser config inline, with the short cache so a
-/// redeploy can repoint the on-device FHIR URL without clients pinning a stale
-/// copy. Uses axum's tuple-into-response so no `.expect()` panic can leak from a
-/// response builder.
-async fn serve_patient_browser_config_override() -> impl IntoResponse {
-    (
-        StatusCode::OK,
-        [
-            (header::CONTENT_TYPE, "application/json; charset=utf-8"),
-            (header::CACHE_CONTROL, SHORT_CACHE_CONTROL),
-        ],
-        PATIENT_BROWSER_CONFIG,
-    )
-}
-
-/// Response-transform middleware. Runs after both the override route and
-/// the fallback `ServeDir`:
+/// Build the Handlebars registry for one app: every `*.hbs` file under
+/// `templates/<app-id>/`, registered under its lowercased serve path (the
+/// embedded path minus the app prefix and the `.hbs` suffix). Strict mode —
+/// a typo'd variable is a render error, not silent empty output — and no
+/// HTML escaping, because the outputs are configs, not HTML documents.
 ///
-/// - For `patient-browser`, if the path is a *case-variant* of the config
-///   key (`CONFIG/Default.json5` etc.), substitutes the committed config
-///   so an oddly-cased on-disk file can't shadow the override.
-/// - On every successful response, sets `Cache-Control` per [`cache_control_for`].
-async fn cache_and_override(req: Request, next: Next) -> Response {
-    let app_id = req
-        .extensions()
-        .get::<AppId>()
-        .map(|a| a.0.as_str())
-        .unwrap_or("")
-        .to_owned();
+/// The `expect`s fire only on a malformed *committed* template (non-UTF-8 or
+/// bad syntax), which is a build-time asset bug caught by this crate's tests
+/// — never on runtime input.
+fn registry_for(app_id: &str) -> Handlebars<'static> {
+    let mut registry = Handlebars::new();
+    registry.set_strict_mode(true);
+    registry.register_escape_fn(handlebars::no_escape);
+    if let Some(app_templates) = TEMPLATES.get_dir(app_id) {
+        register_templates(&mut registry, app_templates, app_id);
+    }
+    registry
+}
+
+/// Recursively register every `*.hbs` file under `dir` (see [`registry_for`]).
+fn register_templates(registry: &mut Handlebars<'static>, dir: &Dir<'static>, app_id: &str) {
+    for file in dir.files() {
+        let Some(serve_path) = file
+            .path()
+            .to_str()
+            .and_then(|path| path.strip_prefix(app_id))
+            .and_then(|path| path.strip_prefix('/'))
+            .and_then(|path| path.strip_suffix(".hbs"))
+        else {
+            continue;
+        };
+        registry
+            .register_template_string(
+                &serve_path.to_ascii_lowercase(),
+                file.contents_utf8().expect("committed template is UTF-8"),
+            )
+            .expect("committed template parses");
+    }
+    for subdir in dir.dirs() {
+        register_templates(registry, subdir, app_id);
+    }
+}
+
+/// Response-transform middleware. Runs before the fallback `ServeDir`:
+///
+/// - If the (lowercased) request path names a committed template for this
+///   app, renders and serves it — so a template always wins over a same-path
+///   on-disk file, whatever the request's casing.
+/// - Otherwise, on every successful response, sets `Cache-Control` per
+///   [`cache_control_for`].
+async fn render_and_cache(req: Request, next: Next) -> Response {
+    let state = req.extensions().get::<TemplateState>().cloned();
     let rel_lower = req
         .uri()
         .path()
@@ -122,13 +167,10 @@ async fn cache_and_override(req: Request, next: Next) -> Response {
         .unwrap_or("")
         .to_ascii_lowercase();
 
-    // Override (case-variant guard): a `CONFIG/Default.json5`-style request
-    // slipped past axum's exact-match route — substitute the committed
-    // config rather than letting ServeDir's on-disk file (or a 404) win.
-    if app_id == PATIENT_BROWSER_ID && rel_lower == PATIENT_BROWSER_CONFIG_KEY_LOWER {
-        return serve_patient_browser_config_override()
-            .await
-            .into_response();
+    if let Some(state) = state {
+        if state.registry.has_template(&rel_lower) {
+            return render_template(&state, &rel_lower, req.headers());
+        }
     }
 
     let response = next.run(req).await;
@@ -142,6 +184,63 @@ async fn cache_and_override(req: Request, next: Next) -> Response {
         HeaderValue::from_static(cache_control_for(&rel_lower)),
     );
     Response::from_parts(parts, body)
+}
+
+/// Render one committed template for one request. The `apiOrigin` variable is
+/// the API origin *this caller* can reach:
+///
+/// - a direct loopback caller (no trusted `Forwarded` header) gets the
+///   loopback API origin;
+/// - a forwarded caller gets `https://<public_host>` from the tunnel's
+///   configured public host. A forwarded request with *no* configured public
+///   host shouldn't exist (forwarding runs through the tunnel), but falls
+///   back to the loopback origin rather than rendering a broken URL.
+///
+/// Rendered output takes the short cache: its content varies with tunnel
+/// configuration, so clients must revalidate rather than pin it. A render
+/// error (e.g. a strict-mode miss on an unknown variable) is logged and
+/// answered with an opaque 500.
+fn render_template(state: &TemplateState, serve_path_lower: &str, headers: &HeaderMap) -> Response {
+    let api_origin = match request_provenance(headers) {
+        RequestProvenance::Loopback => state.context.loopback_api_origin.clone(),
+        RequestProvenance::Forwarded { .. } => state
+            .context
+            .tunnel
+            .current_public_host()
+            .map(|host| format!("https://{host}"))
+            .unwrap_or_else(|| state.context.loopback_api_origin.clone()),
+    };
+    match state.registry.render(
+        serve_path_lower,
+        &BTreeMap::from([(API_ORIGIN_VAR, api_origin)]),
+    ) {
+        Ok(body) => (
+            StatusCode::OK,
+            [
+                (header::CONTENT_TYPE, content_type_for(serve_path_lower)),
+                (header::CACHE_CONTROL, SHORT_CACHE_CONTROL.to_owned()),
+            ],
+            body,
+        )
+            .into_response(),
+        Err(error) => {
+            tracing::error!(%error, template = serve_path_lower, "template render failed");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+/// Content-type for a rendered template, keyed on the serve path's extension.
+/// `.json5` isn't in the mime db, so it's pinned to the JSON content-type the
+/// former verbatim config override served; everything else goes through
+/// `mime_guess` like ServeDir's plain files do.
+fn content_type_for(serve_path_lower: &str) -> String {
+    if serve_path_lower.ends_with(".json5") {
+        return "application/json; charset=utf-8".to_owned();
+    }
+    mime_guess::from_path(serve_path_lower)
+        .first_or_octet_stream()
+        .to_string()
 }
 
 /// Cache-Control for a normalized (lowercased) request key. Anything that's
@@ -165,11 +264,60 @@ mod tests {
 
     use axum::body::to_bytes;
     use axum::http::Request;
+    use shared_structures_rust::tunnel_service::{
+        OfflineTunnel, TunnelLiveness, TunnelService, TunnelStatus,
+    };
+    use tokio::sync::watch;
     use tower::ServiceExt;
 
     use super::*;
 
     static COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    const LOOPBACK_API_ORIGIN: &str = "http://127.0.0.1:8080";
+    const PUBLIC_HOST: &str = "demo.example.com";
+
+    /// A tunnel stub with a configured public host — the state a forwarded
+    /// request implies. (`OfflineTunnel` covers the no-public-host case.)
+    struct PublicHostTunnel;
+
+    #[async_trait::async_trait]
+    impl TunnelService for PublicHostTunnel {
+        fn current_origin(&self) -> String {
+            LOOPBACK_API_ORIGIN.to_owned()
+        }
+        fn current_public_host(&self) -> Option<String> {
+            Some(PUBLIC_HOST.to_owned())
+        }
+        async fn try_start(&self) -> Result<String, String> {
+            Err("unused".to_owned())
+        }
+        fn subscribe(&self) -> watch::Receiver<TunnelLiveness> {
+            watch::channel(TunnelLiveness {
+                settings_revision: None,
+                status: TunnelStatus::Off,
+                origin: self.current_origin(),
+                public_host: Some(PUBLIC_HOST.to_owned()),
+                error: None,
+                dial_attempts: 0,
+            })
+            .1
+        }
+    }
+
+    fn context_with_public_host() -> InstalledAppContext {
+        InstalledAppContext {
+            loopback_api_origin: LOOPBACK_API_ORIGIN.to_owned(),
+            tunnel: Arc::new(PublicHostTunnel),
+        }
+    }
+
+    fn context_without_public_host() -> InstalledAppContext {
+        InstalledAppContext {
+            loopback_api_origin: LOOPBACK_API_ORIGIN.to_owned(),
+            tunnel: Arc::new(OfflineTunnel::new(LOOPBACK_API_ORIGIN)),
+        }
+    }
 
     /// A throwaway directory under the OS temp dir, cleaned up on drop. Avoids a
     /// `tempfile` dependency for the crate's only filesystem-backed tests.
@@ -199,15 +347,40 @@ mod tests {
         }
     }
 
-    async fn fetch(app_id: &str, root: &TempRoot, path: &str) -> Response {
-        setup_installed_app(app_id, root.0.clone())
-            .oneshot(
-                Request::get(path)
-                    .body(Body::empty())
-                    .expect("request builds"),
-            )
+    async fn fetch_with(
+        app_id: &str,
+        root: &TempRoot,
+        request: Request<Body>,
+        context: InstalledAppContext,
+    ) -> Response {
+        setup_installed_app(app_id, root.0.clone(), context)
+            .oneshot(request)
             .await
             .expect("router is infallible")
+    }
+
+    async fn fetch(app_id: &str, root: &TempRoot, path: &str) -> Response {
+        fetch_with(
+            app_id,
+            root,
+            Request::get(path)
+                .body(Body::empty())
+                .expect("request builds"),
+            context_with_public_host(),
+        )
+        .await
+    }
+
+    /// A request carrying the trusted front's `Forwarded` header, the shape
+    /// nginx sets before the request enters the tunnel.
+    fn forwarded_get(path: &str) -> Request<Body> {
+        Request::get(path)
+            .header(
+                "forwarded",
+                format!("for=192.0.2.1;host=patient-browser.{PUBLIC_HOST};proto=https"),
+            )
+            .body(Body::empty())
+            .expect("request builds")
     }
 
     fn header_value(res: &Response, name: header::HeaderName) -> String {
@@ -217,6 +390,11 @@ mod tests {
             .to_str()
             .expect("header is ascii")
             .to_owned()
+    }
+
+    async fn body_text(res: Response) -> String {
+        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        String::from_utf8(body.to_vec()).expect("body is utf-8")
     }
 
     #[tokio::test]
@@ -239,8 +417,7 @@ mod tests {
             header_value(&res, header::CACHE_CONTROL),
             SHORT_CACHE_CONTROL
         );
-        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
-        let text = String::from_utf8_lossy(&body);
+        let text = body_text(res).await;
         assert!(
             text.contains("\"/assets/app.js\""),
             "the HTML must NOT be rebased at root: {text:?}",
@@ -277,10 +454,11 @@ mod tests {
         );
     }
 
-    /// The committed SMART config wins over whatever happens to be on disk
-    /// at `/config/default.json5`.
+    /// The committed SMART config template wins over whatever happens to be on
+    /// disk at `/config/default.json5`, and a loopback (unforwarded) request
+    /// renders `apiOrigin` as the loopback API origin.
     #[tokio::test]
-    async fn config_is_served_from_the_committed_override() {
+    async fn config_template_wins_over_disk_and_renders_loopback_origin() {
         let root = TempRoot::new();
         root.write("config/default.json5", b"{ \"stale\": true }");
         let res = fetch("patient-browser", &root, "/config/default.json5").await;
@@ -289,38 +467,92 @@ mod tests {
             header_value(&res, header::CACHE_CONTROL),
             SHORT_CACHE_CONTROL
         );
-        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
-        assert_eq!(body.as_ref(), PATIENT_BROWSER_CONFIG.as_bytes());
-        assert_ne!(body.as_ref(), b"{ \"stale\": true }");
+        assert!(
+            header_value(&res, header::CONTENT_TYPE).starts_with("application/json"),
+            "rendered json5 keeps the JSON content-type",
+        );
+        let text = body_text(res).await;
+        assert!(
+            text.contains(&format!("url: '{LOOPBACK_API_ORIGIN}/fhir-r4'")),
+            "loopback caller must get the loopback FHIR URL: {text:?}",
+        );
+        assert!(
+            !text.contains("{{"),
+            "no unrendered handlebars expressions may leak: {text:?}",
+        );
+        assert!(!text.contains("stale"), "the on-disk file must not win");
+    }
+
+    /// A forwarded request (trusted front's `Forwarded` header) renders
+    /// `apiOrigin` from the tunnel's configured public host — the browser
+    /// loading the app remotely must target the public API, not loopback.
+    #[tokio::test]
+    async fn forwarded_request_renders_public_api_origin() {
+        let root = TempRoot::new();
+        let res = fetch_with(
+            "patient-browser",
+            &root,
+            forwarded_get("/config/default.json5"),
+            context_with_public_host(),
+        )
+        .await;
+        assert_eq!(res.status(), StatusCode::OK);
+        let text = body_text(res).await;
+        assert!(
+            text.contains(&format!("url: 'https://{PUBLIC_HOST}/fhir-r4'")),
+            "forwarded caller must get the public FHIR URL: {text:?}",
+        );
+    }
+
+    /// A forwarded request with no configured public host (shouldn't happen —
+    /// forwarding runs through the tunnel) falls back to the loopback origin
+    /// rather than rendering a broken URL.
+    #[tokio::test]
+    async fn forwarded_request_without_public_host_falls_back_to_loopback() {
+        let root = TempRoot::new();
+        let res = fetch_with(
+            "patient-browser",
+            &root,
+            forwarded_get("/config/default.json5"),
+            context_without_public_host(),
+        )
+        .await;
+        assert_eq!(res.status(), StatusCode::OK);
+        let text = body_text(res).await;
+        assert!(
+            text.contains(&format!("url: '{LOOPBACK_API_ORIGIN}/fhir-r4'")),
+            "no public host must fall back to loopback: {text:?}",
+        );
     }
 
     /// A request for the config path with mixed casing still hits the
-    /// committed override — the case-insensitive middleware guard catches
-    /// what axum's exact-match route doesn't.
+    /// committed template — the registry keys are lowercased and the
+    /// middleware lowercases the request path before the lookup.
     #[tokio::test]
-    async fn case_variant_config_path_still_hits_the_committed_override() {
+    async fn case_variant_config_path_still_hits_the_template() {
         let root = TempRoot::new();
         root.write("config/default.json5", b"{ \"stale\": true }");
         let res = fetch("patient-browser", &root, "/Config/Default.JSON5").await;
         assert_eq!(res.status(), StatusCode::OK);
-        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
-        assert_eq!(body.as_ref(), PATIENT_BROWSER_CONFIG.as_bytes());
+        let text = body_text(res).await;
+        assert!(
+            text.contains(&format!("url: '{LOOPBACK_API_ORIGIN}/fhir-r4'")),
+            "case-variant path must still render the template: {text:?}",
+        );
     }
 
-    /// The committed override is patient-browser-specific. A different app
-    /// id at the same path serves whatever's on disk (or 404s) — the
-    /// override is keyed on the id.
+    /// Templates are keyed on the app id. A different app id at the same path
+    /// serves whatever's on disk (or 404s) — no template subtree, no override.
     #[tokio::test]
-    async fn config_override_does_not_fire_for_other_app_ids() {
+    async fn templates_do_not_fire_for_other_app_ids() {
         let root = TempRoot::new();
         root.write("config/default.json5", b"{ \"app-y\": true }");
         let res = fetch("app-y", &root, "/config/default.json5").await;
         assert_eq!(res.status(), StatusCode::OK);
-        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        let text = body_text(res).await;
         assert_eq!(
-            body.as_ref(),
-            b"{ \"app-y\": true }",
-            "non-patient-browser apps must see the on-disk file, not the override",
+            text, "{ \"app-y\": true }",
+            "non-templated apps must see the on-disk file, not a template",
         );
     }
 
@@ -342,6 +574,45 @@ mod tests {
             StatusCode::OK,
             "ServeDir must not resolve a traversal path",
         );
+    }
+
+    /// Every committed template parses and renders with the one supported
+    /// variable — this is the test backing the `expect`s in [`registry_for`],
+    /// and it guards strict-mode misses (a template referencing an unknown
+    /// variable fails here, not at runtime).
+    #[test]
+    fn all_committed_templates_parse_and_render() {
+        fn app_ids(dir: &Dir<'static>) -> Vec<String> {
+            dir.dirs()
+                .filter_map(|d| d.path().file_name())
+                .map(|name| name.to_string_lossy().into_owned())
+                .collect()
+        }
+        let ids = app_ids(&TEMPLATES);
+        assert!(
+            ids.contains(&"patient-browser".to_owned()),
+            "the patient-browser template subtree must exist",
+        );
+        for app_id in ids {
+            let registry = registry_for(&app_id);
+            let names: Vec<_> = registry.get_templates().keys().cloned().collect();
+            assert!(
+                !names.is_empty(),
+                "app {app_id} has a template dir but no registered templates",
+            );
+            for name in names {
+                let rendered = registry
+                    .render(
+                        &name,
+                        &BTreeMap::from([(API_ORIGIN_VAR, "https://origin.example")]),
+                    )
+                    .expect("committed template renders with apiOrigin only");
+                assert!(
+                    !rendered.contains("{{"),
+                    "template {name} leaked an unrendered expression",
+                );
+            }
+        }
     }
 
     #[tokio::test]
