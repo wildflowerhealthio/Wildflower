@@ -158,13 +158,16 @@ fn cookie_from_spec(spec: &CookieSpec) -> tauri::webview::cookie::Cookie<'static
     cookie
 }
 
-/// Write `cookies` into `content`'s cookie store. Each `set_cookie` blocks
-/// until the write commits (macOS waits on the `WKHTTPCookieStore` completion
-/// handler, Linux spins `gtk::main_iteration()`, Windows' `AddOrUpdateCookie`
-/// is synchronous), so on `Ok` return the cookies are guaranteed visible to the
-/// next navigation. Errors propagate: a popup that silently lost its seed would
-/// just render an unauthenticated consent page, which is harder to diagnose
-/// than a failed `open`.
+/// Queue `cookies` onto `content`'s cookie store. MUST be called OFF the main
+/// thread: each `set_cookie` is a fire-and-forget message the main loop
+/// processes on its own iteration, where the wry write blocks until it commits
+/// (macOS pumps the run loop for the `WKHTTPCookieStore` completion, Linux
+/// spins `gtk::main_iteration()`). Because the loop is FIFO, a `navigate`
+/// queued after this call only runs once every cookie has committed — that
+/// ordering is the whole seeding contract. Calling this ON the main thread
+/// instead executes the wry write inline, nesting its run-loop pump inside
+/// tao's event handler — which kills the webview content processes and
+/// deadlocks the app (observed on macOS).
 fn seed_cookies<R: Runtime>(
     content: &tauri::webview::Webview<R>,
     cookies: &[CookieSpec],
@@ -239,18 +242,45 @@ impl<R: Runtime> NativeWebview<R> {
     /// thread match), so a main-thread caller's `tx.send` has already fired by
     /// `rx.recv()`. Off-main-thread callers block on the main thread draining the
     /// queue — safe, no self-wait.
-    pub fn open_url(&self, payload: OpenRequest) -> crate::Result<()> {
+    ///
+    /// A cookie-carrying request (see [`OpenRequest`]'s `cookies`) MUST be sent
+    /// from OFF the main thread: the webview is built/rewired at `about:blank`,
+    /// then this (caller) thread queues the cookie writes and the navigation to
+    /// the real target onto the main loop — FIFO, so every cookie commits
+    /// before the target's first request fires. Doing the writes inside the
+    /// main-thread `present()` instead nests wry's blocking cookie pump inside
+    /// tao's event handler and deadlocks (see [`seed_cookies`]).
+    pub fn open_url(&self, mut payload: OpenRequest) -> crate::Result<()> {
         // Parse once (http(s)-only — see [`crate::url_scheme`]) and thread the
         // parsed `Url` to `present` so the build path doesn't re-parse.
-        let parsed = crate::url_scheme::parse_http_url(&payload.url)?;
+        let target = crate::url_scheme::parse_http_url(&payload.url)?;
+        // Cookies are seeded from THIS thread after the build, never inside
+        // `present()` — see the method doc.
+        let cookies = std::mem::take(&mut payload.cookies);
+        let build_url = if cookies.is_empty() {
+            target.clone()
+        } else {
+            blank_url()?
+        };
         let app = self.0.clone();
         let (tx, rx) = std::sync::mpsc::sync_channel::<crate::Result<()>>(1);
+        let present_target = target.clone();
         self.0.run_on_main_thread(move || {
             // Best-effort: rx is dropped only when the caller already exited.
-            let _ = tx.send(present(&app, payload, parsed));
+            let _ = tx.send(present(&app, payload, present_target, build_url));
         })?;
         rx.recv()
-            .map_err(|error| crate::Error::Internal(error.to_string()))?
+            .map_err(|error| crate::Error::Internal(error.to_string()))??;
+        if !cookies.is_empty() {
+            let content = self.0.get_webview(CONTENT_WEBVIEW_LABEL).ok_or_else(|| {
+                crate::Error::Internal(
+                    "native-webview content webview missing after a cookie-seeding open".to_owned(),
+                )
+            })?;
+            seed_cookies(&content, &cookies)?;
+            content.navigate(target)?;
+        }
+        Ok(())
     }
 
     /// Cookie **names** currently visible to the content webview for `url` —
@@ -422,29 +452,39 @@ fn arm_absolute_timeout<R: Runtime>(app: &AppHandle<R>) {
 ///   see docs/Lifecycle and Races Explanation.md § "Re-open rewire".
 /// - **Fresh build**: construct the parent window, chrome + content child
 ///   webviews, and install the resize / close / destroy listeners.
+///
+/// `target_url` is what the caller asked to open (chrome display, OS title,
+/// deferred replay); `build_url` is what the fresh build / rewire actually
+/// navigates to — identical except on a cookie-seeding open, where the build
+/// parks at `about:blank` and [`NativeWebview::open_url`] navigates to the
+/// target from the caller thread once the queued cookie writes commit.
 fn present<R: Runtime>(
     app: &AppHandle<R>,
     payload: OpenRequest,
-    parsed_url: Url,
+    target_url: Url,
+    build_url: Url,
 ) -> crate::Result<()> {
     // Dispose in flight: defer the replay (last-write-wins on a rapid double-
-    // `open`). See [`PluginState`].
+    // `open`). See [`PluginState`]. The replay stores the TARGET: by the time
+    // it runs, the caller thread's cookie writes are queued/committed, so
+    // navigating straight to the target is correct (and parking on
+    // `about:blank` would strand the popup — nobody re-navigates a replay).
     if let Some(state) = app.try_state::<PluginState>() {
         if state.disposing.load(Ordering::SeqCst) {
-            *lock_state(&state.pending_reopen, "pending-reopen")? = Some((payload, parsed_url));
+            *lock_state(&state.pending_reopen, "pending-reopen")? = Some((payload, target_url));
             return Ok(());
         }
     }
 
     // Already open: rewire in place rather than rebuild.
     if let Some(content) = app.get_webview(CONTENT_WEBVIEW_LABEL) {
-        apply_rewire(app, &content, &payload, parsed_url)?;
+        apply_rewire(app, &content, &payload, target_url, build_url)?;
         return Ok(());
     }
 
     let init_script = payload.init_script;
     let channel = payload.native_webview_event_channel;
-    let initial_url = parsed_url.as_str().to_owned();
+    let initial_url = target_url.as_str().to_owned();
 
     // OS-level title (taskbar / title bar) is the caller's initial title, else
     // the content URL — never a hard-coded app name.
@@ -535,18 +575,11 @@ fn present<R: Runtime>(
         LogicalSize::<f64>::new(logical_width, CHROME_HEIGHT_BASE),
     )?;
 
-    // Content webview: the external URL, with the caller's document-start
-    // script (the browser-sniffer bundle in our usage). A cookie-seeding open
-    // builds at `about:blank` instead and only navigates to the target after
-    // the (blocking) cookie writes commit, so the seed rides the very first
-    // request — see [`OpenRequest`]'s `cookies` and [`seed_cookies`].
-    let cookies = payload.cookies;
-    let content_target = if cookies.is_empty() {
-        WebviewUrl::External(parsed_url.clone())
-    } else {
-        WebviewUrl::External(blank_url()?)
-    };
-    let mut content_builder = WebviewBuilder::new(CONTENT_WEBVIEW_LABEL, content_target);
+    // Content webview: built at `build_url` — the external target, except on a
+    // cookie-seeding open, where it parks at `about:blank` until the caller
+    // thread's queued cookie writes commit (see [`NativeWebview::open_url`]).
+    let mut content_builder =
+        WebviewBuilder::new(CONTENT_WEBVIEW_LABEL, WebviewUrl::External(build_url));
     if let Some(script) = init_script {
         content_builder = content_builder.initialization_script(script);
     }
@@ -594,7 +627,7 @@ fn present<R: Runtime>(
             ));
         }
     });
-    let content = window.add_child(
+    window.add_child(
         content_builder,
         LogicalPosition::<f64>::new(0.0, CHROME_HEIGHT_BASE),
         LogicalSize::<f64>::new(
@@ -602,12 +635,6 @@ fn present<R: Runtime>(
             (logical_height - CHROME_HEIGHT_BASE).max(0.0),
         ),
     )?;
-    if !cookies.is_empty() {
-        // Both calls block until committed, so ordering is guaranteed: every
-        // cookie is in the store before the first request to the target.
-        seed_cookies(&content, &cookies)?;
-        content.navigate(parsed_url)?;
-    }
 
     install_window_listeners(app, &window);
     arm_absolute_timeout(app);
@@ -718,11 +745,18 @@ fn install_native_webview_state<R: Runtime>(
 /// see docs/Lifecycle and Races Explanation.md § "Re-open rewire". The init script lands via
 /// `eval` (not document-start: Tauri has no API to swap that hook post-build);
 /// harmless here since the sniffer's script is stable across opens.
+///
+/// `target` feeds the chrome display; `navigate_to` is what actually loads —
+/// identical except on a cookie-seeding open (see [`present`]'s doc), where
+/// this parks the content at `about:blank` and the caller thread navigates to
+/// the target after the queued cookie writes. The `CloseRequested` replay
+/// passes the target for both (cookies are already committed by then).
 fn apply_rewire<R: Runtime>(
     app: &AppHandle<R>,
     content: &tauri::webview::Webview<R>,
     payload: &OpenRequest,
-    parsed: Url,
+    target: Url,
+    navigate_to: Url,
 ) -> crate::Result<()> {
     if let Some(window) = app.get_window(WINDOW_LABEL) {
         if let Some(state) = window.try_state::<CurrentChannel>() {
@@ -742,7 +776,7 @@ fn apply_rewire<R: Runtime>(
         // A rewire is logically a fresh open: reset the chrome's URL-fallback
         // claims + slots and seed the new URL (don't merge onto prior claims).
         let reset = InitialChromeState {
-            url: parsed.as_str(),
+            url: target.as_str(),
             title: payload.initial_title.as_deref(),
             subtitle: payload.initial_subtitle.as_deref(),
             message: payload.initial_message.as_deref(),
@@ -751,10 +785,7 @@ fn apply_rewire<R: Runtime>(
             let _ = chrome.eval(format!("{CHROME_RESET_TEXT_FN}({json})"));
         }
     }
-    // Seed cookies before navigating so they ride the new target's first
-    // request (blocking writes; see [`seed_cookies`]).
-    seed_cookies(content, &payload.cookies)?;
-    let _ = content.navigate(parsed);
+    let _ = content.navigate(navigate_to);
     // A reopen starts a new task clock — re-arm the backstop.
     arm_absolute_timeout(app);
     Ok(())
@@ -872,7 +903,7 @@ fn install_window_listeners<R: Runtime>(app: &AppHandle<R>, window: &tauri::Wind
                 // Poisoned lock: can't consult the slot → let the dispose proceed.
                 Err(_) => return,
             };
-            let Some((payload, parsed)) = pending else {
+            let Some((payload, target)) = pending else {
                 return;
             };
             api.prevent_close();
@@ -880,7 +911,10 @@ fn install_window_listeners<R: Runtime>(app: &AppHandle<R>, window: &tauri::Wind
             let Some(content) = app_window.get_webview(CONTENT_WEBVIEW_LABEL) else {
                 return;
             };
-            let _ = apply_rewire(&app_window, &content, &payload, parsed);
+            // Navigate straight to the target — a cookie-seeding open's writes
+            // were queued by the caller thread ahead of this replay (see
+            // [`present`]'s pending-reopen note).
+            let _ = apply_rewire(&app_window, &content, &payload, target.clone(), target);
         }
         WindowEvent::Destroyed => {
             // Notify the current caller's channel ([`CurrentChannel`]) that the
