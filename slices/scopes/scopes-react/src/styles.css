@@ -1,7 +1,0 @@
-/*
- * Style entry for scopes-react. The components are styled with per-component
- * CSS modules (bundled into dist/style.css by `vp pack`); design tokens and
- * utility classes come from `react-tundraish/styles.css`, which a consuming app
- * imports once. This file is the aggregation point and holds only any genuinely
- * shared, non-module rules (currently none).
- */

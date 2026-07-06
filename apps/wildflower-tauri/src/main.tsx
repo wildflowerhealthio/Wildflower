@@ -1,7 +1,6 @@
 import { createBrowserHistory } from '@tanstack/react-router'
 import 'tundra-css'
 import 'react-tundraish/styles.css'
-import 'scopes-react/styles.css'
 import 'wildflower-react/instrument'
 import 'wildflower-react/global.css'
 import { Effect } from 'effect'

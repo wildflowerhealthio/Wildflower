@@ -8,10 +8,6 @@
       "source": "./src/index.ts",
       "default": "./dist/index.js"
     },
-    "./styles.css": {
-      "source": "./src/styles.css",
-      "default": "./dist/style.css"
-    },
     "./package.json": "./package.json"
   },
   "scripts": {

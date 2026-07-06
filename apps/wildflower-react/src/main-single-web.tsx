@@ -1,7 +1,6 @@
 import './instrument.ts'
 import 'tundra-css'
 import 'react-tundraish/styles.css'
-import 'scopes-react/styles.css'
 import { createBrowserHistory } from '@tanstack/react-router'
 import './styles/global.css'
 import { renderApp } from './app-root.tsx'
