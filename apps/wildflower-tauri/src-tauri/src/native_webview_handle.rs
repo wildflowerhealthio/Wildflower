@@ -85,6 +85,20 @@ impl OnDeviceWebviewHandle for NativeWebviewHandle {
             // cookie stale (→ 401), acceptable for the short consent flow.
             let tunnel_host = tunnel.current_public_host();
             let cookies = cookies_for_target(token.as_deref(), &url, tunnel_host.as_deref());
+            // Make the seeding decision observable (never the token itself):
+            // "no cookie in the popup" debugging starts here.
+            if cookies.is_empty() {
+                log::info!(
+                    "[launch] no owner-session cookies seeded for {url} \
+                     (token present: {}, tunnel host: {tunnel_host:?})",
+                    token.is_some(),
+                );
+            } else {
+                log::info!(
+                    "[launch] seeding {} owner-session cookies scoped to {tunnel_host:?}",
+                    cookies.len(),
+                );
+            }
             if let Err(error) = open_app_in_native_webview(&handle, title, url, cookies) {
                 log::error!("[launch] failed to open native webview for launch: {error}");
             }
