@@ -25,7 +25,7 @@ pub use config::GatekeeperConfig;
 pub use db::GatekeeperStore;
 pub use http::{
     ensure_bearer_header, is_pre_auth_public_path, layer_router_with_gatekeeper_auth_gating,
-    layer_router_with_loopback_peer_gating, verify_owner_bearer, AppState,
+    layer_router_with_loopback_peer_gating, owner_session_cookies, verify_owner_bearer, AppState,
 };
 
 /// `client_id` of the host application's first-party OAuth client. The host
