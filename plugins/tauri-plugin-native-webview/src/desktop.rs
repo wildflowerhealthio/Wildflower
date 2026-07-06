@@ -39,7 +39,10 @@ use tauri::{
 };
 use url::Url;
 
-use crate::models::{EvaluateJsRequest, NativeWebviewEvent, OpenRequest, PatchWindowTextRequest};
+use crate::models::{
+    CookieSameSite, CookieSpec, EvaluateJsRequest, NativeWebviewEvent, OpenRequest,
+    PatchWindowTextRequest,
+};
 
 /// Label for the desktop native-webview parent window.
 /// `capabilities/native-webview-window.json` keys on it to scope the grant.
@@ -132,6 +135,50 @@ fn build_chrome_data_url(state: &InitialChromeState) -> crate::Result<Url> {
     let encoded = BASE64.encode(html.as_bytes());
     Url::parse(&format!("data:text/html;base64,{encoded}"))
         .map_err(|error| crate::Error::Internal(error.to_string()))
+}
+
+/// Convert a wire [`CookieSpec`] into the typed [`tauri::webview::cookie`]
+/// `Cookie` handed to `Webview::set_cookie`. Pure field mapping — attribute
+/// grammar stays the vetted cookie crate's.
+fn cookie_from_spec(spec: &CookieSpec) -> tauri::webview::cookie::Cookie<'static> {
+    use tauri::webview::cookie::{time::Duration, Cookie, SameSite};
+    let mut cookie = Cookie::new(spec.name.clone(), spec.value.clone());
+    cookie.set_domain(spec.domain.clone());
+    cookie.set_path(spec.path.clone());
+    cookie.set_secure(spec.secure);
+    cookie.set_http_only(spec.http_only);
+    cookie.set_same_site(match spec.same_site {
+        CookieSameSite::Strict => SameSite::Strict,
+        CookieSameSite::Lax => SameSite::Lax,
+        CookieSameSite::None => SameSite::None,
+    });
+    if let Some(seconds) = spec.max_age {
+        cookie.set_max_age(Duration::seconds(seconds));
+    }
+    cookie
+}
+
+/// Write `cookies` into `content`'s cookie store. Each `set_cookie` blocks
+/// until the write commits (macOS waits on the `WKHTTPCookieStore` completion
+/// handler, Linux spins `gtk::main_iteration()`, Windows' `AddOrUpdateCookie`
+/// is synchronous), so on `Ok` return the cookies are guaranteed visible to the
+/// next navigation. Errors propagate: a popup that silently lost its seed would
+/// just render an unauthenticated consent page, which is harder to diagnose
+/// than a failed `open`.
+fn seed_cookies<R: Runtime>(
+    content: &tauri::webview::Webview<R>,
+    cookies: &[CookieSpec],
+) -> crate::Result<()> {
+    for spec in cookies {
+        content.set_cookie(cookie_from_spec(spec))?;
+    }
+    Ok(())
+}
+
+/// The transient `about:blank` a cookie-seeding open builds at before
+/// navigating to the real target (see [`present`]).
+fn blank_url() -> crate::Result<Url> {
+    Url::parse("about:blank").map_err(|error| crate::Error::Internal(error.to_string()))
 }
 
 /// Build the desktop backend.
@@ -470,9 +517,17 @@ fn present<R: Runtime>(
     )?;
 
     // Content webview: the external URL, with the caller's document-start
-    // script (the browser-sniffer bundle in our usage).
-    let mut content_builder =
-        WebviewBuilder::new(CONTENT_WEBVIEW_LABEL, WebviewUrl::External(parsed_url));
+    // script (the browser-sniffer bundle in our usage). A cookie-seeding open
+    // builds at `about:blank` instead and only navigates to the target after
+    // the (blocking) cookie writes commit, so the seed rides the very first
+    // request — see [`OpenRequest`]'s `cookies` and [`seed_cookies`].
+    let cookies = payload.cookies;
+    let content_target = if cookies.is_empty() {
+        WebviewUrl::External(parsed_url.clone())
+    } else {
+        WebviewUrl::External(blank_url()?)
+    };
+    let mut content_builder = WebviewBuilder::new(CONTENT_WEBVIEW_LABEL, content_target);
     if let Some(script) = init_script {
         content_builder = content_builder.initialization_script(script);
     }
@@ -482,6 +537,12 @@ fn present<R: Runtime>(
     let app_for_loads = app.clone();
     content_builder = content_builder.on_page_load(move |_webview, payload| {
         if !matches!(payload.event(), tauri::webview::PageLoadEvent::Started) {
+            return;
+        }
+        // A cookie-seeding open transits `about:blank` before the real target;
+        // that transient load must neither flash in the chrome URL bar nor
+        // count as a history entry for the Back-button approximation.
+        if payload.url().as_str() == "about:blank" {
             return;
         }
         // URL-fallback sync, kept independent of the nav-button bookkeeping below
@@ -514,7 +575,7 @@ fn present<R: Runtime>(
             ));
         }
     });
-    window.add_child(
+    let content = window.add_child(
         content_builder,
         LogicalPosition::<f64>::new(0.0, CHROME_HEIGHT_BASE),
         LogicalSize::<f64>::new(
@@ -522,6 +583,12 @@ fn present<R: Runtime>(
             (logical_height - CHROME_HEIGHT_BASE).max(0.0),
         ),
     )?;
+    if !cookies.is_empty() {
+        // Both calls block until committed, so ordering is guaranteed: every
+        // cookie is in the store before the first request to the target.
+        seed_cookies(&content, &cookies)?;
+        content.navigate(parsed_url)?;
+    }
 
     install_window_listeners(app, &window);
     arm_absolute_timeout(app);
@@ -665,6 +732,9 @@ fn apply_rewire<R: Runtime>(
             let _ = chrome.eval(format!("{CHROME_RESET_TEXT_FN}({json})"));
         }
     }
+    // Seed cookies before navigating so they ride the new target's first
+    // request (blocking writes; see [`seed_cookies`]).
+    seed_cookies(content, &payload.cookies)?;
     let _ = content.navigate(parsed);
     // A reopen starts a new task clock — re-arm the backstop.
     arm_absolute_timeout(app);
@@ -873,5 +943,47 @@ mod tests {
         // Title unclaimed → null → the chrome paints the URL into the title.
         assert!(html.contains("\"title\":null"));
         assert!(html.contains("\"message\":null"));
+    }
+
+    /// Every [`CookieSpec`] attribute lands on the typed cookie — asserted on
+    /// the rendered `Set-Cookie` grammar (the whole value, not field-by-field)
+    /// so an attribute the mapping dropped or renamed fails loudly.
+    #[test]
+    fn cookie_from_spec_maps_every_attribute() {
+        let cookie = cookie_from_spec(&CookieSpec {
+            name: "wf_auth".to_owned(),
+            value: "e.y.J".to_owned(),
+            domain: "apex.example.test".to_owned(),
+            path: "/".to_owned(),
+            secure: true,
+            http_only: true,
+            same_site: CookieSameSite::Lax,
+            max_age: Some(3600),
+        });
+        assert_eq!(
+            cookie.to_string(),
+            "wf_auth=e.y.J; HttpOnly; SameSite=Lax; Secure; Path=/; \
+             Domain=apex.example.test; Max-Age=3600"
+        );
+    }
+
+    /// `max_age: None` yields a session cookie (no `Max-Age`), and the boolean
+    /// attributes render as absent rather than negated.
+    #[test]
+    fn cookie_from_spec_session_cookie_omits_max_age() {
+        let cookie = cookie_from_spec(&CookieSpec {
+            name: "n".to_owned(),
+            value: "v".to_owned(),
+            domain: "example.test".to_owned(),
+            path: "/p".to_owned(),
+            secure: false,
+            http_only: false,
+            same_site: CookieSameSite::Strict,
+            max_age: None,
+        });
+        assert_eq!(
+            cookie.to_string(),
+            "n=v; SameSite=Strict; Path=/p; Domain=example.test"
+        );
     }
 }

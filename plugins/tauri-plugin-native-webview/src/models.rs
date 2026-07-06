@@ -74,11 +74,13 @@ pub struct CookieSpec {
     pub name: String,
     /// Cookie value.
     pub value: String,
-    /// `Domain` attribute. `Some(host)` scopes the cookie to `host` **and its
-    /// subdomains** (standard `Domain` semantics on every backend); `None`
-    /// host-only-scopes it to the target URL's exact host.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub domain: Option<String>,
+    /// `Domain` attribute — required, never optional: scopes the cookie to
+    /// `domain` **and its subdomains** (standard `Domain` semantics on every
+    /// backend). A domain-less cookie would be *silently dropped* by the
+    /// desktop backend (wry hands WKHTTPCookieStore an empty-domain
+    /// `HTTPCookie`, which never lands), so the spec forces callers to pick the
+    /// host explicitly.
+    pub domain: String,
     /// `Path` attribute (callers typically pass `/`).
     pub path: String,
     /// `Secure` attribute — https-only transport.
@@ -370,7 +372,7 @@ mod tests {
             cookies: vec![CookieSpec {
                 name: "wf_auth".to_owned(),
                 value: "e.y.J".to_owned(),
-                domain: Some("apex.example.test".to_owned()),
+                domain: "apex.example.test".to_owned(),
                 path: "/".to_owned(),
                 secure: true,
                 http_only: true,
@@ -395,14 +397,14 @@ mod tests {
         );
     }
 
-    /// A host-only session cookie (no `Domain`, no `Max-Age`) omits both keys —
-    /// the Swift/Kotlin optionals decode absence as "unset", never `null`.
+    /// A session cookie (no `Max-Age`) omits the key — the Swift/Kotlin
+    /// optionals decode absence as "unset", never `null`.
     #[test]
-    fn cookie_spec_omits_absent_domain_and_max_age() {
+    fn cookie_spec_omits_absent_max_age() {
         let json = serde_json::to_string(&CookieSpec {
             name: "n".to_owned(),
             value: "v".to_owned(),
-            domain: None,
+            domain: "example.test".to_owned(),
             path: "/".to_owned(),
             secure: false,
             http_only: false,
@@ -412,7 +414,6 @@ mod tests {
         .expect("serialize");
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("parse");
         let object = parsed.as_object().expect("object");
-        assert!(!object.contains_key("domain"));
         assert!(!object.contains_key("maxAge"));
         assert_eq!(
             object.get("sameSite").and_then(|v| v.as_str()),
