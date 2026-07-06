@@ -1,13 +1,16 @@
 import type { JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { Chip, StatusBadge } from 'react-tundraish'
-import type { Cell } from 'scopes-core'
+import type { Cell, Scope } from 'scopes-core'
 
 import { PermissionPicker } from '../molecules/permission-picker.tsx'
 import type { Grid } from './grid-model.ts'
 import styles from './permission-grid.module.css'
 
-interface PermissionGridProps {
+interface PermissionGridProps<
+  TResource extends Scope.ResourceType.Any,
+  TInteractions extends string,
+> {
   /** Section heading (serif), e.g. "Health records". */
   readonly title: string
   /** Section tag chip, e.g. "FHIR" / "Admin". */
@@ -17,9 +20,9 @@ interface PermissionGridProps {
   /** Optional status badge, e.g. "No access". */
   readonly status?: string
   /** The projected section — its interaction columns + rows (from `buildGrid`). */
-  readonly grid: Grid
+  readonly grid: Grid<TResource, TInteractions>
   /** Toggle one control on a row — a v2 interaction letter or a v1 `read`/`write` word. */
-  readonly onToggleItem: (resource: string, itemId: string) => void
+  readonly onToggleItem: (resource: TResource, itemId: TInteractions) => void
   /** The "current and future" note under the grid (shown when a wildcard row is present). */
   readonly wildcardNote?: string
   readonly className?: string
@@ -70,7 +73,7 @@ const GridCell = ({
  * context is fixed, held by the container). The `✶ All record types` wildcard row drives
  * the §3 locking below it.
  */
-const PermissionGrid = ({
+const PermissionGrid = <TResource extends Scope.ResourceType.Any, TInteractions extends string>({
   title,
   chip,
   note,
@@ -79,7 +82,7 @@ const PermissionGrid = ({
   onToggleItem,
   wildcardNote,
   className,
-}: PermissionGridProps): JSX.Element => {
+}: PermissionGridProps<TResource, TInteractions>): JSX.Element => {
   const { columns, rows } = grid
   return (
     <section className={cn(styles['grid'], className)}>
@@ -106,7 +109,7 @@ const PermissionGrid = ({
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={row.resource} className={styles['row']}>
+            <tr key={row.resource.serialize()} className={styles['row']}>
               <th scope="row" className={styles['rowhead']}>
                 <span className={styles['label']}>{row.label}</span>
                 <code className={styles['code']}>{row.code}</code>

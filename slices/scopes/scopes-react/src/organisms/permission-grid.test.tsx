@@ -65,7 +65,7 @@ describe('PermissionGrid', () => {
     expect(onToggleItem).not.toHaveBeenCalled()
 
     await user.click(screen.getByRole('checkbox', { name: 'Create Observation' }))
-    expect(onToggleItem).toHaveBeenCalledWith('Observation', 'c')
+    expect(onToggleItem).toHaveBeenCalledWith(Scope.ResourceType.Fhir.parse('Observation'), 'c')
   })
 
   it('renders a v1 word row as a Read/Write multiselect instead of interaction cells', async () => {
@@ -87,6 +87,6 @@ describe('PermissionGrid', () => {
     expect(write.checked).toBe(false)
 
     await user.click(write)
-    expect(onToggleItem).toHaveBeenCalledWith('Observation', 'write')
+    expect(onToggleItem).toHaveBeenCalledWith(Scope.ResourceType.Fhir.parse('Observation'), 'write')
   })
 })

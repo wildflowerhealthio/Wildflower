@@ -42,14 +42,15 @@ const buildSectionGrid = (
   section: ConsentSection,
   draft: GrantDraftModel.GrantDraft,
   request: ScopeRequest.ScopeRequest
-): Grid => buildGrid(section.section, draft, request, { includeWildcard: true })
+): Grid<
+  Scope.MultiScope.ResourceOf<Scope.MultiScope.Kind>,
+  Scope.MultiScope.InteractionOf<Scope.MultiScope.Kind>
+> => buildGrid(section.section, draft, request, { includeWildcard: true })
 
 /**
- * Apply one cell toggle to the draft. The grid hands back plain strings; each is resolved to
- * the section variant's typed resource / interaction before delegating to
- * {@link GrantDraft.toggleItem} — the resolution stays within the variant's own partition
- * (no cast). A string that doesn't resolve (never happens for a rendered row) leaves the
- * draft unchanged.
+ * Apply one cell toggle to the draft. The grid hands back the section variant's own typed
+ * resource and interaction (from {@link buildGrid}), so this delegates straight to
+ * {@link GrantDraft.toggleItem} within the variant's own partition — no re-parse, no cast.
  */
 const applyToggle = <K extends Scope.MultiScope.Kind>(
   section: {
@@ -57,24 +58,18 @@ const applyToggle = <K extends Scope.MultiScope.Kind>(
     readonly context: Scope.MultiScope.ContextOf<K>
   },
   draft: GrantDraftModel.GrantDraft,
-  resourceString: string,
-  itemIdString: string
-): GrantDraftModel.GrantDraft => {
-  const { configuration, context } = section
-  const resource = configuration.resourceClass.parse(resourceString)
-  if (resource === null) return draft
-  const item = configuration.permissionClass.empty.items.find((i) => i.id === itemIdString)
-  if (item === undefined) return draft
-  return GrantDraft.toggleItem(draft, configuration, context, resource, item.id)
-}
+  resource: Scope.MultiScope.ResourceOf<K>,
+  itemId: Scope.MultiScope.InteractionOf<K>
+): GrantDraftModel.GrantDraft =>
+  GrantDraft.toggleItem(draft, section.configuration, section.context, resource, itemId)
 
 /** Apply a cell toggle for a section of any variant (delegates to {@link applyToggle}). */
 const applyToggleForSection = (
   section: ConsentSection,
   draft: GrantDraftModel.GrantDraft,
-  resourceString: string,
-  itemIdString: string
-): GrantDraftModel.GrantDraft => applyToggle(section.section, draft, resourceString, itemIdString)
+  resource: Scope.MultiScope.ResourceOf<Scope.MultiScope.Kind>,
+  itemId: Scope.MultiScope.InteractionOf<Scope.MultiScope.Kind>
+): GrantDraftModel.GrantDraft => applyToggle(section.section, draft, resource, itemId)
 
 /** Whether a section addresses the launch patient's own records (FHIR, patient context). */
 const isPatientSection = (section: ConsentSection): boolean =>
@@ -123,7 +118,11 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
     consentMutation.error === null ? null : unknownErrorToString(consentMutation.error)
   const errorMessage = resultError ?? mutationError
 
-  const toggleCell = (section: ConsentSection, resource: string, itemId: string): void => {
+  const toggleCell = (
+    section: ConsentSection,
+    resource: Scope.MultiScope.ResourceOf<Scope.MultiScope.Kind>,
+    itemId: Scope.MultiScope.InteractionOf<Scope.MultiScope.Kind>
+  ): void => {
     setDraft((previous) => applyToggleForSection(section, previous, resource, itemId))
   }
 
@@ -237,7 +236,7 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
         <div className={groups['statements']}>
           {grids.map(({ section, grid }) =>
             grid.rows.map((row) => {
-              const rowKey = `${section.kind}/${section.section.context.serialize()}/${row.resource}`
+              const rowKey = `${section.kind}/${section.section.context.serialize()}/${row.resource.serialize()}`
               const grantedNames = row.items
                 .filter((item) => item.state === 'on' || item.state === 'locked')
                 .map((item) => item.name)
@@ -279,7 +278,7 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
                 toggleCell(section, resource, itemId)
               }}
               wildcardNote={
-                grid.rows.some((row) => row.resource === '*')
+                grid.rows.some((row) => row.resource.serialize() === '*')
                   ? 'Covers all current and future record types.'
                   : undefined
               }

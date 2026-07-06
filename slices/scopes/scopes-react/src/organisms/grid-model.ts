@@ -13,19 +13,19 @@ import type { Cell, GrantDraft, Scope, ScopeRequest } from 'scopes-core'
 import type { PickerItem } from '../molecules/permission-picker.tsx'
 
 /** One selectable control on a grid row — a permission item plus its resolved cell state. */
-type GridItem = PickerItem
+type GridItem<TInteractions extends string> = PickerItem<TInteractions>
 
 /** One column header — an interaction from the section's permission style (`{ id, name, code }`). */
-interface GridColumn {
-  readonly id: string
+interface GridColumn<TInteractions extends string> {
+  readonly id: TInteractions
   readonly name: string
   readonly code: string
 }
 
 /** One rendered grid row — uniform across permission forms (5 cruds cells, or 2 v1 words). */
-interface GridRow {
-  /** The row's resource, serialized (`Observation`, `*`) — the stable row key. */
-  readonly resource: string
+interface GridRow<TResource extends Scope.ResourceType.Any, TInteractions extends string> {
+  /** The row's typed resource (`Observation`, the `*` wildcard, …) — serialize it for the row key. */
+  readonly resource: TResource
   /** The 1:1 display label (or the wildcard label for `*`). */
   readonly label: string
   /** The live scope string for this row, shown in mono (detail-only, `spec.md §2`). */
@@ -33,14 +33,14 @@ interface GridRow {
   /** Interaction cells (`grid`) or an inline multiselect (`inline`, v1 words). */
   readonly layout: 'grid' | 'inline'
   /** The row's controls, in display order. */
-  readonly items: readonly GridItem[]
+  readonly items: readonly GridItem<TInteractions>[]
 }
 
 /** Everything {@link PermissionGrid} renders: the section's interaction columns + its projected rows. */
-interface Grid {
+interface Grid<TResource extends Scope.ResourceType.Any, TInteractions extends string> {
   /** The interaction columns, in canonical order (`spec.md §1`) — 5 for cruds, 2 for v1 words. */
-  readonly columns: readonly GridColumn[]
-  readonly rows: readonly GridRow[]
+  readonly columns: readonly GridColumn<TInteractions>[]
+  readonly rows: readonly GridRow<TResource, TInteractions>[]
 }
 
 /**
@@ -79,7 +79,7 @@ const buildGrid = <K extends Scope.MultiScope.Kind>(
   grant: GrantDraft.GrantDraft,
   scopeRequest: ScopeRequest.ScopeRequest | null,
   { includeWildcard = false }: GridOptions = {}
-): Grid => {
+): Grid<Scope.MultiScope.ResourceOf<K>, Scope.MultiScope.InteractionOf<K>> => {
   const { configuration, context, catalog } = section
 
   // The wildcard row's label ("✶ All record types") comes from the domain, so the lock
@@ -100,8 +100,8 @@ const buildGrid = <K extends Scope.MultiScope.Kind>(
   const rows = Rows.build(configuration, grant, scopeRequest, context, catalog, {
     includeWildcard,
   }).map(
-    (row): GridRow => ({
-      resource: row.resource.serialize(),
+    (row): GridRow<Scope.MultiScope.ResourceOf<K>, Scope.MultiScope.InteractionOf<K>> => ({
+      resource: row.resource,
       label: row.resource.singularLabel(),
       code: row.stored?.serialize() ?? `${context.serialize()}/${row.resource.serialize()}`,
       layout: configuration.permissionClass.empty.layout,
