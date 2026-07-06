@@ -51,6 +51,33 @@ class OpenArgs {
     var initialTitle: String? = null
     var initialSubtitle: String? = null
     var initialMessage: String? = null
+
+    // Cookies to seed into the WebView's cookie store BEFORE the first
+    // navigation to `url` (the apps-launch owner-session seeding). Matches
+    // `OpenRequest`'s `cookies` wire shape; omitted (→ null) when empty.
+    var cookies: List<CookieArg>? = null
+}
+
+/**
+ * One cookie decoded from `OpenRequest`'s `cookies` entries — camelCase keys
+ * matching `CookieSpec`'s serde wire shape (see `models.rs`).
+ */
+@InvokeArg
+class CookieArg {
+    lateinit var name: String
+    lateinit var value: String
+
+    /** `Domain` attribute: the cookie applies to this host and its subdomains. */
+    lateinit var domain: String
+    lateinit var path: String
+    var secure: Boolean = false
+    var httpOnly: Boolean = false
+
+    /** `"strict"` / `"lax"` / `"none"` — pinned lowercase in `models.rs`. */
+    lateinit var sameSite: String
+
+    /** Lifetime in seconds from now; null = session cookie. */
+    var maxAge: Long? = null
 }
 
 /**
@@ -218,6 +245,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
                         args.initialTitle,
                         args.initialSubtitle,
                         args.initialMessage,
+                        args.cookies,
                     )
                     val result = JSObject()
                     result.put("opened", true)
@@ -255,7 +283,12 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
                     args.initialSubtitle,
                     args.initialMessage,
                 )
-                existing.loadUrl(args.url)
+                // Seed cookies before navigating so they ride the new target's
+                // first request; the resolve stays immediate (`opened` means
+                // "navigation dispatched", and the load is asynchronous anyway).
+                seedCookies(args.cookies) {
+                    existing.loadUrl(args.url)
+                }
             } else {
                 present(
                     args.url,
@@ -264,6 +297,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
                     args.initialTitle,
                     args.initialSubtitle,
                     args.initialMessage,
+                    args.cookies,
                 )
             }
             val result = JSObject()
@@ -506,6 +540,56 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
         renderUrlFallback()
     }
 
+    /**
+     * Seed [cookies] into the process-global [android.webkit.CookieManager],
+     * then run [thenLoad] once every `setCookie` completion has fired — so the
+     * seed rides the very first request to the target (mirrors desktop's
+     * blocking `set_cookie` → `navigate` ordering). No cookies → load
+     * immediately.
+     *
+     * Each cookie is written as a server-style `Set-Cookie` header string
+     * against `https://<domain>/` (`CookieManager` validates a `Secure` cookie
+     * only against a secure URL) and its `Domain` attribute makes it
+     * subdomain-inclusive, matching the other backends. NOTE: `CookieManager`
+     * is process-global — the seeded cookie is visible to any WebView in this
+     * app that hits the same host, not just this plugin's popup.
+     */
+    private fun seedCookies(cookies: List<CookieArg>?, thenLoad: () -> Unit) {
+        if (cookies.isNullOrEmpty()) {
+            thenLoad()
+            return
+        }
+        val manager = android.webkit.CookieManager.getInstance()
+        manager.setAcceptCookie(true)
+        val remaining = java.util.concurrent.atomic.AtomicInteger(cookies.size)
+        for (cookie in cookies) {
+            val header = buildString {
+                append(cookie.name).append('=').append(cookie.value)
+                append("; Domain=").append(cookie.domain)
+                append("; Path=").append(cookie.path)
+                if (cookie.secure) append("; Secure")
+                if (cookie.httpOnly) append("; HttpOnly")
+                when (cookie.sameSite) {
+                    "strict" -> append("; SameSite=Strict")
+                    "lax" -> append("; SameSite=Lax")
+                    "none" -> append("; SameSite=None")
+                }
+                cookie.maxAge?.let { append("; Max-Age=").append(it) }
+            }
+            val target = (if (cookie.secure) "https://" else "http://") + cookie.domain + "/"
+            manager.setCookie(target, header) {
+                if (remaining.decrementAndGet() == 0) {
+                    // Persist to disk (best-effort; in-memory visibility is
+                    // already guaranteed by the completed callbacks), then load
+                    // back on the main thread — the callback thread is
+                    // unspecified and loadUrl is main-thread-only.
+                    manager.flush()
+                    Handler(Looper.getMainLooper()).post(thenLoad)
+                }
+            }
+        }
+    }
+
     private fun present(
         url: String,
         initScript: String?,
@@ -513,6 +597,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
         initialTitle: String?,
         initialSubtitle: String?,
         initialMessage: String?,
+        cookies: List<CookieArg>?,
     ) {
         val webView = WebView(activity)
         webView.settings.javaScriptEnabled = true
@@ -701,7 +786,11 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
             )
         }
 
-        webView.loadUrl(url)
+        // Seed cookies first, then load — the seed must ride the first request
+        // (see [seedCookies]). With no cookies this loads immediately.
+        seedCookies(cookies) {
+            webView.loadUrl(url)
+        }
 
         dialog = Dialog(activity, android.R.style.Theme_Black_NoTitleBar_Fullscreen).apply {
             setContentView(layout)
