@@ -53,6 +53,56 @@ pub struct OpenRequest {
     /// empty.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub initial_message: Option<String>,
+    /// Cookies written into the native webview's cookie store **before** the
+    /// first navigation to `url`, so they ride the very first request (the apps
+    /// launch path seeds the owner `wf_auth` session cookie this way — see the
+    /// host's `native_webview_handle`). Empty means "seed nothing" and is
+    /// omitted from the wire so the Swift/Kotlin optionals decode cleanly.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cookies: Vec<CookieSpec>,
+}
+
+/// One cookie to seed into the native webview's store, expressed as the
+/// server-style attribute set (the same shape a `Set-Cookie` carries). Each
+/// platform backend translates it to its native cookie API — desktop
+/// `Webview::set_cookie`, iOS `HTTPCookie`, Android `CookieManager` — so the
+/// fields stay API-neutral.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CookieSpec {
+    /// Cookie name.
+    pub name: String,
+    /// Cookie value.
+    pub value: String,
+    /// `Domain` attribute. `Some(host)` scopes the cookie to `host` **and its
+    /// subdomains** (standard `Domain` semantics on every backend); `None`
+    /// host-only-scopes it to the target URL's exact host.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub domain: Option<String>,
+    /// `Path` attribute (callers typically pass `/`).
+    pub path: String,
+    /// `Secure` attribute — https-only transport.
+    pub secure: bool,
+    /// `HttpOnly` attribute — invisible to page JS.
+    pub http_only: bool,
+    /// `SameSite` attribute.
+    pub same_site: CookieSameSite,
+    /// `Max-Age` in seconds from now; `None` makes it a session cookie.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_age: Option<i64>,
+}
+
+/// `SameSite` values for [`CookieSpec`], pinned lowercase on the wire
+/// (`"strict"` / `"lax"` / `"none"`) for the Swift/Kotlin decoders.
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum CookieSameSite {
+    /// Sent only on same-site requests.
+    Strict,
+    /// Sent on same-site requests and top-level cross-site navigations.
+    Lax,
+    /// Sent on all requests (requires `Secure`).
+    None,
 }
 
 /// Result of an `open` invocation. `opened` is `true` once the native webview
@@ -232,6 +282,7 @@ mod tests {
             initial_title: None,
             initial_subtitle: None,
             initial_message: None,
+            cookies: vec![],
         })
         .expect("serialize");
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("parse");
@@ -246,6 +297,8 @@ mod tests {
         assert!(!object.contains_key("initialTitle"));
         assert!(!object.contains_key("initialSubtitle"));
         assert!(!object.contains_key("initialMessage"));
+        // No cookies to seed → the key is omitted entirely, same rationale.
+        assert!(!object.contains_key("cookies"));
         // Channel serialises as an opaque IPC handle string; we only check the
         // prefix to stay version-agnostic.
         assert!(object
@@ -264,6 +317,7 @@ mod tests {
             initial_title: None,
             initial_subtitle: None,
             initial_message: None,
+            cookies: vec![],
         })
         .expect("serialize");
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("parse");
@@ -285,6 +339,7 @@ mod tests {
             initial_title: None,
             initial_subtitle: Some("Collecting Automatically".to_owned()),
             initial_message: None,
+            cookies: vec![],
         })
         .expect("serialize");
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("parse");
@@ -296,6 +351,73 @@ mod tests {
         let object = parsed.as_object().expect("object");
         assert!(!object.contains_key("initialTitle"));
         assert!(!object.contains_key("initialMessage"));
+    }
+
+    /// Cookies ride under the camelCase `cookies` key with each spec's fields
+    /// camelCased (`httpOnly`, `sameSite`, `maxAge`) and the `SameSite` value
+    /// pinned lowercase — the exact shape the Swift `Decodable` / Kotlin
+    /// `@InvokeArg` sides parse. Drift here would silently break on-device
+    /// cookie seeding (the popup would just look unauthenticated).
+    #[test]
+    fn open_request_serializes_cookies_camel_case() {
+        let json = serde_json::to_string(&OpenRequest {
+            url: "https://apex.example.test/x".to_owned(),
+            init_script: None,
+            native_webview_event_channel: noop_channel(),
+            initial_title: None,
+            initial_subtitle: None,
+            initial_message: None,
+            cookies: vec![CookieSpec {
+                name: "wf_auth".to_owned(),
+                value: "e.y.J".to_owned(),
+                domain: Some("apex.example.test".to_owned()),
+                path: "/".to_owned(),
+                secure: true,
+                http_only: true,
+                same_site: CookieSameSite::Lax,
+                max_age: Some(3600),
+            }],
+        })
+        .expect("serialize");
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("parse");
+        assert_eq!(
+            parsed.get("cookies"),
+            Some(&serde_json::json!([{
+                "name": "wf_auth",
+                "value": "e.y.J",
+                "domain": "apex.example.test",
+                "path": "/",
+                "secure": true,
+                "httpOnly": true,
+                "sameSite": "lax",
+                "maxAge": 3600,
+            }]))
+        );
+    }
+
+    /// A host-only session cookie (no `Domain`, no `Max-Age`) omits both keys —
+    /// the Swift/Kotlin optionals decode absence as "unset", never `null`.
+    #[test]
+    fn cookie_spec_omits_absent_domain_and_max_age() {
+        let json = serde_json::to_string(&CookieSpec {
+            name: "n".to_owned(),
+            value: "v".to_owned(),
+            domain: None,
+            path: "/".to_owned(),
+            secure: false,
+            http_only: false,
+            same_site: CookieSameSite::Strict,
+            max_age: None,
+        })
+        .expect("serialize");
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("parse");
+        let object = parsed.as_object().expect("object");
+        assert!(!object.contains_key("domain"));
+        assert!(!object.contains_key("maxAge"));
+        assert_eq!(
+            object.get("sameSite").and_then(|v| v.as_str()),
+            Some("strict")
+        );
     }
 
     /// `OpenResponse` decodes the native-side `{ "opened": true }` payload.

@@ -53,6 +53,9 @@ pub(crate) fn open_or_navigate(app: &AppHandle, url: WebviewUrl) -> anyhow::Resu
             initial_title: None,
             initial_subtitle: Some("Collecting Automatically".to_owned()),
             initial_message: None,
+            // The sniffer targets arbitrary third-party EMR origins — never
+            // seed any Wildflower credential into that jar.
+            cookies: vec![],
         })
         .map_err(|error| anyhow::anyhow!("tauri-plugin-native-webview open_url failed: {error}"))?;
 

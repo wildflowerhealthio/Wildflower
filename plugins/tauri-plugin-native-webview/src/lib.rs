@@ -32,6 +32,7 @@
 //!     initial_title: None,
 //!     initial_subtitle: None,
 //!     initial_message: None,
+//!     cookies: vec![],
 //! })?;
 //! // `open_url` navigates without presenting; reveal it with `show()`.
 //! app.native_webview().show()?;
@@ -52,8 +53,9 @@ use tauri::{
 
 pub use error::{Error, Result};
 pub use models::{
-    DisposeResponse, EvaluateJsRequest, EvaluateJsResponse, HideResponse, NativeWebviewEvent,
-    OpenRequest, OpenResponse, PatchWindowTextRequest, PatchWindowTextResponse, ShowResponse,
+    CookieSameSite, CookieSpec, DisposeResponse, EvaluateJsRequest, EvaluateJsResponse,
+    HideResponse, NativeWebviewEvent, OpenRequest, OpenResponse, PatchWindowTextRequest,
+    PatchWindowTextResponse, ShowResponse,
 };
 
 mod commands;

@@ -95,6 +95,7 @@ fn open_app_in_native_webview(
             initial_title: Some(title),
             initial_subtitle: None,
             initial_message: None,
+            cookies: vec![],
         })
         .map_err(|error| anyhow::anyhow!("tauri-plugin-native-webview open_url failed: {error}"))?;
     handle
