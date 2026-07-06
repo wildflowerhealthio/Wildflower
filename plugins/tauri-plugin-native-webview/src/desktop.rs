@@ -145,8 +145,19 @@ fn cookie_from_spec(spec: &CookieSpec) -> tauri::webview::cookie::Cookie<'static
     let mut cookie = Cookie::new(spec.name.clone(), spec.value.clone());
     cookie.set_domain(spec.domain.clone());
     cookie.set_path(spec.path.clone());
-    cookie.set_secure(spec.secure);
-    cookie.set_http_only(spec.http_only);
+    // Boolean attributes are set only when TRUE — `set_http_only(false)`
+    // records `Some(false)`, which wry's macOS conversion maps to a *present*
+    // NSHTTPCookie "HttpOnly" property (value "FALSE"), and Foundation treats
+    // the key's presence as HttpOnly. Observed: a `Some(false)` `wf_auth_exp`
+    // landed HttpOnly, hiding it from the consent page's JS. Leaving the
+    // option `None` keeps the property off entirely. Same treatment for
+    // `Secure` (same presence-keyed conversion).
+    if spec.secure {
+        cookie.set_secure(true);
+    }
+    if spec.http_only {
+        cookie.set_http_only(true);
+    }
     cookie.set_same_site(match spec.same_site {
         CookieSameSite::Strict => SameSite::Strict,
         CookieSameSite::Lax => SameSite::Lax,
@@ -1038,5 +1049,11 @@ mod tests {
             cookie.to_string(),
             "n=v; SameSite=Strict; Path=/p; Domain=example.test"
         );
+        // MUST be `None`, not `Some(false)`: wry's macOS conversion inserts
+        // the NSHTTPCookie "HttpOnly"/"Secure" property for any `Some`, and
+        // Foundation keys off the property's PRESENCE — a `Some(false)`
+        // `wf_auth_exp` lands HttpOnly and the consent page's JS can't read it.
+        assert_eq!(cookie.http_only(), None);
+        assert_eq!(cookie.secure(), None);
     }
 }
