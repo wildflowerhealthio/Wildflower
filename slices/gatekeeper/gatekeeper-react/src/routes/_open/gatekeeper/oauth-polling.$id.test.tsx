@@ -58,7 +58,7 @@ vi.mock('../../../queries/index.ts', () => ({
   },
 }))
 
-import { PendingView, PollingResult } from './oauth-polling.$id.tsx'
+import { PendingView } from './oauth-polling.$id.tsx'
 
 // jsdom's `window.location.replace` is a non-configurable property, so it
 // can't be spied directly. Swap the whole `location` for a stub exposing a

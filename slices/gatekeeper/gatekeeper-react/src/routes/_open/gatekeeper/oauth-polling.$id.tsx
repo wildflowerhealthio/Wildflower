@@ -1,5 +1,5 @@
 // This file route must keep its `export const Route` (the tanstackRouter
-// plugin keys off it), and `PollingResult` is exported separately as a
+// plugin keys off it), and `PendingView` is exported separately as a
 // unit-test seam — so a consolidated single export isn't possible here.
 import { createFileRoute } from '@tanstack/react-router'
 import {
