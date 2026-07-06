@@ -864,6 +864,55 @@ async fn auth_code_grant_happy_path_end_to_end() {
     assert!(token.get("refresh_token").is_none());
 }
 
+/// `GET /oauth-consents/{id}` names the app: alongside the raw `clientId`,
+/// the payload carries the registered client's display name so the consent UI
+/// can lead with something a patient can recognize.
+#[tokio::test]
+async fn oauth_consent_prompt_carries_client_display_name() {
+    let (g, host_owner_token, db) = spin_up();
+    seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
+    let challenge = compute_code_challenge(CODE_VERIFIER);
+
+    // /authorize parks a pending request the Owner UI would then load.
+    let query = format!(
+        "response_type=code&code_challenge_method=S256&client_id=test-app&scope=read&\
+         code_challenge={challenge}&redirect_uri=https%3A%2F%2Fapp.example%2Fcb&state=xyz"
+    );
+    let res = g
+        .router
+        .clone()
+        .oneshot(loopback_request(
+            Request::get(format!("/oauth/authorize?{query}")),
+            Body::empty(),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::FOUND);
+    let polling = res
+        .headers()
+        .get("location")
+        .and_then(|v| v.to_str().ok())
+        .expect("location")
+        .to_string();
+    let request_id = polling.rsplit('/').next().expect("request id").to_string();
+
+    let res = g
+        .router
+        .clone()
+        .oneshot(loopback_request(
+            Request::get(format!("/access/oauth-consents/{request_id}"))
+                .header("host", "127.0.0.1")
+                .header("authorization", format!("Bearer {host_owner_token}")),
+            Body::empty(),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+    let consent = body_json(res.into_body()).await;
+    assert_eq!(consent["clientId"], "test-app");
+    assert_eq!(consent["clientName"], "Integration Test Client");
+}
+
 /// The Owner may *narrow* a requested scope at consent time: a request for
 /// `patient/Observation.rs` approved as the tighter `patient/Observation.s` is
 /// still ⊆ the request, so `grantable_scopes` keeps it (coverage, not exact

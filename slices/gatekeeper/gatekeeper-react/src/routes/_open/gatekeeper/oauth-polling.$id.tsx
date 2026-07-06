@@ -262,11 +262,12 @@ const InlineConsent = ({ id }: { readonly id: string }): JSX.Element => {
   }
 
   return (
-    <>
-      <h1 className="text-heading-6">Authorize App</h1>
+    <div className={styles['consent']}>
       <OAuthConsentForm consent={consent} onDone={handleDone} />
-      <p className="text-body-3">Or approve this request on your phone.</p>
-    </>
+      <p className={cn('text-body-3', styles['phone-hint'])}>
+        Or approve this request on your phone.
+      </p>
+    </div>
   )
 }
 

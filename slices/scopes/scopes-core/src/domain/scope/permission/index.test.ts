@@ -13,7 +13,7 @@ describe('Permission — shared editing surface (cruds)', () => {
       'Create',
       'Read',
       'Update',
-      'Destroy',
+      'Delete',
       'Search',
     ])
   })

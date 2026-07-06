@@ -5,6 +5,12 @@ import { RequireAuthMiddleware } from './require-auth.ts'
 const OAuthConsentSchema = Schema.Struct({
   id: Schema.String,
   clientId: Schema.String,
+  /**
+   * The client's registered display name — the consent UI's primary identity
+   * for the app. The server falls back to the raw `clientId` when the client
+   * registration lookup misses, so this is always present.
+   */
+  clientName: Schema.String,
   scopes: Schema.Array(Schema.String),
   redirectUri: Schema.String,
   preApprovedScopes: Schema.Array(Schema.String),

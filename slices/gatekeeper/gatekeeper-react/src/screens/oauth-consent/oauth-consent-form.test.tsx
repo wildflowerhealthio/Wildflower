@@ -77,6 +77,34 @@ const lastApprovedScopes = (): readonly string[] | undefined => {
   return undefined
 }
 
+describe('OAuthConsentForm — app identity', () => {
+  test('the header names the app, demoting the client id to a mono line', () => {
+    renderForm(makeConsent({ scopes: ['patient/Observation.r'] }), vi.fn())
+
+    expect(screen.getByRole('heading', { name: 'Fitbit Sync' })).toBeDefined()
+    expect(screen.getByText('app.example')).toBeDefined()
+  })
+
+  test('falls back to the client id as the subject when the name is empty', () => {
+    renderForm(makeConsent({ scopes: ['patient/Observation.r'], clientName: '' }), vi.fn())
+
+    expect(screen.getByRole('heading', { name: 'app.example' })).toBeDefined()
+  })
+
+  test('statement lead-ins run app name → "It can also" → "…and"', () => {
+    renderForm(
+      makeConsent({
+        scopes: ['patient/Observation.r', 'patient/Condition.r', 'patient/Encounter.r'],
+      }),
+      vi.fn()
+    )
+
+    expect(screen.getByText('Fitbit Sync can')).toBeDefined()
+    expect(screen.getByText('It can also')).toBeDefined()
+    expect(screen.getByText('…and')).toBeDefined()
+  })
+})
+
 describe('OAuthConsentForm — seeding', () => {
   test('seeds every requested scope as granted, ignoring the pre-approved subset', async () => {
     // Arrange — pre-approval is a strict subset of the request; the form must ignore it.
@@ -87,7 +115,7 @@ describe('OAuthConsentForm — seeding', () => {
     )
 
     // Act — approve immediately, without touching anything.
-    await user.click(screen.getByRole('button', { name: 'Approve' }))
+    await user.click(screen.getByRole('button', { name: 'Allow access' }))
 
     // Assert — the full requested set (canonicalized) is granted, not just the subset.
     expect(lastApprovedScopes()).toEqual(GrantDraft.serializeAll(GrantDraft.fromScopes(scopes)))
@@ -102,7 +130,7 @@ describe('OAuthConsentForm — statement editing', () => {
     // Act — open the statement's picker and untick Read.
     await user.click(screen.getByRole('button', { name: /Read . Search/ }))
     await user.click(screen.getByRole('checkbox', { name: /Read/ }))
-    await user.click(screen.getByRole('button', { name: 'Approve' }))
+    await user.click(screen.getByRole('button', { name: 'Allow access' }))
 
     // Assert — the grant is now search-only.
     expect(lastApprovedScopes()).toEqual(['patient/Observation.s'])
@@ -119,7 +147,7 @@ describe('OAuthConsentForm — statement editing', () => {
 
     // Act — clicking it does nothing…
     await user.click(create)
-    await user.click(screen.getByRole('button', { name: 'Approve' }))
+    await user.click(screen.getByRole('button', { name: 'Allow access' }))
 
     // Assert — the payload is unchanged.
     expect(lastApprovedScopes()).toEqual(['patient/Observation.rs'])
@@ -140,7 +168,7 @@ describe('OAuthConsentForm — view toggle', () => {
     expect(screen.getByText('patient/Observation.rs')).toBeDefined()
 
     // Act — back to the summary.
-    await user.click(screen.getByRole('button', { name: 'Back to summary' }))
+    await user.click(screen.getByRole('button', { name: /Back to summary/ }))
     expect(screen.queryByText('patient/Observation.rs')).toBeNull()
   })
 })
@@ -153,12 +181,12 @@ describe('OAuthConsentForm — flags', () => {
     )
 
     // Sanity — openid is seeded in.
-    await user.click(screen.getByRole('button', { name: 'Approve' }))
+    await user.click(screen.getByRole('button', { name: 'Allow access' }))
     expect(lastApprovedScopes()).toContain('openid')
 
     // Act — toggle openid off (its plain-language row), then approve again.
     await user.click(screen.getByRole('switch', { name: /Confirm who you are/ }))
-    await user.click(screen.getByRole('button', { name: 'Approve' }))
+    await user.click(screen.getByRole('button', { name: 'Allow access' }))
 
     // Assert — openid is gone, the resource scope remains.
     expect(lastApprovedScopes()).toEqual(['patient/Observation.r'])
@@ -171,7 +199,7 @@ describe('OAuthConsentForm — flags', () => {
     )
 
     await user.click(screen.getByRole('switch', { name: /x-custom-scope/ }))
-    await user.click(screen.getByRole('button', { name: 'Approve' }))
+    await user.click(screen.getByRole('button', { name: 'Allow access' }))
     expect(lastApprovedScopes()).toEqual(['patient/Observation.r'])
   })
 })
@@ -193,7 +221,7 @@ describe('OAuthConsentForm — decision routing', () => {
     const onDone = vi.fn()
     const { user } = renderForm(makeConsent({ scopes: ['patient/Observation.r'] }), onDone)
 
-    await user.click(screen.getByRole('button', { name: 'Approve' }))
+    await user.click(screen.getByRole('button', { name: 'Allow access' }))
 
     expect(onDone).toHaveBeenCalledTimes(1)
     expect(onDone).toHaveBeenCalledWith({
@@ -206,7 +234,7 @@ describe('OAuthConsentForm — decision routing', () => {
     const onDone = vi.fn()
     const { user } = renderForm(makeConsent({ scopes: ['patient/Observation.r'] }), onDone)
 
-    await user.click(screen.getByRole('button', { name: 'Decline' }))
+    await user.click(screen.getByRole('button', { name: 'Deny' }))
 
     expect(onDone).toHaveBeenCalledWith({ status: 'denied' })
     expect(screen.queryByRole('alert')).toBeNull()
@@ -219,7 +247,7 @@ describe('OAuthConsentForm — decision routing', () => {
     const onDone = vi.fn()
     const { user } = renderForm(makeConsent({ scopes: ['patient/Observation.r'] }), onDone)
 
-    await user.click(screen.getByRole('button', { name: 'Approve' }))
+    await user.click(screen.getByRole('button', { name: 'Allow access' }))
 
     expect((await screen.findByRole('alert')).textContent).toBe('Something went wrong')
     expect(onDone).not.toHaveBeenCalled()
@@ -232,7 +260,7 @@ describe('OAuthConsentForm — decision routing', () => {
     const onDone = vi.fn()
     const { user } = renderForm(makeConsent({ scopes: ['patient/Observation.r'] }), onDone)
 
-    await user.click(screen.getByRole('button', { name: 'Approve' }))
+    await user.click(screen.getByRole('button', { name: 'Allow access' }))
 
     expect((await screen.findByRole('alert')).textContent).toBe('Authorization request was denied.')
     expect(onDone).not.toHaveBeenCalled()
@@ -253,7 +281,7 @@ describe('OAuthConsentForm — property (end-to-end seeding)', () => {
     await fc.assert(
       fc.asyncProperty(requestedArb, async (scopes) => {
         const { user } = renderForm(makeConsent({ scopes }), vi.fn())
-        await user.click(screen.getByRole('button', { name: 'Approve' }))
+        await user.click(screen.getByRole('button', { name: 'Allow access' }))
 
         const approved = lastApprovedScopes() ?? []
         const request = consentScopeRequest(makeConsent({ scopes }))
@@ -274,6 +302,7 @@ describe('OAuthConsentForm — property (end-to-end seeding)', () => {
 const makeConsent = (overrides: Partial<Consent> & Pick<Consent, 'scopes'>): Consent => ({
   id: 'consent-1',
   clientId: 'app.example',
+  clientName: 'Fitbit Sync',
   redirectUri: 'https://app.example/cb',
   preApprovedScopes: [],
   patient: null,

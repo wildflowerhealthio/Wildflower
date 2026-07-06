@@ -29,9 +29,10 @@ interface CheckboxGroupProps<TId extends string> {
   /** Stack the rows (default) or lay them out in a row (compact). */
   readonly direction?: 'column' | 'row'
   /**
-   * `boxed` (default) renders the design-system checkbox. `plain` renders an
-   * un-boxed checklist (a ✓ when selected, nothing when not) with any `mono`
-   * annotation right-aligned and the card sized to fit.
+   * `boxed` (default) renders the design-system checkbox. `plain` renders a
+   * chrome-less checklist — a small filled/outlined check square per row with
+   * any `mono` annotation right-aligned — for embedding inside a host card
+   * (e.g. a permission-statement popover).
    */
   readonly variant?: 'boxed' | 'plain'
   readonly className?: string
@@ -67,7 +68,11 @@ const CheckboxGroup = <TId extends string>({
         return (
           <label
             key={item.id}
-            className={cn(styles['option'], notEditable ? styles['option--locked'] : null)}
+            className={cn(
+              styles['option'],
+              item.locked ? styles['option--locked'] : null,
+              item.disabled ? styles['option--disabled'] : null
+            )}
             title={item.reason ?? undefined}
           >
             <input
@@ -80,7 +85,7 @@ const CheckboxGroup = <TId extends string>({
               }}
             />
             <span aria-hidden="true" className={styles['check']}>
-              ✓
+              {item.checked ? '✓' : ''}
             </span>
             <span className={styles['name']}>{item.label}</span>
             {item.mono !== undefined ? <code className={styles['mono']}>{item.mono}</code> : null}

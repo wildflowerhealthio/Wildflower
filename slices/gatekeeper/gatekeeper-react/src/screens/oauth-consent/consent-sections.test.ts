@@ -15,6 +15,7 @@ import type { Consent } from './types.ts'
 const makeConsent = (scopes: readonly string[]): Consent => ({
   id: 'consent-1',
   clientId: 'app.example',
+  clientName: 'Fitbit Sync',
   scopes,
   redirectUri: 'https://app.example/cb',
   preApprovedScopes: [],

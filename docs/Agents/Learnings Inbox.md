@@ -6,6 +6,12 @@ _Last triaged 2026-07-04 — durable lessons were promoted to `Strategies.md`, t
 
 <!-- Append new entries below this line -->
 
+## `.local-notes` design-handoff HTML is a self-extracting bundle — the real markup lives in `__bundler/template` + `__dc_inline` JSON
+
+**Discovered during**: claude/issue-256-implementation-ohs995 — matching the OAuth consent screen to the Scope Picker reference design
+**Learning**: The standalone design files (e.g. `.local-notes/Scope Picker (standalone).html`, ~1.1MB) are not readable HTML — they're a JS bundler shell whose page is JSON-encoded in a `<script type="__bundler/template">` tag. Extract with a small node script (regex the tag, `JSON.parse`), then split again: the decoded page holds a `<script type="application/json" id="__dc_inline">` map of named sub-component templates (`PermissionStatement`, `FlagToggleRow`, …) plus the main page after the `</helmet>` (the helmet is a full inlined Tundra CSS copy — skip it). Each component is a mustache-ish `<x-dc>` template + a `DCLogic` class carrying the interaction model (state machine, serialization rules) — the class is worth reading, it specifies behavior, not just looks. The templates use the repo's real CSS custom properties (`--color-raised`, `--space-*`), so styles translate almost 1:1 to token-driven CSS modules.
+**Suggested destination**: unsure (design-handoff how-to, if one emerges)
+
 ## Tauri `Webview::set_cookie` must not be called from a main-thread event handler; queue it from off-main and let FIFO order the navigate
 
 **Discovered during**: claude/issue-256-implementation — seeding the owner `wf_auth` cookie into the native-webview popup

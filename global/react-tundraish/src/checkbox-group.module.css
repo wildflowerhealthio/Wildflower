@@ -1,8 +1,9 @@
 /*
  * A multi-select checkbox group, in two looks:
- *  - `boxed`  — design-system checkboxes.
- *  - `plain`  — un-boxed checklist (a ✓ when selected, nothing when not) with an
- *               optional mono value right-aligned and the card sized to fit.
+ *  - `boxed`  — design-system checkboxes in their own bordered card.
+ *  - `plain`  — chrome-less checklist rows (a small filled/outlined check
+ *               square, the label, an optional mono value right-aligned) for
+ *               embedding inside a host card.
  * `--row` lays the items horizontally for compact placement.
  */
 
@@ -17,8 +18,11 @@
 }
 
 .picker--plain {
-  width: max-content;
-  max-width: 100%;
+  gap: var(--space-4);
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 0;
 }
 
 .picker--row {
@@ -56,19 +60,15 @@
 .option {
   position: relative;
   display: flex;
-  align-items: baseline;
-  gap: var(--space-3);
-  padding: var(--space-1) var(--space-2);
+  align-items: center;
+  gap: var(--space-5);
   border-radius: var(--radius-2);
   cursor: pointer;
 }
 
-.option--locked {
+.option--locked,
+.option--disabled {
   cursor: not-allowed;
-}
-
-.picker--plain:not(.picker--row) .option:not(.option--locked):hover {
-  background: var(--color-sunken);
 }
 
 /* The native checkbox is the a11y control — visually hidden, but its :checked
@@ -90,25 +90,38 @@
   outline-offset: 2px;
 }
 
-/* The un-boxed check — a ✓ shown only when selected; the column is always
- * reserved so labels stay aligned whether or not they're checked. */
+/* The check square — filled accent when on, outlined when off, tinted when
+ * locked — so every row's state is visible at a glance. */
 .check {
   flex: 0 0 auto;
-  width: 0.85em;
-  color: var(--color-accent);
-  font-weight: var(--font-weight-4);
-  visibility: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 1.5px solid var(--color-neutral-6);
+  border-radius: var(--radius-2);
+  font-size: var(--font-size-1);
+  color: transparent;
 }
 
 .option:has(.input:checked) .check {
-  visibility: visible;
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-raised);
 }
 
-.option--locked .check {
-  color: var(--color-neutral-5);
+.option--locked:has(.input:checked) .check {
+  background: var(--color-accent-8);
+  border-color: var(--color-accent-8);
+  color: var(--color-accent);
 }
 
-.option--locked .name {
+.option--disabled .check {
+  border-color: var(--color-divider);
+}
+
+.option--disabled .name {
   color: var(--color-neutral-5);
 }
 

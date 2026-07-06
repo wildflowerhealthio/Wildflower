@@ -2,7 +2,7 @@ import { unknownErrorToString } from 'kitchen-sink'
 import type { JSX } from 'react'
 import { useMemo, useState } from 'react'
 import { cn } from 'react-kitchen-sink'
-import { Field, pageLayoutStyles, RadioGroup } from 'react-tundraish'
+import { pageLayoutStyles, StatusBadge } from 'react-tundraish'
 import { GrantDraft, Scope } from 'scopes-core'
 import type { GrantDraft as GrantDraftModel } from 'scopes-core'
 import {
@@ -23,10 +23,10 @@ import {
   consentSections,
 } from './consent-sections.ts'
 import type { ConsentSection } from './consent-sections.ts'
+import { PatientPillPicker } from './patient-pill-picker.tsx'
 import type { Consent } from './types.ts'
 import { usePatientOptions } from './use-patient-options.ts'
-import groups from '../../styles/consent-groups.module.css'
-import pageLayout from '../../styles/page-layout.module.css'
+import styles from '../../styles/consent-card.module.css'
 
 interface OAuthConsentFormProps {
   readonly consent: Consent
@@ -40,11 +40,27 @@ type View = 'plain' | 'detail'
 const isPatientSection = (section: ConsentSection): boolean =>
   section.kind !== 'wildflower' && section.section.context.serialize() === 'patient'
 
+/**
+ * The lead-in phrase for the running statement list: the app is the subject of
+ * the first sentence, "It can also" carries the second, and later rows fall
+ * back to a minimal "…and" so a long request doesn't chant the same phrase.
+ */
+const subjectPhraseFor = (appName: string, index: number): string => {
+  if (index === 0) return `${appName} can`
+  if (index === 1) return 'It can also'
+  return '…and'
+}
+
 const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Element => {
   const request = useMemo(() => consentScopeRequest(consent), [consent])
   const sections = useMemo(() => consentSections(request), [request])
   const flags = useMemo(() => consentFlags(request), [request])
   const exclusions = useMemo(() => consentExclusions(request), [request])
+
+  // The app's display identity: the registered client name, with the raw
+  // client_id demoted to a small mono line (and doubling as the fallback
+  // subject when registration didn't carry a name).
+  const appName = consent.clientName === '' ? consent.clientId : consent.clientName
 
   // The launch-patient picker matters when a FHIR patient-context scope or `launch/patient`
   // is requested.
@@ -146,74 +162,58 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
     )
   }
 
-  const flagRows = (
-    <div className={groups['group']}>
-      <p className={cn(groups['group-title'], 'text-body-2')}>Sign-in &amp; app basics</p>
-      {flags.flags.map((name) => {
-        const flag = new Scope.Known(name)
-        return (
-          <FlagToggleRow
-            key={name}
-            label={flag.plainExplanation()}
-            code={flag.serialize()}
-            checked={draft.known.some((known) => known.name === name)}
-            onChange={() => {
-              setDraft((previous) => GrantDraft.toggleFlag(previous, name))
-            }}
-          />
-        )
-      })}
-      {flags.unknown.map((raw) => (
-        <FlagToggleRow
-          key={raw}
-          label={raw}
-          code={raw}
-          checked={draft.unknown.some((scope) => scope.serialize() === raw)}
-          onChange={() => {
-            toggleUnknown(raw)
-          }}
-        />
-      ))}
-    </div>
-  )
-
-  const exclusionRows =
-    exclusions.length === 0 ? null : (
-      <div className={groups['group']}>
-        <p className={cn(groups['group-title'], 'text-body-2')}>It won&apos;t be able to</p>
-        {exclusions.map((exclusion) => (
-          <ExclusionRow
-            key={exclusion.key}
-            label={exclusion.label}
-            allowed={false}
-            allowable={false}
-            onToggle={() => {
-              // Informational only (`spec.md §8`) — never widened here.
-            }}
-          />
-        ))}
-      </div>
-    )
-
-  // A single running index across all sections drives the "It can also" lead-in after the
-  // first statement.
+  // A single running index across all sections drives the lead-in phrases.
   let statementIndex = 0
 
+  const viewToggle = (
+    <button
+      type="button"
+      className={styles['view-toggle']}
+      onClick={() => {
+        setView((current) => (current === 'plain' ? 'detail' : 'plain'))
+      }}
+    >
+      {view === 'plain' ? 'See exactly what’s granted ▸' : '◂ Back to summary'}
+    </button>
+  )
+
   return (
-    <>
-      <Field label="Application">
-        <span className="text-body-2">{consent.clientId}</span>
-      </Field>
+    <section className={styles['card']}>
+      <header className={styles['header']}>
+        <div aria-hidden="true" className={styles['avatar']}>
+          {appName.slice(0, 1).toUpperCase()}
+        </div>
+        <div className={styles['identity']}>
+          <h2 className={styles['name']}>{appName}</h2>
+          <p className={styles['subtitle']}>wants to connect to your health records</p>
+          <code className={styles['client-id']}>{consent.clientId}</code>
+        </div>
+        <StatusBadge tone="info">Review request</StatusBadge>
+      </header>
+
+      {hasPatientScope && patients.length > 0 ? (
+        <div className={styles['patient-bar']}>
+          <p className={styles['eyebrow']}>Patient</p>
+          <PatientPillPicker
+            patients={patients}
+            value={draft.patient}
+            onChange={(patientId) => {
+              setDraft((previous) => ({ ...previous, patient: patientId }))
+            }}
+          />
+        </div>
+      ) : null}
 
       {view === 'plain' ? (
-        <div className={groups['statements']}>
+        <div className={styles['section']}>
+          <p className={styles['eyebrow']}>What it&apos;s asking for</p>
           {grids.map(({ section, grid }) =>
             grid.rows.map((row) => {
               const rowKey = `${section.kind}/${section.section.context.serialize()}/${row.resource.serialize()}`
               const grantedNames = row.items
                 .filter((item) => item.state === 'on' || item.state === 'locked')
                 .map((item) => item.name)
-              const subject = statementIndex === 0 ? `${consent.clientId} can` : 'It can also'
+              const subject = subjectPhraseFor(appName, statementIndex)
               statementIndex += 1
               return (
                 <PermissionStatement
@@ -229,6 +229,7 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
                 >
                   <PermissionPicker
                     items={row.items}
+                    variant="plain"
                     ariaLabel={`Permissions on ${row.label}`}
                     onToggle={(itemId) => {
                       toggleCell(section, row.resource, itemId)
@@ -238,9 +239,10 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
               )
             })
           )}
+          {viewToggle}
         </div>
       ) : (
-        <div className={groups['detail']}>
+        <div className={styles['section']}>
           {grids.map(({ section, grid }) => (
             <PermissionGrid
               key={section.key}
@@ -257,69 +259,85 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
               }
             />
           ))}
+          {viewToggle}
         </div>
       )}
 
-      {flags.flags.length > 0 || flags.unknown.length > 0 ? flagRows : null}
-      {exclusionRows}
-
-      <button
-        type="button"
-        className={cn('button-1 outline', groups['view-toggle'])}
-        onClick={() => {
-          setView((current) => (current === 'plain' ? 'detail' : 'plain'))
-        }}
-      >
-        {view === 'plain' ? 'See exactly what’s granted' : 'Back to summary'}
-      </button>
-
-      {hasPatientScope && patients.length > 0 ? (
-        <RadioGroup
-          legend="Patient Context"
-          name="patient"
-          value={draft.patient ?? ''}
-          onChange={(value) => {
-            setDraft((previous) => ({ ...previous, patient: value === '' ? null : value }))
-          }}
-          options={[
-            { value: '', label: 'No patient context' },
-            ...patients.map((patient) => ({
-              value: patient.id,
-              label: (
-                <>
-                  {patient.displayName} <code>{patient.id}</code>
-                </>
-              ),
-            })),
-          ]}
-        />
+      {exclusions.length > 0 ? (
+        <div className={cn(styles['section'], styles['section--sunken'])}>
+          <p className={styles['eyebrow']}>It won&apos;t be able to</p>
+          {exclusions.map((exclusion) => (
+            <ExclusionRow
+              key={exclusion.key}
+              label={exclusion.label}
+              allowed={false}
+              allowable={false}
+              onToggle={() => {
+                // Informational only (`spec.md §8`) — never widened here.
+              }}
+            />
+          ))}
+        </div>
       ) : null}
 
-      {errorMessage !== null ? (
-        <p className={cn(pageLayoutStyles['error'], 'text-body-3')} role="alert">
-          {errorMessage}
-        </p>
+      {flags.flags.length > 0 || flags.unknown.length > 0 ? (
+        <div className={styles['section']}>
+          <p className={styles['eyebrow']}>Sign-in &amp; app basics</p>
+          {flags.flags.map((name) => {
+            const flag = new Scope.Known(name)
+            return (
+              <FlagToggleRow
+                key={name}
+                label={flag.plainExplanation()}
+                code={flag.serialize()}
+                checked={draft.known.some((known) => known.name === name)}
+                onChange={() => {
+                  setDraft((previous) => GrantDraft.toggleFlag(previous, name))
+                }}
+              />
+            )
+          })}
+          {flags.unknown.map((raw) => (
+            <FlagToggleRow
+              key={raw}
+              label={raw}
+              code={raw}
+              checked={draft.unknown.some((scope) => scope.serialize() === raw)}
+              onChange={() => {
+                toggleUnknown(raw)
+              }}
+            />
+          ))}
+        </div>
       ) : null}
 
-      <div className={pageLayout['buttons']}>
-        <button
-          type="button"
-          className="button-2 filled"
-          disabled={serialized.length === 0 || submitting}
-          onClick={handleApprove}
-        >
-          Approve
-        </button>
-        <button
-          type="button"
-          className="button-2 outline"
-          disabled={submitting}
-          onClick={handleDecline}
-        >
-          Decline
-        </button>
+      <div className={styles['footer']}>
+        {errorMessage !== null ? (
+          <p className={cn(pageLayoutStyles['error'], styles['error'], 'text-body-3')} role="alert">
+            {errorMessage}
+          </p>
+        ) : null}
+
+        <div className={styles['buttons']}>
+          <button
+            type="button"
+            className={cn('button-2 outline accent-red', styles['deny'])}
+            disabled={submitting}
+            onClick={handleDecline}
+          >
+            Deny
+          </button>
+          <button
+            type="button"
+            className={cn('button-2 filled', styles['allow'])}
+            disabled={serialized.length === 0 || submitting}
+            onClick={handleApprove}
+          >
+            Allow access
+          </button>
+        </div>
       </div>
-    </>
+    </section>
   )
 }
 

@@ -1,26 +1,33 @@
 /*
- * A flag-scope row: the switch sits left, the consent copy + mono scope string
- * stack to its right. The switch row itself (label beside track) comes from the
- * ToggleSwitch primitive; this just lays out the textual half.
+ * A flag-scope row, per the Scope Picker reference design: the switch and
+ * consent copy sit left, the literal mono scope string is pushed to the row's
+ * end, and each row is separated by a hairline divider.
  */
 
 .row {
   display: flex;
-  align-items: flex-start;
-  padding: var(--space-3) 0;
+  align-items: center;
+  gap: var(--space-6);
+  padding: var(--space-5) 0;
+  border-top: 1px solid var(--color-divider);
+}
+
+/* Let the switch's textual half shrink and wrap inside the row instead of
+ * pushing the mono code out of the card (the primitive defaults to nowrap
+ * for short settings labels). */
+.switch {
+  flex: 1;
+  min-width: 0;
+}
+
+.switch span {
+  white-space: normal;
 }
 
 .text {
   display: inline-flex;
   flex-direction: column;
   gap: var(--space-1);
-}
-
-.label-line {
-  display: inline-flex;
-  align-items: baseline;
-  gap: var(--space-3);
-  flex-wrap: wrap;
 }
 
 .label {
@@ -30,9 +37,10 @@
 }
 
 .code {
+  margin-left: auto;
   font-family: var(--font-mono);
-  font-size: var(--font-size-1);
-  color: var(--color-neutral-4);
+  font-size: var(--font-size-2);
+  color: var(--color-neutral-5);
 }
 
 .caption {
