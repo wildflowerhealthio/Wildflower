@@ -113,16 +113,20 @@ impl OnDeviceWebviewHandle for NativeWebviewHandle {
 /// - a host owner token exists;
 /// - a tunnel `public_host` is configured;
 /// - the target scheme is **https** — for the loopback provenance that reaches
-///   `open()`, https uniquely identifies the tunnel target (loopback /
-///   self-hosted / system targets are all `http://127.0.0.1…`, and they
-///   already authenticate by connection provenance);
-/// - the target's host is the tunnel host **or a subdomain of it** (dot
-///   boundary enforced), so the owner bearer is never seeded toward some
-///   unexpected https origin.
+///   `open()`, http targets (loopback / self-hosted / system, all
+///   `http://127.0.0.1…`) already authenticate by connection provenance and
+///   need no cookie.
 ///
-/// The cookie `Domain` is the tunnel host itself (subdomain-inclusive by
-/// cookie semantics) — see the multi-tenant guard on
-/// [`gatekeeper_rust::owner_session_cookies`].
+/// The target's host is deliberately NOT required to be under the tunnel host:
+/// a cloud app's launch URL points at the app's **own** domain (e.g.
+/// `https://hbr.alumicoin.cloud/launch?iss=https://<tunnel host>/fhir-r4…`),
+/// and the tunnel origin only appears when the app redirects back into the
+/// gatekeeper authorize flow. What confines the bearer is the cookie's
+/// `Domain=<tunnel host>` (subdomain-inclusive) — the store holds it, but it is
+/// only ever *sent* to the tunnel host and its subdomains, never to the
+/// third-party origin. See the multi-tenant guard on
+/// [`gatekeeper_rust::owner_session_cookies`]. For an https app that never
+/// touches the tunnel, the seeded cookie just sits unused.
 fn cookies_for_target(
     token: Option<&str>,
     url: &str,
@@ -131,19 +135,8 @@ fn cookies_for_target(
     let (Some(token), Some(tunnel_host)) = (token, tunnel_host) else {
         return vec![];
     };
-    let Ok(parsed) = tauri::Url::parse(url) else {
-        return vec![];
-    };
-    if parsed.scheme() != "https" {
-        return vec![];
-    }
-    let under_tunnel_host = parsed.host_str().is_some_and(|host| {
-        host == tunnel_host
-            || host
-                .strip_suffix(tunnel_host)
-                .is_some_and(|prefix| prefix.ends_with('.'))
-    });
-    if !under_tunnel_host {
+    let is_https = tauri::Url::parse(url).is_ok_and(|parsed| parsed.scheme() == "https");
+    if !is_https {
         return vec![];
     }
     gatekeeper_rust::owner_session_cookies(token, tunnel_host, /* secure */ true)
@@ -283,18 +276,21 @@ mod tests {
         }
     }
 
-    /// An app *subdomain* of the tunnel host also seeds — a cloud app whose
-    /// launch template points below the apex still needs the consent cookie,
-    /// and the `Domain` stays the apex host (not the narrower subdomain).
+    /// A cloud app's launch URL points at the app's OWN third-party domain
+    /// (the tunnel origin only appears when it redirects back for authorize) —
+    /// it still seeds, and the `Domain` stays the tunnel host, so the bearer is
+    /// only ever sent to the tunnel origin, never the third-party one.
     #[test]
-    fn seeds_for_a_subdomain_of_the_tunnel_host_with_apex_domain() {
-        let cookies = cookies_for_target(
-            Some(TOKEN),
+    fn seeds_for_a_third_party_https_target_with_tunnel_domain() {
+        for url in [
+            "https://hbr.alumicoin.cloud/launch?iss=https%3A%2F%2Fruth.wildflowerhealth.io%2Ffhir-r4",
             "https://patient-browser.ruth.wildflowerhealth.io/",
-            Some(TUNNEL_HOST),
-        );
-        assert_eq!(cookies.len(), 2);
-        assert_eq!(cookies[0].domain, TUNNEL_HOST);
+        ] {
+            let cookies = cookies_for_target(Some(TOKEN), url, Some(TUNNEL_HOST));
+            assert_eq!(cookies.len(), 2, "must seed {url}");
+            assert_eq!(cookies[0].domain, TUNNEL_HOST);
+            assert_eq!(cookies[1].domain, TUNNEL_HOST);
+        }
     }
 
     /// http targets never seed: loopback / self-hosted / system launches are
@@ -325,18 +321,15 @@ mod tests {
         assert!(cookies.is_empty());
     }
 
-    /// An https target on an unrelated origin never receives the owner bearer,
-    /// including the dot-boundary trap: a host that merely *ends with* the
-    /// tunnel-host string is a different registrable name, not a subdomain.
+    /// Whatever the target, the cookie `Domain` is always the configured
+    /// tunnel host — never the registrable parent (which would leak the bearer
+    /// to sibling tenants) and never the target's own host.
     #[test]
-    fn never_seeds_an_https_target_outside_the_tunnel_host() {
-        for url in [
-            "https://example.test/",
-            "https://wildflowerhealth.io/",
-            "https://evilruth.wildflowerhealth.io/",
-        ] {
-            let cookies = cookies_for_target(Some(TOKEN), url, Some(TUNNEL_HOST));
-            assert!(cookies.is_empty(), "must not seed {url}");
+    fn domain_is_always_the_full_tunnel_host() {
+        let cookies = cookies_for_target(Some(TOKEN), "https://example.test/", Some(TUNNEL_HOST));
+        for cookie in &cookies {
+            assert_eq!(cookie.domain, TUNNEL_HOST);
+            assert_ne!(cookie.domain, "wildflowerhealth.io");
         }
     }
 }
