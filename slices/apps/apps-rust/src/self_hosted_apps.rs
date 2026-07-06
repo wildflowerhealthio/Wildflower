@@ -22,10 +22,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use shared_structures_rust::tunnel_service::TunnelService;
-use shared_structures_server_rust::{
-    LoopbackHostname, ProxyTable, ServerError, StaticHostJob, StaticHostsService,
-};
+use shared_structures_server_rust::{ProxyTable, ServerError, StaticHostJob, StaticHostsService};
 use tower_http::cors::CorsLayer;
+use url::Url;
 
 use crate::domain::SelfHostedApp;
 
@@ -41,32 +40,35 @@ pub struct SelfHostedAppsService {
     /// The directory whose per-app `content_folder` subdirectories hold each
     /// app's served files.
     apps_dir: PathBuf,
-    /// The per-request template-render inputs (loopback API origin + tunnel)
+    /// The per-request template-render inputs (loopback base URL + tunnel)
     /// threaded to every app router, so each app's committed templates can
     /// render `apiOrigin` per caller.
     template_context: self_hosted_apps_rust::InstalledAppContext,
 }
 
 impl SelfHostedAppsService {
-    /// `loopback` is the hostname each app's listener binds on; `apps_dir` holds
-    /// the per-app `content_folder` file directories; `proxy_table` is shared with
-    /// the reverse proxy. `loopback_api_origin` (no trailing slash) and `tunnel`
-    /// are the per-request template-render inputs each app router threads through
-    /// to render `apiOrigin` — loopback vs. forwarded — for its committed templates.
+    /// `loopback_base_url` is the host's loopback base URL (e.g.
+    /// `http://127.0.0.1:8080/`) — threaded through as-is to the loopback
+    /// listeners ([`StaticHostsService`], which picks out the bind host) and to
+    /// each app router's template context (which derives the loopback `apiOrigin`
+    /// per request), so nothing pre-splits it and the two can't drift. `apps_dir`
+    /// holds the per-app `content_folder` file directories; `proxy_table` is
+    /// shared with the reverse proxy. `tunnel` is the other per-request
+    /// template-render input each app router threads through to render `apiOrigin`
+    /// — loopback vs. forwarded — for its committed templates.
     #[must_use]
     pub fn new(
-        loopback: LoopbackHostname,
+        loopback_base_url: &Url,
         apps_dir: PathBuf,
         proxy_table: ProxyTable,
-        loopback_api_origin: String,
         tunnel: Arc<dyn TunnelService>,
     ) -> Self {
         Self {
-            static_hosts: StaticHostsService::new(loopback),
+            static_hosts: StaticHostsService::new(loopback_base_url.clone()),
             proxy_table,
             apps_dir,
             template_context: self_hosted_apps_rust::InstalledAppContext {
-                loopback_api_origin,
+                loopback_base_url: loopback_base_url.clone(),
                 tunnel,
             },
         }
@@ -210,7 +212,7 @@ mod tests {
             public_host: "demo.example.com".to_owned(),
         });
         TunnelSubdomainReverseProxy::new(
-            LoopbackHostname::new("127.0.0.1"),
+            Url::parse("http://127.0.0.1:8080").unwrap(),
             tunnel,
             Router::new().fallback(get(|| async { "FALLBACK" })),
             table,
@@ -239,10 +241,9 @@ mod tests {
         let port = free_port().await;
         let table = ProxyTable::new();
         let service = SelfHostedAppsService::new(
-            LoopbackHostname::new("127.0.0.1"),
+            &Url::parse("http://127.0.0.1:8080").unwrap(),
             dir.clone(),
             table.clone(),
-            "http://127.0.0.1:8080".to_owned(),
             Arc::new(StubTunnel {
                 public_host: "demo.example.com".to_owned(),
             }),

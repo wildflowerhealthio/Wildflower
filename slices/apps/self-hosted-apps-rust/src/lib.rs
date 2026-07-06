@@ -42,6 +42,7 @@ use include_dir::{include_dir, Dir};
 use shared_structures_rust::served_origin::{request_provenance, RequestProvenance};
 use shared_structures_rust::tunnel_service::TunnelService;
 use tower_http::services::ServeDir;
+use url::Url;
 
 #[cfg(test)]
 use axum::body::Body;
@@ -67,9 +68,10 @@ const SHORT_CACHE_CONTROL: &str = "public, max-age=60, must-revalidate";
 /// What the host must supply for per-request template rendering.
 #[derive(Clone)]
 pub struct InstalledAppContext {
-    /// The API origin a *loopback* caller reaches (e.g. `http://127.0.0.1:8080`,
-    /// no trailing slash) — the host's `loopback_base_url` origin.
-    pub loopback_api_origin: String,
+    /// The host's loopback base URL (e.g. `http://127.0.0.1:8080/`). A *loopback*
+    /// caller's `apiOrigin` is its origin (`http://127.0.0.1:8080`, no trailing
+    /// slash), derived per request rather than pre-stringified so it can't drift.
+    pub loopback_base_url: Url,
     /// Supplies the configured public host for *forwarded* callers, so a
     /// browser loading the app through `https://<id>.<public_host>` gets an
     /// `apiOrigin` of `https://<public_host>`.
@@ -201,14 +203,23 @@ async fn render_and_cache(req: Request, next: Next) -> Response {
 /// error (e.g. a strict-mode miss on an unknown variable) is logged and
 /// answered with an opaque 500.
 fn render_template(state: &TemplateState, serve_path_lower: &str, headers: &HeaderMap) -> Response {
+    // The loopback caller's origin is derived from the base URL here, at the
+    // point of use — the boundary where the template actually needs the string.
+    let make_loopback_origin = || {
+        state
+            .context
+            .loopback_base_url
+            .origin()
+            .ascii_serialization()
+    };
     let api_origin = match request_provenance(headers) {
-        RequestProvenance::Loopback => state.context.loopback_api_origin.clone(),
+        RequestProvenance::Loopback => make_loopback_origin(),
         RequestProvenance::Forwarded { .. } => state
             .context
             .tunnel
             .current_public_host()
             .map(|host| format!("https://{host}"))
-            .unwrap_or_else(|| state.context.loopback_api_origin.clone()),
+            .unwrap_or_else(make_loopback_origin),
     };
     match state.registry.render(
         serve_path_lower,
@@ -307,14 +318,14 @@ mod tests {
 
     fn context_with_public_host() -> InstalledAppContext {
         InstalledAppContext {
-            loopback_api_origin: LOOPBACK_API_ORIGIN.to_owned(),
+            loopback_base_url: Url::parse(LOOPBACK_API_ORIGIN).expect("valid loopback base url"),
             tunnel: Arc::new(PublicHostTunnel),
         }
     }
 
     fn context_without_public_host() -> InstalledAppContext {
         InstalledAppContext {
-            loopback_api_origin: LOOPBACK_API_ORIGIN.to_owned(),
+            loopback_base_url: Url::parse(LOOPBACK_API_ORIGIN).expect("valid loopback base url"),
             tunnel: Arc::new(OfflineTunnel::new(LOOPBACK_API_ORIGIN)),
         }
     }

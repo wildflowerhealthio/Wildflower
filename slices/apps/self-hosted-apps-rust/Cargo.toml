@@ -40,6 +40,9 @@ shared-structures-rust = { path = "../../shared-structures/shared-structures-rus
 tower-http = { workspace = true, features = ["fs"] }
 # Render failures are logged, never panicked.
 tracing = "0.1"
+# The loopback base URL threaded in from the host; the loopback API origin string
+# is derived from it per request (only where a template's `apiOrigin` needs it).
+url = { version = "2" }
 
 [lints]
 workspace = true
