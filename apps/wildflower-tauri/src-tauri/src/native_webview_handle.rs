@@ -203,7 +203,10 @@ fn open_app_in_native_webview(
     // reacts to `Hidden`/`Disposed`; the plugin's own teardown backstop reclaims
     // an idle-hidden popup.
     let channel: Channel<NativeWebviewEvent> = Channel::new(|_event| Ok(()));
-    let seeded = !cookies.is_empty();
+    // The domain the cookies are scoped to, kept for the read-back below — the
+    // launch URL itself is typically on the third-party app's domain, where a
+    // tunnel-scoped cookie would (correctly) not match.
+    let seeded_domain = cookies.first().map(|cookie| cookie.domain.clone());
     handle
         .native_webview()
         .open_url(OpenRequest {
@@ -221,15 +224,17 @@ fn open_app_in_native_webview(
         })
         .map_err(|error| anyhow::anyhow!("tauri-plugin-native-webview open_url failed: {error}"))?;
     // Desktop `open_url` returns only after build + cookie seed + navigate, so
-    // a read-back here observes the store the first request just rode. Names
-    // only (never values); a mismatch with what was seeded is the smoking gun
-    // for a platform cookie-write failure.
+    // a read-back here observes the committed store. Queried against the
+    // seeded *domain* (the tunnel host), not the launch URL — the cookie is
+    // deliberately invisible to the third-party launch origin. Names only
+    // (never values); an empty read-back is the smoking gun for a platform
+    // cookie-write failure.
     #[cfg(desktop)]
-    if seeded {
-        if let Ok(parsed) = tauri::Url::parse(&url) {
+    if let Some(domain) = seeded_domain {
+        if let Ok(parsed) = tauri::Url::parse(&format!("https://{domain}/")) {
             match handle.native_webview().content_cookie_names_for_url(parsed) {
                 Ok(Some(names)) => log::info!(
-                    "[launch] popup cookie store for the launch URL now holds: {names:?}"
+                    "[launch] popup cookie store for https://{domain}/ now holds: {names:?}"
                 ),
                 Ok(None) => log::warn!("[launch] cookie read-back: no content webview open"),
                 Err(error) => log::warn!("[launch] cookie read-back failed: {error}"),
@@ -237,7 +242,7 @@ fn open_app_in_native_webview(
         }
     }
     #[cfg(not(desktop))]
-    let _ = seeded;
+    let _ = seeded_domain;
     handle
         .native_webview()
         .show()
