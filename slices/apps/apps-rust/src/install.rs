@@ -13,7 +13,7 @@
 use std::fmt;
 use std::fs;
 use std::io::{self, Cursor};
-use std::path::Path;
+use std::path::{Component, Path};
 
 use zip::ZipArchive;
 
@@ -75,6 +75,10 @@ impl fmt::Display for InstallError {
 ///  - every entry's path stays inside `staging` — `enclosed_name` returns `None`
 ///    for a `..`/absolute/drive-qualified path, which we reject rather than
 ///    sanitize (a traversal is a hostile bundle, not a fixable one);
+///  - macOS Finder-zip litter (`__MACOSX/` resource forks, `.DS_Store`, and
+///    AppleDouble `._*` files) is dropped rather than written — otherwise a
+///    sibling `__MACOSX/` folder would masquerade as a second top-level
+///    directory and defeat the hoist below;
 ///  - when the whole archive is nested under a single top-level directory (the
 ///    common `unzip my-app.zip` → `my-app/…` shape) with no top-level files,
 ///    that wrapper is hoisted away so the served root is the app itself.
@@ -117,6 +121,12 @@ pub(crate) fn extract_zip_bundle(bytes: &[u8], staging: &Path) -> Result<(), Ins
         let Some(relative) = entry.enclosed_name().map(|name| name.to_path_buf()) else {
             return Err(InstallError::Traversal { entry: raw_name });
         };
+        // Drop macOS Finder-zip litter before it lands on disk: writing the
+        // `__MACOSX/` sibling would make the archive look like it had two
+        // top-level directories and suppress the single-wrapper hoist below.
+        if is_macos_junk(&relative) {
+            continue;
+        }
         let out_path = staging.join(&relative);
         if entry.is_dir() {
             fs::create_dir_all(&out_path).map_err(InstallError::Io)?;
@@ -130,6 +140,22 @@ pub(crate) fn extract_zip_bundle(bytes: &[u8], staging: &Path) -> Result<(), Ins
     }
 
     hoist_single_top_dir(staging)
+}
+
+/// Whether `relative` is macOS Finder-zip litter that should never be served:
+/// anything under the `__MACOSX/` resource-fork tree, a `.DS_Store`, or an
+/// AppleDouble `._*` sidecar. Matching is per-component so a nested
+/// `assets/.DS_Store` or `sub/__MACOSX/…` is caught too, not just top-level.
+fn is_macos_junk(relative: &Path) -> bool {
+    relative.components().any(|component| {
+        let Component::Normal(part) = component else {
+            return false;
+        };
+        let Some(part) = part.to_str() else {
+            return false;
+        };
+        part == "__MACOSX" || part == ".DS_Store" || part.starts_with("._")
+    })
 }
 
 /// If `staging` holds exactly one top-level directory and no top-level files,
@@ -284,6 +310,44 @@ mod tests {
         assert!(
             !staging.path().join("my-app").exists(),
             "the wrapper directory must be removed after hoisting",
+        );
+    }
+
+    /// A macOS Finder zip pairs the app folder with a sibling `__MACOSX/` tree.
+    /// The litter is dropped so the lone real wrapper still hoists to the root,
+    /// rather than the two directories suppressing the hoist and leaving the app
+    /// doubly nested under `zip-app/zip-app/`.
+    #[test]
+    fn macos_finder_zip_drops_junk_and_hoists() {
+        let staging = TempDir::new();
+        let bytes = zip_bytes(&[
+            ("__MACOSX/", b""),
+            ("__MACOSX/._zip-app", b"resource-fork"),
+            ("zip-app/", b""),
+            ("zip-app/index.html", b"<h1>app</h1>"),
+            ("zip-app/.DS_Store", b"finder-junk"),
+            ("zip-app/assets/", b""),
+            ("zip-app/assets/app.js", b"x"),
+            ("zip-app/assets/._app.js", b"resource-fork"),
+        ]);
+        extract_zip_bundle(&bytes, staging.path()).unwrap();
+        assert_eq!(read(&staging.path().join("index.html")), "<h1>app</h1>");
+        assert_eq!(read(&staging.path().join("assets/app.js")), "x");
+        assert!(
+            !staging.path().join("__MACOSX").exists(),
+            "the __MACOSX tree must never be written",
+        );
+        assert!(
+            !staging.path().join("zip-app").exists(),
+            "the single wrapper must be hoisted away",
+        );
+        assert!(
+            !staging.path().join(".DS_Store").exists(),
+            ".DS_Store must be dropped",
+        );
+        assert!(
+            !staging.path().join("assets/._app.js").exists(),
+            "AppleDouble ._* sidecars must be dropped",
         );
     }
 
