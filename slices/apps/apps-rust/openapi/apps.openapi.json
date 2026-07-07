@@ -110,7 +110,7 @@
         }
       },
       "delete": {
-        "summary": "`DELETE /apps/{id}` — remove a cloud app. Owner-gated by the host.",
+        "summary": "`DELETE /apps/{id}` — remove a cloud app or an uploaded self-hosted app.\nOwner-gated by the host.",
         "operationId": "handle_delete_app",
         "parameters": [
           {
@@ -145,7 +145,7 @@
             }
           },
           "409": {
-            "description": "The app exists but is not a cloud app (system / self-hosted apps are not removable)",
+            "description": "The app exists but is not removable (system / seeded self-hosted apps)",
             "content": {
               "application/json": {
                 "schema": {
@@ -267,6 +267,61 @@
           }
         }
       }
+    },
+    "/self-hosted-apps": {
+      "post": {
+        "summary": "`POST /self-hosted-apps` — install an uploaded zip bundle. Owner-gated by the\nhost; the body limit is raised to 64 MiB for just this route.",
+        "operationId": "handle_create_self_hosted_app",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "description": "Human app name; also the source of the slugged id/subdomain.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "The app's static files as a zip archive",
+          "content": {
+            "application/zip": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The installed self-hosted app",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppListEntry"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Empty/unusable name (`InvalidName`) or a bad bundle (`InvalidZip`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidFieldBody"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -317,7 +372,8 @@
           "provenance",
           "localOnly",
           "smart",
-          "requiresTunnel"
+          "requiresTunnel",
+          "removable"
         ],
         "properties": {
           "id": {
@@ -350,6 +406,10 @@
           "requiresTunnel": {
             "type": "boolean",
             "description": "Whether a launch needs the tunnel up (cloud apps only; `false` for\nsystem / self-hosted)."
+          },
+          "removable": {
+            "type": "boolean",
+            "description": "Whether the owner can remove this app through the admin surface: `true`\nfor cloud apps and for uploaded (non-seeded) self-hosted apps, `false`\nfor system apps and the migration-seeded self-hosted apps. The editor's\nRemove control keys off this rather than re-deriving the rule per client."
           }
         }
       },
@@ -440,7 +500,7 @@
       },
       "InvalidFieldBody": {
         "type": "object",
-        "description": "Wire shape for a 400 carrying a discriminant + human-readable reason.\nReused for `InvalidUrl` (a bad app URL) and `InvalidName` (an empty name)\n— both are write-side field validations the client renders inline. The\n`error` discriminant lets a client tell the two apart rather than seeing a\nURL-error tag for a name problem.",
+        "description": "Wire shape for a 400 carrying a discriminant + human-readable reason.\nReused for `InvalidUrl` (a bad app URL), `InvalidName` (an empty name), and\n`InvalidZip` (an unusable uploaded bundle) — all write-side field validations\nthe client renders inline. The `error` discriminant lets a client tell them\napart rather than seeing a URL-error tag for a name or upload problem.",
         "required": [
           "error",
           "message"

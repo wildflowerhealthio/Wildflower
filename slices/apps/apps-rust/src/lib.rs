@@ -10,10 +10,10 @@
 //!  - **System** ([`domain::SystemApp`]) — launch URL from the compiled-in
 //!    [`SYSTEM_APPS`](domain::SYSTEM_APPS) list; no child row.
 //!  - **Self-hosted** ([`domain::SelfHostedApp`], the `self_hosted_apps` child)
-//!    — seeded by migration, read-only.
-//!  - **Cloud** ([`domain::AppEntry`], the `cloud_apps` child) — the only
-//!    user-editable kind (create / patch / delete through the cloud-admin
-//!    surface).
+//!    — a migration-seeded row (protected) or a runtime upload through
+//!    `POST /self-hosted-apps` (removable).
+//!  - **Cloud** ([`domain::AppEntry`], the `cloud_apps` child) — created /
+//!    patched / deleted through the cloud-admin surface.
 //!
 //! Layered like `tunnel-rust` and `gatekeeper-rust`:
 //!
@@ -43,6 +43,8 @@ pub mod db;
 pub mod domain;
 pub mod http;
 mod id;
+mod install;
+mod seed;
 mod self_hosted_apps;
 
 use std::sync::Arc;
@@ -58,6 +60,7 @@ pub use http::{AppsState, OwnerAuth};
 // Re-exported for the integration test crate; `#[deprecated]` is intentional.
 #[allow(deprecated)]
 pub use http::StubOwnerAuth;
+pub use seed::sync_vendored_self_hosted_apps;
 pub use self_hosted_apps::SelfHostedAppsService;
 pub use shared_structures_rust::OnDeviceWebviewHandle;
 
@@ -70,7 +73,7 @@ pub use shared_structures_rust::OnDeviceWebviewHandle;
 /// launch rides the front trust boundary (the bearer gate can't exempt the
 /// parameterized launch path, so the two are split). [`Self::self_hosted_apps`]
 /// is the catalogue the host iterates to bind a loopback listener per self-hosted
-/// app (the table is static — seeded by migration, read-only at runtime).
+/// app at startup (both migration-seeded and previously-uploaded rows).
 pub struct Apps {
     /// The owner-gated routes: `GET /apps`, `POST /apps`,
     /// `PATCH`/`DELETE /apps/{id}`, `PUT /home-screen`. The host wraps
@@ -106,6 +109,11 @@ impl Apps {
 /// loopback launch opens the resolved URL through it and `204`s. The Tauri host
 /// passes a native-webview opener; a host with no native popup passes a no-op.
 ///
+/// `self_hosted` is the same [`SelfHostedAppsService`] the host holds for the
+/// process lifetime (both hold the `Arc`), so the upload/delete handlers bring
+/// an app online / offline through the identical instance that binds the seed
+/// listeners — and stage/remove files under its `apps_dir`.
+///
 /// # Errors
 ///
 /// Returns an error if the store can't be migrated.
@@ -115,12 +123,13 @@ pub fn setup_apps(
     tunnel: Arc<dyn TunnelService>,
     webview_handle: Arc<dyn OnDeviceWebviewHandle>,
     owner_auth: Arc<dyn OwnerAuth>,
+    self_hosted: Arc<SelfHostedAppsService>,
 ) -> anyhow::Result<Apps> {
     // `AppsStore::new` owns the shared migration list — running it migrates the
     // parent registry plus both child tables. The one store serves them all.
     let store = AppsStore::new(conn).context("failed to open apps store")?;
-    // Materialize the static self-hosted catalogue once for the host to bind
-    // listeners against (seeded by migration, read-only at runtime).
+    // Materialize the self-hosted catalogue once for the host to bind listeners
+    // against — every self-hosted row, migration-seeded or previously uploaded.
     let self_hosted_apps = store
         .list_self_hosted_apps()
         .context("failed to list self-hosted apps")?;
@@ -130,6 +139,7 @@ pub fn setup_apps(
         owner_auth,
         tunnel,
         webview_handle,
+        self_hosted,
     ));
 
     Ok(Apps {

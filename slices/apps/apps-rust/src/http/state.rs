@@ -10,6 +10,7 @@ use url::Url;
 
 use crate::db::AppsStore;
 use crate::http::owner_auth::OwnerAuth;
+use crate::self_hosted_apps::SelfHostedAppsService;
 use crate::OnDeviceWebviewHandle;
 
 /// Shared state threaded through the apps handlers. Held in an `Arc` and
@@ -35,6 +36,11 @@ pub struct AppsState {
     /// popup supplies a no-op handle (only forwarded callers reach such a host,
     /// so it's never invoked).
     pub(crate) on_device_webview_handle: Arc<dyn OnDeviceWebviewHandle>,
+    /// The self-hosted lifecycle orchestrator, shared with the host (it holds
+    /// the same `Arc`). The upload handler stages bundles under its
+    /// [`apps_dir`](SelfHostedAppsService::apps_dir) and `start`s a freshly
+    /// installed app; the delete handler `stop`s a removed one.
+    pub(crate) self_hosted: Arc<SelfHostedAppsService>,
 }
 
 impl AppsState {
@@ -45,6 +51,7 @@ impl AppsState {
         owner_auth: Arc<dyn OwnerAuth>,
         tunnel: Arc<dyn TunnelService>,
         webview_handle: Arc<dyn OnDeviceWebviewHandle>,
+        self_hosted: Arc<SelfHostedAppsService>,
     ) -> Self {
         Self {
             store,
@@ -52,6 +59,7 @@ impl AppsState {
             owner_auth,
             tunnel,
             on_device_webview_handle: webview_handle,
+            self_hosted,
         }
     }
 

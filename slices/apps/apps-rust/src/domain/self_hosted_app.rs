@@ -5,9 +5,11 @@
 //! host needs to serve the files and what the launch handler needs to render the
 //! loopback / subdomain target.
 //!
-//! Not editable through the cloud-admin surface — the host binds the listener
-//! that serves the files, and the migration is the only writer. The launch URL
-//! is rendered on demand via [`Self::launch_url`] / [`Self::subdomain_url`].
+//! The host binds the listener that serves the files. Rows come from two
+//! sources: the migration seed (`seeded = true`, protected from delete through
+//! the admin surface) and runtime uploads through the create surface
+//! (`seeded = false`, removable). The launch URL is rendered on demand via
+//! [`Self::launch_url`] / [`Self::subdomain_url`].
 
 /// A locally-served app's loopback binding. Field names match the SQL column
 /// names so `sql_row!` in the `db/` layer derives `TryFrom<&Row>` off the same
@@ -24,7 +26,7 @@ pub struct SelfHostedApp {
     /// for the binding; the column makes the port stable across reinstalls (a
     /// SMART-on-FHIR origin-stability property).
     pub port: u16,
-    /// The on-disk subdirectory (under the host's `installed-apps/` dir) whose
+    /// The on-disk subdirectory (under the host's `self-hosted-apps/` dir) whose
     /// files this app serves, e.g. `patient-browser`. Explicit rather than
     /// derived from `id`, so the content location is decoupled from identity.
     pub content_folder: String,
@@ -32,6 +34,9 @@ pub struct SelfHostedApp {
     /// `https://{subdomain}.{public_host}/` by [`Self::subdomain_url`] and used as
     /// the reverse-proxy routing key. Explicit rather than derived from `id`.
     pub subdomain: String,
+    /// `true` for a migration-seeded app (delete is refused with
+    /// `409 AppNotEditable`), `false` for one uploaded at runtime (removable).
+    pub seeded: bool,
 }
 
 impl SelfHostedApp {

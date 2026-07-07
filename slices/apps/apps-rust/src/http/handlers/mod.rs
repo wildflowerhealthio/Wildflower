@@ -8,15 +8,22 @@
 mod apps;
 mod cloud_admin;
 mod home_screen;
+mod self_hosted_admin;
 #[cfg(test)]
 pub(crate) mod test_utils;
 
 use std::sync::Arc;
 
+use axum::extract::DefaultBodyLimit;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
 use crate::http::state::AppsState;
+
+/// The raw request-body cap for the upload route. Scoped to just that route (the
+/// rest of the surface keeps axum's small default), sized to the largest bundle
+/// we accept — the 512 MiB *extracted* cap still applies inside the handler.
+const UPLOAD_BODY_LIMIT_BYTES: usize = 64 * 1024 * 1024;
 
 /// The owner-gated routes as an `OpenApiRouter` (the spec-bearing inner of
 /// [`gated_router`](super::gated_router), which documents the gating split):
@@ -24,9 +31,19 @@ use crate::http::state::AppsState;
 ///  - `GET /apps` (list) — see [`apps`];
 ///  - `POST /apps` (create) + `PATCH`/`DELETE /apps/{id}` (cloud admin) — see
 ///    [`cloud_admin`];
+///  - `POST /self-hosted-apps` (upload install) — see [`self_hosted_admin`];
 ///  - `PUT /home-screen` (atomic reorder / enable, any provenance) — see
 ///    [`home_screen`].
 pub(crate) fn gated_openapi_router() -> OpenApiRouter<Arc<AppsState>> {
+    // The upload route carries a much larger body limit than the rest; building
+    // it as its own router and layering the limit there scopes the raise to this
+    // one route (a `.layer` on the whole router would loosen every endpoint).
+    let upload_router = OpenApiRouter::new()
+        .routes(routes!(
+            self_hosted_admin::create::handle_create_self_hosted_app
+        ))
+        .layer(DefaultBodyLimit::max(UPLOAD_BODY_LIMIT_BYTES));
+
     OpenApiRouter::new()
         .routes(routes!(apps::list::handle_list_apps))
         .routes(routes!(cloud_admin::create::handle_create_app))
@@ -35,6 +52,7 @@ pub(crate) fn gated_openapi_router() -> OpenApiRouter<Arc<AppsState>> {
             cloud_admin::delete::handle_delete_app
         ))
         .routes(routes!(home_screen::handle_replace_home_screen))
+        .merge(upload_router)
 }
 
 /// The launch route (`POST /apps/{id}`) as an `OpenApiRouter` — the spec-bearing
@@ -711,5 +729,174 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::BAD_REQUEST, "body: {body}");
         assert_eq!(body["error"], "InvalidHomeScreen");
+    }
+
+    /// `GET /apps` carries the `removable` flag: cloud + uploaded self-hosted are
+    /// removable, system + seeded self-hosted are not.
+    #[tokio::test]
+    async fn list_apps_reports_removable_flag() {
+        let st = state();
+        let (_status, body) = send(&st, get("/apps")).await;
+        let arr = body.as_array().unwrap();
+        let by_id = |id: &str| arr.iter().find(|v| v["id"] == id).expect("row");
+        assert_eq!(
+            by_id("growth-chart")["removable"],
+            true,
+            "cloud is removable"
+        );
+        assert_eq!(
+            by_id("patient-browser")["removable"],
+            false,
+            "seeded self-hosted is not removable",
+        );
+        assert_eq!(
+            by_id("api-docs")["removable"],
+            false,
+            "system is not removable"
+        );
+    }
+
+    /// A tiny valid zip (a single `index.html` at the root).
+    fn zip_bytes(entries: &[(&str, &[u8])]) -> Vec<u8> {
+        use std::io::Write as _;
+        let mut cursor = std::io::Cursor::new(Vec::new());
+        {
+            let mut writer = zip::ZipWriter::new(&mut cursor);
+            let options: zip::write::FileOptions<'_, ()> = zip::write::FileOptions::default()
+                .compression_method(zip::CompressionMethod::Stored);
+            for (name, contents) in entries {
+                if let Some(dir) = name.strip_suffix('/') {
+                    writer.add_directory(dir, options).unwrap();
+                } else {
+                    writer.start_file(*name, options).unwrap();
+                    writer.write_all(contents).unwrap();
+                }
+            }
+            writer.finish().unwrap();
+        }
+        cursor.into_inner()
+    }
+
+    /// A `POST /self-hosted-apps?name=…` request carrying a raw zip body.
+    fn post_zip(name: &str, bytes: Vec<u8>) -> Request<Body> {
+        let uri = format!("/self-hosted-apps?name={}", urlencode(name),);
+        Request::builder()
+            .method("POST")
+            .uri(uri)
+            .header("content-type", "application/zip")
+            .body(Body::from(bytes))
+            .unwrap()
+    }
+
+    /// Minimal percent-encoding for the test names used here (spaces + a few
+    /// punctuation chars). Not a general encoder.
+    fn urlencode(s: &str) -> String {
+        s.chars()
+            .map(|c| match c {
+                'a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '_' | '.' => c.to_string(),
+                ' ' => "%20".to_owned(),
+                other => format!("%{:02X}", other as u32),
+            })
+            .collect()
+    }
+
+    /// A valid upload installs the app: `200` + `AppListEntry`, a DB row, the
+    /// files on disk under the slugged folder, and the tile listed last.
+    #[tokio::test]
+    async fn upload_installs_a_self_hosted_app() {
+        let st = state();
+        let bytes = zip_bytes(&[("index.html", b"<h1>UP</h1>")]);
+        let (status, body) = send(&st, post_zip("My App", bytes)).await;
+        assert_eq!(status, StatusCode::OK, "body: {body}");
+        assert_eq!(body["id"], "my-app");
+        assert_eq!(body["provenance"], "self-hosted");
+        assert_eq!(body["removable"], true);
+        assert_eq!(body["localOnly"], true);
+
+        // The files landed under `<apps_dir>/my-app/index.html`.
+        let index = st.self_hosted.apps_dir().join("my-app").join("index.html");
+        assert_eq!(std::fs::read_to_string(&index).unwrap(), "<h1>UP</h1>");
+
+        // It's listed, last (appended at the tail of the registry).
+        let (_s, list) = send(&st, get("/apps")).await;
+        let ids: Vec<&str> = list
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v["id"].as_str().unwrap())
+            .collect();
+        assert_eq!(ids.last(), Some(&"my-app"), "uploaded app is listed last");
+    }
+
+    /// A bundle wrapped in a single top folder serves `index.html` at the root
+    /// (the wrapper is hoisted away during extraction).
+    #[tokio::test]
+    async fn upload_hoists_a_single_wrapper_folder() {
+        let st = state();
+        let bytes = zip_bytes(&[("my-app/", b""), ("my-app/index.html", b"<h1>WRAPPED</h1>")]);
+        let (status, body) = send(&st, post_zip("My App", bytes)).await;
+        assert_eq!(status, StatusCode::OK, "body: {body}");
+        let index = st.self_hosted.apps_dir().join("my-app").join("index.html");
+        assert_eq!(std::fs::read_to_string(&index).unwrap(), "<h1>WRAPPED</h1>");
+    }
+
+    /// A duplicate name is auto-suffixed (`my-app` → `my-app-2`).
+    #[tokio::test]
+    async fn upload_auto_suffixes_a_duplicate_name() {
+        let st = state();
+        let (_s1, first) = send(&st, post_zip("My App", zip_bytes(&[("index.html", b"a")]))).await;
+        assert_eq!(first["id"], "my-app");
+        let (_s2, second) = send(&st, post_zip("My App", zip_bytes(&[("index.html", b"b")]))).await;
+        assert_eq!(second["id"], "my-app-2");
+    }
+
+    /// Garbage bytes are rejected `400 InvalidZip`, with no row created.
+    #[tokio::test]
+    async fn upload_rejects_garbage_bytes() {
+        let st = state();
+        let (status, body) = send(&st, post_zip("My App", b"not a zip".to_vec())).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(body["error"], "InvalidZip");
+        assert!(st.store.find_app("my-app").unwrap().is_none());
+    }
+
+    /// A name that slugs to nothing is rejected `400 InvalidName`.
+    #[tokio::test]
+    async fn upload_rejects_a_nameless_slug() {
+        let st = state();
+        let (status, body) = send(&st, post_zip("!!!", zip_bytes(&[("index.html", b"x")]))).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(body["error"], "InvalidName");
+    }
+
+    /// An uploaded app is deletable: the rows go, the files go, and it drops off
+    /// the list — while the seeded patient-browser stays protected (`409`).
+    #[tokio::test]
+    async fn uploaded_app_is_deletable_but_seeded_is_protected() {
+        let st = state();
+        let (_s, created) = send(&st, post_zip("My App", zip_bytes(&[("index.html", b"x")]))).await;
+        let id = created["id"].as_str().unwrap().to_owned();
+        let dir = st.self_hosted.apps_dir().join(&id);
+        assert!(dir.exists(), "files present after install");
+
+        let (status, body) = send(&st, delete(&format!("/apps/{id}"))).await;
+        assert_eq!(status, StatusCode::OK, "body: {body}");
+        assert_eq!(body["deleted"], true);
+        assert!(st.store.find_app(&id).unwrap().is_none(), "row removed");
+        assert!(!dir.exists(), "files removed");
+
+        let (_s, list) = send(&st, get("/apps")).await;
+        assert!(
+            list.as_array()
+                .unwrap()
+                .iter()
+                .all(|v| v["id"] != id.as_str()),
+            "deleted app no longer listed",
+        );
+
+        // The migration-seeded self-hosted app is not removable.
+        let (status, body) = send(&st, delete("/apps/patient-browser")).await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(body["error"], "AppNotEditable");
     }
 }

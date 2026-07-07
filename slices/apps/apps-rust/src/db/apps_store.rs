@@ -160,15 +160,18 @@ impl AppsStore {
 /// [`AppsStore::list_app_entries`] (which locks then calls this) and
 /// [`AppsStore::replace_home_screen`] (which calls it on its open transaction so
 /// the post-renumber read stays inside the same transaction). Hand-written (not
-/// `sql_row!`) because of the JOIN, the computed `smart` column, and the
-/// `requires_tunnel` alias.
+/// `sql_row!`) because of the two child JOINs, the computed `smart` /
+/// `removable` columns, and the `requires_tunnel` alias.
 fn list_app_entries_on(conn: &rusqlite::Connection) -> DbResult<Vec<AppListEntry>> {
     let mut stmt = conn.prepare(
         "SELECT a.id, a.enabled, a.name, a.subtitle, a.provenance, a.local_only, \
          (a.client_id IS NOT NULL) AS smart, \
-         COALESCE(c.requires_tunnel, 0) AS requires_tunnel \
+         COALESCE(c.requires_tunnel, 0) AS requires_tunnel, \
+         (a.provenance = 'cloud' \
+          OR (a.provenance = 'self-hosted' AND COALESCE(s.seeded, 1) = 0)) AS removable \
          FROM apps a \
          LEFT JOIN cloud_apps c ON c.id = a.id \
+         LEFT JOIN self_hosted_apps s ON s.id = a.id \
          ORDER BY a.position",
     )?;
     let rows = stmt.query_map([], |row| {
@@ -181,6 +184,7 @@ fn list_app_entries_on(conn: &rusqlite::Connection) -> DbResult<Vec<AppListEntry
             local_only: row.get("local_only")?,
             smart: row.get("smart")?,
             requires_tunnel: row.get("requires_tunnel")?,
+            removable: row.get("removable")?,
         })
     })?;
     rows.collect()
@@ -250,14 +254,17 @@ fn migrate(conn: &mut rusqlite::Connection) -> rusqlite::Result<()> {
 /// `schema_migrations` version — append-only; never reorder or rewrite an
 /// already-shipped entry. The 4th entry (`004_apps_registry.sql`) replaces the
 /// two flat tables with the parent registry + per-kind child tables and seeds
-/// the full default set. Because each migration runs only once per database, a
-/// user-deleted seeded row stays deleted across upgrades — only fresh installs
-/// see the full default set.
+/// the full default set; the 5th (`005_self_hosted_seeded.sql`) adds the
+/// `seeded` flag distinguishing migration-seeded self-hosted rows from uploaded
+/// ones. Because each migration runs only once per database, a user-deleted
+/// seeded row stays deleted across upgrades — only fresh installs see the full
+/// default set.
 const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/001_initial_schema.sql"),
     include_str!("../migrations/002_internal_apps_table.sql"),
     include_str!("../migrations/003_seed_precise_hbr.sql"),
     include_str!("../migrations/004_apps_registry.sql"),
+    include_str!("../migrations/005_self_hosted_seeded.sql"),
 ];
 
 #[cfg(test)]

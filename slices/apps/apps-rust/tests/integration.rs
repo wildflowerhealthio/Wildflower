@@ -6,12 +6,13 @@
 
 use std::sync::Arc;
 
-use apps_rust::{setup_apps, Apps, AppsConfig, OwnerAuth};
+use apps_rust::{setup_apps, Apps, AppsConfig, OwnerAuth, SelfHostedAppsService};
 use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
 use persistence_rust::Connection;
 use serde_json::Value;
 use shared_structures_rust::tunnel_service::OfflineTunnel;
+use shared_structures_server_rust::ProxyTable;
 use tower::ServiceExt;
 use url::Url;
 
@@ -36,14 +37,24 @@ fn spin_up_with_handle() -> (Apps, Arc<RecordingStubWebviewHandle>) {
     // silence to exactly this construction rather than the whole crate.
     #[allow(deprecated)]
     let owner_auth: Arc<dyn OwnerAuth> = Arc::new(apps_rust::StubOwnerAuth::always_allowed());
-    let apps = setup_apps(
-        db,
-        &config,
-        Arc::new(OfflineTunnel::new("http://127.0.0.1:8080")),
-        handle.clone(),
-        owner_auth,
-    )
-    .expect("setup_apps");
+    let tunnel = Arc::new(OfflineTunnel::new("http://127.0.0.1:8080"));
+    // A throwaway apps dir + fresh proxy table back the self-hosted service the
+    // slice now takes; the integration tests here don't exercise upload/serve, so
+    // an empty dir is fine (it's left for the OS to reap).
+    let unique = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock after epoch")
+        .as_nanos();
+    let apps_dir = std::env::temp_dir().join(format!("wf-apps-int-{unique}"));
+    std::fs::create_dir_all(&apps_dir).expect("create temp apps dir");
+    let self_hosted = Arc::new(SelfHostedAppsService::new(
+        &Url::parse(LOOPBACK_BASE_URL).expect("valid base url"),
+        apps_dir,
+        ProxyTable::new(),
+        tunnel.clone(),
+    ));
+    let apps = setup_apps(db, &config, tunnel, handle.clone(), owner_auth, self_hosted)
+        .expect("setup_apps");
     (apps, handle)
 }
 

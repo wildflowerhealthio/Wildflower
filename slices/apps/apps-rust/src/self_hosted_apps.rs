@@ -13,10 +13,12 @@
 //! [`stop`](SelfHostedAppsService::stop) takes it offline — both at runtime,
 //! without a restart.
 //!
-//! Today only the host's startup seed drives `start`; the runtime start/stop
-//! capability is here for restartless installation once an install surface
-//! exists. The existing `self_hosted_apps` rows are still the only source of
-//! self-hosted apps (the table is read-only, seeded by migration).
+//! The host's startup seed drives `start` for every catalogue row; the upload
+//! surface (`POST /self-hosted-apps`) also drives `start` at runtime for a
+//! freshly-installed app, and the delete surface drives `stop`, both without a
+//! restart. [`apps_dir`](SelfHostedAppsService::apps_dir) exposes the root the
+//! upload handler stages extracted bundles under and the delete handler removes
+//! an uploaded app's folder from.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -43,7 +45,7 @@ pub struct SelfHostedAppsService {
     /// The per-request template-render inputs (loopback base URL + tunnel)
     /// threaded to every app router, so each app's committed templates can
     /// render `apiOrigin` per caller.
-    template_context: self_hosted_apps_rust::InstalledAppContext,
+    template_context: self_hosted_apps_rust::SelfHostedAppContext,
 }
 
 impl SelfHostedAppsService {
@@ -67,11 +69,20 @@ impl SelfHostedAppsService {
             static_hosts: StaticHostsService::new(loopback_base_url.clone()),
             proxy_table,
             apps_dir,
-            template_context: self_hosted_apps_rust::InstalledAppContext {
+            template_context: self_hosted_apps_rust::SelfHostedAppContext {
                 loopback_base_url: loopback_base_url.clone(),
                 tunnel,
             },
         }
+    }
+
+    /// The directory whose per-app `content_folder` subdirectories hold each
+    /// app's served files. The upload handler stages extracted bundles under it
+    /// (and renames into place); the delete handler removes an uploaded app's
+    /// folder from it.
+    #[must_use]
+    pub fn apps_dir(&self) -> &std::path::Path {
+        &self.apps_dir
     }
 
     /// Bring `app` online: serve it on its loopback port and register it for
@@ -86,7 +97,7 @@ impl SelfHostedAppsService {
     ///
     /// [`ServerError::LockPoisoned`] if a shared lock was poisoned.
     pub async fn start(&self, app: &SelfHostedApp) -> Result<(), ServerError> {
-        let service = self_hosted_apps_rust::setup_installed_app(
+        let service = self_hosted_apps_rust::setup_self_hosted_app(
             &app.id,
             self.apps_dir.join(&app.content_folder),
             self.template_context.clone(),
@@ -253,6 +264,7 @@ mod tests {
             port,
             content_folder: "patient-browser".to_owned(),
             subdomain: "patient-browser".to_owned(),
+            seeded: true,
         };
 
         service.start(&app).await.unwrap();
@@ -279,6 +291,50 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(body_string(res).await, "FALLBACK");
+
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    /// The install path end-to-end below the HTTP layer: a row inserted through
+    /// `insert_self_hosted_app`, its files on disk, and `start` bring the app up
+    /// so a forwarded `<slug>.<public_host>` request reverse-proxies to the
+    /// uploaded `index.html`. Mirrors `start_then_stop_swaps_both_paths` but
+    /// drives the DB-allocated slug/port rather than a hand-built app.
+    #[tokio::test]
+    async fn uploaded_app_serves_after_insert_and_start() {
+        use crate::db::AppsStore;
+
+        let store = AppsStore::open_in_memory().unwrap();
+        let app = store
+            .insert_self_hosted_app("Uploaded App", None, "uploaded-app", &[])
+            .unwrap()
+            .expect("inserted");
+        // Files land under `<apps_dir>/<content_folder>/index.html`.
+        let dir = temp_apps_dir(&app.content_folder, "<h1>UPLOADED</h1>");
+
+        let table = ProxyTable::new();
+        let service = SelfHostedAppsService::new(
+            &Url::parse("http://127.0.0.1:8080").unwrap(),
+            dir.clone(),
+            table.clone(),
+            Arc::new(StubTunnel {
+                public_host: "demo.example.com".to_owned(),
+            }),
+        );
+        service.start(&app).await.unwrap();
+
+        let res = proxy_router(table.clone())
+            .oneshot(forwarded_request(&format!(
+                "{}.demo.example.com",
+                app.subdomain
+            )))
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        assert!(
+            body_string(res).await.contains("UPLOADED"),
+            "the uploaded app's index must serve through the subdomain proxy",
+        );
 
         std::fs::remove_dir_all(dir).ok();
     }

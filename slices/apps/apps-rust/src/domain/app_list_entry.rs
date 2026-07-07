@@ -3,8 +3,9 @@
 //! launch `url`** — read shapes carry no URL, see `docs/Apps/Explanation.md`.
 //!
 //! It carries the catalogue-display fields plus the per-row `provenance`,
-//! `localOnly`, `smart`, and `requiresTunnel` flags the homescreen renders as
-//! badges / decides the launch vehicle from. Admin write responses
+//! `localOnly`, `smart`, `requiresTunnel`, and `removable` flags the homescreen
+//! renders as badges / decides the launch vehicle + Remove control from. Admin
+//! write responses
 //! (`POST /apps`, `PATCH /apps/{id}`) keep [`AppEntry`](super::AppEntry) so the
 //! edited cloud row round-trips intact.
 
@@ -32,4 +33,9 @@ pub struct AppListEntry {
     /// Whether a launch needs the tunnel up (cloud apps only; `false` for
     /// system / self-hosted).
     pub requires_tunnel: bool,
+    /// Whether the owner can remove this app through the admin surface: `true`
+    /// for cloud apps and for uploaded (non-seeded) self-hosted apps, `false`
+    /// for system apps and the migration-seeded self-hosted apps. The editor's
+    /// Remove control keys off this rather than re-deriving the rule per client.
+    pub removable: bool,
 }

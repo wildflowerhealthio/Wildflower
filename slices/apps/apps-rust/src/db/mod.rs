@@ -9,8 +9,9 @@
 //!     - the cloud-app CRUD (`find_cloud_app`, `insert_cloud_app`,
 //!       `replace_cloud_app`, `delete_app`) over `apps` + `cloud_apps` — see
 //!       [`cloud_apps`];
-//!     - the read-only self-hosted accessors (`list_self_hosted_apps`,
-//!       `find_self_hosted_app`) over `self_hosted_apps` — see
+//!     - the self-hosted accessors + upload writes (`list_self_hosted_apps`,
+//!       `find_self_hosted_app`, `insert_self_hosted_app`,
+//!       `delete_self_hosted_app`) over `apps` + `self_hosted_apps` — see
 //!       [`self_hosted_apps`].
 //!
 //! The cloud + self-hosted operations live in their own modules — further

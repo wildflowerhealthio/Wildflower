@@ -43,7 +43,22 @@ self-hosted-apps-rust = { path = "../self-hosted-apps-rust" }
 # is cross-origin to the main API the SPA fetches from).
 tower-http.workspace = true
 
+# Extracts an uploaded self-hosted app bundle. `default-features = false` drops
+# the crate's optional codecs; we keep only the ones a real-world app archive
+# uses (`deflate`/`deflate64` for zips, `bzip2` for the occasional legacy tool).
+# The resolved version (2.4.2) is already in `Cargo.lock` transitively, so
+# cargo-deny has pre-vetted it and its codec deps.
+zip = { version = "2", default-features = false, features = [
+  "deflate",
+  "deflate64",
+  "bzip2",
+] }
+
 tracing = "0.1"
+
+# `spawn_blocking` runs the zip extraction (inflate + disk writes) off the async
+# runtime in the upload handler. Only the runtime handle is needed here.
+tokio = { workspace = true, features = ["rt"] }
 
 [lints]
 workspace = true
@@ -52,6 +67,10 @@ workspace = true
 # The OpenAPI snapshot helper enables the extra `openapi-snapshot` feature;
 # `async-trait` is only used by the `TunnelService` test stubs.
 shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = ["openapi-snapshot"] }
+# The integration test crate constructs a `SelfHostedAppsService` (which needs a
+# `ProxyTable`) to satisfy `setup_apps`; the server infra is a normal dep but the
+# separate test crate must name it as a dev-dep to `use` it.
+shared-structures-server-rust = { path = "../../shared-structures/shared-structures-server-rust" }
 async-trait = "0.1"
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync"] }
 http = "1"
