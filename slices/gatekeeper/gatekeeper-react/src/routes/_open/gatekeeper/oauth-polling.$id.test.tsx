@@ -60,7 +60,7 @@ vi.mock('../../../queries/index.ts', () => ({
   },
 }))
 
-import { PendingView } from './oauth-polling.$id.tsx'
+import { ExternalRedirect, PendingView } from './oauth-polling.$id.tsx'
 
 // jsdom's `window.location.replace` is a non-configurable property, so it
 // can't be spied directly. Swap the whole `location` for a stub exposing a
@@ -194,5 +194,17 @@ describe('PendingView', () => {
     expect(screen.queryByTestId('consent-form')).toBeNull()
 
     consoleError.mockRestore()
+  })
+})
+
+describe('ExternalRedirect', () => {
+  test('performs a full-page replace to the external callback and shows only the spinner', () => {
+    const redirect = 'https://client.example/cb?code=abc&state=xyz'
+    render(<ExternalRedirect href={redirect} />)
+
+    // A real document-level navigation to the cross-origin callback (the SPA
+    // router can't reach it), and no new UI beyond the holding spinner.
+    expect(replaceSpy).toHaveBeenCalledWith(redirect)
+    expect(screen.getByText('Waiting for Approval')).toBeTruthy()
   })
 })

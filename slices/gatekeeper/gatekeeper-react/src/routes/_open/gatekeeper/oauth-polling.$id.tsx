@@ -1,13 +1,14 @@
 // This file route must keep its `export const Route` (the tanstackRouter
-// plugin keys off it), and `PendingView` is exported separately as a
-// unit-test seam — so a consolidated single export isn't possible here.
-import { createFileRoute, Navigate } from '@tanstack/react-router'
+// plugin keys off it), and `PendingView` / `ExternalRedirect` are exported
+// separately as unit-test seams — so a consolidated single export isn't
+// possible here.
+import { createFileRoute } from '@tanstack/react-router'
 import {
   type AuthorizationStatus,
   type AuthorizationStatusError,
   pollAuthorizationStatus,
 } from 'gatekeeper-core/clients'
-import { Component, Suspense, useMemo, useState, type JSX, type ReactNode } from 'react'
+import { Component, Suspense, useEffect, useMemo, useState, type JSX, type ReactNode } from 'react'
 import {
   cn,
   isFreshlyAuthed,
@@ -114,9 +115,7 @@ function OAuthPollingScreen({ id }: { readonly id: string }): JSX.Element {
   return Match.value(status).pipe(
     Match.when({ status: 'initial-loading' }, () => <PollingSpinner />),
     Match.when({ status: 'pending' }, () => <PendingView id={id} />),
-    Match.when({ status: 'approved' }, ({ redirect }) => {
-      return <Navigate to={redirect} />
-    }),
+    Match.when({ status: 'approved' }, ({ redirect }) => <ExternalRedirect href={redirect} />),
     Match.when({ status: 'denied' }, () => <DeclinedView />),
     Match.when({ status: 'error' }, ({ message }) => ErrorComponent(message)),
     Match.exhaustive
@@ -251,6 +250,24 @@ const PollingSpinner = (): JSX.Element => (
 )
 
 /**
+ * Leaves the SPA for an external OAuth callback URL. `redirect` is the
+ * client's own cross-origin `redirect_uri` (with the code + state) — the
+ * router can't navigate there (it owns only in-app routes), so this performs a
+ * real document-level `location.replace`. It runs the navigation as an effect
+ * and renders only the existing spinner as a holding view, so no new UI mounts
+ * after the intent to navigate has fired. Mirrors `InlineConsent`'s own
+ * `handleDone` redirect for the surface that *is* the requesting client.
+ *
+ * Exported as a test seam.
+ */
+const ExternalRedirect = ({ href }: { readonly href: string }): JSX.Element => {
+  useEffect(() => {
+    window.location.replace(href)
+  }, [href])
+  return <PollingSpinner />
+}
+
+/**
  * The `/gatekeeper/oauth-polling/$id` file route. Reads the typed `$id`
  * path param from the generated route via `Route.useParams()` and hands it
  * to the screen as a prop.
@@ -264,4 +281,4 @@ const Route = createFileRoute('/_open/gatekeeper/oauth-polling/$id')({
   component: OAuthPollingRoute,
 })
 
-export { Route, PendingView }
+export { Route, PendingView, ExternalRedirect }
