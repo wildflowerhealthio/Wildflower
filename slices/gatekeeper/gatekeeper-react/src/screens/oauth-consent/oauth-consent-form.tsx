@@ -1,6 +1,6 @@
 import { unknownErrorToString } from 'kitchen-sink'
 import type { JSX } from 'react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { pageLayoutStyles, StatusBadge } from 'react-tundraish'
 import { GrantDraft, Scope, ScopeRequest } from 'scopes-core'
@@ -9,6 +9,7 @@ import { PatientPillPicker, ScopePicker } from 'scopes-react'
 
 import { useOAuthConsentMutation } from '../../queries/index.ts'
 import type { OAuthConsentResource, OAuthConsentResult } from '../../queries/index.ts'
+import { AppAvatar } from './app-avatar.tsx'
 import { usePatientOptions } from './use-patient-options.ts'
 import styles from '../../styles/consent-card.module.css'
 
@@ -54,6 +55,9 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
   const [patientError, setPatientError] = useState<string | null>(null)
   const { options: patients } = usePatientOptions(hasPatientScope)
 
+  const patientBarRef = useRef<HTMLDivElement>(null)
+  const errorRef = useRef<HTMLParagraphElement>(null)
+
   const patientPickerShown = hasPatientScope && patients.length > 0
 
   const submitting = consentMutation.isPending
@@ -61,12 +65,22 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
     consentMutation.error === null ? null : unknownErrorToString(consentMutation.error)
   const errorMessage = resultError ?? mutationError
 
+  // The error banner sits at the top of the card, but the buttons that trigger
+  // it are at the bottom — scroll it into view whenever it appears so a
+  // scrolled-down user sees why their approval/denial didn't go through.
+  useEffect(() => {
+    if (errorMessage !== null) {
+      errorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }, [errorMessage])
+
   const handleApprove = (): void => {
     setResultError(null)
     // A patient-context request needs a launch patient — surface the miss
     // beside the picker instead of sending a patientless approval.
     if (patientPickerShown && draft.patient === null) {
       setPatientError('Select a patient to continue.')
+      patientBarRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
       return
     }
     consentMutation.mutate(
@@ -108,9 +122,7 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
   return (
     <section className={styles['card']}>
       <header className={styles['header']}>
-        <div aria-hidden="true" className={styles['avatar']}>
-          {appName.slice(0, 1).toUpperCase()}
-        </div>
+        <AppAvatar name={appName} redirectUri={consent.redirectUri} />
         <div className={styles['identity']}>
           <h2 className={styles['name']}>{appName}</h2>
           <p className={styles['subtitle']}>wants to connect to your health records</p>
@@ -119,8 +131,18 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
         <StatusBadge tone="info">Review request</StatusBadge>
       </header>
 
+      {errorMessage !== null ? (
+        <p
+          ref={errorRef}
+          className={cn(pageLayoutStyles['error'], styles['result-error'], 'text-body-3')}
+          role="alert"
+        >
+          {errorMessage}
+        </p>
+      ) : null}
+
       {patientPickerShown ? (
-        <div className={styles['patient-bar']}>
+        <div className={styles['patient-bar']} ref={patientBarRef}>
           <p className={styles['eyebrow']}>Patient</p>
           <PatientPillPicker
             patients={patients}
@@ -144,12 +166,6 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
       <ScopePicker subjectName={appName} request={request} draft={draft} onDraftChange={setDraft} />
 
       <div className={styles['footer']}>
-        {errorMessage !== null ? (
-          <p className={cn(pageLayoutStyles['error'], styles['error'], 'text-body-3')} role="alert">
-            {errorMessage}
-          </p>
-        ) : null}
-
         <div className={styles['buttons']}>
           <button
             type="button"

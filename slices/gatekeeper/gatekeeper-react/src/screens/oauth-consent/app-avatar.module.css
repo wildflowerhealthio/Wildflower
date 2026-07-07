@@ -1,0 +1,30 @@
+/*
+ * The app-identity avatar on the OAuth consent card: a fixed square that holds
+ * either the app's favicon or a letter monogram fallback. See `app-avatar.tsx`.
+ */
+
+.avatar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  border-radius: var(--radius-3);
+  background: var(--color-accent-9);
+  overflow: hidden;
+}
+
+/* Monogram fallback: the app name's first letter, in the identity serif. */
+.monogram {
+  font-family: var(--font-serif);
+  font-size: var(--font-size-5);
+  font-weight: var(--font-weight-3);
+  color: var(--color-accent);
+}
+
+/* Favicon: fill the square, cropping to cover so transparent-padded icons
+ * still reach the rounded edges. */
+.favicon {
+  object-fit: cover;
+}

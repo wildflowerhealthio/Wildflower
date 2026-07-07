@@ -64,21 +64,6 @@
   }
 }
 
-.avatar {
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 46px;
-  height: 46px;
-  border-radius: var(--radius-3);
-  background: var(--color-accent-9);
-  font-family: var(--font-serif);
-  font-size: var(--font-size-5);
-  font-weight: var(--font-weight-3);
-  color: var(--color-accent);
-}
-
 .identity {
   flex-grow: 1;
   min-width: 0;
@@ -163,6 +148,11 @@
   flex: 1.6;
 }
 
-.error {
+/* ── result error banner: top of card, above the editing surface ──────────── */
+
+.result-error {
   margin: 0;
+  padding: var(--space-6) var(--space-9);
+  background: var(--color-sunken);
+  border-bottom: 1.5px solid var(--color-divider);
 }

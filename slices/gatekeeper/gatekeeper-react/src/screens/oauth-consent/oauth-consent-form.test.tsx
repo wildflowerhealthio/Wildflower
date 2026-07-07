@@ -36,6 +36,9 @@ type MutateOptions = { readonly onSuccess?: (result: OAuthConsentResult) => void
 
 const mutate = vi.fn<(variables: MutateVars, options?: MutateOptions) => void>()
 
+/** The stubbed `scrollIntoView` (jsdom has none); re-armed each test. */
+let scrollIntoView = vi.fn()
+
 vi.mock('../../queries/index.ts', () => ({
   useOAuthConsentMutation: (): {
     mutate: typeof mutate
@@ -60,6 +63,11 @@ vi.mock('fhir-r4-react', () => ({
 
 beforeEach(() => {
   patientResources = []
+  // jsdom doesn't implement scrollIntoView; the form calls it to bring the error
+  // banner / patient bar into view. Stub it so those code paths don't throw (and
+  // so tests can assert the scroll-into-view happened).
+  scrollIntoView = vi.fn()
+  Element.prototype.scrollIntoView = scrollIntoView
   mutate.mockReset()
   // Default: the server records the decision the user asked for.
   mutate.mockImplementation((variables, options) => {
@@ -231,6 +239,8 @@ describe('OAuthConsentForm — decision routing', () => {
     await user.click(screen.getByRole('button', { name: 'Allow access' }))
 
     expect((await screen.findByRole('alert')).textContent).toBe('Something went wrong')
+    // The error banner sits above the form, so it's scrolled into view.
+    expect(scrollIntoView).toHaveBeenCalled()
     expect(onDone).not.toHaveBeenCalled()
   })
 
@@ -257,8 +267,9 @@ describe('OAuthConsentForm — launch patient', () => {
     // Act
     await user.click(screen.getByRole('button', { name: 'Allow access' }))
 
-    // Assert — the miss is surfaced and nothing was sent.
+    // Assert — the miss is surfaced, scrolled into view, and nothing was sent.
     expect((await screen.findByRole('alert')).textContent).toBe('Select a patient to continue.')
+    expect(scrollIntoView).toHaveBeenCalled()
     expect(mutate).not.toHaveBeenCalled()
   })
 
