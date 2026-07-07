@@ -42,7 +42,7 @@ catalog:
   '@opentelemetry/sdk-trace-base': ^2.9.0
   '@opentelemetry/sdk-trace-node': ^2.9.0
   '@opentelemetry/sdk-trace-web': ^2.9.0
-  '@opentelemetry/semantic-conventions': ^1.40.0
+  '@opentelemetry/semantic-conventions': ^1.42.0
   # Keep the `@sentry/*` packages aligned on a single version so only one
   # copy of `@sentry/core` is installed. Divergent majors install two
   # side-by-side, and the mismatched `Client` types break
@@ -84,7 +84,7 @@ catalog:
   vite-plus: ^0.2.2
   # vite-plus 0.2.x depends on real vitest (the @voidzero-dev/vite-plus-test
   # alias line ended at 0.1.24); pin to the version `vp --version` bundles.
-  vitest: 4.1.9
+  vitest: 4.1.10
   why-is-node-running: ^3.2.2
 catalogMode: prefer
 
