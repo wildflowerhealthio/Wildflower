@@ -1,7 +1,12 @@
 import { useEffect, useId, useRef, useState, type JSX } from 'react'
 
-import type { PatientOption } from './types.ts'
 import styles from '../../styles/consent-card.module.css'
+
+/** One pickable patient — the `{ id, displayName }` option shape the pill list renders. */
+interface PatientOption {
+  readonly id: string
+  readonly displayName: string
+}
 
 interface PatientPillPickerProps {
   readonly patients: readonly PatientOption[]
@@ -105,4 +110,4 @@ const PatientPillPicker = ({ patients, value, onChange }: PatientPillPickerProps
   )
 }
 
-export { PatientPillPicker, type PatientPillPickerProps }
+export { PatientPillPicker, type PatientOption, type PatientPillPickerProps }

@@ -7,10 +7,10 @@ import type { Cell } from 'scopes-core'
  * display name, and mono code) plus its resolved {@link Cell.State} and the pre-rendered
  * lock/disable `reason` copy. Generic over the style's interaction key `TInteractions`
  * (`'c'|…|'s'` for cruds, `'read'|'write'` for the v1 words) so the id it hands back to
- * {@link PermissionPickerProps.onToggle} stays the variant's own literal. The grid model
- * (`buildGrid`) resolves the cell via `Cell.forItem` and renders the reason, so this
- * component stays a pure presenter and the same shape carries a v2 interaction or a v1
- * Read/Write word.
+ * {@link PermissionPickerProps.onToggle} stays the variant's own literal.
+ * `pickerItemsFor` (`picker-items.ts`) resolves the cell (via the row's `cellFor`) and
+ * renders the reason, so this component stays a pure presenter and the same shape
+ * carries a v2 interaction or a v1 Read/Write word.
  */
 interface PickerItem<TInteractions extends string> {
   readonly id: TInteractions

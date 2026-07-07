@@ -7,10 +7,8 @@ import { type JSX, type ReactNode } from 'react'
 import { Grant, GrantDraft, ScopeRequest } from 'scopes-core'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
-import type { OAuthConsentResult } from '../../queries/index.ts'
-import { consentScopeRequest } from './consent-sections.ts'
+import type { OAuthConsentResource, OAuthConsentResult } from '../../queries/index.ts'
 import { OAuthConsentForm } from './oauth-consent-form.tsx'
-import type { Consent } from './types.ts'
 
 /**
  * `OAuthConsentForm` renders the scopes-react consent surface (plain-language statements +
@@ -173,6 +171,36 @@ describe('OAuthConsentForm — view toggle', () => {
   })
 })
 
+describe('OAuthConsentForm — section titles (detail view)', () => {
+  /** Render the form over `scopes` and switch to the detail grid, where section titles show. */
+  const renderDetailView = async (scopes: readonly string[]): Promise<void> => {
+    const { user } = renderForm(makeConsent({ scopes }), vi.fn())
+    await user.click(screen.getByRole('button', { name: /See exactly what/ }))
+  }
+
+  test('a single patient context reads plain "Health records"', async () => {
+    await renderDetailView(['patient/Observation.r'])
+    expect(screen.getByRole('heading', { name: 'Health records' })).toBeDefined()
+  })
+
+  test('a lone system context always names all-patients', async () => {
+    await renderDetailView(['system/Observation.r'])
+    expect(screen.getByRole('heading', { name: 'Health records — all patients' })).toBeDefined()
+  })
+
+  test('multiple contexts suffix patient and user', async () => {
+    await renderDetailView(['patient/Observation.r', 'user/Encounter.r'])
+    expect(screen.getByRole('heading', { name: 'Health records — this patient' })).toBeDefined()
+    expect(screen.getByRole('heading', { name: 'Health records — your access' })).toBeDefined()
+  })
+
+  test('a wildflower section is titled "Wildflower admin" with the Admin chip', async () => {
+    await renderDetailView(['wildflower/Client.r'])
+    expect(screen.getByRole('heading', { name: 'Wildflower admin' })).toBeDefined()
+    expect(screen.getByText('Admin')).toBeDefined()
+  })
+})
+
 describe('OAuthConsentForm — flags', () => {
   test('a requested known flag toggles out of the payload', async () => {
     const { user } = renderForm(
@@ -284,7 +312,7 @@ describe('OAuthConsentForm — property (end-to-end seeding)', () => {
         await user.click(screen.getByRole('button', { name: 'Allow access' }))
 
         const approved = lastApprovedScopes() ?? []
-        const request = consentScopeRequest(makeConsent({ scopes }))
+        const request = ScopeRequest.fromRequestedScopes({ optional: scopes })
         expect(ScopeRequest.isWithin({ patient: null, ...Grant.parse(approved) }, request)).toBe(
           true
         )
@@ -299,7 +327,9 @@ describe('OAuthConsentForm — property (end-to-end seeding)', () => {
 
 // Helpers
 
-const makeConsent = (overrides: Partial<Consent> & Pick<Consent, 'scopes'>): Consent => ({
+const makeConsent = (
+  overrides: Partial<OAuthConsentResource> & Pick<OAuthConsentResource, 'scopes'>
+): OAuthConsentResource => ({
   id: 'consent-1',
   clientId: 'app.example',
   clientName: 'Fitbit Sync',
@@ -310,7 +340,7 @@ const makeConsent = (overrides: Partial<Consent> & Pick<Consent, 'scopes'>): Con
 })
 
 const renderForm = (
-  consent: Consent,
+  consent: OAuthConsentResource,
   onDone: (result: OAuthConsentResult) => void
 ): { readonly user: ReturnType<typeof userEvent.setup> } => {
   const queryClient = new QueryClient()

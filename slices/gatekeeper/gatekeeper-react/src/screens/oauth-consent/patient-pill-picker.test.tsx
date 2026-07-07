@@ -3,7 +3,7 @@ import { userEvent } from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { PatientPillPicker } from './patient-pill-picker.tsx'
-import type { PatientOption } from './types.ts'
+import type { PatientOption } from './patient-pill-picker.tsx'
 
 afterEach(() => {
   document.body.innerHTML = ''

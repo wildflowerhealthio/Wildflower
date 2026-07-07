@@ -10,7 +10,8 @@
  *
  * Laid out by atomic-design tier: `atoms/` are the single-control leaf widgets,
  * `molecules/` the permission picker (built on react-tundraish's `CheckboxGroup`),
- * `organisms/` the two full projections (the grid + its model, and the statement).
+ * `organisms/` the two full projections (the grid and the statement). Both render
+ * straight off `scopes-core`'s `Sections.Section` + `Rows.Row`.
  */
 
 export { ContextCard, type ContextCardProps } from './atoms/context-card.tsx'
@@ -21,7 +22,7 @@ export {
   type PickerItem,
   type PermissionPickerProps,
 } from './molecules/permission-picker.tsx'
-export * as Grid from './organisms/grid-model.ts'
+export { pickerItemsFor } from './molecules/picker-items.ts'
 export { PermissionGrid, type PermissionGridProps } from './organisms/permission-grid.tsx'
 export {
   PermissionStatement,

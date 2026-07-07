@@ -9,7 +9,7 @@
  * Namespace module (`import { ScopeRequest } from 'scopes-core'`).
  */
 
-import { Scope } from '../domain/index.ts'
+import { Grant, Scope } from '../domain/index.ts'
 import type * as GrantDraft from './grant-draft.ts'
 
 /** What an app asked for: the requested envelope, and the mandatory (`required`) subset. */
@@ -17,6 +17,20 @@ type ScopeRequest = {
   readonly requested: Scope.MultiScope
   readonly required: Scope.MultiScope
 }
+
+/**
+ * The all-optional envelope over requested wire scopes: everything requested, nothing
+ * required — no control ever locks on, every requested control is prunable (the seed a
+ * consent decision edits against).
+ */
+const fromRequestedScopes = ({
+  optional,
+}: {
+  readonly optional: readonly string[]
+}): ScopeRequest => ({
+  requested: Grant.parse(optional),
+  required: Grant.make([]),
+})
 
 /** Whether a flag toggle is disabled (request mode + not requested, `spec.md §2/§7`). */
 const flagDisabled = (scopeRequest: ScopeRequest | null, flag: Scope.Known.Name): boolean =>
@@ -39,4 +53,4 @@ const isWithin = (grant: GrantDraft.GrantDraft, scopeRequest: ScopeRequest | nul
   )
 }
 
-export { type ScopeRequest, flagDisabled, flagRequired, isWithin }
+export { type ScopeRequest, fromRequestedScopes, flagDisabled, flagRequired, isWithin }

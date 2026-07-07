@@ -20,3 +20,23 @@ describe('KnownScope.setFlag / toggleFlag (§7)', () => {
     expect(Scope.Known.toggleFlag(on, 'openid')).toEqual([])
   })
 })
+
+describe('KnownScope.inCanonicalOrder (§7)', () => {
+  test('reorders flags into the canonical Name.all order', () => {
+    const flags = [
+      new Scope.Known('launch/patient'),
+      new Scope.Known('offline_access'),
+      new Scope.Known('openid'),
+    ]
+    expect(Scope.Known.inCanonicalOrder(flags)).toEqual([
+      new Scope.Known('openid'),
+      new Scope.Known('offline_access'),
+      new Scope.Known('launch/patient'),
+    ])
+  })
+
+  test('de-duplicates by name', () => {
+    const flags = [new Scope.Known('openid'), new Scope.Known('openid')]
+    expect(Scope.Known.inCanonicalOrder(flags)).toEqual([new Scope.Known('openid')])
+  })
+})

@@ -68,6 +68,15 @@ class KnownScope extends BaseScope implements Equal.Equal {
   static toggleFlag(flags: readonly KnownScope[], flag: KnownScope.Name): readonly KnownScope[] {
     return KnownScope.setFlag(flags, flag, !flags.some((known) => known.name === flag))
   }
+
+  /**
+   * `flags` reordered into the canonical {@link KnownScope.Name.all} order (`spec.md §7`)
+   * — the display order every flag list renders in. De-duplicates by name.
+   */
+  static inCanonicalOrder(flags: readonly KnownScope[]): readonly KnownScope[] {
+    const byName = new Map(flags.map((known) => [known.name, known]))
+    return KnownScope.Name.all.flatMap((name) => byName.get(name) ?? [])
+  }
 }
 
 // oxlint-disable import/group-exports
