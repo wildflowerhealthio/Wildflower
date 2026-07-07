@@ -103,9 +103,17 @@ async fn handle_approve_oauth_consent(
     // Hand back the client callback URL so an approving surface that *is* the
     // requesting client can complete the flow inline, without polling
     // `/oauth/authorize/{id}`. Mirrors the `Approved` arm of
-    // `authorization_status`. A request with no `client_state` isn't a
-    // code-flow redirect target, so there's no redirect to build — the client
-    // falls back to the polling stream.
+    // `authorization_status`.
+    //
+    // `client_state` is `Option` only structurally: `/oauth/authorize`
+    // requires `state` (stricter than RFC 6749 — see `authorize.rs`), so every
+    // stored code-flow request carries it and this maps to `Some`. The `None`
+    // branch is therefore currently unreachable. Do NOT treat `None` as a
+    // benign "fall back to polling" case: `authorization_status`'s `Approved`
+    // arm returns `server_error` when an approved request lacks
+    // `redirect_uri`/`client_state`, so a state-less request would 500 there,
+    // not recover. If `state` is ever relaxed to optional, both paths must be
+    // revisited together.
     let redirect = request.client_state.as_deref().map(|client_state| {
         build_client_redirect_url(&redirect_uri, &authorization_code.code, client_state)
     });

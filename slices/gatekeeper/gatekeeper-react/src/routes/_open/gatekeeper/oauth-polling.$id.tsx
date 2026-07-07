@@ -62,6 +62,14 @@ function OAuthPollingScreen({ id }: { readonly id: string }): JSX.Element {
         // `error` branch renders the message. Exhaustive over the union: the
         // two declared endpoint errors (discriminated on `error`) plus the
         // framework transport/decode errors (discriminated on `_tag`).
+        // Collapse consecutive `pending` heartbeats. The poll re-emits a
+        // fresh `{ status: 'pending' }` object every 1.5s; each distinct
+        // reference would otherwise flow through `useStreamWithDefault`'s
+        // unconditional `setState` and re-render the whole inline consent
+        // subtree (`PendingView` → `OAuthConsentForm` → `ScopePicker`) on
+        // every tick. Terminal statuses emit exactly once (the poll's
+        // `takeUntil`), so `pending` is the only value that ever repeats.
+        Stream.changesWith((a, b) => a.status === 'pending' && b.status === 'pending'),
         Stream.catchAll(
           Match.type<AuthorizationStatusError>().pipe(
             Match.withReturnType<Stream.Stream<AuthorizationStatus, never>>(),
@@ -103,30 +111,10 @@ function OAuthPollingScreen({ id }: { readonly id: string }): JSX.Element {
     [id, runtimeLayer]
   )
 
-  const status = useStreamWithDefault<
-    | {
-        readonly status: 'pending'
-      }
-    | {
-        readonly status: 'denied'
-        readonly redirect: string | null | undefined
-      }
-    | {
-        readonly status: 'approved'
-        readonly redirect: string
-      }
-    | {
-        readonly status: 'error'
-        readonly message: string
-      }
-    | {
-        status: 'error'
-        message: string
-      }
-    | {
-        readonly status: 'initial-loading'
-      }
-  >(
+  // `AuthorizationStatus` (the server contract from gatekeeper-core) covers
+  // the four terminal/heartbeat arms; the only local addition is the
+  // `initial-loading` default this hook renders before the first emission.
+  const status = useStreamWithDefault<AuthorizationStatus | { readonly status: 'initial-loading' }>(
     stream,
     useMemo(() => ({ status: 'initial-loading' }), [])
   )
