@@ -29,7 +29,7 @@ describe('AppEntrySchema', () => {
       id: 'patient-browser',
       name: 'Patient Browser',
       subtitle: 'Browse records',
-      url: '{origin}/installed-apps/patient-browser/index.html',
+      url: '{origin}/self-hosted-apps/patient-browser/index.html',
       requiresTunnel: false,
       enabled: true,
     }

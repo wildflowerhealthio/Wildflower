@@ -26,10 +26,14 @@ cloud↔self-hosted re-point, but there is no switch UI yet.
   parent registry row (so they can be reordered/hidden) but **no child config
   row**; their launch URL comes from a compiled-in `SystemApp` source list that
   is the single authority for resolving them.
-- **Self-Hosted** — Wildflower-shipped web assets served from the device on a
-  **dedicated, isolated origin** (a loopback port, or the user's domain via
-  subdomain dispatch). The isolated origin is what lets a Self-Hosted app make
-  data-residence guarantees. Patient Browser is Self-Hosted.
+- **Self-Hosted** — web assets served from the device on a **dedicated, isolated
+  origin** (a loopback port, or the user's domain via subdomain dispatch). The
+  isolated origin is what lets a Self-Hosted app make data-residence guarantees.
+  A Self-Hosted app is either **seeded** (a Wildflower-shipped vendored build,
+  synced into app-data at host startup — Patient Browser) or **uploaded** (a
+  user-supplied `.zip` extracted at runtime by the owner-gated
+  `POST /self-hosted-apps` upload endpoint). Both serve the same way; they
+  differ only in origin and removability (see the data model).
 - **Cloud** — assets served from a **remote** origin, reaching PHI back through
   the tunnel. Growth Chart, Medication Viewer, and PRECISE-HBR are Cloud.
 
@@ -65,11 +69,20 @@ tables joined by `id`:
 - `cloud_apps` — `url` (the **only** place a launch URL is stored) and
   `requires_tunnel`.
 - `self_hosted_apps` — the stable dedicated loopback `port`, the on-disk
-  `content_folder` the files are served from, and the public `subdomain` label
-  (`<subdomain>.<public_host>`). Folder and subdomain are explicit columns, not
-  derived from the `id`, so an app's identity, its served files, and its public
-  hostname are independent.
+  `content_folder` the files are served from, the public `subdomain` label
+  (`<subdomain>.<public_host>`), and a `seeded` flag. Folder and subdomain are
+  explicit columns, not derived from the `id`, so an app's identity, its served
+  files, and its public hostname are independent. `seeded = 1` marks the
+  migration-seeded shipped apps (Patient Browser); rows written by the upload
+  endpoint are `seeded = 0`.
 - System apps have no child row.
+
+**Removability.** A Cloud app and an **uploaded** (`seeded = 0`) Self-Hosted app
+can be deleted — `DELETE /apps/{id}` drops the rows (and, for self-hosted, stops
+the listener and removes the on-disk files). A **seeded** Self-Hosted app and
+System apps are protected: their delete returns `409 AppNotEditable`. The read
+shapes surface this as the `removable` flag on `AppListEntry` (true for cloud
+and non-seeded self-hosted rows), which the editor's Remove button follows.
 
 Read shapes (`GET /apps`, launch) **carry no `url`**: the server resolves the
 launch target at request time from the provenance, so a Self-Hosted or System
