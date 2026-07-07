@@ -190,7 +190,7 @@ dependencies = [
  "http",
  "http-body-util",
  "persistence-rust",
- "rand 0.10.1",
+ "rand 0.10.2",
  "rusqlite",
  "self-hosted-apps-rust",
  "serde",
@@ -2610,7 +2610,7 @@ dependencies = [
  "percent-encoding",
  "persistence-rust",
  "proptest",
- "rand 0.10.1",
+ "rand 0.10.2",
  "rsa",
  "rusqlite",
  "scopes-rust",
@@ -3160,9 +3160,9 @@ dependencies = [
 
 [[package]]
 name = "helios-fhirpath"
-version = "0.2.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4f93a28a04efeb1c57ab42d746eeefa1d33ba5023d1f69f799273bb72c2a4d16"
+checksum = "f91085cfac1e68a6af7cf56645a343feb9ccf5b6ed1962261d116251e5a64724"
 dependencies = [
  "arc-swap",
  "axum",
@@ -3204,9 +3204,9 @@ dependencies = [
 
 [[package]]
 name = "helios-persistence"
-version = "0.2.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "db5cd095151ff268a69b9c126c4ed2e5eb5dc50fc128f1a611f09276852f7eed"
+checksum = "b948fd48250e7be47ca2fea76c94da07567ccc76601913d8155ea2fa461d1221"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -3300,9 +3300,9 @@ dependencies = [
 
 [[package]]
 name = "helios-sof"
-version = "0.2.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9775af72f70fad5cd15a15850d2b4babdbfe5af0a0a469f281d2e51a54fd88f3"
+checksum = "6ff737468b365b47b6394fe1c9116b51629b6d7943064f277671f1d1e2b0c8f2"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -3319,6 +3319,7 @@ dependencies = [
  "helios-fhirpath",
  "helios-fhirpath-support",
  "http",
+ "lru",
  "mime",
  "object_store",
  "parking_lot",
@@ -4265,6 +4266,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "953f07c43838f8e6f9758cab68bf5bed85465e7587ebe0b823f1bcd81978ad3a"
 dependencies = [
  "value-bag",
+]
+
+[[package]]
+name = "lru"
+version = "0.12.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "234cf4f4a04dc1f57e24b96cc0cd600cf2af460d4161ac5ecdd0af8e1f3b2a38"
+dependencies = [
+ "hashbrown 0.15.5",
 ]
 
 [[package]]
@@ -5855,9 +5865,9 @@ dependencies = [
 
 [[package]]
 name = "rand"
-version = "0.10.1"
+version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2e8e8bcc7961af1fdac401278c6a831614941f6164ee3bf4ce61b7edb162207"
+checksum = "c7f5fa3a058cd35567ef9bfa5e75732bee0f9e4c55fa90477bef2dfcdbc4be80"
 dependencies = [
  "chacha20 0.10.1",
  "getrandom 0.4.2",
@@ -7336,9 +7346,9 @@ checksum = "61c41af27dd6d1e27b1b16b489db798443478cef1f06a660c96db617ba5de3b1"
 
 [[package]]
 name = "tauri"
-version = "2.11.3"
+version = "2.11.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c2616f96cb644bf2c5c456d9de4d5d5100e592d7424c74d8b55c5cb96e359e93"
+checksum = "667b20e2726d572dea2de7370da16e188eb06008faf9a92fab7cdc46791190b5"
 dependencies = [
  "anyhow",
  "bytes",
@@ -7589,9 +7599,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-runtime-wry"
-version = "2.11.3"
+version = "2.11.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe41e015bf8fc4d6477ff4926a0ef769dc64ff34c7b0038b6f7cacae892acb5c"
+checksum = "4e6fac707727b7a2f48e4ded90976324267371073edbb415ffb73bb0458d203f"
 dependencies = [
  "gtk",
  "http",
@@ -8216,7 +8226,7 @@ dependencies = [
  "parking_lot",
  "persistence-rust",
  "proptest",
- "rand 0.10.1",
+ "rand 0.10.2",
  "rathole",
  "rusqlite",
  "serde",
@@ -8467,7 +8477,7 @@ checksum = "bf80a72845275afea99e7f2b434723d3bc7e38470fcd1c7ed39a599c73319a53"
 dependencies = [
  "getrandom 0.4.2",
  "js-sys",
- "rand 0.10.1",
+ "rand 0.10.2",
  "serde_core",
  "wasm-bindgen",
 ]
