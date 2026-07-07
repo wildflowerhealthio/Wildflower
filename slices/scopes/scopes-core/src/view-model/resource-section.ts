@@ -1,7 +1,7 @@
 /**
  * The {@link Sections} builder — the grid sections a {@link ScopeRequest.ScopeRequest}
  * derives, one per (variant kind, context) with a non-empty requested partition. A
- * {@link Section} is the input {@link Rows.build} (and `scopes-react`'s `PermissionGrid`)
+ * {@link ResourceSection} is the input {@link Rows.build} (and `scopes-react`'s `PermissionGrid`)
  * projects: a single scope variant, its context, and the resources it lists. The
  * derivation groups the requested resource scopes by (kind, context) — each section's
  * resources are exactly the ones the app asked for there, never the whole vocabulary
@@ -21,7 +21,7 @@ import type * as ScopeRequest from './scope-request.ts'
  * `context` are recovered from it by indexed access, so a Section is always *one concrete
  * variant* and every read stays within that variant's homogeneous partition.
  */
-type Section<K extends Scope.MultiScope.Kind> = {
+type ResourceSection<K extends Scope.MultiScope.Kind> = {
   /** The variant literal — a *direct* discriminant, so a union of Sections narrows on it. */
   readonly kind: K
   readonly configuration: Scope.MultiScope.ResourceScopeConfigurationFor<K>
@@ -31,8 +31,8 @@ type Section<K extends Scope.MultiScope.Kind> = {
   readonly resources: readonly Scope.MultiScope.ResourceOf<K>[]
 }
 
-/** A section over any resource variant — a discriminated union on {@link Section.kind}. */
-type Any = Section<'fhirV1'> | Section<'fhirV2'> | Section<'wildflower'>
+/** A section over any resource variant — a discriminated union on {@link ResourceSection.kind}. */
+type Any = ResourceSection<'fhirV1'> | ResourceSection<'fhirV2'> | ResourceSection<'wildflower'>
 
 /** The FHIR context levels a picker lists, in patient → user → system order. */
 const fhirContextsInOrder: readonly Scope.Contexts.Fhir[] = [
@@ -71,9 +71,9 @@ const fhirSectionsFor = <K extends 'fhirV1' | 'fhirV2'>(
   request: ScopeRequest.ScopeRequest,
   kind: K,
   configuration: Scope.MultiScope.ResourceScopeConfigurationFor<K>
-): Section<K>[] => {
+): ResourceSection<K>[] => {
   const partition = Scope.MultiScope.partition(request.requested, kind)
-  const sections: Section<K>[] = []
+  const sections: ResourceSection<K>[] = []
   for (const context of fhirContextsInOrder) {
     const here = partition.filter((scope) => scope.hasContext(context))
     if (here.length === 0) continue
@@ -87,7 +87,9 @@ const fhirSectionsFor = <K extends 'fhirV1' | 'fhirV2'>(
   return sections
 }
 
-const wildflowerSectionsFor = (request: ScopeRequest.ScopeRequest): Section<'wildflower'>[] => {
+const wildflowerSectionsFor = (
+  request: ScopeRequest.ScopeRequest
+): ResourceSection<'wildflower'>[] => {
   const wildflower = Scope.MultiScope.partition(request.requested, 'wildflower')
 
   if (wildflower.length > 0) {
@@ -108,7 +110,7 @@ const wildflowerSectionsFor = (request: ScopeRequest.ScopeRequest): Section<'wil
  * admin. Each section's resources are exactly the requested ones at that (kind, context),
  * wildcard excluded.
  */
-const fromRequest = (request: ScopeRequest.ScopeRequest): Any[] => [
+const listFromRequest = (request: ScopeRequest.ScopeRequest): Any[] => [
   ...fhirSectionsFor(request, 'fhirV2', Scope.FhirV2.configuration),
   ...fhirSectionsFor(request, 'fhirV1', Scope.FhirV1.configuration),
   ...wildflowerSectionsFor(request),
@@ -117,4 +119,4 @@ const fromRequest = (request: ScopeRequest.ScopeRequest): Any[] => [
 /** A section's stable identity string (`${kind}/${contextSerialized}`) — render keys, row-key prefixes. */
 const scopePrefix = (section: Any): string => `${section.kind}/${section.context.serialize()}`
 
-export { type Section, type Any, fromRequest, scopePrefix }
+export { type ResourceSection, type Any, listFromRequest, scopePrefix }

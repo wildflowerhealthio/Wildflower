@@ -1,5 +1,5 @@
 /**
- * The {@link Rows} builder — the request-aware row list for one {@link Sections.Section}.
+ * The {@link Rows} builder — the request-aware row list for one {@link ResourceSection.ResourceSection}.
  * It owns the row *policy* every surface listing rows must agree on — which rows appear
  * (including when the `*` wildcard row is injected, `spec.md §2/§3`) and each cell's
  * resolved state — so a presenter (`PermissionGrid` in `scopes-react`, a future admin
@@ -14,8 +14,8 @@ import { Equal } from 'effect'
 
 import { Scope } from '../domain/index.ts'
 import * as Cell from './cell.ts'
+import type * as ResourceSection from './resource-section.ts'
 import type * as ScopeRequest from './scope-request.ts'
-import type * as Sections from './sections.ts'
 
 /** One resolved row of a grid section: its resource, stored scope, and O(1) cell lookup. */
 type Row<K extends Scope.MultiScope.Kind> = {
@@ -45,7 +45,7 @@ type Options = {
  * {@link Options.includeWildcard} applies. `scopeRequest` is `null` for open mode.
  */
 const build = <K extends Scope.MultiScope.Kind>(
-  section: Sections.Section<K>,
+  section: ResourceSection.ResourceSection<K>,
   grant: Scope.MultiScope,
   scopeRequest: ScopeRequest.ScopeRequest | null,
   { includeWildcard = false }: Options = {}

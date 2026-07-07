@@ -11,14 +11,14 @@ import { Equal } from 'effect'
 import type { JSX } from 'react'
 import { useMemo, useState } from 'react'
 import { cn } from 'react-kitchen-sink'
-import { GrantDraft, Rows, Scope, Sections } from 'scopes-core'
+import { GrantDraft, Rows, Scope, ResourceSection } from 'scopes-core'
 import type { ScopeRequest } from 'scopes-core'
 
 import { ExclusionRow } from '../atoms/exclusion-row.tsx'
 import { FlagToggleRow } from '../atoms/flag-toggle-row.tsx'
 import { PermissionPicker } from '../molecules/permission-picker.tsx'
 import { pickerItemsFor } from '../molecules/picker-items.ts'
-import { exclusionStatements } from './exclusion-statements.ts'
+import { exclusionStatementsFrom } from './exclusion-statements.ts'
 import { PermissionGrid } from './permission-grid.tsx'
 import { PermissionStatement } from './permission-statement.tsx'
 import styles from './scope-picker.module.css'
@@ -37,7 +37,7 @@ interface ScopePickerProps {
 type View = 'plain' | 'detail'
 
 /** Whether a section addresses the launch patient's own records (FHIR, patient context). */
-const isPatientSection = (section: Sections.Any): boolean =>
+const isPatientSection = (section: ResourceSection.Any): boolean =>
   Equal.equals(section.context, Scope.Contexts.Fhir.patient)
 
 /** The FHIR heading for a context level (`spec.md §8` — `system` always names its all-patients reach). */
@@ -48,13 +48,13 @@ const fhirTitle = (level: Scope.Contexts.Fhir.Level, multipleContexts: boolean):
 }
 
 /** Section heading (serif). */
-const sectionTitle = (section: Sections.Any, multipleContexts: boolean): string =>
+const sectionTitle = (section: ResourceSection.Any, multipleContexts: boolean): string =>
   section.kind === 'wildflower'
     ? 'Wildflower admin'
     : fhirTitle(section.context.context, multipleContexts)
 
 /** Section tag chip (`FHIR` / `Admin`). */
-const sectionChip = (section: Sections.Any): string =>
+const sectionChip = (section: ResourceSection.Any): string =>
   section.kind === 'wildflower' ? 'Admin' : 'FHIR'
 
 /**
@@ -74,7 +74,7 @@ const ScopePicker = ({
   draft,
   onDraftChange,
 }: ScopePickerProps): JSX.Element => {
-  const sections = useMemo(() => Sections.fromRequest(request), [request])
+  const sections = useMemo(() => ResourceSection.listFromRequest(request), [request])
   // Whether FHIR scopes span more than one context level — the section titles then
   // disambiguate ("this patient" / "your access").
   const multipleContexts = useMemo(() => {
@@ -82,7 +82,7 @@ const ScopePicker = ({
     return new Set(fhirScopes.map((scope) => scope.context.serialize())).size > 1
   }, [request])
   const flags = useMemo(() => Scope.Known.inCanonicalOrder(request.requested.known), [request])
-  const exclusions = useMemo(() => exclusionStatements(request), [request])
+  const exclusions = useMemo(() => exclusionStatementsFrom(request), [request])
 
   const [view, setView] = useState<View>('plain')
   const [openRow, setOpenRow] = useState<string | null>(null)
@@ -97,7 +97,7 @@ const ScopePicker = ({
   )
 
   const toggleCell = (
-    section: Sections.Any,
+    section: ResourceSection.Any,
     resource: Scope.MultiScope.ResourceOf<Scope.MultiScope.Kind>,
     itemId: Scope.MultiScope.InteractionOf<Scope.MultiScope.Kind>
   ): void => {
@@ -137,7 +137,7 @@ const ScopePicker = ({
           <p className={styles['eyebrow']}>What it&apos;s asking for</p>
           {grids.map(({ section, rows }) =>
             rows.map((row) => {
-              const rowKey = `${Sections.scopePrefix(section)}/${row.resource.serialize()}`
+              const rowKey = `${ResourceSection.scopePrefix(section)}/${row.resource.serialize()}`
               // Plural in the running sentence ("Read your Conditions") — the
               // grid keeps the singular row labels.
               const label = row.resource.pluralLabel()
@@ -176,7 +176,7 @@ const ScopePicker = ({
         <div className={styles['section']}>
           {grids.map(({ section, rows }) => (
             <PermissionGrid
-              key={Sections.scopePrefix(section)}
+              key={ResourceSection.scopePrefix(section)}
               title={sectionTitle(section, multipleContexts)}
               chip={sectionChip(section)}
               section={section}

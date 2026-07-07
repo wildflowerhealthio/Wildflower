@@ -1,7 +1,7 @@
 // This file route must keep its `export const Route` (the tanstackRouter
 // plugin keys off it), and `PendingView` is exported separately as a
 // unit-test seam — so a consolidated single export isn't possible here.
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Navigate } from '@tanstack/react-router'
 import {
   type AuthorizationStatus,
   type AuthorizationStatusError,
@@ -135,8 +135,7 @@ function OAuthPollingScreen({ id }: { readonly id: string }): JSX.Element {
     Match.when({ status: 'initial-loading' }, () => <PollingSpinner />),
     Match.when({ status: 'pending' }, () => <PendingView id={id} />),
     Match.when({ status: 'approved' }, ({ redirect }) => {
-      window.location.replace(redirect)
-      return <PollingSpinner />
+      return <Navigate to={redirect} />
     }),
     Match.when({ status: 'denied' }, () => <DeclinedView />),
     Match.when({ status: 'error' }, ({ message }) => ErrorComponent(message)),

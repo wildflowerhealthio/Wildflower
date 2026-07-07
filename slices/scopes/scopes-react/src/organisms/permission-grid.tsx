@@ -1,7 +1,7 @@
 import type { JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { Chip, StatusBadge } from 'react-tundraish'
-import type { Cell, Rows, Scope, Sections } from 'scopes-core'
+import type { Cell, Rows, Scope, ResourceSection } from 'scopes-core'
 
 import { PermissionPicker } from '../molecules/permission-picker.tsx'
 import { pickerItemsFor } from '../molecules/picker-items.ts'
@@ -17,7 +17,7 @@ interface PermissionGridProps<K extends Scope.MultiScope.Kind> {
   /** Optional status badge, e.g. "No access". */
   readonly status?: string
   /** The section rendered — its configuration carries the interaction columns and layout. */
-  readonly section: Sections.Section<K>
+  readonly section: ResourceSection.ResourceSection<K>
   /** The section's resolved rows ({@link Rows.build}). */
   readonly rows: readonly Rows.Row<K>[]
   /** Toggle one control on a row — a v2 interaction letter or a v1 `read`/`write` word. */

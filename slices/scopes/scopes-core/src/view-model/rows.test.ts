@@ -1,12 +1,12 @@
 import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { Cell, Grant, Rows, Scope, type ScopeRequest, type Sections } from '../index.ts'
+import { Cell, Grant, Rows, Scope, type ScopeRequest, type ResourceSection } from '../index.ts'
 
 const patient = Scope.Contexts.Fhir.patient
 const v2 = Scope.FhirV2.configuration
 const catalog = ['Observation', 'Condition'].map((name) => Scope.ResourceType.Fhir.parse(name)!)
-const section: Sections.Section<'fhirV2'> = {
+const section: ResourceSection.ResourceSection<'fhirV2'> = {
   kind: 'fhirV2',
   configuration: v2,
   context: patient,

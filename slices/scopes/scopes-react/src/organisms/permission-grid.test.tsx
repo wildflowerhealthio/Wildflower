@@ -1,6 +1,13 @@
 import { render, screen } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
-import { Grant, type GrantDraft, Rows, Scope, type ScopeRequest, type Sections } from 'scopes-core'
+import {
+  Grant,
+  type GrantDraft,
+  Rows,
+  Scope,
+  type ScopeRequest,
+  type ResourceSection,
+} from 'scopes-core'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { PermissionGrid } from './permission-grid.tsx'
@@ -11,13 +18,13 @@ afterEach(() => {
 
 const patient = Scope.Contexts.Fhir.patient
 const observation = Scope.ResourceType.Fhir.parse('Observation')!
-const v2Section: Sections.Section<'fhirV2'> = {
+const v2Section: ResourceSection.ResourceSection<'fhirV2'> = {
   kind: 'fhirV2',
   configuration: Scope.FhirV2.configuration,
   context: patient,
   resources: [observation],
 }
-const v1Section: Sections.Section<'fhirV1'> = {
+const v1Section: ResourceSection.ResourceSection<'fhirV1'> = {
   kind: 'fhirV1',
   configuration: Scope.FhirV1.configuration,
   context: patient,

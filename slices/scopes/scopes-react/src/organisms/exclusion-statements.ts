@@ -15,7 +15,7 @@ type ExclusionStatement = {
 }
 
 /** The statements the request leaves excluded — each dropped once the request covers it. */
-const exclusionStatements = (request: ScopeRequest.ScopeRequest): ExclusionStatement[] => {
+const exclusionStatementsFrom = (request: ScopeRequest.ScopeRequest): ExclusionStatement[] => {
   const fhirScopes = [...request.requested.fhirV1, ...request.requested.fhirV2]
   const hasFhirWildcard = fhirScopes.some((scope) => scope.resource.serialize() === '*')
   const hasWildflower = request.requested.wildflower.length > 0
@@ -38,4 +38,4 @@ const exclusionStatements = (request: ScopeRequest.ScopeRequest): ExclusionState
   return exclusions
 }
 
-export { type ExclusionStatement, exclusionStatements }
+export { type ExclusionStatement, exclusionStatementsFrom }

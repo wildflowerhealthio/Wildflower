@@ -54,7 +54,6 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
   const [patientError, setPatientError] = useState<string | null>(null)
   const { options: patients } = usePatientOptions(hasPatientScope)
 
-  const serialized = useMemo(() => GrantDraft.serializeAll(draft), [draft])
   const patientPickerShown = hasPatientScope && patients.length > 0
 
   const submitting = consentMutation.isPending
@@ -74,7 +73,7 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
       {
         kind: 'approve',
         id: consent.id,
-        payload: { approvedScopes: serialized, patient: draft.patient },
+        payload: { approvedScopes: GrantDraft.serializeAll(draft), patient: draft.patient },
       },
       {
         onSuccess: (result) => {
@@ -163,7 +162,7 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
           <button
             type="button"
             className={cn('button-2 filled', styles['allow'])}
-            disabled={serialized.length === 0 || submitting}
+            disabled={submitting}
             onClick={handleApprove}
           >
             Allow access

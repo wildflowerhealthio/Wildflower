@@ -28,7 +28,10 @@ export {
   type PatientOption,
   type PatientPillPickerProps,
 } from './molecules/patient-pill-picker.tsx'
-export { exclusionStatements, type ExclusionStatement } from './organisms/exclusion-statements.ts'
+export {
+  exclusionStatementsFrom,
+  type ExclusionStatement,
+} from './organisms/exclusion-statements.ts'
 export { PermissionGrid, type PermissionGridProps } from './organisms/permission-grid.tsx'
 export { ScopePicker, type ScopePickerProps } from './organisms/scope-picker.tsx'
 export {
