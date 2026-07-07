@@ -117,7 +117,11 @@
   color: var(--color-accent);
 }
 
+/* A disabled (inapplicable) row must read differently from a checkable-but-
+ * unchecked one in both schemes: the box sinks into the surface and the whole
+ * row dims — border color alone is indistinguishable on dark. */
 .option--disabled .check {
+  background: var(--color-sunken);
   border-color: var(--color-divider);
 }
 
@@ -125,8 +129,13 @@
   color: var(--color-neutral-5);
 }
 
-/* Right-align the mono annotation into a column (stacked plain layout only). */
+.option--disabled {
+  opacity: 0.6;
+}
+
+/* Right-align the mono annotation (stacked plain layout only). The chip
+ * itself stays tight to its content — the gap is the auto margin, never
+ * padding inside the chip. */
 .picker--plain:not(.picker--row) .mono {
   margin-left: auto;
-  padding-left: var(--space-6);
 }

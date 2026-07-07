@@ -12,7 +12,7 @@ import type { PickerItem } from './permission-picker.tsx'
  * Resolve one {@link Rows.Row} into its picker items: the section's permission style
  * items in display order, each with its resolved cell state and the user-facing lock
  * copy. The §2/§3 lock *decisions* come from `scopes-core` ({@link Cell.LockReason});
- * only the sentences live here. The wildcard row's own label ("✶ All record types")
+ * only the sentences live here. The wildcard row's own label ("All records")
  * comes from the domain, so the wildcard lock copy doesn't duplicate it.
  */
 const pickerItemsFor = <K extends Scope.MultiScope.Kind>(
@@ -20,7 +20,7 @@ const pickerItemsFor = <K extends Scope.MultiScope.Kind>(
   row: Rows.Row<K>
 ): readonly PickerItem<Scope.MultiScope.InteractionOf<K>>[] => {
   const wildcardLabel =
-    configuration.resourceClass.wildcardResourceType?.pluralLabel() ?? 'all record types'
+    configuration.resourceClass.wildcardResourceType?.pluralLabel() ?? 'all records'
   // Keyed by every {@link Cell.LockReason} kind, so the map stays exhaustive — a new
   // kind is a compile error until it's given copy.
   const lockCopy: Record<Cell.LockReason['kind'], string> = {

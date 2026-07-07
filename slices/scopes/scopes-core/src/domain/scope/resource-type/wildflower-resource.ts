@@ -70,11 +70,11 @@ namespace WildflowerResourceType {
     }
 
     singularLabel(): string {
-      return '✶ Any record type'
+      return 'Any Record'
     }
 
     pluralLabel(): string {
-      return '✶ All record types'
+      return 'All records'
     }
 
     protected equalityKey(): string {

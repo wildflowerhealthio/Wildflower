@@ -13,6 +13,16 @@ describe('exclusionStatements — presence/absence rules', () => {
     expect(keys).toEqual(['other-record-types', 'admin', 'offline', 'other-patients'])
   })
 
+  test('the read/write exclusions state the verbs in their copy', () => {
+    const labels = exclusionStatements(req(['patient/Observation.r'])).map((e) => e.label)
+    expect(labels).toEqual([
+      'Read or write other health record types',
+      'Read or write admin settings & connected apps',
+      'Stay connected in the background',
+      'Read or write records for other patients',
+    ])
+  })
+
   test('a FHIR wildcard drops "other health record types"', () => {
     const keys = exclusionStatements(req(['patient/*.r'])).map((e) => e.key)
     expect(keys).not.toContain('other-record-types')

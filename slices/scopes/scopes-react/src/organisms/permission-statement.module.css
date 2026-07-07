@@ -100,9 +100,11 @@
   color: var(--color-neutral-3);
 }
 
-/* The floating editor card the verb pill reveals. */
+/* The floating editor card the verb pill reveals — sized to its checklist,
+ * not a fixed column, so a short action list gets a compact card. */
 .editor {
-  width: 300px;
+  width: max-content;
+  min-width: 200px;
   max-width: 100%;
   margin-top: var(--space-4);
   padding: var(--space-6) var(--space-7);

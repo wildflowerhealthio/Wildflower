@@ -138,7 +138,9 @@ const ScopePicker = ({
           {grids.map(({ section, rows }) =>
             rows.map((row) => {
               const rowKey = `${Sections.scopePrefix(section)}/${row.resource.serialize()}`
-              const label = row.resource.singularLabel()
+              // Plural in the running sentence ("Read your Conditions") — the
+              // grid keeps the singular row labels.
+              const label = row.resource.pluralLabel()
               const items = pickerItemsFor(section.configuration, row)
               const grantedNames = items
                 .filter((item) => item.state === 'on' || item.state === 'locked')
@@ -169,7 +171,6 @@ const ScopePicker = ({
               )
             })
           )}
-          {viewToggle}
         </div>
       ) : (
         <div className={styles['section']}>
@@ -190,9 +191,12 @@ const ScopePicker = ({
               }
             />
           ))}
-          {viewToggle}
         </div>
       )}
+
+      {/* The plain ⇄ detail toggle sits between the exclusions and the flag
+          rows, so "see exactly what's granted" leads into the sign-in basics. */}
+      <div className={styles['toggle-bar']}>{viewToggle}</div>
 
       {exclusions.length > 0 ? (
         <div className={cn(styles['section'], styles['section--sunken'])}>

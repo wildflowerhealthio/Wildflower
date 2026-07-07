@@ -119,10 +119,18 @@ describe('ScopePicker — exclusions', () => {
     render(<Harness scopes={['patient/Observation.r']} />)
 
     // The informational line is present…
-    expect(screen.getByText('Other health record types')).toBeDefined()
+    expect(screen.getByText('Read or write other health record types')).toBeDefined()
     // …and carries no "+ Allow" / "Remove" affordance (`spec.md §8`).
     expect(screen.queryByRole('button', { name: '+ Allow' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Remove' })).toBeNull()
+  })
+})
+
+describe('ScopePicker — statement wording', () => {
+  it('should pluralize the resource in the running sentence', () => {
+    render(<Harness scopes={['patient/Condition.r']} />)
+    expect(screen.getByText('Conditions')).toBeDefined()
+    expect(screen.queryByText(/^Condition$/)).toBeNull()
   })
 })
 

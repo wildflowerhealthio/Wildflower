@@ -1,8 +1,9 @@
 /*
  * The OAuth consent card, per the Scope Picker reference design: a raised
  * bordered card with an app-identity header, a sunken patient-context bar,
- * eyebrow-labelled sections separated by hairlines, and a footer with the
- * detail toggle and the Deny / Allow actions.
+ * and a footer with the Deny / Allow actions. The editing surface between
+ * them (sections, view toggle, patient pill) is scopes-react's ScopePicker /
+ * PatientPillPicker, styled in their own modules.
  */
 
 .card {
@@ -41,6 +42,28 @@
   border-bottom: 1.5px solid var(--color-divider);
 }
 
+/*
+ * Narrow windows: the status pill would squeeze the identity column, so the
+ * header wraps into two rows — avatar + pill share the top row (the pill is
+ * the header's last child, pulled up via `order`) and the identity block
+ * takes the full second row.
+ */
+@media (max-width: 600px) {
+  .header {
+    flex-wrap: wrap;
+  }
+
+  .header > :last-child {
+    order: 2;
+    margin-left: auto;
+  }
+
+  .identity {
+    order: 3;
+    flex-basis: 100%;
+  }
+}
+
 .avatar {
   flex: none;
   display: flex;
@@ -57,7 +80,7 @@
 }
 
 .identity {
-  flex: 1;
+  flex-grow: 1;
   min-width: 0;
 }
 
@@ -93,6 +116,7 @@
 
 .patient-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-5);
   padding: var(--space-6) var(--space-9);
@@ -100,106 +124,10 @@
   border-bottom: 1.5px solid var(--color-divider);
 }
 
-.patient-picker {
-  position: relative;
-}
-
-.patient-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-2) var(--space-6) var(--space-2) var(--space-3);
-  background: var(--color-raised);
-  border: 1.5px solid var(--color-divider);
-  border-radius: 999px;
-  font-size: var(--font-size-3);
-  font-weight: var(--font-weight-3);
-  color: var(--color-foreground);
-  cursor: pointer;
-}
-
-.patient-pill:focus-visible {
-  outline: 2px solid var(--color-accent-4);
-  outline-offset: 1px;
-}
-
-.patient-dot {
-  flex: none;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  background: var(--color-accent-8);
-}
-
-.patient-caret {
-  opacity: 0.55;
-  font-size: 0.78em;
-}
-
-/* The floating patient list the pill reveals. */
-.patient-pop {
-  position: absolute;
-  top: calc(100% + var(--space-3));
-  left: 0;
-  z-index: 10;
-  width: 280px;
-  max-width: 80vw;
-  padding: var(--space-4);
-  background: var(--color-raised);
-  border: 1.5px solid var(--color-divider);
-  border-radius: var(--radius-4);
-  box-shadow: 0 14px 34px rgba(44, 33, 29, 0.18);
-}
-
-.patient-pop-eyebrow {
+/* The "select a patient" validation message, on its own row under the pill. */
+.patient-error {
+  flex-basis: 100%;
   margin: 0;
-  padding: var(--space-3) var(--space-4);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-1);
-  letter-spacing: var(--letter-spacing-4);
-  text-transform: uppercase;
-  color: var(--color-neutral-5);
-}
-
-.patient-option {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-4);
-  width: 100%;
-  padding: var(--space-4);
-  border: 0;
-  border-radius: var(--radius-2);
-  background: none;
-  text-align: left;
-  font-size: var(--font-size-3);
-  color: var(--color-foreground);
-  cursor: pointer;
-}
-
-.patient-option:hover {
-  background: var(--color-sunken);
-}
-
-.patient-option[aria-selected='true'] {
-  font-weight: var(--font-weight-3);
-}
-
-.patient-option-id {
-  margin-left: auto;
-  font-family: var(--font-mono);
-  font-size: var(--font-size-1);
-  color: var(--color-neutral-5);
-}
-
-/* ── sections ─────────────────────────────────────────────────────────────── */
-
-.section {
-  padding: var(--space-8) var(--space-9) var(--space-4);
-}
-
-.section--sunken {
-  background: var(--color-sunken);
-  padding: var(--space-6) var(--space-9) var(--space-4);
 }
 
 .eyebrow {
@@ -211,7 +139,7 @@
   color: var(--color-neutral-5);
 }
 
-/* ── footer: detail toggle + actions ──────────────────────────────────────── */
+/* ── footer: actions ──────────────────────────────────────────────────────── */
 
 .footer {
   display: flex;
@@ -220,22 +148,6 @@
   margin-top: var(--space-4);
   padding: var(--space-8) var(--space-9) var(--space-9);
   border-top: 1.5px solid var(--color-divider);
-}
-
-.view-toggle {
-  align-self: flex-start;
-  padding: 0;
-  border: 0;
-  background: none;
-  font-family: var(--font-mono);
-  font-size: var(--font-size-2);
-  letter-spacing: var(--letter-spacing-4);
-  color: var(--color-accent);
-  cursor: pointer;
-}
-
-.view-toggle:hover {
-  color: var(--color-accent-3);
 }
 
 .buttons {

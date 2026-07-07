@@ -20,8 +20,9 @@ import { OAuthConsentForm } from './oauth-consent-form.tsx'
  *     payload and drives `onSuccess` with a configurable result. This is the only way to
  *     assert the exact `approvedScopes` the form emits (the real mutation buries the payload
  *     inside an Effect handed to `runAuthed`).
- *   - `usePatientsQuery` — the launch-patient picker's data source; stubbed empty so the
- *     picker stays hidden (its selection is not under test here).
+ *   - `usePatientsQuery` — the launch-patient picker's data source; defaults to empty so
+ *     the picker stays hidden, with per-test overrides via `patientResources` for the
+ *     launch-patient selection tests.
  */
 
 type ApproveVars = {
@@ -43,14 +44,22 @@ vi.mock('../../queries/index.ts', () => ({
   } => ({ mutate, isPending: false, error: null }),
 }))
 
+/** The minimal FHIR Patient shape `usePatientOptions` reads. */
+type StubPatient = {
+  readonly id: string
+  readonly name?: readonly { readonly given?: readonly string[]; readonly family?: string }[]
+}
+let patientResources: readonly StubPatient[] = []
+
 vi.mock('fhir-r4-react', () => ({
-  usePatientsQuery: (): { data: readonly never[]; isLoading: boolean } => ({
-    data: [],
+  usePatientsQuery: (): { data: readonly StubPatient[]; isLoading: boolean } => ({
+    data: patientResources,
     isLoading: false,
   }),
 }))
 
 beforeEach(() => {
+  patientResources = []
   mutate.mockReset()
   // Default: the server records the decision the user asked for.
   mutate.mockImplementation((variables, options) => {
@@ -181,7 +190,7 @@ describe('OAuthConsentForm — exclusions', () => {
     renderForm(makeConsent({ scopes: ['patient/Observation.r'] }), vi.fn())
 
     // The informational line is present…
-    expect(screen.getByText('Other health record types')).toBeDefined()
+    expect(screen.getByText('Read or write other health record types')).toBeDefined()
     // …and carries no "+ Allow" / "Remove" affordance (`spec.md §8`).
     expect(screen.queryByRole('button', { name: '+ Allow' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Remove' })).toBeNull()
@@ -236,6 +245,38 @@ describe('OAuthConsentForm — decision routing', () => {
 
     expect((await screen.findByRole('alert')).textContent).toBe('Authorization request was denied.')
     expect(onDone).not.toHaveBeenCalled()
+  })
+})
+
+describe('OAuthConsentForm — launch patient', () => {
+  test('approving with no patient selected shows a validation error and does not submit', async () => {
+    // Arrange — a patient-context request with a pickable patient, none selected.
+    patientResources = [{ id: 'pat-1', name: [{ given: ['Jordan'], family: 'Lee' }] }]
+    const { user } = renderForm(makeConsent({ scopes: ['patient/Observation.r'] }), vi.fn())
+
+    // Act
+    await user.click(screen.getByRole('button', { name: 'Allow access' }))
+
+    // Assert — the miss is surfaced and nothing was sent.
+    expect((await screen.findByRole('alert')).textContent).toBe('Select a patient to continue.')
+    expect(mutate).not.toHaveBeenCalled()
+  })
+
+  test('selecting a patient clears the error and submits that patient id', async () => {
+    // Arrange — trip the validation error first.
+    patientResources = [{ id: 'pat-1', name: [{ given: ['Jordan'], family: 'Lee' }] }]
+    const { user } = renderForm(makeConsent({ scopes: ['patient/Observation.r'] }), vi.fn())
+    await user.click(screen.getByRole('button', { name: 'Allow access' }))
+
+    // Act — pick the patient, then approve.
+    await user.click(screen.getByRole('button', { name: /Select a Patient/ }))
+    await user.click(screen.getByRole('option', { name: /Jordan Lee/ }))
+    expect(screen.queryByRole('alert')).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Allow access' }))
+
+    // Assert — the approval carries the selected patient.
+    const lastCall = mutate.mock.calls.at(-1)?.[0]
+    expect(lastCall).toMatchObject({ kind: 'approve', payload: { patient: 'pat-1' } })
   })
 })
 

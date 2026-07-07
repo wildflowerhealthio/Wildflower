@@ -31,9 +31,9 @@ describe('PatientPillPicker', () => {
     )
   }, 15_000)
 
-  it('falls back to "No patient context" when nothing is selected', () => {
+  it('shows the "Select a Patient" call to action when nothing is selected', () => {
     render(<PatientPillPicker patients={patients} value={null} onChange={vi.fn()} />)
-    expect(screen.getByRole('button', { name: /No patient context/ })).toBeDefined()
+    expect(screen.getByRole('button', { name: /Select a Patient/ })).toBeDefined()
   })
 
   it('picking a patient reports the id and closes the list', async () => {
@@ -41,7 +41,7 @@ describe('PatientPillPicker', () => {
     const user = userEvent.setup()
     render(<PatientPillPicker patients={patients} value={null} onChange={onChange} />)
 
-    await user.click(screen.getByRole('button', { name: /No patient context/ }))
+    await user.click(screen.getByRole('button', { name: /Select a Patient/ }))
     await user.click(screen.getByRole('option', { name: /Sam Reyes/ }))
 
     expect(onChange).toHaveBeenCalledWith('pat-2')

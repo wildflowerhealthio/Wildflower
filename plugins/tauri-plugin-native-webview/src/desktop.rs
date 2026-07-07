@@ -796,6 +796,11 @@ fn apply_rewire<R: Runtime>(
             let _ = chrome.eval(format!("{CHROME_RESET_TEXT_FN}({json})"));
         }
     }
+    // Blank the previous page before the navigation: a reused content webview
+    // otherwise keeps showing the prior app until the new target's first
+    // paint. Queued ahead of `navigate` on the same FIFO loop, so the clear
+    // always lands first.
+    let _ = content.eval("document.documentElement.innerHTML = ''");
     let _ = content.navigate(navigate_to);
     // A reopen starts a new task clock — re-arm the backstop.
     arm_absolute_timeout(app);

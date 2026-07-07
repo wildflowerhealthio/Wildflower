@@ -1,16 +1,9 @@
-/* The inline-consent state: the consent card centered on the page, with the
- * out-of-band approval hint beneath it. */
+/* The inline-consent state: the consent card centered on the page. */
 .consent {
   display: flex;
   flex-direction: column;
   gap: var(--space-7);
   padding: var(--space-10) 0;
-}
-
-.phone-hint {
-  margin: 0;
-  text-align: center;
-  color: var(--color-neutral-4);
 }
 
 .poll {

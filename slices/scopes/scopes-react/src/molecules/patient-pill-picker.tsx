@@ -16,6 +16,8 @@ interface PatientPillPickerProps {
 }
 
 const NO_PATIENT_LABEL = 'No patient context'
+/** The pill's call-to-action while nothing is selected yet. */
+const SELECT_A_PATIENT_LABEL = 'Select a Patient'
 
 /**
  * The launch-patient control in the consent card's sunken context bar — a
@@ -44,7 +46,7 @@ const PatientPillPicker = ({ patients, value, onChange }: PatientPillPickerProps
   }, [open])
 
   const selected = patients.find((patient) => patient.id === value)
-  const pillLabel = selected?.displayName ?? NO_PATIENT_LABEL
+  const pillLabel = selected?.displayName ?? SELECT_A_PATIENT_LABEL
 
   const pick = (patientId: string | null): void => {
     onChange(patientId)

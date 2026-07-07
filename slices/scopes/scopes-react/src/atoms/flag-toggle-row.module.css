@@ -6,6 +6,7 @@
 
 .row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-6);
   padding: var(--space-5) 0;
@@ -21,6 +22,7 @@
 }
 
 .switch span {
+  min-width: 0;
   white-space: normal;
 }
 
@@ -37,6 +39,7 @@
 }
 
 .code {
+  flex: none;
   margin-left: auto;
   font-family: var(--font-mono);
   font-size: var(--font-size-2);

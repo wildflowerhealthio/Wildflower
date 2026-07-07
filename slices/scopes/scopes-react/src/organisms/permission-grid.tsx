@@ -72,7 +72,7 @@ const GridCell = ({
  * **disabled** (out of scopeRequest) — resolved in `scopes-core` ({@link Rows.build}); an
  * `inline`-layout (v1 word) row renders a {@link PermissionPicker} spanning the columns.
  * Both forms emit the same `onToggleItem(resource, itemId)` callback (the section's
- * context is fixed, held by the container). The `✶ All record types` wildcard row drives
+ * context is fixed, held by the container). The `All records` wildcard row drives
  * the §3 locking below it.
  */
 const PermissionGrid = <K extends Scope.MultiScope.Kind>({
@@ -96,63 +96,65 @@ const PermissionGrid = <K extends Scope.MultiScope.Kind>({
         {status !== undefined ? <StatusBadge tone="neutral">{status}</StatusBadge> : null}
       </header>
 
-      <table className={styles['table']}>
-        <thead>
-          <tr>
-            <th className={styles['corner']} scope="col">
-              <span className={styles['sr-only']}>Resource</span>
-            </th>
-            {columns.map((column) => (
-              <th key={column.id} scope="col" className={styles['col']}>
-                <span className={styles['verb']}>{column.name}</span>
-                <code className={styles['letter']}>{column.code}</code>
+      <div className={styles['table-scroll']}>
+        <table className={styles['table']}>
+          <thead>
+            <tr>
+              <th className={styles['corner']} scope="col">
+                <span className={styles['sr-only']}>Resource</span>
               </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => {
-            const label = row.resource.singularLabel()
-            const code =
-              row.stored?.serialize() ??
-              `${section.context.serialize()}/${row.resource.serialize()}`
-            const items = pickerItemsFor(section.configuration, row)
-            return (
-              <tr key={row.resource.serialize()} className={styles['row']}>
-                <th scope="row" className={styles['rowhead']}>
-                  <span className={styles['label']}>{label}</span>
-                  <code className={styles['code']}>{code}</code>
+              {columns.map((column) => (
+                <th key={column.id} scope="col" className={styles['col']}>
+                  <span className={styles['verb']}>{column.name}</span>
+                  <code className={styles['letter']}>{column.code}</code>
                 </th>
-                {layout === 'inline' ? (
-                  <td colSpan={columns.length} className={styles['word-cell']}>
-                    <PermissionPicker
-                      items={items}
-                      direction="row"
-                      ariaLabel={`Access for ${label}`}
-                      onToggle={(itemId) => {
-                        onToggleItem(row.resource, itemId)
-                      }}
-                    />
-                  </td>
-                ) : (
-                  items.map((item) => (
-                    <td key={item.id} className={styles['td']}>
-                      <GridCell
-                        state={item.state}
-                        reason={item.reason}
-                        label={`${item.name} ${label}`}
-                        onToggle={() => {
-                          onToggleItem(row.resource, item.id)
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
+              const label = row.resource.singularLabel()
+              const code =
+                row.stored?.serialize() ??
+                `${section.context.serialize()}/${row.resource.serialize()}`
+              const items = pickerItemsFor(section.configuration, row)
+              return (
+                <tr key={row.resource.serialize()} className={styles['row']}>
+                  <th scope="row" className={styles['rowhead']}>
+                    <span className={styles['label']}>{label}</span>
+                    <code className={styles['code']}>{code}</code>
+                  </th>
+                  {layout === 'inline' ? (
+                    <td colSpan={columns.length} className={styles['word-cell']}>
+                      <PermissionPicker
+                        items={items}
+                        direction="row"
+                        ariaLabel={`Access for ${label}`}
+                        onToggle={(itemId) => {
+                          onToggleItem(row.resource, itemId)
                         }}
                       />
                     </td>
-                  ))
-                )}
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
+                  ) : (
+                    items.map((item) => (
+                      <td key={item.id} className={styles['td']}>
+                        <GridCell
+                          state={item.state}
+                          reason={item.reason}
+                          label={`${item.name} ${label}`}
+                          onToggle={() => {
+                            onToggleItem(row.resource, item.id)
+                          }}
+                        />
+                      </td>
+                    ))
+                  )}
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
 
       {wildcardNote !== undefined ? (
         <p className={styles['wildcard-note']}>{wildcardNote}</p>

@@ -33,6 +33,12 @@
   color: var(--color-neutral-4);
 }
 
+/* A narrow card can't fit every interaction column — scroll the matrix
+ * sideways inside its own container instead of overflowing the card. */
+.table-scroll {
+  overflow-x: auto;
+}
+
 .table {
   border-collapse: collapse;
   width: 100%;
@@ -146,13 +152,15 @@
   cursor: not-allowed;
 }
 
-/* Disabled = out of the request envelope: greyed, unchecked, not clickable. */
+/* Disabled = out of the request envelope: greyed, unchecked, not clickable.
+ * Faded well below the checkable `off` cell — on dark, the sunken/raised fill
+ * difference alone doesn't read. */
 .cell--disabled {
   background: var(--color-sunken);
   border-color: var(--color-divider);
   color: transparent;
   cursor: not-allowed;
-  opacity: 0.6;
+  opacity: 0.4;
 }
 
 .cell:focus-visible {

@@ -24,16 +24,16 @@ const exclusionStatements = (request: ScopeRequest.ScopeRequest): ExclusionState
 
   const exclusions: ExclusionStatement[] = []
   if (!hasFhirWildcard) {
-    exclusions.push({ key: 'other-record-types', label: 'Other health record types' })
+    exclusions.push({ key: 'other-record-types', label: 'Read or write other health record types' })
   }
   if (!hasWildflower) {
-    exclusions.push({ key: 'admin', label: 'Admin settings & connected apps' })
+    exclusions.push({ key: 'admin', label: 'Read or write admin settings & connected apps' })
   }
   if (!hasOfflineAccess) {
     exclusions.push({ key: 'offline', label: 'Stay connected in the background' })
   }
   if (!hasSystemFhir) {
-    exclusions.push({ key: 'other-patients', label: 'Records for other patients' })
+    exclusions.push({ key: 'other-patients', label: 'Read or write records for other patients' })
   }
   return exclusions
 }

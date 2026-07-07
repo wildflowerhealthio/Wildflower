@@ -51,9 +51,11 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
     GrantDraft.fromScopes(consent.scopes, consent.patient ?? null)
   )
   const [resultError, setResultError] = useState<string | null>(null)
+  const [patientError, setPatientError] = useState<string | null>(null)
   const { options: patients } = usePatientOptions(hasPatientScope)
 
   const serialized = useMemo(() => GrantDraft.serializeAll(draft), [draft])
+  const patientPickerShown = hasPatientScope && patients.length > 0
 
   const submitting = consentMutation.isPending
   const mutationError =
@@ -62,6 +64,12 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
 
   const handleApprove = (): void => {
     setResultError(null)
+    // A patient-context request needs a launch patient — surface the miss
+    // beside the picker instead of sending a patientless approval.
+    if (patientPickerShown && draft.patient === null) {
+      setPatientError('Select a patient to continue.')
+      return
+    }
     consentMutation.mutate(
       {
         kind: 'approve',
@@ -112,16 +120,25 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
         <StatusBadge tone="info">Review request</StatusBadge>
       </header>
 
-      {hasPatientScope && patients.length > 0 ? (
+      {patientPickerShown ? (
         <div className={styles['patient-bar']}>
           <p className={styles['eyebrow']}>Patient</p>
           <PatientPillPicker
             patients={patients}
             value={draft.patient}
             onChange={(patientId) => {
+              setPatientError(null)
               setDraft((previous) => ({ ...previous, patient: patientId }))
             }}
           />
+          {patientError !== null ? (
+            <p
+              className={cn(pageLayoutStyles['error'], styles['patient-error'], 'text-body-3')}
+              role="alert"
+            >
+              {patientError}
+            </p>
+          ) : null}
         </div>
       ) : null}
 

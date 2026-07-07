@@ -22,6 +22,11 @@
   color: var(--color-neutral-5);
 }
 
+/* Home of the plain ⇄ detail toggle, between the exclusions and the flags. */
+.toggle-bar {
+  padding: var(--space-6) var(--space-9) 0;
+}
+
 .view-toggle {
   align-self: flex-start;
   padding: 0;
