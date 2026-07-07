@@ -23,7 +23,14 @@ export {
   type PermissionPickerProps,
 } from './molecules/permission-picker.tsx'
 export { pickerItemsFor } from './molecules/picker-items.ts'
+export {
+  PatientPillPicker,
+  type PatientOption,
+  type PatientPillPickerProps,
+} from './molecules/patient-pill-picker.tsx'
+export { exclusionStatements, type ExclusionStatement } from './organisms/exclusion-statements.ts'
 export { PermissionGrid, type PermissionGridProps } from './organisms/permission-grid.tsx'
+export { ScopePicker, type ScopePickerProps } from './organisms/scope-picker.tsx'
 export {
   PermissionStatement,
   type PermissionStatementProps,

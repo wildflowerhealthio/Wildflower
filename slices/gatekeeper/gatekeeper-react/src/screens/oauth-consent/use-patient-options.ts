@@ -1,6 +1,5 @@
 import { usePatientsQuery } from 'fhir-r4-react'
-
-import type { PatientOption } from './patient-pill-picker.tsx'
+import type { PatientOption } from 'scopes-react'
 
 interface PatientOptionsState {
   readonly options: readonly PatientOption[]

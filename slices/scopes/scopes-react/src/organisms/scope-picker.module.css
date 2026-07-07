@@ -1,0 +1,39 @@
+/*
+ * The scope picker's eyebrow-labelled sections and the plain ⇄ detail view
+ * toggle. The card chrome around it (header, footer, hairlines) belongs to the
+ * composing surface.
+ */
+
+.section {
+  padding: var(--space-8) var(--space-9) var(--space-4);
+}
+
+.section--sunken {
+  background: var(--color-sunken);
+  padding: var(--space-6) var(--space-9) var(--space-4);
+}
+
+.eyebrow {
+  margin: 0 0 var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-1);
+  letter-spacing: var(--letter-spacing-4);
+  text-transform: uppercase;
+  color: var(--color-neutral-5);
+}
+
+.view-toggle {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-2);
+  letter-spacing: var(--letter-spacing-4);
+  color: var(--color-accent);
+  cursor: pointer;
+}
+
+.view-toggle:hover {
+  color: var(--color-accent-3);
+}

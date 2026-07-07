@@ -3,7 +3,7 @@
  * something *excluded from the request*, shown unless the request already covers it:
  * broad record types, admin surface, background access, and other-patient reach. Never
  * the auto-computed complement of the grant — informational only, rendered by the
- * consent form's `ExclusionRow` group.
+ * `ScopePicker`'s `ExclusionRow` group.
  */
 import { Scope } from 'scopes-core'
 import type { ScopeRequest } from 'scopes-core'

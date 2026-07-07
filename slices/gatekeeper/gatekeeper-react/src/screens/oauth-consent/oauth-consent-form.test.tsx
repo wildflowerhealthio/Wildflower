@@ -89,17 +89,10 @@ describe('OAuthConsentForm — app identity', () => {
     expect(screen.getByRole('heading', { name: 'app.example' })).toBeDefined()
   })
 
-  test('statement lead-ins run app name → "It can also" → "…and"', () => {
-    renderForm(
-      makeConsent({
-        scopes: ['patient/Observation.r', 'patient/Condition.r', 'patient/Encounter.r'],
-      }),
-      vi.fn()
-    )
+  test('the app name subjects the statement lead-in (via ScopePicker)', () => {
+    renderForm(makeConsent({ scopes: ['patient/Observation.r'] }), vi.fn())
 
     expect(screen.getByText('Fitbit Sync can')).toBeDefined()
-    expect(screen.getByText('It can also')).toBeDefined()
-    expect(screen.getByText('…and')).toBeDefined()
   })
 })
 
@@ -149,55 +142,6 @@ describe('OAuthConsentForm — statement editing', () => {
 
     // Assert — the payload is unchanged.
     expect(lastApprovedScopes()).toEqual(['patient/Observation.rs'])
-  })
-})
-
-describe('OAuthConsentForm — view toggle', () => {
-  test('the detail view shows the scope-string grid; back returns to statements', async () => {
-    const { user } = renderForm(makeConsent({ scopes: ['patient/Observation.rs'] }), vi.fn())
-
-    // The plain view carries no technical scope strings.
-    expect(screen.queryByText('patient/Observation.rs')).toBeNull()
-
-    // Act — switch to the detail grid.
-    await user.click(screen.getByRole('button', { name: /See exactly what/ }))
-
-    // Assert — the grid shows the live scope string.
-    expect(screen.getByText('patient/Observation.rs')).toBeDefined()
-
-    // Act — back to the summary.
-    await user.click(screen.getByRole('button', { name: /Back to summary/ }))
-    expect(screen.queryByText('patient/Observation.rs')).toBeNull()
-  })
-})
-
-describe('OAuthConsentForm — section titles (detail view)', () => {
-  /** Render the form over `scopes` and switch to the detail grid, where section titles show. */
-  const renderDetailView = async (scopes: readonly string[]): Promise<void> => {
-    const { user } = renderForm(makeConsent({ scopes }), vi.fn())
-    await user.click(screen.getByRole('button', { name: /See exactly what/ }))
-  }
-
-  test('a single patient context reads plain "Health records"', async () => {
-    await renderDetailView(['patient/Observation.r'])
-    expect(screen.getByRole('heading', { name: 'Health records' })).toBeDefined()
-  })
-
-  test('a lone system context always names all-patients', async () => {
-    await renderDetailView(['system/Observation.r'])
-    expect(screen.getByRole('heading', { name: 'Health records — all patients' })).toBeDefined()
-  })
-
-  test('multiple contexts suffix patient and user', async () => {
-    await renderDetailView(['patient/Observation.r', 'user/Encounter.r'])
-    expect(screen.getByRole('heading', { name: 'Health records — this patient' })).toBeDefined()
-    expect(screen.getByRole('heading', { name: 'Health records — your access' })).toBeDefined()
-  })
-
-  test('a wildflower section is titled "Wildflower admin" with the Admin chip', async () => {
-    await renderDetailView(['wildflower/Client.r'])
-    expect(screen.getByRole('heading', { name: 'Wildflower admin' })).toBeDefined()
-    expect(screen.getByText('Admin')).toBeDefined()
   })
 })
 

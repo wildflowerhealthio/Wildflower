@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type JSX } from 'react'
 
-import styles from '../../styles/consent-card.module.css'
+import styles from './patient-pill-picker.module.css'
 
 /** One pickable patient — the `{ id, displayName }` option shape the pill list renders. */
 interface PatientOption {

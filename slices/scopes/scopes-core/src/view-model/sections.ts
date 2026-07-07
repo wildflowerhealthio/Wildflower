@@ -114,6 +114,7 @@ const fromRequest = (request: ScopeRequest.ScopeRequest): Any[] => [
   ...wildflowerSectionsFor(request),
 ]
 
+/** A section's stable identity string (`${kind}/${contextSerialized}`) — render keys, row-key prefixes. */
 const scopePrefix = (section: Any): string => `${section.kind}/${section.context.serialize()}`
 
 export { type Section, type Any, fromRequest, scopePrefix }
