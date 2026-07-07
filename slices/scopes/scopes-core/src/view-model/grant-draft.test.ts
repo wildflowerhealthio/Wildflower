@@ -18,6 +18,34 @@ const grant = (scopes: Scope.Any[]): GrantDraft.GrantDraft => ({
   ...Grant.make(scopes),
 })
 
+describe('GrantDraft.hasScopes', () => {
+  test('an empty draft has no scopes', () => {
+    expect(GrantDraft.hasScopes(GrantDraft.fromScopes([]))).toBe(false)
+  })
+
+  test('a resource scope counts', () => {
+    expect(GrantDraft.hasScopes(GrantDraft.fromScopes(['patient/Observation.r']))).toBe(true)
+  })
+
+  test('a flag scope alone counts', () => {
+    expect(GrantDraft.hasScopes(GrantDraft.fromScopes(['openid']))).toBe(true)
+  })
+
+  test('an unknown scope alone counts', () => {
+    expect(GrantDraft.hasScopes(GrantDraft.fromScopes(['urn:custom:thing']))).toBe(true)
+  })
+
+  test('agrees with serializeAll being non-empty (property)', () => {
+    fc.assert(
+      fc.property(fc.array(fc.string(), { maxLength: 8 }), (strings) => {
+        const draft = GrantDraft.fromScopes(strings)
+        expect(GrantDraft.hasScopes(draft)).toBe(GrantDraft.serializeAll(draft).length > 0)
+      }),
+      { numRuns: numRunsFor({ base: 50 }) }
+    )
+  })
+})
+
 describe('GrantDraft.serialize — dedupe (§3)', () => {
   test('a specific scope omits interactions already in the same-context wildcard', () => {
     expect(

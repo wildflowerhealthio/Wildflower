@@ -10,20 +10,20 @@ interface PatientOption {
 
 interface PatientPillPickerProps {
   readonly patients: readonly PatientOption[]
-  /** The selected patient id, or `null` for no patient context. */
+  /** The selected patient id, or `null` when none has been chosen yet. */
   readonly value: string | null
-  readonly onChange: (patientId: string | null) => void
+  readonly onChange: (patientId: string) => void
 }
 
-const NO_PATIENT_LABEL = 'No patient context'
 /** The pill's call-to-action while nothing is selected yet. */
 const SELECT_A_PATIENT_LABEL = 'Select a Patient'
 
 /**
  * The launch-patient control in the consent card's sunken context bar — a
  * compact pill showing the selected patient (per the Scope Picker reference
- * design) that opens a floating list of the account's patients plus a
- * "no patient context" option.
+ * design) that opens a floating list of the account's patients. It offers no
+ * "no patient context" option: the picker is only shown while a patient-context
+ * scope is granted, so a patient must be chosen.
  */
 const PatientPillPicker = ({ patients, value, onChange }: PatientPillPickerProps): JSX.Element => {
   const [open, setOpen] = useState(false)
@@ -48,7 +48,7 @@ const PatientPillPicker = ({ patients, value, onChange }: PatientPillPickerProps
   const selected = patients.find((patient) => patient.id === value)
   const pillLabel = selected?.displayName ?? SELECT_A_PATIENT_LABEL
 
-  const pick = (patientId: string | null): void => {
+  const pick = (patientId: string): void => {
     onChange(patientId)
     setOpen(false)
   }
@@ -80,17 +80,6 @@ const PatientPillPicker = ({ patients, value, onChange }: PatientPillPickerProps
       {open ? (
         <div id={listId} className={styles['patient-pop']} role="listbox" aria-label="Patient">
           <p className={styles['patient-pop-eyebrow']}>Patient</p>
-          <button
-            type="button"
-            role="option"
-            aria-selected={value === null}
-            className={styles['patient-option']}
-            onClick={() => {
-              pick(null)
-            }}
-          >
-            {NO_PATIENT_LABEL}
-          </button>
           {patients.map((patient) => (
             <button
               key={patient.id}

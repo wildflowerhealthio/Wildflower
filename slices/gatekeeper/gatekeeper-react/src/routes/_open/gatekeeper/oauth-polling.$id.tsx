@@ -7,18 +7,10 @@ import {
   type AuthorizationStatusError,
   pollAuthorizationStatus,
 } from 'gatekeeper-core/clients'
-import {
-  Component,
-  Suspense,
-  useMemo,
-  useState,
-  type ErrorInfo,
-  type JSX,
-  type ReactNode,
-} from 'react'
+import { Component, Suspense, useMemo, useState, type JSX, type ReactNode } from 'react'
 import {
   cn,
-  isAuthed,
+  isFreshlyAuthed,
   useAuthStateSubscribable,
   useStreamWithDefault,
   useSubscribable,
@@ -57,11 +49,6 @@ function OAuthPollingScreen({ id }: { readonly id: string }): JSX.Element {
   const stream = useMemo(
     () =>
       pollAuthorizationStatus(id).pipe(
-        // Fold every typed error the poll can fail with into a terminal
-        // `error` status, so the stream never rejects and `PollingResult`'s
-        // `error` branch renders the message. Exhaustive over the union: the
-        // two declared endpoint errors (discriminated on `error`) plus the
-        // framework transport/decode errors (discriminated on `_tag`).
         // Collapse consecutive `pending` heartbeats. The poll re-emits a
         // fresh `{ status: 'pending' }` object every 1.5s; each distinct
         // reference would otherwise flow through `useStreamWithDefault`'s
@@ -70,6 +57,11 @@ function OAuthPollingScreen({ id }: { readonly id: string }): JSX.Element {
         // every tick. Terminal statuses emit exactly once (the poll's
         // `takeUntil`), so `pending` is the only value that ever repeats.
         Stream.changesWith((a, b) => a.status === 'pending' && b.status === 'pending'),
+        // Fold every typed error the poll can fail with into a terminal
+        // `error` status, so the stream never rejects and the `error` branch
+        // renders the message. Exhaustive over the union: the two declared
+        // endpoint errors (discriminated on `error`) plus the framework
+        // transport/decode errors (discriminated on `_tag`).
         Stream.catchAll(
           Match.type<AuthorizationStatusError>().pipe(
             Match.withReturnType<Stream.Stream<AuthorizationStatus, never>>(),
@@ -152,64 +144,59 @@ const DeclinedView = (): JSX.Element => (
  * without the full stream subscription.
  */
 const PendingView = ({ id }: { readonly id: string }): JSX.Element => {
-  // Same idiom as the device-consent modal host: read the published auth
-  // signal and gate on `isAuthed`. Unauthed viewers can't consent inline
-  // (the consent query needs the cookie), so they get the spinner.
+  // Gate on a *fresh* auth signal, not merely `isAuthed`. A stale
+  // `wf_auth_exp` cookie makes the page believe the viewer is authed while
+  // the server will 401 the consent fetch (issue #256). Treating a lapsed
+  // `AuthedUntil` as unauthed keeps such a viewer on the "Waiting for
+  // Approval" spinner — identical to a genuinely unauthenticated viewer,
+  // and with the polling stream still mounted so a phone-side approval
+  // advances the page — instead of mounting `InlineConsent` into a doomed
+  // fetch. So the expected 401 is handled at its source here, and the only
+  // errors that reach the boundary below are genuine.
   const authSignal = useSubscribable(useAuthStateSubscribable())
-  if (!isAuthed(authSignal)) return <PollingSpinner />
+  if (!isFreshlyAuthed(authSignal, Date.now() / 1000)) return <PollingSpinner />
 
   return (
-    <QuietErrorBoundary fallback={<PollingSpinner />}>
+    <ConsentErrorBoundary>
       <Suspense fallback={<PollingSpinner />}>
         <InlineConsent id={id} />
       </Suspense>
-    </QuietErrorBoundary>
+    </ConsentErrorBoundary>
   )
 }
 
-interface QuietErrorBoundaryProps {
-  readonly fallback: ReactNode
+interface ConsentErrorBoundaryProps {
   readonly children: ReactNode
 }
 
-interface QuietErrorBoundaryState {
-  readonly errored: boolean
+interface ConsentErrorBoundaryState {
+  readonly error: unknown
 }
 
 /**
- * Swallows any error thrown by the suspended {@link InlineConsent}
- * subtree and quietly falls back to the spinner instead.
+ * Surfaces any error thrown by the suspended {@link InlineConsent} subtree as
+ * the inline "Authorization Error" view, keeping it on this public polling page
+ * rather than letting it bubble to the app-root boundary (which would replace
+ * the whole SPA for what is a single embedded consent card).
  *
- * This is *deliberate degradation*, not error hiding. On this public
- * polling page the only way the consent query throws is a stale
- * `wf_auth_exp` cookie: it makes the page believe the viewer is authed,
- * so `PendingView` mounts `InlineConsent`, whose Suspense query then 401s
- * and throws (issue #256). But a viewer whose cookie has actually expired
- * is, for consent purposes, unauthenticated — so the page must behave
- * exactly as it does for an unauthenticated viewer: show the normal
- * "Waiting for Approval" spinner and keep the polling stream mounted so a
- * phone-side approval still advances the page. Surfacing the 401 as an
- * error UI here would be wrong.
+ * The expected stale-cookie 401 (issue #256) no longer reaches here:
+ * {@link PendingView} gates on {@link isFreshlyAuthed}, so a lapsed session
+ * shows the spinner and never mounts `InlineConsent`. What remains are genuine
+ * failures worth showing — this boundary makes them visible instead of hiding
+ * them behind an indistinguishable, eternal spinner.
  *
- * No reset path (unlike `DeviceConsentBodyErrorBoundary`): the route's
- * `id` is fixed for the page's lifetime, so there is nothing to recover
- * to — the fallback is terminal for this render.
+ * No reset path (unlike `DeviceConsentBodyErrorBoundary`): the route's `id` is
+ * fixed for the page's lifetime, so there is nothing to recover to.
  */
-class QuietErrorBoundary extends Component<QuietErrorBoundaryProps, QuietErrorBoundaryState> {
-  state: QuietErrorBoundaryState = { errored: false }
+class ConsentErrorBoundary extends Component<ConsentErrorBoundaryProps, ConsentErrorBoundaryState> {
+  state: ConsentErrorBoundaryState = { error: null }
 
-  static getDerivedStateFromError(): QuietErrorBoundaryState {
-    return { errored: true }
-  }
-
-  override componentDidCatch(_error: unknown, _info: ErrorInfo): void {
-    // Intentionally silent — the fallback spinner is the intended UX for
-    // the only error that reaches here (a stale-cookie 401). See the
-    // class doc comment.
+  static getDerivedStateFromError(error: unknown): ConsentErrorBoundaryState {
+    return { error }
   }
 
   override render(): ReactNode {
-    return this.state.errored ? this.props.fallback : this.props.children
+    return this.state.error !== null ? ErrorComponent(this.state.error) : this.props.children
   }
 }
 

@@ -258,6 +258,21 @@ describe('OAuthConsentForm — decision routing', () => {
   })
 })
 
+describe('OAuthConsentForm — empty grant', () => {
+  test('Allow is disabled once every requested scope is pruned', async () => {
+    const { user } = renderForm(makeConsent({ scopes: ['openid'] }), vi.fn())
+    const allow = (): HTMLButtonElement =>
+      screen.getByRole<HTMLButtonElement>('button', { name: 'Allow access' })
+    expect(allow().disabled).toBe(false)
+
+    // Toggle the only scope (the openid flag) off — the draft is now empty, which
+    // the backend treats as a deny, so the approve action is blocked outright.
+    await user.click(screen.getByRole('switch', { name: /Confirm who you are/ }))
+
+    expect(allow().disabled).toBe(true)
+  })
+})
+
 describe('OAuthConsentForm — launch patient', () => {
   test('approving with no patient selected shows a validation error and does not submit', async () => {
     // Arrange — a patient-context request with a pickable patient, none selected.
@@ -288,6 +303,26 @@ describe('OAuthConsentForm — launch patient', () => {
     // Assert — the approval carries the selected patient.
     const lastCall = mutate.mock.calls.at(-1)?.[0]
     expect(lastCall).toMatchObject({ kind: 'approve', payload: { patient: 'pat-1' } })
+  })
+
+  test('pruning every patient scope hides the picker and drops the patient requirement', async () => {
+    // A patient-context flag plus a non-patient flag, with a pickable patient.
+    patientResources = [{ id: 'pat-1', name: [{ given: ['Jordan'], family: 'Lee' }] }]
+    const { user } = renderForm(makeConsent({ scopes: ['launch/patient', 'openid'] }), vi.fn())
+
+    // While a patient-context scope is granted, the picker is shown.
+    expect(screen.getByRole('button', { name: /Select a Patient/ })).toBeDefined()
+
+    // Prune the patient-context scope (`launch/patient`); `openid` remains.
+    await user.click(screen.getByRole('switch', { name: /Open a specific patient/ }))
+
+    // The picker is gone and approving no longer requires (or sends) a patient.
+    expect(screen.queryByRole('button', { name: /Select a Patient/ })).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Allow access' }))
+
+    const lastCall = mutate.mock.calls.at(-1)?.[0]
+    expect(lastCall).toMatchObject({ kind: 'approve', payload: { patient: null } })
+    expect(lastApprovedScopes()).toEqual(['openid'])
   })
 })
 

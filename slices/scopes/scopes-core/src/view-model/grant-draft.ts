@@ -113,4 +113,27 @@ const serializeAll = (grant: GrantDraft): string[] => [
   ...grant.unknown.map((u) => u.serialize()).toSorted(),
 ]
 
-export { type GrantDraft, initial, fromScopes, toggleItem, toggleFlag, serialize, serializeAll }
+/**
+ * Whether the draft grants at least one scope (resource, flag, or unknown) — i.e.
+ * whether {@link serializeAll} is non-empty. An empty draft is a no-op the backend
+ * treats as a *deny* (`grantable_scopes` yields nothing), so an approve surface must
+ * gate its action on this rather than let a fully-pruned draft submit as an accidental
+ * denial. Checks the partitions directly, without building the sorted wire list.
+ */
+const hasScopes = (grant: GrantDraft): boolean =>
+  grant.fhirV1.length > 0 ||
+  grant.fhirV2.length > 0 ||
+  grant.wildflower.length > 0 ||
+  grant.known.length > 0 ||
+  grant.unknown.length > 0
+
+export {
+  type GrantDraft,
+  initial,
+  fromScopes,
+  toggleItem,
+  toggleFlag,
+  serialize,
+  serializeAll,
+  hasScopes,
+}

@@ -48,15 +48,15 @@ describe('PatientPillPicker', () => {
     expect(screen.queryByRole('listbox')).toBeNull()
   })
 
-  it('picking "No patient context" reports null', async () => {
-    const onChange = vi.fn()
+  it('offers no "no patient context" option — a patient must be chosen', async () => {
     const user = userEvent.setup()
-    render(<PatientPillPicker patients={patients} value="pat-1" onChange={onChange} />)
+    render(<PatientPillPicker patients={patients} value={null} onChange={vi.fn()} />)
 
-    await user.click(screen.getByRole('button', { name: /Jordan Lee/ }))
-    await user.click(screen.getByRole('option', { name: /No patient context/ }))
+    await user.click(screen.getByRole('button', { name: /Select a Patient/ }))
 
-    expect(onChange).toHaveBeenCalledWith(null)
+    expect(screen.queryByRole('option', { name: /No patient context/ })).toBeNull()
+    // Only the real patients are offered.
+    expect(screen.getAllByRole('option')).toHaveLength(patients.length)
   })
 
   it('Escape closes the list without changing the selection', async () => {

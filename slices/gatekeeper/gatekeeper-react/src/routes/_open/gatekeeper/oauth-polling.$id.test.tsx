@@ -7,7 +7,7 @@ import {
   type AuthState,
   AuthStateProvider,
   HostAuthed,
-  isAuthed,
+  isFreshlyAuthed,
   Unauthed,
 } from 'react-kitchen-sink'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
@@ -25,9 +25,11 @@ import type { OAuthConsentResult } from '../../../queries/index.ts'
  * (`useStream` itself is covered by its own tests in react-kitchen-sink).
  *
  * The pending branch delegates to `PendingView`, which is also tested
- * directly here: an authenticated viewer gets the inline consent form; an
- * unauthenticated one (or one whose consent query 401s on a stale cookie)
- * keeps the "Waiting for Approval" spinner.
+ * directly here: a *freshly* authenticated viewer gets the inline consent
+ * form; an unauthenticated one — or one whose `AuthedUntil` has lapsed (a
+ * stale `wf_auth_exp` cookie) — keeps the "Waiting for Approval" spinner,
+ * and a genuine consent-query error is surfaced rather than hidden behind
+ * that spinner.
  */
 
 // Replace the suspense-fetching consent form with a marker that captures
@@ -96,21 +98,39 @@ describe('PendingView', () => {
     expect(screen.queryByTestId('consent-form')).toBeNull()
   })
 
-  test('renders the inline consent form for an authenticated viewer', () => {
+  test('renders the inline consent form for an authenticated (host) viewer', () => {
     renderWithAuth(<PendingView id="req-1" />, HostAuthed())
     expect(screen.getByTestId('consent-form')).toBeTruthy()
     expect(screen.queryByText('Waiting for Approval')).toBeNull()
   })
 
-  test('form renders iff the auth signal is authed (property)', () => {
-    // `isAuthed` keys purely on the tag (`_tag !== 'Unauthed'`), so any
-    // `AuthedUntil`/`HostAuthed` signal — even an `AuthedUntil` with a past
-    // `exp`, which the cookie store never emits but the type permits —
-    // shows the form; only `Unauthed` shows the spinner.
+  test('renders the form for a fresh AuthedUntil but the spinner for a lapsed one', () => {
+    const nowSeconds = Date.now() / 1000
+
+    renderWithAuth(<PendingView id="req-1" />, AuthedUntil({ exp: nowSeconds + 3600 }))
+    expect(screen.getByTestId('consent-form')).toBeTruthy()
+    cleanup()
+
+    // A stale `wf_auth_exp` cookie (exp already past) is treated as unauthed:
+    // the spinner, not a doomed inline fetch (issue #256).
+    renderWithAuth(<PendingView id="req-1" />, AuthedUntil({ exp: nowSeconds - 1 }))
+    expect(screen.getByText('Waiting for Approval')).toBeTruthy()
+    expect(screen.queryByTestId('consent-form')).toBeNull()
+  })
+
+  test('form renders iff the auth signal is fresh (property)', () => {
+    // The gate is `isFreshlyAuthed`: `Unauthed` and a lapsed `AuthedUntil`
+    // show the spinner; `HostAuthed` and a future-`exp` `AuthedUntil` show the
+    // form. Generate `exp`s well clear of "now" so the sub-second gap between
+    // the component's clock read and the test's can't flip the verdict.
+    const nowFloor = Math.floor(Date.now() / 1000)
     const anySignal: fc.Arbitrary<AuthState> = fc.oneof(
       fc.constant(Unauthed()),
       fc.constant(HostAuthed()),
-      fc.integer().map((exp) => AuthedUntil({ exp }))
+      fc.integer({ min: 1, max: nowFloor - 10 }).map((exp) => AuthedUntil({ exp })),
+      fc
+        .integer({ min: nowFloor + 60, max: nowFloor + 1_000_000 })
+        .map((exp) => AuthedUntil({ exp }))
     )
     fc.assert(
       fc.property(anySignal, (signal) => {
@@ -123,7 +143,7 @@ describe('PendingView', () => {
         )
         const hasForm = screen.queryByTestId('consent-form') !== null
         cleanup()
-        return hasForm === isAuthed(signal)
+        return hasForm === isFreshlyAuthed(signal, Date.now() / 1000)
       }),
       { numRuns: numRunsFor({ base: 20 }) }
     )
@@ -158,17 +178,19 @@ describe('PendingView', () => {
     expect(screen.queryByTestId('consent-form')).toBeNull()
   })
 
-  test('degrades quietly to the spinner when the consent query throws (stale-cookie 401)', () => {
+  test('surfaces a genuine consent-query error instead of an endless spinner', () => {
     // React logs the caught render error to console.error; silence it the
     // way the repo's other error-boundary tests do.
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     consentQueryThrows = true
 
+    // The viewer is genuinely (freshly) authed, so the stale-cookie gate does
+    // not apply — this is a real failure, and the boundary now shows it rather
+    // than hiding it behind the waiting-for-phone spinner.
     renderWithAuth(<PendingView id="req-1" />, HostAuthed())
 
-    // The quiet boundary swallows the throw and falls back to the normal
-    // waiting-for-phone spinner; no crash, no form.
-    expect(screen.getByText('Waiting for Approval')).toBeTruthy()
+    expect(screen.getByText('Authorization Error')).toBeTruthy()
+    expect(screen.queryByText('Waiting for Approval')).toBeNull()
     expect(screen.queryByTestId('consent-form')).toBeNull()
 
     consoleError.mockRestore()
