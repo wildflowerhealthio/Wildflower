@@ -67,5 +67,7 @@ async fn handle_approve_device_consent(
     // so the modal either closes (no more pending) or jumps to the
     // next queued request.
     state.republish_active_device_user_code();
-    Ok(Json(ConsentResult::Approved))
+    // Device-code approvals have no client `redirect_uri` — the device polls
+    // the token endpoint — so there's no client callback to hand back.
+    Ok(Json(ConsentResult::Approved { redirect: None }))
 }

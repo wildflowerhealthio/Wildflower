@@ -21,7 +21,7 @@ class CrudsPermission extends BasePermission<CrudsPermission.Interaction> {
     { id: 'c', name: 'Create', code: 'c' },
     { id: 'r', name: 'Read', code: 'r' },
     { id: 'u', name: 'Update', code: 'u' },
-    { id: 'd', name: 'Destroy', code: 'd' },
+    { id: 'd', name: 'Delete', code: 'd' },
     { id: 's', name: 'Search', code: 's' },
   ] as const
 

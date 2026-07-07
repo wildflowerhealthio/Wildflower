@@ -36,6 +36,10 @@ pub(super) struct PendingCodeConsent {
 pub struct OAuthConsent {
     pub id: String,
     pub client_id: String,
+    /// The client's registered display name, so the consent UI can name the
+    /// app instead of showing a raw `client_id`. Falls back to the
+    /// `client_id` when the registration lookup misses.
+    pub client_name: String,
     pub scopes: Vec<String>,
     pub redirect_uri: Url,
     pub pre_approved_scopes: Vec<String>,

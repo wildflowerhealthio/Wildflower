@@ -1,11 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { renderHook, waitFor } from '@testing-library/react'
+import { Effect } from 'effect'
 import { type JSX, type ReactNode } from 'react'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 
 import { useDeviceConsentMutation } from './device-consent.ts'
 import { useRevokeGrantMutation } from './grants.ts'
-import { useOAuthConsentMutation } from './oauth-consent.ts'
+import { foldExpiredConsent, useOAuthConsentMutation } from './oauth-consent.ts'
 import { useDecideRequestMutation } from './requests.ts'
 
 /**
@@ -107,6 +108,32 @@ describe('useDeviceConsentMutation invalidation', () => {
     expect(invalidateSpy).not.toHaveBeenCalledWith({
       queryKey: ['gatekeeper', 'device-consent', 'WDJB-MJHT'],
     })
+  })
+})
+
+describe('foldExpiredConsent', () => {
+  test('folds an OAuthConsentNotFound failure into the error result with retry copy', async () => {
+    // Arrange — the failure shape the server returns once the consent's
+    // 5-minute TTL has passed (expired reads as not-found).
+    const notFound = Effect.fail({ error: 'OAuthConsentNotFound', id: 'consent-9' })
+
+    // Act
+    const decision = await Effect.runPromise(foldExpiredConsent(notFound))
+
+    // Assert — the 404 becomes the result's error arm, with try-again copy.
+    expect(decision).toEqual({
+      status: 'error',
+      message:
+        'This authorization request has expired or was already completed. Return to the app and try connecting again.',
+    })
+  })
+
+  test('passes an unrelated failure through untouched', async () => {
+    const transportFailure = Effect.fail(new Error('socket hang up'))
+
+    await expect(Effect.runPromise(foldExpiredConsent(transportFailure))).rejects.toThrow(
+      'socket hang up'
+    )
   })
 })
 

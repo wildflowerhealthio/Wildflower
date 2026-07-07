@@ -21,9 +21,16 @@ async fn handle_get_oauth_consent(
         redirect_uri,
         ..
     } = load_pending_authorization_code_request(&state, &id)?;
+    let client_name = match state.store.client_by_id(&request.client_id) {
+        Ok(Some(c)) => c.name,
+        // Fall back to the raw client_id if lookup misses or fails — the UI
+        // still works, the owner just sees less context.
+        _ => request.client_id.clone(),
+    };
     Ok(Json(OAuthConsent {
         id: id.clone(),
         client_id: request.client_id,
+        client_name,
         scopes: request.requested_scopes.into_inner(),
         redirect_uri,
         pre_approved_scopes: request.pre_approved_scopes.into_inner(),

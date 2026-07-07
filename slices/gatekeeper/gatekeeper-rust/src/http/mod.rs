@@ -17,6 +17,10 @@ pub(crate) use origin::ServedOrigin;
 // Re-export so call sites read `crate::http::served_origin_for` without the
 // `shared_structures_rust::` prefix. See `docs/Origins/Explanation.md`.
 pub(crate) use shared_structures_rust::served_origin::served_origin_for;
+// The owner-session cookie builder the Tauri host seeds into the tunnel-origin
+// native-webview popup (#256) — exported so the popup cookie can't drift from
+// the web path's `Set-Cookie` attributes.
+pub use cookies::owner_session_cookies;
 // The shared "insert an `Authorization: Bearer` only when absent" helper — the
 // FHIR bearer gate and the Tauri loopback-owner-trust middleware both use it.
 pub use middleware::ensure_bearer_header;

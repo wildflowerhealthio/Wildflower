@@ -89,3 +89,11 @@ describe('ScopeRequest.isWithin — granted ⊆ requested (§2)', () => {
     ).toBe(false)
   })
 })
+
+describe('ScopeRequest.fromRequestedScopes', () => {
+  test('requested = parsed scopes, required = empty (all-optional)', () => {
+    const req = ScopeRequest.fromRequestedScopes({ optional: ['patient/Observation.rs', 'openid'] })
+    expect(Grant.render(req.requested)).toEqual(['patient/Observation.rs', 'openid'])
+    expect(Grant.render(req.required)).toEqual([])
+  })
+})

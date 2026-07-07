@@ -1,25 +1,38 @@
 /*
- * The fluent consent row. The sentence flows inline; the verb token is a tappable
- * pill that reveals the access editor beneath. Resource label reads as bold
- * static text (the editable searchable picker is a later enrichment).
+ * The fluent consent row, per the Permission Statement reference design:
+ * a leading ✓, the sentence flowing inline with a tinted, obviously-tappable
+ * verb pill, and the access editor floating beneath in a popover card.
  */
 
 .statement {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-4) 0;
+  gap: var(--space-5);
+  align-items: flex-start;
+  padding: var(--space-6) 0;
+  border-top: 1px solid var(--color-divider);
+}
+
+.mark {
+  flex: none;
+  margin-top: var(--space-1);
+  color: var(--color-success);
+  font-size: var(--font-size-3);
+}
+
+.content {
+  flex: 1;
+  min-width: 0;
 }
 
 .sentence {
   margin: 0;
-  font-size: var(--font-size-3);
-  line-height: var(--line-height-3);
+  font-size: var(--font-size-4);
+  line-height: var(--line-height-5);
   color: var(--color-foreground);
 }
 
 .subject {
-  font-weight: var(--font-weight-3);
+  color: var(--color-neutral-4);
 }
 
 .connector {
@@ -27,27 +40,24 @@
 }
 
 /*
- * The verb token reads as an editable word *inside* the sentence — a soft
- * accent tint with a dashed underline (the "you can change this" cue) rather
- * than a heavy filled button, so the sentence stays the hero.
+ * The verb token reads as an editable pill *inside* the sentence — a soft
+ * accent tint with an inset keyline and a caret, so it's obviously
+ * interactive while the sentence stays the hero.
  */
 .verb-token {
   display: inline-flex;
-  align-items: baseline;
-  gap: var(--space-1);
-  padding: 0 var(--space-2);
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-4);
   border: 0;
   border-radius: var(--radius-2);
   background: var(--color-accent-9);
-  color: var(--color-accent-3);
+  box-shadow: inset 0 0 0 1px var(--color-accent-8);
+  color: var(--color-accent);
   font-size: inherit;
   font-weight: var(--font-weight-3);
+  white-space: nowrap;
   cursor: pointer;
-}
-
-.verb-text {
-  text-decoration: underline dashed var(--color-accent-6);
-  text-underline-offset: 3px;
 }
 
 .verb-token:hover,
@@ -61,36 +71,61 @@
 }
 
 .caret {
-  font-size: var(--font-size-1);
-  color: var(--color-accent-6);
+  opacity: 0.55;
+  font-size: 0.78em;
 }
 
 .resource-token {
-  font-weight: var(--font-weight-4);
-}
-
-.trailing {
-  margin-left: var(--space-3);
+  color: var(--color-foreground);
+  font-weight: var(--font-weight-3);
   white-space: nowrap;
 }
 
-.badge {
-  vertical-align: middle;
+.trailing {
+  flex: none;
+  margin-top: var(--space-1);
 }
 
 .remove {
-  vertical-align: middle;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-2);
+  color: var(--color-neutral-5);
+  cursor: pointer;
 }
 
+.remove:hover {
+  color: var(--color-neutral-3);
+}
+
+/* The floating editor card the verb pill reveals — sized to its checklist,
+ * not a fixed column, so a short action list gets a compact card. */
 .editor {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding-left: var(--space-4);
+  width: max-content;
+  min-width: 200px;
+  max-width: 100%;
+  margin-top: var(--space-4);
+  padding: var(--space-6) var(--space-7);
+  background: var(--color-raised);
+  border: 1.5px solid var(--color-divider);
+  border-radius: var(--radius-4);
+  box-shadow: 0 14px 34px rgba(44, 33, 29, 0.18);
+}
+
+.editor-eyebrow {
+  margin: 0 0 var(--space-4);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-1);
+  letter-spacing: var(--letter-spacing-4);
+  text-transform: uppercase;
+  color: var(--color-neutral-5);
 }
 
 .note {
-  margin: 0;
+  margin: var(--space-4) 0 0;
   font-size: var(--font-size-2);
+  line-height: var(--line-height-4);
   color: var(--color-neutral-4);
 }

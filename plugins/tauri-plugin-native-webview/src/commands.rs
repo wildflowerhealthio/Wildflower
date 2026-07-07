@@ -33,6 +33,10 @@ pub(crate) async fn open_url<R: Runtime>(
         initial_title: None,
         initial_subtitle: None,
         initial_message: None,
+        // Cookie seeding is deliberately not exposed to JS callers — a webview
+        // page must never hand the plugin credential material; the Rust host
+        // (`native_webview_handle`) is the only seeding path.
+        cookies: vec![],
     })
 }
 

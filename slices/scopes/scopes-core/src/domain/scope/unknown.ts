@@ -7,16 +7,30 @@
  * {@link UnknownScope}, with `UnknownScope.make`, `UnknownScope.scopeSerialize`.
  */
 
+import { Equal, Hash } from 'effect'
 import { BaseScope } from './scope.ts'
 
-/** A scope string the grammar didn't recognize, kept verbatim. */
-class UnknownScope extends BaseScope {
+/**
+ * A scope string the grammar didn't recognize, kept verbatim. Structurally comparable
+ * by its `raw` string (like the {@link KnownScope} sibling) so two `UnknownScope`s of
+ * the same string are {@link Equal.equals} — membership and dedupe compare by value,
+ * not identity.
+ */
+class UnknownScope extends BaseScope implements Equal.Equal {
   readonly kind = 'unknown' as const
   readonly raw: string
 
   constructor(raw: string) {
     super()
     this.raw = raw
+  }
+
+  [Hash.symbol](): number {
+    return Hash.combine(Hash.string(this.kind))(Hash.string(this.raw))
+  }
+
+  [Equal.symbol](that: Equal.Equal): boolean {
+    return that instanceof UnknownScope && this.kind === that.kind && this.raw === that.raw
   }
 
   serialize(): string {

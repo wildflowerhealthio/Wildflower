@@ -10,7 +10,7 @@ Read [AGENTS Explanation](./docs/Agents/Explanation.md) for what this file is an
 - **Node.js 26+ required** (`engines` in `package.json`)
 - **Vite+ owns the toolchain** — drive everything through `vp`. Never invoke `pnpm`, `npm`, or `yarn` directly. See the Vite+ block at the bottom of this file for command surface and pitfalls.
 - **Test utilities import from `vite-plus/test`**, not `vitest`
-- **Slices must respect their layering** — `<name>-core` is the pure layer; adapters (`-react` browser UI, `-rust` native/server, `-tauri`/`-tauri-rust` Tauri host, `-node`, `-web`) may import from `-core`, never the reverse. Some slices (`persistence`, `scopes`) are Rust-only with no `-core`. See [slices/AGENTS.md](./slices/AGENTS.md).
+- **Slices must respect their layering** — `<name>-core` is the pure layer; adapters (`-react` browser UI, `-rust` native/server, `-tauri`/`-tauri-rust` Tauri host, `-node`, `-web`) may import from `-core`, never the reverse. Some slices (`persistence`) are Rust-only with no `-core`. See [slices/AGENTS.md](./slices/AGENTS.md).
 - **Changes MUST include corresponding test updates**
 - **Vitest (via Vite+) is the test runner** — `vp test` runs the suite across all packages.
 

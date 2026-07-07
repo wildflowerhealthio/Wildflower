@@ -34,7 +34,7 @@ const permAt = (
 describe('ScopeConfiguration.effectiveCell — coverage + lock (§3)', () => {
   test('a wildcard interaction grants + locks that cell on a specific row', () => {
     expect(
-      Scope.ScopeConfiguration.scopesGrantInteraction(
+      Scope.ResourceScopeConfiguration.scopesGrantInteraction(
         [fhirAt('patient', '*', ['r'])],
         patient,
         obs,
@@ -45,7 +45,7 @@ describe('ScopeConfiguration.effectiveCell — coverage + lock (§3)', () => {
 
   test('a specific interaction without a wildcard is granted but not locked', () => {
     expect(
-      Scope.ScopeConfiguration.scopesGrantInteraction(
+      Scope.ResourceScopeConfiguration.scopesGrantInteraction(
         [fhirAt('patient', 'Observation', ['c'])],
         patient,
         obs,
@@ -56,7 +56,7 @@ describe('ScopeConfiguration.effectiveCell — coverage + lock (§3)', () => {
 
   test("the wildcard row's own cell is granted but NOT locked", () => {
     expect(
-      Scope.ScopeConfiguration.scopesGrantInteraction(
+      Scope.ResourceScopeConfiguration.scopesGrantInteraction(
         [fhirAt('patient', '*', ['r'])],
         patient,
         anyRecord,
@@ -70,7 +70,7 @@ describe('ScopeConfiguration.effectiveCell — coverage + lock (§3)', () => {
     // gatekeeper's `FhirResourceScope::covers` applies (`self.context.covers(other.context)`);
     // the `*` resource marks the cell wildcard-locked.
     expect(
-      Scope.ScopeConfiguration.scopesGrantInteraction(
+      Scope.ResourceScopeConfiguration.scopesGrantInteraction(
         [fhirAt('system', '*', ['r'])],
         patient,
         obs,
@@ -83,7 +83,7 @@ describe('ScopeConfiguration.effectiveCell — coverage + lock (§3)', () => {
     // A patient-launch scope is bound to the launch patient — possibly a record outside
     // the user's own access — so only `system` covers other contexts.
     expect(
-      Scope.ScopeConfiguration.scopesGrantInteraction(
+      Scope.ResourceScopeConfiguration.scopesGrantInteraction(
         [fhirAt('user', '*', ['r'])],
         patient,
         obs,
@@ -94,7 +94,7 @@ describe('ScopeConfiguration.effectiveCell — coverage + lock (§3)', () => {
 
   test('the user context covers itself', () => {
     expect(
-      Scope.ScopeConfiguration.scopesGrantInteraction(
+      Scope.ResourceScopeConfiguration.scopesGrantInteraction(
         [fhirAt('user', '*', ['r'])],
         Scope.Contexts.Fhir.user,
         obs,
@@ -105,7 +105,7 @@ describe('ScopeConfiguration.effectiveCell — coverage + lock (§3)', () => {
 
   test('a lower context does NOT cover a higher one either (patient ⊉ system)', () => {
     expect(
-      Scope.ScopeConfiguration.scopesGrantInteraction(
+      Scope.ResourceScopeConfiguration.scopesGrantInteraction(
         [fhirAt('patient', '*', ['r'])],
         system,
         obs,

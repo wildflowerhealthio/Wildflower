@@ -368,6 +368,9 @@ pub fn issue_token_response(
             origin: shared_structures_rust::CANONICAL_ISSUER,
             audience: Some(&audience),
             patient: input.patient,
+            // OAuth-minted tokens carry a served-origin `aud`, never the
+            // canonical audience — so they are never the host owner token.
+            is_host_owner: false,
         },
     )
     .map_err(|e| {

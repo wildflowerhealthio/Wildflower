@@ -31,4 +31,20 @@ const { Unauthed, AuthedUntil, HostAuthed, $is } = AuthState
 /** Whether the signal represents an authenticated session (any non-`Unauthed`). */
 const isAuthed = (signal: AuthState): boolean => signal._tag !== 'Unauthed'
 
-export { type AuthState, Unauthed, AuthedUntil, HostAuthed, isAuthed, $is }
+/**
+ * Whether the session is still *fresh* at `nowSeconds` (unix seconds). Like
+ * {@link isAuthed}, except an {@link AuthedUntil} whose `exp` has already passed
+ * counts as not fresh: the cookie/web path derives `exp` from a client-readable
+ * hint the server can already have expired, so a consumer that must not act on a
+ * lapsed session — e.g. gating an authed-only fetch that would otherwise 401 —
+ * checks this instead of {@link isAuthed}. {@link HostAuthed} carries no
+ * page-known expiry, so it is always fresh.
+ */
+const isFreshlyAuthed = (signal: AuthState, nowSeconds: number): boolean =>
+  AuthState.$match(signal, {
+    Unauthed: () => false,
+    AuthedUntil: ({ exp }) => exp > nowSeconds,
+    HostAuthed: () => true,
+  })
+
+export { type AuthState, Unauthed, AuthedUntil, HostAuthed, isAuthed, isFreshlyAuthed, $is }

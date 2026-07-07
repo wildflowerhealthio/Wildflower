@@ -10,14 +10,14 @@ afterEach(() => {
 
 // The picker is generic over its permission style — the same component renders v2
 // interaction cells and v1 Read/Write words, supplied as data.
-const interactionItems: PickerItem[] = [
+const interactionItems: PickerItem<'c' | 'r' | 'u' | 's'>[] = [
   { id: 'c', name: 'Create', code: 'c', state: 'off', reason: null },
   { id: 'r', name: 'Read', code: 'r', state: 'locked', reason: 'Required by the app' },
   { id: 'u', name: 'Update', code: 'u', state: 'disabled', reason: 'Not requested' },
   { id: 's', name: 'Search', code: 's', state: 'on', reason: null },
 ]
 
-const wordItems: PickerItem[] = [
+const wordItems: PickerItem<'read' | 'write'>[] = [
   { id: 'read', name: 'Read', code: 'read', state: 'on', reason: null },
   { id: 'write', name: 'Write', code: 'write', state: 'off', reason: null },
 ]
@@ -79,7 +79,7 @@ describe('PermissionPicker — v1 Read/Write style', () => {
   it('does not toggle a locked item', async () => {
     const onToggle = vi.fn()
     const user = userEvent.setup()
-    const locked: PickerItem[] = [
+    const locked: PickerItem<'read' | 'write'>[] = [
       {
         id: 'read',
         name: 'Read',

@@ -60,6 +60,69 @@ fn session_cookie(
     cookie
 }
 
+/// Fallback lifetime (seconds) for [`owner_session_cookies`] when the JWT's
+/// `exp` claim can't be read: long enough for the consent flow the popup
+/// exists for, short enough that a cookie whose real expiry is unknown doesn't
+/// outlive the token by much.
+const OWNER_SESSION_FALLBACK_MAX_AGE: i64 = 10 * 60;
+
+/// Decode the unix `exp` claim from `jwt`'s payload **without signature
+/// verification** — callers hand this a token the host itself minted, so the
+/// claim is trusted by provenance, not by re-verifying our own signature.
+/// `None` on any malformed segment/JSON/claim.
+fn jwt_exp_unix(jwt: &str) -> Option<i64> {
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    use base64::Engine;
+    let payload = jwt.split('.').nth(1)?;
+    let bytes = URL_SAFE_NO_PAD.decode(payload).ok()?;
+    let value: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
+    value.get("exp")?.as_i64()
+}
+
+/// Build the two owner session cookies (`wf_auth` + `wf_auth_exp`) for seeding
+/// a surface that is NOT the cookie-setting origin — the desktop host writes
+/// these into the tunnel-origin native-webview popup before it opens (issue
+/// #256). Attribute set and `exp` semantics stay identical to the web path's
+/// [`append_session_cookies`] (single source of truth), with one addition:
+/// `Domain=domain`, so the cookie rides to `domain` **and its subdomains**
+/// (the gatekeeper authorize page on the tunnel apex plus app subdomains).
+///
+/// **Domain guard:** `domain` is used verbatim and must be the full tunnel
+/// `public_host` (e.g. `ruth.wildflowerhealth.io`) — never a registrable
+/// parent like `wildflowerhealth.io`, which would ship the owner bearer to
+/// every other tenant under the shared provider domain.
+///
+/// `Max-Age` (and the `wf_auth_exp` value) derive from the JWT's own `exp`;
+/// an unreadable `exp` falls back to a short [`OWNER_SESSION_FALLBACK_MAX_AGE`]
+/// so the consent flow still works on a weird-but-live token. A token already
+/// past its `exp` yields a non-positive `Max-Age`, which stores nothing — an
+/// expired bearer is never worth seeding.
+pub fn owner_session_cookies(jwt: &str, domain: &str, secure: bool) -> Vec<Cookie<'static>> {
+    owner_session_cookies_at(jwt, domain, secure, chrono::Utc::now().timestamp())
+}
+
+/// [`owner_session_cookies`] with the clock injected, so tests are exact.
+fn owner_session_cookies_at(
+    jwt: &str,
+    domain: &str,
+    secure: bool,
+    now_unix: i64,
+) -> Vec<Cookie<'static>> {
+    let exp_unix = jwt_exp_unix(jwt).unwrap_or(now_unix + OWNER_SESSION_FALLBACK_MAX_AGE);
+    let max_age = exp_unix - now_unix;
+    let mut auth = session_cookie(AUTH_COOKIE_NAME, jwt, true, max_age, secure);
+    let mut exp = session_cookie(
+        AUTH_EXP_COOKIE_NAME,
+        &exp_unix.to_string(),
+        false,
+        max_age,
+        secure,
+    );
+    auth.set_domain(domain.to_owned());
+    exp.set_domain(domain.to_owned());
+    vec![auth, exp]
+}
+
 /// Append a `Set-Cookie` header carrying `cookie`. A JWT or decimal cookie
 /// string is always valid header bytes; on the impossible failure the cookie is
 /// skipped rather than panicking (this code path mints owner sessions).
@@ -195,6 +258,90 @@ mod tests {
         assert_eq!(set.len(), 2);
         assert!(set.iter().any(|c| c.starts_with("wf_auth=j.w.t;")));
         assert!(set.iter().any(|c| c.starts_with("wf_auth_exp=1750000000;")));
+    }
+
+    /// Build an unsigned three-segment JWT whose payload carries `exp` — the
+    /// shape [`jwt_exp_unix`] reads; the signature is never verified there.
+    fn jwt_with_exp(exp: i64) -> String {
+        use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+        use base64::Engine;
+        let header = URL_SAFE_NO_PAD.encode(br#"{"alg":"RS256","typ":"JWT"}"#);
+        let payload = URL_SAFE_NO_PAD
+            .encode(serde_json::json!({ "sub": "wildflower-host", "exp": exp }).to_string());
+        format!("{header}.{payload}.sig")
+    }
+
+    /// The multi-tenant Domain guard: the tunnel public host is itself a
+    /// subdomain of a shared provider domain, and the cookie's `Domain` must be
+    /// that full host — never its registrable parent, which would ship the
+    /// owner bearer to every other tenant's tunnel. Whole-value assertions so
+    /// any attribute drift from the web path's cookie fails loudly.
+    #[test]
+    fn owner_session_cookies_scope_domain_to_the_full_tenant_host() {
+        let now = 1_750_000_000;
+        let jwt = jwt_with_exp(now + 3600);
+        let cookies = owner_session_cookies_at(&jwt, "ruth.wildflowerhealth.io", true, now);
+        assert_eq!(
+            cookies[0].to_string(),
+            format!(
+                "wf_auth={jwt}; HttpOnly; SameSite=Lax; Secure; Path=/; \
+                 Domain=ruth.wildflowerhealth.io; Max-Age=3600"
+            )
+        );
+        assert_eq!(
+            cookies[1].to_string(),
+            format!(
+                "wf_auth_exp={}; SameSite=Lax; Secure; Path=/; \
+                 Domain=ruth.wildflowerhealth.io; Max-Age=3600",
+                now + 3600
+            )
+        );
+    }
+
+    /// The companion cookie's value is the JWT's own `exp`, and `Max-Age`
+    /// spans exactly `exp - now` — the popup cookie dies with the token.
+    #[test]
+    fn owner_session_cookies_derive_exp_and_max_age_from_the_jwt() {
+        let now = 1_750_000_000;
+        let exp = now + 12_345;
+        let cookies = owner_session_cookies_at(&jwt_with_exp(exp), "t.example.test", true, now);
+        assert_eq!(cookies[1].value(), exp.to_string());
+        assert_eq!(
+            cookies[0].max_age(),
+            Some(cookie::time::Duration::seconds(12_345))
+        );
+    }
+
+    /// An unreadable `exp` (malformed payload) falls back to the short fixed
+    /// lifetime rather than skipping the seed — the consent flow still works
+    /// on a weird-but-live token, and the cookie can't outlive it by much.
+    #[test]
+    fn owner_session_cookies_fall_back_to_short_max_age_without_exp() {
+        let now = 1_750_000_000;
+        let cookies = owner_session_cookies_at("not-a-jwt", "t.example.test", true, now);
+        assert_eq!(
+            cookies[0].max_age(),
+            Some(cookie::time::Duration::seconds(
+                OWNER_SESSION_FALLBACK_MAX_AGE
+            ))
+        );
+        assert_eq!(
+            cookies[1].value(),
+            (now + OWNER_SESSION_FALLBACK_MAX_AGE).to_string()
+        );
+    }
+
+    /// A token already past its `exp` yields a non-positive `Max-Age` — the
+    /// store drops it rather than seeding a dead bearer.
+    #[test]
+    fn owner_session_cookies_never_extend_an_expired_token() {
+        let now = 1_750_000_000;
+        let cookies =
+            owner_session_cookies_at(&jwt_with_exp(now - 10), "t.example.test", true, now);
+        assert_eq!(
+            cookies[0].max_age(),
+            Some(cookie::time::Duration::seconds(-10))
+        );
     }
 
     #[test]

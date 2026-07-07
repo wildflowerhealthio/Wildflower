@@ -6,6 +6,24 @@ _Last triaged 2026-07-04 — durable lessons were promoted to `Strategies.md`, t
 
 <!-- Append new entries below this line -->
 
+## `.local-notes` design-handoff HTML is a self-extracting bundle — the real markup lives in `__bundler/template` + `__dc_inline` JSON
+
+**Discovered during**: claude/issue-256-implementation-ohs995 — matching the OAuth consent screen to the Scope Picker reference design
+**Learning**: The standalone design files (e.g. `.local-notes/Scope Picker (standalone).html`, ~1.1MB) are not readable HTML — they're a JS bundler shell whose page is JSON-encoded in a `<script type="__bundler/template">` tag. Extract with a small node script (regex the tag, `JSON.parse`), then split again: the decoded page holds a `<script type="application/json" id="__dc_inline">` map of named sub-component templates (`PermissionStatement`, `FlagToggleRow`, …) plus the main page after the `</helmet>` (the helmet is a full inlined Tundra CSS copy — skip it). Each component is a mustache-ish `<x-dc>` template + a `DCLogic` class carrying the interaction model (state machine, serialization rules) — the class is worth reading, it specifies behavior, not just looks. The templates use the repo's real CSS custom properties (`--color-raised`, `--space-*`), so styles translate almost 1:1 to token-driven CSS modules.
+**Suggested destination**: unsure (design-handoff how-to, if one emerges)
+
+## Tauri `Webview::set_cookie` must not be called from a main-thread event handler; queue it from off-main and let FIFO order the navigate
+
+**Discovered during**: claude/issue-256-implementation — seeding the owner `wf_auth` cookie into the native-webview popup
+**Learning**: wry's macOS `set_cookie`/`cookies_for_url` block by re-entrantly pumping the main `NSRunLoop` (`wait_for_blocking_operation`) until the `WKHTTPCookieStore` completion fires. Tauri's `Webview::set_cookie` sends a `WebviewMessage::SetCookie` to the main loop — but `send_user_message` executes **inline** when already on the main thread, so calling it from inside a `run_on_main_thread` callback (or any event handler) nests the run-loop pump inside tao's event handler: observed as both child webviews' "web content process terminated" and a hard app deadlock. From a NON-main thread the message queues normally and the main loop handles it on a clean iteration. `SetCookie` has no reply channel (fire-and-forget), but the loop is FIFO — `set_cookie`, `set_cookie`, `navigate` queued in order guarantees every cookie commits before the navigation's first request. So: build the webview at `about:blank` on the main thread, then seed + navigate from the caller thread.
+**Suggested destination**: plugins/tauri-plugin-native-webview/docs/Explanation.md (applied this session) / Strategies.md
+
+## NSHTTPCookie boolean properties are presence-keyed: `cookie::Cookie::set_http_only(false)` makes the cookie HttpOnly on macOS
+
+**Discovered during**: claude/issue-256-implementation — the JS-readable `wf_auth_exp` companion landed HttpOnly in the popup
+**Learning**: The `cookie` crate records `set_http_only(false)` / `set_secure(false)` as `Some(false)`, and wry's macOS conversion (`cookie_into_wkwebview`) inserts the NSHTTPCookie `"HttpOnly"`/`Secure` property for **any** `Some`, with string value "TRUE"/"FALSE" — but Foundation keys off the property's _presence_, so a `Some(false)` cookie comes out HttpOnly. (The crate's `to_string()` renders `Some(false)` as no attribute, so `Set-Cookie`-based paths are immune; only the typed-Cookie → NSHTTPCookie path hits this.) When building a `cookie::Cookie` destined for `Webview::set_cookie`, set boolean attributes only when true and leave them `None` otherwise, and pin `cookie.http_only() == None` (not `Some(false)`) in tests.
+**Suggested destination**: unsure (native-webview plugin docs; wry upstream issue candidate)
+
 ## Vite+ 0.2 upgrade: peer deps dodge `pnpm.overrides`; every plugin-hosting package must declare `vite: catalog:`; the vitest alias line is dead
 
 **Discovered during**: vite-plus 0.1.21 → 0.2.2 / @vitejs/plugin-react 5 → 6 upgrade
@@ -65,3 +83,9 @@ The device-authorization flow showed the right move when a settings page would o
 **Discovered during**: claude/handlebars-static-app-templates-2ia3yl — adding the handlebars template tree to self-hosted-apps-rust
 **Learning**: oxfmt (the `vp check`/pre-commit formatter) treats `*.hbs` as an HTML-ish template language and hard-fails on non-markup content before any analysis starts — e.g. a json5 comment containing `<public_host>` reads as an "Unclosed element" SyntaxError, killing the whole `vp check` run (and with it `vp staged` in the pre-commit hook). Even when it parses, reformatting would mangle `{{…}}` expressions and the json5 payload they render into. Fix: add the template tree (`slices/apps/self-hosted-apps-rust/templates/**`) to `fmt.ignorePatterns` in the root `vite.config.ts` — these are served runtime assets, not source. Same reasoning as the existing `**/openapi/*.openapi.json` and `**/*.toml` exclusions.
 **Suggested destination**: unsure (vite.config.ts fmt commentary already carries it)
+
+## `Equal.equals` silently degrades to reference equality on classes that don't implement `Equal` — check before adopting it
+
+**Discovered during**: claude/issue-256-implementation-ohs995 — consent-screen refactor moving scope editing onto domain objects
+**Learning**: Effect's `Equal.equals(a, b)` never fails on a class that doesn't implement `Equal.Equal` — it falls back to reference equality and returns `false` for two structurally identical instances. In `scopes-core` the domain classes implement `[Equal.symbol]`/`[Hash.symbol]` selectively: `KnownScope`, the contexts (via the `Context` base), and the resource types did, but `UnknownScope` did not — so a draft-membership check like `draft.unknown.some(Equal.equals(scope))` type-checked, looked idiomatic, and always returned `false` (parsed instances are never reference-equal), turning a toggle into an append-duplicates bug. Before writing `Equal.equals` against a domain class, verify the class (or its base) implements `Equal.Equal`; when adding a new sibling variant to a family where the others are value-comparable, implement `Equal`/`Hash` at the same time (compare `kind` + payload, mirror the sibling's shape). The fix belongs in the domain class, not at the call site — serialize-and-compare call sites are the workaround smell.
+**Suggested destination**: docs/Effect/Patterns Reference.md (value equality on domain classes)

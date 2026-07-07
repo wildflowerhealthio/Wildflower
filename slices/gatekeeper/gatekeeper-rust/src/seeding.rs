@@ -106,9 +106,14 @@ pub(crate) enum HostTokenError {
 /// the host can hand the resulting token to the `WebView` via the
 /// navigation bridge and let the Owner UI call `/access/*` endpoints.
 ///
-/// `iss` is [`shared_structures_rust::CANONICAL_ISSUER`]; `aud` is the loopback
-/// origin, so `require_auth` accepts it for WebView calls over loopback. See
-/// `docs/Origins/Explanation.md`.
+/// `iss` and `aud` are both [`shared_structures_rust::CANONICAL_ISSUER`] (the
+/// caller passes them in): the token is presented over loopback and at the
+/// tunnel origin (the popup's seeded `wf_auth` cookie, #256), and the
+/// canonical audience is the one value `require_auth` accepts on both. Because
+/// that audience is accepted at every served origin, the token also carries the
+/// `wf_owner` marker (`is_host_owner: true`), which `require_auth` requires
+/// before honouring the canonical audience — so no other token can borrow it.
+/// See `docs/Origins/Explanation.md`.
 pub(crate) fn mint_host_owner_token(
     store: &GatekeeperStore,
     iss: &str,
@@ -133,6 +138,9 @@ pub(crate) fn mint_host_owner_token(
             origin: iss,
             audience: Some(aud),
             patient: None,
+            // The one token permitted to authenticate via the canonical
+            // audience — mark it so `require_auth` will honour that `aud`.
+            is_host_owner: true,
         },
     )?)
 }

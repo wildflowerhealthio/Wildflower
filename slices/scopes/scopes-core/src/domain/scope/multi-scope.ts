@@ -4,7 +4,7 @@
  * collection ({@link Grant}, {@link GrantDraft}, {@link ScopeRequest}). Each resource
  * partition is typed as its {@link BaseResourceScope} *base view* — keyed by the kind
  * literal, not the concrete class — so a client that wants one variant works generically on
- * `BaseResourceScope<…, TId>` (handed that partition via a {@link ScopeConfiguration}); a
+ * `BaseResourceScope<…, TId>` (handed that partition via a {@link ResourceScopeConfiguration}); a
  * client that needs the concrete union reaches for {@link Scope.ResourceScope.Any}.
  *
  * Every variant's `(context, resource, interaction)` triple lives once in {@link ResourceVariant},
@@ -28,8 +28,11 @@ import FhirV1 from './fhir-scope-v1.ts'
 import FhirV2 from './fhir-scope-v2.ts'
 import type Known from './known.ts'
 import type * as Permission from './permission'
+import type {
+  BaseResourceScope,
+  ResourceScopeConfiguration,
+} from './resource-scope-configuration.ts'
 import type * as ResourceType from './resource-type'
-import type { BaseResourceScope, ScopeConfiguration } from './scope-configuration.ts'
 import type Unknown from './unknown.ts'
 import Wildflower from './wildflower-scope.ts'
 
@@ -86,7 +89,7 @@ namespace MultiScope {
     K
   >
   /** The construction recipe for this variant's partition, keyed to its literal. */
-  export type ConfigurationFor<K extends Kind> = ScopeConfiguration<
+  export type ResourceScopeConfigurationFor<K extends Kind> = ResourceScopeConfiguration<
     ContextOf<K>,
     ResourceOf<K>,
     InteractionOf<K>,
@@ -170,7 +173,7 @@ namespace MultiScope {
 
   /**
    * Every resource partition's wire strings with per-partition `spec.md §3` dedupe —
-   * each recipe serializes its own partition ({@link ScopeConfiguration.serialize}). The
+   * each recipe serializes its own partition ({@link ResourceScopeConfiguration.serialize}). The
    * cross-partition de-dup + sort is a caller concern ({@link GrantDraft.serialize}).
    */
   export const serialize = (ms: MultiScope): string[] =>
@@ -178,11 +181,16 @@ namespace MultiScope {
 
   /**
    * Whether every resource partition of `grant` is within `allowed`'s (`spec.md §2`) — each
-   * recipe checks its own partition ({@link ScopeConfiguration.within}). The flag-partition
+   * recipe checks its own partition ({@link ResourceScopeConfiguration.within}). The flag-partition
    * subset check is a caller concern ({@link ScopeRequest.isWithin}).
    */
   export const within = (grant: MultiScope, allowed: MultiScope): boolean =>
     resourceConfigurations.every((configuration) => withinPartition(configuration, grant, allowed))
+
+  export const fhirScopes = (ms: MultiScope): readonly (FhirV1 | FhirV2)[] => [
+    ...ms.fhirV1,
+    ...ms.fhirV2,
+  ]
 }
 
 export { MultiScope }

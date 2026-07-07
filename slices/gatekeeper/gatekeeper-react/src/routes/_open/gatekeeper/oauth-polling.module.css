@@ -1,3 +1,11 @@
+/* The inline-consent state: the consent card centered on the page. */
+.consent {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-7);
+  padding: var(--space-10) 0;
+}
+
 .poll {
   display: flex;
   flex-direction: column;

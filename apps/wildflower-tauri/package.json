@@ -25,6 +25,7 @@
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-tundraish": "workspace:*",
+    "scopes-react": "workspace:*",
     "tundra-css": "catalog:",
     "wildflower-react": "workspace:*"
   },

@@ -300,10 +300,16 @@ async fn run_server(
     let tunnel_service: Arc<dyn tunnel_rust::TunnelService> = Arc::new(tunnel.control.clone());
     // Install the host's on-device webview handle: for a loopback caller the
     // launch handler hands it the resolved URL to open in a native webview popup
-    // (the server 204s, so the SPA stays mounted). See `native_webview_handle`.
-    let webview_handle: Arc<dyn apps_rust::OnDeviceWebviewHandle> = Arc::new(
-        native_webview_handle::NativeWebviewHandle::new(app_handle.clone()),
-    );
+    // (the server 204s, so the SPA stays mounted). It carries the owner-token
+    // watch channel and the tunnel service so a tunnel-origin launch can seed
+    // the owner session cookies into the popup before it opens (#256). See
+    // `native_webview_handle`.
+    let webview_handle: Arc<dyn apps_rust::OnDeviceWebviewHandle> =
+        Arc::new(native_webview_handle::NativeWebviewHandle::new(
+            app_handle.clone(),
+            publishers.host_owner_token_sender.subscribe(),
+            Arc::clone(&tunnel_service),
+        ));
     // The loopback launch owner-gate: the same Owner-bearer check the admin
     // surface uses (a header-derived loopback provenance isn't a sufficient gate
     // on its own — the network loopback-peer gate is the other half).
