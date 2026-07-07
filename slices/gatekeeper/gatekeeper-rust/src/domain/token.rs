@@ -50,6 +50,13 @@ pub struct AccessTokenClaims {
     /// Optional SMART-on-FHIR patient context.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub patient: Option<String>,
+    /// Marks the single boot-minted host owner token — the only token permitted
+    /// to authenticate via the canonical audience (`aud = CANONICAL_ISSUER`,
+    /// accepted at every served origin). Absent (never `false`) on every other
+    /// token, so it costs nothing on the wire and can't be mistaken for a claim
+    /// SMART clients read.
+    #[serde(rename = "wf_owner", skip_serializing_if = "Option::is_none")]
+    pub host_owner: Option<bool>,
 }
 
 /// Inputs required to mint a new JWT access token.
@@ -66,6 +73,11 @@ pub struct NewJwtArgs<'a> {
     pub audience: Option<&'a str>,
     /// Optional SMART-on-FHIR patient context.
     pub patient: Option<&'a str>,
+    /// Mark the token as the host owner token, adding the `wf_owner` claim that
+    /// `require_auth` requires before honouring the canonical audience. Only
+    /// [`mint_host_owner_token`](crate::seeding) sets this; every OAuth mint
+    /// leaves it `false`.
+    pub is_host_owner: bool,
 }
 
 /// Failures while minting an access token.
@@ -99,6 +111,7 @@ pub fn mint_access_token(
         issued_at: now,
         scope: args.scope.join(" "),
         patient: args.patient.map(str::to_string),
+        host_owner: args.is_host_owner.then_some(true),
     };
     let mut header = Header::new(Algorithm::RS256);
     header.kid = Some(signing_key.kid.clone());
@@ -131,6 +144,10 @@ pub struct VerifiedClaims {
     /// SMART-on-FHIR patient context, if present.
     #[serde(default)]
     pub patient: Option<String>,
+    /// Present and `true` only on the host owner token (the `wf_owner` claim);
+    /// `require_auth` requires it before accepting the canonical audience.
+    #[serde(rename = "wf_owner", default)]
+    pub host_owner: Option<bool>,
 }
 
 /// Policy applied to incoming tokens during verification.
@@ -243,6 +260,7 @@ mod tests {
             origin in "https://[a-z]{3,16}\\.[a-z]{2,8}",
             audience_suffix in prop::option::of("/[a-z]{2,16}"),
             patient in prop::option::of("[a-zA-Z0-9-]{1,32}"),
+            is_host_owner in any::<bool>(),
         ) {
             let key = shared_key();
             let audience: Option<String> = audience_suffix.map(|s| format!("{origin}{s}"));
@@ -258,6 +276,7 @@ mod tests {
                     origin: &origin,
                     audience: audience.as_deref(),
                     patient: patient.as_deref(),
+                    is_host_owner,
                 },
             ).expect("mint");
 
@@ -282,6 +301,8 @@ mod tests {
                 ..verified_claims
             };
             prop_assert_eq!(&verified_claims, &expected);
+            // The `wf_owner` marker round-trips: present-and-`true` only when minted.
+            prop_assert_eq!(verified_claims.host_owner, is_host_owner.then_some(true));
 
             let iat = verified_claims.issued_at.expect("iat present");
             let exp = verified_claims.expires_at.expect("exp present");
@@ -304,6 +325,7 @@ mod tests {
                 origin: "tauri://localhost",
                 audience: None,
                 patient: None,
+                is_host_owner: false,
             },
         )
         .expect("mint");

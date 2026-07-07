@@ -15,6 +15,7 @@ use gatekeeper_rust::crypto_util::client_secret::hash_client_secret;
 use gatekeeper_rust::crypto_util::pkce::compute_code_challenge;
 use gatekeeper_rust::crypto_util::random_token::token_storage_hash;
 use gatekeeper_rust::domain::authorization_code::AuthorizationCode;
+use gatekeeper_rust::domain::token::{mint_access_token, NewJwtArgs};
 use gatekeeper_rust::domain::authorization_request::{
     AuthorizationRequest, GrantType, RequestStatus,
 };
@@ -210,6 +211,47 @@ async fn access_grants_with_owner_token_passes_on_forwarded_tunnel_origin() {
     );
     let res = g.router.oneshot(req).await.expect("oneshot");
     assert_eq!(res.status(), StatusCode::OK);
+}
+
+/// The canonical audience is accepted at every served origin, so it is reserved
+/// for the marked host owner token. A token that carries `aud = CANONICAL_ISSUER`
+/// AND the owner-defining scopes but LACKS the `wf_owner` marker — an otherwise
+/// owner-shaped token, the exact shape a future minting bug or a replay would
+/// produce — is rejected. Only the missing marker distinguishes it from the
+/// token that passes on line above, so this pins the marker as the gate.
+#[tokio::test]
+async fn canonical_audience_without_owner_marker_is_rejected() {
+    let (g, _host_owner_token, db) = spin_up();
+    let key = store_handle(&db)
+        .active_signing_key()
+        .expect("signing-key query")
+        .expect("a seeded active signing key");
+    let scopes = gatekeeper_rust::default_local_granted_scopes();
+    let unmarked = mint_access_token(
+        &key,
+        &NewJwtArgs {
+            client_id: "impostor",
+            scope: &scopes,
+            ttl: Duration::seconds(300),
+            origin: shared_structures_rust::CANONICAL_ISSUER,
+            audience: Some(shared_structures_rust::CANONICAL_ISSUER),
+            patient: None,
+            is_host_owner: false,
+        },
+    )
+    .expect("mint");
+    let req = loopback_request(
+        Request::get("/access/grants")
+            .header("host", "127.0.0.1")
+            .header(
+                "forwarded",
+                "host=ruth.wildflowerhealth.example;proto=https",
+            )
+            .header("authorization", format!("Bearer {unmarked}")),
+        Body::empty(),
+    );
+    let res = g.router.oneshot(req).await.expect("oneshot");
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]

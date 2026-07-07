@@ -131,20 +131,34 @@ pub fn verify_auth_token_claims(
         // The host owner token's canonical audience: the host presents that
         // one token over loopback AND at the tunnel origin (the popup's
         // seeded `wf_auth` cookie, #256), so it can't carry a served-origin
-        // `aud`. Only gatekeeper mints tokens, and only the host owner token
-        // uses the canonical audience (OAuth-minted tokens always get
-        // `{origin}/fhir-r4`).
+        // `aud`. Accepting it here is gated by the `wf_owner` marker check
+        // below, so this acceptance can't be borrowed by any other token.
         shared_structures_rust::CANONICAL_ISSUER.to_string(),
     ];
     // `iss` must equal [`shared_structures_rust::CANONICAL_ISSUER`]; `aud` is
     // checked per-request against this origin (and its `/fhir-r4` base), plus
     // the canonical audience. See `docs/Origins/Explanation.md`.
-    verify_jwt(
+    let claims = verify_jwt(
         token,
         &keys,
         &VerifyOptions {
             expected_issuer: shared_structures_rust::CANONICAL_ISSUER,
             accepted_audiences: &accepted,
         },
-    )
+    )?;
+    // The canonical audience is accepted at *every* served origin, so it must
+    // be reserved for the one token that legitimately needs it: the host owner
+    // token, which carries the `wf_owner` marker. Any other token that reaches
+    // us via the canonical audience — a future minting bug, a copied pattern, a
+    // leaked-and-replayed token — is rejected here, restoring the per-origin
+    // binding for every non-owner token. A token that matched a served-origin
+    // `aud` never trips this. See `docs/Origins/Explanation.md`.
+    let via_canonical_audience = claims
+        .audience
+        .iter()
+        .any(|aud| aud == shared_structures_rust::CANONICAL_ISSUER);
+    if via_canonical_audience && claims.host_owner != Some(true) {
+        return Err(VerifyError::TokenRejected);
+    }
+    Ok(claims)
 }

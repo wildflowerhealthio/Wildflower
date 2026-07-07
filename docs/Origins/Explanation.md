@@ -70,6 +70,16 @@ alongside the per-request served-origin pair. OAuth-minted tokens always get
 `{origin}/fhir-r4` — the canonical audience is never mintable through the OAuth
 surface.
 
+Because the canonical audience is accepted at **every** served origin, accepting
+it can't rest on convention alone. The host owner token additionally carries a
+`wf_owner` marker claim, and the bearer gate honours the canonical audience
+**only** for a token that carries it. Any other token that reaches the gate via
+`aud = CANONICAL_ISSUER` — a future minting bug, a copied pattern, a
+leaked-and-replayed token — is rejected, so every non-owner token stays bound to
+its served origin. The marker is a private claim (absent, never `false`, on
+every other token), so it costs nothing on the wire and is invisible to SMART
+clients.
+
 The SMART discovery document follows the same split: its `issuer` field is
 [`CANONICAL_ISSUER`], while its endpoint URLs are rendered from the served origin
 so the SMART app can actually reach them from where it is.
