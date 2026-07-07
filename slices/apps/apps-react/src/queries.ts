@@ -96,6 +96,33 @@ const useAppsAdminCreateMutation = (): UseMutationResult<unknown, Error, CreateA
   })
 }
 
+/**
+ * Admin `CreateSelfHostedApp` (POST /self-hosted-apps). Uploads a zipped app
+ * bundle: `name` becomes the `?name=` query param (slugged server-side into the
+ * new app's id/subdomain) and `bytes` is sent as the raw `application/zip`
+ * request body. Invalidates {@link APPS_LIST_QUERY_KEY} on success so the newly
+ * installed self-hosted tile appears.
+ */
+const useSelfHostedAppCreateMutation = (): UseMutationResult<
+  unknown,
+  Error,
+  { readonly name: string; readonly bytes: Uint8Array }
+> => {
+  const runAuthed = useRunAuthed()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ name, bytes }) =>
+      runAuthed(
+        Effect.flatMap(AppsAdminHttpApiClient, (c) =>
+          c['apps-admin'].CreateSelfHostedApp({ urlParams: { name }, payload: bytes })
+        )
+      ),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: APPS_LIST_QUERY_KEY })
+    },
+  })
+}
+
 /** Admin `DeleteApp` (DELETE /apps/:id). Invalidates {@link APPS_LIST_QUERY_KEY}. */
 const useAppsAdminDeleteMutation = (): UseMutationResult<
   unknown,
@@ -149,5 +176,6 @@ export {
   useAppsAdminUpdateMutation,
   useAppsListQuery,
   useReplaceHomeScreenMutation,
+  useSelfHostedAppCreateMutation,
 }
 export type { AppEntry, CreateAppPayload, HomeScreenPayload, UpdateAppPayload }

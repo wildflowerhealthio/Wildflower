@@ -48,6 +48,7 @@ vi.mock('../../../queries.ts', () => {
     useReplaceHomeScreenMutation: () => homeScreenStub,
     useAppsAdminCreateMutation: idleMutation,
     useAppsAdminDeleteMutation: idleMutation,
+    useSelfHostedAppCreateMutation: idleMutation,
   }
 })
 
@@ -62,6 +63,7 @@ const APP: AppEntry = {
   localOnly: false,
   smart: false,
   requiresTunnel: false,
+  removable: true,
 }
 
 // react-tundraish's `Dialog` (mounted closed by the editor) calls native

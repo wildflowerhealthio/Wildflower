@@ -8,6 +8,7 @@ import {
   useAppsAdminCreateMutation,
   useAppsAdminDeleteMutation,
   useReplaceHomeScreenMutation,
+  useSelfHostedAppCreateMutation,
   type AppEntry,
 } from '../queries.ts'
 import { provenanceLabel } from '../routes/_auth/home/-tiles.tsx'
@@ -26,13 +27,15 @@ const formatError = (error: unknown): string =>
  * Modal editor for the apps list. The enable-toggle is exposed for **every**
  * provenance — it persists through `PUT /home-screen` (the single writer of
  * order + `enabled`, all provenances) by re-PUTting the whole list with the one
- * flag flipped; reordering itself lives on the homescreen drag. *Content* edits
- * are cloud-only: the cloud-admin `Delete`/create surface `409 AppNotEditable`s
- * system and self-hosted apps, so only cloud rows show a `Remove` button — a
- * non-cloud row shows a read-only provenance tag beside its toggle. Writes are
- * issued through the slice's TanStack Query mutations, which invalidate the
- * cached apps list on success — the parent screen re-renders with the new data
- * without any prop drilling.
+ * flag flipped; reordering itself lives on the homescreen drag. Removal is gated
+ * on each row's `removable` flag (computed server-side): cloud apps and uploaded
+ * self-hosted apps get a `Remove` button, while system apps and the seeded
+ * self-hosted apps show a read-only provenance tag beside their toggle instead.
+ * The editor also installs new apps: cloud apps via the "Add app" URL form, and
+ * self-hosted apps via the "Add self-hosted app" zip upload. Writes are issued
+ * through the slice's TanStack Query mutations, which invalidate the cached apps
+ * list on success — the parent screen re-renders with the new data without any
+ * prop drilling.
  *
  * Every input lives inside a `<fieldset disabled={busy}>` so the entire
  * form locks during an in-flight write, not just the submit button. `busy`
@@ -42,19 +45,24 @@ const formatError = (error: unknown): string =>
  * re-PUT the pre-reorder `apps` order and silently revert the just-made drag.
  *
  * The host `Dialog` (react-tundraish) keeps its children mounted while
- * closed, so the three mutations' `error` state would otherwise persist
- * and a stale error would reappear on the next open. An effect keyed on
- * `open` resets all three mutations (and clears the new-app form fields)
- * whenever the dialog transitions to open, so each open starts from a
- * clean slate.
+ * closed, so the mutations' `error` state would otherwise persist and a
+ * stale error would reappear on the next open. An effect keyed on `open`
+ * resets every mutation (and clears both new-app forms' fields) whenever the
+ * dialog transitions to open, so each open starts from a clean slate.
  */
 const AppsEditor = ({ open, apps, onClose }: AppsEditorProps): JSX.Element => {
   const homeScreenMutation = useReplaceHomeScreenMutation()
   const createMutation = useAppsAdminCreateMutation()
   const deleteMutation = useAppsAdminDeleteMutation()
+  const selfHostedMutation = useSelfHostedAppCreateMutation()
   const [newName, setNewName] = useState('')
   const [newUrl, setNewUrl] = useState('')
   const [newRequiresTunnel, setNewRequiresTunnel] = useState(false)
+  const [selfHostedName, setSelfHostedName] = useState('')
+  const [selfHostedFile, setSelfHostedFile] = useState<File | null>(null)
+  // Bumped to remount the (uncontrolled) file `<input>` so a successful upload
+  // or an open-transition reset clears the picked filename.
+  const [fileInputKey, setFileInputKey] = useState(0)
 
   // `Dialog` does not unmount its children when closed, so a settled
   // mutation hangs onto its last `error` until the next `mutate`. Without
@@ -68,15 +76,20 @@ const AppsEditor = ({ open, apps, onClose }: AppsEditorProps): JSX.Element => {
   const resetHomeScreen = homeScreenMutation.reset
   const resetCreate = createMutation.reset
   const resetDelete = deleteMutation.reset
+  const resetSelfHosted = selfHostedMutation.reset
   useEffect(() => {
     if (!open) return
     resetHomeScreen()
     resetCreate()
     resetDelete()
+    resetSelfHosted()
     setNewName('')
     setNewUrl('')
     setNewRequiresTunnel(false)
-  }, [open, resetHomeScreen, resetCreate, resetDelete])
+    setSelfHostedName('')
+    setSelfHostedFile(null)
+    setFileInputKey((key) => key + 1)
+  }, [open, resetHomeScreen, resetCreate, resetDelete, resetSelfHosted])
 
   // Any in-flight write locks the whole fieldset. `homeScreenInFlight` counts
   // *every* `PUT /home-screen` writer sharing the key — this editor's own toggle
@@ -84,7 +97,11 @@ const AppsEditor = ({ open, apps, onClose }: AppsEditorProps): JSX.Element => {
   // is still landing (it subsumes `homeScreenMutation.isPending`). Aggregating
   // with create/delete keeps the "one write at a time" guarantee.
   const homeScreenInFlight = useIsMutating({ mutationKey: HOME_SCREEN_MUTATION_KEY }) > 0
-  const busy = homeScreenInFlight || createMutation.isPending || deleteMutation.isPending
+  const busy =
+    homeScreenInFlight ||
+    createMutation.isPending ||
+    deleteMutation.isPending ||
+    selfHostedMutation.isPending
   const homeScreenError = homeScreenMutation.error ?? deleteMutation.error
   const errorMessage = homeScreenError === null ? null : formatError(homeScreenError)
 
@@ -119,6 +136,24 @@ const AppsEditor = ({ open, apps, onClose }: AppsEditorProps): JSX.Element => {
     )
   }
 
+  const submitSelfHostedApp = async (): Promise<void> => {
+    const name = selfHostedName.trim()
+    if (name === '' || selfHostedFile === null) return
+    // Read the picked zip into raw bytes; the mutation sends them as the
+    // `application/zip` request body (the server extracts + installs them).
+    const bytes = new Uint8Array(await selfHostedFile.arrayBuffer())
+    selfHostedMutation.mutate(
+      { name, bytes },
+      {
+        onSuccess: () => {
+          setSelfHostedName('')
+          setSelfHostedFile(null)
+          setFileInputKey((key) => key + 1)
+        },
+      }
+    )
+  }
+
   return (
     <Dialog open={open} onClose={onClose} title="Manage apps">
       {errorMessage !== null ? (
@@ -141,10 +176,12 @@ const AppsEditor = ({ open, apps, onClose }: AppsEditorProps): JSX.Element => {
               {/*
                * The enable toggle is shown for every provenance — `enabled` is
                * homescreen curation, persisted via `PUT /home-screen`, which
-               * accepts all provenances. *Content* edits stay cloud-only: only a
-               * cloud row gets a `Remove` button (Update/Delete `409` for
-               * system/self-hosted); a non-cloud row shows a read-only provenance
-               * tag in its place so the user can see why it can't be removed.
+               * accepts all provenances. A `Remove` button shows only when the
+               * server marks the row `removable` (cloud apps + uploaded
+               * self-hosted apps); a non-removable row (system + seeded
+               * self-hosted, which the admin surface `409`s) shows a read-only
+               * provenance tag in its place so the user can see why it can't be
+               * removed.
                */}
               <div className={editorStyles['apps-editor__row-actions']}>
                 <Checkbox
@@ -154,7 +191,7 @@ const AppsEditor = ({ open, apps, onClose }: AppsEditorProps): JSX.Element => {
                     toggle(app)
                   }}
                 />
-                {app.provenance === 'cloud' ? (
+                {app.removable ? (
                   <button
                     type="button"
                     className="button-3 outline accent-red"
@@ -222,6 +259,51 @@ const AppsEditor = ({ open, apps, onClose }: AppsEditorProps): JSX.Element => {
             />
             <button type="submit" className="button-2 filled">
               Add app
+            </button>
+          </form>
+        </section>
+
+        <section className={editorStyles['apps-editor__section']}>
+          <h3 className="text-label-3">Add self-hosted app</h3>
+
+          {selfHostedMutation.error !== null ? (
+            <p className="text-body-3" role="alert">
+              {formatError(selfHostedMutation.error)}
+            </p>
+          ) : null}
+          <form
+            className={editorStyles['apps-editor__form']}
+            onSubmit={(event) => {
+              event.preventDefault()
+              void submitSelfHostedApp()
+            }}
+          >
+            <label className={editorStyles['apps-editor__form-field']}>
+              <span className="text-label-3">Name</span>
+              <input
+                className="input-2"
+                value={selfHostedName}
+                onChange={(event) => {
+                  setSelfHostedName(event.target.value)
+                }}
+                required
+              />
+            </label>
+            <label className={editorStyles['apps-editor__form-field']}>
+              <span className="text-label-3">Bundle (.zip)</span>
+              <input
+                key={fileInputKey}
+                className="input-2"
+                type="file"
+                accept=".zip,application/zip"
+                onChange={(event) => {
+                  setSelfHostedFile(event.target.files?.[0] ?? null)
+                }}
+                required
+              />
+            </label>
+            <button type="submit" className="button-2 filled">
+              Add self-hosted app
             </button>
           </form>
         </section>

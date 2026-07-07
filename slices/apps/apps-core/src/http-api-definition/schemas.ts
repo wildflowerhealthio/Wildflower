@@ -1,3 +1,4 @@
+import { HttpApiSchema } from '@effect/platform'
 import { Schema } from 'effect'
 
 /**
@@ -73,6 +74,13 @@ const AppListEntrySchema = Schema.Struct({
   /** Whether a launch needs the tunnel up (cloud apps only). */
   requiresTunnel: Schema.Boolean,
   enabled: Schema.Boolean,
+  /**
+   * Whether the owner can remove this app through the admin surface: `true`
+   * for cloud apps and for uploaded (non-seeded) self-hosted apps, `false` for
+   * system apps and the migration-seeded self-hosted apps. The editor's Remove
+   * control keys off this rather than re-deriving the rule per client.
+   */
+  removable: Schema.Boolean,
 })
 
 const AppListSchema = Schema.Array(AppListEntrySchema)
@@ -115,13 +123,14 @@ const AppNotEditableSchema = Schema.Struct({
 })
 
 /**
- * Body for a write-side field validation 400. `error` discriminates an empty
- * name (`InvalidName`) from a bad url (`InvalidUrl`) so the client can render
- * the right inline message; `message` is the human-readable reason. Matches
- * the Rust server's `InvalidFieldBody`.
+ * Body for a write-side field validation 400. `error` discriminates a bad url
+ * (`InvalidUrl`), an empty name (`InvalidName`), and an unusable uploaded
+ * bundle (`InvalidZip`) so the client can render the right inline message;
+ * `message` is the human-readable reason. Matches the Rust server's
+ * `InvalidFieldBody`.
  */
 const InvalidFieldSchema = Schema.Struct({
-  error: Schema.Literal('InvalidUrl', 'InvalidName'),
+  error: Schema.Literal('InvalidUrl', 'InvalidName', 'InvalidZip'),
   message: Schema.String,
 })
 
@@ -164,6 +173,28 @@ const InvalidHomeScreenSchema = Schema.Struct({
   message: Schema.String,
 })
 
+/**
+ * Query params for `CreateSelfHostedApp` (`POST /self-hosted-apps`). The human
+ * `name` is required-non-empty; the server slugs it into the app's id/subdomain
+ * (auto-suffixing on a slug clash). Mirrors the Rust handler's `?name=` param.
+ */
+const CreateSelfHostedAppUrlParamsSchema = Schema.Struct({
+  name: Schema.NonEmptyString,
+})
+
+/**
+ * Request body for `CreateSelfHostedApp`: the app's static files as a raw zip
+ * archive. `withEncoding({ kind: 'Uint8Array', contentType: 'application/zip' })`
+ * sends the bytes verbatim (no JSON/base64 wrapping) under an `application/zip`
+ * content type, matching the Rust handler's `axum::body::Bytes` reader. The
+ * OpenAPI drift guard can't compare this body against utoipa's `Vec<u8>`
+ * rendering, so it's excluded via `requestsNotCompared` and pinned by a focused
+ * test — see `openapi-drift.test.ts`.
+ */
+const ZipPayloadSchema = Schema.Uint8ArrayFromSelf.pipe(
+  HttpApiSchema.withEncoding({ kind: 'Uint8Array', contentType: 'application/zip' })
+)
+
 export {
   AppEntrySchema,
   AppIdPathSchema,
@@ -173,10 +204,12 @@ export {
   AppNotFoundSchema,
   AppUrlSchema,
   CreateAppBodySchema,
+  CreateSelfHostedAppUrlParamsSchema,
   HomeScreenEntrySchema,
   HomeScreenSchema,
   InvalidFieldSchema,
   InvalidHomeScreenSchema,
   ProvenanceSchema,
   UpdateAppBodySchema,
+  ZipPayloadSchema,
 }

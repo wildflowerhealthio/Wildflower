@@ -11,6 +11,7 @@ const makeApp = (id: string, enabled = true): AppEntry => ({
   localOnly: false,
   smart: false,
   requiresTunnel: false,
+  removable: true,
 })
 
 const apps: readonly AppEntry[] = ['a', 'b', 'c', 'd'].map((id) => makeApp(id))

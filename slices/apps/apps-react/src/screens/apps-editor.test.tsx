@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
 // `AppsEditor` reads its three mutations from `queries.ts`. The reset
@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/tes
 // `reset` (so we can assert it fires on open) and a settable `error` (so
 // we can plant a stale error the way a failed write would leave one
 // behind while `Dialog` keeps the children mounted).
-const { homeScreenStub, createStub, deleteStub, isMutatingRef } = vi.hoisted(() => {
+const { homeScreenStub, createStub, deleteStub, selfHostedStub, isMutatingRef } = vi.hoisted(() => {
   const makeMutation = (): {
     readonly mutate: ReturnType<typeof vi.fn>
     readonly reset: ReturnType<typeof vi.fn>
@@ -24,6 +24,7 @@ const { homeScreenStub, createStub, deleteStub, isMutatingRef } = vi.hoisted(() 
     homeScreenStub: makeMutation(),
     createStub: makeMutation(),
     deleteStub: makeMutation(),
+    selfHostedStub: makeMutation(),
     // Controls the mocked `useIsMutating` return — the count of in-flight
     // home-screen PUTs the editor sees (its own + the home screen's drag).
     isMutatingRef: { count: 0 },
@@ -35,6 +36,7 @@ vi.mock('../queries.ts', () => ({
   useReplaceHomeScreenMutation: () => homeScreenStub,
   useAppsAdminCreateMutation: () => createStub,
   useAppsAdminDeleteMutation: () => deleteStub,
+  useSelfHostedAppCreateMutation: () => selfHostedStub,
 }))
 
 // `busy` folds in `useIsMutating` for the shared home-screen key (so a toggle is
@@ -52,16 +54,18 @@ import { AppsEditor } from './apps-editor.tsx'
 // Helpers
 const NO_APPS: readonly AppEntry[] = []
 
-// A row of each provenance. Every row gets an enable-toggle; `provenance` drives
-// only whether `Remove` (cloud) or a read-only provenance tag (non-cloud) renders
-// beside it. The other flags are the lightest valid wire shape; the editor reads
-// only `id`, `name`, `subtitle`, `enabled`, `provenance`.
+// A row fixture. Every row gets an enable-toggle; the server-computed
+// `removable` flag drives only whether `Remove` or a read-only provenance tag
+// renders beside it (defaults to `false` — set it per test). The other flags are
+// the lightest valid wire shape; the editor reads only `id`, `name`, `subtitle`,
+// `enabled`, `provenance`, `removable`.
 const makeApp = (overrides: Partial<AppEntry> & Pick<AppEntry, 'id' | 'provenance'>): AppEntry => ({
   name: overrides.id,
   enabled: true,
   localOnly: false,
   smart: false,
   requiresTunnel: false,
+  removable: false,
   ...overrides,
 })
 
@@ -77,7 +81,7 @@ const rowToggles = (): readonly HTMLElement[] => {
 }
 
 const resetAllStubs = (): void => {
-  for (const stub of [homeScreenStub, createStub, deleteStub]) {
+  for (const stub of [homeScreenStub, createStub, deleteStub, selfHostedStub]) {
     stub.mutate.mockClear()
     stub.reset.mockClear()
     stub.isPending = false
@@ -132,7 +136,7 @@ describe('<AppsEditor> mutation reset on open', () => {
     expect(screen.getByRole('alert').textContent).toBe('toggle failed')
   })
 
-  test('resets all three mutations when the dialog transitions to open', () => {
+  test('resets every mutation when the dialog transitions to open', () => {
     // Arrange — start closed so the open-transition effect has not run.
     const { rerender } = renderEditor(false)
     expect(homeScreenStub.reset).not.toHaveBeenCalled()
@@ -145,6 +149,7 @@ describe('<AppsEditor> mutation reset on open', () => {
     expect(homeScreenStub.reset).toHaveBeenCalledTimes(1)
     expect(createStub.reset).toHaveBeenCalledTimes(1)
     expect(deleteStub.reset).toHaveBeenCalledTimes(1)
+    expect(selfHostedStub.reset).toHaveBeenCalledTimes(1)
   })
 
   test('surfaces the alert from the live mutation error, not a stale snapshot', () => {
@@ -197,19 +202,36 @@ describe('<AppsEditor> provenance gating', () => {
     restoreOrDelete('close', originalClose)
   })
 
-  test('renders an enable toggle for every provenance; Remove only for cloud', () => {
+  test('renders an enable toggle for every provenance; Remove only for removable rows', () => {
     const apps: readonly AppEntry[] = [
       makeApp({ id: 'system-app', name: 'System App', provenance: 'system' }),
       makeApp({ id: 'self-app', name: 'Self App', provenance: 'self-hosted' }),
-      makeApp({ id: 'cloud-app', name: 'Cloud App', provenance: 'cloud' }),
+      makeApp({ id: 'cloud-app', name: 'Cloud App', provenance: 'cloud', removable: true }),
     ]
     render(<AppsEditor open apps={apps} onClose={() => {}} />)
 
     // Every row exposes an enable toggle — `enabled` is homescreen curation,
     // persisted via `PUT /home-screen`, which accepts all provenances.
     expect(rowToggles()).toHaveLength(3)
-    // Only the cloud row is content-editable, so it's the only Remove on screen.
+    // Only the removable row (the cloud app) is content-editable, so it's the
+    // only Remove on screen.
     expect(screen.getAllByRole('button', { name: 'Remove' })).toHaveLength(1)
+  })
+
+  test('Remove follows removable for self-hosted rows (uploaded gets it, seeded does not)', () => {
+    // Both rows are self-hosted, so provenance alone can't decide removal — the
+    // server-computed `removable` flag does: an uploaded app is removable, the
+    // migration-seeded one is not.
+    const apps: readonly AppEntry[] = [
+      makeApp({ id: 'uploaded', name: 'Uploaded App', provenance: 'self-hosted', removable: true }),
+      makeApp({ id: 'patient-browser', name: 'Patient Browser', provenance: 'self-hosted' }),
+    ]
+    render(<AppsEditor open apps={apps} onClose={() => {}} />)
+
+    // Exactly one Remove — the uploaded (removable) row.
+    expect(screen.getAllByRole('button', { name: 'Remove' })).toHaveLength(1)
+    // The seeded row shows the read-only provenance tag in place of Remove.
+    expect(screen.getByText('Self-Hosted')).toBeDefined()
   })
 
   test('non-cloud rows show a read-only provenance tag (matching the tiles casing)', () => {
@@ -262,9 +284,9 @@ describe('<AppsEditor> provenance gating', () => {
     expect(fieldset?.disabled).toBe(true)
   })
 
-  test('a cloud Remove click fires the delete mutation for that app', () => {
+  test('a removable Remove click fires the delete mutation for that app', () => {
     const apps: readonly AppEntry[] = [
-      makeApp({ id: 'cloud-app', name: 'Cloud App', provenance: 'cloud' }),
+      makeApp({ id: 'cloud-app', name: 'Cloud App', provenance: 'cloud', removable: true }),
     ]
     render(<AppsEditor open apps={apps} onClose={() => {}} />)
 
@@ -290,5 +312,110 @@ describe('<AppsEditor> provenance gating', () => {
       { id: 'sys', enabled: true },
       { id: 'cloud-app', enabled: false },
     ])
+  })
+})
+
+describe('<AppsEditor> self-hosted upload', () => {
+  beforeEach(() => {
+    resetAllStubs()
+    HTMLDialogElement.prototype.showModal = function showModal(): void {
+      this.setAttribute('open', '')
+    }
+    HTMLDialogElement.prototype.close = function close(): void {
+      this.removeAttribute('open')
+    }
+  })
+
+  afterEach(() => {
+    cleanup()
+    restoreOrDelete('showModal', originalShowModal)
+    restoreOrDelete('close', originalClose)
+  })
+
+  // Two forms carry a "Name" text input (the cloud "Add app" form and this
+  // one), so locate the self-hosted form by its unique zip file input and scope
+  // queries to it.
+  const selfHostedForm = (): HTMLFormElement => {
+    const form = screen.getByLabelText('Bundle (.zip)').closest('form')
+    if (form === null) throw new Error('self-hosted form not found')
+    return form
+  }
+
+  const selfHostedNameInput = (): HTMLInputElement => {
+    const input = within(selfHostedForm()).getByRole('textbox')
+    if (!(input instanceof HTMLInputElement)) throw new Error('name input not an <input>')
+    return input
+  }
+
+  test('renders the Add self-hosted app section with a zip file input', () => {
+    render(<AppsEditor open apps={NO_APPS} onClose={() => {}} />)
+
+    expect(screen.getByRole('heading', { name: 'Add self-hosted app' })).toBeDefined()
+    const bundleInput = screen.getByLabelText('Bundle (.zip)')
+    expect(bundleInput.getAttribute('type')).toBe('file')
+    expect(bundleInput.getAttribute('accept')).toBe('.zip,application/zip')
+  })
+
+  test('submitting a name + picked zip mutates with the file bytes', async () => {
+    render(<AppsEditor open apps={NO_APPS} onClose={() => {}} />)
+
+    const bytes = new Uint8Array([80, 75, 3, 4]) // "PK\x03\x04" — a zip magic
+    const file = new File([bytes], 'app.zip', { type: 'application/zip' })
+    const bundleInput = screen.getByLabelText('Bundle (.zip)')
+
+    fireEvent.change(selfHostedNameInput(), { target: { value: 'My App' } })
+    fireEvent.change(bundleInput, { target: { files: [file] } })
+    fireEvent.submit(selfHostedForm())
+
+    // The submit handler reads the File asynchronously (`await file.arrayBuffer()`)
+    // before mutating, so wait for the call to land. The mutation receives the
+    // raw file bytes (a `Uint8Array`), not the `File` wrapper — vitest's deep
+    // equality compares typed arrays by content, and the second arg is the
+    // `{ onSuccess }` options object.
+    await waitFor(() => {
+      expect(selfHostedStub.mutate).toHaveBeenCalledWith(
+        { name: 'My App', bytes: new Uint8Array([80, 75, 3, 4]) },
+        expect.anything()
+      )
+    })
+  })
+
+  test('does not mutate when the name or the file is missing', () => {
+    render(<AppsEditor open apps={NO_APPS} onClose={() => {}} />)
+
+    // No name, no file.
+    fireEvent.submit(selfHostedForm())
+    // Name filled, but still no file picked.
+    fireEvent.change(selfHostedNameInput(), { target: { value: 'My App' } })
+    fireEvent.submit(selfHostedForm())
+
+    expect(selfHostedStub.mutate).not.toHaveBeenCalled()
+  })
+
+  test('surfaces the self-hosted mutation error in an alert', () => {
+    selfHostedStub.error = new Error('bad zip')
+    render(<AppsEditor open apps={NO_APPS} onClose={() => {}} />)
+
+    expect(screen.getByRole('alert').textContent).toBe('bad zip')
+  })
+
+  test('locks the whole fieldset while the upload is in flight', () => {
+    selfHostedStub.isPending = true
+    const { container } = render(<AppsEditor open apps={NO_APPS} onClose={() => {}} />)
+
+    expect(container.querySelector('fieldset')?.disabled).toBe(true)
+  })
+
+  test('clears the name field on the open transition', () => {
+    const { rerender } = render(<AppsEditor open apps={NO_APPS} onClose={() => {}} />)
+    fireEvent.change(selfHostedNameInput(), { target: { value: 'lingering' } })
+    expect(selfHostedNameInput().value).toBe('lingering')
+
+    // Close then reopen — the open-transition effect clears the field so a
+    // half-filled upload form can't leak into the next open.
+    rerender(<AppsEditor open={false} apps={NO_APPS} onClose={() => {}} />)
+    rerender(<AppsEditor open apps={NO_APPS} onClose={() => {}} />)
+
+    expect(selfHostedNameInput().value).toBe('')
   })
 })

@@ -10,11 +10,13 @@ import {
   AppNotFoundSchema,
   AppUrlSchema,
   CreateAppBodySchema,
+  CreateSelfHostedAppUrlParamsSchema,
   HomeScreenSchema,
   InvalidFieldSchema,
   InvalidHomeScreenSchema,
   ProvenanceSchema,
   UpdateAppBodySchema,
+  ZipPayloadSchema,
 } from './schemas.ts'
 
 const PROVENANCES = ['system', 'self-hosted', 'cloud'] as const
@@ -200,8 +202,8 @@ describe('AppNotFoundSchema', () => {
 })
 
 describe('InvalidFieldSchema', () => {
-  it('accepts the InvalidUrl and InvalidName discriminants', () => {
-    for (const error of ['InvalidUrl', 'InvalidName'] as const) {
+  it('accepts the InvalidUrl, InvalidName, and InvalidZip discriminants', () => {
+    for (const error of ['InvalidUrl', 'InvalidName', 'InvalidZip'] as const) {
       expectRightToEqual(
         Schema.decodeUnknownEither(InvalidFieldSchema)({ error, message: 'nope' }),
         { error, message: 'nope' }
@@ -248,6 +250,7 @@ describe('AppListEntrySchema', () => {
       smart: fc.boolean(),
       requiresTunnel: fc.boolean(),
       enabled: fc.boolean(),
+      removable: fc.boolean(),
     })
     .chain((base) =>
       fc
@@ -274,6 +277,7 @@ describe('AppListEntrySchema', () => {
         smart: true,
         requiresTunnel: true,
         enabled: true,
+        removable: true,
       }),
       expect.objectContaining({ _tag: 'ParseError' })
     )
@@ -286,7 +290,63 @@ describe('AppListEntrySchema', () => {
         smart: false,
         requiresTunnel: false,
         enabled: true,
+        removable: false,
       }),
+      expect.objectContaining({ _tag: 'ParseError' })
+    )
+  })
+
+  it('rejects a row missing the required removable flag', () => {
+    expectLeftToEqual(
+      Schema.decodeUnknownEither(AppListEntrySchema)({
+        id: 'x',
+        name: 'X',
+        provenance: 'cloud',
+        localOnly: false,
+        smart: false,
+        requiresTunnel: false,
+        enabled: true,
+      }),
+      expect.objectContaining({ _tag: 'ParseError' })
+    )
+  })
+})
+
+describe('CreateSelfHostedAppUrlParamsSchema', () => {
+  it('accepts a non-empty name', () => {
+    expectRightToEqual(
+      Schema.decodeUnknownEither(CreateSelfHostedAppUrlParamsSchema)({ name: 'Patient Browser' }),
+      { name: 'Patient Browser' }
+    )
+  })
+
+  it('rejects an empty name', () => {
+    expectLeftToEqual(
+      Schema.decodeUnknownEither(CreateSelfHostedAppUrlParamsSchema)({ name: '' }),
+      expect.objectContaining({ _tag: 'ParseError' })
+    )
+  })
+
+  it('rejects a body missing name', () => {
+    expectLeftToEqual(
+      Schema.decodeUnknownEither(CreateSelfHostedAppUrlParamsSchema)({}),
+      expect.objectContaining({ _tag: 'ParseError' })
+    )
+  })
+})
+
+describe('ZipPayloadSchema', () => {
+  it('decodes a Uint8Array of zip bytes to itself', () => {
+    fc.assert(
+      fc.property(fc.uint8Array(), (bytes) => {
+        expectRightToEqual(Schema.decodeUnknownEither(ZipPayloadSchema)(bytes), bytes)
+      })
+    )
+  })
+
+  it('rejects a non-Uint8Array payload', () => {
+    expectLeftToEqual(
+      Schema.decodeUnknownEither(ZipPayloadSchema)([1, 2, 3]),
       expect.objectContaining({ _tag: 'ParseError' })
     )
   })

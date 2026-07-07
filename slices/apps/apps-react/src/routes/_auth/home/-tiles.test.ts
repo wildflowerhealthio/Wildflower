@@ -10,6 +10,7 @@ const makeApp = (overrides: Partial<AppEntry> & Pick<AppEntry, 'provenance'>): A
   localOnly: false,
   smart: false,
   requiresTunnel: false,
+  removable: false,
   ...overrides,
 })
 

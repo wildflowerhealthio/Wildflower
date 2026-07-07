@@ -15,6 +15,7 @@ const app: AppEntry = {
   localOnly: false,
   smart: false,
   requiresTunnel: false,
+  removable: true,
 }
 
 // Some launches need a hidden form to submit to; build one fresh per test
