@@ -203,8 +203,7 @@ async fn render_and_cache(req: Request, next: Next) -> Response {
 /// error (e.g. a strict-mode miss on an unknown variable) is logged and
 /// answered with an opaque 500.
 fn render_template(state: &TemplateState, serve_path_lower: &str, headers: &HeaderMap) -> Response {
-    // The loopback caller's origin is derived from the base URL here, at the
-    // point of use — the boundary where the template actually needs the string.
+    // Derived lazily — only the else-branch (a loopback caller) needs it.
     let make_loopback_origin = || {
         state
             .context
@@ -212,13 +211,10 @@ fn render_template(state: &TemplateState, serve_path_lower: &str, headers: &Head
             .origin()
             .ascii_serialization()
     };
-    // Only the forwarded/loopback distinction matters here — the served base URL
-    // is unused (a forwarded template resolves its origin from the tunnel's
-    // configured public host, not the request), so the boolean `is_forwarded` is
-    // the exact fit. A forwarded request with no configured public host has no
-    // reachable API origin, so it 500s rather than falling back to the loopback
-    // origin: a remote browser can't reach loopback, and a forwarded request must
-    // never be handed the local origin.
+    // Only the forwarded/loopback distinction matters, so `is_forwarded` is the
+    // exact fit. A forwarded request with no configured public host 500s rather
+    // than falling back to loopback — a remote browser can't reach loopback, and a
+    // forwarded request must never be handed the local origin.
     let api_origin = if is_forwarded(headers) {
         let maybe_api_origin = state
             .context

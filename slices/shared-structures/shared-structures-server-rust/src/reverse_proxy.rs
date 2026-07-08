@@ -167,12 +167,9 @@ async fn maybe_forward_to_subdomain(
     req: Request,
     next: Next,
 ) -> Response {
-    // Only forwarded requests carry a subdomain to dispatch on. A `None`
-    // provenance (a forwarded host that cleared `safe_host` but failed to parse)
-    // and `Loopback` both fall through to the fallback — this middleware is
-    // opportunistic subdomain routing, so it never errors a request it can't
-    // route, matching the `no public host` / `no registered app` fall-throughs
-    // below.
+    // Only a `Forwarded` provenance carries a subdomain to dispatch on; `Loopback`
+    // and a rejected `None` both fall through. This routing is opportunistic — it
+    // never errors a request it can't route (like the fall-throughs below).
     let Some(RequestProvenance::Forwarded { base_url }) = request_provenance(req.headers()) else {
         return next.run(req).await;
     };

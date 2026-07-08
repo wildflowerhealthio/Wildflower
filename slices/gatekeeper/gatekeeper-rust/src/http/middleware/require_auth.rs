@@ -119,6 +119,10 @@ pub fn verify_owner_token(
     Ok(claims)
 }
 
+/// Verify `token` for `origin`, accepting the per-request served-origin audiences
+/// (`{origin}` and `{origin}/fhir-r4`) plus the canonical audience — honoured
+/// only for the `wf_owner`-marked host owner token, which is presented at every
+/// served origin (#256). See `docs/Origins/Explanation.md`.
 pub fn verify_auth_token_claims(
     state: &AppState,
     origin: &str,
@@ -131,16 +135,8 @@ pub fn verify_auth_token_claims(
     let accepted = vec![
         format!("{origin}/fhir-r4"),
         origin.to_string(),
-        // The host owner token's canonical audience: the host presents that
-        // one token over loopback AND at the tunnel origin (the popup's
-        // seeded `wf_auth` cookie, #256), so it can't carry a served-origin
-        // `aud`. Accepting it here is gated by the `wf_owner` marker check
-        // below, so this acceptance can't be borrowed by any other token.
         shared_structures_rust::CANONICAL_ISSUER.to_string(),
     ];
-    // `iss` must equal [`shared_structures_rust::CANONICAL_ISSUER`]; `aud` is
-    // checked per-request against this origin (and its `/fhir-r4` base), plus
-    // the canonical audience. See `docs/Origins/Explanation.md`.
     let claims = verify_jwt(
         token,
         &keys,
@@ -149,13 +145,7 @@ pub fn verify_auth_token_claims(
             accepted_audiences: &accepted,
         },
     )?;
-    // The canonical audience is accepted at *every* served origin, so it must
-    // be reserved for the one token that legitimately needs it: the host owner
-    // token, which carries the `wf_owner` marker. Any other token that reaches
-    // us via the canonical audience — a future minting bug, a copied pattern, a
-    // leaked-and-replayed token — is rejected here, restoring the per-origin
-    // binding for every non-owner token. A token that matched a served-origin
-    // `aud` never trips this. See `docs/Origins/Explanation.md`.
+    // Reject any non-owner token that presents the canonical audience.
     let via_canonical_audience = claims
         .audience
         .iter()

@@ -47,15 +47,11 @@ pub struct SelfHostedAppsService {
 }
 
 impl SelfHostedAppsService {
-    /// `loopback_base_url` is the host's loopback base URL (e.g.
-    /// `http://127.0.0.1:8080/`) — threaded through as-is to the loopback
-    /// listeners ([`StaticHostsService`], which picks out the bind host) and to
-    /// each app router's template context (which derives the loopback `apiOrigin`
-    /// per request), so nothing pre-splits it and the two can't drift. `apps_dir`
-    /// holds the per-app `content_folder` file directories; `proxy_table` is
-    /// shared with the reverse proxy. `tunnel` is the other per-request
-    /// template-render input each app router threads through to render `apiOrigin`
-    /// — loopback vs. forwarded — for its committed templates.
+    /// `loopback_base_url` (e.g. `http://127.0.0.1:8080/`) is threaded as-is to the
+    /// loopback listeners and to each app router's template context (which derives
+    /// the loopback `apiOrigin` per request), so the two can't drift. `apps_dir`
+    /// holds the per-app `content_folder` directories; `proxy_table` is shared with
+    /// the reverse proxy; `tunnel` is the other per-request template-render input.
     #[must_use]
     pub fn new(
         loopback_base_url: &Url,

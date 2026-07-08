@@ -143,15 +143,11 @@ const DeclinedView = (): JSX.Element => (
  * without the full stream subscription.
  */
 const PendingView = ({ id }: { readonly id: string }): JSX.Element => {
-  // Gate on a *fresh* auth signal, not merely `isAuthed`. A stale
-  // `wf_auth_exp` cookie makes the page believe the viewer is authed while
-  // the server will 401 the consent fetch (issue #256). Treating a lapsed
-  // `AuthedUntil` as unauthed keeps such a viewer on the "Waiting for
-  // Approval" spinner — identical to a genuinely unauthenticated viewer,
-  // and with the polling stream still mounted so a phone-side approval
-  // advances the page — instead of mounting `InlineConsent` into a doomed
-  // fetch. So the expected 401 is handled at its source here, and the only
-  // errors that reach the boundary below are genuine.
+  // Gate on a *fresh* signal, not merely `isAuthed`: a stale `wf_auth_exp` cookie
+  // reads as authed but the server will 401 the consent fetch (#256). A lapsed
+  // `AuthedUntil` keeps this viewer on the spinner (stream still mounted, so a
+  // phone-side approval advances the page) instead of mounting a doomed
+  // `InlineConsent` — so only genuine errors reach the boundary below.
   const authSignal = useSubscribable(useAuthStateSubscribable())
   if (!isFreshlyAuthed(authSignal, Date.now() / 1000)) return <PollingSpinner />
 

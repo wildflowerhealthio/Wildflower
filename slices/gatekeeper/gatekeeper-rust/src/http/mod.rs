@@ -17,11 +17,9 @@ pub(crate) use origin::ServedOrigin;
 // Re-export so call sites read `crate::http::served_base_url_for` without the
 // `shared_structures_rust::` prefix. See `docs/Origins/Explanation.md`.
 pub(crate) use shared_structures_rust::served_origin::served_base_url_for;
-// The owner-session cookie builder the Tauri host seeds into the tunnel-origin
-// native-webview popup (#256) — exported so the popup cookie can't drift from
-// the web path's `Set-Cookie` attributes. `rescope_owner_session_set_cookies`
-// is its `Set-Cookie`-shaped sibling: the apps launch handler (via a host-wired
-// seam) re-scopes the caller's session onto a forwarded self-hosted app's host.
+// The owner-session cookie builders, exported so the popup seed (#256) and the
+// forwarded-launch re-scope can't drift from the web path's `Set-Cookie`
+// attributes. See `docs/Apps/Explanation.md`.
 pub use cookies::{owner_session_cookies, rescope_owner_session_set_cookies};
 // The shared "insert an `Authorization: Bearer` only when absent" helper — the
 // FHIR bearer gate and the Tauri loopback-owner-trust middleware both use it.

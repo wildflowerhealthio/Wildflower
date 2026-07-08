@@ -71,14 +71,11 @@ impl OwnerAuth for GatekeeperOwnerAuth {
     }
 }
 
-/// The host's [`apps_rust::LaunchCookies`]: a forwarded self-hosted app launch
-/// redirects the browser to the app's own subdomain (`<id>.<public_host>`), which
-/// the host-only `wf_auth` never reaches. This re-scopes the caller's owner
-/// session onto the app's public host — delegated to
-/// [`gatekeeper_rust::rescope_owner_session_set_cookies`], which owns the cookie
-/// name + attribute set — so the launch `302` plants a session the app's origin
-/// can carry. A loopback launch never reaches this: it `204`s to a native popup,
-/// whose cookies are seeded separately (see `native_webview_handle`).
+/// The host's [`apps_rust::LaunchCookies`]: delegates to
+/// [`gatekeeper_rust::rescope_owner_session_set_cookies`] (which owns the cookie
+/// name + attribute set) to re-scope the caller's owner session onto a forwarded
+/// self-hosted app's public host. Loopback launches instead `204` to a native
+/// popup whose cookies are seeded separately (see `native_webview_handle`).
 #[derive(Clone, Copy)]
 struct GatekeeperLaunchCookies;
 
@@ -319,12 +316,10 @@ async fn run_server(
     };
     // `TunnelControl` implements `TunnelService`, so it's handed straight in.
     let tunnel_service: Arc<dyn tunnel_rust::TunnelService> = Arc::new(tunnel.control.clone());
-    // Install the host's on-device webview handle: for a loopback caller the
-    // launch handler hands it the resolved URL to open in a native webview popup
-    // (the server 204s, so the SPA stays mounted). It carries the owner-token
-    // watch channel and the tunnel service so a tunnel-origin launch can seed
-    // the owner session cookies into the popup before it opens (#256). See
-    // `native_webview_handle`.
+    // Install the host's on-device webview handle: a loopback launch hands it the
+    // resolved URL to open in a native popup (the server 204s). It carries the
+    // owner-token watch + tunnel service to seed the popup's session cookies (#256).
+    // See `native_webview_handle`.
     let webview_handle: Arc<dyn apps_rust::OnDeviceWebviewHandle> =
         Arc::new(native_webview_handle::NativeWebviewHandle::new(
             app_handle.clone(),
@@ -337,9 +332,7 @@ async fn run_server(
     let owner_auth: Arc<dyn OwnerAuth> = Arc::new(GatekeeperOwnerAuth {
         state: gatekeeper.state.clone(),
     });
-    // The forwarded self-hosted launch cookie seam: re-scopes the caller's owner
-    // session onto the app's public host so its subdomain (unreachable by the
-    // host-only `wf_auth`) carries auth after the `302`.
+    // The forwarded self-hosted launch cookie seam (see `GatekeeperLaunchCookies`).
     let launch_cookies: Arc<dyn LaunchCookies> = Arc::new(GatekeeperLaunchCookies);
     let apps = setup_apps(
         db,

@@ -825,10 +825,8 @@ async fn auth_code_grant_happy_path_end_to_end() {
     );
     let res = g.router.clone().oneshot(approve).await.expect("oneshot");
     assert_eq!(res.status(), StatusCode::OK);
-    // The code-flow approve response carries the client callback URL so an
-    // approving surface that is itself the requesting client can finish the
-    // flow inline. It must point at the client's `redirect_uri` and carry both
-    // the redeemable `code` and the client's `state`.
+    // The approve response's inline-completion redirect must target the client's
+    // `redirect_uri` and carry both the redeemable `code` and the client's `state`.
     let approve_body = body_json(res.into_body()).await;
     assert_eq!(approve_body["status"], "approved");
     let approve_redirect = approve_body["redirect"].as_str().expect("approve redirect");

@@ -316,9 +316,8 @@ mod tests {
     }
 
     /// A forwarded self-hosted launch plants the re-scoped owner session on the
-    /// `302`, and asks the seam to scope it onto the tunnel `public_host` (which
-    /// built the subdomain URL) — so the app's own subdomain, unreachable by the
-    /// host-only `wf_auth`, carries the session once the browser follows.
+    /// `302`, asking the seam to scope it onto the same `public_host` that built
+    /// the subdomain URL.
     #[tokio::test]
     async fn launch_self_hosted_forwarded_plants_rescoped_session_cookie() {
         let recorder = Arc::new(RecordingLaunchCookies::default());
@@ -366,9 +365,8 @@ mod tests {
     }
 
     /// A *loopback* self-hosted launch plants no session cookie: it `204`s to the
-    /// `127.0.0.1` origin (which the host-only cookie already reaches, and where
-    /// the desktop webview authenticates on connection provenance), so the seam is
-    /// never asked.
+    /// `127.0.0.1` origin (already reached by the host cookie / connection
+    /// provenance), so the seam is never asked.
     #[tokio::test]
     async fn launch_self_hosted_loopback_plants_no_session_cookie() {
         let recorder = Arc::new(RecordingLaunchCookies::default());

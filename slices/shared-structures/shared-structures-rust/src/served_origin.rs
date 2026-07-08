@@ -70,18 +70,15 @@ pub enum RequestProvenance {
 /// - header present, but the `host` is missing, fails [`safe_host`], or won't
 ///   parse as a URL authority → `None`
 ///
-/// The last case returns `None` — **not** `Loopback`. A request that carried a
-/// `Forwarded` header came through the front; treating its malformed form as a
-/// direct-local caller would hand a tunnel-relayed remote caller local trust
-/// (the served origin, and via [`is_forwarded`] the host owner token). `None` is
-/// surfaced as a hard failure (consumers `500`) instead. See
-/// `docs/Origins/Explanation.md`. A missing/invalid `proto` still defaults to
-/// `https` — only the `host` is load-bearing for the forwarded/loopback split.
+/// The last case returns `None`, **not** `Loopback`: a malformed header still
+/// came through the front, so collapsing it to loopback would hand a relayed
+/// caller local trust (see the module docs). A missing/invalid `proto` defaults
+/// to `https` — only the `host` is load-bearing for the forwarded/loopback split.
 pub fn request_provenance(headers: &HeaderMap) -> Option<RequestProvenance> {
     let Some(forwarded) = headers.get("forwarded") else {
         return Some(RequestProvenance::Loopback);
     };
-    // Header present ⇒ forwarded. Resolve a base URL from the last element's
+    // Header present ⇒ forwarded. Resolve a base URL from the last element.
     forwarded
         .to_str()
         .ok()
@@ -110,14 +107,10 @@ pub fn served_base_url_for(headers: &HeaderMap, loopback_base_url: &Url) -> Opti
 /// Whether the request was forwarded by the trusted front, as a bool — `true`
 /// iff a `Forwarded` header is **present** (in any form).
 ///
-/// SECURITY: keys on presence alone, *not* on [`safe_host`]. The trusted front
-/// sets a `Forwarded` header on every relayed request, so its mere presence is
-/// what marks a request as forwarded. A malformed value must still read as
-/// forwarded — otherwise a tunnel-relayed caller who malforms their `Host` would
-/// look direct-local and (per callers like the desktop host's owner-token
-/// injection, gated on `!is_forwarded`) inherit local-owner trust. Keying on
-/// presence keeps this in lockstep with [`request_provenance`]: `is_forwarded`
-/// is `true` exactly when `request_provenance` is not `Some(Loopback)`.
+/// SECURITY: keys on presence alone, *not* on [`safe_host`], so a malformed
+/// `Host` can't flip a relayed caller to direct-local and let it inherit the
+/// `!is_forwarded`-gated local-owner trust (e.g. the desktop host's owner-token
+/// injection). `true` exactly when [`request_provenance`] is not `Some(Loopback)`.
 pub fn is_forwarded(headers: &HeaderMap) -> bool {
     headers.contains_key("forwarded")
 }
@@ -251,10 +244,7 @@ mod tests {
 
     #[test]
     fn forwarded_header_without_a_host_param_is_rejected_not_loopback() {
-        // `for`/`proto` present but no `host`: the request still carried a
-        // `Forwarded` header, so it came through the front. It is forwarded (not
-        // loopback) but unresolvable — rejected as `None`, never collapsed to a
-        // loopback fallback that would grant a relayed caller local trust.
+        // Present header, no `host` param → forwarded but unresolvable → `None`.
         let h = forwarded("for=192.0.2.1;proto=https");
         assert_eq!(request_provenance(&h), None);
         assert_eq!(served_base_url_for(&h, &loopback()), None);
@@ -302,11 +292,8 @@ mod tests {
 
     #[test]
     fn forwarded_host_that_passes_validation_but_fails_url_parse_reads_as_none() {
-        // A port with no host (`:8080`) clears `safe_host` — it has no
-        // whitespace, control chars, or URL-structural delimiters — but is not a
-        // valid URL authority, so `Url::parse` rejects it. That surfaces as
-        // `None` (consumers `500`), never a silent loopback fallback.
-        // `is_forwarded` still reports `true`: a `Forwarded` header is present.
+        // `:8080` clears `safe_host` but isn't a valid URL authority, so
+        // `Url::parse` rejects it → `None`; the header is present, so `is_forwarded`.
         let h = forwarded("host=:8080");
         assert_eq!(request_provenance(&h), None);
         assert_eq!(served_base_url_for(&h, &loopback()), None);
@@ -315,13 +302,9 @@ mod tests {
 
     #[test]
     fn is_forwarded_agrees_with_request_provenance() {
-        // `is_forwarded` doesn't route through `request_provenance` (it skips the
-        // resolve), so pin the invariant that the two still agree on what counts
-        // as forwarded for every input — valid, absent, host-less, empty host,
-        // chains, a rejected delimiter, and a host that fails to parse.
-        // `is_forwarded` is `true` exactly when `request_provenance` is *not*
-        // `Some(Loopback)` — i.e. `Forwarded` or a rejected `None`, both of which
-        // carried a `Forwarded` header. Only header *absence* is loopback.
+        // `is_forwarded` skips the resolve, so pin that it still agrees with
+        // `request_provenance` (`true` iff not `Some(Loopback)`) across every
+        // shape — valid, absent, host-less, empty, chains, delimiters, unparseable.
         let cases: [&[(&str, &str)]; 8] = [
             &[],
             &[("forwarded", "proto=https;host=demo.example.com")],
@@ -344,10 +327,7 @@ mod tests {
 
     #[test]
     fn empty_forwarded_host_is_rejected_not_loopback() {
-        // An empty `host` would render `Location: https://` (no authority) and is
-        // rejected by the validator. The `Forwarded` header is still present, so
-        // this is a forwarded-but-unresolvable request — rejected as `None`, not
-        // a loopback fallback.
+        // Empty `host` would render `Location: https://` (no authority) → rejected.
         let h = forwarded("proto=https;host=");
         assert_eq!(request_provenance(&h), None);
         assert_eq!(served_base_url_for(&h, &loopback()), None);
@@ -356,10 +336,8 @@ mod tests {
 
     #[test]
     fn forwarded_host_with_control_or_whitespace_is_rejected_not_loopback() {
-        // Embedded space / tab / path segment have no business in a host[:port]
-        // shape; the validator rejects each so the rendered `Location` can't
-        // carry them. (CR/LF/NUL never reach us — hyper rejects them at the
-        // HTTP layer.) A present-but-malformed header is rejected, never loopback.
+        // Space / tab / path segment don't belong in a host[:port]; the validator
+        // rejects each. (CR/LF/NUL never reach us — hyper rejects them first.)
         for bad in [
             "host=demo.example.com evil",
             "host=demo.example.com\tevil",
@@ -380,13 +358,10 @@ mod tests {
 
     #[test]
     fn forwarded_host_with_url_delimiters_is_rejected_not_loopback() {
-        // `@` (userinfo), `\` (folded to `/` by the WHATWG URL parser for
-        // http/https), and `?` / `#` (query / fragment) each let a rendered
-        // `Location` resolve to a different authority than it looks like — e.g.
-        // `https://trusted.example.com@evil.example.com` navigates to
-        // `evil.example.com`. The validator rejects them; because a `Forwarded`
-        // header is present, the request is rejected as `None`, never served as a
-        // loopback fallback (which would hand the relayed caller local trust).
+        // `@` (userinfo), `\` (folded to `/` by the WHATWG URL parser), and
+        // `?`/`#` each let a `Location` resolve to a different authority than it
+        // looks like — `https://trusted.example.com@evil.example.com` navigates to
+        // `evil.example.com`. The validator rejects them.
         for bad in [
             "host=trusted.example.com@evil.example.com",
             "host=demo.example.com\\evil.example.com",
@@ -409,14 +384,9 @@ mod tests {
 
     #[test]
     fn is_forwarded_stays_true_for_a_present_but_malformed_forwarded_header() {
-        // SECURITY REGRESSION GUARD: the desktop host injects its owner bearer
-        // only for a request gated on `!is_forwarded` (see the wildflower-tauri
-        // loopback-owner-trust middleware). A tunnel-relayed caller arrives over
-        // loopback (nginx relays over loopback), so `is_forwarded` is the *only*
-        // thing separating it from a genuine local owner. If a malformed `Host`
-        // could flip `is_forwarded` to `false`, a remote caller would inherit
-        // owner trust. `is_forwarded` therefore keys on header *presence*, not
-        // `safe_host`, and must stay `true` for every malformed-but-present shape.
+        // SECURITY REGRESSION GUARD: a malformed `Host` must not flip `is_forwarded`
+        // to `false`, or a tunnel-relayed caller (which arrives over loopback) would
+        // inherit the `!is_forwarded`-gated owner trust. See the `is_forwarded` doc.
         for malformed in [
             "host=",                                     // empty host
             "for=192.0.2.1;proto=https",                 // no host param

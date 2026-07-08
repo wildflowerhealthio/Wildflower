@@ -106,9 +106,8 @@ pub(crate) async fn smart_configuration_handler(
     State(state): State<SmartConfigState>,
     headers: HeaderMap,
 ) -> Response {
-    // A forwarded host that cleared validation but failed to parse leaves no
-    // base URL to advertise endpoints from — 500 rather than serve a discovery
-    // doc with malformed URLs.
+    // No served base URL (a forwarded header that cleared validation but failed to
+    // parse) → 500 rather than a discovery doc with malformed URLs.
     let Some(base_url) = served_base_url_for(&headers, &state.loopback_base_url) else {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };

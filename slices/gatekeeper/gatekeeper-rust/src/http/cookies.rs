@@ -124,25 +124,12 @@ fn owner_session_cookies_at(
 }
 
 /// Re-scope the caller's owner session onto `host` for a **forwarded self-hosted
-/// app launch**, as ready-to-attach `Set-Cookie` header values.
-///
-/// A self-hosted app reachable remotely is served at its own subdomain
-/// `https://<subdomain>.<host>/`; the web session `wf_auth` is **host-only** on
-/// `<host>`, so it never rides to that subdomain and the app's own origin would
-/// carry no owner session. This reads the raw JWT the caller already presents in
-/// `wf_auth` and re-emits both session cookies via [`owner_session_cookies`] with
-/// `Domain=<host>` (subdomain-inclusive), so the browser holds the owner session
-/// on the app's origin once it follows the launch `302`. Empty when the caller
-/// carries no `wf_auth` (nothing to re-scope) — the launch then plants nothing.
-///
-/// This only *widens the scope* of a token the caller already holds; it mints
-/// nothing. `Secure` is always set — a forwarded launch is served over https.
-/// `host` must be the full tunnel `public_host`; the [`owner_session_cookies`]
-/// multi-tenant `Domain` guard (never a registrable parent) applies unchanged.
-///
-/// Kept beside [`owner_session_cookies`] so the `wf_auth` cookie name + attribute
-/// set stay owned by this slice; the apps launch handler reaches it only through
-/// a host-wired seam, never learning the cookie shape itself.
+/// app launch**, as ready-to-attach `Set-Cookie` header values (see
+/// `docs/Apps/Explanation.md`). Reads the raw JWT the caller presents in `wf_auth`
+/// and re-emits both session cookies via [`owner_session_cookies`] with
+/// `Domain=host` (subdomain-inclusive); empty when the caller carries no `wf_auth`.
+/// Widens scope only — it mints nothing. `host` must be the full tunnel
+/// `public_host`, so [`owner_session_cookies`]' multi-tenant `Domain` guard applies.
 #[must_use]
 pub fn rescope_owner_session_set_cookies(headers: &HeaderMap, host: &str) -> Vec<HeaderValue> {
     match cookie_value(headers, AUTH_COOKIE_NAME) {
@@ -302,11 +289,9 @@ mod tests {
         format!("{header}.{payload}.sig")
     }
 
-    /// The multi-tenant Domain guard: the tunnel public host is itself a
-    /// subdomain of a shared provider domain, and the cookie's `Domain` must be
-    /// that full host — never its registrable parent, which would ship the
-    /// owner bearer to every other tenant's tunnel. Whole-value assertions so
-    /// any attribute drift from the web path's cookie fails loudly.
+    /// The multi-tenant Domain guard: the cookie's `Domain` must be the full tenant
+    /// host, never its registrable parent (which would ship the owner bearer to
+    /// sibling tenants). Whole-value assertions so any attribute drift fails loudly.
     #[test]
     fn owner_session_cookies_scope_domain_to_the_full_tenant_host() {
         let now = 1_750_000_000;

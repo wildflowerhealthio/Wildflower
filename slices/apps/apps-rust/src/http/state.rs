@@ -36,10 +36,9 @@ pub struct AppsState {
     /// popup supplies a no-op handle (only forwarded callers reach such a host,
     /// so it's never invoked).
     pub(crate) on_device_webview_handle: Arc<dyn OnDeviceWebviewHandle>,
-    /// Re-scopes the caller's owner session onto a **forwarded self-hosted**
-    /// app's public host, so the `302` plants a session the app's own subdomain
-    /// can carry (the host-only `wf_auth` can't reach it). The host wires the
-    /// gatekeeper cookie builder; a host with no cookie-auth path wires a no-op.
+    /// Re-scopes the caller's owner session onto a **forwarded self-hosted** app's
+    /// public host (see [`LaunchCookies`]). The host wires the gatekeeper cookie
+    /// builder; a host with no cookie-auth path wires a no-op.
     pub(crate) launch_cookies: Arc<dyn LaunchCookies>,
 }
 

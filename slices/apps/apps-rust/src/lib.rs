@@ -106,10 +106,9 @@ impl Apps {
 /// loopback launch opens the resolved URL through it and `204`s. The Tauri host
 /// passes a native-webview opener; a host with no native popup passes a no-op.
 ///
-/// `launch_cookies` is the host seam that re-scopes the caller's owner session
-/// onto a forwarded self-hosted app's public host, so the `302` plants a session
-/// the app's own subdomain can carry. The Tauri host passes the gatekeeper cookie
-/// builder; a host with no cookie-auth path passes [`NoLaunchCookies`].
+/// `launch_cookies` is the host seam re-scoping the caller's owner session onto a
+/// forwarded self-hosted app's public host (see [`LaunchCookies`]). The Tauri host
+/// passes the gatekeeper cookie builder; others pass [`NoLaunchCookies`].
 ///
 /// # Errors
 ///

@@ -112,21 +112,15 @@ impl OnDeviceWebviewHandle for NativeWebviewHandle {
 /// Seeds only when **all** hold:
 /// - a host owner token exists;
 /// - a tunnel `public_host` is configured;
-/// - the target scheme is **https** — for the loopback provenance that reaches
-///   `open()`, http targets (loopback / self-hosted / system, all
-///   `http://127.0.0.1…`) already authenticate by connection provenance and
+/// - the target scheme is **https** — http targets (loopback / self-hosted /
+///   system, all `http://127.0.0.1…`) authenticate by connection provenance and
 ///   need no cookie.
 ///
-/// The target's host is deliberately NOT required to be under the tunnel host:
-/// a cloud app's launch URL points at the app's **own** domain (e.g.
-/// `https://hbr.alumicoin.cloud/launch?iss=https://<tunnel host>/fhir-r4…`),
-/// and the tunnel origin only appears when the app redirects back into the
-/// gatekeeper authorize flow. What confines the bearer is the cookie's
-/// `Domain=<tunnel host>` (subdomain-inclusive) — the store holds it, but it is
-/// only ever *sent* to the tunnel host and its subdomains, never to the
-/// third-party origin. See the multi-tenant guard on
-/// [`gatekeeper_rust::owner_session_cookies`]. For an https app that never
-/// touches the tunnel, the seeded cookie just sits unused.
+/// The target host need not be under the tunnel host: a cloud app's launch URL is
+/// on its own domain, and the tunnel origin only appears when it redirects into
+/// the gatekeeper authorize flow. The cookie's `Domain=<tunnel host>` confines the
+/// bearer regardless (see the multi-tenant guard on
+/// [`gatekeeper_rust::owner_session_cookies`]), so seeding is always safe.
 fn cookies_for_target(
     token: Option<&str>,
     url: &str,
@@ -172,15 +166,11 @@ fn cookie_spec_from(cookie: &tauri::webview::cookie::Cookie<'_>, tunnel_host: &s
 /// navigation.
 ///
 /// Validates the URL is `http(s)://` (defense-in-depth — the server already
-/// builds it from a trusted loopback/tunnel origin), then `open_url`s it and
-/// `show`s the popup. The plugin's hide/dispose model keeps visibility
-/// independent of content, so building/navigating (`open_url`) and presenting
-/// (`show`) are two calls — mirroring the sniffer's present path. The apps
-/// launch flow has no host↔popup bridge of its own (no sniffing, no host→web
-/// reply), so it injects no `init_script` and passes a no-op event channel — the
-/// popup is self-contained and the user closes it from the native chrome. Both calls
-/// are idempotent: a second launch while a popup is up navigates the existing
-/// content webview and re-shows it rather than stacking a new presentation.
+/// builds it from a trusted origin), then `open_url`s it and `show`s it (two
+/// calls, per the plugin's visibility-independent-of-content model). The apps
+/// launch has no host↔popup bridge, so it injects no `init_script` and passes a
+/// no-op event channel. Both calls are idempotent: a second launch navigates the
+/// existing popup rather than stacking a new one.
 fn open_app_in_native_webview(
     handle: &AppHandle,
     title: String,
@@ -196,12 +186,8 @@ fn open_app_in_native_webview(
     shared_structures_tauri_rust::resolve_http_url(&url)
         .map_err(|error| anyhow::anyhow!("launch URL rejected: {error}"))?;
 
-    // No popup events to consume: native chrome owns the Close button and the
-    // apps flow expects no host→web reply, so a no-op channel satisfies the
-    // plugin's `open_url` contract without re-emitting anything onto a bridge.
-    // Unlike the sniffer, the apps launch holds no long-lived channel — it never
-    // reacts to `Hidden`/`Disposed`; the plugin's own teardown backstop reclaims
-    // an idle-hidden popup.
+    // No popup events to consume: native chrome owns Close and the apps flow
+    // expects no host→web reply, so a no-op channel satisfies `open_url`.
     let channel: Channel<NativeWebviewEvent> = Channel::new(|_event| Ok(()));
     // The domain the cookies are scoped to, kept for the read-back below — the
     // launch URL itself is typically on the third-party app's domain, where a
@@ -223,12 +209,9 @@ fn open_app_in_native_webview(
             cookies,
         })
         .map_err(|error| anyhow::anyhow!("tauri-plugin-native-webview open_url failed: {error}"))?;
-    // Desktop `open_url` returns only after build + cookie seed + navigate, so
-    // a read-back here observes the committed store. Queried against the
-    // seeded *domain* (the tunnel host), not the launch URL — the cookie is
-    // deliberately invisible to the third-party launch origin. Names only
-    // (never values); an empty read-back is the smoking gun for a platform
-    // cookie-write failure.
+    // Desktop `open_url` returns after the cookie seed commits, so read the store
+    // back — against the seeded *domain* (the tunnel host), not the launch URL.
+    // Names only; an empty read-back is the smoking gun for a cookie-write failure.
     #[cfg(desktop)]
     if let Some(domain) = seeded_domain {
         if let Ok(parsed) = tauri::Url::parse(&format!("https://{domain}/")) {
@@ -281,10 +264,8 @@ mod tests {
         }
     }
 
-    /// A cloud app's launch URL points at the app's OWN third-party domain
-    /// (the tunnel origin only appears when it redirects back for authorize) —
-    /// it still seeds, and the `Domain` stays the tunnel host, so the bearer is
-    /// only ever sent to the tunnel origin, never the third-party one.
+    /// A cloud app's launch URL is on its own third-party domain, yet it still
+    /// seeds — the `Domain` stays the tunnel host, so the bearer never reaches it.
     #[test]
     fn seeds_for_a_third_party_https_target_with_tunnel_domain() {
         for url in [

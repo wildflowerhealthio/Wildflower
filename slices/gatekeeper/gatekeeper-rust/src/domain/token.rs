@@ -50,11 +50,9 @@ pub struct AccessTokenClaims {
     /// Optional SMART-on-FHIR patient context.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub patient: Option<String>,
-    /// Marks the single boot-minted host owner token — the only token permitted
-    /// to authenticate via the canonical audience (`aud = CANONICAL_ISSUER`,
-    /// accepted at every served origin). Absent (never `false`) on every other
-    /// token, so it costs nothing on the wire and can't be mistaken for a claim
-    /// SMART clients read.
+    /// Marks the boot-minted host owner token — the only token `require_auth`
+    /// lets authenticate via the canonical audience. A private claim, absent
+    /// (never `false`) on every other token. See `docs/Origins/Explanation.md`.
     #[serde(rename = "wf_owner", skip_serializing_if = "Option::is_none")]
     pub host_owner: Option<bool>,
 }

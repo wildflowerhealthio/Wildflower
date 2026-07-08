@@ -21,9 +21,7 @@
 //!      handing the (already owner-checked) URL to the host webview; a forwarded
 //!      launch `302`s. A forwarded **self-hosted** launch additionally plants a
 //!      `Set-Cookie` re-scoping the caller's owner session onto the app's public
-//!      host (see [`crate::http::LaunchCookies`]): the app is served at its own
-//!      subdomain `<id>.<public_host>`, which the host-only `wf_auth` never
-//!      reaches, so without this the app's origin would carry no session.
+//!      host — see [`crate::http::LaunchCookies`] and `docs/Apps/Explanation.md`.
 //!
 //! The auth posture (loopback owner-gated, forwarded on the front trust
 //! boundary) is canonical in `docs/Apps/Explanation.md` §"Auth posture"; the
@@ -106,11 +104,8 @@ pub(crate) async fn handle_launch_app(
                 .open(resolved.name, resolved.target_url);
             Ok(no_content())
         }
-        // A forwarded self-hosted launch redirects the browser to the app's own
-        // subdomain; re-scope the caller's session onto its public host so the
-        // app's origin carries auth (the host-only `wf_auth` can't reach it).
-        // Every other forwarded launch carries no `session_cookie_host`, so it
-        // plants nothing.
+        // A forwarded self-hosted launch re-scopes the caller's session onto its
+        // public host (`session_cookie_host`); every other launch plants nothing.
         RequestProvenance::Forwarded { .. } => {
             let set_cookies = match &resolved.session_cookie_host {
                 Some(host) => state.launch_cookies.rescope_for_host(&headers, host),
@@ -130,12 +125,9 @@ struct ResolvedLaunch {
     /// The provenance-aware launch URL (loopback origin, public subdomain, or a
     /// rendered cloud template).
     target_url: String,
-    /// `Some(public_host)` for a **forwarded self-hosted** launch, whose `302`
-    /// redirects the browser to `https://<subdomain>.<public_host>/`. The
-    /// host-only `wf_auth` never rides to that subdomain, so the handler plants a
-    /// `Domain=<public_host>` re-scope of the caller's session on the redirect
-    /// (see [`crate::http::LaunchCookies`]). `None` for loopback, system, and
-    /// cloud launches, which need no such cookie.
+    /// `Some(public_host)` for a **forwarded self-hosted** launch — the host to
+    /// re-scope the caller's owner session onto (see [`crate::http::LaunchCookies`]).
+    /// `None` for loopback, system, and cloud launches, which need no cookie.
     session_cookie_host: Option<String>,
 }
 
@@ -245,16 +237,12 @@ struct SelfHostedTarget {
     session_cookie_host: Option<String>,
 }
 
-/// Render a self-hosted app's launch target plus, for a forwarded launch, the
-/// public host to re-scope the caller's owner session onto. A loopback caller
-/// gets the loopback `http://{host}:{port}/` and `None` (the app shares the
-/// `127.0.0.1` cookie already, and the desktop webview authenticates on
-/// connection provenance). A forwarded caller gets the public subdomain (see
-/// [`SelfHostedApp::subdomain_url`] and `docs/Origins/Explanation.md`) paired with
-/// its `public_host` — the same value that built the subdomain URL, so the cookie
-/// `Domain` can't drift from the redirect target. A forwarded launch with **no**
-/// `public_host` configured has no reachable target, so it fails
-/// `503 LaunchUnavailable` rather than handing back loopback.
+/// Render a self-hosted app's launch target. A loopback caller gets the loopback
+/// `http://{host}:{port}/` and no cookie host; a forwarded caller gets the public
+/// subdomain ([`SelfHostedApp::subdomain_url`]) paired with the same `public_host`
+/// that built it (so the cookie `Domain` can't drift from the redirect target). A
+/// forwarded launch with no configured `public_host` has no reachable target, so it
+/// `503 LaunchUnavailable`s rather than handing back loopback.
 fn render_self_hosted_target(
     child: &SelfHostedApp,
     state: &AppsState,
