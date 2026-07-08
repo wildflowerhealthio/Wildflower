@@ -48,7 +48,7 @@ pub(crate) async fn handle_delete_app(
         .map_err(|e| HandlerError::internal("find_app lookup failed", e))?
         .ok_or_else(|| HandlerError::NotFound { id: id.clone() })?;
 
-    match parent.provenance {
+    match parent.provenance() {
         Provenance::Cloud => {
             let deleted = state
                 .store

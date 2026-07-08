@@ -279,7 +279,7 @@ mod tests {
         assert!(!app.seeded);
 
         let parent = store.find_app("my-app").unwrap().expect("parent row");
-        assert_eq!(parent.provenance, crate::domain::Provenance::SelfHosted);
+        assert_eq!(parent.provenance(), crate::domain::Provenance::SelfHosted);
         assert_eq!(parent.position, 6);
         assert!(parent.local_only);
         assert!(parent.enabled);

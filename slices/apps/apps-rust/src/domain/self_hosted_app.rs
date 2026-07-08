@@ -1,25 +1,23 @@
-//! `SelfHostedAppRow` — the `self_hosted_apps` child row: a locally-served app's
-//! dedicated loopback `port`, its on-disk `content_folder`, and its public
-//! `subdomain` label. The catalogue fields (name / subtitle / enabled) live on
-//! the parent [`App`](super::App) registry row; this child carries only what the
-//! host needs to serve the files and what the launch handler needs to render the
-//! loopback / subdomain target.
+//! `SelfHostedApp` — the self-hosted kind payload on [`App`](super::App): a
+//! locally-served app's dedicated loopback `port`, its on-disk
+//! `content_folder`, its public `subdomain` label, the `seeded` flag, and the
+//! optional SMART `launch_path`. The catalogue fields (name / subtitle /
+//! enabled) live on the parent `App`.
 //!
 //! The host binds the listener that serves the files. Rows come from two
 //! sources: the migration seed (`seeded = true`, protected from delete through
 //! the admin surface) and runtime uploads through the create surface
 //! (`seeded = false`, removable). The launch URL is rendered on demand via
-//! [`Self::launch_url`] / [`Self::subdomain_url`].
+//! [`SelfHostedApp::launch_url`] / [`SelfHostedApp::subdomain_url`].
+//!
+//! `SelfHostedAppRow` is the legacy child-row materialization, superseded by
+//! `App` + `SelfHostedApp`; it disappears once the store writes speak whole
+//! apps.
 
-/// A locally-served app's loopback binding. Field names match the SQL column
-/// names so `sql_row!` in the `db/` layer derives `TryFrom<&Row>` off the same
-/// struct.
+/// The `self_hosted_apps` child payload: a locally-served app's loopback
+/// binding and launch-render inputs.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SelfHostedAppRow {
-    /// Stable id, matching the parent registry row's id. Identity only — the
-    /// served folder and the public subdomain are their own columns, so nothing
-    /// assumes they equal the id.
-    pub id: String,
+pub struct SelfHostedApp {
     /// The loopback TCP port the host binds this app on. Combined with the
     /// host-supplied loopback hostname at read time to produce the
     /// `http://{host}:{port}/` launch target. The host is the source of truth
@@ -28,11 +26,12 @@ pub struct SelfHostedAppRow {
     pub port: u16,
     /// The on-disk subdirectory (under the host's `self-hosted-apps/` dir) whose
     /// files this app serves, e.g. `patient-browser`. Explicit rather than
-    /// derived from `id`, so the content location is decoupled from identity.
+    /// derived from the app id, so the content location is decoupled from
+    /// identity.
     pub content_folder: String,
     /// The public subdomain label this app is reachable at remotely, rendered as
     /// `https://{subdomain}.{public_host}/` by [`Self::subdomain_url`] and used as
-    /// the reverse-proxy routing key. Explicit rather than derived from `id`.
+    /// the reverse-proxy routing key. Explicit rather than derived from the id.
     pub subdomain: String,
     /// `true` for a migration-seeded app (delete is refused with
     /// `409 AppNotEditable`), `false` for one uploaded at runtime (removable).
@@ -49,7 +48,7 @@ pub struct SelfHostedAppRow {
     pub launch_path: Option<String>,
 }
 
-impl SelfHostedAppRow {
+impl SelfHostedApp {
     /// Render the loopback launch target `http://{host}:{port}/`. `host` is the
     /// loopback hostname the host binds on. The path is the bare root: each
     /// self-hosted app gets its own origin and is served from `/` on it.
@@ -96,13 +95,47 @@ impl SelfHostedAppRow {
     }
 }
 
+/// A locally-served app's loopback binding. Legacy: superseded by
+/// [`App`](super::App) with an [`AppKind::SelfHosted`](super::AppKind::SelfHosted)
+/// payload.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SelfHostedAppRow {
+    /// Stable id, matching the parent registry row's id.
+    pub id: String,
+    /// See [`SelfHostedApp::port`].
+    pub port: u16,
+    /// See [`SelfHostedApp::content_folder`].
+    pub content_folder: String,
+    /// See [`SelfHostedApp::subdomain`].
+    pub subdomain: String,
+    /// See [`SelfHostedApp::seeded`].
+    pub seeded: bool,
+    /// See [`SelfHostedApp::launch_path`].
+    pub launch_path: Option<String>,
+}
+
+impl SelfHostedAppRow {
+    /// The row's kind payload — the same fields minus the `id`. Bridges the
+    /// legacy row shape onto the [`SelfHostedApp`] render helpers while both
+    /// exist.
+    #[must_use]
+    pub fn payload(&self) -> SelfHostedApp {
+        SelfHostedApp {
+            port: self.port,
+            content_folder: self.content_folder.clone(),
+            subdomain: self.subdomain.clone(),
+            seeded: self.seeded,
+            launch_path: self.launch_path.clone(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn app(launch_path: Option<&str>) -> SelfHostedAppRow {
-        SelfHostedAppRow {
-            id: "zip-app".to_owned(),
+    fn app(launch_path: Option<&str>) -> SelfHostedApp {
+        SelfHostedApp {
             port: 8082,
             content_folder: "zip-app".to_owned(),
             subdomain: "zip-app".to_owned(),

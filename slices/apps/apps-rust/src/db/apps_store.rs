@@ -11,11 +11,11 @@
 use std::collections::HashSet;
 
 use anyhow::Context;
-use persistence_rust::{sql_row, Connection, DbResult};
+use persistence_rust::{Connection, DbResult};
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, Value, ValueRef};
 use rusqlite::{params, OptionalExtension, ToSql};
 
-use crate::domain::{App, AppListEntry, AppUrl, Provenance};
+use crate::domain::{AppListEntry, AppUrl, Provenance};
 
 #[derive(Clone)]
 pub struct AppsStore {
@@ -81,24 +81,6 @@ impl AppsStore {
                 &format!("SELECT {APP_ENTRY_COLUMNS} WHERE a.id = ?1"),
                 params![id],
                 app_entry_from_row,
-            )
-            .optional()
-    }
-
-    /// A single parent registry row by id, `None` when absent. Backs the launch
-    /// dispatch (provenance lookup) and the cloud-admin existence/editability
-    /// checks.
-    ///
-    /// # Errors
-    ///
-    /// Returns any rusqlite error other than `QueryReturnedNoRows`.
-    pub fn find_app(&self, id: &str) -> DbResult<Option<App>> {
-        self.conn()
-            .lock()
-            .query_row(
-                &format!("SELECT {ALL_COLS} FROM apps WHERE id = ?1"),
-                params![id],
-                |row| App::try_from(row),
             )
             .optional()
     }
@@ -283,20 +265,6 @@ impl FromSql for AppUrl {
     }
 }
 
-// `App`'s field names match the parent `apps` table column names, so the macro
-// derives `TryFrom<&Row>`, `make_named_sql_params`, and `ALL_COLS` off the
-// single field list.
-sql_row!(App {
-    id,
-    name,
-    subtitle,
-    enabled,
-    position,
-    provenance,
-    local_only,
-    client_id,
-});
-
 /// Migration namespace for the apps tables in the shared database.
 const NAMESPACE: &str = "apps";
 
@@ -415,17 +383,6 @@ mod tests {
             [],
         );
         assert!(dup.is_err(), "duplicate parent id must violate the PK");
-    }
-
-    #[test]
-    fn find_app_reads_the_parent_row() {
-        let store = AppsStore::open_in_memory().unwrap();
-        let app = store.find_app("growth-chart").unwrap().expect("seeded");
-        assert_eq!(app.name, "Growth Chart");
-        assert_eq!(app.provenance, Provenance::Cloud);
-        assert_eq!(app.client_id.as_deref(), Some("growth_chart"));
-        assert!(app.smart());
-        assert!(store.find_app("no-such-id").unwrap().is_none());
     }
 
     /// `replace_home_screen` renumbers every row to its array index and applies

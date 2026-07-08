@@ -85,7 +85,7 @@ pub(crate) async fn handle_replace_app(
         .map_err(|e| HandlerError::internal("find_app lookup failed", e))?
         .ok_or_else(|| HandlerError::NotFound { id: id.clone() })?;
 
-    match (parent.provenance, body) {
+    match (parent.provenance(), body) {
         (
             Provenance::Cloud,
             AppContentBody::Cloud {

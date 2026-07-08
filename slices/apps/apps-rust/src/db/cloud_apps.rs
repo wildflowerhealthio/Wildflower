@@ -167,7 +167,7 @@ mod tests {
         // And the parent registry row exists with cloud provenance, appended
         // after the six seeded rows (positions 0..=5).
         let parent = store.find_app("app-x").unwrap().expect("parent");
-        assert_eq!(parent.provenance, crate::domain::Provenance::Cloud);
+        assert_eq!(parent.provenance(), crate::domain::Provenance::Cloud);
         assert_eq!(parent.position, 6);
         assert!(!parent.smart(), "inserted cloud app has no client_id");
     }

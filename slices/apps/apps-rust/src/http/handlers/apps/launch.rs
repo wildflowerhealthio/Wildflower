@@ -35,7 +35,7 @@ use axum::response::{IntoResponse, Response};
 
 use shared_structures_rust::served_origin::{request_provenance, RequestProvenance};
 
-use crate::domain::{App, CloudAppRow, LaunchParams, Provenance, SelfHostedAppRow};
+use crate::domain::{App, CloudAppRow, LaunchParams, Provenance, SelfHostedApp};
 use crate::http::response_templates::{AppNotFoundBody, HandlerError, LaunchUnavailableBody};
 use crate::http::state::AppsState;
 use crate::id::mint_launch_nonce;
@@ -107,7 +107,7 @@ async fn resolve_launch_target(
     app: &App,
     provenance: &RequestProvenance,
 ) -> Result<(String, String), HandlerError> {
-    match app.provenance {
+    match app.provenance() {
         Provenance::System => {
             let target_url = render_system_target(state, app, provenance)?;
             Ok((app.name.clone(), target_url))
@@ -126,7 +126,7 @@ async fn resolve_launch_target(
                         format!("id={}", app.id),
                     )
                 })?;
-            let target_url = render_self_hosted_target(&child, state, provenance)?;
+            let target_url = render_self_hosted_target(&child.payload(), state, provenance)?;
             Ok((app.name.clone(), target_url))
         }
         Provenance::Cloud => {
@@ -176,18 +176,18 @@ fn render_system_target(
 
 /// Render a self-hosted app's launch target off its own origin — the loopback
 /// `http://{host}:{port}/` for a loopback caller, else the public subdomain (see
-/// [`SelfHostedAppRow::subdomain_url`] and `docs/Origins/Explanation.md`). A
+/// [`SelfHostedApp::subdomain_url`] and `docs/Origins/Explanation.md`). A
 /// forwarded launch with **no** `public_host` configured has no reachable
 /// target, so it fails `503 LaunchUnavailable` rather than handing back loopback.
 ///
 /// A bundle that shipped a `launch.html` carries a
-/// [`launch_path`](SelfHostedAppRow::launch_path): the target becomes
+/// [`launch_path`](SelfHostedApp::launch_path): the target becomes
 /// `/launch.html?…` hung off that app origin, with `{origin}` substituted to the
 /// *served* (FHIR) origin — a different origin from the per-app base — and
 /// `{launch}` to a fresh nonce. Without one, the bare origin is returned (root →
 /// `index.html`), unchanged from before the field existed.
 fn render_self_hosted_target(
-    child: &SelfHostedAppRow,
+    child: &SelfHostedApp,
     state: &AppsState,
     provenance: &RequestProvenance,
 ) -> Result<String, HandlerError> {

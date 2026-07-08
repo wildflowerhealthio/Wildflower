@@ -28,6 +28,7 @@
 
 mod apps_store;
 mod cloud_apps;
+mod reads;
 mod self_hosted_apps;
 
 pub use apps_store::AppsStore;
