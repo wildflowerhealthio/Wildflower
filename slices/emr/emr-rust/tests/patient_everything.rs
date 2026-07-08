@@ -319,6 +319,43 @@ async fn succeeds_when_client_advertises_compression() {
     );
 }
 
+/// Regression: a client may content-negotiate for XML (`Accept:
+/// application/fhir+xml`), which HFS could honor on the delegated sub-response —
+/// leaving `read_json` an XML body it can't parse (a `500`). `delegate_get` must
+/// pin the sub-request's `Accept` to FHIR JSON (dropping the caller's), so the
+/// operation still yields a JSON Bundle regardless of the caller's `Accept`.
+#[tokio::test]
+async fn succeeds_when_client_requests_xml() {
+    let (router, _db) = build_router();
+
+    put_patient(&router, "p1").await;
+    put_observation(&router, "o1", "p1").await;
+
+    let request = Request::builder()
+        .method("GET")
+        .uri("/fhir-r4/Patient/p1/$everything")
+        .header("accept", "application/fhir+xml")
+        .body(Body::empty())
+        .expect("build request");
+    let response = router
+        .clone()
+        .oneshot(request)
+        .await
+        .expect("router is infallible");
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("read response body");
+    let bundle: Value = serde_json::from_slice(&bytes).expect("parse response JSON");
+
+    assert_eq!(status, StatusCode::OK, "body: {bundle}");
+    assert_eq!(bundle["resourceType"], "Bundle");
+    assert_eq!(bundle["type"], "searchset");
+    assert_eq!(bundle["total"], 2);
+    assert_eq!(bundle["entry"][0]["resource"]["resourceType"], "Patient");
+    assert_eq!(bundle["entry"][0]["resource"]["id"], "p1");
+}
+
 #[tokio::test]
 async fn missing_patient_yields_404() {
     let (router, _db) = build_router();

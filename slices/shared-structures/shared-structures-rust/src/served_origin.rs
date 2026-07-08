@@ -20,7 +20,9 @@
 //! **last** forwarded-element — any client-supplied elements sit to its left.
 //! We read `host` and `proto` from that last element and ignore the rest (`for`
 //! / `by` included; trust is gated at the loopback socket, not derived from the
-//! header). A missing or invalid `proto` defaults to `https`.
+//! header). Both `host` and `proto` are load-bearing: a `Forwarded` header
+//! missing (or carrying an invalid) `host` **or** `proto` is rejected (the
+//! caller `500`s), never defaulted — the trusted front always emits both.
 //!
 //! ## Validation
 //!
@@ -67,13 +69,13 @@ pub enum RequestProvenance {
 ///
 /// - header **absent** → `Some(`[`RequestProvenance::Loopback`]`)`
 /// - header present, resolvable → `Some(`[`RequestProvenance::Forwarded`]`)`
-/// - header present, but the `host` is missing, fails [`safe_host`], or won't
-///   parse as a URL authority → `None`
+/// - header present, but the `host` or `proto` is missing, fails [`safe_host`] /
+///   [`safe_scheme`], or the pair won't parse as a URL authority → `None`
 ///
 /// The last case returns `None`, **not** `Loopback`: a malformed header still
 /// came through the front, so collapsing it to loopback would hand a relayed
-/// caller local trust (see the module docs). A missing/invalid `proto` defaults
-/// to `https` — only the `host` is load-bearing for the forwarded/loopback split.
+/// caller local trust (see the module docs). Both `host` and `proto` are
+/// load-bearing — neither defaults; the trusted front always emits both.
 pub fn request_provenance(headers: &HeaderMap) -> Option<RequestProvenance> {
     let Some(forwarded) = headers.get("forwarded") else {
         return Some(RequestProvenance::Loopback);

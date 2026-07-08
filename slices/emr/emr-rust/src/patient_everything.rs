@@ -148,7 +148,7 @@ pub(crate) async fn patient_everything_handler(
     // from, so 500 rather than emit a Bundle with a malformed `self`/`fullUrl`.
     let mut fhir_base = match served_base_url_for(&headers, &state.loopback_base_url) {
         Some(base_url) => base_url,
-        None => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        None => return internal_error("forwarded header did not indicate a valid served base URL"),
     };
     fhir_base.set_path(FHIR_R4_PATH);
 
@@ -254,25 +254,29 @@ pub(crate) async fn patient_everything_handler(
 }
 
 /// Re-drive HFS's router with an in-process `GET` sub-request, forwarding the
-/// caller's headers (except `Accept-Encoding`, see below) so tenant/version
-/// resolution and auth behave exactly as they would for a direct request.
-/// `path_and_query` is relative to the FHIR base
+/// caller's headers (except the content-negotiation pair, see below) so
+/// tenant/version resolution and auth behave exactly as they would for a direct
+/// request. `path_and_query` is relative to the FHIR base
 /// (the `/fhir-r4` nest prefix is already stripped by the time HFS sees it),
 /// e.g. `/Patient/p1` or `/Patient/p1/Observation?_count=5`.
 async fn delegate_get(router: &Router, path_and_query: &str, headers: &HeaderMap) -> Response {
     let mut builder = Request::builder().method("GET").uri(path_and_query);
     for (name, value) in headers {
-        // Don't offer content negotiation for compression on the sub-request:
-        // HFS's tower-http stack may honor the caller's `Accept-Encoding: gzip`
-        // and return a compressed body, but [`read_json`] parses the raw bytes
-        // as JSON with no decompression step — a forwarded `Accept-Encoding`
-        // would turn every delegated read into a `500` parse failure. Strip it
-        // so the sub-response is always identity-encoded.
-        if name == axum::http::header::ACCEPT_ENCODING {
+        // Drop the caller's content-negotiation headers on the sub-request: we
+        // consume the body in-process and [`read_json`] parses the raw bytes as
+        // JSON with no decode/negotiation step, so a forwarded `Accept-Encoding:
+        // gzip` (HFS's tower-http stack gzips the body) or `Accept:
+        // application/fhir+xml` (HFS emits XML) would turn every delegated read
+        // into a `500` parse failure. Strip both and pin `Accept` to FHIR JSON
+        // below so the sub-response is always identity-encoded JSON. The real
+        // client's own `Accept`/`Accept-Encoding` are honored by the outer HTTP
+        // stack against our own response.
+        if name == axum::http::header::ACCEPT_ENCODING || name == axum::http::header::ACCEPT {
             continue;
         }
         builder = builder.header(name, value);
     }
+    builder = builder.header(axum::http::header::ACCEPT, "application/fhir+json");
     let request = match builder.body(Body::empty()) {
         Ok(request) => request,
         Err(err) => return internal_error(&format!("failed to build sub-request: {err}")),

@@ -135,17 +135,25 @@ pub fn rescope_owner_session_set_cookies(headers: &HeaderMap, host: &str) -> Vec
     match cookie_value(headers, AUTH_COOKIE_NAME) {
         Some(jwt) if !jwt.is_empty() => owner_session_cookies(jwt, host, /* secure */ true)
             .iter()
-            .filter_map(|cookie| HeaderValue::from_str(&cookie.to_string()).ok())
+            .filter_map(cookie_to_header_value)
             .collect(),
         _ => Vec::new(),
     }
 }
 
-/// Append a `Set-Cookie` header carrying `cookie`. A JWT or decimal cookie
-/// string is always valid header bytes; on the impossible failure the cookie is
-/// skipped rather than panicking (this code path mints owner sessions).
+/// Render `cookie` as a `Set-Cookie` [`HeaderValue`]. A JWT or decimal cookie
+/// string is always valid header bytes; on the impossible failure this returns
+/// `None` (the cookie is skipped) rather than panicking — these code paths mint
+/// owner sessions. Shared by [`append_cookie`] and
+/// [`rescope_owner_session_set_cookies`] so the skip-on-invalid-bytes invariant
+/// lives in one place.
+fn cookie_to_header_value(cookie: &Cookie<'_>) -> Option<HeaderValue> {
+    HeaderValue::from_str(&cookie.to_string()).ok()
+}
+
+/// Append a `Set-Cookie` header carrying `cookie`.
 fn append_cookie(headers: &mut HeaderMap, cookie: &Cookie<'_>) {
-    if let Ok(value) = HeaderValue::from_str(&cookie.to_string()) {
+    if let Some(value) = cookie_to_header_value(cookie) {
         headers.append(header::SET_COOKIE, value);
     }
 }
