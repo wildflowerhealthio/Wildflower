@@ -126,7 +126,8 @@ pub struct Gatekeeper {
 ///
 /// Token claims follow the canonical model — `iss` is the fixed
 /// [`shared_structures_rust::CANONICAL_ISSUER`] and `aud` is the per-request
-/// served origin ([`served_origin_for`](crate::http::served_origin_for)). See
+/// served origin (derived from
+/// [`served_base_url_for`](crate::http::served_base_url_for)). See
 /// `docs/Origins/Explanation.md`.
 ///
 /// The whole surface is gated by the loopback middleware — non-loopback

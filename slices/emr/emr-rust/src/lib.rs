@@ -71,15 +71,15 @@ pub fn setup_fhir_r4(runtime: &ServerRuntimeConfig, config: &EmrConfig) -> anyho
     sqlite_backend
         .init_schema()
         .context("failed to init sqlite schema")?;
-
     let loopback_base_url = runtime.loopback_base_url();
-    // The FHIR base URL is `<bare origin><FHIR_R4_PATH>` (e.g.
-    // `http://127.0.0.1:8080/fhir-r4`): take the origin without the `Url`'s
-    // trailing slash so the path isn't doubled.
-    let loopback_origin = loopback_base_url.origin().ascii_serialization();
+    let fhir_server_base_url = {
+        let mut url = loopback_base_url.clone();
+        url.set_path(FHIR_R4_PATH);
+        url
+    };
 
     let server_config = ServerConfig {
-        base_url: format!("{loopback_origin}{FHIR_R4_PATH}"),
+        base_url: fhir_server_base_url.to_string(),
         // The host param only expects the ip to bind to
         host: runtime
             .loopback_base_url_ref()
@@ -118,7 +118,7 @@ pub fn setup_fhir_r4(runtime: &ServerRuntimeConfig, config: &EmrConfig) -> anyho
     // `$everything` delegates back into HFS in-process (see
     // [`patient_everything`]), so it holds a clone of `hfs_router`; the original
     // stays the fallback for every other FHIR path.
-    let everything_route = Router::new()
+    let patient_everything_route = Router::new()
         .route("/Patient/{id}/$everything", get(patient_everything_handler))
         .with_state(EverythingState {
             hfs_router: hfs_router.clone(),
@@ -126,7 +126,7 @@ pub fn setup_fhir_r4(runtime: &ServerRuntimeConfig, config: &EmrConfig) -> anyho
         });
 
     let fhir_with_override = smart_config_route
-        .merge(everything_route)
+        .merge(patient_everything_route)
         .fallback_service(hfs_router);
 
     Ok(Router::new().nest(FHIR_R4_PATH, fhir_with_override))

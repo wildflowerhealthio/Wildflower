@@ -39,7 +39,7 @@ use axum::response::{IntoResponse, Response};
 use axum::{Extension, Router};
 use handlebars::Handlebars;
 use include_dir::{include_dir, Dir};
-use shared_structures_rust::served_origin::{request_provenance, RequestProvenance};
+use shared_structures_rust::served_origin::is_forwarded;
 use shared_structures_rust::tunnel_service::TunnelService;
 use tower_http::services::ServeDir;
 use url::Url;
@@ -212,14 +212,25 @@ fn render_template(state: &TemplateState, serve_path_lower: &str, headers: &Head
             .origin()
             .ascii_serialization()
     };
-    let api_origin = match request_provenance(headers) {
-        RequestProvenance::Loopback => make_loopback_origin(),
-        RequestProvenance::Forwarded { .. } => state
+    // Only the forwarded/loopback distinction matters here — the served base URL
+    // is unused (a forwarded template resolves its origin from the tunnel's
+    // configured public host, not the request), so the boolean `is_forwarded` is
+    // the exact fit. A forwarded request with no configured public host has no
+    // reachable API origin, so it 500s rather than falling back to the loopback
+    // origin: a remote browser can't reach loopback, and a forwarded request must
+    // never be handed the local origin.
+    let api_origin = if is_forwarded(headers) {
+        let maybe_api_origin = state
             .context
             .tunnel
             .current_public_host()
-            .map(|host| format!("https://{host}"))
-            .unwrap_or_else(make_loopback_origin),
+            .map(|host| format!("https://{host}"));
+        let Some(api_origin) = maybe_api_origin else {
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        };
+        api_origin
+    } else {
+        make_loopback_origin()
     };
     match state.registry.render(
         serve_path_lower,
@@ -516,10 +527,9 @@ mod tests {
     }
 
     /// A forwarded request with no configured public host (shouldn't happen —
-    /// forwarding runs through the tunnel) falls back to the loopback origin
-    /// rather than rendering a broken URL.
+    /// forwarding runs through the tunnel) fails rather than rendering a broken URL.
     #[tokio::test]
-    async fn forwarded_request_without_public_host_falls_back_to_loopback() {
+    async fn forwarded_request_without_public_host_fails() {
         let root = TempRoot::new();
         let res = fetch_with(
             "patient-browser",
@@ -528,12 +538,7 @@ mod tests {
             context_without_public_host(),
         )
         .await;
-        assert_eq!(res.status(), StatusCode::OK);
-        let text = body_text(res).await;
-        assert!(
-            text.contains(&format!("url: '{LOOPBACK_API_ORIGIN}/fhir-r4'")),
-            "no public host must fall back to loopback: {text:?}",
-        );
+        assert_eq!(res.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 
     /// A request for the config path with mixed casing still hits the

@@ -27,7 +27,7 @@ use tokio::sync::watch;
 use url::Url;
 
 use crate::error::ServerError;
-use crate::host_match::match_forwarded_origin;
+use crate::host_match::match_forwarded_base_url;
 use crate::params::loopback_authority;
 
 /// Hop-by-hop headers (RFC 7230 §6.1) — meaningful only for a single transport
@@ -167,14 +167,20 @@ async fn maybe_forward_to_subdomain(
     req: Request,
     next: Next,
 ) -> Response {
-    let RequestProvenance::Forwarded { origin } = request_provenance(req.headers()) else {
+    // Only forwarded requests carry a subdomain to dispatch on. A `None`
+    // provenance (a forwarded host that cleared `safe_host` but failed to parse)
+    // and `Loopback` both fall through to the fallback — this middleware is
+    // opportunistic subdomain routing, so it never errors a request it can't
+    // route, matching the `no public host` / `no registered app` fall-throughs
+    // below.
+    let Some(RequestProvenance::Forwarded { base_url }) = request_provenance(req.headers()) else {
         return next.run(req).await;
     };
     let Some(public_host) = state.current_public_host() else {
         // Public host unconfigured: no inbound subdomain can match.
         return next.run(req).await;
     };
-    let Some(app_id) = match_forwarded_origin(&origin, &public_host) else {
+    let Some(app_id) = match_forwarded_base_url(&base_url, &public_host) else {
         return next.run(req).await;
     };
     let port = match state.table.port_for(&app_id) {

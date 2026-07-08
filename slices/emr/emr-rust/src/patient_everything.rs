@@ -52,12 +52,12 @@
 
 use axum::body::{to_bytes, Body};
 use axum::extract::{Path, Query, State};
-use axum::http::{header, HeaderMap, Request, StatusCode};
+use axum::http::{HeaderMap, Request, StatusCode};
 use axum::response::{IntoResponse, Json, Response};
 use axum::Router;
 use serde::Deserialize;
 use serde_json::{json, Value};
-use shared_structures_rust::served_origin::served_origin_for;
+use shared_structures_rust::served_origin::served_base_url_for;
 use tower::ServiceExt;
 
 use crate::FHIR_R4_PATH;
@@ -98,13 +98,15 @@ pub(crate) async fn patient_everything_handler(
     Query(params): Query<EverythingParams>,
     headers: HeaderMap,
 ) -> Response {
-    // FHIR base URL for `fullUrl`s and the `self` link, per served origin — the
-    // same derivation the discovery override uses.
-    let origin = served_origin_for(
-        &headers,
-        &state.loopback_base_url.origin().ascii_serialization(),
-    );
-    let fhir_base = format!("{origin}{FHIR_R4_PATH}");
+    // FHIR base URL for `fullUrl`s and the `self` link, per served base URL —
+    // the same derivation the discovery override uses. A forwarded host that
+    // cleared validation but failed to parse leaves no base URL to build links
+    // from, so 500 rather than emit a Bundle with a malformed `self`/`fullUrl`.
+    let mut fhir_base = match served_base_url_for(&headers, &state.loopback_base_url) {
+        Some(base_url) => base_url,
+        None => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    };
+    fhir_base.set_path(FHIR_R4_PATH);
 
     // 1. Read the primary Patient by delegating to HFS. Any non-200 (`404` for a
     //    missing patient, `401`/`403` when scopes are lacking, `503`, …) is
@@ -175,7 +177,11 @@ pub(crate) async fn patient_everything_handler(
 
     (
         StatusCode::OK,
-        Json(build_searchset_bundle(&fhir_base, &self_url, &resources)),
+        Json(build_searchset_bundle(
+            fhir_base.as_str(),
+            &self_url,
+            &resources,
+        )),
     )
         .into_response()
 }

@@ -18,10 +18,10 @@
 //! fhir-r4 slice has been removed.
 
 use axum::extract::State;
-use axum::http::HeaderMap;
-use axum::response::Json;
+use axum::http::{HeaderMap, StatusCode};
+use axum::response::{IntoResponse, Json, Response};
 use serde::Serialize;
-use shared_structures_rust::served_origin::served_origin_for;
+use shared_structures_rust::served_origin::served_base_url_for;
 use shared_structures_rust::CANONICAL_ISSUER;
 
 /// State threaded to the discovery handler so it can fall back to the loopback
@@ -66,7 +66,10 @@ const SCOPES_SUPPORTED: &[&str] = &[
     "offline_access",
 ];
 
-fn build_smart_configuration(origin: &str) -> SmartConfiguration {
+fn build_smart_configuration(base_url: &url::Url) -> SmartConfiguration {
+    // The advertised endpoints are per-request URL strings; derive the bare
+    // origin (no trailing slash, no default port) once and interpolate.
+    let origin = base_url.origin().ascii_serialization();
     let host = format!("{origin}/fhir-r4");
     SmartConfiguration {
         // `issuer` = `CANONICAL_ISSUER` (matches minted tokens' `iss`); the
@@ -102,21 +105,27 @@ fn build_smart_configuration(origin: &str) -> SmartConfiguration {
 pub(crate) async fn smart_configuration_handler(
     State(state): State<SmartConfigState>,
     headers: HeaderMap,
-) -> Json<SmartConfiguration> {
-    let origin = served_origin_for(
-        &headers,
-        &state.loopback_base_url.origin().ascii_serialization(),
-    );
-    Json(build_smart_configuration(&origin))
+) -> Response {
+    // A forwarded host that cleared validation but failed to parse leaves no
+    // base URL to advertise endpoints from — 500 rather than serve a discovery
+    // doc with malformed URLs.
+    let Some(base_url) = served_base_url_for(&headers, &state.loopback_base_url) else {
+        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    };
+    Json(build_smart_configuration(&base_url)).into_response()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn base(value: &str) -> url::Url {
+        url::Url::parse(value).unwrap()
+    }
+
     #[test]
     fn discovery_doc_points_authorization_endpoint_at_root_oauth() {
-        let doc = build_smart_configuration("https://ruth.wildflowerhealth.io");
+        let doc = build_smart_configuration(&base("https://ruth.wildflowerhealth.io"));
         assert_eq!(
             doc.authorization_endpoint,
             "https://ruth.wildflowerhealth.io/oauth/authorize"
@@ -135,7 +144,7 @@ mod tests {
 
     #[test]
     fn discovery_doc_advertises_smart_app_launch_capabilities() {
-        let doc = build_smart_configuration("https://example.com");
+        let doc = build_smart_configuration(&base("https://example.com"));
         assert!(doc.capabilities.contains(&"launch-ehr"));
         assert!(doc.capabilities.contains(&"permission-v2"));
         assert!(doc.grant_types_supported.contains(&"authorization_code"));
@@ -145,7 +154,7 @@ mod tests {
 
     #[test]
     fn discovery_doc_advertises_curated_public_scopes() {
-        let doc = build_smart_configuration("https://example.com");
+        let doc = build_smart_configuration(&base("https://example.com"));
         // The curated public SMART read set — standard SMART App Launch scopes,
         // not the system's internal/admin vocabulary.
         assert!(doc.scopes_supported.contains(&"openid"));

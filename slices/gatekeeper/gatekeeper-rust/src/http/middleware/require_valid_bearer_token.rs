@@ -7,7 +7,7 @@ use axum::middleware::Next;
 use axum::response::Response;
 
 use crate::http::response_templates;
-use crate::http::served_origin_for;
+use crate::http::served_base_url_for;
 use crate::http::state::AppState;
 
 use crate::http::middleware::require_auth::{
@@ -39,10 +39,13 @@ pub async fn require_valid_bearer_token(
     let Some((token, source)) = try_access_token_from_request(&headers) else {
         return response_templates::unauthorized();
     };
-    let origin = served_origin_for(
-        &headers,
-        &gate.state.loopback_base_url.origin().ascii_serialization(),
-    );
+    let Some(base_url) = served_base_url_for(&headers, &gate.state.loopback_base_url) else {
+        return response_templates::internal_error(
+            "served base url",
+            "forwarded header did not indicate a valid base URL",
+        );
+    };
+    let origin = base_url.origin().ascii_serialization();
     if let Err(e) = verify_auth_token_claims(&gate.state, &origin, token) {
         return response_templates::verify_error_response("verify_auth_token_claims failed", e);
     }

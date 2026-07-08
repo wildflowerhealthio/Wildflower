@@ -17,7 +17,7 @@ persistence-rust = { path = "../../persistence/persistence-rust" }
 # canonical scope strings) — gatekeeper is the canonical consumer; the crate
 # was extracted out of here so other slices (emr-rust) can share one grammar.
 scopes-rust = { path = "../../scopes/scopes-rust" }
-# The shared forwarding-header provenance helpers (`served_origin_for`,
+# The shared forwarding-header provenance helpers (`served_base_url_for`,
 # `request_provenance`) — gatekeeper-rust resolves token issuer URLs through
 # them, and apps-rust dispatches launches off the same provenance, so the
 # `Forwarded`-header (RFC 7239) contract lives in one place.

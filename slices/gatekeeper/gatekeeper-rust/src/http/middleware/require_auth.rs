@@ -6,7 +6,7 @@ use axum::response::Response;
 
 use crate::domain::token::{verify_jwt, VerifiedClaims, VerifyError, VerifyOptions};
 use crate::http::response_templates;
-use crate::http::served_origin_for;
+use crate::http::served_base_url_for;
 use crate::http::state::AppState;
 use crate::WILDFLOWER_WIDEST_SCOPES;
 use scopes_rust::Scope;
@@ -23,10 +23,13 @@ pub async fn require_owner_auth(
     // Verify against the request's served origin (loopback for a direct hit,
     // the forwarded public origin via the tunnel) so the token's `iss`/`aud`
     // match the surface it was minted for. See `docs/Origins/Explanation.md`.
-    let origin = served_origin_for(
-        &headers,
-        &state.loopback_base_url.origin().ascii_serialization(),
-    );
+    let Some(base_url) = served_base_url_for(&headers, &state.loopback_base_url) else {
+        return response_templates::internal_error(
+            "served base url",
+            "forwarded header did not indicate a valid base URL",
+        );
+    };
+    let origin = base_url.origin().ascii_serialization();
     if let Err(e) = verify_owner_token(&state, &origin, token) {
         return response_templates::verify_error_response("verify_owner_token failed", e);
     }

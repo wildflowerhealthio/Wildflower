@@ -64,8 +64,14 @@ pub(crate) async fn handle_launch_app(
     Path(id): Path<String>,
 ) -> Result<Response, HandlerError> {
     // Read once (see module docs, step 1): a header that fails validation reads
-    // as Loopback.
-    let provenance = request_provenance(&headers);
+    // as Loopback; a forwarded host that cleared validation but failed to parse
+    // as a URL is an internal inconsistency, so 500 rather than guess.
+    let Some(provenance) = request_provenance(&headers) else {
+        return Err(HandlerError::internal(
+            "request_provenance",
+            "forwarded header did not indicate a valid base URL",
+        ));
+    };
 
     // Owner-gate a loopback request before any lookup or side-effect (module docs,
     // step 2): an unauthorized loopback caller must trigger no `tunnel.try_start()`
@@ -271,7 +277,7 @@ async fn render_cloud_target(
 /// the trusted front relayed the request, else loopback.
 fn served_origin(state: &AppsState, provenance: &RequestProvenance) -> String {
     match provenance {
-        RequestProvenance::Forwarded { origin } => origin.clone(),
+        RequestProvenance::Forwarded { base_url } => base_url.origin().ascii_serialization(),
         RequestProvenance::Loopback => state.loopback_origin(),
     }
 }
