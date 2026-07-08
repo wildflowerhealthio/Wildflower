@@ -44,6 +44,16 @@ const APPS_LIST_QUERY_KEY = ['apps', 'list'] as const
  */
 const HOME_SCREEN_MUTATION_KEY = ['apps', 'home-screen'] as const
 
+/**
+ * Shared `mutationKey` for every `PUT /apps/{id}` content writer. Each
+ * self-hosted row's launch-path editor holds its **own**
+ * {@link useAppsAdminReplaceMutation} instance, so the apps editor's
+ * one-write-at-a-time fieldset lock can only see those writes across
+ * components via `useIsMutating` on this key — without it, a Remove or toggle
+ * could race a mid-flight launch-path save.
+ */
+const APP_CONTENT_MUTATION_KEY = ['apps', 'app-content'] as const
+
 /** Shared by route `loader` (`ensureQueryData`) and {@link useAppsListQuery}. */
 const appsListQueryOptions = (
   runAuthed: RunAuthed
@@ -75,6 +85,7 @@ const useAppsAdminReplaceMutation = (): UseMutationResult<
   const runAuthed = useRunAuthed()
   const queryClient = useQueryClient()
   return useMutation({
+    mutationKey: APP_CONTENT_MUTATION_KEY,
     mutationFn: ({ id, payload }) =>
       runAuthed(
         Effect.flatMap(AppsAdminHttpApiClient, (c) =>
@@ -179,6 +190,7 @@ const useReplaceHomeScreenMutation = (): UseMutationResult<unknown, Error, HomeS
 }
 
 export {
+  APP_CONTENT_MUTATION_KEY,
   APPS_LIST_QUERY_KEY,
   HOME_SCREEN_MUTATION_KEY,
   appsListQueryOptions,

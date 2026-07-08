@@ -10,6 +10,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/tes
 // behind while `Dialog` keeps the children mounted).
 const { homeScreenStub, createStub, deleteStub, selfHostedStub, replaceStub, isMutatingRef } =
   vi.hoisted(() => {
+    // Typed factory (not an `as` cast) so `counts` indexes as string → number.
+    const emptyCounts = (): Record<string, number> => ({})
     const makeMutation = (): {
       readonly mutate: ReturnType<typeof vi.fn>
       readonly reset: ReturnType<typeof vi.fn>
@@ -27,13 +29,16 @@ const { homeScreenStub, createStub, deleteStub, selfHostedStub, replaceStub, isM
       deleteStub: makeMutation(),
       selfHostedStub: makeMutation(),
       replaceStub: makeMutation(),
-      // Controls the mocked `useIsMutating` return — the count of in-flight
-      // home-screen PUTs the editor sees (its own + the home screen's drag).
-      isMutatingRef: { count: 0 },
+      // Controls the mocked `useIsMutating` return per serialized mutationKey —
+      // the in-flight counts the editor sees for the shared home-screen key
+      // (its own toggle + the home screen's drag) and the shared app-content
+      // key (each row's launch-path editor).
+      isMutatingRef: { counts: emptyCounts() },
     }
   })
 
 vi.mock('../queries.ts', () => ({
+  APP_CONTENT_MUTATION_KEY: ['apps', 'app-content'],
   HOME_SCREEN_MUTATION_KEY: ['apps', 'home-screen'],
   useReplaceHomeScreenMutation: () => homeScreenStub,
   useAppsAdminCreateMutation: () => createStub,
@@ -42,13 +47,18 @@ vi.mock('../queries.ts', () => ({
   useAppsAdminReplaceMutation: () => replaceStub,
 }))
 
-// `busy` folds in `useIsMutating` for the shared home-screen key (so a toggle is
-// disabled while the home screen's drag PUT is still landing). Mock it to a
-// controllable in-flight count so the disabled-while-in-flight behaviour is
-// deterministic without a live QueryClient.
+// `busy` folds in `useIsMutating` for the shared home-screen key (so a toggle
+// is disabled while the home screen's drag PUT is still landing) AND the shared
+// app-content key (so it locks while any row's launch-path save is in flight).
+// Mock it key-aware — per serialized `mutationKey` — so each aggregation is
+// controllable and deterministic without a live QueryClient.
 vi.mock('@tanstack/react-query', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>()
-  return { ...actual, useIsMutating: () => isMutatingRef.count }
+  return {
+    ...actual,
+    useIsMutating: (filters?: { readonly mutationKey?: readonly unknown[] }) =>
+      isMutatingRef.counts[JSON.stringify(filters?.mutationKey)] ?? 0,
+  }
 })
 
 import type { AppEntry } from '../queries.ts'
@@ -126,7 +136,7 @@ const resetAllStubs = (): void => {
     stub.isPending = false
     stub.error = null
   }
-  isMutatingRef.count = 0
+  isMutatingRef.counts = {}
 }
 
 // jsdom does not implement the native <dialog> methods react-tundraish's
@@ -344,7 +354,7 @@ describe('<AppsEditor> provenance gating', () => {
     // A reorder PUT from the home screen (a *separate* mutation instance) shows
     // up via the shared `useIsMutating` key — block toggling so it can't re-PUT
     // the pre-reorder order and revert the drag.
-    isMutatingRef.count = 1
+    isMutatingRef.counts[JSON.stringify(['apps', 'home-screen'])] = 1
     const apps: readonly AppEntry[] = [
       makeApp({ id: 'cloud-app', name: 'Cloud App', provenance: 'cloud' }),
     ]
@@ -354,6 +364,26 @@ describe('<AppsEditor> provenance gating', () => {
     // fire mid-reorder.
     const fieldset = container.querySelector('fieldset')
     expect(fieldset?.disabled).toBe(true)
+  })
+
+  test('disables the whole fieldset while a launch-path save is in flight', () => {
+    // Each self-hosted row's launch-path editor owns its mutation instance, so
+    // the editor can only see its in-flight save through the shared
+    // app-content `useIsMutating` key. Without the lock, Remove could delete
+    // the very app whose launch path is mid-save.
+    isMutatingRef.counts[JSON.stringify(['apps', 'app-content'])] = 1
+    const apps: readonly AppEntry[] = [
+      makeApp({
+        id: 'zip-app',
+        name: 'Zip App',
+        provenance: 'self-hosted',
+        removable: true,
+        launchPath: '/launch.html?launch={launch}',
+      }),
+    ]
+    const { container } = render(<AppsEditor open apps={apps} onClose={() => {}} />)
+
+    expect(container.querySelector('fieldset')?.disabled).toBe(true)
   })
 
   test('a removable Remove click fires the delete mutation for that app', () => {

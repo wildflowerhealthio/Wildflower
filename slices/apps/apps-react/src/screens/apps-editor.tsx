@@ -4,6 +4,7 @@ import { cn } from 'react-kitchen-sink'
 import { Checkbox, Dialog } from 'react-tundraish'
 
 import {
+  APP_CONTENT_MUTATION_KEY,
   HOME_SCREEN_MUTATION_KEY,
   useAppsAdminCreateMutation,
   useAppsAdminDeleteMutation,
@@ -148,11 +149,17 @@ const AppsEditor = ({ open, apps, onClose }: AppsEditorProps): JSX.Element => {
   // Any in-flight write locks the whole fieldset. `homeScreenInFlight` counts
   // *every* `PUT /home-screen` writer sharing the key — this editor's own toggle
   // AND the home screen's drag-reorder — so a toggle is disabled while a reorder
-  // is still landing (it subsumes `homeScreenMutation.isPending`). Aggregating
-  // with create/delete keeps the "one write at a time" guarantee.
+  // is still landing (it subsumes `homeScreenMutation.isPending`).
+  // `appContentInFlight` does the same for the per-row launch-path editors,
+  // whose mutation instances live in their own components — without it,
+  // Remove/toggle would stay live while a launch-path save is mid-flight (and a
+  // Remove of that very app would fail its in-txn read-back). Aggregating with
+  // create/delete keeps the "one write at a time" guarantee.
   const homeScreenInFlight = useIsMutating({ mutationKey: HOME_SCREEN_MUTATION_KEY }) > 0
+  const appContentInFlight = useIsMutating({ mutationKey: APP_CONTENT_MUTATION_KEY }) > 0
   const busy =
     homeScreenInFlight ||
+    appContentInFlight ||
     createMutation.isPending ||
     deleteMutation.isPending ||
     selfHostedMutation.isPending

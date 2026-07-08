@@ -42,6 +42,7 @@ vi.mock('../../../queries.ts', () => {
     error: null,
   })
   return {
+    APP_CONTENT_MUTATION_KEY: ['apps', 'app-content'],
     HOME_SCREEN_MUTATION_KEY: ['apps', 'home-screen'],
     appsListQueryOptions: vi.fn(),
     useAppsListQuery: vi.fn(),
