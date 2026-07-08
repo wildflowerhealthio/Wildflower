@@ -201,6 +201,49 @@ async fn count_truncates_related_observations() {
     }
 }
 
+/// Regression: a real client sends `Accept-Encoding: gzip, …`. Our handler
+/// re-drives `hfs_router` in-process, whose `CompressionLayer` would compress
+/// the delegated `read`/`search` sub-responses if the header were forwarded,
+/// leaving `read_json` with a compressed body it can't parse (the route 500'd
+/// with "failed to parse sub-response JSON"). `delegate_get` must strip
+/// `Accept-Encoding` so the sub-responses come back as plain JSON.
+#[tokio::test]
+async fn succeeds_when_client_advertises_compression() {
+    let (router, _db) = build_router();
+
+    put_patient(&router, "p1").await;
+    put_observation(&router, "o1", "p1").await;
+
+    let request = Request::builder()
+        .method("GET")
+        .uri("/fhir-r4/Patient/p1/$everything")
+        .header("accept", "application/fhir+json")
+        .header("accept-encoding", "gzip, deflate, br")
+        .body(Body::empty())
+        .expect("build request");
+    let response = router
+        .clone()
+        .oneshot(request)
+        .await
+        .expect("router is infallible");
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("read response body");
+    let bundle: Value = serde_json::from_slice(&bytes).expect("parse response JSON");
+
+    assert_eq!(status, StatusCode::OK, "body: {bundle}");
+    assert_eq!(bundle["resourceType"], "Bundle");
+    assert_eq!(bundle["type"], "searchset");
+    assert_eq!(bundle["total"], 2);
+    assert_eq!(bundle["entry"][0]["resource"]["resourceType"], "Patient");
+    assert_eq!(bundle["entry"][0]["resource"]["id"], "p1");
+    assert_eq!(
+        bundle["entry"][1]["resource"]["resourceType"],
+        "Observation"
+    );
+}
+
 #[tokio::test]
 async fn missing_patient_yields_404() {
     let (router, _db) = build_router();

@@ -6,7 +6,7 @@
 
 use std::sync::Arc;
 
-use apps_rust::{setup_apps, Apps, AppsConfig, OwnerAuth};
+use apps_rust::{setup_apps, Apps, AppsConfig, NoLaunchCookies, OwnerAuth};
 use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
 use persistence_rust::Connection;
@@ -42,6 +42,7 @@ fn spin_up_with_handle() -> (Apps, Arc<RecordingStubWebviewHandle>) {
         Arc::new(OfflineTunnel::new("http://127.0.0.1:8080")),
         handle.clone(),
         owner_auth,
+        Arc::new(NoLaunchCookies),
     )
     .expect("setup_apps");
     (apps, handle)

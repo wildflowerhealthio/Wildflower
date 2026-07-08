@@ -5,7 +5,7 @@ mod spa;
 mod tunnel_adapters;
 
 use anyhow::Context;
-use apps_rust::{setup_apps, AppsConfig, OwnerAuth, SelfHostedAppsService};
+use apps_rust::{setup_apps, AppsConfig, LaunchCookies, OwnerAuth, SelfHostedAppsService};
 use axum::Router;
 use emr_rust::{setup_fhir_r4, EmrConfig};
 use gatekeeper_rust::{
@@ -68,6 +68,27 @@ struct GatekeeperOwnerAuth {
 impl OwnerAuth for GatekeeperOwnerAuth {
     fn is_owner(&self, headers: &axum::http::HeaderMap, served_origin: &str) -> bool {
         verify_owner_bearer(&self.state, headers, served_origin)
+    }
+}
+
+/// The host's [`apps_rust::LaunchCookies`]: a forwarded self-hosted app launch
+/// redirects the browser to the app's own subdomain (`<id>.<public_host>`), which
+/// the host-only `wf_auth` never reaches. This re-scopes the caller's owner
+/// session onto the app's public host — delegated to
+/// [`gatekeeper_rust::rescope_owner_session_set_cookies`], which owns the cookie
+/// name + attribute set — so the launch `302` plants a session the app's origin
+/// can carry. A loopback launch never reaches this: it `204`s to a native popup,
+/// whose cookies are seeded separately (see `native_webview_handle`).
+#[derive(Clone, Copy)]
+struct GatekeeperLaunchCookies;
+
+impl LaunchCookies for GatekeeperLaunchCookies {
+    fn rescope_for_host(
+        &self,
+        headers: &axum::http::HeaderMap,
+        host: &str,
+    ) -> Vec<axum::http::HeaderValue> {
+        gatekeeper_rust::rescope_owner_session_set_cookies(headers, host)
     }
 }
 
@@ -316,12 +337,17 @@ async fn run_server(
     let owner_auth: Arc<dyn OwnerAuth> = Arc::new(GatekeeperOwnerAuth {
         state: gatekeeper.state.clone(),
     });
+    // The forwarded self-hosted launch cookie seam: re-scopes the caller's owner
+    // session onto the app's public host so its subdomain (unreachable by the
+    // host-only `wf_auth`) carries auth after the `302`.
+    let launch_cookies: Arc<dyn LaunchCookies> = Arc::new(GatekeeperLaunchCookies);
     let apps = setup_apps(
         db,
         &apps_config,
         Arc::clone(&tunnel_service),
         webview_handle,
         owner_auth,
+        launch_cookies,
     )
     .context("failed to set up apps")?;
     let gated_apps =

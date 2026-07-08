@@ -66,12 +66,13 @@ mod tests {
     use tower::ServiceExt;
 
     use super::test_utils::{
-        state, state_owner_denied, state_owner_denied_with_sink, state_with_sink,
-        state_with_tunnel, state_with_tunnel_and_handle, tunnel_at, tunnel_unavailable,
-        tunnel_with_public_host,
+        state, state_owner_denied, state_owner_denied_with_sink, state_with_launch_cookies,
+        state_with_sink, state_with_tunnel, state_with_tunnel_and_handle, tunnel_at,
+        tunnel_unavailable, tunnel_with_public_host, RecordingLaunchCookies, SENTINEL_SET_COOKIE,
     };
     use crate::domain::{AppEntry, AppUrl};
     use crate::http::state::AppsState;
+    use crate::http::LaunchCookies;
 
     /// The served router (state applied per-call). Spec half of
     /// `split_for_parts` is irrelevant in the handler tests.
@@ -312,6 +313,73 @@ mod tests {
         assert_eq!(res.status(), StatusCode::FOUND);
         let location = res.headers().get("location").unwrap().to_str().unwrap();
         assert_eq!(location, "https://patient-browser.demo.example.com/");
+    }
+
+    /// A forwarded self-hosted launch plants the re-scoped owner session on the
+    /// `302`, and asks the seam to scope it onto the tunnel `public_host` (which
+    /// built the subdomain URL) — so the app's own subdomain, unreachable by the
+    /// host-only `wf_auth`, carries the session once the browser follows.
+    #[tokio::test]
+    async fn launch_self_hosted_forwarded_plants_rescoped_session_cookie() {
+        let recorder = Arc::new(RecordingLaunchCookies::default());
+        let st = state_with_launch_cookies(
+            tunnel_with_public_host("demo.example.com"),
+            Arc::clone(&recorder) as Arc<dyn LaunchCookies>,
+        );
+        let res = send_raw(&st, post_forwarded("/apps/patient-browser")).await;
+        assert_eq!(res.status(), StatusCode::FOUND);
+        assert_eq!(
+            res.headers().get("location").unwrap().to_str().unwrap(),
+            "https://patient-browser.demo.example.com/",
+        );
+        let cookies: Vec<&str> = res
+            .headers()
+            .get_all("set-cookie")
+            .iter()
+            .map(|v| v.to_str().unwrap())
+            .collect();
+        assert_eq!(cookies, vec![SENTINEL_SET_COOKIE]);
+        assert_eq!(
+            *recorder.hosts.lock().unwrap(),
+            vec!["demo.example.com".to_string()],
+            "the seam is scoped to the public host that built the subdomain URL",
+        );
+    }
+
+    /// A forwarded *cloud* launch plants no session cookie — the seam is only for
+    /// self-hosted apps served on their own subdomain (a cloud app authenticates
+    /// through its own OAuth flow), so the recorder is never asked.
+    #[tokio::test]
+    async fn launch_cloud_forwarded_plants_no_session_cookie() {
+        let recorder = Arc::new(RecordingLaunchCookies::default());
+        let st = state_with_launch_cookies(
+            tunnel_with_public_host("demo.example.com"),
+            Arc::clone(&recorder) as Arc<dyn LaunchCookies>,
+        );
+        st.store
+            .insert_cloud_app(&cloud("app-y", AppUrl::OriginRelative("/y".to_owned())))
+            .unwrap();
+        let res = send_raw(&st, post_forwarded("/apps/app-y")).await;
+        assert_eq!(res.status(), StatusCode::FOUND);
+        assert!(res.headers().get("set-cookie").is_none());
+        assert!(recorder.hosts.lock().unwrap().is_empty());
+    }
+
+    /// A *loopback* self-hosted launch plants no session cookie: it `204`s to the
+    /// `127.0.0.1` origin (which the host-only cookie already reaches, and where
+    /// the desktop webview authenticates on connection provenance), so the seam is
+    /// never asked.
+    #[tokio::test]
+    async fn launch_self_hosted_loopback_plants_no_session_cookie() {
+        let recorder = Arc::new(RecordingLaunchCookies::default());
+        let st = state_with_launch_cookies(
+            tunnel_with_public_host("demo.example.com"),
+            Arc::clone(&recorder) as Arc<dyn LaunchCookies>,
+        );
+        let res = send_raw(&st, post_launch("/apps/patient-browser")).await;
+        assert_eq!(res.status(), StatusCode::NO_CONTENT);
+        assert!(res.headers().get("set-cookie").is_none());
+        assert!(recorder.hosts.lock().unwrap().is_empty());
     }
 
     /// A forwarded self-hosted launch with no `public_host` is 503.

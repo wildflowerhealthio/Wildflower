@@ -123,6 +123,37 @@ fn owner_session_cookies_at(
     vec![auth, exp]
 }
 
+/// Re-scope the caller's owner session onto `host` for a **forwarded self-hosted
+/// app launch**, as ready-to-attach `Set-Cookie` header values.
+///
+/// A self-hosted app reachable remotely is served at its own subdomain
+/// `https://<subdomain>.<host>/`; the web session `wf_auth` is **host-only** on
+/// `<host>`, so it never rides to that subdomain and the app's own origin would
+/// carry no owner session. This reads the raw JWT the caller already presents in
+/// `wf_auth` and re-emits both session cookies via [`owner_session_cookies`] with
+/// `Domain=<host>` (subdomain-inclusive), so the browser holds the owner session
+/// on the app's origin once it follows the launch `302`. Empty when the caller
+/// carries no `wf_auth` (nothing to re-scope) — the launch then plants nothing.
+///
+/// This only *widens the scope* of a token the caller already holds; it mints
+/// nothing. `Secure` is always set — a forwarded launch is served over https.
+/// `host` must be the full tunnel `public_host`; the [`owner_session_cookies`]
+/// multi-tenant `Domain` guard (never a registrable parent) applies unchanged.
+///
+/// Kept beside [`owner_session_cookies`] so the `wf_auth` cookie name + attribute
+/// set stay owned by this slice; the apps launch handler reaches it only through
+/// a host-wired seam, never learning the cookie shape itself.
+#[must_use]
+pub fn rescope_owner_session_set_cookies(headers: &HeaderMap, host: &str) -> Vec<HeaderValue> {
+    match cookie_value(headers, AUTH_COOKIE_NAME) {
+        Some(jwt) if !jwt.is_empty() => owner_session_cookies(jwt, host, /* secure */ true)
+            .iter()
+            .filter_map(|cookie| HeaderValue::from_str(&cookie.to_string()).ok())
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
 /// Append a `Set-Cookie` header carrying `cookie`. A JWT or decimal cookie
 /// string is always valid header bytes; on the impossible failure the cookie is
 /// skipped rather than panicking (this code path mints owner sessions).
@@ -342,6 +373,65 @@ mod tests {
             cookies[0].max_age(),
             Some(cookie::time::Duration::seconds(-10))
         );
+    }
+
+    /// Every `Set-Cookie` value on a `HeaderMap` — the header form the launch
+    /// re-scope emits.
+    fn set_cookie_header_strings(headers: &HeaderMap) -> Vec<String> {
+        headers
+            .get_all(header::SET_COOKIE)
+            .iter()
+            .map(|v| v.to_str().expect("ascii").to_string())
+            .collect()
+    }
+
+    /// A forwarded self-hosted launch re-scopes the caller's own `wf_auth` onto
+    /// the app host: both session cookies, `Domain`-scoped to the full public
+    /// host, carrying the *same* JWT the caller already presented (no minting).
+    #[test]
+    fn rescope_re_emits_the_callers_wf_auth_scoped_to_the_host() {
+        let now = 1_750_000_000;
+        let jwt = jwt_with_exp(now + 3600);
+        let headers = cookie_header(&format!("other=1; {AUTH_COOKIE_NAME}={jwt}; another=2"));
+
+        let set = rescope_owner_session_set_cookies(&headers, "ruth.wildflowerhealth.io");
+        // Turn the emitted header values back into strings to assert their shape.
+        let mut planted = HeaderMap::new();
+        for value in &set {
+            planted.append(header::SET_COOKIE, value.clone());
+        }
+        let strings = set_cookie_header_strings(&planted);
+        assert_eq!(strings.len(), 2, "both session cookies: {strings:?}");
+        assert!(
+            strings
+                .iter()
+                .any(|c| c.starts_with(&format!("wf_auth={jwt};"))
+                    && c.contains("HttpOnly")
+                    && c.contains("Domain=ruth.wildflowerhealth.io")),
+            "wf_auth re-scoped to the host, unchanged value: {strings:?}"
+        );
+        assert!(
+            strings.iter().any(|c| c.starts_with("wf_auth_exp=")
+                && !c.contains("HttpOnly")
+                && c.contains("Domain=ruth.wildflowerhealth.io")),
+            "wf_auth_exp companion re-scoped too: {strings:?}"
+        );
+    }
+
+    /// No caller `wf_auth` → nothing to re-scope, so the launch plants no cookie.
+    #[test]
+    fn rescope_without_a_caller_cookie_plants_nothing() {
+        let headers = cookie_header("other=1; another=2");
+        assert!(rescope_owner_session_set_cookies(&headers, "t.example.test").is_empty());
+        assert!(rescope_owner_session_set_cookies(&HeaderMap::new(), "t.example.test").is_empty());
+    }
+
+    /// An empty `wf_auth` value is not a token — re-scoping it would plant a
+    /// blank session, so nothing is emitted.
+    #[test]
+    fn rescope_ignores_an_empty_wf_auth_value() {
+        let headers = cookie_header("wf_auth=");
+        assert!(rescope_owner_session_set_cookies(&headers, "t.example.test").is_empty());
     }
 
     #[test]

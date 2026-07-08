@@ -7,9 +7,10 @@
 // wiring; these fixtures are exactly the sanctioned test use, so silence it.
 #![allow(deprecated)]
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
+use axum::http::{HeaderMap, HeaderValue};
 use shared_structures_rust::test_utils::RecordingStubWebviewHandle;
 use shared_structures_rust::tunnel_service::{
     OfflineTunnel, TunnelLiveness, TunnelService, TunnelStatus,
@@ -17,6 +18,7 @@ use shared_structures_rust::tunnel_service::{
 use url::Url;
 
 use crate::db::AppsStore;
+use crate::http::launch_cookies::{LaunchCookies, NoLaunchCookies};
 use crate::http::owner_auth::{OwnerAuth, StubOwnerAuth};
 use crate::http::state::AppsState;
 use crate::OnDeviceWebviewHandle;
@@ -86,13 +88,41 @@ pub(crate) fn tunnel_unavailable() -> Arc<dyn TunnelService> {
     Arc::new(OfflineTunnel::new("http://127.0.0.1:8080"))
 }
 
+/// The `Set-Cookie` value [`RecordingLaunchCookies`] plants — a fixed sentinel a
+/// test can assert lands on the launch `302` without pulling in the gatekeeper
+/// cookie format (apps-rust can't depend on gatekeeper-rust).
+pub(crate) const SENTINEL_SET_COOKIE: &str =
+    "wf_auth=re.scoped.jwt; Domain=demo.example.com; Path=/";
+
+/// A recording [`LaunchCookies`] double: records every `host` it is asked to
+/// re-scope onto, and plants the single [`SENTINEL_SET_COOKIE`]. Lets a test
+/// assert both that the launch attaches the seam's output *and* that the seam is
+/// invoked for exactly the forwarded self-hosted case (its `hosts` stays empty
+/// otherwise).
+#[derive(Default)]
+pub(crate) struct RecordingLaunchCookies {
+    pub(crate) hosts: Mutex<Vec<String>>,
+}
+
+impl LaunchCookies for RecordingLaunchCookies {
+    fn rescope_for_host(&self, _headers: &HeaderMap, host: &str) -> Vec<HeaderValue> {
+        self.hosts
+            .lock()
+            .expect("hosts mutex")
+            .push(host.to_owned());
+        vec![HeaderValue::from_static(SENTINEL_SET_COOKIE)]
+    }
+}
+
 /// Build apps state over a fresh in-memory store with a specific `tunnel`,
-/// `owner_auth`, and on-device webview handle, using the shared loopback base
-/// URL. The most general fixture; the others below pin one or two of the knobs.
+/// `owner_auth`, on-device webview handle, and launch-cookie seam, using the
+/// shared loopback base URL. The most general fixture; the others below pin one
+/// or two of the knobs.
 pub(crate) fn state_full(
     owner_auth: Arc<dyn OwnerAuth>,
     tunnel: Arc<dyn TunnelService>,
     webview_handle: Arc<dyn OnDeviceWebviewHandle>,
+    launch_cookies: Arc<dyn LaunchCookies>,
 ) -> Arc<AppsState> {
     let store = AppsStore::open_in_memory().expect("store");
     Arc::new(AppsState::new(
@@ -101,7 +131,23 @@ pub(crate) fn state_full(
         owner_auth,
         tunnel,
         webview_handle,
+        launch_cookies,
     ))
+}
+
+/// Apps state with a specific `tunnel` + launch-cookie seam, an allow-all owner
+/// gate, and a throwaway recording handle — drives the forwarded self-hosted
+/// cookie-planting branch.
+pub(crate) fn state_with_launch_cookies(
+    tunnel: Arc<dyn TunnelService>,
+    launch_cookies: Arc<dyn LaunchCookies>,
+) -> Arc<AppsState> {
+    state_full(
+        Arc::new(StubOwnerAuth::always_allowed()),
+        tunnel,
+        Arc::new(RecordingStubWebviewHandle::default()),
+        launch_cookies,
+    )
 }
 
 /// Apps state with a specific `tunnel` + on-device handle and an allow-all owner
@@ -115,6 +161,7 @@ pub(crate) fn state_with_tunnel_and_handle(
         Arc::new(StubOwnerAuth::always_allowed()),
         tunnel,
         webview_handle,
+        Arc::new(NoLaunchCookies),
     )
 }
 
@@ -144,6 +191,7 @@ pub(crate) fn state_owner_denied() -> Arc<AppsState> {
         Arc::new(StubOwnerAuth::always_denied()),
         tunnel_unavailable(),
         Arc::new(RecordingStubWebviewHandle::default()),
+        Arc::new(NoLaunchCookies),
     )
 }
 
@@ -157,5 +205,6 @@ pub(crate) fn state_owner_denied_with_sink(
         Arc::new(StubOwnerAuth::always_denied()),
         tunnel_unavailable(),
         webview_handle,
+        Arc::new(NoLaunchCookies),
     )
 }

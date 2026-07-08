@@ -52,7 +52,7 @@
 
 use axum::body::{to_bytes, Body};
 use axum::extract::{Path, Query, State};
-use axum::http::{HeaderMap, Request, StatusCode};
+use axum::http::{header, HeaderMap, Request, StatusCode};
 use axum::response::{IntoResponse, Json, Response};
 use axum::Router;
 use serde::Deserialize;
@@ -181,8 +181,9 @@ pub(crate) async fn patient_everything_handler(
 }
 
 /// Re-drive HFS's router with an in-process `GET` sub-request, forwarding the
-/// caller's headers so tenant/version resolution and auth behave exactly as they
-/// would for a direct request. `path_and_query` is relative to the FHIR base
+/// caller's headers (except `Accept-Encoding`, see below) so tenant/version
+/// resolution and auth behave exactly as they would for a direct request.
+/// `path_and_query` is relative to the FHIR base
 /// (the `/fhir-r4` nest prefix is already stripped by the time HFS sees it),
 /// e.g. `/Patient/p1` or `/Patient/p1/Observation?_count=5`.
 async fn delegate_get(router: &Router, path_and_query: &str, headers: &HeaderMap) -> Response {
