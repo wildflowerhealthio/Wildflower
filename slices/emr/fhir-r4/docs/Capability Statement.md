@@ -28,6 +28,15 @@ Per FHIR R4 § Observation.search, the standard parameters include `_id`, `_last
 
 Implication: a client cannot ask "latest blood pressure for this patient" — the primary reason to query Observation. Adding `subject`/`patient`/`code`/`category`/`date` would unlock the canonical workflows.
 
+## `Patient/{id}/$everything` matches in memory and reads a single page (emr-rust)
+
+The `$everything` operation lives in the Rust HFS embedding (`slices/emr/emr-rust/src/patient_everything.rs`), which mounts it ahead of HFS (HFS ships no `$everything`). Two spec-relevant narrowings:
+
+- **Related resources are `Observation`s only.** FHIR `$everything` returns every resource in the patient's compartment; we include only `Observation` (the sole stored type that references a Patient besides `Binary`, which doesn't).
+- **Related-resource matching is in-memory over one search page.** HFS's `Observation.subject` search parameter isn't indexed (the embedding opens with `data_dir: None`), so instead of a compartment/`subject=` search we fetch the type-level `Observation` search (capped at HFS's `max_page_size`, 1000) and filter `subject.reference == "Patient/{id}"` in memory. Only the first page is inspected, so once the store holds more than 1000 `Observation`s across **all** patients, a target patient's rows outside that page are silently dropped — even a patient with only a few. This is stricter than the removed TypeScript twin, which queried the store unbounded. Closing it needs the delegated search paged to exhaustion, or a real `subject`-indexed compartment search.
+
+Additionally, `_count` truncates the matched `Observation`s and `Bundle.total` reflects the returned (post-truncation) entry count rather than the grand match total — matching the twin's behavior and its tests.
+
 ## Patient invariant `pat-1` not enforced
 
 FHIR R4 invariant `pat-1` on `Patient.contact` requires at least one of `name`, `telecom`, `address`, `organization` to be present. We do not enforce this; an empty contact backbone validates.

@@ -33,9 +33,22 @@
 //! Related resources are `Observation`s only — the resources the emr slice
 //! actually stores that reference a Patient (`Binary`, the other stored type,
 //! doesn't). `_count` truncates the matched `Observation`s (the primary Patient
-//! is always included). The candidate fetch is capped at
-//! [`OBSERVATION_FETCH_LIMIT`]; a patient with more Observations than that would
-//! have the tail dropped — like the twin, this does not page the full store.
+//! is always included).
+//!
+//! ## Known limitation: the candidate fetch is a single page
+//!
+//! The `Observation` candidates come from one type-level search page capped at
+//! [`OBSERVATION_FETCH_LIMIT`] resources — it is *not* paged to exhaustion.
+//! Because the search is store-wide (not compartment-scoped) and only the first
+//! page is inspected, the cap bounds the *total* `Observation`s the store may
+//! hold before results become lossy, not the target patient's own count: once
+//! the store holds more than [`OBSERVATION_FETCH_LIMIT`] `Observation`s across
+//! *all* patients, a target patient whose rows fall outside the first page has
+//! them silently omitted — even a patient with only a handful. This diverges
+//! from the TypeScript `fhir-r4` twin, which queries the store unbounded and so
+//! never drops a matching row. Paging the delegated search to exhaustion (or a
+//! real `subject`-indexed compartment search) would close the gap; see the
+//! spec-gap catalogue in `fhir-r4/docs/Capability Statement.md`.
 
 use axum::body::{to_bytes, Body};
 use axum::extract::{Path, Query, State};
@@ -56,8 +69,10 @@ const MAX_SUBRESPONSE_BYTES: usize = 32 * 1024 * 1024;
 
 /// How many `Observation`s to fetch as `$everything` candidates before matching
 /// `subject.reference` in memory. Set to HFS's default `max_page_size` (1000)
-/// so the type-level search returns as many as HFS will serve in one page — a
-/// patient with more than this many Observations has the overflow dropped.
+/// so the type-level search returns as many as HFS will serve in one page. Only
+/// this first page is inspected: once the store holds more than this many
+/// `Observation`s across *all* patients, a target patient's rows outside the
+/// page are dropped — see the module-level "Known limitation" note.
 const OBSERVATION_FETCH_LIMIT: u32 = 1000;
 
 /// State threaded to the `$everything` handler: a clone of HFS's router to
@@ -127,7 +142,7 @@ pub(crate) async fn patient_everything_handler(
         .map(|entries| {
             entries
                 .iter()
-                .filter_map(|entry| entry.get("resource").cloned())
+                .filter_map(|entry| entry.get("resource"))
                 .filter(|resource| {
                     resource
                         .get("subject")
@@ -135,6 +150,7 @@ pub(crate) async fn patient_everything_handler(
                         .and_then(Value::as_str)
                         == Some(subject_ref.as_str())
                 })
+                .cloned()
                 .collect()
         })
         .unwrap_or_default();
@@ -172,6 +188,15 @@ pub(crate) async fn patient_everything_handler(
 async fn delegate_get(router: &Router, path_and_query: &str, headers: &HeaderMap) -> Response {
     let mut builder = Request::builder().method("GET").uri(path_and_query);
     for (name, value) in headers {
+        // Don't offer content negotiation for compression on the sub-request:
+        // HFS's tower-http stack may honor the caller's `Accept-Encoding: gzip`
+        // and return a compressed body, but [`read_json`] parses the raw bytes
+        // as JSON with no decompression step — a forwarded `Accept-Encoding`
+        // would turn every delegated read into a `500` parse failure. Strip it
+        // so the sub-response is always identity-encoded.
+        if name == axum::http::header::ACCEPT_ENCODING {
+            continue;
+        }
         builder = builder.header(name, value);
     }
     let request = match builder.body(Body::empty()) {
