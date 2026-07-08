@@ -3,10 +3,10 @@ use url::Url;
 #[derive(Debug, Clone)]
 pub struct GatekeeperConfig {
     /// The HTTP-only loopback origin the embedded API server binds to, e.g.
-    /// `http://127.0.0.1:8080/`, as a typed [`Url`]. The fallback
-    /// [`served_origin_for`](crate::http::served_origin_for) returns (as its bare
-    /// `origin().ascii_serialization()`) when a request carries no public-origin
-    /// header.
+    /// `http://127.0.0.1:8080/`, as a typed [`Url`]. The loopback base URL
+    /// [`served_base_url_for`](crate::http::served_base_url_for) returns when a
+    /// request carries no public-origin header (consumers then take its bare
+    /// `origin().ascii_serialization()`).
     pub loopback_base_url: Url,
 
     /// The host's granted-scope wire strings — seeded as the first-party

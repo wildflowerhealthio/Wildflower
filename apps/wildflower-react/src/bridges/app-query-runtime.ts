@@ -48,7 +48,7 @@ const prependApiBaseUrl = (
         HttpClient.tap((response) =>
           Effect.sync(() => {
             const contentType = response.headers['content-type'] ?? '(none)'
-            if (!contentType.includes('json')) {
+            if (!contentType.includes('json') && ![204].includes(response.status)) {
               // oxlint-disable-next-line no-console
               console.warn(
                 `[api] non-JSON response: ${response.request.method} ${response.request.url} -> ${response.status} ${contentType}`

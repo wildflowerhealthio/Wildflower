@@ -6,6 +6,12 @@ _Last triaged 2026-07-04 — durable lessons were promoted to `Strategies.md`, t
 
 <!-- Append new entries below this line -->
 
+## Re-driving `hfs_router` in-process: strip `Accept-Encoding` or the delegated sub-response comes back compressed and won't parse
+
+**Discovered during**: claude/fhir-patient-everything-op-95ig70 — debugging a `$everything` 500 (`failed to parse sub-response JSON: expected value at line 1 column 1`)
+**Learning**: `emr-rust`'s `$everything` handler (`patient_everything.rs`) delegates data-fetching by re-driving a clone of HFS's own router in-process (`router.clone().oneshot(sub_request)`), forwarding the caller's headers so auth/tenant resolution matches a direct request. But `helios-rest`'s `create_app_with_auth` wraps the router in a `CompressionLayer` (`compress_when(SizeAbove::new(32) & NotForContentType(parquet/zip))`) — so forwarding the real client's `Accept-Encoding: gzip, deflate, br` makes HFS gzip the sub-response body. The sub-request still returns **200**; the body is just compressed, so `serde_json::from_slice` fails at the first byte (`expected value at line 1 column 1` — column **1**, not 0, is the tell: non-empty body, invalid first byte = the `0x1f` gzip magic). Tests passed because their request helper never set `Accept-Encoding`. Fix: skip `header::ACCEPT_ENCODING` when copying headers into the sub-request — we consume the body in-process, not over the wire, so we always want it identity-encoded; the real client's `Accept-Encoding` is honored by the outer HTTP stack against our own response. General rule: any in-process `oneshot` re-drive of a router that carries a compression/content-negotiation layer must drop hop-by-hop / transfer-encoding-negotiation headers (`Accept-Encoding` first) from the forwarded set.
+**Suggested destination**: unsure — a note near the `patient_everything.rs` module docs, or an emr-rust delegation how-to if one emerges
+
 ## `.local-notes` design-handoff HTML is a self-extracting bundle — the real markup lives in `__bundler/template` + `__dc_inline` JSON
 
 **Discovered during**: claude/issue-256-implementation-ohs995 — matching the OAuth consent screen to the Scope Picker reference design

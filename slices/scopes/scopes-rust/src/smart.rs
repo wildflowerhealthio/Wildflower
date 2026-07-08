@@ -13,23 +13,17 @@ use crate::scope::Scope;
 /// clamp stops a stale request from granting a scope the client's policy no
 /// longer permits.
 ///
-/// Both the requested and the allowed sides are matched by **coverage**, not
-/// exact equality (each side is parsed to a [`Scope`] and compared with
-/// [`Scope::covers`]). Coverage on the requested side is what lets an Owner
-/// *narrow* an approval: if the client requested `patient/Observation.rs` and
-/// the Owner approves the tighter `patient/Observation.s`, the approved scope is
-/// still ⊆ the request, so it is granted — an exact-equality check would have
-/// silently dropped it. The Owner can only narrow, never widen: the approved
-/// scope must be covered by something requested *and* by the client's current
-/// `allowed_scopes`, so the grant is always within both envelopes. Coverage is
-/// same-grammar and wildcard/context-aware (SMART v1 words and v2 letters never
-/// cross-cover; known/unknown scopes match exactly — see [`Scope::covers`]).
+/// Both sides match by **coverage**, not exact equality (each parsed to a [`Scope`]
+/// and compared with [`Scope::covers`]). Coverage on the requested side is what
+/// lets an Owner narrow: an approved `patient/Observation.s` is still ⊆ a requested
+/// `patient/Observation.rs`, so it's granted where exact equality would drop it.
+/// Coverage is same-grammar and wildcard/context-aware (v1 words and v2 letters
+/// never cross-cover; known/unknown match exactly — see [`Scope::covers`]).
 ///
-/// Every kept scope is rendered back to its wire string in its own approved
-/// spelling (SMART v1↔v2 back-compat — see [`Permission`](crate::Permission)).
-/// The result is de-duplicated by rendered form, preserving first-seen order; an
-/// empty grant stays empty (the approve handlers treat "nothing granted" as a
-/// deny).
+/// Every kept scope is rendered back to its own approved wire spelling (v1↔v2
+/// back-compat — see [`Permission`](crate::Permission)), de-duplicated by rendered
+/// form (first-seen order). An empty grant stays empty (approve handlers treat
+/// "nothing granted" as a deny).
 pub fn grantable_scopes(
     approved: Vec<String>,
     requested: &HashSet<&str>,

@@ -25,7 +25,8 @@ pub use config::GatekeeperConfig;
 pub use db::GatekeeperStore;
 pub use http::{
     ensure_bearer_header, is_pre_auth_public_path, layer_router_with_gatekeeper_auth_gating,
-    layer_router_with_loopback_peer_gating, owner_session_cookies, verify_owner_bearer, AppState,
+    layer_router_with_loopback_peer_gating, owner_session_cookies,
+    rescope_owner_session_set_cookies, verify_owner_bearer, AppState,
 };
 
 /// `client_id` of the host application's first-party OAuth client. The host
@@ -125,7 +126,8 @@ pub struct Gatekeeper {
 ///
 /// Token claims follow the canonical model — `iss` is the fixed
 /// [`shared_structures_rust::CANONICAL_ISSUER`] and `aud` is the per-request
-/// served origin ([`served_origin_for`](crate::http::served_origin_for)). See
+/// served origin (derived from
+/// [`served_base_url_for`](crate::http::served_base_url_for)). See
 /// `docs/Origins/Explanation.md`.
 ///
 /// The whole surface is gated by the loopback middleware — non-loopback
@@ -162,13 +164,9 @@ pub fn setup_gatekeeper(
         config.granted_scopes
     );
     let store = seeding::open_and_seed_store(conn, &config.granted_scopes)?;
-    // The owner token's `aud` is [`shared_structures_rust::CANONICAL_ISSUER`],
-    // like its `iss`: the host presents this one token over loopback (the
-    // provenance-injected bearer) AND at the tunnel origin (the popup's seeded
-    // `wf_auth` cookie, #256), so a served-origin audience can't work — it
-    // would bind the token to exactly one of the two. `require_auth` accepts
-    // the canonical audience alongside the per-request served-origin pair. See
-    // `docs/Origins/Explanation.md`.
+    // `iss` and `aud` are both the canonical issuer: the one token is presented
+    // over loopback and at the tunnel origin (#256), so a served-origin `aud`
+    // couldn't cover both. See `docs/Origins/Explanation.md`.
     let host_owner_token = seeding::mint_host_owner_token(
         &store,
         shared_structures_rust::CANONICAL_ISSUER,

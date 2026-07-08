@@ -108,3 +108,22 @@ Remote reachability of on-device data over those hostnames therefore depends on
 gate. This is a deliberate boundary, not an oversight: the front is the gate for
 the remote self-hosted surface. (An in-code gate for those origins is possible
 future hardening.)
+
+### The forwarded launch plants the app's session cookie
+
+A forwarded launch of a Self-Hosted app redirects the browser to the app's own
+subdomain, `https://<id>.<public_host>/`. The web owner session cookie
+(`wf_auth`) is **host-only** on `<public_host>`, so it never rides to that
+subdomain — the app's origin would carry no session and its own calls back to the
+FHIR API (from a different origin) would be unauthenticated. So the launch `302`
+carries a `Set-Cookie` that **re-scopes the caller's own session** onto
+`<public_host>` (`Domain=`, subdomain-inclusive), planting it on the app's
+subdomain once the browser follows the redirect. This only widens the scope of a
+token the caller already holds — it mints nothing, and the `Domain` is always the
+full tunnel `public_host` (never its registrable parent), so the bearer never
+reaches a sibling tenant. The cookie name and attributes stay owned by the
+gatekeeper slice; the apps launch handler reaches them through a host-wired seam
+(`LaunchCookies`), mirroring how the loopback owner gate reaches the owner-bearer
+check. Loopback and Cloud launches plant nothing here: a loopback self-hosted app
+shares the `127.0.0.1` cookie already (and the desktop webview authenticates on
+connection provenance), and a Cloud app authenticates through its own OAuth flow.

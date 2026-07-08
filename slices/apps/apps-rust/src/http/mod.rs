@@ -14,10 +14,12 @@
 //! [`openapi_tests`].
 
 mod handlers;
+pub mod launch_cookies;
 pub mod owner_auth;
 mod response_templates;
 mod state;
 
+pub use launch_cookies::{LaunchCookies, NoLaunchCookies};
 pub use owner_auth::OwnerAuth;
 // Re-exported for tests (incl. the integration crate); the `#[deprecated]` is the
 // intended signal, so silence it on the re-export itself.

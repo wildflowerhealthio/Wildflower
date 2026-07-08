@@ -541,18 +541,16 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
     }
 
     /**
-     * Seed [cookies] into the process-global [android.webkit.CookieManager],
-     * then run [thenLoad] once every `setCookie` completion has fired — so the
-     * seed rides the very first request to the target (mirrors desktop's
-     * blocking `set_cookie` → `navigate` ordering). No cookies → load
-     * immediately.
+     * Seed [cookies] into the process-global [android.webkit.CookieManager], then
+     * run [thenLoad] once every `setCookie` completion fires — so the seed rides
+     * the first request (mirrors desktop's `set_cookie` → `navigate` ordering; no
+     * cookies → load immediately).
      *
-     * Each cookie is written as a server-style `Set-Cookie` header string
-     * against `https://<domain>/` (`CookieManager` validates a `Secure` cookie
-     * only against a secure URL) and its `Domain` attribute makes it
-     * subdomain-inclusive, matching the other backends. NOTE: `CookieManager`
-     * is process-global — the seeded cookie is visible to any WebView in this
-     * app that hits the same host, not just this plugin's popup.
+     * Each cookie is written as a `Set-Cookie` header against `https://<domain>/`
+     * (`CookieManager` validates a `Secure` cookie only against a secure URL); its
+     * `Domain` attribute makes it subdomain-inclusive. NOTE: `CookieManager` is
+     * process-global — the seeded cookie is visible to any WebView in this app on
+     * the same host, not just this popup.
      */
     private fun seedCookies(cookies: List<CookieArg>?, thenLoad: () -> Unit) {
         if (cookies.isNullOrEmpty()) {

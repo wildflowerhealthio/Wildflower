@@ -22,7 +22,8 @@ arrive having been addressed two different ways:
 - **Served origin** — the origin the client _actually_ reached. For a direct
   loopback caller it is the loopback origin. For a request relayed by the
   trusted front it is the public `{scheme}://{host}` the browser used. A handler
-  recovers it per request with [`served_origin_for`].
+  recovers it per request with [`served_base_url_for`] (which returns the served
+  base URL as a typed `Url`; the bare origin string is derived from it).
 
 "Served origin" is the load-bearing concept: a token, a redirect `Location`, or
 a discovery document must reference the URL the caller really used, not the
@@ -40,9 +41,14 @@ sit to its left and are ignored. Trust comes from the loopback-socket gate (see
 Because the `host` ultimately derives from an attacker-influenced `Host` header
 and lands in a `Location` the browser follows, it is validated (`safe_host` /
 `safe_scheme`) against the delimiters that could redirect to a different
-authority. A header that fails validation reads as _unforwarded_ and falls back
-to the loopback origin. The parsing contract, the exact nginx directive, and the
-attack cases live on the [`served_origin`] module.
+authority. A `Forwarded` header that fails validation is **rejected** (the
+request `500`s), _not_ treated as loopback: the header's presence means the
+request came through the front, so collapsing a malformed one to loopback would
+let a tunnel-relayed remote caller be mistaken for a direct-local one — and
+inherit the local-owner trust that is gated purely on "not forwarded" (e.g. the
+desktop host's owner-token injection). Only the **absence** of the header reads
+as loopback. The parsing contract, the exact nginx directive, and the attack
+cases live on the [`served_origin`] module.
 
 ## `iss` is the canonical origin; `aud` is the served origin
 
@@ -56,9 +62,9 @@ on purpose:
   loopback-vs-tunnel branching at mint time or validation time. Wildflower is
   single-tenant for now; a per-deployment issuer is deferred until a second
   tenant justifies it.
-- **`aud` = the served origin** ([`served_origin_for`], per request) — so a SMART
-  client can match the token's `aud` to the FHIR base URL it discovered. HFS
-  leaves `aud` unvalidated; gatekeeper's own bearer gate enforces audience.
+- **`aud` = the served origin** ([`served_base_url_for`], per request) — so a
+  SMART client can match the token's `aud` to the FHIR base URL it discovered.
+  HFS leaves `aud` unvalidated; gatekeeper's own bearer gate enforces audience.
 
 One deliberate exception: the **host owner token** carries
 `aud = CANONICAL_ISSUER` (same value as its `iss`). The host presents that one
@@ -140,7 +146,6 @@ restate the grammar.
 
 [`CANONICAL_ISSUER`]: ../../slices/shared-structures/shared-structures-rust/src/lib.rs
 [`served_origin`]: ../../slices/shared-structures/shared-structures-rust/src/served_origin.rs
-[`served_origin_for`]: ../../slices/shared-structures/shared-structures-rust/src/served_origin.rs
 [`subdomain_host`]: ../../slices/shared-structures/shared-structures-rust/src/subdomain_host.rs
 [`require_loopback_peer`]: ../../slices/gatekeeper/gatekeeper-rust/src/http/middleware/require_loopback_peer.rs
 [`UNAUTHENTICATED_FHIR_PATHS`]: ../../slices/emr/emr-rust/src/lib.rs
