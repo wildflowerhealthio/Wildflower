@@ -325,16 +325,6 @@ async fn run_server(
     // just 404s. Best-effort — a creation failure only means the apps routes 404
     // until it exists, so it must not abort server startup.
     let self_hosted_apps_dir = runtime.app_data_dir.join("self-hosted-apps");
-    // One-shot rename of the former serving-root name (`installed-apps`). Only
-    // when the old dir exists and the new one doesn't yet; best-effort.
-    let legacy_apps_dir = runtime.app_data_dir.join("installed-apps");
-    if legacy_apps_dir.is_dir() && !self_hosted_apps_dir.exists() {
-        if let Err(error) = std::fs::rename(&legacy_apps_dir, &self_hosted_apps_dir) {
-            tauri_plugin_log::log::warn!(
-                "failed to migrate installed-apps -> self-hosted-apps: {error}"
-            );
-        }
-    }
     if let Err(error) = std::fs::create_dir_all(&self_hosted_apps_dir) {
         tauri_plugin_log::log::warn!(
             "failed to create self-hosted-apps dir {}: {error}",

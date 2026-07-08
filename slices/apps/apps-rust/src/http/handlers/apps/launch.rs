@@ -85,37 +85,42 @@ pub(crate) async fn handle_launch_app(
 
     // Resolve before dispatching: an unreachable target bails here with
     // `503 LaunchUnavailable` rather than opening a doomed popup / dead redirect.
-    let (name, target_url) = resolve_launch_target(&state, &app, &provenance).await?;
+    let target_url = app.make_launch_target_url(&state, &provenance).await?;
 
     match &provenance {
         // The loopback caller was owner-checked above; hand the URL to the host
         // webview and `204` (the seam is contractually fire-and-forget).
         RequestProvenance::Loopback => {
-            state.on_device_webview_handle.open(name, target_url);
+            state.on_device_webview_handle.open(app.name.clone(), target_url);
             Ok(no_content())
         }
         RequestProvenance::Forwarded { .. } => redirect(target_url),
     }
 }
 
-/// Resolve `app` to its `(name, launch target)`, dispatching on its
-/// [`AppKind`] payload — the whole app came out of one store read, so the
-/// kind-specific launch data is already in hand (a `cloud` / `self-hosted` row
-/// whose child data is missing fails inside that read as a typed error, never
-/// here). The name is only for the loopback popup's chrome; the launch URL is
-/// the kind-aware target. `503` if the matched app has no reachable target;
-/// `500` for a `system` row with no compiled-in source.
-async fn resolve_launch_target(
-    state: &AppsState,
-    app: &App,
-    provenance: &RequestProvenance,
-) -> Result<(String, String), HandlerError> {
-    let target_url = match &app.kind {
-        AppKind::System => render_system_target(state, app, provenance)?,
-        AppKind::SelfHosted(child) => render_self_hosted_target(child, state, provenance)?,
-        AppKind::Cloud(child) => render_cloud_target(state, provenance, child).await?,
-    };
-    Ok((app.name.clone(), target_url))
+impl App {
+    /// Resolve this app to its launch-target URL, dispatching on its
+    /// [`AppKind`] payload — the whole app came out of one store read, so the
+    /// kind-specific launch data is already in hand (a `cloud` / `self-hosted`
+    /// row whose child data is missing fails inside that read as a typed error,
+    /// never here). `503` if the matched app has no reachable target; `500` for
+    /// a `system` row with no compiled-in source.
+    ///
+    /// Lives beside the launch handler rather than in `domain` on purpose: the
+    /// resolution reaches into `AppsState` (the tunnel, the loopback config) and
+    /// yields an http [`HandlerError`], so keeping it here leaves the domain
+    /// [`App`] free of that http/runtime coupling.
+    async fn make_launch_target_url(
+        &self,
+        state: &AppsState,
+        provenance: &RequestProvenance,
+    ) -> Result<String, HandlerError> {
+        match &self.kind {
+            AppKind::System => render_system_target(state, self, provenance),
+            AppKind::SelfHosted(child) => render_self_hosted_target(child, state, provenance),
+            AppKind::Cloud(child) => render_cloud_target(state, provenance, child).await,
+        }
+    }
 }
 
 /// Render a system app's launch target from its compiled-in
