@@ -146,7 +146,6 @@ restate the grammar.
 
 [`CANONICAL_ISSUER`]: ../../slices/shared-structures/shared-structures-rust/src/lib.rs
 [`served_origin`]: ../../slices/shared-structures/shared-structures-rust/src/served_origin.rs
-[`served_origin_for`]: ../../slices/shared-structures/shared-structures-rust/src/served_origin.rs
 [`subdomain_host`]: ../../slices/shared-structures/shared-structures-rust/src/subdomain_host.rs
 [`require_loopback_peer`]: ../../slices/gatekeeper/gatekeeper-rust/src/http/middleware/require_loopback_peer.rs
 [`UNAUTHENTICATED_FHIR_PATHS`]: ../../slices/emr/emr-rust/src/lib.rs
