@@ -172,8 +172,10 @@ async fn resolve_launch_target(
                         format!("id={}", app.id),
                     )
                 })?;
-            let (target_url, session_cookie_host) =
-                render_self_hosted_target(&child, state, provenance)?;
+            let SelfHostedTarget {
+                target_url,
+                session_cookie_host,
+            } = render_self_hosted_target(&child, state, provenance)?;
             Ok(ResolvedLaunch {
                 name: app.name.clone(),
                 target_url,
@@ -229,6 +231,20 @@ fn render_system_target(
     }))
 }
 
+/// A resolved self-hosted launch target: the provenance-aware URL plus, for a
+/// forwarded launch only, the public host to re-scope the caller's owner session
+/// onto. Named (rather than a `(String, Option<String>)` tuple) so the two
+/// strings can't be transposed at the call site.
+struct SelfHostedTarget {
+    /// The launch URL — the loopback origin for a loopback caller, or the public
+    /// subdomain for a forwarded one.
+    target_url: String,
+    /// `Some(public_host)` for a **forwarded** launch, whose cookie `Domain` this
+    /// re-scopes to; `None` for a loopback launch (which shares the `127.0.0.1`
+    /// cookie and needs no re-scope).
+    session_cookie_host: Option<String>,
+}
+
 /// Render a self-hosted app's launch target plus, for a forwarded launch, the
 /// public host to re-scope the caller's owner session onto. A loopback caller
 /// gets the loopback `http://{host}:{port}/` and `None` (the app shares the
@@ -243,16 +259,22 @@ fn render_self_hosted_target(
     child: &SelfHostedApp,
     state: &AppsState,
     provenance: &RequestProvenance,
-) -> Result<(String, Option<String>), HandlerError> {
+) -> Result<SelfHostedTarget, HandlerError> {
     if matches!(provenance, RequestProvenance::Forwarded { .. }) {
         let Some(public_host) = state.tunnel.current_public_host() else {
             return Err(HandlerError::Unavailable {
                 reason: "no public host is configured for this remote launch".to_owned(),
             });
         };
-        return Ok((child.subdomain_url(&public_host), Some(public_host)));
+        return Ok(SelfHostedTarget {
+            target_url: child.subdomain_url(&public_host),
+            session_cookie_host: Some(public_host),
+        });
     }
-    Ok((child.launch_url(&state.loopback_hostname()), None))
+    Ok(SelfHostedTarget {
+        target_url: child.launch_url(&state.loopback_hostname()),
+        session_cookie_host: None,
+    })
 }
 
 /// Render a cloud app's launch target: resolve the served origin (or the

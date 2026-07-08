@@ -1,8 +1,9 @@
 //! End-to-end tests for the `$everything` override, exercised through the real
-//! router `setup_fhir_r4` builds (HFS create/read/`Observation` search + our
+//! router `setup_fhir_r4` builds (HFS create/read/type-level search + our
 //! in-memory subject match + merge), with HFS auth off (`jwks_url: None`).
-//! Mirrors the TypeScript `fhir-r4` twin's `patient-everything` cases:
-//! patient-first ordering, `_count` truncation, and `404` for a missing patient.
+//! Covers patient-first ordering, the multi-type related set
+//! (`Observation` + `MedicationRequest`), `_count` truncation, and `404` for a
+//! missing patient.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -122,6 +123,29 @@ async fn put_observation(router: &Router, id: &str, subject: &str) {
     );
 }
 
+/// PUT (create-with-id) a minimal `MedicationRequest` referencing
+/// `Patient/{subject}` (via its `subject` element, like `Observation`).
+async fn put_medication_request(router: &Router, id: &str, subject: &str) {
+    let (status, body) = send(
+        router,
+        "PUT",
+        &format!("/fhir-r4/MedicationRequest/{id}"),
+        Some(json!({
+            "resourceType": "MedicationRequest",
+            "id": id,
+            "status": "active",
+            "intent": "order",
+            "medicationCodeableConcept": { "text": "test med" },
+            "subject": { "reference": format!("Patient/{subject}") },
+        })),
+    )
+    .await;
+    assert!(
+        status.is_success(),
+        "PUT MedicationRequest/{id} failed: {status} {body}"
+    );
+}
+
 #[tokio::test]
 async fn returns_bundle_patient_first_then_referencing_observations() {
     let (router, _db) = build_router();
@@ -171,6 +195,57 @@ async fn returns_bundle_patient_first_then_referencing_observations() {
     // Self link points back at the operation.
     let links = bundle["link"].as_array().expect("link array");
     assert!(links.iter().any(|link| link["relation"] == "self"));
+}
+
+#[tokio::test]
+async fn bundle_includes_multiple_related_types_for_the_target_patient() {
+    let (router, _db) = build_router();
+
+    // p1 owns an Observation and a MedicationRequest; p2 owns one of each too,
+    // which must not leak into p1's `$everything`.
+    put_patient(&router, "p1").await;
+    put_patient(&router, "p2").await;
+    put_observation(&router, "o1", "p1").await;
+    put_medication_request(&router, "m1", "p1").await;
+    put_observation(&router, "o-other", "p2").await;
+    put_medication_request(&router, "m-other", "p2").await;
+
+    let (status, bundle) = send(&router, "GET", "/fhir-r4/Patient/p1/$everything", None).await;
+
+    assert_eq!(status, StatusCode::OK);
+    let entries = bundle["entry"].as_array().expect("entry array");
+
+    // Patient first, then exactly p1's Observation + MedicationRequest.
+    assert_eq!(entries[0]["resource"]["resourceType"], "Patient");
+    assert_eq!(entries[0]["resource"]["id"], "p1");
+
+    let mut related: Vec<(String, String)> = entries[1..]
+        .iter()
+        .map(|entry| {
+            let resource = &entry["resource"];
+            (
+                resource["resourceType"]
+                    .as_str()
+                    .expect("resourceType")
+                    .to_string(),
+                resource["id"].as_str().expect("id").to_string(),
+            )
+        })
+        .collect();
+    related.sort();
+    assert_eq!(
+        related,
+        vec![
+            ("MedicationRequest".to_string(), "m1".to_string()),
+            ("Observation".to_string(), "o1".to_string()),
+        ]
+    );
+    assert_eq!(bundle["total"], 3);
+
+    // Every entry is a search match.
+    for entry in entries {
+        assert_eq!(entry["search"]["mode"], "match");
+    }
 }
 
 #[tokio::test]

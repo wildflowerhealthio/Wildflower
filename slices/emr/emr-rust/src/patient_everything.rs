@@ -8,12 +8,18 @@
 //!
 //! Unlike that override, `$everything` needs the store. Instead of reading it
 //! directly, this handler **delegates data-fetching to HFS's own handlers
-//! in-process**: a `read` for the primary Patient and a type-level search for
-//! its `Observation`s. It re-drives a clone of HFS's router with sub-requests
-//! that carry the caller's headers (including `Authorization`), so HFS's SMART
-//! v2 scope enforcement stays in the path exactly as it would for a direct
-//! `GET /Patient/{id}` — a token that can't read Patient/Observation gets the
-//! same `401`/`403` here, propagated verbatim.
+//! in-process**: a `read` for the primary Patient, then a type-level search per
+//! [`RelatedType`] in [`RELATED_RESOURCE_TYPES`]. It re-drives a clone of HFS's
+//! router with sub-requests that carry the caller's headers (including
+//! `Authorization`), so HFS's SMART v2 scope enforcement stays in the path
+//! exactly as it would for a direct `GET /Patient/{id}` — a token that can't read
+//! the Patient gets the same `401`/`403` here, propagated verbatim.
+//!
+//! A related-resource search that fails (non-200 or an unreadable body) is
+//! logged and treated as *no matches* rather than aborting: only the primary
+//! Patient read is fatal. This keeps `$everything` useful for a partial-scope
+//! token — one that can read Patient and Observation but not MedicationRequest
+//! still gets a Bundle with the Patient and its Observations.
 //!
 //! ## Why the related resources are matched in memory
 //!
@@ -23,32 +29,37 @@
 //! *indexed*, which requires the FHIR SearchParameter spec files loaded from a
 //! `data/` dir. This embedding ships none (the backend opens with
 //! `data_dir: None`), so only a minimal `_id`/`_lastUpdated` index exists and a
-//! `subject=` search returns nothing. We therefore fetch the `Observation`
-//! type-level search (which needs no index) and match `subject.reference`
-//! against `Patient/{id}` in memory — exactly what the TypeScript `fhir-r4`
-//! twin's `$everything` does, and for the same reason.
+//! `subject=` search returns nothing. We therefore fetch each related type's
+//! type-level search (which needs no index) and match its patient reference
+//! against `Patient/{id}` in memory — the same approach, and for the same
+//! reason, as the TypeScript `fhir-r4` twin's `$everything`.
 //!
 //! ## Scope
 //!
-//! Related resources are `Observation`s only — the resources the emr slice
-//! actually stores that reference a Patient (`Binary`, the other stored type,
-//! doesn't). `_count` truncates the matched `Observation`s (the primary Patient
-//! is always included).
+//! Related resources are the patient-referencing types in
+//! [`RELATED_RESOURCE_TYPES`] — `Observation` and `MedicationRequest` today.
+//! This is broader than the twin, which relates `Observation` only: the twin's
+//! LiveStore models just Patient/Observation/Binary, whereas HFS is a general
+//! FHIR store, so the Rust `$everything` gathers every patient-referencing type
+//! HFS serves. `_count` truncates the combined matched set (the primary Patient
+//! is always included on top). Adding a type is a one-row change to the table —
+//! record the divergence in `fhir-r4/docs/Capability Statement.md` in the same
+//! change.
 //!
-//! ## Known limitation: the candidate fetch is a single page
+//! ## Known limitation: each candidate fetch is a single page
 //!
-//! The `Observation` candidates come from one type-level search page capped at
-//! [`OBSERVATION_FETCH_LIMIT`] resources — it is *not* paged to exhaustion.
-//! Because the search is store-wide (not compartment-scoped) and only the first
-//! page is inspected, the cap bounds the *total* `Observation`s the store may
+//! Each related type's candidates come from one type-level search page capped at
+//! [`RELATED_FETCH_LIMIT`] resources — it is *not* paged to exhaustion. Because
+//! the search is store-wide (not compartment-scoped) and only the first page is
+//! inspected, the cap bounds the *total* resources of that type the store may
 //! hold before results become lossy, not the target patient's own count: once
-//! the store holds more than [`OBSERVATION_FETCH_LIMIT`] `Observation`s across
-//! *all* patients, a target patient whose rows fall outside the first page has
-//! them silently omitted — even a patient with only a handful. This diverges
-//! from the TypeScript `fhir-r4` twin, which queries the store unbounded and so
-//! never drops a matching row. Paging the delegated search to exhaustion (or a
-//! real `subject`-indexed compartment search) would close the gap; see the
-//! spec-gap catalogue in `fhir-r4/docs/Capability Statement.md`.
+//! the store holds more than [`RELATED_FETCH_LIMIT`] of a type across *all*
+//! patients, a target patient whose rows fall outside the first page has them
+//! silently omitted — even a patient with only a handful. This diverges from the
+//! TypeScript `fhir-r4` twin, which queries the store unbounded and so never
+//! drops a matching row. Paging the delegated search to exhaustion (or a real
+//! indexed compartment search) would close the gap; see the spec-gap catalogue
+//! in `fhir-r4/docs/Capability Statement.md`.
 
 use axum::body::{to_bytes, Body};
 use axum::extract::{Path, Query, State};
@@ -62,18 +73,51 @@ use tower::ServiceExt;
 
 use crate::FHIR_R4_PATH;
 
-/// Upper bound on bytes buffered from a delegated sub-response body. The
-/// candidate fetch is capped at [`OBSERVATION_FETCH_LIMIT`] resources, so a
-/// single body stays well under this; the cap just guards a pathological body.
+/// Upper bound on bytes buffered from a delegated sub-response body. Each
+/// candidate fetch is capped at [`RELATED_FETCH_LIMIT`] resources, so a single
+/// body stays well under this; the cap just guards a pathological body.
 const MAX_SUBRESPONSE_BYTES: usize = 32 * 1024 * 1024;
 
-/// How many `Observation`s to fetch as `$everything` candidates before matching
-/// `subject.reference` in memory. Set to HFS's default `max_page_size` (1000)
-/// so the type-level search returns as many as HFS will serve in one page. Only
-/// this first page is inspected: once the store holds more than this many
-/// `Observation`s across *all* patients, a target patient's rows outside the
-/// page are dropped — see the module-level "Known limitation" note.
-const OBSERVATION_FETCH_LIMIT: u32 = 1000;
+/// How many resources of a related type to fetch as `$everything` candidates
+/// before matching the patient reference in memory. Set to HFS's default
+/// `max_page_size` (1000) so each type-level search returns as many as HFS will
+/// serve in one page. Only this first page is inspected: once the store holds
+/// more than this many of a type across *all* patients, a target patient's rows
+/// outside the page are dropped — see the module-level "Known limitation" note.
+const RELATED_FETCH_LIMIT: u32 = 1000;
+
+/// A FHIR resource type gathered into a Patient `$everything` Bundle alongside
+/// the Patient, and the element on each row that carries the `Patient/{id}`
+/// reference we match on. Each is fetched via an unindexed type-level search and
+/// matched to the target patient in memory (see the module docs for why).
+struct RelatedType {
+    /// FHIR resource type name, e.g. `"Observation"` — the type-level search path
+    /// (`/{resource_type}`) and the `resourceType` these rows carry.
+    resource_type: &'static str,
+    /// Element holding the `Patient/{id}` reference to match on. FHIR names this
+    /// per-resource; both types we gather today use `subject`
+    /// (`Observation.subject`, `MedicationRequest.subject`).
+    patient_reference_field: &'static str,
+}
+
+/// The related resource types a Patient `$everything` gathers, in Bundle order
+/// after the Patient. To include another patient-referencing type HFS stores,
+/// add a row here — the handler loops over this table with no other change.
+///
+/// `MedicationRequest` is included beyond the (Observation-only) TypeScript
+/// `fhir-r4` twin: HFS is a general FHIR store, so the Rust `$everything` gathers
+/// every patient-referencing type it serves. See the "Scope" module note and the
+/// spec-gap catalogue in `fhir-r4/docs/Capability Statement.md`.
+const RELATED_RESOURCE_TYPES: &[RelatedType] = &[
+    RelatedType {
+        resource_type: "Observation",
+        patient_reference_field: "subject",
+    },
+    RelatedType {
+        resource_type: "MedicationRequest",
+        patient_reference_field: "subject",
+    },
+];
 
 /// State threaded to the `$everything` handler: a clone of HFS's router to
 /// re-drive in-process, plus the loopback origin used as the served-origin
@@ -120,52 +164,75 @@ pub(crate) async fn patient_everything_handler(
         Err(resp) => return resp,
     };
 
-    // 2. Fetch Observation candidates via the type-level search (no index
-    //    needed) and match `subject.reference` in memory — see the module docs
-    //    for why we don't use a compartment/`subject=` search here.
-    let obs_resp = delegate_get(
-        &state.hfs_router,
-        &format!("/Observation?_count={OBSERVATION_FETCH_LIMIT}"),
-        &headers,
-    )
-    .await;
-    if obs_resp.status() != StatusCode::OK {
-        return obs_resp;
+    // 2. Gather related resources. For each type in `RELATED_RESOURCE_TYPES`,
+    //    fetch a type-level search page (no index needed) and keep the parsed
+    //    Bundle alive so matched resources can be borrowed straight out of it at
+    //    serialize time — no clone. See the module docs for why we match in
+    //    memory rather than with a compartment/`subject=` search.
+    //
+    //    Unlike the primary Patient read, a related search that fails (a non-200
+    //    or an unreadable body) is logged and treated as *no matches* rather than
+    //    aborting the operation: a partial-scope token that can read Patient but
+    //    not, say, MedicationRequest still gets a Bundle with everything it is
+    //    allowed to see.
+    let mut related_bundles: Vec<(&'static str, Value)> =
+        Vec::with_capacity(RELATED_RESOURCE_TYPES.len());
+    for related in RELATED_RESOURCE_TYPES {
+        let resp = delegate_get(
+            &state.hfs_router,
+            &format!("/{}?_count={RELATED_FETCH_LIMIT}", related.resource_type),
+            &headers,
+        )
+        .await;
+        if resp.status() != StatusCode::OK {
+            tracing::warn!(
+                resource_type = related.resource_type,
+                status = %resp.status(),
+                "patient $everything: related search returned non-200; omitting this type",
+            );
+            continue;
+        }
+        match read_json(resp).await {
+            Ok(bundle) => related_bundles.push((related.patient_reference_field, bundle)),
+            Err(_) => tracing::warn!(
+                resource_type = related.resource_type,
+                "patient $everything: related search body unreadable; omitting this type",
+            ),
+        }
     }
-    let obs_bundle = match read_json(obs_resp).await {
-        Ok(value) => value,
-        Err(resp) => return resp,
-    };
 
     let subject_ref = format!("Patient/{id}");
-    let mut observations: Vec<Value> = obs_bundle
-        .get("entry")
-        .and_then(Value::as_array)
-        .map(|entries| {
-            entries
-                .iter()
+    let subject_ref = subject_ref.as_str();
+    let mut related: Vec<&Value> = related_bundles
+        .iter()
+        .flat_map(|(reference_field, bundle)| {
+            let reference_field = *reference_field;
+            bundle
+                .get("entry")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
                 .filter_map(|entry| entry.get("resource"))
-                .filter(|resource| {
+                .filter(move |resource| {
                     resource
-                        .get("subject")
-                        .and_then(|subject| subject.get("reference"))
+                        .get(reference_field)
+                        .and_then(|reference| reference.get("reference"))
                         .and_then(Value::as_str)
-                        == Some(subject_ref.as_str())
+                        == Some(subject_ref)
                 })
-                .cloned()
-                .collect()
         })
-        .unwrap_or_default();
+        .collect();
 
-    // `_count` caps the *matched* Observations; the primary Patient is always
-    // included on top (mirrors the twin's `.slice(0, limit)`).
+    // `_count` caps the *matched* related resources; the primary Patient is
+    // always included on top (mirrors the twin's `.slice(0, limit)`).
     if let Some(count) = params.count {
-        observations.truncate(count as usize);
+        related.truncate(count as usize);
     }
 
-    // 3. Merge into one searchset Bundle: Patient first, then its Observations.
-    let mut resources: Vec<Value> = vec![patient];
-    resources.append(&mut observations);
+    // 3. Merge into one searchset Bundle: Patient first, then its related
+    //    resources.
+    let mut resources: Vec<&Value> = vec![&patient];
+    resources.extend(related);
 
     let self_url = {
         let mut url = format!("{fhir_base}/Patient/{id}/$everything");
@@ -230,10 +297,10 @@ async fn read_json(response: Response) -> Result<Value, Response> {
 /// Build the `searchset` Bundle. Each entry gets a `fullUrl` (when the resource
 /// carries a `resourceType`/`id`) and `search.mode: "match"`; `total` counts the
 /// entries (primary + related).
-fn build_searchset_bundle(fhir_base: &str, self_url: &str, resources: &[Value]) -> Value {
+fn build_searchset_bundle(fhir_base: &str, self_url: &str, resources: &[&Value]) -> Value {
     let entries: Vec<Value> = resources
         .iter()
-        .map(|resource| {
+        .map(|&resource| {
             let mut entry = json!({
                 "resource": resource,
                 "search": { "mode": "match" },
