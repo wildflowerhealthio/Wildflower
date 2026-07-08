@@ -10,6 +10,5 @@ export {
   useReplaceHomeScreenMutation,
   type AppContentBody,
   type AppEntry,
-  type CreateAppPayload,
   type HomeScreenPayload,
 } from './queries.ts'

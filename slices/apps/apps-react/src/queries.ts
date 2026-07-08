@@ -27,7 +27,6 @@ const useRunAuthed = (): RunAuthed =>
  * still resolved per request by POSTing to `/apps/:id`.
  */
 type AppEntry = Schema.Schema.Type<typeof Schemas.AppListEntrySchema>
-type CreateAppPayload = Schema.Schema.Type<typeof Schemas.CreateAppBodySchema>
 type AppContentBody = Schema.Schema.Type<typeof Schemas.AppContentBodySchema>
 type HomeScreenPayload = Schema.Schema.Type<typeof Schemas.HomeScreenSchema>
 
@@ -103,15 +102,37 @@ const useAppsAdminReplaceMutation = (): UseMutationResult<
   })
 }
 
-/** Admin `CreateApp` (POST /apps). Invalidates {@link APPS_LIST_QUERY_KEY}. */
-const useAppsAdminCreateMutation = (): UseMutationResult<unknown, Error, CreateAppPayload> => {
+/**
+ * Admin `CreateApp` (POST /apps) — the **cloud** arm. `POST /apps` is now a
+ * `multipart/form-data` route discriminated on `provenance`, so a multipart
+ * endpoint's typed client payload is a `FormData`: this builds the cloud form
+ * (`requiresTunnel` serialized as the text `"true"` / `"false"`) and posts it.
+ * Invalidates {@link APPS_LIST_QUERY_KEY}.
+ */
+const useAppsAdminCreateMutation = (): UseMutationResult<
+  unknown,
+  Error,
+  {
+    readonly name: string
+    readonly url: string
+    readonly requiresTunnel: boolean
+    readonly subtitle?: string
+  }
+> => {
   const runAuthed = useRunAuthed()
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (payload) =>
-      runAuthed(
-        Effect.flatMap(AppsAdminHttpApiClient, (c) => c['apps-admin'].CreateApp({ payload }))
-      ),
+    mutationFn: ({ name, url, requiresTunnel, subtitle }) => {
+      const form = new FormData()
+      form.append('provenance', 'cloud')
+      form.append('name', name)
+      form.append('url', url)
+      form.append('requiresTunnel', String(requiresTunnel))
+      if (subtitle !== undefined) form.append('subtitle', subtitle)
+      return runAuthed(
+        Effect.flatMap(AppsAdminHttpApiClient, (c) => c['apps-admin'].CreateApp({ payload: form }))
+      )
+    },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: APPS_LIST_QUERY_KEY })
     },
@@ -119,26 +140,30 @@ const useAppsAdminCreateMutation = (): UseMutationResult<unknown, Error, CreateA
 }
 
 /**
- * Admin `CreateSelfHostedApp` (POST /self-hosted-apps). Uploads a zipped app
- * bundle: `name` becomes the `?name=` query param (slugged server-side into the
- * new app's id/subdomain) and `bytes` is sent as the raw `application/zip`
- * request body. Invalidates {@link APPS_LIST_QUERY_KEY} on success so the newly
- * installed self-hosted tile appears.
+ * Admin `CreateApp` (POST /apps) — the **self-hosted** arm. Posts the same
+ * merged `multipart/form-data` route as the cloud arm (`provenance=self-hosted`)
+ * with the zipped app bundle as the `bundle` file part; the server slugs `name`
+ * into the new app's id/subdomain and extracts + installs the bundle.
+ * Invalidates {@link APPS_LIST_QUERY_KEY} on success so the newly installed
+ * self-hosted tile appears.
  */
 const useSelfHostedAppCreateMutation = (): UseMutationResult<
   unknown,
   Error,
-  { readonly name: string; readonly bytes: Uint8Array }
+  { readonly name: string; readonly bundle: Blob }
 > => {
   const runAuthed = useRunAuthed()
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ name, bytes }) =>
-      runAuthed(
-        Effect.flatMap(AppsAdminHttpApiClient, (c) =>
-          c['apps-admin'].CreateSelfHostedApp({ urlParams: { name }, payload: bytes })
-        )
-      ),
+    mutationFn: ({ name, bundle }) => {
+      const form = new FormData()
+      form.append('provenance', 'self-hosted')
+      form.append('name', name)
+      form.append('bundle', bundle, 'bundle.zip')
+      return runAuthed(
+        Effect.flatMap(AppsAdminHttpApiClient, (c) => c['apps-admin'].CreateApp({ payload: form }))
+      )
+    },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: APPS_LIST_QUERY_KEY })
     },
@@ -201,4 +226,4 @@ export {
   useReplaceHomeScreenMutation,
   useSelfHostedAppCreateMutation,
 }
-export type { AppContentBody, AppEntry, CreateAppPayload, HomeScreenPayload }
+export type { AppContentBody, AppEntry, HomeScreenPayload }

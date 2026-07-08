@@ -1,7 +1,7 @@
 //! `AppListEntry` — the app-catalogue wire shape, a **union discriminated on
 //! `provenance`**. It backs `GET /apps` and `PUT /home-screen`, and is also the
-//! create / replace response for every kind (`POST /apps`,
-//! `POST /self-hosted-apps`, `PUT /apps/{id}`).
+//! create / replace response for every kind (`POST /apps` create — cloud or
+//! self-hosted — and `PUT /apps/{id}` replace).
 //!
 //! The shape mirrors the database: the shared fields are the parent `apps`
 //! registry row (`id`, `name`, `subtitle`, `enabled`, `local_only`, plus the

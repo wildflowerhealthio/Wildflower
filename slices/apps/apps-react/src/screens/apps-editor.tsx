@@ -197,14 +197,13 @@ const AppsEditor = ({ open, apps, onClose }: AppsEditorProps): JSX.Element => {
     )
   }
 
-  const submitSelfHostedApp = async (): Promise<void> => {
+  const submitSelfHostedApp = (): void => {
     const name = selfHostedName.trim()
     if (name === '' || selfHostedFile === null) return
-    // Read the picked zip into raw bytes; the mutation sends them as the
-    // `application/zip` request body (the server extracts + installs them).
-    const bytes = new Uint8Array(await selfHostedFile.arrayBuffer())
+    // The picked zip rides the merged create route as the `bundle` file part of
+    // a multipart form (the server extracts + installs it).
     selfHostedMutation.mutate(
-      { name, bytes },
+      { name, bundle: selfHostedFile },
       {
         onSuccess: () => {
           setSelfHostedName('')
@@ -346,7 +345,7 @@ const AppsEditor = ({ open, apps, onClose }: AppsEditorProps): JSX.Element => {
             className={editorStyles['apps-editor__form']}
             onSubmit={(event) => {
               event.preventDefault()
-              void submitSelfHostedApp()
+              submitSelfHostedApp()
             }}
           >
             <label className={editorStyles['apps-editor__form-field']}>

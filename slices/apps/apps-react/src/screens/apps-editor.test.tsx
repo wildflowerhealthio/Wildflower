@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
 // `AppsEditor` reads its three mutations from `queries.ts`. The reset
@@ -458,7 +458,7 @@ describe('<AppsEditor> self-hosted upload', () => {
     expect(bundleInput.getAttribute('accept')).toBe('.zip,application/zip')
   })
 
-  test('submitting a name + picked zip mutates with the file bytes', async () => {
+  test('submitting a name + picked zip mutates with the picked file as the bundle', () => {
     render(<AppsEditor open apps={NO_APPS} onClose={() => {}} />)
 
     const bytes = new Uint8Array([80, 75, 3, 4]) // "PK\x03\x04" — a zip magic
@@ -469,17 +469,13 @@ describe('<AppsEditor> self-hosted upload', () => {
     fireEvent.change(bundleInput, { target: { files: [file] } })
     fireEvent.submit(selfHostedForm())
 
-    // The submit handler reads the File asynchronously (`await file.arrayBuffer()`)
-    // before mutating, so wait for the call to land. The mutation receives the
-    // raw file bytes (a `Uint8Array`), not the `File` wrapper — vitest's deep
-    // equality compares typed arrays by content, and the second arg is the
-    // `{ onSuccess }` options object.
-    await waitFor(() => {
-      expect(selfHostedStub.mutate).toHaveBeenCalledWith(
-        { name: 'My App', bytes: new Uint8Array([80, 75, 3, 4]) },
-        expect.anything()
-      )
-    })
+    // The merged create route takes multipart, so the mutation receives the
+    // picked `File` directly as `bundle` (the hook appends it to a `FormData`);
+    // the second arg is the `{ onSuccess }` options object.
+    expect(selfHostedStub.mutate).toHaveBeenCalledWith(
+      { name: 'My App', bundle: file },
+      expect.anything()
+    )
   })
 
   test('does not mutate when the name or the file is missing', () => {

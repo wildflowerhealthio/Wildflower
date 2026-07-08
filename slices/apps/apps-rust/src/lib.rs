@@ -11,7 +11,7 @@
 //!    [`SYSTEM_APPS`](domain::SYSTEM_APPS) list; no child row.
 //!  - **Self-hosted** ([`domain::SelfHostedApp`], the `self_hosted_apps` child)
 //!    — a migration-seeded row (protected) or a runtime upload through
-//!    `POST /self-hosted-apps` (removable).
+//!    `POST /apps` (the multipart self-hosted arm; removable).
 //!  - **Cloud** ([`domain::CloudApp`], the `cloud_apps` child) — created /
 //!    replaced / deleted through the cloud-admin surface.
 //!
