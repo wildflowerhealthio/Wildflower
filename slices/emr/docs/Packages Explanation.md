@@ -1,40 +1,26 @@
 # slices/emr/ Packages Explanation
 
-EMR domain — patient/observation/binary FHIR resources, plus the FHIR R4 wire adapter. Two packages live here, both core (no platform adapters):
+EMR domain — the FHIR R4 wire surface for patient/observation/binary resources. The server is the off-the-shelf [HeliosSoftware/hfs](https://github.com/HeliosSoftware/hfs) FHIR server, embedded by the slice's Rust crate; the TypeScript packages describe the wire protocol and consume it.
 
-- **`emr-core`** — version-agnostic EMR domain: LiveStore tables, `RowSchema`s, repository/persistence helpers, search bindings. The data model is FHIR-shaped but not bound to a specific FHIR version. This is the source-of-truth schema layer.
-- **`fhir-r4`** — the FHIR R4 wire adapter. Effect schemas that map FHIR R4 JSON ↔ `emr-core` RowSchemas, plus the `HttpApi` definition and handler implementation for the FHIR REST surface.
+- **`fhir-r4`** — standalone FHIR R4 package: pure Effect schemas for datatypes and resources (`data-types/`, `resources/`), the `HttpApi` description of the FHIR REST surface (`http-api-definition/`, prefix `/fhir-r4`), and the derived HTTP client (`clients/`). No server implementation, no persistence — the decoded type of every schema is a plain FHIR R4 value.
+- **`fhir-r4-react`** — React adapter: the tokenless client runtime layer (`FhirR4ResourcesRouterContext`) and query hooks (`usePatientsQuery`). Documented cross-slice consumers: `collector-react`'s sync runner and `gatekeeper-react`'s consent-screen patient picker.
+- **`emr-rust`** — the production FHIR server host. Embeds HFS (`helios-rest`/`helios-persistence`/`helios-auth`, pinned `=0.2.x`) over SQLite, and overrides `/fhir-r4/.well-known/smart-configuration` with a SMART App Launch-shaped discovery doc pointed at gatekeeper's OAuth endpoints. Mounted and auth-gated by `apps/wildflower-tauri` at `/fhir-r4` (see `FHIR_R4_PATH` and `UNAUTHENTICATED_FHIR_PATHS` in `emr-rust/src/lib.rs`).
 
-## Why two packages
+## History: where `emr-core` went
 
-`fhir-r4` is **not** suffixed `-core` because **there will never be a `fhir-r4-web` or `fhir-r4-node` adapter** — FHIR R4 is a wire protocol; clients consume the same JSON over the same HTTP regardless of platform. The slice-naming convention (`<name>-core` plus optional `-web`/`-node`/etc.) exists to enforce a layering boundary that doesn't apply here.
-
-`fhir-r4` is **not folded into `emr-core`** because the EMR domain model is **FHIR-version-agnostic**. A future `fhir-r5` or `fhir-r4b` (or any non-FHIR wire format) would sit alongside `fhir-r4` and consume the same `emr-core` row schemas. Folding the wire adapter into the core would entangle versioning concerns with the domain model.
-
-The dependency arrow is:
-
-```plaintext
-fhir-r4  →  emr-core
-```
-
-— never the reverse. `emr-core` does not import from `fhir-r4`.
-
-## Cross-slice deps
-
-`fhir-r4 → emr-core` is intrinsic to the wire-adapter pattern; the rule from `slices/CLAUDE.md` ("Slices should not depend on other slices unless the dependency is intrinsic to the feature") applies here and is satisfied. New cross-`emr/` deps should follow the same rationale and be documented here.
+The slice used to carry `emr-core`, a LiveStore-backed domain layer (tables, events, materializers, row schemas) that acted as a JS-hosted EMR server, with `fhir-r4` as a wire adapter mapping FHIR JSON onto those rows and implementing the HTTP handlers in TS. When the server moved to HFS/Rust, that whole layer became dead code: `emr-core` was deleted, the TS `http-api-implementation` and its LiveStore-backed integration/profile suites were removed, and `fhir-r4`'s schemas were collapsed into single pure FHIR R4 schemas (the decoded type is the FHIR value itself, not a store row).
 
 ## Layering rules
 
-- **`emr-core` is platform-neutral.** No DOM, no Node `fs`. (`@livestore/adapter-node` is a `devDependency` only — used in tests; not imported by source.)
-- **`fhir-r4` is platform-neutral.** Same — the wire adapter doesn't reach for Node-specific globals. `page-token.ts` uses `Encoding` from `effect` rather than Node's `Buffer`.
-- **Tests live alongside code** in both packages (`*.test.ts` next to the file they cover) plus an out-of-process suite in `fhir-r4/tests/`.
+- **`fhir-r4` is platform-neutral.** No DOM, no Node `fs`, no LiveStore.
+- **`fhir-r4` depends on no other emr package.** `fhir-r4-react` depends only on `fhir-r4`. `emr-rust` shares no code with the TS packages — the wire format is the contract.
+- **Tests live alongside code** (`*.test.ts` next to the file they cover). They are pure schema round-trip/property tests; server behaviour is HFS's responsibility (HFS has its own test suite upstream).
 
-## Spec gap tracking
+## Contract with the server (no automated drift guard)
 
-Places where `fhir-r4` deviates from, narrows, or postpones the FHIR R4 spec are catalogued in [`fhir-r4/docs/Capability Statement.md`](../fhir-r4/docs/Capability%20Statement.md). When you add a new gap, append an entry there.
+Unlike other slices there is **no** OpenAPI-snapshot drift pair between the TS `HttpApi` definition and the Rust server, because `emr-rust` mounts HFS's router wholesale rather than hand-authoring `utoipa` routes. The `HttpApi` describes the standard FHIR R4 REST subset the app uses; HFS implements standard FHIR R4. If either side changes, sync is manual — see the [Capability Statement](../fhir-r4/docs/Capability%20Statement.md) for the catalogued gaps.
 
 ## References
 
-- [HttpApi Composition How-To](../../../docs/Effect/HttpApi%20Composition%20How-To.md) — phantom-id bridge between `emr-core` and `fhir-r4` API groups
-- [Effect Patterns Reference](../../../docs/Effect/Patterns%20Reference.md)
 - [Capability Statement](../fhir-r4/docs/Capability%20Statement.md)
+- [Effect Patterns Reference](../../../docs/Effect/Patterns%20Reference.md)

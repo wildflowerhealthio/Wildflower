@@ -2,13 +2,19 @@
 
 This is an **internal scratch doc** — not a published FHIR `CapabilityStatement` resource. It exists so we don't lose track of places where `slices/emr/fhir-r4/` deviates from, narrows, or postpones the FHIR R4 spec. None of these are blockers; they are simply not implemented yet.
 
+Scope note: since the server moved to the off-the-shelf HFS Rust server (`emr-rust`), the entries here describe the **TypeScript schema/client layer** — what the wire schemas validate and what the `HttpApi` description declares. Server behaviour (validation, search, pagination) is owned by HFS.
+
 When a deviation is fixed, delete or amend the entry. When a new gap is introduced (or noticed), add one.
+
+## No drift guard against the HFS server
+
+The `HttpApi` definition and the schemas here are hand-synchronized with what HFS actually serves at `/fhir-r4/*`. There is no OpenAPI-snapshot or CapabilityStatement-based drift test (deliberate, for now): `emr-rust` mounts HFS's router wholesale, so there is nothing to annotate with `utoipa` on the Rust side. If the two sides diverge, nothing fails automatically — changes to either side need a manual cross-check.
 
 ## Choice element XOR not enforced
 
-FHIR R4 choice elements (`Patient.deceased[x]`, `Patient.multipleBirth[x]`, `Observation.value[x]`, `Observation.effective[x]`, `Extension.value[x]`) are mutex by spec — only one variant may be set at a time. Our schemas declare every variant as an independent optional field via `choiceElementSetPassthroughFields(prefix, variants)` and `ChoiceElementSet.Columns(prefix, variants)`. A payload setting both `deceasedBoolean` and `deceasedDateTime` will validate.
+FHIR R4 choice elements (`Patient.deceased[x]`, `Patient.multipleBirth[x]`, `Observation.value[x]`, `Observation.effective[x]`, `Extension.value[x]`) are mutex by spec — only one variant may be set at a time. Our schemas declare every variant as an independent optional field via `choiceElementSetPassthroughFields(prefix, variants)`. A payload setting both `deceasedBoolean` and `deceasedDateTime` will validate.
 
-We accept the loosening for now because (a) the storage layer flatlines the variants into separate columns anyway and (b) we don't have a place to perform the cross-field refinement cheaply with `Schema.transformOrFail` without changing the Type. To enforce, add a `Schema.filter` on the relevant container struct that asserts at most one variant is set.
+We accept the loosening for now because we don't have a place to perform the cross-field refinement cheaply with `Schema.transformOrFail` without changing the Type. To enforce, add a `Schema.filter` on the relevant container struct that asserts at most one variant is set.
 
 ## Reference target-type enforcement (none)
 
@@ -16,17 +22,17 @@ Per FHIR R4 § Reference, every `Reference` element is constrained to specific t
 
 To fix: parameterise `Reference` by allowed target types and apply a regex on `reference`. The shared schema also leaves `Reference.type` typed as plain `string` rather than `uri` because conventional FHIR values are bare resource type names ("Patient", "Practitioner") that don't parse as URLs. Identifier.system/Coding.system/Attachment.url are tightened to `Schema.URL` (always absolute URIs in the wild).
 
-## Patient search parameters (subset)
+## Patient search parameters (subset declared)
 
-Per FHIR R4 § Patient.search, the standard parameters include `_id`, `_lastUpdated`, `name`, `family`, `given`, `identifier`, `address`, `address-city/state/postalcode/country`, `telecom`, `email`, `phone`, `birthdate` (with date prefixes), `gender`, `active`, `deceased`, `general-practitioner`, `organization`, `link`. Today we expose: `_count`, `_pageToken`, `gender`, `active`, `birthdate` (equality only — no date prefixes / partial-precision ranges).
+Per FHIR R4 § Patient.search, the standard parameters include `_id`, `_lastUpdated`, `name`, `family`, `given`, `identifier`, `address`, `address-city/state/postalcode/country`, `telecom`, `email`, `phone`, `birthdate` (with date prefixes), `gender`, `active`, `deceased`, `general-practitioner`, `organization`, `link`. The `HttpApi` description (and therefore the typed client) declares only: `_count`, `_pageToken`, `gender`, `active`, `birthdate` (equality only — no date prefixes / partial-precision ranges). HFS may support more server-side, but the typed client can't express them.
 
-Implication: SMART apps that search by name or MRN will not work. Add `_id`, `name`, `family`, `given`, `identifier`, and date-prefixed `birthdate` for a baseline US Core / SMART experience.
+Implication: SMART apps that search by name or MRN through the typed client will not work. Add `_id`, `name`, `family`, `given`, `identifier`, and date-prefixed `birthdate` for a baseline US Core / SMART experience.
 
-## Observation search parameters (only paging)
+## Observation search parameters (only paging declared)
 
-Per FHIR R4 § Observation.search, the standard parameters include `_id`, `_lastUpdated`, `code`, `subject`, `patient`, `encounter`, `date` (with prefixes), `status`, `category`, `identifier`, `performer`, `value-quantity`, `value-string`, `value-concept`, `code-value-quantity`, `component-code`, `component-value-quantity`, etc. Today we expose: `_count`, `_pageToken` only — `buildWhere` returns `undefined` always.
+Per FHIR R4 § Observation.search, the standard parameters include `_id`, `_lastUpdated`, `code`, `subject`, `patient`, `encounter`, `date` (with prefixes), `status`, `category`, `identifier`, `performer`, `value-quantity`, `value-string`, `value-concept`, `code-value-quantity`, `component-code`, `component-value-quantity`, etc. The `HttpApi` description declares `_count` and `_pageToken` only.
 
-Implication: a client cannot ask "latest blood pressure for this patient" — the primary reason to query Observation. Adding `subject`/`patient`/`code`/`category`/`date` would unlock the canonical workflows.
+Implication: the typed client cannot ask "latest blood pressure for this patient" — the primary reason to query Observation. Adding `subject`/`patient`/`code`/`category`/`date` would unlock the canonical workflows.
 
 ## Patient invariant `pat-1` not enforced
 
@@ -34,15 +40,15 @@ FHIR R4 invariant `pat-1` on `Patient.contact` requires at least one of `name`, 
 
 ## Patient.communication / Patient.contact wire shape (fixed)
 
-These are now serialized as "absent or non-empty array" matching every other `0..*` field on Patient (was previously `null` or array). Storage column dropped the `nullable: true` flag.
+These are now serialized as "absent or non-empty array" matching every other `0..*` field on Patient (was previously `null` or array).
 
 ## Bundle entry sub-elements (typed)
 
 `Bundle.entry.request`, `Bundle.entry.response`, `Bundle.entry.search`, `Bundle.entry.link`, and top-level `Bundle.link` are now typed as proper BackboneElement structs (`request.method` is the HTTP-verb enum, `search.mode` is `match|include|outcome`, etc.). `Bundle.signature` remains `Schema.Any`.
 
-## Page tokens are unsigned
+## Page tokens are opaque server state
 
-`encodePageToken({offset, count})` is plain base64url(JSON) — clients can craft arbitrary tokens. The schema bound on decode (offset ≥ 0, count 1..1000) limits blast radius to "skip ahead in your own search". HMAC-sign here if pagination state ever grows beyond `{offset, count}`. See `slices/emr/fhir-r4/src/internal/page-token.ts`.
+`_pageToken` is declared as a plain string in every resource's `SearchParams`; the server (HFS) mints and interprets it. The client treats it as opaque and never constructs one.
 
 ## Binary inherits DomainResource (TODO)
 
@@ -52,7 +58,7 @@ Per FHIR R4 § Binary, the resource explicitly _does not_ extend `DomainResource
 
 The fhir-r4 datatype registry (`slices/emr/fhir-r4/src/data-types/base/datatype-registry.ts`) ships wire schemas for a subset of FHIR R4 `Datatype.Name` — primitives (`boolean`, `canonical`, `date`, `dateTime`, `decimal`, `id`, `instant`, `integer`, `string`, `time`, `uri`, `url`) plus complex (`Address`, `Annotation`, `Attachment`, `CodeableConcept`, `Coding`, `ContactPoint`, `HumanName`, `Identifier`, `Meta`, `Period`, `Quantity`, `Range`, `Ratio`, `Reference`, `SampledData`, `SimpleQuantity`, `Timing`). Any `value[x]` or `effective[x]` slot whose datatype is **not** registered (e.g. `valueMoney`, `valueAge`, `valueDuration`, `valueSignature`, `valueDistance`, `valueCount`, `valueBase64Binary`, `valueCode`, `valueMarkdown`, `valueOid`, `valueUuid`, `valuePositiveInt`, `valueUnsignedInt`, …) behaves as follows on the wire:
 
-- **Decode**: any wire content for an unregistered slot decodes to `null` (the slot exists at the type level so the in-memory shape still matches `StoreExtension.Type` / resource RowSchema).
+- **Decode**: any wire content for an unregistered slot decodes to `null` (the slot exists at the type level so the in-memory shape still matches the decoded resource type).
 - **Encode**: a non-null in-memory value at an unregistered slot **fails encoding** with a `ParseResult.Type` issue naming the unregistered datatype (`UnregisteredDatatype` tagged error in `datatype-registry.ts`). This is intentional — silent drops were the previous (pre-PR-#61) behavior and masked data loss.
 
 `Timing.repeat.boundsDuration` is also unregistered (Duration isn't shipped). `Timing.repeat.boundsPeriod` and `Timing.repeat.boundsRange` round-trip.

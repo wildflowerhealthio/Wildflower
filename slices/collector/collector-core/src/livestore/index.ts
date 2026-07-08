@@ -1,7 +1,7 @@
 /**
  * LiveStore bindings for collector domain objects.
  *
- * Mirrors the shape of `emr-core/livestore`: exports flat, spread-safe
+ * Exports flat, spread-safe
  * `tables` / `events` / `queries` / `materializers` records that an
  * app-level schema can merge into its own composition, plus per-domain
  * namespaces for structured access.

@@ -1,6 +1,5 @@
 import { Schema } from 'effect'
 
-import type { ContactPoint as StoreContactPoint } from 'emr-core/schemas'
 import { OrNullAsOptional, StructNoContext, mutableEncoded } from 'kitchen-sink/schema'
 
 import type * as FhirR4 from 'fhir/r4.d.ts'
@@ -9,11 +8,7 @@ import { registerDatatypeSchema } from '../base/datatype-registry.ts'
 import * as Element from '../base/element.ts'
 import * as Period from './period.ts'
 
-const ContactPointSchema: Schema.Schema<
-  typeof StoreContactPoint.Schema.Type,
-  FhirR4.ContactPoint,
-  never
-> = mutableEncoded(
+const ContactPointStruct = mutableEncoded(
   StructNoContext({
     ...Element.fields,
     period: OrNullAsOptional(Schema.suspend(() => Period.Schema)),
@@ -41,6 +36,12 @@ const ContactPointSchema: Schema.Schema<
     value: OrNullAsOptional(Schema.String),
   })
 )
+
+const ContactPointSchema: Schema.Schema<
+  typeof ContactPointStruct.Type,
+  FhirR4.ContactPoint,
+  never
+> = ContactPointStruct
 
 registerDatatypeSchema('ContactPoint', ContactPointSchema)
 

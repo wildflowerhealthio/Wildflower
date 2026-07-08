@@ -1,4 +1,11 @@
-import { Schema, Effect, type ParseResult } from 'effect'
+import {
+  type Arbitrary,
+  Effect,
+  type Equivalence,
+  type FastCheck,
+  type ParseResult,
+  Schema,
+} from 'effect'
 
 export const OrNullAsUndefined = <A, I>(
   innerSchema: Schema.Schema<A, I, never>
@@ -24,4 +31,20 @@ export const OrNullAsUndefined = <A, I>(
         )
       }
     },
-  } as const)
+  } as const).annotations({
+    // Declarations have no derivable arbitrary; without this, any schema
+    // embedding the combinator fails `Arbitrary.make` with MissingAnnotation.
+    // Generate `null` or an inner value, honouring the inner schema's own
+    // arbitrary (including any annotation it carries).
+    arbitrary:
+      (inner: Arbitrary.LazyArbitrary<A>): Arbitrary.LazyArbitrary<A | null> =>
+      (fc: typeof FastCheck) =>
+        fc.oneof(fc.constant(null), inner(fc)),
+    // Same rationale for `Schema.equivalence`: without this, declarations
+    // fall back to reference equality and structurally-equal values
+    // compare unequal.
+    equivalence:
+      (inner: Equivalence.Equivalence<A>): Equivalence.Equivalence<A | null> =>
+      (a, b) =>
+        a === null || b === null ? a === b : inner(a, b),
+  })

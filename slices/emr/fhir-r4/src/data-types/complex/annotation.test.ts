@@ -3,8 +3,6 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { Annotation as StoreAnnotation } from 'emr-core/schemas'
-
 import * as Annotation from './annotation.ts'
 
 // ---------------------------------------------------------------------------
@@ -15,7 +13,7 @@ import * as Annotation from './annotation.ts'
 // schema's encode/decode on every iteration.
 // ---------------------------------------------------------------------------
 
-const sampleAnnotation: typeof StoreAnnotation.Schema.Type = {
+const sampleAnnotation: typeof Annotation.Schema.Type = {
   id: null,
   extension: [],
   authorString: null,
@@ -24,19 +22,25 @@ const sampleAnnotation: typeof StoreAnnotation.Schema.Type = {
   text: '',
 }
 
-const roundTrip = (annotation: typeof StoreAnnotation.Schema.Type): void => {
+const roundTrip = (annotation: typeof Annotation.Schema.Type): void => {
   const fhir = Schema.encodeSync(Annotation.Schema)(annotation)
   const decoded = Schema.decodeSync(Annotation.Schema)(fhir)
-  expect(decoded).toSchemaEqual(StoreAnnotation.Schema, annotation)
+  expect(decoded).toSchemaEqual(Annotation.Schema, annotation)
 }
 
-const fieldArb = <const K extends keyof typeof StoreAnnotation.Schema.Type>(
+// `Schema.pick`'s `Keys` generic can't be inferred from a curried call site
+// (`Schema.pick(field)(schema)` resolves `A`/`I` to `unknown` before `schema`
+// is seen), so this local wrapper pins `A`/`I`/`Keys` explicitly from a
+// single call.
+const pickField = <A, I, R, K extends keyof A & keyof I>(
+  schema: Schema.Schema<A, I, R>,
   field: K
-): fc.Arbitrary<Pick<typeof StoreAnnotation.Schema.Type, K>> =>
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- see fhir-r4 patient.test.ts header
-  Arbitrary.make(StoreAnnotation.Schema.pick(field)) as unknown as fc.Arbitrary<
-    Pick<typeof StoreAnnotation.Schema.Type, K>
-  >
+): Schema.Schema<Pick<A, K>, Pick<I, K>, R> => Schema.pick<A, I, [K]>(field)(schema)
+
+const fieldArb = <const K extends keyof typeof Annotation.Schema.Type>(
+  field: K
+): fc.Arbitrary<Pick<typeof Annotation.Schema.Type, K>> =>
+  Arbitrary.make(pickField(Annotation.Schema, field))
 
 describe('FhirR4Annotation', () => {
   test('round-trips empty shell', () => {

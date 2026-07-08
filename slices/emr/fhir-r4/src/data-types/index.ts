@@ -7,6 +7,9 @@ export { withMandatoryId } from './with-mandatory-id.ts'
 
 // Base
 export * as BackboneElement from './base/backbone-element.ts'
+export { Code } from './base/code.ts'
+export * as ChoiceElementSet from './base/choice-element-set.ts'
+export * as Datatype from './base/datatype.ts'
 export * as DomainResource from './base/domain-resource.ts'
 export * as Element from './base/element.ts'
 export * as Meta from './base/meta.ts'
@@ -15,6 +18,7 @@ export { choiceElementSetPassthroughFields } from './base/choice-element-passthr
 
 // Complex
 export * as Address from './complex/address.ts'
+export { AdministrativeGender } from './complex/administrative-gender.ts'
 export * as Annotation from './complex/annotation.ts'
 export * as Attachment from './complex/attachment.ts'
 export * as CodeableConcept from './complex/codeable-concept.ts'

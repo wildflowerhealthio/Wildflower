@@ -1,7 +1,5 @@
 import { Schema } from 'effect'
 
-import { Code } from 'emr-core/schemas'
-import type { Meta as StoreMeta } from 'emr-core/schemas'
 import {
   mutableEncoded,
   OrNullAsOptional,
@@ -11,10 +9,11 @@ import {
 
 import type * as FhirR4 from 'fhir/r4.d.ts'
 
+import { Code } from './code.ts'
 import * as Meta from './meta.ts'
 
 const metaField: Schema.optionalWith<
-  Schema.Schema<typeof StoreMeta.Schema.Type | null, FhirR4.Meta | undefined>,
+  Schema.Schema<typeof Meta.Schema.Type | null, FhirR4.Meta | undefined>,
   { default: () => null }
 > = OrNullAsOptional(Meta.Schema)
 
@@ -35,7 +34,7 @@ const ResourceSchema: Schema.Schema<
     readonly id: string | null
     readonly implicitRules: URL | null
     readonly language: typeof Code.Type | null
-    readonly meta: typeof StoreMeta.Schema.Type | null
+    readonly meta: typeof Meta.Schema.Type | null
   },
   Omit<FhirR4.Resource, 'resourceType' | '_id' | '_implicitRules' | '_language' | '_meta'>,
   never

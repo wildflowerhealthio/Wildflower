@@ -10,10 +10,6 @@
  * dot-delimited, `snake_case` segments under a stable `fhir.*` namespace.
  * Attribute values prefer OpenTelemetry semantic conventions where one exists;
  * everything FHIR-specific is namespaced under `fhir.*`.
- *
- * LiveStore's own query/commit span *labels* (e.g. `emr.Patient.query.search`)
- * are NOT defined here — they live in `emr-core/telemetry`, on the package
- * boundary that owns the store.
  */
 
 /** Identity attributes shared by every FHIR resource span. */

@@ -3,13 +3,11 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { Identifier as StoreIdentifier, Reference as StoreReference } from 'emr-core/schemas'
-
 import { IdentifierSchema, ReferenceSchema } from './identifier-and-reference.ts'
 
 // ---------------------------------------------------------------------------
 // Reference and Identifier are mutually recursive (Reference.identifier →
-// Identifier.assigner → Reference). The store-side `Identifier.assigner`
+// Identifier.assigner → Reference). The `Identifier.assigner`
 // arbitrary is already pinned to `null`, so the cycle terminates at depth 2,
 // but every iteration still walks the full Reference + Identifier graph
 // (each Identifier carries Period and CodeableConcept-with-Coding[]).
@@ -19,7 +17,7 @@ import { IdentifierSchema, ReferenceSchema } from './identifier-and-reference.ts
 // and round-trips the whole record through the fhir-r4 schema.
 // ---------------------------------------------------------------------------
 
-const sampleReference: typeof StoreReference.Schema.Type = {
+const sampleReference: typeof ReferenceSchema.Type = {
   id: null,
   extension: [],
   display: null,
@@ -28,7 +26,7 @@ const sampleReference: typeof StoreReference.Schema.Type = {
   type: null,
 }
 
-const sampleIdentifier: typeof StoreIdentifier.Schema.Type = {
+const sampleIdentifier: typeof IdentifierSchema.Type = {
   id: null,
   extension: [],
   assigner: null,
@@ -39,35 +37,36 @@ const sampleIdentifier: typeof StoreIdentifier.Schema.Type = {
   value: null,
 }
 
-const roundTripReference = (reference: typeof StoreReference.Schema.Type): void => {
+const roundTripReference = (reference: typeof ReferenceSchema.Type): void => {
   const fhir = Schema.encodeSync(ReferenceSchema)(reference)
   const decoded = Schema.decodeSync(ReferenceSchema)(fhir)
-  expect(decoded).toSchemaEqual(StoreReference.Schema, reference)
+  expect(decoded).toSchemaEqual(ReferenceSchema, reference)
 }
 
-const roundTripIdentifier = (identifier: typeof StoreIdentifier.Schema.Type): void => {
+const roundTripIdentifier = (identifier: typeof IdentifierSchema.Type): void => {
   const fhir = Schema.encodeSync(IdentifierSchema)(identifier)
   const decoded = Schema.decodeSync(IdentifierSchema)(fhir)
-  expect(decoded).toSchemaEqual(StoreIdentifier.Schema, identifier)
+  expect(decoded).toSchemaEqual(IdentifierSchema, identifier)
 }
 
-const referenceFieldArb = <const K extends keyof typeof StoreReference.Schema.Type>(
+// `Schema.pick`'s `Keys` generic can't be inferred from a curried call site
+// (`Schema.pick(field)(schema)` resolves `A`/`I` to `unknown` before `schema`
+// is seen), so this local wrapper pins `A`/`I`/`Keys` explicitly from a
+// single call.
+const pickField = <A, I, R, K extends keyof A & keyof I>(
+  schema: Schema.Schema<A, I, R>,
   field: K
-): fc.Arbitrary<Pick<typeof StoreReference.Schema.Type, K>> =>
-  // `Schema.Struct.pick`'s Type is structurally `Pick<T, K>` but written
-  // as a mapped type that TS can't reduce; widen through `unknown`.
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- see comment
-  Arbitrary.make(StoreReference.Schema.pick(field)) as unknown as fc.Arbitrary<
-    Pick<typeof StoreReference.Schema.Type, K>
-  >
+): Schema.Schema<Pick<A, K>, Pick<I, K>, R> => Schema.pick<A, I, [K]>(field)(schema)
 
-const identifierFieldArb = <const K extends keyof typeof StoreIdentifier.Schema.Type>(
+const referenceFieldArb = <const K extends keyof typeof ReferenceSchema.Type>(
   field: K
-): fc.Arbitrary<Pick<typeof StoreIdentifier.Schema.Type, K>> =>
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- see referenceFieldArb
-  Arbitrary.make(StoreIdentifier.Schema.pick(field)) as unknown as fc.Arbitrary<
-    Pick<typeof StoreIdentifier.Schema.Type, K>
-  >
+): fc.Arbitrary<Pick<typeof ReferenceSchema.Type, K>> =>
+  Arbitrary.make(pickField(ReferenceSchema, field))
+
+const identifierFieldArb = <const K extends keyof typeof IdentifierSchema.Type>(
+  field: K
+): fc.Arbitrary<Pick<typeof IdentifierSchema.Type, K>> =>
+  Arbitrary.make(pickField(IdentifierSchema, field))
 
 describe('FhirR4Reference', () => {
   test('round-trips empty shell', () => {
