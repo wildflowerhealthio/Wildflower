@@ -310,6 +310,7 @@ mod tests {
                 name: "Uploaded App".to_owned(),
                 subtitle: None,
                 base_slug: "uploaded-app".to_owned(),
+                content_folder: "uploaded-app-folder".to_owned(),
                 reserved_ports: Vec::new(),
                 launch_path: None,
             })

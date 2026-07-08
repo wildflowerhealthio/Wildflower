@@ -187,6 +187,7 @@ mod tests {
             name: name.to_owned(),
             subtitle: None,
             base_slug: base_slug.to_owned(),
+            content_folder: format!("{base_slug}-folder"),
             reserved_ports: Vec::new(),
             launch_path: launch_path.map(str::to_owned),
         }
@@ -988,8 +989,22 @@ mod tests {
             .collect()
     }
 
+    /// The stored `content_folder` for an installed app — the on-disk location
+    /// is store-internal (a per-install mint id), so tests resolve it rather
+    /// than assuming the slug.
+    fn content_folder(st: &Arc<AppsState>, id: &str) -> String {
+        st.store
+            .find_app(id)
+            .unwrap()
+            .expect("installed app row")
+            .as_self_hosted()
+            .expect("self-hosted payload")
+            .content_folder
+            .clone()
+    }
+
     /// A valid upload installs the app: `200` + `AppListEntry`, a DB row, the
-    /// files on disk under the slugged folder, and the tile listed last.
+    /// files on disk under the row's `content_folder`, and the tile listed last.
     #[tokio::test]
     async fn upload_installs_a_self_hosted_app() {
         let st = state();
@@ -1001,8 +1016,11 @@ mod tests {
         assert_eq!(body["removable"], true);
         assert_eq!(body["localOnly"], true);
 
-        // The files landed under `<apps_dir>/my-app/index.html`.
-        let index = st.self_hosted.apps_dir().join("my-app").join("index.html");
+        // The files landed under the row's content_folder — the per-install
+        // mint id, deliberately NOT the slug (see the create handler docs).
+        let folder = content_folder(&st, "my-app");
+        assert_ne!(folder, "my-app", "the folder is the mint id, not the slug");
+        let index = st.self_hosted.apps_dir().join(&folder).join("index.html");
         assert_eq!(std::fs::read_to_string(&index).unwrap(), "<h1>UP</h1>");
 
         // It's listed, last (appended at the tail of the registry).
@@ -1024,7 +1042,11 @@ mod tests {
         let bytes = zip_bytes(&[("my-app/", b""), ("my-app/index.html", b"<h1>WRAPPED</h1>")]);
         let (status, body) = send(&st, post_zip("My App", bytes)).await;
         assert_eq!(status, StatusCode::OK, "body: {body}");
-        let index = st.self_hosted.apps_dir().join("my-app").join("index.html");
+        let index = st
+            .self_hosted
+            .apps_dir()
+            .join(content_folder(&st, "my-app"))
+            .join("index.html");
         assert_eq!(std::fs::read_to_string(&index).unwrap(), "<h1>WRAPPED</h1>");
     }
 
@@ -1099,7 +1121,7 @@ mod tests {
         let st = state();
         let (_s, created) = send(&st, post_zip("My App", zip_bytes(&[("index.html", b"x")]))).await;
         let id = created["id"].as_str().unwrap().to_owned();
-        let dir = st.self_hosted.apps_dir().join(&id);
+        let dir = st.self_hosted.apps_dir().join(content_folder(&st, &id));
         assert!(dir.exists(), "files present after install");
 
         let (status, body) = send(&st, delete(&format!("/apps/{id}"))).await;

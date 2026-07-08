@@ -29,18 +29,38 @@ pub struct NewCloudApp {
 }
 
 /// Everything `POST /self-hosted-apps` needs. The store allocates the final
-/// slug (which becomes id / subdomain / content folder), the loopback port,
-/// and the display position inside its transaction.
+/// slug (which becomes id / subdomain) and the loopback port inside its
+/// transaction; the display position is appended there too.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewSelfHostedUpload {
     pub name: String,
     /// `None` means "no subtitle".
     pub subtitle: Option<String>,
     /// The slug candidate derived from the name; the store suffixes it
-    /// (`-2`, `-3`, …) until unique.
+    /// (`-2`, `-3`, …) until unique, keeping every candidate a valid DNS label.
     pub base_slug: String,
+    /// The on-disk folder (under the apps root) already holding the extracted
+    /// files — the upload's staging mint id, recorded verbatim. Deliberately
+    /// NOT the slug: the files are moved into place *before* the row is
+    /// inserted, so a committed row always points at present files, and a
+    /// fresh mint per install can never collide with a stale folder a failed
+    /// delete left behind.
+    pub content_folder: String,
     /// Ports the allocation must skip (the host's own loopback API port).
     pub reserved_ports: Vec<u16>,
     /// The install-inferred SMART launch path, `None` for a root-served bundle.
     pub launch_path: Option<String>,
+}
+
+/// Why [`insert_self_hosted_app`](crate::db::AppsStore::insert_self_hosted_app)
+/// allocated nothing (the transaction was dropped unwritten). Distinguished so
+/// the handler can answer accurately: a slug clash is a name problem the
+/// caller can retry differently, an exhausted port space is a server resource
+/// fault no rename fixes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UploadInsertError {
+    /// No unique slug was found within the suffix-attempt budget.
+    SlugSpaceExhausted,
+    /// Every loopback port in the upload range is taken or reserved.
+    PortSpaceExhausted,
 }

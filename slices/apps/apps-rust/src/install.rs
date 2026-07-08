@@ -12,14 +12,17 @@
 
 use std::fmt;
 use std::fs;
-use std::io::{self, Cursor};
+use std::io::{self, Cursor, Read};
 use std::path::{Component, Path};
 
 use zip::ZipArchive;
 
-/// Cap on the declared uncompressed total across all entries — a decompression
-/// bomb defence. The header-declared sizes are summed in a pre-pass and the
-/// extraction refuses to start once they exceed this.
+/// Cap on the uncompressed total across all entries — a decompression bomb
+/// defence, enforced twice: a pre-pass over the header-declared sizes refuses
+/// an honestly-huge archive before writing a byte, and a running budget over
+/// the bytes *actually inflated* aborts mid-copy when the headers lied (the
+/// declared size is attacker-controlled metadata; the zip reader bounds only
+/// the compressed input, never the decompressed output).
 const MAX_UNCOMPRESSED_BYTES: u64 = 512 * 1024 * 1024;
 
 /// Cap on the number of entries — bounds the per-entry loop work regardless of
@@ -32,12 +35,16 @@ const MAX_ENTRIES: usize = 20_000;
 /// (`500`).
 #[derive(Debug)]
 pub(crate) enum InstallError {
-    /// The archive parsed but held no entries.
+    /// The archive parsed but held no entries — or nothing servable survived
+    /// extraction (e.g. only macOS Finder litter or bare directories), which
+    /// would install an app whose every request 404s.
     EmptyArchive,
     /// More than [`MAX_ENTRIES`] entries.
     TooManyEntries { count: usize },
-    /// The declared uncompressed total exceeded [`MAX_UNCOMPRESSED_BYTES`].
-    TooLarge { declared: u64 },
+    /// The uncompressed total exceeded [`MAX_UNCOMPRESSED_BYTES`] — either as
+    /// declared by the headers (pre-pass) or as actually inflated (the running
+    /// write budget; a crafted archive can under-declare).
+    TooLarge { bytes: u64 },
     /// An entry's path escaped the staging root (a zip-slip attempt).
     Traversal { entry: String },
     /// The bytes weren't a well-formed zip (or an entry failed to decompress).
@@ -50,13 +57,13 @@ pub(crate) enum InstallError {
 impl fmt::Display for InstallError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            InstallError::EmptyArchive => write!(f, "the archive contains no files"),
+            InstallError::EmptyArchive => write!(f, "the archive contains no servable files"),
             InstallError::TooManyEntries { count } => {
                 write!(f, "the archive has {count} entries (max {MAX_ENTRIES})")
             }
-            InstallError::TooLarge { declared } => write!(
+            InstallError::TooLarge { bytes } => write!(
                 f,
-                "the archive declares {declared} uncompressed bytes (max {MAX_UNCOMPRESSED_BYTES})",
+                "the archive exceeds the uncompressed cap: {bytes} bytes (max {MAX_UNCOMPRESSED_BYTES})",
             ),
             InstallError::Traversal { entry } => {
                 write!(f, "entry `{entry}` escapes the extraction root")
@@ -71,7 +78,10 @@ impl fmt::Display for InstallError {
 ///
 /// Enforced invariants, in order:
 ///  - the archive is non-empty and within the [`MAX_ENTRIES`] /
-///    [`MAX_UNCOMPRESSED_BYTES`] caps (checked before any file is written);
+///    [`MAX_UNCOMPRESSED_BYTES`] caps — the *declared* sizes are checked before
+///    any file is written, and the bytes *actually inflated* are budgeted
+///    during the copy (a crafted archive can under-declare, so the metadata
+///    check alone is bypassable);
 ///  - every entry's path stays inside `staging` — `enclosed_name` returns `None`
 ///    for a `..`/absolute/drive-qualified path, which we reject rather than
 ///    sanitize (a traversal is a hostile bundle, not a fixable one);
@@ -79,6 +89,9 @@ impl fmt::Display for InstallError {
 ///    AppleDouble `._*` files) is dropped rather than written — otherwise a
 ///    sibling `__MACOSX/` folder would masquerade as a second top-level
 ///    directory and defeat the hoist below;
+///  - at least one real file survives the junk filter — an archive of only
+///    litter or bare directories is rejected rather than installed as an app
+///    that can only ever 404;
 ///  - when the whole archive is nested under a single top-level directory (the
 ///    common `unzip my-app.zip` → `my-app/…` shape) with no top-level files,
 ///    that wrapper is hoisted away so the served root is the app itself.
@@ -88,6 +101,16 @@ impl fmt::Display for InstallError {
 /// [`InstallError`] — a content fault (empty / caps / traversal / malformed) or
 /// an [`InstallError::Io`] on a staging-directory write failure.
 pub(crate) fn extract_zip_bundle(bytes: &[u8], staging: &Path) -> Result<(), InstallError> {
+    extract_zip_bundle_with_cap(bytes, staging, MAX_UNCOMPRESSED_BYTES)
+}
+
+/// [`extract_zip_bundle`] with the uncompressed-bytes cap injectable, so tests
+/// can exercise the budget without a 512 MiB fixture.
+fn extract_zip_bundle_with_cap(
+    bytes: &[u8],
+    staging: &Path,
+    max_uncompressed_bytes: u64,
+) -> Result<(), InstallError> {
     let mut archive = ZipArchive::new(Cursor::new(bytes)).map_err(InstallError::Zip)?;
     if archive.is_empty() {
         return Err(InstallError::EmptyArchive);
@@ -98,19 +121,26 @@ pub(crate) fn extract_zip_bundle(bytes: &[u8], staging: &Path) -> Result<(), Ins
         });
     }
     // Pre-pass: sum the declared uncompressed sizes and bail before writing a
-    // byte if they exceed the cap, so a bomb never lands on disk.
+    // byte if they exceed the cap — the cheap early reject for an honestly-huge
+    // archive. Declared sizes are attacker-controlled, so this is only the
+    // first line; the write budget below is the enforcement.
     let mut declared_total: u64 = 0;
     for index in 0..archive.len() {
         let entry = archive.by_index(index).map_err(InstallError::Zip)?;
         declared_total = declared_total.saturating_add(entry.size());
-        if declared_total > MAX_UNCOMPRESSED_BYTES {
+        if declared_total > max_uncompressed_bytes {
             return Err(InstallError::TooLarge {
-                declared: declared_total,
+                bytes: declared_total,
             });
         }
     }
 
     fs::create_dir_all(staging).map_err(InstallError::Io)?;
+    // Budget over the bytes actually written: the zip reader bounds only the
+    // *compressed* input, so a lying header inflates past its declared size and
+    // must be stopped here, mid-copy, not after landing on disk.
+    let mut written_total: u64 = 0;
+    let mut files_written: u64 = 0;
     for index in 0..archive.len() {
         let mut entry = archive.by_index(index).map_err(InstallError::Zip)?;
         let raw_name = entry.name().to_owned();
@@ -135,8 +165,28 @@ pub(crate) fn extract_zip_bundle(bytes: &[u8], staging: &Path) -> Result<(), Ins
                 fs::create_dir_all(parent).map_err(InstallError::Io)?;
             }
             let mut out = fs::File::create(&out_path).map_err(InstallError::Io)?;
-            io::copy(&mut entry, &mut out).map_err(InstallError::Io)?;
+            // Read at most one byte past the remaining budget: landing exactly
+            // on the boundary is fine, exceeding it proves the entry inflates
+            // past the cap and aborts before more bytes reach the disk.
+            let remaining = max_uncompressed_bytes - written_total;
+            let written = io::copy(
+                &mut (&mut entry).take(remaining.saturating_add(1)),
+                &mut out,
+            )
+            .map_err(InstallError::Io)?;
+            written_total += written;
+            if written_total > max_uncompressed_bytes {
+                return Err(InstallError::TooLarge {
+                    bytes: written_total,
+                });
+            }
+            files_written += 1;
         }
+    }
+    // Metadata said "non-empty", but what matters is what survived extraction:
+    // zero real files would commit an app that serves an empty directory.
+    if files_written == 0 {
+        return Err(InstallError::EmptyArchive);
     }
 
     hoist_single_top_dir(staging)
@@ -209,14 +259,27 @@ fn hoist_single_top_dir(staging: &Path) -> Result<(), InstallError> {
 
     // Move the wrapper aside to a sibling of `staging` first, so draining its
     // children back into `staging` can't collide with a child that happens to
-    // share the wrapper's name.
+    // share the wrapper's name. On a mid-drain failure the sibling is removed
+    // before returning — the caller's cleanup only knows about `staging`, and
+    // an orphaned `.hoist` dir would otherwise accumulate under the apps root.
     let holding = staging.with_extension("hoist");
     fs::rename(&inner, &holding).map_err(InstallError::Io)?;
-    for child in fs::read_dir(&holding).map_err(InstallError::Io)? {
+    let drained = drain_into(&holding, staging);
+    if drained.is_err() {
+        let _ = fs::remove_dir_all(&holding);
+    }
+    drained
+}
+
+/// Move every child of `holding` into `staging`, then remove the emptied
+/// `holding` dir. Split out of [`hoist_single_top_dir`] so its error path can
+/// clean up the holding dir in one place.
+fn drain_into(holding: &Path, staging: &Path) -> Result<(), InstallError> {
+    for child in fs::read_dir(holding).map_err(InstallError::Io)? {
         let child = child.map_err(InstallError::Io)?;
         fs::rename(child.path(), staging.join(child.file_name())).map_err(InstallError::Io)?;
     }
-    fs::remove_dir(&holding).map_err(InstallError::Io)?;
+    fs::remove_dir(holding).map_err(InstallError::Io)?;
     Ok(())
 }
 
@@ -440,6 +503,102 @@ mod tests {
             extract_zip_bundle(&bytes, staging.path()),
             Err(InstallError::EmptyArchive),
         ));
+    }
+
+    /// An archive whose every entry is macOS litter (or a bare directory) has
+    /// nothing to serve — it must be rejected, not installed as an app whose
+    /// every request 404s. The entry count is non-zero, so this pins the
+    /// files-actually-written check rather than the metadata `is_empty()`.
+    #[test]
+    fn junk_only_and_dir_only_archives_are_rejected() {
+        let junk_staging = TempDir::new();
+        let junk = zip_bytes(&[
+            ("__MACOSX/", b""),
+            ("__MACOSX/._app", b"resource-fork"),
+            (".DS_Store", b"finder-junk"),
+        ]);
+        assert!(matches!(
+            extract_zip_bundle(&junk, junk_staging.path()),
+            Err(InstallError::EmptyArchive),
+        ));
+
+        let dirs_staging = TempDir::new();
+        let dirs = zip_bytes(&[("a/", b""), ("a/b/", b"")]);
+        assert!(matches!(
+            extract_zip_bundle(&dirs, dirs_staging.path()),
+            Err(InstallError::EmptyArchive),
+        ));
+    }
+
+    /// The declared-size pre-pass rejects an honestly-huge archive before any
+    /// file is written.
+    #[test]
+    fn declared_oversize_is_rejected_before_writing() {
+        let staging = TempDir::new();
+        let bytes = zip_bytes(&[("big.bin", &[0u8; 64][..])]);
+        assert!(matches!(
+            extract_zip_bundle_with_cap(&bytes, staging.path(), 10),
+            Err(InstallError::TooLarge { bytes: 64 }),
+        ));
+        assert!(
+            !staging.path().exists(),
+            "the pre-pass must reject before creating the staging dir",
+        );
+    }
+
+    /// A crafted archive that under-declares its uncompressed size (the
+    /// declared field is attacker-controlled) passes the pre-pass but must be
+    /// stopped by the written-bytes budget mid-copy — the actual
+    /// decompression-bomb defence.
+    #[test]
+    fn lying_declared_size_is_stopped_by_the_write_budget() {
+        // 4 KiB of zeros deflates to a handful of bytes; then patch both the
+        // local header's and the central directory's uncompressed-size fields
+        // down to 10 so the declared total sails under the cap.
+        const TRUE_SIZE: u32 = 4096;
+        const LIED_SIZE: u32 = 10;
+        let mut cursor = Cursor::new(Vec::new());
+        {
+            let mut writer = zip::ZipWriter::new(&mut cursor);
+            let options: zip::write::FileOptions<'_, ()> = zip::write::FileOptions::default()
+                .compression_method(zip::CompressionMethod::Deflated);
+            writer.start_file("blob.bin", options).unwrap();
+            writer.write_all(&[0u8; TRUE_SIZE as usize]).unwrap();
+            writer.finish().unwrap();
+        }
+        let mut bytes = cursor.into_inner();
+
+        // Local file header: signature(4) version(2) flags(2) method(2)
+        // time(2) date(2) crc(4) compressed(4) → uncompressed at 22..26.
+        assert_eq!(&bytes[0..4], b"PK\x03\x04", "local header at offset 0");
+        assert_eq!(
+            &bytes[22..26],
+            &TRUE_SIZE.to_le_bytes(),
+            "sanity: the writer recorded the true uncompressed size",
+        );
+        bytes[22..26].copy_from_slice(&LIED_SIZE.to_le_bytes());
+        // Central directory: signature(4) made(2) needed(2) flags(2) method(2)
+        // time(2) date(2) crc(4) compressed(4) → uncompressed at +24..+28.
+        let central = bytes
+            .windows(4)
+            .position(|w| w == b"PK\x01\x02")
+            .expect("central directory present");
+        assert_eq!(
+            &bytes[central + 24..central + 28],
+            &TRUE_SIZE.to_le_bytes(),
+            "sanity: central directory recorded the true uncompressed size",
+        );
+        bytes[central + 24..central + 28].copy_from_slice(&LIED_SIZE.to_le_bytes());
+
+        // Cap 100: declared (10) passes the pre-pass; the inflated stream
+        // (4096) must trip the write budget just past the cap.
+        let staging = TempDir::new();
+        match extract_zip_bundle_with_cap(&bytes, staging.path(), 100) {
+            Err(InstallError::TooLarge { bytes }) => {
+                assert_eq!(bytes, 101, "the copy must abort right past the budget");
+            }
+            other => panic!("expected TooLarge from the write budget, got {other:?}"),
+        }
     }
 
     #[test]

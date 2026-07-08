@@ -15,5 +15,5 @@ pub use app_url::{AppUrl, AppUrlError, LaunchParams};
 pub use cloud_app::CloudApp;
 pub use provenance::{Provenance, ProvenanceParseError};
 pub use self_hosted_app::SelfHostedApp;
-pub use specs::{CloudContent, NewCloudApp, NewSelfHostedUpload};
+pub use specs::{CloudContent, NewCloudApp, NewSelfHostedUpload, UploadInsertError};
 pub use system_app::{SystemApp, SYSTEM_APPS};

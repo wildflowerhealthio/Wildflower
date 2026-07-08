@@ -17,7 +17,7 @@ use rusqlite::params;
 
 use super::reads::{find_app_on, list_apps_on};
 use super::AppsStore;
-use crate::domain::{App, CloudContent, NewCloudApp, NewSelfHostedUpload};
+use crate::domain::{App, CloudContent, NewCloudApp, NewSelfHostedUpload, UploadInsertError};
 
 /// The smallest loopback port an uploaded app is allocated. The seed
 /// (patient-browser) sits at 8081, so uploads start one above it; the host's own
@@ -74,32 +74,39 @@ impl AppsStore {
     ///
     /// The [`base_slug`](NewSelfHostedUpload::base_slug) is made unique against
     /// **both** the parent `apps.id` and the `self_hosted_apps.subdomain` by
-    /// suffixing `-2`, `-3`, … (up to [`MAX_SLUG_ATTEMPTS`]). The chosen slug
-    /// becomes the row's `id`, `content_folder`, and `subdomain` alike. The port
-    /// is the next free one at or above [`MIN_UPLOAD_PORT`] (`MAX(port) + 1`,
-    /// skipping any [`reserved_ports`](NewSelfHostedUpload::reserved_ports));
-    /// the position is appended at `MAX(position) + 1`. All three are computed
-    /// **inside** the transaction so overlapping creates can't collide.
+    /// suffixing `-2`, `-3`, … (up to [`MAX_SLUG_ATTEMPTS`]), with every
+    /// candidate capped to the 63-char DNS label limit (see
+    /// [`slug_candidate`]) — the slug is the public subdomain, so an
+    /// over-long label would break forwarded routing. The chosen slug becomes
+    /// the row's `id` and `subdomain`; the
+    /// [`content_folder`](NewSelfHostedUpload::content_folder) is recorded
+    /// verbatim from the spec (the caller's staging mint id — see the field's
+    /// doc for why it is not the slug). The port is the **lowest** free one at
+    /// or above [`MIN_UPLOAD_PORT`] (freed ports are reused, keeping loopback
+    /// origins as stable as possible across delete/reinstall), skipping any
+    /// [`reserved_ports`](NewSelfHostedUpload::reserved_ports); the position is
+    /// appended at `MAX(position) + 1`. All three are computed **inside** the
+    /// transaction so overlapping creates can't collide.
     ///
-    /// Returns `Ok(None)` when no unique slug is found within the attempt budget
-    /// or the port space is exhausted (the handler maps that to `400`), else the
-    /// inserted whole [`App`] read back in-txn.
+    /// Returns `Ok(Err(_))` — nothing written — when the slug attempts or the
+    /// port space are exhausted; the two are distinguished so the handler can
+    /// answer accurately ([`UploadInsertError`]). Otherwise the inserted whole
+    /// [`App`] read back in-txn.
     ///
     /// # Errors
     ///
     /// Returns any rusqlite error from the transaction.
-    pub fn insert_self_hosted_app(&self, new: &NewSelfHostedUpload) -> DbResult<Option<App>> {
+    pub fn insert_self_hosted_app(
+        &self,
+        new: &NewSelfHostedUpload,
+    ) -> DbResult<Result<App, UploadInsertError>> {
         let guard = self.conn().lock();
         let tx = guard.unchecked_transaction()?;
 
         // Find a slug free of both the global id space and the subdomain space.
         let mut chosen_slug = None;
         for attempt in 1..=MAX_SLUG_ATTEMPTS {
-            let candidate = if attempt == 1 {
-                new.base_slug.clone()
-            } else {
-                format!("{base}-{attempt}", base = new.base_slug)
-            };
+            let candidate = slug_candidate(&new.base_slug, attempt);
             let id_taken: bool = tx.query_row(
                 "SELECT EXISTS(SELECT 1 FROM apps WHERE id = ?1)",
                 params![candidate],
@@ -116,12 +123,12 @@ impl AppsStore {
             }
         }
         let Some(slug) = chosen_slug else {
-            // Drop the transaction unwritten; the handler maps `None` to a 400.
-            return Ok(None);
+            // Drop the transaction unwritten.
+            return Ok(Err(UploadInsertError::SlugSpaceExhausted));
         };
 
-        let Some(port) = next_free_port(&tx, &new.reserved_ports)? else {
-            return Ok(None);
+        let Some(port) = next_free_port(&tx, &new.reserved_ports, u16::MAX)? else {
+            return Ok(Err(UploadInsertError::PortSpaceExhausted));
         };
         let position = next_position(&tx)?;
 
@@ -132,12 +139,14 @@ impl AppsStore {
         )?;
         tx.execute(
             "INSERT INTO self_hosted_apps (id, port, content_folder, subdomain, seeded, launch_path) \
-             VALUES (?1, ?2, ?1, ?1, 0, ?3)",
-            params![slug, port, new.launch_path],
+             VALUES (?1, ?2, ?4, ?1, 0, ?3)",
+            params![slug, port, new.launch_path, new.content_folder],
         )?;
-        let app = find_app_on(&tx, &slug)?;
+        let app = find_app_on(&tx, &slug)?.ok_or_else(|| {
+            rusqlite::Error::QueryReturnedNoRows // unreachable: just inserted under this txn
+        })?;
         tx.commit()?;
-        Ok(app)
+        Ok(Ok(app))
     }
 
     /// Replace a cloud app's *content*: the parent's `name` / `subtitle` and the
@@ -302,35 +311,58 @@ fn next_position(tx: &rusqlite::Transaction<'_>) -> DbResult<i64> {
     )
 }
 
-/// The next free loopback port at or above [`MIN_UPLOAD_PORT`]: `MAX(port) + 1`
-/// clamped up to the floor, then advanced past any `reserved_ports` (the host
-/// loopback port). `None` if the u16 port space is exhausted (unreachable in
-/// practice — it needs tens of thousands of installed apps). Computed on the
-/// open transaction so it can't race a concurrent insert.
-fn next_free_port(tx: &rusqlite::Transaction<'_>, reserved_ports: &[u16]) -> DbResult<Option<u16>> {
-    let next: i64 = tx.query_row(
-        "SELECT COALESCE(MAX(port), ?1) + 1 FROM self_hosted_apps",
-        params![MIN_UPLOAD_PORT - 1],
-        |row| row.get(0),
-    )?;
-    let mut candidate = next.max(MIN_UPLOAD_PORT);
-    loop {
-        if candidate > i64::from(u16::MAX) {
-            return Ok(None);
-        }
-        // Safe: `candidate <= u16::MAX` and `> 0` here.
-        let port = candidate as u16;
-        if !reserved_ports.contains(&port) {
-            return Ok(Some(port));
-        }
-        candidate += 1;
+/// The attempt-`N` slug candidate: the base itself first, then
+/// `{base}-{attempt}` — with every candidate kept a valid DNS label (≤ 63
+/// chars, no trailing `-`). The suffix is budgeted first and the base
+/// truncated to fit, because the result is stored verbatim as the public
+/// `subdomain`: an over-long label would silently break
+/// `<subdomain>.<public_host>` routing and TLS. The base is `slugify` output
+/// (ASCII), so char truncation is byte truncation.
+fn slug_candidate(base: &str, attempt: u32) -> String {
+    if attempt == 1 {
+        return base.to_owned();
     }
+    let suffix = format!("-{attempt}");
+    let budget = 63 - suffix.len();
+    let mut head: String = base.chars().take(budget).collect();
+    // A cut can land right after a `-`; trim so the candidate never carries a
+    // `--` run introduced by truncation (or a bare leading suffix).
+    while head.ends_with('-') {
+        head.pop();
+    }
+    format!("{head}{suffix}")
+}
+
+/// The **lowest** free loopback port in `MIN_UPLOAD_PORT..=max_port`, skipping
+/// taken rows and `reserved_ports` (the host loopback port). Reusing freed
+/// ports (rather than `MAX(port) + 1`) keeps a delete → same-bundle-reinstall
+/// cycle on its original port where possible — a SMART-on-FHIR origin-stability
+/// property. `None` when the whole range is taken (unreachable in practice —
+/// it needs tens of thousands of installed apps; `max_port` is parameterized
+/// only so tests can exercise exhaustion). Computed on the open transaction so
+/// it can't race a concurrent insert.
+fn next_free_port(
+    tx: &rusqlite::Transaction<'_>,
+    reserved_ports: &[u16],
+    max_port: u16,
+) -> DbResult<Option<u16>> {
+    let taken: HashSet<u16> = {
+        let mut stmt = tx.prepare("SELECT port FROM self_hosted_apps")?;
+        let rows = stmt.query_map([], |row| row.get::<_, u16>(0))?;
+        rows.collect::<rusqlite::Result<HashSet<u16>>>()?
+    };
+    // Safe: MIN_UPLOAD_PORT is a small in-range constant.
+    let floor = u16::try_from(MIN_UPLOAD_PORT).expect("MIN_UPLOAD_PORT fits u16");
+    Ok((floor..=max_port)
+        .find(|candidate| !taken.contains(candidate) && !reserved_ports.contains(candidate)))
 }
 
 #[cfg(test)]
 mod tests {
     use crate::db::AppsStore;
-    use crate::domain::{App, AppUrl, CloudContent, NewCloudApp, NewSelfHostedUpload, Provenance};
+    use crate::domain::{
+        App, AppUrl, CloudContent, NewCloudApp, NewSelfHostedUpload, Provenance, UploadInsertError,
+    };
 
     fn cloud_content(name: &str, url: AppUrl) -> CloudContent {
         CloudContent {
@@ -353,6 +385,8 @@ mod tests {
             name: name.to_owned(),
             subtitle: None,
             base_slug: base_slug.to_owned(),
+            // Deliberately NOT the slug — the store must record it verbatim.
+            content_folder: format!("{base_slug}-folder"),
             reserved_ports: Vec::new(),
             launch_path: None,
         }
@@ -530,7 +564,10 @@ mod tests {
         assert_eq!(app.provenance(), Provenance::SelfHosted);
         let payload = app.as_self_hosted().expect("self-hosted payload");
         assert_eq!(payload.port, 8082);
-        assert_eq!(payload.content_folder, "my-app");
+        assert_eq!(
+            payload.content_folder, "my-app-folder",
+            "content_folder is recorded verbatim from the spec, not the slug",
+        );
         assert_eq!(payload.subdomain, "my-app");
         assert!(!payload.seeded);
 
@@ -614,6 +651,117 @@ mod tests {
         assert_eq!(app.as_self_hosted().unwrap().port, 8083);
     }
 
+    /// The suffixed candidate is capped at the 63-char DNS label limit — the
+    /// slug is stored verbatim as the public subdomain, so an over-long label
+    /// would break `<subdomain>.<public_host>` routing.
+    #[test]
+    fn suffixed_slug_stays_a_valid_dns_label() {
+        let store = AppsStore::open_in_memory().unwrap();
+        let base = "a".repeat(63); // slugify's cap: a full-length label
+        let first = store
+            .insert_self_hosted_app(&new_upload("Long", &base))
+            .unwrap()
+            .expect("inserted");
+        assert_eq!(first.id.len(), 63);
+
+        let second = store
+            .insert_self_hosted_app(&new_upload("Long", &base))
+            .unwrap()
+            .expect("inserted");
+        assert!(
+            second.id.len() <= 63,
+            "the suffixed slug must stay within the DNS label limit: {} ({} chars)",
+            second.id,
+            second.id.len(),
+        );
+        assert!(second.id.ends_with("-2"), "id: {}", second.id);
+        assert_ne!(first.id, second.id);
+        assert_eq!(
+            second.as_self_hosted().unwrap().subdomain,
+            second.id,
+            "the capped slug is the subdomain",
+        );
+    }
+
+    /// Exhausting the suffix-attempt budget is reported as
+    /// `SlugSpaceExhausted` — distinct from port exhaustion, so the handler
+    /// can keep answering "pick another name".
+    #[test]
+    fn slug_space_exhaustion_is_reported_distinctly() {
+        let store = AppsStore::open_in_memory().unwrap();
+        let upload_n = |n: u32| {
+            let mut upload = new_upload("Crowded", "crowded");
+            // Each row needs its own folder value; uniqueness isn't enforced on
+            // the column, but keep the fixture honest.
+            upload.content_folder = format!("crowded-folder-{n}");
+            upload
+        };
+        // Fill the whole candidate space: `crowded`, `crowded-2` … `crowded-50`.
+        for n in 0..50 {
+            store
+                .insert_self_hosted_app(&upload_n(n))
+                .unwrap()
+                .expect("inserted");
+        }
+        assert_eq!(
+            store.insert_self_hosted_app(&upload_n(50)).unwrap(),
+            Err(UploadInsertError::SlugSpaceExhausted),
+        );
+    }
+
+    /// A freed port is reused (lowest-free allocation), so a delete →
+    /// reinstall cycle lands back on its original loopback origin instead of
+    /// drifting upward forever.
+    #[test]
+    fn freed_ports_are_reused_lowest_first() {
+        let store = AppsStore::open_in_memory().unwrap();
+        let first = store
+            .insert_self_hosted_app(&new_upload("First", "first"))
+            .unwrap()
+            .expect("inserted");
+        let second = store
+            .insert_self_hosted_app(&new_upload("Second", "second"))
+            .unwrap()
+            .expect("inserted");
+        assert_eq!(first.as_self_hosted().unwrap().port, 8082);
+        assert_eq!(second.as_self_hosted().unwrap().port, 8083);
+
+        assert!(store.delete_app("first").unwrap());
+        let third = store
+            .insert_self_hosted_app(&new_upload("Third", "third"))
+            .unwrap()
+            .expect("inserted");
+        assert_eq!(
+            third.as_self_hosted().unwrap().port,
+            8082,
+            "the freed port must be reused, not MAX+1",
+        );
+    }
+
+    /// `next_free_port` returns `None` only when every port in range is taken
+    /// or reserved — exercised with a tiny ceiling since the real range is
+    /// practically inexhaustible.
+    #[test]
+    fn next_free_port_reports_exhaustion() {
+        let store = AppsStore::open_in_memory().unwrap();
+        store
+            .insert_self_hosted_app(&new_upload("Taken", "taken"))
+            .unwrap()
+            .expect("inserted"); // occupies 8082
+        let guard = store.conn().lock();
+        let tx = guard.unchecked_transaction().unwrap();
+        assert_eq!(
+            super::next_free_port(&tx, &[8083], 8083).unwrap(),
+            None,
+            "8082 taken + 8083 reserved exhausts a ceiling of 8083",
+        );
+        assert_eq!(
+            super::next_free_port(&tx, &[8083], 8084).unwrap(),
+            Some(8084),
+            "one more port in range frees the allocation",
+        );
+    }
+
     /// A base slug colliding with the seeded `patient-browser` is suffixed `-2`.
     #[test]
     fn insert_self_hosted_suffixes_a_colliding_slug() {
@@ -626,7 +774,10 @@ mod tests {
         assert_eq!(app.id, "patient-browser-2");
         let payload = app.as_self_hosted().unwrap();
         assert_eq!(payload.subdomain, "patient-browser-2");
-        assert_eq!(payload.content_folder, "patient-browser-2");
+        assert_eq!(
+            payload.content_folder, "patient-browser-folder",
+            "the slug suffix must not leak into the caller-owned content_folder",
+        );
 
         // A third with the same base skips to `-3`.
         let app3 = store
