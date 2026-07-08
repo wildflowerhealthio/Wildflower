@@ -20,7 +20,7 @@
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use super::{App, AppKind, AppUrl, Provenance};
+use super::{App, AppKind, AppUrl};
 
 /// One app-catalogue entry on the wire, discriminated on `provenance`. Serialized
 /// internally-tagged: every variant carries a `"provenance"` field (`"system"` /
@@ -123,109 +123,6 @@ impl From<&App> for AppListEntry {
                 removable,
                 launch_path: self_hosted.launch_path.clone(),
             },
-        }
-    }
-}
-
-impl AppListEntry {
-    /// The app's stable id, whatever the variant.
-    #[must_use]
-    pub fn id(&self) -> &str {
-        match self {
-            AppListEntry::System { id, .. }
-            | AppListEntry::Cloud { id, .. }
-            | AppListEntry::SelfHosted { id, .. } => id,
-        }
-    }
-
-    /// The catalogue display name.
-    #[must_use]
-    pub fn name(&self) -> &str {
-        match self {
-            AppListEntry::System { name, .. }
-            | AppListEntry::Cloud { name, .. }
-            | AppListEntry::SelfHosted { name, .. } => name,
-        }
-    }
-
-    /// The descriptive subtitle, if any.
-    #[must_use]
-    pub fn subtitle(&self) -> Option<&str> {
-        match self {
-            AppListEntry::System { subtitle, .. }
-            | AppListEntry::Cloud { subtitle, .. }
-            | AppListEntry::SelfHosted { subtitle, .. } => subtitle.as_deref(),
-        }
-    }
-
-    /// Whether the app is enabled on the homescreen.
-    #[must_use]
-    pub fn enabled(&self) -> bool {
-        match self {
-            AppListEntry::System { enabled, .. }
-            | AppListEntry::Cloud { enabled, .. }
-            | AppListEntry::SelfHosted { enabled, .. } => *enabled,
-        }
-    }
-
-    /// The declared no-egress flag.
-    #[must_use]
-    pub fn local_only(&self) -> bool {
-        match self {
-            AppListEntry::System { local_only, .. }
-            | AppListEntry::Cloud { local_only, .. }
-            | AppListEntry::SelfHosted { local_only, .. } => *local_only,
-        }
-    }
-
-    /// Whether this is a SMART app (the registry row carries a `client_id`).
-    #[must_use]
-    pub fn smart(&self) -> bool {
-        match self {
-            AppListEntry::System { smart, .. }
-            | AppListEntry::Cloud { smart, .. }
-            | AppListEntry::SelfHosted { smart, .. } => *smart,
-        }
-    }
-
-    /// Whether the owner can remove this app through the admin surface.
-    #[must_use]
-    pub fn removable(&self) -> bool {
-        match self {
-            AppListEntry::System { removable, .. }
-            | AppListEntry::Cloud { removable, .. }
-            | AppListEntry::SelfHosted { removable, .. } => *removable,
-        }
-    }
-
-    /// The variant's provenance discriminant.
-    #[must_use]
-    pub fn provenance(&self) -> Provenance {
-        match self {
-            AppListEntry::System { .. } => Provenance::System,
-            AppListEntry::Cloud { .. } => Provenance::Cloud,
-            AppListEntry::SelfHosted { .. } => Provenance::SelfHosted,
-        }
-    }
-
-    /// Whether a launch needs the tunnel up — the cloud variant's flag, else
-    /// `false` (system / self-hosted apps never require the tunnel).
-    #[must_use]
-    pub fn requires_tunnel(&self) -> bool {
-        match self {
-            AppListEntry::Cloud {
-                requires_tunnel, ..
-            } => *requires_tunnel,
-            _ => false,
-        }
-    }
-
-    /// The self-hosted variant's stored launch path, else `None`.
-    #[must_use]
-    pub fn launch_path(&self) -> Option<&str> {
-        match self {
-            AppListEntry::SelfHosted { launch_path, .. } => launch_path.as_deref(),
-            _ => None,
         }
     }
 }
