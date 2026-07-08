@@ -306,7 +306,7 @@ mod tests {
 
         let store = AppsStore::open_in_memory().unwrap();
         let inserted = store
-            .insert_self_hosted_app(&crate::domain::NewSelfHostedUpload {
+            .insert_self_hosted_app(&crate::db::NewSelfHostedUpload {
                 name: "Uploaded App".to_owned(),
                 subtitle: None,
                 base_slug: "uploaded-app".to_owned(),

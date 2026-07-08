@@ -29,7 +29,8 @@ use axum::Json;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-use crate::domain::{AppKind, AppListEntry, AppUrl, CloudContent};
+use crate::db::CloudContent;
+use crate::domain::{AppKind, AppListEntry, AppUrl};
 use crate::http::response_templates::{
     AppNotEditableBody, AppNotFoundBody, HandlerError, InvalidFieldBody,
 };

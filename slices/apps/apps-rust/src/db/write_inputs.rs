@@ -1,11 +1,13 @@
 //! Write-side input specs — what each create / replace store operation needs,
-//! as one struct per operation instead of loose scalar arguments. Deliberately
-//! *not* the domain [`App`](super::App): a spec carries only the caller-owned
+//! as one struct per operation instead of loose scalar arguments. They live in
+//! the `db` layer beside [`writes`](super::writes), the store methods that
+//! consume them; a handler builds one and hands it in. Deliberately *not* the
+//! domain [`App`](crate::domain::App): a spec carries only the caller-owned
 //! fields; everything the store allocates (position, slug, port) or that
 //! another surface owns (`enabled`, curated by `PUT /home-screen`) is absent by
 //! construction.
 
-use super::AppUrl;
+use crate::domain::AppUrl;
 
 /// The editable content of a cloud app — what `PUT /apps/{id}` replaces and
 /// what `POST /apps` supplies at create. Excludes `enabled` (homescreen-owned)
@@ -21,16 +23,17 @@ pub struct CloudContent {
     pub requires_tunnel: bool,
 }
 
-/// Everything `POST /apps` needs: a freshly minted id plus the content.
+/// Everything `POST /apps` needs to create a cloud app: a freshly minted id plus
+/// the content.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewCloudApp {
     pub id: String,
     pub content: CloudContent,
 }
 
-/// Everything `POST /self-hosted-apps` needs. The store allocates the final
-/// slug (which becomes id / subdomain) and the loopback port inside its
-/// transaction; the display position is appended there too.
+/// Everything `POST /apps` needs to install a self-hosted upload. The store
+/// allocates the final slug (which becomes id / subdomain) and the loopback port
+/// inside its transaction; the display position is appended there too.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewSelfHostedUpload {
     pub name: String,

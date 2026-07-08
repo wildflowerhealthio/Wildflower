@@ -8,7 +8,6 @@
 mod apps;
 mod cloud_admin;
 mod home_screen;
-mod self_hosted_admin;
 #[cfg(test)]
 pub(crate) mod test_utils;
 
@@ -20,39 +19,37 @@ use utoipa_axum::routes;
 
 use crate::http::state::AppsState;
 
-/// The raw request-body cap for the upload route. Scoped to just that route (the
-/// rest of the surface keeps axum's small default), sized to the largest bundle
-/// we accept — the 512 MiB *extracted* cap still applies inside the handler.
+/// The raw request-body cap for `POST /apps` (which accepts a self-hosted
+/// upload). Scoped to just that route (the rest of the surface keeps axum's
+/// small default), sized to the largest bundle we accept — the 512 MiB
+/// *extracted* cap still applies inside the handler.
 const UPLOAD_BODY_LIMIT_BYTES: usize = 64 * 1024 * 1024;
 
 /// The owner-gated routes as an `OpenApiRouter` (the spec-bearing inner of
 /// [`gated_router`](super::gated_router), which documents the gating split):
 ///
 ///  - `GET /apps` (list) — see [`apps`];
-///  - `POST /apps` (create) + `PUT`/`DELETE /apps/{id}` (content replace +
-///    delete) — see [`cloud_admin`];
-///  - `POST /self-hosted-apps` (upload install) — see [`self_hosted_admin`];
+///  - `POST /apps` (create a cloud or self-hosted app) + `PUT`/`DELETE /apps/{id}`
+///    (content replace + delete) — see [`cloud_admin`];
 ///  - `PUT /home-screen` (atomic reorder / enable, any provenance) — see
 ///    [`home_screen`].
 pub(crate) fn gated_openapi_router() -> OpenApiRouter<Arc<AppsState>> {
-    // The upload route carries a much larger body limit than the rest; building
-    // it as its own router and layering the limit there scopes the raise to this
-    // one route (a `.layer` on the whole router would loosen every endpoint).
-    let upload_router = OpenApiRouter::new()
-        .routes(routes!(
-            self_hosted_admin::create::handle_create_self_hosted_app
-        ))
+    // `POST /apps` accepts a self-hosted upload, so its body limit is raised well
+    // above axum's small default; building it as its own router and layering the
+    // limit there scopes the raise to this one route (a `.layer` on the whole
+    // router would loosen every endpoint).
+    let create_router = OpenApiRouter::new()
+        .routes(routes!(cloud_admin::create::handle_create_app))
         .layer(DefaultBodyLimit::max(UPLOAD_BODY_LIMIT_BYTES));
 
     OpenApiRouter::new()
         .routes(routes!(apps::list::handle_list_apps))
-        .routes(routes!(cloud_admin::create::handle_create_app))
         .routes(routes!(
             cloud_admin::update::handle_replace_app,
             cloud_admin::delete::handle_delete_app
         ))
         .routes(routes!(home_screen::handle_replace_home_screen))
-        .merge(upload_router)
+        .merge(create_router)
 }
 
 /// The launch route (`POST /apps/{id}`) as an `OpenApiRouter` — the spec-bearing
@@ -88,7 +85,8 @@ mod tests {
         state_with_tunnel, state_with_tunnel_and_handle, tunnel_at, tunnel_unavailable,
         tunnel_with_public_host,
     };
-    use crate::domain::{AppUrl, CloudContent, NewCloudApp, NewSelfHostedUpload};
+    use crate::db::{CloudContent, NewCloudApp, NewSelfHostedUpload};
+    use crate::domain::AppUrl;
     use crate::http::state::AppsState;
 
     /// The served router (state applied per-call). Spec half of
@@ -144,13 +142,46 @@ mod tests {
             .unwrap()
     }
 
-    fn post_json(uri: &str, body: serde_json::Value) -> Request<Body> {
+    /// Build a `multipart/form-data` POST with text fields and an optional file
+    /// part — the shape `POST /apps` now takes for both create kinds.
+    fn post_multipart(uri: &str, fields: &[(&str, &str)], file: Option<(&str, &[u8])>) -> Request<Body> {
+        let boundary = "TESTBOUNDARY";
+        let mut body: Vec<u8> = Vec::new();
+        for (key, value) in fields {
+            body.extend_from_slice(
+                format!("--{boundary}\r\nContent-Disposition: form-data; name=\"{key}\"\r\n\r\n{value}\r\n")
+                    .as_bytes(),
+            );
+        }
+        if let Some((key, contents)) = file {
+            body.extend_from_slice(
+                format!("--{boundary}\r\nContent-Disposition: form-data; name=\"{key}\"; filename=\"bundle.zip\"\r\nContent-Type: application/zip\r\n\r\n")
+                    .as_bytes(),
+            );
+            body.extend_from_slice(contents);
+            body.extend_from_slice(b"\r\n");
+        }
+        body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
         Request::builder()
             .method("POST")
             .uri(uri)
-            .header("content-type", "application/json")
-            .body(Body::from(body.to_string()))
+            .header("content-type", format!("multipart/form-data; boundary={boundary}"))
+            .body(Body::from(body))
             .unwrap()
+    }
+
+    /// A cloud create — `POST /apps` multipart with `provenance=cloud`.
+    fn post_create_cloud(name: &str, url: &str, requires_tunnel: bool) -> Request<Body> {
+        post_multipart(
+            "/apps",
+            &[
+                ("provenance", "cloud"),
+                ("name", name),
+                ("url", url),
+                ("requiresTunnel", if requires_tunnel { "true" } else { "false" }),
+            ],
+            None,
+        )
     }
 
     fn put_json(uri: &str, body: serde_json::Value) -> Request<Body> {
@@ -468,14 +499,7 @@ mod tests {
         let st = state();
         let (status, body) = send(
             &st,
-            post_json(
-                "/apps",
-                serde_json::json!({
-                    "name": "My App",
-                    "url": "https://example.com/launch",
-                    "requiresTunnel": false,
-                }),
-            ),
+            post_create_cloud("My App", "https://example.com/launch", false),
         )
         .await;
         assert_eq!(status, StatusCode::OK, "body: {body}");
@@ -510,10 +534,7 @@ mod tests {
         let st = state();
         let (status, body) = send(
             &st,
-            post_json(
-                "/apps",
-                serde_json::json!({ "name": "Bad", "url": "javascript:alert(1)", "requiresTunnel": false }),
-            ),
+            post_create_cloud("Bad", "javascript:alert(1)", false),
         )
         .await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
@@ -521,10 +542,7 @@ mod tests {
 
         let (status, body) = send(
             &st,
-            post_json(
-                "/apps",
-                serde_json::json!({ "name": "", "url": "https://example.com/x", "requiresTunnel": false }),
-            ),
+            post_create_cloud("", "https://example.com/x", false),
         )
         .await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
@@ -767,9 +785,16 @@ mod tests {
         let id = {
             let (_, body) = send(
                 &st,
-                post_json(
+                post_multipart(
                     "/apps",
-                    serde_json::json!({ "name": "Sub", "url": "https://example.com/x", "requiresTunnel": false, "subtitle": "" }),
+                    &[
+                        ("provenance", "cloud"),
+                        ("name", "Sub"),
+                        ("url", "https://example.com/x"),
+                        ("requiresTunnel", "false"),
+                        ("subtitle", ""),
+                    ],
+                    None,
                 ),
             )
             .await;
@@ -966,27 +991,14 @@ mod tests {
         cursor.into_inner()
     }
 
-    /// A `POST /self-hosted-apps?name=…` request carrying a raw zip body.
+    /// A self-hosted upload — `POST /apps` multipart with `provenance=self-hosted`,
+    /// the `name`, and the zip `bundle` file part.
     fn post_zip(name: &str, bytes: Vec<u8>) -> Request<Body> {
-        let uri = format!("/self-hosted-apps?name={}", urlencode(name),);
-        Request::builder()
-            .method("POST")
-            .uri(uri)
-            .header("content-type", "application/zip")
-            .body(Body::from(bytes))
-            .unwrap()
-    }
-
-    /// Minimal percent-encoding for the test names used here (spaces + a few
-    /// punctuation chars). Not a general encoder.
-    fn urlencode(s: &str) -> String {
-        s.chars()
-            .map(|c| match c {
-                'a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '_' | '.' => c.to_string(),
-                ' ' => "%20".to_owned(),
-                other => format!("%{:02X}", other as u32),
-            })
-            .collect()
+        post_multipart(
+            "/apps",
+            &[("provenance", "self-hosted"), ("name", name)],
+            Some(("bundle", &bytes)),
+        )
     }
 
     /// The stored `content_folder` for an installed app — the on-disk location

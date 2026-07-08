@@ -71,10 +71,23 @@ fn get(uri: &str) -> Request<Body> {
     Request::get(uri).body(Body::empty()).expect("build")
 }
 
-fn post(uri: &str, body: serde_json::Value) -> Request<Body> {
-    Request::post(uri)
-        .header("content-type", "application/json")
-        .body(Body::from(body.to_string()))
+/// A cloud create — `POST /apps` as `multipart/form-data` (`provenance=cloud`).
+/// The merged create route takes a form, not JSON.
+fn post_create_cloud(name: &str, url: &str, requires_tunnel: bool) -> Request<Body> {
+    let boundary = "INTBOUNDARY";
+    let field = |key: &str, value: &str| {
+        format!("--{boundary}\r\nContent-Disposition: form-data; name=\"{key}\"\r\n\r\n{value}\r\n")
+    };
+    let body = format!(
+        "{}{}{}{}--{boundary}--\r\n",
+        field("provenance", "cloud"),
+        field("name", name),
+        field("url", url),
+        field("requiresTunnel", if requires_tunnel { "true" } else { "false" }),
+    );
+    Request::post("/apps")
+        .header("content-type", format!("multipart/form-data; boundary={boundary}"))
+        .body(Body::from(body))
         .expect("build")
 }
 
@@ -145,13 +158,10 @@ async fn cloud_app_round_trip() {
     let router = apps.combined_router();
     let create_res = router
         .clone()
-        .oneshot(post(
-            "/apps",
-            serde_json::json!({
-                "name": "Round Trip",
-                "url": "https://example.com/launch",
-                "requiresTunnel": false,
-            }),
+        .oneshot(post_create_cloud(
+            "Round Trip",
+            "https://example.com/launch",
+            false,
         ))
         .await
         .expect("oneshot");
@@ -364,14 +374,7 @@ async fn create_rejects_javascript_url() {
     let apps = spin_up();
     let res = apps
         .combined_router()
-        .oneshot(post(
-            "/apps",
-            serde_json::json!({
-                "name": "Bad",
-                "url": "javascript:alert(1)",
-                "requiresTunnel": false,
-            }),
-        ))
+        .oneshot(post_create_cloud("Bad", "javascript:alert(1)", false))
         .await
         .expect("oneshot");
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);

@@ -18,7 +18,10 @@
 //! `docs/Apps/Explanation.md`.
 
 mod reads;
+mod write_inputs;
 mod writes;
+
+pub use write_inputs::{CloudContent, NewCloudApp, NewSelfHostedUpload, UploadInsertError};
 
 use anyhow::Context;
 use persistence_rust::Connection;

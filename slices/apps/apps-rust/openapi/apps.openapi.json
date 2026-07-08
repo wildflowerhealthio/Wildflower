@@ -26,13 +26,13 @@
         }
       },
       "post": {
-        "summary": "`POST /apps` — create a cloud app. Owner-gated by the host.",
+        "summary": "`POST /apps` — create a cloud or self-hosted app. Owner-gated by the host; the\nbody limit is raised for the upload arm (see the router wiring).",
         "operationId": "handle_create_app",
         "requestBody": {
           "content": {
-            "application/json": {
+            "multipart/form-data": {
               "schema": {
-                "$ref": "#/components/schemas/CreateAppBody"
+                "$ref": "#/components/schemas/CreateAppMultipart"
               }
             }
           },
@@ -40,7 +40,7 @@
         },
         "responses": {
           "200": {
-            "description": "The created cloud app",
+            "description": "The created app (the provenance-tagged catalogue entry)",
             "content": {
               "application/json": {
                 "schema": {
@@ -50,7 +50,7 @@
             }
           },
           "400": {
-            "description": "Empty name (`InvalidName`) or bad url (`InvalidUrl`)",
+            "description": "Empty/unusable name (`InvalidName`), bad url (`InvalidUrl`), or a bad bundle (`InvalidZip`)",
             "content": {
               "application/json": {
                 "schema": {
@@ -261,61 +261,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/InvalidHomeScreenBody"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/self-hosted-apps": {
-      "post": {
-        "summary": "`POST /self-hosted-apps` — install an uploaded zip bundle. Owner-gated by the\nhost; the body limit is raised to 64 MiB for just this route.",
-        "operationId": "handle_create_self_hosted_app",
-        "parameters": [
-          {
-            "name": "name",
-            "in": "query",
-            "description": "Human app name; also the source of the slugged id/subdomain.",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "description": "The app's static files as a zip archive",
-          "content": {
-            "application/zip": {
-              "schema": {
-                "type": "array",
-                "items": {
-                  "type": "integer",
-                  "format": "int32",
-                  "minimum": 0
-                }
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "The installed self-hosted app",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppListEntry"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Empty/unusable name (`InvalidName`) or a bad bundle (`InvalidZip`)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InvalidFieldBody"
                 }
               }
             }
@@ -573,29 +518,48 @@
           }
         }
       },
-      "CreateAppBody": {
+      "CreateAppMultipart": {
         "type": "object",
-        "description": "POST body — matches the TS `CreateAppBodySchema`. `requiresTunnel`\nuses the wire-camelCase the existing client speaks. `url` is read as a raw\nstring so a bad value yields the structured `400 InvalidUrl` rather than a\ngeneric deserialize error.",
+        "description": "Documents the `multipart/form-data` body for OpenAPI. The handler reads the\nparts manually via [`Multipart`], so this is never deserialized directly (the\n`Deserialize` derive only carries the `serde` rename to the generated schema).\nFields cross the wire as text — `requiresTunnel` is `\"true\"` / `\"false\"` —\nand `bundle` is the uploaded file. `provenance` and `name` are always\npresent; the rest are kind-specific, so they're optional here and the handler\nrequires the right ones per `provenance`. Mirrors the TS `CreateAppBodySchema`.",
         "required": [
-          "name",
-          "url",
-          "requiresTunnel"
+          "provenance",
+          "name"
         ],
         "properties": {
+          "provenance": {
+            "type": "string",
+            "description": "`\"cloud\"` or `\"self-hosted\"`."
+          },
           "name": {
             "type": "string"
-          },
-          "url": {
-            "type": "string"
-          },
-          "requiresTunnel": {
-            "type": "boolean"
           },
           "subtitle": {
             "type": [
               "string",
               "null"
             ]
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Cloud only: the launch URL template."
+          },
+          "requiresTunnel": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Cloud only: `\"true\"` / `\"false\"`."
+          },
+          "bundle": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "binary",
+            "description": "Self-hosted only: the app's static files as a zip."
           }
         }
       },

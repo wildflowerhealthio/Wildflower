@@ -76,9 +76,11 @@ describe('CreateApp request body', () => {
     const spec = OpenApi.fromApi(AppsAdminApi)
     const content = spec.paths['/apps']?.post?.requestBody?.content ?? {}
     expect(Object.keys(content)).toEqual(['multipart/form-data'])
+    // `bundle` is the uploaded file part — Effect renders it as a `$ref` to the
+    // `PersistedFile` component (which dereferences to a binary string).
     expect(Object.values(content)[0]?.schema).toMatchObject({
       type: 'object',
-      properties: { bundle: { type: 'string', format: 'binary' } },
+      properties: { bundle: { $ref: '#/components/schemas/PersistedFile' } },
     })
   })
 })
