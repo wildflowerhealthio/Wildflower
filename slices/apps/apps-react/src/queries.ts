@@ -20,13 +20,15 @@ const useRunAuthed = (): RunAuthed =>
   useRouteContext({ from: '__root__', select: (context: RouterContext) => context.runAuthed })
 
 /**
- * Catalogue row as it arrives from `GET /apps`. The launch URL is
- * deliberately NOT exposed here — clients launch by POSTing to `/apps/:id`
- * and following the redirect (see {@link Schemas.AppListEntrySchema}).
+ * Catalogue row as it arrives from `GET /apps` — a `provenance`-discriminated
+ * union (see {@link Schemas.AppListEntrySchema}). The cloud variant carries its
+ * stored launch `url` **template** and the self-hosted variant its `launchPath`
+ * (both stored, origin-independent templates); the concrete launch target is
+ * still resolved per request by POSTing to `/apps/:id`.
  */
 type AppEntry = Schema.Schema.Type<typeof Schemas.AppListEntrySchema>
 type CreateAppPayload = Schema.Schema.Type<typeof Schemas.CreateAppBodySchema>
-type UpdateAppPayload = Schema.Schema.Type<typeof Schemas.UpdateAppBodySchema>
+type AppContentBody = Schema.Schema.Type<typeof Schemas.AppContentBodySchema>
 type HomeScreenPayload = Schema.Schema.Type<typeof Schemas.HomeScreenSchema>
 
 /** Mutations invalidate this key on success so the next render refetches. */
@@ -60,11 +62,15 @@ const appsListQueryOptions = (
 const useAppsListQuery = (): UseSuspenseQueryResult<readonly AppEntry[], Error> =>
   useSuspenseQuery(appsListQueryOptions(useRunAuthed()))
 
-/** Admin `UpdateApp` (PATCH /apps/:id). Invalidates {@link APPS_LIST_QUERY_KEY}. */
-const useAppsAdminUpdateMutation = (): UseMutationResult<
+/**
+ * Admin `ReplaceApp` (PUT /apps/:id). The `payload` is a provenance-discriminated
+ * {@link AppContentBody} whose arm must match the target app's kind (cloud
+ * content, or a self-hosted launch path). Invalidates {@link APPS_LIST_QUERY_KEY}.
+ */
+const useAppsAdminReplaceMutation = (): UseMutationResult<
   unknown,
   Error,
-  { readonly id: string; readonly payload: UpdateAppPayload }
+  { readonly id: string; readonly payload: AppContentBody }
 > => {
   const runAuthed = useRunAuthed()
   const queryClient = useQueryClient()
@@ -72,7 +78,12 @@ const useAppsAdminUpdateMutation = (): UseMutationResult<
     mutationFn: ({ id, payload }) =>
       runAuthed(
         Effect.flatMap(AppsAdminHttpApiClient, (c) =>
-          c['apps-admin'].UpdateApp({ path: { id }, payload })
+          // The generated request type is discriminated per payload arm, so
+          // narrow on `provenance` before the call — a union-typed `payload`
+          // isn't assignable to `{ payload: Cloud } | { payload: SelfHosted }`.
+          c['apps-admin'].ReplaceApp(
+            payload.provenance === 'cloud' ? { path: { id }, payload } : { path: { id }, payload }
+          )
         )
       ),
     onSuccess: async () => {
@@ -143,8 +154,8 @@ const useAppsAdminDeleteMutation = (): UseMutationResult<
 }
 
 /**
- * `ReplaceHomeScreen` (PUT /home-screen). Unlike {@link useAppsAdminUpdateMutation}
- * (cloud-only content edits), this applies to **every** provenance — it's the
+ * `ReplaceHomeScreen` (PUT /home-screen). Unlike {@link useAppsAdminReplaceMutation}
+ * (single-app content edits), this applies to **every** provenance — it's the
  * homescreen's single writer of order + `enabled`. The payload is the full
  * ordered list `[{ id, enabled }]` (array index = display position); the server
  * renumbers + flips atomically. Invalidates {@link APPS_LIST_QUERY_KEY} on
@@ -173,9 +184,9 @@ export {
   appsListQueryOptions,
   useAppsAdminCreateMutation,
   useAppsAdminDeleteMutation,
-  useAppsAdminUpdateMutation,
+  useAppsAdminReplaceMutation,
   useAppsListQuery,
   useReplaceHomeScreenMutation,
   useSelfHostedAppCreateMutation,
 }
-export type { AppEntry, CreateAppPayload, HomeScreenPayload, UpdateAppPayload }
+export type { AppContentBody, AppEntry, CreateAppPayload, HomeScreenPayload }

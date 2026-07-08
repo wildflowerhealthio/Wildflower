@@ -52,12 +52,10 @@ impl AppsStore {
     }
 
     /// The `GET /apps` catalogue: every parent row projected to its wire
-    /// [`AppListEntry`], ordered by `position`. `requires_tunnel` comes from the
-    /// optional `cloud_apps` child (`0` for system / self-hosted); `smart` is
-    /// derived from `client_id IS NOT NULL`.
-    ///
-    /// Hand-written (not `sql_row!`) because of the JOIN, the computed `smart`
-    /// column, and the `requires_tunnel` alias.
+    /// [`AppListEntry`] variant (keyed on `provenance`), ordered by `position`.
+    /// The cloud variant's `url` / `requires_tunnel` come from the `cloud_apps`
+    /// child and the self-hosted variant's `launch_path` from `self_hosted_apps`;
+    /// `smart` / `removable` are computed. See [`app_entry_from_row`].
     ///
     /// # Errors
     ///
@@ -65,6 +63,26 @@ impl AppsStore {
     pub fn list_app_entries(&self) -> DbResult<Vec<AppListEntry>> {
         let conn = self.conn().lock();
         list_app_entries_on(&conn)
+    }
+
+    /// The single-row counterpart to [`Self::list_app_entries`]: the wire
+    /// [`AppListEntry`] for `id`, or `None` if absent. The create / replace
+    /// handlers read it after a write so their response is the *exact* `GET /apps`
+    /// projection (correct `smart` / `removable` / variant), never a hand-built
+    /// one that could drift.
+    ///
+    /// # Errors
+    ///
+    /// Returns any rusqlite error other than `QueryReturnedNoRows`.
+    pub fn find_app_entry(&self, id: &str) -> DbResult<Option<AppListEntry>> {
+        self.conn()
+            .lock()
+            .query_row(
+                &format!("SELECT {APP_ENTRY_COLUMNS} WHERE a.id = ?1"),
+                params![id],
+                app_entry_from_row,
+            )
+            .optional()
     }
 
     /// A single parent registry row by id, `None` when absent. Backs the launch
@@ -156,37 +174,76 @@ impl AppsStore {
     }
 }
 
+/// The columns every app-entry projection selects, in one place so the list and
+/// single-row reads can't drift. The two child JOINs supply `url` /
+/// `requires_tunnel` (cloud) and `launch_path` (self-hosted); `smart` /
+/// `removable` are computed; the row is mapped per provenance by
+/// [`app_entry_from_row`].
+const APP_ENTRY_COLUMNS: &str = "a.id, a.enabled, a.name, a.subtitle, a.provenance, a.local_only, \
+     (a.client_id IS NOT NULL) AS smart, \
+     c.url AS url, \
+     COALESCE(c.requires_tunnel, 0) AS requires_tunnel, \
+     (a.provenance = 'cloud' \
+      OR (a.provenance = 'self-hosted' AND COALESCE(s.seeded, 1) = 0)) AS removable, \
+     s.launch_path AS launch_path \
+     FROM apps a \
+     LEFT JOIN cloud_apps c ON c.id = a.id \
+     LEFT JOIN self_hosted_apps s ON s.id = a.id";
+
+/// Map an `apps` + child JOIN row (see [`APP_ENTRY_COLUMNS`]) into the
+/// `provenance`-discriminated [`AppListEntry`]: shared parent fields for every
+/// variant, plus the typed-child fields for cloud (`url` / `requires_tunnel`) and
+/// self-hosted (`launch_path`). Hand-written (not `sql_row!`) because of the two
+/// JOINs, the computed columns, and the per-provenance shape.
+fn app_entry_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AppListEntry> {
+    let id: String = row.get("id")?;
+    let enabled: bool = row.get("enabled")?;
+    let name: String = row.get("name")?;
+    let subtitle: Option<String> = row.get("subtitle")?;
+    let local_only: bool = row.get("local_only")?;
+    let smart: bool = row.get("smart")?;
+    let removable: bool = row.get("removable")?;
+    Ok(match row.get::<_, Provenance>("provenance")? {
+        Provenance::System => AppListEntry::System {
+            id,
+            enabled,
+            name,
+            subtitle,
+            local_only,
+            smart,
+            removable,
+        },
+        Provenance::Cloud => AppListEntry::Cloud {
+            id,
+            enabled,
+            name,
+            subtitle,
+            local_only,
+            smart,
+            removable,
+            url: row.get("url")?,
+            requires_tunnel: row.get("requires_tunnel")?,
+        },
+        Provenance::SelfHosted => AppListEntry::SelfHosted {
+            id,
+            enabled,
+            name,
+            subtitle,
+            local_only,
+            smart,
+            removable,
+            launch_path: row.get("launch_path")?,
+        },
+    })
+}
+
 /// The `GET /apps` projection against an arbitrary connection — shared by
 /// [`AppsStore::list_app_entries`] (which locks then calls this) and
 /// [`AppsStore::replace_home_screen`] (which calls it on its open transaction so
-/// the post-renumber read stays inside the same transaction). Hand-written (not
-/// `sql_row!`) because of the two child JOINs, the computed `smart` /
-/// `removable` columns, and the `requires_tunnel` alias.
+/// the post-renumber read stays inside the same transaction).
 fn list_app_entries_on(conn: &rusqlite::Connection) -> DbResult<Vec<AppListEntry>> {
-    let mut stmt = conn.prepare(
-        "SELECT a.id, a.enabled, a.name, a.subtitle, a.provenance, a.local_only, \
-         (a.client_id IS NOT NULL) AS smart, \
-         COALESCE(c.requires_tunnel, 0) AS requires_tunnel, \
-         (a.provenance = 'cloud' \
-          OR (a.provenance = 'self-hosted' AND COALESCE(s.seeded, 1) = 0)) AS removable \
-         FROM apps a \
-         LEFT JOIN cloud_apps c ON c.id = a.id \
-         LEFT JOIN self_hosted_apps s ON s.id = a.id \
-         ORDER BY a.position",
-    )?;
-    let rows = stmt.query_map([], |row| {
-        Ok(AppListEntry {
-            id: row.get("id")?,
-            enabled: row.get("enabled")?,
-            name: row.get("name")?,
-            subtitle: row.get("subtitle")?,
-            provenance: row.get("provenance")?,
-            local_only: row.get("local_only")?,
-            smart: row.get("smart")?,
-            requires_tunnel: row.get("requires_tunnel")?,
-            removable: row.get("removable")?,
-        })
-    })?;
+    let mut stmt = conn.prepare(&format!("SELECT {APP_ENTRY_COLUMNS} ORDER BY a.position"))?;
+    let rows = stmt.query_map([], app_entry_from_row)?;
     rows.collect()
 }
 
@@ -256,15 +313,18 @@ fn migrate(conn: &mut rusqlite::Connection) -> rusqlite::Result<()> {
 /// two flat tables with the parent registry + per-kind child tables and seeds
 /// the full default set; the 5th (`005_self_hosted_seeded.sql`) adds the
 /// `seeded` flag distinguishing migration-seeded self-hosted rows from uploaded
-/// ones. Because each migration runs only once per database, a user-deleted
-/// seeded row stays deleted across upgrades — only fresh installs see the full
-/// default set.
+/// ones; the 6th (`006_self_hosted_launch_path.sql`) adds the nullable
+/// `launch_path` inferred at install for bundles that ship a `launch.html`.
+/// Because each migration runs only once per database, a user-deleted seeded
+/// row stays deleted across upgrades — only fresh installs see the full default
+/// set.
 const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/001_initial_schema.sql"),
     include_str!("../migrations/002_internal_apps_table.sql"),
     include_str!("../migrations/003_seed_precise_hbr.sql"),
     include_str!("../migrations/004_apps_registry.sql"),
     include_str!("../migrations/005_self_hosted_seeded.sql"),
+    include_str!("../migrations/006_self_hosted_launch_path.sql"),
 ];
 
 #[cfg(test)]
@@ -295,7 +355,7 @@ mod tests {
     fn migration_seeds_the_default_registry() {
         let store = AppsStore::open_in_memory().unwrap();
         let entries = store.list_app_entries().unwrap();
-        let ids: Vec<&str> = entries.iter().map(|e| e.id.as_str()).collect();
+        let ids: Vec<&str> = entries.iter().map(AppListEntry::id).collect();
         assert_eq!(
             ids,
             vec![
@@ -316,26 +376,32 @@ mod tests {
     fn list_app_entries_reports_smart_and_local_only_per_row() {
         let store = AppsStore::open_in_memory().unwrap();
         let entries = store.list_app_entries().unwrap();
-        let by_id = |id: &str| entries.iter().find(|e| e.id == id).expect("seeded row");
+        let by_id = |id: &str| entries.iter().find(|e| e.id() == id).expect("seeded row");
 
         // The 3 cloud apps carry a gatekeeper client_id → smart.
         for cloud in ["growth-chart", "medication-viewer", "precise-hbr"] {
-            assert!(by_id(cloud).smart, "{cloud} must be smart");
-            assert_eq!(by_id(cloud).provenance, Provenance::Cloud);
-            assert!(by_id(cloud).requires_tunnel, "{cloud} requires the tunnel");
+            assert!(by_id(cloud).smart(), "{cloud} must be smart");
+            assert_eq!(by_id(cloud).provenance(), Provenance::Cloud);
+            assert!(
+                by_id(cloud).requires_tunnel(),
+                "{cloud} requires the tunnel"
+            );
         }
         // The loopback apps are local-only and not smart.
         for local in ["patient-browser", "api-view", "api-docs"] {
-            assert!(by_id(local).local_only, "{local} must be local-only");
-            assert!(!by_id(local).smart, "{local} must not be smart");
+            assert!(by_id(local).local_only(), "{local} must be local-only");
+            assert!(!by_id(local).smart(), "{local} must not be smart");
             assert!(
-                !by_id(local).requires_tunnel,
+                !by_id(local).requires_tunnel(),
                 "{local} must not require the tunnel",
             );
         }
-        assert_eq!(by_id("patient-browser").provenance, Provenance::SelfHosted);
-        assert_eq!(by_id("api-view").provenance, Provenance::System);
-        assert_eq!(by_id("api-docs").provenance, Provenance::System);
+        assert_eq!(
+            by_id("patient-browser").provenance(),
+            Provenance::SelfHosted
+        );
+        assert_eq!(by_id("api-view").provenance(), Provenance::System);
+        assert_eq!(by_id("api-docs").provenance(), Provenance::System);
     }
 
     /// The parent primary key gives global id uniqueness across kinds — a second
@@ -386,7 +452,7 @@ mod tests {
 
         // The returned catalogue is in the new order.
         let expected: Vec<String> = entries.iter().map(|(id, _)| id.clone()).collect();
-        let returned_ids: Vec<String> = updated.iter().map(|e| e.id.clone()).collect();
+        let returned_ids: Vec<String> = updated.iter().map(|e| e.id().to_owned()).collect();
         assert_eq!(returned_ids, expected);
 
         // Positions are exactly the array indices (dense 0..n, no duplicates).
@@ -404,8 +470,8 @@ mod tests {
         let ids: Vec<String> = store
             .list_app_entries()
             .unwrap()
-            .into_iter()
-            .map(|e| e.id)
+            .iter()
+            .map(|e| e.id().to_owned())
             .collect();
         assert_eq!(ids, expected);
     }
@@ -419,8 +485,8 @@ mod tests {
         let before: Vec<String> = store
             .list_app_entries()
             .unwrap()
-            .into_iter()
-            .map(|e| e.id)
+            .iter()
+            .map(|e| e.id().to_owned())
             .collect();
 
         // A subset (missing rows) — not a permutation.
@@ -443,8 +509,8 @@ mod tests {
         let after: Vec<String> = store
             .list_app_entries()
             .unwrap()
-            .into_iter()
-            .map(|e| e.id)
+            .iter()
+            .map(|e| e.id().to_owned())
             .collect();
         assert_eq!(before, after, "a rejected body must not reorder anything");
     }
@@ -457,7 +523,7 @@ mod tests {
         let entries = store.list_app_entries().unwrap();
         let system_rows: Vec<&AppListEntry> = entries
             .iter()
-            .filter(|e| e.provenance == Provenance::System)
+            .filter(|e| e.provenance() == Provenance::System)
             .collect();
         assert_eq!(
             system_rows.len(),
@@ -467,17 +533,13 @@ mod tests {
         for source in SYSTEM_APPS {
             let row = system_rows
                 .iter()
-                .find(|e| e.id == source.id)
+                .find(|e| e.id() == source.id)
                 .unwrap_or_else(|| panic!("no seeded system row for {}", source.id));
-            assert_eq!(row.name, source.name, "{} name", source.id);
+            assert_eq!(row.name(), source.name, "{} name", source.id);
+            assert_eq!(row.subtitle(), source.subtitle, "{} subtitle", source.id);
             assert_eq!(
-                row.subtitle.as_deref(),
-                source.subtitle,
-                "{} subtitle",
-                source.id,
-            );
-            assert_eq!(
-                row.local_only, source.local_only,
+                row.local_only(),
+                source.local_only,
                 "{} local_only",
                 source.id,
             );

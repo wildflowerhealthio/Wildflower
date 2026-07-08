@@ -27,11 +27,11 @@ use axum::Json;
 use serde::Deserialize;
 use utoipa::IntoParams;
 
-use crate::domain::{AppListEntry, Provenance};
+use crate::domain::AppListEntry;
 use crate::http::response_templates::{HandlerError, InvalidFieldBody};
 use crate::http::state::AppsState;
 use crate::id::mint_app_id;
-use crate::install::{self, extract_zip_bundle, slugify};
+use crate::install::{self, extract_zip_bundle, infer_launch_path, slugify};
 
 /// Query params for the upload route — just the human app name, slugged into the
 /// id/subdomain server-side.
@@ -73,12 +73,17 @@ pub(crate) async fn handle_create_self_hosted_app(
     let staging = apps_dir.join(".staging").join(mint_app_id());
 
     // Extract off the async runtime — zip inflate + disk writes are blocking.
+    // The same blocking task infers the launch path from the extracted (and
+    // hoisted) tree, so the `launch.html` probe rides the same off-runtime hop.
     let bytes = body.to_vec();
     let staging_for_extract = staging.clone();
-    let extract =
-        tokio::task::spawn_blocking(move || extract_zip_bundle(&bytes, &staging_for_extract)).await;
-    match extract {
-        Ok(Ok(())) => {}
+    let extract = tokio::task::spawn_blocking(move || {
+        extract_zip_bundle(&bytes, &staging_for_extract)
+            .map(|()| infer_launch_path(&staging_for_extract))
+    })
+    .await;
+    let launch_path = match extract {
+        Ok(Ok(path)) => path,
         Ok(Err(error)) => {
             remove_staging(&staging);
             return Err(map_install_error(error));
@@ -90,14 +95,17 @@ pub(crate) async fn handle_create_self_hosted_app(
                 join_error,
             ));
         }
-    }
+    };
 
     // The host's own loopback port is reserved so an upload never binds over it.
     let reserved_ports: Vec<u16> = state.loopback_base_url.port().into_iter().collect();
-    let app = match state
-        .store
-        .insert_self_hosted_app(&params.name, None, &slug, &reserved_ports)
-    {
+    let app = match state.store.insert_self_hosted_app(
+        &params.name,
+        None,
+        &slug,
+        &reserved_ports,
+        launch_path.as_deref(),
+    ) {
         Ok(Some(app)) => app,
         Ok(None) => {
             remove_staging(&staging);
@@ -135,17 +143,19 @@ pub(crate) async fn handle_create_self_hosted_app(
         tracing::warn!(%error, app = %app.id, "installed self-hosted app failed to start; it will come up on restart");
     }
 
-    Ok(Json(AppListEntry {
-        id: app.id,
-        enabled: true,
-        name: params.name,
-        subtitle: None,
-        provenance: Provenance::SelfHosted,
-        local_only: true,
-        smart: false,
-        requires_tunnel: false,
-        removable: true,
-    }))
+    // Read back the exact `GET /apps` projection (the self-hosted variant, with
+    // the install-inferred `launchPath`) so the response can't drift.
+    let entry = state
+        .store
+        .find_app_entry(&app.id)
+        .map_err(|e| HandlerError::internal("find_app_entry after install failed", e))?
+        .ok_or_else(|| {
+            HandlerError::internal(
+                "installed self-hosted app vanished before read-back",
+                app.id,
+            )
+        })?;
+    Ok(Json(entry))
 }
 
 /// Map an extraction failure to the wire error: a disk-write failure is our

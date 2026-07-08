@@ -45,7 +45,9 @@ const tilePills = (app: AppEntry): readonly Pill[] => {
   const pills: Pill[] = [{ key: 'provenance', label: provenance.label, tone: provenance.tone }]
   if (app.smart) pills.push({ key: 'smart', label: 'SMART', tone: 'info' })
   if (app.localOnly) pills.push({ key: 'local-only', label: 'Local-Only', tone: 'success' })
-  if (app.requiresTunnel) pills.push({ key: 'tunnel', label: 'Tunnel', tone: 'warning' })
+  // `requiresTunnel` lives only on the cloud variant of the union.
+  if (app.provenance === 'cloud' && app.requiresTunnel)
+    pills.push({ key: 'tunnel', label: 'Tunnel', tone: 'warning' })
   return pills
 }
 

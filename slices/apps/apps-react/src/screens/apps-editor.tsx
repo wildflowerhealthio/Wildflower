@@ -1,5 +1,5 @@
 import { useIsMutating } from '@tanstack/react-query'
-import { useEffect, useState, type JSX } from 'react'
+import { Fragment, useEffect, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { Checkbox, Dialog } from 'react-tundraish'
 
@@ -7,6 +7,7 @@ import {
   HOME_SCREEN_MUTATION_KEY,
   useAppsAdminCreateMutation,
   useAppsAdminDeleteMutation,
+  useAppsAdminReplaceMutation,
   useReplaceHomeScreenMutation,
   useSelfHostedAppCreateMutation,
   type AppEntry,
@@ -22,6 +23,59 @@ interface AppsEditorProps {
 
 const formatError = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
+
+/** The self-hosted variant of the catalogue union — the only kind with an
+ * editable launch path. */
+type SelfHostedEntry = Extract<AppEntry, { provenance: 'self-hosted' }>
+
+/**
+ * Inline launch-path editor for an uploaded self-hosted app. Prefilled from the
+ * stored `launchPath` (a SMART launcher path with `{origin}` / `{launch}`
+ * tokens); saving `PUT`s it via {@link useAppsAdminReplaceMutation}, and an empty
+ * value clears it back to root-serving (`index.html`). Its own mutation instance
+ * keeps each row's in-flight state and error local to that row.
+ */
+const SelfHostedLaunchPathEditor = ({ app }: { readonly app: SelfHostedEntry }): JSX.Element => {
+  const replaceMutation = useAppsAdminReplaceMutation()
+  const [launchPath, setLaunchPath] = useState(app.launchPath ?? '')
+
+  return (
+    <form
+      className={editorStyles['apps-editor__form']}
+      onSubmit={(event) => {
+        event.preventDefault()
+        replaceMutation.mutate({
+          id: app.id,
+          payload: { provenance: 'self-hosted', launchPath: launchPath.trim() },
+        })
+      }}
+    >
+      {replaceMutation.error !== null ? (
+        <p className="text-body-3" role="alert">
+          {formatError(replaceMutation.error)}
+        </p>
+      ) : null}
+      <label className={editorStyles['apps-editor__form-field']}>
+        <span className="text-label-3">
+          Launch path (supports {'{origin}'} and {'{launch}'} tokens; empty serves index.html)
+        </span>
+        <input
+          className="input-2"
+          value={launchPath}
+          placeholder="/launch.html?launch={launch}&iss={origin}/fhir-r4"
+          onChange={(event) => {
+            // Clear any prior error as the user resumes editing.
+            if (replaceMutation.error !== null) replaceMutation.reset()
+            setLaunchPath(event.target.value)
+          }}
+        />
+      </label>
+      <button type="submit" className="button-3 outline" disabled={replaceMutation.isPending}>
+        Save launch path
+      </button>
+    </form>
+  )
+}
 
 /**
  * Modal editor for the apps list. The enable-toggle is exposed for **every**
@@ -164,50 +218,60 @@ const AppsEditor = ({ open, apps, onClose }: AppsEditorProps): JSX.Element => {
       <fieldset className={editorStyles['apps-editor__fieldset']} disabled={busy}>
         <section className={editorStyles['apps-editor__section']}>
           {apps.map((app) => (
-            <div key={app.id} className={editorStyles['apps-editor__row']}>
-              <div className={editorStyles['apps-editor__row-label']}>
-                <span className="text-body-2">{app.name}</span>
-                {app.subtitle !== undefined ? (
-                  <span className={cn(editorStyles['apps-editor__row-sub'], 'text-body-3')}>
-                    {app.subtitle}
-                  </span>
-                ) : null}
+            <Fragment key={app.id}>
+              <div className={editorStyles['apps-editor__row']}>
+                <div className={editorStyles['apps-editor__row-label']}>
+                  <span className="text-body-2">{app.name}</span>
+                  {app.subtitle !== undefined ? (
+                    <span className={cn(editorStyles['apps-editor__row-sub'], 'text-body-3')}>
+                      {app.subtitle}
+                    </span>
+                  ) : null}
+                </div>
+                {/*
+                 * The enable toggle is shown for every provenance — `enabled` is
+                 * homescreen curation, persisted via `PUT /home-screen`, which
+                 * accepts all provenances. A `Remove` button shows only when the
+                 * server marks the row `removable` (cloud apps + uploaded
+                 * self-hosted apps); a non-removable row (system + seeded
+                 * self-hosted, which the admin surface `409`s) shows a read-only
+                 * provenance tag in its place so the user can see why it can't be
+                 * removed.
+                 */}
+                <div className={editorStyles['apps-editor__row-actions']}>
+                  <Checkbox
+                    checked={app.enabled}
+                    label=""
+                    onChange={() => {
+                      toggle(app)
+                    }}
+                  />
+                  {app.removable ? (
+                    <button
+                      type="button"
+                      className="button-3 outline accent-red"
+                      onClick={() => {
+                        remove(app)
+                      }}
+                    >
+                      Remove
+                    </button>
+                  ) : (
+                    <span className={cn(editorStyles['apps-editor__row-readonly'], 'text-body-3')}>
+                      {provenanceLabel(app.provenance)}
+                    </span>
+                  )}
+                </div>
               </div>
               {/*
-               * The enable toggle is shown for every provenance — `enabled` is
-               * homescreen curation, persisted via `PUT /home-screen`, which
-               * accepts all provenances. A `Remove` button shows only when the
-               * server marks the row `removable` (cloud apps + uploaded
-               * self-hosted apps); a non-removable row (system + seeded
-               * self-hosted, which the admin surface `409`s) shows a read-only
-               * provenance tag in its place so the user can see why it can't be
-               * removed.
+               * An uploaded self-hosted app also gets an inline launch-path
+               * editor: the stored SMART launcher path, editable in place (empty
+               * reverts to root-serving). Only this variant carries `launchPath`.
                */}
-              <div className={editorStyles['apps-editor__row-actions']}>
-                <Checkbox
-                  checked={app.enabled}
-                  label=""
-                  onChange={() => {
-                    toggle(app)
-                  }}
-                />
-                {app.removable ? (
-                  <button
-                    type="button"
-                    className="button-3 outline accent-red"
-                    onClick={() => {
-                      remove(app)
-                    }}
-                  >
-                    Remove
-                  </button>
-                ) : (
-                  <span className={cn(editorStyles['apps-editor__row-readonly'], 'text-body-3')}>
-                    {provenanceLabel(app.provenance)}
-                  </span>
-                )}
-              </div>
-            </div>
+              {app.provenance === 'self-hosted' && app.removable ? (
+                <SelfHostedLaunchPathEditor app={app} />
+              ) : null}
+            </Fragment>
           ))}
         </section>
 

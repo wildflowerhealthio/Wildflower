@@ -70,23 +70,55 @@ tables joined by `id`:
   `requires_tunnel`.
 - `self_hosted_apps` — the stable dedicated loopback `port`, the on-disk
   `content_folder` the files are served from, the public `subdomain` label
-  (`<subdomain>.<public_host>`), and a `seeded` flag. Folder and subdomain are
-  explicit columns, not derived from the `id`, so an app's identity, its served
-  files, and its public hostname are independent. `seeded = 1` marks the
-  migration-seeded shipped apps (Patient Browser); rows written by the upload
-  endpoint are `seeded = 0`.
+  (`<subdomain>.<public_host>`), a `seeded` flag, and a nullable `launch_path`.
+  Folder and subdomain are explicit columns, not derived from the `id`, so an
+  app's identity, its served files, and its public hostname are independent.
+  `seeded = 1` marks the migration-seeded shipped apps (Patient Browser); rows
+  written by the upload endpoint are `seeded = 0`. `launch_path` is the SMART
+  launch path **inferred at install** — set when the uploaded bundle ships a
+  `launch.html` (`/launch.html?launch={launch}&iss={origin}/fhir-r4`), `NULL`
+  for a root-served (`index.html`) app. Like the cloud `url` it's an
+  origin-independent template; the launch handler hangs it off the app's own
+  origin and substitutes `{origin}` with the served FHIR origin per request.
 - System apps have no child row.
 
 **Removability.** A Cloud app and an **uploaded** (`seeded = 0`) Self-Hosted app
 can be deleted — `DELETE /apps/{id}` drops the rows (and, for self-hosted, stops
 the listener and removes the on-disk files). A **seeded** Self-Hosted app and
 System apps are protected: their delete returns `409 AppNotEditable`. The read
-shapes surface this as the `removable` flag on `AppListEntry` (true for cloud
-and non-seeded self-hosted rows), which the editor's Remove button follows.
+shapes surface this as the `removable` flag (true for cloud and non-seeded
+self-hosted rows), which the editor's Remove button follows.
 
-Read shapes (`GET /apps`, launch) **carry no `url`**: the server resolves the
-launch target at request time from the provenance, so a Self-Hosted or System
-app never materializes one. Only the Cloud-admin DTOs expose a `url`.
+### The catalogue is a `provenance`-discriminated union
+
+`AppListEntry` — the shape of `GET /apps` and every create/replace response — is
+a **union discriminated on `provenance`**, mirroring the data model: the shared
+fields are the `apps` parent row (`id`, `name`, `subtitle`, `enabled`,
+`localOnly`, `smart`, `removable`); each variant adds its typed child-table
+fields — **cloud** carries `url` + `requiresTunnel`, **self-hosted** carries
+`launchPath`, **system** adds nothing. A client narrows on `provenance` to reach
+a variant field.
+
+Read shapes expose the **stored, origin-independent templates** (the cloud `url`
+and the self-hosted `launchPath`, both with `{origin}` / `{launch}` tokens) but
+never a **request-resolved** launch URL: the concrete target — with the caller's
+origin and a fresh `{launch}` nonce substituted — is materialized only by the
+launch endpoint (`POST /apps/{id}`), per request, so a forwarded and a loopback
+caller each get the right origin. Exposing the templates lets the editor display
+and edit them without any value on the read shape ever being a live redirect
+target.
+
+### Editing app content — `PUT /apps/{id}`
+
+Content edits go through `PUT /apps/{id}`, whose body is the write-side
+counterpart union `AppContentBody`, also discriminated on `provenance`: a
+**cloud** body replaces `name` / `subtitle` / `url` / `requiresTunnel`; a
+**self-hosted** body replaces `launchPath` (empty clears it back to
+root-serving). It is a full **content** replace — `enabled` and display order
+stay owned by `PUT /home-screen`, the single writer of those. The body's arm
+must match the stored app's provenance; a mismatch, a system app, or a seeded
+self-hosted app returns `409 AppNotEditable`. The response is the refreshed
+`AppListEntry` variant.
 
 ### `client_id` is a soft reference
 

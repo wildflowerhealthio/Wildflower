@@ -61,7 +61,7 @@ defineSpecDriftTest({
   /** Endpoints compared — `(path, lowercase method)`. */
   scope: [
     ['/apps', 'post'],
-    ['/apps/{id}', 'patch'],
+    ['/apps/{id}', 'put'],
     ['/apps/{id}', 'delete'],
     ['/self-hosted-apps', 'post'],
     ['/home-screen', 'put'],

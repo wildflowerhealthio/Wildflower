@@ -28,7 +28,7 @@ use shared_structures_server_rust::{ProxyTable, ServerError, StaticHostJob, Stat
 use tower_http::cors::CorsLayer;
 use url::Url;
 
-use crate::domain::SelfHostedApp;
+use crate::domain::SelfHostedAppRow;
 
 /// Orchestrates the self-hosted apps' loopback listeners and reverse-proxy
 /// registrations. Constructed once by the host (held in scope for the process
@@ -96,7 +96,7 @@ impl SelfHostedAppsService {
     /// # Errors
     ///
     /// [`ServerError::LockPoisoned`] if a shared lock was poisoned.
-    pub async fn start(&self, app: &SelfHostedApp) -> Result<(), ServerError> {
+    pub async fn start(&self, app: &SelfHostedAppRow) -> Result<(), ServerError> {
         let service = self_hosted_apps_rust::setup_self_hosted_app(
             &app.id,
             self.apps_dir.join(&app.content_folder),
@@ -259,12 +259,13 @@ mod tests {
                 public_host: "demo.example.com".to_owned(),
             }),
         );
-        let app = SelfHostedApp {
+        let app = SelfHostedAppRow {
             id: "patient-browser".to_owned(),
             port,
             content_folder: "patient-browser".to_owned(),
             subdomain: "patient-browser".to_owned(),
             seeded: true,
+            launch_path: None,
         };
 
         service.start(&app).await.unwrap();
@@ -305,10 +306,14 @@ mod tests {
         use crate::db::AppsStore;
 
         let store = AppsStore::open_in_memory().unwrap();
-        let app = store
-            .insert_self_hosted_app("Uploaded App", None, "uploaded-app", &[])
+        let mut app = store
+            .insert_self_hosted_app("Uploaded App", None, "uploaded-app", &[], None)
             .unwrap()
             .expect("inserted");
+        // Bind an OS-assigned free port rather than the store's deterministic
+        // 8082 — this test asserts *real serving*, so it must not race any other
+        // test (here or in the handler suite) that also binds 8082.
+        app.port = free_port().await;
         // Files land under `<apps_dir>/<content_folder>/index.html`.
         let dir = temp_apps_dir(&app.content_folder, "<h1>UPLOADED</h1>");
 

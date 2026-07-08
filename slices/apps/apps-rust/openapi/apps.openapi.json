@@ -44,7 +44,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AppEntry"
+                  "$ref": "#/components/schemas/AppListEntry"
                 }
               }
             }
@@ -63,6 +63,73 @@
       }
     },
     "/apps/{id}": {
+      "put": {
+        "summary": "`PUT /apps/{id}` — replace an editable app's content. Owner-gated by the host.",
+        "operationId": "handle_replace_app",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "App id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppContentBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The updated app (the provenance-tagged catalogue entry)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppListEntry"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Empty name (`InvalidName`) or bad url/launch path (`InvalidUrl`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidFieldBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No app has this id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppNotFoundBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Not editable: a system app, a seeded self-hosted app, or a body whose provenance doesn't match the stored app",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppNotEditableBody"
+                }
+              }
+            }
+          }
+        }
+      },
       "post": {
         "summary": "`POST /apps/{id}` — launch an app (`404` if no app has this id). See the\nmodule docs for the resolve-then-dispatch flow and the auth posture.",
         "operationId": "handle_launch_app",
@@ -146,73 +213,6 @@
           },
           "409": {
             "description": "The app exists but is not removable (system / seeded self-hosted apps)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppNotEditableBody"
-                }
-              }
-            }
-          }
-        }
-      },
-      "patch": {
-        "summary": "`PATCH /apps/{id}` — partial update of a cloud app. Owner-gated by the host.",
-        "operationId": "handle_update_app",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "App id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateAppBody"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "The updated cloud app",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppEntry"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Empty name (`InvalidName`) or bad url (`InvalidUrl`)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InvalidFieldBody"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "No app has this id",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppNotFoundBody"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "The app exists but is not a cloud app (system / self-hosted apps are not editable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -326,92 +326,220 @@
   },
   "components": {
     "schemas": {
-      "AppEntry": {
-        "type": "object",
-        "description": "One **cloud app** on the wire — the admin create/update DTO and the launch\nhandler's resolved shape.\n\nThe `url` is a template: `{origin}` is replaced with the served origin\nat launch time, `{launch}` with a fresh per-launch nonce. A SMART-on-FHIR\napp's URL might be\n`https://example/launch.html?iss={origin}/fhir-r4&launch={launch}`; a\nhand-rolled one might be `{origin}/some/path` or `https://other-host/x`.\nSee [`AppUrl`] for the accepted shapes.",
-        "required": [
-          "id",
-          "enabled",
-          "name",
-          "url",
-          "requiresTunnel"
-        ],
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "enabled": {
-            "type": "boolean"
-          },
-          "name": {
-            "type": "string"
-          },
-          "subtitle": {
-            "type": [
-              "string",
-              "null"
+      "AppContentBody": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Full replace of a cloud app's content.",
+            "required": [
+              "name",
+              "url",
+              "requiresTunnel",
+              "provenance"
             ],
-            "description": "The descriptive line shown under the app's name. `None` means the\nrow has no explicit subtitle; the UI may fall back to the URL or\nrender the row without one."
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "subtitle": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "url": {
+                "type": "string"
+              },
+              "requiresTunnel": {
+                "type": "boolean"
+              },
+              "provenance": {
+                "type": "string",
+                "enum": [
+                  "cloud"
+                ]
+              }
+            }
           },
-          "url": {
-            "type": "string",
-            "description": "The launch URL template, serialized as a plain string on the wire and\nin SQLite. See [`AppUrl`] for the accepted shapes / placeholders."
-          },
-          "requiresTunnel": {
-            "type": "boolean"
+          {
+            "type": "object",
+            "description": "Replace a self-hosted app's launch path (absent / empty → root-served).",
+            "required": [
+              "provenance"
+            ],
+            "properties": {
+              "launchPath": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "provenance": {
+                "type": "string",
+                "enum": [
+                  "self-hosted"
+                ]
+              }
+            }
           }
-        }
+        ],
+        "description": "`PUT /apps/{id}` body — a `provenance`-discriminated union matching the TS\n`AppContentBodySchema`. Only the editable kinds have an arm (system apps are\nnever editable). `url` is read as a raw string so a bad value yields the\nstructured `400 InvalidUrl` rather than a generic deserialize error."
       },
       "AppListEntry": {
-        "type": "object",
-        "description": "`GET /apps` row shape — the catalogue entry. No launch `url`. See the module\ndocs.",
-        "required": [
-          "id",
-          "enabled",
-          "name",
-          "provenance",
-          "localOnly",
-          "smart",
-          "requiresTunnel",
-          "removable"
-        ],
-        "properties": {
-          "id": {
-            "type": "string"
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "A system app — a compiled-in shell route. No child table, no extra fields.",
+            "required": [
+              "id",
+              "enabled",
+              "name",
+              "localOnly",
+              "smart",
+              "removable",
+              "provenance"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "name": {
+                "type": "string"
+              },
+              "subtitle": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "localOnly": {
+                "type": "boolean"
+              },
+              "smart": {
+                "type": "boolean"
+              },
+              "removable": {
+                "type": "boolean"
+              },
+              "provenance": {
+                "type": "string",
+                "enum": [
+                  "system"
+                ]
+              }
+            }
           },
-          "enabled": {
-            "type": "boolean"
+          {
+            "type": "object",
+            "description": "A cloud app — carries its stored launch `url` template and the\ntunnel-requirement flag from the `cloud_apps` child.",
+            "required": [
+              "id",
+              "enabled",
+              "name",
+              "localOnly",
+              "smart",
+              "removable",
+              "url",
+              "requiresTunnel",
+              "provenance"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "name": {
+                "type": "string"
+              },
+              "subtitle": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "localOnly": {
+                "type": "boolean"
+              },
+              "smart": {
+                "type": "boolean"
+              },
+              "removable": {
+                "type": "boolean"
+              },
+              "url": {
+                "type": "string",
+                "description": "The stored launch URL template (`{origin}` / `{launch}` tokens),\nserialized as its canonical string. See [`AppUrl`]."
+              },
+              "requiresTunnel": {
+                "type": "boolean"
+              },
+              "provenance": {
+                "type": "string",
+                "enum": [
+                  "cloud"
+                ]
+              }
+            }
           },
-          "name": {
-            "type": "string"
-          },
-          "subtitle": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "provenance": {
-            "$ref": "#/components/schemas/Provenance",
-            "description": "How this app's launch target resolves; see [`Provenance`]."
-          },
-          "localOnly": {
-            "type": "boolean",
-            "description": "The declared no-egress flag (a homescreen badge this pass)."
-          },
-          "smart": {
-            "type": "boolean",
-            "description": "Whether this is a SMART app (the parent row carries a `client_id`)."
-          },
-          "requiresTunnel": {
-            "type": "boolean",
-            "description": "Whether a launch needs the tunnel up (cloud apps only; `false` for\nsystem / self-hosted)."
-          },
-          "removable": {
-            "type": "boolean",
-            "description": "Whether the owner can remove this app through the admin surface: `true`\nfor cloud apps and for uploaded (non-seeded) self-hosted apps, `false`\nfor system apps and the migration-seeded self-hosted apps. The editor's\nRemove control keys off this rather than re-deriving the rule per client."
+          {
+            "type": "object",
+            "description": "A self-hosted app — carries its stored `launch_path` (absent for a\nroot-served bundle) from the `self_hosted_apps` child.",
+            "required": [
+              "id",
+              "enabled",
+              "name",
+              "localOnly",
+              "smart",
+              "removable",
+              "provenance"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "name": {
+                "type": "string"
+              },
+              "subtitle": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "localOnly": {
+                "type": "boolean"
+              },
+              "smart": {
+                "type": "boolean"
+              },
+              "removable": {
+                "type": "boolean"
+              },
+              "launchPath": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The stored SMART launch path (origin-relative, with `{origin}` /\n`{launch}` tokens), or absent for a root-served (`index.html`) app."
+              },
+              "provenance": {
+                "type": "string",
+                "enum": [
+                  "self-hosted"
+                ]
+              }
+            }
           }
-        }
+        ],
+        "description": "One app-catalogue entry on the wire, discriminated on `provenance`. Serialized\ninternally-tagged: every variant carries a `\"provenance\"` field (`\"system\"` /\n`\"cloud\"` / `\"self-hosted\"`) alongside its fields, so utoipa renders it as a\n`oneOf` and the TS client decodes it as a discriminated union."
       },
       "AppNotEditableBody": {
         "type": "object",
@@ -543,45 +671,6 @@
           },
           "reason": {
             "type": "string"
-          }
-        }
-      },
-      "Provenance": {
-        "type": "string",
-        "description": "How an app's launch target resolves. Serialized — wire + SQLite — as its\nkebab string (`\"system\"` / `\"self-hosted\"` / `\"cloud\"`).",
-        "enum": [
-          "system",
-          "self-hosted",
-          "cloud"
-        ]
-      },
-      "UpdateAppBody": {
-        "type": "object",
-        "description": "PATCH body — all fields optional. Matches `UpdateAppBodySchema`. The\n`subtitle` tri-state is on [`SubtitlePatch`]. No `enabled`: that's homescreen\ncuration, owned by `PUT /home-screen`.",
-        "properties": {
-          "name": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "url": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "requiresTunnel": {
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
-          "subtitle": {
-            "type": [
-              "string",
-              "null"
-            ]
           }
         }
       }

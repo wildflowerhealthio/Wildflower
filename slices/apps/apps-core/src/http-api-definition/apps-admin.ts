@@ -1,7 +1,7 @@
 import { HttpApiEndpoint, HttpApiGroup } from '@effect/platform'
 import { Schema } from 'effect'
 import {
-  AppEntrySchema,
+  AppContentBodySchema,
   AppIdPathSchema,
   AppListEntrySchema,
   AppListSchema,
@@ -12,7 +12,6 @@ import {
   HomeScreenSchema,
   InvalidFieldSchema,
   InvalidHomeScreenSchema,
-  UpdateAppBodySchema,
   ZipPayloadSchema,
 } from './schemas.ts'
 
@@ -22,24 +21,30 @@ import {
  * applies `RequireAuthMiddleware` when adding `AppsAdminApi` to its
  * root `HttpApi`. Slice cores stay free of auth dependencies.
  *
- * Create / update / delete operate on **cloud** apps' content only: a system or
- * self-hosted app that exists returns `409 AppNotEditable`, an unknown id
- * `404`. A bad name/url is a `400 InvalidField`. `PUT /home-screen` is the
- * exception — it atomically reorders / enables **every** provenance (homescreen
- * curation), so it carries no editability gate.
+ * Create / replace / delete: `POST /apps` creates a cloud app; `PUT /apps/:id`
+ * replaces an editable app's content (cloud or self-hosted, keyed on the body's
+ * provenance); `DELETE /apps/:id` removes it. A system app, a seeded self-hosted
+ * app, or a provenance mismatch is `409 AppNotEditable`, an unknown id `404`, a
+ * bad name/url `400 InvalidField`. Every one of these responses is the
+ * `provenance`-discriminated {@link AppListEntrySchema}. `PUT /home-screen` is
+ * the exception — it atomically reorders / enables **every** provenance.
  */
 const httpApiGroup = HttpApiGroup.make('apps-admin', { topLevel: false })
   .add(
     HttpApiEndpoint.post('CreateApp', '/apps')
       .setPayload(CreateAppBodySchema)
-      .addSuccess(AppEntrySchema)
+      .addSuccess(AppListEntrySchema)
       .addError(InvalidFieldSchema, { status: 400 })
   )
   .add(
-    HttpApiEndpoint.patch('UpdateApp', '/apps/:id')
+    // Replace an editable app's content. The body is a provenance-discriminated
+    // union ({@link AppContentBodySchema}) whose arm must match the stored app's
+    // kind; the response is the refreshed catalogue entry. A system app, a
+    // seeded self-hosted app, or a provenance mismatch is `409 AppNotEditable`.
+    HttpApiEndpoint.put('ReplaceApp', '/apps/:id')
       .setPath(AppIdPathSchema)
-      .setPayload(UpdateAppBodySchema)
-      .addSuccess(AppEntrySchema)
+      .setPayload(AppContentBodySchema)
+      .addSuccess(AppListEntrySchema)
       .addError(InvalidFieldSchema, { status: 400 })
       .addError(AppNotFoundSchema, { status: 404 })
       .addError(AppNotEditableSchema, { status: 409 })

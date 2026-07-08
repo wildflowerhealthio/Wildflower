@@ -8,28 +8,30 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/tes
 // `reset` (so we can assert it fires on open) and a settable `error` (so
 // we can plant a stale error the way a failed write would leave one
 // behind while `Dialog` keeps the children mounted).
-const { homeScreenStub, createStub, deleteStub, selfHostedStub, isMutatingRef } = vi.hoisted(() => {
-  const makeMutation = (): {
-    readonly mutate: ReturnType<typeof vi.fn>
-    readonly reset: ReturnType<typeof vi.fn>
-    isPending: boolean
-    error: Error | null
-  } => ({
-    mutate: vi.fn(),
-    reset: vi.fn(),
-    isPending: false,
-    error: null,
+const { homeScreenStub, createStub, deleteStub, selfHostedStub, replaceStub, isMutatingRef } =
+  vi.hoisted(() => {
+    const makeMutation = (): {
+      readonly mutate: ReturnType<typeof vi.fn>
+      readonly reset: ReturnType<typeof vi.fn>
+      isPending: boolean
+      error: Error | null
+    } => ({
+      mutate: vi.fn(),
+      reset: vi.fn(),
+      isPending: false,
+      error: null,
+    })
+    return {
+      homeScreenStub: makeMutation(),
+      createStub: makeMutation(),
+      deleteStub: makeMutation(),
+      selfHostedStub: makeMutation(),
+      replaceStub: makeMutation(),
+      // Controls the mocked `useIsMutating` return — the count of in-flight
+      // home-screen PUTs the editor sees (its own + the home screen's drag).
+      isMutatingRef: { count: 0 },
+    }
   })
-  return {
-    homeScreenStub: makeMutation(),
-    createStub: makeMutation(),
-    deleteStub: makeMutation(),
-    selfHostedStub: makeMutation(),
-    // Controls the mocked `useIsMutating` return — the count of in-flight
-    // home-screen PUTs the editor sees (its own + the home screen's drag).
-    isMutatingRef: { count: 0 },
-  }
-})
 
 vi.mock('../queries.ts', () => ({
   HOME_SCREEN_MUTATION_KEY: ['apps', 'home-screen'],
@@ -37,6 +39,7 @@ vi.mock('../queries.ts', () => ({
   useAppsAdminCreateMutation: () => createStub,
   useAppsAdminDeleteMutation: () => deleteStub,
   useSelfHostedAppCreateMutation: () => selfHostedStub,
+  useAppsAdminReplaceMutation: () => replaceStub,
 }))
 
 // `busy` folds in `useIsMutating` for the shared home-screen key (so a toggle is
@@ -59,15 +62,51 @@ const NO_APPS: readonly AppEntry[] = []
 // renders beside it (defaults to `false` — set it per test). The other flags are
 // the lightest valid wire shape; the editor reads only `id`, `name`, `subtitle`,
 // `enabled`, `provenance`, `removable`.
-const makeApp = (overrides: Partial<AppEntry> & Pick<AppEntry, 'id' | 'provenance'>): AppEntry => ({
-  name: overrides.id,
-  enabled: true,
-  localOnly: false,
-  smart: false,
-  requiresTunnel: false,
-  removable: false,
-  ...overrides,
-})
+// Build a valid member of the `provenance`-discriminated union. The editor reads
+// only shared fields plus the self-hosted `launchPath`; cloud/self-hosted variants
+// still need their required typed-child fields to satisfy the type.
+interface MakeAppOverrides {
+  readonly id: string
+  readonly provenance: AppEntry['provenance']
+  readonly name?: string
+  readonly enabled?: boolean
+  readonly localOnly?: boolean
+  readonly smart?: boolean
+  readonly removable?: boolean
+  readonly subtitle?: string
+  readonly url?: string
+  readonly requiresTunnel?: boolean
+  readonly launchPath?: string
+}
+
+const makeApp = (overrides: MakeAppOverrides): AppEntry => {
+  const {
+    id,
+    provenance,
+    name = overrides.id,
+    enabled = true,
+    localOnly = false,
+    smart = false,
+    removable = false,
+    subtitle,
+    url = 'https://example.com',
+    requiresTunnel = false,
+    launchPath,
+  } = overrides
+  const shared = {
+    id,
+    name,
+    enabled,
+    localOnly,
+    smart,
+    removable,
+    ...(subtitle === undefined ? {} : { subtitle }),
+  }
+  if (provenance === 'cloud') return { ...shared, provenance, url, requiresTunnel }
+  if (provenance === 'self-hosted')
+    return { ...shared, provenance, ...(launchPath === undefined ? {} : { launchPath }) }
+  return { ...shared, provenance }
+}
 
 const renderEditor = (open: boolean): ReturnType<typeof render> =>
   render(<AppsEditor open={open} apps={NO_APPS} onClose={() => {}} />)
@@ -232,6 +271,39 @@ describe('<AppsEditor> provenance gating', () => {
     expect(screen.getAllByRole('button', { name: 'Remove' })).toHaveLength(1)
     // The seeded row shows the read-only provenance tag in place of Remove.
     expect(screen.getByText('Self-Hosted')).toBeDefined()
+  })
+
+  test('an uploaded self-hosted app edits its launch path via a discriminated PUT', () => {
+    const apps: readonly AppEntry[] = [
+      makeApp({
+        id: 'uploaded',
+        name: 'Uploaded App',
+        provenance: 'self-hosted',
+        removable: true,
+        launchPath: '/old.html',
+      }),
+    ]
+    render(<AppsEditor open apps={apps} onClose={() => {}} />)
+
+    // The field is prefilled from the stored launch path (queried by its
+    // display value so no `HTMLInputElement` cast is needed to read `.value`).
+    const input = screen.getByLabelText(/Launch path/)
+    expect(screen.getByDisplayValue('/old.html')).toBe(input)
+
+    fireEvent.change(input, { target: { value: '/launch.html?iss={origin}/fhir-r4' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save launch path' }))
+    expect(replaceStub.mutate).toHaveBeenCalledWith({
+      id: 'uploaded',
+      payload: { provenance: 'self-hosted', launchPath: '/launch.html?iss={origin}/fhir-r4' },
+    })
+  })
+
+  test('a seeded (non-removable) self-hosted app shows no launch-path editor', () => {
+    const apps: readonly AppEntry[] = [
+      makeApp({ id: 'patient-browser', name: 'Patient Browser', provenance: 'self-hosted' }),
+    ]
+    render(<AppsEditor open apps={apps} onClose={() => {}} />)
+    expect(screen.queryByRole('button', { name: 'Save launch path' })).toBeNull()
   })
 
   test('non-cloud rows show a read-only provenance tag (matching the tiles casing)', () => {

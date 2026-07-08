@@ -97,11 +97,22 @@ A `.zip` bundle can be uploaded at runtime from the apps editor's **"Add
 self-hosted app"** section (name + `.zip` picker), which `POST`s the raw
 `application/zip` body to the owner-gated `POST /self-hosted-apps?name=…`
 endpoint. The host extracts the zip (zip-slip guarded, capped at 512 MiB
-uncompressed / 20k entries, single-top-folder hoisted), allocates a slug
+uncompressed / 20k entries, macOS Finder litter — `__MACOSX/` / `.DS_Store` /
+AppleDouble `._*` — dropped, then a single top folder hoisted so the app serves
+at the root), allocates a slug
 (auto-suffixed on clash, e.g. `my-app-2`) and a loopback port, inserts the
 `apps` + `self_hosted_apps` rows in one transaction, atomically renames the
 extraction into `<app-data>/self-hosted-apps/<slug>/`, and starts the listener
 restartlessly — the tile appears without a restart.
+
+**Launch entry point.** At install the extractor infers a `launch_path`: a
+bundle that ships a `launch.html` is a SMART launcher, so the row records
+`/launch.html?launch={launch}&iss={origin}/fhir-r4` and a launch routes there
+(the path off the app's own origin, `{origin}` → the served FHIR origin,
+`{launch}` a fresh nonce); a bundle with only `index.html` records `NULL` and
+launches at the bare origin. The owner can edit or clear the path afterwards via
+`PUT /apps/{id}` (see `docs/Apps/Explanation.md`) — the "Launch path" field in
+the apps editor.
 
 ### Delete semantics
 

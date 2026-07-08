@@ -29,8 +29,8 @@ const UPLOAD_BODY_LIMIT_BYTES: usize = 64 * 1024 * 1024;
 /// [`gated_router`](super::gated_router), which documents the gating split):
 ///
 ///  - `GET /apps` (list) — see [`apps`];
-///  - `POST /apps` (create) + `PATCH`/`DELETE /apps/{id}` (cloud admin) — see
-///    [`cloud_admin`];
+///  - `POST /apps` (create) + `PUT`/`DELETE /apps/{id}` (content replace +
+///    delete) — see [`cloud_admin`];
 ///  - `POST /self-hosted-apps` (upload install) — see [`self_hosted_admin`];
 ///  - `PUT /home-screen` (atomic reorder / enable, any provenance) — see
 ///    [`home_screen`].
@@ -48,7 +48,7 @@ pub(crate) fn gated_openapi_router() -> OpenApiRouter<Arc<AppsState>> {
         .routes(routes!(apps::list::handle_list_apps))
         .routes(routes!(cloud_admin::create::handle_create_app))
         .routes(routes!(
-            cloud_admin::update::handle_update_app,
+            cloud_admin::update::handle_replace_app,
             cloud_admin::delete::handle_delete_app
         ))
         .routes(routes!(home_screen::handle_replace_home_screen))
@@ -88,7 +88,7 @@ mod tests {
         state_with_tunnel, state_with_tunnel_and_handle, tunnel_at, tunnel_unavailable,
         tunnel_with_public_host,
     };
-    use crate::domain::{AppEntry, AppUrl};
+    use crate::domain::{AppUrl, CloudAppRow};
     use crate::http::state::AppsState;
 
     /// The served router (state applied per-call). Spec half of
@@ -153,15 +153,6 @@ mod tests {
             .unwrap()
     }
 
-    fn patch(uri: &str, body: serde_json::Value) -> Request<Body> {
-        Request::builder()
-            .method("PATCH")
-            .uri(uri)
-            .header("content-type", "application/json")
-            .body(Body::from(body.to_string()))
-            .unwrap()
-    }
-
     fn put_json(uri: &str, body: serde_json::Value) -> Request<Body> {
         Request::builder()
             .method("PUT")
@@ -179,8 +170,8 @@ mod tests {
             .unwrap()
     }
 
-    fn cloud(id: &str, url: AppUrl) -> AppEntry {
-        AppEntry {
+    fn cloud(id: &str, url: AppUrl) -> CloudAppRow {
+        CloudAppRow {
             id: id.to_owned(),
             enabled: true,
             name: id.to_owned(),
@@ -214,9 +205,11 @@ mod tests {
         );
     }
 
-    /// The list carries the registry flags and omits `url`.
+    /// The list is a `provenance`-discriminated union: the cloud variant carries
+    /// its stored `url` **template** (with `{origin}` tokens) and `requiresTunnel`;
+    /// the system variant carries neither (no child table).
     #[tokio::test]
-    async fn list_apps_carries_flags_and_omits_url() {
+    async fn list_apps_is_a_provenance_union_with_cloud_url_template() {
         let st = state();
         let (_status, body) = send(&st, get("/apps")).await;
         let arr = body.as_array().unwrap();
@@ -225,12 +218,25 @@ mod tests {
         assert_eq!(growth["smart"], true);
         assert_eq!(growth["requiresTunnel"], true);
         assert_eq!(growth["localOnly"], false);
-        assert!(growth.get("url").is_none(), "GET /apps must not expose url");
+        assert!(
+            growth["url"]
+                .as_str()
+                .is_some_and(|u| u.contains("{origin}")),
+            "the cloud variant carries the stored url template: {growth}",
+        );
 
         let api_view = arr.iter().find(|v| v["id"] == "api-view").unwrap();
         assert_eq!(api_view["provenance"], "system");
         assert_eq!(api_view["localOnly"], true);
         assert_eq!(api_view["smart"], false);
+        assert!(
+            api_view.get("url").is_none(),
+            "the system variant has no url",
+        );
+        assert!(
+            api_view.get("requiresTunnel").is_none(),
+            "the system variant has no requiresTunnel",
+        );
     }
 
     #[tokio::test]
@@ -467,14 +473,20 @@ mod tests {
 
         let (status, body) = send(
             &st,
-            patch(
+            put_json(
                 &format!("/apps/{id}"),
-                serde_json::json!({ "name": "Renamed" }),
+                serde_json::json!({
+                    "provenance": "cloud",
+                    "name": "Renamed",
+                    "url": "https://example.com/launch",
+                    "requiresTunnel": false,
+                }),
             ),
         )
         .await;
         assert_eq!(status, StatusCode::OK, "body: {body}");
         assert_eq!(body["name"], "Renamed");
+        assert_eq!(body["provenance"], "cloud");
 
         let (status, body) = send(&st, delete(&format!("/apps/{id}"))).await;
         assert_eq!(status, StatusCode::OK, "body: {body}");
@@ -507,18 +519,24 @@ mod tests {
         assert_eq!(body["error"], "InvalidName");
     }
 
-    /// Update + delete reject system and self-hosted apps with `AppNotEditable`
-    /// (409), an unknown id with `AppNotFound` (404).
+    /// Replace + delete reject a system app and a seeded self-hosted app with
+    /// `AppNotEditable` (409), and an unknown id with `AppNotFound` (404). The
+    /// self-hosted body arm covers both: for the system app it's a
+    /// provenance mismatch, for the seeded self-hosted app it's the seeded guard.
     #[tokio::test]
     async fn admin_rejects_non_cloud_and_unknown() {
         let st = state();
+        let self_hosted_body = serde_json::json!({
+            "provenance": "self-hosted",
+            "launchPath": "/launch.html",
+        });
         for id in ["api-docs", "patient-browser"] {
             let (status, body) = send(
                 &st,
-                patch(&format!("/apps/{id}"), serde_json::json!({ "name": "x" })),
+                put_json(&format!("/apps/{id}"), self_hosted_body.clone()),
             )
             .await;
-            assert_eq!(status, StatusCode::CONFLICT, "{id} update");
+            assert_eq!(status, StatusCode::CONFLICT, "{id} replace");
             assert_eq!(body["error"], "AppNotEditable");
 
             let (status, body) = send(&st, delete(&format!("/apps/{id}"))).await;
@@ -526,11 +544,8 @@ mod tests {
             assert_eq!(body["error"], "AppNotEditable");
         }
 
-        let (status, body) = send(
-            &st,
-            patch("/apps/no-such-id", serde_json::json!({ "name": "x" })),
-        )
-        .await;
+        let (status, body) =
+            send(&st, put_json("/apps/no-such-id", self_hosted_body.clone())).await;
         assert_eq!(status, StatusCode::NOT_FOUND);
         assert_eq!(body["error"], "AppNotFound");
 
@@ -539,38 +554,50 @@ mod tests {
         assert_eq!(body["error"], "AppNotFound");
     }
 
-    /// A seeded cloud app's content (name / url) is editable through the
-    /// cloud-admin surface. (`enabled` is not a content field — see
-    /// `PUT /home-screen`.)
+    /// A seeded cloud app's content (name / url) is replaceable through the
+    /// cloud-admin surface, and the response is the cloud union variant carrying
+    /// the new `url`. (`enabled` is not content — see `PUT /home-screen`.)
     #[tokio::test]
     async fn seeded_cloud_app_can_be_edited_and_deleted() {
         let st = state();
         let (status, body) = send(
             &st,
-            patch(
+            put_json(
                 "/apps/growth-chart",
-                serde_json::json!({ "name": "Renamed", "url": "https://example.com/x" }),
+                serde_json::json!({
+                    "provenance": "cloud",
+                    "name": "Renamed",
+                    "url": "https://example.com/x",
+                    "requiresTunnel": true,
+                }),
             ),
         )
         .await;
         assert_eq!(status, StatusCode::OK, "body: {body}");
         assert_eq!(body["name"], "Renamed");
+        assert_eq!(body["provenance"], "cloud");
         assert_eq!(body["url"], "https://example.com/x");
 
         let (status, _) = send(&st, delete("/apps/growth-chart")).await;
         assert_eq!(status, StatusCode::OK);
     }
 
-    /// Existence/editability resolves before field validation: a PATCH to a
-    /// non-cloud id with an also-bad url is 409, not 400.
+    /// Editability resolves before field validation: a cloud-body PUT to a
+    /// **system** app (a provenance mismatch) is `409`, even though its url is
+    /// also bad — the mismatch is caught before the url is parsed.
     #[tokio::test]
-    async fn non_cloud_update_with_bad_url_is_409() {
+    async fn non_cloud_replace_with_bad_url_is_409() {
         let st = state();
         let (status, body) = send(
             &st,
-            patch(
+            put_json(
                 "/apps/api-docs",
-                serde_json::json!({ "url": "javascript:alert(1)" }),
+                serde_json::json!({
+                    "provenance": "cloud",
+                    "name": "x",
+                    "url": "javascript:alert(1)",
+                    "requiresTunnel": false,
+                }),
             ),
         )
         .await;
@@ -578,9 +605,154 @@ mod tests {
         assert_eq!(body["error"], "AppNotEditable");
     }
 
-    /// The tri-state subtitle patch still distinguishes absent from null/empty.
+    /// A self-hosted app's launch path is editable through `PUT /apps/{id}`:
+    /// setting `launchPath` returns the self-hosted union variant, and a
+    /// subsequent launch routes to the new path (off the app's own origin, with
+    /// `{origin}` → the host API origin). Set up via a direct store insert (no
+    /// listener bind) — the launch resolution doesn't need the app served.
     #[tokio::test]
-    async fn update_subtitle_tri_state() {
+    async fn replace_self_hosted_launch_path_edits_and_launches() {
+        let handle = Arc::new(RecordingStubWebviewHandle::default());
+        let st = state_with_sink(Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>);
+        // First insert lands at the base upload port (8082), no launcher yet.
+        st.store
+            .insert_self_hosted_app("My App", None, "my-app", &[], None)
+            .unwrap()
+            .expect("inserted");
+
+        let (status, body) = send(
+            &st,
+            put_json(
+                "/apps/my-app",
+                serde_json::json!({
+                    "provenance": "self-hosted",
+                    "launchPath": "/launch.html?launch={launch}&iss={origin}/fhir-r4",
+                }),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "body: {body}");
+        assert_eq!(body["provenance"], "self-hosted");
+        assert_eq!(body["removable"], true);
+        assert_eq!(
+            body["launchPath"],
+            "/launch.html?launch={launch}&iss={origin}/fhir-r4",
+        );
+
+        let res = send_raw(&st, post_launch("/apps/my-app")).await;
+        assert_eq!(res.status(), StatusCode::NO_CONTENT);
+        let opened = handle.0.lock().expect("handle mutex").clone();
+        let [url] = opened.as_slice() else {
+            panic!("exactly one URL, got {opened:?}");
+        };
+        assert!(
+            url.starts_with("http://127.0.0.1:8082/launch.html?launch="),
+            "the edited launcher drives the launch: {url}",
+        );
+        assert!(url.ends_with("&iss=http://127.0.0.1:8080/fhir-r4"), "{url}");
+    }
+
+    /// Clearing `launchPath` (empty string) reverts a self-hosted app to
+    /// root-serving: the launch goes back to the bare origin.
+    #[tokio::test]
+    async fn replace_self_hosted_clear_launch_path_reverts_to_root() {
+        let handle = Arc::new(RecordingStubWebviewHandle::default());
+        let st = state_with_sink(Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>);
+        st.store
+            .insert_self_hosted_app(
+                "My App",
+                None,
+                "my-app",
+                &[],
+                Some("/launch.html?launch={launch}&iss={origin}/fhir-r4"),
+            )
+            .unwrap()
+            .expect("inserted");
+
+        let (status, body) = send(
+            &st,
+            put_json(
+                "/apps/my-app",
+                serde_json::json!({ "provenance": "self-hosted", "launchPath": "" }),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "body: {body}");
+        assert!(
+            body.get("launchPath").is_none(),
+            "a cleared launch path is absent from the response",
+        );
+
+        let res = send_raw(&st, post_launch("/apps/my-app")).await;
+        assert_eq!(res.status(), StatusCode::NO_CONTENT);
+        assert_eq!(
+            handle.0.lock().expect("handle mutex").clone(),
+            vec!["http://127.0.0.1:8082/".to_string()],
+            "a cleared launch path serves the bare origin",
+        );
+    }
+
+    /// A non-origin-relative `launchPath` is rejected `400 InvalidUrl`.
+    #[tokio::test]
+    async fn replace_self_hosted_rejects_a_non_relative_launch_path() {
+        let st = state();
+        st.store
+            .insert_self_hosted_app("My App", None, "my-app", &[], None)
+            .unwrap()
+            .expect("inserted");
+        let (status, body) = send(
+            &st,
+            put_json(
+                "/apps/my-app",
+                serde_json::json!({
+                    "provenance": "self-hosted",
+                    "launchPath": "https://evil.example/launch",
+                }),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(body["error"], "InvalidUrl");
+    }
+
+    /// A seeded self-hosted app (patient-browser) is launch-path protected —
+    /// `409 AppNotEditable`, same as delete.
+    #[tokio::test]
+    async fn replace_seeded_self_hosted_launch_path_is_409() {
+        let st = state();
+        let (status, body) = send(
+            &st,
+            put_json(
+                "/apps/patient-browser",
+                serde_json::json!({ "provenance": "self-hosted", "launchPath": "/launch.html" }),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(body["error"], "AppNotEditable");
+    }
+
+    /// A self-hosted body targeting a cloud app is a provenance mismatch —
+    /// `409 AppNotEditable`.
+    #[tokio::test]
+    async fn replace_cloud_with_self_hosted_body_is_409() {
+        let st = state();
+        let (status, body) = send(
+            &st,
+            put_json(
+                "/apps/growth-chart",
+                serde_json::json!({ "provenance": "self-hosted", "launchPath": "/launch.html" }),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(body["error"], "AppNotEditable");
+    }
+
+    /// A cloud `PUT` fully replaces content: an explicit `subtitle` sets it, and
+    /// omitting it (or sending `""`) clears it back to absent.
+    #[tokio::test]
+    async fn replace_cloud_content_sets_and_clears_subtitle() {
         let st = state();
         let id = {
             let (_, body) = send(
@@ -597,33 +769,40 @@ mod tests {
             );
             body["id"].as_str().unwrap().to_string()
         };
-        // Set, then keep on an unrelated patch, then clear via null.
-        send(
-            &st,
-            patch(
-                &format!("/apps/{id}"),
-                serde_json::json!({ "subtitle": "hi" }),
-            ),
-        )
-        .await;
+        // A PUT with a subtitle sets it.
         let (_, body) = send(
             &st,
-            patch(
+            put_json(
                 &format!("/apps/{id}"),
-                serde_json::json!({ "requiresTunnel": true }),
+                serde_json::json!({
+                    "provenance": "cloud",
+                    "name": "Sub",
+                    "url": "https://example.com/x",
+                    "requiresTunnel": false,
+                    "subtitle": "hi",
+                }),
             ),
         )
         .await;
         assert_eq!(body["subtitle"], "hi");
+        // A PUT omitting the subtitle clears it (full replace).
         let (_, body) = send(
             &st,
-            patch(
+            put_json(
                 &format!("/apps/{id}"),
-                serde_json::json!({ "subtitle": null }),
+                serde_json::json!({
+                    "provenance": "cloud",
+                    "name": "Sub",
+                    "url": "https://example.com/x",
+                    "requiresTunnel": false,
+                }),
             ),
         )
         .await;
-        assert!(body.get("subtitle").is_none() || body["subtitle"].is_null());
+        assert!(
+            body.get("subtitle").is_none(),
+            "an omitted subtitle clears on a full replace: {body}",
+        );
     }
 
     /// The full seeded set as `{ id, enabled }` entries, in the given id order.
@@ -838,6 +1017,41 @@ mod tests {
         assert_eq!(status, StatusCode::OK, "body: {body}");
         let index = st.self_hosted.apps_dir().join("my-app").join("index.html");
         assert_eq!(std::fs::read_to_string(&index).unwrap(), "<h1>WRAPPED</h1>");
+    }
+
+    /// End-to-end: a bundle shipping `launch.html` is installed as a SMART
+    /// launcher, and a loopback launch routes to `/launch.html?…` on the app's
+    /// own loopback origin with `{launch}` minted and `{origin}` (the `iss`
+    /// target) resolved to the *host's* loopback API origin — a different origin
+    /// from the app's port. Proves the install-time inference, the stored
+    /// template, and the launch-time render are wired together.
+    #[tokio::test]
+    async fn upload_with_launch_html_launches_the_smart_launcher() {
+        let handle = Arc::new(RecordingStubWebviewHandle::default());
+        let st = state_with_sink(Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>);
+        let bytes = zip_bytes(&[("launch.html", b"<launcher>"), ("index.html", b"<app>")]);
+        let (status, body) = send(&st, post_zip("My App", bytes)).await;
+        assert_eq!(status, StatusCode::OK, "body: {body}");
+
+        // First upload lands at the base port (8082).
+        let res = send_raw(&st, post_launch("/apps/my-app")).await;
+        assert_eq!(res.status(), StatusCode::NO_CONTENT);
+        let opened = handle.0.lock().expect("handle mutex").clone();
+        let [url] = opened.as_slice() else {
+            panic!("exactly one URL, got {opened:?}");
+        };
+        assert!(
+            url.starts_with("http://127.0.0.1:8082/launch.html?launch="),
+            "launcher hangs off the app's own loopback origin: {url}",
+        );
+        assert!(
+            url.ends_with("&iss=http://127.0.0.1:8080/fhir-r4"),
+            "iss resolves to the host API origin, not the app's port: {url}",
+        );
+        assert!(
+            !url.contains("{launch}") && !url.contains("{origin}"),
+            "every placeholder is substituted: {url}",
+        );
     }
 
     /// A duplicate name is auto-suffixed (`my-app` → `my-app-2`).

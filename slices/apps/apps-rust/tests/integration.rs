@@ -78,13 +78,6 @@ fn post(uri: &str, body: serde_json::Value) -> Request<Body> {
         .expect("build")
 }
 
-fn patch(uri: &str, body: serde_json::Value) -> Request<Body> {
-    Request::patch(uri)
-        .header("content-type", "application/json")
-        .body(Body::from(body.to_string()))
-        .expect("build")
-}
-
 fn put(uri: &str, body: serde_json::Value) -> Request<Body> {
     Request::put(uri)
         .header("content-type", "application/json")
@@ -209,26 +202,30 @@ async fn cloud_app_round_trip() {
     );
 }
 
-/// A seeded cloud app's content (name / url) is editable; the edit persists into
-/// the public list. (`enabled` is not a content field — that's `PUT /home-screen`.)
+/// A seeded cloud app's content (name / url) is replaceable; the edit persists
+/// into the public list, whose cloud variant now carries the stored `url`
+/// template. (`enabled` is not content — that's `PUT /home-screen`.)
 #[tokio::test]
 async fn seeded_cloud_app_is_fully_editable() {
     let apps = spin_up();
     let router = apps.combined_router();
-    let patch_res = router
+    let put_res = router
         .clone()
-        .oneshot(patch(
+        .oneshot(put(
             "/apps/growth-chart",
             serde_json::json!({
+                "provenance": "cloud",
                 "name": "Renamed Chart",
                 "url": "https://example.com/replacement",
+                "requiresTunnel": true,
             }),
         ))
         .await
         .expect("oneshot");
-    assert_eq!(patch_res.status(), StatusCode::OK);
-    let body = body_json(patch_res.into_body()).await;
+    assert_eq!(put_res.status(), StatusCode::OK);
+    let body = body_json(put_res.into_body()).await;
     assert_eq!(body["name"], "Renamed Chart");
+    assert_eq!(body["provenance"], "cloud");
     assert_eq!(body["url"], "https://example.com/replacement");
 
     let list_res = router.clone().oneshot(get("/apps")).await.expect("oneshot");
@@ -240,11 +237,14 @@ async fn seeded_cloud_app_is_fully_editable() {
         .find(|v| v["id"] == "growth-chart")
         .expect("growth-chart in list");
     assert_eq!(row["name"], "Renamed Chart");
-    assert!(row.get("url").is_none(), "GET /apps must not expose url");
+    assert_eq!(
+        row["url"], "https://example.com/replacement",
+        "the cloud variant carries the replaced url template",
+    );
 }
 
-/// A self-hosted app appears in the list but is not editable through the
-/// cloud-admin surface (409 AppNotEditable).
+/// A self-hosted app appears in the list (as its own variant, no `url`) but
+/// isn't editable via a cloud body — a provenance mismatch is 409 AppNotEditable.
 #[tokio::test]
 async fn self_hosted_app_listed_but_not_cloud_editable() {
     let apps = spin_up();
@@ -261,15 +261,20 @@ async fn self_hosted_app_listed_but_not_cloud_editable() {
     assert_eq!(row["provenance"], "self-hosted");
     assert!(row.get("url").is_none());
 
-    let patch_res = router
+    let put_res = router
         .clone()
-        .oneshot(patch(
+        .oneshot(put(
             "/apps/patient-browser",
-            serde_json::json!({ "name": "tampered" }),
+            serde_json::json!({
+                "provenance": "cloud",
+                "name": "tampered",
+                "url": "https://example.com/x",
+                "requiresTunnel": false,
+            }),
         ))
         .await
         .expect("oneshot");
-    assert_eq!(patch_res.status(), StatusCode::CONFLICT);
+    assert_eq!(put_res.status(), StatusCode::CONFLICT);
 }
 
 /// A loopback launch of a self-hosted app 204s to its fixed loopback origin.

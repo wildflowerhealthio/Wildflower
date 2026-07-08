@@ -35,7 +35,7 @@ use axum::response::{IntoResponse, Response};
 
 use shared_structures_rust::served_origin::{request_provenance, RequestProvenance};
 
-use crate::domain::{App, AppEntry, LaunchParams, Provenance, SelfHostedApp};
+use crate::domain::{App, CloudAppRow, LaunchParams, Provenance, SelfHostedAppRow};
 use crate::http::response_templates::{AppNotFoundBody, HandlerError, LaunchUnavailableBody};
 use crate::http::state::AppsState;
 use crate::id::mint_launch_nonce;
@@ -174,25 +174,37 @@ fn render_system_target(
     }))
 }
 
-/// Render a self-hosted app's launch target: the loopback
+/// Render a self-hosted app's launch target off its own origin — the loopback
 /// `http://{host}:{port}/` for a loopback caller, else the public subdomain (see
-/// [`SelfHostedApp::subdomain_url`] and `docs/Origins/Explanation.md`). A
+/// [`SelfHostedAppRow::subdomain_url`] and `docs/Origins/Explanation.md`). A
 /// forwarded launch with **no** `public_host` configured has no reachable
 /// target, so it fails `503 LaunchUnavailable` rather than handing back loopback.
+///
+/// A bundle that shipped a `launch.html` carries a
+/// [`launch_path`](SelfHostedAppRow::launch_path): the target becomes
+/// `/launch.html?…` hung off that app origin, with `{origin}` substituted to the
+/// *served* (FHIR) origin — a different origin from the per-app base — and
+/// `{launch}` to a fresh nonce. Without one, the bare origin is returned (root →
+/// `index.html`), unchanged from before the field existed.
 fn render_self_hosted_target(
-    child: &SelfHostedApp,
+    child: &SelfHostedAppRow,
     state: &AppsState,
     provenance: &RequestProvenance,
 ) -> Result<String, HandlerError> {
-    if matches!(provenance, RequestProvenance::Forwarded { .. }) {
-        let Some(public_host) = state.tunnel.current_public_host() else {
-            return Err(HandlerError::Unavailable {
-                reason: "no public host is configured for this remote launch".to_owned(),
-            });
-        };
-        return Ok(child.subdomain_url(&public_host));
-    }
-    Ok(child.launch_url(&state.loopback_hostname()))
+    let app_base = match provenance {
+        RequestProvenance::Forwarded { .. } => {
+            let Some(public_host) = state.tunnel.current_public_host() else {
+                return Err(HandlerError::Unavailable {
+                    reason: "no public host is configured for this remote launch".to_owned(),
+                });
+            };
+            child.subdomain_url(&public_host)
+        }
+        RequestProvenance::Loopback => child.launch_url(&state.loopback_hostname()),
+    };
+    let served = served_origin(state, provenance);
+    let launch = mint_launch_nonce();
+    Ok(child.render_launch(&app_base, &served, &launch))
 }
 
 /// Render a cloud app's launch target: resolve the served origin (or the
@@ -203,7 +215,7 @@ fn render_self_hosted_target(
 async fn render_cloud_target(
     state: &AppsState,
     provenance: &RequestProvenance,
-    app: &AppEntry,
+    app: &CloudAppRow,
 ) -> Result<String, HandlerError> {
     let origin = resolve_origin(state, provenance, app.requires_tunnel).await?;
     let launch = mint_launch_nonce();

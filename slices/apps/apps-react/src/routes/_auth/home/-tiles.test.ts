@@ -3,16 +3,52 @@ import { describe, expect, test } from 'vite-plus/test'
 import type { AppEntry } from '../../../queries.ts'
 import { tilePills } from './-tiles.tsx'
 
-const makeApp = (overrides: Partial<AppEntry> & Pick<AppEntry, 'provenance'>): AppEntry => ({
-  id: 'app',
-  name: 'App',
-  enabled: true,
-  localOnly: false,
-  smart: false,
-  requiresTunnel: false,
-  removable: false,
-  ...overrides,
-})
+// Build a valid member of the `provenance`-discriminated union: shared fields
+// plus the variant's typed-child fields (cloud → `url`/`requiresTunnel`,
+// self-hosted → `launchPath`). `requiresTunnel` / `launchPath` overrides apply
+// only to their owning variant.
+interface MakeAppOverrides {
+  readonly provenance: AppEntry['provenance']
+  readonly id?: string
+  readonly name?: string
+  readonly enabled?: boolean
+  readonly localOnly?: boolean
+  readonly smart?: boolean
+  readonly removable?: boolean
+  readonly subtitle?: string
+  readonly url?: string
+  readonly requiresTunnel?: boolean
+  readonly launchPath?: string
+}
+
+const makeApp = (overrides: MakeAppOverrides): AppEntry => {
+  const {
+    provenance,
+    id = 'app',
+    name = 'App',
+    enabled = true,
+    localOnly = false,
+    smart = false,
+    removable = false,
+    subtitle,
+    url = 'https://example.com',
+    requiresTunnel = false,
+    launchPath,
+  } = overrides
+  const shared = {
+    id,
+    name,
+    enabled,
+    localOnly,
+    smart,
+    removable,
+    ...(subtitle === undefined ? {} : { subtitle }),
+  }
+  if (provenance === 'cloud') return { ...shared, provenance, url, requiresTunnel }
+  if (provenance === 'self-hosted')
+    return { ...shared, provenance, ...(launchPath === undefined ? {} : { launchPath }) }
+  return { ...shared, provenance }
+}
 
 const labels = (app: AppEntry): readonly string[] => tilePills(app).map((pill) => pill.label)
 

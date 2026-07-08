@@ -5,11 +5,11 @@ export {
   appsListQueryOptions,
   useAppsAdminCreateMutation,
   useAppsAdminDeleteMutation,
-  useAppsAdminUpdateMutation,
+  useAppsAdminReplaceMutation,
   useAppsListQuery,
   useReplaceHomeScreenMutation,
+  type AppContentBody,
   type AppEntry,
   type CreateAppPayload,
   type HomeScreenPayload,
-  type UpdateAppPayload,
 } from './queries.ts'

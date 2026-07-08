@@ -142,6 +142,31 @@ pub(crate) fn extract_zip_bundle(bytes: &[u8], staging: &Path) -> Result<(), Ins
     hoist_single_top_dir(staging)
 }
 
+/// The launch path recorded for a bundle that ships a `launch.html` — a SMART
+/// launcher. Carries the same `{origin}` / `{launch}` placeholders the cloud
+/// templates use; [`SelfHostedAppRow::render_launch`](crate::domain::SelfHostedAppRow::render_launch)
+/// substitutes them per request (`{origin}` → the served FHIR origin).
+const LAUNCH_HTML_PATH: &str = "/launch.html?launch={launch}&iss={origin}/fhir-r4";
+
+/// Infer the launch path for a freshly-extracted bundle rooted at `staging`
+/// (call **after** [`extract_zip_bundle`], so the single-top-dir hoist has
+/// already flattened the tree):
+///
+///  - a `launch.html` at the root → the SMART [`LAUNCH_HTML_PATH`], so a
+///    launch routes to `/launch.html?…`;
+///  - otherwise `None` — the app serves from its bare root, where ServeDir
+///    resolves `/` to `index.html` (the pre-existing behavior).
+///
+/// The `index.html` case needs no stored path: the bare-origin launch already
+/// lands there, so a present `index.html` and a bundle with neither file both
+/// map to `None` (the latter simply 404s at launch, as before).
+pub(crate) fn infer_launch_path(staging: &Path) -> Option<String> {
+    staging
+        .join("launch.html")
+        .is_file()
+        .then(|| LAUNCH_HTML_PATH.to_owned())
+}
+
 /// Whether `relative` is macOS Finder-zip litter that should never be served:
 /// anything under the `__MACOSX/` resource-fork tree, a `.DS_Store`, or an
 /// AppleDouble `._*` sidecar. Matching is per-component so a nested
@@ -379,6 +404,32 @@ mod tests {
         extract_zip_bundle(&bytes, staging.path()).unwrap();
         assert!(staging.path().join("a/one.txt").exists());
         assert!(staging.path().join("b/two.txt").exists());
+    }
+
+    /// A bundle shipping a `launch.html` is inferred as a SMART launcher; one
+    /// with only an `index.html` (or neither) records no template and serves
+    /// from its root. The probe runs post-extract, so a nested launcher hoisted
+    /// to the root is detected.
+    #[test]
+    fn infers_launch_path_only_when_launch_html_is_present() {
+        let with_launcher = TempDir::new();
+        extract_zip_bundle(
+            &zip_bytes(&[
+                ("zip-app/", b""),
+                ("zip-app/launch.html", b"<launcher>"),
+                ("zip-app/index.html", b"<app>"),
+            ]),
+            with_launcher.path(),
+        )
+        .unwrap();
+        assert_eq!(
+            infer_launch_path(with_launcher.path()).as_deref(),
+            Some("/launch.html?launch={launch}&iss={origin}/fhir-r4"),
+        );
+
+        let index_only = TempDir::new();
+        extract_zip_bundle(&zip_bytes(&[("index.html", b"<app>")]), index_only.path()).unwrap();
+        assert_eq!(infer_launch_path(index_only.path()), None);
     }
 
     #[test]

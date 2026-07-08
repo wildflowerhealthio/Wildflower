@@ -2,8 +2,10 @@
 //! `impl AppsStore` block, its own module per [`crate::db`].
 //!
 //! The child carries `id`, the loopback `port`, the on-disk `content_folder`,
-//! the public `subdomain` label, and the `seeded` flag — the catalogue fields
-//! (name, subtitle, enabled) live on the parent registry row. Migration-seeded
+//! the public `subdomain` label, the `seeded` flag, and the nullable
+//! `launch_path` (the install-inferred SMART launch path) — the catalogue
+//! fields (name, subtitle, enabled) live on the parent registry row.
+//! Migration-seeded
 //! rows (`seeded = 1`) are read-only through the admin surface; rows created at
 //! runtime through the upload surface (`insert_self_hosted_app`, `seeded = 0`)
 //! are removable.
@@ -16,7 +18,7 @@ use persistence_rust::{sql_row, DbResult};
 use rusqlite::{params, OptionalExtension};
 
 use super::AppsStore;
-use crate::domain::SelfHostedApp;
+use crate::domain::SelfHostedAppRow;
 
 /// The smallest loopback port an uploaded app is allocated. The seed
 /// (patient-browser) sits at 8081, so uploads start one above it; the host's own
@@ -34,12 +36,12 @@ impl AppsStore {
     /// # Errors
     ///
     /// Returns any rusqlite error from the read.
-    pub fn list_self_hosted_apps(&self) -> DbResult<Vec<SelfHostedApp>> {
+    pub fn list_self_hosted_apps(&self) -> DbResult<Vec<SelfHostedAppRow>> {
         let conn = self.conn().lock();
         let mut stmt = conn.prepare(&format!(
             "SELECT {ALL_COLS} FROM self_hosted_apps ORDER BY rowid"
         ))?;
-        let rows = stmt.query_map([], |row| SelfHostedApp::try_from(row))?;
+        let rows = stmt.query_map([], |row| SelfHostedAppRow::try_from(row))?;
         rows.collect()
     }
 
@@ -50,13 +52,13 @@ impl AppsStore {
     /// # Errors
     ///
     /// Returns any rusqlite error other than `QueryReturnedNoRows`.
-    pub fn find_self_hosted_app(&self, id: &str) -> DbResult<Option<SelfHostedApp>> {
+    pub fn find_self_hosted_app(&self, id: &str) -> DbResult<Option<SelfHostedAppRow>> {
         self.conn()
             .lock()
             .query_row(
                 &format!("SELECT {ALL_COLS} FROM self_hosted_apps WHERE id = ?1"),
                 params![id],
-                |row| SelfHostedApp::try_from(row),
+                |row| SelfHostedAppRow::try_from(row),
             )
             .optional()
     }
@@ -75,9 +77,12 @@ impl AppsStore {
     /// `MAX(position) + 1`. All three are computed **inside** the transaction so
     /// overlapping creates can't collide.
     ///
+    /// `launch_path` is the launch path inferred at install (see
+    /// [`SelfHostedAppRow::launch_path`]) — `None` for a root-served bundle.
+    ///
     /// Returns `Ok(None)` when no unique slug is found within the attempt budget
     /// or the port space is exhausted (the handler maps that to `400`), and the
-    /// inserted [`SelfHostedApp`] otherwise.
+    /// inserted [`SelfHostedAppRow`] otherwise.
     ///
     /// # Errors
     ///
@@ -88,7 +93,8 @@ impl AppsStore {
         subtitle: Option<&str>,
         base_slug: &str,
         reserved_ports: &[u16],
-    ) -> DbResult<Option<SelfHostedApp>> {
+        launch_path: Option<&str>,
+    ) -> DbResult<Option<SelfHostedAppRow>> {
         let guard = self.conn().lock();
         let tx = guard.unchecked_transaction()?;
 
@@ -135,19 +141,40 @@ impl AppsStore {
             params![slug, name, subtitle, position],
         )?;
         tx.execute(
-            "INSERT INTO self_hosted_apps (id, port, content_folder, subdomain, seeded) \
-             VALUES (?1, ?2, ?1, ?1, 0)",
-            params![slug, port],
+            "INSERT INTO self_hosted_apps (id, port, content_folder, subdomain, seeded, launch_path) \
+             VALUES (?1, ?2, ?1, ?1, 0, ?3)",
+            params![slug, port, launch_path],
         )?;
         tx.commit()?;
 
-        Ok(Some(SelfHostedApp {
+        Ok(Some(SelfHostedAppRow {
             id: slug.clone(),
             port,
             content_folder: slug.clone(),
             subdomain: slug,
             seeded: false,
+            launch_path: launch_path.map(str::to_owned),
         }))
+    }
+
+    /// Update a self-hosted app's `launch_path` (see
+    /// [`SelfHostedAppRow::launch_path`]); `None` clears it back to
+    /// root-serving. Returns `true` when a row matched. The update handler
+    /// enforces "self-hosted and not seeded" before calling this.
+    ///
+    /// # Errors
+    ///
+    /// Returns any rusqlite error from the update.
+    pub fn update_self_hosted_launch_path(
+        &self,
+        id: &str,
+        launch_path: Option<&str>,
+    ) -> DbResult<bool> {
+        let affected = self.conn().lock().execute(
+            "UPDATE self_hosted_apps SET launch_path = ?2 WHERE id = ?1",
+            params![id, launch_path],
+        )?;
+        Ok(affected == 1)
     }
 
     /// Delete a self-hosted app by id — the parent `DELETE` cascades to the
@@ -195,12 +222,13 @@ fn next_free_port(tx: &rusqlite::Transaction<'_>, reserved_ports: &[u16]) -> DbR
 
 // Field names match the SQL column names; the macro derives `TryFrom<&Row>`
 // and `ALL_COLS` off the field list.
-sql_row!(SelfHostedApp {
+sql_row!(SelfHostedAppRow {
     id,
     port,
     content_folder,
     subdomain,
-    seeded
+    seeded,
+    launch_path
 });
 
 #[cfg(test)]
@@ -241,7 +269,7 @@ mod tests {
     fn insert_allocates_the_next_port_and_position() {
         let store = AppsStore::open_in_memory().unwrap();
         let app = store
-            .insert_self_hosted_app("My App", None, "my-app", &[])
+            .insert_self_hosted_app("My App", None, "my-app", &[], None)
             .unwrap()
             .expect("inserted");
         assert_eq!(app.id, "my-app");
@@ -258,11 +286,78 @@ mod tests {
 
         // A second upload takes the next port and position.
         let app2 = store
-            .insert_self_hosted_app("Other", None, "other", &[])
+            .insert_self_hosted_app("Other", None, "other", &[], None)
             .unwrap()
             .expect("inserted");
         assert_eq!(app2.port, 8083);
         assert_eq!(store.find_app("other").unwrap().unwrap().position, 7);
+    }
+
+    /// A `launch_path` supplied at insert round-trips through both the
+    /// insert return and a fresh `find`; an app inserted without one reads back
+    /// `None`.
+    #[test]
+    fn insert_persists_and_reads_back_the_launch_path() {
+        let store = AppsStore::open_in_memory().unwrap();
+        let template = "/launch.html?launch={launch}&iss={origin}/fhir-r4";
+        let inserted = store
+            .insert_self_hosted_app("Launcher", None, "launcher", &[], Some(template))
+            .unwrap()
+            .expect("inserted");
+        assert_eq!(inserted.launch_path.as_deref(), Some(template));
+
+        let found = store
+            .find_self_hosted_app("launcher")
+            .unwrap()
+            .expect("found");
+        assert_eq!(found.launch_path.as_deref(), Some(template));
+
+        let rootless = store
+            .insert_self_hosted_app("Rootless", None, "rootless", &[], None)
+            .unwrap()
+            .expect("inserted");
+        assert_eq!(rootless.launch_path, None);
+    }
+
+    /// `update_self_hosted_launch_path` sets, replaces, and clears the
+    /// column; an unknown id matches nothing.
+    #[test]
+    fn update_launch_path_sets_replaces_and_clears() {
+        let store = AppsStore::open_in_memory().unwrap();
+        store
+            .insert_self_hosted_app("App", None, "app", &[], None)
+            .unwrap()
+            .expect("inserted");
+
+        assert!(store
+            .update_self_hosted_launch_path("app", Some("/launch.html"))
+            .unwrap());
+        assert_eq!(
+            store
+                .find_self_hosted_app("app")
+                .unwrap()
+                .unwrap()
+                .launch_path
+                .as_deref(),
+            Some("/launch.html"),
+        );
+
+        assert!(store.update_self_hosted_launch_path("app", None).unwrap());
+        assert_eq!(
+            store
+                .find_self_hosted_app("app")
+                .unwrap()
+                .unwrap()
+                .launch_path,
+            None,
+        );
+
+        assert!(
+            !store
+                .update_self_hosted_launch_path("ghost", Some("/x"))
+                .unwrap(),
+            "an unknown id matches no row",
+        );
     }
 
     /// A reserved port (the host loopback port) is skipped in the allocation.
@@ -271,7 +366,7 @@ mod tests {
         let store = AppsStore::open_in_memory().unwrap();
         // 8082 would be next, but it's reserved → 8083.
         let app = store
-            .insert_self_hosted_app("My App", None, "my-app", &[8082])
+            .insert_self_hosted_app("My App", None, "my-app", &[8082], None)
             .unwrap()
             .expect("inserted");
         assert_eq!(app.port, 8083);
@@ -282,7 +377,7 @@ mod tests {
     fn insert_suffixes_a_colliding_slug() {
         let store = AppsStore::open_in_memory().unwrap();
         let app = store
-            .insert_self_hosted_app("Patient Browser", None, "patient-browser", &[])
+            .insert_self_hosted_app("Patient Browser", None, "patient-browser", &[], None)
             .unwrap()
             .expect("inserted");
         assert_eq!(app.id, "patient-browser-2");
@@ -291,7 +386,7 @@ mod tests {
 
         // A third with the same base skips to `-3`.
         let app3 = store
-            .insert_self_hosted_app("Patient Browser", None, "patient-browser", &[])
+            .insert_self_hosted_app("Patient Browser", None, "patient-browser", &[], None)
             .unwrap()
             .expect("inserted");
         assert_eq!(app3.id, "patient-browser-3");
@@ -302,7 +397,7 @@ mod tests {
     fn delete_removes_both_rows() {
         let store = AppsStore::open_in_memory().unwrap();
         let app = store
-            .insert_self_hosted_app("My App", None, "my-app", &[])
+            .insert_self_hosted_app("My App", None, "my-app", &[], None)
             .unwrap()
             .expect("inserted");
         assert!(store.delete_self_hosted_app(&app.id).unwrap());
@@ -320,19 +415,22 @@ mod tests {
     fn list_reports_removable_per_provenance_and_seeded() {
         let store = AppsStore::open_in_memory().unwrap();
         store
-            .insert_self_hosted_app("My App", None, "my-app", &[])
+            .insert_self_hosted_app("My App", None, "my-app", &[], None)
             .unwrap()
             .expect("inserted");
         let entries = store.list_app_entries().unwrap();
-        let by_id = |id: &str| entries.iter().find(|e| e.id == id).expect("row");
-        assert!(by_id("my-app").removable, "an uploaded app is removable");
-        assert!(by_id("growth-chart").removable, "a cloud app is removable");
+        let by_id = |id: &str| entries.iter().find(|e| e.id() == id).expect("row");
+        assert!(by_id("my-app").removable(), "an uploaded app is removable");
         assert!(
-            !by_id("patient-browser").removable,
+            by_id("growth-chart").removable(),
+            "a cloud app is removable"
+        );
+        assert!(
+            !by_id("patient-browser").removable(),
             "the seeded self-hosted app is not removable",
         );
         assert!(
-            !by_id("api-docs").removable,
+            !by_id("api-docs").removable(),
             "a system app is not removable"
         );
     }

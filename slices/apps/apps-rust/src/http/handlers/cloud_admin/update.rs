@@ -1,10 +1,25 @@
-//! `PATCH /apps/{id}` — partial update of a **cloud** app's *content*. Any subset
-//! of `name` / `subtitle` / `url` / `requiresTunnel` is honoured; a present `url`
-//! is re-parsed. Only cloud apps are editable here: a system / self-hosted id that
-//! exists returns `409 AppNotEditable`, an unknown id `404`.
+//! `PUT /apps/{id}` — replace an editable app's *content*.
 //!
-//! `enabled` is **not** edited here — homescreen curation (order + enabled, any
-//! provenance) lives on `PUT /home-screen`, the single writer of those fields.
+//! The body is a **`provenance`-discriminated union** ([`AppContentBody`]) whose
+//! arm must match the stored app's kind:
+//!
+//!   * **cloud** — `name` / `subtitle` / `url` / `requiresTunnel` (a full
+//!     replace; the `url` is re-parsed through the write-side filter).
+//!   * **self-hosted** — `launchPath`, the SMART launch path (see
+//!     [`SelfHostedAppRow::launch_path`]); an absent / empty value clears it back to
+//!     root-serving. Seeded (migration) rows are protected.
+//!
+//! The response is the refreshed catalogue [`AppListEntry`] (the same
+//! `provenance` union `GET /apps` returns), read back after the write so it can't
+//! drift from the projection.
+//!
+//! An unknown id is `404`; a system app, a seeded self-hosted app, or a
+//! body whose arm doesn't match the stored provenance is `409 AppNotEditable`; a
+//! bad name / url / launch path is `400`.
+//!
+//! `enabled` is **not** replaced here — homescreen curation (order + enabled, any
+//! provenance) lives on `PUT /home-screen`, the single writer of those fields; a
+//! content replace preserves the stored `enabled`.
 
 use std::sync::Arc;
 
@@ -13,126 +28,194 @@ use axum::Json;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-use crate::domain::{AppEntry, AppUrl};
-use crate::http::handlers::cloud_admin::find_editable_cloud_app;
+use crate::domain::{App, AppListEntry, AppUrl, CloudAppRow, Provenance};
 use crate::http::response_templates::{
     AppNotEditableBody, AppNotFoundBody, HandlerError, InvalidFieldBody,
 };
 use crate::http::state::AppsState;
 
-/// PATCH body — all fields optional. Matches `UpdateAppBodySchema`. The
-/// `subtitle` tri-state is on [`SubtitlePatch`]. No `enabled`: that's homescreen
-/// curation, owned by `PUT /home-screen`.
-#[derive(Debug, Default, Deserialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct UpdateAppBody {
-    name: Option<String>,
-    url: Option<String>,
-    requires_tunnel: Option<bool>,
-    #[serde(default, deserialize_with = "deser_present_optional")]
-    #[schema(value_type = Option<String>)]
-    subtitle: SubtitlePatch,
+/// `PUT /apps/{id}` body — a `provenance`-discriminated union matching the TS
+/// `AppContentBodySchema`. Only the editable kinds have an arm (system apps are
+/// never editable). `url` is read as a raw string so a bad value yields the
+/// structured `400 InvalidUrl` rather than a generic deserialize error.
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(tag = "provenance", rename_all = "kebab-case")]
+pub(crate) enum AppContentBody {
+    /// Full replace of a cloud app's content.
+    #[serde(rename_all = "camelCase")]
+    Cloud {
+        name: String,
+        #[serde(default)]
+        subtitle: Option<String>,
+        url: String,
+        requires_tunnel: bool,
+    },
+    /// Replace a self-hosted app's launch path (absent / empty → root-served).
+    #[serde(rename_all = "camelCase")]
+    SelfHosted {
+        #[serde(default)]
+        launch_path: Option<String>,
+    },
 }
 
-/// Tri-state subtitle patch:
-///
-///   * `Unchanged` — the key was absent from the body; keep what's stored.
-///   * `Set(Some)` — explicit non-empty value; replace.
-///   * `Set(None)` — explicit `null` *or* the empty string `""`; clear the
-///     subtitle.
-///
-/// A plain `Option<Option<String>>` would collapse "absent" and "null" into the
-/// same `None`, leaving no way to clear the subtitle without touching other
-/// fields. Empty collapses into the clear case so it never persists as
-/// `Some("")` — the read schemas decode `subtitle` as a non-empty string, so a
-/// stored `""` would serialize as `"subtitle": ""` and break the catalogue decode.
-#[derive(Debug, Default)]
-enum SubtitlePatch {
-    #[default]
-    Unchanged,
-    Set(Option<String>),
-}
-
-/// Deserializer that distinguishes "key present but null" from "key absent":
-/// `Option::deserialize` returns `None` for null, and the parent's
-/// `#[serde(default)]` supplies `Unchanged` for an absent key. Present values
-/// project to [`SubtitlePatch::Set`], with an empty string normalized to the
-/// clear case so `""` and explicit `null` both clear.
-fn deser_present_optional<'de, D>(d: D) -> Result<SubtitlePatch, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    Option::<String>::deserialize(d)
-        .map(|subtitle| SubtitlePatch::Set(subtitle.filter(|s| !s.is_empty())))
-}
-
-/// `PATCH /apps/{id}` — partial update of a cloud app. Owner-gated by the host.
+/// `PUT /apps/{id}` — replace an editable app's content. Owner-gated by the host.
 #[utoipa::path(
-    patch,
+    put,
     path = "/apps/{id}",
     params(("id" = String, Path, description = "App id")),
-    request_body = UpdateAppBody,
+    request_body = AppContentBody,
     responses(
-        (status = 200, description = "The updated cloud app", body = AppEntry),
-        (status = 400, description = "Empty name (`InvalidName`) or bad url (`InvalidUrl`)", body = InvalidFieldBody),
+        (status = 200, description = "The updated app (the provenance-tagged catalogue entry)", body = AppListEntry),
+        (status = 400, description = "Empty name (`InvalidName`) or bad url/launch path (`InvalidUrl`)", body = InvalidFieldBody),
         (status = 404, description = "No app has this id", body = AppNotFoundBody),
-        (status = 409, description = "The app exists but is not a cloud app (system / self-hosted apps are not editable)", body = AppNotEditableBody),
+        (status = 409, description = "Not editable: a system app, a seeded self-hosted app, or a body whose provenance doesn't match the stored app", body = AppNotEditableBody),
     ),
 )]
-pub(crate) async fn handle_update_app(
+pub(crate) async fn handle_replace_app(
     State(state): State<Arc<AppsState>>,
     Path(id): Path<String>,
-    Json(body): Json<UpdateAppBody>,
-) -> Result<Json<AppEntry>, HandlerError> {
-    // Resolve existence + editability before validating the patch fields (via the
-    // shared cloud-editability seam): a PATCH to an unknown id is a 404, and to a
-    // non-cloud id a 409, regardless of whether its body also carries a bad
-    // name/url — the missing/not-editable signal isn't masked by a 400. The
-    // returned cloud entry is the patch base.
-    let mut existing = find_editable_cloud_app(&state, &id)?;
+    Json(body): Json<AppContentBody>,
+) -> Result<Json<AppListEntry>, HandlerError> {
+    // Resolve existence before validating any field: a PUT to an unknown id is a
+    // 404 regardless of the body. Then require the body's arm to match the stored
+    // kind (a mismatch — or a system app — is `409`, not a silent no-op).
+    let parent = state
+        .store
+        .find_app(&id)
+        .map_err(|e| HandlerError::internal("find_app lookup failed", e))?
+        .ok_or_else(|| HandlerError::NotFound { id: id.clone() })?;
 
-    if let Some(name) = body.name.as_deref() {
-        if name.is_empty() {
-            return Err(HandlerError::InvalidName {
-                message: "name must not be empty".to_owned(),
-            });
+    match (parent.provenance, body) {
+        (
+            Provenance::Cloud,
+            AppContentBody::Cloud {
+                name,
+                subtitle,
+                url,
+                requires_tunnel,
+            },
+        ) => {
+            replace_cloud_content(&state, &id, name, subtitle, url, requires_tunnel)?;
         }
-    }
-    let new_url = match body.url.as_deref() {
-        Some(url) => Some(
-            url.parse::<AppUrl>()
-                .map_err(|e| HandlerError::InvalidUrl {
-                    message: e.to_string(),
-                })?,
-        ),
-        None => None,
-    };
-
-    if let Some(name) = body.name {
-        existing.name = name;
-    }
-    if let Some(url) = new_url {
-        existing.url = url;
-    }
-    if let Some(requires_tunnel) = body.requires_tunnel {
-        existing.requires_tunnel = requires_tunnel;
-    }
-    if let SubtitlePatch::Set(subtitle) = body.subtitle {
-        existing.subtitle = subtitle;
+        (Provenance::SelfHosted, AppContentBody::SelfHosted { launch_path }) => {
+            replace_self_hosted_content(&state, &parent, launch_path)?;
+        }
+        // A system app, or a body targeting the wrong kind for this id.
+        _ => return Err(HandlerError::NotEditable { id }),
     }
 
+    // Read back the exact `GET /apps` projection so the response reflects the
+    // stored state (correct variant, computed `smart` / `removable`).
+    let entry = state
+        .store
+        .find_app_entry(&id)
+        .map_err(|e| HandlerError::internal("find_app_entry after replace failed", e))?
+        .ok_or_else(|| {
+            HandlerError::internal(
+                "app vanished between replace and read-back",
+                format!("id={id}"),
+            )
+        })?;
+    Ok(Json(entry))
+}
+
+/// Full-replace a cloud app's content (`enabled` preserved — it isn't edited
+/// here). Validates the name is non-empty and the url parses through the
+/// write-side [`AppUrl`] filter.
+fn replace_cloud_content(
+    state: &AppsState,
+    id: &str,
+    name: String,
+    subtitle: Option<String>,
+    url: String,
+    requires_tunnel: bool,
+) -> Result<(), HandlerError> {
+    if name.is_empty() {
+        return Err(HandlerError::InvalidName {
+            message: "name must not be empty".to_owned(),
+        });
+    }
+    let url = url
+        .parse::<AppUrl>()
+        .map_err(|e| HandlerError::InvalidUrl {
+            message: e.to_string(),
+        })?;
+    // Preserve `enabled` (homescreen-owned) by reading it back onto the replace.
+    let existing = state
+        .store
+        .find_cloud_app(id)
+        .map_err(|e| HandlerError::internal("find_cloud_app lookup failed", e))?
+        .ok_or_else(|| {
+            HandlerError::internal("cloud parent has no child row", format!("id={id}"))
+        })?;
     let replaced = state
         .store
-        .replace_cloud_app(&existing)
+        .replace_cloud_app(&CloudAppRow {
+            id: id.to_owned(),
+            enabled: existing.enabled,
+            name,
+            // Empty `""` clears the subtitle.
+            subtitle: subtitle.filter(|s| !s.is_empty()),
+            url,
+            requires_tunnel,
+        })
         .map_err(|e| HandlerError::internal("replace_cloud_app failed", e))?;
     if !replaced {
-        // We just confirmed a cloud row under the same connection; it can't
-        // have vanished. Surface as a logged 500 rather than papering over with
-        // a stale value.
         return Err(HandlerError::internal(
-            "row vanished between find_cloud_app and replace_cloud_app",
+            "cloud row vanished between find and replace",
             format!("id={id}"),
         ));
     }
-    Ok(Json(existing))
+    Ok(())
+}
+
+/// Replace a self-hosted app's launch path. A seeded (migration) row is protected
+/// (`409 AppNotEditable`, same as delete); a non-empty path must be
+/// origin-relative.
+fn replace_self_hosted_content(
+    state: &AppsState,
+    parent: &App,
+    launch_path: Option<String>,
+) -> Result<(), HandlerError> {
+    let child = state
+        .store
+        .find_self_hosted_app(&parent.id)
+        .map_err(|e| HandlerError::internal("find_self_hosted_app lookup failed", e))?
+        .ok_or_else(|| {
+            HandlerError::internal(
+                "self-hosted parent has no child row",
+                format!("id={}", parent.id),
+            )
+        })?;
+    if child.seeded {
+        return Err(HandlerError::NotEditable {
+            id: parent.id.clone(),
+        });
+    }
+    let launch_path = validate_launch_path(launch_path)?;
+    let updated = state
+        .store
+        .update_self_hosted_launch_path(&parent.id, launch_path.as_deref())
+        .map_err(|e| HandlerError::internal("update_self_hosted_launch_path failed", e))?;
+    if !updated {
+        return Err(HandlerError::internal(
+            "self-hosted row vanished between find and update",
+            format!("id={}", parent.id),
+        ));
+    }
+    Ok(())
+}
+
+/// Validate a `launchPath` value. A cleared value (`None` / empty) passes through
+/// as `None`. A non-empty path must be origin-relative — start with a single `/`
+/// (not `//`, a protocol-relative authority) — so it hangs safely off the app's
+/// own origin at launch; anything else is a `400 InvalidUrl`.
+fn validate_launch_path(value: Option<String>) -> Result<Option<String>, HandlerError> {
+    match value.filter(|s| !s.is_empty()) {
+        None => Ok(None),
+        Some(path) if path.starts_with('/') && !path.starts_with("//") => Ok(Some(path)),
+        Some(_) => Err(HandlerError::InvalidUrl {
+            message: "launch path must be an origin-relative /path".to_owned(),
+        }),
+    }
 }

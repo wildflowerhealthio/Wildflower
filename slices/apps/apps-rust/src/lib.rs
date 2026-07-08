@@ -9,17 +9,18 @@
 //!
 //!  - **System** ([`domain::SystemApp`]) — launch URL from the compiled-in
 //!    [`SYSTEM_APPS`](domain::SYSTEM_APPS) list; no child row.
-//!  - **Self-hosted** ([`domain::SelfHostedApp`], the `self_hosted_apps` child)
+//!  - **Self-hosted** ([`domain::SelfHostedAppRow`], the `self_hosted_apps` child)
 //!    — a migration-seeded row (protected) or a runtime upload through
 //!    `POST /self-hosted-apps` (removable).
-//!  - **Cloud** ([`domain::AppEntry`], the `cloud_apps` child) — created /
-//!    patched / deleted through the cloud-admin surface.
+//!  - **Cloud** ([`domain::CloudAppRow`], the `cloud_apps` child) — created /
+//!    replaced / deleted through the cloud-admin surface.
 //!
 //! Layered like `tunnel-rust` and `gatekeeper-rust`:
 //!
 //!  - [`domain`] — pure types: [`domain::App`] (the parent row),
-//!    [`domain::AppListEntry`] (the `GET /apps` wire shape), [`domain::AppEntry`]
-//!    (the cloud wire/admin shape), [`domain::SelfHostedApp`],
+//!    [`domain::AppListEntry`] (the `provenance`-discriminated `GET /apps` /
+//!    create / replace wire union), the internal child rows
+//!    [`domain::CloudAppRow`] / [`domain::SelfHostedAppRow`],
 //!    [`domain::SystemApp`], [`domain::Provenance`], and [`domain::AppUrl`] (the
 //!    write-side URL validator).
 //!  - [`db`] — the SQLite store ([`db::AppsStore`], serving the parent registry
@@ -55,7 +56,7 @@ use shared_structures_rust::tunnel_service::TunnelService;
 
 pub use config::AppsConfig;
 pub use db::AppsStore;
-pub use domain::SelfHostedApp;
+pub use domain::SelfHostedAppRow;
 pub use http::{AppsState, OwnerAuth};
 // Re-exported for the integration test crate; `#[deprecated]` is intentional.
 #[allow(deprecated)]
@@ -76,7 +77,7 @@ pub use shared_structures_rust::OnDeviceWebviewHandle;
 /// app at startup (both migration-seeded and previously-uploaded rows).
 pub struct Apps {
     /// The owner-gated routes: `GET /apps`, `POST /apps`,
-    /// `PATCH`/`DELETE /apps/{id}`, `PUT /home-screen`. The host wraps
+    /// `PUT`/`DELETE /apps/{id}`, `PUT /home-screen`. The host wraps
     /// this with its bearer gate.
     pub gated_router: Router,
     /// The launch route `POST /apps/{id}`, mounted ungated at the router level
@@ -86,7 +87,7 @@ pub struct Apps {
     /// gate, the tunnel, the on-device webview seam).
     pub state: Arc<AppsState>,
     /// The self-hosted catalogue the host binds loopback listeners for.
-    pub self_hosted_apps: Vec<SelfHostedApp>,
+    pub self_hosted_apps: Vec<SelfHostedAppRow>,
 }
 
 impl Apps {

@@ -1,7 +1,7 @@
 //! Cloud-app reads + writes on the [`AppsStore`] — a second `impl AppsStore`
 //! block (its own module per [`crate::db`]). A cloud app spans two tables: the
 //! parent `apps` registry row and the `cloud_apps` child (the `url` template +
-//! `requires_tunnel`). Every method speaks in [`AppEntry`], the cloud wire
+//! `requires_tunnel`). Every method speaks in [`CloudAppRow`], the cloud wire
 //! shape; the JOIN mapping is hand-written (not `sql_row!`) because
 //! `id` / `name` / `subtitle` / `enabled` come from the parent and
 //! `url` / `requires_tunnel` from the child.
@@ -10,13 +10,13 @@ use persistence_rust::DbResult;
 use rusqlite::{params, OptionalExtension, Row};
 
 use super::AppsStore;
-use crate::domain::AppEntry;
+use crate::domain::CloudAppRow;
 
-/// Build a cloud [`AppEntry`] from an `apps` + `cloud_apps` JOIN row, reading
+/// Build a cloud [`CloudAppRow`] from an `apps` + `cloud_apps` JOIN row, reading
 /// columns by name (so it's order-independent of the `SELECT`). `url` maps
 /// through [`AppUrl`](crate::domain::AppUrl)'s `FromSql`.
-fn cloud_app_from_row(row: &Row<'_>) -> rusqlite::Result<AppEntry> {
-    Ok(AppEntry {
+fn cloud_app_from_row(row: &Row<'_>) -> rusqlite::Result<CloudAppRow> {
+    Ok(CloudAppRow {
         id: row.get("id")?,
         enabled: row.get("enabled")?,
         name: row.get("name")?,
@@ -35,7 +35,7 @@ impl AppsStore {
     /// # Errors
     ///
     /// Returns any rusqlite error other than `QueryReturnedNoRows`.
-    pub fn find_cloud_app(&self, id: &str) -> DbResult<Option<AppEntry>> {
+    pub fn find_cloud_app(&self, id: &str) -> DbResult<Option<CloudAppRow>> {
         self.conn()
             .lock()
             .query_row(
@@ -61,7 +61,7 @@ impl AppsStore {
     /// # Errors
     ///
     /// Returns any rusqlite error from the insert.
-    pub fn insert_cloud_app(&self, app: &AppEntry) -> DbResult<bool> {
+    pub fn insert_cloud_app(&self, app: &CloudAppRow) -> DbResult<bool> {
         let guard = self.conn().lock();
         let tx = guard.unchecked_transaction()?;
         let position: i64 = tx.query_row(
@@ -98,7 +98,7 @@ impl AppsStore {
     /// # Errors
     ///
     /// Returns any rusqlite error from the update.
-    pub fn replace_cloud_app(&self, app: &AppEntry) -> DbResult<bool> {
+    pub fn replace_cloud_app(&self, app: &CloudAppRow) -> DbResult<bool> {
         let guard = self.conn().lock();
         let tx = guard.unchecked_transaction()?;
         let parent_affected = tx.execute(
@@ -142,8 +142,8 @@ mod tests {
     use super::*;
     use crate::domain::AppUrl;
 
-    fn cloud(id: &str, url: AppUrl) -> AppEntry {
-        AppEntry {
+    fn cloud(id: &str, url: AppUrl) -> CloudAppRow {
+        CloudAppRow {
             id: id.to_owned(),
             enabled: true,
             name: id.to_owned(),

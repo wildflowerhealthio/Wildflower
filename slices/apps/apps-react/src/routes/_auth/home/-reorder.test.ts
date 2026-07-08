@@ -3,14 +3,15 @@ import { describe, expect, test } from 'vite-plus/test'
 import type { AppEntry } from '../../../queries.ts'
 import { reorderApps } from './-reorder.ts'
 
+// `reorderApps` reads only `id`, so a system entry (the variant with no
+// typed-child fields) is the lightest valid member of the union.
 const makeApp = (id: string, enabled = true): AppEntry => ({
   id,
   name: id,
   enabled,
-  provenance: 'cloud',
+  provenance: 'system',
   localOnly: false,
   smart: false,
-  requiresTunnel: false,
   removable: true,
 })
 

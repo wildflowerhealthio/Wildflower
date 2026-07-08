@@ -64,6 +64,7 @@ const APP: AppEntry = {
   smart: false,
   requiresTunnel: false,
   removable: true,
+  url: 'https://example.com/launch',
 }
 
 // react-tundraish's `Dialog` (mounted closed by the editor) calls native
