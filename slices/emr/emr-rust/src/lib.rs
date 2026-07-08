@@ -1,11 +1,13 @@
 //! emr-rust is a thin embedding of [HeliosSoftware/hfs](https://github.com/HeliosSoftware/hfs)
 //! as the FHIR R4 backend. It opens a sqlite store, mounts HFS's Axum router
 //! at `/fhir-r4/*`, overrides the SMART discovery doc with a
-//! SMART-App-Launch-shaped one, and (optionally) wires HFS's bearer-JWT
-//! auth + SMART v2 scope policy against gatekeeper's JWKS.
+//! SMART-App-Launch-shaped one, adds the `$everything` operation HFS lacks, and
+//! (optionally) wires HFS's bearer-JWT auth + SMART v2 scope policy against
+//! gatekeeper's JWKS.
 
 mod auth;
 mod config;
+mod patient_everything;
 mod smart_configuration;
 
 use anyhow::Context;
@@ -15,6 +17,7 @@ use helios_rest::{create_app_with_auth, ServerConfig};
 use shared_structures_rust::ServerRuntimeConfig;
 
 use crate::auth::build_auth;
+use crate::patient_everything::{patient_everything_handler, EverythingState};
 use crate::smart_configuration::{smart_configuration_handler, SmartConfigState};
 
 pub use crate::config::EmrConfig;
@@ -39,10 +42,14 @@ pub const UNAUTHENTICATED_FHIR_PATHS: &[&str] = &[
 /// Build the FHIR R4 [`Router`], opening the sqlite backend and initializing
 /// its schema.
 ///
-/// The router serves HFS at `/fhir-r4/*` with one override:
-/// `/fhir-r4/.well-known/smart-configuration` is handled locally so we can
-/// advertise the SMART App Launch grant + gatekeeper's authorize/token URLs,
-/// which HFS's built-in (Backend-Services-shaped) discovery doc doesn't.
+/// The router serves HFS at `/fhir-r4/*` with two overrides mounted ahead of
+/// it:
+/// - `/fhir-r4/.well-known/smart-configuration` is handled locally so we can
+///   advertise the SMART App Launch grant + gatekeeper's authorize/token URLs,
+///   which HFS's built-in (Backend-Services-shaped) discovery doc doesn't.
+/// - `/fhir-r4/Patient/{id}/$everything` implements the FHIR `$everything`
+///   operation HFS doesn't ship, by delegating back into HFS's `read` +
+///   `Observation` search in-process (see [`patient_everything`]).
 ///
 /// When [`EmrConfig::jwks_url`] is `Some`, HFS auth is enabled: it validates the
 /// JWT against the configured JWKS, enforces `iss`, parses SMART v2 scopes,
@@ -95,15 +102,31 @@ pub fn setup_fhir_r4(runtime: &ServerRuntimeConfig, config: &EmrConfig) -> anyho
         None,
     );
 
-    // Specific route wins over fallback: our SMART App Launch discovery doc
-    // intercepts the path; everything else under /fhir-r4 falls through to
-    // HFS.
-    let fhir_with_override = Router::new()
+    // Specific routes win over fallback: our SMART App Launch discovery doc and
+    // the `$everything` operation intercept their paths; everything else under
+    // /fhir-r4 falls through to HFS. Each override sub-router carries its own
+    // state, so they're merged after `.with_state` erases the state type.
+    let smart_config_route = Router::new()
         .route(
             "/.well-known/smart-configuration",
             get(smart_configuration_handler),
         )
-        .with_state(SmartConfigState { loopback_base_url })
+        .with_state(SmartConfigState {
+            loopback_base_url: loopback_base_url.clone(),
+        });
+
+    // `$everything` delegates back into HFS in-process (see
+    // [`patient_everything`]), so it holds a clone of `hfs_router`; the original
+    // stays the fallback for every other FHIR path.
+    let everything_route = Router::new()
+        .route("/Patient/{id}/$everything", get(patient_everything_handler))
+        .with_state(EverythingState {
+            hfs_router: hfs_router.clone(),
+            loopback_base_url,
+        });
+
+    let fhir_with_override = smart_config_route
+        .merge(everything_route)
         .fallback_service(hfs_router);
 
     Ok(Router::new().nest(FHIR_R4_PATH, fhir_with_override))

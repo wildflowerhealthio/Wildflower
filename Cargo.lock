@@ -2173,8 +2173,10 @@ dependencies = [
  "helios-persistence",
  "helios-rest",
  "serde",
+ "serde_json",
  "shared-structures-rust",
  "tokio",
+ "tower",
  "url",
 ]
 
