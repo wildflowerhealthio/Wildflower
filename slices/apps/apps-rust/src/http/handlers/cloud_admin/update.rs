@@ -6,8 +6,9 @@
 //!   * **cloud** — `name` / `subtitle` / `url` / `requiresTunnel` (a full
 //!     replace; the `url` is re-parsed through the write-side filter).
 //!   * **self-hosted** — `launchPath`, the SMART launch path (see
-//!     [`SelfHostedAppRow::launch_path`]); an absent / empty value clears it back to
-//!     root-serving. Seeded (migration) rows are protected.
+//!     [`SelfHostedApp::launch_path`](crate::domain::SelfHostedApp::launch_path));
+//!     an absent / empty value clears it back to root-serving. Seeded
+//!     (migration) rows are protected.
 //!
 //! The response is the refreshed catalogue [`AppListEntry`] (the same
 //! `provenance` union `GET /apps` returns), read back after the write so it can't
@@ -28,7 +29,7 @@ use axum::Json;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-use crate::domain::{App, AppListEntry, AppUrl, CloudAppRow, Provenance};
+use crate::domain::{AppKind, AppListEntry, AppUrl, CloudContent};
 use crate::http::response_templates::{
     AppNotEditableBody, AppNotFoundBody, HandlerError, InvalidFieldBody,
 };
@@ -78,16 +79,19 @@ pub(crate) async fn handle_replace_app(
 ) -> Result<Json<AppListEntry>, HandlerError> {
     // Resolve existence before validating any field: a PUT to an unknown id is a
     // 404 regardless of the body. Then require the body's arm to match the stored
-    // kind (a mismatch — or a system app — is `409`, not a silent no-op).
-    let parent = state
+    // kind (a mismatch — or a system app — is `409`, not a silent no-op). The
+    // whole `App` is in hand, so the seeded check reads straight off its payload;
+    // each store replace hands back the updated `App` read inside its own
+    // transaction, and projecting it is exactly the `GET /apps` shape.
+    let app = state
         .store
         .find_app(&id)
         .map_err(|e| HandlerError::internal("find_app lookup failed", e))?
         .ok_or_else(|| HandlerError::NotFound { id: id.clone() })?;
 
-    match (parent.provenance(), body) {
+    let updated = match (&app.kind, body) {
         (
-            Provenance::Cloud,
+            AppKind::Cloud(_),
             AppContentBody::Cloud {
                 name,
                 subtitle,
@@ -95,41 +99,43 @@ pub(crate) async fn handle_replace_app(
                 requires_tunnel,
             },
         ) => {
-            replace_cloud_content(&state, &id, name, subtitle, url, requires_tunnel)?;
+            let content = validate_cloud_content(name, subtitle, url, requires_tunnel)?;
+            state
+                .store
+                .replace_cloud_content(&id, &content)
+                .map_err(|e| HandlerError::internal("replace_cloud_content failed", e))?
         }
-        (Provenance::SelfHosted, AppContentBody::SelfHosted { launch_path }) => {
-            replace_self_hosted_content(&state, &parent, launch_path)?;
+        (AppKind::SelfHosted(child), AppContentBody::SelfHosted { launch_path }) => {
+            if child.seeded {
+                // A migration-seeded app (patient-browser) is read-only, same
+                // 409 as delete.
+                return Err(HandlerError::NotEditable { id });
+            }
+            let launch_path = validate_launch_path(launch_path)?;
+            state
+                .store
+                .replace_self_hosted_launch_path(&id, launch_path.as_deref())
+                .map_err(|e| HandlerError::internal("replace_self_hosted_launch_path failed", e))?
         }
         // A system app, or a body targeting the wrong kind for this id.
         _ => return Err(HandlerError::NotEditable { id }),
-    }
-
-    // Read back the exact `GET /apps` projection so the response reflects the
-    // stored state (correct variant, computed `smart` / `removable`).
-    let entry = state
-        .store
-        .find_app_entry(&id)
-        .map_err(|e| HandlerError::internal("find_app_entry after replace failed", e))?
-        .ok_or_else(|| {
-            HandlerError::internal(
-                "app vanished between replace and read-back",
-                format!("id={id}"),
-            )
-        })?;
-    Ok(Json(entry))
+    };
+    let updated = updated.ok_or_else(|| {
+        HandlerError::internal("app vanished between find and replace", format!("id={id}"))
+    })?;
+    Ok(Json(AppListEntry::from(&updated)))
 }
 
-/// Full-replace a cloud app's content (`enabled` preserved — it isn't edited
-/// here). Validates the name is non-empty and the url parses through the
-/// write-side [`AppUrl`] filter.
-fn replace_cloud_content(
-    state: &AppsState,
-    id: &str,
+/// Validate a cloud replace body into the store's [`CloudContent`] spec: the
+/// name must be non-empty and the url must parse through the write-side
+/// [`AppUrl`] filter. `enabled` has no place here — homescreen curation owns
+/// it, and the store's content replace never writes that column.
+fn validate_cloud_content(
     name: String,
     subtitle: Option<String>,
     url: String,
     requires_tunnel: bool,
-) -> Result<(), HandlerError> {
+) -> Result<CloudContent, HandlerError> {
     if name.is_empty() {
         return Err(HandlerError::InvalidName {
             message: "name must not be empty".to_owned(),
@@ -140,70 +146,13 @@ fn replace_cloud_content(
         .map_err(|e| HandlerError::InvalidUrl {
             message: e.to_string(),
         })?;
-    // Preserve `enabled` (homescreen-owned) by reading it back onto the replace.
-    let existing = state
-        .store
-        .find_cloud_app(id)
-        .map_err(|e| HandlerError::internal("find_cloud_app lookup failed", e))?
-        .ok_or_else(|| {
-            HandlerError::internal("cloud parent has no child row", format!("id={id}"))
-        })?;
-    let replaced = state
-        .store
-        .replace_cloud_app(&CloudAppRow {
-            id: id.to_owned(),
-            enabled: existing.enabled,
-            name,
-            // Empty `""` clears the subtitle.
-            subtitle: subtitle.filter(|s| !s.is_empty()),
-            url,
-            requires_tunnel,
-        })
-        .map_err(|e| HandlerError::internal("replace_cloud_app failed", e))?;
-    if !replaced {
-        return Err(HandlerError::internal(
-            "cloud row vanished between find and replace",
-            format!("id={id}"),
-        ));
-    }
-    Ok(())
-}
-
-/// Replace a self-hosted app's launch path. A seeded (migration) row is protected
-/// (`409 AppNotEditable`, same as delete); a non-empty path must be
-/// origin-relative.
-fn replace_self_hosted_content(
-    state: &AppsState,
-    parent: &App,
-    launch_path: Option<String>,
-) -> Result<(), HandlerError> {
-    let child = state
-        .store
-        .find_self_hosted_app(&parent.id)
-        .map_err(|e| HandlerError::internal("find_self_hosted_app lookup failed", e))?
-        .ok_or_else(|| {
-            HandlerError::internal(
-                "self-hosted parent has no child row",
-                format!("id={}", parent.id),
-            )
-        })?;
-    if child.seeded {
-        return Err(HandlerError::NotEditable {
-            id: parent.id.clone(),
-        });
-    }
-    let launch_path = validate_launch_path(launch_path)?;
-    let updated = state
-        .store
-        .update_self_hosted_launch_path(&parent.id, launch_path.as_deref())
-        .map_err(|e| HandlerError::internal("update_self_hosted_launch_path failed", e))?;
-    if !updated {
-        return Err(HandlerError::internal(
-            "self-hosted row vanished between find and update",
-            format!("id={}", parent.id),
-        ));
-    }
-    Ok(())
+    Ok(CloudContent {
+        name,
+        // Empty `""` clears the subtitle.
+        subtitle: subtitle.filter(|s| !s.is_empty()),
+        url,
+        requires_tunnel,
+    })
 }
 
 /// Validate a `launchPath` value. A cleared value (`None` / empty) passes through

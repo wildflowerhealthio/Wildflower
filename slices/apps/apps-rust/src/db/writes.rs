@@ -1,0 +1,786 @@
+//! The store's write side. Every mutator is one transaction over the parent
+//! `apps` row and (where the kind has one) its child table, takes a
+//! [`specs`](crate::domain) struct rather than loose scalars, and — for the
+//! create / replace operations — returns the hydrated [`App`] re-read *inside
+//! that same transaction* (see [`find_app_on`](super::reads::find_app_on)), so
+//! a handler's response can never drift from the stored state.
+//!
+//! Kind and seeded *policy* gating (which kinds an HTTP surface may touch)
+//! stays in the handlers, which already hold the whole [`App`]; the SQL here
+//! only guards its own invariants (e.g. a content replace matches
+//! `provenance = 'cloud'` so a mis-targeted id is a no-op `None`).
+
+use std::collections::HashSet;
+
+use persistence_rust::DbResult;
+use rusqlite::params;
+
+use super::reads::{find_app_on, list_apps_on};
+use super::AppsStore;
+use crate::domain::{App, CloudContent, NewCloudApp, NewSelfHostedUpload};
+
+/// The smallest loopback port an uploaded app is allocated. The seed
+/// (patient-browser) sits at 8081, so uploads start one above it; the host's own
+/// loopback API port is passed in as a reserved port and skipped.
+const MIN_UPLOAD_PORT: i64 = 8082;
+
+/// Attempts at suffixing a base slug (`-2`, `-3`, …) before giving up. A clash
+/// past this many candidates is treated as "couldn't allocate a unique slug".
+const MAX_SLUG_ATTEMPTS: u32 = 50;
+
+impl AppsStore {
+    /// Insert a fresh cloud app: the parent registry row (`provenance = 'cloud'`,
+    /// not local-only, no `client_id`, enabled) AND its `cloud_apps` child, in
+    /// one transaction. The new row is appended at `MAX(position) + 1`, computed
+    /// **inside** the transaction so two overlapping creates can't both read the
+    /// same next position and collide (the `UNIQUE(position)` constraint
+    /// backstops it regardless).
+    ///
+    /// Returns `Ok(None)` when the id is already taken (the parent
+    /// `INSERT … ON CONFLICT(id) DO NOTHING` affects 0 rows → roll back so no
+    /// orphan child lands), else the inserted whole [`App`] read back in-txn.
+    ///
+    /// # Errors
+    ///
+    /// Returns any rusqlite error from the transaction.
+    pub fn insert_cloud_app(&self, new: &NewCloudApp) -> DbResult<Option<App>> {
+        let guard = self.conn().lock();
+        let tx = guard.unchecked_transaction()?;
+        let position = next_position(&tx)?;
+        let affected = tx.execute(
+            "INSERT INTO apps (id, name, subtitle, enabled, position, provenance, local_only, client_id) \
+             VALUES (?1, ?2, ?3, 1, ?4, 'cloud', 0, NULL) \
+             ON CONFLICT(id) DO NOTHING",
+            params![new.id, new.content.name, new.content.subtitle, position],
+        )?;
+        if affected != 1 {
+            // The id already exists — roll back so the child insert below never
+            // runs against a parent we didn't create.
+            tx.rollback()?;
+            return Ok(None);
+        }
+        tx.execute(
+            "INSERT INTO cloud_apps (id, url, requires_tunnel) VALUES (?1, ?2, ?3)",
+            params![new.id, new.content.url, new.content.requires_tunnel],
+        )?;
+        let app = find_app_on(&tx, &new.id)?;
+        tx.commit()?;
+        Ok(app)
+    }
+
+    /// Insert a fresh uploaded self-hosted app: the parent registry row
+    /// (`provenance = 'self-hosted'`, `local_only = 1`, `enabled = 1`) AND its
+    /// `self_hosted_apps` child (`seeded = 0`), in one transaction.
+    ///
+    /// The [`base_slug`](NewSelfHostedUpload::base_slug) is made unique against
+    /// **both** the parent `apps.id` and the `self_hosted_apps.subdomain` by
+    /// suffixing `-2`, `-3`, … (up to [`MAX_SLUG_ATTEMPTS`]). The chosen slug
+    /// becomes the row's `id`, `content_folder`, and `subdomain` alike. The port
+    /// is the next free one at or above [`MIN_UPLOAD_PORT`] (`MAX(port) + 1`,
+    /// skipping any [`reserved_ports`](NewSelfHostedUpload::reserved_ports));
+    /// the position is appended at `MAX(position) + 1`. All three are computed
+    /// **inside** the transaction so overlapping creates can't collide.
+    ///
+    /// Returns `Ok(None)` when no unique slug is found within the attempt budget
+    /// or the port space is exhausted (the handler maps that to `400`), else the
+    /// inserted whole [`App`] read back in-txn.
+    ///
+    /// # Errors
+    ///
+    /// Returns any rusqlite error from the transaction.
+    pub fn insert_self_hosted_app(&self, new: &NewSelfHostedUpload) -> DbResult<Option<App>> {
+        let guard = self.conn().lock();
+        let tx = guard.unchecked_transaction()?;
+
+        // Find a slug free of both the global id space and the subdomain space.
+        let mut chosen_slug = None;
+        for attempt in 1..=MAX_SLUG_ATTEMPTS {
+            let candidate = if attempt == 1 {
+                new.base_slug.clone()
+            } else {
+                format!("{base}-{attempt}", base = new.base_slug)
+            };
+            let id_taken: bool = tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM apps WHERE id = ?1)",
+                params![candidate],
+                |row| row.get(0),
+            )?;
+            let subdomain_taken: bool = tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM self_hosted_apps WHERE subdomain = ?1)",
+                params![candidate],
+                |row| row.get(0),
+            )?;
+            if !id_taken && !subdomain_taken {
+                chosen_slug = Some(candidate);
+                break;
+            }
+        }
+        let Some(slug) = chosen_slug else {
+            // Drop the transaction unwritten; the handler maps `None` to a 400.
+            return Ok(None);
+        };
+
+        let Some(port) = next_free_port(&tx, &new.reserved_ports)? else {
+            return Ok(None);
+        };
+        let position = next_position(&tx)?;
+
+        tx.execute(
+            "INSERT INTO apps (id, name, subtitle, enabled, position, provenance, local_only, client_id) \
+             VALUES (?1, ?2, ?3, 1, ?4, 'self-hosted', 1, NULL)",
+            params![slug, new.name, new.subtitle, position],
+        )?;
+        tx.execute(
+            "INSERT INTO self_hosted_apps (id, port, content_folder, subdomain, seeded, launch_path) \
+             VALUES (?1, ?2, ?1, ?1, 0, ?3)",
+            params![slug, port, new.launch_path],
+        )?;
+        let app = find_app_on(&tx, &slug)?;
+        tx.commit()?;
+        Ok(app)
+    }
+
+    /// Replace a cloud app's *content*: the parent's `name` / `subtitle` and the
+    /// child's `url` / `requires_tunnel`, in one transaction. **Never touches
+    /// `enabled`** — homescreen curation (`PUT /home-screen`) is the single
+    /// writer of that column, so a content replace simply omits it and no
+    /// read-modify-write is needed anywhere.
+    ///
+    /// Returns `Ok(None)` when no cloud app has this id (the parent
+    /// `UPDATE … WHERE id = ? AND provenance = 'cloud'` matched no row — an
+    /// unknown or non-cloud id leaves everything untouched), else the updated
+    /// whole [`App`] read back in-txn.
+    ///
+    /// # Errors
+    ///
+    /// Returns any rusqlite error from the transaction.
+    pub fn replace_cloud_content(&self, id: &str, content: &CloudContent) -> DbResult<Option<App>> {
+        let guard = self.conn().lock();
+        let tx = guard.unchecked_transaction()?;
+        let parent_affected = tx.execute(
+            "UPDATE apps SET name = ?2, subtitle = ?3 \
+             WHERE id = ?1 AND provenance = 'cloud'",
+            params![id, content.name, content.subtitle],
+        )?;
+        if parent_affected != 1 {
+            // Not a cloud app (or no such id) — leave the child untouched.
+            tx.rollback()?;
+            return Ok(None);
+        }
+        tx.execute(
+            "UPDATE cloud_apps SET url = ?2, requires_tunnel = ?3 WHERE id = ?1",
+            params![id, content.url, content.requires_tunnel],
+        )?;
+        let app = find_app_on(&tx, id)?;
+        tx.commit()?;
+        Ok(app)
+    }
+
+    /// Replace a self-hosted app's `launch_path` (see
+    /// [`SelfHostedApp::launch_path`](crate::domain::SelfHostedApp::launch_path));
+    /// `None` clears it back to root-serving. Returns `Ok(None)` when no
+    /// self-hosted app has this id, else the updated whole [`App`] read back
+    /// in-txn. The update handler enforces "not seeded" before calling this —
+    /// it already holds the [`App`] and its `seeded` flag.
+    ///
+    /// # Errors
+    ///
+    /// Returns any rusqlite error from the transaction.
+    pub fn replace_self_hosted_launch_path(
+        &self,
+        id: &str,
+        launch_path: Option<&str>,
+    ) -> DbResult<Option<App>> {
+        let guard = self.conn().lock();
+        let tx = guard.unchecked_transaction()?;
+        let affected = tx.execute(
+            "UPDATE self_hosted_apps SET launch_path = ?2 WHERE id = ?1",
+            params![id, launch_path],
+        )?;
+        if affected != 1 {
+            tx.rollback()?;
+            return Ok(None);
+        }
+        let app = find_app_on(&tx, id)?;
+        tx.commit()?;
+        Ok(app)
+    }
+
+    /// Delete an app by id, any kind — the parent `DELETE` cascades to the
+    /// `cloud_apps` / `self_hosted_apps` child (`ON DELETE CASCADE`). Returns
+    /// `true` when a row was removed. The handlers enforce the removability
+    /// policy (kind + seeded) before calling this; the upload handler also calls
+    /// it to roll back a row whose staged files couldn't be moved into place.
+    ///
+    /// # Errors
+    ///
+    /// Returns any rusqlite error from the delete.
+    pub fn delete_app(&self, id: &str) -> DbResult<bool> {
+        let affected = self
+            .conn()
+            .lock()
+            .execute("DELETE FROM apps WHERE id = ?1", params![id])?;
+        Ok(affected == 1)
+    }
+
+    /// Atomically validate **and** rewrite the whole homescreen — the ordering
+    /// **and** the `enabled` flags — in one transaction. The body must list every
+    /// registry app exactly once; each `(id, enabled)` at index `i` sets that
+    /// row's `position = i` and `enabled`. Returns the resulting catalogue in its
+    /// new order (read inside the same transaction), or `Ok(None)` when `entries`
+    /// isn't an exact permutation of the live registry — the caller maps that to
+    /// `400 InvalidHomeScreen`.
+    ///
+    /// Validating against the live ids **inside** the transaction (rather than a
+    /// separate read the handler did before) closes the window where a concurrent
+    /// create/delete could land between the check and the renumber. Because every
+    /// row is renumbered to its array index under one transaction, positions stay
+    /// a dense `0..n` permutation (no duplicate or gapped positions) and a reorder
+    /// can't be observed half-applied. This is the single writer of
+    /// `position`/`enabled` across every kind; `PUT /home-screen` is its
+    /// sole caller.
+    ///
+    /// # Errors
+    ///
+    /// Returns any rusqlite error from the transaction.
+    pub fn replace_home_screen(&self, entries: &[(String, bool)]) -> DbResult<Option<Vec<App>>> {
+        let guard = self.conn().lock();
+        let tx = guard.unchecked_transaction()?;
+
+        // Validate against the live registry under the same lock/transaction as
+        // the renumber: the body must be an exact permutation of the current ids.
+        let current_ids: HashSet<String> = {
+            let mut stmt = tx.prepare("SELECT id FROM apps")?;
+            let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+            rows.collect::<rusqlite::Result<HashSet<String>>>()?
+        };
+        let body_ids: HashSet<&str> = entries.iter().map(|(id, _)| id.as_str()).collect();
+        let id_set_changed = entries.len() != current_ids.len()
+            || body_ids.len() != entries.len()
+            || body_ids
+                .iter()
+                .any(|body_id| !current_ids.contains(*body_id));
+        if id_set_changed {
+            // Drop the transaction without committing (rolls back); nothing was
+            // written. The handler turns `None` into `400 InvalidHomeScreen`.
+            return Ok(None);
+        }
+
+        {
+            // Move every row to a disjoint negative range first so the per-row
+            // renumber below never transiently collides with `UNIQUE(position)`
+            // (SQLite's UNIQUE is immediate, not deferrable): originals are `>= 0`
+            // and `-1 - position` is `<= -1`, so the two ranges never overlap.
+            tx.execute("UPDATE apps SET position = -1 - position", [])?;
+            // Prepared once and reused across rows — `tx.execute` would re-parse
+            // and re-plan the UPDATE on every iteration. The block scopes the
+            // statements so they drop before `commit()` consumes the transaction.
+            let mut update_app_statement =
+                tx.prepare("UPDATE apps SET position = ?2, enabled = ?3 WHERE id = ?1")?;
+            for (position, (id, enabled)) in entries.iter().enumerate() {
+                let position = i64::try_from(position).expect("home-screen length fits i64");
+                update_app_statement.execute(params![id, position, enabled])?;
+            }
+        }
+
+        // Read the new catalogue inside the transaction so the response can't
+        // reflect a write that landed after the renumber.
+        let updated_app_list = list_apps_on(&tx)?;
+        tx.commit()?;
+        Ok(Some(updated_app_list))
+    }
+}
+
+/// The next display position: `MAX(position) + 1` (0 for an empty registry),
+/// computed on the caller's open transaction so overlapping creates can't
+/// both read the same value.
+fn next_position(tx: &rusqlite::Transaction<'_>) -> DbResult<i64> {
+    tx.query_row(
+        "SELECT COALESCE(MAX(position) + 1, 0) FROM apps",
+        [],
+        |row| row.get(0),
+    )
+}
+
+/// The next free loopback port at or above [`MIN_UPLOAD_PORT`]: `MAX(port) + 1`
+/// clamped up to the floor, then advanced past any `reserved_ports` (the host
+/// loopback port). `None` if the u16 port space is exhausted (unreachable in
+/// practice — it needs tens of thousands of installed apps). Computed on the
+/// open transaction so it can't race a concurrent insert.
+fn next_free_port(tx: &rusqlite::Transaction<'_>, reserved_ports: &[u16]) -> DbResult<Option<u16>> {
+    let next: i64 = tx.query_row(
+        "SELECT COALESCE(MAX(port), ?1) + 1 FROM self_hosted_apps",
+        params![MIN_UPLOAD_PORT - 1],
+        |row| row.get(0),
+    )?;
+    let mut candidate = next.max(MIN_UPLOAD_PORT);
+    loop {
+        if candidate > i64::from(u16::MAX) {
+            return Ok(None);
+        }
+        // Safe: `candidate <= u16::MAX` and `> 0` here.
+        let port = candidate as u16;
+        if !reserved_ports.contains(&port) {
+            return Ok(Some(port));
+        }
+        candidate += 1;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::db::AppsStore;
+    use crate::domain::{App, AppUrl, CloudContent, NewCloudApp, NewSelfHostedUpload, Provenance};
+
+    fn cloud_content(name: &str, url: AppUrl) -> CloudContent {
+        CloudContent {
+            name: name.to_owned(),
+            subtitle: None,
+            url,
+            requires_tunnel: false,
+        }
+    }
+
+    fn new_cloud(id: &str, url: AppUrl) -> NewCloudApp {
+        NewCloudApp {
+            id: id.to_owned(),
+            content: cloud_content(id, url),
+        }
+    }
+
+    fn new_upload(name: &str, base_slug: &str) -> NewSelfHostedUpload {
+        NewSelfHostedUpload {
+            name: name.to_owned(),
+            subtitle: None,
+            base_slug: base_slug.to_owned(),
+            reserved_ports: Vec::new(),
+            launch_path: None,
+        }
+    }
+
+    fn external(url: &str) -> AppUrl {
+        AppUrl::External(url.to_owned())
+    }
+
+    #[test]
+    fn insert_cloud_app_returns_the_whole_app_and_round_trips() {
+        let store = AppsStore::open_in_memory().unwrap();
+        let inserted = store
+            .insert_cloud_app(&new_cloud("app-x", external("https://example.com/launch")))
+            .unwrap()
+            .expect("inserted");
+        // The in-txn read-back and a fresh find agree exactly.
+        assert_eq!(store.find_app("app-x").unwrap().as_ref(), Some(&inserted));
+        assert_eq!(inserted.provenance(), Provenance::Cloud);
+        // Appended after the six seeded rows (positions 0..=5), enabled, not
+        // local-only, no client_id.
+        assert_eq!(inserted.position, 6);
+        assert!(inserted.enabled);
+        assert!(!inserted.local_only);
+        assert!(!inserted.smart(), "inserted cloud app has no client_id");
+        let payload = inserted.as_cloud().expect("cloud payload");
+        assert_eq!(payload.url, external("https://example.com/launch"));
+        assert!(!payload.requires_tunnel);
+    }
+
+    #[test]
+    fn insert_cloud_app_returns_none_on_duplicate_id() {
+        let store = AppsStore::open_in_memory().unwrap();
+        let new = new_cloud("app-x", external("https://example.com/x"));
+        assert!(store.insert_cloud_app(&new).unwrap().is_some());
+        assert!(
+            store.insert_cloud_app(&new).unwrap().is_none(),
+            "second insert with the same id is a no-op",
+        );
+        // The first insert appended after the six seeded rows (0..=5); the failed
+        // second insert left no orphan child and didn't move the position.
+        assert_eq!(store.find_app("app-x").unwrap().unwrap().position, 6);
+    }
+
+    /// A seeded cloud app's id can't be re-created — the parent PK rejects it and
+    /// the child insert never runs.
+    #[test]
+    fn insert_cloud_app_rejects_a_seeded_id_without_orphaning_a_child() {
+        let store = AppsStore::open_in_memory().unwrap();
+        let new = new_cloud("growth-chart", external("https://example.com/x"));
+        assert!(store.insert_cloud_app(&new).unwrap().is_none());
+        // The original child url is untouched.
+        let fetched = store.find_app("growth-chart").unwrap().unwrap();
+        assert!(fetched
+            .as_cloud()
+            .expect("cloud payload")
+            .url
+            .to_string()
+            .contains("growth-chart-app"));
+    }
+
+    #[test]
+    fn replace_cloud_content_writes_parent_and_child() {
+        let store = AppsStore::open_in_memory().unwrap();
+        store
+            .insert_cloud_app(&new_cloud("app-x", external("https://example.com/x")))
+            .unwrap()
+            .expect("inserted");
+
+        let replaced = store
+            .replace_cloud_content(
+                "app-x",
+                &CloudContent {
+                    name: "Renamed".to_owned(),
+                    subtitle: Some("the new subtitle".to_owned()),
+                    url: AppUrl::OriginRelative("/path".to_owned()),
+                    requires_tunnel: true,
+                },
+            )
+            .unwrap()
+            .expect("replaced");
+        assert_eq!(replaced.name, "Renamed");
+        assert_eq!(replaced.subtitle.as_deref(), Some("the new subtitle"));
+        let payload = replaced.as_cloud().expect("cloud payload");
+        assert_eq!(payload.url, AppUrl::OriginRelative("/path".to_owned()));
+        assert!(payload.requires_tunnel);
+        // A fresh read agrees with the in-txn read-back.
+        assert_eq!(store.find_app("app-x").unwrap().as_ref(), Some(&replaced));
+    }
+
+    /// A content replace must not touch `enabled` — `PUT /home-screen` is that
+    /// column's single writer. Disable an app through the home screen, replace
+    /// its content, and it must stay disabled.
+    #[test]
+    fn replace_cloud_content_leaves_enabled_alone() {
+        let store = AppsStore::open_in_memory().unwrap();
+        store
+            .insert_cloud_app(&new_cloud("app-x", external("https://example.com/x")))
+            .unwrap()
+            .expect("inserted");
+
+        // Disable app-x via the home-screen writer (an identity reorder).
+        let entries: Vec<(String, bool)> = store
+            .list_apps()
+            .unwrap()
+            .iter()
+            .map(|app| (app.id.clone(), app.id != "app-x"))
+            .collect();
+        store
+            .replace_home_screen(&entries)
+            .unwrap()
+            .expect("permutation");
+        assert!(!store.find_app("app-x").unwrap().unwrap().enabled);
+
+        let replaced = store
+            .replace_cloud_content(
+                "app-x",
+                &cloud_content("Renamed", external("https://example.com/y")),
+            )
+            .unwrap()
+            .expect("replaced");
+        assert!(
+            !replaced.enabled,
+            "a content replace must not re-enable a disabled app",
+        );
+    }
+
+    /// `replace_cloud_content` only touches cloud apps — a self-hosted / system
+    /// id is a no-op `None`, and crucially does NOT mutate the parent row.
+    #[test]
+    fn replace_cloud_content_ignores_non_cloud_ids() {
+        let store = AppsStore::open_in_memory().unwrap();
+        // patient-browser is self-hosted; api-docs is system.
+        for id in ["patient-browser", "api-docs"] {
+            let replaced = store
+                .replace_cloud_content(
+                    id,
+                    &cloud_content(id, external("https://example.com/tampered")),
+                )
+                .unwrap();
+            assert!(replaced.is_none(), "{id} is not a cloud app");
+            // Its parent name is unchanged.
+            let parent = store.find_app(id).unwrap().unwrap();
+            assert_ne!(parent.name, id, "{id} parent row must be untouched");
+        }
+    }
+
+    #[test]
+    fn replace_cloud_content_returns_none_for_unknown_id() {
+        let store = AppsStore::open_in_memory().unwrap();
+        assert!(store
+            .replace_cloud_content(
+                "ghost",
+                &cloud_content("ghost", external("https://x.example"))
+            )
+            .unwrap()
+            .is_none());
+    }
+
+    /// An inserted upload lands one port above the seed (8081 → 8082), appends at
+    /// the next position (after the six seeded rows → 6), and is flagged
+    /// non-seeded (hence removable).
+    #[test]
+    fn insert_self_hosted_allocates_the_next_port_and_position() {
+        let store = AppsStore::open_in_memory().unwrap();
+        let app = store
+            .insert_self_hosted_app(&new_upload("My App", "my-app"))
+            .unwrap()
+            .expect("inserted");
+        assert_eq!(app.id, "my-app");
+        assert_eq!(app.name, "My App");
+        assert_eq!(app.position, 6);
+        assert!(app.local_only);
+        assert!(app.enabled);
+        assert_eq!(app.provenance(), Provenance::SelfHosted);
+        let payload = app.as_self_hosted().expect("self-hosted payload");
+        assert_eq!(payload.port, 8082);
+        assert_eq!(payload.content_folder, "my-app");
+        assert_eq!(payload.subdomain, "my-app");
+        assert!(!payload.seeded);
+
+        // A second upload takes the next port and position.
+        let app2 = store
+            .insert_self_hosted_app(&new_upload("Other", "other"))
+            .unwrap()
+            .expect("inserted");
+        assert_eq!(app2.as_self_hosted().unwrap().port, 8083);
+        assert_eq!(app2.position, 7);
+    }
+
+    /// A `launch_path` supplied at insert round-trips through both the insert
+    /// return and a fresh `find`; an app inserted without one reads back `None`.
+    #[test]
+    fn insert_self_hosted_persists_and_reads_back_the_launch_path() {
+        let store = AppsStore::open_in_memory().unwrap();
+        let template = "/launch.html?launch={launch}&iss={origin}/fhir-r4";
+        let mut upload = new_upload("Launcher", "launcher");
+        upload.launch_path = Some(template.to_owned());
+        let inserted = store
+            .insert_self_hosted_app(&upload)
+            .unwrap()
+            .expect("inserted");
+        let launch_path = |app: &App| app.as_self_hosted().unwrap().launch_path.clone();
+        assert_eq!(launch_path(&inserted).as_deref(), Some(template));
+
+        let found = store.find_app("launcher").unwrap().expect("found");
+        assert_eq!(launch_path(&found).as_deref(), Some(template));
+
+        let rootless = store
+            .insert_self_hosted_app(&new_upload("Rootless", "rootless"))
+            .unwrap()
+            .expect("inserted");
+        assert_eq!(launch_path(&rootless), None);
+    }
+
+    /// `replace_self_hosted_launch_path` sets, replaces, and clears the column;
+    /// an unknown id matches nothing.
+    #[test]
+    fn replace_launch_path_sets_replaces_and_clears() {
+        let store = AppsStore::open_in_memory().unwrap();
+        store
+            .insert_self_hosted_app(&new_upload("App", "app"))
+            .unwrap()
+            .expect("inserted");
+        let launch_path = |app: App| app.as_self_hosted().unwrap().launch_path.clone();
+
+        let set = store
+            .replace_self_hosted_launch_path("app", Some("/launch.html"))
+            .unwrap()
+            .expect("updated");
+        assert_eq!(launch_path(set).as_deref(), Some("/launch.html"));
+
+        let cleared = store
+            .replace_self_hosted_launch_path("app", None)
+            .unwrap()
+            .expect("updated");
+        assert_eq!(launch_path(cleared), None);
+
+        assert!(
+            store
+                .replace_self_hosted_launch_path("ghost", Some("/x"))
+                .unwrap()
+                .is_none(),
+            "an unknown id matches no row",
+        );
+    }
+
+    /// A reserved port (the host loopback port) is skipped in the allocation.
+    #[test]
+    fn insert_self_hosted_skips_reserved_ports() {
+        let store = AppsStore::open_in_memory().unwrap();
+        // 8082 would be next, but it's reserved → 8083.
+        let mut upload = new_upload("My App", "my-app");
+        upload.reserved_ports = vec![8082];
+        let app = store
+            .insert_self_hosted_app(&upload)
+            .unwrap()
+            .expect("inserted");
+        assert_eq!(app.as_self_hosted().unwrap().port, 8083);
+    }
+
+    /// A base slug colliding with the seeded `patient-browser` is suffixed `-2`.
+    #[test]
+    fn insert_self_hosted_suffixes_a_colliding_slug() {
+        let store = AppsStore::open_in_memory().unwrap();
+        let upload = new_upload("Patient Browser", "patient-browser");
+        let app = store
+            .insert_self_hosted_app(&upload)
+            .unwrap()
+            .expect("inserted");
+        assert_eq!(app.id, "patient-browser-2");
+        let payload = app.as_self_hosted().unwrap();
+        assert_eq!(payload.subdomain, "patient-browser-2");
+        assert_eq!(payload.content_folder, "patient-browser-2");
+
+        // A third with the same base skips to `-3`.
+        let app3 = store
+            .insert_self_hosted_app(&upload)
+            .unwrap()
+            .expect("inserted");
+        assert_eq!(app3.id, "patient-browser-3");
+    }
+
+    /// Delete removes both the parent and the child (CASCADE), for either kind.
+    #[test]
+    fn delete_app_cascades_to_the_child() {
+        let store = AppsStore::open_in_memory().unwrap();
+
+        // An uploaded self-hosted app.
+        let app = store
+            .insert_self_hosted_app(&new_upload("My App", "my-app"))
+            .unwrap()
+            .expect("inserted");
+        assert!(store.delete_app(&app.id).unwrap());
+        assert!(store.find_app("my-app").unwrap().is_none());
+        assert!(
+            !store.delete_app("my-app").unwrap(),
+            "a second delete of the same id removes nothing",
+        );
+
+        // A seeded cloud app: the child row is gone too (CASCADE).
+        assert!(store.delete_app("growth-chart").unwrap());
+        assert!(store.find_app("growth-chart").unwrap().is_none());
+        let child_count: i64 = store
+            .conn()
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM cloud_apps WHERE id = 'growth-chart'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(child_count, 0);
+
+        assert!(!store.delete_app("no-such-id").unwrap());
+    }
+
+    /// The removability matrix over live rows: cloud + uploaded self-hosted are
+    /// removable; system + seeded self-hosted are not.
+    #[test]
+    fn removable_per_kind_and_seeded_on_live_rows() {
+        let store = AppsStore::open_in_memory().unwrap();
+        store
+            .insert_self_hosted_app(&new_upload("My App", "my-app"))
+            .unwrap()
+            .expect("inserted");
+        let apps = store.list_apps().unwrap();
+        let by_id = |id: &str| apps.iter().find(|a| a.id == id).expect("row");
+        assert!(by_id("my-app").removable(), "an uploaded app is removable");
+        assert!(
+            by_id("growth-chart").removable(),
+            "a cloud app is removable"
+        );
+        assert!(
+            !by_id("patient-browser").removable(),
+            "the seeded self-hosted app is not removable",
+        );
+        assert!(
+            !by_id("api-docs").removable(),
+            "a system app is not removable"
+        );
+    }
+
+    /// `replace_home_screen` renumbers every row to its array index and applies
+    /// each `enabled` flag, in one shot, for any kind — and leaves the positions
+    /// a dense `0..n` permutation (no ties). Reversing the seed (every row
+    /// changes position) also exercises the `UNIQUE(position)` collision-free
+    /// renumber.
+    #[test]
+    fn replace_home_screen_renumbers_and_sets_enabled_for_any_kind() {
+        let store = AppsStore::open_in_memory().unwrap();
+        // Reverse the seeded order, disabling a system app (api-docs) along the way.
+        let entries: Vec<(String, bool)> = vec![
+            ("precise-hbr".to_owned(), true),
+            ("medication-viewer".to_owned(), true),
+            ("growth-chart".to_owned(), true),
+            ("api-docs".to_owned(), false),
+            ("api-view".to_owned(), true),
+            ("patient-browser".to_owned(), true),
+        ];
+        let updated = store
+            .replace_home_screen(&entries)
+            .unwrap()
+            .expect("an exact permutation renumbers and returns the catalogue");
+
+        // The returned catalogue is in the new order.
+        let expected: Vec<String> = entries.iter().map(|(id, _)| id.clone()).collect();
+        let returned_ids: Vec<String> = updated.iter().map(|a| a.id.clone()).collect();
+        assert_eq!(returned_ids, expected);
+
+        // Positions are exactly the array indices (dense 0..n, no duplicates).
+        for (position, (id, _)) in entries.iter().enumerate() {
+            let app = store.find_app(id).unwrap().unwrap();
+            assert_eq!(
+                app.position,
+                i64::try_from(position).unwrap(),
+                "{id} position"
+            );
+        }
+        // The enabled flag was applied (api-docs is a system app — not gated).
+        assert!(!store.find_app("api-docs").unwrap().unwrap().enabled);
+        // A follow-up list read agrees with the order returned inside the txn.
+        let ids: Vec<String> = store
+            .list_apps()
+            .unwrap()
+            .iter()
+            .map(|a| a.id.clone())
+            .collect();
+        assert_eq!(ids, expected);
+    }
+
+    /// A body that isn't an exact permutation of the live registry returns
+    /// `Ok(None)` (→ `400`) and writes nothing — validation happens inside the
+    /// same transaction as the renumber.
+    #[test]
+    fn replace_home_screen_rejects_a_non_permutation_without_writing() {
+        let store = AppsStore::open_in_memory().unwrap();
+        let ids_now = |store: &AppsStore| -> Vec<String> {
+            store
+                .list_apps()
+                .unwrap()
+                .iter()
+                .map(|a| a.id.clone())
+                .collect()
+        };
+        let before = ids_now(&store);
+
+        // A subset (missing rows) — not a permutation.
+        let subset = vec![("api-view".to_owned(), true), ("api-docs".to_owned(), true)];
+        assert!(store.replace_home_screen(&subset).unwrap().is_none());
+
+        // A full-length body with a duplicated id (and a missing one) — also not
+        // a permutation.
+        let dup = vec![
+            ("patient-browser".to_owned(), true),
+            ("api-view".to_owned(), true),
+            ("api-docs".to_owned(), true),
+            ("growth-chart".to_owned(), true),
+            ("medication-viewer".to_owned(), true),
+            ("api-view".to_owned(), true),
+        ];
+        assert!(store.replace_home_screen(&dup).unwrap().is_none());
+
+        // The registry order is untouched.
+        assert_eq!(
+            before,
+            ids_now(&store),
+            "a rejected body must not reorder anything"
+        );
+    }
+}

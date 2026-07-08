@@ -9,18 +9,18 @@
 //!
 //!  - **System** ([`domain::SystemApp`]) — launch URL from the compiled-in
 //!    [`SYSTEM_APPS`](domain::SYSTEM_APPS) list; no child row.
-//!  - **Self-hosted** ([`domain::SelfHostedAppRow`], the `self_hosted_apps` child)
+//!  - **Self-hosted** ([`domain::SelfHostedApp`], the `self_hosted_apps` child)
 //!    — a migration-seeded row (protected) or a runtime upload through
 //!    `POST /self-hosted-apps` (removable).
-//!  - **Cloud** ([`domain::CloudAppRow`], the `cloud_apps` child) — created /
+//!  - **Cloud** ([`domain::CloudApp`], the `cloud_apps` child) — created /
 //!    replaced / deleted through the cloud-admin surface.
 //!
 //! Layered like `tunnel-rust` and `gatekeeper-rust`:
 //!
-//!  - [`domain`] — pure types: [`domain::App`] (the parent row),
-//!    [`domain::AppListEntry`] (the `provenance`-discriminated `GET /apps` /
-//!    create / replace wire union), the internal child rows
-//!    [`domain::CloudAppRow`] / [`domain::SelfHostedAppRow`],
+//!  - [`domain`] — pure types: [`domain::App`] (one whole app — the parent-row
+//!    fields plus its [`domain::AppKind`] payload carrying the child-table
+//!    data), [`domain::AppListEntry`] (the `provenance`-discriminated
+//!    `GET /apps` / create / replace wire union, projected from `App`),
 //!    [`domain::SystemApp`], [`domain::Provenance`], and [`domain::AppUrl`] (the
 //!    write-side URL validator).
 //!  - [`db`] — the SQLite store ([`db::AppsStore`], serving the parent registry
@@ -56,7 +56,7 @@ use shared_structures_rust::tunnel_service::TunnelService;
 
 pub use config::AppsConfig;
 pub use db::AppsStore;
-pub use domain::SelfHostedAppRow;
+pub use domain::{App, AppKind, SelfHostedApp};
 pub use http::{AppsState, OwnerAuth};
 // Re-exported for the integration test crate; `#[deprecated]` is intentional.
 #[allow(deprecated)]
@@ -86,8 +86,9 @@ pub struct Apps {
     /// Shared handler state (the store, the loopback base URL, the owner-auth
     /// gate, the tunnel, the on-device webview seam).
     pub state: Arc<AppsState>,
-    /// The self-hosted catalogue the host binds loopback listeners for.
-    pub self_hosted_apps: Vec<SelfHostedAppRow>,
+    /// The self-hosted catalogue the host binds loopback listeners for — whole
+    /// [`App`]s whose kind is [`AppKind::SelfHosted`].
+    pub self_hosted_apps: Vec<App>,
 }
 
 impl Apps {

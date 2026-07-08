@@ -510,8 +510,12 @@ async fn run_server(
     // in each app's router — loopback callers get the loopback origin, forwarded
     // callers `https://<public_host>`.
     for app in &apps.self_hosted_apps {
-        if let Err(error) = self_hosted.start(app).await {
-            tauri_plugin_log::log::warn!("failed to start self-hosted app {}: {error}", app.id);
+        // The catalogue is self-hosted-only by construction; the `if let` just
+        // avoids a panic path on a store bug.
+        if let Some(self_hosted_app) = app.as_self_hosted() {
+            if let Err(error) = self_hosted.start(&app.id, self_hosted_app).await {
+                tauri_plugin_log::log::warn!("failed to start self-hosted app {}: {error}", app.id);
+            }
         }
     }
     // Hold the orchestrator for the process lifetime — dropping it would drop the

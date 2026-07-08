@@ -88,7 +88,7 @@ mod tests {
         state_with_tunnel, state_with_tunnel_and_handle, tunnel_at, tunnel_unavailable,
         tunnel_with_public_host,
     };
-    use crate::domain::{AppUrl, CloudAppRow};
+    use crate::domain::{AppUrl, CloudContent, NewCloudApp, NewSelfHostedUpload};
     use crate::http::state::AppsState;
 
     /// The served router (state applied per-call). Spec half of
@@ -170,14 +170,25 @@ mod tests {
             .unwrap()
     }
 
-    fn cloud(id: &str, url: AppUrl) -> CloudAppRow {
-        CloudAppRow {
+    fn cloud(id: &str, url: AppUrl) -> NewCloudApp {
+        NewCloudApp {
             id: id.to_owned(),
-            enabled: true,
-            name: id.to_owned(),
+            content: CloudContent {
+                name: id.to_owned(),
+                subtitle: None,
+                url,
+                requires_tunnel: false,
+            },
+        }
+    }
+
+    fn upload(name: &str, base_slug: &str, launch_path: Option<&str>) -> NewSelfHostedUpload {
+        NewSelfHostedUpload {
+            name: name.to_owned(),
             subtitle: None,
-            url,
-            requires_tunnel: false,
+            base_slug: base_slug.to_owned(),
+            reserved_ports: Vec::new(),
+            launch_path: launch_path.map(str::to_owned),
         }
     }
 
@@ -616,7 +627,7 @@ mod tests {
         let st = state_with_sink(Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>);
         // First insert lands at the base upload port (8082), no launcher yet.
         st.store
-            .insert_self_hosted_app("My App", None, "my-app", &[], None)
+            .insert_self_hosted_app(&upload("My App", "my-app", None))
             .unwrap()
             .expect("inserted");
 
@@ -659,13 +670,11 @@ mod tests {
         let handle = Arc::new(RecordingStubWebviewHandle::default());
         let st = state_with_sink(Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>);
         st.store
-            .insert_self_hosted_app(
+            .insert_self_hosted_app(&upload(
                 "My App",
-                None,
                 "my-app",
-                &[],
                 Some("/launch.html?launch={launch}&iss={origin}/fhir-r4"),
-            )
+            ))
             .unwrap()
             .expect("inserted");
 
@@ -697,7 +706,7 @@ mod tests {
     async fn replace_self_hosted_rejects_a_non_relative_launch_path() {
         let st = state();
         st.store
-            .insert_self_hosted_app("My App", None, "my-app", &[], None)
+            .insert_self_hosted_app(&upload("My App", "my-app", None))
             .unwrap()
             .expect("inserted");
         let (status, body) = send(

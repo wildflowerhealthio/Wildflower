@@ -35,7 +35,7 @@ use axum::response::{IntoResponse, Response};
 
 use shared_structures_rust::served_origin::{request_provenance, RequestProvenance};
 
-use crate::domain::{App, CloudAppRow, LaunchParams, Provenance, SelfHostedApp};
+use crate::domain::{App, AppKind, CloudApp, LaunchParams, SelfHostedApp};
 use crate::http::response_templates::{AppNotFoundBody, HandlerError, LaunchUnavailableBody};
 use crate::http::state::AppsState;
 use crate::id::mint_launch_nonce;
@@ -98,52 +98,24 @@ pub(crate) async fn handle_launch_app(
     }
 }
 
-/// Resolve `app` to its `(name, launch target)`, dispatching on the parent row's
-/// [`Provenance`]. The name is only for the loopback popup's chrome; the launch
-/// URL is the provenance-aware target. `503` if the matched app has no reachable
-/// target; `500` for a `system` row with no compiled-in source.
+/// Resolve `app` to its `(name, launch target)`, dispatching on its
+/// [`AppKind`] payload — the whole app came out of one store read, so the
+/// kind-specific launch data is already in hand (a `cloud` / `self-hosted` row
+/// whose child data is missing fails inside that read as a typed error, never
+/// here). The name is only for the loopback popup's chrome; the launch URL is
+/// the kind-aware target. `503` if the matched app has no reachable target;
+/// `500` for a `system` row with no compiled-in source.
 async fn resolve_launch_target(
     state: &AppsState,
     app: &App,
     provenance: &RequestProvenance,
 ) -> Result<(String, String), HandlerError> {
-    match app.provenance() {
-        Provenance::System => {
-            let target_url = render_system_target(state, app, provenance)?;
-            Ok((app.name.clone(), target_url))
-        }
-        Provenance::SelfHosted => {
-            let child = state
-                .store
-                .find_self_hosted_app(&app.id)
-                .map_err(|e| HandlerError::internal("self_hosted_apps find lookup failed", e))?
-                .ok_or_else(|| {
-                    // A `self-hosted` parent with no child row is a seed/schema
-                    // inconsistency, not a client error — surface it as a logged
-                    // 500 rather than a 404 (the parent exists).
-                    HandlerError::internal(
-                        "self-hosted parent has no child row",
-                        format!("id={}", app.id),
-                    )
-                })?;
-            let target_url = render_self_hosted_target(&child.payload(), state, provenance)?;
-            Ok((app.name.clone(), target_url))
-        }
-        Provenance::Cloud => {
-            let entry = state
-                .store
-                .find_cloud_app(&app.id)
-                .map_err(|e| HandlerError::internal("find_cloud_app lookup failed", e))?
-                .ok_or_else(|| {
-                    HandlerError::internal(
-                        "cloud parent has no child row",
-                        format!("id={}", app.id),
-                    )
-                })?;
-            let target_url = render_cloud_target(state, provenance, &entry).await?;
-            Ok((app.name.clone(), target_url))
-        }
-    }
+    let target_url = match &app.kind {
+        AppKind::System => render_system_target(state, app, provenance)?,
+        AppKind::SelfHosted(child) => render_self_hosted_target(child, state, provenance)?,
+        AppKind::Cloud(child) => render_cloud_target(state, provenance, child).await?,
+    };
+    Ok((app.name.clone(), target_url))
 }
 
 /// Render a system app's launch target from its compiled-in
@@ -215,7 +187,7 @@ fn render_self_hosted_target(
 async fn render_cloud_target(
     state: &AppsState,
     provenance: &RequestProvenance,
-    app: &CloudAppRow,
+    app: &CloudApp,
 ) -> Result<String, HandlerError> {
     let origin = resolve_origin(state, provenance, app.requires_tunnel).await?;
     let launch = mint_launch_nonce();

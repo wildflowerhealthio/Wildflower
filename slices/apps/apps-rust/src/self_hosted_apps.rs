@@ -28,7 +28,7 @@ use shared_structures_server_rust::{ProxyTable, ServerError, StaticHostJob, Stat
 use tower_http::cors::CorsLayer;
 use url::Url;
 
-use crate::domain::SelfHostedAppRow;
+use crate::domain::SelfHostedApp;
 
 /// Orchestrates the self-hosted apps' loopback listeners and reverse-proxy
 /// registrations. Constructed once by the host (held in scope for the process
@@ -85,8 +85,8 @@ impl SelfHostedAppsService {
         &self.apps_dir
     }
 
-    /// Bring `app` online: serve it on its loopback port and register it for
-    /// subdomain reverse-proxy.
+    /// Bring the app `id` online from its self-hosted payload: serve it on its
+    /// loopback port and register it for subdomain reverse-proxy.
     ///
     /// A bind failure (the port is already taken) is logged and tolerated — the
     /// proxy registration still happens, so a forwarded (relayed) request routes
@@ -96,9 +96,9 @@ impl SelfHostedAppsService {
     /// # Errors
     ///
     /// [`ServerError::LockPoisoned`] if a shared lock was poisoned.
-    pub async fn start(&self, app: &SelfHostedAppRow) -> Result<(), ServerError> {
+    pub async fn start(&self, id: &str, app: &SelfHostedApp) -> Result<(), ServerError> {
         let service = self_hosted_apps_rust::setup_self_hosted_app(
-            &app.id,
+            id,
             self.apps_dir.join(&app.content_folder),
             self.template_context.clone(),
         )
@@ -106,7 +106,7 @@ impl SelfHostedAppsService {
         if let Err(error) = self
             .static_hosts
             .start(StaticHostJob {
-                id: app.id.clone(),
+                id: id.to_owned(),
                 port: app.port,
                 service,
             })
@@ -118,7 +118,7 @@ impl SelfHostedAppsService {
                 ServerError::Bind { .. } => {
                     tracing::warn!(
                         %error,
-                        app = %app.id,
+                        app = %id,
                         "self-hosted app loopback bind failed; registering for reverse-proxy anyway",
                     );
                 }
@@ -259,8 +259,7 @@ mod tests {
                 public_host: "demo.example.com".to_owned(),
             }),
         );
-        let app = SelfHostedAppRow {
-            id: "patient-browser".to_owned(),
+        let app = SelfHostedApp {
             port,
             content_folder: "patient-browser".to_owned(),
             subdomain: "patient-browser".to_owned(),
@@ -268,7 +267,7 @@ mod tests {
             launch_path: None,
         };
 
-        service.start(&app).await.unwrap();
+        service.start("patient-browser", &app).await.unwrap();
 
         // Forwarded subdomain reverse-proxies to the served content — proves the
         // loopback listener is up (the proxy forwards to it) AND the proxy table
@@ -306,10 +305,20 @@ mod tests {
         use crate::db::AppsStore;
 
         let store = AppsStore::open_in_memory().unwrap();
-        let mut app = store
-            .insert_self_hosted_app("Uploaded App", None, "uploaded-app", &[], None)
+        let inserted = store
+            .insert_self_hosted_app(&crate::domain::NewSelfHostedUpload {
+                name: "Uploaded App".to_owned(),
+                subtitle: None,
+                base_slug: "uploaded-app".to_owned(),
+                reserved_ports: Vec::new(),
+                launch_path: None,
+            })
             .unwrap()
             .expect("inserted");
+        let mut app = inserted
+            .as_self_hosted()
+            .expect("self-hosted payload")
+            .clone();
         // Bind an OS-assigned free port rather than the store's deterministic
         // 8082 — this test asserts *real serving*, so it must not race any other
         // test (here or in the handler suite) that also binds 8082.
@@ -326,7 +335,7 @@ mod tests {
                 public_host: "demo.example.com".to_owned(),
             }),
         );
-        service.start(&app).await.unwrap();
+        service.start(&inserted.id, &app).await.unwrap();
 
         let res = proxy_router(table.clone())
             .oneshot(forwarded_request(&format!(

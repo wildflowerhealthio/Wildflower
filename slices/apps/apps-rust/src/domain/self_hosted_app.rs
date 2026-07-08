@@ -9,10 +9,6 @@
 //! the admin surface) and runtime uploads through the create surface
 //! (`seeded = false`, removable). The launch URL is rendered on demand via
 //! [`SelfHostedApp::launch_url`] / [`SelfHostedApp::subdomain_url`].
-//!
-//! `SelfHostedAppRow` is the legacy child-row materialization, superseded by
-//! `App` + `SelfHostedApp`; it disappears once the store writes speak whole
-//! apps.
 
 /// The `self_hosted_apps` child payload: a locally-served app's loopback
 /// binding and launch-render inputs.
@@ -92,41 +88,6 @@ impl SelfHostedApp {
         format!("{base}{template}")
             .replace("{origin}", served_origin)
             .replace("{launch}", launch_nonce)
-    }
-}
-
-/// A locally-served app's loopback binding. Legacy: superseded by
-/// [`App`](super::App) with an [`AppKind::SelfHosted`](super::AppKind::SelfHosted)
-/// payload.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SelfHostedAppRow {
-    /// Stable id, matching the parent registry row's id.
-    pub id: String,
-    /// See [`SelfHostedApp::port`].
-    pub port: u16,
-    /// See [`SelfHostedApp::content_folder`].
-    pub content_folder: String,
-    /// See [`SelfHostedApp::subdomain`].
-    pub subdomain: String,
-    /// See [`SelfHostedApp::seeded`].
-    pub seeded: bool,
-    /// See [`SelfHostedApp::launch_path`].
-    pub launch_path: Option<String>,
-}
-
-impl SelfHostedAppRow {
-    /// The row's kind payload — the same fields minus the `id`. Bridges the
-    /// legacy row shape onto the [`SelfHostedApp`] render helpers while both
-    /// exist.
-    #[must_use]
-    pub fn payload(&self) -> SelfHostedApp {
-        SelfHostedApp {
-            port: self.port,
-            content_folder: self.content_folder.clone(),
-            subdomain: self.subdomain.clone(),
-            seeded: self.seeded,
-            launch_path: self.launch_path.clone(),
-        }
     }
 }
 

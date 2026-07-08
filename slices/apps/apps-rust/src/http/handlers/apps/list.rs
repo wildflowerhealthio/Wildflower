@@ -25,9 +25,9 @@ use crate::http::state::AppsState;
 pub(crate) async fn handle_list_apps(
     State(state): State<Arc<AppsState>>,
 ) -> Result<Json<Vec<AppListEntry>>, HandlerError> {
-    let entries = state
+    let apps = state
         .store
-        .list_app_entries()
-        .map_err(|e| HandlerError::internal("list_app_entries lookup failed", e))?;
-    Ok(Json(entries))
+        .list_apps()
+        .map_err(|e| HandlerError::internal("list_apps lookup failed", e))?;
+    Ok(Json(apps.iter().map(AppListEntry::from).collect()))
 }

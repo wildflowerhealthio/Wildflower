@@ -12,7 +12,7 @@ use axum::Json;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-use crate::domain::{AppListEntry, AppUrl, CloudAppRow};
+use crate::domain::{AppListEntry, AppUrl, CloudContent, NewCloudApp};
 use crate::http::response_templates::{HandlerError, InvalidFieldBody};
 use crate::http::state::AppsState;
 use crate::id::mint_app_id;
@@ -56,39 +56,28 @@ pub(crate) async fn handle_create_app(
         .map_err(|e| HandlerError::InvalidUrl {
             message: e.to_string(),
         })?;
-    let app = CloudAppRow {
+    let new = NewCloudApp {
         id: mint_app_id(),
-        enabled: true,
-        name: body.name,
-        // Empty `""` clears the subtitle.
-        subtitle: body.subtitle.filter(|s| !s.is_empty()),
-        url,
-        requires_tunnel: body.requires_tunnel,
+        content: CloudContent {
+            name: body.name,
+            // Empty `""` clears the subtitle.
+            subtitle: body.subtitle.filter(|s| !s.is_empty()),
+            url,
+            requires_tunnel: body.requires_tunnel,
+        },
     };
-    let inserted = state
+    // The returned `App` was read back inside the insert's own transaction, so
+    // projecting it is exactly the `GET /apps` shape (correct computed
+    // `smart` / `removable`) with no second read.
+    let app = state
         .store
-        .insert_cloud_app(&app)
-        .map_err(|e| HandlerError::internal("insert_cloud_app failed", e))?;
-    if !inserted {
-        // 21-char random id collided — vanishingly unlikely, but surface it
-        // as a logged 500 rather than silently returning the existing row.
-        tracing::error!("app id collision on {}", app.id);
-        return Err(HandlerError::internal(
-            "insert_cloud_app id collision",
-            "id already exists",
-        ));
-    }
-    // Read back the exact `GET /apps` projection so the response can't drift from
-    // the catalogue shape (correct computed `smart` / `removable`).
-    let entry = state
-        .store
-        .find_app_entry(&app.id)
-        .map_err(|e| HandlerError::internal("find_app_entry after create failed", e))?
+        .insert_cloud_app(&new)
+        .map_err(|e| HandlerError::internal("insert_cloud_app failed", e))?
         .ok_or_else(|| {
-            HandlerError::internal(
-                "created cloud app vanished before read-back",
-                app.id.clone(),
-            )
+            // 21-char random id collided — vanishingly unlikely, but surface it
+            // as a logged 500 rather than silently returning the existing row.
+            tracing::error!("app id collision on {}", new.id);
+            HandlerError::internal("insert_cloud_app id collision", "id already exists")
         })?;
-    Ok(Json(entry))
+    Ok(Json(AppListEntry::from(&app)))
 }

@@ -27,7 +27,7 @@ use axum::Json;
 use serde::Deserialize;
 use utoipa::IntoParams;
 
-use crate::domain::AppListEntry;
+use crate::domain::{AppKind, AppListEntry, NewSelfHostedUpload};
 use crate::http::response_templates::{HandlerError, InvalidFieldBody};
 use crate::http::state::AppsState;
 use crate::id::mint_app_id;
@@ -98,14 +98,14 @@ pub(crate) async fn handle_create_self_hosted_app(
     };
 
     // The host's own loopback port is reserved so an upload never binds over it.
-    let reserved_ports: Vec<u16> = state.loopback_base_url.port().into_iter().collect();
-    let app = match state.store.insert_self_hosted_app(
-        &params.name,
-        None,
-        &slug,
-        &reserved_ports,
-        launch_path.as_deref(),
-    ) {
+    let upload = NewSelfHostedUpload {
+        name: params.name.clone(),
+        subtitle: None,
+        base_slug: slug,
+        reserved_ports: state.loopback_base_url.port().into_iter().collect(),
+        launch_path,
+    };
+    let app = match state.store.insert_self_hosted_app(&upload) {
         Ok(Some(app)) => app,
         Ok(None) => {
             remove_staging(&staging);
@@ -121,12 +121,20 @@ pub(crate) async fn handle_create_self_hosted_app(
             ));
         }
     };
+    // The insert just built this app as self-hosted; anything else is a store
+    // bug surfaced as a logged 500, never a panic.
+    let AppKind::SelfHosted(child) = &app.kind else {
+        return Err(HandlerError::internal(
+            "insert_self_hosted_app returned a non-self-hosted app",
+            app.id,
+        ));
+    };
 
     // Move the staged files into their serving location. On failure, roll the
     // row back so the registry never lists an app whose files aren't present.
-    let dest = apps_dir.join(&app.content_folder);
+    let dest = apps_dir.join(&child.content_folder);
     if let Err(error) = std::fs::rename(&staging, &dest) {
-        if let Err(rollback) = state.store.delete_self_hosted_app(&app.id) {
+        if let Err(rollback) = state.store.delete_app(&app.id) {
             tracing::error!(%rollback, app = %app.id, "failed to roll back a self-hosted row after a rename failure");
         }
         remove_staging(&staging);
@@ -139,23 +147,14 @@ pub(crate) async fn handle_create_self_hosted_app(
     // Bring it online now — but a bind failure here must NOT fail the request:
     // the row is committed and the files are in place, so the app comes up on
     // the next restart regardless.
-    if let Err(error) = state.self_hosted.start(&app).await {
+    if let Err(error) = state.self_hosted.start(&app.id, child).await {
         tracing::warn!(%error, app = %app.id, "installed self-hosted app failed to start; it will come up on restart");
     }
 
-    // Read back the exact `GET /apps` projection (the self-hosted variant, with
-    // the install-inferred `launchPath`) so the response can't drift.
-    let entry = state
-        .store
-        .find_app_entry(&app.id)
-        .map_err(|e| HandlerError::internal("find_app_entry after install failed", e))?
-        .ok_or_else(|| {
-            HandlerError::internal(
-                "installed self-hosted app vanished before read-back",
-                app.id,
-            )
-        })?;
-    Ok(Json(entry))
+    // The returned `App` was read back inside the insert's own transaction, so
+    // projecting it is exactly the `GET /apps` shape (the self-hosted variant,
+    // with the install-inferred `launchPath`).
+    Ok(Json(AppListEntry::from(&app)))
 }
 
 /// Map an extraction failure to the wire error: a disk-write failure is our

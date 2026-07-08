@@ -17,7 +17,7 @@ use axum::Json;
 use serde::Serialize;
 use utoipa::ToSchema;
 
-use crate::domain::Provenance;
+use crate::domain::{AppKind, SelfHostedApp};
 use crate::http::response_templates::{AppNotEditableBody, AppNotFoundBody, HandlerError};
 use crate::http::state::AppsState;
 
@@ -42,47 +42,48 @@ pub(crate) async fn handle_delete_app(
     State(state): State<Arc<AppsState>>,
     Path(id): Path<String>,
 ) -> Result<Json<DeletedBody>, HandlerError> {
-    let parent = state
+    let app = state
         .store
         .find_app(&id)
         .map_err(|e| HandlerError::internal("find_app lookup failed", e))?
         .ok_or_else(|| HandlerError::NotFound { id: id.clone() })?;
 
-    match parent.provenance() {
-        Provenance::Cloud => {
-            let deleted = state
-                .store
-                .delete_app(&id)
-                .map_err(|e| HandlerError::internal("delete_app failed", e))?;
-            if !deleted {
-                // Read under the same connection — the row can't have vanished;
-                // a logged 500, not a misleading 404.
-                return Err(HandlerError::internal(
-                    "row vanished between find_app and delete_app",
-                    format!("id={id}"),
-                ));
-            }
+    match &app.kind {
+        AppKind::Cloud(_) => {
+            delete_row(&state, &id)?;
             Ok(Json(DeletedBody { deleted: true }))
         }
-        Provenance::SelfHosted => delete_self_hosted(&state, &id).await,
+        AppKind::SelfHosted(child) => delete_self_hosted(&state, &id, child),
         // System apps have no child row and are not user-removable.
-        Provenance::System => Err(HandlerError::NotEditable { id }),
+        AppKind::System => Err(HandlerError::NotEditable { id }),
     }
 }
 
+/// Delete the app's rows (parent + CASCADEd child), mapping "nothing deleted"
+/// to a logged 500 — the row was just read under the same connection, so it
+/// can't have vanished; never a misleading 404.
+fn delete_row(state: &AppsState, id: &str) -> Result<(), HandlerError> {
+    let deleted = state
+        .store
+        .delete_app(id)
+        .map_err(|e| HandlerError::internal("delete_app failed", e))?;
+    if !deleted {
+        return Err(HandlerError::internal(
+            "row vanished between find_app and delete_app",
+            format!("id={id}"),
+        ));
+    }
+    Ok(())
+}
+
 /// The self-hosted arm: seeded rows are protected, uploaded rows are torn down
-/// (listener stopped, rows deleted, files removed best-effort).
-async fn delete_self_hosted(
+/// (listener stopped, rows deleted, files removed best-effort). The `child`
+/// payload came off the already-loaded app — no second lookup.
+fn delete_self_hosted(
     state: &Arc<AppsState>,
     id: &str,
+    child: &SelfHostedApp,
 ) -> Result<Json<DeletedBody>, HandlerError> {
-    let child = state
-        .store
-        .find_self_hosted_app(id)
-        .map_err(|e| HandlerError::internal("find_self_hosted_app lookup failed", e))?
-        .ok_or_else(|| {
-            HandlerError::internal("self-hosted parent has no child row", format!("id={id}"))
-        })?;
     if child.seeded {
         // A migration-seeded app (patient-browser) is read-only, same 409 as
         // before this route learned to delete uploads.
@@ -95,16 +96,7 @@ async fn delete_self_hosted(
         tracing::warn!(%error, app = %id, "failed to stop an uploaded self-hosted app before delete");
     }
 
-    let deleted = state
-        .store
-        .delete_self_hosted_app(id)
-        .map_err(|e| HandlerError::internal("delete_self_hosted_app failed", e))?;
-    if !deleted {
-        return Err(HandlerError::internal(
-            "row vanished between find_self_hosted_app and delete_self_hosted_app",
-            format!("id={id}"),
-        ));
-    }
+    delete_row(state, id)?;
 
     // Best-effort file removal — the row is already gone, so a leftover folder is
     // harmless (it 404s until a same-slug reinstall overwrites it).

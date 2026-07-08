@@ -134,7 +134,7 @@ async fn self_hosted_apps_catalogue_is_materialized() {
         .iter()
         .find(|a| a.id == "patient-browser")
         .expect("patient-browser is self-hosted");
-    assert_eq!(pb.port, 8081);
+    assert_eq!(pb.as_self_hosted().expect("self-hosted payload").port, 8081,);
 }
 
 /// A cloud app created through the admin surface shows up immediately in the
