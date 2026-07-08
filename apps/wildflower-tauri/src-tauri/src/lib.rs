@@ -509,7 +509,7 @@ async fn run_server(
     // API origin + tunnel feed the per-request template rendering (`apiOrigin`)
     // in each app's router — loopback callers get the loopback origin, forwarded
     // callers `https://<public_host>`.
-    for app in &apps.self_hosted_apps {
+    for app in &apps.self_hosted_apps_at_start {
         // The catalogue is self-hosted-only by construction; the `if let` just
         // avoids a panic path on a store bug.
         if let Some(self_hosted_app) = app.as_self_hosted() {

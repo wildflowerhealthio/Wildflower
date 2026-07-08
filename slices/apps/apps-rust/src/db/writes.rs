@@ -264,12 +264,12 @@ impl AppsStore {
             rows.collect::<rusqlite::Result<HashSet<String>>>()?
         };
         let body_ids: HashSet<&str> = entries.iter().map(|(id, _)| id.as_str()).collect();
-        let id_set_changed = entries.len() != current_ids.len()
+        let id_set_changed_since_submission = entries.len() != current_ids.len()
             || body_ids.len() != entries.len()
             || body_ids
                 .iter()
                 .any(|body_id| !current_ids.contains(*body_id));
-        if id_set_changed {
+        if id_set_changed_since_submission {
             // Drop the transaction without committing (rolls back); nothing was
             // written. The handler turns `None` into `400 InvalidHomeScreen`.
             return Ok(None);
@@ -333,11 +333,15 @@ fn slug_candidate(base: &str, attempt: u32) -> String {
     format!("{head}{suffix}")
 }
 
-/// The **lowest** free loopback port in `MIN_UPLOAD_PORT..=max_port`, skipping
-/// taken rows and `reserved_ports` (the host loopback port). Reusing freed
-/// ports (rather than `MAX(port) + 1`) keeps a delete → same-bundle-reinstall
-/// cycle on its original port where possible — a SMART-on-FHIR origin-stability
-/// property. `None` when the whole range is taken (unreachable in practice —
+/// The **lowest** *unallocated* loopback port in `MIN_UPLOAD_PORT..=max_port`,
+/// skipping ports already handed to other rows and `reserved_ports` (the host
+/// loopback port). "Unallocated" means only that we haven't assigned it to an
+/// app — it is not a liveness check, so the OS may still have the port in use
+/// by some unrelated process; binding is what ultimately proves it free.
+/// Reusing released ports (rather than `MAX(port) + 1`) keeps a delete →
+/// same-bundle-reinstall cycle on its original port where possible — a
+/// SMART-on-FHIR origin-stability property. `None` when the whole range is
+/// allocated (unreachable in practice —
 /// it needs tens of thousands of installed apps; `max_port` is parameterized
 /// only so tests can exercise exhaustion). Computed on the open transaction so
 /// it can't race a concurrent insert.

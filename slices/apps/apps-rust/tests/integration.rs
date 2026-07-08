@@ -130,7 +130,7 @@ async fn fresh_install_lists_the_default_set() {
 async fn self_hosted_apps_catalogue_is_materialized() {
     let apps = spin_up();
     let pb = apps
-        .self_hosted_apps
+        .self_hosted_apps_at_start
         .iter()
         .find(|a| a.id == "patient-browser")
         .expect("patient-browser is self-hosted");

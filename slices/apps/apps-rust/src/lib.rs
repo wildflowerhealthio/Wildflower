@@ -72,7 +72,7 @@ pub use shared_structures_rust::OnDeviceWebviewHandle;
 /// [`Self::launch_router`] under only its network (loopback-peer) gate — the
 /// launch handler owner-gates the loopback popup internally, while a forwarded
 /// launch rides the front trust boundary (the bearer gate can't exempt the
-/// parameterized launch path, so the two are split). [`Self::self_hosted_apps`]
+/// parameterized launch path, so the two are split). [`Self::self_hosted_apps_at_start`]
 /// is the catalogue the host iterates to bind a loopback listener per self-hosted
 /// app at startup (both migration-seeded and previously-uploaded rows).
 pub struct Apps {
@@ -88,7 +88,7 @@ pub struct Apps {
     pub state: Arc<AppsState>,
     /// The self-hosted catalogue the host binds loopback listeners for — whole
     /// [`App`]s whose kind is [`AppKind::SelfHosted`].
-    pub self_hosted_apps: Vec<App>,
+    pub self_hosted_apps_at_start: Vec<App>,
 }
 
 impl Apps {
@@ -148,6 +148,6 @@ pub fn setup_apps(
         gated_router: http::gated_router(Arc::clone(&state)),
         launch_router: http::launch_router(Arc::clone(&state)),
         state,
-        self_hosted_apps,
+        self_hosted_apps_at_start: self_hosted_apps,
     })
 }
