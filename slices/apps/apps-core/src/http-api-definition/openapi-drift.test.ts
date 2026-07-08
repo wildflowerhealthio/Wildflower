@@ -63,35 +63,22 @@ defineSpecDriftTest({
     ['/apps', 'post'],
     ['/apps/{id}', 'put'],
     ['/apps/{id}', 'delete'],
-    ['/self-hosted-apps', 'post'],
     ['/home-screen', 'put'],
   ],
-  /**
-   * `post /self-hosted-apps` (CreateSelfHostedApp) uploads a raw zip. utoipa
-   * renders the Rust `Vec<u8>` body as `{type:'array',items:{type:'integer'}}`,
-   * while Effect's `withEncoding({ kind: 'Uint8Array' })` emits
-   * `{type:'string',format:'binary'}` — the two normalize to different wire
-   * shapes (`integer[]` vs `string`) that can never compare equal, though both
-   * describe the same raw bytes on the wire. Its `name` query param and its
-   * `200`/`400` responses are still compared; the request body is pinned by the
-   * focused test below instead.
-   */
-  requestsNotCompared: new Set<string>(['post /self-hosted-apps']),
 })
 
-describe('CreateSelfHostedApp request body', () => {
-  // The drift guard skips this operation's request body (utoipa's `Vec<u8>`
-  // can't normalize equal to Effect's binary encoding — see the scope above),
-  // so pin the client-side shape directly: the body must stay a raw
-  // `application/zip` Uint8Array upload. This guards against a future edit
-  // silently swapping it to JSON (which the loopback client would then send
-  // with the wrong content type, and the Rust `Bytes` reader would reject).
-  test('is a raw application/zip binary body, not JSON', () => {
+describe('CreateApp request body', () => {
+  // `POST /apps` is the merged create route: a `multipart/form-data` form
+  // discriminated on `provenance`, carrying the self-hosted `bundle` as a file
+  // part. Pin the client-side wire contract so a future edit can't silently
+  // swap it back to JSON (which would break the upload) or drop the file part.
+  test('is a multipart/form-data body with a binary bundle field', () => {
     const spec = OpenApi.fromApi(AppsAdminApi)
-    const content = spec.paths['/self-hosted-apps']?.post?.requestBody?.content ?? {}
-    // `application/zip` isn't in Effect's typed content-type union, so read the
-    // sole media type positionally rather than by literal key.
-    expect(Object.keys(content)).toEqual(['application/zip'])
-    expect(Object.values(content)[0]?.schema).toMatchObject({ type: 'string', format: 'binary' })
+    const content = spec.paths['/apps']?.post?.requestBody?.content ?? {}
+    expect(Object.keys(content)).toEqual(['multipart/form-data'])
+    expect(Object.values(content)[0]?.schema).toMatchObject({
+      type: 'object',
+      properties: { bundle: { type: 'string', format: 'binary' } },
+    })
   })
 })

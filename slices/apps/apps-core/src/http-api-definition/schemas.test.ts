@@ -10,12 +10,10 @@ import {
   AppNotFoundSchema,
   AppUrlSchema,
   CreateAppBodySchema,
-  CreateSelfHostedAppUrlParamsSchema,
   HomeScreenSchema,
   InvalidFieldSchema,
   InvalidHomeScreenSchema,
   ProvenanceSchema,
-  ZipPayloadSchema,
 } from './schemas.ts'
 
 const PROVENANCES = ['system', 'self-hosted', 'cloud'] as const
@@ -105,31 +103,59 @@ describe('AppUrlSchema', () => {
 })
 
 describe('CreateAppBodySchema', () => {
-  it('accepts a well-formed body', () => {
-    const body = {
-      name: 'My App',
-      url: 'https://example.com',
-      requiresTunnel: false,
-    }
-    expectRightToEqual(Schema.decodeUnknownEither(CreateAppBodySchema)(body), body)
+  // A `multipart/form-data` body: fields cross the wire as text (so
+  // `requiresTunnel` is `"true"` / `"false"`), and `provenance` discriminates.
+  // The kind-specific fields are schema-optional — the server enforces which are
+  // required per kind — so these tests exercise the field-level constraints, not
+  // per-kind presence.
+  it('accepts a well-formed cloud body (requiresTunnel decodes from text)', () => {
+    expectRightToEqual(
+      Schema.decodeUnknownEither(CreateAppBodySchema)({
+        provenance: 'cloud',
+        name: 'My App',
+        url: 'https://example.com',
+        requiresTunnel: 'false',
+      }),
+      { provenance: 'cloud', name: 'My App', url: 'https://example.com', requiresTunnel: false }
+    )
+  })
+
+  it('accepts a self-hosted body without a bundle (server enforces its presence)', () => {
+    expectRightToEqual(
+      Schema.decodeUnknownEither(CreateAppBodySchema)({
+        provenance: 'self-hosted',
+        name: 'Uploaded App',
+      }),
+      { provenance: 'self-hosted', name: 'Uploaded App' }
+    )
+  })
+
+  it('rejects an unknown provenance', () => {
+    expectLeftToEqual(
+      Schema.decodeUnknownEither(CreateAppBodySchema)({ provenance: 'system', name: 'X' }),
+      expect.objectContaining({ _tag: 'ParseError' })
+    )
   })
 
   it('rejects an empty name', () => {
     expectLeftToEqual(
       Schema.decodeUnknownEither(CreateAppBodySchema)({
+        provenance: 'cloud',
         name: '',
         url: 'https://example.com',
-        requiresTunnel: false,
+        requiresTunnel: 'false',
       }),
       expect.objectContaining({ _tag: 'ParseError' })
     )
   })
 
-  it('rejects bodies missing url', () => {
+  it('rejects a non-boolean requiresTunnel text', () => {
     expectLeftToEqual(
       Schema.decodeUnknownEither(CreateAppBodySchema)({
+        provenance: 'cloud',
         name: 'X',
-        requiresTunnel: false,
+        url: 'https://example.com',
+        requiresTunnel: 'yes',
       }),
       expect.objectContaining({ _tag: 'ParseError' })
     )
@@ -138,9 +164,10 @@ describe('CreateAppBodySchema', () => {
   it('rejects a malformed url', () => {
     expectLeftToEqual(
       Schema.decodeUnknownEither(CreateAppBodySchema)({
+        provenance: 'cloud',
         name: 'X',
         url: 'javascript:alert(1)',
-        requiresTunnel: false,
+        requiresTunnel: 'false',
       }),
       expect.objectContaining({ _tag: 'ParseError' })
     )
@@ -149,8 +176,22 @@ describe('CreateAppBodySchema', () => {
   // The write side accepts `""` (which the read schema rejects); the server
   // normalizes it to "no subtitle" so it never round-trips back as `""`.
   it('accepts an empty-string subtitle (server clears it)', () => {
-    const body = { name: 'X', url: 'https://example.com', requiresTunnel: false, subtitle: '' }
-    expectRightToEqual(Schema.decodeUnknownEither(CreateAppBodySchema)(body), body)
+    expectRightToEqual(
+      Schema.decodeUnknownEither(CreateAppBodySchema)({
+        provenance: 'cloud',
+        name: 'X',
+        url: 'https://example.com',
+        requiresTunnel: 'false',
+        subtitle: '',
+      }),
+      {
+        provenance: 'cloud',
+        name: 'X',
+        url: 'https://example.com',
+        requiresTunnel: false,
+        subtitle: '',
+      }
+    )
   })
 })
 
@@ -310,46 +351,6 @@ describe('AppListEntrySchema', () => {
         requiresTunnel: false,
         enabled: true,
       }),
-      expect.objectContaining({ _tag: 'ParseError' })
-    )
-  })
-})
-
-describe('CreateSelfHostedAppUrlParamsSchema', () => {
-  it('accepts a non-empty name', () => {
-    expectRightToEqual(
-      Schema.decodeUnknownEither(CreateSelfHostedAppUrlParamsSchema)({ name: 'Patient Browser' }),
-      { name: 'Patient Browser' }
-    )
-  })
-
-  it('rejects an empty name', () => {
-    expectLeftToEqual(
-      Schema.decodeUnknownEither(CreateSelfHostedAppUrlParamsSchema)({ name: '' }),
-      expect.objectContaining({ _tag: 'ParseError' })
-    )
-  })
-
-  it('rejects a body missing name', () => {
-    expectLeftToEqual(
-      Schema.decodeUnknownEither(CreateSelfHostedAppUrlParamsSchema)({}),
-      expect.objectContaining({ _tag: 'ParseError' })
-    )
-  })
-})
-
-describe('ZipPayloadSchema', () => {
-  it('decodes a Uint8Array of zip bytes to itself', () => {
-    fc.assert(
-      fc.property(fc.uint8Array(), (bytes) => {
-        expectRightToEqual(Schema.decodeUnknownEither(ZipPayloadSchema)(bytes), bytes)
-      })
-    )
-  })
-
-  it('rejects a non-Uint8Array payload', () => {
-    expectLeftToEqual(
-      Schema.decodeUnknownEither(ZipPayloadSchema)([1, 2, 3]),
       expect.objectContaining({ _tag: 'ParseError' })
     )
   })

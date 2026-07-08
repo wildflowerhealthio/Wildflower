@@ -8,11 +8,9 @@ import {
   AppNotEditableSchema,
   AppNotFoundSchema,
   CreateAppBodySchema,
-  CreateSelfHostedAppUrlParamsSchema,
   HomeScreenSchema,
   InvalidFieldSchema,
   InvalidHomeScreenSchema,
-  ZipPayloadSchema,
 } from './schemas.ts'
 
 /**
@@ -21,16 +19,22 @@ import {
  * applies `RequireAuthMiddleware` when adding `AppsAdminApi` to its
  * root `HttpApi`. Slice cores stay free of auth dependencies.
  *
- * Create / replace / delete: `POST /apps` creates a cloud app; `PUT /apps/:id`
- * replaces an editable app's content (cloud or self-hosted, keyed on the body's
- * provenance); `DELETE /apps/:id` removes it. A system app, a seeded self-hosted
- * app, or a provenance mismatch is `409 AppNotEditable`, an unknown id `404`, a
- * bad name/url `400 InvalidField`. Every one of these responses is the
- * `provenance`-discriminated {@link AppListEntrySchema}. `PUT /home-screen` is
- * the exception — it atomically reorders / enables **every** provenance.
+ * Create / replace / delete: `POST /apps` creates an app — cloud or self-hosted,
+ * keyed on the `multipart/form-data` body's `provenance` (self-hosted carries the
+ * uploaded `bundle`); `PUT /apps/:id` replaces an editable app's content (cloud or
+ * self-hosted, keyed on the body's provenance); `DELETE /apps/:id` removes it. A
+ * system app, a seeded self-hosted app, or a provenance mismatch is `409
+ * AppNotEditable`, an unknown id `404`, a bad name/url/bundle `400 InvalidField`.
+ * Every one of these responses is the `provenance`-discriminated
+ * {@link AppListEntrySchema}. `PUT /home-screen` is the exception — it atomically
+ * reorders / enables **every** provenance.
  */
 const httpApiGroup = HttpApiGroup.make('apps-admin', { topLevel: false })
   .add(
+    // Create a cloud or self-hosted app. The body is `multipart/form-data`
+    // ({@link CreateAppBodySchema}) discriminated on `provenance`: cloud carries
+    // name/url/requiresTunnel, self-hosted carries name + the uploaded `bundle`.
+    // A multipart endpoint's typed client payload is a `FormData` instance.
     HttpApiEndpoint.post('CreateApp', '/apps')
       .setPayload(CreateAppBodySchema)
       .addSuccess(AppListEntrySchema)
@@ -55,19 +59,6 @@ const httpApiGroup = HttpApiGroup.make('apps-admin', { topLevel: false })
       .addSuccess(Schema.Struct({ deleted: Schema.Boolean }))
       .addError(AppNotFoundSchema, { status: 404 })
       .addError(AppNotEditableSchema, { status: 409 })
-  )
-  .add(
-    // Install an uploaded zip bundle as a new self-hosted app. Deliberately
-    // `/self-hosted-apps` (not `/apps/self-hosted`) so it can't shadow the
-    // ungated `POST /apps/{id}` launch route. The `name` query param is slugged
-    // server-side into the id/subdomain; the raw `application/zip` body carries
-    // the app's static files. A bad name or unusable bundle is a `400
-    // InvalidField` (`InvalidName` / `InvalidZip`).
-    HttpApiEndpoint.post('CreateSelfHostedApp', '/self-hosted-apps')
-      .setUrlParams(CreateSelfHostedAppUrlParamsSchema)
-      .setPayload(ZipPayloadSchema)
-      .addSuccess(AppListEntrySchema)
-      .addError(InvalidFieldSchema, { status: 400 })
   )
   .add(
     // The full ordered homescreen (all provenances), distinct from the cloud-only

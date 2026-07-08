@@ -1,4 +1,4 @@
-import { HttpApiSchema } from '@effect/platform'
+import { HttpApiSchema, Multipart } from '@effect/platform'
 import { Schema } from 'effect'
 
 /**
@@ -172,18 +172,50 @@ const InvalidFieldSchema = Schema.Struct({
 })
 
 /**
- * Body for `CreateApp` (cloud create). `name` is required-non-empty; `url` must
- * pass {@link AppUrlSchema}. These write-side checks close the open-redirect
- * surface a launch-time validator alone can't cover (a bad URL never reaches the
- * row).
+ * The `requiresTunnel` multipart field. `multipart/form-data` fields cross the
+ * wire as text, so it arrives as `"true"` / `"false"` and decodes to a boolean.
  */
-const CreateAppBodySchema = Schema.Struct({
-  name: Schema.NonEmptyString,
-  url: AppUrlSchema,
-  requiresTunnel: Schema.Boolean,
-  // Looser than the read schemas (non-empty): empty `""` clears the subtitle.
-  subtitle: Schema.optional(Schema.String),
-})
+const RequiresTunnelFieldSchema = Schema.transform(
+  Schema.Literal('true', 'false'),
+  Schema.Boolean,
+  {
+    strict: true,
+    decode: (text) => text === 'true',
+    encode: (flag): 'true' | 'false' => (flag ? 'true' : 'false'),
+  }
+)
+
+/**
+ * Body for `CreateApp` (`POST /apps`) — a **`multipart/form-data`** form, so the
+ * single create route carries both a cloud app's fields and a self-hosted app's
+ * uploaded bundle. `provenance` discriminates the arms (mirroring the
+ * `PUT /apps/:id` replace union):
+ *
+ *   - **cloud** — `name` + `url` (through {@link AppUrlSchema}) + `requiresTunnel`
+ *     (the form field is the text `"true"` / `"false"`), optional `subtitle`;
+ *   - **self-hosted** — `name`, optional `subtitle`, and `bundle`: the app's
+ *     static files as a single uploaded file part (a zip).
+ *
+ * The kind-specific fields are schema-optional because a `multipart` body is
+ * stringly-typed and the typed client sends an opaque `FormData` anyway (a
+ * multipart endpoint's client payload is a `FormData` instance, not a
+ * schema-shaped object). The server requires the right fields per `provenance`
+ * and answers `400 InvalidField` otherwise; this schema shapes the wire +
+ * OpenAPI contract, not a client-constructed object.
+ */
+const CreateAppBodySchema = HttpApiSchema.Multipart(
+  Schema.Struct({
+    provenance: Schema.Literal('cloud', 'self-hosted'),
+    name: Schema.NonEmptyString,
+    // Looser than the read schemas (non-empty): empty `""` clears the subtitle.
+    subtitle: Schema.optional(Schema.String),
+    // Cloud-only.
+    url: Schema.optional(AppUrlSchema),
+    requiresTunnel: Schema.optional(RequiresTunnelFieldSchema),
+    // Self-hosted-only: the uploaded zip bundle.
+    bundle: Schema.optional(Multipart.FileSchema),
+  })
+)
 
 /**
  * Full-replace content for a **cloud** app (`PUT /apps/:id`). `name` / `url`
@@ -227,28 +259,6 @@ const InvalidHomeScreenSchema = Schema.Struct({
   message: Schema.String,
 })
 
-/**
- * Query params for `CreateSelfHostedApp` (`POST /self-hosted-apps`). The human
- * `name` is required-non-empty; the server slugs it into the app's id/subdomain
- * (auto-suffixing on a slug clash). Mirrors the Rust handler's `?name=` param.
- */
-const CreateSelfHostedAppUrlParamsSchema = Schema.Struct({
-  name: Schema.NonEmptyString,
-})
-
-/**
- * Request body for `CreateSelfHostedApp`: the app's static files as a raw zip
- * archive. `withEncoding({ kind: 'Uint8Array', contentType: 'application/zip' })`
- * sends the bytes verbatim (no JSON/base64 wrapping) under an `application/zip`
- * content type, matching the Rust handler's `axum::body::Bytes` reader. The
- * OpenAPI drift guard can't compare this body against utoipa's `Vec<u8>`
- * rendering, so it's excluded via `requestsNotCompared` and pinned by a focused
- * test — see `openapi-drift.test.ts`.
- */
-const ZipPayloadSchema = Schema.Uint8ArrayFromSelf.pipe(
-  HttpApiSchema.withEncoding({ kind: 'Uint8Array', contentType: 'application/zip' })
-)
-
 export {
   AppContentBodySchema,
   AppIdPathSchema,
@@ -259,7 +269,6 @@ export {
   AppUrlSchema,
   CloudAppListEntrySchema,
   CreateAppBodySchema,
-  CreateSelfHostedAppUrlParamsSchema,
   HomeScreenEntrySchema,
   HomeScreenSchema,
   InvalidFieldSchema,
@@ -268,5 +277,4 @@ export {
   ProvenanceSchema,
   SelfHostedAppListEntrySchema,
   SystemAppListEntrySchema,
-  ZipPayloadSchema,
 }
