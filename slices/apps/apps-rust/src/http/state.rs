@@ -9,6 +9,7 @@ use shared_structures_rust::tunnel_service::TunnelService;
 use url::Url;
 
 use crate::db::AppsStore;
+use crate::http::launch_cookies::LaunchCookies;
 use crate::http::owner_auth::OwnerAuth;
 use crate::self_hosted_apps::SelfHostedAppsService;
 use crate::OnDeviceWebviewHandle;
@@ -41,6 +42,10 @@ pub struct AppsState {
     /// [`apps_dir`](SelfHostedAppsService::apps_dir) and `start`s a freshly
     /// installed app; the delete handler `stop`s a removed one.
     pub(crate) self_hosted: Arc<SelfHostedAppsService>,
+    /// Re-scopes the caller's owner session onto a **forwarded self-hosted** app's
+    /// public host (see [`LaunchCookies`]). The host wires the gatekeeper cookie
+    /// builder; a host with no cookie-auth path wires a no-op.
+    pub(crate) launch_cookies: Arc<dyn LaunchCookies>,
 }
 
 impl AppsState {
@@ -52,6 +57,7 @@ impl AppsState {
         tunnel: Arc<dyn TunnelService>,
         webview_handle: Arc<dyn OnDeviceWebviewHandle>,
         self_hosted: Arc<SelfHostedAppsService>,
+        launch_cookies: Arc<dyn LaunchCookies>,
     ) -> Self {
         Self {
             store,
@@ -60,6 +66,7 @@ impl AppsState {
             tunnel,
             on_device_webview_handle: webview_handle,
             self_hosted,
+            launch_cookies,
         }
     }
 

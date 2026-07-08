@@ -1,8 +1,9 @@
 //! URL/path builders for the gatekeeper's user-facing webview pages (the
 //! `/gatekeeper/*` routes the host app renders). The `*_path` helpers return
 //! the origin-relative path; the `*_url` helpers prepend a caller-supplied
-//! origin (typically the per-request [`served_origin_for`](crate::http::served_origin_for)
-//! value) to produce an absolute URL for redirects and consent links.
+//! origin (typically the per-request served origin the
+//! [`served_base_url_for`](crate::http::served_base_url_for) resolver feeds) to
+//! produce an absolute URL for redirects and consent links.
 
 use url::form_urlencoded;
 

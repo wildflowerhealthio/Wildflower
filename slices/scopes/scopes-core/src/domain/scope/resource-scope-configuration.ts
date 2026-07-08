@@ -1,5 +1,5 @@
 /**
- * The {@link ScopeConfiguration} — the construction recipe for one *concrete*
+ * The {@link ResourceScopeConfiguration} — the construction recipe for one *concrete*
  * resource-scope variant, plus the **partition operations** parameterized by it:
  * resolution (`spec.md §3`), editing, and serialization. A recipe is a *value* (held
  * as `Variant.configuration`) so callers pass it rather than branching on
@@ -16,9 +16,9 @@
 
 import { Equal } from 'effect'
 
-import type * as Contexts from './contexts'
-import type * as Permission from './permission'
-import type * as ResourceType from './resource-type'
+import type * as Contexts from './contexts/index.ts'
+import type * as Permission from './permission/index.ts'
+import type * as ResourceType from './resource-type/index.ts'
 import { BaseScope } from './scope.ts'
 
 /**
@@ -30,7 +30,7 @@ import { BaseScope } from './scope.ts'
  * `Permission.Base<TInteraction>` directly — never the `Cruds | ReadWrite` union, so
  * nothing collapses.
  */
-class ScopeConfiguration<
+class ResourceScopeConfiguration<
   TContext extends Contexts.Context,
   TResourceType extends ResourceType.Base,
   TInteraction extends string,
@@ -61,7 +61,9 @@ class ScopeConfiguration<
 
   readonly Instance
 
-  constructor(recipe: ScopeConfiguration.Recipe<TContext, TResourceType, TInteraction, TId>) {
+  constructor(
+    recipe: ResourceScopeConfiguration.Recipe<TContext, TResourceType, TInteraction, TId>
+  ) {
     this.id = recipe.id
     this.permissionClass = recipe.permissionClass
     this.resourceClass = recipe.resourceClass
@@ -89,7 +91,7 @@ class ScopeConfiguration<
         this.permission = permission
       }
 
-      static readonly configuration: ScopeConfiguration<
+      static readonly configuration: ResourceScopeConfiguration<
         TContext,
         TResourceType,
         TInteraction,
@@ -118,12 +120,12 @@ class ScopeConfiguration<
     itemId: TInteraction
   ): readonly BaseResourceScope<TContext, TResourceType, TInteraction, TId>[] {
     if (
-      !ScopeConfiguration.scopesGrantInteraction<TContext, TResourceType, TInteraction, TId>(
-        owned,
-        context,
-        resource,
-        itemId
-      ).grantedAtOwnResource
+      !ResourceScopeConfiguration.scopesGrantInteraction<
+        TContext,
+        TResourceType,
+        TInteraction,
+        TId
+      >(owned, context, resource, itemId).grantedAtOwnResource
     )
       return owned
 
@@ -212,12 +214,12 @@ class ScopeConfiguration<
         .toArray()
         .every(
           (interaction) =>
-            ScopeConfiguration.scopesGrantInteraction<TContext, TResourceType, TInteraction, TId>(
-              allowedPartition,
-              scope.context,
-              scope.resource,
-              interaction
-            ).granted
+            ResourceScopeConfiguration.scopesGrantInteraction<
+              TContext,
+              TResourceType,
+              TInteraction,
+              TId
+            >(allowedPartition, scope.context, scope.resource, interaction).granted
         )
     )
   }
@@ -240,7 +242,7 @@ class ScopeConfiguration<
     context: TContext,
     resource: TResourceType,
     interaction: TInteraction
-  ): ScopeConfiguration.InteractionGrantedness {
+  ): ResourceScopeConfiguration.InteractionGrantedness {
     let granted = false
     let grantedAtOwnResource = true
     for (const scope of owned) {
@@ -255,8 +257,8 @@ class ScopeConfiguration<
 }
 
 // oxlint-disable import/group-exports
-namespace ScopeConfiguration {
-  /** The plain-data recipe a {@link ScopeConfiguration} is constructed from. */
+namespace ResourceScopeConfiguration {
+  /** The plain-data recipe a {@link ResourceScopeConfiguration} is constructed from. */
   export type Recipe<
     TContext extends Contexts.Context,
     TResourceType extends ResourceType.Base,
@@ -374,4 +376,4 @@ abstract class BaseResourceScope<
   }
 }
 
-export { ScopeConfiguration, BaseResourceScope }
+export { ResourceScopeConfiguration, BaseResourceScope }

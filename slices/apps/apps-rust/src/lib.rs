@@ -57,7 +57,7 @@ use shared_structures_rust::tunnel_service::TunnelService;
 pub use config::AppsConfig;
 pub use db::AppsStore;
 pub use domain::{App, AppKind, SelfHostedApp};
-pub use http::{AppsState, OwnerAuth};
+pub use http::{AppsState, LaunchCookies, NoLaunchCookies, OwnerAuth};
 // Re-exported for the integration test crate; `#[deprecated]` is intentional.
 #[allow(deprecated)]
 pub use http::StubOwnerAuth;
@@ -116,6 +116,10 @@ impl Apps {
 /// an app online / offline through the identical instance that binds the seed
 /// listeners — and stage/remove files under its `apps_dir`.
 ///
+/// `launch_cookies` is the host seam re-scoping the caller's owner session onto a
+/// forwarded self-hosted app's public host (see [`LaunchCookies`]). The Tauri host
+/// passes the gatekeeper cookie builder; others pass [`NoLaunchCookies`].
+///
 /// # Errors
 ///
 /// Returns an error if the store can't be migrated.
@@ -126,6 +130,7 @@ pub fn setup_apps(
     webview_handle: Arc<dyn OnDeviceWebviewHandle>,
     owner_auth: Arc<dyn OwnerAuth>,
     self_hosted: Arc<SelfHostedAppsService>,
+    launch_cookies: Arc<dyn LaunchCookies>,
 ) -> anyhow::Result<Apps> {
     // `AppsStore::new` owns the shared migration list — running it migrates the
     // parent registry plus both child tables. The one store serves them all.
@@ -142,6 +147,7 @@ pub fn setup_apps(
         tunnel,
         webview_handle,
         self_hosted,
+        launch_cookies,
     ));
 
     Ok(Apps {

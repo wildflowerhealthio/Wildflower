@@ -17,7 +17,7 @@ slices/<name>/
 └── <name>-web             # Browser (non-React) adapter — currently only telemetry
 ```
 
-Slices may also carry slice-specific packages (e.g. `collector-fundamentals`, `fhir-r4-client-collector`, `fhir-r4` / `fhir-r4-react` under `emr`). A few slices are Rust-only with no `-core` (`persistence`, `scopes`).
+Slices may also carry slice-specific packages (e.g. `collector-fundamentals`, `fhir-r4-client-collector`, `fhir-r4` / `fhir-r4-react` under `emr`). A few slices are Rust-only with no `-core` (`persistence`).
 
 Current slices: `apps`, `browser-sniffer`, `collector`, `databases`, `emr`, `gatekeeper`, `navigation`, `persistence`, `scopes`, `shared-structures`, `telemetry`, `tunnel`. Verify with `ls slices/` — this list can go stale.
 

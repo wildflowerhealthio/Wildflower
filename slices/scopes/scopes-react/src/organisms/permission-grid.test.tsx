@@ -1,9 +1,15 @@
 import { render, screen } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
-import { Grant, type GrantDraft, Scope, type ScopeRequest } from 'scopes-core'
+import {
+  Grant,
+  type GrantDraft,
+  Rows,
+  Scope,
+  type ScopeRequest,
+  type ResourceSection,
+} from 'scopes-core'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import { buildGrid } from './grid-model.ts'
 import { PermissionGrid } from './permission-grid.tsx'
 
 afterEach(() => {
@@ -11,8 +17,19 @@ afterEach(() => {
 })
 
 const patient = Scope.Contexts.Fhir.patient
-const v2 = Scope.FhirV2.configuration
-const v1 = Scope.FhirV1.configuration
+const observation = Scope.ResourceType.Fhir.parse('Observation')!
+const v2Section: ResourceSection.ResourceSection<'fhirV2'> = {
+  kind: 'fhirV2',
+  configuration: Scope.FhirV2.configuration,
+  context: patient,
+  resources: [observation],
+}
+const v1Section: ResourceSection.ResourceSection<'fhirV1'> = {
+  kind: 'fhirV1',
+  configuration: Scope.FhirV1.configuration,
+  context: patient,
+  resources: [observation],
+}
 
 /** A one-patient draft over the given wire scope strings — the single source of truth (§5). */
 const draft = (scopes: string[]): GrantDraft.GrantDraft => ({
@@ -28,13 +45,16 @@ const request = (requested: string[], required: string[] = []): ScopeRequest.Sco
 
 describe('PermissionGrid', () => {
   it('renders the interaction columns and a cell per interaction', () => {
-    const grid = buildGrid(
-      { configuration: v2, context: patient, catalog: ['Observation'] },
-      draft(['patient/Observation.r']),
-      null
-    )
+    const rows = Rows.build(v2Section, draft(['patient/Observation.r']), null)
 
-    render(<PermissionGrid title="Health records" grid={grid} onToggleItem={vi.fn()} />)
+    render(
+      <PermissionGrid
+        title="Health records"
+        section={v2Section}
+        rows={rows}
+        onToggleItem={vi.fn()}
+      />
+    )
 
     expect(screen.getByRole('columnheader', { name: /Create/ })).toBeDefined()
     // Read is granted → that cell is checked.
@@ -49,35 +69,45 @@ describe('PermissionGrid', () => {
     const onToggleItem = vi.fn()
     const user = userEvent.setup()
     // patient/*.r locks Read on every specific row.
-    const grid = buildGrid(
-      { configuration: v2, context: patient, catalog: ['Observation'] },
-      draft(['patient/*.r', 'patient/Observation.cruds']),
-      null
-    )
+    const rows = Rows.build(v2Section, draft(['patient/*.r', 'patient/Observation.cruds']), null)
 
-    render(<PermissionGrid title="Health records" grid={grid} onToggleItem={onToggleItem} />)
+    render(
+      <PermissionGrid
+        title="Health records"
+        section={v2Section}
+        rows={rows}
+        onToggleItem={onToggleItem}
+      />
+    )
 
     // Locked cells fold the reason into the accessible name.
     const readCell = screen.getByRole('checkbox', { name: /^Read Observation/ })
     expect(readCell.getAttribute('aria-checked')).toBe('true')
-    expect(readCell.getAttribute('aria-label')).toContain('All record types')
+    expect(readCell.getAttribute('aria-label')).toContain('All records')
     await user.click(readCell) // locked → no-op
     expect(onToggleItem).not.toHaveBeenCalled()
 
     await user.click(screen.getByRole('checkbox', { name: 'Create Observation' }))
-    expect(onToggleItem).toHaveBeenCalledWith('Observation', 'c')
+    expect(onToggleItem).toHaveBeenCalledWith(Scope.ResourceType.Fhir.parse('Observation'), 'c')
   })
 
   it('renders a v1 word row as a Read/Write multiselect instead of interaction cells', async () => {
     const onToggleItem = vi.fn()
     const user = userEvent.setup()
-    const grid = buildGrid(
-      { configuration: v1, context: patient, catalog: ['Observation'] },
+    const rows = Rows.build(
+      v1Section,
       draft(['patient/Observation.read']),
       request(['patient/Observation.*'])
     )
 
-    render(<PermissionGrid title="Health records" grid={grid} onToggleItem={onToggleItem} />)
+    render(
+      <PermissionGrid
+        title="Health records"
+        section={v1Section}
+        rows={rows}
+        onToggleItem={onToggleItem}
+      />
+    )
 
     // No interaction cell named "Read Observation" — the row is the Read/Write picker.
     expect(screen.queryByRole('checkbox', { name: 'Read Observation' })).toBeNull()
@@ -87,6 +117,6 @@ describe('PermissionGrid', () => {
     expect(write.checked).toBe(false)
 
     await user.click(write)
-    expect(onToggleItem).toHaveBeenCalledWith('Observation', 'write')
+    expect(onToggleItem).toHaveBeenCalledWith(Scope.ResourceType.Fhir.parse('Observation'), 'write')
   })
 })

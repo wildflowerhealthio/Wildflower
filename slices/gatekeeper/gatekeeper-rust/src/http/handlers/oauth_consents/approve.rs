@@ -12,6 +12,7 @@ use super::internal::{
 use crate::crypto_util::random_token::generate_authorization_code;
 use crate::domain::authorization_code::AuthorizationCode;
 use crate::http::handlers::consent::{deny_consent, ApproveBody, ConsentResult};
+use crate::http::handlers::oauth::build_client_redirect_url;
 use crate::http::response_templates::HandlerError;
 use crate::http::state::AppState;
 use persistence_rust::{JsonColumn, UriColumn};
@@ -98,5 +99,20 @@ async fn handle_approve_oauth_consent(
         body.patient.as_deref(),
     )
     .map_err(|e| HandlerError::internal("upsert_grant failed", e))?;
-    Ok(Json(ConsentResult::Approved))
+
+    // Hand back the client callback URL so an approving surface that *is* the
+    // requesting client can finish the flow inline (mirrors `authorization_status`'s
+    // `Approved` arm).
+    //
+    // `client_state` is `Option` only structurally: `/oauth/authorize` requires
+    // `state` (see `authorize.rs`), so every stored code-flow request carries it
+    // and the `None` branch is currently unreachable. Do NOT treat `None` as a
+    // benign "fall back to polling": `authorization_status` returns `server_error`
+    // for an approved request lacking `client_state`, so a state-less request 500s
+    // there rather than recovering. Relaxing `state` to optional means revisiting
+    // both paths together.
+    let redirect = request.client_state.as_deref().map(|client_state| {
+        build_client_redirect_url(&redirect_uri, &authorization_code.code, client_state)
+    });
+    Ok(Json(ConsentResult::Approved { redirect }))
 }

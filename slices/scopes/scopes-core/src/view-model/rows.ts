@@ -1,12 +1,11 @@
 /**
- * The {@link Rows} builder — the request-aware row list for one grid section (a single
- * scope variant + context over a catalog of resource names). It owns the row *policy*
- * every surface listing rows must agree on — which rows appear (including when the `*`
- * wildcard row is injected, `spec.md §2/§3`) and each cell's resolved state — so a
- * presenter ({@link buildGrid} in `scopes-react`, a future admin editor, …) only maps
- * rows to markup and copy. Cells resolve through one shared {@link Cell.resolver} per
- * section (the partitions are folded once, not once per cell). A view-model concern
- * with no `scopes-rust` counterpart.
+ * The {@link Rows} builder — the request-aware row list for one {@link ResourceSection.ResourceSection}.
+ * It owns the row *policy* every surface listing rows must agree on — which rows appear
+ * (including when the `*` wildcard row is injected, `spec.md §2/§3`) and each cell's
+ * resolved state — so a presenter (`PermissionGrid` in `scopes-react`, a future admin
+ * editor, …) only maps rows to markup and copy. Cells resolve through one shared
+ * {@link Cell.resolver} per section (the partitions are folded once, not once per cell).
+ * A view-model concern with no `scopes-rust` counterpart.
  *
  * Namespace module (`import { Rows } from 'scopes-core'`).
  */
@@ -15,6 +14,7 @@ import { Equal } from 'effect'
 
 import { Scope } from '../domain/index.ts'
 import * as Cell from './cell.ts'
+import type * as ResourceSection from './resource-section.ts'
 import type * as ScopeRequest from './scope-request.ts'
 
 /** One resolved row of a grid section: its resource, stored scope, and O(1) cell lookup. */
@@ -40,18 +40,17 @@ type Options = {
 }
 
 /**
- * Build the resolved rows for one section: each catalog resource becomes a {@link Row}
- * (a name the variant can't parse is skipped), preceded by the `*` wildcard row when
+ * Build the resolved rows for one section: each section resource becomes a {@link Row},
+ * in the section's order, preceded by the `*` wildcard row when
  * {@link Options.includeWildcard} applies. `scopeRequest` is `null` for open mode.
  */
 const build = <K extends Scope.MultiScope.Kind>(
-  configuration: Scope.MultiScope.ConfigurationFor<K>,
+  section: ResourceSection.ResourceSection<K>,
   grant: Scope.MultiScope,
   scopeRequest: ScopeRequest.ScopeRequest | null,
-  context: Scope.MultiScope.ContextOf<K>,
-  catalog: readonly string[],
   { includeWildcard = false }: Options = {}
 ): readonly Row<K>[] => {
+  const { configuration, context, resources } = section
   const cellFor = Cell.resolver(configuration, grant, scopeRequest, context)
   const wildcardResource = configuration.resourceClass.wildcardResourceType
 
@@ -71,10 +70,7 @@ const build = <K extends Scope.MultiScope.Kind>(
     cellFor: (itemId) => cellFor(resource, itemId),
   })
 
-  const rows = catalog
-    .map((name) => configuration.resourceClass.parse(name))
-    .filter((resource): resource is Scope.MultiScope.ResourceOf<K> => resource !== null)
-    .map(rowFor)
+  const rows = resources.map(rowFor)
 
   // §2/§3 wildcard-row policy: open mode always offers it (when the variant has a
   // wildcard at all); request mode only when the app requested a `*` scope at this

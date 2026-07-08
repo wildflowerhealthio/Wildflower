@@ -16,6 +16,27 @@ class OpenArgs: Decodable {
   let initialTitle: String?
   let initialSubtitle: String?
   let initialMessage: String?
+  /// Cookies to seed into the webview's store BEFORE the first navigation to
+  /// `url` (the apps-launch owner-session seeding). Matches `OpenRequest`'s
+  /// `cookies` wire shape; the key is omitted (→ nil) when there is nothing to
+  /// seed.
+  let cookies: [CookieArg]?
+}
+
+/// One cookie decoded from `OpenRequest`'s `cookies` entries — camelCase keys
+/// matching `CookieSpec`'s serde wire shape. See `models.rs`.
+class CookieArg: Decodable {
+  let name: String
+  let value: String
+  /// `Domain` attribute: the cookie applies to this host and its subdomains.
+  let domain: String
+  let path: String
+  let secure: Bool
+  let httpOnly: Bool
+  /// `"strict"` / `"lax"` / `"none"` — pinned lowercase in `models.rs`.
+  let sameSite: String
+  /// Lifetime in seconds from now; nil = session cookie.
+  let maxAge: Int64?
 }
 
 /// Arguments decoded from `invoke('plugin:native-webview|evaluate_js', { script })`.
@@ -138,6 +159,63 @@ class NativeWebviewPlugin: Plugin {
   /// Idle teardown timer (Teardown backstops). Fires on the main run loop.
   private var idleTimer: Timer?
 
+  /// Build the `HTTPCookie` for one wire [`CookieArg`]. Returns nil only when
+  /// Foundation rejects the property set — unexpected, since every required
+  /// key (name / value / domain / path) is always supplied.
+  private static func httpCookie(from arg: CookieArg) -> HTTPCookie? {
+    var properties: [HTTPCookiePropertyKey: Any] = [
+      .name: arg.name,
+      .value: arg.value,
+      // A plain host (no leading dot) still yields a Domain-attribute cookie
+      // here (subdomain-inclusive), matching the other backends' semantics.
+      .domain: arg.domain,
+      .path: arg.path,
+    ]
+    if arg.secure { properties[.secure] = "TRUE" }
+    // `isHTTPOnly` has no public `HTTPCookiePropertyKey` constant; Foundation
+    // recognises the literal "HttpOnly" key (server-set parity, JS can't read it).
+    if arg.httpOnly { properties[HTTPCookiePropertyKey("HttpOnly")] = "TRUE" }
+    if let maxAge = arg.maxAge {
+      // Absolute expiry (version-0 semantics) rather than `.maximumAge`, which
+      // Foundation only honours for version-1 cookies.
+      properties[.expires] = Date(timeIntervalSinceNow: TimeInterval(maxAge))
+    }
+    switch arg.sameSite {
+    case "lax": properties[.sameSitePolicy] = HTTPCookieStringPolicy.sameSiteLax
+    case "strict": properties[.sameSitePolicy] = HTTPCookieStringPolicy.sameSiteStrict
+    default: break  // "none": no SameSite property — absent means unrestricted
+    }
+    return HTTPCookie(properties: properties)
+  }
+
+  /// Seed `cookies` into `webView`'s cookie store, then run `load` once every
+  /// `setCookie` completion has fired — so the seed rides the very first
+  /// request to the target (mirrors desktop's blocking `set_cookie` →
+  /// `navigate` ordering). No cookies → load immediately. A cookie Foundation
+  /// rejects is logged and skipped rather than aborting the open (the page
+  /// then just renders unauthenticated, same as before seeding existed).
+  private static func seedCookies(
+    _ cookies: [CookieArg]?,
+    into webView: WKWebView,
+    thenLoad load: @escaping () -> Void
+  ) {
+    guard let cookies = cookies, !cookies.isEmpty else {
+      load()
+      return
+    }
+    let store = webView.configuration.websiteDataStore.httpCookieStore
+    let group = DispatchGroup()
+    for arg in cookies {
+      guard let cookie = httpCookie(from: arg) else {
+        NSLog("native-webview: dropping unbuildable cookie %@ for %@", arg.name, arg.domain)
+        continue
+      }
+      group.enter()
+      store.setCookie(cookie) { group.leave() }
+    }
+    group.notify(queue: .main, execute: load)
+  }
+
   /// Ensure a native webview exists and navigate it to `url`. Builds HIDDEN if
   /// absent; on an existing instance, Re-open rewire (channel / initScript /
   /// chrome) and navigate in place, PRESERVING current visibility. Never
@@ -169,7 +247,8 @@ class NativeWebviewPlugin: Plugin {
             channel: args.nativeWebviewEventChannel,
             initialTitle: args.initialTitle,
             initialSubtitle: args.initialSubtitle,
-            initialMessage: args.initialMessage
+            initialMessage: args.initialMessage,
+            cookies: args.cookies
           )
           invoke.resolve(["opened": true])
         }
@@ -203,7 +282,12 @@ class NativeWebviewPlugin: Plugin {
           subtitle: args.initialSubtitle,
           message: args.initialMessage
         )
-        existing.load(URLRequest(url: url))
+        // Seed cookies before navigating so they ride the new target's first
+        // request; the resolve stays immediate (`opened` means "navigation
+        // dispatched", and the load itself is asynchronous anyway).
+        NativeWebviewPlugin.seedCookies(args.cookies, into: existing) {
+          existing.load(URLRequest(url: url))
+        }
         invoke.resolve(["opened": true])
         return
       }
@@ -216,7 +300,8 @@ class NativeWebviewPlugin: Plugin {
         channel: args.nativeWebviewEventChannel,
         initialTitle: args.initialTitle,
         initialSubtitle: args.initialSubtitle,
-        initialMessage: args.initialMessage
+        initialMessage: args.initialMessage,
+        cookies: args.cookies
       )
       invoke.resolve(["opened": true])
     }
@@ -425,7 +510,8 @@ class NativeWebviewPlugin: Plugin {
     channel: Channel,
     initialTitle: String?,
     initialSubtitle: String?,
-    initialMessage: String?
+    initialMessage: String?,
+    cookies: [CookieArg]?
   ) {
     let contentController = WKUserContentController()
     // Caller-supplied document-start script, injected into all frames on ANY
@@ -448,7 +534,11 @@ class NativeWebviewPlugin: Plugin {
     configuration.userContentController = contentController
 
     let webView = WKWebView(frame: .zero, configuration: configuration)
-    webView.load(URLRequest(url: url))
+    // Seed cookies first, then load — the seed must ride the first request
+    // (see `seedCookies`). With no cookies this loads immediately.
+    NativeWebviewPlugin.seedCookies(cookies, into: webView) {
+      webView.load(URLRequest(url: url))
+    }
     currentWebView = webView
 
     let browser = NativeWebviewController(webView: webView, initialUrl: url.absoluteString)

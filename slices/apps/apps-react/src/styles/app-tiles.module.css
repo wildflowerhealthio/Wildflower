@@ -73,7 +73,10 @@
   color: var(--color-neutral-5);
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
 }
 
 .app-tile__pills {

@@ -13,12 +13,17 @@ use crate::scope::Scope;
 /// clamp stops a stale request from granting a scope the client's policy no
 /// longer permits.
 ///
-/// Membership and coverage are compared **structurally** (each side is parsed to
-/// a [`Scope`]), and every kept scope is rendered back to its wire string
-/// (SMART v1↔v2 back-compat — see [`Permission`](crate::Permission)). The
-/// result is de-duplicated by rendered form, preserving first-seen order; an
-/// empty grant stays empty (the approve handlers treat "nothing granted" as a
-/// deny).
+/// Both sides match by **coverage**, not exact equality (each parsed to a [`Scope`]
+/// and compared with [`Scope::covers`]). Coverage on the requested side is what
+/// lets an Owner narrow: an approved `patient/Observation.s` is still ⊆ a requested
+/// `patient/Observation.rs`, so it's granted where exact equality would drop it.
+/// Coverage is same-grammar and wildcard/context-aware (v1 words and v2 letters
+/// never cross-cover; known/unknown match exactly — see [`Scope::covers`]).
+///
+/// Every kept scope is rendered back to its own approved wire spelling (v1↔v2
+/// back-compat — see [`Permission`](crate::Permission)), de-duplicated by rendered
+/// form (first-seen order). An empty grant stays empty (approve handlers treat
+/// "nothing granted" as a deny).
 pub fn grantable_scopes(
     approved: Vec<String>,
     requested: &HashSet<&str>,
@@ -30,7 +35,7 @@ pub fn grantable_scopes(
     let mut seen: HashSet<String> = HashSet::new();
     let mut granted: Vec<String> = Vec::new();
     for approved_scope in approved.into_iter().map(|s| Scope::from(s.as_str())) {
-        let is_requested = requested.contains(&approved_scope);
+        let is_requested = requested.iter().any(|r| r.covers(&approved_scope));
         let is_allowed = allowed.iter().any(|a| a.covers(&approved_scope));
         if is_requested && is_allowed {
             let rendered = approved_scope.to_string();
@@ -275,6 +280,111 @@ mod tests {
             granted,
             vec!["patient/Observation.read", "patient/Observation.rs"]
         );
+    }
+
+    #[test]
+    fn grantable_grants_owner_narrowed_v2_letters() {
+        // The client requested `.rs`; the Owner approved the tighter `.s`.
+        // `.s` ⊆ `.rs`, so coverage on the requested side keeps it — an
+        // exact-equality check would have dropped this narrowed approval.
+        let approved = vec!["patient/Observation.s".to_string()];
+        let requested = s(&["patient/Observation.rs"]);
+        let allowed = s(&["patient/*.cruds"]);
+        let granted = grantable_scopes(approved, &requested, &allowed);
+        assert_eq!(granted, vec!["patient/Observation.s"]);
+    }
+
+    #[test]
+    fn grantable_grants_wildcard_requested_narrowed_to_concrete_type() {
+        // A wildcard request covers a concrete-type approval: `patient/*.r`
+        // covers `patient/Observation.r`, so the concrete grant is within the
+        // requested envelope and is kept.
+        let approved = vec!["patient/Observation.r".to_string()];
+        let requested = s(&["patient/*.r"]);
+        let allowed = s(&["patient/*.cruds"]);
+        let granted = grantable_scopes(approved, &requested, &allowed);
+        assert_eq!(granted, vec!["patient/Observation.r"]);
+    }
+
+    #[test]
+    fn grantable_grants_non_canonical_letter_order() {
+        // The parser is letter-set based, so a request spelled `.sr` covers an
+        // approval spelled `.rs` (same interaction set); the approved wire
+        // spelling is returned verbatim.
+        let approved = vec!["patient/Observation.rs".to_string()];
+        let requested = s(&["patient/Observation.sr"]);
+        let allowed = s(&["patient/*.cruds"]);
+        let granted = grantable_scopes(approved, &requested, &allowed);
+        assert_eq!(granted, vec!["patient/Observation.rs"]);
+    }
+
+    #[test]
+    fn grantable_drops_unrequested_resource_scopes() {
+        // Only Observation was requested; an approved Condition scope is not
+        // covered by anything requested and is dropped.
+        let approved = vec![
+            "patient/Observation.r".to_string(),
+            "patient/Condition.r".to_string(),
+        ];
+        let requested = s(&["patient/Observation.r"]);
+        let allowed = s(&["patient/*.cruds"]);
+        let granted = grantable_scopes(approved, &requested, &allowed);
+        assert_eq!(granted, vec!["patient/Observation.r"]);
+    }
+
+    #[test]
+    fn grantable_never_crosses_v1_and_v2_grammars() {
+        // `Scope::covers` never bridges word and letter grammars, so a v1
+        // `.read` request does not make a v2 `.r` approval grantable, nor the
+        // reverse. Verified against `Scope::covers` semantics (see the
+        // `v1_and_v2_perms_never_cross_cover` test in `scope`).
+        let allowed = s(&["patient/*.cruds", "patient/*.*"]);
+
+        let v1_requested_v2_approved = grantable_scopes(
+            vec!["patient/Observation.r".to_string()],
+            &s(&["patient/Observation.read"]),
+            &allowed,
+        );
+        assert!(v1_requested_v2_approved.is_empty());
+
+        let v2_requested_v1_approved = grantable_scopes(
+            vec!["patient/Observation.read".to_string()],
+            &s(&["patient/Observation.r"]),
+            &allowed,
+        );
+        assert!(v2_requested_v1_approved.is_empty());
+    }
+
+    #[test]
+    fn grantable_known_scopes_match_exactly_not_by_coverage() {
+        // Known/flag scopes have no subset structure — coverage collapses to
+        // equality, so `openid` grants only against a requested `openid`.
+        let granted = grantable_scopes(
+            vec!["openid".to_string()],
+            &s(&["openid"]),
+            &s(&["openid", "offline_access"]),
+        );
+        assert_eq!(granted, vec!["openid"]);
+
+        let mismatch = grantable_scopes(
+            vec!["openid".to_string()],
+            &s(&["offline_access"]),
+            &s(&["openid", "offline_access"]),
+        );
+        assert!(mismatch.is_empty());
+    }
+
+    #[test]
+    fn grantable_allowed_clamp_still_applies_under_coverage() {
+        // Requested and Owner-approved a narrowed `.s`, but the client's
+        // `allowed_scopes` only permit `.r` — the `allowed` clamp drops it even
+        // though the requested side now matches by coverage.
+        let granted = grantable_scopes(
+            vec!["patient/Observation.s".to_string()],
+            &s(&["patient/Observation.rs"]),
+            &s(&["patient/*.r"]),
+        );
+        assert!(granted.is_empty());
     }
 
     /// `&[&str]` → `Vec<String>` for the twin-expansion cases below.

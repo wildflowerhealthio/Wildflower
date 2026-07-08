@@ -46,6 +46,8 @@
     "react-dom": "catalog:",
     "react-kitchen-sink": "workspace:*",
     "react-tundraish": "workspace:*",
+    "scopes-core": "workspace:*",
+    "scopes-react": "workspace:*",
     "shared-structures-react": "workspace:*",
     "telemetry-react": "workspace:*",
     "typescript": "catalog:",
@@ -66,6 +68,8 @@
     "react": "catalog:",
     "react-kitchen-sink": "workspace:*",
     "react-tundraish": "workspace:*",
+    "scopes-core": "workspace:*",
+    "scopes-react": "workspace:*",
     "shared-structures-react": "workspace:*",
     "telemetry-react": "workspace:*"
   }

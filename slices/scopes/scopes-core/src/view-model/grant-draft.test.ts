@@ -1,8 +1,12 @@
+import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { Grant, GrantDraft, Scope } from '../index.ts'
+import { Grant, GrantDraft, Scope, ScopeRequest } from '../index.ts'
 
 const patient = Scope.Contexts.Fhir.patient
+const obs = Scope.ResourceType.Fhir.parse('Observation')!
+const v2config = Scope.FhirV2.configuration
 const cruds = (l: Scope.Permission.Cruds.Interaction[]): Scope.Permission.Cruds =>
   new Scope.Permission.Cruds(l)
 const fhirV2 = (name: string, l: Scope.Permission.Cruds.Interaction[]): Scope.FhirV2 =>
@@ -12,6 +16,34 @@ const fhirV1 = (name: string, permission: Scope.Permission.ReadWrite): Scope.Fhi
 const grant = (scopes: Scope.Any[]): GrantDraft.GrantDraft => ({
   patient: 'jordan',
   ...Grant.make(scopes),
+})
+
+describe('GrantDraft.hasScopes', () => {
+  test('an empty draft has no scopes', () => {
+    expect(GrantDraft.hasScopes(GrantDraft.fromScopes([]))).toBe(false)
+  })
+
+  test('a resource scope counts', () => {
+    expect(GrantDraft.hasScopes(GrantDraft.fromScopes(['patient/Observation.r']))).toBe(true)
+  })
+
+  test('a flag scope alone counts', () => {
+    expect(GrantDraft.hasScopes(GrantDraft.fromScopes(['openid']))).toBe(true)
+  })
+
+  test('an unknown scope alone counts', () => {
+    expect(GrantDraft.hasScopes(GrantDraft.fromScopes(['urn:custom:thing']))).toBe(true)
+  })
+
+  test('agrees with serializeAll being non-empty (property)', () => {
+    fc.assert(
+      fc.property(fc.array(fc.string(), { maxLength: 8 }), (strings) => {
+        const draft = GrantDraft.fromScopes(strings)
+        expect(GrantDraft.hasScopes(draft)).toBe(GrantDraft.serializeAll(draft).length > 0)
+      }),
+      { numRuns: numRunsFor({ base: 50 }) }
+    )
+  })
 })
 
 describe('GrantDraft.serialize — dedupe (§3)', () => {
@@ -96,5 +128,157 @@ describe('GrantDraft.serializeAll', () => {
       'openid',
       'mystery_scope',
     ])
+  })
+})
+
+// Arbitraries built from the real catalog / flag / interaction vocabularies.
+const crudsLetters: readonly Scope.Permission.Cruds.Interaction[] = ['c', 'r', 'u', 'd', 's']
+const interactionArb = fc.constantFrom(...crudsLetters)
+const resourceNameArb = fc.constantFrom(...Scope.ResourceType.Fhir.catalog)
+const flagNameArb = fc.constantFrom(...Scope.Known.Name.all)
+
+/** A `patient/<Resource>.<perms>` v2 scope string over a real catalog resource. */
+const fhirScopeStringArb = fc
+  .record({ name: resourceNameArb, perms: fc.uniqueArray(interactionArb, { minLength: 1 }) })
+  .map(
+    ({ name, perms }) =>
+      new Scope.FhirV2(
+        patient,
+        Scope.ResourceType.Fhir.parse(name)!,
+        new Scope.Permission.Cruds(perms)
+      ).serialize()!
+  )
+
+/** A requested scope list: some v2 resource scopes plus some known flags. */
+const requestedStringsArb = fc
+  .record({
+    fhir: fc.array(fhirScopeStringArb, { maxLength: 5 }),
+    flags: fc.uniqueArray(flagNameArb),
+  })
+  .map(({ fhir, flags }) => [...fhir, ...flags])
+
+describe('GrantDraft.fromScopes — all-optional seeding', () => {
+  test('round-trips a plain (non-redundant) scope list through serializeAll', () => {
+    expect(
+      GrantDraft.serializeAll(GrantDraft.fromScopes(['patient/Observation.r', 'openid']))
+    ).toEqual(['patient/Observation.r', 'openid'])
+  })
+
+  test('every requested scope is checked — parses to Grant.parse(xs)', () => {
+    const xs = ['patient/Observation.rc', 'openid', 'offline_access']
+    const draft = GrantDraft.fromScopes(xs, 'jordan')
+    expect(draft.patient).toBe('jordan')
+    // The draft is exactly the parsed grant plus `patient`.
+    expect(GrantDraft.serializeAll(draft)).toEqual(
+      GrantDraft.serializeAll({ patient: null, ...Grant.parse(xs) })
+    )
+  })
+
+  test('serializeAll ∘ fromScopes is an idempotent canonicalization (property)', () => {
+    fc.assert(
+      fc.property(requestedStringsArb, (strings) => {
+        const once = GrantDraft.serializeAll(GrantDraft.fromScopes(strings))
+        const twice = GrantDraft.serializeAll(GrantDraft.fromScopes(once))
+        expect(twice).toEqual(once)
+      }),
+      { numRuns: numRunsFor({ base: 50 }) }
+    )
+  })
+})
+
+describe('GrantDraft.toggleItem — draft-level cell edit', () => {
+  test('toggling an editable cell twice is identity', () => {
+    const draft = GrantDraft.fromScopes(['patient/Observation.r'])
+    const once = GrantDraft.toggleItem(draft, v2config, patient, obs, 'c')
+    const twice = GrantDraft.toggleItem(once, v2config, patient, obs, 'c')
+    expect(GrantDraft.serializeAll(twice)).toEqual(GrantDraft.serializeAll(draft))
+  })
+
+  test('is a no-op on a wildcard-covered cell', () => {
+    const draft = GrantDraft.fromScopes(['patient/*.r'])
+    const next = GrantDraft.toggleItem(draft, v2config, patient, obs, 'r')
+    expect(GrantDraft.serializeAll(next)).toEqual(GrantDraft.serializeAll(draft))
+  })
+
+  test('preserves the patient and other partitions', () => {
+    const draft = GrantDraft.fromScopes(['openid'], 'jordan')
+    const next = GrantDraft.toggleItem(draft, v2config, patient, obs, 'r')
+    expect(next.patient).toBe('jordan')
+    expect(next.known.map((k) => k.name)).toContain('openid')
+    expect(GrantDraft.serialize(next)).toEqual(['patient/Observation.r'])
+  })
+})
+
+describe('GrantDraft.toggleFlag — draft-level flag edit', () => {
+  test('adds then removes a known flag', () => {
+    const added = GrantDraft.toggleFlag(GrantDraft.fromScopes([]), 'openid')
+    expect(added.known.map((k) => k.name)).toContain('openid')
+    const removed = GrantDraft.toggleFlag(added, 'openid')
+    expect(removed.known.map((k) => k.name)).not.toContain('openid')
+  })
+
+  test('leaves the resource partitions and patient untouched', () => {
+    const draft = GrantDraft.fromScopes(['patient/Observation.r'], 'jordan')
+    const next = GrantDraft.toggleFlag(draft, 'offline_access')
+    expect(next.patient).toBe('jordan')
+    expect(GrantDraft.serialize(next)).toEqual(['patient/Observation.r'])
+    expect(next.known.map((k) => k.name)).toContain('offline_access')
+  })
+})
+
+type Op =
+  | {
+      readonly kind: 'cell'
+      readonly resource: Scope.ResourceType.Fhir
+      readonly itemId: Scope.Permission.Cruds.Interaction
+    }
+  | { readonly kind: 'flag'; readonly name: Scope.Known.Name }
+
+/**
+ * A requested scope list plus a sequence of edits, where every edit targets a cell or flag
+ * the request itself grants — the operations the disabled-outside-the-request grid actually
+ * lets the user perform.
+ */
+const scenarioArb = requestedStringsArb.chain((strings) => {
+  const requested = Grant.parse(strings)
+  const ops: Op[] = [
+    ...requested.fhirV2.flatMap((scope) =>
+      scope.permission
+        .toArray()
+        .map((itemId): Op => ({ kind: 'cell', resource: scope.resource, itemId }))
+    ),
+    ...requested.known.map((known): Op => ({ kind: 'flag', name: known.name })),
+  ]
+  const seqArb =
+    ops.length === 0
+      ? fc.constant<readonly number[]>([])
+      : fc.array(fc.nat(ops.length - 1), { maxLength: 20 })
+  return seqArb.map((seq) => ({ strings, ops, seq }))
+})
+
+describe('GrantDraft editing stays within the request envelope (property)', () => {
+  test('any sequence of requested toggles keeps the draft ⊆ requested', () => {
+    fc.assert(
+      fc.property(scenarioArb, ({ strings, ops, seq }) => {
+        const scopeRequest: ScopeRequest.ScopeRequest = {
+          requested: Grant.parse(strings),
+          required: Grant.make([]),
+        }
+        let draft = GrantDraft.fromScopes(strings)
+        for (const i of seq) {
+          const op = ops[i]
+          draft =
+            op.kind === 'cell'
+              ? GrantDraft.toggleItem(draft, v2config, patient, op.resource, op.itemId)
+              : GrantDraft.toggleFlag(draft, op.name)
+        }
+        expect(ScopeRequest.isWithin(draft, scopeRequest)).toBe(true)
+        // The serialized-then-reparsed draft (wildcard dedupe applied) also stays within.
+        expect(
+          ScopeRequest.isWithin(GrantDraft.fromScopes(GrantDraft.serializeAll(draft)), scopeRequest)
+        ).toBe(true)
+      }),
+      { numRuns: numRunsFor({ base: 50 }) }
+    )
   })
 })

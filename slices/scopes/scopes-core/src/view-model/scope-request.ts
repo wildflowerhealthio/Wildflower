@@ -9,7 +9,7 @@
  * Namespace module (`import { ScopeRequest } from 'scopes-core'`).
  */
 
-import { Scope } from '../domain/index.ts'
+import { Grant, Scope } from '../domain/index.ts'
 import type * as GrantDraft from './grant-draft.ts'
 
 /** What an app asked for: the requested envelope, and the mandatory (`required`) subset. */
@@ -17,6 +17,20 @@ type ScopeRequest = {
   readonly requested: Scope.MultiScope
   readonly required: Scope.MultiScope
 }
+
+/**
+ * The all-optional envelope over requested wire scopes: everything requested, nothing
+ * required — no control ever locks on, every requested control is prunable (the seed a
+ * consent decision edits against).
+ */
+const fromRequestedScopes = ({
+  optional,
+}: {
+  readonly optional: readonly string[]
+}): ScopeRequest => ({
+  requested: Grant.parse(optional),
+  required: Grant.make([]),
+})
 
 /** Whether a flag toggle is disabled (request mode + not requested, `spec.md §2/§7`). */
 const flagDisabled = (scopeRequest: ScopeRequest | null, flag: Scope.Known.Name): boolean =>
@@ -28,8 +42,8 @@ const flagRequired = (scopeRequest: ScopeRequest | null, flag: Scope.Known.Name)
 
 /**
  * The invariant `granted ⊆ requested` (`spec.md §2`). True in open mode. Every resource
- * partition must be {@link Scope.ScopeConfiguration.within} the requested envelope, and
- * every granted flag must be requested.
+ * partition must be {@link Scope.ResourceScopeConfiguration.within} the requested envelope,
+ * and every granted flag must be requested.
  */
 const isWithin = (grant: GrantDraft.GrantDraft, scopeRequest: ScopeRequest | null): boolean => {
   if (scopeRequest === null) return true
@@ -39,4 +53,4 @@ const isWithin = (grant: GrantDraft.GrantDraft, scopeRequest: ScopeRequest | nul
   )
 }
 
-export { type ScopeRequest, flagDisabled, flagRequired, isWithin }
+export { type ScopeRequest, fromRequestedScopes, flagDisabled, flagRequired, isWithin }

@@ -6,7 +6,7 @@ use axum::response::Response;
 
 use crate::domain::token::{verify_jwt, VerifiedClaims, VerifyError, VerifyOptions};
 use crate::http::response_templates;
-use crate::http::served_origin_for;
+use crate::http::served_base_url_for;
 use crate::http::state::AppState;
 use crate::WILDFLOWER_WIDEST_SCOPES;
 use scopes_rust::Scope;
@@ -23,10 +23,13 @@ pub async fn require_owner_auth(
     // Verify against the request's served origin (loopback for a direct hit,
     // the forwarded public origin via the tunnel) so the token's `iss`/`aud`
     // match the surface it was minted for. See `docs/Origins/Explanation.md`.
-    let origin = served_origin_for(
-        &headers,
-        &state.loopback_base_url.origin().ascii_serialization(),
-    );
+    let Some(base_url) = served_base_url_for(&headers, &state.loopback_base_url) else {
+        return response_templates::internal_error(
+            "served base url",
+            "forwarded header did not indicate a valid base URL",
+        );
+    };
+    let origin = base_url.origin().ascii_serialization();
     if let Err(e) = verify_owner_token(&state, &origin, token) {
         return response_templates::verify_error_response("verify_owner_token failed", e);
     }
@@ -116,6 +119,10 @@ pub fn verify_owner_token(
     Ok(claims)
 }
 
+/// Verify `token` for `origin`, accepting the per-request served-origin audiences
+/// (`{origin}` and `{origin}/fhir-r4`) plus the canonical audience — honoured
+/// only for the `wf_owner`-marked host owner token, which is presented at every
+/// served origin (#256). See `docs/Origins/Explanation.md`.
 pub fn verify_auth_token_claims(
     state: &AppState,
     origin: &str,
@@ -125,16 +132,26 @@ pub fn verify_auth_token_claims(
         .store
         .all_signing_keys()
         .map_err(VerifyError::KeyStoreUnavailable)?;
-    let accepted = vec![format!("{origin}/fhir-r4"), origin.to_string()];
-    // `iss` must equal [`shared_structures_rust::CANONICAL_ISSUER`]; `aud` is
-    // checked per-request against this origin (and its `/fhir-r4` base). See
-    // `docs/Origins/Explanation.md`.
-    verify_jwt(
+    let accepted = vec![
+        format!("{origin}/fhir-r4"),
+        origin.to_string(),
+        shared_structures_rust::CANONICAL_ISSUER.to_string(),
+    ];
+    let claims = verify_jwt(
         token,
         &keys,
         &VerifyOptions {
             expected_issuer: shared_structures_rust::CANONICAL_ISSUER,
             accepted_audiences: &accepted,
         },
-    )
+    )?;
+    // Reject any non-owner token that presents the canonical audience.
+    let via_canonical_audience = claims
+        .audience
+        .iter()
+        .any(|aud| aud == shared_structures_rust::CANONICAL_ISSUER);
+    if via_canonical_audience && claims.host_owner != Some(true) {
+        return Err(VerifyError::TokenRejected);
+    }
+    Ok(claims)
 }

@@ -5,7 +5,7 @@ mod spa;
 mod tunnel_adapters;
 
 use anyhow::Context;
-use apps_rust::{setup_apps, AppsConfig, OwnerAuth, SelfHostedAppsService};
+use apps_rust::{setup_apps, AppsConfig, LaunchCookies, OwnerAuth, SelfHostedAppsService};
 use axum::Router;
 use emr_rust::{setup_fhir_r4, EmrConfig};
 use gatekeeper_rust::{
@@ -68,6 +68,24 @@ struct GatekeeperOwnerAuth {
 impl OwnerAuth for GatekeeperOwnerAuth {
     fn is_owner(&self, headers: &axum::http::HeaderMap, served_origin: &str) -> bool {
         verify_owner_bearer(&self.state, headers, served_origin)
+    }
+}
+
+/// The host's [`apps_rust::LaunchCookies`]: delegates to
+/// [`gatekeeper_rust::rescope_owner_session_set_cookies`] (which owns the cookie
+/// name + attribute set) to re-scope the caller's owner session onto a forwarded
+/// self-hosted app's public host. Loopback launches instead `204` to a native
+/// popup whose cookies are seeded separately (see `native_webview_handle`).
+#[derive(Clone, Copy)]
+struct GatekeeperLaunchCookies;
+
+impl LaunchCookies for GatekeeperLaunchCookies {
+    fn rescope_for_host(
+        &self,
+        headers: &axum::http::HeaderMap,
+        host: &str,
+    ) -> Vec<axum::http::HeaderValue> {
+        gatekeeper_rust::rescope_owner_session_set_cookies(headers, host)
     }
 }
 
@@ -304,12 +322,16 @@ async fn run_server(
     };
     // `TunnelControl` implements `TunnelService`, so it's handed straight in.
     let tunnel_service: Arc<dyn tunnel_rust::TunnelService> = Arc::new(tunnel.control.clone());
-    // Install the host's on-device webview handle: for a loopback caller the
-    // launch handler hands it the resolved URL to open in a native webview popup
-    // (the server 204s, so the SPA stays mounted). See `native_webview_handle`.
-    let webview_handle: Arc<dyn apps_rust::OnDeviceWebviewHandle> = Arc::new(
-        native_webview_handle::NativeWebviewHandle::new(app_handle.clone()),
-    );
+    // Install the host's on-device webview handle: a loopback launch hands it the
+    // resolved URL to open in a native popup (the server 204s). It carries the
+    // owner-token watch + tunnel service to seed the popup's session cookies (#256).
+    // See `native_webview_handle`.
+    let webview_handle: Arc<dyn apps_rust::OnDeviceWebviewHandle> =
+        Arc::new(native_webview_handle::NativeWebviewHandle::new(
+            app_handle.clone(),
+            publishers.host_owner_token_sender.subscribe(),
+            Arc::clone(&tunnel_service),
+        ));
     // The loopback launch owner-gate: the same Owner-bearer check the admin
     // surface uses (a header-derived loopback provenance isn't a sufficient gate
     // on its own — the network loopback-peer gate is the other half).
@@ -376,6 +398,8 @@ async fn run_server(
         Arc::clone(&tunnel_service),
     ));
 
+    // The forwarded self-hosted launch cookie seam (see `GatekeeperLaunchCookies`).
+    let launch_cookies: Arc<dyn LaunchCookies> = Arc::new(GatekeeperLaunchCookies);
     let apps = setup_apps(
         db,
         &apps_config,
@@ -383,6 +407,7 @@ async fn run_server(
         webview_handle,
         owner_auth,
         Arc::clone(&self_hosted),
+        launch_cookies,
     )
     .context("failed to set up apps")?;
     let gated_apps =

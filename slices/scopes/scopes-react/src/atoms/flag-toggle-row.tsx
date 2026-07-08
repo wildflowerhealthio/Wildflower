@@ -38,19 +38,22 @@ const FlagToggleRow = ({
 }: FlagToggleRowProps): JSX.Element => {
   const content = (
     <span className={styles['text']}>
-      <span className={styles['label-line']}>
-        <span className={styles['label']}>{label}</span>
-        <code className={styles['code']}>{code}</code>
-      </span>
+      <span className={styles['label']}>{label}</span>
       {caption !== undefined ? <span className={styles['caption']}>{caption}</span> : null}
     </span>
   )
   return (
     <div className={cn(styles['row'], className)}>
       {disabled ? (
-        <ToggleSwitch checked={checked} disabled={true} label={content} />
+        <ToggleSwitch
+          className={styles['switch']}
+          checked={checked}
+          disabled={true}
+          label={content}
+        />
       ) : (
         <ToggleSwitch
+          className={styles['switch']}
           checked={checked}
           label={content}
           onChange={(next) => {
@@ -58,6 +61,7 @@ const FlagToggleRow = ({
           }}
         />
       )}
+      <code className={styles['code']}>{code}</code>
     </div>
   )
 }

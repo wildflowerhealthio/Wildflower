@@ -13,11 +13,11 @@
  */
 import * as Contexts from './contexts'
 import * as Permission from './permission'
+import { ResourceScopeConfiguration } from './resource-scope-configuration.ts'
+import type { BaseResourceScope } from './resource-scope-configuration.ts'
 import * as ResourceType from './resource-type'
-import { ScopeConfiguration } from './scope-configuration.ts'
-import type { BaseResourceScope } from './scope-configuration.ts'
 
-const WildflowerResourceScopeConfiguration = new ScopeConfiguration<
+const WildflowerResourceScopeConfiguration = new ResourceScopeConfiguration<
   Contexts.Wildflower,
   ResourceType.Wildflower,
   Permission.Cruds.Interaction,

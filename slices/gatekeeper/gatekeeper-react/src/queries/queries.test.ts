@@ -61,6 +61,7 @@ const DEVICE_CONSENT_BODY = {
 const OAUTH_CONSENT_BODY = {
   id: 'consent-1',
   clientId: 'client-a',
+  clientName: 'Test App',
   scopes: ['patient/*.read'],
   redirectUri: 'https://example.com/cb',
   preApprovedScopes: [],

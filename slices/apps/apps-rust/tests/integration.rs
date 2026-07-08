@@ -6,7 +6,7 @@
 
 use std::sync::Arc;
 
-use apps_rust::{setup_apps, Apps, AppsConfig, OwnerAuth, SelfHostedAppsService};
+use apps_rust::{setup_apps, Apps, AppsConfig, NoLaunchCookies, OwnerAuth, SelfHostedAppsService};
 use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
 use persistence_rust::Connection;
@@ -53,8 +53,16 @@ fn spin_up_with_handle() -> (Apps, Arc<RecordingStubWebviewHandle>) {
         ProxyTable::new(),
         tunnel.clone(),
     ));
-    let apps = setup_apps(db, &config, tunnel, handle.clone(), owner_auth, self_hosted)
-        .expect("setup_apps");
+    let apps = setup_apps(
+        db,
+        &config,
+        tunnel,
+        handle.clone(),
+        owner_auth,
+        self_hosted,
+        Arc::new(NoLaunchCookies),
+    )
+    .expect("setup_apps");
     (apps, handle)
 }
 

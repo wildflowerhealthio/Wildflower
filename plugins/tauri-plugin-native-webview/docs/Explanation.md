@@ -16,7 +16,7 @@ dispose→open switch race, teardown backstops, the chrome URL-fallback, and the
 re-open rewire — live in [Lifecycle and Races Explanation.md](./Lifecycle%20and%20Races%20Explanation.md);
 the backends' inline comments point there rather than re-deriving them.
 
-- `open_url(url, initScript, nativeWebviewEventChannel, initialTitle?, initialSubtitle?, initialMessage?)` — ensure the native webview exists (created **hidden** if absent) and navigate it to `url`. Does **not** present it.
+- `open_url(url, initScript, nativeWebviewEventChannel, initialTitle?, initialSubtitle?, initialMessage?, cookies?)` — ensure the native webview exists (created **hidden** if absent) and navigate it to `url`. Does **not** present it. When `cookies` is non-empty, each is written into the webview's cookie store **before** the navigation so it rides the very first request (desktop builds at `about:blank`, then the **caller thread** queues the cookie writes and the target navigation onto the main loop — FIFO ordering is the guarantee, and a cookie-carrying `open_url` must therefore be called off the main thread; iOS/Android issue the load from the cookie-write completions). Rust-caller only — the JS `open_url` command never accepts cookies (a page must not hand the plugin credential material).
 - `show()` — present the native webview (a freshly-created or previously-hidden instance).
 - `evaluate_js(script)` — evaluate JS inside the open native webview.
 - `patch_window_text({title?, subtitle?, message?})` — update one or more of the chrome's title/subtitle/message labels.

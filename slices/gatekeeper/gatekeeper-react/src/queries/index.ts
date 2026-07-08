@@ -48,6 +48,10 @@ export {
   useOAuthConsentMutation,
   useOAuthConsentQuery,
 } from './oauth-consent.ts'
-export type { ApproveOAuthPayload, OAuthConsentResource } from './oauth-consent.ts'
+export type {
+  ApproveOAuthPayload,
+  OAuthConsentResource,
+  OAuthConsentResult,
+} from './oauth-consent.ts'
 
 export type { RunAuthed } from '../router-context.ts'

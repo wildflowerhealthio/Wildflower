@@ -133,7 +133,7 @@ pub struct AuthorizeParams {
     /// SMART App Launch audience hint: the FHIR base URL the SMART app
     /// expects to call with the resulting token. Not currently validated
     /// against [`shared_structures_rust::CANONICAL_ISSUER`] — `aud`
-    /// binding in minted tokens is per-request via `served_origin_for`.
+    /// binding in minted tokens is per-request via `served_base_url_for`.
     /// Validating it is tracked in
     /// <https://github.com/Assessment-is/Wildflower/issues/257>.
     #[serde(default)]

@@ -8,7 +8,7 @@ import FhirV1 from './fhir-scope-v1.ts'
 import FhirV2 from './fhir-scope-v2.ts'
 import Known from './known.ts'
 import { MultiScope } from './multi-scope.ts'
-import { ScopeConfiguration, BaseResourceScope } from './scope-configuration.ts'
+import { ResourceScopeConfiguration, BaseResourceScope } from './resource-scope-configuration.ts'
 import Unknown from './unknown.ts'
 import Wildflower from './wildflower-scope.ts'
 
@@ -65,7 +65,7 @@ export {
   ResourceScope,
   type Any,
   parse,
-  ScopeConfiguration,
+  ResourceScopeConfiguration,
   MultiScope,
   Contexts,
   Permission,

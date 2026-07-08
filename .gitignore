@@ -1,5 +1,7 @@
 .env
 
+.local-notes/
+
 # Logs
 logs
 *.log

@@ -35,10 +35,10 @@ pub mod tunnel_service;
 #[cfg(feature = "health-check")]
 pub mod health_check;
 
-/// Forwarding-header provenance: `request_provenance` and `served_origin_for`,
-/// the single source of truth for a request's served origin (see the module and
-/// `docs/Origins/Explanation.md`). Behind the `served-origin` feature so non-HTTP
-/// crates don't pull `axum`.
+/// Forwarding-header provenance: `request_provenance` and `served_base_url_for`,
+/// the single source of truth for a request's served base URL (see the module
+/// and `docs/Origins/Explanation.md`). Behind the `served-origin` feature so
+/// non-HTTP crates don't pull `axum`.
 #[cfg(feature = "served-origin")]
 pub mod served_origin;
 

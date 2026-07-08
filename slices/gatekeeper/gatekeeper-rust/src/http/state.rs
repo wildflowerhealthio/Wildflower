@@ -14,8 +14,8 @@ pub struct AppState {
     /// [`GatekeeperConfig`](crate::GatekeeperConfig) at
     /// [`crate::setup_gatekeeper`]. Handlers don't read it directly: it is only
     /// the loopback fallback passed to
-    /// [`served_origin_for`](crate::http::served_origin_for), which resolves each
-    /// request's served origin (and hence its token `aud`). See
+    /// [`served_base_url_for`](crate::http::served_base_url_for), which resolves
+    /// each request's served base URL (and hence its token `aud`). See
     /// `docs/Origins/Explanation.md`.
     pub(crate) loopback_base_url: url::Url,
     /// Watch sender that publishes the `user_code` of the
