@@ -57,10 +57,10 @@ pub(crate) struct AppNotEditableBody {
 }
 
 /// Wire shape for a 400 carrying a discriminant + human-readable reason.
-/// Reused for `InvalidUrl` (a bad app URL) and `InvalidName` (an empty name)
-/// — both are write-side field validations the client renders inline. The
-/// `error` discriminant lets a client tell the two apart rather than seeing a
-/// URL-error tag for a name problem.
+/// Reused for `InvalidUrl` (a bad app URL), `InvalidName` (an empty name), and
+/// `InvalidZip` (an unusable uploaded bundle) — all write-side field validations
+/// the client renders inline. The `error` discriminant lets a client tell them
+/// apart rather than seeing a URL-error tag for a name or upload problem.
 #[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct InvalidFieldBody {
     pub(crate) error: &'static str,
@@ -105,6 +105,9 @@ pub(crate) enum HandlerError {
     InvalidUrl { message: String },
     /// 400 — the submitted name was empty.
     InvalidName { message: String },
+    /// 400 — the uploaded bundle couldn't be extracted (not a zip, over the
+    /// size/entry caps, or a path-traversal entry).
+    InvalidZip { message: String },
     /// 503 — the launch can't resolve a reachable target (forwarded launch with
     /// no public host, or a `requires_tunnel` app while the tunnel is down).
     Unavailable { reason: String },
@@ -152,6 +155,14 @@ impl IntoResponse for HandlerError {
                 StatusCode::BAD_REQUEST,
                 Json(InvalidFieldBody {
                     error: "InvalidName",
+                    message,
+                }),
+            )
+                .into_response(),
+            HandlerError::InvalidZip { message } => (
+                StatusCode::BAD_REQUEST,
+                Json(InvalidFieldBody {
+                    error: "InvalidZip",
                     message,
                 }),
             )

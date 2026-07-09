@@ -15,12 +15,14 @@ use shared_structures_rust::test_utils::RecordingStubWebviewHandle;
 use shared_structures_rust::tunnel_service::{
     OfflineTunnel, TunnelLiveness, TunnelService, TunnelStatus,
 };
+use shared_structures_server_rust::ProxyTable;
 use url::Url;
 
 use crate::db::AppsStore;
 use crate::http::launch_cookies::{LaunchCookies, NoLaunchCookies};
 use crate::http::owner_auth::{OwnerAuth, StubOwnerAuth};
 use crate::http::state::AppsState;
+use crate::self_hosted_apps::SelfHostedAppsService;
 use crate::OnDeviceWebviewHandle;
 
 /// The loopback base URL clients reach when the tunnel is down. Its origin
@@ -88,6 +90,21 @@ pub(crate) fn tunnel_unavailable() -> Arc<dyn TunnelService> {
     Arc::new(OfflineTunnel::new("http://127.0.0.1:8080"))
 }
 
+/// A `SelfHostedAppsService` over a fresh per-test temp apps dir, a fresh
+/// `ProxyTable`, and the given tunnel — enough for the upload/delete handlers to
+/// stage files and start/stop listeners. The temp dir is unique per call so
+/// parallel tests don't share a staging root; it's left for the OS to reap.
+pub(crate) fn self_hosted_service(tunnel: Arc<dyn TunnelService>) -> Arc<SelfHostedAppsService> {
+    let apps_dir = std::env::temp_dir().join(format!("wf-apps-test-{}", rand::random::<u64>()));
+    std::fs::create_dir_all(&apps_dir).expect("create temp apps dir");
+    Arc::new(SelfHostedAppsService::new(
+        &loopback_base_url(),
+        apps_dir,
+        ProxyTable::new(),
+        tunnel,
+    ))
+}
+
 /// The `Set-Cookie` value [`RecordingLaunchCookies`] plants — a fixed sentinel a
 /// test can assert lands on the launch `302` without pulling in the gatekeeper
 /// cookie format (apps-rust can't depend on gatekeeper-rust).
@@ -125,12 +142,14 @@ pub(crate) fn state_full(
     launch_cookies: Arc<dyn LaunchCookies>,
 ) -> Arc<AppsState> {
     let store = AppsStore::open_in_memory().expect("store");
+    let self_hosted = self_hosted_service(Arc::clone(&tunnel));
     Arc::new(AppsState::new(
         store,
         loopback_base_url(),
         owner_auth,
         tunnel,
         webview_handle,
+        self_hosted,
         launch_cookies,
     ))
 }

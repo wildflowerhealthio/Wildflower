@@ -86,6 +86,12 @@ defineSpecDriftTest({
   ],
   // Optional: `responsesNotCompared` for endpoints whose response is not a JSON
   // contract (e.g. a browser 302 / HTML page) — their params/body still compare.
+  // Optional: `requestsNotCompared` for endpoints whose *request body* can't
+  // normalize equal across languages — e.g. a raw binary upload that utoipa
+  // renders as `Vec<u8>` (`integer[]`) while Effect emits
+  // `{type:'string',format:'binary'}` (`apps`' `POST /self-hosted-apps` zip
+  // body). Their params/responses still compare; pin the excluded body with a
+  // focused test so it can't silently drift.
 })
 ```
 

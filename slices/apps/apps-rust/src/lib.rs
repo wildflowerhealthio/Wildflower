@@ -10,24 +10,26 @@
 //!  - **System** ([`domain::SystemApp`]) — launch URL from the compiled-in
 //!    [`SYSTEM_APPS`](domain::SYSTEM_APPS) list; no child row.
 //!  - **Self-hosted** ([`domain::SelfHostedApp`], the `self_hosted_apps` child)
-//!    — seeded by migration, read-only.
-//!  - **Cloud** ([`domain::AppEntry`], the `cloud_apps` child) — the only
-//!    user-editable kind (create / patch / delete through the cloud-admin
-//!    surface).
+//!    — a migration-seeded row (protected) or a runtime upload through
+//!    `POST /apps` (the multipart self-hosted arm; removable).
+//!  - **Cloud** ([`domain::CloudApp`], the `cloud_apps` child) — created /
+//!    replaced / deleted through the cloud-admin surface.
 //!
 //! Layered like `tunnel-rust` and `gatekeeper-rust`:
 //!
-//!  - [`domain`] — pure types: [`domain::App`] (the parent row),
-//!    [`domain::AppListEntry`] (the `GET /apps` wire shape), [`domain::AppEntry`]
-//!    (the cloud wire/admin shape), [`domain::SelfHostedApp`],
+//!  - [`domain`] — pure types: [`domain::App`] (one whole app — the parent-row
+//!    fields plus its [`domain::AppKind`] payload carrying the child-table
+//!    data), [`domain::AppListEntry`] (the `provenance`-discriminated
+//!    `GET /apps` / create / replace wire union, projected from `App`),
 //!    [`domain::SystemApp`], [`domain::Provenance`], and [`domain::AppUrl`] (the
 //!    write-side URL validator).
 //!  - [`db`] — the SQLite store ([`db::AppsStore`], serving the parent registry
 //!    plus both child tables) built on the shared `persistence-rust` primitives.
 //!  - [`http`] — the slice's routers. `GET /apps` lists the registry in display
 //!    order; `POST /apps/{id}` dispatches the launch on the row's provenance; the
-//!    cloud-admin routes mutate a cloud app's content; `PUT /home-screen`
-//!    atomically reorders / enables any app.
+//!    cloud-admin routes create / replace / delete app content (cloud and
+//!    uploaded self-hosted); `PUT /home-screen` atomically reorders / enables any
+//!    app.
 //!
 //! ## Launch / tunnel seam
 //!
@@ -43,6 +45,8 @@ pub mod db;
 pub mod domain;
 pub mod http;
 mod id;
+mod install;
+mod seed;
 mod self_hosted_apps;
 
 use std::sync::Arc;
@@ -53,11 +57,12 @@ use shared_structures_rust::tunnel_service::TunnelService;
 
 pub use config::AppsConfig;
 pub use db::AppsStore;
-pub use domain::SelfHostedApp;
+pub use domain::{App, AppKind, SelfHostedApp};
 pub use http::{AppsState, LaunchCookies, NoLaunchCookies, OwnerAuth};
 // Re-exported for the integration test crate; `#[deprecated]` is intentional.
 #[allow(deprecated)]
 pub use http::StubOwnerAuth;
+pub use seed::sync_vendored_self_hosted_apps;
 pub use self_hosted_apps::SelfHostedAppsService;
 pub use shared_structures_rust::OnDeviceWebviewHandle;
 
@@ -68,12 +73,12 @@ pub use shared_structures_rust::OnDeviceWebviewHandle;
 /// [`Self::launch_router`] under only its network (loopback-peer) gate — the
 /// launch handler owner-gates the loopback popup internally, while a forwarded
 /// launch rides the front trust boundary (the bearer gate can't exempt the
-/// parameterized launch path, so the two are split). [`Self::self_hosted_apps`]
+/// parameterized launch path, so the two are split). [`Self::self_hosted_apps_at_start`]
 /// is the catalogue the host iterates to bind a loopback listener per self-hosted
-/// app (the table is static — seeded by migration, read-only at runtime).
+/// app at startup (both migration-seeded and previously-uploaded rows).
 pub struct Apps {
     /// The owner-gated routes: `GET /apps`, `POST /apps`,
-    /// `PATCH`/`DELETE /apps/{id}`, `PUT /home-screen`. The host wraps
+    /// `PUT`/`DELETE /apps/{id}`, `PUT /home-screen`. The host wraps
     /// this with its bearer gate.
     pub gated_router: Router,
     /// The launch route `POST /apps/{id}`, mounted ungated at the router level
@@ -82,8 +87,9 @@ pub struct Apps {
     /// Shared handler state (the store, the loopback base URL, the owner-auth
     /// gate, the tunnel, the on-device webview seam).
     pub state: Arc<AppsState>,
-    /// The self-hosted catalogue the host binds loopback listeners for.
-    pub self_hosted_apps: Vec<SelfHostedApp>,
+    /// The self-hosted catalogue the host binds loopback listeners for — whole
+    /// [`App`]s whose kind is [`AppKind::SelfHosted`].
+    pub self_hosted_apps_at_start: Vec<App>,
 }
 
 impl Apps {
@@ -106,6 +112,11 @@ impl Apps {
 /// loopback launch opens the resolved URL through it and `204`s. The Tauri host
 /// passes a native-webview opener; a host with no native popup passes a no-op.
 ///
+/// `self_hosted` is the same [`SelfHostedAppsService`] the host holds for the
+/// process lifetime (both hold the `Arc`), so the upload/delete handlers bring
+/// an app online / offline through the identical instance that binds the seed
+/// listeners — and stage/remove files under its `apps_dir`.
+///
 /// `launch_cookies` is the host seam re-scoping the caller's owner session onto a
 /// forwarded self-hosted app's public host (see [`LaunchCookies`]). The Tauri host
 /// passes the gatekeeper cookie builder; others pass [`NoLaunchCookies`].
@@ -119,13 +130,14 @@ pub fn setup_apps(
     tunnel: Arc<dyn TunnelService>,
     webview_handle: Arc<dyn OnDeviceWebviewHandle>,
     owner_auth: Arc<dyn OwnerAuth>,
+    self_hosted: Arc<SelfHostedAppsService>,
     launch_cookies: Arc<dyn LaunchCookies>,
 ) -> anyhow::Result<Apps> {
     // `AppsStore::new` owns the shared migration list — running it migrates the
     // parent registry plus both child tables. The one store serves them all.
     let store = AppsStore::new(conn).context("failed to open apps store")?;
-    // Materialize the static self-hosted catalogue once for the host to bind
-    // listeners against (seeded by migration, read-only at runtime).
+    // Materialize the self-hosted catalogue once for the host to bind listeners
+    // against — every self-hosted row, migration-seeded or previously uploaded.
     let self_hosted_apps = store
         .list_self_hosted_apps()
         .context("failed to list self-hosted apps")?;
@@ -135,6 +147,7 @@ pub fn setup_apps(
         owner_auth,
         tunnel,
         webview_handle,
+        self_hosted,
         launch_cookies,
     ));
 
@@ -142,6 +155,6 @@ pub fn setup_apps(
         gated_router: http::gated_router(Arc::clone(&state)),
         launch_router: http::launch_router(Arc::clone(&state)),
         state,
-        self_hosted_apps,
+        self_hosted_apps_at_start: self_hosted_apps,
     })
 }

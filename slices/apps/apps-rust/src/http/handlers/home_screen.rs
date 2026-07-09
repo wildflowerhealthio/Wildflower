@@ -58,7 +58,7 @@ pub(crate) async fn handle_replace_home_screen(
         .replace_home_screen(&entries)
         .map_err(|e| HandlerError::internal("replace_home_screen failed", e))?
     {
-        Some(updated) => Ok(Json(updated)),
+        Some(updated) => Ok(Json(updated.iter().map(AppListEntry::from).collect())),
         None => Err(HandlerError::InvalidHomeScreen {
             message: "home-screen body must list every app exactly once".to_owned(),
         }),

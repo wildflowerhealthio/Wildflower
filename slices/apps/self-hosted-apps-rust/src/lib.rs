@@ -1,11 +1,11 @@
-//! Host-side serving of static "installed apps" from a runtime directory.
+//! Host-side serving of static "self-hosted apps" from a runtime directory.
 //! See `slices/apps/self-hosted-apps/README.md` for the design rationale
 //! (per-origin isolation, root-serving with no HTML rebase, the committed
 //! per-app templates).
 //!
-//! [`setup_installed_app`] returns the [`Router`] for one app given its id,
+//! [`setup_self_hosted_app`] returns the [`Router`] for one app given its id,
 //! the on-disk directory holding its files (e.g.
-//! `app-data/installed-apps/patient-browser/`), and an [`InstalledAppContext`];
+//! `app-data/self-hosted-apps/patient-browser/`), and a [`SelfHostedAppContext`];
 //! the host binds one loopback `TcpListener` per app and `axum::serve`s the
 //! router at the root of that origin. A missing or empty directory just 404s.
 //! Static-file delivery (path traversal protection, content-type via
@@ -67,7 +67,7 @@ const SHORT_CACHE_CONTROL: &str = "public, max-age=60, must-revalidate";
 
 /// What the host must supply for per-request template rendering.
 #[derive(Clone)]
-pub struct InstalledAppContext {
+pub struct SelfHostedAppContext {
     /// The host's loopback base URL (e.g. `http://127.0.0.1:8080/`). A *loopback*
     /// caller's `apiOrigin` is its origin (`http://127.0.0.1:8080`, no trailing
     /// slash), derived per request rather than pre-stringified so it can't drift.
@@ -85,10 +85,10 @@ pub struct InstalledAppContext {
 #[derive(Clone)]
 struct TemplateState {
     registry: Arc<Handlebars<'static>>,
-    context: InstalledAppContext,
+    context: SelfHostedAppContext,
 }
 
-/// Router serving one installed app from `app_dir` at the root of its
+/// Router serving one self-hosted app from `app_dir` at the root of its
 /// loopback origin. `app_id` selects the committed template subtree
 /// (`templates/<app-id>/`) rendered for this app; apps without one are pure
 /// static serving.
@@ -96,7 +96,11 @@ struct TemplateState {
 /// `app_dir` is the directory whose children are the app's served files
 /// (e.g. `index.html`, `assets/…`); it need not exist yet — a missing file
 /// (or missing directory) is a plain 404.
-pub fn setup_installed_app(app_id: &str, app_dir: PathBuf, context: InstalledAppContext) -> Router {
+pub fn setup_self_hosted_app(
+    app_id: &str,
+    app_dir: PathBuf,
+    context: SelfHostedAppContext,
+) -> Router {
     Router::new()
         // Anything without a committed template: the host-provided directory,
         // served at root by ServeDir.
@@ -323,15 +327,15 @@ mod tests {
         }
     }
 
-    fn context_with_public_host() -> InstalledAppContext {
-        InstalledAppContext {
+    fn context_with_public_host() -> SelfHostedAppContext {
+        SelfHostedAppContext {
             loopback_base_url: Url::parse(LOOPBACK_API_ORIGIN).expect("valid loopback base url"),
             tunnel: Arc::new(PublicHostTunnel),
         }
     }
 
-    fn context_without_public_host() -> InstalledAppContext {
-        InstalledAppContext {
+    fn context_without_public_host() -> SelfHostedAppContext {
+        SelfHostedAppContext {
             loopback_base_url: Url::parse(LOOPBACK_API_ORIGIN).expect("valid loopback base url"),
             tunnel: Arc::new(OfflineTunnel::new(LOOPBACK_API_ORIGIN)),
         }
@@ -369,9 +373,9 @@ mod tests {
         app_id: &str,
         root: &TempRoot,
         request: Request<Body>,
-        context: InstalledAppContext,
+        context: SelfHostedAppContext,
     ) -> Response {
-        setup_installed_app(app_id, root.0.clone(), context)
+        setup_self_hosted_app(app_id, root.0.clone(), context)
             .oneshot(request)
             .await
             .expect("router is infallible")

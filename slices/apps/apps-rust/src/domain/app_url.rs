@@ -283,10 +283,10 @@ mod tests {
             "http://127.0.0.1:8080/x?launch=NONCE",
         );
         // A plain `/path` resolves against the origin too.
-        let url: AppUrl = "/installed-apps/x".parse().unwrap();
+        let url: AppUrl = "/self-hosted-apps/x".parse().unwrap();
         assert_eq!(
             url.to_url_with_params(&params("http://127.0.0.1:8080", "n")),
-            "http://127.0.0.1:8080/installed-apps/x",
+            "http://127.0.0.1:8080/self-hosted-apps/x",
         );
     }
 

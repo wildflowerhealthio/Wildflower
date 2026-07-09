@@ -8,6 +8,13 @@ const responseDoc = (path: string, method: string, schema: SchemaObject): OpenAp
   },
 })
 
+// Build a one-operation doc whose request body carries `schema`.
+const requestDoc = (path: string, method: string, schema: SchemaObject): OpenApiDoc => ({
+  paths: {
+    [path]: { [method]: { requestBody: { content: { 'application/json': { schema } } } } },
+  },
+})
+
 const obj = (
   fields: Record<string, SchemaObject>,
   required: ReadonlyArray<string>
@@ -86,5 +93,48 @@ describe('collectSpecDrift', () => {
     const s = responseDoc('/x', 'get', obj({ a: str }, ['a']))
     const c = responseDoc('/x', 'get', obj({ b: str }, ['b'])) // would drift if compared
     expect(collectSpecDrift(s, c, { scope, responsesNotCompared: new Set(['get /x']) })).toEqual([])
+  })
+
+  test('a request body the server and client disagree on is drift when compared', () => {
+    const s = requestDoc('/x', 'get', obj({ a: str }, ['a']))
+    const c = requestDoc('/x', 'get', obj({ b: str }, ['b']))
+    expect(collectSpecDrift(s, c, { scope })).toEqual([
+      'GET /x requestBody.a: on server, MISSING from client',
+      'GET /x requestBody.b: on client, MISSING from server',
+    ])
+  })
+
+  test('requestsNotCompared skips the request body but still scopes the endpoint', () => {
+    const s = requestDoc('/x', 'get', obj({ a: str }, ['a']))
+    const c = requestDoc('/x', 'get', obj({ b: str }, ['b'])) // would drift if compared
+    expect(collectSpecDrift(s, c, { scope, requestsNotCompared: new Set(['get /x']) })).toEqual([])
+  })
+
+  test('requestsNotCompared still compares responses of the same endpoint', () => {
+    const s: OpenApiDoc = {
+      paths: {
+        '/x': {
+          get: {
+            requestBody: { content: { 'application/json': { schema: obj({ a: str }, ['a']) } } },
+            responses: {
+              '200': { content: { 'application/json': { schema: obj({ r: str }, ['r']) } } },
+            },
+          },
+        },
+      },
+    }
+    const c: OpenApiDoc = {
+      paths: {
+        '/x': {
+          get: {
+            requestBody: { content: { 'application/json': { schema: obj({ b: str }, ['b']) } } }, // excluded
+            responses: { '200': { content: { 'application/json': { schema: obj({}, []) } } } }, // drifts
+          },
+        },
+      },
+    }
+    expect(collectSpecDrift(s, c, { scope, requestsNotCompared: new Set(['get /x']) })).toEqual([
+      'GET /x 200 response.r: on server, MISSING from client',
+    ])
   })
 })

@@ -6,12 +6,13 @@
 
 use std::sync::Arc;
 
-use apps_rust::{setup_apps, Apps, AppsConfig, NoLaunchCookies, OwnerAuth};
+use apps_rust::{setup_apps, Apps, AppsConfig, NoLaunchCookies, OwnerAuth, SelfHostedAppsService};
 use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
 use persistence_rust::Connection;
 use serde_json::Value;
 use shared_structures_rust::tunnel_service::OfflineTunnel;
+use shared_structures_server_rust::ProxyTable;
 use tower::ServiceExt;
 use url::Url;
 
@@ -36,12 +37,29 @@ fn spin_up_with_handle() -> (Apps, Arc<RecordingStubWebviewHandle>) {
     // silence to exactly this construction rather than the whole crate.
     #[allow(deprecated)]
     let owner_auth: Arc<dyn OwnerAuth> = Arc::new(apps_rust::StubOwnerAuth::always_allowed());
+    let tunnel = Arc::new(OfflineTunnel::new("http://127.0.0.1:8080"));
+    // A throwaway apps dir + fresh proxy table back the self-hosted service the
+    // slice now takes; the integration tests here don't exercise upload/serve, so
+    // an empty dir is fine (it's left for the OS to reap).
+    let unique = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock after epoch")
+        .as_nanos();
+    let apps_dir = std::env::temp_dir().join(format!("wf-apps-int-{unique}"));
+    std::fs::create_dir_all(&apps_dir).expect("create temp apps dir");
+    let self_hosted = Arc::new(SelfHostedAppsService::new(
+        &Url::parse(LOOPBACK_BASE_URL).expect("valid base url"),
+        apps_dir,
+        ProxyTable::new(),
+        tunnel.clone(),
+    ));
     let apps = setup_apps(
         db,
         &config,
-        Arc::new(OfflineTunnel::new("http://127.0.0.1:8080")),
+        tunnel,
         handle.clone(),
         owner_auth,
+        self_hosted,
         Arc::new(NoLaunchCookies),
     )
     .expect("setup_apps");
@@ -61,17 +79,29 @@ fn get(uri: &str) -> Request<Body> {
     Request::get(uri).body(Body::empty()).expect("build")
 }
 
-fn post(uri: &str, body: serde_json::Value) -> Request<Body> {
-    Request::post(uri)
-        .header("content-type", "application/json")
-        .body(Body::from(body.to_string()))
-        .expect("build")
-}
-
-fn patch(uri: &str, body: serde_json::Value) -> Request<Body> {
-    Request::patch(uri)
-        .header("content-type", "application/json")
-        .body(Body::from(body.to_string()))
+/// A cloud create — `POST /apps` as `multipart/form-data` (`provenance=cloud`).
+/// The merged create route takes a form, not JSON.
+fn post_create_cloud(name: &str, url: &str, requires_tunnel: bool) -> Request<Body> {
+    let boundary = "INTBOUNDARY";
+    let field = |key: &str, value: &str| {
+        format!("--{boundary}\r\nContent-Disposition: form-data; name=\"{key}\"\r\n\r\n{value}\r\n")
+    };
+    let body = format!(
+        "{}{}{}{}--{boundary}--\r\n",
+        field("provenance", "cloud"),
+        field("name", name),
+        field("url", url),
+        field(
+            "requiresTunnel",
+            if requires_tunnel { "true" } else { "false" }
+        ),
+    );
+    Request::post("/apps")
+        .header(
+            "content-type",
+            format!("multipart/form-data; boundary={boundary}"),
+        )
+        .body(Body::from(body))
         .expect("build")
 }
 
@@ -127,11 +157,11 @@ async fn fresh_install_lists_the_default_set() {
 async fn self_hosted_apps_catalogue_is_materialized() {
     let apps = spin_up();
     let pb = apps
-        .self_hosted_apps
+        .self_hosted_apps_at_start
         .iter()
         .find(|a| a.id == "patient-browser")
         .expect("patient-browser is self-hosted");
-    assert_eq!(pb.port, 8081);
+    assert_eq!(pb.as_self_hosted().expect("self-hosted payload").port, 8081,);
 }
 
 /// A cloud app created through the admin surface shows up immediately in the
@@ -142,13 +172,10 @@ async fn cloud_app_round_trip() {
     let router = apps.combined_router();
     let create_res = router
         .clone()
-        .oneshot(post(
-            "/apps",
-            serde_json::json!({
-                "name": "Round Trip",
-                "url": "https://example.com/launch",
-                "requiresTunnel": false,
-            }),
+        .oneshot(post_create_cloud(
+            "Round Trip",
+            "https://example.com/launch",
+            false,
         ))
         .await
         .expect("oneshot");
@@ -199,26 +226,30 @@ async fn cloud_app_round_trip() {
     );
 }
 
-/// A seeded cloud app's content (name / url) is editable; the edit persists into
-/// the public list. (`enabled` is not a content field — that's `PUT /home-screen`.)
+/// A seeded cloud app's content (name / url) is replaceable; the edit persists
+/// into the public list, whose cloud variant now carries the stored `url`
+/// template. (`enabled` is not content — that's `PUT /home-screen`.)
 #[tokio::test]
 async fn seeded_cloud_app_is_fully_editable() {
     let apps = spin_up();
     let router = apps.combined_router();
-    let patch_res = router
+    let put_res = router
         .clone()
-        .oneshot(patch(
+        .oneshot(put(
             "/apps/growth-chart",
             serde_json::json!({
+                "provenance": "cloud",
                 "name": "Renamed Chart",
                 "url": "https://example.com/replacement",
+                "requiresTunnel": true,
             }),
         ))
         .await
         .expect("oneshot");
-    assert_eq!(patch_res.status(), StatusCode::OK);
-    let body = body_json(patch_res.into_body()).await;
+    assert_eq!(put_res.status(), StatusCode::OK);
+    let body = body_json(put_res.into_body()).await;
     assert_eq!(body["name"], "Renamed Chart");
+    assert_eq!(body["provenance"], "cloud");
     assert_eq!(body["url"], "https://example.com/replacement");
 
     let list_res = router.clone().oneshot(get("/apps")).await.expect("oneshot");
@@ -230,11 +261,14 @@ async fn seeded_cloud_app_is_fully_editable() {
         .find(|v| v["id"] == "growth-chart")
         .expect("growth-chart in list");
     assert_eq!(row["name"], "Renamed Chart");
-    assert!(row.get("url").is_none(), "GET /apps must not expose url");
+    assert_eq!(
+        row["url"], "https://example.com/replacement",
+        "the cloud variant carries the replaced url template",
+    );
 }
 
-/// A self-hosted app appears in the list but is not editable through the
-/// cloud-admin surface (409 AppNotEditable).
+/// A self-hosted app appears in the list (as its own variant, no `url`) but
+/// isn't editable via a cloud body — a provenance mismatch is 409 AppNotEditable.
 #[tokio::test]
 async fn self_hosted_app_listed_but_not_cloud_editable() {
     let apps = spin_up();
@@ -251,15 +285,20 @@ async fn self_hosted_app_listed_but_not_cloud_editable() {
     assert_eq!(row["provenance"], "self-hosted");
     assert!(row.get("url").is_none());
 
-    let patch_res = router
+    let put_res = router
         .clone()
-        .oneshot(patch(
+        .oneshot(put(
             "/apps/patient-browser",
-            serde_json::json!({ "name": "tampered" }),
+            serde_json::json!({
+                "provenance": "cloud",
+                "name": "tampered",
+                "url": "https://example.com/x",
+                "requiresTunnel": false,
+            }),
         ))
         .await
         .expect("oneshot");
-    assert_eq!(patch_res.status(), StatusCode::CONFLICT);
+    assert_eq!(put_res.status(), StatusCode::CONFLICT);
 }
 
 /// A loopback launch of a self-hosted app 204s to its fixed loopback origin.
@@ -349,14 +388,7 @@ async fn create_rejects_javascript_url() {
     let apps = spin_up();
     let res = apps
         .combined_router()
-        .oneshot(post(
-            "/apps",
-            serde_json::json!({
-                "name": "Bad",
-                "url": "javascript:alert(1)",
-                "requiresTunnel": false,
-            }),
-        ))
+        .oneshot(post_create_cloud("Bad", "javascript:alert(1)", false))
         .await
         .expect("oneshot");
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);

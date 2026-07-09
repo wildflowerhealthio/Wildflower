@@ -60,6 +60,14 @@ interface SpecDriftOptions {
    * redirects with no JSON body). Their parameters/request bodies still are.
    */
   responsesNotCompared?: ReadonlySet<string>
+  /**
+   * `"method path"` keys whose *request bodies* are not compared (e.g. a raw
+   * binary upload that utoipa renders as `Vec<u8>` — `integer[]` — while Effect
+   * emits `{type:'string',format:'binary'}`, which cannot normalize equal).
+   * Their parameters/responses still are. Pin the excluded body with a focused
+   * test so it can't silently drift.
+   */
+  requestsNotCompared?: ReadonlySet<string>
 }
 
 // ---- Normalized wire shapes -------------------------------------------------
@@ -252,7 +260,11 @@ const collectSpecDrift = (
   client: OpenApiDoc,
   options: SpecDriftOptions
 ): Array<string> => {
-  const { scope, responsesNotCompared = new Set<string>() } = options
+  const {
+    scope,
+    responsesNotCompared = new Set<string>(),
+    requestsNotCompared = new Set<string>(),
+  } = options
   const drift: Array<string> = []
 
   // Stale-scope guard.
@@ -299,13 +311,15 @@ const collectSpecDrift = (
       )
     }
 
-    // Request body.
-    const serverReq = firstMediaSchema(serverOp.requestBody?.content)
-    const clientReq = firstMediaSchema(clientOp.requestBody?.content)
-    if (Boolean(serverReq) !== Boolean(clientReq)) {
-      drift.push(`${where} requestBody: on ${serverReq ? 'server' : 'client'} only`)
-    } else if (serverReq && clientReq) {
-      diffShapes(normalize(serverReq), normalize(clientReq), `${where} requestBody`, drift)
+    // Request body, unless this endpoint's request body is excluded.
+    if (!requestsNotCompared.has(`${method} ${path}`)) {
+      const serverReq = firstMediaSchema(serverOp.requestBody?.content)
+      const clientReq = firstMediaSchema(clientOp.requestBody?.content)
+      if (Boolean(serverReq) !== Boolean(clientReq)) {
+        drift.push(`${where} requestBody: on ${serverReq ? 'server' : 'client'} only`)
+      } else if (serverReq && clientReq) {
+        diffShapes(normalize(serverReq), normalize(clientReq), `${where} requestBody`, drift)
+      }
     }
 
     // Responses (per status), unless this endpoint's responses are excluded.

@@ -42,12 +42,14 @@ vi.mock('../../../queries.ts', () => {
     error: null,
   })
   return {
+    APP_CONTENT_MUTATION_KEY: ['apps', 'app-content'],
     HOME_SCREEN_MUTATION_KEY: ['apps', 'home-screen'],
     appsListQueryOptions: vi.fn(),
     useAppsListQuery: vi.fn(),
     useReplaceHomeScreenMutation: () => homeScreenStub,
     useAppsAdminCreateMutation: idleMutation,
     useAppsAdminDeleteMutation: idleMutation,
+    useSelfHostedAppCreateMutation: idleMutation,
   }
 })
 
@@ -62,6 +64,8 @@ const APP: AppEntry = {
   localOnly: false,
   smart: false,
   requiresTunnel: false,
+  removable: true,
+  url: 'https://example.com/launch',
 }
 
 // react-tundraish's `Dialog` (mounted closed by the editor) calls native

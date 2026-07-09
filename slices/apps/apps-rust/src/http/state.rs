@@ -11,6 +11,7 @@ use url::Url;
 use crate::db::AppsStore;
 use crate::http::launch_cookies::LaunchCookies;
 use crate::http::owner_auth::OwnerAuth;
+use crate::self_hosted_apps::SelfHostedAppsService;
 use crate::OnDeviceWebviewHandle;
 
 /// Shared state threaded through the apps handlers. Held in an `Arc` and
@@ -36,6 +37,11 @@ pub struct AppsState {
     /// popup supplies a no-op handle (only forwarded callers reach such a host,
     /// so it's never invoked).
     pub(crate) on_device_webview_handle: Arc<dyn OnDeviceWebviewHandle>,
+    /// The self-hosted lifecycle orchestrator, shared with the host (it holds
+    /// the same `Arc`). The upload handler stages bundles under its
+    /// [`apps_dir`](SelfHostedAppsService::apps_dir) and `start`s a freshly
+    /// installed app; the delete handler `stop`s a removed one.
+    pub(crate) self_hosted: Arc<SelfHostedAppsService>,
     /// Re-scopes the caller's owner session onto a **forwarded self-hosted** app's
     /// public host (see [`LaunchCookies`]). The host wires the gatekeeper cookie
     /// builder; a host with no cookie-auth path wires a no-op.
@@ -50,6 +56,7 @@ impl AppsState {
         owner_auth: Arc<dyn OwnerAuth>,
         tunnel: Arc<dyn TunnelService>,
         webview_handle: Arc<dyn OnDeviceWebviewHandle>,
+        self_hosted: Arc<SelfHostedAppsService>,
         launch_cookies: Arc<dyn LaunchCookies>,
     ) -> Self {
         Self {
@@ -58,6 +65,7 @@ impl AppsState {
             owner_auth,
             tunnel,
             on_device_webview_handle: webview_handle,
+            self_hosted,
             launch_cookies,
         }
     }

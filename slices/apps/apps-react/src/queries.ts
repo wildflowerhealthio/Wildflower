@@ -20,13 +20,14 @@ const useRunAuthed = (): RunAuthed =>
   useRouteContext({ from: '__root__', select: (context: RouterContext) => context.runAuthed })
 
 /**
- * Catalogue row as it arrives from `GET /apps`. The launch URL is
- * deliberately NOT exposed here — clients launch by POSTing to `/apps/:id`
- * and following the redirect (see {@link Schemas.AppListEntrySchema}).
+ * Catalogue row as it arrives from `GET /apps` — a `provenance`-discriminated
+ * union (see {@link Schemas.AppListEntrySchema}). The cloud variant carries its
+ * stored launch `url` **template** and the self-hosted variant its `launchPath`
+ * (both stored, origin-independent templates); the concrete launch target is
+ * still resolved per request by POSTing to `/apps/:id`.
  */
 type AppEntry = Schema.Schema.Type<typeof Schemas.AppListEntrySchema>
-type CreateAppPayload = Schema.Schema.Type<typeof Schemas.CreateAppBodySchema>
-type UpdateAppPayload = Schema.Schema.Type<typeof Schemas.UpdateAppBodySchema>
+type AppContentBody = Schema.Schema.Type<typeof Schemas.AppContentBodySchema>
 type HomeScreenPayload = Schema.Schema.Type<typeof Schemas.HomeScreenSchema>
 
 /** Mutations invalidate this key on success so the next render refetches. */
@@ -41,6 +42,16 @@ const APPS_LIST_QUERY_KEY = ['apps', 'list'] as const
  * so a toggle can be blocked while a reorder is still landing (and vice versa).
  */
 const HOME_SCREEN_MUTATION_KEY = ['apps', 'home-screen'] as const
+
+/**
+ * Shared `mutationKey` for every `PUT /apps/{id}` content writer. Each
+ * self-hosted row's launch-path editor holds its **own**
+ * {@link useAppsAdminReplaceMutation} instance, so the apps editor's
+ * one-write-at-a-time fieldset lock can only see those writes across
+ * components via `useIsMutating` on this key — without it, a Remove or toggle
+ * could race a mid-flight launch-path save.
+ */
+const APP_CONTENT_MUTATION_KEY = ['apps', 'app-content'] as const
 
 /** Shared by route `loader` (`ensureQueryData`) and {@link useAppsListQuery}. */
 const appsListQueryOptions = (
@@ -60,19 +71,29 @@ const appsListQueryOptions = (
 const useAppsListQuery = (): UseSuspenseQueryResult<readonly AppEntry[], Error> =>
   useSuspenseQuery(appsListQueryOptions(useRunAuthed()))
 
-/** Admin `UpdateApp` (PATCH /apps/:id). Invalidates {@link APPS_LIST_QUERY_KEY}. */
-const useAppsAdminUpdateMutation = (): UseMutationResult<
+/**
+ * Admin `ReplaceApp` (PUT /apps/:id). The `payload` is a provenance-discriminated
+ * {@link AppContentBody} whose arm must match the target app's kind (cloud
+ * content, or a self-hosted launch path). Invalidates {@link APPS_LIST_QUERY_KEY}.
+ */
+const useAppsAdminReplaceMutation = (): UseMutationResult<
   unknown,
   Error,
-  { readonly id: string; readonly payload: UpdateAppPayload }
+  { readonly id: string; readonly payload: AppContentBody }
 > => {
   const runAuthed = useRunAuthed()
   const queryClient = useQueryClient()
   return useMutation({
+    mutationKey: APP_CONTENT_MUTATION_KEY,
     mutationFn: ({ id, payload }) =>
       runAuthed(
         Effect.flatMap(AppsAdminHttpApiClient, (c) =>
-          c['apps-admin'].UpdateApp({ path: { id }, payload })
+          // The generated request type is discriminated per payload arm, so
+          // narrow on `provenance` before the call — a union-typed `payload`
+          // isn't assignable to `{ payload: Cloud } | { payload: SelfHosted }`.
+          c['apps-admin'].ReplaceApp(
+            payload.provenance === 'cloud' ? { path: { id }, payload } : { path: { id }, payload }
+          )
         )
       ),
     onSuccess: async () => {
@@ -81,15 +102,68 @@ const useAppsAdminUpdateMutation = (): UseMutationResult<
   })
 }
 
-/** Admin `CreateApp` (POST /apps). Invalidates {@link APPS_LIST_QUERY_KEY}. */
-const useAppsAdminCreateMutation = (): UseMutationResult<unknown, Error, CreateAppPayload> => {
+/**
+ * Admin `CreateApp` (POST /apps) — the **cloud** arm. `POST /apps` is now a
+ * `multipart/form-data` route discriminated on `provenance`, so a multipart
+ * endpoint's typed client payload is a `FormData`: this builds the cloud form
+ * (`requiresTunnel` serialized as the text `"true"` / `"false"`) and posts it.
+ * Invalidates {@link APPS_LIST_QUERY_KEY}.
+ */
+const useAppsAdminCreateMutation = (): UseMutationResult<
+  unknown,
+  Error,
+  {
+    readonly name: string
+    readonly url: string
+    readonly requiresTunnel: boolean
+    readonly subtitle?: string
+  }
+> => {
   const runAuthed = useRunAuthed()
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (payload) =>
-      runAuthed(
-        Effect.flatMap(AppsAdminHttpApiClient, (c) => c['apps-admin'].CreateApp({ payload }))
-      ),
+    mutationFn: ({ name, url, requiresTunnel, subtitle }) => {
+      const form = new FormData()
+      form.append('provenance', 'cloud')
+      form.append('name', name)
+      form.append('url', url)
+      form.append('requiresTunnel', String(requiresTunnel))
+      if (subtitle !== undefined) form.append('subtitle', subtitle)
+      return runAuthed(
+        Effect.flatMap(AppsAdminHttpApiClient, (c) => c['apps-admin'].CreateApp({ payload: form }))
+      )
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: APPS_LIST_QUERY_KEY })
+    },
+  })
+}
+
+/**
+ * Admin `CreateApp` (POST /apps) — the **self-hosted** arm. Posts the same
+ * merged `multipart/form-data` route as the cloud arm (`provenance=self-hosted`)
+ * with the zipped app bundle as the `bundle` file part; the server slugs `name`
+ * into the new app's id/subdomain and extracts + installs the bundle.
+ * Invalidates {@link APPS_LIST_QUERY_KEY} on success so the newly installed
+ * self-hosted tile appears.
+ */
+const useSelfHostedAppCreateMutation = (): UseMutationResult<
+  unknown,
+  Error,
+  { readonly name: string; readonly bundle: Blob }
+> => {
+  const runAuthed = useRunAuthed()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ name, bundle }) => {
+      const form = new FormData()
+      form.append('provenance', 'self-hosted')
+      form.append('name', name)
+      form.append('bundle', bundle, 'bundle.zip')
+      return runAuthed(
+        Effect.flatMap(AppsAdminHttpApiClient, (c) => c['apps-admin'].CreateApp({ payload: form }))
+      )
+    },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: APPS_LIST_QUERY_KEY })
     },
@@ -116,8 +190,8 @@ const useAppsAdminDeleteMutation = (): UseMutationResult<
 }
 
 /**
- * `ReplaceHomeScreen` (PUT /home-screen). Unlike {@link useAppsAdminUpdateMutation}
- * (cloud-only content edits), this applies to **every** provenance — it's the
+ * `ReplaceHomeScreen` (PUT /home-screen). Unlike {@link useAppsAdminReplaceMutation}
+ * (single-app content edits), this applies to **every** provenance — it's the
  * homescreen's single writer of order + `enabled`. The payload is the full
  * ordered list `[{ id, enabled }]` (array index = display position); the server
  * renumbers + flips atomically. Invalidates {@link APPS_LIST_QUERY_KEY} on
@@ -141,13 +215,15 @@ const useReplaceHomeScreenMutation = (): UseMutationResult<unknown, Error, HomeS
 }
 
 export {
+  APP_CONTENT_MUTATION_KEY,
   APPS_LIST_QUERY_KEY,
   HOME_SCREEN_MUTATION_KEY,
   appsListQueryOptions,
   useAppsAdminCreateMutation,
   useAppsAdminDeleteMutation,
-  useAppsAdminUpdateMutation,
+  useAppsAdminReplaceMutation,
   useAppsListQuery,
   useReplaceHomeScreenMutation,
+  useSelfHostedAppCreateMutation,
 }
-export type { AppEntry, CreateAppPayload, HomeScreenPayload, UpdateAppPayload }
+export type { AppContentBody, AppEntry, HomeScreenPayload }

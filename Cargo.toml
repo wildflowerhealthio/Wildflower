@@ -24,7 +24,7 @@ publish = false
 
 [workspace.dependencies]
 anyhow = "1.0.102"
-axum = { version = "0.8", features = ["json", "query", "matched-path", "ws"] }
+axum = { version = "0.8", features = ["json", "query", "matched-path", "multipart", "ws"] }
 # Request-time rendering of the committed self-hosted-app templates
 # (`templates/<app-id>/…​.hbs` in self-hosted-apps-rust).
 handlebars = "6"

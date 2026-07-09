@@ -61,8 +61,26 @@ defineSpecDriftTest({
   /** Endpoints compared — `(path, lowercase method)`. */
   scope: [
     ['/apps', 'post'],
-    ['/apps/{id}', 'patch'],
+    ['/apps/{id}', 'put'],
     ['/apps/{id}', 'delete'],
     ['/home-screen', 'put'],
   ],
+})
+
+describe('CreateApp request body', () => {
+  // `POST /apps` is the merged create route: a `multipart/form-data` form
+  // discriminated on `provenance`, carrying the self-hosted `bundle` as a file
+  // part. Pin the client-side wire contract so a future edit can't silently
+  // swap it back to JSON (which would break the upload) or drop the file part.
+  test('is a multipart/form-data body with a binary bundle field', () => {
+    const spec = OpenApi.fromApi(AppsAdminApi)
+    const content = spec.paths['/apps']?.post?.requestBody?.content ?? {}
+    expect(Object.keys(content)).toEqual(['multipart/form-data'])
+    // `bundle` is the uploaded file part — Effect renders it as a `$ref` to the
+    // `PersistedFile` component (which dereferences to a binary string).
+    expect(Object.values(content)[0]?.schema).toMatchObject({
+      type: 'object',
+      properties: { bundle: { $ref: '#/components/schemas/PersistedFile' } },
+    })
+  })
 })

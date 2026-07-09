@@ -166,6 +166,12 @@ async fn run_server(
     runtime: ServerRuntimeConfig,
     publishers: bridge::BridgePublishers,
     app_handle: tauri::AppHandle,
+    // Tauri's bundled-resource directory, resolved in `.setup()` (where the
+    // `AppHandle` path API is available) and threaded in rather than added to
+    // `ServerRuntimeConfig`. The release build copies the vendored self-hosted
+    // app builds from `<resource_dir>/self-hosted-apps/`; the dev build ignores
+    // it in favour of the workspace source tree.
+    resource_dir: std::path::PathBuf,
 ) -> anyhow::Result<()> {
     // Apply any deletions the Owner scheduled from the data-management screen
     // BEFORE opening the databases below: the `/databases` DELETE can't remove a
@@ -302,15 +308,15 @@ async fn run_server(
         layer_router_with_gatekeeper_auth_gating(tunnel.router, gatekeeper.state.clone(), &[]);
 
     // The apps catalogue surface. `GET /apps` (list), the cloud-admin write
-    // surface (POST/PATCH/DELETE), and `PATCH /apps/{id}/placement` are
-    // owner-gated through the gatekeeper (`apps.gated_router`, below). The launch
-    // route `POST /apps/{id}` (`apps.launch_router`) is merged ungated at the
-    // router level: a loopback launch is owner-gated in-handler via `owner_auth`,
-    // a forwarded launch rides the front trust boundary. A `requires_tunnel`
-    // launch resolves to the tunnel's verified origin through the tunnel service
-    // (or fails 503 LaunchUnavailable when the tunnel can't be brought up). The
-    // apps slice derives the launch origin and the self-hosted listeners'
-    // hostname from `loopback_base_url`, so they can't drift.
+    // surface (POST/PUT/DELETE /apps), and `PUT /home-screen` are owner-gated
+    // through the gatekeeper (`apps.gated_router`, below). The launch route
+    // `POST /apps/{id}` (`apps.launch_router`) is merged ungated at the router
+    // level: a loopback launch is owner-gated in-handler via `owner_auth`, a
+    // forwarded launch rides the front trust boundary. A `requires_tunnel` launch
+    // resolves to the tunnel's verified origin through the tunnel service (or
+    // fails 503 LaunchUnavailable when the tunnel can't be brought up). The apps
+    // slice derives the launch origin and the self-hosted listeners' hostname
+    // from `loopback_base_url`, so they can't drift.
     let apps_config = AppsConfig {
         loopback_base_url: loopback_base_url.clone(),
     };
@@ -332,6 +338,64 @@ async fn run_server(
     let owner_auth: Arc<dyn OwnerAuth> = Arc::new(GatekeeperOwnerAuth {
         state: gatekeeper.state.clone(),
     });
+
+    // Static self-hosted apps are served from this directory under app-data at
+    // request time (the apps slice's `SelfHostedAppsService` builds each app's
+    // file-serving router from its `<content_folder>/` subdirectory here, and the
+    // upload handler stages extracted bundles under it). Created up front so it's
+    // a stable, discoverable place to drop an app's files; an empty/missing dir
+    // just 404s. Best-effort — a creation failure only means the apps routes 404
+    // until it exists, so it must not abort server startup.
+    let self_hosted_apps_dir = runtime.app_data_dir.join("self-hosted-apps");
+    if let Err(error) = std::fs::create_dir_all(&self_hosted_apps_dir) {
+        tauri_plugin_log::log::warn!(
+            "failed to create self-hosted-apps dir {}: {error}",
+            self_hosted_apps_dir.display()
+        );
+    }
+
+    // Refresh the vendored self-hosted app builds into the serving dir — dev
+    // overwrite-mirrors from the workspace source tree, release copies-if-missing
+    // from the bundled resources (see `apps_rust::sync_vendored_self_hosted_apps`).
+    let (vendored_source, overwrite_vendored) = if cfg!(debug_assertions) {
+        (
+            std::path::PathBuf::from(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../../slices/apps/self-hosted-apps"
+            )),
+            true,
+        )
+    } else {
+        (resource_dir.join("self-hosted-apps"), false)
+    };
+    if let Err(error) = apps_rust::sync_vendored_self_hosted_apps(
+        &vendored_source,
+        &self_hosted_apps_dir,
+        overwrite_vendored,
+    ) {
+        tauri_plugin_log::log::warn!("failed to sync vendored self-hosted apps: {error}");
+    }
+
+    // The `id -> loopback port` table the reverse proxy reads per request and the
+    // apps slice registers each self-hosted app into. A cloneable `Arc` handle,
+    // so the registration the slice does is visible to the live proxy.
+    let proxy_table = ProxyTable::new();
+
+    // The apps slice owns the self-hosted lifecycle. Each self-hosted app gets
+    // its own dedicated loopback origin (`http://{loopback_hostname}:{port}/`) —
+    // its own security context (own storage, own cookies, no Same-Origin Policy
+    // share with the main API) — and is registered into `proxy_table` so it's
+    // also reachable remotely at `<app-id>.<public-host>` for forwarded traffic.
+    // Built before `setup_apps` and handed in (both hold the `Arc`), so the
+    // upload/delete handlers bring apps online/offline through the same instance
+    // that binds the startup seed listeners below.
+    let self_hosted = Arc::new(SelfHostedAppsService::new(
+        &loopback_base_url,
+        self_hosted_apps_dir,
+        proxy_table.clone(),
+        Arc::clone(&tunnel_service),
+    ));
+
     // The forwarded self-hosted launch cookie seam (see `GatekeeperLaunchCookies`).
     let launch_cookies: Arc<dyn LaunchCookies> = Arc::new(GatekeeperLaunchCookies);
     let apps = setup_apps(
@@ -340,6 +404,7 @@ async fn run_server(
         Arc::clone(&tunnel_service),
         webview_handle,
         owner_auth,
+        Arc::clone(&self_hosted),
         launch_cookies,
     )
     .context("failed to set up apps")?;
@@ -387,25 +452,6 @@ async fn run_server(
     // Trust doesn't come from CORS here anyway: the loopback gate
     // rejects non-local peers and auth rides the bearer header.
     //
-    // Static "installed apps" are served from this directory under app-data at
-    // request time (the apps slice's `SelfHostedAppsService` builds each app's
-    // file-serving router from its `<id>/` subdirectory here). Created up front
-    // so it's a stable, discoverable place to drop an app's files into; an
-    // empty/missing dir just 404s. Best-effort — a creation failure only means
-    // the apps routes 404 until it exists, so it must not abort server startup.
-    let installed_apps_dir = runtime.app_data_dir.join("installed-apps");
-    if let Err(error) = std::fs::create_dir_all(&installed_apps_dir) {
-        tauri_plugin_log::log::warn!(
-            "failed to create installed-apps dir {}: {error}",
-            installed_apps_dir.display()
-        );
-    }
-
-    // The `id -> loopback port` table the reverse proxy reads per request and
-    // the apps slice registers each self-hosted app into. A cloneable `Arc`
-    // handle, so the registration the slice does is visible to the live proxy.
-    let proxy_table = ProxyTable::new();
-
     // The whole API stack — built first because it's the reverse proxy's
     // fallback, handed in at construction. A forwarded request that doesn't
     // match a self-hosted subdomain (and every loopback request) runs this.
@@ -466,32 +512,28 @@ async fn run_server(
         proxy_table.clone(),
     );
 
-    // The apps slice owns the self-hosted lifecycle. Each self-hosted app gets
-    // its own dedicated loopback origin (`http://{loopback_hostname}:{port}/`) —
-    // its own security context (own storage, own cookies, no Same-Origin Policy
-    // share with the main API) — and is registered into `proxy_table` so it's
-    // also reachable remotely at `<app-id>.<public-host>` for forwarded traffic.
-    // The DB row's `port` is the source of truth for the bind; the apps slice
-    // renders the launch target from the same value, so redirect and listener
-    // can't drift. Seed-driven today (the static `self_hosted_apps` catalogue); the
-    // start/stop calls also work at runtime for restartless install. A failure
-    // to bring one app online must not abort startup, so it's logged and skipped.
-    // The loopback API origin + tunnel feed the per-request template rendering
-    // (`apiOrigin`) in each app's router — loopback callers get the loopback
-    // origin, forwarded callers `https://<public_host>`.
-    let self_hosted = SelfHostedAppsService::new(
-        &loopback_base_url,
-        installed_apps_dir,
-        proxy_table,
-        Arc::clone(&tunnel_service),
-    );
-    for app in &apps.self_hosted_apps {
-        if let Err(error) = self_hosted.start(app).await {
-            tauri_plugin_log::log::warn!("failed to start self-hosted app {}: {error}", app.id);
+    // Bind every self-hosted app's loopback listener + proxy registration at
+    // startup — both migration-seeded rows and previously-uploaded ones. The DB
+    // row's `port` is the source of truth for the bind; the apps slice renders
+    // the launch target from the same value, so redirect and listener can't
+    // drift. The runtime upload/delete handlers drive the same `self_hosted`
+    // instance for restartless install/uninstall. A failure to bring one app
+    // online must not abort startup, so it's logged and skipped. The loopback
+    // API origin + tunnel feed the per-request template rendering (`apiOrigin`)
+    // in each app's router — loopback callers get the loopback origin, forwarded
+    // callers `https://<public_host>`.
+    for app in &apps.self_hosted_apps_at_start {
+        // The catalogue is self-hosted-only by construction; the `if let` just
+        // avoids a panic path on a store bug.
+        if let Some(self_hosted_app) = app.as_self_hosted() {
+            if let Err(error) = self_hosted.start(&app.id, self_hosted_app).await {
+                tauri_plugin_log::log::warn!("failed to start self-hosted app {}: {error}", app.id);
+            }
         }
     }
     // Hold the orchestrator for the process lifetime — dropping it would drop the
     // running listeners' shutdown signals and take the self-hosted apps offline.
+    // (`apps.state` holds a clone of the same `Arc`, so the handlers share it.)
     let _self_hosted = self_hosted;
 
     axum::serve(
@@ -553,6 +595,12 @@ pub fn run() {
             let app_data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&app_data_dir)?;
 
+            // Tauri's bundled-resource dir — resolved here (the path API needs
+            // the `AppHandle`) and threaded into the server task. In a release
+            // build the vendored self-hosted app builds are copied from
+            // `<resource_dir>/self-hosted-apps/`.
+            let resource_dir = app.path().resource_dir()?;
+
             // Attach the bridge before the server task spawns: `listen`
             // registers synchronously, so the webview's `__Ready` (which
             // fires much later, once the bundle runs) can't be missed
@@ -591,7 +639,9 @@ pub fn run() {
                     app_data_dir,
                 };
 
-                if let Err(error) = run_server(runtime, publishers, server_handle).await {
+                if let Err(error) =
+                    run_server(runtime, publishers, server_handle, resource_dir).await
+                {
                     tauri_plugin_log::log::error!("Wildflower server stopped: {error:?}");
                     // A failed/stopped server leaves the webview unable to
                     // reach the API at all (no token, no FHIR) — surface it

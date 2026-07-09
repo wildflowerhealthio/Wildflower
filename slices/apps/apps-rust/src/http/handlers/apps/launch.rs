@@ -37,7 +37,7 @@ use axum::response::{IntoResponse, Response};
 
 use shared_structures_rust::served_origin::{request_provenance, RequestProvenance};
 
-use crate::domain::{App, AppEntry, LaunchParams, Provenance, SelfHostedApp};
+use crate::domain::{App, AppKind, CloudApp, LaunchParams, SelfHostedApp};
 use crate::http::response_templates::{AppNotFoundBody, HandlerError, LaunchUnavailableBody};
 use crate::http::state::AppsState;
 use crate::id::mint_launch_nonce;
@@ -93,7 +93,7 @@ pub(crate) async fn handle_launch_app(
 
     // Resolve before dispatching: an unreachable target bails here with
     // `503 LaunchUnavailable` rather than opening a doomed popup / dead redirect.
-    let resolved = resolve_launch_target(&state, &app, &provenance).await?;
+    let resolved = app.resolve_launch(&state, &provenance).await?;
 
     match &provenance {
         // The loopback caller was owner-checked above; hand the URL to the host
@@ -101,7 +101,7 @@ pub(crate) async fn handle_launch_app(
         RequestProvenance::Loopback => {
             state
                 .on_device_webview_handle
-                .open(resolved.name, resolved.target_url);
+                .open(app.name.clone(), resolved.target_url);
             Ok(no_content())
         }
         // A forwarded self-hosted launch re-scopes the caller's session onto its
@@ -116,12 +116,10 @@ pub(crate) async fn handle_launch_app(
     }
 }
 
-/// A resolved launch: the display `name` (loopback popup chrome only), the
-/// provenance-aware `target_url`, and — for a forwarded self-hosted launch only —
-/// the public host to re-scope the caller's owner session cookies onto.
+/// A resolved launch: the provenance-aware `target_url` and — for a forwarded
+/// self-hosted launch only — the public host to re-scope the caller's owner
+/// session cookies onto.
 struct ResolvedLaunch {
-    /// The launched app's display name, used only to title the loopback popup.
-    name: String,
     /// The provenance-aware launch URL (loopback origin, public subdomain, or a
     /// rendered cloud template).
     target_url: String,
@@ -131,66 +129,43 @@ struct ResolvedLaunch {
     session_cookie_host: Option<String>,
 }
 
-/// Resolve `app` to a [`ResolvedLaunch`], dispatching on the parent row's
-/// [`Provenance`]. The name is only for the loopback popup's chrome; the launch
-/// URL is the provenance-aware target; `session_cookie_host` is `Some` only for a
-/// forwarded self-hosted launch. `503` if the matched app has no reachable
-/// target; `500` for a `system` row with no compiled-in source.
-async fn resolve_launch_target(
-    state: &AppsState,
-    app: &App,
-    provenance: &RequestProvenance,
-) -> Result<ResolvedLaunch, HandlerError> {
-    match app.provenance {
-        Provenance::System => {
-            let target_url = render_system_target(state, app, provenance)?;
-            Ok(ResolvedLaunch {
-                name: app.name.clone(),
-                target_url,
+impl App {
+    /// Resolve this app to a [`ResolvedLaunch`], dispatching on its [`AppKind`]
+    /// payload — the whole app came out of one store read, so the kind-specific
+    /// launch data is already in hand (a `cloud` / `self-hosted` row whose child
+    /// data is missing fails inside that read as a typed error, never here).
+    /// `session_cookie_host` is `Some` only for a forwarded self-hosted launch.
+    /// `503` if the matched app has no reachable target; `500` for a `system`
+    /// row with no compiled-in source.
+    ///
+    /// Lives beside the launch handler rather than in `domain` on purpose: the
+    /// resolution reaches into `AppsState` (the tunnel, the loopback config) and
+    /// yields an http [`HandlerError`], so keeping it here leaves the domain
+    /// [`App`] free of that http/runtime coupling.
+    async fn resolve_launch(
+        &self,
+        state: &AppsState,
+        provenance: &RequestProvenance,
+    ) -> Result<ResolvedLaunch, HandlerError> {
+        match &self.kind {
+            AppKind::System => Ok(ResolvedLaunch {
+                target_url: render_system_target(state, self, provenance)?,
                 session_cookie_host: None,
-            })
-        }
-        Provenance::SelfHosted => {
-            let child = state
-                .store
-                .find_self_hosted_app(&app.id)
-                .map_err(|e| HandlerError::internal("self_hosted_apps find lookup failed", e))?
-                .ok_or_else(|| {
-                    // A `self-hosted` parent with no child row is a seed/schema
-                    // inconsistency, not a client error — surface it as a logged
-                    // 500 rather than a 404 (the parent exists).
-                    HandlerError::internal(
-                        "self-hosted parent has no child row",
-                        format!("id={}", app.id),
-                    )
-                })?;
-            let SelfHostedTarget {
-                target_url,
-                session_cookie_host,
-            } = render_self_hosted_target(&child, state, provenance)?;
-            Ok(ResolvedLaunch {
-                name: app.name.clone(),
-                target_url,
-                session_cookie_host,
-            })
-        }
-        Provenance::Cloud => {
-            let entry = state
-                .store
-                .find_cloud_app(&app.id)
-                .map_err(|e| HandlerError::internal("find_cloud_app lookup failed", e))?
-                .ok_or_else(|| {
-                    HandlerError::internal(
-                        "cloud parent has no child row",
-                        format!("id={}", app.id),
-                    )
-                })?;
-            let target_url = render_cloud_target(state, provenance, &entry).await?;
-            Ok(ResolvedLaunch {
-                name: app.name.clone(),
-                target_url,
+            }),
+            AppKind::SelfHosted(child) => {
+                let SelfHostedTarget {
+                    target_url,
+                    session_cookie_host,
+                } = render_self_hosted_target(child, state, provenance)?;
+                Ok(ResolvedLaunch {
+                    target_url,
+                    session_cookie_host,
+                })
+            }
+            AppKind::Cloud(child) => Ok(ResolvedLaunch {
+                target_url: render_cloud_target(state, provenance, child).await?,
                 session_cookie_host: None,
-            })
+            }),
         }
     }
 }
@@ -237,31 +212,35 @@ struct SelfHostedTarget {
     session_cookie_host: Option<String>,
 }
 
-/// Render a self-hosted app's launch target. A loopback caller gets the loopback
-/// `http://{host}:{port}/` and no cookie host; a forwarded caller gets the public
-/// subdomain ([`SelfHostedApp::subdomain_url`]) paired with the same `public_host`
-/// that built it (so the cookie `Domain` can't drift from the redirect target). A
-/// forwarded launch with no configured `public_host` has no reachable target, so it
-/// `503 LaunchUnavailable`s rather than handing back loopback.
+/// Render a self-hosted app's launch target off its own origin — the loopback
+/// `http://{host}:{port}/` for a loopback caller (no cookie host), else the public
+/// subdomain ([`SelfHostedApp::subdomain_url`], paired with the same `public_host`
+/// so the cookie `Domain` can't drift from the redirect target — see
+/// `docs/Origins/Explanation.md`). A forwarded launch with **no** `public_host`
+/// configured has no reachable target, so it `503 LaunchUnavailable`s rather than
+/// handing back loopback. Any `launch_path` is applied by
+/// [`SelfHostedApp::render_launch`].
 fn render_self_hosted_target(
     child: &SelfHostedApp,
     state: &AppsState,
     provenance: &RequestProvenance,
 ) -> Result<SelfHostedTarget, HandlerError> {
-    if matches!(provenance, RequestProvenance::Forwarded { .. }) {
-        let Some(public_host) = state.tunnel.current_public_host() else {
-            return Err(HandlerError::Unavailable {
-                reason: "no public host is configured for this remote launch".to_owned(),
-            });
-        };
-        return Ok(SelfHostedTarget {
-            target_url: child.subdomain_url(&public_host),
-            session_cookie_host: Some(public_host),
-        });
-    }
+    let (app_base, session_cookie_host) = match provenance {
+        RequestProvenance::Forwarded { .. } => {
+            let Some(public_host) = state.tunnel.current_public_host() else {
+                return Err(HandlerError::Unavailable {
+                    reason: "no public host is configured for this remote launch".to_owned(),
+                });
+            };
+            (child.subdomain_url(&public_host), Some(public_host))
+        }
+        RequestProvenance::Loopback => (child.launch_url(&state.loopback_hostname()), None),
+    };
+    let served = served_origin(state, provenance);
+    let launch = mint_launch_nonce();
     Ok(SelfHostedTarget {
-        target_url: child.launch_url(&state.loopback_hostname()),
-        session_cookie_host: None,
+        target_url: child.render_launch(&app_base, &served, &launch),
+        session_cookie_host,
     })
 }
 
@@ -273,7 +252,7 @@ fn render_self_hosted_target(
 async fn render_cloud_target(
     state: &AppsState,
     provenance: &RequestProvenance,
-    app: &AppEntry,
+    app: &CloudApp,
 ) -> Result<String, HandlerError> {
     let origin = resolve_origin(state, provenance, app.requires_tunnel).await?;
     let launch = mint_launch_nonce();
