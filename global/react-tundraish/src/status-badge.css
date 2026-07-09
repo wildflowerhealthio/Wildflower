@@ -6,12 +6,15 @@
  * file authors the layout, the resting neutral tone, the per-tone trios
  * (fill / text / border / dot), and the `pulse` liveliness animation.
  *
- * Tone trios use the design's exact light/dark values rather than the
- * tundra ramp — the badge wants a soft tint the ramp can't spare. The
- * neutral (no-class) tone and the success (`accent-green`) tone read
- * from the `--color-chip-*` / `--color-success-*` tokens defined in
- * `colors-custom.css`, so they flip with the surface palette
- * automatically and no dark-mode rules are needed for them here.
+ * The neutral (no-class) tone reads `--color-chip-*` / `--color-divider`, the
+ * success (`accent-green`) tone reads `--color-success-*`, and the danger
+ * (`accent-red`) tone reads the `--color-red-*` ramp — all in
+ * `colors-custom.css` — so they flip with the surface palette automatically;
+ * only the danger tint background and dark badge-text step need explicit
+ * per-scheme values. The info (blue) and warning (yellow) tones aren't part of
+ * the status palette the refresh specifies, so they carry their own
+ * true-neutral-friendly trios below (a muted steel blue and a desaturated
+ * gold, kept clear of the navy accent).
  */
 
 .status-badge {
@@ -80,12 +83,12 @@
 }
 
 .status-badge.accent-blue {
-  background: #d2e8e5;
-  color: #1f5e57;
-  border-color: #93c4be;
+  background: #dde8f5;
+  color: #2c4a72;
+  border-color: #a7c1e0;
 }
 .status-badge.accent-blue::before {
-  background: #2f867d;
+  background: #3a6299;
 }
 
 .status-badge.accent-green {
@@ -98,50 +101,48 @@
 }
 
 .status-badge.accent-yellow {
-  background: #fbe4b8;
-  color: #8a5210;
-  border-color: #eaba5b;
+  background: #f6ecc7;
+  color: #755610;
+  border-color: #e0c46b;
 }
 .status-badge.accent-yellow::before {
-  background: #e0921a;
+  background: #c99617;
 }
 
+/* Danger tone — a faint red tint over crisp danger text + a red dot, reading
+ * the `--color-red-*` ramp (only the 5%/10% tint background is a per-scheme
+ * literal the ramp can't express). */
 .status-badge.accent-red {
-  background: #f7d7d6;
-  color: #9f2026;
-  border-color: #e89a9a;
+  background: rgba(201, 48, 45, 0.05);
+  color: var(--color-red-3);
+  border-color: var(--color-red-7);
 }
 .status-badge.accent-red::before {
-  background: #cb2c2c;
+  background: var(--color-red-5);
 }
 
-/* Dark-mode tones — warm-tinted fills, lighter text/dots. The neutral
- * (no-class) tone and the success (.accent-green) tone read from the
- * dark-mode card/chip/success tokens that flip alongside the surface
- * palette, so no second rule for them here. The remaining tones still
- * need explicit dark trios — tundra's blue/yellow ramps don't match the
- * design's specific warm-tinted variants. */
+/* Dark-mode tones. The neutral (no-class), success (.accent-green), and danger
+ * (.accent-red) tones read tokens that already flip with the surface palette,
+ * so danger only re-pins its tint background + badge-text step; the dot and
+ * border tokens flip on their own. Info (blue) and warning (yellow) still need
+ * explicit dark trios. */
 :root[data-color-scheme='dark'] .status-badge.accent-blue {
-  background: #173a37;
-  color: #7fcfc4;
-  border-color: #2c5b56;
+  background: #182636;
+  color: #90b4dc;
+  border-color: #2e4a6b;
 }
 :root[data-color-scheme='dark'] .status-badge.accent-blue::before {
-  background: #46b3a6;
+  background: #5487bf;
 }
 :root[data-color-scheme='dark'] .status-badge.accent-yellow {
-  background: #3a2e12;
-  color: #e0bb6b;
-  border-color: #5a481f;
+  background: #33290e;
+  color: #d9b661;
+  border-color: #55471e;
 }
 :root[data-color-scheme='dark'] .status-badge.accent-yellow::before {
-  background: #e0921a;
+  background: #d99e1a;
 }
 :root[data-color-scheme='dark'] .status-badge.accent-red {
-  background: #3c1b1b;
-  color: #f0a3a0;
-  border-color: #6e2d2f;
-}
-:root[data-color-scheme='dark'] .status-badge.accent-red::before {
-  background: #e64b4b;
+  background: rgba(234, 86, 77, 0.1);
+  color: var(--color-red-2);
 }

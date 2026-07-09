@@ -74,20 +74,22 @@ html {
 body {
   background-color: var(--color-canvas);
   color: var(--color-foreground);
-  /* Hanken Grotesk is the app's working voice; the type tokens carry the
-   * three-family system (see `typography-custom.css`). The serif/mono are
-   * applied where the design reserves them (titles, eyebrows, metadata),
-   * not globally. */
+  /* Atkinson Hyperlegible Next is the single UI family (see
+   * `typography-custom.css`) and carries every role including titles; mono is
+   * applied only where the design reserves it (genuine machine strings), never
+   * globally. */
   font-family: var(--font-sans);
 }
 
 /*
  * Inline `<code>` — tundra `app.css`'s rule, adapted to use our semantic
  * `--color-neutral-9` surface variable so dark mode flips automatically.
- * The accent foreground reads from `--app-accent`, so a surface tagged
- * `.app-blue` paints its inline code blue without a separate rule.
+ * Inline code is a genuine machine string, so it takes `--font-mono`; the
+ * accent foreground reads from `--app-accent`, so a surface tagged `.app-blue`
+ * paints its inline code blue without a separate rule.
  */
 code {
+  font-family: var(--font-mono);
   background-color: var(--color-neutral-9);
   color: var(--app-accent);
   padding-inline: var(--space-2);

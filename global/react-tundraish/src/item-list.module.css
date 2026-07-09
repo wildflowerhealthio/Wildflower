@@ -2,47 +2,43 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-
-  /*
-   * The single inner ItemList row carries its own horizontal padding
-   * (via `--item-list-row-padding-inline`) so the row's hit area
-   * reaches the card's edges — the card itself stays unpadded.
-   */
-  --item-list-row-padding-inline: var(--space-7);
-  background: var(--card-color-background);
-  border: 1px solid var(--card-color-border);
-  border-radius: var(--radius-4);
-  /* Guarantee a minimum tap target even if a future change shrinks
-   * the title or removes the chip. */
-  min-height: var(--space-12);
 }
 
-section > .item-list:not(:first-child) {
+/*
+ * Stacked lists — when several <ItemList> sit directly under a shared
+ * <section>, square the touching corners so the cards read as one
+ * continuous surface. The card radius lives on `.item-list__rows` (the
+ * bordered surface), so the squaring targets that element, not the outer
+ * `.item-list` flex wrapper.
+ */
+section > .item-list:not(:first-child) .item-list__rows {
   border-top-left-radius: 0;
   border-top-right-radius: 0;
 }
 
-section > .item-list:not(:last-child) {
+section > .item-list:not(:last-child) .item-list__rows {
   border-bottom-left-radius: 0;
   border-bottom-right-radius: 0;
 }
 
-/* Section eyebrow — mono, uppercase, letter-spaced, faint. */
+/* Section header — a sans, sentence-case eyebrow (12px / 500) with a hair of
+ * tracking (0.055em) in the crisp label ink so a group of rows reads as a
+ * named section. One notch larger than a field label, which names a single
+ * control. */
 .item-list__title {
   margin: 0;
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: var(--font-size-2);
   font-weight: var(--font-weight-2);
-  letter-spacing: var(--letter-spacing-5);
-  text-transform: uppercase;
-  color: var(--color-neutral-5);
-  padding: var(--space-6) var(--item-list-row-padding-inline, 0) 0;
+  letter-spacing: var(--letter-spacing-4);
+  color: var(--color-neutral-4);
 }
 
 /*
- * Rows are separated only by hairline dividers — no surrounding card chrome.
- * The list flows in its containing surface (page or card supplied by the
- * caller); the dividers are the only structure.
+ * The rows list is the card surface — it carries the background, hairline
+ * border, and rounded corners; the rows inside are separated only by hairline
+ * dividers. The outer `.item-list` stays chrome-free (it only stacks the
+ * optional title above this surface).
  */
 .item-list__rows {
   list-style: none;
@@ -50,6 +46,22 @@ section > .item-list:not(:last-child) {
   padding: 0;
   display: flex;
   flex-direction: column;
+
+  /*
+   * The single inner ItemList row carries its own horizontal padding
+   * (via `--item-list-row-padding-inline`) so the row's hit area
+   * reaches the card's edges — the card itself stays unpadded.
+   */
+  --item-list-row-padding-inline: var(--space-6);
+  background: var(--card-color-background);
+  border: 1px solid var(--card-color-border);
+  border-radius: var(--radius-4);
+  /* Clip row fills (e.g. a danger-tone tint on the first/last row) against
+   * the rounded corners so no tint bleeds past the card edge. */
+  overflow: hidden;
+  /* Guarantee a minimum tap target even if a future change shrinks
+   * the title or removes the chip. */
+  min-height: var(--space-12);
 }
 
 /*
@@ -89,11 +101,11 @@ section > .item-list:not(:last-child) {
  * the tint and the card edge.
  */
 .item-list__row--tone-danger {
-  background: rgba(203, 44, 44, 0.05);
+  background: rgba(201, 48, 45, 0.05);
 }
 
 :global(:root[data-color-scheme='dark']) .item-list__row--tone-danger {
-  background: rgba(230, 75, 75, 0.1);
+  background: rgba(234, 86, 77, 0.1);
 }
 
 /* Leading slot — a compact mark (status dot, icon) before the text
@@ -152,7 +164,7 @@ section > .item-list:not(:last-child) {
 .item-list__meta {
   flex: 0 0 auto;
   margin-inline-start: auto;
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: var(--font-size-2);
   color: var(--color-neutral-5);
   white-space: nowrap;
@@ -168,7 +180,7 @@ section > .item-list:not(:last-child) {
 
 .item-list__name {
   font-size: var(--font-size-4);
-  font-weight: var(--font-weight-3);
+  font-weight: var(--font-weight-2);
   color: var(--color-foreground);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -179,7 +191,7 @@ section > .item-list:not(:last-child) {
 .item-list__subtitle {
   font-family: var(--font-mono);
   font-size: var(--font-size-2);
-  color: var(--color-neutral-5);
+  color: var(--color-neutral-4);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -195,12 +207,13 @@ section > .item-list:not(:last-child) {
   color: var(--color-red-2);
 }
 
-/* Generic mono badge (e.g. "Coming soon"); apps can pass their own tinted
- * brand pill as the badge node when they want a coloured mark. */
+/* Generic component-label badge (e.g. "Coming soon"); apps can pass their own
+ * tinted brand pill as the badge node when they want a coloured mark. */
 .item-list__badge {
   flex-shrink: 0;
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: var(--font-size-1);
+  font-weight: var(--font-weight-4);
   letter-spacing: var(--letter-spacing-4);
   text-transform: uppercase;
   padding: var(--space-1) var(--space-3);

@@ -55,6 +55,19 @@ describe('PageHeader', () => {
     })
   })
 
+  it('renders the back affordance as an icon-only control', async () => {
+    // Arrange / Act — the app bar shows a Material arrow, not a text label.
+    renderWithRouter(<PageHeader title="Tunnel" backHref="/settings" />)
+
+    // Assert — the link is named only by its aria-label (no visible text) and
+    // carries an aria-hidden arrow glyph.
+    await waitFor(() => {
+      const link = screen.getByRole('link', { name: 'Back' })
+      expect(link.textContent).toBe('')
+      expect(link.querySelector('svg')).toBeTruthy()
+    })
+  })
+
   it('uses a custom back label when provided', async () => {
     // Arrange / Act
     renderWithRouter(

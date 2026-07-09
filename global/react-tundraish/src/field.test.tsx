@@ -22,13 +22,13 @@ describe('Field', () => {
     expect(screen.getByText('alice@example.com')).toBeTruthy()
   }, 15_000)
 
-  it('typesets the label with the Field eyebrow class', () => {
+  it('typesets the label with the Field label class', () => {
     // Arrange
     // Act
     render(<Field label="Name">value</Field>)
 
-    // Assert — the label carries Field's own eyebrow treatment (small mono
-    // uppercase) instead of a tundra-css text-label-N utility; the design's
+    // Assert — the label carries Field's own label treatment (sentence-case
+    // sans, weight 500) instead of a tundra-css text-label-N utility; the
     // field label role doesn't sit on that scale.
     const label = screen.getByText('Name')
     expect(label.className).toMatch(/field__label/)
@@ -86,7 +86,7 @@ describe('FieldDescription', () => {
     render(<FieldDescription>Helpful hint.</FieldDescription>)
 
     // Assert — the helper carries Field's own description treatment
-    // (sans, ~14px, muted) rather than tundra-css's `text-body-3` which
+    // (sans, ~12px, muted) rather than tundra-css's `text-body-3` which
     // resolves to the page's 16px body size and visually competes with
     // the field's primary value.
     const description = screen.getByText('Helpful hint.')

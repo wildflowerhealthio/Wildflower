@@ -9,8 +9,8 @@
  * from those properties; re-pointing the properties here re-tunes the entire
  * helper surface at once.
  *
- * The values come directly from the Wildflower tunnel-screen designs in
- * `design_handoff_tunnel/Tunnel Refresh.dc.html`. Where a scale slot is not
+ * The values come from the design-language refresh (`.local-notes/
+ * design_handoff_design_language_refresh`). Where a scale slot is not
  * exercised by the current screens it is still populated, so the rung is
  * available before a future surface needs it (the user has accepted this).
  *
@@ -52,9 +52,9 @@
   --space-14: 64px;
 
   /*
-   * Font weights — Hanken Grotesk and Spline Sans Mono carry weights 400/500/600/700,
-   * Newsreader carries 300-600 (we use 400 and 500). The four-rung tundra scale
-   * lines up exactly.
+   * Font weights — Atkinson Hyperlegible Next/Mono carry a continuous 200–800
+   * variable `wght` axis; the refresh settles the UI hierarchy on 400/500/600/
+   * 700, which the four-rung tundra scale lines up with exactly.
    */
   --font-weight-1: 400;
   --font-weight-2: 500;
@@ -64,19 +64,21 @@
   /*
    * Font sizes. Rungs 1-4 are body-class sizes (font-size-N feeds .text-body-N
    * etc.) and 4-9 carry the heading ramp (.text-heading-N uses font-size-N+3).
-   * The design's two real titles — "Tunnel" / "Relay settings" at 30px and the
-   * stage title "Monitor here…" at 40px — land at font-size-7 and font-size-8
-   * so `.text-heading-4` / `.text-heading-5` paint them directly.
+   * The refresh's consolidated scale: metadata/eyebrow 12, item/control title
+   * 14, page body 16, and the hero/page title at 40 — which lands at
+   * font-size-9 so `.text-heading-6` paints it directly. The 18px app-bar
+   * title is a component-level size set in `page-header.module.css` (no ramp
+   * slot); mid rungs stay populated for future surfaces.
    */
-  --font-size-1: 0.625rem; /* 10px — chip, eyebrow */
-  --font-size-2: 0.75rem; /* 12px — back link, caption */
-  --font-size-3: 0.875rem; /* 14px — default body, item title, input value */
-  --font-size-4: 1rem; /* 16px — large body, page-level explainer */
+  --font-size-1: 0.625rem; /* 10px — chip, component label */
+  --font-size-2: 0.75rem; /* 12px — metadata, eyebrow, caption */
+  --font-size-3: 0.875rem; /* 14px — item/control title, default body */
+  --font-size-4: 1rem; /* 16px — page body, page-level explainer */
   --font-size-5: 1.25rem; /* 20px */
   --font-size-6: 1.5rem; /* 24px */
-  --font-size-7: 1.875rem; /* 30px — in-app page title (.text-heading-4) */
-  --font-size-8: 2.125rem; /* 36px — stage / marketing title (.text-heading-5) */
-  --font-size-9: 2.5rem; /* 40px — */
+  --font-size-7: 1.875rem; /* 30px */
+  --font-size-8: 2.125rem; /* 34px */
+  --font-size-9: 2.5rem; /* 40px — hero / page title (.text-heading-6) */
 
   /*
    * Line heights. 1 = strict single-line for clipped/lockup titles, 5 = the
@@ -90,28 +92,27 @@
   --line-height-5: 1.6;
 
   /*
-   * Letter spacing — two tight rungs for serif titles, neutral 0, then two
-   * loose rungs for the mono-uppercase eyebrows / labels the design uses
-   * throughout (0.05em for per-field labels, 0.12em for section eyebrows).
+   * Letter spacing. Two tight rungs for large titles (hero −0.025em, app-bar
+   * title −0.01em), neutral 0 for body and sentence-case field labels, then
+   * one loose rung (0.055em) — the single tracking the refresh uses for
+   * uppercase eyebrows and component labels. Rung 5 (the old wide 0.12em mono
+   * track) is retained for interop but no longer used by refreshed components.
    */
-  --letter-spacing-1: -0.02em;
+  --letter-spacing-1: -0.025em;
   --letter-spacing-2: -0.01em;
   --letter-spacing-3: 0em;
-  --letter-spacing-4: 0.05em;
+  --letter-spacing-4: 0.055em;
   --letter-spacing-5: 0.12em;
 }
 
 /*
  * Font-family assignment on tundra's shipped text helpers. Tundra-css's
  * helpers (`.text-heading-N` etc.) set size/weight/line-height/letter-spacing
- * but leave font-family to the host so the design language can opt different
- * roles into different families. The Wildflower refresh runs three:
- *
- *   - Serif (Newsreader) — headings and alt-headings only. Editorial display.
- *   - Sans  (Hanken Grotesk) — body, link, label, input, button. Working UI voice.
- *   - Mono  (Spline Sans Mono) — back link, eyebrows, technical metadata.
- *     Applied per-element rather than through a tundra helper, since no
- *     tundra text class corresponds to "eyebrow/metadata".
+ * but leave font-family to the host. The refresh runs a single UI family:
+ * Atkinson Hyperlegible Next carries every role below — headings and
+ * alt-headings included, so titles render in the UI family with weight rather
+ * than a serif. Mono (Atkinson Hyperlegible Mono) is applied per-element for
+ * genuine machine strings only, never through these helpers.
  */
 .heading-1,
 .heading-2,
@@ -137,7 +138,7 @@
 .text-alt-heading-4,
 .text-alt-heading-5,
 .text-alt-heading-6 {
-  font-family: var(--font-serif);
+  font-family: var(--font-sans);
 }
 
 .body-1,

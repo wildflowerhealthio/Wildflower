@@ -1,26 +1,38 @@
 /*
- * Type-family tokens. The Wildflower refresh runs three self-hosted
- * families (loaded by the consuming app via `@fontsource`):
+ * Type-family tokens. The refresh collapses the old three-family system
+ * (sans / serif-for-titles / mono) onto a single highly-legible UI family
+ * plus one mono reserved for machine strings:
  *
- *   - Hanken Grotesk — sans, the working UI voice. Applied as the body
- *     default in `reset.css` and to the tundra body/link/label/input/button
- *     helpers in `tokens.css`.
- *   - Newsreader — serif, reserved for titles & emphasis. Applied to
- *     tundra's heading and alt-heading helpers in `tokens.css`.
- *   - Spline Sans Mono — mono, carries eyebrows, labels, and technical
- *     metadata (URLs, IDs). Applied per-element rather than through a
- *     tundra helper, since no tundra text class corresponds to
- *     "eyebrow/metadata".
+ *   - Atkinson Hyperlegible Next — the one UI family. Body, links, labels,
+ *     inputs, buttons, AND titles (weight carries the hierarchy that a serif
+ *     display face used to). Applied as the body default in `reset.css` and to
+ *     tundra's body/link/label/input/button *and* heading helpers in
+ *     `tokens.css`.
+ *   - Atkinson Hyperlegible Mono — reserved for genuine machine strings only
+ *     (hostnames, relay addresses, keys, IDs, and the values inside
+ *     address/key inputs). Never for decorative labels, eyebrows, section
+ *     headers, chips, timestamps, or captions — those are `--font-sans` with
+ *     weight carrying the hierarchy.
  *
- * Tokens live on `:root` so any component or app stylesheet can read
- * `var(--font-sans)` without importing this file directly.
+ * `--font-serif` is retired as a display role: it is repointed to
+ * `--font-sans` so any lingering serif usage renders in the UI family rather
+ * than a serif, and no new usage should reach for it.
+ *
+ * Both families are loaded by the consuming app as side-effect imports of the
+ * `@fontsource-variable` packages (see `apps/wildflower-react/src/styles/
+ * fonts.ts`); the variable `wght` axis spans 200–800. Tokens live on `:root`
+ * so any component or app stylesheet can read `var(--font-sans)` without
+ * importing this file directly.
  */
 :root {
   --font-sans:
-    'Hanken Grotesk Variable', 'Hanken Grotesk', system-ui, -apple-system, 'Segoe UI', Roboto,
-    sans-serif;
-  --font-serif: 'Newsreader Variable', 'Newsreader', Georgia, 'Times New Roman', serif;
+    'Atkinson Hyperlegible Next Variable', 'Atkinson Hyperlegible Next', system-ui, -apple-system,
+    'Segoe UI', Roboto, sans-serif;
   --font-mono:
-    'Spline Sans Mono Variable', 'Spline Sans Mono', ui-monospace, 'SFMono-Regular', Consolas,
-    monospace;
+    'Atkinson Hyperlegible Mono Variable', 'Atkinson Hyperlegible Mono', ui-monospace,
+    'SFMono-Regular', Consolas, monospace;
+
+  /* Serif display role retired — repointed to the single UI family so titles
+   * render in Atkinson (with weight), never a serif. */
+  --font-serif: var(--font-sans);
 }

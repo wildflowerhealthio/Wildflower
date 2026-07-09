@@ -108,7 +108,7 @@
 .option:has(.input:checked) .check {
   background: var(--color-accent);
   border-color: var(--color-accent);
-  color: var(--color-raised);
+  color: var(--color-on-accent);
 }
 
 .option--locked:has(.input:checked) .check {

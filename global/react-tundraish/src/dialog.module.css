@@ -14,13 +14,13 @@
   max-height: calc(100vh - 2 * var(--space-8));
   overflow-y: auto;
 
-  /* Soft, warm, low-spread elevation (design "dialog" shadow). */
-  box-shadow: 0 26px 60px rgba(31, 23, 20, 0.32);
+  /* Soft, low-spread elevation (design "dialog" shadow). */
+  box-shadow: 0 26px 60px rgba(37, 37, 37, 0.32);
 }
 
-/* Warm ink scrim rather than a flat black. */
+/* Neutral ink scrim, a step off flat black. */
 .dialog::backdrop {
-  background: rgba(44, 33, 29, 0.32);
+  background: rgba(37, 37, 37, 0.32);
 }
 
 .dialog__close {
@@ -51,11 +51,11 @@
   margin: 0 0 var(--space-6) 0;
 }
 
-/* The dialog title is one of the few serif "accent" moments — Newsreader,
- * solid weight, never the thin display cut. */
+/* The dialog title — the single UI family at a solid weight (serif display
+ * role is retired), tightened tracking to hold the title lockup. */
 .dialog__header h2 {
-  font-family: var(--font-serif);
-  font-weight: var(--font-weight-2);
+  font-family: var(--font-sans);
+  font-weight: var(--font-weight-3);
   letter-spacing: var(--letter-spacing-2);
 }
 
@@ -72,7 +72,7 @@
   box-shadow: 0 26px 60px rgba(0, 0, 0, 0.6);
 }
 
-/* The warm-ink scrim barely dims the near-black canvas, so deepen it to a
+/* The light-mode scrim barely dims the near-black canvas, so deepen it to a
  * stronger black in dark mode — otherwise the page behind the modal reads as
  * undimmed and the dialog stops floating above it. */
 :root[data-color-scheme='dark'] .dialog::backdrop {
