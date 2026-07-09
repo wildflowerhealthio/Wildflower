@@ -162,6 +162,10 @@ const DeviceAuthorizationPayloadSchema = Schema.Struct({
   client_id: Schema.optional(Schema.NonEmptyString),
   client_secret: Schema.optional(Schema.String),
   scope: Schema.optional(Schema.String),
+  // Non-standard RFC 8628 extension: a human-chosen name for the device being paired,
+  // surfaced to the approver so they can tell who is asking. Strict RFC clients simply
+  // omit it. Kept snake_case + form-urlencoded like the rest of the request body.
+  device_name: Schema.optional(Schema.String),
 }).pipe(
   HttpApiSchema.withEncoding({
     kind: 'UrlParams',

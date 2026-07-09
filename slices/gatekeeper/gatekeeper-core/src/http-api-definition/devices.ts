@@ -6,7 +6,13 @@ const DeviceConsentSchema = Schema.Struct({
   userCode: Schema.String,
   clientId: Schema.String,
   clientName: Schema.String,
+  // The human-chosen device name the requester supplied (RFC 8628 extension). Nullable:
+  // absent on requests made before the field existed, or when the device didn't name itself.
+  deviceName: Schema.NullishOr(Schema.String),
   requestedScopes: Schema.Array(Schema.String),
+  // The client's full `allowed_scopes` — the *expansion envelope* the approver can grant up to
+  // (device-auth consent is expandable, `granted ⊆ allowed`, not clamped to `requestedScopes`).
+  allowedScopes: Schema.Array(Schema.String),
 })
 
 const DeviceConsentResultSchema = Schema.Union(
@@ -21,6 +27,9 @@ const DeviceConsentNotFoundSchema = Schema.Struct({
 
 const DeviceConsentBodySchema = Schema.Struct({
   approvedScopes: Schema.Array(Schema.String),
+  // An optional adjusted device name the settings approver may set before approving; omitted
+  // ⇒ the stored name is kept (server-side COALESCE).
+  deviceName: Schema.optional(Schema.String),
 })
 
 const httpApiGroup = HttpApiGroup.make('devices', { topLevel: false })

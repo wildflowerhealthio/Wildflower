@@ -17,16 +17,19 @@ async fn handle_get_device_consent(
     Path(user_code): Path<String>,
 ) -> Result<Json<DeviceConsent>, HandlerError> {
     let device_request = load_pending_device_request(&state, &user_code)?;
-    let client_name = match state.store.client_by_id(&device_request.client_id) {
-        Ok(Some(c)) => c.name,
-        // Fall back to the raw client_id if lookup misses or fails — the UI
-        // still works, the operator just sees less context.
-        _ => device_request.client_id.clone(),
+    let (client_name, allowed_scopes) = match state.store.client_by_id(&device_request.client_id) {
+        Ok(Some(c)) => (c.name, c.allowed_scopes.into_inner()),
+        // Fall back to the raw client_id (and no expansion envelope) if lookup
+        // misses or fails — the UI still works, the approver just sees less
+        // context and can only grant within the requested set.
+        _ => (device_request.client_id.clone(), Vec::new()),
     };
     Ok(Json(DeviceConsent {
         user_code,
         client_id: device_request.client_id,
         client_name,
+        device_name: device_request.device_name,
         requested_scopes: device_request.requested_scopes.into_inner(),
+        allowed_scopes,
     }))
 }

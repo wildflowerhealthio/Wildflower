@@ -105,6 +105,39 @@ describe('TokenExchange wire format', () => {
   })
 })
 
+describe('DeviceAuthorization wire format', () => {
+  // The device-authorization request is form-urlencoded like the token grants.
+  // Pins that the `device_name` RFC 8628 extension rides the body (snake_case),
+  // so the requesting device's chosen name actually reaches the server.
+  test('encodes scope + device_name as form-urlencoded', async () => {
+    // Arrange
+    const captures: CapturedRequest[] = []
+
+    // Act — the canned reply is token-shaped, so decoding the device-auth
+    // response fails after the request is captured; we only assert the wire.
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const client = yield* HttpApiClient.make(GatekeeperApi)
+        return yield* client.oauth.DeviceAuthorization({
+          payload: {
+            client_id: 'wildflower-host',
+            scope: 'system/*.cruds',
+            device_name: "Ada's laptop",
+          },
+        })
+      }).pipe(Effect.provide(capturingHttpClientLayer(captures)), Effect.scoped)
+    ).catch(() => undefined)
+
+    // Assert
+    expect(captures).toEqual([
+      {
+        contentType: 'application/x-www-form-urlencoded',
+        bodyText: 'client_id=wildflower-host&scope=system%2F*.cruds&device_name=Ada%27s+laptop',
+      },
+    ])
+  })
+})
+
 // Helpers
 
 interface CapturedRequest {

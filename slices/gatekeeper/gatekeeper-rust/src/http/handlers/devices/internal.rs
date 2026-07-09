@@ -10,14 +10,18 @@ use crate::http::response_templates::HandlerError;
 use crate::http::state::AppState;
 
 /// Body returned to the Owner UI when it loads a pending device-code consent
-/// prompt — describes the requesting client and its requested scopes.
+/// prompt — describes the requesting client, the device's chosen name, its
+/// requested scopes, and the client's full allowed-scope set (the *expansion
+/// envelope* the approver may grant up to, since device consent is expandable).
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceConsent {
     pub user_code: String,
     pub client_id: String,
     pub client_name: String,
+    pub device_name: Option<String>,
     pub requested_scopes: Vec<String>,
+    pub allowed_scopes: Vec<String>,
 }
 
 /// Load the authorization request for `user_code` and verify it's a pending

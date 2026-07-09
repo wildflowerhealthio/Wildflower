@@ -24,6 +24,12 @@ use crate::http::state::AppState;
 pub(crate) struct ApproveBody {
     pub(crate) approved_scopes: Vec<String>,
     pub(crate) patient: Option<String>,
+    /// An optional adjusted device name (device flow only — the settings approver
+    /// renaming the device before approving). `None` on the code-flow path and
+    /// when the approver didn't change it; `COALESCE`d server-side so the stored
+    /// name is preserved.
+    #[serde(default)]
+    pub(crate) device_name: Option<String>,
 }
 
 /// Result the Owner UI sees after approving or denying a consent prompt.

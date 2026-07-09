@@ -22,16 +22,6 @@ async fn handle_approve_device_consent(
     Json(body): Json<ApproveBody>,
 ) -> Result<Json<ConsentResult>, HandlerError> {
     let device_request = load_pending_device_request(&state, &user_code)?;
-    let requested_scopes: HashSet<&str> = device_request
-        .requested_scopes
-        .iter()
-        .map(String::as_str)
-        .collect();
-    // Clamp the Owner's approval to what the client may *currently* hold, not
-    // just what the (possibly stale) request asked for: a request created while
-    // a scope was permitted must not grant it after an operator narrows the
-    // client's `allowed_scopes`. Mirrors the code-flow consent path
-    // (`oauth_consents::approve`).
     let client = state
         .store
         .client_by_id(&device_request.client_id)
@@ -41,19 +31,32 @@ async fn handle_approve_device_consent(
         .ok_or_else(|| HandlerError::not_found("DeviceConsentNotFound", "userCode", &user_code))?;
     let client_allowed_scopes: HashSet<&str> =
         client.allowed_scopes.iter().map(String::as_str).collect();
+    // Device-code consent is EXPANDABLE (unlike the code-flow path): the Owner
+    // pairing a device may grant scopes beyond what the device requested, up to
+    // the client's `allowed_scopes`. So the request-side clamp is widened to
+    // `client_allowed_scopes` (passed as both the requested and allowed
+    // envelopes). Coverage-aware `grantable_scopes` still refuses anything the
+    // client isn't allowed. The code-flow path (`oauth_consents::approve`) stays
+    // clamped to `requested_scopes` — a third-party app can never widen its own
+    // grant.
     let granted_scopes = grantable_scopes(
         body.approved_scopes,
-        &requested_scopes,
+        &client_allowed_scopes,
         &client_allowed_scopes,
     );
     if granted_scopes.is_empty() {
-        // No requested-and-allowed scopes were approved — treat as a deny.
+        // No allowed scopes were approved — treat as a deny.
         // `deny_consent` republishes the active head itself.
         return deny_consent(&state, &device_request.id);
     }
     let approved = state
         .store
-        .approve_authorization_request(&device_request.id, &granted_scopes, body.patient.as_deref())
+        .approve_authorization_request(
+            &device_request.id,
+            &granted_scopes,
+            body.patient.as_deref(),
+            body.device_name.as_deref(),
+        )
         .map_err(|e| HandlerError::internal("approve_authorization_request failed", e))?;
     if !approved {
         // No longer pending (concurrently consumed/denied/expired) — treat as gone.

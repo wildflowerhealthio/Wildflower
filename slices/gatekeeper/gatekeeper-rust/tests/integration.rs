@@ -731,6 +731,7 @@ fn plant_authorization_code(
             status: RequestStatus::Approved,
             granted_scopes: Some(JsonColumn(scope_vec.clone())),
             patient: None,
+            device_name: None,
         })
         .expect("insert request");
     store
@@ -779,6 +780,7 @@ fn plant_device_request(
             status,
             granted_scopes: granted,
             patient: None,
+            device_name: None,
         })
         .expect("insert device request");
 }
@@ -1609,6 +1611,127 @@ async fn device_consent_threads_patient_onto_request() {
         .expect("request present");
     assert_eq!(request.status, RequestStatus::Approved);
     assert_eq!(request.patient.as_deref(), Some("Patient/123"));
+}
+
+/// Device-flow consent is EXPANDABLE: the Owner pairing a device may grant
+/// scopes the device never requested, up to the client's `allowed_scopes`.
+/// (The code-flow path stays clamped to `requested_scopes` — a third-party app
+/// can't widen its own grant; see `device_consent_clamps_granted_scopes_to_client_allowed`
+/// for the still-enforced allowed-scopes ceiling.)
+#[tokio::test]
+async fn device_consent_allows_expansion_beyond_requested() {
+    let (g, host_owner_token, db) = spin_up();
+    // The client is allowed both read and write.
+    seed_client_with_redirect(
+        &db,
+        "device-client",
+        "https://app.example/cb",
+        &["read", "write"],
+    );
+    // ...but the device requested only `read`.
+    plant_device_request(
+        &store_handle(&db),
+        "device-client",
+        "dev-expand",
+        &["read"],
+        RequestStatus::Pending,
+        Utc::now() + Duration::minutes(5),
+    );
+
+    // The Owner grants the un-requested-but-allowed `write` on top of `read`.
+    let approve = loopback_request(
+        Request::post("/access/devices/WILD-FLWR/approve")
+            .header("host", "127.0.0.1")
+            .header("authorization", format!("Bearer {host_owner_token}"))
+            .header("content-type", "application/json"),
+        Body::from(r#"{"approvedScopes":["read","write"]}"#),
+    );
+    let res = g.router.clone().oneshot(approve).await.expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(
+        body_json(res.into_body()).await,
+        serde_json::json!({ "status": "approved" })
+    );
+
+    // The expansion is persisted onto the grant — `write` was never requested.
+    let request = store_handle(&db)
+        .authorization_request_by_id("dev-expand")
+        .expect("query request")
+        .expect("request present");
+    let granted = request.granted_scopes.expect("granted scopes").into_inner();
+    assert!(granted.contains(&"read".to_string()));
+    assert!(granted.contains(&"write".to_string()));
+}
+
+/// The device-authorization request carries the human-chosen `device_name`
+/// extension end to end: minted at `/oauth/device_authorization`, stored on the
+/// request, and surfaced (alongside the client's `allowedScopes` expansion
+/// envelope) on the `/access/devices/{userCode}` consent prompt.
+#[tokio::test]
+async fn device_authorization_carries_device_name_to_consent() {
+    let (g, host_owner_token, _db) = spin_up();
+    // Start the flow with a device name (URL-encoded, includes a space + apostrophe).
+    let start = loopback_request(
+        Request::post("/oauth/device_authorization")
+            .header("content-type", "application/x-www-form-urlencoded"),
+        Body::from("client_id=wildflower-host&scope=system%2F*.cruds&device_name=Ada%27s%20laptop"),
+    );
+    let res = g.router.clone().oneshot(start).await.expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+    let user_code = body_json(res.into_body()).await["user_code"]
+        .as_str()
+        .expect("user_code")
+        .to_string();
+
+    // The consent prompt surfaces the device name and a non-empty expansion envelope.
+    let get = loopback_request(
+        Request::get(format!("/access/devices/{user_code}"))
+            .header("host", "127.0.0.1")
+            .header("authorization", format!("Bearer {host_owner_token}")),
+        Body::empty(),
+    );
+    let res = g.router.clone().oneshot(get).await.expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+    let consent = body_json(res.into_body()).await;
+    assert_eq!(consent["deviceName"], "Ada's laptop");
+    assert!(consent["allowedScopes"]
+        .as_array()
+        .expect("allowedScopes array")
+        .iter()
+        .any(|scope| scope == "system/*.cruds"));
+}
+
+/// The settings approver may rename the device before approving — the adjusted
+/// `deviceName` on the approve body is persisted onto the request (`COALESCE`d,
+/// so an omitted name leaves the stored one intact).
+#[tokio::test]
+async fn device_consent_approver_can_adjust_device_name() {
+    let (g, host_owner_token, db) = spin_up();
+    seed_client_with_redirect(&db, "device-client", "https://app.example/cb", &["read"]);
+    plant_device_request(
+        &store_handle(&db),
+        "device-client",
+        "dev-rename",
+        &["read"],
+        RequestStatus::Pending,
+        Utc::now() + Duration::minutes(5),
+    );
+
+    let approve = loopback_request(
+        Request::post("/access/devices/WILD-FLWR/approve")
+            .header("host", "127.0.0.1")
+            .header("authorization", format!("Bearer {host_owner_token}"))
+            .header("content-type", "application/json"),
+        Body::from(r#"{"approvedScopes":["read"],"deviceName":"Reception iPad"}"#),
+    );
+    let res = g.router.clone().oneshot(approve).await.expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let request = store_handle(&db)
+        .authorization_request_by_id("dev-rename")
+        .expect("query request")
+        .expect("request present");
+    assert_eq!(request.device_name.as_deref(), Some("Reception iPad"));
 }
 
 /// A client restricted to a grant-type subset is refused a grant outside it
