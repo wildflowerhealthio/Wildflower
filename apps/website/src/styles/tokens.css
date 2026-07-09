@@ -2,13 +2,14 @@
  * Design tokens for the Wildflower Health landing page.
  *
  * The site is built on **react-tundraish** as its design base (imported in
- * `main.tsx` before this file). react-tundraish ships the warm Wildflower
- * palette as tundra-style tokens — surface roles (`--color-canvas` / `-raised`
- * / `-sunken` / `-modal`), a warm neutral ramp (`--color-neutral-1..9`), the
- * plum/rose accent ramp (`--color-accent-1..9`), success + danger ramps, card
- * and divider tokens — and flips them all to a designed dark theme keyed off
- * `:root[data-color-scheme='dark']` (set from the OS preference by
- * `color-scheme.ts`).
+ * `main.tsx` before this file). react-tundraish now ships the app's
+ * true-neutral / navy palette, so `warm-palette.css` (imported right after it,
+ * before this file) re-pins the value-carrying tokens back to the site's warm
+ * plum/cream brand — surface roles (`--color-canvas` / `-raised` / `-sunken` /
+ * `-modal`), a warm neutral ramp (`--color-neutral-1..9`), the plum/rose accent
+ * ramp (`--color-accent-1..9`), success + danger ramps, card and divider tokens
+ * — for both schemes, keyed off `:root[data-color-scheme='dark']` (set from the
+ * OS preference by `color-scheme.ts`).
  *
  * This file therefore does two things:
  *   1. **Bridges** the site's own semantic token names (`--color-cream`,

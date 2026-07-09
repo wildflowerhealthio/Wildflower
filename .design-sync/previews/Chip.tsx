@@ -6,9 +6,10 @@ export const InTitle = () => (
     <PageHeader
       title={
         <>
-          Relay settings <Chip>Advanced</Chip>
+          Relay settings
         </>
       }
+      actions={<Chip>Advanced</Chip>}
     />
   </div>
 )

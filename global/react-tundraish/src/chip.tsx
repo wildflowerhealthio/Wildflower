@@ -10,9 +10,9 @@ interface ChipProps {
 }
 
 /**
- * Compact mono pill that marks a scope or maturity ("Advanced",
- * "Beta", "Preview") beside a title or row. Renders the label in
- * uppercase via `text-transform` so the consumer can pass natural
+ * Compact component-label pill (sans, uppercase) that marks a scope or
+ * maturity ("Advanced", "Beta", "Preview") beside a title or row. Renders the
+ * label in uppercase via `text-transform` so the consumer can pass natural
  * case (`<Chip>Advanced</Chip>`) and have it typeset consistently
  * with the rest of the chip family.
  */

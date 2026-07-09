@@ -118,12 +118,8 @@ const RelaySettingsScreenBody = ({ state }: RelaySettingsScreenBodyProps): JSX.E
   return (
     <>
       <PageHeader
-        title={
-          <>
-            Relay settings
-            <Chip className={styles['title-chip']}>Advanced</Chip>
-          </>
-        }
+        title={<>Relay settings</>}
+        actions={<Chip className={styles['title-chip']}>Advanced</Chip>}
         backHref="/settings/tunnel"
         backLabel="Tunnel"
       />
@@ -143,7 +139,6 @@ const RelaySettingsScreenBody = ({ state }: RelaySettingsScreenBodyProps): JSX.E
 
       <div className={styles['fields']}>
         <h2 className={styles['zone-label']}>Your Settings</h2>
-        <hr className={styles['divider']} aria-hidden="true" />
         <TextField
           label="Public host"
           type="text"
@@ -158,7 +153,6 @@ const RelaySettingsScreenBody = ({ state }: RelaySettingsScreenBodyProps): JSX.E
         {TOP_RELAY_FIELDS.map(renderRelayField)}
 
         <h2 className={styles['zone-label']}>Relay Server</h2>
-        <hr className={styles['divider']} aria-hidden="true" />
         {BOTTOM_RELAY_FIELDS.map(renderRelayField)}
       </div>
 

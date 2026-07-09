@@ -5,19 +5,6 @@
 }
 
 /*
- * Hairline between the device-facing fields (Public host / Service name
- * / Token) above and the rarely-touched relay-endpoint coordinates
- * (Relay address / Public key) below. The grid's `gap` sits on either
- * side, so the visual break is the gap + hairline + gap, no extra
- * margin needed.
- */
-.divider {
-  margin: 0;
-  border: 0;
-  border-top: 1px solid var(--color-divider);
-}
-
-/*
  * Zone label — mono uppercase eyebrow naming the group of fields that
  * follows. One step quieter than the per-field label tint
  * (`--color-neutral-5` vs `--color-neutral-4`) so the section heading
@@ -27,12 +14,14 @@
  */
 .zone-label {
   margin: 0;
-  font-family: var(--font-mono);
-  font-size: var(--font-size-1);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-2);
   font-weight: var(--font-weight-2);
-  letter-spacing: var(--letter-spacing-5);
-  text-transform: uppercase;
-  color: var(--color-neutral-5);
+  letter-spacing: var(--letter-spacing-4);
+  color: var(--color-neutral-4);
+
+  border-bottom: 1px solid var(--color-divider);
+  padding-bottom: var(--space-1);
 }
 
 /*

@@ -3,7 +3,7 @@ import { useId, type JSX, type PropsWithChildren, type ReactNode } from 'react'
 import styles from './field.module.css'
 
 type FieldProps = PropsWithChildren<{
-  /** Label rendered above the field's content as the design's mono eyebrow. */
+  /** Sentence-case label rendered above the field's content. */
   readonly label: ReactNode
   /**
    * The `id` of the single form control this field labels. When set, the
@@ -18,9 +18,9 @@ type FieldProps = PropsWithChildren<{
 
 /**
  * Vertical label/value stack. Pair with `<FieldDescription>` for secondary
- * explanatory text. The label is typeset as the design's small mono uppercase
- * eyebrow (defined entirely in `.field__label`, not a tundra-css text token)
- * and the description as `text-body-3` muted.
+ * explanatory text. The label is typeset as the design's small sentence-case
+ * sans label (weight 500, defined entirely in `.field__label`, not a tundra-css
+ * text token) and the description as sans, muted helper text.
  *
  * Pass `htmlFor` (the control's `id`) when the field wraps a single input
  * so the label is programmatically associated with it.
@@ -68,10 +68,10 @@ interface FieldDescriptionProps {
 
 /**
  * Secondary text inside a `<Field>`. Typeset a notch smaller than body
- * (sans, ~14px) so the helper sits beneath its label/input without
- * competing for primary-copy weight; muted with the field's neutral
- * tint. Typesetting lives in `.field__description` — see the module
- * CSS for the size/weight/leading rationale.
+ * (sans, ~12px) so the helper sits beneath its label/input without
+ * competing for primary-copy weight; muted with the fainter neutral
+ * tint (a step below the crisp label). Typesetting lives in
+ * `.field__description` — see the module CSS for the size/weight rationale.
  */
 const FieldDescription = ({ children }: FieldDescriptionProps): JSX.Element => (
   <span className={styles['field__description']}>{children}</span>

@@ -5,36 +5,31 @@
 }
 
 /*
- * Eyebrow-style label — small mono uppercase letter-spaced, muted ink. Matches
- * the design's per-field label treatment (Spline Sans Mono at the smallest
- * font-size token), rhyming with the section eyebrow used by `<ItemList>`
- * titles so a stack of form fields reads as a sequence of named rows rather
- * than a wall of body text. Weight stays at `--font-weight-1` so the label
- * reads as quiet structure, not primary copy.
+ * Field label — sentence-case sans, weight 500, ~11px, no tracking, in the
+ * crisp label ink (neutral-4, not the fainter muted tone) so the label reads
+ * clearly as named structure. Distinct from an UPPERCASE section header, which
+ * groups a set of fields (see `<ItemList>` titles); a field label names a
+ * single control.
  */
 .field__label {
-  font-family: var(--font-mono);
-  font-size: var(--font-size-1);
-  font-weight: var(--font-weight-1);
-  letter-spacing: var(--letter-spacing-5);
-  text-transform: uppercase;
+  font-family: var(--font-sans);
+  font-size: 0.6875rem; /* 11px — sentence-case field label */
+  font-weight: var(--font-weight-2); /* 500 */
+  letter-spacing: var(--letter-spacing-3); /* 0 */
   color: var(--color-neutral-4);
 }
 
 /*
- * Field helper text — secondary copy under a label/input. Typeset at
- * a small body size and at a light weight (300 — below tundra-css's
- * smallest `--font-weight-1` of 400) so it reads as "explanatory"
- * rather than "primary copy" and so a stack of labelled inputs feels
- * denser than a page of paragraphs. Hanken Grotesk Variable supports
- * 100–900, so the literal 300 sits on the same variable axis as the
- * rest of the body type.
+ * Field helper text — secondary copy under a label/input. Sans at a small body
+ * size and the fainter muted tone (neutral-5) so it sits a step below the crisp
+ * label, reading as "explanatory" rather than "primary copy" and keeping a
+ * stack of labelled inputs denser than a page of paragraphs.
  */
 .field__description {
   font-family: var(--font-sans);
   font-size: var(--font-size-2);
-  font-weight: 300;
+  font-weight: var(--font-weight-1);
   line-height: var(--line-height-5);
   letter-spacing: var(--letter-spacing-3);
-  color: var(--color-neutral-4);
+  color: var(--color-neutral-5);
 }

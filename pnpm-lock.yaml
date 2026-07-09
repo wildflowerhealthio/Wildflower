@@ -18,6 +18,12 @@ catalogs:
     '@effect/language-service':
       specifier: ^0.86.4
       version: 0.86.4
+    '@fontsource-variable/atkinson-hyperlegible-mono':
+      specifier: ^5.2.5
+      version: 5.2.5
+    '@fontsource-variable/atkinson-hyperlegible-next':
+      specifier: ^5.2.6
+      version: 5.2.6
     '@fontsource-variable/hanken-grotesk':
       specifier: ^5.2.8
       version: 5.2.8
@@ -274,15 +280,12 @@ importers:
       '@effect/platform':
         specifier: 0.96.1
         version: 0.96.1(effect@3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
-      '@fontsource-variable/hanken-grotesk':
+      '@fontsource-variable/atkinson-hyperlegible-mono':
         specifier: 'catalog:'
-        version: 5.2.8
-      '@fontsource-variable/newsreader':
+        version: 5.2.5
+      '@fontsource-variable/atkinson-hyperlegible-next':
         specifier: 'catalog:'
-        version: 5.2.10
-      '@fontsource-variable/spline-sans-mono':
-        specifier: 'catalog:'
-        version: 5.2.8
+        version: 5.2.6
       '@tanstack/react-query':
         specifier: 'catalog:'
         version: 5.101.2(react@19.2.7)
@@ -2473,6 +2476,12 @@ packages:
     peerDependenciesMeta:
       '@noble/hashes':
         optional: true
+
+  '@fontsource-variable/atkinson-hyperlegible-mono@5.2.5':
+    resolution: {integrity: sha512-dbbd1cydeIwy0EAVm21o7IfOcAHTc0b4cQ6YE/SEm5BzcJpaXw1/JygAZriTtWkrgVb08iVDLMkSqirYQqvaEA==}
+
+  '@fontsource-variable/atkinson-hyperlegible-next@5.2.6':
+    resolution: {integrity: sha512-D0Z8peFkRGYACvmWp8Sl8YPGYLBEJbzqapugtsMEYSUUtpQDiZVDHjk9s7bqB4hSCRYCrKuW6V1V+mnHybVnPw==}
 
   '@fontsource-variable/hanken-grotesk@5.2.8':
     resolution: {integrity: sha512-K7hu09ZKReBc7EifRLeM4K94NZBrxFEg0nGcISmVwlFQOJo4EmYkLXTWEwr5JcNW4z2hr5zy8vLS2sxC8JDmrQ==}
@@ -6254,6 +6263,10 @@ snapshots:
       levn: 0.4.1
 
   '@exodus/bytes@1.15.1': {}
+
+  '@fontsource-variable/atkinson-hyperlegible-mono@5.2.5': {}
+
+  '@fontsource-variable/atkinson-hyperlegible-next@5.2.6': {}
 
   '@fontsource-variable/hanken-grotesk@5.2.8': {}
 
