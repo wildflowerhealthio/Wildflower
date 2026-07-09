@@ -13,7 +13,8 @@ const DeviceConsentScreen = ({
   readonly onDone: () => void
 }): JSX.Element => {
   const { data: consent } = useDeviceConsentQuery(userCode)
-  return <DeviceConsentForm consent={consent} onDone={onDone} />
+  // The settings surface lets the approver rename the device before approving.
+  return <DeviceConsentForm consent={consent} onDone={onDone} editableName />
 }
 
 /**

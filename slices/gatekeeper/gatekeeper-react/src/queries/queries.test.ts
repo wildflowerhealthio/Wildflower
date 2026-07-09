@@ -54,7 +54,9 @@ const DEVICE_CONSENT_BODY = {
   userCode: 'WDJB-MJHT',
   clientId: 'client-a',
   clientName: 'Test Device',
+  deviceName: "Ada's laptop",
   requestedScopes: ['system/*.cruds', 'wildflower/*.cruds'],
+  allowedScopes: ['system/*.cruds', 'wildflower/*.cruds'],
 }
 
 // Wire shape mirrors `OAuthConsent.OAuthConsentSchema`.

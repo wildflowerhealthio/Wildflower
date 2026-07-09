@@ -4,12 +4,15 @@
  *  - the standalone `/gatekeeper/devices/:userCode` route, which
  *    navigates away on `onDone`, and
  *  - the in-app {@link DeviceConsentModalHost} popup (Tauri only),
- *    which closes the modal on `onDone`.
+ *    which closes the modal on `onDone`, and
+ *  - the in-settings `/settings/gatekeeper/devices/:userCode` route,
+ *    which additionally lets the approver rename the device
+ *    (`editableName`).
  *
- * The two callers differ only in the `onDone` policy and whether they
- * need the surrounding `<h1>` heading — the modal supplies the title
- * via its Dialog header. Everything else (scope toggle, approve/decline
- * mutation, stale-denied clearing, mutation-error precedence) is shared.
+ * The device-code consent is **expandable**: the owner edits the request through
+ * the shared {@link ScopePicker} in `expandable` mode, so they can add scopes the
+ * device didn't request (up to the client's `allowedScopes`) as well as prune
+ * them. The submitted grant is whatever the draft serializes to.
  *
  * Renders the design-system "device authorization" card; its skin lives in
  * `device-consent-form.module.css` (token-driven). The surrounding chrome
@@ -18,55 +21,90 @@
 
 import { unknownErrorToString } from 'kitchen-sink'
 import type { JSX } from 'react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { cn } from 'react-kitchen-sink'
-import { Checkbox, Field, FieldDescription, FieldGroup, pageLayoutStyles } from 'react-tundraish'
+import { Field, FieldDescription, pageLayoutStyles, TextField } from 'react-tundraish'
+import { GrantDraft, ScopeRequest } from 'scopes-core'
+import { ScopePicker } from 'scopes-react'
 
 import { useDeviceConsentMutation, type DeviceConsent } from '../../queries/index.ts'
-import scopeListStyles from '../../styles/scope-list.module.css'
 import styles from './device-consent-form.module.css'
 
 interface DeviceConsentFormProps {
   readonly consent: DeviceConsent
   readonly onDone: () => void
+  /** When true (the settings surface), the approver may rename the device before approving. */
+  readonly editableName?: boolean
 }
 
-const DeviceConsentForm = ({ consent, onDone }: DeviceConsentFormProps): JSX.Element => {
-  const requestedScopes = consent.requestedScopes
+const DeviceConsentForm = ({
+  consent,
+  onDone,
+  editableName = false,
+}: DeviceConsentFormProps): JSX.Element => {
   const consentMutation = useDeviceConsentMutation()
-  const [selectedScopes, setSelectedScopes] = useState<ReadonlySet<string>>(
-    () => new Set(requestedScopes)
+
+  // Expandable envelope: seed the sections from what the device requested, but let the owner
+  // grant anything within the client's allowed set.
+  const request = useMemo(
+    () =>
+      ScopeRequest.expandable({
+        requested: consent.requestedScopes,
+        available: consent.allowedScopes,
+      }),
+    [consent]
   )
+  const [draft, setDraft] = useState(() => GrantDraft.fromScopes(consent.requestedScopes, null))
+  const [name, setName] = useState(consent.deviceName ?? '')
   const [denied, setDenied] = useState(false)
 
   const submitting = consentMutation.isPending
   const mutationError =
     consentMutation.error === null ? null : unknownErrorToString(consentMutation.error)
-  // A genuine mutation failure takes precedence over a stale "denied"
-  // flag: if a later approve/deny attempt throws (e.g. a network error)
-  // while `denied` lingers from an earlier server-side denial, the user
-  // must see the real error, not the old denial copy.
+  // A genuine mutation failure takes precedence over a stale "denied" flag.
   const errorMessage = mutationError ?? (denied ? 'Authorization request was denied.' : null)
 
-  const toggleScope = (scope: string): void => {
-    // Clear a stale denial when the user re-toggles scopes for a fresh
-    // attempt, so the denial message doesn't linger across a new approve.
-    setDenied(false)
-    setSelectedScopes((prev) => {
-      const next = new Set(prev)
-      if (next.has(scope)) {
-        next.delete(scope)
-      } else {
-        next.add(scope)
-      }
-      return next
-    })
+  // The statement subject: the device's (possibly just-edited) name, falling back to the
+  // registered client name.
+  const trimmedName = name.trim()
+  const subjectName =
+    (editableName ? trimmedName : (consent.deviceName ?? '')) || consent.clientName
+
+  // The device-name control: an editable field on the settings surface, a read-only line
+  // elsewhere (only when the device actually named itself).
+  const renderDeviceName = (): JSX.Element | null => {
+    if (editableName) {
+      return (
+        <TextField
+          label="Device name"
+          value={name}
+          onChange={setName}
+          placeholder="e.g. Ada's laptop"
+          autoCapitalize="words"
+        />
+      )
+    }
+    if (consent.deviceName !== null && consent.deviceName !== undefined) {
+      return (
+        <Field label="Device name">
+          <span className={styles['app-name']}>{consent.deviceName}</span>
+        </Field>
+      )
+    }
+    return null
   }
 
   const handleApprove = (): void => {
     setDenied(false)
     consentMutation.mutate(
-      { kind: 'approve', userCode: consent.userCode, approvedScopes: [...selectedScopes] },
+      {
+        kind: 'approve',
+        userCode: consent.userCode,
+        approvedScopes: GrantDraft.serializeAll(draft),
+        // Only send an adjusted name from the settings surface, and only when non-empty —
+        // an omitted name keeps whatever the device supplied (server-side COALESCE).
+        ...(editableName && trimmedName !== '' ? { deviceName: trimmedName } : {}),
+      },
       {
         onSuccess: (result) => {
           if (result.status === 'approved') {
@@ -101,6 +139,8 @@ const DeviceConsentForm = ({ consent, onDone }: DeviceConsentFormProps): JSX.Ele
         <div className={styles['code-box']}>{consent.userCode}</div>
       </Field>
 
+      {renderDeviceName()}
+
       <Field label="Application">
         <span className={styles['app-name']}>{consent.clientName}</span>
         <FieldDescription>
@@ -108,21 +148,13 @@ const DeviceConsentForm = ({ consent, onDone }: DeviceConsentFormProps): JSX.Ele
         </FieldDescription>
       </Field>
 
-      <FieldGroup label="Requested Scopes">
-        <FieldDescription>Select which permissions to grant this device.</FieldDescription>
-        <div className={scopeListStyles['scope-list']}>
-          {requestedScopes.map((scope) => (
-            <Checkbox
-              key={scope}
-              checked={selectedScopes.has(scope)}
-              onChange={() => {
-                toggleScope(scope)
-              }}
-              label={<code>{scope}</code>}
-            />
-          ))}
-        </div>
-      </FieldGroup>
+      <ScopePicker
+        subjectName={subjectName}
+        request={request}
+        draft={draft}
+        onDraftChange={setDraft}
+        mode="expandable"
+      />
 
       {errorMessage !== null ? (
         <p className={cn(pageLayoutStyles['error'], 'text-body-3')} role="alert">
@@ -142,12 +174,12 @@ const DeviceConsentForm = ({ consent, onDone }: DeviceConsentFormProps): JSX.Ele
         <button
           type="button"
           className="button-2 filled"
-          disabled={selectedScopes.size === 0 || submitting}
+          // A fully-pruned draft serializes to no scopes, which the backend treats as a deny —
+          // block the approve action rather than let an empty grant submit as an accidental denial.
+          disabled={submitting || !GrantDraft.hasScopes(draft)}
           onClick={handleApprove}
         >
-          {selectedScopes.size < requestedScopes.length
-            ? `Approve (${selectedScopes.size}/${requestedScopes.length})`
-            : 'Approve'}
+          Approve
         </button>
       </div>
 

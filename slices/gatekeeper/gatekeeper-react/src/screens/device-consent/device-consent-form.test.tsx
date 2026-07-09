@@ -8,24 +8,18 @@ import type { DeviceConsent } from '../../queries/index.ts'
 import { DeviceConsentForm } from './device-consent-form.tsx'
 
 /**
- * `DeviceConsentForm` is the lifted, shared body of the public,
- * in-settings, and Tauri-modal consent surfaces; all the consent logic
- * lives here (scope selection, approve vs deny, result handling), so this
- * is the unit worth testing.
+ * `DeviceConsentForm` is the lifted, shared body of the public, in-settings, and
+ * Tauri-modal consent surfaces; all the form's own logic lives here (the
+ * expandable {@link ScopePicker} wiring, the device-name field, approve vs deny,
+ * result handling). The scope-editing mechanics themselves are covered by
+ * `scopes-react`'s `ScopePicker` tests, so this unit focuses on the form's
+ * chrome, decision wiring, and the settings rename affordance.
  *
- * The form drives `useDeviceConsentMutation`, which reads `runAuthed` from
- * router context (`useRouteContext`) and runs through a real `useMutation`.
- * Following the package's mutation tests, we stub only the transport:
- * mock `useRouteContext` to feed a `runAuthedStub`, wrap in a real
- * `QueryClientProvider`, and let `runAuthedStub` resolve/reject to drive
- * the server's decision deterministically.
- *
- * Note on the `errorMessage` precedence (`mutationError ?? denied`): a
- * state where both are set is not reachable through the UI — both
- * `handleApprove`/`handleDecline` reset `denied` before mutating, and
- * TanStack clears `error` when a new mutation starts — so we cover the two
- * reachable branches (a real error is shown; a server denial is shown)
- * rather than fabricating the impossible combined state.
+ * The form drives `useDeviceConsentMutation`, which reads `runAuthed` from router
+ * context (`useRouteContext`) and runs through a real `useMutation`. Following the
+ * package's mutation tests, we stub only the transport: mock `useRouteContext` to
+ * feed a `runAuthedStub`, wrap in a real `QueryClientProvider`, and let
+ * `runAuthedStub` resolve/reject to drive the server's decision deterministically.
  */
 
 const runAuthedStub = vi.fn((_effect: unknown): Promise<unknown> => Promise.resolve(undefined))
@@ -51,36 +45,17 @@ afterEach(() => {
 })
 
 describe('DeviceConsentForm', () => {
-  test('renders the consent details and one selected checkbox per requested scope', () => {
-    // Arrange / Act
-    renderConsentForm(makeConsent(), vi.fn())
-
-    // Assert — identifying details are shown…
-    expect(screen.getByText('BCDF-GHJK')).toBeDefined()
-    expect(screen.getByText('Acme CLI')).toBeDefined()
-
-    // …and every requested scope renders as a pre-checked checkbox.
-    const observation = screen.getByRole<HTMLInputElement>('checkbox', {
-      name: 'patient/Observation.read',
-    })
-    const condition = screen.getByRole<HTMLInputElement>('checkbox', {
-      name: 'patient/Condition.read',
-    })
-    expect(observation.checked).toBe(true)
-    expect(condition.checked).toBe(true)
-
-    // With everything selected the button is the plain "Approve" (no count).
-    expect(screen.getByRole('button', { name: 'Approve' })).toBeDefined()
-  })
-
-  test('renders the device-authorization chrome: intro line, pairing-code label, and footnote', () => {
+  test('renders the device-authorization chrome: intro, pairing code, app, footnote', () => {
     // Arrange / Act
     renderConsentForm(makeConsent(), vi.fn())
 
     // Assert
     expect(screen.getByText('A new device is requesting access to your account.')).toBeDefined()
-    expect(screen.getByText('Pairing code')).toBeDefined()
+    expect(screen.getByText('BCDF-GHJK')).toBeDefined()
+    expect(screen.getByText('Acme CLI')).toBeDefined()
     expect(screen.getByText('Only approve devices you recognize.')).toBeDefined()
+    // The scope picker mounted (its detail grid shows the requested scope string).
+    expect(screen.getByText('patient/Observation.rs')).toBeDefined()
   })
 
   test('approves and finishes when the server records the grant', async () => {
@@ -98,35 +73,11 @@ describe('DeviceConsentForm', () => {
     })
   })
 
-  test('reflects a partial selection in the Approve label and still approves', async () => {
-    // Arrange
-    runAuthedStub.mockResolvedValueOnce({ status: 'approved' })
-    const onDone = vi.fn()
-    const { user } = renderConsentForm(makeConsent(), onDone)
-
-    // Act — drop one of the two requested scopes.
-    await user.click(screen.getByRole('checkbox', { name: 'patient/Condition.read' }))
-
-    // Assert — label now carries the running count, and approval still works.
-    const approve = screen.getByRole('button', { name: 'Approve (1/2)' })
-    await user.click(approve)
-    await waitFor(() => {
-      expect(onDone).toHaveBeenCalledTimes(1)
-    })
-  })
-
-  test('disables Approve when every scope is deselected', async () => {
-    // Arrange
-    const { user } = renderConsentForm(makeConsent(), vi.fn())
-
-    // Act — deselect both scopes.
-    await user.click(screen.getByRole('checkbox', { name: 'patient/Observation.read' }))
-    await user.click(screen.getByRole('checkbox', { name: 'patient/Condition.read' }))
-
-    // Assert — nothing to grant, so Approve is disabled.
-    expect(screen.getByRole('button', { name: 'Approve (0/2)' }).hasAttribute('disabled')).toBe(
-      true
-    )
+  test('disables Approve when nothing is granted (empty request, nothing to add)', () => {
+    // A request with no scopes and an empty expansion envelope has an empty draft,
+    // which the backend treats as a deny — so Approve is blocked.
+    renderConsentForm(makeConsent({ requestedScopes: [], allowedScopes: [] }), vi.fn())
+    expect(screen.getByRole('button', { name: 'Approve' }).hasAttribute('disabled')).toBe(true)
   })
 
   test('shows a denial notice and stays on the form when an approval is denied', async () => {
@@ -141,20 +92,6 @@ describe('DeviceConsentForm', () => {
     // Assert — message shown, flow not completed.
     expect((await screen.findByRole('alert')).textContent).toBe('Authorization request was denied.')
     expect(onDone).not.toHaveBeenCalled()
-  })
-
-  test('clears the denial message when a scope is toggled for a fresh attempt', async () => {
-    // Arrange — get the form into the denied state.
-    runAuthedStub.mockResolvedValueOnce({ status: 'denied' })
-    const { user } = renderConsentForm(makeConsent(), vi.fn())
-    await user.click(screen.getByRole('button', { name: 'Approve' }))
-    await screen.findByRole('alert')
-
-    // Act — re-toggle a scope to start over.
-    await user.click(screen.getByRole('checkbox', { name: 'patient/Observation.read' }))
-
-    // Assert — the stale denial copy is gone.
-    expect(screen.queryByRole('alert')).toBeNull()
   })
 
   test('surfaces the underlying error and stays on the form when the request fails', async () => {
@@ -214,6 +151,31 @@ describe('DeviceConsentForm', () => {
       expect(onDone).toHaveBeenCalledTimes(1)
     })
   })
+
+  describe('device name', () => {
+    test('read-only surface shows the supplied name and no name input', () => {
+      renderConsentForm(makeConsent({ deviceName: "Ada's laptop" }), vi.fn())
+      expect(screen.getByText("Ada's laptop")).toBeDefined()
+      expect(screen.queryByRole('textbox', { name: /Device name/ })).toBeNull()
+    })
+
+    test('settings surface (editableName) offers an editable, pre-seeded name field', async () => {
+      const { user } = renderConsentForm(
+        makeConsent({ deviceName: 'Reception iPad' }),
+        vi.fn(),
+        true
+      )
+      const field = screen.getByRole<HTMLInputElement>('textbox', { name: /Device name/ })
+      expect(field.value).toBe('Reception iPad')
+
+      // The approver can rename it before approving.
+      await user.clear(field)
+      await user.type(field, 'Lobby kiosk')
+      expect(screen.getByRole<HTMLInputElement>('textbox', { name: /Device name/ }).value).toBe(
+        'Lobby kiosk'
+      )
+    })
+  })
 })
 
 // Helpers
@@ -222,19 +184,25 @@ const makeConsent = (overrides?: Partial<DeviceConsent>): DeviceConsent => ({
   userCode: 'BCDF-GHJK',
   clientId: 'cli.acme.example',
   clientName: 'Acme CLI',
-  requestedScopes: ['patient/Observation.read', 'patient/Condition.read'],
+  deviceName: null,
+  requestedScopes: ['patient/Observation.rs'],
+  // The client is allowed a wider set — device consent is expandable.
+  allowedScopes: ['patient/*.cruds'],
   ...overrides,
 })
 
 const renderConsentForm = (
   consent: DeviceConsent,
-  onDone: () => void
+  onDone: () => void,
+  editableName = false
 ): { readonly user: ReturnType<typeof userEvent.setup> } => {
   const queryClient = new QueryClient()
   const user = userEvent.setup()
   const wrapper = ({ children }: { readonly children: ReactNode }): JSX.Element => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   )
-  render(<DeviceConsentForm consent={consent} onDone={onDone} />, { wrapper })
+  render(<DeviceConsentForm consent={consent} onDone={onDone} editableName={editableName} />, {
+    wrapper,
+  })
   return { user }
 }
