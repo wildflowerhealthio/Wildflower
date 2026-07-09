@@ -105,6 +105,10 @@ const AppsHomeBody = ({ apps }: AppsHomeBodyProps): JSX.Element => {
   const onDragEnd = (event: DragEndEvent): void => {
     const { active, over } = event
     if (over === null) return
+    // Don't start a second home-screen write while one is in flight: both this
+    // and `disable` are optimistic with rollback to a captured `previous`, so
+    // an overlapping PUT could revert newer local state on failure.
+    if (homeScreenMutation.isPending) return
     // Reorder within the full list (disabled apps keep their slots), then PUT the
     // whole ordered set — the server's atomic renumber is the single writer (see
     // the Rust `replace_home_screen`).
@@ -132,6 +136,8 @@ const AppsHomeBody = ({ apps }: AppsHomeBodyProps): JSX.Element => {
   // roll `order` back and surface the error banner. Re-enabling lives in
   // `/settings/apps`.
   const disable = (app: AppEntry): void => {
+    // Skip while a home-screen write is already in flight — see `onDragEnd`.
+    if (homeScreenMutation.isPending) return
     const previous = order
     const next = order.map((entry) => (entry.id === app.id ? { ...entry, enabled: false } : entry))
     setOrder(next)
@@ -152,7 +158,7 @@ const AppsHomeBody = ({ apps }: AppsHomeBodyProps): JSX.Element => {
         actions={
           <button
             type="button"
-            className={cn('button-1', editMode ? 'ghost' : 'ghost')}
+            className={cn('button-1', 'ghost')}
             style={{
               fontWeight: 800,
               fontSize: 'var(--font-size-4)',

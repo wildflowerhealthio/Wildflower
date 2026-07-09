@@ -108,11 +108,14 @@ describe('<NewAppBody>', () => {
   test('the mode switch toggles which create form is shown', () => {
     render(<NewAppBody onCreated={noop} />)
 
-    // Cloud arm by default.
-    expect(screen.getByRole('button', { name: 'Add' })).toBeDefined()
+    // Cloud arm by default: URL field present, no bundle upload.
+    expect(screen.getByLabelText('URL')).toBeDefined()
+    expect(screen.queryByLabelText('Bundle (.zip)')).toBeNull()
 
     fireEvent.click(screen.getByRole('tab', { name: 'Self-hosted' }))
 
-    expect(screen.getByRole('button', { name: 'Add' })).toBeDefined()
+    // Self-hosted arm: bundle upload present, no URL field.
+    expect(screen.getByLabelText('Bundle (.zip)')).toBeDefined()
+    expect(screen.queryByLabelText('URL')).toBeNull()
   })
 })

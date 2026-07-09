@@ -115,8 +115,7 @@ const SortableAppTile = ({
       className={cn(
         tileStyles['app-tile'],
         editing ? tileStyles['app-tile--editing'] : null,
-        isDragging ? tileStyles['app-tile--dragging'] : null,
-        editing && !isDragging ? tileStyles['app-tile--wiggle'] : null
+        isDragging ? tileStyles['app-tile--dragging'] : null
       )}
       {...attributes}
       {...listeners}
@@ -126,7 +125,12 @@ const SortableAppTile = ({
           {/* The wiggle lives on this inner wrapper, not the <li>: the drag
            * transform dnd-kit writes to the <li>'s inline style would otherwise
            * be clobbered by the animation's `transform`. Suppress it mid-drag. */}
-          <div className={cn(tileStyles['app-tile__body'])}>
+          <div
+            className={cn(
+              tileStyles['app-tile__body'],
+              !isDragging ? tileStyles['app-tile--wiggle'] : null
+            )}
+          >
             <TileContent app={app} />
           </div>
           <button

@@ -40,6 +40,8 @@ const AppsListBody = ({ apps }: AppsListBodyProps): JSX.Element => {
           <Link
             to="/settings/apps/new"
             className="button-1 ghost"
+            aria-label="Add app"
+            title="Add app"
             style={{
               fontWeight: 500,
               fontSize: 'var(--font-size-5)',
@@ -47,7 +49,7 @@ const AppsListBody = ({ apps }: AppsListBodyProps): JSX.Element => {
               textDecoration: 'none',
             }}
           >
-            ＋
+            <span aria-hidden="true">＋</span>
           </Link>
         }
       />

@@ -140,7 +140,6 @@ describe('<AppDetailBody>', () => {
     expect(screen.getByRole('switch', { name: 'Show on home screen' })).toBeDefined()
     // But the content is not editable and can't be deleted.
     expect(screen.queryByRole('button', { name: 'Save' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Save' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Delete from my device' })).toBeNull()
     expect(screen.getByText(/settings aren't editable/i)).toBeDefined()
   })
