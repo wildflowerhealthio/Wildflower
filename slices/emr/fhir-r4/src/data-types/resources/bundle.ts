@@ -250,4 +250,4 @@ const BundleSchema = <FhirResourceSchema extends Schema.Schema.AnyNoContext>(
     )
   ).annotations({ jsonSchema: bundleJsonSchema })
 
-export { BundleType, EntrySchema, BundleSchema as Schema }
+export { BundleType, EntrySchema, BundleSchema as Schema, type BundleValue }

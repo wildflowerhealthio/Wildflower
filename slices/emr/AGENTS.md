@@ -6,7 +6,7 @@ FHIR R4 slice: pure wire schemas (Patient / Observation / Binary), the `HttpApi`
 
 - **The server is HFS, not TypeScript.** `emr-rust` embeds the HeliosSoftware/hfs crates and is mounted at `/fhir-r4` by `apps/wildflower-tauri`. There is no TS server implementation; `fhir-r4` is a description + schemas + client only. Don't add server handlers back to the TS side.
 - **`fhir-r4` deliberately breaks the `-core` naming convention.** It is a wire-protocol package that never grows platform adapters, so it takes no suffix. It depends on no other emr package.
-- **Client deviations from the FHIR R4 spec must be recorded** in the client-gap catalogue at [fhir-r4/docs/Client Capabilities Reference.md](./fhir-r4/docs/Client%20Capabilities%20Reference.md) — append when you deviate, in the same change.
+- **Deviations from the FHIR R4 spec must be recorded, in the catalogue for the side you touched, in the same change.** Client-side (TS schemas / `HttpApi`) go in [fhir-r4/docs/Client Capabilities Reference.md](./fhir-r4/docs/Client%20Capabilities%20Reference.md); server-side (`emr-rust`'s overrides on top of HFS) go in [emr-rust/docs/Capability Statement.md](./emr-rust/docs/Capability%20Statement.md).
 
 ## Traps
 
@@ -16,4 +16,5 @@ FHIR R4 slice: pure wire schemas (Patient / Observation / Binary), the `HttpApi`
 ## References
 
 - [Packages Explanation](./docs/Packages%20Explanation.md) — why the packages split the way they do
-- [Client Capabilities Reference](./fhir-r4/docs/Client%20Capabilities%20Reference.md) — client-gap catalogue
+- [Client Capabilities Reference](./fhir-r4/docs/Client%20Capabilities%20Reference.md) — client-side (TS) gap catalogue
+- [emr-rust Capability Statement](./emr-rust/docs/Capability%20Statement.md) — server-side (HFS embedding) deltas from stock HFS

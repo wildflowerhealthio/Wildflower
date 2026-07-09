@@ -62,4 +62,4 @@ const IdentifierSchema: Schema.Schema<IdentifierType, FhirR4.Identifier, never> 
 registerDatatypeSchema('Identifier', IdentifierSchema)
 registerDatatypeSchema('Reference', ReferenceSchema)
 
-export { ReferenceSchema, IdentifierSchema }
+export { ReferenceSchema, IdentifierSchema, type ReferenceType, type IdentifierType }
