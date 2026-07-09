@@ -5,15 +5,19 @@ import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import { FIRST_PARTY_CLIENT_ID } from 'gatekeeper-core/contexts'
 import { OAuth } from 'gatekeeper-core/http-api-definition'
 
-import { useEffect, useState, type JSX } from 'react'
+import { useEffect, useMemo, useRef, useState, type JSX } from 'react'
 import { AuthedUntil, cn, useAuthStateSetter } from 'react-kitchen-sink'
-import { Field, FieldDescription, pageLayoutStyles } from 'react-tundraish'
+import { Field, FieldDescription, pageLayoutStyles, TextField } from 'react-tundraish'
+import { GrantDraft, ScopeRequest } from 'scopes-core'
+import type { GrantDraft as GrantDraftModel } from 'scopes-core'
+import { ScopePicker } from 'scopes-react'
 
 import { useGatekeeperLocalGrantedScopes, useGatekeeperRuntimeLayer } from '../router-context.ts'
 import deviceCodeStyles from '../styles/device-code.module.css'
 import pageLayout from '../styles/page-layout.module.css'
 
 type DeviceFlowState =
+  | { readonly tag: 'form' }
   | { readonly tag: 'starting' }
   | {
       readonly tag: 'pending'
@@ -26,6 +30,9 @@ type DeviceFlowState =
   | { readonly tag: 'error'; readonly message: string }
 
 const DEVICE_GRANT_TYPE = 'urn:ietf:params:oauth:grant-type:device_code'
+
+/** The first-party client's allowed scopes when the host context carries none (standalone/web). */
+const DEFAULT_ALLOWED_SCOPES = 'system/*.cruds wildflower/*.cruds'
 
 /** Where sign-in lands when no usable `returnTo` was supplied. */
 const POST_AUTH_DEFAULT_PATH = '/home'
@@ -87,44 +94,25 @@ const toErrorState = (error: unknown): DeviceFlowState =>
   })
 
 /**
- * Grace period before any real OAuth I/O fires — see {@link NeedsAuthMessage}.
+ * The device-login screen. On landing it shows a setup **form** — a device-name
+ * field and the shared {@link ScopePicker} in `expandable` mode (seeded empty) —
+ * so the user names the device and chooses what to request before anything hits
+ * the network. Only on "Start sign-in" does it run the RFC 8628
+ * device-authorization flow: surface the `user_code`, poll `/oauth/token` until
+ * approval, then write the token via the `AuthStateStore` provided by the
+ * surrounding `<AuthStateProvider>` (resolved through {@link useAuthStateSetter})
+ * and navigate to the sanitized `?returnTo=` path (or {@link POST_AUTH_DEFAULT_PATH})
+ * with a full page load so the app reboots with the bearer in place.
  *
  * @remarks
- * The 250ms value is a guess: it's intended to absorb a transient mount
- * that happens during the host's `AuthTokenIssued` handshake (post-mount
- * token delivery over the gatekeeper bridge), so a stray render doesn't
- * kick off a real device-authorization flow. The `_auth` `beforeLoad`
- * gate's `awaitEmbeddedAuthReady` already waits the bridge handshake +
- * token before any authed subtree renders, so under correct host
- * behavior this sleep is dead time. It exists as a defense against
- * (a) a host that delays the `AuthTokenIssued` send relative to the
- * transport's `signalReady`, and (b) other mount-time races that would
- * otherwise burn a device-code on the gatekeeper server. There's no
- * measured upper bound it's protecting against — if a real bound
- * surfaces, replace this with that bound or drop the sleep entirely.
- */
-const MOUNT_DEBOUNCE = Duration.millis(250)
-
-/**
- * Starts the RFC 8628 device-authorization flow, surfaces the `user_code`,
- * and polls `/oauth/token` until approval. On success writes the token via
- * the `AuthStateStore` provided by the surrounding `<AuthStateProvider>`
- * (resolved through {@link useAuthStateSetter}), so the same write path
- * the page-bridge `AuthTokenIssued` handler takes also flows through here,
- * then navigates to the sanitized `?returnTo=` path (or
- * {@link POST_AUTH_DEFAULT_PATH}) with a full page load so the app reboots
- * with the bearer in place.
- *
- * @remarks
- * The boot side effects are gated by a {@link MOUNT_DEBOUNCE} sleep so
- * a transient mount during a token-race (e.g. an `AuthTokenIssued` is
- * about to arrive over the gatekeeper bridge) does not start a real
- * device authorization. Unmount within the window interrupts the fiber
- * before any network I/O — no orphan device-code is left on the
- * gatekeeper server.
+ * Because the flow is now user-gated (a button click), nothing fires on mount —
+ * so the old mount-time debounce that guarded against a transient render burning
+ * a device code is gone. The forked flow still interrupts on unmount so a
+ * navigation mid-poll leaves no orphan device code on the gatekeeper server.
  */
 const NeedsAuthMessage = (): JSX.Element => {
-  const [state, setState] = useState<DeviceFlowState>({ tag: 'starting' })
+  const [state, setState] = useState<DeviceFlowState>({ tag: 'form' })
+  const [deviceName, setDeviceName] = useState('')
   const setAuthState = useAuthStateSetter()
   // Long-running device flow with retry — needs a fiber handle for
   // interrupt-on-unmount, which the promise-returning `runAuthed` can't
@@ -132,23 +120,49 @@ const NeedsAuthMessage = (): JSX.Element => {
   // (`HttpClient | GatekeeperHttpApiClient`), provided once by the app —
   // not a one-shot query.
   const layer = useGatekeeperRuntimeLayer()
-  // Request the first-party client's full `allowed_scopes` set, threaded from
-  // the Tauri shell's `tauri-shared-config.json` (the single source gatekeeper
-  // also reads to seed those `allowed_scopes`), so the two can't drift. The
-  // device_authorization handler clears each requested scope by coverage against
-  // the seeded set, so this must stay within it. The literal fallback covers
-  // standalone/web renders where the host context carries no value.
+  // The first-party client's full `allowed_scopes` set, threaded from the Tauri
+  // shell's `tauri-shared-config.json` (the single source gatekeeper also reads
+  // to seed those `allowed_scopes`), so the two can't drift. It is the picker's
+  // *expansion envelope* here: the user can request anything within it, so the
+  // built request always passes the device_authorization coverage check. The
+  // literal fallback covers standalone/web renders where the host carries none.
   const localGrantedScopes = useGatekeeperLocalGrantedScopes()
 
-  useEffect(() => {
+  // The expandable picker request: nothing requested yet (the user builds it),
+  // grantable up to the client's allowed set.
+  const request = useMemo(
+    () =>
+      ScopeRequest.expandable({
+        requested: [],
+        available: (localGrantedScopes ?? DEFAULT_ALLOWED_SCOPES).split(/\s+/).filter(Boolean),
+      }),
+    [localGrantedScopes]
+  )
+  const [draft, setDraft] = useState<GrantDraftModel.GrantDraft>(() => GrantDraft.initial(request))
+
+  // The forked flow, so an unmount mid-poll interrupts it (no orphan device code).
+  const fiberRef = useRef<Fiber.RuntimeFiber<void, never> | null>(null)
+  useEffect(
+    () => () => {
+      if (fiberRef.current !== null) void Effect.runPromise(Fiber.interrupt(fiberRef.current))
+    },
+    []
+  )
+
+  const handleStart = (): void => {
+    const scopes = GrantDraft.serializeAll(draft).join(' ')
+    const trimmedName = deviceName.trim()
+    setState({ tag: 'starting' })
     const flow = Effect.gen(function* () {
-      yield* Effect.sleep(MOUNT_DEBOUNCE)
       const client = yield* GatekeeperHttpApiClient
 
       const auth = yield* client.oauth.DeviceAuthorization({
         payload: {
           client_id: FIRST_PARTY_CLIENT_ID,
-          scope: localGrantedScopes ?? 'system/*.cruds wildflower/*.cruds',
+          // Omit an empty scope entirely — the owner then grants from scratch (device consent
+          // is expandable), rather than the server parsing a blank scope string.
+          ...(scopes === '' ? {} : { scope: scopes }),
+          ...(trimmedName === '' ? {} : { device_name: trimmedName }),
         },
       })
 
@@ -201,17 +215,39 @@ const NeedsAuthMessage = (): JSX.Element => {
       Effect.provide(layer)
     )
 
-    const fiber = Effect.runFork(flow)
-    return (): void => {
-      void Effect.runPromise(Fiber.interrupt(fiber))
-    }
-    // `setAuthState`'s identity is stable for the surrounding
-    // `AuthStateStore`'s lifetime (returned from `useAuthStateSetter`
-    // and constructed once per `main-*` entry); including it in the
-    // dep array makes the dependency explicit without churning.
-    // `localGrantedScopes` is a stable string from router context.
-  }, [layer, setAuthState, localGrantedScopes])
+    fiberRef.current = Effect.runFork(flow)
+  }
 
+  if (state.tag === 'form') {
+    return (
+      <>
+        <h1 className="text-heading-6">Set up this device</h1>
+        <p className="text-body-2">
+          Name this device and choose what it should be able to access. A signed-in device will
+          review and approve the request.
+        </p>
+        <TextField
+          label="Device name"
+          value={deviceName}
+          onChange={setDeviceName}
+          placeholder="e.g. Ada's laptop"
+          autoCapitalize="words"
+        />
+        <ScopePicker
+          subjectName={deviceName.trim() === '' ? 'This device' : deviceName.trim()}
+          request={request}
+          draft={draft}
+          onDraftChange={setDraft}
+          mode="expandable"
+        />
+        <div className={pageLayout['buttons']}>
+          <button type="button" className="button-2 filled" onClick={handleStart}>
+            Start sign-in
+          </button>
+        </div>
+      </>
+    )
+  }
   if (state.tag === 'starting') {
     return <p className="text-body-2">Starting sign-in…</p>
   }
