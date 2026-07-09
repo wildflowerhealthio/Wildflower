@@ -4,18 +4,27 @@
   gap: var(--space-1);
 }
 
-section > .item-list:not(:first-child) {
+/*
+ * Stacked lists — when several <ItemList> sit directly under a shared
+ * <section>, square the touching corners so the cards read as one
+ * continuous surface. The card radius lives on `.item-list__rows` (the
+ * bordered surface), so the squaring targets that element, not the outer
+ * `.item-list` flex wrapper.
+ */
+section > .item-list:not(:first-child) .item-list__rows {
   border-top-left-radius: 0;
   border-top-right-radius: 0;
 }
 
-section > .item-list:not(:last-child) {
+section > .item-list:not(:last-child) .item-list__rows {
   border-bottom-left-radius: 0;
   border-bottom-right-radius: 0;
 }
 
-/* Section header — sans, uppercase component label (10px / 700, 0.055em) in
- * the crisp label ink so a group of rows reads as a named section. */
+/* Section header — a sans, sentence-case eyebrow (12px / 500) with a hair of
+ * tracking (0.055em) in the crisp label ink so a group of rows reads as a
+ * named section. One notch larger than a field label, which names a single
+ * control. */
 .item-list__title {
   margin: 0;
   font-family: var(--font-sans);
@@ -26,9 +35,10 @@ section > .item-list:not(:last-child) {
 }
 
 /*
- * Rows are separated only by hairline dividers — no surrounding card chrome.
- * The list flows in its containing surface (page or card supplied by the
- * caller); the dividers are the only structure.
+ * The rows list is the card surface — it carries the background, hairline
+ * border, and rounded corners; the rows inside are separated only by hairline
+ * dividers. The outer `.item-list` stays chrome-free (it only stacks the
+ * optional title above this surface).
  */
 .item-list__rows {
   list-style: none;
@@ -46,6 +56,9 @@ section > .item-list:not(:last-child) {
   background: var(--card-color-background);
   border: 1px solid var(--card-color-border);
   border-radius: var(--radius-4);
+  /* Clip row fills (e.g. a danger-tone tint on the first/last row) against
+   * the rounded corners so no tint bleeds past the card edge. */
+  overflow: hidden;
   /* Guarantee a minimum tap target even if a future change shrinks
    * the title or removes the chip. */
   min-height: var(--space-12);

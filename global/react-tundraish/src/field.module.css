@@ -7,9 +7,9 @@
 /*
  * Field label — sentence-case sans, weight 500, ~11px, no tracking, in the
  * crisp label ink (neutral-4, not the fainter muted tone) so the label reads
- * clearly as named structure. Distinct from an UPPERCASE section header, which
- * groups a set of fields (see `<ItemList>` titles); a field label names a
- * single control.
+ * clearly as named structure. Distinct from a section header (the sentence-case
+ * eyebrow one notch larger, see `<ItemList>` titles), which groups a set of
+ * fields; a field label names a single control.
  */
 .field__label {
   font-family: var(--font-sans);
