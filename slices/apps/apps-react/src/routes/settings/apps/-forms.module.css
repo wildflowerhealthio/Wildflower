@@ -9,23 +9,6 @@
   gap: var(--space-5);
 }
 
-.section {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-
-/* Mono uppercase eyebrow naming a group, matching the tunnel relay page. */
-.zone-label {
-  margin: 0;
-  font-family: var(--font-mono);
-  font-size: var(--font-size-1);
-  font-weight: var(--font-weight-2);
-  letter-spacing: var(--letter-spacing-5);
-  text-transform: uppercase;
-  color: var(--color-neutral-5);
-}
-
 .divider {
   margin: 0;
   border: 0;
@@ -45,11 +28,49 @@
   margin: 0;
 }
 
-/* Read-only provenance tag for system / seeded rows that can't be edited. */
-.readonly-tag {
-  color: var(--color-neutral-5);
-  text-transform: uppercase;
-  font-family: var(--font-mono);
-  font-size: var(--font-size-1);
-  letter-spacing: var(--letter-spacing-4);
+/* A ToggleSwitch stacked over its explanatory helper line. */
+.toggle-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/*
+ * Full-width tabs-style picker for the create page's Cloud / Self-hosted
+ * switch: two equal segments sharing a hairline underline, the active one
+ * marked by an inked label + accent underline, so it reads as switching which
+ * form you're filling in rather than ticking a radio.
+ */
+.tabs {
+  display: flex;
+  width: 100%;
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.tab {
+  flex: 1 1 0;
+  padding: var(--space-3) var(--space-4);
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  color: var(--color-neutral-4);
+  font: inherit;
+  font-weight: var(--font-weight-2);
+  cursor: pointer;
+}
+
+.tab:hover {
+  color: var(--color-foreground);
+}
+
+.tab--active {
+  color: var(--color-foreground);
+  border-bottom-color: var(--color-accent);
+}
+
+/* A muted explainer for the destructive delete action. */
+.delete-note {
+  margin: 0;
+  color: var(--color-neutral-4);
 }

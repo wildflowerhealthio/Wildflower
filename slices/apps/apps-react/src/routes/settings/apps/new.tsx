@@ -1,15 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
-import {
-  AsyncErrorView,
-  Field,
-  FieldDescription,
-  PageHeader,
-  RadioGroup,
-  TextField,
-  type RadioOption,
-} from 'react-tundraish'
+import { AsyncErrorView, Field, FieldDescription, PageHeader, TextField } from 'react-tundraish'
 
 import { useAppsAdminCreateMutation, useSelfHostedAppCreateMutation } from '../../../queries.ts'
 import { CloudAppFields, formatError, type CloudFields } from './-forms.tsx'
@@ -18,7 +10,7 @@ import formStyles from './-forms.module.css'
 /** The two creatable provenances (system apps are compiled in, not user-added). */
 type Mode = 'cloud' | 'self-hosted'
 
-const MODE_OPTIONS: readonly RadioOption<Mode>[] = [
+const MODE_OPTIONS: readonly { readonly value: Mode; readonly label: string }[] = [
   { value: 'cloud', label: 'Cloud' },
   { value: 'self-hosted', label: 'Self-hosted' },
 ]
@@ -31,9 +23,9 @@ interface NewAppBodyProps {
 }
 
 /**
- * The create-app page. A `RadioGroup` switches between the **cloud** arm (a URL
- * template + requires-tunnel, via {@link useAppsAdminCreateMutation}) and the
- * **self-hosted** arm (a name + uploaded `.zip` bundle, via
+ * The create-app page. A full-width tabs picker switches between the **cloud**
+ * arm (a URL template + requires-tunnel, via {@link useAppsAdminCreateMutation})
+ * and the **self-hosted** arm (a name + subtitle + uploaded `.zip` bundle, via
  * {@link useSelfHostedAppCreateMutation}). Both POST the single merged
  * `multipart/form-data` create route, discriminated on `provenance`, and on
  * success invoke `onCreated`. Presentational + prop-driven (the navigation
@@ -45,6 +37,7 @@ const NewAppBody = ({ onCreated }: NewAppBodyProps): JSX.Element => {
   const selfHostedMutation = useSelfHostedAppCreateMutation()
   const [cloud, setCloud] = useState<CloudFields>(EMPTY_CLOUD)
   const [selfHostedName, setSelfHostedName] = useState('')
+  const [selfHostedSubtitle, setSelfHostedSubtitle] = useState('')
   const [selfHostedFile, setSelfHostedFile] = useState<File | null>(null)
 
   const submitCloud = (): void => {
@@ -67,21 +60,37 @@ const NewAppBody = ({ onCreated }: NewAppBodyProps): JSX.Element => {
   const submitSelfHosted = (): void => {
     const name = selfHostedName.trim()
     if (name === '' || selfHostedFile === null) return
+    const subtitle = selfHostedSubtitle.trim()
     // The picked zip rides the merged create route as the `bundle` file part of
     // a multipart form (the server extracts + installs it).
-    selfHostedMutation.mutate({ name, bundle: selfHostedFile }, { onSuccess: onCreated })
+    selfHostedMutation.mutate(
+      { name, bundle: selfHostedFile, ...(subtitle === '' ? {} : { subtitle }) },
+      { onSuccess: onCreated }
+    )
   }
 
   return (
     <>
       <PageHeader title="Add app" backHref="/settings/apps" backLabel="Apps" />
-      <RadioGroup
-        name="new-app-mode"
-        legend="App type"
-        value={mode}
-        options={MODE_OPTIONS}
-        onChange={setMode}
-      />
+      <div className={formStyles['tabs']} role="tablist" aria-label="App type">
+        {MODE_OPTIONS.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            role="tab"
+            aria-selected={mode === option.value}
+            className={cn(
+              formStyles['tab'],
+              mode === option.value ? formStyles['tab--active'] : null
+            )}
+            onClick={() => {
+              setMode(option.value)
+            }}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
 
       {mode === 'cloud' ? (
         <form
@@ -121,6 +130,13 @@ const NewAppBody = ({ onCreated }: NewAppBodyProps): JSX.Element => {
             value={selfHostedName}
             disabled={selfHostedMutation.isPending}
             onChange={setSelfHostedName}
+          />
+          <TextField
+            label="Subtitle"
+            value={selfHostedSubtitle}
+            description="Optional — shown under the app name."
+            disabled={selfHostedMutation.isPending}
+            onChange={setSelfHostedSubtitle}
           />
           <Field label="Bundle (.zip)" htmlFor="new-app-bundle">
             <input

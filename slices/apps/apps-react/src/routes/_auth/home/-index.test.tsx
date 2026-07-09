@@ -95,7 +95,8 @@ describe('<AppsHomeBody> edit mode', () => {
     render(<AppsHomeBody apps={[APP]} />)
 
     expect(screen.getByRole('button', { name: 'Edit' })).toBeDefined()
-    expect(screen.queryByRole('button', { name: 'Hide' })).toBeNull()
+    // The per-tile hide badge is labelled "Hide <app name>".
+    expect(screen.queryByRole('button', { name: /^Hide/ })).toBeNull()
   })
 
   test('tapping "Edit" arms edit mode: the toggle reads "Done" and a "Hide" control appears', () => {
@@ -104,7 +105,7 @@ describe('<AppsHomeBody> edit mode', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
 
     expect(screen.getByRole('button', { name: 'Done' })).toBeDefined()
-    expect(screen.getByRole('button', { name: 'Hide' })).toBeDefined()
+    expect(screen.getByRole('button', { name: /^Hide/ })).toBeDefined()
   })
 
   test('tapping "Hide" PUTs the whole home screen with that app disabled', () => {
@@ -112,8 +113,8 @@ describe('<AppsHomeBody> edit mode', () => {
     render(<AppsHomeBody apps={[APP, other]} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
-    // Both enabled tiles get a Hide control; the first is the target app.
-    const hideButtons = screen.getAllByRole('button', { name: 'Hide' })
+    // Both enabled tiles get a hide badge ("Hide <name>"); the first is the target.
+    const hideButtons = screen.getAllByRole('button', { name: /^Hide/ })
     fireEvent.click(hideButtons[0])
 
     // The single writer of `enabled` is `PUT /home-screen` with the full ordered

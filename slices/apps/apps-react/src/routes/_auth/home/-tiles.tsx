@@ -84,13 +84,15 @@ const TileContent = ({ app }: { readonly app: AppEntry }): JSX.Element => (
 )
 
 /**
- * A single home-screen app tile. `useSortable` is gated on `editing` via its
- * `disabled` flag — the hook always runs (so it stays inside `DndContext`), but
- * a drag can only start in edit mode. In view mode the whole tile is a launch
- * button; in edit mode it's a drag handle showing the app plus a "Hide" control,
- * and clicking no longer launches. dnd-kit's pointer sensor only starts a drag
- * past its activation distance, so the nested "Hide" button still fires its
- * `onClick`.
+ * A single home-screen app tile, cribbing the iOS home-screen rearrange
+ * language. `useSortable` is gated on `editing` via its `disabled` flag — the
+ * hook always runs (so it stays inside `DndContext`), but a drag can only start
+ * in edit mode. In view mode the whole tile is a launch button; in edit mode the
+ * content gently wiggles inside an inner wrapper (so the wiggle composes with,
+ * rather than fights, dnd-kit's drag transform on the `<li>`), a click no longer
+ * launches, and a stationary "×" badge pinned to the corner hides the app.
+ * dnd-kit's pointer sensor only starts a drag past its activation distance, so
+ * the corner badge still fires its `onClick`.
  */
 const SortableAppTile = ({
   app,
@@ -119,24 +121,33 @@ const SortableAppTile = ({
       {...listeners}
     >
       {editing ? (
-        <div className={tileStyles['app-tile__editing']}>
-          <span className={tileStyles['app-tile__display']}>
+        <>
+          {/* The wiggle lives on this inner wrapper, not the <li>: the drag
+           * transform dnd-kit writes to the <li>'s inline style would otherwise
+           * be clobbered by the animation's `transform`. Suppress it mid-drag. */}
+          <div
+            className={cn(
+              tileStyles['app-tile__body'],
+              isDragging ? null : tileStyles['app-tile__body--wiggle']
+            )}
+          >
             <TileContent app={app} />
-          </span>
+          </div>
           <button
             type="button"
-            className={cn(tileStyles['app-tile__disable'], 'button-3 outline accent-red')}
+            className={tileStyles['app-tile__disable']}
+            aria-label={`Hide ${app.name}`}
             onClick={() => {
               onDisable(app)
             }}
           >
-            Hide
+            <span aria-hidden="true">×</span>
           </button>
-        </div>
+        </>
       ) : (
         <button
           type="button"
-          className={tileStyles['app-tile__launch']}
+          className={cn(tileStyles['app-tile__body'], tileStyles['app-tile__launch'])}
           onClick={() => {
             onLaunch(app)
           }}

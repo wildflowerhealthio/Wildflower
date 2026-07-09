@@ -1,6 +1,6 @@
 import { useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
-import { Checkbox, TextField } from 'react-tundraish'
+import { FieldDescription, TextField, ToggleSwitch } from 'react-tundraish'
 
 import { useAppsAdminReplaceMutation, type AppEntry } from '../../../queries.ts'
 import formStyles from './-forms.module.css'
@@ -71,13 +71,23 @@ const CloudAppFields = ({ fields, onChange, disabled }: CloudAppFieldsProps): JS
         onChange({ ...fields, url })
       }}
     />
-    <Checkbox
-      checked={fields.requiresTunnel}
-      label="Requires tunnel"
-      onChange={(requiresTunnel) => {
-        onChange({ ...fields, requiresTunnel })
-      }}
-    />
+    <div className={formStyles['toggle-field']}>
+      {disabled === true ? (
+        <ToggleSwitch checked={fields.requiresTunnel} label="Requires internet access" disabled />
+      ) : (
+        <ToggleSwitch
+          checked={fields.requiresTunnel}
+          label="Requires internet access"
+          onChange={(requiresTunnel) => {
+            onChange({ ...fields, requiresTunnel })
+          }}
+        />
+      )}
+      <FieldDescription>
+        Some apps need to reach your health data over the internet to work. When it's on, this app
+        is served through your tunnel.
+      </FieldDescription>
+    </div>
   </>
 )
 

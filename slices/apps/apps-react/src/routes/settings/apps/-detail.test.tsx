@@ -124,24 +124,24 @@ describe('<AppDetailBody>', () => {
     })
   })
 
-  test('a removable app can be removed by id', () => {
+  test('a removable app can be deleted by id', () => {
     render(<AppDetailBody app={CLOUD} apps={[CLOUD]} onRemoved={noop} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Remove app' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete from my device' }))
 
     expect(deleteStub.mutate).toHaveBeenCalledTimes(1)
     expect(deleteStub.mutate.mock.calls[0]?.[0]).toEqual({ id: 'cloud-app' })
   })
 
-  test('a system app shows a read-only tag, no edit form, and no Remove', () => {
+  test('a system app shows a read-only note, no edit form, and no delete', () => {
     render(<AppDetailBody app={SYSTEM} apps={[SYSTEM]} onRemoved={noop} />)
 
     // Enable/disable still applies to every provenance.
     expect(screen.getByRole('switch', { name: 'Show on home screen' })).toBeDefined()
-    // But the content is not editable and can't be removed.
+    // But the content is not editable and can't be deleted.
     expect(screen.queryByRole('button', { name: 'Save changes' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Save launch path' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Remove app' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Delete from my device' })).toBeNull()
     expect(screen.getByText(/settings aren't editable/i)).toBeDefined()
   })
 })

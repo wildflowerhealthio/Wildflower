@@ -88,15 +88,20 @@ describe('<NewAppBody>', () => {
     const onCreated = vi.fn()
     render(<NewAppBody onCreated={onCreated} />)
 
-    fireEvent.click(screen.getByRole('radio', { name: 'Self-hosted' }))
+    fireEvent.click(screen.getByRole('tab', { name: 'Self-hosted' }))
 
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Uploaded App' } })
+    fireEvent.change(screen.getByLabelText('Subtitle'), { target: { value: 'My uploaded app' } })
     const file = new File(['zip-bytes'], 'app.zip', { type: 'application/zip' })
     fireEvent.change(screen.getByLabelText('Bundle (.zip)'), { target: { files: [file] } })
     fireEvent.click(screen.getByRole('button', { name: 'Add self-hosted app' }))
 
     expect(selfHostedStub.mutate).toHaveBeenCalledTimes(1)
-    expect(selfHostedStub.mutate.mock.calls[0]?.[0]).toEqual({ name: 'Uploaded App', bundle: file })
+    expect(selfHostedStub.mutate.mock.calls[0]?.[0]).toEqual({
+      name: 'Uploaded App',
+      bundle: file,
+      subtitle: 'My uploaded app',
+    })
     expect(selfHostedStub.mutate.mock.calls[0]?.[1]).toMatchObject({ onSuccess: onCreated })
   })
 
@@ -107,7 +112,7 @@ describe('<NewAppBody>', () => {
     expect(screen.getByRole('button', { name: 'Add app' })).toBeDefined()
     expect(screen.queryByRole('button', { name: 'Add self-hosted app' })).toBeNull()
 
-    fireEvent.click(screen.getByRole('radio', { name: 'Self-hosted' }))
+    fireEvent.click(screen.getByRole('tab', { name: 'Self-hosted' }))
 
     expect(screen.getByRole('button', { name: 'Add self-hosted app' })).toBeDefined()
     expect(screen.queryByRole('button', { name: 'Add app' })).toBeNull()

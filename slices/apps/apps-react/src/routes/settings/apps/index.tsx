@@ -17,17 +17,19 @@ interface AppsListBodyProps {
  * `/home` Edit mode. Presentational + prop-driven so it renders in tests without
  * the route loader.
  */
-/** A catalogue row → its navigation list item (links to the detail page). */
+/** A catalogue row → its navigation list item (links to the detail page). The
+ * enabled/hidden split is carried by the section it lands in, not a per-row tag. */
 const toItem = (app: AppEntry): ItemListItem => ({
   id: app.id,
   title: app.name,
   subtitle: app.subtitle,
   badge: provenanceLabel(app.provenance),
-  meta: app.enabled ? 'On home screen' : 'Hidden',
   href: `/settings/apps/${app.id}`,
 })
 
 const AppsListBody = ({ apps }: AppsListBodyProps): JSX.Element => {
+  const onHomeScreen = apps.filter((app) => app.enabled)
+  const hidden = apps.filter((app) => !app.enabled)
   return (
     <>
       <PageHeader
@@ -43,7 +45,12 @@ const AppsListBody = ({ apps }: AppsListBodyProps): JSX.Element => {
       <p className="text-body-3">
         Add, remove, and configure the apps on your home screen. Tap an app to edit its settings.
       </p>
-      <ItemList items={apps.map((app) => toItem(app))} />
+      {onHomeScreen.length > 0 ? (
+        <ItemList title="On your home screen" items={onHomeScreen.map((app) => toItem(app))} />
+      ) : null}
+      {hidden.length > 0 ? (
+        <ItemList title="Hidden" items={hidden.map((app) => toItem(app))} />
+      ) : null}
     </>
   )
 }

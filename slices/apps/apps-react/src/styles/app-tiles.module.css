@@ -19,6 +19,7 @@
 }
 
 .app-tile {
+  position: relative;
   background: var(--card-color-background);
   border: 1px solid var(--card-color-border);
   border-radius: var(--radius-4);
@@ -40,41 +41,74 @@
   cursor: grabbing;
 }
 
-/* Edit-mode row: the app display grows to fill, the Hide control pins right. */
-.app-tile__editing {
-  display: flex;
-  align-items: center;
-  gap: var(--space-5);
-  padding: var(--space-5) var(--space-7);
-}
-
-/* Non-interactive twin of `.app-tile__launch` used while editing. */
-.app-tile__display {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-2);
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.app-tile__disable {
-  flex: 0 0 auto;
-}
-
-.app-tile__launch {
+/* Shared content box for both the launch button (view mode) and the plain
+ * display wrapper (edit mode) — one padding/layout source. */
+.app-tile__body {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: var(--space-2);
   width: 100%;
   padding: var(--space-5) var(--space-7);
+}
+
+/* Button reset layered over `.app-tile__body` for the view-mode launch target. */
+.app-tile__launch {
   background: transparent;
   border: none;
   text-align: left;
   color: inherit;
   font: inherit;
   cursor: inherit;
+}
+
+/* iOS-style gentle wiggle while editing. Lives on the inner content wrapper so
+ * it composes with dnd-kit's drag transform on the <li>. Suppressed for
+ * reduced-motion. */
+@keyframes app-tile-wiggle {
+  0% {
+    transform: rotate(-0.55deg);
+  }
+  50% {
+    transform: rotate(0.55deg);
+  }
+  100% {
+    transform: rotate(-0.55deg);
+  }
+}
+
+.app-tile__body--wiggle {
+  transform-origin: center;
+  animation: app-tile-wiggle 0.24s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-tile__body--wiggle {
+    animation: none;
+  }
+}
+
+/* Stationary "×" badge pinned to the tile's top-right corner (cribbing the iOS
+ * home-screen delete affordance). Sits outside the wiggling wrapper so it stays
+ * still, and overflows the corner via negative offsets. */
+.app-tile__disable {
+  position: absolute;
+  top: calc(-1 * var(--space-3));
+  right: calc(-1 * var(--space-3));
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 1px solid var(--card-color-border);
+  border-radius: 999px;
+  background: var(--color-foreground);
+  color: var(--color-background);
+  font-size: var(--font-size-4);
+  line-height: 1;
+  cursor: pointer;
 }
 
 .app-tile__head {
@@ -95,7 +129,7 @@
 }
 
 .app-tile__subtitle {
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: var(--font-size-2);
   color: var(--color-neutral-5);
   overflow: hidden;

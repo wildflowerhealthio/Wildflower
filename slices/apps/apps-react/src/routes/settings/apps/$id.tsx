@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { Match } from 'effect'
 import type { JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { AsyncErrorView, PageHeader, ToggleSwitch } from 'react-tundraish'
@@ -29,12 +30,12 @@ interface AppDetailBodyProps {
  * - **Enable/disable** (every provenance) — a `ToggleSwitch` persisted through
  *   `PUT /home-screen` (the single writer of order + `enabled`) by re-PUTting
  *   the whole list with this app's flag flipped.
- * - **Kind-specific edit** — a cloud app gets the full content form
- *   ({@link CloudEditForm}); an uploaded self-hosted app gets its launch-path
- *   editor ({@link SelfHostedLaunchPathEditor}); system + seeded apps show a
- *   read-only provenance tag (they're not editable).
- * - **Remove** — only when the row is `removable` (cloud + uploaded
- *   self-hosted); system + seeded apps show no Remove.
+ * - **Kind-specific edit** (chosen with an effect `Match`) — a cloud app gets
+ *   the full content form ({@link CloudEditForm}); an uploaded self-hosted app
+ *   gets its launch-path editor ({@link SelfHostedLaunchPathEditor}); system +
+ *   seeded apps show a short read-only sentence (they're not editable).
+ * - **Delete** — only when the row is `removable` (cloud + uploaded
+ *   self-hosted); system + seeded apps show no delete.
  *
  * Presentational + prop-driven (the app, the list, and the navigate-back
  * callback are injected) so it renders in tests without a live router.
@@ -84,27 +85,37 @@ const AppDetailBody = ({ app, apps, onRemoved }: AppDetailBodyProps): JSX.Elemen
 
       <hr className={formStyles['divider']} aria-hidden="true" />
 
-      {app.provenance === 'cloud' ? (
-        <CloudEditForm app={app} />
-      ) : app.provenance === 'self-hosted' && app.removable ? (
-        <SelfHostedLaunchPathEditor app={app} />
-      ) : (
-        <p className={cn(formStyles['readonly-tag'], 'text-body-3')}>
-          {provenanceLabel(app.provenance)} app — settings aren't editable.
-        </p>
+      {Match.value(app).pipe(
+        Match.when({ provenance: 'cloud' }, (cloudApp) => <CloudEditForm app={cloudApp} />),
+        Match.when({ provenance: 'self-hosted', removable: true }, (hostedApp) => (
+          <SelfHostedLaunchPathEditor app={hostedApp} />
+        )),
+        Match.orElse((builtInApp) => (
+          <p className="text-body-3">
+            {builtInApp.name} is a {provenanceLabel(builtInApp.provenance)} app built into
+            Wildflower. Its settings aren't editable.
+          </p>
+        ))
       )}
 
       {app.removable ? (
-        <div className={formStyles['actions']}>
-          <button
-            type="button"
-            className="button-2 outline accent-red"
-            disabled={deleteMutation.isPending}
-            onClick={remove}
-          >
-            Remove app
-          </button>
-        </div>
+        <>
+          <hr className={formStyles['divider']} aria-hidden="true" />
+          <p className={cn(formStyles['delete-note'], 'text-body-3')}>
+            Deletes this app from this device. It doesn't necessarily erase data the app has already
+            stored elsewhere.
+          </p>
+          <div className={formStyles['actions']}>
+            <button
+              type="button"
+              className="button-2 outline accent-red"
+              disabled={deleteMutation.isPending}
+              onClick={remove}
+            >
+              Delete from my device
+            </button>
+          </div>
+        </>
       ) : null}
     </>
   )
