@@ -73,19 +73,19 @@ const CloudAppFields = ({ fields, onChange, disabled }: CloudAppFieldsProps): JS
     />
     <div className={formStyles['toggle-field']}>
       {disabled === true ? (
-        <ToggleSwitch checked={fields.requiresTunnel} label="Requires internet access" disabled />
+        <ToggleSwitch checked={fields.requiresTunnel} label="Requires Tunnel" disabled />
       ) : (
         <ToggleSwitch
           checked={fields.requiresTunnel}
-          label="Requires internet access"
+          label="Requires Tunnel"
           onChange={(requiresTunnel) => {
             onChange({ ...fields, requiresTunnel })
           }}
         />
       )}
       <FieldDescription>
-        Some apps need to reach your health data over the internet to work. When it's on, this app
-        is served through your tunnel.
+        Some apps need to reach your health data over the internet to work. This setting ensures the
+        tunnel is running when the app launches.
       </FieldDescription>
     </div>
   </>
@@ -147,8 +147,8 @@ const CloudEditForm = ({ app }: { readonly app: CloudEntry }): JSX.Element => {
         }}
       />
       <div className={formStyles['actions']}>
-        <button type="submit" className="button-2 filled" disabled={replaceMutation.isPending}>
-          Save changes
+        <button type="submit" className="button-3 filled" disabled={replaceMutation.isPending}>
+          Save
         </button>
       </div>
     </form>
@@ -196,8 +196,8 @@ const SelfHostedLaunchPathEditor = ({ app }: { readonly app: SelfHostedEntry }):
         }}
       />
       <div className={formStyles['actions']}>
-        <button type="submit" className="button-2 filled" disabled={replaceMutation.isPending}>
-          Save launch path
+        <button type="submit" className="button-3 filled" disabled={replaceMutation.isPending}>
+          Save
         </button>
       </div>
     </form>

@@ -152,12 +152,18 @@ const AppsHomeBody = ({ apps }: AppsHomeBodyProps): JSX.Element => {
         actions={
           <button
             type="button"
-            className={cn('button-2', editMode ? 'filled' : 'outline')}
+            className={cn('button-1', editMode ? 'ghost' : 'ghost')}
+            style={{
+              fontWeight: 800,
+              fontSize: 'var(--font-size-4)',
+              color: 'var(--button-color-foreground)',
+            }}
             onClick={() => {
               setEditMode((open) => !open)
             }}
+            aria-label={editMode ? 'Done editing' : 'Edit home screen'}
           >
-            {editMode ? 'Done' : 'Edit'}
+            {editMode ? '✓' : '⋯'}
           </button>
         }
       />

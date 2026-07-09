@@ -108,7 +108,8 @@ const AppDetailBody = ({ app, apps, onRemoved }: AppDetailBodyProps): JSX.Elemen
           <div className={formStyles['actions']}>
             <button
               type="button"
-              className="button-2 outline accent-red"
+              className="button-3 outline accent-red"
+              style={{ width: '100%' }}
               disabled={deleteMutation.isPending}
               onClick={remove}
             >

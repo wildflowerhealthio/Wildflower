@@ -98,7 +98,7 @@ describe('<AppDetailBody>', () => {
   test('a cloud app saves its content through the cloud replace arm', () => {
     render(<AppDetailBody app={CLOUD} apps={[CLOUD]} onRemoved={noop} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
     expect(replaceStub.mutate).toHaveBeenCalledTimes(1)
     expect(replaceStub.mutate.mock.calls[0]?.[0]).toEqual({
@@ -115,7 +115,7 @@ describe('<AppDetailBody>', () => {
   test('an uploaded self-hosted app saves its launch path through the self-hosted replace arm', () => {
     render(<AppDetailBody app={SELF_HOSTED} apps={[SELF_HOSTED]} onRemoved={noop} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save launch path' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
     expect(replaceStub.mutate).toHaveBeenCalledTimes(1)
     expect(replaceStub.mutate.mock.calls[0]?.[0]).toEqual({
@@ -139,8 +139,8 @@ describe('<AppDetailBody>', () => {
     // Enable/disable still applies to every provenance.
     expect(screen.getByRole('switch', { name: 'Show on home screen' })).toBeDefined()
     // But the content is not editable and can't be deleted.
-    expect(screen.queryByRole('button', { name: 'Save changes' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Save launch path' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Save' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Save' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Delete from my device' })).toBeNull()
     expect(screen.getByText(/settings aren't editable/i)).toBeDefined()
   })

@@ -77,13 +77,13 @@
   }
 }
 
-.app-tile__body--wiggle {
+.app-tile--wiggle {
   transform-origin: center;
-  animation: app-tile-wiggle 0.24s ease-in-out infinite;
+  animation: app-tile-wiggle 0.3s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .app-tile__body--wiggle {
+  .app-tile--wiggle {
     animation: none;
   }
 }
