@@ -16,7 +16,7 @@ derived in Rust, not stored as computed columns.
 
 **Parent-implies-child is enforced in one place.** A `cloud` / `self-hosted`
 parent whose child row is missing — or whose stored `url` no longer parses —
-surfaces as a *typed read error* (a logged 500 at the handler seam), never a
+surfaces as a _typed read error_ (a logged 500 at the handler seam), never a
 partial `App`. `app_from_row` is the single enforcement point; handlers don't
 re-check it per call site.
 
@@ -26,22 +26,22 @@ Three invariants let handlers avoid re-reading and re-validating around the
 store:
 
 1. **In-transaction read-back.** Every create / replace re-reads the hydrated
-   `App` *inside the same transaction that wrote it* and returns it. So a
+   `App` _inside the same transaction that wrote it_ and returns it. So a
    handler's response is exactly the `GET /apps` projection with no second read,
    and cannot drift from stored state.
 2. **In-transaction allocation.** Everything the store allocates — the display
    `position` (`MAX(position) + 1`), the self-hosted slug, the loopback port — is
-   computed *inside* the writing transaction, so two overlapping creates can't
+   computed _inside_ the writing transaction, so two overlapping creates can't
    read the same value and collide. `UNIQUE(position)` backstops it regardless.
 3. **Single writer of order + enabled.** `position` and `enabled` are written
    only by `replace_home_screen` (`PUT /home-screen`); a content replace never
    touches `enabled`. It validates the body is an exact permutation of the live
-   registry *in the same transaction* as the renumber (closing the
+   registry _in the same transaction_ as the renumber (closing the
    check-then-write race), and moves every row to a disjoint negative range
    before renumbering so the per-row updates never transiently violate
    `UNIQUE(position)` (SQLite's UNIQUE is immediate, not deferrable).
 
-Kind- and seeded-*policy* gating (which kinds or rows an HTTP surface may edit)
+Kind- and seeded-_policy_ gating (which kinds or rows an HTTP surface may edit)
 stays in the handlers, which already hold the whole `App`. The SQL only guards
 its own invariants (e.g. a cloud content replace matches `provenance = 'cloud'`,
 so a mis-targeted id is a no-op).
@@ -56,13 +56,13 @@ app behind:
 2. **Extract** the zip off the async runtime into a private `.staging/<mint>`
    dir (`install::extract_zip_bundle`) and **infer** the launch path from the
    result.
-3. **Move into place** — rename `staging` → `<apps>/<mint>` *before* the DB
+3. **Move into place** — rename `staging` → `<apps>/<mint>` _before_ the DB
    insert.
 4. **Insert** the row, allocating the final slug + port in-transaction.
 5. **Start** the app's loopback listener.
 
 Any failure removes the staged (or already-moved) directory. Because the files
-land at their serving location *before* the row commits, a committed row always
+land at their serving location _before_ the row commits, a committed row always
 points at present files; a crash after the move leaks only an unreferenced
 folder (no row → never served).
 
@@ -72,8 +72,8 @@ Each install mints a unique id that names both the staging dir and the final
 serving folder (the row's `content_folder`, recorded verbatim). Being unique per
 install, the destination can't collide with a folder a failed delete left
 behind, and the files can move into place before the row is committed. The slug
-is the app's *identity and subdomain*; the content folder is *where its files
-live* — deliberately independent.
+is the app's _identity and subdomain_; the content folder is _where its files
+live_ — deliberately independent.
 
 ### Slug allocation → a valid DNS label
 
@@ -103,14 +103,14 @@ not read as a `400`.
 archive hazards:
 
 - **Path traversal ("zip slip").** An entry whose path escapes the root (`..`,
-  absolute, or a Windows drive/UNC prefix) is *rejected*, not sanitized — a
+  absolute, or a Windows drive/UNC prefix) is _rejected_, not sanitized — a
   traversal is a hostile bundle, not a fixable one. `enclosed_name` returning
   `None` is the signal.
 - **Decompression bombs.** Enforced **twice**: a pre-pass sums the
   header-declared uncompressed sizes and refuses an honestly-huge archive before
-  writing a byte; a running budget over the bytes *actually inflated* aborts
+  writing a byte; a running budget over the bytes _actually inflated_ aborts
   mid-copy when the headers lied. The declared size is attacker-controlled
-  metadata, and the zip reader bounds only the *compressed* input — so the write
+  metadata, and the zip reader bounds only the _compressed_ input — so the write
   budget, not the pre-pass, is the real defence. An entry-count cap bounds the
   per-entry loop work independently.
 
