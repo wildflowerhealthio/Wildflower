@@ -37,8 +37,17 @@ const AppsListBody = ({ apps }: AppsListBodyProps): JSX.Element => {
         backHref="/settings"
         backLabel="Settings"
         actions={
-          <Link to="/settings/apps/new" className="button-2 filled">
-            Add app
+          <Link
+            to="/settings/apps/new"
+            className="button-1 ghost"
+            style={{
+              fontWeight: 500,
+              fontSize: 'var(--font-size-5)',
+              color: 'var(--button-color-foreground)',
+              textDecoration: 'none',
+            }}
+          >
+            ＋
           </Link>
         }
       />

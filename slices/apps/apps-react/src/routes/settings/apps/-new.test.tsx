@@ -62,7 +62,7 @@ describe('<NewAppBody>', () => {
     fireEvent.change(screen.getByLabelText('URL'), {
       target: { value: 'https://example.com/launch' },
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Add app' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }))
 
     expect(createStub.mutate).toHaveBeenCalledTimes(1)
     expect(createStub.mutate.mock.calls[0]?.[0]).toEqual({
@@ -79,7 +79,7 @@ describe('<NewAppBody>', () => {
 
     // Name filled, URL left blank.
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'My App' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Add app' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }))
 
     expect(createStub.mutate).not.toHaveBeenCalled()
   })
@@ -94,7 +94,7 @@ describe('<NewAppBody>', () => {
     fireEvent.change(screen.getByLabelText('Subtitle'), { target: { value: 'My uploaded app' } })
     const file = new File(['zip-bytes'], 'app.zip', { type: 'application/zip' })
     fireEvent.change(screen.getByLabelText('Bundle (.zip)'), { target: { files: [file] } })
-    fireEvent.click(screen.getByRole('button', { name: 'Add self-hosted app' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }))
 
     expect(selfHostedStub.mutate).toHaveBeenCalledTimes(1)
     expect(selfHostedStub.mutate.mock.calls[0]?.[0]).toEqual({
@@ -109,12 +109,10 @@ describe('<NewAppBody>', () => {
     render(<NewAppBody onCreated={noop} />)
 
     // Cloud arm by default.
-    expect(screen.getByRole('button', { name: 'Add app' })).toBeDefined()
-    expect(screen.queryByRole('button', { name: 'Add self-hosted app' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Add' })).toBeDefined()
 
     fireEvent.click(screen.getByRole('tab', { name: 'Self-hosted' }))
 
-    expect(screen.getByRole('button', { name: 'Add self-hosted app' })).toBeDefined()
-    expect(screen.queryByRole('button', { name: 'Add app' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Add' })).toBeDefined()
   })
 })

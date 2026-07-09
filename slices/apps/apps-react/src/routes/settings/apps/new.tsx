@@ -107,8 +107,13 @@ const NewAppBody = ({ onCreated }: NewAppBodyProps): JSX.Element => {
           ) : null}
           <CloudAppFields fields={cloud} onChange={setCloud} disabled={createMutation.isPending} />
           <div className={formStyles['actions']}>
-            <button type="submit" className="button-2 filled" disabled={createMutation.isPending}>
-              Add app
+            <button
+              type="submit"
+              className="button-2 filled"
+              style={{ width: '100%' }}
+              disabled={createMutation.isPending}
+            >
+              Add
             </button>
           </div>
         </form>
@@ -157,9 +162,10 @@ const NewAppBody = ({ onCreated }: NewAppBodyProps): JSX.Element => {
             <button
               type="submit"
               className="button-2 filled"
+              style={{ width: '100%' }}
               disabled={selfHostedMutation.isPending}
             >
-              Add self-hosted app
+              Add
             </button>
           </div>
         </form>

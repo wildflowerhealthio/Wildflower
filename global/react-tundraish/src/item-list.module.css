@@ -150,7 +150,7 @@ section > .item-list:not(:last-child) .item-list__rows {
 }
 
 .item-list__title-row {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: var(--space-4);
   min-width: 0;
@@ -164,6 +164,7 @@ section > .item-list:not(:last-child) .item-list__rows {
 .item-list__meta {
   flex: 0 0 auto;
   margin-inline-start: auto;
+  margin-inline-end: 0;
   font-family: var(--font-sans);
   font-size: var(--font-size-2);
   color: var(--color-neutral-5);
@@ -185,6 +186,7 @@ section > .item-list:not(:last-child) .item-list__rows {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex-grow: 1;
 }
 
 /* Subtitle is technical metadata (a URL / id) — render it in mono. */
