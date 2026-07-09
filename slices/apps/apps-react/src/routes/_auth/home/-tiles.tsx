@@ -53,59 +53,108 @@ const tilePills = (app: AppEntry): readonly Pill[] => {
 
 interface SortableAppTileProps {
   readonly app: AppEntry
+  /**
+   * Home-screen edit mode. When `false` the tile launches on click and can't be
+   * dragged; when `true` dragging is armed, the click no longer launches, and a
+   * "Hide" control removes the app from the home screen.
+   */
+  readonly editing: boolean
   readonly onLaunch: (app: AppEntry) => void
+  readonly onDisable: (app: AppEntry) => void
 }
 
+/** The app's name / subtitle / pills — shared by the launch button (view mode)
+ * and the plain display wrapper (edit mode). */
+const TileContent = ({ app }: { readonly app: AppEntry }): JSX.Element => (
+  <>
+    <span className={tileStyles['app-tile__head']}>
+      <span className={cn(tileStyles['app-tile__name'], 'text-body-2')}>{app.name}</span>
+      {app.subtitle !== undefined ? (
+        <span className={cn(tileStyles['app-tile__subtitle'], 'text-body-3')}>{app.subtitle}</span>
+      ) : null}
+    </span>
+    <span className={tileStyles['app-tile__pills']}>
+      {tilePills(app).map((pill) => (
+        <StatusBadge key={pill.key} tone={pill.tone}>
+          {pill.label}
+        </StatusBadge>
+      ))}
+    </span>
+  </>
+)
+
 /**
- * A single drag-sortable app tile. `useSortable` wires the drag transform and
- * the activator listeners onto the tile; a click that isn't a drag launches
- * the app. The pill row reflects the registry flags via {@link tilePills}.
- *
- * The whole tile is the drag handle (the `listeners`/`attributes` spread), so
- * the launch lives on a nested button rather than the tile itself — dnd-kit's
- * pointer sensor only starts a drag past its activation distance, so a plain
- * click still fires the button's `onClick`.
+ * A single home-screen app tile, cribbing the iOS home-screen rearrange
+ * language. `useSortable` is gated on `editing` via its `disabled` flag — the
+ * hook always runs (so it stays inside `DndContext`), but a drag can only start
+ * in edit mode. In view mode the whole tile is a launch button; in edit mode the
+ * content gently wiggles inside an inner wrapper (so the wiggle composes with,
+ * rather than fights, dnd-kit's drag transform on the `<li>`), a click no longer
+ * launches, and a stationary "×" badge pinned to the corner hides the app.
+ * dnd-kit's pointer sensor only starts a drag past its activation distance, so
+ * the corner badge still fires its `onClick`.
  */
-const SortableAppTile = ({ app, onLaunch }: SortableAppTileProps): JSX.Element => {
+const SortableAppTile = ({
+  app,
+  editing,
+  onLaunch,
+  onDisable,
+}: SortableAppTileProps): JSX.Element => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: app.id,
+    disabled: !editing,
   })
   const style: CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition: transition ?? undefined,
   }
-  const pills = tilePills(app)
   return (
     <li
       ref={setNodeRef}
       style={style}
-      className={cn(tileStyles['app-tile'], isDragging ? tileStyles['app-tile--dragging'] : null)}
+      className={cn(
+        tileStyles['app-tile'],
+        editing ? tileStyles['app-tile--editing'] : null,
+        isDragging ? tileStyles['app-tile--dragging'] : null
+      )}
       {...attributes}
       {...listeners}
     >
-      <button
-        type="button"
-        className={tileStyles['app-tile__launch']}
-        onClick={() => {
-          onLaunch(app)
-        }}
-      >
-        <span className={tileStyles['app-tile__head']}>
-          <span className={cn(tileStyles['app-tile__name'], 'text-body-2')}>{app.name}</span>
-          {app.subtitle !== undefined ? (
-            <span className={cn(tileStyles['app-tile__subtitle'], 'text-body-3')}>
-              {app.subtitle}
-            </span>
-          ) : null}
-        </span>
-        <span className={tileStyles['app-tile__pills']}>
-          {pills.map((pill) => (
-            <StatusBadge key={pill.key} tone={pill.tone}>
-              {pill.label}
-            </StatusBadge>
-          ))}
-        </span>
-      </button>
+      {editing ? (
+        <>
+          {/* The wiggle lives on this inner wrapper, not the <li>: the drag
+           * transform dnd-kit writes to the <li>'s inline style would otherwise
+           * be clobbered by the animation's `transform`. Suppress it mid-drag. */}
+          <div
+            className={cn(
+              tileStyles['app-tile__body'],
+              !isDragging ? tileStyles['app-tile--wiggle'] : null
+            )}
+          >
+            <TileContent app={app} />
+          </div>
+          <button
+            type="button"
+            className={tileStyles['app-tile__disable']}
+            aria-label={`Hide ${app.name}`}
+            onClick={() => {
+              onDisable(app)
+            }}
+          >
+            <span aria-hidden="true">×</span>
+          </button>
+        </>
+      ) : (
+        <button
+          type="button"
+          className={cn(tileStyles['app-tile__body'], tileStyles['app-tile__launch'])}
+          onClick={() => {
+            onLaunch(app)
+          }}
+        >
+          <TileContent app={app} />
+        </button>
+      )}
     </li>
   )
 }

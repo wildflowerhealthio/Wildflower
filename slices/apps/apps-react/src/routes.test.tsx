@@ -26,13 +26,18 @@ describe('apps route tree', () => {
     const ids = routes()
       .map((route): string => route.id)
       .toSorted()
-    expect(ids).toEqual(['/_auth/home/'])
+    expect(ids).toEqual([
+      '/_auth/home/',
+      '/settings/apps/',
+      '/settings/apps/$id',
+      '/settings/apps/new',
+    ])
   })
 
   test('the slice-local fullPaths resolve to the documented URLs', () => {
     const paths = routes()
       .map((route): string => route.fullPath)
       .toSorted()
-    expect(paths).toEqual(['/home/'])
+    expect(paths).toEqual(['/home/', '/settings/apps/', '/settings/apps/$id', '/settings/apps/new'])
   })
 })

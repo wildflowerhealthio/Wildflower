@@ -143,22 +143,24 @@ const useAppsAdminCreateMutation = (): UseMutationResult<
  * Admin `CreateApp` (POST /apps) — the **self-hosted** arm. Posts the same
  * merged `multipart/form-data` route as the cloud arm (`provenance=self-hosted`)
  * with the zipped app bundle as the `bundle` file part; the server slugs `name`
- * into the new app's id/subdomain and extracts + installs the bundle.
+ * into the new app's id/subdomain and extracts + installs the bundle. An
+ * optional `subtitle` (omitted when empty) rides the same form.
  * Invalidates {@link APPS_LIST_QUERY_KEY} on success so the newly installed
  * self-hosted tile appears.
  */
 const useSelfHostedAppCreateMutation = (): UseMutationResult<
   unknown,
   Error,
-  { readonly name: string; readonly bundle: Blob }
+  { readonly name: string; readonly bundle: Blob; readonly subtitle?: string }
 > => {
   const runAuthed = useRunAuthed()
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ name, bundle }) => {
+    mutationFn: ({ name, bundle, subtitle }) => {
       const form = new FormData()
       form.append('provenance', 'self-hosted')
       form.append('name', name)
+      if (subtitle !== undefined) form.append('subtitle', subtitle)
       form.append('bundle', bundle, 'bundle.zip')
       return runAuthed(
         Effect.flatMap(AppsAdminHttpApiClient, (c) => c['apps-admin'].CreateApp({ payload: form }))

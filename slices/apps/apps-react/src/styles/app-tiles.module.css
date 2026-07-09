@@ -19,11 +19,17 @@
 }
 
 .app-tile {
+  position: relative;
   background: var(--card-color-background);
   border: 1px solid var(--card-color-border);
   border-radius: var(--radius-4);
-  /* The whole tile is the drag handle; show the grab cursor and stop the
-   * browser's native touch-scroll from stealing the drag gesture. */
+  /* Launches on click in view mode. */
+  cursor: pointer;
+}
+
+/* Edit mode: the whole tile becomes the drag handle — show the grab cursor and
+ * stop the browser's native touch-scroll from stealing the drag gesture. */
+.app-tile--editing {
   cursor: grab;
   touch-action: none;
 }
@@ -35,19 +41,74 @@
   cursor: grabbing;
 }
 
-.app-tile__launch {
+/* Shared content box for both the launch button (view mode) and the plain
+ * display wrapper (edit mode) — one padding/layout source. */
+.app-tile__body {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: var(--space-2);
   width: 100%;
   padding: var(--space-5) var(--space-7);
+}
+
+/* Button reset layered over `.app-tile__body` for the view-mode launch target. */
+.app-tile__launch {
   background: transparent;
   border: none;
   text-align: left;
   color: inherit;
   font: inherit;
   cursor: inherit;
+}
+
+/* iOS-style gentle wiggle while editing. Lives on the inner content wrapper so
+ * it composes with dnd-kit's drag transform on the <li>. Suppressed for
+ * reduced-motion. */
+@keyframes app-tile-wiggle {
+  0% {
+    transform: rotate(-0.55deg);
+  }
+  50% {
+    transform: rotate(0.55deg);
+  }
+  100% {
+    transform: rotate(-0.55deg);
+  }
+}
+
+.app-tile--wiggle {
+  transform-origin: center;
+  animation: app-tile-wiggle 0.3s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-tile--wiggle {
+    animation: none;
+  }
+}
+
+/* Stationary "×" badge pinned to the tile's top-right corner (cribbing the iOS
+ * home-screen delete affordance). Sits outside the wiggling wrapper so it stays
+ * still, and overflows the corner via negative offsets. */
+.app-tile__disable {
+  position: absolute;
+  top: calc(-1 * var(--space-3));
+  right: calc(-1 * var(--space-3));
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 1px solid var(--card-color-border);
+  border-radius: 999px;
+  background: var(--color-foreground);
+  color: var(--color-background);
+  font-size: var(--font-size-4);
+  line-height: 1;
+  cursor: pointer;
 }
 
 .app-tile__head {
@@ -68,7 +129,7 @@
 }
 
 .app-tile__subtitle {
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: var(--font-size-2);
   color: var(--color-neutral-5);
   overflow: hidden;
