@@ -1,5 +1,6 @@
 import { Arbitrary, Schema } from 'effect'
 import * as fc from 'fast-check'
+import { pickField } from 'kitchen-sink/schema'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
@@ -48,15 +49,6 @@ const roundTripIdentifier = (identifier: typeof IdentifierSchema.Type): void => 
   const decoded = Schema.decodeSync(IdentifierSchema)(fhir)
   expect(decoded).toSchemaEqual(IdentifierSchema, identifier)
 }
-
-// `Schema.pick`'s `Keys` generic can't be inferred from a curried call site
-// (`Schema.pick(field)(schema)` resolves `A`/`I` to `unknown` before `schema`
-// is seen), so this local wrapper pins `A`/`I`/`Keys` explicitly from a
-// single call.
-const pickField = <A, I, R, K extends keyof A & keyof I>(
-  schema: Schema.Schema<A, I, R>,
-  field: K
-): Schema.Schema<Pick<A, K>, Pick<I, K>, R> => Schema.pick<A, I, [K]>(field)(schema)
 
 const referenceFieldArb = <const K extends keyof typeof ReferenceSchema.Type>(
   field: K
