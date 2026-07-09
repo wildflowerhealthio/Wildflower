@@ -68,6 +68,29 @@ describe('Cell.forItem — §2 clamp + §3 lock', () => {
     })
   })
 
+  test('expandable mode: the clamp measures against `available`, not `requested` (§2)', () => {
+    // The device asked only for `Observation.r`, but the client is allowed `patient/*.cruds`.
+    const req: ScopeRequest.ScopeRequest = {
+      requested: Grant.make([fhirV2('Observation', ['r'])]),
+      required: Grant.make([]),
+      available: Grant.make([fhirV2('*', ['c', 'r', 'u', 'd', 's'])]),
+    }
+    // A never-requested resource/interaction the client is allowed is `off` (addable), not disabled.
+    expect(Cell.forItem(v2, Grant.make([]), req, patient, cond, 'r').state).toBe('off')
+    expect(Cell.forItem(v2, Grant.make([]), req, patient, obs, 'c').state).toBe('off')
+  })
+
+  test('expandable mode: a control beyond `available` is still disabled (§2)', () => {
+    const req: ScopeRequest.ScopeRequest = {
+      requested: Grant.make([fhirV2('Observation', ['r'])]),
+      required: Grant.make([]),
+      // Only Read/Search on the wildcard is grantable — Create is not.
+      available: Grant.make([fhirV2('*', ['r', 's'])]),
+    }
+    expect(Cell.forItem(v2, Grant.make([]), req, patient, cond, 'r').state).toBe('off')
+    expect(Cell.forItem(v2, Grant.make([]), req, patient, cond, 'c').state).toBe('disabled')
+  })
+
   test('request mode: an optional in-envelope control toggles on/off from the grant', () => {
     const req = request([fhirV2('Observation', ['r', 'c'])])
     const grant = Grant.make([fhirV2('Observation', ['r'])])

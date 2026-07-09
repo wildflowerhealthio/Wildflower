@@ -91,9 +91,61 @@ describe('ScopeRequest.isWithin — granted ⊆ requested (§2)', () => {
 })
 
 describe('ScopeRequest.fromRequestedScopes', () => {
-  test('requested = parsed scopes, required = empty (all-optional)', () => {
+  test('requested = parsed scopes, required = empty (all-optional), available absent', () => {
     const req = ScopeRequest.fromRequestedScopes({ optional: ['patient/Observation.rs', 'openid'] })
     expect(Grant.render(req.requested)).toEqual(['patient/Observation.rs', 'openid'])
     expect(Grant.render(req.required)).toEqual([])
+    // Clamped mode: `available` is omitted, so the clamp defaults to `requested`.
+    expect(req.available).toBeUndefined()
+    expect(Grant.render(ScopeRequest.availableOf(req))).toEqual([
+      'patient/Observation.rs',
+      'openid',
+    ])
+  })
+})
+
+describe('ScopeRequest.expandable — device-authorization consent (§2)', () => {
+  test('requested seeds sections; available is the (wider) grantable envelope', () => {
+    const req = ScopeRequest.expandable({
+      requested: ['patient/Observation.r'],
+      available: ['system/*.cruds', 'wildflower/*.cruds'],
+    })
+    expect(Grant.render(req.requested)).toEqual(['patient/Observation.r'])
+    expect(Grant.render(req.required)).toEqual([])
+    expect(Grant.render(ScopeRequest.availableOf(req))).toEqual([
+      'system/*.cruds',
+      'wildflower/*.cruds',
+    ])
+  })
+
+  test('isWithin clamps to available, not requested — an un-requested-but-allowed scope is within', () => {
+    const req = ScopeRequest.expandable({
+      requested: ['patient/Observation.r'],
+      available: ['system/*.cruds'],
+    })
+    // `patient/Condition.r` was never requested, but `system/*.cruds` covers it ⇒ grantable.
+    expect(ScopeRequest.isWithin(grant([fhirV2('Condition', ['r'])]), req)).toBe(true)
+    // Adding a whole extra resource is fine; a wildcard grant within system/* is too.
+    const systemAll = new Scope.FhirV2(
+      Scope.Contexts.Fhir.system,
+      Scope.ResourceType.Fhir.parse('*')!,
+      new Scope.Permission.Cruds(['c', 'r', 'u', 'd', 's'])
+    )
+    expect(ScopeRequest.isWithin(grant([systemAll]), req)).toBe(true)
+  })
+
+  test('a granted flag beyond the available flags still fails', () => {
+    const req = ScopeRequest.expandable({
+      requested: [],
+      available: ['system/*.cruds', 'openid'],
+    })
+    expect(ScopeRequest.isWithin(grant([Scope.Known.openid]), req)).toBe(true)
+    expect(ScopeRequest.isWithin(grant([Scope.Known.offlineAccess]), req)).toBe(false)
+  })
+
+  test('flagDisabled reads the available envelope — a flag only in available is enable-able', () => {
+    const req = ScopeRequest.expandable({ requested: [], available: ['openid'] })
+    expect(ScopeRequest.flagDisabled(req, 'openid')).toBe(false)
+    expect(ScopeRequest.flagDisabled(req, 'offline_access')).toBe(true)
   })
 })
