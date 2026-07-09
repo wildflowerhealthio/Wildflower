@@ -129,8 +129,14 @@ const AppDetailScreen = ({ id }: { readonly id: string }): JSX.Element => {
   if (app === undefined) {
     return <AsyncErrorView error={new Error(`No app with id "${id}"`)} title="App not found" />
   }
+  // Key on the app id so a detail→detail navigation (TanStack Router preserves
+  // the component instance across `$id` param changes) remounts the body and
+  // its edit forms, whose controlled state is seeded from `app` on mount —
+  // otherwise the form would keep the previous app's values and Save them under
+  // the new app's id.
   return (
     <AppDetailBody
+      key={app.id}
       app={app}
       apps={apps}
       onRemoved={() => {
