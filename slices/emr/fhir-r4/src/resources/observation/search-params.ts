@@ -9,6 +9,4 @@ const SearchParams = Schema.Struct({
 
 type SearchParamsType = Schema.Schema.Type<typeof SearchParams>
 
-const buildWhere = (_: SearchParamsType): undefined => undefined
-
-export { SearchParams, buildWhere, type SearchParamsType }
+export { SearchParams, type SearchParamsType }

@@ -1,6 +1,5 @@
 import { Schema } from 'effect'
 
-import type { Observation as StoreObservation } from 'emr-core/livestore'
 import { OrNullAsOptional, StructNoContext, mutableEncoded } from 'kitchen-sink/schema'
 
 import type * as FhirR4 from 'fhir/r4.d.ts'
@@ -10,11 +9,7 @@ import * as CodeableConcept from '../../data-types/complex/codeable-concept.ts'
 import * as Quantity from '../../data-types/complex/quantity.ts'
 import * as Range from '../../data-types/complex/range.ts'
 
-const ObservationReferenceRangeSchema: Schema.Schema<
-  typeof StoreObservation.ReferenceRange.Schema.Type,
-  FhirR4.ObservationReferenceRange,
-  never
-> = mutableEncoded(
+const ObservationReferenceRangeStruct = mutableEncoded(
   StructNoContext({
     ...BackboneElement.fields,
     age: OrNullAsOptional(Schema.suspend(() => Range.Schema)),
@@ -28,5 +23,11 @@ const ObservationReferenceRangeSchema: Schema.Schema<
     type: OrNullAsOptional(Schema.suspend(() => CodeableConcept.Schema)),
   })
 )
+
+const ObservationReferenceRangeSchema: Schema.Schema<
+  typeof ObservationReferenceRangeStruct.Type,
+  FhirR4.ObservationReferenceRange,
+  never
+> = ObservationReferenceRangeStruct
 
 export { ObservationReferenceRangeSchema as Schema }

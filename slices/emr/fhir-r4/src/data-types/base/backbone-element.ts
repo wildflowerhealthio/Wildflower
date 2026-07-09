@@ -1,9 +1,5 @@
 import { Schema } from 'effect'
 
-import type {
-  BackboneElement as StoreBackboneElement,
-  Extension as StoreExtension,
-} from 'emr-core/schemas'
 import { mutableEncoded, type FieldsNoContext } from 'kitchen-sink/schema'
 
 import type * as FhirR4 from 'fhir/r4.d.ts'
@@ -15,14 +11,16 @@ const fields = {
   ...Element.fields,
   modifierExtension: Schema.optionalWith(
     mutableEncoded(Schema.Array(Schema.suspend(() => Extension.Schema))),
-    { default: (): readonly StoreExtension.Type[] => [] }
+    { default: (): readonly Extension.Type[] => [] }
   ),
 } as const satisfies FieldsNoContext
 
+const BackboneElementStruct = mutableEncoded(Schema.Struct(fields))
+
 const BackboneElementSchema: Schema.Schema<
-  typeof StoreBackboneElement.Schema.Type,
+  typeof BackboneElementStruct.Type,
   FhirR4.BackboneElement,
   never
-> = mutableEncoded(Schema.Struct(fields))
+> = BackboneElementStruct
 
 export { fields, BackboneElementSchema as Schema }

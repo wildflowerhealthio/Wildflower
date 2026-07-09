@@ -1,6 +1,5 @@
 import { Schema } from 'effect'
 
-import type { Extension as StoreExtension } from 'emr-core/schemas'
 import { OrNullAsOptional, mutableEncoded, type FieldsNoContext } from 'kitchen-sink/schema'
 
 import * as Extension from '../special-purpose/extension.ts'
@@ -21,11 +20,11 @@ const fields = {
   }),
   extension: Schema.optionalWith(
     mutableEncoded(Schema.Array(Schema.suspend(() => Extension.Schema))),
-    { default: (): readonly StoreExtension.Type[] => [] }
+    { default: (): readonly Extension.Type[] => [] }
   ),
   modifierExtension: Schema.optionalWith(
     mutableEncoded(Schema.Array(Schema.suspend(() => Extension.Schema))),
-    { default: (): readonly StoreExtension.Type[] => [] }
+    { default: (): readonly Extension.Type[] => [] }
   ),
   text: OrNullAsOptional(Narrative.Schema),
 } as const satisfies FieldsNoContext

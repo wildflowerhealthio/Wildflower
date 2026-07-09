@@ -1,24 +1,26 @@
 import { type Arbitrary, type DateTime, type FastCheck, Schema } from 'effect'
 
-import { Datatype, Timing as StoreTiming } from 'emr-core/schemas'
-import { OrNullAsOptional, StructNoContext, mutableEncoded } from 'kitchen-sink/schema'
+import {
+  AnnotateArrayWithArbitrary,
+  OrNullAsOptional,
+  StructNoContext,
+  mutableEncoded,
+} from 'kitchen-sink/schema'
 
 import type * as FhirR4 from 'fhir/r4.d.ts'
 
 import * as BackboneElement from '../base/backbone-element.ts'
 import { registerDatatypeSchema } from '../base/datatype-registry.ts'
+import * as Datatype from '../base/datatype.ts'
 import * as Element from '../base/element.ts'
 import * as CodeableConcept from './codeable-concept.ts'
 import * as Period from './period.ts'
 import * as Range from './range.ts'
 
-// Local FHIR R4 `time` (`hh:mm:ss[.fff]`) primitive. Mirrors the emr-core
-// `TimeSchema` rather than re-exporting it so the wire-format adapter can
+// Local FHIR R4 `time` (`hh:mm:ss[.fff]`) primitive. Mirrors the base
+// `TimeSchema` rather than re-exporting it so the wire-format schema can
 // evolve its encoding independently — e.g. tightening the arbitrary set or
-// adding a transform — without coupling the store side. The Type is `string`,
-// matching `FhirR4.time`, and equal to `StoreTiming.TimingRepeatSchema`'s
-// `timeOfDay` element type, so wire decode lands directly in the store
-// schema.
+// adding a transform. The Type is `string`, matching `FhirR4.time`.
 const TimeSchema: Schema.Schema<string, string, never> = Schema.String.pipe(
   Schema.pattern(/^([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)(\.[0-9]{1,9})?$/),
   Schema.annotations({
@@ -37,11 +39,44 @@ const TimeSchema: Schema.Schema<string, string, never> = Schema.String.pipe(
   })
 )
 
-const TimingRepeatSchema: Schema.Schema<
-  typeof StoreTiming.TimingRepeatSchema.Type,
-  FhirR4.TimingRepeat,
-  never
-> = mutableEncoded(
+/** FHIR R4 `Timing.repeat.periodUnit` / `Timing.repeat.durationUnit`. */
+const UnitOfTimeSchema = Schema.Literal('s', 'min', 'h', 'd', 'wk', 'mo', 'a')
+
+/** FHIR R4 `Timing.repeat.dayOfWeek`. */
+const DayOfWeekSchema = Schema.Literal('mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun')
+
+/** FHIR R4 `Timing.repeat.when` — the `EventTiming` value set (real-world
+ * events the schedule is tied to, e.g. meals and sleep). */
+const EventTimingSchema = Schema.Literal(
+  'MORN',
+  'MORN.early',
+  'MORN.late',
+  'NOON',
+  'AFT',
+  'AFT.early',
+  'AFT.late',
+  'EVE',
+  'EVE.early',
+  'EVE.late',
+  'NIGHT',
+  'PHS',
+  'HS',
+  'WAKE',
+  'C',
+  'CM',
+  'CD',
+  'CV',
+  'AC',
+  'ACM',
+  'ACD',
+  'ACV',
+  'PC',
+  'PCM',
+  'PCD',
+  'PCV'
+)
+
+const TimingRepeatStruct = mutableEncoded(
   StructNoContext({
     ...Element.fields,
     // bounds[x]: the (Range, Period) subset. boundsDuration is omitted —
@@ -53,42 +88,52 @@ const TimingRepeatSchema: Schema.Schema<
     countMax: OrNullAsOptional(Schema.Int.pipe(Schema.positive())),
     duration: OrNullAsOptional(Schema.Finite),
     durationMax: OrNullAsOptional(Schema.Finite),
-    durationUnit: OrNullAsOptional(StoreTiming.UnitOfTimeSchema),
+    durationUnit: OrNullAsOptional(UnitOfTimeSchema),
     frequency: OrNullAsOptional(Schema.Int.pipe(Schema.positive())),
     frequencyMax: OrNullAsOptional(Schema.Int.pipe(Schema.positive())),
     period: OrNullAsOptional(Schema.Finite),
     periodMax: OrNullAsOptional(Schema.Finite),
-    periodUnit: OrNullAsOptional(StoreTiming.UnitOfTimeSchema),
-    dayOfWeek: Schema.optionalWith(mutableEncoded(Schema.Array(StoreTiming.DayOfWeekSchema)), {
-      default: (): readonly (typeof StoreTiming.DayOfWeekSchema.Type)[] => [],
+    periodUnit: OrNullAsOptional(UnitOfTimeSchema),
+    dayOfWeek: Schema.optionalWith(mutableEncoded(Schema.Array(DayOfWeekSchema)), {
+      default: (): readonly (typeof DayOfWeekSchema.Type)[] => [],
     }),
     timeOfDay: Schema.optionalWith(mutableEncoded(Schema.Array(TimeSchema)), {
       default: (): readonly string[] => [],
     }),
-    when: Schema.optionalWith(mutableEncoded(Schema.Array(StoreTiming.EventTimingSchema)), {
-      default: (): readonly (typeof StoreTiming.EventTimingSchema.Type)[] => [],
+    when: Schema.optionalWith(mutableEncoded(Schema.Array(EventTimingSchema)), {
+      default: (): readonly (typeof EventTimingSchema.Type)[] => [],
     }),
     offset: OrNullAsOptional(Schema.Int.pipe(Schema.nonNegative())),
   })
 )
 
+const TimingRepeatSchema: Schema.Schema<
+  typeof TimingRepeatStruct.Type,
+  FhirR4.TimingRepeat,
+  never
+> = TimingRepeatStruct
+
 // `Timing` extends FHIR R4 `BackboneElement` — spread its fields (not
 // `Element.fields`) so `modifierExtension` round-trips alongside `id` /
-// `extension`. The `event` array length cap lives on the emr-core
-// `timing.ts` `event` field (the store-side schema is what
-// `Arbitrary.make` is invoked against in both layers' tests).
-const TimingSchema: Schema.Schema<typeof StoreTiming.Schema.Type, FhirR4.Timing, never> =
-  mutableEncoded(
-    StructNoContext({
-      ...BackboneElement.fields,
-      event: Schema.Array(Datatype.baseSchemas.instant).pipe(
-        mutableEncoded,
-        Schema.optionalWith({ default: (): readonly DateTime.Utc[] => [] })
-      ),
-      repeat: OrNullAsOptional(TimingRepeatSchema),
-      code: OrNullAsOptional(CodeableConcept.Schema),
-    })
-  )
+// `extension`.
+const TimingStruct = mutableEncoded(
+  StructNoContext({
+    ...BackboneElement.fields,
+    // Cap `event`'s arbitrary length: `effectiveTiming` round-trip property
+    // tests blow the per-test budget when `event` grows unbounded (each entry
+    // is an `InstantSchema` and the parent struct nests through every choice
+    // slot).
+    event: Schema.Array(Datatype.baseSchemas.instant).pipe(
+      AnnotateArrayWithArbitrary({ maxLength: 2 }),
+      mutableEncoded,
+      Schema.optionalWith({ default: (): readonly DateTime.Utc[] => [] })
+    ),
+    repeat: OrNullAsOptional(TimingRepeatSchema),
+    code: OrNullAsOptional(CodeableConcept.Schema),
+  })
+)
+
+const TimingSchema: Schema.Schema<typeof TimingStruct.Type, FhirR4.Timing, never> = TimingStruct
 
 registerDatatypeSchema('Timing', TimingSchema)
 

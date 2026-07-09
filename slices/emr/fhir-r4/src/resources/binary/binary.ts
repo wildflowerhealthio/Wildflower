@@ -1,11 +1,10 @@
 import { Schema } from 'effect'
 
-import type { Binary as StoreBinary } from 'emr-core/livestore'
-import { Code } from 'emr-core/schemas'
 import { OrNullAsOptional, StructNoContext, mutableEncoded } from 'kitchen-sink/schema'
 
 import type * as FhirR4 from 'fhir/r4.d.ts'
 
+import { Code } from '../../data-types/base/code.ts'
 import * as DomainResource from '../../data-types/base/domain-resource.ts'
 import * as IdentifierAndReference from '../../data-types/complex/identifier-and-reference.ts'
 
@@ -42,11 +41,7 @@ const binaryJsonSchema = {
   },
 } as const
 
-const BinarySchema: Schema.Schema<
-  Schema.Schema.Type<typeof StoreBinary.RowSchemaNullableId>,
-  FhirR4.Binary,
-  never
-> = Schema.extend(
+const BinaryStruct = Schema.extend(
   Schema.Struct({ resourceType: Schema.Literal('Binary') }),
   mutableEncoded(
     StructNoContext({
@@ -60,5 +55,7 @@ const BinarySchema: Schema.Schema<
     })
   )
 ).annotations({ jsonSchema: binaryJsonSchema })
+
+const BinarySchema: Schema.Schema<typeof BinaryStruct.Type, FhirR4.Binary, never> = BinaryStruct
 
 export { BinarySchema as Schema }

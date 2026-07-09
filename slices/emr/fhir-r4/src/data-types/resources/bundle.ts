@@ -1,6 +1,5 @@
 import { Schema } from 'effect'
 
-import { type Bundle as StoreBundle } from 'emr-core/schemas'
 import { mutableEncoded, OrNullAsOptional, StructNoContext } from 'kitchen-sink/schema'
 
 import type * as FhirR4 from 'fhir/r4.d.ts'
@@ -31,11 +30,7 @@ const EntryRequestMethod = Schema.Enums({
 } as const)
 
 // FHIR R4 § Bundle.entry.request — required on transaction/batch entries.
-const EntryRequestSchema: Schema.Schema<
-  typeof StoreBundle.EntryRequestSchema.Type,
-  FhirR4.BundleEntryRequest,
-  never
-> = mutableEncoded(
+const EntryRequestStruct = mutableEncoded(
   StructNoContext({
     ...BackboneElement.fields,
     method: EntryRequestMethod,
@@ -47,12 +42,14 @@ const EntryRequestSchema: Schema.Schema<
   })
 )
 
-// FHIR R4 § Bundle.entry.response — populated on transaction/batch-response.
-const EntryResponseSchema: Schema.Schema<
-  typeof StoreBundle.EntryResponseSchema.Type,
-  FhirR4.BundleEntryResponse,
+const EntryRequestSchema: Schema.Schema<
+  typeof EntryRequestStruct.Type,
+  FhirR4.BundleEntryRequest,
   never
-> = mutableEncoded(
+> = EntryRequestStruct
+
+// FHIR R4 § Bundle.entry.response — populated on transaction/batch-response.
+const EntryResponseStruct = mutableEncoded(
   StructNoContext({
     ...BackboneElement.fields,
     status: Schema.String,
@@ -62,6 +59,12 @@ const EntryResponseSchema: Schema.Schema<
   })
 )
 
+const EntryResponseSchema: Schema.Schema<
+  typeof EntryResponseStruct.Type,
+  FhirR4.BundleEntryResponse,
+  never
+> = EntryResponseStruct
+
 const EntrySearchMode = Schema.Enums({
   include: 'include',
   match: 'match',
@@ -69,11 +72,7 @@ const EntrySearchMode = Schema.Enums({
 } as const)
 
 // FHIR R4 § Bundle.entry.search — present on searchset bundles.
-const EntrySearchSchema: Schema.Schema<
-  typeof StoreBundle.EntrySearchSchema.Type,
-  FhirR4.BundleEntrySearch,
-  never
-> = mutableEncoded(
+const EntrySearchStruct = mutableEncoded(
   StructNoContext({
     ...BackboneElement.fields,
     mode: OrNullAsOptional(EntrySearchMode),
@@ -81,12 +80,14 @@ const EntrySearchSchema: Schema.Schema<
   })
 )
 
-// FHIR R4 § BundleLink — same shape for top-level Bundle.link and entry.link.
-const BundleLinkSchema: Schema.Schema<
-  typeof StoreBundle.LinkSchema.Type,
-  FhirR4.BundleLink,
+const EntrySearchSchema: Schema.Schema<
+  typeof EntrySearchStruct.Type,
+  FhirR4.BundleEntrySearch,
   never
-> = mutableEncoded(
+> = EntrySearchStruct
+
+// FHIR R4 § BundleLink — same shape for top-level Bundle.link and entry.link.
+const BundleLinkStruct = mutableEncoded(
   StructNoContext({
     ...BackboneElement.fields,
     relation: Schema.String,
@@ -94,12 +95,27 @@ const BundleLinkSchema: Schema.Schema<
   })
 )
 
+const BundleLinkSchema: Schema.Schema<typeof BundleLinkStruct.Type, FhirR4.BundleLink, never> =
+  BundleLinkStruct
+
+/**
+ * Decoded shape of a Bundle entry, parameterised by the decoded resource
+ * type. Written out explicitly (rather than inferred from the struct) so the
+ * generic {@link EntrySchema} factory can carry a portable return type.
+ */
+interface EntryType<Content> extends Schema.Struct.Type<typeof BackboneElement.fields> {
+  readonly fullUrl: URL | null
+  readonly link: readonly (typeof BundleLinkSchema.Type)[]
+  readonly request: typeof EntryRequestSchema.Type | null
+  readonly resource: Content | null
+  readonly response: typeof EntryResponseSchema.Type | null
+  readonly search: typeof EntrySearchSchema.Type | null
+}
+
 const EntrySchema = <ContentTypeSchema extends Schema.Schema.AnyNoContext>(
   contentTypeSchema: ContentTypeSchema
 ): Schema.Schema<
-  Schema.Schema.Type<
-    ReturnType<typeof StoreBundle.EntrySchema<Schema.Schema.Type<ContentTypeSchema>, unknown>>
-  >,
+  EntryType<Schema.Schema.Type<ContentTypeSchema>>,
   Omit<FhirR4.BundleEntry, 'resource'> & {
     resource?: Schema.Schema.Encoded<ContentTypeSchema> | undefined
   },
@@ -191,12 +207,26 @@ const bundleJsonSchema = {
   },
 } as const
 
+/**
+ * Decoded shape of a Bundle, parameterised by the decoded entry resource
+ * type. Written out explicitly so the generic {@link BundleSchema} factory
+ * can carry a portable return type.
+ */
+interface BundleValue<Content> extends Schema.Struct.Type<typeof Resource.fields> {
+  readonly resourceType: 'Bundle'
+  readonly entry: readonly EntryType<Content>[]
+  readonly identifier: typeof IdentifierSchema.Type | null
+  readonly link: readonly (typeof BundleLinkSchema.Type)[]
+  readonly signature: unknown
+  readonly timestamp: string | null
+  readonly total: number | null
+  readonly type: typeof BundleType.Type
+}
+
 const BundleSchema = <FhirResourceSchema extends Schema.Schema.AnyNoContext>(
   resourceSchema: FhirResourceSchema
 ): Schema.Schema<
-  Schema.Schema.Type<
-    ReturnType<typeof StoreBundle.Schema<Schema.Schema.Type<FhirResourceSchema>, unknown>>
-  >,
+  BundleValue<Schema.Schema.Type<FhirResourceSchema>>,
   FhirR4.Bundle<Schema.Schema.Encoded<FhirResourceSchema>>,
   never
 > =>
@@ -220,4 +250,4 @@ const BundleSchema = <FhirResourceSchema extends Schema.Schema.AnyNoContext>(
     )
   ).annotations({ jsonSchema: bundleJsonSchema })
 
-export { BundleType, EntrySchema, BundleSchema as Schema }
+export { BundleType, EntrySchema, BundleSchema as Schema, type BundleValue }

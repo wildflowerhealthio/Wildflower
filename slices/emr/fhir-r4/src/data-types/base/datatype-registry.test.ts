@@ -1,13 +1,12 @@
 import { Effect, Schema } from 'effect'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { Datatype, Extension as StoreExtension } from 'emr-core/schemas'
-
 // side-effect: the data-types barrel re-exports every complex datatype
 // module, triggering their `registerDatatypeSchema(...)` self-registrations.
 import '../index.ts'
 import * as Extension from '../special-purpose/extension.ts'
 import { baseDatatypes, registeredNames, resolveDatatypeSchema } from './datatype-registry.ts'
+import * as Datatype from './datatype.ts'
 
 describe('fhir-r4 datatype registry', () => {
   test.each(registeredNames)('%s is registered after barrel load', (name) => {
@@ -35,8 +34,8 @@ describe('fhir-r4 datatype registry', () => {
 
     test.each(unregisteredNames)('value%s rejects non-null in-memory input on encode', (name) => {
       const key = `value${name.charAt(0).toUpperCase()}${name.slice(1)}`
-      const storeExtension = {
-        ...StoreExtension.emptyValueChoice,
+      const extension = {
+        ...Extension.emptyValueChoice,
         id: null,
         extension: [],
         url: 'http://example.org/ext/unregistered',
@@ -45,7 +44,7 @@ describe('fhir-r4 datatype registry', () => {
       expect(() =>
         Schema.encodeSync(Extension.Schema)(
           // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- intentionally construct an unregistered-slot extension to exercise the encode failure path
-          storeExtension as unknown as typeof StoreExtension.Schema.Type
+          extension as unknown as typeof Extension.Schema.Type
         )
       ).toThrow()
     })

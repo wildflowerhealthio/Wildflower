@@ -31,20 +31,18 @@
 //! `data_dir: None`), so only a minimal `_id`/`_lastUpdated` index exists and a
 //! `subject=` search returns nothing. We therefore fetch each related type's
 //! type-level search (which needs no index) and match its patient reference
-//! against `Patient/{id}` in memory — the same approach, and for the same
-//! reason, as the TypeScript `fhir-r4` twin's `$everything`.
+//! against `Patient/{id}` in memory.
 //!
 //! ## Scope
 //!
 //! Related resources are the patient-referencing types in
 //! [`RELATED_RESOURCE_TYPES`] — `Observation` and `MedicationRequest` today.
-//! This is broader than the twin, which relates `Observation` only: the twin's
-//! LiveStore models just Patient/Observation/Binary, whereas HFS is a general
-//! FHIR store, so the Rust `$everything` gathers every patient-referencing type
-//! HFS serves. `_count` truncates the combined matched set (the primary Patient
-//! is always included on top). Adding a type is a one-row change to the table —
-//! record the divergence in `fhir-r4/docs/Capability Statement.md` in the same
-//! change.
+//! FHIR `$everything` returns the whole patient compartment; we include only the
+//! types in that table, matched on their `subject` reference. HFS is a general
+//! FHIR store, so the table can grow to any patient-referencing type it serves.
+//! `_count` truncates the combined matched set (the primary Patient is always
+//! included on top). Adding a type is a one-row change to the table — record the
+//! divergence in this crate's `docs/Capability Statement.md` in the same change.
 //!
 //! ## Known limitation: each candidate fetch is a single page
 //!
@@ -55,11 +53,10 @@
 //! hold before results become lossy, not the target patient's own count: once
 //! the store holds more than [`RELATED_FETCH_LIMIT`] of a type across *all*
 //! patients, a target patient whose rows fall outside the first page has them
-//! silently omitted — even a patient with only a handful. This diverges from the
-//! TypeScript `fhir-r4` twin, which queries the store unbounded and so never
-//! drops a matching row. Paging the delegated search to exhaustion (or a real
-//! indexed compartment search) would close the gap; see the spec-gap catalogue
-//! in `fhir-r4/docs/Capability Statement.md`.
+//! silently omitted — even a patient with only a handful. Paging the delegated
+//! search to exhaustion (or a real indexed compartment search) would close the
+//! gap; see the server capability statement in this crate's
+//! `docs/Capability Statement.md`.
 
 use axum::body::{to_bytes, Body};
 use axum::extract::{Path, Query, State};
@@ -104,10 +101,10 @@ struct RelatedType {
 /// after the Patient. To include another patient-referencing type HFS stores,
 /// add a row here — the handler loops over this table with no other change.
 ///
-/// `MedicationRequest` is included beyond the (Observation-only) TypeScript
-/// `fhir-r4` twin: HFS is a general FHIR store, so the Rust `$everything` gathers
-/// every patient-referencing type it serves. See the "Scope" module note and the
-/// spec-gap catalogue in `fhir-r4/docs/Capability Statement.md`.
+/// HFS is a general FHIR store, so `$everything` gathers every patient-referencing
+/// type in this table — `Observation` and `MedicationRequest` today. See the
+/// "Scope" module note and the server capability statement in this crate's
+/// `docs/Capability Statement.md`.
 const RELATED_RESOURCE_TYPES: &[RelatedType] = &[
     RelatedType {
         resource_type: "Observation",
@@ -224,7 +221,7 @@ pub(crate) async fn patient_everything_handler(
         .collect();
 
     // `_count` caps the *matched* related resources; the primary Patient is
-    // always included on top (mirrors the twin's `.slice(0, limit)`).
+    // always included on top.
     if let Some(count) = params.count {
         related.truncate(count as usize);
     }

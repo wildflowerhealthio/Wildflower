@@ -1,11 +1,18 @@
-import { Effect, ParseResult, Schema } from 'effect'
+import {
+  type Arbitrary,
+  Effect,
+  type Equivalence,
+  type FastCheck,
+  ParseResult,
+  Schema,
+} from 'effect'
 import type { LazyArg } from 'effect/Function'
 import { capitalize } from 'effect/String'
 
-import { type Datatype } from 'emr-core/schemas'
 import { OrNullAsOptional, suspendWithShallowJson } from 'kitchen-sink/schema'
 
 import { baseDatatypes, resolveDatatypeSchema } from './datatype-registry.ts'
+import type * as Datatype from './datatype.ts'
 
 // Per-K typed null stub. Decoded as `null`; encoded as `undefined` for null
 // input, ParseResult.fail for non-null input (loud failure on encode of an
@@ -37,6 +44,11 @@ const nullStubFor = <K extends Datatype.Name>(
                 `fhir-r4 datatype "${name}" is intentionally unregistered; encoding a non-null value[x] slot for it is rejected`
               )
             ),
+  }).annotations({
+    // Declarations have no derivable arbitrary or equivalence; the stub only
+    // ever decodes to `null`, so generate/compare exactly that.
+    arbitrary: (): Arbitrary.LazyArbitrary<null> => (fc: typeof FastCheck) => fc.constant(null),
+    equivalence: (): Equivalence.Equivalence<null> => (a, b) => a === b,
   })
 
 // True for datatype names that carry a fhir-r4 wire schema in the registry.
@@ -78,10 +90,17 @@ const choiceElementSetPassthroughFields = <
   const entries = datatypeNames.map((name) => {
     const key = `${prefix}${capitalize(name)}`
     if (isRegistered(name)) {
+      // Pin `Arbitrary.make(...)` to always emit `null` on the suspend itself.
+      // Property tests over resources cover the wide value-prefix space via
+      // each datatype's own tests; emitting `null` here keeps generated
+      // examples small and avoids re-walking ~50 datatype variants (including
+      // the Reference⇄Identifier⇄Extension cycle) per property run.
       const inner = suspendWithShallowJson(
         () => Effect.runSync(resolveDatatypeSchema(name)),
         `fhir-r4:${name}`
-      )
+      ).annotations({
+        arbitrary: (): Arbitrary.LazyArbitrary<null> => (fc: typeof FastCheck) => fc.constant(null),
+      })
       return [key, OrNullAsOptional(inner)]
     }
     return [key, Schema.optionalWith(nullStubFor(name), { default: (): null => null })]

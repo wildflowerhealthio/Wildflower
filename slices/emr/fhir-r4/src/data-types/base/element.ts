@@ -1,6 +1,5 @@
 import { Schema } from 'effect'
 
-import type { Element, Extension as StoreExtension } from 'emr-core/schemas'
 import {
   mutableEncoded,
   OrNullAsOptional,
@@ -17,11 +16,12 @@ const fields = {
   extension: Schema.Array(Schema.suspend(() => Extension.Schema)).pipe(
     AnnotateArrayWithArbitrary({ maxLength: 2 }),
     mutableEncoded,
-    Schema.optionalWith({ default: (): StoreExtension.Type[] => [] })
+    Schema.optionalWith({ default: (): Extension.Type[] => [] })
   ),
 } as const satisfies FieldsNoContext
 
-const ElementSchema: Schema.Schema<typeof Element.Schema.Type, FhirR4.Element, never> =
-  mutableEncoded(Schema.Struct(fields))
+const ElementStruct = mutableEncoded(Schema.Struct(fields))
+
+const ElementSchema: Schema.Schema<typeof ElementStruct.Type, FhirR4.Element, never> = ElementStruct
 
 export { fields, ElementSchema as Schema }

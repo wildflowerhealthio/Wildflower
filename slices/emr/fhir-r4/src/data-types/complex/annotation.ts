@@ -1,6 +1,5 @@
 import { Schema } from 'effect'
 
-import type { Annotation as StoreAnnotation } from 'emr-core/schemas'
 import { OrNullAsOptional, StructNoContext, mutableEncoded } from 'kitchen-sink/schema'
 
 import type * as FhirR4 from 'fhir/r4.d.ts'
@@ -9,11 +8,7 @@ import { registerDatatypeSchema } from '../base/datatype-registry.ts'
 import * as Element from '../base/element.ts'
 import { ReferenceSchema } from './identifier-and-reference.ts'
 
-const AnnotationSchema: Schema.Schema<
-  typeof StoreAnnotation.Schema.Type,
-  FhirR4.Annotation,
-  never
-> = mutableEncoded(
+const AnnotationStruct = mutableEncoded(
   StructNoContext({
     ...Element.fields,
     authorReference: OrNullAsOptional(Schema.suspend(() => ReferenceSchema)),
@@ -22,6 +17,9 @@ const AnnotationSchema: Schema.Schema<
     time: OrNullAsOptional(Schema.DateTimeUtc),
   })
 )
+
+const AnnotationSchema: Schema.Schema<typeof AnnotationStruct.Type, FhirR4.Annotation, never> =
+  AnnotationStruct
 
 registerDatatypeSchema('Annotation', AnnotationSchema)
 

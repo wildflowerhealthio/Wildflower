@@ -1,13 +1,11 @@
 import { Data, Effect, type Schema } from 'effect'
 
-import { Datatype } from 'emr-core/schemas'
+import * as Datatype from './datatype.ts'
 
-// Sibling registry: `slices/emr/emr-core/src/schemas/datatype-registry.ts`.
-// emr-core's covers the full FHIR R4 `Datatype.Name` set with a
-// `PermissivePassthrough` fallback for unregistered slots; this one is the
-// fhir-r4 adapter's wire-format subset and surfaces unregistered slots as a
-// typed `UnregisteredDatatype` error. Keep both in lockstep on signature
-// changes — see PR #61 for the divergence rationale.
+// Wire-format schema registry for the fhir-r4 datatype subset. Unregistered
+// slots surface as a typed `UnregisteredDatatype` error (rather than a
+// permissive fallback) so decoding through value[x] fails loudly when a
+// datatype module hasn't loaded.
 
 class UnregisteredDatatype extends Data.TaggedError('UnregisteredDatatype')<{
   readonly name: string
@@ -20,9 +18,9 @@ class UnregisteredDatatype extends Data.TaggedError('UnregisteredDatatype')<{
   }
 }
 
-/** Lookup of fhir-r4 wire-format schemas. Primitives are seeded from emr-core's
+/** Lookup of fhir-r4 wire-format schemas. Primitives are seeded from
  * `Datatype.baseSchemas`; complex slots start as `undefined` and are filled by
- * the collation block at the bottom of `choice-element-passthrough-fields.ts`.
+ * each complex datatype module's own `registerDatatypeSchema` call at load.
  */
 const baseDatatypes: {
   boolean: Datatype.SchemaFor<'boolean'> | undefined

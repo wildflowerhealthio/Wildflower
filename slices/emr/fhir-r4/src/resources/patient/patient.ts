@@ -1,7 +1,5 @@
 import { Schema } from 'effect'
 
-import type { Patient as StorePatient } from 'emr-core/livestore'
-import { AdministrativeGender, ChoiceElementSet } from 'emr-core/schemas'
 import {
   OrNullAsOptional,
   StructNoContext,
@@ -13,7 +11,9 @@ import type * as FhirR4 from 'fhir/r4.d.ts'
 
 import {
   Address,
+  AdministrativeGender,
   Attachment,
+  ChoiceElementSet,
   CodeableConcept,
   choiceElementSetPassthroughFields,
   ContactPoint,
@@ -138,11 +138,7 @@ const patientJsonSchema = {
   },
 } as const
 
-const PatientSchema: Schema.Schema<
-  typeof StorePatient.RowSchemaNullableId.Type,
-  FhirR4.Patient,
-  never
-> = Schema.extend(
+const PatientStruct = Schema.extend(
   Schema.Struct({ resourceType: Schema.Literal('Patient') }),
   mutableEncoded(
     StructNoContext({
@@ -203,5 +199,7 @@ const PatientSchema: Schema.Schema<
     })
   )
 ).annotations({ jsonSchema: patientJsonSchema })
+
+const PatientSchema: Schema.Schema<typeof PatientStruct.Type, FhirR4.Patient, never> = PatientStruct
 
 export { PatientSchema as Schema }

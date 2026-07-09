@@ -1,12 +1,11 @@
 import { Schema } from 'effect'
 
-import { Observation as StoreObservation } from 'emr-core/livestore'
-import { ChoiceElementSet } from 'emr-core/schemas'
 import { OrNullAsOptional, StructNoContext, mutableEncoded } from 'kitchen-sink/schema'
 
 import type * as FhirR4 from 'fhir/r4.d.ts'
 
 import { choiceElementSetPassthroughFields } from '../../data-types/base/choice-element-passthrough-fields.ts'
+import * as ChoiceElementSet from '../../data-types/base/choice-element-set.ts'
 import * as DomainResource from '../../data-types/base/domain-resource.ts'
 import * as Annotation from '../../data-types/complex/annotation.ts'
 import * as CodeableConcept from '../../data-types/complex/codeable-concept.ts'
@@ -189,11 +188,22 @@ const observationJsonSchema = {
   },
 } as const
 
-const ObservationSchema: Schema.Schema<
-  typeof StoreObservation.RowSchemaNullableId.Type,
-  FhirR4.Observation,
-  never
-> = Schema.extend(
+/**
+ * FHIR R4 value set for `Observation.status`: registered | preliminary | final |
+ * amended | corrected | cancelled | entered-in-error | unknown.
+ */
+const StatusSchema = Schema.Enums({
+  amended: 'amended',
+  cancelled: 'cancelled',
+  corrected: 'corrected',
+  'entered-in-error': 'entered-in-error',
+  final: 'final',
+  preliminary: 'preliminary',
+  registered: 'registered',
+  unknown: 'unknown',
+} as const)
+
+const ObservationStruct = Schema.extend(
   Schema.Struct({ resourceType: Schema.Literal('Observation') }),
   mutableEncoded(
     StructNoContext({
@@ -268,7 +278,7 @@ const ObservationSchema: Schema.Schema<
         { default: (): readonly (typeof ObservationReferenceRange.Schema.Type)[] => [] }
       ),
       specimen: OrNullAsOptional(Schema.suspend(() => IdentifierAndReference.ReferenceSchema)),
-      status: StoreObservation.StatusSchema,
+      status: StatusSchema,
       subject: OrNullAsOptional(Schema.suspend(() => IdentifierAndReference.ReferenceSchema)),
       ...choiceElementSetPassthroughFields(
         'value',
@@ -281,4 +291,8 @@ const ObservationSchema: Schema.Schema<
     })
   )
 ).annotations({ jsonSchema: observationJsonSchema })
-export { ObservationSchema as Schema }
+
+const ObservationSchema: Schema.Schema<typeof ObservationStruct.Type, FhirR4.Observation, never> =
+  ObservationStruct
+
+export { ObservationSchema as Schema, StatusSchema }

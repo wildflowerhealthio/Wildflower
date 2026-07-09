@@ -1,6 +1,5 @@
 import { Schema } from 'effect'
 
-import { type Meta as StoreMeta } from 'emr-core/schemas'
 import { mutableEncoded, OrNullAsOptional } from 'kitchen-sink/schema'
 
 import type * as FhirR4 from 'fhir/r4.d.ts'
@@ -8,7 +7,7 @@ import type * as FhirR4 from 'fhir/r4.d.ts'
 import * as Coding from '../complex/coding.ts'
 import { registerDatatypeSchema } from './datatype-registry.ts'
 
-const MetaSchema: Schema.Schema<typeof StoreMeta.Schema.Type, FhirR4.Meta, never> = Schema.Struct({
+const MetaStruct = Schema.Struct({
   lastUpdated: OrNullAsOptional(Schema.DateTimeUtc),
   // Canonical URLs identifying the StructureDefinition profiles this
   // resource conforms to. Required for US Core / SMART / USCDI profile
@@ -28,6 +27,8 @@ const MetaSchema: Schema.Schema<typeof StoreMeta.Schema.Type, FhirR4.Meta, never
   ),
   versionId: OrNullAsOptional(Schema.String),
 }).pipe(mutableEncoded)
+
+const MetaSchema: Schema.Schema<typeof MetaStruct.Type, FhirR4.Meta, never> = MetaStruct
 
 registerDatatypeSchema('Meta', MetaSchema)
 

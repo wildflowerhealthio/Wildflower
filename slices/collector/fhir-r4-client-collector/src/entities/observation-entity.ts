@@ -14,9 +14,9 @@ const observationUrl = UrlMatch.make({ segments: [UrlMatch.literal('Observation'
 /**
  * Entity for a single FHIR R4 `Observation` resource fetched at
  * `…/Observation/:id`. The wire schema lives in `fhir-r4/resources` —
- * its `Encoded` is the FHIR R4 wire JSON, its `Type` is the
- * emr-core-shaped row, so the decoded array entry is ready to persist
- * without further mapping. {@link extractJson} normalizes the body
+ * its `Encoded` is the FHIR R4 wire JSON, its `Type` is the decoded
+ * FHIR value, so the decoded array entry is ready to use without
+ * further mapping. {@link extractJson} normalizes the body
  * across raw-JSON XHR intercepts and the mobile WebView's JSON viewer
  * wrap.
  */

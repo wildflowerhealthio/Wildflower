@@ -1,83 +1,23 @@
-import { type Arbitrary, type FastCheck, type Option, Schema } from 'effect'
 import { capitalize } from 'effect/String'
 
-import { suspendWithShallowJson } from 'kitchen-sink/schema'
-import * as ChoiceElement from './choice-element.ts'
-import * as Datatype from './datatype.ts'
+import type * as Datatype from './datatype.ts'
 
-import type { SqliteDsl } from '@livestore/livestore'
-import { State } from '@livestore/livestore'
-import { baseDatatypes } from './datatype-registry.ts'
-
-type ChoiceElementSetSchemaFields<
+/** Choice-element field name for a `(prefix, datatype)` pair, e.g. `valueString`. */
+type ChoiceElementName<
   Prefix extends string,
-  DatatypeNames extends readonly Datatype.Name[],
-> = {
-  [DatatypeName in DatatypeNames[number] as ChoiceElement.Name<
-    Prefix,
-    DatatypeName
-  >]: Schema.NullOr<Datatype.SchemaFor<DatatypeName>>
+  TName extends Datatype.Name,
+> = `${Prefix}${Capitalize<TName>}`
+
+type Empty<Prefix extends string, DatatypeNames extends readonly Datatype.Name[]> = {
+  [K in DatatypeNames[number] as ChoiceElementName<Prefix, K>]: null
 }
 
 /**
- * Builds a `Schema.Struct` of flat, prefix-namespaced optional fields for a
- * FHIR `value[x]`-style choice element. Each data type name becomes a single
- * field of type `Schema.NullOr<...>` whose name is
- * `${prefix}${Capitalize<name>}`.
- *
- * Field schemas resolve through the lazy {@link baseDatatypes} registry via
- * `Schema.suspend`, so consumers can compose choice fields before every
- * complex datatype module has self-registered.
- *
- * No mutual exclusion is enforced at the schema level — any combination of
- * the generated fields may be present in a decoded or encoded value. Callers
- * that need "exactly one" semantics must layer that on themselves.
- *
- * @example
- * ```typescript
- * const valueFields = ChoiceElementSet.SchemaFields('value', ['string', 'boolean', 'Quantity'])
- * // Schema fields: { valueString?: string, valueBoolean?: boolean, valueQuantity?: ... }
- *
- * // Spread into a resource:
- * const Observation = Schema.Struct({ code: CodeableConcept.Schema, ...valueFields })
- * ```
- *
- * @param prefix - Prefix for each generated field (e.g. `'value'`, `'effective'`)
- * @param datatypeNames - Array of data type names to include in the choice
+ * All-`null` value for a `value[x]`-style choice-element field set — the
+ * decoded shape of a choice element with no populated slot. Useful for
+ * constructing decoded values (e.g. in tests) without spelling out every
+ * `${prefix}${Datatype}` key.
  */
-function ChoiceElementSetSchemaFields<
-  const Prefix extends string,
-  const DatatypeNames extends readonly Datatype.Name[],
->(
-  prefix: Prefix,
-  datatypeNames: DatatypeNames
-): ChoiceElementSetSchemaFields<Prefix, DatatypeNames> {
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Object.fromEntries returns Record<string, unknown>; the typed shape is recovered from the prefix/name pairs by construction.
-  return Object.fromEntries(
-    datatypeNames.map((name) => [
-      ChoiceElement.Name(prefix, name),
-      // Pin `Arbitrary.make(...)` to always emit `null` on the suspend itself.
-      // Choice-element fields inherit `Schema<any, any, never>` from
-      // `Datatype.SchemaFor`'s fallback for complex datatypes, which makes the
-      // default suspend arbitrary generate any-shaped JS values (objects,
-      // arrays, …). For property tests over resources the wide value-prefix
-      // space is already covered by each datatype's own tests, so emitting
-      // `null` here keeps generated examples small and avoids cross-test cost
-      // from re-walking ~50 datatype variants.
-      Schema.NullOr(
-        suspendWithShallowJson(() => baseDatatypes[name].schema(), name).annotations({
-          arbitrary: (): Arbitrary.LazyArbitrary<null> => (fc: typeof FastCheck) =>
-            fc.constant(null),
-        })
-      ),
-    ])
-  ) as unknown as ChoiceElementSetSchemaFields<Prefix, DatatypeNames>
-}
-
-type Empty<Prefix extends string, DatatypeNames extends readonly Datatype.Name[]> = {
-  [K in DatatypeNames[number] as ChoiceElement.Name<Prefix, K>]: null
-}
-
 function empty<const Prefix extends string, const DatatypeNames extends readonly Datatype.Name[]>(
   prefix: Prefix,
   datatypeNames: DatatypeNames
@@ -87,157 +27,6 @@ function empty<const Prefix extends string, const DatatypeNames extends readonly
     datatypeNames.map((name) => [`${prefix}${capitalize(name)}`, null])
   ) as unknown as Empty<Prefix, DatatypeNames>
 }
-
-// Maps a datatype's `DbType` to livestore's `FieldColumnType` for the
-// generated column: boolean values are stored as integer (0/1) and json
-// values as text, both per `columnFor` below.
-type ColumnTypeFor<TDbType extends Datatype.DbType> = TDbType extends 'integer' | 'boolean'
-  ? 'integer'
-  : TDbType extends 'real'
-    ? 'real'
-    : 'text'
-
-// Structural expansion of `SqliteDsl.ColumnDefinition<E, D>` (a subtype of it).
-// The alias version triggers TS2883 in callers' d.ts emit: tsgo expands
-// `ColumnDefinition` and the expansion references `FieldColumnType` /
-// `ColumnDefaultValue` from `@livestore/common`'s private
-// `dsl/field-defs.d.ts`, which isn't a public export — so the only
-// importable path tsgo can write is a relative path through `node_modules`,
-// which it (correctly) flags as non-portable. Inlining the shape with
-// portable types (`Schema` / `Option` from `effect`, the literal `columnType`
-// derived from the datatype's `DbType`, and `Option.None<never>` for
-// `default` since `columnFor` never supplies one) keeps the emitted d.ts
-// self-contained while remaining assignable to
-// `SqliteDsl.ColumnDefinition<any, any>` for `State.SQLite.table({ columns })`.
-type ColumnFor<N extends Datatype.Name> = {
-  readonly columnType: ColumnTypeFor<Datatype.DbTypeFor<N>>
-  readonly schema: Schema.Schema<
-    Schema.Schema.Type<Datatype.SchemaFor<N>> | null,
-    Datatype.EncodedForDbType<Datatype.DbTypeFor<N>> | null
-  >
-  readonly default: Option.None<never>
-  readonly nullable: boolean
-  readonly primaryKey: boolean
-  readonly autoIncrement: boolean
-}
-
-// `Datatype.baseSchemas` and `Datatype.baseDbTypes` are keyed by strict
-// subsets of `Datatype.Name`. We index them with arbitrary names from a
-// caller-supplied list, so widen each to a `Record<string, …>` once at the
-// boundary instead of per-name conditionals. Mirrors the same widen-and-fall-back
-// pattern used in datatype-registry.ts.
-// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- see comment
-const baseSchemasByName = Datatype.baseSchemas as unknown as Record<
-  string,
-  Schema.Schema.AnyNoContext | undefined
->
-// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- see comment
-const baseDbTypesByName = Datatype.baseDbTypes as unknown as Record<
-  string,
-  Datatype.DbType | undefined
->
-
-const columnFor = (name: Datatype.Name): SqliteDsl.ColumnDefinition.Any => {
-  const dbType: Datatype.DbType = baseDbTypesByName[name] ?? 'json'
-  const baseSchema = baseSchemasByName[name]
-
-  switch (dbType) {
-    case 'boolean': {
-      // `State.SQLite.boolean` is a specialized factory and does not accept
-      // a custom schema — the boolean column type is already exact.
-      return State.SQLite.boolean({ nullable: true })
-    }
-    case 'integer': {
-      if (baseSchema === undefined) return State.SQLite.integer({ nullable: true })
-      return State.SQLite.integer({ nullable: true, schema: baseSchema })
-    }
-    case 'real': {
-      if (baseSchema === undefined) return State.SQLite.real({ nullable: true })
-      return State.SQLite.real({ nullable: true, schema: baseSchema })
-    }
-    case 'text': {
-      if (baseSchema === undefined) return State.SQLite.text({ nullable: true })
-      return State.SQLite.text({ nullable: true, schema: baseSchema })
-    }
-    case 'json': {
-      // Resolve the complex datatype's schema lazily through the registry so
-      // tables auto-upgrade to a strict schema once the datatype module
-      // self-registers (see datatype-registry.ts). Until then, the registry
-      // returns its `FallbackSchema` (PermissivePassthrough with a `null`
-      // arbitrary), preserving the prior hand-written behavior.
-      return State.SQLite.json({
-        nullable: true,
-        schema: suspendWithShallowJson(() => baseDatatypes[name].schema(), name),
-      })
-    }
-    default: {
-      // oxlint-disable-next-line no-underscore-dangle
-      const _exhaustive: never = dbType
-      throw new Error(`Unhandled column DbType: ${String(_exhaustive)}`)
-    }
-  }
-}
-
-/**
- * Public shape of {@link Columns}: a flat record of livestore column
- * definitions keyed by `${prefix}${Capitalize<datatypeName>}`. Each entry is
- * a `SqliteDsl.ColumnDefinition` parameterized to the datatype's decoded type
- * and the column DbType's encoded type, so callers can spread the result
- * directly into a `State.SQLite.table({ columns })` block while keeping
- * per-key schema types tight.
- */
-type Columns<Prefix extends string, DatatypeNames extends readonly Datatype.Name[]> = {
-  readonly [N in DatatypeNames[number] as ChoiceElement.Name<Prefix, N>]: ColumnFor<N>
-}
-
-/**
- * Builds a flat record of livestore SQLite column definitions for a FHIR
- * `value[x]`-style choice element. Sibling to
- * {@link "../schemas/choice-element-set.ts".SchemaFields | ChoiceElementSet.SchemaFields},
- * which produces the equivalent `Schema.Struct` field set; this one produces
- * the columns you spread into `State.SQLite.table({ columns })`.
- *
- * Each emitted column is `{ nullable: true }`. Column DbType is picked per
- * datatype via {@link Datatype.baseDbTypes} (numeric/boolean primitives land
- * in their native SQLite types; everything else lands in `json`). Primitive
- * schemas come from {@link Datatype.baseSchemas}; complex (`json`) columns
- * resolve their schema lazily through the
- * {@link "../schemas/datatype-registry.ts".baseDatatypes | baseDatatypes}
- * registry so they auto-upgrade once a strict schema is registered.
- *
- * No mutual exclusion is enforced at the column level — FHIR's "exactly one"
- * semantics for `value[x]` must be enforced by the caller (matching
- * `ChoiceElementSet.SchemaFields`).
- *
- * @example
- * ```typescript
- * import * as ChoiceElementSet from '../schemas/choice-element-set.ts'
- * import { Columns as ChoiceElementSetColumns } from './choice-element-set-columns.ts'
- *
- * const columns = {
- *   ...DomainResource.columns,
- *   id: State.SQLite.text({ primaryKey: true }),
- *   ...ChoiceElementSetColumns(
- *     'value',
- *     ChoiceElementSet.FhirR4SetChoices['Observation.value[x]']
- *   ),
- * }
- * ```
- *
- * @param prefix - Prefix for each generated column (e.g. `'value'`)
- * @param datatypeNames - Datatypes to fan out into one column each
- */
-const Columns = <const Prefix extends string, const DatatypeNames extends readonly Datatype.Name[]>(
-  prefix: Prefix,
-  datatypeNames: DatatypeNames
-): Columns<Prefix, DatatypeNames> =>
-  // `Object.fromEntries` widens to `Record<string, …>`; the per-key
-  // `ColumnsResult` shape is recovered by construction over (prefix, name)
-  // pairs, matching the same pattern used in `ChoiceElementSet.SchemaFields`.
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- see comment
-  Object.fromEntries(
-    datatypeNames.map((name) => [ChoiceElement.Name(prefix, name), columnFor(name)])
-  ) as unknown as Columns<Prefix, DatatypeNames>
 
 const fhirR4AllDatatypeNames = [
   // Primitive Types
@@ -644,10 +433,4 @@ const FhirR4Datatypes = {
   ],
 } as const satisfies Record<string, readonly (Datatype.Name | '*')[]>
 
-export {
-  ChoiceElementSetSchemaFields as SchemaFields,
-  Columns,
-  type Empty,
-  empty,
-  FhirR4Datatypes as FhirR4SetChoices,
-}
+export { type Empty, empty, FhirR4Datatypes as FhirR4SetChoices }

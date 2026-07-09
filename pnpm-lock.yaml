@@ -1175,77 +1175,11 @@ importers:
         specifier: 'catalog:'
         version: 0.2.2(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(@voidzero-dev/vite-plus-core@0.2.2(@types/node@26.1.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(esbuild@0.28.1)(jiti@2.7.0)(jsdom@29.1.1)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0)
 
-  slices/emr/emr-core:
-    devDependencies:
-      '@effect/platform':
-        specifier: 0.96.1
-        version: 0.96.1(effect@3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
-      '@livestore/adapter-node':
-        specifier: 'catalog:'
-        version: 0.4.0(72a55063150d8c0fda4ee02e5b573a72)
-      '@livestore/common':
-        specifier: 'catalog:'
-        version: 0.4.0(72a55063150d8c0fda4ee02e5b573a72)
-      '@livestore/livestore':
-        specifier: 'catalog:'
-        version: 0.4.0(72a55063150d8c0fda4ee02e5b573a72)
-      '@livestore/peer-deps':
-        specifier: 'catalog:'
-        version: 0.4.0(4045f35ac7803c0ccc9353dd1770cc82)
-      '@livestore/utils':
-        specifier: 'catalog:'
-        version: 0.4.0(72a55063150d8c0fda4ee02e5b573a72)
-      '@types/fhir':
-        specifier: 'catalog:'
-        version: 0.0.44
-      '@types/node':
-        specifier: ^26
-        version: 26.1.0
-      '@typescript/native-preview':
-        specifier: 'catalog:'
-        version: 7.0.0-dev.20260429.1
-      bumpp:
-        specifier: ^11.0.1
-        version: 11.1.0
-      effect:
-        specifier: 3.21.4
-        version: 3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
-      fast-check:
-        specifier: 'catalog:'
-        version: 3.23.1
-      kitchen-sink:
-        specifier: workspace:*
-        version: link:../../../global/kitchen-sink
-      shared-structures-core:
-        specifier: workspace:*
-        version: link:../../shared-structures/shared-structures-core
-      typescript:
-        specifier: 5.9.3
-        version: 5.9.3
-      vite-plus:
-        specifier: 'catalog:'
-        version: 0.2.2(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(esbuild@0.28.1)(jiti@2.7.0)(jsdom@29.1.1)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.1.3(@types/node@26.1.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
-
   slices/emr/fhir-r4:
     devDependencies:
       '@effect/platform':
         specifier: 0.96.1
         version: 0.96.1(effect@3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
-      '@livestore/adapter-node':
-        specifier: 'catalog:'
-        version: 0.4.0(72a55063150d8c0fda4ee02e5b573a72)
-      '@livestore/common':
-        specifier: 'catalog:'
-        version: 0.4.0(72a55063150d8c0fda4ee02e5b573a72)
-      '@livestore/livestore':
-        specifier: 'catalog:'
-        version: 0.4.0(72a55063150d8c0fda4ee02e5b573a72)
-      '@livestore/peer-deps':
-        specifier: 'catalog:'
-        version: 0.4.0(4045f35ac7803c0ccc9353dd1770cc82)
-      '@livestore/utils':
-        specifier: 'catalog:'
-        version: 0.4.0(72a55063150d8c0fda4ee02e5b573a72)
       '@types/fhir':
         specifier: 'catalog:'
         version: 0.0.44
@@ -1261,9 +1195,6 @@ importers:
       effect:
         specifier: 3.21.4
         version: 3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
-      emr-core:
-        specifier: workspace:*
-        version: link:../emr-core
       fast-check:
         specifier: 'catalog:'
         version: 3.23.1

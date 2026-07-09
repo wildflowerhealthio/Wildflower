@@ -81,6 +81,18 @@ describe('OrNullAsUndefined', () => {
       )
     })
   })
+
+  describe('arbitrary', () => {
+    it('property: generates null or inner values that encode successfully', () => {
+      fc.assert(
+        fc.property(Arbitrary.make(schema), (value) => {
+          expect(value === null || typeof value === 'number').toBe(true)
+          expect(() => Schema.encodeSync(schema)(value)).not.toThrow()
+        }),
+        { numRuns: numRunsFor({ base: 100 }) }
+      )
+    })
+  })
 })
 
 describe('OrNullAsOptional', () => {
@@ -159,6 +171,18 @@ describe('OrNullAsOptional', () => {
           const decoded = Schema.decodeUnknownSync(struct)(encoded)
           const reEncoded = Schema.encodeSync(struct)(decoded)
           expect(reEncoded).toEqual(encoded)
+        }),
+        { numRuns: numRunsFor({ base: 100 }) }
+      )
+    })
+  })
+
+  describe('arbitrary', () => {
+    it('property: generates null or inner values that encode successfully', () => {
+      fc.assert(
+        fc.property(Arbitrary.make(struct), (value) => {
+          expect(value.value === null || typeof value.value === 'number').toBe(true)
+          expect(() => Schema.encodeSync(struct)(value)).not.toThrow()
         }),
         { numRuns: numRunsFor({ base: 100 }) }
       )

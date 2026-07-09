@@ -1,8 +1,6 @@
-import type { QueryBuilder } from '@livestore/livestore'
 import { Schema } from 'effect'
 
-import type { Patient as StorePatient } from 'emr-core/livestore'
-import { AdministrativeGender } from 'emr-core/schemas'
+import { AdministrativeGender } from '../../data-types/complex/administrative-gender.ts'
 
 const NumFromStr = Schema.NumberFromString.pipe(Schema.int(), Schema.greaterThanOrEqualTo(0))
 
@@ -22,7 +20,7 @@ const SearchParams = Schema.Struct({
   _pageToken: Schema.optional(Schema.String),
   gender: Schema.optional(AdministrativeGender),
   active: Schema.optional(BoolFromStr),
-  // FHIR `birthdate` search param maps to `Patient.birthDate` column. Equality
+  // FHIR `birthdate` search param maps to `Patient.birthDate`. Equality
   // only in baseline; date prefixes (gt/lt/ge/le/sa/eb/ap) and partial-precision
   // ranges are not yet supported.
   birthdate: Schema.optional(Schema.String.pipe(Schema.pattern(/^\d{4}-\d{2}-\d{2}$/))),
@@ -30,27 +28,4 @@ const SearchParams = Schema.Struct({
 
 type SearchParamsType = Schema.Schema.Type<typeof SearchParams>
 
-type WhereType = QueryBuilder.WhereParams<typeof StorePatient.table>
-
-const buildWhere = (p: SearchParamsType): WhereType | undefined => {
-  const where: { -readonly [K in keyof WhereType]: WhereType[K] } = {}
-  let any = false
-  if (p.gender !== undefined) {
-    where.gender = p.gender
-    any = true
-  }
-  if (p.active !== undefined) {
-    where.active = p.active
-    any = true
-  }
-  if (p.birthdate !== undefined) {
-    where.birthDate = p.birthdate
-    any = true
-  }
-  if (!any) {
-    return undefined
-  }
-  return where
-}
-
-export { SearchParams, buildWhere, type SearchParamsType }
+export { SearchParams, type SearchParamsType }
