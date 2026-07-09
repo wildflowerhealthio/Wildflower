@@ -9,6 +9,7 @@ use shared_structures_rust::tunnel_service::TunnelService;
 use url::Url;
 
 use crate::db::AppsStore;
+use crate::http::launch_cookies::LaunchCookies;
 use crate::http::owner_auth::OwnerAuth;
 use crate::OnDeviceWebviewHandle;
 
@@ -35,6 +36,10 @@ pub struct AppsState {
     /// popup supplies a no-op handle (only forwarded callers reach such a host,
     /// so it's never invoked).
     pub(crate) on_device_webview_handle: Arc<dyn OnDeviceWebviewHandle>,
+    /// Re-scopes the caller's owner session onto a **forwarded self-hosted** app's
+    /// public host (see [`LaunchCookies`]). The host wires the gatekeeper cookie
+    /// builder; a host with no cookie-auth path wires a no-op.
+    pub(crate) launch_cookies: Arc<dyn LaunchCookies>,
 }
 
 impl AppsState {
@@ -45,6 +50,7 @@ impl AppsState {
         owner_auth: Arc<dyn OwnerAuth>,
         tunnel: Arc<dyn TunnelService>,
         webview_handle: Arc<dyn OnDeviceWebviewHandle>,
+        launch_cookies: Arc<dyn LaunchCookies>,
     ) -> Self {
         Self {
             store,
@@ -52,6 +58,7 @@ impl AppsState {
             owner_auth,
             tunnel,
             on_device_webview_handle: webview_handle,
+            launch_cookies,
         }
     }
 

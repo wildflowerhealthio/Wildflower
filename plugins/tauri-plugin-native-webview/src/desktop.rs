@@ -145,13 +145,11 @@ fn cookie_from_spec(spec: &CookieSpec) -> tauri::webview::cookie::Cookie<'static
     let mut cookie = Cookie::new(spec.name.clone(), spec.value.clone());
     cookie.set_domain(spec.domain.clone());
     cookie.set_path(spec.path.clone());
-    // Boolean attributes are set only when TRUE — `set_http_only(false)`
-    // records `Some(false)`, which wry's macOS conversion maps to a *present*
-    // NSHTTPCookie "HttpOnly" property (value "FALSE"), and Foundation treats
-    // the key's presence as HttpOnly. Observed: a `Some(false)` `wf_auth_exp`
-    // landed HttpOnly, hiding it from the consent page's JS. Leaving the
-    // option `None` keeps the property off entirely. Same treatment for
-    // `Secure` (same presence-keyed conversion).
+    // Boolean attributes are set only when TRUE: `set_http_only(false)` records
+    // `Some(false)`, which wry's macOS conversion maps to a *present* NSHTTPCookie
+    // property, and Foundation keys off presence — so a `Some(false)` `wf_auth_exp`
+    // lands HttpOnly, hidden from the consent page's JS. `None` keeps it off. Same
+    // for `Secure`.
     if spec.secure {
         cookie.set_secure(true);
     }
@@ -170,15 +168,11 @@ fn cookie_from_spec(spec: &CookieSpec) -> tauri::webview::cookie::Cookie<'static
 }
 
 /// Queue `cookies` onto `content`'s cookie store. MUST be called OFF the main
-/// thread: each `set_cookie` is a fire-and-forget message the main loop
-/// processes on its own iteration, where the wry write blocks until it commits
-/// (macOS pumps the run loop for the `WKHTTPCookieStore` completion, Linux
-/// spins `gtk::main_iteration()`). Because the loop is FIFO, a `navigate`
-/// queued after this call only runs once every cookie has committed — that
-/// ordering is the whole seeding contract. Calling this ON the main thread
-/// instead executes the wry write inline, nesting its run-loop pump inside
-/// tao's event handler — which kills the webview content processes and
-/// deadlocks the app (observed on macOS).
+/// thread: each `set_cookie` is a fire-and-forget message the main loop processes
+/// on its own FIFO iteration, so a `navigate` queued after this runs only once
+/// every cookie has committed — the seeding contract (see docs/Explanation.md).
+/// Calling this ON the main thread executes the wry write inline, nesting its
+/// run-loop pump inside tao's event handler and deadlocking the app (macOS).
 fn seed_cookies<R: Runtime>(
     content: &tauri::webview::Webview<R>,
     cookies: &[CookieSpec],
@@ -255,12 +249,9 @@ impl<R: Runtime> NativeWebview<R> {
     /// queue — safe, no self-wait.
     ///
     /// A cookie-carrying request (see [`OpenRequest`]'s `cookies`) MUST be sent
-    /// from OFF the main thread: the webview is built/rewired at `about:blank`,
-    /// then this (caller) thread queues the cookie writes and the navigation to
-    /// the real target onto the main loop — FIFO, so every cookie commits
-    /// before the target's first request fires. Doing the writes inside the
-    /// main-thread `present()` instead nests wry's blocking cookie pump inside
-    /// tao's event handler and deadlocks (see [`seed_cookies`]).
+    /// from OFF the main thread: the webview builds at `about:blank`, then this
+    /// caller thread queues the cookie writes + the real-target navigation onto the
+    /// main loop (FIFO). See [`seed_cookies`] for why the main thread deadlocks.
     pub fn open_url(&self, mut payload: OpenRequest) -> crate::Result<()> {
         // Parse once (http(s)-only — see [`crate::url_scheme`]) and thread the
         // parsed `Url` to `present` so the build path doesn't re-parse.
@@ -1054,10 +1045,8 @@ mod tests {
             cookie.to_string(),
             "n=v; SameSite=Strict; Path=/p; Domain=example.test"
         );
-        // MUST be `None`, not `Some(false)`: wry's macOS conversion inserts
-        // the NSHTTPCookie "HttpOnly"/"Secure" property for any `Some`, and
-        // Foundation keys off the property's PRESENCE — a `Some(false)`
-        // `wf_auth_exp` lands HttpOnly and the consent page's JS can't read it.
+        // MUST be `None`, not `Some(false)` — see `cookie_from_spec` (Foundation
+        // keys off property presence, so `Some(false)` lands HttpOnly).
         assert_eq!(cookie.http_only(), None);
         assert_eq!(cookie.secure(), None);
     }

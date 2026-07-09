@@ -15,12 +15,12 @@ use gatekeeper_rust::crypto_util::client_secret::hash_client_secret;
 use gatekeeper_rust::crypto_util::pkce::compute_code_challenge;
 use gatekeeper_rust::crypto_util::random_token::token_storage_hash;
 use gatekeeper_rust::domain::authorization_code::AuthorizationCode;
-use gatekeeper_rust::domain::token::{mint_access_token, NewJwtArgs};
 use gatekeeper_rust::domain::authorization_request::{
     AuthorizationRequest, GrantType, RequestStatus,
 };
 use gatekeeper_rust::domain::client::{AllowedGrantType, Client, ClientKind};
 use gatekeeper_rust::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
+use gatekeeper_rust::domain::token::{mint_access_token, NewJwtArgs};
 use gatekeeper_rust::GatekeeperStore;
 use persistence_rust::{Connection, JsonColumn, UriColumn};
 use serde_json::Value;
@@ -825,10 +825,8 @@ async fn auth_code_grant_happy_path_end_to_end() {
     );
     let res = g.router.clone().oneshot(approve).await.expect("oneshot");
     assert_eq!(res.status(), StatusCode::OK);
-    // The code-flow approve response carries the client callback URL so an
-    // approving surface that is itself the requesting client can finish the
-    // flow inline. It must point at the client's `redirect_uri` and carry both
-    // the redeemable `code` and the client's `state`.
+    // The approve response's inline-completion redirect must target the client's
+    // `redirect_uri` and carry both the redeemable `code` and the client's `state`.
     let approve_body = body_json(res.into_body()).await;
     assert_eq!(approve_body["status"], "approved");
     let approve_redirect = approve_body["redirect"].as_str().expect("approve redirect");

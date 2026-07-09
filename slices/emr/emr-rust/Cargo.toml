@@ -8,9 +8,19 @@ publish.workspace = true
 anyhow.workspace = true
 axum.workspace = true
 serde.workspace = true
+serde_json.workspace = true
+# `$everything` re-drives HFS's own router in-process (a `read` + a compartment
+# search) via `tower::ServiceExt::oneshot`, so scope enforcement stays in the
+# path. Already in the tree transitively through axum; pinned here as a direct
+# dep for the `util` feature (`oneshot`).
+tower = { version = "0.5", features = ["util"] }
 # The loopback origin flows in as a typed `Url` (from `ServerRuntimeConfig`); the
 # discovery handler derives its bare origin string from it.
 url = { version = "2" }
+# `$everything` logs (and swallows) a related-resource search that fails so a
+# partial-scope token still gets the resources it can read. Already in the tree
+# via helios/tower; pinned here as a direct dep for the `warn!` macro.
+tracing = "0.1"
 # HFS (HeliosSoftware/hfs) crates pinned to 0.2.0. emr-rust embeds:
 #   helios-rest        — Axum router + handlers serving the FHIR REST surface
 helios-rest = { version = "=0.2.0", default-features = false, features = ["R4", "sqlite"] }
