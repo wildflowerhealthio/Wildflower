@@ -14,6 +14,7 @@ import {
 } from '@dnd-kit/sortable'
 import { createFileRoute, useRouteContext } from '@tanstack/react-router'
 import { useEffect, useRef, useState, type JSX } from 'react'
+import { cn } from 'react-kitchen-sink'
 import { AsyncErrorView, PageHeader } from 'react-tundraish'
 
 import {
@@ -23,7 +24,6 @@ import {
   type AppEntry,
 } from '../../../queries.ts'
 import type { RouterContext } from '../../../router-context.ts'
-import { AppsEditor } from '../../../screens/apps-editor.tsx'
 import { launchApp } from './-launch.ts'
 import { reorderApps } from './-reorder.ts'
 import { SortableAppTile } from './-tiles.tsx'
@@ -38,7 +38,9 @@ const formatError = (error: unknown): string =>
  * `useAppsListQuery` resolves synchronously from cache. The router's own
  * pending UI covers the load window — no inline `<Suspense>` fallback, no
  * `<CatchBoundary>`; read failures propagate to the route's `errorComponent`.
- * Mutations triggered inside `<AppsEditor>` auto-invalidate the list query.
+ * The home-screen `PUT`s (reorder + hide) auto-invalidate the list query;
+ * catalogue management (add / remove / configure / re-enable) lives under
+ * `/settings/apps`.
  */
 const AppsHomeScreen = (): JSX.Element => {
   const { data: apps } = useAppsListQuery()
@@ -50,7 +52,10 @@ interface AppsHomeBodyProps {
 }
 
 const AppsHomeBody = ({ apps }: AppsHomeBodyProps): JSX.Element => {
-  const [editorOpen, setEditorOpen] = useState(false)
+  // Home-screen edit mode. Off by default: tiles launch on click and can't be
+  // dragged. Toggling "Edit" arms drag-to-reorder and the per-tile "Hide"
+  // (disable) control; "Done" returns to launch mode.
+  const [editMode, setEditMode] = useState(false)
   const formRef = useRef<HTMLFormElement | null>(null)
   const homeScreenMutation = useReplaceHomeScreenMutation()
   // Set only on the Tauri webview; its presence is the launch-arm signal —
@@ -121,6 +126,25 @@ const AppsHomeBody = ({ apps }: AppsHomeBodyProps): JSX.Element => {
     )
   }
 
+  // Hide an app from the home screen: flip its `enabled` to false and PUT the
+  // whole ordered list (disabled apps keep their slots). Optimistic + rollback,
+  // mirroring `onDragEnd` — on failure the PUT doesn't invalidate the list, so
+  // roll `order` back and surface the error banner. Re-enabling lives in
+  // `/settings/apps`.
+  const disable = (app: AppEntry): void => {
+    const previous = order
+    const next = order.map((entry) => (entry.id === app.id ? { ...entry, enabled: false } : entry))
+    setOrder(next)
+    homeScreenMutation.mutate(
+      next.map((entry) => ({ id: entry.id, enabled: entry.enabled })),
+      {
+        onError: () => {
+          setOrder(previous)
+        },
+      }
+    )
+  }
+
   return (
     <>
       <PageHeader
@@ -128,22 +152,22 @@ const AppsHomeBody = ({ apps }: AppsHomeBodyProps): JSX.Element => {
         actions={
           <button
             type="button"
-            className="button-2 outline"
+            className={cn('button-2', editMode ? 'filled' : 'outline')}
             onClick={() => {
-              setEditorOpen(true)
+              setEditMode((open) => !open)
             }}
           >
-            Manage
+            {editMode ? 'Done' : 'Edit'}
           </button>
         }
       />
       {homeScreenMutation.isError ? (
         <p className={tileStyles['app-tiles__error']} role="alert">
-          Couldn't save the new order: {formatError(homeScreenMutation.error)}
+          Couldn't save the change: {formatError(homeScreenMutation.error)}
         </p>
       ) : null}
       {visible.length === 0 ? (
-        <p className="text-body-2">No apps enabled. Tap Manage to turn some on.</p>
+        <p className="text-body-2">No apps on your home screen. Add or enable apps in Settings.</p>
       ) : (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
           <SortableContext
@@ -152,7 +176,13 @@ const AppsHomeBody = ({ apps }: AppsHomeBodyProps): JSX.Element => {
           >
             <ul className={tileStyles['app-tiles']}>
               {visible.map((app) => (
-                <SortableAppTile key={app.id} app={app} onLaunch={launch} />
+                <SortableAppTile
+                  key={app.id}
+                  app={app}
+                  editing={editMode}
+                  onLaunch={launch}
+                  onDisable={disable}
+                />
               ))}
             </ul>
           </SortableContext>
@@ -166,13 +196,6 @@ const AppsHomeBody = ({ apps }: AppsHomeBodyProps): JSX.Element => {
        * along and the host's 204 never navigates the webview — see `launchApp`.
        */}
       <form ref={formRef} method="post" hidden />
-      <AppsEditor
-        open={editorOpen}
-        apps={apps}
-        onClose={() => {
-          setEditorOpen(false)
-        }}
-      />
     </>
   )
 }

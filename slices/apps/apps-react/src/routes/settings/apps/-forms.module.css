@@ -1,0 +1,55 @@
+/*
+ * Shared layout for the apps settings pages (list / new / detail). The `-`
+ * prefix keeps this file — and its sibling `-forms.tsx` — out of the route
+ * tree the TanStack plugin generates from this directory.
+ */
+
+.form {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* Mono uppercase eyebrow naming a group, matching the tunnel relay page. */
+.zone-label {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-1);
+  font-weight: var(--font-weight-2);
+  letter-spacing: var(--letter-spacing-5);
+  text-transform: uppercase;
+  color: var(--color-neutral-5);
+}
+
+.divider {
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--color-divider);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-5);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.error {
+  color: var(--color-red-5);
+  margin: 0;
+}
+
+/* Read-only provenance tag for system / seeded rows that can't be edited. */
+.readonly-tag {
+  color: var(--color-neutral-5);
+  text-transform: uppercase;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-1);
+  letter-spacing: var(--letter-spacing-4);
+}

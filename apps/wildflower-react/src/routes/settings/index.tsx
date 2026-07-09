@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { appsSettingsItemsFragment } from 'apps-react'
 import { databasesSettingsItemsFragment } from 'databases-react'
 import { gatekeeperSettingsItemsFragment } from 'gatekeeper-react'
 import type { JSX } from 'react'
@@ -20,6 +21,7 @@ const sliceSettingsItems: readonly SettingsItem[] = [
   ...tunnelSettingsItemsFragment,
   ...gatekeeperSettingsItemsFragment,
   ...databasesSettingsItemsFragment,
+  ...appsSettingsItemsFragment,
 ]
 
 /**

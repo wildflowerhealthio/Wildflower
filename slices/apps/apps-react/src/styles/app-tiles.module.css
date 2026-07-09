@@ -22,8 +22,13 @@
   background: var(--card-color-background);
   border: 1px solid var(--card-color-border);
   border-radius: var(--radius-4);
-  /* The whole tile is the drag handle; show the grab cursor and stop the
-   * browser's native touch-scroll from stealing the drag gesture. */
+  /* Launches on click in view mode. */
+  cursor: pointer;
+}
+
+/* Edit mode: the whole tile becomes the drag handle — show the grab cursor and
+ * stop the browser's native touch-scroll from stealing the drag gesture. */
+.app-tile--editing {
   cursor: grab;
   touch-action: none;
 }
@@ -33,6 +38,28 @@
   /* Lift the dragged tile above its siblings while it's mid-move. */
   z-index: 1;
   cursor: grabbing;
+}
+
+/* Edit-mode row: the app display grows to fill, the Hide control pins right. */
+.app-tile__editing {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  padding: var(--space-5) var(--space-7);
+}
+
+/* Non-interactive twin of `.app-tile__launch` used while editing. */
+.app-tile__display {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.app-tile__disable {
+  flex: 0 0 auto;
 }
 
 .app-tile__launch {
