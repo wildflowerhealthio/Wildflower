@@ -145,7 +145,11 @@ mod tests {
 
     /// Build a `multipart/form-data` POST with text fields and an optional file
     /// part — the shape `POST /apps` now takes for both create kinds.
-    fn post_multipart(uri: &str, fields: &[(&str, &str)], file: Option<(&str, &[u8])>) -> Request<Body> {
+    fn post_multipart(
+        uri: &str,
+        fields: &[(&str, &str)],
+        file: Option<(&str, &[u8])>,
+    ) -> Request<Body> {
         let boundary = "TESTBOUNDARY";
         let mut body: Vec<u8> = Vec::new();
         for (key, value) in fields {
@@ -166,7 +170,10 @@ mod tests {
         Request::builder()
             .method("POST")
             .uri(uri)
-            .header("content-type", format!("multipart/form-data; boundary={boundary}"))
+            .header(
+                "content-type",
+                format!("multipart/form-data; boundary={boundary}"),
+            )
             .body(Body::from(body))
             .unwrap()
     }
@@ -179,7 +186,10 @@ mod tests {
                 ("provenance", "cloud"),
                 ("name", name),
                 ("url", url),
-                ("requiresTunnel", if requires_tunnel { "true" } else { "false" }),
+                (
+                    "requiresTunnel",
+                    if requires_tunnel { "true" } else { "false" },
+                ),
             ],
             None,
         )
@@ -598,19 +608,12 @@ mod tests {
     #[tokio::test]
     async fn create_rejects_bad_url_and_empty_name() {
         let st = state();
-        let (status, body) = send(
-            &st,
-            post_create_cloud("Bad", "javascript:alert(1)", false),
-        )
-        .await;
+        let (status, body) =
+            send(&st, post_create_cloud("Bad", "javascript:alert(1)", false)).await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert_eq!(body["error"], "InvalidUrl");
 
-        let (status, body) = send(
-            &st,
-            post_create_cloud("", "https://example.com/x", false),
-        )
-        .await;
+        let (status, body) = send(&st, post_create_cloud("", "https://example.com/x", false)).await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert_eq!(body["error"], "InvalidName");
     }

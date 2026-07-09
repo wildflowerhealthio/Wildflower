@@ -91,10 +91,16 @@ fn post_create_cloud(name: &str, url: &str, requires_tunnel: bool) -> Request<Bo
         field("provenance", "cloud"),
         field("name", name),
         field("url", url),
-        field("requiresTunnel", if requires_tunnel { "true" } else { "false" }),
+        field(
+            "requiresTunnel",
+            if requires_tunnel { "true" } else { "false" }
+        ),
     );
     Request::post("/apps")
-        .header("content-type", format!("multipart/form-data; boundary={boundary}"))
+        .header(
+            "content-type",
+            format!("multipart/form-data; boundary={boundary}"),
+        )
         .body(Body::from(body))
         .expect("build")
 }

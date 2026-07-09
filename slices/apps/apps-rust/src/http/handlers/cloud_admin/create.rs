@@ -152,9 +152,11 @@ fn create_cloud(
     let url = url.ok_or_else(|| HandlerError::InvalidUrl {
         message: "url is required for a cloud app".to_owned(),
     })?;
-    let url = url.parse::<AppUrl>().map_err(|e| HandlerError::InvalidUrl {
-        message: e.to_string(),
-    })?;
+    let url = url
+        .parse::<AppUrl>()
+        .map_err(|e| HandlerError::InvalidUrl {
+            message: e.to_string(),
+        })?;
     let requires_tunnel = parse_bool_field(requires_tunnel.as_deref())?;
     let new = NewCloudApp {
         id: mint_app_id(),

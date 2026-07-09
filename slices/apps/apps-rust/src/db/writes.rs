@@ -16,8 +16,8 @@ use persistence_rust::DbResult;
 use rusqlite::params;
 
 use super::reads::{find_app_on, list_apps_on};
-use super::AppsStore;
 use super::write_inputs::{CloudContent, NewCloudApp, NewSelfHostedUpload, UploadInsertError};
+use super::AppsStore;
 use crate::domain::App;
 
 /// The smallest loopback port an uploaded app is allocated. The seed
@@ -364,9 +364,7 @@ fn next_free_port(
 
 #[cfg(test)]
 mod tests {
-    use crate::db::{
-        AppsStore, CloudContent, NewCloudApp, NewSelfHostedUpload, UploadInsertError,
-    };
+    use crate::db::{AppsStore, CloudContent, NewCloudApp, NewSelfHostedUpload, UploadInsertError};
     use crate::domain::{App, AppUrl, Provenance};
 
     fn cloud_content(name: &str, url: AppUrl) -> CloudContent {
