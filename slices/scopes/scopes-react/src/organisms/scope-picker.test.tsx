@@ -35,6 +35,33 @@ const renderDetailView = async (scopes: readonly string[]): Promise<void> => {
   await user.click(screen.getByRole('button', { name: /See exactly what/ }))
 }
 
+/**
+ * A controlled host for the **expandable** (device-authorization) mode: the draft seeds the
+ * requested scopes, but the picker may grant anything within `available`.
+ */
+const ExpandableHarness = ({
+  requested,
+  available,
+}: {
+  readonly requested: readonly string[]
+  readonly available: readonly string[]
+}): JSX.Element => {
+  const request = useMemo(
+    () => ScopeRequest.expandable({ requested, available }),
+    [requested, available]
+  )
+  const [draft, setDraft] = useState(() => GrantDraft.fromScopes(requested, null))
+  return (
+    <ScopePicker
+      subjectName="New device"
+      request={request}
+      draft={draft}
+      onDraftChange={setDraft}
+      mode="expandable"
+    />
+  )
+}
+
 describe('ScopePicker — plain statements', () => {
   it('should run the lead-ins subject → "It can also" → "…and"', () => {
     render(
@@ -131,6 +158,61 @@ describe('ScopePicker — statement wording', () => {
     render(<Harness scopes={['patient/Condition.r']} />)
     expect(screen.getByText('Conditions')).toBeDefined()
     expect(screen.queryByText(/^Condition$/)).toBeNull()
+  })
+})
+
+describe('ScopePicker — expandable mode (device authorization)', () => {
+  it('should show the subject selector and "+ Add rule"; clamped mode shows neither', () => {
+    const { unmount } = render(
+      <ExpandableHarness requested={['patient/Observation.r']} available={['system/*.cruds']} />
+    )
+    // The one-patient / all-patients subject selector (both radios).
+    expect(screen.getByRole('radio', { name: /Just this patient/ })).toBeDefined()
+    expect(screen.getByRole('radio', { name: /All patients/ })).toBeDefined()
+    // The build-up affordance.
+    expect(screen.getByRole('button', { name: '+ Add rule' })).toBeDefined()
+    unmount()
+
+    // Clamped mode: none of the expandable affordances appear.
+    render(<Harness scopes={['patient/Observation.r']} />)
+    expect(screen.queryByRole('radio', { name: /All patients/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: '+ Add rule' })).toBeNull()
+  })
+
+  it('should grant an un-requested-but-allowed scope through "+ Add rule"', async () => {
+    const user = userEvent.setup()
+    // Only Observation.r was requested; the client is allowed all of patient/*.
+    render(
+      <ExpandableHarness requested={['patient/Observation.r']} available={['system/*.cruds']} />
+    )
+
+    // Condition was never requested — it isn't a row yet.
+    expect(screen.queryByRole('checkbox', { name: /Read Condition/ })).toBeNull()
+
+    // Add the Condition rule, then read the freshly-surfaced row's Read cell.
+    await user.click(screen.getByRole('button', { name: '+ Add rule' }))
+    await user.click(screen.getByRole('option', { name: /Condition/ }))
+    const readCondition = screen.getByRole<HTMLInputElement>('checkbox', { name: /Read Condition/ })
+    expect(readCondition.getAttribute('aria-checked')).toBe('false')
+
+    // Toggling it on records the expansion in the draft.
+    await user.click(readCondition)
+    expect(
+      screen.getByRole('checkbox', { name: /Read Condition/ }).getAttribute('aria-checked')
+    ).toBe('true')
+  })
+
+  it('should switch the target FHIR context via the subject selector', async () => {
+    const user = userEvent.setup()
+    render(<ExpandableHarness requested={[]} available={['system/*.cruds']} />)
+
+    // Lands on "just this patient" (spec §9) → the FHIR section names this patient…
+    expect(
+      screen.getByRole('radio', { name: /Just this patient/ }).getAttribute('aria-checked')
+    ).toBe('true')
+    // …switching to all-patients re-homes the section to the system context.
+    await user.click(screen.getByRole('radio', { name: /All patients/ }))
+    expect(screen.getByRole('heading', { name: 'Health records — all patients' })).toBeDefined()
   })
 })
 

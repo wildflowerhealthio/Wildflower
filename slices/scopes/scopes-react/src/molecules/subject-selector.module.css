@@ -1,0 +1,11 @@
+/*
+ * The one-patient / all-patients subject radio pair. The cards themselves are
+ * styled by context-card.module.css; this only lays them out side by side.
+ */
+
+.group {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-5);
+  margin-top: var(--space-4);
+}

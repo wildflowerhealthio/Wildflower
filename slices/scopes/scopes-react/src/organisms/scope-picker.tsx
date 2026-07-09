@@ -11,17 +11,27 @@ import { Equal } from 'effect'
 import type { JSX } from 'react'
 import { useMemo, useState } from 'react'
 import { cn } from 'react-kitchen-sink'
-import { GrantDraft, Rows, Scope, ResourceSection } from 'scopes-core'
-import type { ScopeRequest } from 'scopes-core'
+import { GrantDraft, Rows, Scope, ResourceSection, ScopeRequest } from 'scopes-core'
 
+import { AddRuleButton, type AddRuleOption } from '../atoms/add-rule-button.tsx'
 import { ExclusionRow } from '../atoms/exclusion-row.tsx'
 import { FlagToggleRow } from '../atoms/flag-toggle-row.tsx'
 import { PermissionPicker } from '../molecules/permission-picker.tsx'
 import { pickerItemsFor } from '../molecules/picker-items.ts'
+import { SubjectSelector, type SubjectContext } from '../molecules/subject-selector.tsx'
 import { exclusionStatementsFrom } from './exclusion-statements.ts'
 import { PermissionGrid } from './permission-grid.tsx'
 import { PermissionStatement } from './permission-statement.tsx'
 import styles from './scope-picker.module.css'
+
+/**
+ * How the picker clamps edits. `clamped` (default) is the app-consent envelope — the grant may
+ * only be *narrowed* within `request.requested`. `expandable` is the device-authorization
+ * flow — the approver may also *add* scopes beyond what was requested, up to the client's
+ * allowed set (`request.available`), with the "+ Add rule" affordance and the one-patient /
+ * all-patients subject selector.
+ */
+type ScopePickerMode = 'clamped' | 'expandable'
 
 interface ScopePickerProps {
   /** The sentence subject of the first plain statement ("<subjectName> can …"). */
@@ -31,6 +41,8 @@ interface ScopePickerProps {
   /** The live draft — controlled; every edit lands in {@link ScopePickerProps.onDraftChange}. */
   readonly draft: GrantDraft.GrantDraft
   readonly onDraftChange: (draft: GrantDraft.GrantDraft) => void
+  /** The clamp mode — defaults to `clamped` (app consent); `expandable` for device auth. */
+  readonly mode?: ScopePickerMode
 }
 
 /** Which projection is showing — plain-language statements or the resource×interaction grid. */
@@ -68,24 +80,85 @@ const subjectPhraseFor = (subjectName: string, index: number): string => {
   return '…and'
 }
 
+/** Whether the `available` envelope grants at the FHIR `system` context (⇒ patient too). */
+const availableCoversSystem = (request: ScopeRequest.ScopeRequest): boolean =>
+  Scope.MultiScope.fhirScopes(ScopeRequest.availableOf(request)).some((scope) =>
+    scope.context.covers(Scope.Contexts.Fhir.system)
+  )
+
+/** The FHIR context a subject choice maps to (`spec.md §9`). */
+const contextFor = (subject: SubjectContext): Scope.Contexts.Fhir =>
+  subject === 'system' ? Scope.Contexts.Fhir.system : Scope.Contexts.Fhir.patient
+
+/** The subject the picker lands on: the requested FHIR context if any, else one patient (`spec.md §9`). */
+const initialSubject = (request: ScopeRequest.ScopeRequest): SubjectContext =>
+  Scope.MultiScope.fhirScopes(request.requested).some((scope) =>
+    scope.hasContext(Scope.Contexts.Fhir.system)
+  )
+    ? 'system'
+    : 'patient'
+
+/**
+ * The "+ Add rule" options for a section: the catalog resources not already `shown` (nor the
+ * `*` wildcard row). Clamped by the cell-level `available` check, so an offered resource with no
+ * grantable interaction simply renders every cell disabled.
+ */
+const addOptionsFor = (
+  section: ResourceSection.Any,
+  shown: ReadonlySet<string>
+): readonly AddRuleOption[] => {
+  const catalog =
+    section.kind === 'wildflower'
+      ? Scope.ResourceType.Wildflower.catalog
+      : Scope.ResourceType.Fhir.catalog
+  return catalog.flatMap((name) => {
+    if (shown.has(name)) return []
+    const label = section.configuration.resourceClass.parse(name)?.singularLabel() ?? name
+    return [{ name, label }]
+  })
+}
+
 const ScopePicker = ({
   subjectName,
   request,
   draft,
   onDraftChange,
+  mode = 'clamped',
 }: ScopePickerProps): JSX.Element => {
-  const sections = useMemo(() => ResourceSection.listFromRequest(request), [request])
-  // Whether FHIR scopes span more than one context level — the section titles then
-  // disambiguate ("this patient" / "your access").
-  const multipleContexts = useMemo(() => {
-    const fhirScopes = [...request.requested.fhirV1, ...request.requested.fhirV2]
-    return new Set(fhirScopes.map((scope) => scope.context.serialize())).size > 1
-  }, [request])
-  const flags = useMemo(() => Scope.Known.inCanonicalOrder(request.requested.known), [request])
-  const exclusions = useMemo(() => exclusionStatementsFrom(request), [request])
+  const isExpandable = mode === 'expandable'
 
-  const [view, setView] = useState<View>('plain')
+  const [view, setView] = useState<View>(isExpandable ? 'detail' : 'plain')
   const [openRow, setOpenRow] = useState<string | null>(null)
+  // The FHIR context new rules target — driven by the one-patient / all-patients selector.
+  const [subject, setSubject] = useState<SubjectContext>(() => initialSubject(request))
+  // Resources the user added via "+ Add rule" but hasn't toggled yet, keyed by section prefix.
+  // Held here (never as empty-permission draft scopes) so `GrantDraft.hasScopes` stays honest.
+  const [extra, setExtra] = useState<ReadonlyMap<string, readonly string[]>>(() => new Map())
+
+  // The subject selector is only meaningful when the envelope can grant at both contexts.
+  const showSubjectSelector = isExpandable && availableCoversSystem(request)
+  const activeContext = contextFor(subject)
+
+  const sections = useMemo(
+    () =>
+      isExpandable
+        ? ResourceSection.listForDraft(request, draft, extra, activeContext)
+        : ResourceSection.listFromRequest(request),
+    [isExpandable, request, draft, extra, activeContext]
+  )
+  // Whether the shown FHIR sections span more than one context level — the section titles
+  // then disambiguate ("this patient" / "your access").
+  const multipleContexts = useMemo(() => {
+    const fhirContexts = sections
+      .filter((section) => section.kind !== 'wildflower')
+      .map((section) => section.context.serialize())
+    return new Set(fhirContexts).size > 1
+  }, [sections])
+  const flags = useMemo(
+    () => Scope.Known.inCanonicalOrder(ScopeRequest.availableOf(request).known),
+    [request]
+  )
+  const exclusions = useMemo(() => exclusionStatementsFrom(request), [request])
 
   const grids = useMemo(
     () =>
@@ -95,6 +168,15 @@ const ScopePicker = ({
       })),
     [sections, draft, request]
   )
+
+  const addRule = (section: ResourceSection.Any, name: string): void => {
+    const key = ResourceSection.scopePrefix(section)
+    setExtra((previous) => {
+      const next = new Map(previous)
+      next.set(key, [...(next.get(key) ?? []), name])
+      return next
+    })
+  }
 
   const toggleCell = (
     section: ResourceSection.Any,
@@ -132,6 +214,13 @@ const ScopePicker = ({
 
   return (
     <>
+      {showSubjectSelector ? (
+        <div className={styles['section']}>
+          <p className={styles['eyebrow']}>Whose records</p>
+          <SubjectSelector value={subject} onChange={setSubject} />
+        </div>
+      ) : null}
+
       {view === 'plain' ? (
         <div className={styles['section']}>
           <p className={styles['eyebrow']}>What it&apos;s asking for</p>
@@ -145,12 +234,12 @@ const ScopePicker = ({
               const grantedNames = items
                 .filter((item) => item.state === 'on' || item.state === 'locked')
                 .map((item) => item.name)
-              const subject = subjectPhraseFor(subjectName, statementIndex)
+              const subjectPhrase = subjectPhraseFor(subjectName, statementIndex)
               statementIndex += 1
               return (
                 <PermissionStatement
                   key={rowKey}
-                  subjectPhrase={subject}
+                  subjectPhrase={subjectPhrase}
                   connector={isPatientSection(section) ? 'your' : undefined}
                   verbText={grantedNames.length === 0 ? 'not access' : grantedNames.join(' · ')}
                   resourceLabel={label}
@@ -174,22 +263,34 @@ const ScopePicker = ({
         </div>
       ) : (
         <div className={styles['section']}>
-          {grids.map(({ section, rows }) => (
-            <PermissionGrid
-              key={ResourceSection.scopePrefix(section)}
-              title={sectionTitle(section, multipleContexts)}
-              chip={sectionChip(section)}
-              section={section}
-              rows={rows}
-              onToggleItem={(resource, itemId) => {
-                toggleCell(section, resource, itemId)
-              }}
-              wildcardNote={
-                rows.some((row) => row.isWildcard)
-                  ? 'Covers all current and future record types.'
-                  : undefined
-              }
-            />
+          {grids.map((grid) => (
+            <div key={ResourceSection.scopePrefix(grid.section)}>
+              <PermissionGrid
+                title={sectionTitle(grid.section, multipleContexts)}
+                chip={sectionChip(grid.section)}
+                section={grid.section}
+                rows={grid.rows}
+                onToggleItem={(resource, itemId) => {
+                  toggleCell(grid.section, resource, itemId)
+                }}
+                wildcardNote={
+                  grid.rows.some((row) => row.isWildcard)
+                    ? 'Covers all current and future record types.'
+                    : undefined
+                }
+              />
+              {isExpandable ? (
+                <AddRuleButton
+                  options={addOptionsFor(
+                    grid.section,
+                    new Set(grid.rows.map((row) => row.resource.serialize()))
+                  )}
+                  onAdd={(name) => {
+                    addRule(grid.section, name)
+                  }}
+                />
+              ) : null}
+            </div>
           ))}
         </div>
       )}
@@ -215,7 +316,7 @@ const ScopePicker = ({
         </div>
       ) : null}
 
-      {flags.length > 0 || request.requested.unknown.length > 0 ? (
+      {flags.length > 0 || ScopeRequest.availableOf(request).unknown.length > 0 ? (
         <div className={styles['section']}>
           <p className={styles['eyebrow']}>Sign-in &amp; app basics</p>
           {flags.map((flag) => (
@@ -229,7 +330,7 @@ const ScopePicker = ({
               }}
             />
           ))}
-          {request.requested.unknown.map((scope) => (
+          {ScopeRequest.availableOf(request).unknown.map((scope) => (
             <FlagToggleRow
               key={scope.serialize()}
               label={scope.serialize()}
@@ -246,4 +347,4 @@ const ScopePicker = ({
   )
 }
 
-export { ScopePicker, type ScopePickerProps }
+export { ScopePicker, type ScopePickerProps, type ScopePickerMode }
