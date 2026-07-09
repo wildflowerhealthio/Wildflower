@@ -18,9 +18,9 @@ The slice used to carry `emr-core`, a LiveStore-backed domain layer (tables, eve
 
 ## Contract with the server (no automated drift guard)
 
-Unlike other slices there is **no** OpenAPI-snapshot drift pair between the TS `HttpApi` definition and the Rust server, because `emr-rust` mounts HFS's router wholesale rather than hand-authoring `utoipa` routes. The `HttpApi` describes the standard FHIR R4 REST subset the app uses; HFS implements standard FHIR R4. If either side changes, sync is manual — see the [Capability Statement](../fhir-r4/docs/Capability%20Statement.md) for the catalogued gaps.
+Unlike other slices there is **no** OpenAPI-snapshot drift pair between the TS `HttpApi` definition and the Rust server, because `emr-rust` mounts HFS's router wholesale rather than hand-authoring `utoipa` routes. The `HttpApi` describes the standard FHIR R4 REST subset the app uses; HFS implements standard FHIR R4. If either side changes, sync is manual — see the [Client Capabilities Reference](../fhir-r4/docs/Client%20Capabilities%20Reference.md) for the catalogued client-side gaps.
 
 ## References
 
-- [Capability Statement](../fhir-r4/docs/Capability%20Statement.md)
+- [Client Capabilities Reference](../fhir-r4/docs/Client%20Capabilities%20Reference.md)
 - [Effect Patterns Reference](../../../docs/Effect/Patterns%20Reference.md)

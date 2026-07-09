@@ -1,10 +1,10 @@
-# FHIR R4 Capability Statement (gaps and gotchas)
+# FHIR R4 Client Capabilities (gaps and gotchas)
 
-This is an **internal scratch doc** — not a published FHIR `CapabilityStatement` resource. It exists so we don't lose track of places where `slices/emr/fhir-r4/` deviates from, narrows, or postpones the FHIR R4 spec. None of these are blockers; they are simply not implemented yet.
+This is an **internal scratch doc** — not a published FHIR `CapabilityStatement` resource, and **not a description of the server**. It catalogues the capabilities and gaps of the **`fhir-r4` TypeScript client** in `slices/emr/`: what its wire schemas validate and what its `HttpApi` description (and therefore the typed client) declares. Every entry is scoped to that client layer.
 
-Scope note: since the server moved to the off-the-shelf HFS Rust server (`emr-rust`), the entries here describe the **TypeScript schema/client layer** — what the wire schemas validate and what the `HttpApi` description declares. Server behaviour (validation, search, pagination) is owned by HFS.
+Server behaviour — validation, search, pagination, conformance — is **out of scope here**. The server is the off-the-shelf HFS Rust server embedded by `emr-rust` and mounted at `/fhir-r4`; it lives outside this slice's TypeScript surface and keeps no capability catalogue of its own (HFS implements standard FHIR R4). The client is hand-synchronized to what HFS serves — see "No drift guard against the HFS server" below.
 
-When a deviation is fixed, delete or amend the entry. When a new gap is introduced (or noticed), add one.
+Each entry is a place where the client deviates from, narrows, or postpones the FHIR R4 spec. None are blockers; they are simply not implemented in the client yet. When a deviation is fixed, delete or amend the entry. When a new gap is introduced (or noticed), add one.
 
 ## No drift guard against the HFS server
 
