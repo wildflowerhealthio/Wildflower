@@ -1,18 +1,8 @@
-//! Copying vendored self-hosted app builds into the runtime app-data directory.
-//!
-//! The self-hosted apps served from the device are vendored builds living under
-//! `slices/apps/self-hosted-apps/<app>/` in the source tree (gitignored, so
-//! absent on a fresh clone and in CI). At runtime they must sit under the host's
-//! `<app-data>/self-hosted-apps/<app>/` directory, where the serving layer reads
-//! them live. [`sync_vendored_self_hosted_apps`] mirrors them across:
-//!
-//!  - **dev** (`overwrite = true`): every startup remaps each source app folder,
-//!    so a rebuilt vendored app always refreshes on disk;
-//!  - **prod** (`overwrite = false`): first-run copy-if-missing from the bundled
-//!    resources, so a user's uploaded apps and any manual refresh are never
-//!    clobbered.
-//!
-//! Both tolerate a missing source root (the CI/fresh-clone case) as a no-op.
+//! Copying vendored self-hosted app builds into the runtime app-data directory
+//! at host startup. The builds are gitignored (absent on a fresh clone / CI), so
+//! the sync is a no-op when the source root is missing. See the "Seeding vendored
+//! builds" section of `docs/Apps/Store and Install Explanation.md` for the
+//! dev-overwrite vs. release-copy-if-missing model.
 
 use std::fs;
 use std::io;

@@ -218,13 +218,8 @@ struct SelfHostedTarget {
 /// so the cookie `Domain` can't drift from the redirect target — see
 /// `docs/Origins/Explanation.md`). A forwarded launch with **no** `public_host`
 /// configured has no reachable target, so it `503 LaunchUnavailable`s rather than
-/// handing back loopback.
-///
-/// A bundle that shipped a `launch.html` carries a
-/// [`launch_path`](SelfHostedApp::launch_path): the target becomes `/launch.html?…`
-/// hung off that app origin, with `{origin}` substituted to the *served* (FHIR)
-/// origin — a different origin from the per-app base — and `{launch}` to a fresh
-/// nonce. Without one, the bare origin is returned (root → `index.html`).
+/// handing back loopback. Any `launch_path` is applied by
+/// [`SelfHostedApp::render_launch`].
 fn render_self_hosted_target(
     child: &SelfHostedApp,
     state: &AppsState,

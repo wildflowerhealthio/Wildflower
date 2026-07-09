@@ -1,24 +1,20 @@
-//! `POST /apps` — register a new app, cloud or self-hosted.
-//!
-//! The body is `multipart/form-data` discriminated on `provenance` (mirroring
-//! the `PUT /apps/{id}` replace union):
+//! `POST /apps` — register a new app, cloud or self-hosted. The body is
+//! `multipart/form-data` discriminated on `provenance` (mirroring the
+//! `PUT /apps/{id}` replace union):
 //!
 //!   * **cloud** — `name`, `url` (parsed through the write-side [`AppUrl`] filter
-//!     so an open redirect never lands in the row), `requiresTunnel` (the form
-//!     field is the text `"true"` / `"false"`), optional `subtitle`. Mints a
-//!     fresh random id, appends at the next display position.
+//!     so an open redirect never lands in the row), `requiresTunnel` (the text
+//!     `"true"` / `"false"`), optional `subtitle`;
 //!   * **self-hosted** — `name`, optional `subtitle`, and the uploaded `bundle`
-//!     (a zip of the app's static files). Slugs the name into the id/subdomain,
-//!     extracts + stages the bundle, allocates a loopback port, and brings the
-//!     listener online. See [`install`] for the extraction pipeline, careful to
-//!     never leave a half-installed app behind (staging → move-into-place →
-//!     insert → start, cleaning up on any failure).
+//!     (a zip). Runs the staged install (extract → move → insert → start) — see
+//!     `docs/Apps/Store and Install Explanation.md` §"The self-hosted upload
+//!     pipeline".
 //!
 //! Form fields cross the wire as text and the file rides its own part, so the
 //! handler reads the [`Multipart`] parts by hand ([`CreateAppMultipart`]
 //! documents the shape for OpenAPI). Both arms return the new catalogue
-//! [`AppListEntry`], read back inside the insert's transaction, so the editor
-//! renders the tile without a re-list.
+//! [`AppListEntry`], read back in-txn, so the editor renders the tile without a
+//! re-list.
 
 use std::sync::Arc;
 
@@ -168,8 +164,8 @@ fn create_cloud(
             requires_tunnel,
         },
     };
-    // The returned `App` was read back inside the insert's own transaction, so
-    // projecting it is exactly the `GET /apps` shape with no second read.
+    // The returned `App` was read back in-txn, so projecting it is exactly the
+    // `GET /apps` shape with no second read.
     let app = state
         .store
         .insert_cloud_app(&new)
@@ -183,10 +179,10 @@ fn create_cloud(
     Ok(AppListEntry::from(&app))
 }
 
-/// Install a self-hosted app from the uploaded `bundle`. Mirrors the previous
-/// dedicated upload route: extract off-runtime, move into place before the row
-/// is committed, insert (allocating slug + port), then bring the listener
-/// online. Any failure cleans up the staged/serving folder.
+/// Install a self-hosted app from the uploaded `bundle` via the staged install:
+/// extract off-runtime, move into place before the row is committed, insert
+/// (allocating slug + port), then bring the listener online — cleaning up on any
+/// failure. See `docs/Apps/Store and Install Explanation.md`.
 async fn create_self_hosted(
     state: &AppsState,
     name: String,
@@ -201,11 +197,9 @@ async fn create_self_hosted(
     })?;
 
     let apps_dir = state.self_hosted.apps_dir().to_path_buf();
-    // A fresh mint per upload names BOTH the private staging dir and the final
-    // serving folder (the row's `content_folder`). Because the mint is unique
-    // per install, the final folder can never collide with a leftover from a
-    // failed delete — and the files can move into place *before* the row is
-    // committed, so a committed row always points at present files.
+    // A fresh mint per upload names both the staging dir and the final serving
+    // folder (the row's `content_folder`) — see the content-folder section of
+    // `docs/Apps/Store and Install Explanation.md`.
     let folder = mint_app_id();
     let staging = apps_dir.join(".staging").join(&folder);
 
@@ -233,10 +227,9 @@ async fn create_self_hosted(
         }
     };
 
-    // Move the extracted files into their serving location BEFORE the DB insert
-    // — the mint-named destination is fresh, so the rename can't hit a non-empty
-    // dir, and no committed row can ever point at absent files. A crash right
-    // after this leaks only an unreferenced folder (no row → never served).
+    // Move the extracted files into their serving location BEFORE the DB insert,
+    // so a committed row always points at present files (a crash after this leaks
+    // only an unreferenced folder — no row, never served).
     let dest = apps_dir.join(&folder);
     if let Err(error) = std::fs::rename(&staging, &dest) {
         remove_staging(&staging);
@@ -289,11 +282,10 @@ async fn create_self_hosted(
         ));
     };
 
-    // Bring it online now. `start` swallows bind failures internally (the row is
-    // committed and the files are in place, so the app comes up on the next
-    // restart) — the only error it propagates is a poisoned shared lock, where
-    // the reverse-proxy registration did NOT happen and won't self-heal on
-    // restart. That is a real fault: surface it rather than report success.
+    // Bring it online now. `start` swallows bind failures (the row is committed
+    // and files are in place, so it comes up on the next restart); the only error
+    // it propagates is a poisoned lock, where reverse-proxy registration did NOT
+    // happen and won't self-heal. That's a real fault — surface it.
     if let Err(error) = state.self_hosted.start(&app.id, child).await {
         return Err(HandlerError::internal(
             "installed self-hosted app failed to register",

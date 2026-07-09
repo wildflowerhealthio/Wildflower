@@ -81,29 +81,17 @@ const SelfHostedLaunchPathEditor = ({ app }: { readonly app: SelfHostedEntry }):
 /**
  * Modal editor for the apps list. The enable-toggle is exposed for **every**
  * provenance — it persists through `PUT /home-screen` (the single writer of
- * order + `enabled`, all provenances) by re-PUTting the whole list with the one
- * flag flipped; reordering itself lives on the homescreen drag. Removal is gated
- * on each row's `removable` flag (computed server-side): cloud apps and uploaded
- * self-hosted apps get a `Remove` button, while system apps and the seeded
- * self-hosted apps show a read-only provenance tag beside their toggle instead.
- * The editor also installs new apps: cloud apps via the "Add app" URL form, and
- * self-hosted apps via the "Add self-hosted app" zip upload. Writes are issued
- * through the slice's TanStack Query mutations, which invalidate the cached apps
- * list on success — the parent screen re-renders with the new data without any
- * prop drilling.
+ * order + `enabled`) by re-PUTting the whole list with the one flag flipped;
+ * reordering itself lives on the homescreen drag. Removal is gated on each row's
+ * server-computed `removable` flag: cloud + uploaded self-hosted apps get a
+ * `Remove` button, system + seeded self-hosted apps show a read-only provenance
+ * tag instead. The editor also installs new apps (cloud via the URL form,
+ * self-hosted via the zip upload). Writes go through the slice's TanStack Query
+ * mutations, which invalidate the cached list on success.
  *
- * Every input lives inside a `<fieldset disabled={busy}>` so the entire
- * form locks during an in-flight write, not just the submit button. `busy`
- * folds in {@link useIsMutating} for the shared home-screen key, so a toggle is
- * disabled not only during this editor's own writes but also while the home
- * screen's drag-reorder PUT is still landing — without that, toggling would
- * re-PUT the pre-reorder `apps` order and silently revert the just-made drag.
- *
- * The host `Dialog` (react-tundraish) keeps its children mounted while
- * closed, so the mutations' `error` state would otherwise persist and a
- * stale error would reappear on the next open. An effect keyed on `open`
- * resets every mutation (and clears both new-app forms' fields) whenever the
- * dialog transitions to open, so each open starts from a clean slate.
+ * The whole form locks during any in-flight write (see `busy`), and a
+ * mount-persisting `Dialog` means each open resets the mutations and forms (see
+ * the open-transition effect).
  */
 const AppsEditor = ({ open, apps, onClose }: AppsEditorProps): JSX.Element => {
   const homeScreenMutation = useReplaceHomeScreenMutation()
@@ -235,14 +223,9 @@ const AppsEditor = ({ open, apps, onClose }: AppsEditorProps): JSX.Element => {
                   ) : null}
                 </div>
                 {/*
-                 * The enable toggle is shown for every provenance — `enabled` is
-                 * homescreen curation, persisted via `PUT /home-screen`, which
-                 * accepts all provenances. A `Remove` button shows only when the
-                 * server marks the row `removable` (cloud apps + uploaded
-                 * self-hosted apps); a non-removable row (system + seeded
-                 * self-hosted, which the admin surface `409`s) shows a read-only
-                 * provenance tag in its place so the user can see why it can't be
-                 * removed.
+                 * Enable toggle for every provenance (persisted via
+                 * `PUT /home-screen`); a `Remove` button only when the row is
+                 * `removable`, else a read-only provenance tag.
                  */}
                 <div className={editorStyles['apps-editor__row-actions']}>
                   <Checkbox

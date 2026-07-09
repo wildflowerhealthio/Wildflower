@@ -308,15 +308,15 @@ async fn run_server(
         layer_router_with_gatekeeper_auth_gating(tunnel.router, gatekeeper.state.clone(), &[]);
 
     // The apps catalogue surface. `GET /apps` (list), the cloud-admin write
-    // surface (POST/PATCH/DELETE), and `PATCH /apps/{id}/placement` are
-    // owner-gated through the gatekeeper (`apps.gated_router`, below). The launch
-    // route `POST /apps/{id}` (`apps.launch_router`) is merged ungated at the
-    // router level: a loopback launch is owner-gated in-handler via `owner_auth`,
-    // a forwarded launch rides the front trust boundary. A `requires_tunnel`
-    // launch resolves to the tunnel's verified origin through the tunnel service
-    // (or fails 503 LaunchUnavailable when the tunnel can't be brought up). The
-    // apps slice derives the launch origin and the self-hosted listeners'
-    // hostname from `loopback_base_url`, so they can't drift.
+    // surface (POST/PUT/DELETE /apps), and `PUT /home-screen` are owner-gated
+    // through the gatekeeper (`apps.gated_router`, below). The launch route
+    // `POST /apps/{id}` (`apps.launch_router`) is merged ungated at the router
+    // level: a loopback launch is owner-gated in-handler via `owner_auth`, a
+    // forwarded launch rides the front trust boundary. A `requires_tunnel` launch
+    // resolves to the tunnel's verified origin through the tunnel service (or
+    // fails 503 LaunchUnavailable when the tunnel can't be brought up). The apps
+    // slice derives the launch origin and the self-hosted listeners' hostname
+    // from `loopback_base_url`, so they can't drift.
     let apps_config = AppsConfig {
         loopback_base_url: loopback_base_url.clone(),
     };
@@ -354,11 +354,9 @@ async fn run_server(
         );
     }
 
-    // Refresh the vendored self-hosted app builds into the serving dir. Dev
-    // (debug): overwrite-mirror from the workspace source tree, so a rebuilt
-    // vendored app always refreshes. Release: copy-if-missing from the bundled
-    // resources, so a user's uploads and manual refreshes are never clobbered.
-    // Both tolerate the gitignored builds being absent (CI / fresh clone).
+    // Refresh the vendored self-hosted app builds into the serving dir — dev
+    // overwrite-mirrors from the workspace source tree, release copies-if-missing
+    // from the bundled resources (see `apps_rust::sync_vendored_self_hosted_apps`).
     let (vendored_source, overwrite_vendored) = if cfg!(debug_assertions) {
         (
             std::path::PathBuf::from(concat!(

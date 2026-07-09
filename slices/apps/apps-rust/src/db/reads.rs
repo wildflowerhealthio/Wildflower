@@ -25,12 +25,11 @@ const APP_COLUMNS: &str = "a.id, a.name, a.subtitle, a.enabled, a.position, a.lo
 /// Decode one [`APP_COLUMNS`] row into a whole [`App`], dispatching the kind
 /// payload on the stored `provenance`.
 ///
-/// A `cloud` / `self-hosted` parent whose child row is missing reads `NULL`
-/// into a non-nullable payload field and surfaces as a typed
-/// [`rusqlite::Error::InvalidColumnType`] — a logged 500 at the handler seam,
-/// never a partial `App`. This is the single enforcement point of the
-/// parent-implies-child invariant (the handlers used to re-check it per call
-/// site).
+/// The single enforcement point of parent-implies-child: a `cloud` /
+/// `self-hosted` parent whose child row is missing reads `NULL` into a
+/// non-nullable payload field and surfaces as a typed
+/// [`rusqlite::Error::InvalidColumnType`] (a logged 500 at the handler seam),
+/// never a partial `App`. See `docs/Apps/Store and Install Explanation.md`.
 pub(super) fn app_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<App> {
     let kind = match row.get::<_, Provenance>("provenance")? {
         Provenance::System => AppKind::System,

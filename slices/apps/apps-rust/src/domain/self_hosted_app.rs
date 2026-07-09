@@ -14,11 +14,10 @@
 /// binding and launch-render inputs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SelfHostedApp {
-    /// The loopback TCP port the host binds this app on. Combined with the
-    /// host-supplied loopback hostname at read time to produce the
-    /// `http://{host}:{port}/` launch target. The host is the source of truth
-    /// for the binding; the column makes the port stable across reinstalls (a
-    /// SMART-on-FHIR origin-stability property).
+    /// The loopback TCP port the host binds this app on, combined with the
+    /// loopback hostname at read time into the `http://{host}:{port}/` launch
+    /// target. The column keeps the port stable across reinstalls — see the
+    /// port-allocation section of `docs/Apps/Store and Install Explanation.md`.
     pub port: u16,
     /// The on-disk subdirectory (under the host's `self-hosted-apps/` dir) whose
     /// files this app serves, e.g. `patient-browser`. Explicit rather than
@@ -33,14 +32,10 @@ pub struct SelfHostedApp {
     /// `409 AppNotEditable`), `false` for one uploaded at runtime (removable).
     pub seeded: bool,
     /// The origin-relative launch path inferred at install (see
-    /// `crate::install::infer_launch_path`), or `None` when the bundle ships
-    /// no `launch.html` and is served from its bare root (`index.html`).
-    ///
-    /// When present it carries the SMART launcher path and the same
-    /// `{origin}` / `{launch}` placeholders the cloud templates use — e.g.
-    /// `/launch.html?launch={launch}&iss={origin}/fhir-r4`. [`Self::render_launch`]
-    /// substitutes them at launch: `{origin}` is the *served* (FHIR) origin the
-    /// caller reaches, while the path itself hangs off the app's *own* origin.
+    /// `crate::install::infer_launch_path`), or `None` for a root-served
+    /// (`index.html`) bundle. When present it's a SMART launcher template with the
+    /// same `{origin}` / `{launch}` placeholders the cloud `url` uses, substituted
+    /// per request by [`Self::render_launch`]. See `docs/Apps/Explanation.md`.
     pub launch_path: Option<String>,
 }
 
@@ -67,16 +62,12 @@ impl SelfHostedApp {
 
     /// Render the concrete launch target for a request.
     ///
-    /// `app_base` is this app's own launch origin *with* its trailing slash —
-    /// the loopback [`Self::launch_url`] or the [`Self::subdomain_url`] the
-    /// launch handler already resolves from the request's provenance.
-    /// `served_origin` is the origin the caller reaches the *host's* API on
-    /// (loopback `http://127.0.0.1:8080` or the public host), substituted for
-    /// `{origin}` — the FHIR `iss` target, which is a different origin from the
-    /// per-app `app_base`. `launch_nonce` is substituted for `{launch}`.
-    ///
-    /// With no [`Self::launch_path`] the target is the bare `app_base` (the
-    /// app's root → `index.html`), unchanged from before this field existed.
+    /// `app_base` is this app's own launch origin *with* trailing slash (the
+    /// loopback [`Self::launch_url`] or the [`Self::subdomain_url`] the handler
+    /// resolves from the request). `served_origin` substitutes `{origin}` — the
+    /// FHIR `iss` target, a *different* origin from `app_base` — and `launch_nonce`
+    /// substitutes `{launch}`. With no [`Self::launch_path`] the target is the bare
+    /// `app_base` (the app's root → `index.html`).
     #[must_use]
     pub fn render_launch(&self, app_base: &str, served_origin: &str, launch_nonce: &str) -> String {
         let Some(template) = &self.launch_path else {

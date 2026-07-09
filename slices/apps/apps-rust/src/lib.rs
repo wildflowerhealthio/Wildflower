@@ -27,8 +27,9 @@
 //!    plus both child tables) built on the shared `persistence-rust` primitives.
 //!  - [`http`] — the slice's routers. `GET /apps` lists the registry in display
 //!    order; `POST /apps/{id}` dispatches the launch on the row's provenance; the
-//!    cloud-admin routes mutate a cloud app's content; `PUT /home-screen`
-//!    atomically reorders / enables any app.
+//!    cloud-admin routes create / replace / delete app content (cloud and
+//!    uploaded self-hosted); `PUT /home-screen` atomically reorders / enables any
+//!    app.
 //!
 //! ## Launch / tunnel seam
 //!

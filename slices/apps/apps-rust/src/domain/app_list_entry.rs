@@ -1,21 +1,11 @@
 //! `AppListEntry` — the app-catalogue wire shape, a **union discriminated on
-//! `provenance`**. It backs `GET /apps` and `PUT /home-screen`, and is also the
-//! create / replace response for every kind (`POST /apps` create — cloud or
-//! self-hosted — and `PUT /apps/{id}` replace).
-//!
-//! The shape mirrors the database: the shared fields are the parent `apps`
-//! registry row (`id`, `name`, `subtitle`, `enabled`, `local_only`, plus the
-//! computed `smart` / `removable`); each variant adds the fields from its typed
-//! child table — `cloud_apps` contributes the launch `url` template and
-//! `requires_tunnel`; `self_hosted_apps` contributes the `launch_path`. System
-//! apps have no child table and add nothing.
-//!
-//! Both the cloud `url` and the self-hosted `launch_path` are **stored,
-//! origin-independent templates** (they carry `{origin}` / `{launch}`
-//! placeholders the launch handler substitutes per request) — not
-//! request-time-resolved launch URLs. That's why they're safe to expose on a
-//! read shape: a client can display / edit the template without it ever being a
-//! concrete redirect target. See `docs/Apps/Explanation.md`.
+//! `provenance`**, mirroring the database: shared parent-row fields plus each
+//! variant's typed child-table fields (`cloud` adds the `url` template +
+//! `requires_tunnel`, `self-hosted` adds `launch_path`, `system` adds nothing).
+//! It backs `GET /apps` and `PUT /home-screen` and is every create / replace
+//! response. The exposed `url` / `launch_path` are stored, origin-independent
+//! templates (never request-resolved URLs) — see `docs/Apps/Explanation.md`
+//! §"The catalogue is a `provenance`-discriminated union".
 
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;

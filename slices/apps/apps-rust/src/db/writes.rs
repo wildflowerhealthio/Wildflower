@@ -1,14 +1,11 @@
 //! The store's write side. Every mutator is one transaction over the parent
 //! `apps` row and (where the kind has one) its child table, takes a
-//! [`specs`](crate::domain) struct rather than loose scalars, and — for the
-//! create / replace operations — returns the hydrated [`App`] re-read *inside
-//! that same transaction* (see [`find_app_on`](super::reads::find_app_on)), so
-//! a handler's response can never drift from the stored state.
-//!
-//! Kind and seeded *policy* gating (which kinds an HTTP surface may touch)
-//! stays in the handlers, which already hold the whole [`App`]; the SQL here
-//! only guards its own invariants (e.g. a content replace matches
-//! `provenance = 'cloud'` so a mis-targeted id is a no-op `None`).
+//! [`write_inputs`](super::write_inputs) spec rather than loose scalars, and —
+//! for create / replace — returns the hydrated [`App`] re-read *inside that same
+//! transaction* (via [`find_app_on`](super::reads::find_app_on)). The
+//! transaction discipline (in-txn read-back, in-txn allocation, single writer of
+//! order/enabled) and why policy gating stays in the handlers are explained in
+//! `docs/Apps/Store and Install Explanation.md` §"Transaction discipline".
 
 use std::collections::HashSet;
 
@@ -20,22 +17,19 @@ use super::write_inputs::{CloudContent, NewCloudApp, NewSelfHostedUpload, Upload
 use super::AppsStore;
 use crate::domain::App;
 
-/// The smallest loopback port an uploaded app is allocated. The seed
-/// (patient-browser) sits at 8081, so uploads start one above it; the host's own
-/// loopback API port is passed in as a reserved port and skipped.
+/// The smallest loopback port an uploaded app is allocated — one above the
+/// seeded patient-browser at 8081. See the port-allocation section of
+/// `docs/Apps/Store and Install Explanation.md`.
 const MIN_UPLOAD_PORT: i64 = 8082;
 
-/// Attempts at suffixing a base slug (`-2`, `-3`, …) before giving up. A clash
-/// past this many candidates is treated as "couldn't allocate a unique slug".
+/// Attempts at suffixing a base slug (`-2`, `-3`, …) before reporting
+/// [`UploadInsertError::SlugSpaceExhausted`].
 const MAX_SLUG_ATTEMPTS: u32 = 50;
 
 impl AppsStore {
     /// Insert a fresh cloud app: the parent registry row (`provenance = 'cloud'`,
     /// not local-only, no `client_id`, enabled) AND its `cloud_apps` child, in
-    /// one transaction. The new row is appended at `MAX(position) + 1`, computed
-    /// **inside** the transaction so two overlapping creates can't both read the
-    /// same next position and collide (the `UNIQUE(position)` constraint
-    /// backstops it regardless).
+    /// one transaction, appended at the next display position.
     ///
     /// Returns `Ok(None)` when the id is already taken (the parent
     /// `INSERT … ON CONFLICT(id) DO NOTHING` affects 0 rows → roll back so no
@@ -73,26 +67,19 @@ impl AppsStore {
     /// (`provenance = 'self-hosted'`, `local_only = 1`, `enabled = 1`) AND its
     /// `self_hosted_apps` child (`seeded = 0`), in one transaction.
     ///
-    /// The [`base_slug`](NewSelfHostedUpload::base_slug) is made unique against
-    /// **both** the parent `apps.id` and the `self_hosted_apps.subdomain` by
-    /// suffixing `-2`, `-3`, … (up to [`MAX_SLUG_ATTEMPTS`]), with every
-    /// candidate capped to the 63-char DNS label limit (see
-    /// [`slug_candidate`]) — the slug is the public subdomain, so an
-    /// over-long label would break forwarded routing. The chosen slug becomes
-    /// the row's `id` and `subdomain`; the
+    /// The final slug (unique against both `apps.id` and
+    /// `self_hosted_apps.subdomain`, kept a valid DNS label — see
+    /// [`slug_candidate`]) becomes the row's `id` and `subdomain`; the
     /// [`content_folder`](NewSelfHostedUpload::content_folder) is recorded
-    /// verbatim from the spec (the caller's staging mint id — see the field's
-    /// doc for why it is not the slug). The port is the **lowest** free one at
-    /// or above [`MIN_UPLOAD_PORT`] (freed ports are reused, keeping loopback
-    /// origins as stable as possible across delete/reinstall), skipping any
-    /// [`reserved_ports`](NewSelfHostedUpload::reserved_ports); the position is
-    /// appended at `MAX(position) + 1`. All three are computed **inside** the
-    /// transaction so overlapping creates can't collide.
+    /// verbatim from the spec. The port is the lowest free one from
+    /// [`next_free_port`]. Slug, port, and position are all allocated **inside**
+    /// the transaction — see the slug/port sections of
+    /// `docs/Apps/Store and Install Explanation.md`.
     ///
     /// Returns `Ok(Err(_))` — nothing written — when the slug attempts or the
-    /// port space are exhausted; the two are distinguished so the handler can
-    /// answer accurately ([`UploadInsertError`]). Otherwise the inserted whole
-    /// [`App`] read back in-txn.
+    /// port space are exhausted, distinguished by [`UploadInsertError`] so the
+    /// handler can answer accurately. Otherwise the inserted whole [`App`] read
+    /// back in-txn.
     ///
     /// # Errors
     ///
@@ -152,9 +139,7 @@ impl AppsStore {
 
     /// Replace a cloud app's *content*: the parent's `name` / `subtitle` and the
     /// child's `url` / `requires_tunnel`, in one transaction. **Never touches
-    /// `enabled`** — homescreen curation (`PUT /home-screen`) is the single
-    /// writer of that column, so a content replace simply omits it and no
-    /// read-modify-write is needed anywhere.
+    /// `enabled`** — that column has a single writer (`PUT /home-screen`).
     ///
     /// Returns `Ok(None)` when no cloud app has this id (the parent
     /// `UPDATE … WHERE id = ? AND provenance = 'cloud'` matched no row — an
@@ -241,14 +226,9 @@ impl AppsStore {
     /// isn't an exact permutation of the live registry — the caller maps that to
     /// `400 InvalidHomeScreen`.
     ///
-    /// Validating against the live ids **inside** the transaction (rather than a
-    /// separate read the handler did before) closes the window where a concurrent
-    /// create/delete could land between the check and the renumber. Because every
-    /// row is renumbered to its array index under one transaction, positions stay
-    /// a dense `0..n` permutation (no duplicate or gapped positions) and a reorder
-    /// can't be observed half-applied. This is the single writer of
-    /// `position`/`enabled` across every kind; `PUT /home-screen` is its
-    /// sole caller.
+    /// The sole writer of `position` / `enabled` across every kind, validating and
+    /// renumbering under one transaction — see the single-writer section of
+    /// `docs/Apps/Store and Install Explanation.md`.
     ///
     /// # Errors
     ///
@@ -278,13 +258,11 @@ impl AppsStore {
 
         {
             // Move every row to a disjoint negative range first so the per-row
-            // renumber below never transiently collides with `UNIQUE(position)`
-            // (SQLite's UNIQUE is immediate, not deferrable): originals are `>= 0`
-            // and `-1 - position` is `<= -1`, so the two ranges never overlap.
+            // renumber below never transiently violates `UNIQUE(position)`
+            // (SQLite's UNIQUE is immediate, not deferrable).
             tx.execute("UPDATE apps SET position = -1 - position", [])?;
-            // Prepared once and reused across rows — `tx.execute` would re-parse
-            // and re-plan the UPDATE on every iteration. The block scopes the
-            // statements so they drop before `commit()` consumes the transaction.
+            // Prepared once and reused across rows (the block scopes it to drop
+            // before `commit()` consumes the transaction).
             let mut update_app_statement =
                 tx.prepare("UPDATE apps SET position = ?2, enabled = ?3 WHERE id = ?1")?;
             for (position, (id, enabled)) in entries.iter().enumerate() {
@@ -312,13 +290,11 @@ fn next_position(tx: &rusqlite::Transaction<'_>) -> DbResult<i64> {
     )
 }
 
-/// The attempt-`N` slug candidate: the base itself first, then
-/// `{base}-{attempt}` — with every candidate kept a valid DNS label (≤ 63
-/// chars, no trailing `-`). The suffix is budgeted first and the base
-/// truncated to fit, because the result is stored verbatim as the public
-/// `subdomain`: an over-long label would silently break
-/// `<subdomain>.<public_host>` routing and TLS. The base is `slugify` output
-/// (ASCII), so char truncation is byte truncation.
+/// The attempt-`N` slug candidate: the base itself first, then `{base}-{attempt}`,
+/// kept a valid DNS label (≤ 63 chars, no trailing `-`) — the suffix is budgeted
+/// first and the base truncated to fit. See the slug-allocation section of
+/// `docs/Apps/Store and Install Explanation.md` for why the label limit matters.
+/// The base is `slugify` output (ASCII), so char truncation is byte truncation.
 fn slug_candidate(base: &str, attempt: u32) -> String {
     if attempt == 1 {
         return base.to_owned();
@@ -334,18 +310,13 @@ fn slug_candidate(base: &str, attempt: u32) -> String {
     format!("{head}{suffix}")
 }
 
-/// The **lowest** *unallocated* loopback port in `MIN_UPLOAD_PORT..=max_port`,
-/// skipping ports already handed to other rows and `reserved_ports` (the host
-/// loopback port). "Unallocated" means only that we haven't assigned it to an
-/// app — it is not a liveness check, so the OS may still have the port in use
-/// by some unrelated process; binding is what ultimately proves it free.
-/// Reusing released ports (rather than `MAX(port) + 1`) keeps a delete →
-/// same-bundle-reinstall cycle on its original port where possible — a
-/// SMART-on-FHIR origin-stability property. `None` when the whole range is
-/// allocated (unreachable in practice —
-/// it needs tens of thousands of installed apps; `max_port` is parameterized
-/// only so tests can exercise exhaustion). Computed on the open transaction so
-/// it can't race a concurrent insert.
+/// The **lowest** unallocated loopback port in `MIN_UPLOAD_PORT..=max_port`,
+/// skipping ports already handed to other rows and `reserved_ports`. Lowest-free
+/// (not `MAX+1`) reuses released ports to keep origins stable across reinstall —
+/// see the port-allocation section of `docs/Apps/Store and Install Explanation.md`.
+/// "Unallocated" is not a liveness check (only binding proves a port free). `None`
+/// when the range is exhausted (`max_port` is parameterized only so tests can
+/// reach that). Runs on the open transaction so it can't race a concurrent insert.
 fn next_free_port(
     tx: &rusqlite::Transaction<'_>,
     reserved_ports: &[u16],

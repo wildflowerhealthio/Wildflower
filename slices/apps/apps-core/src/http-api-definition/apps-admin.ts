@@ -14,20 +14,16 @@ import {
 } from './schemas.ts'
 
 /**
- * Owner-only mutations on the apps catalogue. The group itself carries
- * no middleware — `wildflower-server` (or any other composing app)
- * applies `RequireAuthMiddleware` when adding `AppsAdminApi` to its
- * root `HttpApi`. Slice cores stay free of auth dependencies.
+ * Owner-only mutations on the apps catalogue. The group itself carries no
+ * middleware — `wildflower-server` (or any other composing app) applies
+ * `RequireAuthMiddleware` when adding `AppsAdminApi` to its root `HttpApi`, so
+ * slice cores stay free of auth dependencies.
  *
- * Create / replace / delete: `POST /apps` creates an app — cloud or self-hosted,
- * keyed on the `multipart/form-data` body's `provenance` (self-hosted carries the
- * uploaded `bundle`); `PUT /apps/:id` replaces an editable app's content (cloud or
- * self-hosted, keyed on the body's provenance); `DELETE /apps/:id` removes it. A
- * system app, a seeded self-hosted app, or a provenance mismatch is `409
- * AppNotEditable`, an unknown id `404`, a bad name/url/bundle `400 InvalidField`.
- * Every one of these responses is the `provenance`-discriminated
- * {@link AppListEntrySchema}. `PUT /home-screen` is the exception — it atomically
- * reorders / enables **every** provenance.
+ * `POST /apps` creates (cloud or self-hosted, keyed on the multipart body's
+ * `provenance`), `PUT /apps/:id` replaces an editable app's content, and
+ * `DELETE /apps/:id` removes it — each returning the discriminated
+ * {@link AppListEntrySchema}; `PUT /home-screen` atomically reorders / enables
+ * every provenance. See `docs/Apps/Explanation.md` and the per-endpoint schemas.
  */
 const httpApiGroup = HttpApiGroup.make('apps-admin', { topLevel: false })
   .add(

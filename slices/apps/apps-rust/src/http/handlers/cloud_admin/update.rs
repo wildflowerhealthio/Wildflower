@@ -1,26 +1,17 @@
-//! `PUT /apps/{id}` — replace an editable app's *content*.
+//! `PUT /apps/{id}` — replace an editable app's *content*. The body is a
+//! **`provenance`-discriminated union** ([`AppContentBody`]) whose arm must match
+//! the stored app's kind:
 //!
-//! The body is a **`provenance`-discriminated union** ([`AppContentBody`]) whose
-//! arm must match the stored app's kind:
+//!   * **cloud** — full replace of `name` / `subtitle` / `url` / `requiresTunnel`
+//!     (the `url` is re-parsed through the write-side filter);
+//!   * **self-hosted** — `launchPath`; an absent / empty value clears it back to
+//!     root-serving.
 //!
-//!   * **cloud** — `name` / `subtitle` / `url` / `requiresTunnel` (a full
-//!     replace; the `url` is re-parsed through the write-side filter).
-//!   * **self-hosted** — `launchPath`, the SMART launch path (see
-//!     [`SelfHostedApp::launch_path`](crate::domain::SelfHostedApp::launch_path));
-//!     an absent / empty value clears it back to root-serving. Seeded
-//!     (migration) rows are protected.
-//!
-//! The response is the refreshed catalogue [`AppListEntry`] (the same
-//! `provenance` union `GET /apps` returns), read back after the write so it can't
-//! drift from the projection.
-//!
-//! An unknown id is `404`; a system app, a seeded self-hosted app, or a
-//! body whose arm doesn't match the stored provenance is `409 AppNotEditable`; a
-//! bad name / url / launch path is `400`.
-//!
-//! `enabled` is **not** replaced here — homescreen curation (order + enabled, any
-//! provenance) lives on `PUT /home-screen`, the single writer of those fields; a
-//! content replace preserves the stored `enabled`.
+//! An unknown id is `404`; a system app, a seeded self-hosted app, or a body arm
+//! that doesn't match the stored provenance is `409 AppNotEditable`; a bad name /
+//! url / launch path is `400`. `enabled` is **not** content — `PUT /home-screen`
+//! owns it. The response is the refreshed [`AppListEntry`], read back in-txn. See
+//! `docs/Apps/Explanation.md` §"Editing app content".
 
 use std::sync::Arc;
 
@@ -80,10 +71,8 @@ pub(crate) async fn handle_replace_app(
 ) -> Result<Json<AppListEntry>, HandlerError> {
     // Resolve existence before validating any field: a PUT to an unknown id is a
     // 404 regardless of the body. Then require the body's arm to match the stored
-    // kind (a mismatch — or a system app — is `409`, not a silent no-op). The
-    // whole `App` is in hand, so the seeded check reads straight off its payload;
-    // each store replace hands back the updated `App` read inside its own
-    // transaction, and projecting it is exactly the `GET /apps` shape.
+    // kind (a mismatch — or a system app — is `409`, not a silent no-op); the
+    // whole `App` is in hand, so the seeded check reads straight off its payload.
     let app = state
         .store
         .find_app(&id)

@@ -79,10 +79,9 @@ impl App {
         self.client_id.is_some()
     }
 
-    /// Whether the owner can remove this app through the admin surface: cloud
-    /// apps and uploaded (non-seeded) self-hosted apps are removable; system
-    /// apps and the migration-seeded self-hosted apps are not. Replaces the SQL
-    /// computed column the old list projection carried.
+    /// Whether the owner can remove this app through the admin surface: cloud and
+    /// uploaded (non-seeded) self-hosted apps are removable; system and seeded
+    /// self-hosted apps are not. See `docs/Apps/Explanation.md` §"Removability".
     #[must_use]
     pub fn removable(&self) -> bool {
         match &self.kind {

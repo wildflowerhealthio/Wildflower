@@ -1,14 +1,8 @@
-//! Zip-bundle extraction + name slugging for the self-hosted app upload surface.
-//!
-//! [`extract_zip_bundle`] unpacks an uploaded `.zip` into a staging directory,
-//! guarding against the two classic archive hazards — path traversal ("zip
-//! slip") and decompression bombs — and normalizing the common
-//! "everything nested under one top folder" packaging into a flat root.
-//! [`slugify`] turns a human app name into a DNS-label id/subdomain the store
-//! and the reverse proxy can key on.
-//!
-//! Both are pure (no network, no DB); the create handler drives extraction on a
-//! blocking pool and the store's uniqueness logic on the slug.
+//! Pure helpers for the self-hosted upload surface: [`extract_zip_bundle`] stages
+//! an uploaded `.zip` and [`slugify`] turns an app name into a DNS-label
+//! id/subdomain. No network or DB — the create handler drives extraction on a
+//! blocking pool. The extraction invariants and the slug/DNS-label rules are
+//! explained in `docs/Apps/Store and Install Explanation.md`.
 
 use std::fmt;
 use std::fs;
@@ -17,12 +11,9 @@ use std::path::{Component, Path};
 
 use zip::ZipArchive;
 
-/// Cap on the uncompressed total across all entries — a decompression bomb
-/// defence, enforced twice: a pre-pass over the header-declared sizes refuses
-/// an honestly-huge archive before writing a byte, and a running budget over
-/// the bytes *actually inflated* aborts mid-copy when the headers lied (the
-/// declared size is attacker-controlled metadata; the zip reader bounds only
-/// the compressed input, never the decompressed output).
+/// Cap on the total uncompressed bytes — the decompression-bomb budget, enforced
+/// twice (declared-size pre-pass, then the bytes actually inflated). See the
+/// extraction section of `docs/Apps/Store and Install Explanation.md`.
 const MAX_UNCOMPRESSED_BYTES: u64 = 512 * 1024 * 1024;
 
 /// Cap on the number of entries — bounds the per-entry loop work regardless of
@@ -31,19 +22,16 @@ const MAX_ENTRIES: usize = 20_000;
 
 /// Why an uploaded bundle couldn't be staged. Every variant except [`Self::Io`]
 /// is a fault in the *submitted* archive (the create handler maps them to
-/// `400 InvalidZip`); [`Self::Io`] is a disk-write failure on our side
-/// (`500`).
+/// `400 InvalidZip`); [`Self::Io`] is a disk-write failure on our side (`500`).
 #[derive(Debug)]
 pub(crate) enum InstallError {
-    /// The archive parsed but held no entries — or nothing servable survived
-    /// extraction (e.g. only macOS Finder litter or bare directories), which
-    /// would install an app whose every request 404s.
+    /// The archive parsed but nothing servable survived extraction (no entries,
+    /// or only macOS Finder litter / bare directories).
     EmptyArchive,
     /// More than [`MAX_ENTRIES`] entries.
     TooManyEntries { count: usize },
-    /// The uncompressed total exceeded [`MAX_UNCOMPRESSED_BYTES`] — either as
-    /// declared by the headers (pre-pass) or as actually inflated (the running
-    /// write budget; a crafted archive can under-declare).
+    /// The uncompressed total exceeded [`MAX_UNCOMPRESSED_BYTES`] — as declared
+    /// (pre-pass) or as actually inflated (the write budget).
     TooLarge { bytes: u64 },
     /// An entry's path escaped the staging root (a zip-slip attempt).
     Traversal { entry: String },
@@ -76,25 +64,10 @@ impl fmt::Display for InstallError {
 
 /// Extract `bytes` (an uploaded zip) into `staging`, which is created if absent.
 ///
-/// Enforced invariants, in order:
-///  - the archive is non-empty and within the [`MAX_ENTRIES`] /
-///    [`MAX_UNCOMPRESSED_BYTES`] caps — the *declared* sizes are checked before
-///    any file is written, and the bytes *actually inflated* are budgeted
-///    during the copy (a crafted archive can under-declare, so the metadata
-///    check alone is bypassable);
-///  - every entry's path stays inside `staging` — `enclosed_name` returns `None`
-///    for a `..`/absolute/drive-qualified path, which we reject rather than
-///    sanitize (a traversal is a hostile bundle, not a fixable one);
-///  - macOS Finder-zip litter (`__MACOSX/` resource forks, `.DS_Store`, and
-///    AppleDouble `._*` files) is dropped rather than written — otherwise a
-///    sibling `__MACOSX/` folder would masquerade as a second top-level
-///    directory and defeat the hoist below;
-///  - at least one real file survives the junk filter — an archive of only
-///    litter or bare directories is rejected rather than installed as an app
-///    that can only ever 404;
-///  - when the whole archive is nested under a single top-level directory (the
-///    common `unzip my-app.zip` → `my-app/…` shape) with no top-level files,
-///    that wrapper is hoisted away so the served root is the app itself.
+/// Rejects the archive hazards (zip-slip, decompression bombs, empty-after-junk)
+/// and normalizes packaging (drops macOS Finder litter, hoists a single wrapper
+/// directory) — see `docs/Apps/Store and Install Explanation.md` §"Zip extraction
+/// guards two archive hazards" for the full invariant list and why each matters.
 ///
 /// # Errors
 ///
@@ -120,10 +93,8 @@ fn extract_zip_bundle_with_cap(
             count: archive.len(),
         });
     }
-    // Pre-pass: sum the declared uncompressed sizes and bail before writing a
-    // byte if they exceed the cap — the cheap early reject for an honestly-huge
-    // archive. Declared sizes are attacker-controlled, so this is only the
-    // first line; the write budget below is the enforcement.
+    // Cheap reject by declared size before writing anything; declared sizes are
+    // attacker-controlled, so the write budget below is the real enforcement.
     let mut declared_total: u64 = 0;
     for index in 0..archive.len() {
         let entry = archive.by_index(index).map_err(InstallError::Zip)?;
@@ -136,24 +107,21 @@ fn extract_zip_bundle_with_cap(
     }
 
     fs::create_dir_all(staging).map_err(InstallError::Io)?;
-    // Budget over the bytes actually written: the zip reader bounds only the
-    // *compressed* input, so a lying header inflates past its declared size and
-    // must be stopped here, mid-copy, not after landing on disk.
+    // Budget over bytes actually written: a lying header inflates past its
+    // declared size, so it must be stopped mid-copy, not after landing on disk.
     let mut written_total: u64 = 0;
     let mut files_written: u64 = 0;
     for index in 0..archive.len() {
         let mut entry = archive.by_index(index).map_err(InstallError::Zip)?;
         let raw_name = entry.name().to_owned();
-        // `enclosed_name` yields the path only when it's safely inside the root
-        // (no `..`, not absolute, no Windows drive/UNC prefix); `None` is a
-        // traversal attempt. `.to_path_buf()` owns it so the later `&mut entry`
-        // read isn't blocked by a borrow of `entry`.
+        // `enclosed_name` is `None` for a traversal (`..`/absolute/drive prefix);
+        // reject rather than sanitize. `to_path_buf` owns it so the later
+        // `&mut entry` read isn't blocked by the borrow.
         let Some(relative) = entry.enclosed_name().map(|name| name.to_path_buf()) else {
             return Err(InstallError::Traversal { entry: raw_name });
         };
-        // Drop macOS Finder-zip litter before it lands on disk: writing the
-        // `__MACOSX/` sibling would make the archive look like it had two
-        // top-level directories and suppress the single-wrapper hoist below.
+        // Drop macOS Finder litter before it lands — a sibling `__MACOSX/` would
+        // otherwise defeat the single-wrapper hoist below.
         if is_macos_junk(&relative) {
             continue;
         }
@@ -165,9 +133,8 @@ fn extract_zip_bundle_with_cap(
                 fs::create_dir_all(parent).map_err(InstallError::Io)?;
             }
             let mut out = fs::File::create(&out_path).map_err(InstallError::Io)?;
-            // Read at most one byte past the remaining budget: landing exactly
-            // on the boundary is fine, exceeding it proves the entry inflates
-            // past the cap and aborts before more bytes reach the disk.
+            // Read one byte past the remaining budget: landing on the boundary is
+            // fine, exceeding it proves the entry overflows the cap.
             let remaining = max_uncompressed_bytes - written_total;
             let written = io::copy(
                 &mut (&mut entry).take(remaining.saturating_add(1)),
@@ -183,8 +150,8 @@ fn extract_zip_bundle_with_cap(
             files_written += 1;
         }
     }
-    // Metadata said "non-empty", but what matters is what survived extraction:
-    // zero real files would commit an app that serves an empty directory.
+    // What survived extraction is what matters — zero real files would commit an
+    // app that serves an empty directory.
     if files_written == 0 {
         return Err(InstallError::EmptyArchive);
     }
@@ -198,18 +165,11 @@ fn extract_zip_bundle_with_cap(
 /// substitutes them per request (`{origin}` → the served FHIR origin).
 const LAUNCH_HTML_PATH: &str = "/launch.html?launch={launch}&iss={origin}/fhir-r4";
 
-/// Infer the launch path for a freshly-extracted bundle rooted at `staging`
-/// (call **after** [`extract_zip_bundle`], so the single-top-dir hoist has
-/// already flattened the tree):
-///
-///  - a `launch.html` at the root → the SMART [`LAUNCH_HTML_PATH`], so a
-///    launch routes to `/launch.html?…`;
-///  - otherwise `None` — the app serves from its bare root, where ServeDir
-///    resolves `/` to `index.html` (the pre-existing behavior).
-///
-/// The `index.html` case needs no stored path: the bare-origin launch already
-/// lands there, so a present `index.html` and a bundle with neither file both
-/// map to `None` (the latter simply 404s at launch, as before).
+/// Infer the launch path for a freshly-extracted bundle rooted at `staging` (call
+/// **after** [`extract_zip_bundle`], so the hoist has flattened the tree): a root
+/// `launch.html` → the SMART [`LAUNCH_HTML_PATH`], else `None` (served from its
+/// bare root, where `/` resolves to `index.html`). See
+/// `docs/Apps/Store and Install Explanation.md` §"Launch-path inference".
 pub(crate) fn infer_launch_path(staging: &Path) -> Option<String> {
     staging
         .join("launch.html")
@@ -257,11 +217,9 @@ fn hoist_single_top_dir(staging: &Path) -> Result<(), InstallError> {
         return Ok(());
     };
 
-    // Move the wrapper aside to a sibling of `staging` first, so draining its
-    // children back into `staging` can't collide with a child that happens to
-    // share the wrapper's name. On a mid-drain failure the sibling is removed
-    // before returning — the caller's cleanup only knows about `staging`, and
-    // an orphaned `.hoist` dir would otherwise accumulate under the apps root.
+    // Move the wrapper aside first so draining its children back into `staging`
+    // can't collide with a child sharing the wrapper's name. Remove the sibling
+    // on a mid-drain failure — the caller's cleanup only knows about `staging`.
     let holding = staging.with_extension("hoist");
     fs::rename(&inner, &holding).map_err(InstallError::Io)?;
     let drained = drain_into(&holding, staging);

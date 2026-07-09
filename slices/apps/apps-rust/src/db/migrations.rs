@@ -13,15 +13,10 @@ pub(super) fn migrate(conn: &mut rusqlite::Connection) -> rusqlite::Result<()> {
 
 /// Ordered list of schema migrations. The array index is the recorded
 /// `schema_migrations` version — append-only; never reorder or rewrite an
-/// already-shipped entry. The 4th entry (`004_apps_registry.sql`) replaces the
-/// two flat tables with the parent registry + per-kind child tables and seeds
-/// the full default set; the 5th (`005_self_hosted_seeded.sql`) adds the
-/// `seeded` flag distinguishing migration-seeded self-hosted rows from uploaded
-/// ones; the 6th (`006_self_hosted_launch_path.sql`) adds the nullable
-/// `launch_path` inferred at install for bundles that ship a `launch.html`.
-/// Because each migration runs only once per database, a user-deleted seeded
-/// row stays deleted across upgrades — only fresh installs see the full default
-/// set.
+/// already-shipped entry. `004` introduces the parent registry + per-kind child
+/// tables and seeds the default set; `005` / `006` add the `seeded` flag and the
+/// nullable `launch_path`. Each runs once per database, so a user-deleted seeded
+/// row stays deleted across upgrades — only fresh installs see the full set.
 const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/001_initial_schema.sql"),
     include_str!("../migrations/002_internal_apps_table.sql"),

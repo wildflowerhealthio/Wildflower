@@ -43,11 +43,9 @@ pub struct NewSelfHostedUpload {
     /// (`-2`, `-3`, …) until unique, keeping every candidate a valid DNS label.
     pub base_slug: String,
     /// The on-disk folder (under the apps root) already holding the extracted
-    /// files — the upload's staging mint id, recorded verbatim. Deliberately
-    /// NOT the slug: the files are moved into place *before* the row is
-    /// inserted, so a committed row always points at present files, and a
-    /// fresh mint per install can never collide with a stale folder a failed
-    /// delete left behind.
+    /// files — the upload's staging mint id, recorded verbatim. Deliberately NOT
+    /// the slug; see the content-folder section of
+    /// `docs/Apps/Store and Install Explanation.md`.
     pub content_folder: String,
     /// Ports the allocation must skip (the host's own loopback API port).
     pub reserved_ports: Vec<u16>,

@@ -2,17 +2,11 @@ import { HttpApiSchema, Multipart } from '@effect/platform'
 import { Schema } from 'effect'
 
 /**
- * Validates an app launch-URL string. Acceptable shapes (mirrors the Rust
- * server's `AppUrl`):
- *
- * 1. An `https://` absolute URL.
- * 2. A path-relative URL starting with `/` (must NOT start with `//`, which
- *    would be a protocol-relative authority — an open redirect).
- * 3. A template starting with `{origin}` — the `LaunchApp` handler substitutes
- *    the live origin at request time.
- *
- * Rejects `http://`, `javascript:`, `data:`, `file:`, and other schemes — these
- * would be open-redirect or XSS vectors when issued through `LaunchApp`'s 302.
+ * Validates an app launch-URL string (mirrors the Rust server's `AppUrl`).
+ * Accepts an `https://` absolute URL, an origin-relative `/path` (not `//`, a
+ * protocol-relative authority), or a template starting with `{origin}`
+ * (substituted at launch). Rejects `http://`, `javascript:`, `data:`, `file:`,
+ * etc. — open-redirect / XSS vectors when issued through `LaunchApp`'s 302.
  */
 const AppUrlSchema = Schema.String.pipe(
   Schema.filter((value) => {
@@ -25,18 +19,12 @@ const AppUrlSchema = Schema.String.pipe(
 )
 
 /**
- * Validates a self-hosted app's launch path (mirrors the Rust replace handler's
- * `validate_launch_path`). Either:
- *
- *  - the empty string — clears the launcher, reverting to root-serving
- *    (`index.html`); or
- *  - an origin-relative path starting with a single `/` (NOT `//`, a
- *    protocol-relative authority) — it hangs off the app's own origin at launch,
- *    e.g. `/launch.html?launch={launch}&iss={origin}/fhir-r4`. The `{origin}` /
- *    `{launch}` tokens are substituted per request.
- *
- * `https://…` and other absolute/authority forms are rejected: the value is
- * appended to the app's own origin, so it must stay a same-origin path.
+ * Validates a self-hosted app's launch path (mirrors the Rust
+ * `validate_launch_path`): either the empty string (clears the launcher, back to
+ * root-serving) or an origin-relative `/path` (not `//`). It hangs off the app's
+ * own origin at launch, e.g. `/launch.html?launch={launch}&iss={origin}/fhir-r4`
+ * with the tokens substituted per request, so absolute / authority forms are
+ * rejected. See {@link AppUrlSchema}.
  */
 const LaunchPathSchema = Schema.String.pipe(
   Schema.filter((value) => {
@@ -69,10 +57,9 @@ const sharedAppFields = {
   /** Whether this is a SMART app (the registry row carries a `client_id`). */
   smart: Schema.Boolean,
   /**
-   * Whether the owner can remove this app through the admin surface: `true`
-   * for cloud apps and for uploaded (non-seeded) self-hosted apps, `false` for
-   * system apps and the migration-seeded self-hosted apps. The editor's Remove
-   * control keys off this rather than re-deriving the rule per client.
+   * Whether the owner can remove this app through the admin surface (`true` for
+   * cloud + uploaded self-hosted, `false` for system + seeded). The editor's
+   * Remove control keys off this. See `docs/Apps/Explanation.md` §"Removability".
    */
   removable: Schema.Boolean,
 } as const
@@ -186,22 +173,14 @@ const RequiresTunnelFieldSchema = Schema.transform(
 )
 
 /**
- * Body for `CreateApp` (`POST /apps`) — a **`multipart/form-data`** form, so the
+ * Body for `CreateApp` (`POST /apps`) — a **`multipart/form-data`** form so the
  * single create route carries both a cloud app's fields and a self-hosted app's
- * uploaded bundle. `provenance` discriminates the arms (mirroring the
- * `PUT /apps/:id` replace union):
- *
- *   - **cloud** — `name` + `url` (through {@link AppUrlSchema}) + `requiresTunnel`
- *     (the form field is the text `"true"` / `"false"`), optional `subtitle`;
- *   - **self-hosted** — `name`, optional `subtitle`, and `bundle`: the app's
- *     static files as a single uploaded file part (a zip).
- *
- * The kind-specific fields are schema-optional because a `multipart` body is
- * stringly-typed and the typed client sends an opaque `FormData` anyway (a
- * multipart endpoint's client payload is a `FormData` instance, not a
- * schema-shaped object). The server requires the right fields per `provenance`
- * and answers `400 InvalidField` otherwise; this schema shapes the wire +
- * OpenAPI contract, not a client-constructed object.
+ * uploaded bundle, discriminated on `provenance` (cloud: `name` + `url` through
+ * {@link AppUrlSchema} + `requiresTunnel` + optional `subtitle`; self-hosted:
+ * `name` + optional `subtitle` + the `bundle` zip). The kind-specific fields are
+ * schema-optional because a multipart client payload is an opaque `FormData`, not
+ * a schema-shaped object; the server requires the right fields per `provenance`.
+ * This schema shapes the wire + OpenAPI contract, not a client-constructed object.
  */
 const CreateAppBodySchema = HttpApiSchema.Multipart(
   Schema.Struct({

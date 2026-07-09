@@ -13,8 +13,8 @@
 //! [`stop`](SelfHostedAppsService::stop) takes it offline — both at runtime,
 //! without a restart.
 //!
-//! The host's startup seed drives `start` for every catalogue row; the upload
-//! surface (`POST /self-hosted-apps`) also drives `start` at runtime for a
+//! The host's startup seed drives `start` for every catalogue row; the create
+//! surface (`POST /apps`, self-hosted arm) also drives `start` at runtime for a
 //! freshly-installed app, and the delete surface drives `stop`, both without a
 //! restart. [`apps_dir`](SelfHostedAppsService::apps_dir) exposes the root the
 //! upload handler stages extracted bundles under and the delete handler removes
