@@ -69,6 +69,52 @@
       }
     },
     "/apps/{id}": {
+      "get": {
+        "summary": "`GET /apps/{id}` — the web launch arm. A home-screen tile is a real\n`<a href=\"/apps/{id}\" rel=\"nofollow noreferrer\">`, so a plain click navigates\nthe current tab and a cmd/ctrl-click opens a new one — native affordances a\nform-`POST` or `fetch` can't preserve. The auth cookie rides the anchor\nnavigation (even the initial document request, before any JS), so a forwarded\n`GET` authenticates and the server `302`s to the resolved target. Shares\n[`launch`] with the `POST` arm — identical resolve-then-dispatch and auth\nposture.",
+        "operationId": "handle_launch_app_get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "App id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Host sink opened the launch URL for a loopback caller (no redirect)"
+          },
+          "302": {
+            "description": "Redirect (Location header) to the resolved launch URL"
+          },
+          "401": {
+            "description": "A loopback launch whose caller is not the device owner"
+          },
+          "404": {
+            "description": "No app has this id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppNotFoundBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No reachable launch target (forwarded launch with no public host, or a requires_tunnel app while the tunnel is down)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LaunchUnavailableBody"
+                }
+              }
+            }
+          }
+        }
+      },
       "put": {
         "tags": [
           "Catalogue"
@@ -143,7 +189,7 @@
         "tags": [
           "Launch"
         ],
-        "summary": "`POST /apps/{id}` — launch an app (`404` if no app has this id). See the\nmodule docs for the resolve-then-dispatch flow and the auth posture.",
+        "summary": "`POST /apps/{id}` — launch an app (`404` if no app has this id). The loopback\n(Tauri) arm drives this through the typed client so the owner bearer rides\nalong. See the module docs for the resolve-then-dispatch flow and the auth\nposture; the body is shared with [`handle_launch_app_get`] via [`launch`].",
         "operationId": "handle_launch_app",
         "parameters": [
           {

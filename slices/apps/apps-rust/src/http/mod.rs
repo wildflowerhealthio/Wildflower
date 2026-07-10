@@ -6,11 +6,11 @@
 //!
 //! The surface is exposed as two routers so the host can gate them differently:
 //! [`gated_router`] (list + cloud-admin + `PUT /home-screen`) is wrapped by the
-//! host's bearer gate; [`launch_router`] (`POST /apps/{id}`) is mounted ungated
-//! at the router level — the launch handler owner-gates the loopback popup
-//! through [`owner_auth::OwnerAuth`] while a forwarded launch rides the front
-//! trust boundary. The bearer gate can't exempt the parameterized launch path
-//! from the gated `PATCH`/`DELETE /apps/{id}`, hence the split. See
+//! host's bearer gate; [`launch_router`] (`GET` + `POST /apps/{id}`) is mounted
+//! ungated at the router level — the launch handler owner-gates the loopback
+//! popup through [`owner_auth::OwnerAuth`] while a forwarded launch rides the
+//! front trust boundary. The bearer gate can't exempt the parameterized launch
+//! path from the gated `PATCH`/`DELETE /apps/{id}`, hence the split. See
 //! [`openapi_tests`].
 
 mod handlers;
@@ -59,10 +59,10 @@ pub fn gated_router(state: Arc<AppsState>) -> Router {
     router.with_state(state)
 }
 
-/// Build the launch route (`POST /apps/{id}`), mounted **ungated** at the router
-/// level: the host puts it behind only its network (loopback-peer) gate, and the
-/// launch handler owner-gates the loopback popup internally via [`OwnerAuth`]
-/// while a forwarded launch rides the front trust boundary.
+/// Build the launch routes (`GET` + `POST /apps/{id}`), mounted **ungated** at
+/// the router level: the host puts them behind only its network (loopback-peer)
+/// gate, and the launch handler owner-gates the loopback popup internally via
+/// [`OwnerAuth`] while a forwarded launch rides the front trust boundary.
 pub fn launch_router(state: Arc<AppsState>) -> Router {
     let (router, _spec) = handlers::launch_openapi_router().split_for_parts();
     router.with_state(state)

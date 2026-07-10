@@ -1,6 +1,6 @@
 //! HTTP handlers for the apps slice, grouped into a [`gated_openapi_router`]
 //! (list, cloud-admin, home-screen) and a [`launch_openapi_router`]
-//! (`POST /apps/{id}`), merged into [`openapi_router`] for the spec + handler
+//! (`GET` + `POST /apps/{id}`), merged into [`openapi_router`] for the spec + handler
 //! tests. The served routes and the OpenAPI spec come from the same
 //! `#[utoipa::path]`-annotated handlers. The gating split is documented on the
 //! [`crate::http`] router builders these back.
@@ -52,11 +52,16 @@ pub(crate) fn gated_openapi_router() -> OpenApiRouter<Arc<AppsState>> {
         .merge(create_router)
 }
 
-/// The launch route (`POST /apps/{id}`) as an `OpenApiRouter` — the spec-bearing
-/// inner of [`launch_router`](super::launch_router), which documents why it's
-/// kept ungated and separate from [`gated_openapi_router`].
+/// The launch routes (`GET` + `POST /apps/{id}`) as an `OpenApiRouter` — the
+/// spec-bearing inner of [`launch_router`](super::launch_router), which documents
+/// why they're kept ungated and separate from [`gated_openapi_router`]. `GET` is
+/// the native-anchor web arm; `POST` is the typed loopback (Tauri) arm — both
+/// share one handler body.
 pub(crate) fn launch_openapi_router() -> OpenApiRouter<Arc<AppsState>> {
-    OpenApiRouter::new().routes(routes!(apps::launch::handle_launch_app))
+    OpenApiRouter::new().routes(routes!(
+        apps::launch::handle_launch_app,
+        apps::launch::handle_launch_app_get
+    ))
 }
 
 /// The full apps surface (gated routes + launch) as one `OpenApiRouter`. Backs
@@ -134,6 +139,25 @@ mod tests {
     fn post_forwarded(uri: &str) -> Request<Body> {
         Request::builder()
             .method("POST")
+            .uri(uri)
+            .header(
+                "forwarded",
+                "for=192.0.2.1;host=demo.example.com;proto=https",
+            )
+            .body(Body::empty())
+            .unwrap()
+    }
+
+    /// A loopback launch via the web arm's `GET` — `GET /apps/{id}`, no
+    /// `Forwarded` header (a plain `<a>` click the browser followed).
+    fn get_launch(uri: &str) -> Request<Body> {
+        get(uri)
+    }
+
+    /// A `GET` launch as the trusted front would relay it — the web arm reaching
+    /// the server through the front (carries the `Forwarded` header).
+    fn get_forwarded(uri: &str) -> Request<Body> {
+        Request::builder()
             .uri(uri)
             .header(
                 "forwarded",
@@ -348,6 +372,62 @@ mod tests {
         let st = state_owner_denied();
         let res = send_raw(&st, post_forwarded("/apps/api-docs")).await;
         assert_eq!(res.status(), StatusCode::FOUND);
+    }
+
+    // --- The `GET` (web anchor) arm shares the launch body with `POST`. These
+    //     round-trips prove the method only picks the arm: the auth posture
+    //     (owner-gated loopback, forwarded rides the front) and the
+    //     resolve-then-dispatch flow are identical.
+
+    /// A forwarded `GET` (the native `<a href>` navigation relayed by the front)
+    /// of a self-hosted app 302s to the public subdomain, same as the `POST` arm.
+    #[tokio::test]
+    async fn get_launch_forwarded_redirects_to_subdomain() {
+        let st = state_with_tunnel(tunnel_with_public_host("demo.example.com"));
+        let res = send_raw(&st, get_forwarded("/apps/patient-browser")).await;
+        assert_eq!(res.status(), StatusCode::FOUND);
+        let location = res.headers().get("location").unwrap().to_str().unwrap();
+        assert_eq!(location, "https://patient-browser.demo.example.com/");
+    }
+
+    /// A forwarded `GET` skips the owner gate (the front is the trust boundary),
+    /// just like the `POST` arm.
+    #[tokio::test]
+    async fn get_launch_forwarded_skips_owner_gate() {
+        let st = state_owner_denied();
+        let res = send_raw(&st, get_forwarded("/apps/api-docs")).await;
+        assert_eq!(res.status(), StatusCode::FOUND);
+    }
+
+    /// A loopback `GET` is owner-gated: a denied caller 401s before any lookup or
+    /// side-effect, exactly as the `POST` arm.
+    #[tokio::test]
+    async fn get_launch_loopback_is_owner_gated() {
+        let st = state_owner_denied();
+        let res = send_raw(&st, get_launch("/apps/api-docs")).await;
+        assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    /// A loopback `GET` of a system app 204s after handing the URL to the host
+    /// sink (an owner navigating the loopback origin directly).
+    #[tokio::test]
+    async fn get_launch_loopback_opens_the_host_sink() {
+        let handle = Arc::new(RecordingStubWebviewHandle::default());
+        let st = state_with_sink(Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>);
+        let res = send_raw(&st, get_launch("/apps/api-docs")).await;
+        assert_eq!(res.status(), StatusCode::NO_CONTENT);
+        let opened = handle.0.lock().expect("handle mutex").clone();
+        assert_eq!(opened, vec!["http://127.0.0.1:8080/docs".to_string()]);
+    }
+
+    /// A `GET` of an unknown id is `404 AppNotFound` — an unknown id is never an
+    /// availability failure, same as the `POST` arm.
+    #[tokio::test]
+    async fn get_launch_unknown_id_is_404() {
+        let st = state();
+        let (status, body) = send(&st, get_launch("/apps/no-such-thing")).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(body["error"], "AppNotFound");
     }
 
     /// A system app launches via its compiled-in source URL, resolved against

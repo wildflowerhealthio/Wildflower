@@ -2,10 +2,10 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/tes
 
 import type { AppEntry } from '../../../queries.ts'
 import type { RunAuthed } from '../../../router-context.ts'
-import { launchApp } from './-launch.ts'
+import { launchApp, launchHref } from './-launch.ts'
 
-// A minimal `AppEntry` — `launchApp` reads only `id`, so a system entry (the
-// variant with no typed-child fields) is the lightest valid member of the union.
+// A minimal `AppEntry` — `launchApp` / `launchHref` read only `id`, so a system
+// entry (the variant with no typed-child fields) is the lightest valid member.
 const app: AppEntry = {
   id: 'pt-browser',
   enabled: true,
@@ -15,10 +15,6 @@ const app: AppEntry = {
   smart: false,
   removable: true,
 }
-
-// Some launches need a hidden form to submit to; build one fresh per test
-// so action mutations don't leak between cases.
-const makeForm = (): HTMLFormElement => document.createElement('form')
 
 // The loopback arm runs an Effect through `runAuthed`; the helper only cares
 // that it's invoked with *some* effect and that it resolves or rejects. A
@@ -53,6 +49,28 @@ const makeRunAuthed = (mode: 'resolve' | 'reject' = 'resolve'): RunAuthedStub =>
   return { runAuthed, calls }
 }
 
+// A representative Tauri host origin — its presence (not its value) is the
+// launch-arm signal.
+const TAURI_API_BASE = 'http://127.0.0.1:8080'
+
+describe('launchHref', () => {
+  test('web (apiBaseUrl unset) → a page-relative /apps/{id} the anchor navigates to', () => {
+    // On web the page IS the API origin, so a relative path reaches the launch
+    // route; the browser (plain click or cmd/ctrl-click) follows it natively.
+    expect(launchHref(undefined, 'pt-browser')).toBe('/apps/pt-browser')
+  })
+
+  test('Tauri (apiBaseUrl set) → undefined, so the tile is a non-navigating button', () => {
+    // No href on Tauri: the loopback arm launches through the authed client and
+    // the webview must never navigate.
+    expect(launchHref(TAURI_API_BASE, 'pt-browser')).toBeUndefined()
+  })
+
+  test('encodes a path-unsafe id', () => {
+    expect(launchHref(undefined, 'has spaces/and-slashes')).toBe('/apps/has%20spaces%2Fand-slashes')
+  })
+})
+
 describe('launchApp', () => {
   let consoleError: ReturnType<typeof vi.spyOn>
   beforeEach(() => {
@@ -68,37 +86,12 @@ describe('launchApp', () => {
     test('launches through the authed Effect client (carries the owner bearer)', async () => {
       const stub = makeRunAuthed()
 
-      await launchApp(
-        {
-          apiBaseUrl: 'http://127.0.0.1:8080',
-          runAuthed: stub.runAuthed,
-          pageOrigin: 'tauri://localhost',
-          form: makeForm(),
-        },
-        app
-      )
+      await launchApp({ apiBaseUrl: TAURI_API_BASE, runAuthed: stub.runAuthed }, app)
 
       // The launch rides `runAuthed` (not a raw `fetch`), so the owner bearer
       // is attached the same way the apps-list read and admin writes attach it.
       expect(stub.calls).toHaveLength(1)
       expect(stub.calls[0]?.effect).toBeDefined()
-    })
-
-    test('does NOT submit the form when apiBaseUrl is set', async () => {
-      const form = makeForm()
-      const submit = vi.spyOn(form, 'submit').mockImplementation(() => {})
-
-      await launchApp(
-        {
-          apiBaseUrl: 'http://127.0.0.1:8080',
-          runAuthed: makeRunAuthed().runAuthed,
-          pageOrigin: 'tauri://localhost',
-          form,
-        },
-        app
-      )
-
-      expect(submit).not.toHaveBeenCalled()
     })
 
     test('logs a typed failure (e.g. a 404 for a just-deleted app) instead of throwing', async () => {
@@ -107,15 +100,7 @@ describe('launchApp', () => {
       const stub = makeRunAuthed('reject')
 
       await expect(
-        launchApp(
-          {
-            apiBaseUrl: 'http://127.0.0.1:8080',
-            runAuthed: stub.runAuthed,
-            pageOrigin: 'tauri://localhost',
-            form: null,
-          },
-          app
-        )
+        launchApp({ apiBaseUrl: TAURI_API_BASE, runAuthed: stub.runAuthed }, app)
       ).resolves.toBeUndefined()
 
       expect(consoleError).toHaveBeenCalledWith(
@@ -125,91 +110,22 @@ describe('launchApp', () => {
     })
 
     test('does not log on the happy path (the host 204s, the client resolves)', async () => {
-      await launchApp(
-        {
-          apiBaseUrl: 'http://127.0.0.1:8080',
-          runAuthed: makeRunAuthed().runAuthed,
-          pageOrigin: 'tauri://localhost',
-          form: null,
-        },
-        app
-      )
+      await launchApp({ apiBaseUrl: TAURI_API_BASE, runAuthed: makeRunAuthed().runAuthed }, app)
 
       expect(consoleError).not.toHaveBeenCalled()
     })
   })
 
   describe('web arm (apiBaseUrl unset)', () => {
-    test('submits the hidden form to ${pageOrigin}/apps/{id}, never touching runAuthed', async () => {
-      const stub = makeRunAuthed()
-      const form = makeForm()
-      const submit = vi.spyOn(form, 'submit').mockImplementation(() => {})
-
-      await launchApp(
-        {
-          apiBaseUrl: undefined,
-          runAuthed: stub.runAuthed,
-          pageOrigin: 'https://app.example.com',
-          form,
-        },
-        app
-      )
-
-      expect(submit).toHaveBeenCalledTimes(1)
-      expect(form.action).toBe('https://app.example.com/apps/pt-browser')
-      // The web arm rides the front trust boundary — no bearer, no client call.
-      expect(stub.calls).toHaveLength(0)
-    })
-
-    test('strips a trailing slash on pageOrigin', async () => {
-      const form = makeForm()
-      const submit = vi.spyOn(form, 'submit').mockImplementation(() => {})
-
-      await launchApp(
-        {
-          apiBaseUrl: undefined,
-          runAuthed: makeRunAuthed().runAuthed,
-          pageOrigin: 'https://app.example.com/',
-          form,
-        },
-        app
-      )
-
-      expect(submit).toHaveBeenCalledTimes(1)
-      expect(form.action).toBe('https://app.example.com/apps/pt-browser')
-    })
-
-    test('encodes a path-unsafe id', async () => {
-      const form = makeForm()
-      const submit = vi.spyOn(form, 'submit').mockImplementation(() => {})
-
-      await launchApp(
-        {
-          apiBaseUrl: undefined,
-          runAuthed: makeRunAuthed().runAuthed,
-          pageOrigin: 'https://app.example.com',
-          form,
-        },
-        { ...app, id: 'has spaces/and-slashes' }
-      )
-
-      expect(submit).toHaveBeenCalledTimes(1)
-      expect(form.action).toBe('https://app.example.com/apps/has%20spaces%2Fand-slashes')
-    })
-
-    test('is a no-op when the form ref is null (component not mounted yet)', async () => {
+    test('is a no-op — the anchor navigates, so JS never touches runAuthed', async () => {
       const stub = makeRunAuthed()
 
-      await launchApp(
-        {
-          apiBaseUrl: undefined,
-          runAuthed: stub.runAuthed,
-          pageOrigin: 'https://app.example.com',
-          form: null,
-        },
-        app
-      )
+      await expect(
+        launchApp({ apiBaseUrl: undefined, runAuthed: stub.runAuthed }, app)
+      ).resolves.toBeUndefined()
 
+      // The web arm rides the anchor navigation (cookie authenticates) — no
+      // bearer, no client call.
       expect(stub.calls).toHaveLength(0)
     })
   })
