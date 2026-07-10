@@ -334,12 +334,22 @@ fn validate_code_and_issue_token(
         );
         return Err(invalid_grant());
     }
+    // Resolve the standing authorization-code grant behind this exchange so the
+    // family can record which grant authorized it (write-only in v1). Token
+    // exchange already holds both keys; a missing grant (e.g. revoked between
+    // approval and redemption) just leaves `grant_id` NULL.
+    let grant_id = state
+        .store
+        .grant_by_client_and_redirect(client_id, redirect_uri)
+        .map_err(|e| TokenError::internal("grant_by_client_and_redirect lookup failed", e))?
+        .map(|grant| grant.id);
     let refresh_token = start_refresh_token_family_if_granted(
         state,
         client_id,
         &code_record.granted_scopes,
         code_record.patient.as_deref(),
         Some(code_record.code.as_str()),
+        grant_id.as_deref(),
     )?;
     issue_token(
         state,
@@ -458,6 +468,21 @@ fn exchange_device_code(
         .granted_scopes
         .as_deref()
         .map_or(&[], Vec::as_slice);
+    // Resolve the durable device grant minted at approval so the family records
+    // it (write-only in v1). The grant is keyed on the *effective* device name —
+    // the request's name, or the client name it defaulted to when the device
+    // didn't name itself — the same fallback `devices/approve.rs` mints under.
+    let effective_device_name = request_record
+        .device_name
+        .as_deref()
+        .unwrap_or(client.name.as_str());
+    let grant_id = state
+        .store
+        .device_grant_by_client_and_device_name(&request_record.client_id, effective_device_name)
+        .map_err(|e| {
+            TokenError::internal("device_grant_by_client_and_device_name lookup failed", e)
+        })?
+        .map(|grant| grant.id);
     let refresh_token = start_refresh_token_family_if_granted(
         state,
         &request_record.client_id,
@@ -466,6 +491,7 @@ fn exchange_device_code(
         // The device-code grant has no authorization code; its single-use is
         // enforced by `consume_approved_authorization_request` above.
         None,
+        grant_id.as_deref(),
     )?;
     issue_token(
         state,
@@ -483,12 +509,17 @@ fn exchange_device_code(
 /// family with its first token and return the token's plaintext for the
 /// response body. Grants without the scope get `Ok(None)` — no standing
 /// credential is created.
+///
+/// `grant_id` links the family to the durable [`Grant`](crate::domain::grant::Grant)
+/// that authorized it (both flows) — write-only plumbing for a future
+/// per-device revoke; `None` when no matching grant was resolved.
 fn start_refresh_token_family_if_granted(
     state: &AppState,
     client_id: &str,
     granted_scopes: &[String],
     patient: Option<&str>,
     authorization_code: Option<&str>,
+    grant_id: Option<&str>,
 ) -> Result<Option<String>, TokenError> {
     if !granted_scopes
         .iter()
@@ -509,6 +540,7 @@ fn start_refresh_token_family_if_granted(
         // replay of that code can revoke this lineage (RFC 6749 §4.1.2). The
         // device-code grant carries no code and passes `None`.
         authorization_code_hash: authorization_code.map(token_storage_hash),
+        grant_id: grant_id.map(str::to_string),
     };
     let first_token = RefreshToken {
         token_hash: token_storage_hash(&plaintext),

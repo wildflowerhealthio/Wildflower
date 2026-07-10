@@ -27,8 +27,12 @@ because the wire schemas in this package mirror their rows.
   (for `slow_down`).
 - `authorizationCodes` — single-use codes issued when a code-flow
   request is approved; consumed at `/oauth/token`.
-- `grants` — standing OAuth consents indexed by `(clientId,
-redirectUri)`. Grant lookups drive the auto-approve fast path.
+- `grants` — standing consents, **polymorphic** on `grantType`: a parent
+  `grants` row plus a per-variant child — `authorization_code` grants
+  (keyed `(clientId, redirectUri)`, driving the auto-approve fast path)
+  and `device_code` grants (keyed `(clientId, deviceName)`, the durable
+  record of a paired device). One `grantType`-tagged union on the wire.
+  See the [Polymorphic Rows Explanation](../../../docs/Persistence/Polymorphic%20Rows%20Explanation.md).
 - `signingKeys` — RSA keys backing JWS signatures and the JWKS
   endpoint. `isActive: boolean` selects the signing key; verify-side
   iterates all keys for rotation.

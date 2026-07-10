@@ -16,6 +16,10 @@ import { GRANTS_QUERY_KEY, grantQueryKey } from './keys.ts'
 import { useRunAuthed } from './use-run-authed.ts'
 
 type Grant = Schema.Schema.Type<typeof AccessManagement.GrantSchema>
+/** The authorization-code ("Approved App") variant of the grant union. */
+type AppGrant = Extract<Grant, { readonly grantType: 'authorization_code' }>
+/** The device-code ("Authorized Device") variant of the grant union. */
+type DeviceGrant = Extract<Grant, { readonly grantType: 'device_code' }>
 
 /** Shared by the route `loader` (`ensureQueryData`) and {@link useGrantsQuery}. */
 const grantsQueryOptions = (
@@ -27,6 +31,14 @@ const grantsQueryOptions = (
       runAuthed(
         Effect.flatMap(GatekeeperHttpApiClient, (c) => c['access-management'].ListGrants())
       ),
+    // Always re-read the list when the access page (re)mounts. Authorizing an
+    // app or pairing a device happens *outside* this React tree (an OAuth
+    // redirect / the device-consent popup), so nothing here invalidates the
+    // list; under the app's 5-minute `staleTime` the loader's `ensureQueryData`
+    // would otherwise serve a stale cache and the new grant wouldn't appear
+    // until the window elapsed. `'always'` refetches on mount regardless of
+    // staleness while still rendering the cached rows immediately.
+    refetchOnMount: 'always',
   })
 
 /** Reads synchronously from cache when the route loader has already warmed it. */
@@ -78,4 +90,4 @@ export {
   useGrantsQuery,
   useRevokeGrantMutation,
 }
-export type { Grant }
+export type { AppGrant, DeviceGrant, Grant }

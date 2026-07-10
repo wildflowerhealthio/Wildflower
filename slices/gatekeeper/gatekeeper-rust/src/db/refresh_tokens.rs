@@ -9,7 +9,7 @@ use persistence_rust::{sql_row, DbResult};
 // `RefreshTokenFamily` is mapped by hand: its read path is a JOIN aliasing
 // `f.issued_at AS family_issued_at` (see `refresh_token_with_family_by_hash`),
 // columns the field-name-keyed `sql_row!` `TryFrom` couldn't read.
-fn family_named_sql_params(family: &RefreshTokenFamily) -> [(&str, &dyn ToSql); 7] {
+fn family_named_sql_params(family: &RefreshTokenFamily) -> [(&str, &dyn ToSql); 8] {
     [
         (":family_id", &family.family_id),
         (":client_id", &family.client_id),
@@ -18,6 +18,7 @@ fn family_named_sql_params(family: &RefreshTokenFamily) -> [(&str, &dyn ToSql); 
         (":issued_at", &family.issued_at),
         (":expires_at", &family.expires_at),
         (":authorization_code_hash", &family.authorization_code_hash),
+        (":grant_id", &family.grant_id),
     ]
 }
 
@@ -116,7 +117,7 @@ impl GatekeeperStore {
                 "SELECT t.token_hash, t.family_id, t.issued_at, t.consumed_at,
                         f.client_id, f.scopes, f.patient,
                         f.issued_at AS family_issued_at, f.expires_at,
-                        f.authorization_code_hash
+                        f.authorization_code_hash, f.grant_id
                  FROM refresh_tokens t
                  JOIN refresh_token_families f ON f.family_id = t.family_id
                  WHERE t.token_hash = ?1",
@@ -131,6 +132,7 @@ impl GatekeeperStore {
                         issued_at: row.get("family_issued_at")?,
                         expires_at: row.get("expires_at")?,
                         authorization_code_hash: row.get("authorization_code_hash")?,
+                        grant_id: row.get("grant_id")?,
                     };
                     Ok((token, family))
                 },
@@ -349,6 +351,7 @@ mod tests {
             arb_timestamp(),
             arb_timestamp(),
             prop::option::of("[A-Za-z0-9_-]{43}"),
+            prop::option::of("[a-zA-Z0-9-]{1,36}"),
         )
             .prop_map(
                 |(
@@ -359,6 +362,7 @@ mod tests {
                     issued_at,
                     expires_at,
                     authorization_code_hash,
+                    grant_id,
                 )| {
                     RefreshTokenFamily {
                         family_id,
@@ -368,6 +372,7 @@ mod tests {
                         issued_at,
                         expires_at,
                         authorization_code_hash,
+                        grant_id,
                     }
                 },
             )
@@ -510,6 +515,7 @@ mod tests {
             issued_at: Utc::now(),
             expires_at: Utc::now() + chrono::Duration::days(90),
             authorization_code_hash: None,
+            grant_id: None,
         }
     }
 

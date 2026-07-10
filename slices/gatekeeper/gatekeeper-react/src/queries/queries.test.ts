@@ -21,12 +21,14 @@ import {
  * that returns canned access-management bodies.
  */
 
-// Wire shape mirrors `AccessManagement.GrantSchema` (DateTimeUtc encodes as ISO).
+// Wire shape mirrors `AccessManagement.GrantSchema` — the `authorization_code`
+// variant of the grantType-tagged union (DateTimeUtc encodes as ISO).
 const GRANT_BODY = [
   {
     id: 'grant-1',
     clientId: 'client-a',
     scopes: ['system/*.cruds', 'wildflower/*.cruds'],
+    grantType: 'authorization_code',
     redirectUri: 'https://example.com/cb',
     grantedAt: '2024-01-01T00:00:00.000Z',
     lastUsedAt: null,
@@ -123,6 +125,14 @@ describe('grantsQueryOptions', () => {
   test('exposes the canonical GRANTS_QUERY_KEY', () => {
     const options = grantsQueryOptions(makeRunAuthed(stubHttpClientLayer()))
     expect(options.queryKey).toEqual(GRANTS_QUERY_KEY)
+  })
+
+  test('re-fetches on mount so a newly-authorized grant is never masked by the stale cache', () => {
+    // Authorizing an app / pairing a device happens outside this React tree, so
+    // nothing invalidates the list; without an always-refetch the app's 5-minute
+    // staleTime would keep the just-added grant hidden until the window elapsed.
+    const options = grantsQueryOptions(makeRunAuthed(stubHttpClientLayer()))
+    expect(options.refetchOnMount).toBe('always')
   })
 
   test('queryFn reads the grants list through the authed runner', async () => {

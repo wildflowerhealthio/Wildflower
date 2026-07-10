@@ -18,6 +18,8 @@ import {
   grantsQueryOptions,
   useGrantsQuery,
   useRevokeGrantMutation,
+  type AppGrant,
+  type DeviceGrant,
   type Grant,
 } from '../../../queries/index.ts'
 import type { RouterContext } from '../../../router-context.ts'
@@ -25,6 +27,10 @@ import type { RouterContext } from '../../../router-context.ts'
 interface AccessIndexBodyProps {
   readonly grants: readonly Grant[]
 }
+
+/** Navigate to the shared per-grant detail route (both variants link here). */
+const grantDetailHref = (id: string): string =>
+  `/settings/gatekeeper/approved/${encodeURIComponent(id)}`
 
 const AccessIndexBody = ({ grants }: AccessIndexBodyProps): JSX.Element => {
   const navigate = useNavigate()
@@ -45,6 +51,14 @@ const AccessIndexBody = ({ grants }: AccessIndexBodyProps): JSX.Element => {
     )
   }
 
+  // Split the one grants list into its two variants: code-flow grants render as
+  // "Approved Apps" (unchanged), device-flow grants as "Authorized Devices".
+  const appGrants = grants.filter(
+    (grant): grant is AppGrant => grant.grantType === 'authorization_code'
+  )
+  const deviceGrants = grants.filter(
+    (grant): grant is DeviceGrant => grant.grantType === 'device_code'
+  )
   const grantToRevoke = grants.find((g) => g.id === confirmRevokeId) ?? null
 
   return (
@@ -71,17 +85,15 @@ const AccessIndexBody = ({ grants }: AccessIndexBodyProps): JSX.Element => {
         ]}
       />
 
-      {grants.length > 0 ? (
+      {appGrants.length > 0 ? (
         <ItemList
           title="Approved Apps"
-          items={grants.map((grant) => ({
+          items={appGrants.map((grant) => ({
             id: grant.id,
             title: grant.clientId,
             subtitle: `${grant.scopes.join(', ')} · Granted ${formatInstant(grant.grantedAt)}`,
             onClick: () => {
-              void navigate({
-                to: `/settings/gatekeeper/approved/${encodeURIComponent(grant.id)}`,
-              })
+              void navigate({ to: grantDetailHref(grant.id) })
             },
             actions: (
               <Menu
@@ -117,6 +129,23 @@ const AccessIndexBody = ({ grants }: AccessIndexBodyProps): JSX.Element => {
           },
         ]}
       />
+
+      {/* Durable device pairings minted by the device-code approval flow.
+          Revoke UI is intentionally out of scope for v1 — these rows link to
+          the shared detail screen but carry no per-row actions yet. */}
+      {deviceGrants.length > 0 ? (
+        <ItemList
+          title="Authorized Devices"
+          items={deviceGrants.map((grant) => ({
+            id: grant.id,
+            title: grant.deviceName,
+            subtitle: `${grant.scopes.join(', ')} · Granted ${formatInstant(grant.grantedAt)}`,
+            onClick: () => {
+              void navigate({ to: grantDetailHref(grant.id) })
+            },
+          }))}
+        />
+      ) : null}
 
       <RevokeGrantDialog
         clientId={grantToRevoke?.clientId ?? null}
@@ -180,4 +209,4 @@ const Route = createFileRoute('/settings/gatekeeper/')({
   errorComponent: ({ error, reset }) => <AccessIndexErrorView error={error} reset={reset} />,
 })
 
-export { AccessIndexErrorView, Route }
+export { AccessIndexBody, AccessIndexErrorView, Route }

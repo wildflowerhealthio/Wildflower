@@ -200,8 +200,15 @@ non-standard RFC 8628 extension: the requesting device sends it as the
 device-flow [`AuthorizationRequest`](#authorizationrequest), surfaced to the
 Owner on the consent prompt, and — from the settings consent surface — editable
 before approval (persisted `COALESCE`-style, so an omitted value keeps the stored
-one). Optional; absent for devices that don't name themselves and for auth-code
-requests.
+one).
+
+When the device doesn't send a name, the server infers a friendly one from the
+request's `User-Agent` (e.g. `"Chrome on macOS"`) — only as a fallback, never
+overriding a name the device or Owner chose. Unrecognizable User-Agents (the
+many non-browser device-code clients — CLIs, TV apps, bare HTTP libraries) infer
+nothing; the effective name then falls back to the client name at grant-mint
+time so the durable device grant's `(client_id, device_name)` key stays total.
+Optional on the wire; auth-code requests carry no device name.
 
 ### Expandable consent
 

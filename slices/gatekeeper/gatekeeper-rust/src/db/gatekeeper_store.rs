@@ -63,6 +63,8 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/007_client_allowed_grant_types.sql"),
     include_str!("../migrations/008_seed_sample_clients.sql"),
     include_str!("../migrations/009_authorization_request_device_name.sql"),
+    include_str!("../migrations/010_polymorphic_grants.sql"),
+    include_str!("../migrations/011_refresh_family_grant_id.sql"),
 ];
 
 #[cfg(test)]
@@ -97,8 +99,10 @@ mod tests {
             .unwrap();
         for expected in [
             "authorization_codes",
+            "authorization_code_grants",
             "authorization_requests",
             "clients",
+            "device_grants",
             "grants",
             "refresh_token_families",
             "refresh_tokens",
@@ -106,5 +110,64 @@ mod tests {
         ] {
             assert!(names.iter().any(|n| n == expected), "missing {expected}");
         }
+    }
+
+    /// Migration 010 splits the flat `grants` table into a parent + per-variant
+    /// children. A row that existed before the split must land intact as an
+    /// `authorization_code` parent with its `redirect_uri` moved into the
+    /// authorization-code child. Applying migrations 001..=009 first, seeding a
+    /// legacy flat row, then applying the rest exercises the data migration —
+    /// `open_in_memory` would apply everything at once and skip the copy.
+    #[test]
+    fn migration_010_moves_existing_grants_into_parent_and_child() {
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.pragma_update(None, "foreign_keys", true).unwrap();
+
+        // The pre-polymorphic schema (through migration 009).
+        persistence_rust::run_migrations(&mut conn, NAMESPACE, &MIGRATIONS[..9]).unwrap();
+        conn.execute(
+            "INSERT INTO grants (id, client_id, scopes, redirect_uri, granted_at, last_used_at, patient) \
+             VALUES ('g1', 'client-a', '[\"read\"]', 'https://example.com/cb', \
+                     '2024-01-01T00:00:00Z', NULL, 'patient-1')",
+            [],
+        )
+        .unwrap();
+
+        // Apply the polymorphic split (migration 010) and the rest.
+        persistence_rust::run_migrations(&mut conn, NAMESPACE, MIGRATIONS).unwrap();
+
+        // The parent keeps the shared fields and gains `grant_type`; the flat
+        // `redirect_uri` column is gone.
+        let (client_id, grant_type, patient): (String, String, Option<String>) = conn
+            .query_row(
+                "SELECT client_id, grant_type, patient FROM grants WHERE id = 'g1'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(client_id, "client-a");
+        assert_eq!(grant_type, "authorization_code");
+        assert_eq!(patient.as_deref(), Some("patient-1"));
+
+        let parent_has_redirect: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('grants') WHERE name = 'redirect_uri'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(parent_has_redirect, 0, "parent must drop redirect_uri");
+
+        // The redirect_uri moved into the authorization-code child, denormalized
+        // client_id alongside it.
+        let (child_client_id, redirect_uri): (String, String) = conn
+            .query_row(
+                "SELECT client_id, redirect_uri FROM authorization_code_grants WHERE id = 'g1'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(child_client_id, "client-a");
+        assert_eq!(redirect_uri, "https://example.com/cb");
     }
 }

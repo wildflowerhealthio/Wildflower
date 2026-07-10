@@ -12,7 +12,10 @@ leave the device when it does**. Two orthogonal axes answer it: **provenance**
 with PHI). Provenance fixes how a launch target resolves; the flags carry the
 privacy verdict. The storage layout follows from the taxonomy — a curated parent
 registry with one globally-unique `id` per app, plus a per-kind child table —
-rather than driving it.
+rather than driving it. That parent-registry-plus-child-tables layout is a
+repo-wide convention (apps is its reference implementation, gatekeeper grants the
+second); the [Polymorphic Rows Explanation](../Persistence/Polymorphic%20Rows%20Explanation.md)
+describes the pattern in the abstract.
 
 ## Group A — Provenance (one per app, fixed identity)
 
