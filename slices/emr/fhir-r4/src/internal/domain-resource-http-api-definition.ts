@@ -10,8 +10,27 @@ const EverythingParams = Schema.Struct({
   _count: Schema.optional(NumFromStr.pipe(Schema.between(0, 1000))),
 })
 
+/**
+ * The `$everything` operation endpoint for `resourceType`. Deliberately not
+ * part of {@link buildDomainResourceHttpApiGroup}: the server only implements
+ * the operation for `Patient`, so each resource that has it opts in
+ * explicitly. The path carries its own `/${resourceType}` segment because
+ * `HttpApiGroup.prefix` (applied inside the builder) only rewrites endpoints
+ * already added at that point.
+ */
 // oxlint-disable-next-line typescript-eslint/explicit-function-return-type
-export function buildDomainResourceHttpApiGroup<
+function buildEverythingEndpoint(resourceType: string) {
+  return HttpApiEndpoint.get('Everything', `/${resourceType}/:id/$everything`)
+    .setPath(Schema.Struct({ id: Schema.String }))
+    .setUrlParams(EverythingParams)
+    .addSuccess(Bundle.Schema(Schema.Any))
+    .addError(HttpApiError.NotFound)
+    .addError(HttpApiError.ServiceUnavailable)
+    .addError(HttpApiError.Forbidden)
+}
+
+// oxlint-disable-next-line typescript-eslint/explicit-function-return-type
+function buildDomainResourceHttpApiGroup<
   RT extends string,
   StoreType extends { id: string | null },
   FhirEncoded extends { id?: string | undefined },
@@ -67,14 +86,7 @@ export function buildDomainResourceHttpApiGroup<
         .addError(HttpApiError.ServiceUnavailable)
         .addError(HttpApiError.Forbidden)
     )
-    .add(
-      HttpApiEndpoint.get('Everything', `/:id/$everything`)
-        .setPath(Schema.Struct({ id: Schema.String }))
-        .setUrlParams(EverythingParams)
-        .addSuccess(Bundle.Schema(Schema.Any))
-        .addError(HttpApiError.NotFound)
-        .addError(HttpApiError.ServiceUnavailable)
-        .addError(HttpApiError.Forbidden)
-    )
     .prefix(`/${resourceType}`)
 }
+
+export { buildDomainResourceHttpApiGroup, buildEverythingEndpoint }

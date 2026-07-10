@@ -84,6 +84,7 @@ pub(crate) async fn handle_launch_app(
 /// posture.
 #[utoipa::path(
     get,
+    tag = "Launch",
     path = "/apps/{id}",
     params(("id" = String, Path, description = "App id")),
     responses(

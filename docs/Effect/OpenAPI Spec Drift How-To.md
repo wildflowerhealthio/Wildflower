@@ -128,9 +128,19 @@ and serves it as an interactive [Scalar](https://scalar.com) reference at
 (`apps/wildflower-tauri/src-tauri/src/lib.rs`), gated exactly like the rest of
 the admin API. Paths in each slice's spec already carry that slice's host mount
 prefix, so the merge needs no re-nesting. It's the same generated document, so
-`/docs` can't drift from the snapshots — no extra guard is needed. FHIR/HFS is
-absent: it emits no OpenAPI spec, only a FHIR CapabilityStatement at
-`/fhir-r4/metadata`.
+`/docs` can't drift from the snapshots — no extra guard is needed.
+
+FHIR/HFS is the one **inverted** group: HFS (the embedded third-party FHIR
+server) emits no OpenAPI spec, only a FHIR CapabilityStatement at
+`/fhir-r4/metadata`. So its snapshot
+(`slices/emr/emr-rust/openapi/fhir-r4.openapi.json`) is generated **from the TS
+side** — `OpenApi.fromApi` on the `fhir-r4` Effect `HttpApi`, kept fresh by
+`slices/emr/fhir-r4/src/http-api-definition/openapi-drift.test.ts` (regenerate
+with `UPDATE_OPENAPI=1 vp test --config slices/emr/fhir-r4/vite.config.ts
+openapi-drift`) — and `emr_rust::openapi_spec()` merely embeds and parses it.
+It documents "the surface as the client uses it", and is **not** a drift guard
+against HFS itself (that pairing stays hand-synchronized; see the emr slice
+docs).
 
 To keep the merged page readable, each handler's `#[utoipa::path]` carries a
 fine-grained `tag` (e.g. `OAuth 2.0`, `Catalogue`) — so tags are part of the

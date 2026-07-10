@@ -34,6 +34,8 @@ const config = {
     'ds-bundle/**',
     '.ds-sync/**',
     '.local-notes/**',
+    'apps/wildflower-tauri/src-tauri/gen/**',
+    'target/**',
   ],
 }
 

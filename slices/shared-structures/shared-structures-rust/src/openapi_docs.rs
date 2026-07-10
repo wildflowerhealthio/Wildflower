@@ -1,9 +1,13 @@
 //! The unified `/docs` surface: merge several slice `OpenApi` documents into one
 //! and serve it as an interactive [Scalar](https://scalar.com) API reference.
 //!
-//! Each documented slice (`gatekeeper`, `apps`, `databases`, `tunnel`) exposes an
-//! `openapi_spec()` collected from the very routes that serve traffic. The host —
-//! the one process that actually serves HTTP — collects those, merges them here
+//! Each documented slice (`gatekeeper`, `apps`, `databases`, `tunnel`, `emr`)
+//! exposes an `openapi_spec()`. For most slices that's collected from the very
+//! routes that serve traffic; `emr`'s is the one exception — its server is the
+//! embedded third-party HFS router, so its spec is a committed snapshot
+//! generated from the TS `fhir-r4` `HttpApi` instead (see
+//! `emr_rust::openapi_spec`). The host — the one process that actually serves
+//! HTTP — collects those, merges them here
 //! into a single document, and mounts the returned router at `/docs`. The paths
 //! in each slice's spec already carry that slice's host mount prefix (`/oauth`,
 //! `/tunnel`, `/databases`, `/apps`, …), so a plain [`OpenApi::merge`] needs no
