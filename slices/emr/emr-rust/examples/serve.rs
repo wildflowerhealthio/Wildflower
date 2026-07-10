@@ -24,6 +24,10 @@ async fn main() -> anyhow::Result<()> {
         // Dev binary: HFS auth off. Discovery + /metadata still served;
         // anything that would normally require auth (Patient, etc.) is open.
         jwks_url: None,
+        // The SearchParameter bundle is a deployed asset; point HFS at the
+        // crate's vendored copy so searches index (see `assets/README.md`).
+        search_parameter_data_dir: std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("assets"),
     };
 
     let router = setup_fhir_r4(&runtime, &config)?;

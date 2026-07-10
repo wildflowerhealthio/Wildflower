@@ -38,7 +38,7 @@ Implication: the typed client cannot ask "latest blood pressure for this patient
 
 The `HttpApi` declares `GET /:resourceType/{id}/$everything` (with `_count`, returning a `Bundle`) on **every** resource group — it's added by `buildDomainResourceHttpApiGroup`, so the typed client will happily issue it for `Patient`, `Observation`, or `Binary`. The server only implements `Patient/{id}/$everything`; a `$everything` call on any other resource falls through to HFS, which has no such handler.
 
-What the server actually returns for `Patient/{id}/$everything` — which related types it gathers, and its in-memory / single-page matching narrowings — is server behaviour and lives in the emr-rust [Capability Statement](../../emr-rust/docs/Capability%20Statement.md), not here.
+What the server actually returns for `Patient/{id}/$everything` — which related types it gathers, and how (an indexed, server-side, fully-paged `subject=` search per type) — is server behaviour and lives in the emr-rust [Capability Statement](../../emr-rust/docs/Capability%20Statement.md), not here.
 
 ## Patient invariant `pat-1` not enforced
 

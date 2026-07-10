@@ -12,7 +12,7 @@ mod smart_configuration;
 
 use anyhow::Context;
 use axum::routing::{get, Router};
-use helios_persistence::backends::sqlite::SqliteBackend;
+use helios_persistence::backends::sqlite::{SqliteBackend, SqliteBackendConfig};
 use helios_rest::{create_app_with_auth, ServerConfig};
 use shared_structures_rust::ServerRuntimeConfig;
 
@@ -48,8 +48,8 @@ pub const UNAUTHENTICATED_FHIR_PATHS: &[&str] = &[
 ///   advertise the SMART App Launch grant + gatekeeper's authorize/token URLs,
 ///   which HFS's built-in (Backend-Services-shaped) discovery doc doesn't.
 /// - `/fhir-r4/Patient/{id}/$everything` implements the FHIR `$everything`
-///   operation HFS doesn't ship, by delegating back into HFS's `read` +
-///   `Observation` search in-process (see [`patient_everything`]).
+///   operation HFS doesn't ship, by delegating back into HFS's `read` + indexed
+///   `subject=` searches in-process (see [`patient_everything`]).
 ///
 /// When [`EmrConfig::jwks_url`] is `Some`, HFS auth is enabled: it validates the
 /// JWT against the configured JWKS, enforces `iss`, parses SMART v2 scopes,
@@ -59,10 +59,36 @@ pub const UNAUTHENTICATED_FHIR_PATHS: &[&str] = &[
 ///
 /// # Errors
 ///
-/// Returns an error if the sqlite backend cannot be opened at the configured
-/// path or if initializing its schema fails.
+/// Returns an error if the configured SearchParameter asset directory does not
+/// contain the R4 spec bundle, if the sqlite backend cannot be opened at the
+/// configured path, or if initializing its schema fails.
 pub fn setup_fhir_r4(runtime: &ServerRuntimeConfig, config: &EmrConfig) -> anyhow::Result<Router> {
-    let sqlite_backend = SqliteBackend::open(&config.db_file_path).with_context(|| {
+    // Point HFS's backend at the on-disk FHIR R4 SearchParameter asset directory
+    // the host provides (a bundled resource — never embedded in the binary), so
+    // HFS registers every standard R4 search parameter and indexes it at write
+    // time. Without a real spec dir HFS falls back to a ~9-parameter minimal set
+    // and `Observation.subject`-style searches return nothing, so we fail fast if
+    // the bundle isn't there rather than silently degrade — see
+    // [`EmrConfig::search_parameter_data_dir`] and this crate's
+    // `docs/Capability Statement.md`.
+    let spec_dir = &config.search_parameter_data_dir;
+    let spec_file = spec_dir.join(SEARCH_PARAMETERS_R4_FILENAME);
+    if !spec_file.is_file() {
+        anyhow::bail!(
+            "FHIR R4 SearchParameter bundle not found at {} — the `{}` asset must be \
+             deployed and `EmrConfig::search_parameter_data_dir` must point at its directory",
+            spec_file.display(),
+            SEARCH_PARAMETERS_R4_FILENAME,
+        );
+    }
+    let sqlite_backend = SqliteBackend::with_config(
+        &config.db_file_path,
+        SqliteBackendConfig {
+            data_dir: Some(spec_dir.clone()),
+            ..SqliteBackendConfig::default()
+        },
+    )
+    .with_context(|| {
         format!(
             "failed to open sqlite backend at {}",
             config.db_file_path.display()
@@ -132,6 +158,12 @@ pub fn setup_fhir_r4(runtime: &ServerRuntimeConfig, config: &EmrConfig) -> anyho
     Ok(Router::new().nest(FHIR_R4_PATH, fhir_with_override))
 }
 
+/// Filename HFS's `SearchParameterLoader` expects for the R4 spec bundle inside
+/// `data_dir` — it derives this exact name from the FHIR version and loads no
+/// other. The vendored asset (`assets/search-parameters-r4.json`) and the
+/// bundled-resource copy the host deploys both use it; must not be renamed.
+const SEARCH_PARAMETERS_R4_FILENAME: &str = "search-parameters-r4.json";
+
 #[cfg(test)]
 mod tests {
     use super::{FHIR_R4_PATH, UNAUTHENTICATED_FHIR_PATHS};
@@ -150,5 +182,37 @@ mod tests {
     fn unauthenticated_paths_cover_smart_discovery() {
         assert!(UNAUTHENTICATED_FHIR_PATHS.contains(&"/fhir-r4/metadata"));
         assert!(UNAUTHENTICATED_FHIR_PATHS.contains(&"/fhir-r4/.well-known/smart-configuration"));
+    }
+
+    /// The vendored asset must ship under the filename HFS's loader expects, be
+    /// valid JSON, and cover `Observation.subject` — the parameter
+    /// `$everything`'s server-side search depends on. This guards the on-disk
+    /// asset (not embedded), which the host deploys as a bundled resource.
+    #[test]
+    fn vendored_search_parameter_asset_covers_observation_subject() {
+        let asset = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("assets")
+            .join(super::SEARCH_PARAMETERS_R4_FILENAME);
+        let json = std::fs::read_to_string(&asset)
+            .unwrap_or_else(|e| panic!("read vendored asset {}: {e}", asset.display()));
+        let bundle: serde_json::Value =
+            serde_json::from_str(&json).expect("vendored SearchParameter bundle is valid JSON");
+        assert_eq!(bundle["resourceType"], "Bundle");
+        let has_observation_subject = bundle["entry"]
+            .as_array()
+            .expect("bundle has entry array")
+            .iter()
+            .filter_map(|entry| entry.get("resource"))
+            .any(|resource| {
+                resource["resourceType"] == "SearchParameter"
+                    && resource["code"] == "subject"
+                    && resource["base"]
+                        .as_array()
+                        .is_some_and(|base| base.iter().any(|b| b == "Observation"))
+            });
+        assert!(
+            has_observation_subject,
+            "bundle must define the Observation.subject search parameter"
+        );
     }
 }

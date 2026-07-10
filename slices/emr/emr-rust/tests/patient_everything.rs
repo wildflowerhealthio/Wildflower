@@ -1,9 +1,10 @@
 //! End-to-end tests for the `$everything` override, exercised through the real
-//! router `setup_fhir_r4` builds (HFS create/read/type-level search + our
-//! in-memory subject match + merge), with HFS auth off (`jwks_url: None`).
-//! Covers patient-first ordering, the multi-type related set
-//! (`Observation` + `MedicationRequest`), `_count` truncation, and `404` for a
-//! missing patient.
+//! router `setup_fhir_r4` builds (HFS create/read + indexed, server-side,
+//! fully-paged `subject=` searches + merge), with HFS auth off
+//! (`jwks_url: None`). Covers patient-first ordering, the multi-type related set
+//! (`Observation` + `MedicationRequest`), `_count` truncation, paging past a
+//! single search page, server-side parameter filtering, and `404` for a missing
+//! patient.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -44,6 +45,10 @@ fn build_router() -> (Router, TempDb) {
         log_level: "error".to_string(),
         db_file_path: dir.join("health-data.sqlite"),
         jwks_url: None,
+        // The SearchParameter bundle is a deployed asset, not embedded — point
+        // HFS at the crate's vendored copy (the host ships it as a bundled
+        // resource in production).
+        search_parameter_data_dir: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets"),
     };
 
     let router = setup_fhir_r4(&runtime, &config).expect("setup_fhir_r4");
@@ -143,6 +148,28 @@ async fn put_medication_request(router: &Router, id: &str, subject: &str) {
     assert!(
         status.is_success(),
         "PUT MedicationRequest/{id} failed: {status} {body}"
+    );
+}
+
+/// PUT (create-with-id) an Observation for `subject` carrying a real coded
+/// `code` (system + code), so token searches on `Observation.code` can match it.
+async fn put_observation_coded(router: &Router, id: &str, subject: &str, system: &str, code: &str) {
+    let (status, body) = send(
+        router,
+        "PUT",
+        &format!("/fhir-r4/Observation/{id}"),
+        Some(json!({
+            "resourceType": "Observation",
+            "id": id,
+            "status": "final",
+            "code": { "coding": [{ "system": system, "code": code }] },
+            "subject": { "reference": format!("Patient/{subject}") },
+        })),
+    )
+    .await;
+    assert!(
+        status.is_success(),
+        "PUT Observation/{id} failed: {status} {body}"
     );
 }
 
@@ -354,6 +381,122 @@ async fn succeeds_when_client_requests_xml() {
     assert_eq!(bundle["total"], 2);
     assert_eq!(bundle["entry"][0]["resource"]["resourceType"], "Patient");
     assert_eq!(bundle["entry"][0]["resource"]["id"], "p1");
+}
+
+/// The former implementation inspected only the first search page (capped at
+/// 1000, HFS's `max_page_size`) and matched in memory, so a patient's rows
+/// beyond a single page were silently dropped. The server-side search now pages
+/// the delegated `subject=` search to exhaustion: create more Observations than
+/// HFS's default page size (20) and assert `$everything` returns every one.
+#[tokio::test]
+async fn returns_all_related_resources_across_multiple_search_pages() {
+    let (router, _db) = build_router();
+
+    put_patient(&router, "p1").await;
+    // 45 > the default page size (20), so the delegated search spans 3 pages.
+    let total = 45;
+    for n in 0..total {
+        put_observation(&router, &format!("o{n}"), "p1").await;
+    }
+
+    let (status, bundle) = send(&router, "GET", "/fhir-r4/Patient/p1/$everything", None).await;
+
+    assert_eq!(status, StatusCode::OK, "body: {bundle}");
+    let entries = bundle["entry"].as_array().expect("entry array");
+    // Patient + every one of its Observations, none dropped by a page cap.
+    assert_eq!(entries.len(), total + 1);
+    assert_eq!(bundle["total"], total + 1);
+    assert_eq!(entries[0]["resource"]["resourceType"], "Patient");
+
+    let mut observation_ids: Vec<String> = entries[1..]
+        .iter()
+        .map(|entry| {
+            assert_eq!(entry["resource"]["resourceType"], "Observation");
+            entry["resource"]["id"]
+                .as_str()
+                .expect("observation id")
+                .to_string()
+        })
+        .collect();
+    observation_ids.sort();
+    let mut expected: Vec<String> = (0..total).map(|n| format!("o{n}")).collect();
+    expected.sort();
+    assert_eq!(observation_ids, expected);
+}
+
+/// The related resources are found by an indexed, **server-side** search on
+/// `Observation.subject`, not an in-memory scan. Prove the index is live by
+/// issuing the delegated search directly: `GET /Observation?subject=Patient/{id}`
+/// must return exactly the target patient's Observations (empty before the
+/// SearchParameter bundle was loaded).
+#[tokio::test]
+async fn subject_search_resolves_server_side() {
+    let (router, _db) = build_router();
+
+    put_patient(&router, "p1").await;
+    put_patient(&router, "p2").await;
+    put_observation(&router, "o1", "p1").await;
+    put_observation(&router, "o2", "p1").await;
+    put_observation(&router, "o-other", "p2").await;
+
+    let (status, bundle) = send(
+        &router,
+        "GET",
+        "/fhir-r4/Observation?subject=Patient/p1",
+        None,
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "body: {bundle}");
+    assert_eq!(bundle["resourceType"], "Bundle");
+    let mut ids: Vec<String> = bundle["entry"]
+        .as_array()
+        .expect("entry array")
+        .iter()
+        .map(|entry| {
+            entry["resource"]["id"]
+                .as_str()
+                .expect("observation id")
+                .to_string()
+        })
+        .collect();
+    ids.sort();
+    assert_eq!(
+        ids,
+        vec!["o1", "o2"],
+        "server-side subject filter, no p2 leak"
+    );
+}
+
+/// Loading the full R4 SearchParameter bundle also indexes parameters we don't
+/// query in `$everything` — e.g. `Observation.code`. A token search on `code`
+/// must filter server-side, returning only the matching Observation.
+#[tokio::test]
+async fn observation_code_search_filters_server_side() {
+    let (router, _db) = build_router();
+
+    put_patient(&router, "p1").await;
+    // Two coded Observations with distinct LOINC codes; a `code=` search must
+    // return only the matching one.
+    put_observation_coded(&router, "bp", "p1", "http://loinc.org", "85354-9").await;
+    put_observation_coded(&router, "hr", "p1", "http://loinc.org", "8867-4").await;
+
+    let (status, bundle) = send(
+        &router,
+        "GET",
+        "/fhir-r4/Observation?code=http://loinc.org|85354-9",
+        None,
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "body: {bundle}");
+    let entries = bundle["entry"].as_array().expect("entry array");
+    assert_eq!(
+        entries.len(),
+        1,
+        "only the matching code, filtered server-side"
+    );
+    assert_eq!(entries[0]["resource"]["id"], "bp");
 }
 
 #[tokio::test]

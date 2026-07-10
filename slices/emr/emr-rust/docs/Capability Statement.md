@@ -16,19 +16,29 @@ HFS's built-in discovery doc is shaped for **SMART Backend Services** — it adv
 
 ## `$everything` operation (added; Patient only)
 
-`GET /fhir-r4/Patient/{id}/$everything` is implemented locally (`src/patient_everything.rs`), mounted ahead of HFS — **HFS ships no `$everything`**. It delegates data-fetching back into HFS's own handlers in-process (a `read` for the Patient, then a type-level search per related type), re-driving a clone of HFS's router with sub-requests that carry the caller's `Authorization` header, so HFS's SMART v2 scope enforcement stays in the path exactly as for a direct `GET /Patient/{id}`.
+`GET /fhir-r4/Patient/{id}/$everything` is implemented locally (`src/patient_everything.rs`), mounted ahead of HFS — **HFS ships no `$everything`**. It delegates data-fetching back into HFS's own handlers in-process (a `read` for the Patient, then an indexed `subject=` search per related type), re-driving a clone of HFS's router with sub-requests that carry the caller's `Authorization` header, so HFS's SMART v2 scope enforcement stays in the path exactly as for a direct `GET /Patient/{id}`.
 
 Narrowings relative to spec FHIR `$everything`:
 
 - **Patient only.** No `$everything` on other resource types; such a request falls through to HFS, which has no handler for it. (The `fhir-r4` client nonetheless _declares_ `$everything` on every resource group — see the client doc.)
-- **Related resources are the patient-referencing types in the `RELATED_RESOURCE_TYPES` table — `Observation` and `MedicationRequest` today.** FHIR `$everything` returns every resource in the patient's compartment; we include only the types in that table (matched on their `subject` reference). Adding a type is a one-row change to the table — record it here in the same change.
-- **Related-resource matching is in-memory, over a single search page per type.** The embedding ships no FHIR `SearchParameter` spec files (the backend opens with `data_dir: None`), so `Observation.subject` isn't indexed and a compartment/`subject=` search returns nothing. Instead we run each type's _type-level_ search — capped at `RELATED_FETCH_LIMIT` (1000, HFS's `max_page_size`) — and filter `subject.reference == "Patient/{id}"` in memory. Only the first page is inspected, and the search is store-wide (not compartment-scoped), so once the store holds more than 1000 of a type across **all** patients, a target patient's rows outside that page are silently dropped — even a patient with only a handful. Closing this needs the delegated search paged to exhaustion, or a real `subject`-indexed compartment search.
+- **Related resources are the patient-referencing types in the `RELATED_RESOURCE_TYPES` table — `Observation` and `MedicationRequest` today.** FHIR `$everything` returns every resource in the patient's compartment; we include only the types in that table (searched on their `subject` reference). Adding a type is a one-row change to the table — record it here in the same change.
+- **Related-resource matching is server-side and fully paged.** HFS indexes `Observation.subject` / `MedicationRequest.subject` because the embedding now loads the full R4 `SearchParameter` set (see "SearchParameter index" below), so each related type is gathered with an indexed `GET /{Type}?subject=Patient/{id}` search that HFS filters, and the handler follows the search bundle's `next` cursor link to exhaustion. There is no in-memory `subject.reference` match and no single-page / store-wide candidate cap — a patient's related resources are returned in full regardless of how many the patient or the store holds. (`subject` is used rather than the `patient` search parameter because `subject` indexes a plain reference, whereas `patient`'s `.where(resolve() is Patient)` expression depends on `resolve()` at index time.)
 - **Partial scope degrades gracefully.** A related-type search that fails (non-200 or an unreadable body) is logged and treated as _no matches_ rather than aborting; only the primary Patient read is fatal (its `401`/`403` propagates verbatim). A token that can read Patient + Observation but not MedicationRequest still gets a Bundle with the Patient and its Observations.
 - **`_count` and `Bundle.total`.** `_count` truncates the combined matched related set (the primary Patient is always included on top); `Bundle.total` reflects the returned (post-truncation) entry count, not the grand match total.
 
-## No `SearchParameter` index (search is `_id`/`_lastUpdated` only)
+## `SearchParameter` index (full R4 set, indexed at write time)
 
-Because the embedding opens with `data_dir: None`, HFS loads no `SearchParameter` spec files: only a minimal `_id`/`_lastUpdated` index exists. Searches keyed on any other parameter — `name`, `identifier`, `subject`, `code`, `category`, `patient`, compartment searches — return nothing at the server, regardless of what a client asks for. This is why `$everything` matches related resources in memory (above).
+`emr-rust` loads the **complete HL7 FHIR R4 `SearchParameter` bundle** into HFS. HFS's SQLite backend registers SearchParameters from a filesystem `data_dir`; the R4 `search-parameters.json` ships as a **deployed asset** (see `assets/README.md`) — a bundled resource, not embedded in the binary — and the host points `EmrConfig::search_parameter_data_dir` at the directory holding it, which `setup_fhir_r4` passes to the backend via `SqliteBackendConfig { data_dir: Some(...) }` (`src/lib.rs`). HFS reads it read-only and extracts and indexes every standard R4 search parameter for a resource **at write time**. `setup_fhir_r4` fails fast if the bundle is missing from that directory, rather than silently falling back to the minimal index.
+
+Consequences:
+
+- Standard type-level and compartment searches resolve server-side: `Observation` by `subject`/`patient`/`code`/`category`/`date`/`status`, `Patient` by `name`/`identifier`/`birthdate`, and so on for every stored type.
+- This is what lets `$everything` (above) delegate an indexed `subject=` search instead of matching in memory.
+
+Two limits worth noting:
+
+- **Write-time indexing / no automatic reindex.** HFS indexes on create/update, so only resources written **after** the SearchParameter set is in place are searchable. This embedding is local-first and pre-release with no production stores, so we rely on the **fresh-store assumption**: existing dev stores predate any real data and are recreated, so no one-time backfill is shipped. HFS does expose a `$reindex`/`ReindexOperation` if a backfill is ever needed for an existing store.
+- **`data_dir: None` is no longer used.** The historical narrowing where the backend opened with `data_dir: None` (only a ~9-parameter `_id`/`_lastUpdated` fallback index, so `subject`/`name`/`code`/compartment searches returned nothing) no longer applies.
 
 ## Auth is off unless a JWKS URL is configured
 

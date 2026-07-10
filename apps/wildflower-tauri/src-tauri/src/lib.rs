@@ -186,6 +186,19 @@ async fn run_server(
     // bare origin string (no trailing slash) for the few sub-URLs built by hand.
     let loopback_base_url = runtime.loopback_base_url();
     let loopback_origin = loopback_base_url.origin().ascii_serialization();
+    // The FHIR R4 SearchParameter bundle HFS indexes from is a deployed asset,
+    // not embedded in the binary — dev reads it from the workspace source tree,
+    // release from the bundled resource dir (declared in `tauri.conf.json` under
+    // `bundle.resources`, copied to `<resource_dir>/fhir-search-params/`). Same
+    // dev/release split as the vendored self-hosted apps below.
+    let search_parameter_data_dir = if cfg!(debug_assertions) {
+        std::path::PathBuf::from(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../slices/emr/emr-rust/assets"
+        ))
+    } else {
+        resource_dir.join("fhir-search-params")
+    };
     let emr_config = EmrConfig {
         log_level: "debug".to_string(),
         db_file_path: runtime.app_data_dir.join(HEALTH_DATA_DB),
@@ -194,6 +207,7 @@ async fn run_server(
         // [`shared_structures_rust::CANONICAL_ISSUER`] by both gatekeeper
         // (at mint) and emr-rust (at validation).
         jwks_url: Some(format!("{loopback_origin}/.well-known/jwks.json")),
+        search_parameter_data_dir,
     };
     let gatekeeper_config = GatekeeperConfig {
         loopback_base_url: loopback_base_url.clone(),
