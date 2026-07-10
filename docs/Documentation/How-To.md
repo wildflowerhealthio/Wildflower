@@ -56,3 +56,4 @@ AGENTS.md files are agent configuration, not documentation. They should be short
 - [Documentation Explanation](./Explanation.md) — Why docs are organized into four kinds
 - [Documentation Reference](./Reference.md) — Quick-lookup rules
 - [Doc Comments Reference](./Doc%20Comments%20Reference.md) — TSDoc conventions for in-code documentation
+- [Comment Pruning How-To](./Comment%20Pruning%20How-To.md) — Cutting comment bulk from a branch's diff before pushing

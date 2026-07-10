@@ -16,7 +16,8 @@ const REMINDER =
   'Confirm the outgoing changes have had their relevant checks run and passing this session: ' +
   '`vp run test:changed` for TS (use node_modules/.bin/vp in web sessions), and ' +
   '`./scripts/checks/rust.sh pre-push` when Rust files changed. ' +
-  'If the checks have been run (or the user explicitly said to push without them), retry the push — it will proceed. ' +
+  'Also prune comment bulk in the outgoing diff per docs/Documentation/Comment Pruning How-To.md. ' +
+  'If the checks have been run and the comments pruned (or the user explicitly said to push without them), retry the push — it will proceed. ' +
   'Otherwise run the checks first; if they fail, surface the failures instead of pushing.'
 
 function main() {
