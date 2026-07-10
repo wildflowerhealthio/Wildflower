@@ -92,7 +92,7 @@ Set both, on every package, and on root (for `vp dev`/`vp build` from root conte
 
 ### New kitchen-sink subpaths need a built dist before `vp check`
 
-Slice `tsconfig.json` files `include: ["src"]` only. `vp check` still type-checks `tests/**/*.test.ts`, but tests sit outside `include` and so don't inherit `customConditions: ['source']` — an import like `import { x } from 'kitchen-sink/livestore'` resolves against the `default` (dist) path, not source. If the new subpath hasn't been built, the test sees the import as `any` and everything downstream collapses (`Property 'Service' does not exist on type ...`), even though `src/` checks pass. After adding a new subpath export to a `global/` package consumed cross-package by tests, run `vp run build` (or `vp run -F kitchen-sink build`) once before re-running `vp check`.
+Slice `tsconfig.json` files `include: ["src"]` only. `vp check` still type-checks `tests/**/*.test.ts`, but tests sit outside `include` and so don't inherit `customConditions: ['source']` — an import like `import { x } from 'kitchen-sink/schema'` resolves against the `default` (dist) path, not source. If the new subpath hasn't been built, the test sees the import as `any` and everything downstream collapses (`Property 'Service' does not exist on type ...`), even though `src/` checks pass. After adding a new subpath export to a `global/` package consumed cross-package by tests, run `vp run build` (or `vp run -F kitchen-sink build`) once before re-running `vp check`.
 
 ## Runtime Gotchas
 

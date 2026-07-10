@@ -2,7 +2,7 @@
   "name": "collector-fundamentals",
   "version": "0.0.0",
   "private": true,
-  "description": "Pure-logic representations every collector implementation depends on: Remote / EntityDefinition / RemoteResponse / Link / WebViewSource. No bridge, no livestore, no HTTP. Concrete client packages (e.g. fhir-r4-client-collector) MUST depend only on this package; collector-core sits on top and registers them.",
+  "description": "Pure-logic representations every collector implementation depends on: Remote / EntityDefinition / RemoteResponse / Link / WebViewSource. No bridge, no store, no HTTP. Concrete client packages (e.g. fhir-r4-client-collector) MUST depend only on this package; collector-core sits on top and registers them.",
   "license": "MIT",
   "repository": {
     "type": "git",

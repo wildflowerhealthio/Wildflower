@@ -11,8 +11,7 @@ const configFromProcessEnv = (overrides?: TelemetryConfigOverrides): TelemetryCo
 
 /**
  * Convenience: eagerly initialize telemetry from `process.env`. Call this at
- * the very top of the app entry, before creating Livestore or launching the
- * Effect runtime.
+ * the very top of the app entry, before launching the Effect runtime.
  */
 const initNodeTelemetryFromEnv = (
   overrides?: TelemetryConfigOverrides
@@ -23,7 +22,6 @@ const nodeTelemetryLayerFromEnv = (
 ): ReturnType<typeof makeNodeTelemetryLayer> =>
   makeNodeTelemetryLayer(configFromProcessEnv(overrides))
 
-export { getLivestoreOtelOptions } from 'telemetry-core/livestore'
 export {
   getGlobalTracer,
   initNodeTelemetry,

@@ -65,7 +65,7 @@ This `as unknown as Service` cast isn't on `CLAUDE.md`'s allowed-exceptions list
 
 🎉 add a paragraph to the JSDoc justifying the cast under the "deeply technical foundation" carve-out
 
-🚀 extend `CLAUDE.md`'s exception list to mention `defineSliceLivestore`
+🚀 extend `CLAUDE.md`'s exception list to mention `defineSliceHttpClient`
 ```
 
 Splitting an "Or" — wrong, then right:

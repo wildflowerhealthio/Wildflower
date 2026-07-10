@@ -6,7 +6,7 @@ import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node'
 import { SentryPropagator, SentrySampler, SentrySpanProcessor } from '@sentry/opentelemetry'
 import { Layer } from 'effect'
 import { isOtlpEnabled, isTelemetryEnabled, type TelemetryConfig } from 'telemetry-core'
-import { markOtelInitAttempted, markOtelProviderRegistered } from 'telemetry-core/livestore'
+import { markOtelInitAttempted, markOtelProviderRegistered } from 'telemetry-core/otel-guard'
 import { initSentryNode, Sentry } from './sentry.ts'
 
 let registered: NodeTracerProvider | undefined
@@ -49,8 +49,8 @@ const registerShutdownHandlers = (provider: NodeTracerProvider, sentryOn: boolea
 
 /**
  * Eagerly initialize Sentry and register a global OpenTelemetry tracer
- * provider. Safe to call before the Effect runtime starts so Livestore and
- * other direct `@opentelemetry/api` consumers see the provider immediately.
+ * provider. Safe to call before the Effect runtime starts so direct
+ * `@opentelemetry/api` consumers see the provider immediately.
  * Returns `undefined` when no telemetry sinks are configured.
  */
 const initNodeTelemetry = (config: TelemetryConfig): NodeTracerProvider | undefined => {

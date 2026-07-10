@@ -5,7 +5,7 @@ import type { Simplify } from 'effect/Types'
 /**
  * Bundle a slice's HTTP client boilerplate into one declaration.
  *
- * Mirrors `defineSliceLivestore`: takes the slice-supplied `HttpApi`
+ * Takes the slice-supplied `HttpApi`
  * value and returns a `ClientTag<Self>()` factory and a
  * `makeLayerFactory(Tag)` that yields the slice's client layer. The
  * slice extends `ClientTag<Self>()` so its class name
@@ -50,9 +50,7 @@ const defineSliceHttpClient = <
   readonly name: Name
   readonly api: HttpApi.HttpApi<ApiId, Groups, ApiError, ApiR>
   // Explicit return type would have to re-express the derived Tag /
-  // factory shapes; existing slice helpers (`defineSliceLivestore`,
-  // `apps-core/src/livestore/app-selection.ts`) take the same
-  // inferred-return approach.
+  // factory shapes, so this takes the inferred-return approach.
   // oxlint-disable-next-line typescript/explicit-function-return-type
 }) => {
   type Shape = Simplify<HttpApiClient.Client<Groups, ApiError, never>>

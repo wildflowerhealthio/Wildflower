@@ -13,6 +13,9 @@ the OAuth dialect spoken on the wire; details are in
 
 ## Tables
 
+The tables live in `gatekeeper-rust`'s store; they are described here
+because the wire schemas in this package mirror their rows.
+
 - `clients` — registered OAuth clients with per-client `redirectUris`
   allowlist, `allowedScopes` cap, and optional `secretHash` for
   confidential clients. Every accepted `client_id` resolves here.
@@ -73,10 +76,8 @@ not part of the page contract.
 
 ## Bootstrap URL (dev-mode workaround)
 
-The host process (gatekeeper-node, native shell, dev server) has direct
-access to the signing key and can mint an owner access token via
-`mintHostOwnerToken({ ttl })` (or `internal/jwt.ts:mintAccessToken` for
-ad-hoc cases).
+The host process (`gatekeeper-rust`, native shell, dev server) has direct
+access to the signing key and can mint an owner access token directly.
 
 The web SPA has no client-side URL-token consumption: it authenticates via
 the `HttpOnly` `wf_auth` cookie the server sets at issuance, which JS can't
@@ -89,15 +90,6 @@ bridge — see the Auth Token Storage Explanation.)
 **The minting helpers are a dev convenience, not a shipping pattern**, and
 the long-term story for first-Owner onboarding (native shell, fresh
 deployment, CLI login) is unsettled. They stay behind a dev gate at the
-call site (e.g. `apps/wildflower-node` only mints when
-`NODE_ENV !== 'production'`), and the TTL is required there (no silent
+call site, and the TTL is required there (no silent
 default) so the minter — which has the dev-server / CI / shell context —
 can pick it.
-
-## Row-await helper
-
-`internal/await-row.ts` exports `waitForRow`, an Effect helper that
-suspends until a LiveStore row matches a predicate or a 5-minute timeout
-fires (`ApprovalTimedOut`). Used by the HTTP-request approval gate
-(`/access/requests/:id/approve|deny`); ships with tests but is not yet
-wired to a call site.

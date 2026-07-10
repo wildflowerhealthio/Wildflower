@@ -30,14 +30,6 @@ catalog:
   '@fontsource-variable/hanken-grotesk': ^5.2.8
   '@fontsource-variable/newsreader': ^5.2.10
   '@fontsource-variable/spline-sans-mono': ^5.2.8
-  '@livestore/adapter-node': 0.4.0
-  '@livestore/common': 0.4.0
-  '@livestore/devtools-vite': 0.4.0
-  '@livestore/livestore': 0.4.0
-  '@livestore/peer-deps': 0.4.0
-  '@livestore/react': 0.4.0
-  '@livestore/sync-cf': 0.4.0
-  '@livestore/utils': 0.4.0
   '@opentelemetry/api': 1.9.1
   '@opentelemetry/exporter-trace-otlp-http': ^0.220.0
   '@opentelemetry/resources': 2.9.0
@@ -52,8 +44,6 @@ catalog:
   '@sentry/node': 10.63.0
   '@sentry/opentelemetry': 10.63.0
   '@sentry/react': 10.63.0
-  # Transitive peer of @effect/* required at install time (not declared by @livestore/peer-deps).
-  '@standard-schema/spec': 1.0.0
   '@tanstack/react-query': ^5.101.2
   '@tanstack/react-router': ^1.170.17
   '@tanstack/router-plugin': ^1.168.19

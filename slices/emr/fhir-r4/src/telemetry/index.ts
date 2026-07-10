@@ -24,7 +24,7 @@ const Resource = {
 
 /**
  * Reading a searchset: the two search endpoints, their shared core, the
- * LiveStore reads it issues, and the Bundle assembly.
+ * store reads it issues, and the Bundle assembly.
  */
 const Search = {
   /** Attribute keys shared across the search spans. */
@@ -46,9 +46,9 @@ const Search = {
   ByPost: { Span: { Name: 'fhir.search.by_post' } },
   /** Shared search core: decode cursor, run query + count, build the Bundle. */
   Run: { Span: { Name: 'fhir.search.run' } },
-  /** The paged `search$` LiveStore read. */
+  /** The paged `search$` store read. */
   Query: { Span: { Name: 'fhir.search.query' } },
-  /** The `count$` LiveStore read for the searchset total. */
+  /** The `count$` store read for the searchset total. */
   Count: { Span: { Name: 'fhir.search.count' } },
   /** Assembling the FHIR searchset Bundle from the fetched rows. */
   Bundle: {
@@ -70,7 +70,7 @@ const Search = {
 const Read = {
   /** The handler span. */
   Span: { Name: 'fhir.read' },
-  /** The `getById$` LiveStore read backing it. */
+  /** The `getById$` store read backing it. */
   Query: { Span: { Name: 'fhir.read.query' } },
 } as const
 
@@ -82,7 +82,7 @@ const Write = {
   Update: { Span: { Name: 'fhir.update' } },
   /** Shared upsert-and-fetch core invoked by both create and update. */
   Upsert: { Span: { Name: 'fhir.upsert' } },
-  /** The LiveStore commit of the upsert event. */
+  /** The store commit of the upsert event. */
   Commit: { Span: { Name: 'fhir.upsert.commit' } },
   /** The `getById$` re-read issued after the commit. */
   Query: { Span: { Name: 'fhir.upsert.query' } },

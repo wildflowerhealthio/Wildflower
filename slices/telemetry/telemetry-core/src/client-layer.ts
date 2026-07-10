@@ -12,7 +12,7 @@ import { StackContextManager } from '@opentelemetry/sdk-trace-web'
 import { SentryPropagator, SentrySampler, SentrySpanProcessor } from '@sentry/opentelemetry'
 import { Layer } from 'effect'
 import { isOtlpEnabled, isTelemetryEnabled, type TelemetryConfig } from './config.ts'
-import { markOtelInitAttempted, markOtelProviderRegistered } from './livestore.ts'
+import { markOtelInitAttempted, markOtelProviderRegistered } from './otel-guard.ts'
 
 type SentryClient = ConstructorParameters<typeof SentrySampler>[0]
 
@@ -30,8 +30,8 @@ let contextManagerInstalled = false
  * `otel.context.with(ctx, fn)` bridge depends on a real ContextManager to
  * round-trip context around `fn()`. Without one (i.e. the default
  * `NoopContextManager`) the bridge interaction with Effect's runtime
- * surfaces as `Not a valid effect: {}` inside `createStore:makeAdapter`
- * on Hermes/React Native. Idempotent — safe to call repeatedly.
+ * breaks (historically `Not a valid effect: {}` on Hermes/React
+ * Native). Idempotent — safe to call repeatedly.
  */
 const installContextManager = (): void => {
   if (contextManagerInstalled) return
@@ -70,7 +70,7 @@ const resolveSampler = (
 /**
  * Eagerly initialize Sentry (via the provided adapter) and register a global
  * OpenTelemetry tracer provider. Safe to call before any other consumers of
- * `@opentelemetry/api` so Livestore picks up the provider immediately. Returns
+ * `@opentelemetry/api` so they pick up the provider immediately. Returns
  * `undefined` when no telemetry sinks are configured.
  */
 const initClientTelemetry = (

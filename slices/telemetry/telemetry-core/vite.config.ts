@@ -14,7 +14,7 @@ export default defineConfig({
       dts: { tsgo: true },
       exports: false,
       platform: 'neutral',
-      entry: { livestore: 'src/livestore.ts' },
+      entry: { 'otel-guard': 'src/otel-guard.ts' },
     },
     {
       dts: { tsgo: true },

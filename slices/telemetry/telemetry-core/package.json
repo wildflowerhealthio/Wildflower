@@ -1,7 +1,7 @@
 {
   "name": "telemetry-core",
   "version": "0.0.0",
-  "description": "Shared telemetry config shapes and Livestore/OpenTelemetry bridges for the Wildflower monorepo.",
+  "description": "Shared telemetry config shapes and OpenTelemetry init plumbing for the Wildflower monorepo.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -17,9 +17,9 @@
       "source": "./src/index.ts",
       "default": "./dist/index.js"
     },
-    "./livestore": {
-      "source": "./src/livestore.ts",
-      "default": "./dist/livestore.js"
+    "./otel-guard": {
+      "source": "./src/otel-guard.ts",
+      "default": "./dist/otel-guard.js"
     },
     "./client-layer": {
       "source": "./src/client-layer.ts",
