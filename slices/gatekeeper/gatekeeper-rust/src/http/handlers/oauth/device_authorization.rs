@@ -35,6 +35,9 @@ const MAX_USER_CODE_GENERATION_ATTEMPTS: usize = 10;
 #[derive(Debug, Deserialize)]
 pub struct DeviceAuthorizationPayload {
     pub scope: Option<String>,
+    /// Non-standard RFC 8628 extension: a human-chosen name for the device being paired,
+    /// surfaced to the approver. Absent for strict RFC clients.
+    pub device_name: Option<String>,
 }
 
 /// Body returned by `/oauth/device_authorization` per RFC 8628 §3.2.
@@ -125,6 +128,13 @@ fn device_authorization(
         client_id: presented_credentials.client_id.clone(),
         requested_scopes,
         user_code: user_code.clone(),
+        // Normalize an all-whitespace/empty name to `None` so the approver never sees a blank.
+        device_name: payload
+            .device_name
+            .as_deref()
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .map(str::to_string),
         ttl: DEVICE_AUTHORIZATION_TTL,
     });
     state

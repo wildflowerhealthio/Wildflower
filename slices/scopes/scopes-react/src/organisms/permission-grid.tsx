@@ -72,7 +72,7 @@ const GridCell = ({
  * **disabled** (out of scopeRequest) — resolved in `scopes-core` ({@link Rows.build}); an
  * `inline`-layout (v1 word) row renders a {@link PermissionPicker} spanning the columns.
  * Both forms emit the same `onToggleItem(resource, itemId)` callback (the section's
- * context is fixed, held by the container). The `All records` wildcard row drives
+ * context is fixed, held by the container). The `*` wildcard row drives
  * the §3 locking below it.
  */
 const PermissionGrid = <K extends Scope.MultiScope.Kind>({

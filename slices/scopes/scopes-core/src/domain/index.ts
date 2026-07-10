@@ -21,3 +21,4 @@
 
 export * as Scope from './scope/index.ts'
 export * as Grant from './grant.ts'
+export * as AccessToken from './access-token-ttl.ts'

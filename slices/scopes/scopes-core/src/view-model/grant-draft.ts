@@ -88,6 +88,27 @@ const toggleItem = <K extends Scope.MultiScope.Kind>(
 }
 
 /**
+ * Re-home every FHIR resource scope at `from` onto `to`, returning the NEW draft — the
+ * one-patient / all-patients subject switch moves the *whole* in-progress grant between
+ * contexts, so the picker never mixes `patient/` and `system/` selections. Scopes at other
+ * contexts (`user/`), the Wildflower partition, and the flag/unknown partitions are
+ * untouched. Duplicate rows a merge could create are tolerated: {@link serialize} dedupes.
+ */
+const retargetFhirContext = (
+  draft: GrantDraft,
+  from: Scope.Contexts.Fhir,
+  to: Scope.Contexts.Fhir
+): GrantDraft => ({
+  ...draft,
+  fhirV1: draft.fhirV1.map((scope) =>
+    scope.hasContext(from) ? new Scope.FhirV1(to, scope.resource, scope.permission) : scope
+  ),
+  fhirV2: draft.fhirV2.map((scope) =>
+    scope.hasContext(from) ? new Scope.FhirV2(to, scope.resource, scope.permission) : scope
+  ),
+})
+
+/**
  * Flip a known (flag) scope on a draft, returning the NEW draft — delegates to the flag
  * editing algebra ({@link Scope.Known.toggleFlag}, idempotent set membership, `spec.md §7`)
  * and writes the `known` partition back immutably. The flag-scope counterpart of
@@ -133,6 +154,7 @@ export {
   fromScopes,
   toggleItem,
   toggleFlag,
+  retargetFhirContext,
   serialize,
   serializeAll,
   hasScopes,

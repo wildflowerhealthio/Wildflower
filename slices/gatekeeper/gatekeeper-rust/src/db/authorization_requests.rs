@@ -57,6 +57,7 @@ sql_row!(AuthorizationRequest {
     status,
     granted_scopes,
     patient,
+    device_name,
 });
 
 impl GatekeeperStore {
@@ -196,14 +197,19 @@ impl GatekeeperStore {
         Ok(())
     }
 
-    /// Mark a *pending* `id` approved with `granted_scopes` and an optional
-    /// patient context, returning `true` iff a pending row was actually
-    /// transitioned.
+    /// Mark a *pending* `id` approved with `granted_scopes`, an optional patient
+    /// context, and an optional adjusted `device_name`, returning `true` iff a
+    /// pending row was actually transitioned.
     ///
     /// The `status = 'pending'` guard means a request already in a terminal
     /// state (denied/expired) can't be flipped back to approved, and the
     /// affected-row check lets the caller detect a no-op (e.g. the request was
     /// consumed concurrently between its read and this update).
+    ///
+    /// `device_name` is `COALESCE`d: `Some` overwrites the stored name (the
+    /// settings approver adjusting it), `None` keeps whatever the device
+    /// supplied — so the auth-code consent path can pass `None` without erasing
+    /// a device name it never had.
     ///
     /// # Errors
     ///
@@ -213,16 +219,19 @@ impl GatekeeperStore {
         id: &str,
         granted_scopes: &[String],
         patient: Option<&str>,
+        device_name: Option<&str>,
     ) -> DbResult<bool> {
         let granted = JsonColumn(granted_scopes.to_vec());
         let affected = self.conn().lock().execute(
             "UPDATE authorization_requests
-             SET status = 'approved', granted_scopes = :granted_scopes, patient = :patient
+             SET status = 'approved', granted_scopes = :granted_scopes, patient = :patient,
+                 device_name = COALESCE(:device_name, device_name)
              WHERE id = :id AND status = 'pending'",
             rusqlite::named_params! {
                 ":id": id,
                 ":granted_scopes": granted,
                 ":patient": patient,
+                ":device_name": device_name,
             },
         )?;
         Ok(affected == 1)
@@ -324,6 +333,7 @@ mod tests {
             status in arb_status(),
             granted_scopes in prop::option::of(arb_scopes()),
             patient in prop::option::of("[a-zA-Z0-9-]{1,32}"),
+            device_name in prop::option::of("[ -~]{1,40}"),
         ) -> AuthorizationRequest {
             AuthorizationRequest {
                 id,
@@ -342,6 +352,7 @@ mod tests {
                 status,
                 granted_scopes: granted_scopes.map(JsonColumn),
                 patient,
+                device_name,
             }
         }
     }
@@ -384,6 +395,7 @@ mod tests {
             status,
             granted_scopes: Some(JsonColumn(vec!["openid".to_string()])),
             patient: None,
+            device_name: None,
         }
     }
 
@@ -462,6 +474,7 @@ mod tests {
             status,
             granted_scopes: None,
             patient: None,
+            device_name: None,
         }
     }
 

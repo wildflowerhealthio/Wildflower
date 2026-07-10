@@ -11,7 +11,7 @@
  */
 
 import { Scope } from '../domain/index.ts'
-import type * as ScopeRequest from './scope-request.ts'
+import * as ScopeRequest from './scope-request.ts'
 
 /** One of the four visual states a permission control (cell or word) can be in. */
 type State = 'on' | 'off' | 'locked' | 'disabled'
@@ -19,7 +19,7 @@ type State = 'on' | 'off' | 'locked' | 'disabled'
 /**
  * Why a control is locked or disabled — *structured data, not user-facing English*. Pure
  * `scopes-core` stays copy-free (the presentation layer renders the sentence, so the
- * `All records` label lives in exactly one place). `wildcard`: covered by the
+ * wildcard-row label lives in exactly one place). `wildcard`: covered by the
  * same-context `*` record-type row (`spec.md §3`). `required` / `notRequested`: inside /
  * outside the app's request envelope (`spec.md §2`).
  */
@@ -73,10 +73,15 @@ const resolver = <K extends Scope.MultiScope.Kind>(
   }
 
   const grantCovering = coveringFold(Scope.MultiScope.partition(grant, configuration.id))
-  const requestedCovering =
+  // §2 clamp is measured against the *grantable* envelope: `requested` in clamped mode,
+  // the (wider) client-allowed `available` in expandable mode. `availableOf` defaults to
+  // `requested`, so clamped consent is unchanged.
+  const availableCovering =
     scopeRequest === null
       ? null
-      : coveringFold(Scope.MultiScope.partition(scopeRequest.requested, configuration.id))
+      : coveringFold(
+          Scope.MultiScope.partition(ScopeRequest.availableOf(scopeRequest), configuration.id)
+        )
 
   /** Per-resource interaction sets of the `required` subset — exact context, duplicate rows unioned. */
   const requiredExact = new Map<string, Set<string>>()
@@ -103,13 +108,13 @@ const resolver = <K extends Scope.MultiScope.Kind>(
     }
     // Not wildcard-locked here, so `granted` is exactly "the stored row has this interaction".
     const granted = grantCovering.get(key)?.has(itemId) ?? false
-    // §2 clamp: a control outside the requested envelope is disabled — unless the draft
+    // §2 clamp: a control outside the grantable envelope is disabled — unless the draft
     // already grants it, in which case it stays visible (disabling never hides a live grant).
-    if (requestedCovering !== null && !granted) {
-      const requestable =
-        (requestedCovering.get(key)?.has(itemId) ?? false) ||
-        (key !== '*' && (requestedCovering.get('*')?.has(itemId) ?? false))
-      if (!requestable) {
+    if (availableCovering !== null && !granted) {
+      const grantable =
+        (availableCovering.get(key)?.has(itemId) ?? false) ||
+        (key !== '*' && (availableCovering.get('*')?.has(itemId) ?? false))
+      if (!grantable) {
         return { state: 'disabled', lockReason: { kind: 'notRequested' } }
       }
     }

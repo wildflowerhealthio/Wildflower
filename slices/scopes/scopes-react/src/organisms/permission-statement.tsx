@@ -1,4 +1,4 @@
-import { useEffect, useRef, type JSX, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type JSX, type ReactNode } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { StatusBadge } from 'react-tundraish'
 
@@ -40,8 +40,9 @@ interface PermissionStatementProps {
 /**
  * The plain-language consent row — one sentence that reads
  * "*\<subject\> can* **\<verbs\>** *\<connector\>* **\<resource\>**", led by a
- * ✓ mark, with the verbs token tappable to reveal the permission editor
- * supplied as `children` (a `PermissionPicker`) in a floating popover card.
+ * ✓ mark. The permission editor supplied as `children` (a `PermissionPicker`)
+ * shows in a floating popover card while the pointer hovers the row and pins
+ * open on a verbs-token click.
  * The statement stays agnostic to which form it edits. Technical scope
  * strings never appear here (plain language only, `spec.md §10`).
  */
@@ -60,6 +61,11 @@ const PermissionStatement = ({
   className,
 }: PermissionStatementProps): JSX.Element => {
   const rootRef = useRef<HTMLDivElement>(null)
+  // Hover peeking: the editor also shows while the pointer rests on the row,
+  // without touching the controlled `open` (the click-pinned state). Entering
+  // the floating editor itself keeps it open — it's inside the root.
+  const [hovered, setHovered] = useState(false)
+  const expanded = open || hovered
 
   // Dismiss the floating editor on an outside press — same idiom as the
   // design-system Menu. `onToggleOpen` closes because the row is open.
@@ -97,34 +103,47 @@ const PermissionStatement = ({
         ✓
       </span>
       <div className={styles['content']}>
-        <p className={styles['sentence']}>
+        {/* A <div> (not <p>): the floating editor nests inside the verb anchor,
+            and block content inside <p> would make the browser re-parent it. */}
+        <div className={styles['sentence']}>
           {subjectPhrase !== undefined ? (
             <span className={styles['subject']}>{subjectPhrase} </span>
           ) : null}
-          <button
-            type="button"
-            className={cn(styles['verb-token'], open ? styles['verb-token--open'] : null)}
-            aria-expanded={open}
-            onClick={onToggleOpen}
+          {/* The hover target is exactly the pill (plus the open editor, a
+              descendant — leaving into it keeps the popover up). */}
+          <span
+            className={styles['verb-anchor']}
+            onMouseEnter={() => {
+              setHovered(true)
+            }}
+            onMouseLeave={() => {
+              setHovered(false)
+            }}
           >
-            {verbText}
-            <span aria-hidden="true" className={styles['caret']}>
-              {open ? '▴' : '▾'}
-            </span>
-          </button>{' '}
+            <button
+              type="button"
+              className={cn(styles['verb-token'], expanded ? styles['verb-token--open'] : null)}
+              aria-expanded={expanded}
+              onClick={onToggleOpen}
+            >
+              {verbText}
+              <span aria-hidden="true" className={styles['caret']}>
+                {expanded ? '▴' : '▾'}
+              </span>
+            </button>
+            {expanded ? (
+              <div className={styles['editor']}>
+                <p className={styles['editor-eyebrow']}>Actions</p>
+                {children}
+                {note !== undefined ? <p className={styles['note']}>{note}</p> : null}
+              </div>
+            ) : null}
+          </span>{' '}
           {connector !== undefined ? (
             <span className={styles['connector']}>{connector} </span>
           ) : null}
           <span className={styles['resource-token']}>{resourceLabel}</span>
-        </p>
-
-        {open ? (
-          <div className={styles['editor']}>
-            <p className={styles['editor-eyebrow']}>Actions</p>
-            {children}
-            {note !== undefined ? <p className={styles['note']}>{note}</p> : null}
-          </div>
-        ) : null}
+        </div>
       </div>
       {trailing !== null ? <span className={styles['trailing']}>{trailing}</span> : null}
     </div>

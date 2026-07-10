@@ -1,21 +1,54 @@
+/*
+ * Sheet-style modal: the dialog spans (nearly) the full viewport width and
+ * sits flush against the bottom of the screen like a native sheet, sliding up
+ * on entry. It's topped by an app-bar-like header — canvas surface, optically
+ * centred title (1fr/auto/1fr, matching page-header.module.css), the × on the
+ * trailing edge — with the body content padded beneath it.
+ */
+
 .dialog {
   box-sizing: border-box;
-  padding: var(--space-10);
-  margin: var(--space-8) auto;
+  padding: 0;
+  /* Bottom-anchored: auto top margin pushes the sheet down; zero bottom
+   * margin lands it flush on the screen edge. */
+  margin: auto auto 0;
   background: var(--color-modal);
   color: var(--color-foreground);
 
   border: 1px solid var(--color-divider);
-  border-radius: var(--radius-4);
+  border-bottom: 0;
+  border-radius: var(--radius-4) var(--radius-4) 0 0;
 
-  width: auto;
-  max-width: min(480px, calc(100vw - 2 * var(--space-8)));
+  width: calc(100vw - 2 * var(--space-6));
+  max-width: none;
 
-  max-height: calc(100vh - 2 * var(--space-8));
+  max-height: calc(100vh - max(var(--space-9), env(safe-area-inset-top) + var(--space-6)));
   overflow-y: auto;
 
   /* Soft, low-spread elevation (design "dialog" shadow). */
   box-shadow: 0 26px 60px rgba(37, 37, 37, 0.32);
+}
+
+/* Sheet entry: slide up from the bottom edge. Applies each time the native
+ * <dialog> opens ([open] toggles with showModal()/close()). */
+.dialog[open] {
+  animation: dialog-enter 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes dialog-enter {
+  from {
+    transform: translateY(100%);
+  }
+
+  to {
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dialog[open] {
+    animation: none;
+  }
 }
 
 /* Neutral ink scrim, a step off flat black. */
@@ -23,17 +56,54 @@
   background: rgba(37, 37, 37, 0.32);
 }
 
+/* The app-bar-like header: full dialog width, sticky over the scrolling body,
+ * the 1fr/auto/1fr grid keeping the title optically centred regardless of the
+ * trailing × (page-header's centring idiom). */
+.dialog__header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: var(--space-5);
+  min-height: 34px;
+  margin: 0;
+  padding: var(--space-4) var(--space-6);
+  background: var(--color-canvas);
+  border-bottom: 1px solid var(--color-divider);
+}
+
+/* The dialog title — the app-bar lockup: the single UI family at a solid
+ * weight, tightened tracking, centred in the middle grid track. */
+.dialog__title {
+  grid-column: 2;
+  margin: 0;
+  text-align: center;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-5);
+  font-weight: var(--font-weight-3);
+  letter-spacing: var(--letter-spacing-2);
+}
+
+/* Fixed square, flex-centred glyph — the ×'s font box is taller than it
+ * looks, so optical centring (not baseline) keeps it level with the title. */
 .dialog__close {
-  display: block;
+  grid-column: 3;
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
   background: transparent;
   border: none;
   color: var(--color-neutral-4);
-  font-size: var(--font-size-7);
-  line-height: var(--line-height-1);
+  font-size: var(--font-size-6);
+  line-height: 1;
   cursor: pointer;
   padding: 0;
   margin: 0;
-  width: var(--space-11);
   border-radius: 50%;
   font-weight: 300;
 }
@@ -42,27 +112,11 @@
   color: var(--color-foreground);
 }
 
-.dialog__header {
-  display: flex;
-  flex-direction: row;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: var(--space-5);
-  margin: 0 0 var(--space-6) 0;
-}
-
-/* The dialog title — the single UI family at a solid weight (serif display
- * role is retired), tightened tracking to hold the title lockup. */
-.dialog__header h2 {
-  font-family: var(--font-sans);
-  font-weight: var(--font-weight-3);
-  letter-spacing: var(--letter-spacing-2);
-}
-
 .dialog__body {
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
+  padding: var(--space-6) var(--space-7) var(--space-8);
 }
 
 /* The drop shadow needs more depth to read as a raised layer on the dark

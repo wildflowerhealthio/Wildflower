@@ -460,7 +460,7 @@ fn issue_code(
         .map_err(|e| AuthorizeError::internal("issue_authorization_code failed", e))?;
     let approved = state
         .store
-        .approve_authorization_request(request_id, requested_scopes, patient)
+        .approve_authorization_request(request_id, requested_scopes, patient, None)
         .map_err(|e| AuthorizeError::internal("approve_authorization_request failed", e))?;
     if !approved {
         // The request was just inserted as pending in this same handler, so a

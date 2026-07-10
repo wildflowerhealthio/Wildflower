@@ -83,7 +83,7 @@ describe('PermissionGrid', () => {
     // Locked cells fold the reason into the accessible name.
     const readCell = screen.getByRole('checkbox', { name: /^Read Observation/ })
     expect(readCell.getAttribute('aria-checked')).toBe('true')
-    expect(readCell.getAttribute('aria-label')).toContain('All records')
+    expect(readCell.getAttribute('aria-label')).toContain('all medical record types')
     await user.click(readCell) // locked → no-op
     expect(onToggleItem).not.toHaveBeenCalled()
 

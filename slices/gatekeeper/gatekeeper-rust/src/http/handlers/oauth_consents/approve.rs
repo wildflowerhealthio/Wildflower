@@ -61,7 +61,7 @@ async fn handle_approve_oauth_consent(
 
     let approved = state
         .store
-        .approve_authorization_request(&id, &granted_scopes, body.patient.as_deref())
+        .approve_authorization_request(&id, &granted_scopes, body.patient.as_deref(), None)
         .map_err(|e| HandlerError::internal("approve_authorization_request failed", e))?;
     if !approved {
         // No longer pending (concurrently consumed/denied/expired) — treat the

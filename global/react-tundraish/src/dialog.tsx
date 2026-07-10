@@ -79,10 +79,11 @@ const Dialog = ({
       }}
     >
       <header className={styles['dialog__header']}>
-        <h2 className="text-heading-4">{title}</h2>
+        <h2 className={cn('text-heading-4', styles['dialog__title'])}>{title}</h2>
         {dismissable ? (
           <button
             type="button"
+            aria-label="Close"
             className={styles['dialog__close']}
             onClick={() => ref.current?.close()}
           >

@@ -79,7 +79,7 @@ resolved.
   device flow, the `device_code`).
 - **Device-flow extras:** `userCode` (the human-typed RFC 8628 §6.1
   code, formatted `BCDF-GHJK`); `lastPolledAt` (for the `slow_down`
-  rate limit).
+  rate limit); `deviceName` (see [Device name](#device-name)).
 
 Code-flow rows carry the OAuth client's PKCE `code_challenge`,
 `redirect_uri`, requested `scope`, and the `state` parameter. Device-flow
@@ -165,13 +165,23 @@ instead.
 The first-party host browser's path to becoming an Owner-authenticated
 client. Flow:
 
-1. Browser POSTs `/oauth/device_authorization` with `client_id`. Server
-   creates a `flow='device_code'` `AuthorizationRequest` and returns
-   `{ device_code, user_code, verification_uri, ... }`.
+1. On the device-login screen the user names the device and adjusts a scope
+   request with the shared scope picker (see [Device name](#device-name) and
+   [Expandable consent](#expandable-consent)), then starts sign-in. The picker
+   is pre-seeded with the read+search happy path (`system/*.rs wildflower/*.rs`)
+   when the client's allowed set covers it, so the common case is
+   name-it-and-go. The browser
+   POSTs `/oauth/device_authorization` with `client_id`, the built `scope`, and
+   the chosen `device_name`. Server creates a `flow='device_code'`
+   `AuthorizationRequest` and returns `{ device_code, user_code, verification_uri, ... }`.
 2. Owner enters the `user_code` at `/gatekeeper/devices` (or scans the QR
    for `verification_uri_complete`) on a separate, already-Owner-authed
    device.
-3. Owner approves via `POST /access/devices/:userCode/approve`.
+3. Owner reviews the request (device name + requested scopes) and approves via
+   `POST /access/devices/:userCode/approve`. The Owner may add scopes beyond
+   what the device requested (up to the client's `allowedScopes`) or prune them
+   — see [Expandable consent](#expandable-consent) — and, from the settings
+   surface, adjust the device name.
 4. Browser polls `POST /oauth/token` with `grant_type=urn:ietf:params:oauth:grant-type:device_code`
    until status flips. Returns `authorization_pending` while waiting,
    `slow_down` if polled faster than the advertised `interval` (5s),
@@ -179,6 +189,31 @@ client. Flow:
 
 The device_code is single-use: the row's status flips to `expired` on
 the first successful token mint so a second poll returns `expired_token`.
+
+### Device name
+
+A human-chosen label for the device being paired ("Ada's laptop"), distinct from
+the OAuth [client](#client) name (all first-party devices share the
+`wildflower-host` client, so the client name can't tell them apart). A
+non-standard RFC 8628 extension: the requesting device sends it as the
+`device_name` form field on `/oauth/device_authorization`; it is stored on the
+device-flow [`AuthorizationRequest`](#authorizationrequest), surfaced to the
+Owner on the consent prompt, and — from the settings consent surface — editable
+before approval (persisted `COALESCE`-style, so an omitted value keeps the stored
+one). Optional; absent for devices that don't name themselves and for auth-code
+requests.
+
+### Expandable consent
+
+The device-code consent path is **expandable**: the Owner may grant scopes the
+device did **not** request, up to the client's `allowedScopes`, as well as narrow
+what was asked. This contrasts with the **clamped** authorization-code / app
+consent path, where the grant may only be narrowed within the requested set
+(`granted ⊆ requested`) — a third-party app can never widen its own grant. The
+distinction lives in the two approve handlers' clamp: the device path measures
+`grantable_scopes` against `client.allowedScopes`; the code path measures it
+against the request's `requestedScopes`. The shared scope-picker UI models the
+same split with its `expandable` vs `clamped` mode.
 
 ### Bootstrap URL
 

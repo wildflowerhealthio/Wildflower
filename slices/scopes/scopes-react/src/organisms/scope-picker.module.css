@@ -5,12 +5,12 @@
  */
 
 .section {
-  padding: var(--space-8) var(--space-9) var(--space-4);
+  padding: var(--space-5) var(--space-6) var(--space-3);
 }
 
 .section--sunken {
   background: var(--color-sunken);
-  padding: var(--space-6) var(--space-9) var(--space-4);
+  padding: var(--space-4) var(--space-6) var(--space-3);
 }
 
 .eyebrow {
@@ -22,9 +22,34 @@
   color: var(--color-neutral-5);
 }
 
+/* One summary-view section: the same heading treatment as the detail grid,
+ * so "All records" always reads against its record set. */
+.plain-section {
+  margin-top: var(--space-4);
+}
+
+.plain-section:first-of-type {
+  margin-top: 0;
+}
+
+.plain-header {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.plain-title {
+  font-family: var(--font-serif);
+  font-size: var(--font-size-5);
+  font-weight: var(--font-weight-3);
+  color: var(--color-foreground);
+  margin: 0;
+}
+
 /* Home of the plain ⇄ detail toggle, between the exclusions and the flags. */
 .toggle-bar {
-  padding: var(--space-6) var(--space-9) 0;
+  padding: var(--space-4) var(--space-6) 0;
 }
 
 .view-toggle {

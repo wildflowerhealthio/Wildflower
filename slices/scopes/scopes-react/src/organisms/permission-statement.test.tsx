@@ -48,6 +48,30 @@ describe('PermissionStatement', () => {
     expect(screen.getByRole('group')).toBeDefined()
   }, 15_000)
 
+  it('peeks the editor on hover and puts it away on leave, without touching open', async () => {
+    const onToggleOpen = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <PermissionStatement
+        subjectPhrase="Fitbit Sync can"
+        verbText="Read · Search"
+        resourceLabel="Observation"
+        open={false}
+        onToggleOpen={onToggleOpen}
+      >
+        {editor}
+      </PermissionStatement>
+    )
+
+    await user.hover(screen.getByRole('button', { name: /Read · Search/ }))
+    expect(screen.getByRole('group')).toBeDefined()
+
+    await user.unhover(screen.getByRole('button', { name: /Read · Search/ }))
+    expect(screen.queryByRole('group')).toBeNull()
+    // Hover is a peek — the click-pinned state was never toggled.
+    expect(onToggleOpen).not.toHaveBeenCalled()
+  })
+
   it('fires onToggleOpen when the verb token is clicked', async () => {
     const onToggleOpen = vi.fn()
     const user = userEvent.setup()

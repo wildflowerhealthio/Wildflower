@@ -14,6 +14,11 @@
  * straight off `scopes-core`'s `Sections.Section` + `Rows.Row`.
  */
 
+export {
+  AddRuleButton,
+  type AddRuleButtonProps,
+  type AddRuleOption,
+} from './atoms/add-rule-button.tsx'
 export { ContextCard, type ContextCardProps } from './atoms/context-card.tsx'
 export { ExclusionRow, type ExclusionRowProps } from './atoms/exclusion-row.tsx'
 export { FlagToggleRow, type FlagToggleRowProps } from './atoms/flag-toggle-row.tsx'
@@ -29,11 +34,21 @@ export {
   type PatientPillPickerProps,
 } from './molecules/patient-pill-picker.tsx'
 export {
+  SubjectSelector,
+  type SubjectSelectorProps,
+  type SubjectContext,
+} from './molecules/subject-selector.tsx'
+export {
   exclusionStatementsFrom,
   type ExclusionStatement,
 } from './organisms/exclusion-statements.ts'
 export { PermissionGrid, type PermissionGridProps } from './organisms/permission-grid.tsx'
-export { ScopePicker, type ScopePickerProps } from './organisms/scope-picker.tsx'
+export {
+  ScopePicker,
+  type ScopePickerProps,
+  type ScopePickerMode,
+  type ScopePickerPhrasing,
+} from './organisms/scope-picker.tsx'
 export {
   PermissionStatement,
   type PermissionStatementProps,

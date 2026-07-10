@@ -58,6 +58,10 @@ const useDeviceConsentMutation = (): UseMutationResult<
       readonly kind: 'approve'
       readonly userCode: string
       readonly approvedScopes: readonly string[]
+      /** An adjusted device name (settings approver renaming the device); omitted keeps the stored one. */
+      readonly deviceName?: string
+      /** The launch patient a one-patient grant is bound to (JWT `patient` claim); omitted for all-patients. */
+      readonly patient?: string
     }
   | { readonly kind: 'deny'; readonly userCode: string }
 > => {
@@ -70,7 +74,13 @@ const useDeviceConsentMutation = (): UseMutationResult<
           variables.kind === 'approve'
             ? c.devices.ApproveDeviceConsent({
                 path: { userCode: variables.userCode },
-                payload: { approvedScopes: [...variables.approvedScopes] },
+                payload: {
+                  approvedScopes: [...variables.approvedScopes],
+                  ...(variables.deviceName === undefined
+                    ? {}
+                    : { deviceName: variables.deviceName }),
+                  ...(variables.patient === undefined ? {} : { patient: variables.patient }),
+                },
               })
             : c.devices.DenyDeviceConsent({ path: { userCode: variables.userCode } })
         )

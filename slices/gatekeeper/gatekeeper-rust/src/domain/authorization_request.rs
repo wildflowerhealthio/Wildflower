@@ -142,6 +142,10 @@ pub struct AuthorizationRequest {
     pub granted_scopes: Option<JsonColumn<Vec<String>>>,
     /// SMART-on-FHIR patient context recorded at approval time, if any.
     pub patient: Option<String>,
+    /// Human-chosen name for the requesting device (RFC 8628 extension, device-code flow only);
+    /// surfaced to the approver. `None` for auth-code requests and for devices that didn't name
+    /// themselves. The settings approver may adjust it at approval time.
+    pub device_name: Option<String>,
 }
 
 /// Inputs to start an authorization-code flow request.
@@ -175,6 +179,8 @@ pub struct StartDeviceAuthorizationArgs {
     pub requested_scopes: Vec<String>,
     /// Human-typed pairing code shown to the user on the device.
     pub user_code: String,
+    /// Human-chosen name for the device being paired (RFC 8628 extension), or `None`.
+    pub device_name: Option<String>,
     /// How long the new request stays pending before expiring.
     pub ttl: Duration,
 }
@@ -200,6 +206,7 @@ impl AuthorizationRequest {
             status: RequestStatus::Pending,
             granted_scopes: None,
             patient: None,
+            device_name: None,
         }
     }
 
@@ -223,6 +230,7 @@ impl AuthorizationRequest {
             status: RequestStatus::Pending,
             granted_scopes: None,
             patient: None,
+            device_name: input.device_name,
         }
     }
 }

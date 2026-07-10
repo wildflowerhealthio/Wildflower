@@ -1,4 +1,5 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { userEvent } from '@testing-library/user-event'
 import { Effect, Layer, SubscriptionRef } from 'effect'
 import * as fc from 'fast-check'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
@@ -13,18 +14,18 @@ import {
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 
 /**
- * Pins the `NeedsAuthMessage` stream/fiber consumer: it runs the RFC 8628
- * device-authorization flow against the composed runtime layer and walks
- * the `DeviceFlowState` machine as the gatekeeper client resolves. A
- * regression in how the screen forks the flow, reads the
- * `DeviceAuthorization` response, or maps a thrown error to a terminal
- * state would otherwise go uncaught.
+ * Pins the `NeedsAuthMessage` stream/fiber consumer: the screen first shows a
+ * setup form (device name + scope picker), and only on "Request access" runs the
+ * RFC 8628 device-authorization flow against the composed runtime layer, walking
+ * the `DeviceFlowState` machine as the gatekeeper client resolves. A regression
+ * in how the screen gates, forks the flow, reads the `DeviceAuthorization`
+ * response, or maps a thrown error to a terminal state would otherwise go
+ * uncaught.
  *
- * The runtime layer is mocked to a stubbed `GatekeeperHttpApiClient`, so
- * the flow runs end-to-end with no HTTP — only the device-authorization
- * leg is exercised (the token-exchange leg never resolves in these
- * stubs, which is fine: the assertions target the `pending`/`error`
- * states the flow reaches first).
+ * The runtime layer is mocked to a stubbed `GatekeeperHttpApiClient`, so the flow
+ * runs end-to-end with no HTTP — only the device-authorization leg is exercised
+ * (the token-exchange leg never resolves in these stubs, which is fine: the
+ * assertions target the `pending`/`error` states the flow reaches first).
  */
 
 // Only the methods the device flow touches are stubbed; the rest of the
@@ -77,34 +78,50 @@ afterEach(() => {
   scopesHolder.current = undefined
 })
 
+/** The canned RFC 8628 §3.2 device-authorization response the stubs return. */
+const DEVICE_AUTH_RESPONSE = {
+  user_code: 'WDJB-MJHT',
+  device_code: 'dev-1',
+  verification_uri: 'https://example.com/device',
+  verification_uri_complete: 'https://example.com/device?code=WDJB-MJHT',
+  interval: 5,
+}
+
+/** Click the form's "Request access" button to launch the flow. */
+const startSignIn = async (): Promise<void> => {
+  const user = userEvent.setup()
+  await user.click(screen.getByRole('button', { name: 'Request access' }))
+}
+
 describe('<NeedsAuthMessage> device flow', () => {
-  test('shows the starting message before any I/O resolves', () => {
+  test('shows the setup form on landing and fires no I/O until "Request access"', () => {
+    let called = false
     layerHolder.current = makeClientLayer({
-      DeviceAuthorization: () => PENDING_FOREVER,
+      DeviceAuthorization: () => {
+        called = true
+        return PENDING_FOREVER
+      },
       TokenExchange: () => PENDING_FOREVER,
     })
 
     render(withTokenStore(<NeedsAuthMessage />))
 
-    // The mount debounce gates I/O, so the first paint is the spinner copy.
-    expect(screen.getByText('Starting sign-in…')).toBeTruthy()
+    // The flow is user-gated: the first paint is the form, not the spinner, and
+    // nothing has hit the device-authorization endpoint yet.
+    expect(screen.getByText('Set up temporary device access')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Request access' })).toBeTruthy()
+    expect(called).toBe(false)
   })
 
   test('surfaces the user_code once device authorization resolves', async () => {
     layerHolder.current = makeClientLayer({
-      DeviceAuthorization: () =>
-        Effect.succeed({
-          user_code: 'WDJB-MJHT',
-          device_code: 'dev-1',
-          verification_uri: 'https://example.com/device',
-          verification_uri_complete: 'https://example.com/device?code=WDJB-MJHT',
-          interval: 5,
-        }),
+      DeviceAuthorization: () => Effect.succeed(DEVICE_AUTH_RESPONSE),
       // Never resolves: the flow parks in the `pending` state showing the code.
       TokenExchange: () => PENDING_FOREVER,
     })
 
     render(withTokenStore(<NeedsAuthMessage />))
+    await startSignIn()
 
     await waitFor(
       () => {
@@ -115,25 +132,23 @@ describe('<NeedsAuthMessage> device flow', () => {
     expect(screen.getByText('Sign in on another device')).toBeTruthy()
   })
 
-  // Captures the payload the flow hands to `DeviceAuthorization` so the
-  // requested scope can be asserted.
-  const captureDeviceAuthorizationScope = async (): Promise<string> => {
+  test('forwards the typed device name and the seeded read+search preset scopes', async () => {
+    // The picker seeds the read+search happy path (all records, all patients, plus
+    // Wildflower admin), so an untouched form requests exactly that; the typed
+    // name rides along.
     let capturedInput: unknown
     layerHolder.current = makeClientLayer({
       DeviceAuthorization: (input) => {
         capturedInput = input
-        return Effect.succeed({
-          user_code: 'WDJB-MJHT',
-          device_code: 'dev-1',
-          verification_uri: 'https://example.com/device',
-          verification_uri_complete: 'https://example.com/device?code=WDJB-MJHT',
-          interval: 5,
-        })
+        return Effect.succeed(DEVICE_AUTH_RESPONSE)
       },
       TokenExchange: () => PENDING_FOREVER,
     })
 
+    const user = userEvent.setup()
     render(withTokenStore(<NeedsAuthMessage />))
+    await user.type(screen.getByRole('textbox', { name: /Device name/ }), 'Ada')
+    await user.click(screen.getByRole('button', { name: 'Request access' }))
 
     await waitFor(
       () => {
@@ -141,23 +156,10 @@ describe('<NeedsAuthMessage> device flow', () => {
       },
       { timeout: 2000 }
     )
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test assertion: narrow the captured `unknown` to read the requested scope
-    return (capturedInput as { readonly payload: { readonly scope: string } }).payload.scope
-  }
-
-  test('forwards the host-threaded granted scopes verbatim', async () => {
-    // The requested scope is whatever the host threads from
-    // `tauri-shared-config.json` (gatekeeper-rust seeds the same string), so the
-    // component must forward it — not a hardcoded literal.
-    scopesHolder.current = 'system/Patient.rs wildflower/Grant.r'
-    expect(await captureDeviceAuthorizationScope()).toBe('system/Patient.rs wildflower/Grant.r')
-  })
-
-  test('falls back to the canonical scopes when the host threads none', async () => {
-    // Standalone/web renders carry no `localGrantedScopes`; the fallback keeps
-    // the WebView's device-login request asking for the first-party set.
-    scopesHolder.current = undefined
-    expect(await captureDeviceAuthorizationScope()).toBe('system/*.cruds wildflower/*.cruds')
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test assertion: narrow the captured `unknown` to read the payload
+    const payload = (capturedInput as { readonly payload: Record<string, unknown> }).payload
+    expect(payload['device_name']).toBe('Ada')
+    expect(payload['scope']).toBe('system/*.rs wildflower/*.rs')
   })
 
   test('renders the failure view when device authorization errors', async () => {
@@ -167,6 +169,7 @@ describe('<NeedsAuthMessage> device flow', () => {
     })
 
     render(withTokenStore(<NeedsAuthMessage />))
+    await startSignIn()
 
     await waitFor(
       () => {
@@ -188,18 +191,12 @@ describe('<NeedsAuthMessage> device flow', () => {
     })
     try {
       layerHolder.current = makeClientLayer({
-        DeviceAuthorization: () =>
-          Effect.succeed({
-            user_code: 'WDJB-MJHT',
-            device_code: 'dev-1',
-            verification_uri: 'https://example.com/device',
-            verification_uri_complete: 'https://example.com/device?code=WDJB-MJHT',
-            interval: 5,
-          }),
+        DeviceAuthorization: () => Effect.succeed(DEVICE_AUTH_RESPONSE),
         TokenExchange: () => Effect.succeed({ access_token: 'issued-token', expires_in: 3600 }),
       })
 
       render(withTokenStore(<NeedsAuthMessage />))
+      await startSignIn()
 
       // The web store ignores the passed signal and re-derives from the cookie,
       // but the value NeedsAuthMessage publishes is the honest `AuthedUntil` the

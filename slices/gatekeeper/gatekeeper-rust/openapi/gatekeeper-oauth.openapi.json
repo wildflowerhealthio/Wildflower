@@ -385,7 +385,7 @@
       },
       "DeviceAuthorizationRequest": {
         "type": "object",
-        "description": "`POST /oauth/device_authorization` request body (RFC 8628 §3.1) — the\noptional `scope` plus the body credentials. Form-urlencoded.",
+        "description": "`POST /oauth/device_authorization` request body (RFC 8628 §3.1) — the\noptional `scope` plus the body credentials, and the non-standard\n`device_name` extension. Form-urlencoded.",
         "properties": {
           "client_id": {
             "type": [
@@ -400,6 +400,12 @@
             ]
           },
           "scope": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "device_name": {
             "type": [
               "string",
               "null"

@@ -1,5 +1,5 @@
 import { act, cleanup, render, screen } from '@testing-library/react'
-import type { JSX, ReactNode } from 'react'
+import { useEffect, type JSX, type ReactNode } from 'react'
 import { AuthStateProvider, HostAuthed } from 'react-kitchen-sink'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
@@ -8,6 +8,10 @@ import {
   makeActiveDeviceUserCodeStore,
 } from '../../active-device-consent/index.ts'
 import { makeEmbeddedAuthStateStore } from '../../client/auth-state-store.ts'
+
+// The host's onClose handler, captured so a test can simulate the user
+// dismissing the dialog (× / ESC / backdrop) without <dialog> shadow behaviour.
+let lastDialogClose: (() => void) | null = null
 
 vi.mock('react-tundraish', () => ({
   // Minimal Dialog stub: renders its children whenever `open`, and
@@ -18,14 +22,17 @@ vi.mock('react-tundraish', () => ({
     open,
     dismissable = true,
     title,
+    onClose,
     children,
   }: {
     readonly open: boolean
     readonly dismissable?: boolean
     readonly title?: ReactNode
+    readonly onClose: () => void
     readonly children: ReactNode
-  }): JSX.Element | null =>
-    open ? (
+  }): JSX.Element | null => {
+    lastDialogClose = onClose
+    return open ? (
       <div
         data-testid="dialog"
         data-dismissable={String(dismissable)}
@@ -33,14 +40,18 @@ vi.mock('react-tundraish', () => ({
       >
         {children}
       </div>
-    ) : null,
+    ) : null
+  },
 }))
 
 // Replace the suspense-fetching consent body with a marker that
 // records the `userCode` it was rendered with — pins that the modal
 // host actually drives the form's identity off the active user code
-// (and not, say, a stale closure).
+// (and not, say, a stale closure). A mount-only effect appends to
+// `formMounts` so a test can tell a fresh *mount* (new request ⇒ keyed
+// remount ⇒ fresh seeded state) apart from a mere prop re-render.
 let lastFormDone: (() => void) | null = null
+const formMounts: string[] = []
 vi.mock('./device-consent-form.tsx', () => ({
   DeviceConsentForm: ({
     consent,
@@ -50,6 +61,12 @@ vi.mock('./device-consent-form.tsx', () => ({
     readonly onDone: () => void
   }): JSX.Element => {
     lastFormDone = onDone
+    useEffect(() => {
+      formMounts.push(consent.userCode)
+      // Mount-only by design: firing once per mount is what tells a keyed remount
+      // (a new request) apart from a prop re-render of the same instance.
+      // oxlint-disable-next-line react-hooks/exhaustive-deps -- see comment above
+    }, [])
     return <div data-testid="form" data-user-code={consent.userCode} />
   },
 }))
@@ -88,6 +105,8 @@ const renderWithProviders = (
 describe('DeviceConsentModalHost', () => {
   beforeEach(() => {
     lastFormDone = null
+    lastDialogClose = null
+    formMounts.length = 0
   })
 
   afterEach(() => {
@@ -115,7 +134,7 @@ describe('DeviceConsentModalHost', () => {
     expect(screen.queryByTestId('dialog')).toBeNull()
   })
 
-  test('opens a non-dismissable dialog with the form when a userCode arrives', async () => {
+  test('opens a dismissable dialog with the form when a userCode arrives', async () => {
     const store = makeActiveDeviceUserCodeStore()
     renderWithProviders(store, { authed: true })
 
@@ -125,9 +144,54 @@ describe('DeviceConsentModalHost', () => {
     })
 
     const dialog = screen.getByTestId('dialog')
-    expect(dialog.dataset['dismissable']).toBe('false')
+    // Dismissable: the × / ESC closes without deciding (the request stays
+    // pending, still answerable from Settings).
+    expect(dialog.dataset['dismissable']).toBe('true')
     expect(dialog.dataset['title']).toBe('Device Authorization')
     expect(screen.getByTestId('form').dataset['userCode']).toBe('ABC-123')
+  })
+
+  test('remounts the form when the active userCode changes (no stale per-request state)', async () => {
+    // The Dialog stays mounted while the head advances between requests, and the
+    // form seeds `draft`/`name`/`denied` from `consent` via mount-only `useState`
+    // initializers. The `key={userCode}` on the form must remount it per request,
+    // or the previous request's scope draft / device name would leak onto the new
+    // head — approving the wrong grant. A fresh mount per userCode proves it.
+    const store = makeActiveDeviceUserCodeStore()
+    renderWithProviders(store, { authed: true })
+
+    await act(async () => {
+      store.setActiveUserCode('ABC-123')
+      await Promise.resolve()
+    })
+    await act(async () => {
+      store.setActiveUserCode('XYZ-789')
+      await Promise.resolve()
+    })
+
+    // Each userCode produced its own mount — not one reused instance carrying the
+    // first request's seeded state into the second.
+    expect(formMounts).toEqual(['ABC-123', 'XYZ-789'])
+    expect(screen.getByTestId('form').dataset['userCode']).toBe('XYZ-789')
+  })
+
+  test('a dismissal closes the popup without deciding and it stays closed for that userCode', async () => {
+    const store = makeActiveDeviceUserCodeStore()
+    renderWithProviders(store, { authed: true })
+
+    await act(async () => {
+      store.setActiveUserCode('ABC-123')
+      await Promise.resolve()
+    })
+    expect(screen.getByTestId('dialog')).toBeDefined()
+
+    // The Dialog's onClose (× / ESC / backdrop) marks the code handled — the
+    // popup closes with no approve/deny sent, and does not re-open while the
+    // host still reports the same active code.
+    await act(async () => {
+      lastDialogClose?.()
+    })
+    expect(screen.queryByTestId('dialog')).toBeNull()
   })
 
   test('local handledUserCode closes the popup immediately on form.onDone, before the host clears', async () => {
