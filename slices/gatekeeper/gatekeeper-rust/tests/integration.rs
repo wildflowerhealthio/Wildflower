@@ -1707,6 +1707,75 @@ async fn device_authorization_carries_device_name_to_consent() {
         .any(|scope| scope == "system/*.cruds"));
 }
 
+const CHROME_MAC_USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) \
+     AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
+
+/// When a device-code client doesn't name itself, a friendly name is inferred
+/// from its `User-Agent` and surfaced on the consent prompt (and later keyed on
+/// by the durable grant). A browser-shaped UA becomes "Browser on OS".
+#[tokio::test]
+async fn device_authorization_infers_device_name_from_user_agent_when_unnamed() {
+    let (g, host_owner_token, _db) = spin_up();
+    // No `device_name` in the body — only a browser User-Agent.
+    let start = loopback_request(
+        Request::post("/oauth/device_authorization")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .header("user-agent", CHROME_MAC_USER_AGENT),
+        Body::from("client_id=wildflower-host&scope=system%2F*.cruds"),
+    );
+    let res = g.router.clone().oneshot(start).await.expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+    let user_code = body_json(res.into_body()).await["user_code"]
+        .as_str()
+        .expect("user_code")
+        .to_string();
+
+    let get = loopback_request(
+        Request::get(format!("/access/devices/{user_code}"))
+            .header("host", "127.0.0.1")
+            .header("authorization", format!("Bearer {host_owner_token}")),
+        Body::empty(),
+    );
+    let res = g.router.clone().oneshot(get).await.expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(
+        body_json(res.into_body()).await["deviceName"],
+        "Chrome on macOS"
+    );
+}
+
+/// A client-supplied `device_name` is never overridden by the User-Agent
+/// inference — the explicit name wins even when a recognizable UA is present.
+#[tokio::test]
+async fn explicit_device_name_wins_over_user_agent_inference() {
+    let (g, host_owner_token, _db) = spin_up();
+    let start = loopback_request(
+        Request::post("/oauth/device_authorization")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .header("user-agent", CHROME_MAC_USER_AGENT),
+        Body::from("client_id=wildflower-host&scope=system%2F*.cruds&device_name=Ada%27s%20laptop"),
+    );
+    let res = g.router.clone().oneshot(start).await.expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+    let user_code = body_json(res.into_body()).await["user_code"]
+        .as_str()
+        .expect("user_code")
+        .to_string();
+
+    let get = loopback_request(
+        Request::get(format!("/access/devices/{user_code}"))
+            .header("host", "127.0.0.1")
+            .header("authorization", format!("Bearer {host_owner_token}")),
+        Body::empty(),
+    );
+    let res = g.router.clone().oneshot(get).await.expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(
+        body_json(res.into_body()).await["deviceName"],
+        "Ada's laptop"
+    );
+}
+
 /// The settings approver may rename the device before approving — the adjusted
 /// `deviceName` on the approve body is persisted onto the request (`COALESCE`d,
 /// so an omitted name leaves the stored one intact).

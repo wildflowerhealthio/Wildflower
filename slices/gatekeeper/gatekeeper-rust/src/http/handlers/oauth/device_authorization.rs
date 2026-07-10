@@ -1,11 +1,13 @@
 use anyhow::{anyhow, Context};
 use axum::extract::State;
+use axum::http::{header, HeaderMap};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use chrono::Duration;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+use super::device_name_hint::device_name_from_user_agent;
 use super::error_codes::OAuthErrorCode;
 use super::internal::{
     require_valid_client_for_token, CacheSuppressed, OAuthError, TokenError,
@@ -76,9 +78,15 @@ impl IntoResponse for DeviceAuthorizationResponse {
 pub(super) async fn handle_device_authorization_request(
     State(state): State<AppState>,
     origin: ServedOrigin,
+    headers: HeaderMap,
     request: TokenRequest<DeviceAuthorizationPayload>,
 ) -> Response {
-    device_authorization(&state, &origin, request).into_response()
+    // `HeaderMap` is a `FromRequestParts` extractor, so it must precede the
+    // body-consuming `TokenRequest`.
+    let user_agent = headers
+        .get(header::USER_AGENT)
+        .and_then(|value| value.to_str().ok());
+    device_authorization(&state, &origin, user_agent, request).into_response()
 }
 
 /// Validate the request, authenticate the client, and mint a
@@ -86,6 +94,7 @@ pub(super) async fn handle_device_authorization_request(
 fn device_authorization(
     state: &AppState,
     origin: &ServedOrigin,
+    user_agent: Option<&str>,
     request: TokenRequest<DeviceAuthorizationPayload>,
 ) -> Result<DeviceAuthorizationResponse, TokenError> {
     let TokenRequest {
@@ -128,13 +137,18 @@ fn device_authorization(
         client_id: presented_credentials.client_id.clone(),
         requested_scopes,
         user_code: user_code.clone(),
-        // Normalize an all-whitespace/empty name to `None` so the approver never sees a blank.
+        // The name the approver sees and the grant is keyed on. Prefer the name
+        // the client chose (normalizing an all-whitespace/empty name to `None`);
+        // when it didn't name itself, infer a friendly one from its User-Agent.
+        // If neither yields a name, `approve.rs` / `token_exchange.rs` fall back
+        // to the client name so the upsert key stays total.
         device_name: payload
             .device_name
             .as_deref()
             .map(str::trim)
             .filter(|name| !name.is_empty())
-            .map(str::to_string),
+            .map(str::to_string)
+            .or_else(|| user_agent.and_then(device_name_from_user_agent)),
         ttl: DEVICE_AUTHORIZATION_TTL,
     });
     state

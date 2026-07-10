@@ -2,6 +2,7 @@ mod authorization_status;
 mod authorize;
 mod client_auth;
 mod device_authorization;
+mod device_name_hint;
 mod error_codes;
 mod internal;
 mod openapi;
