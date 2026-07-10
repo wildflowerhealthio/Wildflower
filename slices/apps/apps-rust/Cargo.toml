@@ -26,6 +26,7 @@ shared-structures-rust = { path = "../../shared-structures/shared-structures-rus
   "tunnel-service",
   "served-origin",
   "subdomain-url",
+  "http-errors",
 ] }
 rand = "0.10"
 # The loopback base URL `AppsConfig` / `AppsState` carry; the origin + hostname

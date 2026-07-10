@@ -75,7 +75,7 @@ impl AppsState {
     /// Derived from [`Self::loopback_base_url`] so it can't drift from the
     /// hostname.
     pub(crate) fn loopback_origin(&self) -> String {
-        self.loopback_base_url.origin().ascii_serialization()
+        shared_structures_rust::origin_string(&self.loopback_base_url)
     }
 
     /// The hostname (no scheme, no port) the self-hosted listeners bind on —

@@ -47,6 +47,8 @@ impl FromRequestParts<AppState> for ServedOrigin {
                     "forwarded header did not indicate a valid base URL",
                 )
             })?;
-        Ok(ServedOrigin(base_url.origin().ascii_serialization()))
+        Ok(ServedOrigin(shared_structures_rust::origin_string(
+            &base_url,
+        )))
     }
 }

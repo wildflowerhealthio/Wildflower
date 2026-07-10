@@ -7,6 +7,7 @@ struct TauriSharedConfig {
     loopback_hostname: String,
     loopback_port: u16,
     local_granted_scopes: String,
+    first_party_client_id: String,
 }
 
 fn main() {
@@ -48,6 +49,10 @@ fn main() {
     println!(
         "cargo:rustc-env=WILDFLOWER_LOCAL_GRANTED_SCOPES={}",
         config.local_granted_scopes
+    );
+    println!(
+        "cargo:rustc-env=WILDFLOWER_FIRST_PARTY_CLIENT_ID={}",
+        config.first_party_client_id
     );
 
     // Build-time tunnel seed: read the package-local `.env` (a sibling of this

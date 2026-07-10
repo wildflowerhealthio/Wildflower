@@ -141,6 +141,14 @@ interface RenderAppOptions {
    */
   readonly localGrantedScopes?: string
   /**
+   * The host's first-party OAuth `client_id` (e.g. `wildflower-host`), sourced
+   * from the Tauri shell's `tauri-shared-config.json`. Threaded into router
+   * context so `NeedsAuthMessage`'s device-login `client_id` matches the id
+   * gatekeeper-rust seeds the first-party client under. Omitted on web/embedded
+   * (the gatekeeper-core `FIRST_PARTY_CLIENT_ID` fallback applies).
+   */
+  readonly firstPartyClientId?: string
+  /**
    * Platform-specific settings rows this entry contributes to the shared
    * `/settings` list. Threaded into `AppRootTree`, which provides them to the
    * tree for the settings route to append (see
@@ -199,6 +207,7 @@ const renderApp = ({
   makeTransport,
   apiBaseUrl,
   localGrantedScopes,
+  firstPartyClientId,
   platformSettingsItems,
   redirectToDeviceLoginOnUnauthorized,
 }: RenderAppOptions): void => {
@@ -265,6 +274,10 @@ const renderApp = ({
       // Threaded so `NeedsAuthMessage` requests exactly gatekeeper's seeded
       // first-party scopes — see `RouterContext.localGrantedScopes`.
       localGrantedScopes,
+      // Threaded so `NeedsAuthMessage`'s device-login `client_id` matches the id
+      // gatekeeper seeds the first-party client under — see
+      // `RouterContext.firstPartyClientId`.
+      firstPartyClientId,
     },
     defaultPreload: 'intent',
   })

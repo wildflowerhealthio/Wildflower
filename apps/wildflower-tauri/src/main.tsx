@@ -53,6 +53,11 @@ renderApp({
   // client — so `NeedsAuthMessage`'s device-login request can't drift from the
   // seeded `allowed_scopes`.
   localGrantedScopes: WILDFLOWER_LOCAL_GRANTED_SCOPES,
+  // The host's first-party OAuth `client_id`, injected by Vite (`vite.config.ts`)
+  // from the same `tauri-shared-config.json` gatekeeper-rust reads to seed the
+  // first-party client — so `NeedsAuthMessage`'s device-login `client_id` can't
+  // drift from the seeded id.
+  firstPartyClientId: WILDFLOWER_FIRST_PARTY_CLIENT_ID,
   // Same gate as embedded: wait for the transport's readiness signal
   // (so the host has had its chance to push `AuthTokenIssued`), then
   // take the first present token from the store.

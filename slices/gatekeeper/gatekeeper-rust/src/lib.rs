@@ -32,6 +32,13 @@ pub use http::{
 /// `client_id` of the host application's first-party OAuth client. The host
 /// uses this identity to mint Owner tokens for itself and to recognise its
 /// own client registration during bootstrap.
+///
+/// This is the standalone/test fallback: the live Tauri app sources the id from
+/// `tauri-shared-config.json` and threads it via
+/// [`GatekeeperConfig::first_party_client_id`], the single source shared with the
+/// TS shell (`gatekeeper-core`'s `FIRST_PARTY_CLIENT_ID` is the matching TS
+/// fallback), so the id can't drift across the boundary. Rendered by
+/// [`default_first_party_client_id`].
 pub const FIRST_PARTY_CLIENT_ID: &str = "wildflower-host";
 
 /// The maximal-access scopes that mark an Owner: full system FHIR access
@@ -84,6 +91,14 @@ pub const WILDFLOWER_LOCAL_GRANTED_SCOPES: &[Scope] = &[
 /// the value from `tauri-shared-config.json` instead.
 pub fn default_local_granted_scopes() -> Vec<String> {
     scopes_rust::render_scopes(WILDFLOWER_LOCAL_GRANTED_SCOPES)
+}
+
+/// The default first-party `client_id` — [`FIRST_PARTY_CLIENT_ID`]. Standalone
+/// and test builds seed [`GatekeeperConfig::first_party_client_id`] from this;
+/// the live Tauri app sources the value from `tauri-shared-config.json` instead.
+#[must_use]
+pub fn default_first_party_client_id() -> String {
+    FIRST_PARTY_CLIENT_ID.to_string()
 }
 
 /// Lifetime of the host owner token minted at boot.
@@ -163,7 +178,8 @@ pub fn setup_gatekeeper(
          /access/* owner gate; got {:?}",
         config.granted_scopes
     );
-    let store = seeding::open_and_seed_store(conn, &config.granted_scopes)?;
+    let store =
+        seeding::open_and_seed_store(conn, &config.granted_scopes, &config.first_party_client_id)?;
     // `iss` and `aud` are both the canonical issuer: the one token is presented
     // over loopback and at the tunnel origin (#256), so a served-origin `aud`
     // couldn't cover both. See `docs/Origins/Explanation.md`.
@@ -173,6 +189,7 @@ pub fn setup_gatekeeper(
         shared_structures_rust::CANONICAL_ISSUER,
         HOST_OWNER_TOKEN_TTL,
         &config.granted_scopes,
+        &config.first_party_client_id,
     )
     .context("failed to mint host owner token")?;
     local_owner_token_tx
@@ -181,6 +198,7 @@ pub fn setup_gatekeeper(
     let state = AppState {
         store: store.clone(),
         loopback_base_url: config.loopback_base_url.clone(),
+        first_party_client_id: config.first_party_client_id.clone().into(),
         active_device_user_code_sender: active_device_user_code_tx,
     };
     // Seed the popup head from SQLite so a request that was pending

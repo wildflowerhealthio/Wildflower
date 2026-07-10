@@ -20,7 +20,6 @@ use crate::db::GatekeeperStore;
 use crate::domain::client::{AllowedGrantType, Client, ClientKind};
 use crate::domain::signing_key::SigningKey;
 use crate::domain::token::{mint_access_token, MintError, NewJwtArgs};
-use crate::FIRST_PARTY_CLIENT_ID;
 
 /// Wrap the shared `conn` in a gatekeeper store (applying migrations, which
 /// includes the SQL seed of the SMART sample-app clients) and run the
@@ -34,10 +33,11 @@ use crate::FIRST_PARTY_CLIENT_ID;
 pub fn open_and_seed_store(
     conn: Connection,
     granted_scopes: &[String],
+    first_party_client_id: &str,
 ) -> anyhow::Result<GatekeeperStore> {
     let store = GatekeeperStore::new(conn).context("failed to open gatekeeper store")?;
     ensure_some_active_signing_key(&store).context("failed to seed signing key")?;
-    ensure_first_party_client(&store, granted_scopes)
+    ensure_first_party_client(&store, granted_scopes, first_party_client_id)
         .context("failed to seed first-party client")?;
     Ok(store)
 }
@@ -58,18 +58,20 @@ fn ensure_some_active_signing_key(store: &GatekeeperStore) -> anyhow::Result<()>
     Ok(())
 }
 
-/// Ensure the `wildflower-host` first-party client matches the code's
-/// definition. Upserted on every boot so its `allowed_scopes` (and the rest of
-/// its policy) always match the host's `granted_scopes` (the live app sources
-/// these from `tauri-shared-config.json`; see
-/// [`crate::default_local_granted_scopes`]), correcting a store seeded by an
+/// Ensure the first-party host client matches the code's definition. Upserted on
+/// every boot so its `allowed_scopes` (and the rest of its policy) always match
+/// the host's `granted_scopes`, and its `client_id` matches
+/// `first_party_client_id` (the live app sources both from
+/// `tauri-shared-config.json`; see [`crate::default_local_granted_scopes`] /
+/// [`crate::default_first_party_client_id`]), correcting a store seeded by an
 /// older build (registration time and any admin disable are preserved).
 fn ensure_first_party_client(
     store: &GatekeeperStore,
     granted_scopes: &[String],
+    first_party_client_id: &str,
 ) -> anyhow::Result<()> {
     let client = Client {
-        client_id: FIRST_PARTY_CLIENT_ID.to_string(),
+        client_id: first_party_client_id.to_string(),
         name: "Wildflower (host)".to_string(),
         kind: ClientKind::Public,
         redirect_uris: JsonColumn(vec![]),
@@ -116,6 +118,7 @@ pub(crate) fn mint_host_owner_token(
     aud: &str,
     ttl: Duration,
     granted_scopes: &[String],
+    first_party_client_id: &str,
 ) -> Result<String, HostTokenError> {
     let key = store
         .active_signing_key()?
@@ -128,7 +131,7 @@ pub(crate) fn mint_host_owner_token(
     Ok(mint_access_token(
         &key,
         &NewJwtArgs {
-            client_id: FIRST_PARTY_CLIENT_ID,
+            client_id: first_party_client_id,
             scope: granted_scopes,
             ttl,
             origin: iss,
@@ -138,4 +141,43 @@ pub(crate) fn mint_host_owner_token(
             is_host_owner: true,
         },
     )?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The first-party client is seeded under the `client_id` threaded through
+    /// `open_and_seed_store` (from `GatekeeperConfig::first_party_client_id`,
+    /// which the live app sources from `tauri-shared-config.json`), NOT a
+    /// hardcoded literal. This is the cross-boundary drift guard: the TS shell's
+    /// device-login `client_id` and the seeded id derive from one source, so a
+    /// regression that re-hardcodes the id here (letting it drift from the config
+    /// / the TS side) fails this test.
+    #[test]
+    fn seeds_first_party_client_under_the_configured_id() {
+        let conn = Connection::open_in_memory().expect("open in-memory db");
+        let scopes = vec![
+            "system/*.cruds".to_string(),
+            "wildflower/*.cruds".to_string(),
+        ];
+        let store = open_and_seed_store(conn, &scopes, "custom-host-client").expect("seed store");
+
+        let seeded = store
+            .client_by_id("custom-host-client")
+            .expect("query client")
+            .expect("first-party client seeded under the configured id");
+        assert_eq!(seeded.client_id, "custom-host-client");
+        assert_eq!(seeded.allowed_scopes.0, scopes);
+
+        // Nothing is seeded under the fallback const's literal — proving the id
+        // came from the argument, not `FIRST_PARTY_CLIENT_ID`.
+        assert!(
+            store
+                .client_by_id(crate::FIRST_PARTY_CLIENT_ID)
+                .expect("query fallback id")
+                .is_none(),
+            "seeding must use the configured id, not the hardcoded fallback",
+        );
+    }
 }

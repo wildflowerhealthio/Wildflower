@@ -1,7 +1,9 @@
 {
   "_comment": "BOTH languages derive from this file at compile time, so the config can never silently drift: Rust reads it in `src-tauri/build.rs` (which re-emits environment variables for `src-tauri/src/lib.rs` to read via `env!`), and TS reads it in `vite.config.ts` (which injects values in `src/main.tsx`). Change the values here and rebuild — both sides follow.",
   "_local_granted_scopes_comment": "The host's granted scopes: gatekeeper seeds the `wildflower-host` client's allowed_scopes and mints the host owner token from this (Rust), and the WebView requests exactly this set at device-login (TS, NeedsAuthMessage). MUST cover gatekeeper-rust's WILDFLOWER_WIDEST_SCOPES (`system/*.cruds` + `wildflower/*.cruds`) or the Owner UI loses `/access/*` — gatekeeper asserts this at boot.",
+  "_first_party_client_id_comment": "The `client_id` of the host's first-party OAuth client. gatekeeper-rust seeds the client row and mints the host owner token under this id (Rust), and the WebView's device-login request identifies itself with it (TS, NeedsAuthMessage). Both sides derive it from here so the id can't drift across the boundary; the `FIRST_PARTY_CLIENT_ID` consts in gatekeeper-rust/gatekeeper-core are the standalone/test fallback only.",
   "loopback_hostname": "127.0.0.1",
   "loopback_port": 8080,
-  "local_granted_scopes": "system/*.cruds wildflower/*.cruds"
+  "local_granted_scopes": "system/*.cruds wildflower/*.cruds",
+  "first_party_client_id": "wildflower-host"
 }

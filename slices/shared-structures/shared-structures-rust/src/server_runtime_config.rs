@@ -11,8 +11,8 @@ impl ServerRuntimeConfig {
     /// `http://127.0.0.1:8080/`, as a typed [`Url`]. The single source of truth
     /// the host threads into every slice's config (apps / gatekeeper / emr /
     /// tunnel), parsed once so no downstream rebuilds it from a string. Consumers
-    /// that need the bare origin string take
-    /// `loopback_base_url().origin().ascii_serialization()`.
+    /// that need the bare origin string pass it to
+    /// [`crate::origin_string`].
     ///
     /// This is only the *loopback* origin — the origin a given request is
     /// answered as (loopback vs. the forwarded public origin) is resolved per

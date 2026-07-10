@@ -315,7 +315,9 @@ async fn render_cloud_target(
 /// the trusted front relayed the request, else loopback.
 fn served_origin(state: &AppsState, provenance: &RequestProvenance) -> String {
     match provenance {
-        RequestProvenance::Forwarded { base_url } => base_url.origin().ascii_serialization(),
+        RequestProvenance::Forwarded { base_url } => {
+            shared_structures_rust::origin_string(base_url)
+        }
         RequestProvenance::Loopback => state.loopback_origin(),
     }
 }

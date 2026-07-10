@@ -16,7 +16,7 @@ use crate::db::SettingsSeed;
 pub struct TunnelConfig {
     /// e.g. `http://127.0.0.1:8080/` — the origin clients reach when the tunnel
     /// is down, as a typed [`Url`]. The daemon takes its bare origin string
-    /// (`origin().ascii_serialization()`) at construction.
+    /// (via [`shared_structures_rust::origin_string`]) at construction.
     pub loopback_base_url: Url,
     /// Build-time connection defaults seeded into a fresh row at startup (only
     /// where unconfigured), so settings survive a reinstall. The composition

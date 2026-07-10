@@ -18,6 +18,14 @@ pub struct AppState {
     /// each request's served base URL (and hence its token `aud`). See
     /// `docs/Origins/Explanation.md`.
     pub(crate) loopback_base_url: url::Url,
+    /// The host's first-party `client_id`, pinned from
+    /// [`GatekeeperConfig`](crate::GatekeeperConfig) at
+    /// [`crate::setup_gatekeeper`] — the same id [`crate::seeding`] seeds the
+    /// first-party client row under (both sourced from `tauri-shared-config.json`
+    /// on the live app). `/token` matches a request's presented `client_id`
+    /// against it to grant first-party treatment. An `Arc<str>` so the
+    /// frequently-cloned `AppState` doesn't reallocate the string.
+    pub(crate) first_party_client_id: std::sync::Arc<str>,
     /// Watch sender that publishes the `user_code` of the
     /// currently-active pending device-code consent request — the head
     /// the host webview surfaces in its non-dismissable popup. Handlers

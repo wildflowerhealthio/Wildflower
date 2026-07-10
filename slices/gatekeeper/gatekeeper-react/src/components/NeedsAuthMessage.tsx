@@ -12,7 +12,11 @@ import { GrantDraft, ScopeRequest } from 'scopes-core'
 import type { GrantDraft as GrantDraftModel } from 'scopes-core'
 import { ScopePicker } from 'scopes-react'
 
-import { useGatekeeperLocalGrantedScopes, useGatekeeperRuntimeLayer } from '../router-context.ts'
+import {
+  useGatekeeperFirstPartyClientId,
+  useGatekeeperLocalGrantedScopes,
+  useGatekeeperRuntimeLayer,
+} from '../router-context.ts'
 import deviceCodeStyles from '../styles/device-code.module.css'
 import pageLayout from '../styles/page-layout.module.css'
 
@@ -136,6 +140,11 @@ const NeedsAuthMessage = (): JSX.Element => {
   // built request always passes the device_authorization coverage check. The
   // literal fallback covers standalone/web renders where the host carries none.
   const localGrantedScopes = useGatekeeperLocalGrantedScopes()
+  // The host's first-party `client_id`, threaded from `tauri-shared-config.json`
+  // on Tauri; `FIRST_PARTY_CLIENT_ID` is the standalone/web fallback (the two
+  // can't drift — the config is the shared source). Used as the device-login
+  // request's `client_id` below.
+  const firstPartyClientId = useGatekeeperFirstPartyClientId() ?? FIRST_PARTY_CLIENT_ID
 
   // The expandable picker request: nothing requested yet (the user builds it),
   // grantable up to the client's allowed set.
@@ -172,7 +181,7 @@ const NeedsAuthMessage = (): JSX.Element => {
 
       const auth = yield* client.oauth.DeviceAuthorization({
         payload: {
-          client_id: FIRST_PARTY_CLIENT_ID,
+          client_id: firstPartyClientId,
           // Omit an empty scope entirely — the owner then grants from scratch (device consent
           // is expandable), rather than the server parsing a blank scope string.
           ...(scopes === '' ? {} : { scope: scopes }),
@@ -194,7 +203,7 @@ const NeedsAuthMessage = (): JSX.Element => {
         .TokenExchange({
           payload: {
             grant_type: DEVICE_GRANT_TYPE,
-            client_id: FIRST_PARTY_CLIENT_ID,
+            client_id: firstPartyClientId,
             device_code: auth.device_code,
           },
         })

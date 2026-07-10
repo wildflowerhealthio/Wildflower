@@ -25,7 +25,6 @@ use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 use crate::http::cookies;
 use crate::http::state::AppState;
 use crate::http::ServedOrigin;
-use crate::FIRST_PARTY_CLIENT_ID;
 use persistence_rust::JsonColumn;
 use scopes_rust::KnownScope;
 
@@ -143,7 +142,7 @@ fn dispatch_token_request(
     // redeems (the device request / refresh-token family), so after a successful
     // exchange `presented_credentials.client_id` IS the resolved, authenticated
     // client — the identity the cookie decision keys on.
-    let is_first_party = presented_credentials.client_id == FIRST_PARTY_CLIENT_ID;
+    let is_first_party = presented_credentials.client_id == *state.first_party_client_id;
     match payload {
         TokenPayload::AuthorizationCode {
             code,
