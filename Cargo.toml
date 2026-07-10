@@ -33,15 +33,17 @@ handlebars = "6"
 # Compile-time embedding of that templates tree.
 include_dir = "0.7"
 # SQLite ORM/query-builder for the collector slice's own connection onto the
-# shared database. Its `sqlite` feature pulls `libsqlite3-sys`; the resolved
-# diesel (2.3.x) accepts `libsqlite3-sys 0.31`, so Cargo unifies it with
-# rusqlite's already-`bundled` `libsqlite3-sys 0.31` — exactly one bundled
-# SQLite in the build, driven by both connections.
-diesel = { version = "2.2", features = ["sqlite"] }
+# shared database. Its `sqlite` feature pulls `libsqlite3-sys`; diesel 2.2.7+
+# accepts `libsqlite3-sys 0.31`, so Cargo unifies it with rusqlite's
+# already-`bundled` `libsqlite3-sys 0.31` — exactly one bundled SQLite in the
+# build, driven by both connections. Tilde-pinned to the 2.2.x line: diesel
+# 2.3 drags wasm-target deps (`sqlite-wasm-rs`, carrying its own SQLite build)
+# into the lockfile, which cargo-deny scans, for no native benefit.
+diesel = { version = "~2.2.7", features = ["sqlite"] }
 # Compile-time-embedded diesel migrations for that connection (records applied
 # versions in diesel's own `__diesel_schema_migrations`, disjoint from
 # persistence-rust's namespaced `schema_migrations`).
-diesel_migrations = "2.2"
+diesel_migrations = "~2.2"
 rusqlite = { version = "0.33", features = ["bundled", "chrono"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
