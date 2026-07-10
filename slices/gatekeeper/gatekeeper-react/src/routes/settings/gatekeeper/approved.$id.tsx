@@ -77,11 +77,11 @@ function GrantDetailRoute(): JSX.Element {
   return <GrantDetailScreen id={id} />
 }
 
-export const Route = createFileRoute('/settings/gatekeeper/approved/$id')({
+const Route = createFileRoute('/settings/gatekeeper/approved/$id')({
   loader: ({ context, params }) =>
     context.queryClient.ensureQueryData(grantQueryOptions(context.runAuthed, params.id)),
   component: GrantDetailRoute,
   errorComponent: ({ error }) => <AsyncErrorView error={error} title="Not Found" />,
 })
 
-export { GrantDetailBody }
+export { GrantDetailBody, Route }

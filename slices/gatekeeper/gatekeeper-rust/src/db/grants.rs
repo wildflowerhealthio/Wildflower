@@ -226,11 +226,7 @@ impl GatekeeperStore {
                 now,
                 GrantType::AuthorizationCode,
             )?;
-            tx.execute(
-                "INSERT INTO authorization_code_grants (id, client_id, redirect_uri) \
-                 VALUES (?1, ?2, ?3)",
-                params![id, client_id, redirect_uri.as_str()],
-            )?;
+            insert_authorization_code_child(&tx, &id, client_id, redirect_uri)?;
         }
         tx.commit()
     }
@@ -282,10 +278,7 @@ impl GatekeeperStore {
                 now,
                 GrantType::DeviceCode,
             )?;
-            tx.execute(
-                "INSERT INTO device_grants (id, client_id, device_name) VALUES (?1, ?2, ?3)",
-                params![id, client_id, device_name],
-            )?;
+            insert_device_child(&tx, &id, client_id, device_name)?;
         }
         tx.commit()
     }
@@ -359,6 +352,39 @@ fn insert_parent(
     Ok(())
 }
 
+/// Insert the authorization-code child row — the single write site for the
+/// `authorization_code_grants` shape, shared by [`insert_child`] and
+/// [`GatekeeperStore::upsert_grant`]'s insert arm.
+fn insert_authorization_code_child(
+    tx: &rusqlite::Transaction<'_>,
+    id: &str,
+    client_id: &str,
+    redirect_uri: &Url,
+) -> DbResult<()> {
+    tx.execute(
+        "INSERT INTO authorization_code_grants (id, client_id, redirect_uri) \
+         VALUES (?1, ?2, ?3)",
+        params![id, client_id, redirect_uri.as_str()],
+    )?;
+    Ok(())
+}
+
+/// Insert the device child row — the single write site for the `device_grants`
+/// shape, shared by [`insert_child`] and
+/// [`GatekeeperStore::upsert_device_grant`]'s insert arm.
+fn insert_device_child(
+    tx: &rusqlite::Transaction<'_>,
+    id: &str,
+    client_id: &str,
+    device_name: &str,
+) -> DbResult<()> {
+    tx.execute(
+        "INSERT INTO device_grants (id, client_id, device_name) VALUES (?1, ?2, ?3)",
+        params![id, client_id, device_name],
+    )?;
+    Ok(())
+}
+
 /// Insert the child row a [`GrantKind`] implies — the write half of
 /// parent-implies-child for [`GatekeeperStore::create_grant`].
 fn insert_child(
@@ -369,20 +395,12 @@ fn insert_child(
 ) -> DbResult<()> {
     match kind {
         GrantKind::AuthorizationCode { redirect_uri } => {
-            tx.execute(
-                "INSERT INTO authorization_code_grants (id, client_id, redirect_uri) \
-                 VALUES (?1, ?2, ?3)",
-                params![id, client_id, redirect_uri.as_str()],
-            )?;
+            insert_authorization_code_child(tx, id, client_id, redirect_uri)
         }
         GrantKind::DeviceCode { device_name } => {
-            tx.execute(
-                "INSERT INTO device_grants (id, client_id, device_name) VALUES (?1, ?2, ?3)",
-                params![id, client_id, device_name],
-            )?;
+            insert_device_child(tx, id, client_id, device_name)
         }
     }
-    Ok(())
 }
 
 #[cfg(test)]

@@ -31,6 +31,14 @@ const grantsQueryOptions = (
       runAuthed(
         Effect.flatMap(GatekeeperHttpApiClient, (c) => c['access-management'].ListGrants())
       ),
+    // Always re-read the list when the access page (re)mounts. Authorizing an
+    // app or pairing a device happens *outside* this React tree (an OAuth
+    // redirect / the device-consent popup), so nothing here invalidates the
+    // list; under the app's 5-minute `staleTime` the loader's `ensureQueryData`
+    // would otherwise serve a stale cache and the new grant wouldn't appear
+    // until the window elapsed. `'always'` refetches on mount regardless of
+    // staleness while still rendering the cached rows immediately.
+    refetchOnMount: 'always',
   })
 
 /** Reads synchronously from cache when the route loader has already warmed it. */

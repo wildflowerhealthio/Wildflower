@@ -127,6 +127,14 @@ describe('grantsQueryOptions', () => {
     expect(options.queryKey).toEqual(GRANTS_QUERY_KEY)
   })
 
+  test('re-fetches on mount so a newly-authorized grant is never masked by the stale cache', () => {
+    // Authorizing an app / pairing a device happens outside this React tree, so
+    // nothing invalidates the list; without an always-refetch the app's 5-minute
+    // staleTime would keep the just-added grant hidden until the window elapsed.
+    const options = grantsQueryOptions(makeRunAuthed(stubHttpClientLayer()))
+    expect(options.refetchOnMount).toBe('always')
+  })
+
   test('queryFn reads the grants list through the authed runner', async () => {
     const options = grantsQueryOptions(makeRunAuthed(stubHttpClientLayer({ body: GRANT_BODY })))
     const queryClient = freshQueryClient()
