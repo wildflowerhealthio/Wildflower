@@ -5,7 +5,13 @@ import {
 } from 'collector-fundamentals/model'
 import { Duration, type FastCheck, Schema } from 'effect'
 import type { LazyArbitrary } from 'effect/Arbitrary'
-import type { Binary, Observation, Patient } from 'fhir-r4/resources'
+import type {
+  Binary,
+  MedicationDispense,
+  MedicationRequest,
+  Observation,
+  Patient,
+} from 'fhir-r4/resources'
 
 import { ObservationEntity } from './entities/observation-entity.ts'
 import { ObservationListEntity } from './entities/observation-list-entity.ts'
@@ -69,10 +75,18 @@ const defaultConfig: InstanceConfig = {
   patientId: '8c0f46f4-dd7b-4a5f-bd35-f0f41a2f8882',
 }
 
+// The scraping/parsing entities below produce only Binary / Patient /
+// Observation today; `MedicationRequest` and `MedicationDispense` are included
+// in the union type ahead of the Rexall collector ticket that adds the entity
+// definitions which actually emit them. Keeping them here now lets the
+// downstream sync-runner write switch (`writeResourceWithRetries`) and the
+// fhir-r4 typed client be wired for all five resource types (issue #334).
 type AnyResource =
   | typeof Binary.Schema.Type
   | typeof Patient.Schema.Type
   | typeof Observation.Schema.Type
+  | typeof MedicationRequest.Schema.Type
+  | typeof MedicationDispense.Schema.Type
 
 /**
  * Build the FHIR R4 scraping plan for a configured patient on a

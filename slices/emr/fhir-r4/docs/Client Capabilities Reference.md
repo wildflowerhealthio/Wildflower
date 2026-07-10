@@ -12,7 +12,9 @@ The `HttpApi` definition and the schemas here are hand-synchronized with what HF
 
 ## Choice element XOR not enforced
 
-FHIR R4 choice elements (`Patient.deceased[x]`, `Patient.multipleBirth[x]`, `Observation.value[x]`, `Observation.effective[x]`, `Extension.value[x]`) are mutex by spec — only one variant may be set at a time. Our schemas declare every variant as an independent optional field via `choiceElementSetPassthroughFields(prefix, variants)`. A payload setting both `deceasedBoolean` and `deceasedDateTime` will validate.
+FHIR R4 choice elements (`Patient.deceased[x]`, `Patient.multipleBirth[x]`, `Observation.value[x]`, `Observation.effective[x]`, `Extension.value[x]`, `MedicationRequest.medication[x]`, `MedicationRequest.reported[x]`, `MedicationRequest.substitution.allowed[x]`, `MedicationDispense.medication[x]`, `MedicationDispense.statusReason[x]`, `Dosage.asNeeded[x]`, `Dosage.doseAndRate.dose[x]`, `Dosage.doseAndRate.rate[x]`) are mutex by spec — only one variant may be set at a time. Our schemas declare every variant as an independent optional field (via `choiceElementSetPassthroughFields(prefix, variants)`, or — for the `Dosage.doseAndRate` `dose[x]`/`rate[x]` slots whose `SimpleQuantity` type is named `…Quantity` on the wire — as explicit `doseRange`/`doseQuantity`/`rateRatio`/`rateRange`/`rateQuantity` fields). A payload setting both `deceasedBoolean` and `deceasedDateTime`, or both `medicationCodeableConcept` and `medicationReference`, will validate.
+
+FHIR also marks `MedicationRequest.medication[x]` and `MedicationDispense.medication[x]` as required (1..1); modeling every variant as an independent optional means neither is required at the schema level, so a payload with no medication slot set also validates.
 
 We accept the loosening for now because we don't have a place to perform the cross-field refinement cheaply with `Schema.transformOrFail` without changing the Type. To enforce, add a `Schema.filter` on the relevant container struct that asserts at most one variant is set.
 
@@ -33,6 +35,10 @@ Implication: SMART apps that search by name or MRN through the typed client will
 Per FHIR R4 § Observation.search, the standard parameters include `_id`, `_lastUpdated`, `code`, `subject`, `patient`, `encounter`, `date` (with prefixes), `status`, `category`, `identifier`, `performer`, `value-quantity`, `value-string`, `value-concept`, `code-value-quantity`, `component-code`, `component-value-quantity`, etc. The `HttpApi` description declares `_count` and `_pageToken` only.
 
 Implication: the typed client cannot ask "latest blood pressure for this patient" — the primary reason to query Observation. Adding `subject`/`patient`/`code`/`category`/`date` would unlock the canonical workflows.
+
+## MedicationRequest / MedicationDispense search parameters (only paging declared)
+
+Per FHIR R4, `MedicationRequest.search` and `MedicationDispense.search` define parameters such as `_id`, `_lastUpdated`, `code`, `subject`, `patient`, `encounter`/`context`, `status`, `intent` (request only), `authoredon` / `whenprepared` / `whenhandedover` (with date prefixes), `identifier`, `medication`, and `prescription` (dispense only). The `HttpApi` description declares `_count` and `_pageToken` only — same minimal paging surface as Observation. HFS indexes the full R4 parameter set server-side (e.g. `MedicationRequest.subject` feeds Patient `$everything`), but the typed client can't express those filters. Adding `subject`/`patient`/`code`/`status` would unlock the canonical medication workflows.
 
 ## `$everything` declared on every resource, served for Patient only
 
@@ -67,7 +73,7 @@ The fhir-r4 datatype registry (`slices/emr/fhir-r4/src/data-types/base/datatype-
 - **Decode**: any wire content for an unregistered slot decodes to `null` (the slot exists at the type level so the in-memory shape still matches the decoded resource type).
 - **Encode**: a non-null in-memory value at an unregistered slot **fails encoding** with a `ParseResult.Type` issue naming the unregistered datatype (`UnregisteredDatatype` tagged error in `datatype-registry.ts`). This is intentional — silent drops were the previous (pre-PR-#61) behavior and masked data loss.
 
-`Timing.repeat.boundsDuration` is also unregistered (Duration isn't shipped). `Timing.repeat.boundsPeriod` and `Timing.repeat.boundsRange` round-trip.
+`Timing.repeat.boundsDuration` is also unregistered. A `Duration` wire schema now ships (`data-types/complex/duration.ts`, used directly by `MedicationRequest.dispenseRequest`'s duration fields), but it deliberately does **not** register itself in the datatype registry — it only appears as a directly-named field, never through a `value[x]` / `bounds[x]` choice slot, and `Duration` is not part of the registry manifest (`baseDatatypes`). So `boundsDuration` stays unregistered; `Timing.repeat.boundsPeriod` and `Timing.repeat.boundsRange` round-trip.
 
 To register a new datatype: add an entry to `baseDatatypes` in `datatype-registry.ts` and a `registerDatatypeSchema('Name', NameSchema)` line at the bottom of its datatype module file.
 
