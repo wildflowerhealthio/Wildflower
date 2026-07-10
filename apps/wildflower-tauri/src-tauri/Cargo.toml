@@ -43,6 +43,7 @@ browser-sniffer-tauri-rust = { path = "../../../slices/browser-sniffer/browser-s
 # Native, JS-injectable web view (iOS, Android, desktop); runs in parallel
 # with the browser-sniffer WebviewWindow path. Registered in `run()`.
 tauri-plugin-native-webview = { path = "../../../plugins/tauri-plugin-native-webview" }
+collector-rust = { path = "../../../slices/collector/collector-rust" }
 databases-rust = { path = "../../../slices/databases/databases-rust" }
 emr-rust = { path = "../../../slices/emr/emr-rust" }
 gatekeeper-rust = { path = "../../../slices/gatekeeper/gatekeeper-rust" }
@@ -81,10 +82,3 @@ dotenvy = "0.15.7"
 # Opt the host into the workspace lints (notably `unsafe_code = "forbid"`).
 [lints]
 workspace = true
-
-[dev-dependencies]
-http-body-util = "0.1"
-# `ServiceExt::oneshot` — the api_stubs tests drive a router directly. (The
-# subdomain reverse proxy that used this at runtime now lives in
-# shared-structures-server-rust.)
-tower = { version = "0.5", features = ["util"] }

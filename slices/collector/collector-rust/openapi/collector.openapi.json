@@ -1,0 +1,273 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Collector Remotes API",
+    "version": "0.0.0"
+  },
+  "paths": {
+    "/collector/remotes": {
+      "get": {
+        "summary": "`GET /collector/remotes` — list every remote. Owner-gated by the host.",
+        "operationId": "handle_list_remotes",
+        "responses": {
+          "200": {
+            "description": "Every stored remote, oldest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Remote"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "`POST /collector/remotes` — create a remote. Owner-gated by the host.",
+        "operationId": "handle_create_remote",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRemoteBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The created remote",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Remote"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/collector/remotes/{id}": {
+      "get": {
+        "summary": "`GET /collector/remotes/{id}` — fetch one remote. Owner-gated by the host.",
+        "operationId": "handle_get_remote",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Remote id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The remote",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Remote"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No remote has this id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemoteNotFoundBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "`PUT /collector/remotes/{id}` — replace a remote's name + config.\nOwner-gated by the host.",
+        "operationId": "handle_update_remote",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Remote id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateRemoteBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The updated remote",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Remote"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No remote has this id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemoteNotFoundBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "`DELETE /collector/remotes/{id}` — remove a remote. Owner-gated by the host.",
+        "operationId": "handle_delete_remote",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Remote id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The row was removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No remote has this id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemoteNotFoundBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CreateRemoteBody": {
+        "type": "object",
+        "description": "POST body — matches the TS `CreateRemotePayloadSchema`. `config` is the\ntagged `CollectorConfig` JSON, opaque to Rust (see [`Remote::config`]) —\n`value_type = Value` keeps its OpenAPI schema an unconstrained wildcard.",
+        "required": [
+          "id",
+          "name",
+          "config"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "config": {}
+        }
+      },
+      "DeletedBody": {
+        "type": "object",
+        "description": "Wire shape for the delete acknowledgement — matches the TS success schema\n(`Schema.Struct({ deleted: Schema.Boolean })`).",
+        "required": [
+          "deleted"
+        ],
+        "properties": {
+          "deleted": {
+            "type": "boolean"
+          }
+        }
+      },
+      "Remote": {
+        "type": "object",
+        "description": "A stored remote — the wire shape the `/collector/remotes` endpoints serve\n(the TS `RemoteSchema` in\n`collector-core/src/http-api-definition/remotes.ts`) AND, field-for-field,\nthe `collector_remotes` row. The db layer maps it to/from an internal row\nstruct (converting `config` between this `Value` and the TEXT column);\nserde's camelCase rename produces the wire's `addedAt`.",
+        "required": [
+          "id",
+          "name",
+          "tag",
+          "config",
+          "addedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "tag": {
+            "type": "string",
+            "description": "Denormalized copy of `config._tag`, written alongside the config so\nclients filtering by collector kind don't need to crack the config JSON\n(mirrors the TS `RemoteSchema.tag` doc). Kept in sync by the write\nhandlers — [`config_tag`] is the single reader they both denormalize\nthrough."
+          },
+          "config": {
+            "description": "The full tagged `CollectorConfig` JSON, **opaque to Rust**: the\nper-collector config union is TS-owned (`collector-core`'s registry),\nso this crate stores and serves it verbatim rather than modeling it —\nadding a TS collector never requires a Rust change. The db layer keeps\nit as JSON TEXT and round-trips it through `serde_json`. `value_type =\nValue` keeps the OpenAPI schema an unconstrained `{}` (a wildcard to\nthe TS spec-drift engine), matching that opacity."
+          },
+          "addedAt": {
+            "type": "string",
+            "description": "ISO-8601 UTC with milliseconds (e.g. `2026-06-17T14:29:22.363Z`) —\nthe encoding the TS `Schema.DateTimeUtc` round-trips."
+          }
+        }
+      },
+      "RemoteNotFoundBody": {
+        "type": "object",
+        "description": "Wire shape for the 404. Matches the TS `RemoteNotFoundSchema`.",
+        "required": [
+          "error",
+          "id"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        }
+      },
+      "UpdateRemoteBody": {
+        "type": "object",
+        "description": "PUT body — matches the TS `UpdateRemotePayloadSchema`. Both fields are\nrequired (a full replace, not a patch); `config` stays opaque to Rust.",
+        "required": [
+          "name",
+          "config"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "config": {}
+        }
+      }
+    }
+  }
+}

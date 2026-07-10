@@ -1,0 +1,46 @@
+[package]
+name = "collector-rust"
+version = "0.0.0"
+edition.workspace = true
+publish.workspace = true
+
+# The collector slice, host-side: SQLite-backed CRUD for user-created remotes
+# (the `/collector/remotes` surface the React shell's remotes screens speak).
+# The per-collector config union is TS-owned (`collector-core`'s registry);
+# this crate stores and serves each remote's tagged `CollectorConfig` JSON
+# verbatim, so adding a TS collector never requires a Rust change. Layered like
+# `tunnel-rust` / `apps-rust`: pure `domain`, `db`, and `http`.
+#
+# Persistence is Diesel over the crate's own `SqliteConnection`, opened on the
+# same shared database file the host's rusqlite `persistence-rust::Connection`
+# serves the other slices from (see `db::RemotesStore`). It does NOT depend on
+# `persistence-rust` / `rusqlite`; Cargo unifies diesel's `libsqlite3-sys` with
+# rusqlite's already-bundled one, so both connections drive the same bundled
+# SQLite build.
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+serde = { workspace = true }
+serde_json.workspace = true
+diesel = { workspace = true }
+diesel_migrations.workspace = true
+# `parking_lot::Mutex` around the single `SqliteConnection` (diesel's API is
+# `&mut`), matching persistence-rust's synchronized-handle shape.
+parking_lot = "0.12"
+utoipa.workspace = true
+utoipa-axum.workspace = true
+# The shared opaque-500 `InternalError` template (see `response_templates`).
+shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = ["http-errors"] }
+# `Utc::now()` for a created remote's `added_at` stamp (same minimal feature
+# set as `gatekeeper-rust` / `databases-rust`).
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+# The OpenAPI snapshot helper enables the extra `openapi-snapshot` feature.
+shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = ["openapi-snapshot"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+http-body-util = "0.1"
+tower = { version = "0.5", features = ["util"] }
