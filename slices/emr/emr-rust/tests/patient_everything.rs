@@ -51,7 +51,11 @@ fn build_router() -> (Router, TempDb) {
         search_parameter_data_dir: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets"),
     };
 
-    let router = setup_fhir_r4(&runtime, &config).expect("setup_fhir_r4");
+    // Auth is off here (jwks_url is None), so the revocation store is never
+    // consulted — the always-allow double satisfies the signature without
+    // standing up a database.
+    let revocation_store = token_revocation_rust::RevocationStore::always_allow();
+    let router = setup_fhir_r4(&runtime, &config, revocation_store).expect("setup_fhir_r4");
     (router, TempDb { dir })
 }
 

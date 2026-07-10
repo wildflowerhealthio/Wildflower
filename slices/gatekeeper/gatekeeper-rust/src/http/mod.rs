@@ -60,6 +60,7 @@ pub fn router(state: AppState) -> Router {
         .merge(handlers::oauth_consents::router())
         .merge(handlers::devices::router())
         .merge(handlers::logout::router())
+        .merge(handlers::revocations::router())
         .layer(axum_middleware::from_fn_with_state(
             state.clone(),
             middleware::require_owner_auth,

@@ -32,6 +32,19 @@ helios-auth = "=0.2.1"
 #   helios-audit       — audit sink trait (we use the null sink today)
 helios-audit = { version = "=0.2.1", default-features = false, features = ["R4"] }
 shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = ["served-origin"] }
+# The shared token-revocation store. emr-rust owns the HFS-side enforcement
+# point: a custom `helios_auth::JtiCache` that reads the per-jti denylist (helios
+# hands it only `(jti, expires_at)`; the epoch half needs `sub`/`iat`, which the
+# gatekeeper gate — running first — covers). Deliberately the thin store crate,
+# not gatekeeper-rust, so the FHIR server doesn't depend on the OAuth server.
+token-revocation-rust = { path = "../../gatekeeper/token-revocation-rust" }
+# `helios_auth::JtiCache` is an `#[async_trait]`; implementing it needs the same
+# attribute macro. Already resolved in the lockfile (via tunnel-rust), so this
+# direct dep pins no new version.
+async-trait = "0.1"
+# The `JtiCache::check_and_store` signature is in `chrono::DateTime<Utc>`; already
+# in the tree via helios, pinned here as a direct dep for the type reference.
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net"] }

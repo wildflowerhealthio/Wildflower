@@ -153,5 +153,19 @@ pub fn verify_auth_token_claims(
     if via_canonical_audience && claims.host_owner != Some(true) {
         return Err(VerifyError::TokenRejected);
     }
+    // Revocation is the last gate: the token is cryptographically valid, but a
+    // logout / owner revoke / grant revoke may have denylisted its `jti` or
+    // bumped the subject's epoch since it was minted. This is the single
+    // chokepoint both auth gates (`require_owner_auth` and the FHIR
+    // `BearerGate`) funnel through, and it holds the full claims — so it runs
+    // the *complete* check (per-`jti` denylist **and** per-subject epoch). A
+    // store-read failure fails closed (500), never admitting the token.
+    let revoked = state
+        .revocation_store
+        .is_revoked(claims.jti.as_deref(), claims.issued_at, &claims.subject)
+        .map_err(VerifyError::RevocationStoreUnavailable)?;
+    if revoked {
+        return Err(VerifyError::Revoked);
+    }
     Ok(claims)
 }

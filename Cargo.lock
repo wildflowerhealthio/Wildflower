@@ -2169,7 +2169,9 @@ name = "emr-rust"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "axum",
+ "chrono",
  "helios-audit",
  "helios-auth",
  "helios-persistence",
@@ -2177,6 +2179,7 @@ dependencies = [
  "serde",
  "serde_json",
  "shared-structures-rust",
+ "token-revocation-rust",
  "tokio",
  "tower",
  "tracing",
@@ -2629,6 +2632,7 @@ dependencies = [
  "subtle",
  "tempfile",
  "thiserror 2.0.18",
+ "token-revocation-rust",
  "tokio",
  "tower",
  "tracing",
@@ -7885,6 +7889,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
+name = "token-revocation-rust"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "persistence-rust",
+ "proptest",
+ "rusqlite",
+]
+
+[[package]]
 name = "tokio"
 version = "1.52.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8937,6 +8952,7 @@ dependencies = [
  "tauri-plugin-log",
  "tauri-plugin-native-webview",
  "tauri-plugin-opener",
+ "token-revocation-rust",
  "tokio",
  "tower",
  "tower-http 0.7.0",

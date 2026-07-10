@@ -30,7 +30,10 @@ async fn main() -> anyhow::Result<()> {
             .join("assets"),
     };
 
-    let router = setup_fhir_r4(&runtime, &config)?;
+    // Dev binary: HFS auth is off (jwks_url is None), so the revocation store is
+    // never consulted — the always-allow double satisfies the signature.
+    let revocation_store = token_revocation_rust::RevocationStore::always_allow();
+    let router = setup_fhir_r4(&runtime, &config, revocation_store)?;
     let addr: SocketAddr = runtime
         .loopback_base_url_ref()
         .authority()

@@ -25,8 +25,9 @@ pub(crate) fn verify_error_response(context: &str, err: VerifyError) -> Response
     match err {
         VerifyError::NoSigningKeysConfigured
         | VerifyError::KeyStoreUnavailable(_)
+        | VerifyError::RevocationStoreUnavailable(_)
         | VerifyError::SigningKeyUnreadable(_) => internal_error(context, err),
-        VerifyError::TokenRejected => unauthorized(),
+        VerifyError::TokenRejected | VerifyError::Revoked => unauthorized(),
     }
 }
 
@@ -79,6 +80,9 @@ pub(crate) enum HandlerError {
         field: &'static str,
         value: String,
     },
+    /// JSON 400 of the shape `{ "error": <error>, "detail": <detail> }` — a
+    /// malformed request the client can fix (e.g. an ambiguous revocation body).
+    BadRequest { error: &'static str, detail: String },
 }
 
 impl HandlerError {
@@ -95,6 +99,14 @@ impl HandlerError {
             value: value.to_string(),
         }
     }
+
+    /// A client-fixable malformed request: JSON 400 with an explanatory detail.
+    pub(crate) fn bad_request(error: &'static str, detail: impl Into<String>) -> Self {
+        HandlerError::BadRequest {
+            error,
+            detail: detail.into(),
+        }
+    }
 }
 
 impl IntoResponse for HandlerError {
@@ -106,6 +118,11 @@ impl IntoResponse for HandlerError {
                 field,
                 value,
             } => not_found(error, field, &value),
+            HandlerError::BadRequest { error, detail } => (
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "error": error, "detail": detail })),
+            )
+                .into_response(),
         }
     }
 }
@@ -146,5 +163,22 @@ mod tests {
     fn token_rejected_maps_to_401() {
         let response = verify_error_response("test", VerifyError::TokenRejected);
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[test]
+    fn revoked_maps_to_401() {
+        // A revoked-but-otherwise-valid token is a client problem, not an
+        // operator one → 401, same as a plain rejection.
+        let response = verify_error_response("test", VerifyError::Revoked);
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[test]
+    fn revocation_store_unavailable_maps_to_500() {
+        // A store read failure fails closed: we can't prove the token is live,
+        // so it's an operator-facing 500, never a silent pass.
+        let err = VerifyError::RevocationStoreUnavailable(rusqlite::Error::QueryReturnedNoRows);
+        let response = verify_error_response("test", err);
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 }

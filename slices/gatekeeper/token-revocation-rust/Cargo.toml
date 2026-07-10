@@ -1,0 +1,27 @@
+[package]
+name = "token-revocation-rust"
+version = "0.0.0"
+edition.workspace = true
+publish.workspace = true
+
+# The shared token-revocation store: a SQLite-backed per-token denylist plus a
+# per-subject not-before epoch, living in its own thin crate so *both*
+# enforcement points can read it without pulling in a heavier dependency. The
+# gatekeeper OAuth server (policy: mint, when-to-revoke, the HTTP control
+# surface) and emr-rust's HFS `JtiCache` adapter (per-jti denylist, in-process)
+# each depend on this crate — but neither depends on the other. Deliberately
+# helios-free: it owns storage only, no auth policy.
+[dependencies]
+anyhow.workspace = true
+rusqlite.workspace = true
+persistence-rust = { path = "../../persistence/persistence-rust" }
+# Timestamps are stored as Unix epoch seconds (INTEGER), matching the
+# second-precision of a JWT's `iat`/`exp` and sidestepping any TEXT-datetime
+# lexicographic-comparison pitfalls in the epoch `MAX` / purge range queries.
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+proptest = "1"

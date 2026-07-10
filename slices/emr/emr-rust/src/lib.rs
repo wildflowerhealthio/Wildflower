@@ -17,6 +17,8 @@ use helios_persistence::backends::sqlite::{SqliteBackend, SqliteBackendConfig};
 use helios_rest::{create_app_with_auth, ServerConfig};
 use shared_structures_rust::ServerRuntimeConfig;
 
+use token_revocation_rust::RevocationStore;
+
 use crate::auth::build_auth;
 use crate::patient_everything::{patient_everything_handler, EverythingState};
 use crate::smart_configuration::{smart_configuration_handler, SmartConfigState};
@@ -59,12 +61,21 @@ pub const UNAUTHENTICATED_FHIR_PATHS: &[&str] = &[
 /// HFS's `/metadata` remain unauthenticated per the SMART spec — see
 /// [`UNAUTHENTICATED_FHIR_PATHS`].
 ///
+/// `revocation_store` is the shared token-revocation store the host wires into
+/// both this and gatekeeper; when auth is enabled, HFS consults it per validated
+/// token through a custom [`JtiCache`](helios_auth::JtiCache) (per-`jti` denylist
+/// — defense-in-depth behind gatekeeper's gate). See [`crate::auth`].
+///
 /// # Errors
 ///
 /// Returns an error if the configured SearchParameter asset directory does not
 /// contain the R4 spec bundle, if the sqlite backend cannot be opened at the
 /// configured path, or if initializing its schema fails.
-pub fn setup_fhir_r4(runtime: &ServerRuntimeConfig, config: &EmrConfig) -> anyhow::Result<Router> {
+pub fn setup_fhir_r4(
+    runtime: &ServerRuntimeConfig,
+    config: &EmrConfig,
+    revocation_store: RevocationStore,
+) -> anyhow::Result<Router> {
     // Point HFS's backend at the on-disk FHIR R4 SearchParameter asset directory
     // the host provides (a bundled resource — never embedded in the binary), so
     // HFS registers every standard R4 search parameter and indexes it at write
@@ -118,7 +129,7 @@ pub fn setup_fhir_r4(runtime: &ServerRuntimeConfig, config: &EmrConfig) -> anyho
         ..ServerConfig::default()
     };
 
-    let (auth_config, auth_state) = build_auth(config.jwks_url.as_deref());
+    let (auth_config, auth_state) = build_auth(config.jwks_url.as_deref(), revocation_store);
     let hfs_router = create_app_with_auth(
         sqlite_backend,
         server_config,

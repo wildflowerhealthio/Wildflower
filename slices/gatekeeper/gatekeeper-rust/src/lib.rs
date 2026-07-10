@@ -13,11 +13,12 @@ pub mod http;
 pub(crate) mod seeding;
 
 use anyhow::Context;
-use chrono::Duration;
+use chrono::{Duration, Utc};
 use scopes_rust::{
     ContextLevel, FhirResourceScope, Permission, ResourceType, Scope, WildflowerResourceScope,
     WildflowerResourceType,
 };
+use token_revocation_rust::RevocationStore;
 use tokio::sync::watch;
 use tokio::time::{interval, MissedTickBehavior};
 
@@ -101,8 +102,24 @@ pub fn default_first_party_client_id() -> String {
     FIRST_PARTY_CLIENT_ID.to_string()
 }
 
-/// Lifetime of the host owner token minted at boot.
-const HOST_OWNER_TOKEN_TTL: Duration = Duration::hours(24);
+/// Lifetime of the host owner token minted at boot (and re-minted hourly). Kept
+/// short — it is a full-access bearer (full FHIR + admin scope) — and refreshed
+/// well inside its own TTL by [`spawn_owner_token_reminter`], so a leaked copy
+/// is only replayable for at most this long, and is revocable like any token in
+/// the meantime. Was 24h before #269.
+const HOST_OWNER_TOKEN_TTL: Duration = Duration::hours(2);
+
+/// How often the host owner token is re-minted and republished on the owner-token
+/// `watch` channel. Comfortably inside [`HOST_OWNER_TOKEN_TTL`] so the webview's
+/// session cookie is always refreshed to a live token before the previous one
+/// expires (they overlap by at least an hour).
+const OWNER_TOKEN_REMINT_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60 * 60);
+
+/// How often the background sweep drops denylist rows whose token has already
+/// expired (mirrors the refresh-token/device-code reaping cadence). The first
+/// sweep runs at startup; thereafter daily. A revoked-then-expired `jti` is
+/// rejected by expiry validation regardless, so this only reclaims space.
+const REVOCATION_PURGE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
 
 /// How often the background reaper re-runs the popup-head query so the
 /// watch channel drops a row whose `expires_at` has passed without any
@@ -148,6 +165,10 @@ pub struct Gatekeeper {
 /// The whole surface is gated by the loopback middleware — non-loopback
 /// peers receive 403 before any handler runs.
 ///
+/// `revocation_store` is the shared token-revocation store the host builds once
+/// on the shared database and threads into both this setup and emr-rust's HFS
+/// adapter, so the auth gate and the FHIR server read one denylist/epoch store.
+///
 /// # Errors
 ///
 /// Returns an error if opening and seeding the store fails, minting the
@@ -155,6 +176,7 @@ pub struct Gatekeeper {
 /// been dropped when publishing the token.
 pub fn setup_gatekeeper(
     conn: persistence_rust::Connection,
+    revocation_store: RevocationStore,
     config: &GatekeeperConfig,
     local_owner_token_tx: &watch::Sender<Option<String>>,
     active_device_user_code_tx: watch::Sender<Option<String>>,
@@ -197,6 +219,7 @@ pub fn setup_gatekeeper(
         .context("token channel receiver dropped before host owner token issuance")?;
     let state = AppState {
         store: store.clone(),
+        revocation_store: revocation_store.clone(),
         loopback_base_url: config.loopback_base_url.clone(),
         first_party_client_id: config.first_party_client_id.clone().into(),
         active_device_user_code_sender: active_device_user_code_tx,
@@ -207,8 +230,88 @@ pub fn setup_gatekeeper(
     // the row does.
     state.republish_active_device_user_code();
     spawn_device_consent_reaper(state.clone());
+    // Keep the webview's owner-session token fresh: re-mint + republish inside
+    // the (now-short) owner-token TTL. See #269.
+    spawn_owner_token_reminter(
+        store,
+        config.granted_scopes.clone(),
+        config.first_party_client_id.clone(),
+        local_owner_token_tx.clone(),
+    );
+    // Reclaim expired denylist rows: once at startup, then daily.
+    spawn_revocation_purge(revocation_store);
     let router = http::router(state.clone());
     Ok(Gatekeeper { router, state })
+}
+
+/// Spawn the timer that re-mints the host owner token every
+/// [`OWNER_TOKEN_REMINT_INTERVAL`] and republishes it on the owner-token
+/// `watch` channel, so the webview's session cookie is refreshed to a live
+/// token before the previous (short-lived, #269) one expires. On a mint failure
+/// it logs and retries next tick; when every receiver has dropped (app
+/// shutdown) it stops.
+fn spawn_owner_token_reminter(
+    store: GatekeeperStore,
+    granted_scopes: Vec<String>,
+    first_party_client_id: String,
+    sender: watch::Sender<Option<String>>,
+) {
+    tokio::spawn(async move {
+        let mut ticks = interval(OWNER_TOKEN_REMINT_INTERVAL);
+        ticks.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        // The first tick fires immediately; the boot-time mint in
+        // `setup_gatekeeper` already published a token, so consume it.
+        ticks.tick().await;
+        loop {
+            ticks.tick().await;
+            match seeding::mint_host_owner_token(
+                &store,
+                shared_structures_rust::CANONICAL_ISSUER,
+                shared_structures_rust::CANONICAL_ISSUER,
+                HOST_OWNER_TOKEN_TTL,
+                &granted_scopes,
+                &first_party_client_id,
+            ) {
+                // `send` errors only once every receiver has dropped — i.e. the
+                // app is shutting down — so stop the timer then.
+                Ok(token) => {
+                    if sender.send(Some(token)).is_err() {
+                        break;
+                    }
+                }
+                Err(error) => {
+                    tracing::warn!(%error, "owner-token re-mint failed; retrying next tick");
+                }
+            }
+        }
+    });
+}
+
+/// Spawn the background sweep that purges expired rows from the revocation
+/// denylist — once at startup (the interval's immediate first tick) then every
+/// [`REVOCATION_PURGE_INTERVAL`]. Purely space reclamation: an expired `jti` is
+/// already rejected by expiry validation, denylisted or not.
+fn spawn_revocation_purge(revocation_store: RevocationStore) {
+    tokio::spawn(async move {
+        let mut ticks = interval(REVOCATION_PURGE_INTERVAL);
+        ticks.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        loop {
+            // First tick is immediate → startup purge; then daily.
+            ticks.tick().await;
+            // Retention floor = the longest access token we mint (the 2h host
+            // owner token dwarfs the 15-min OAuth `ACCESS_TOKEN_TTL`), so a
+            // denylist row is never dropped while its token could still be live —
+            // even if the `/access/revocations` caller supplied a too-early
+            // `expiresAt`. See `RevocationStore::purge_expired`.
+            match revocation_store.purge_expired(Utc::now(), HOST_OWNER_TOKEN_TTL) {
+                Ok(purged) if purged > 0 => {
+                    tracing::info!(purged, "swept expired revoked jtis");
+                }
+                Ok(_) => {}
+                Err(error) => tracing::warn!(%error, "revoked-jti sweep failed"),
+            }
+        }
+    });
 }
 
 /// Spawn the background reaper that periodically re-runs the popup-head
