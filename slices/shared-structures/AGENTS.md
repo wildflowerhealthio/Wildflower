@@ -1,6 +1,6 @@
 # AGENTS.md — slices/shared-structures
 
-Cross-slice utilities: the phantom-id HttpApi composition helper every slice uses, the shared OpenAPI-drift machinery, and the process-daemon (watch / diff / execute) plumbing. Changes here ripple across every slice — check consumers before changing a contract.
+Cross-slice utilities: the phantom-id HttpApi composition helper every slice uses and the shared OpenAPI-drift machinery. Changes here ripple across every slice — check consumers before changing a contract.
 
 ## Guardrails
 
@@ -9,7 +9,6 @@ Cross-slice utilities: the phantom-id HttpApi composition helper every slice use
 
 ## Traps
 
-- The process-daemon watch/diff/execute pattern is shared by multiple slice cores (e.g. tunnel) — a change to its semantics affects all of them. See the [Web Handler Coordinator Explanation](../../docs/Effect/Web%20Handler%20Coordinator%20Explanation.md) for the coordinator seam.
 - This slice has the most adapters of any (`-core`, `-react`, `-rust`, `-server-rust`, `-tauri-rust`) — keep the layering rule in mind: adapters import `-core`, never the reverse.
 
 ## References

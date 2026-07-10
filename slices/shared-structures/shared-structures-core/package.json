@@ -2,7 +2,7 @@
   "name": "shared-structures-core",
   "version": "0.0.0",
   "private": true,
-  "description": "Cross-slice utilities. The long-running process-daemon plumbing (snapshot watch, intent diff, stream-driven execution) shared between tunnel-core and local-http-server-core, plus the phantom-id bridge helper used by every slice that composes its HttpApi into a parent.",
+  "description": "Cross-slice utilities. The phantom-id bridge helper used by every slice that composes its HttpApi into a parent, plus the shared OpenAPI Rust↔TS drift harness.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -22,10 +22,6 @@
       "source": "./src/http-api-implementation/index.ts",
       "default": "./dist/http-api-implementation/index.js"
     },
-    "./livestore": {
-      "source": "./src/livestore/index.ts",
-      "default": "./dist/livestore/index.js"
-    },
     "./openapi-drift": {
       "source": "./src/openapi-drift/index.ts",
       "default": "./dist/openapi-drift/index.js"
@@ -33,10 +29,6 @@
     "./openapi-drift/testing": {
       "source": "./src/openapi-drift/testing.ts",
       "default": "./dist/openapi-drift/testing.js"
-    },
-    "./process-daemon": {
-      "source": "./src/process-daemon/index.ts",
-      "default": "./dist/process-daemon/index.js"
     },
     "./package.json": "./package.json"
   },
@@ -49,11 +41,6 @@
   "devDependencies": {
     "@apidevtools/json-schema-ref-parser": "^15.4.0",
     "@effect/platform": "catalog:",
-    "@livestore/adapter-node": "catalog:",
-    "@livestore/common": "catalog:",
-    "@livestore/livestore": "catalog:",
-    "@livestore/peer-deps": "catalog:",
-    "@livestore/utils": "catalog:",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
     "effect": "catalog:",
@@ -65,10 +52,6 @@
   },
   "peerDependencies": {
     "@effect/platform": "catalog:",
-    "@livestore/common": "catalog:",
-    "@livestore/livestore": "catalog:",
-    "@livestore/peer-deps": "catalog:",
-    "@livestore/utils": "catalog:",
     "effect": "catalog:",
     "kitchen-sink": "workspace:*"
   }

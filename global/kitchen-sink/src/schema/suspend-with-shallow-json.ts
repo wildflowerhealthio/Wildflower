@@ -13,8 +13,8 @@ import { Schema } from 'effect'
  * `JSON.stringify` walks shared subtrees inline at every reference site,
  * highly-shared graphs (FHIR's mutually-recursive Reference⇄Identifier⇄
  * Extension) blow the output up exponentially. Anything that hashes a schema
- * by stringifying its AST (notably livestore's per-event migration check via
- * `validateEventDef`) OOMs at boot. A stable opaque fingerprint sidesteps
+ * by stringifying its AST (historically livestore's per-event migration
+ * check via `validateEventDef`) OOMs at boot. A stable opaque fingerprint sidesteps
  * the expansion while keeping schema hashes meaningful: distinct names hash
  * to distinct values, identical names collapse.
  *

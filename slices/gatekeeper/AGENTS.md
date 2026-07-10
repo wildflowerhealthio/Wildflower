@@ -16,7 +16,7 @@ OAuth 2.0 / SMART-on-FHIR authorization slice. Read the [Jargon Explanation](./d
 
 ## References
 
-- [gatekeeper-core README](./gatekeeper-core/README.md) — tables, OAuth routes, page-path drift test, `waitForRow`
+- [gatekeeper-core README](./gatekeeper-core/README.md) — tables, OAuth routes, page-path drift test
 - [Jargon Explanation](./docs/Jargon%20Explanation.md) — the domain vocabulary
 - [Auth Token Storage Explanation](./docs/Auth%20Token%20Storage%20Explanation.md) — token storage policies
 - [Bridge Explanation](../../docs/Messaging/Bridge%20Explanation.md) — the webview ↔ host bridge this slice speaks over

@@ -27,8 +27,6 @@
   },
   "devDependencies": {
     "@effect/platform": "catalog:",
-    "@livestore/livestore": "catalog:",
-    "@livestore/peer-deps": "catalog:",
     "@tanstack/react-query": "catalog:",
     "@tanstack/react-router": "catalog:",
     "@tanstack/router-plugin": "catalog:",
@@ -59,8 +57,6 @@
   },
   "peerDependencies": {
     "@effect/platform": "catalog:",
-    "@livestore/livestore": "catalog:",
-    "@livestore/peer-deps": "catalog:",
     "@tanstack/react-query": "catalog:",
     "@tanstack/react-router": "catalog:",
     "collector-core": "workspace:*",

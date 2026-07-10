@@ -27,12 +27,6 @@ const webTelemetryLayerFromEnv = (
 ): ReturnType<typeof makeWebTelemetryLayer> => makeWebTelemetryLayer(configFromViteEnv(overrides))
 
 export {
-  getLivestoreOtelOptions,
-  injectActiveOtelContext,
-  injectActiveOtelContextWhenReady,
-  whenOtelProviderReady,
-} from 'telemetry-core/livestore'
-export {
   getGlobalTracer,
   initWebTelemetry,
   initWebTelemetryFromEnv,

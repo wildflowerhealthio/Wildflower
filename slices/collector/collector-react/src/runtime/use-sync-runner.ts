@@ -10,7 +10,7 @@
  * the `collector-react/package.json` description (per `slices/AGENTS.md`).
  */
 import { useMutation } from '@tanstack/react-query'
-import type { Remote as CollectorRemote } from 'collector-core/livestore'
+import type { Remotes } from 'collector-core/http-api-definition'
 import { makeScrapingPlanForConfig, type AnyCollectorResource } from 'collector-core/registry'
 import { CollectorBridgeMessageHandler } from 'collector-fundamentals/handler'
 import type { ScrapingPlan } from 'collector-fundamentals/model'
@@ -67,6 +67,9 @@ interface SyncRunnerInput {
   readonly idleTimeout?: Duration.DurationInput
 }
 
+/** The wire shape of a configured remote, as served by `ListRemotes`. */
+type CollectorRemote = typeof Remotes.RemoteSchema.Type
+
 type RunnerState =
   | { readonly _tag: 'idle' }
   | { readonly _tag: 'running' }
@@ -77,7 +80,7 @@ type RunnerState =
 /** Imperative surface the screen drives the runner through. */
 interface SyncRunner {
   readonly state: RunnerState
-  readonly startImport: (remote: CollectorRemote.RemoteRow) => void
+  readonly startImport: (remote: CollectorRemote) => void
   readonly cancel: () => void
 }
 
@@ -520,7 +523,7 @@ const useSyncRunner = ({
   // Per-run AbortController so `cancel()` can interrupt the long Effect.
   const abortRef = useRef<AbortController | null>(null)
 
-  const mutation = useMutation<ImportSummary, Error, CollectorRemote.RemoteRow>({
+  const mutation = useMutation<ImportSummary, Error, CollectorRemote>({
     mutationFn: (remote) => {
       const controller = new AbortController()
       abortRef.current = controller
@@ -544,7 +547,7 @@ const useSyncRunner = ({
 
   const { mutate } = mutation
   const startImport = useCallback(
-    (remote: CollectorRemote.RemoteRow) => {
+    (remote: CollectorRemote) => {
       setFailed([])
       mutate(remote)
     },

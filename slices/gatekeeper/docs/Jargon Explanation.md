@@ -31,13 +31,13 @@ straight first.
 | **Resource owner** | OAuth-spec name for the Owner — the person whose data is being shared.                                        | OAuth spec only; we say "Owner"                                                      |
 
 > **Open question:** The OAuth `client` (third-party app) is unrelated to
-> any LiveStore "client" instance — the word is overloaded. The spec name
-> wins for `client_id`, but we should never use bare "client" in
-> Gatekeeper prose without a qualifier.
+> HTTP-client instances in the codebase — the word is overloaded. The
+> spec name wins for `client_id`, but we should never use bare "client"
+> in Gatekeeper prose without a qualifier.
 
 ## Slice-internal terms
 
-These are the concepts named in `gatekeeper-core/src/livestore/` and
+These are the concepts stored by `gatekeeper-rust` and named in
 `gatekeeper-core/src/contexts/`. Each one corresponds to either a table,
 an event, or a Tag.
 
@@ -59,8 +59,8 @@ boundary.
 - **Lifecycle:** `clientRegistered` → `clientUpdated` → `clientDisabled`
   (soft delete via `disabledAt`).
 
-The `wildflower-host` first-party client is auto-seeded at startup by
-calling `seedFirstPartyClient` once the LiveStore is ready, with
+The `wildflower-host` first-party client (`FIRST_PARTY_CLIENT_ID`) is
+auto-seeded by the server at startup, with
 `kind: 'public'`, empty `redirectUris` (it gets its token via the device
 flow or a host mint — see [bootstrap URL](#bootstrap-url) — not OAuth
 redirects), and `allowedScopes: ['owner']`.
@@ -218,9 +218,9 @@ same split with its `expandable` vs `clamped` mode.
 ### Bootstrap URL
 
 Replaces the deleted PIN flow's "operator gets onto a cold deployment"
-mechanism. The host process (gatekeeper-node, native-shell wrapper, dev
+mechanism. The host process (`gatekeeper-rust`, native-shell wrapper, dev
 server) has direct access to the signing key and mints a short-lived owner
-access token via `internal/jwt.ts:mintAccessToken`. It verifies normally
+access token directly. It verifies normally
 because `wildflower-host` is a registered [`Client`](#client) and
 `'owner' ∈ scope` — no new endpoint, no redemption table.
 
@@ -251,10 +251,8 @@ requests. These all go through `RequireAuthMiddleware`.
 
 A separate, Gatekeeper-as-proxy concern: inbound HTTP requests are logged
 to `httpRequests` and pause until the Owner approves or denies them.
-**Not currently wired** — the table, queries, and `/access/requests`
-endpoints exist but no producer pushes rows yet (see `await-row.ts`'s
-`waitForRow` helper, which is the missing-call-site referenced in the
-README).
+**Not currently wired** — the `/access/requests` endpoints are defined
+but no producer pushes rows yet.
 
 > **Open question:** The HTTP-request gating flow shares the
 > "row pending human decision" pattern with `AuthorizationRequest`.
@@ -339,8 +337,8 @@ not-our-issuer".
 
 ### `exp`, `iat`
 
-JWT claim timestamps (Unix seconds). Both set by `mintAccessToken`; `exp`
-is enforced by `jose.jwtVerify`'s default behavior.
+JWT claim timestamps (Unix seconds). Both set at token minting; `exp`
+is enforced at verification.
 
 ### JWKS / JWK / `kid`
 
@@ -428,7 +426,7 @@ collected for the next round:
 ## References
 
 - [README](../gatekeeper-core/README.md) — current tables and routes
-- `slices/gatekeeper/gatekeeper-core/src/livestore/` — table definitions
+- `slices/gatekeeper/gatekeeper-rust/src/` — server implementation and storage
 - `slices/gatekeeper/gatekeeper-core/src/http-api-definition/` — endpoint groups
 - RFC 6749 (OAuth 2.0), RFC 7636 (PKCE), RFC 7519 (JWT), RFC 7517 (JWK),
   RFC 6750 (Bearer), RFC 5785 (`.well-known`), RFC 8628 (Device

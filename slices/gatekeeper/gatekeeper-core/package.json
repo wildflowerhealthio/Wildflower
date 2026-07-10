@@ -1,7 +1,7 @@
 {
   "name": "gatekeeper-core",
   "version": "0.0.0",
-  "description": "OAuth domain package backed by LiveStore.",
+  "description": "OAuth domain package: HTTP API definitions, generated clients, bridge contract, and page paths for the gatekeeper slice (served by gatekeeper-rust).",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -29,10 +29,6 @@
       "source": "./src/bridge.ts",
       "default": "./dist/bridge.js"
     },
-    "./livestore": {
-      "source": "./src/livestore/index.ts",
-      "default": "./dist/livestore/index.js"
-    },
     "./page-paths": {
       "source": "./src/page-paths.ts",
       "default": "./dist/page-paths.js"
@@ -52,11 +48,6 @@
   },
   "devDependencies": {
     "@effect/platform": "catalog:",
-    "@livestore/adapter-node": "catalog:",
-    "@livestore/common": "catalog:",
-    "@livestore/livestore": "catalog:",
-    "@livestore/peer-deps": "catalog:",
-    "@livestore/utils": "catalog:",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
     "bumpp": "^11.0.1",
@@ -76,10 +67,6 @@
   },
   "peerDependencies": {
     "@effect/platform": "catalog:",
-    "@livestore/common": "catalog:",
-    "@livestore/livestore": "catalog:",
-    "@livestore/peer-deps": "catalog:",
-    "@livestore/utils": "catalog:",
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
     "jose": "catalog:",

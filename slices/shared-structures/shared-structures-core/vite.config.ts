@@ -10,10 +10,8 @@ export default defineConfig({
     entry: {
       'http-api-definition/index': 'src/http-api-definition/index.ts',
       'http-api-implementation/index': 'src/http-api-implementation/index.ts',
-      'livestore/index': 'src/livestore/index.ts',
       'openapi-drift/index': 'src/openapi-drift/index.ts',
       'openapi-drift/testing': 'src/openapi-drift/testing.ts',
-      'process-daemon/index': 'src/process-daemon/index.ts',
     },
   },
   test: {

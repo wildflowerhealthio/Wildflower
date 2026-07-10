@@ -1,6 +1,5 @@
 import { HttpApiEndpoint, HttpApiGroup } from '@effect/platform'
 import { Schema } from 'effect'
-import type { GrantRow, HttpRequestRow } from '../livestore/index.ts'
 import { RequireAuthMiddleware } from './require-auth.ts'
 /**
  * `Grant`: a record that the Owner approved a specific `(clientId, redirectUri)`
@@ -8,10 +7,7 @@ import { RequireAuthMiddleware } from './require-auth.ts'
  * A Grant is the materialized consent decision — it survives across requests
  * so the OAuth client doesn't have to be re-approved on every authorize call.
  *
- * The wire shape mirrors the `grants` table row 1:1; the
- * `_grantWireMirrorsRow` thunk below is a compile-time guard — it never
- * runs, but if a column is added or renamed on the table, the assignment
- * stops type-checking here and forces the schema to track.
+ * The wire shape mirrors the server's `grants` storage row 1:1.
  *
  * `lastUsedAt` is null until the first time a token minted from this
  * Grant gets used.
@@ -24,8 +20,7 @@ const GrantSchema = Schema.Struct({
   grantedAt: Schema.DateTimeUtc,
   lastUsedAt: Schema.NullOr(Schema.DateTimeUtc),
   patient: Schema.NullOr(Schema.String),
-  // oxlint-disable-next-line typescript/no-explicit-any
-}) satisfies Schema.Schema<GrantRow, any, never>
+})
 
 const GrantsSchema = Schema.Array(GrantSchema)
 
@@ -36,9 +31,8 @@ const GrantNotFoundSchema = Schema.Struct({
 
 /**
  * `HttpRequest`: a record of an inbound FHIR request that the gatekeeper
- * has parked for the Owner to approve or deny. Lives on the
- * `httpRequests` table; the wire shape mirrors the row 1:1 — the
- * `satisfies` clause below is the compile-time guard.
+ * has parked for the Owner to approve or deny. The wire shape mirrors
+ * the server's `httpRequests` storage row 1:1.
  *
  * `respondedAt` and `statusCode` populate once the Owner approves /
  * denies and the upstream call completes.
@@ -53,8 +47,7 @@ const HttpRequestSchema = Schema.Struct({
   status: Schema.String,
   statusCode: Schema.NullOr(Schema.Int),
   respondedAt: Schema.NullOr(Schema.DateTimeUtc),
-  // oxlint-disable-next-line typescript/no-explicit-any
-}) satisfies Schema.Schema<HttpRequestRow, any, never>
+})
 
 const HttpRequestsSchema = Schema.Array(HttpRequestSchema)
 
@@ -76,8 +69,8 @@ const HttpRequestNotFoundSchema = Schema.Struct({
  * - `ListRequests` / `GetRequest`: inspect parked FHIR requests waiting
  *   on Owner decision.
  * - `ApproveRequest` / `DenyRequest`: Owner decision for a parked FHIR
- *   request — the upstream consumer (`internal/await-row.ts`) resumes
- *   once the status flips.
+ *   request — the server resumes the parked request once the status
+ *   flips.
  */
 const httpApiGroup = HttpApiGroup.make('access-management', { topLevel: false })
   .add(HttpApiEndpoint.get('ListGrants', '/grants').addSuccess(GrantsSchema))

@@ -12,17 +12,17 @@ import {
  * `collector-core` statically imports each concrete client package
  * (`fhir-r4-client-collector`, …) and assembles them here. Adding a
  * new collector is an edit to this file plus a new `package.json` dep
- * — there is intentionally no runtime registry. The livestore
- * `remotes.config` column, the `CollectorApi.{Create,Update}Remote`
- * payloads, and any host-side `makeScrapingPlanForConfig` dispatch all
- * derive from this single union.
+ * — there is intentionally no runtime registry. The
+ * `CollectorApi.{Create,Update}Remote` payloads and any host-side
+ * `makeScrapingPlanForConfig` dispatch all derive from this single
+ * union.
  */
 const CollectorConfig = Schema.Union(FhirR4InstanceConfig)
 type CollectorConfig = typeof CollectorConfig.Type
 
 /**
  * The narrow set of `_tag` literals the union currently admits.
- * Useful as the schema of the `remotes.tag` column and as the
+ * Useful as the schema of a remote's wire `tag` field and as the
  * branching surface of any host-side switch (`switch (config._tag)`).
  *
  * Annotated as `Schema.Schema<CollectorConfig['_tag']>` so adding a

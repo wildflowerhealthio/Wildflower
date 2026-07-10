@@ -12,7 +12,7 @@ The slice used to carry `emr-core`, a LiveStore-backed domain layer (tables, eve
 
 ## Layering rules
 
-- **`fhir-r4` is platform-neutral.** No DOM, no Node `fs`, no LiveStore.
+- **`fhir-r4` is platform-neutral.** No DOM, no Node `fs`, no store bindings.
 - **`fhir-r4` depends on no other emr package.** `fhir-r4-react` depends only on `fhir-r4`. `emr-rust` shares no code with the TS packages — the wire format is the contract.
 - **Tests live alongside code** (`*.test.ts` next to the file they cover). They are pure schema round-trip/property tests; server behaviour is HFS's responsibility (HFS has its own test suite upstream).
 
