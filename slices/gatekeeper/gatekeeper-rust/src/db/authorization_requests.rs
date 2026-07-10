@@ -10,9 +10,8 @@ use persistence_rust::{sql_row, DbResult};
 
 impl ToSql for GrantType {
     fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
-        Ok(ToSqlOutput::Borrowed(ValueRef::Text(
-            self.as_str().as_bytes(),
-        )))
+        let wire: &str = self.as_ref();
+        Ok(ToSqlOutput::Borrowed(ValueRef::Text(wire.as_bytes())))
     }
 }
 
@@ -26,9 +25,8 @@ impl FromSql for GrantType {
 
 impl ToSql for RequestStatus {
     fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
-        Ok(ToSqlOutput::Borrowed(ValueRef::Text(
-            self.as_str().as_bytes(),
-        )))
+        let wire: &str = self.as_ref();
+        Ok(ToSqlOutput::Borrowed(ValueRef::Text(wire.as_bytes())))
     }
 }
 

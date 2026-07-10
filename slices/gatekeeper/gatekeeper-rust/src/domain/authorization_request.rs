@@ -1,14 +1,17 @@
-use std::fmt;
-use std::str::FromStr;
-
 use chrono::{DateTime, Duration, Utc};
+use strum::{AsRefStr, Display, EnumString};
 use url::Url;
 
 use persistence_rust::{JsonColumn, UriColumn};
 
 /// Which OAuth grant flow an `AuthorizationRequest` represents. Stored as the
 /// wire-level RFC string in the `grantType` column.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// `strum` derives the `&str` ↔ enum conversions from the `snake_case` variant
+/// names — `AuthorizationCode` → `"authorization_code"`, `DeviceCode` →
+/// `"device_code"` — matching the RFC 6749 / RFC 8628 `grant_type` values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumString, AsRefStr, Display)]
+#[strum(serialize_all = "snake_case")]
 pub enum GrantType {
     /// RFC 6749 §4.1 authorization-code flow.
     AuthorizationCode,
@@ -16,43 +19,14 @@ pub enum GrantType {
     DeviceCode,
 }
 
-/// Returned when a string doesn't match any [`GrantType`] wire value.
-#[derive(Debug, thiserror::Error)]
-#[error("unknown grant_type {0}")]
-pub struct ParseGrantTypeError(String);
-
-impl FromStr for GrantType {
-    type Err = ParseGrantTypeError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "authorization_code" => Ok(GrantType::AuthorizationCode),
-            "device_code" => Ok(GrantType::DeviceCode),
-            _ => Err(ParseGrantTypeError(s.to_string())),
-        }
-    }
-}
-
-impl GrantType {
-    /// The RFC `grant_type` wire string this variant is stored and serialized as.
-    #[must_use]
-    pub const fn as_str(&self) -> &'static str {
-        match self {
-            GrantType::AuthorizationCode => "authorization_code",
-            GrantType::DeviceCode => "device_code",
-        }
-    }
-}
-
-impl fmt::Display for GrantType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
 /// Current state of an `AuthorizationRequest` as it moves from creation to
 /// terminal outcome.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// `strum` derives the `&str` ↔ enum conversions from the `snake_case` variant
+/// names — `Pending` → `"pending"`, and so on — the values stored in the
+/// `status` column.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumString, AsRefStr, Display)]
+#[strum(serialize_all = "snake_case")]
 pub enum RequestStatus {
     /// Awaiting user (or pre-approved grant) decision.
     Pending,
@@ -62,44 +36,6 @@ pub enum RequestStatus {
     Denied,
     /// Either timed out or was consumed (device-flow single-use).
     Expired,
-}
-
-impl RequestStatus {
-    /// The wire string this status is stored and serialized as.
-    #[must_use]
-    pub const fn as_str(&self) -> &'static str {
-        match self {
-            RequestStatus::Pending => "pending",
-            RequestStatus::Approved => "approved",
-            RequestStatus::Denied => "denied",
-            RequestStatus::Expired => "expired",
-        }
-    }
-}
-
-impl fmt::Display for RequestStatus {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-/// Returned when a string doesn't match any [`RequestStatus`] wire value.
-#[derive(Debug, thiserror::Error)]
-#[error("unknown status {0}")]
-pub struct ParseRequestStatusError(String);
-
-impl FromStr for RequestStatus {
-    type Err = ParseRequestStatusError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "pending" => Ok(RequestStatus::Pending),
-            "approved" => Ok(RequestStatus::Approved),
-            "denied" => Ok(RequestStatus::Denied),
-            "expired" => Ok(RequestStatus::Expired),
-            _ => Err(ParseRequestStatusError(s.to_string())),
-        }
-    }
 }
 
 /// Persisted in-flight OAuth authorization request — used to track both

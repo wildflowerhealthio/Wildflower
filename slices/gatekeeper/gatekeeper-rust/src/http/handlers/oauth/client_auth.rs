@@ -12,6 +12,7 @@
 use axum::http::{header, StatusCode};
 use axum::response::{IntoResponse, Response};
 use serde::Deserialize;
+use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 use super::error_codes::OAuthErrorCode;
 use super::internal::{OAuthError, OAuthErrorResponse};
@@ -40,13 +41,43 @@ pub enum ClientAuthenticationMethod {
 /// Client credentials resolved from the `Authorization: Basic` header
 /// (RFC 6749 §2.3.1) and/or the form-body `client_id`/`client_secret`
 /// parameters.
-#[derive(Debug, PartialEq, Eq)]
+///
+/// The plaintext `client_secret` is scrubbed from memory when the resolved
+/// credential is dropped (`#[derive(ZeroizeOnDrop)]`). This is defense in depth
+/// that reduces the window in which the secret sits on the heap after the
+/// request that verified it completes — it does not eliminate every copy: the
+/// raw form body and the `Authorization` header still live in axum's request
+/// buffers, and other transient copies may exist upstream.
+///
+/// `#[zeroize(skip)]` on `client_id` and `presented_via` keeps the non-secret
+/// fields untouched (and lets `presented_via`, a `Copy` enum that isn't
+/// `Zeroize`, participate at all); any secret field added later is scrubbed
+/// automatically rather than needing a hand-maintained `Drop` body.
+#[derive(PartialEq, Eq, Zeroize, ZeroizeOnDrop)]
 pub struct ClientCredentials {
+    #[zeroize(skip)]
     pub client_id: String,
     pub client_secret: Option<String>,
     /// How the client presented these credentials — drives the RFC 6749 §5.2
     /// `WWW-Authenticate: Basic` challenge on auth failure.
+    #[zeroize(skip)]
     pub presented_via: ClientAuthenticationMethod,
+}
+
+/// Redact `client_secret` from `Debug` output so the plaintext scrubbed on drop
+/// can't leak through a log line or a `{:?}` in a test-failure message. Only the
+/// secret's presence is shown, never its value.
+impl std::fmt::Debug for ClientCredentials {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ClientCredentials")
+            .field("client_id", &self.client_id)
+            .field(
+                "client_secret",
+                &self.client_secret.as_ref().map(|_| "<redacted>"),
+            )
+            .field("presented_via", &self.presented_via)
+            .finish()
+    }
 }
 
 /// Failure modes of credential resolution, before any store lookup.
@@ -84,15 +115,28 @@ impl IntoResponse for ResolveClientCredentialsError {
 
 /// Form-body credential parameters, parsed independently of the grant payload
 /// (serde ignores the grant-specific fields).
-#[derive(Debug, Default, Deserialize)]
+///
+/// The parsed `client_secret` is scrubbed on drop so a body secret that never
+/// makes it into a resolved [`ClientCredentials`] (e.g. rejected because Basic
+/// auth was also presented) doesn't linger as plaintext. `client_id` is not
+/// secret, so it is skipped.
+#[derive(Default, Deserialize, Zeroize, ZeroizeOnDrop)]
 struct BodyClientCredentials {
+    #[zeroize(skip)]
     client_id: Option<String>,
     client_secret: Option<String>,
 }
 
 /// Decoded userid/password halves of a Basic `Authorization` header
 /// (RFC 6749 §2.3.1).
+///
+/// The `client_secret` half is scrubbed on drop so a decoded Basic secret that
+/// is rejected before becoming a resolved [`ClientCredentials`] (e.g. presented
+/// alongside a body secret, or with a mismatched body `client_id`) doesn't
+/// linger as plaintext. `client_id` is not secret, so it is skipped.
+#[derive(Zeroize, ZeroizeOnDrop)]
 struct BasicCredentials {
+    #[zeroize(skip)]
     client_id: String,
     client_secret: String,
 }
@@ -124,8 +168,10 @@ pub fn resolve_client_credentials(
     form_body: &str,
 ) -> Result<ClientCredentials, ResolveClientCredentialsError> {
     // A structurally unparseable body simply contributes no credentials; the
-    // grant-payload parse is responsible for rejecting malformed bodies.
-    let body: BodyClientCredentials = serde_urlencoded::from_str(form_body).unwrap_or_default();
+    // grant-payload parse is responsible for rejecting malformed bodies. `mut`
+    // so the success path can `take` the fields out (the zero-on-drop structs
+    // forbid moving fields by plain access).
+    let mut body: BodyClientCredentials = serde_urlencoded::from_str(form_body).unwrap_or_default();
     let basic =
         decode_basic_authorization_header(authorization).map_err(|MalformedBasicHeader| {
             ResolveClientCredentialsError::MalformedBasic(OAuthError::new(
@@ -134,7 +180,7 @@ pub fn resolve_client_credentials(
             ))
         })?;
     match basic {
-        Some(basic) => {
+        Some(mut basic) => {
             if body.client_secret.is_some() {
                 return Err(ResolveClientCredentialsError::InvalidRequest(
                     OAuthError::new(
@@ -155,16 +201,19 @@ pub fn resolve_client_credentials(
                     ),
                 ));
             }
+            // `take` moves the fields out without a plain-access move, which the
+            // zero-on-drop `BasicCredentials` forbids; the emptied `basic`
+            // scrubs its now-empty buffers on drop.
             Ok(ClientCredentials {
-                client_id: basic.client_id,
-                client_secret: Some(basic.client_secret),
+                client_id: std::mem::take(&mut basic.client_id),
+                client_secret: Some(std::mem::take(&mut basic.client_secret)),
                 presented_via: ClientAuthenticationMethod::HttpBasic,
             })
         }
-        None => match body.client_id {
+        None => match body.client_id.take() {
             Some(client_id) => Ok(ClientCredentials {
                 client_id,
-                client_secret: body.client_secret,
+                client_secret: body.client_secret.take(),
                 presented_via: ClientAuthenticationMethod::RequestBody,
             }),
             None => Err(ResolveClientCredentialsError::InvalidRequest(
@@ -207,7 +256,15 @@ fn try_decode_basic_payload(
 ) -> Result<BasicCredentials, MalformedBasicHeader> {
     let decoded_bytes =
         base64::standard_decode(encoded_payload).map_err(|_| MalformedBasicHeader)?;
-    let decoded_pair = String::from_utf8(decoded_bytes).map_err(|_| MalformedBasicHeader)?;
+    // The decoded `id:secret` pair holds the plaintext secret; `Zeroizing` scrubs
+    // it when this frame returns. `from_utf8` reuses `decoded_bytes`' buffer, so
+    // wrapping the resulting string covers the raw bytes too. On the invalid-UTF-8
+    // path `from_utf8` hands the bytes back inside the `FromUtf8Error`, which would
+    // otherwise drop them unscrubbed — zeroize them before discarding the error.
+    let decoded_pair = Zeroizing::new(String::from_utf8(decoded_bytes).map_err(|e| {
+        e.into_bytes().zeroize();
+        MalformedBasicHeader
+    })?);
     let (encoded_client_id, encoded_client_secret) =
         decoded_pair.split_once(':').ok_or(MalformedBasicHeader)?;
     Ok(BasicCredentials {
@@ -223,8 +280,12 @@ fn try_decode_basic_payload(
 /// credential half before base64.
 fn form_urlencoded_decode_credential_component(encoded_component: &str) -> Option<String> {
     // `+` → space first is safe: `%2B` contains no literal `+`, so an encoded
-    // plus still round-trips through the percent-decode step.
-    let plus_decoded = encoded_component.replace('+', " ");
+    // plus still round-trips through the percent-decode step. `plus_decoded` is a
+    // full copy of the (possibly secret) component half, so wrap it in `Zeroizing`
+    // to scrub it when this frame returns rather than leaving it on the heap. The
+    // returned `String` is moved on into `BasicCredentials`, whose own drop scrubs
+    // it.
+    let plus_decoded = Zeroizing::new(encoded_component.replace('+', " "));
     percent_encoding::percent_decode_str(&plus_decoded)
         .decode_utf8()
         .ok()
@@ -234,6 +295,46 @@ fn form_urlencoded_decode_credential_component(encoded_component: &str) -> Optio
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn debug_redacts_client_secret() {
+        let credentials = ClientCredentials {
+            client_id: "app".to_string(),
+            client_secret: Some("SUPER-SECRET-VALUE".to_string()),
+            presented_via: ClientAuthenticationMethod::HttpBasic,
+        };
+        let rendered = format!("{credentials:?}");
+        // The secret value must never surface in a formatted credential.
+        assert!(
+            !rendered.contains("SUPER-SECRET-VALUE"),
+            "secret leaked: {rendered}"
+        );
+        // Presence of a secret is still shown so the value stays diagnosable.
+        assert!(
+            rendered.contains("<redacted>"),
+            "no redaction marker: {rendered}"
+        );
+        assert!(rendered.contains("app"), "client_id hidden: {rendered}");
+    }
+
+    #[test]
+    fn debug_shows_absent_client_secret_as_none() {
+        let credentials = ClientCredentials {
+            client_id: "app".to_string(),
+            client_secret: None,
+            presented_via: ClientAuthenticationMethod::RequestBody,
+        };
+        let rendered = format!("{credentials:?}");
+        // A missing secret reads as `None`, distinct from a redacted present one.
+        assert!(
+            rendered.contains("None"),
+            "absent secret not shown: {rendered}"
+        );
+        assert!(
+            !rendered.contains("<redacted>"),
+            "redaction marker on absent secret: {rendered}"
+        );
+    }
 
     fn basic_authorization(userid: &str, password: &str) -> String {
         format!(
