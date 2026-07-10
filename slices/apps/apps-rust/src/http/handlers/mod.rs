@@ -59,11 +59,11 @@ pub(crate) fn launch_openapi_router() -> OpenApiRouter<Arc<AppsState>> {
     OpenApiRouter::new().routes(routes!(apps::launch::handle_launch_app))
 }
 
-/// The full apps surface (gated routes + launch) as one `OpenApiRouter`. Used for
-/// the OpenAPI snapshot and the handler tests; the host mounts the two halves
-/// separately (via [`gated_openapi_router`] / [`launch_openapi_router`]) so it can
-/// gate them differently — hence this combined form is test-only.
-#[cfg(test)]
+/// The full apps surface (gated routes + launch) as one `OpenApiRouter`. Backs
+/// [`openapi_spec`](super::openapi_spec) — the committed snapshot and the host's
+/// unified `/docs`. The host mounts the two halves separately (via
+/// [`gated_openapi_router`] / [`launch_openapi_router`]) so it can gate them
+/// differently; this combined form exists only to document the whole surface.
 pub(crate) fn openapi_router() -> OpenApiRouter<Arc<AppsState>> {
     gated_openapi_router().merge(launch_openapi_router())
 }

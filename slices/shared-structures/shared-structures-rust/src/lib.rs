@@ -23,6 +23,12 @@ pub mod http_errors;
 #[cfg(feature = "openapi-snapshot")]
 pub mod openapi_snapshot;
 
+/// Merge several slice `OpenApi` documents into one and serve it as an
+/// interactive Scalar API reference (the host's unified `/docs`). Behind the
+/// `openapi-docs` feature so only the host binary pulls `utoipa-scalar`.
+#[cfg(feature = "openapi-docs")]
+pub mod openapi_docs;
+
 /// The tunnel service contract (`TunnelService` + state types) the tunnel slice
 /// implements and the apps slice consumes. Behind the `tunnel-service` feature
 /// so the lean default build stays free of `tokio`/`async-trait`.

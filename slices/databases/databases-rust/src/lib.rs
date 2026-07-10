@@ -49,7 +49,7 @@ use axum::Router;
 
 pub use config::{DatabaseDescriptor, DatabasesConfig};
 pub use files::purge_pending_deletions;
-pub use http::DatabasesState;
+pub use http::{openapi_spec, DatabasesState};
 
 /// Build the `/databases` router over the host's data directory, mirroring
 /// `apps-rust`'s `setup_apps`. The host passes its app-data dir; the slice

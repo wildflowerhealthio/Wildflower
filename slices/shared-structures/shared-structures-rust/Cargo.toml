@@ -11,6 +11,11 @@ publish.workspace = true
 # serde_json — only the `-rust` crates that own a documented surface enable it,
 # as a dev-dependency.
 openapi-snapshot = ["dep:utoipa", "dep:serde_json"]
+# Opt-in: the unified `/docs` machinery — merge several slice `OpenApi` documents
+# into one and serve it as an interactive Scalar reference. Gated so only the
+# host binary (the one process that serves the merged docs) pulls `utoipa-scalar`
+# and its axum wiring. `serde_json` rides along for the module's own tests.
+openapi-docs = ["dep:utoipa", "dep:utoipa-scalar", "dep:axum", "dep:serde_json"]
 # Opt-in: the `tunnel_service` contract (the tunnel slice implements it, the apps
 # slice consumes it). Gated so the lean default build — and crates that don't
 # touch the tunnel (emr, gatekeeper) — stay free of tokio/async-trait. Pulls
@@ -51,6 +56,8 @@ serde = { workspace = true }
 # once here rather than rebuilt from a string downstream.
 url = { version = "2" }
 utoipa = { workspace = true, optional = true }
+# Only for the `openapi-docs` feature: renders the merged spec as a Scalar page.
+utoipa-scalar = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 # Only for the `tunnel-service` contract (watch channel + async trait method).
 tokio = { workspace = true, optional = true, features = ["sync"] }

@@ -58,7 +58,7 @@ use shared_structures_rust::tunnel_service::TunnelService;
 pub use config::AppsConfig;
 pub use db::AppsStore;
 pub use domain::{App, AppKind, SelfHostedApp};
-pub use http::{AppsState, LaunchCookies, NoLaunchCookies, OwnerAuth};
+pub use http::{openapi_spec, AppsState, LaunchCookies, NoLaunchCookies, OwnerAuth};
 // Re-exported for the integration test crate; `#[deprecated]` is intentional.
 #[allow(deprecated)]
 pub use http::StubOwnerAuth;

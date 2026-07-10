@@ -30,6 +30,26 @@ pub use state::AppsState;
 use std::sync::Arc;
 
 use axum::Router;
+use utoipa::OpenApi;
+use utoipa_axum::router::OpenApiRouter;
+
+/// Base `OpenAPI` document; the collected routes fill in paths + components.
+#[derive(OpenApi)]
+struct ApiDoc;
+
+/// The full apps surface as one `OpenAPI` document — every endpoint the TS
+/// `AppsApi` client speaks (the gated list/cloud-admin/home-screen surface plus
+/// the ungated launch route). `info` is set explicitly so the committed snapshot
+/// doesn't churn with the crate version. Two consumers read it: the committed
+/// snapshot the TS spec-drift test guards, and the host's unified `/docs` Scalar
+/// surface, which merges this with the other slices' documents.
+#[must_use]
+pub fn openapi_spec() -> utoipa::openapi::OpenApi {
+    let combined = OpenApiRouter::with_openapi(ApiDoc::openapi()).merge(handlers::openapi_router());
+    let (_router, mut spec) = combined.split_for_parts();
+    spec.info = utoipa::openapi::Info::new("Apps Catalogue API", "0.0.0");
+    spec
+}
 
 /// Build the owner-gated routes (`GET /apps`, `POST /apps`,
 /// `PATCH`/`DELETE /apps/{id}`, `PUT /home-screen`). Carries no
@@ -50,34 +70,17 @@ pub fn launch_router(state: Arc<AppsState>) -> Router {
 
 #[cfg(test)]
 mod openapi_tests {
-    use utoipa::openapi::Info;
-    use utoipa::OpenApi;
-    use utoipa_axum::router::OpenApiRouter;
-
     /// The committed spec snapshot the TS spec-drift test reads.
     const SPEC_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/openapi/apps.openapi.json");
-
-    /// Base `OpenAPI` document; the collected routes fill in paths + components.
-    #[derive(OpenApi)]
-    struct ApiDoc;
-
-    /// The full apps surface as one document — every endpoint the TS `AppsApi`
-    /// client speaks. `info` is set explicitly so the committed snapshot doesn't
-    /// churn with the crate version. Test-only — nothing serves the spec at
-    /// runtime.
-    fn openapi_spec() -> utoipa::openapi::OpenApi {
-        let combined =
-            OpenApiRouter::with_openapi(ApiDoc::openapi()).merge(super::handlers::openapi_router());
-        let (_router, mut spec) = combined.split_for_parts();
-        spec.info = Info::new("Apps Catalogue API", "0.0.0");
-        spec
-    }
 
     /// The generated `OpenAPI` document must match the committed snapshot. A
     /// wire-type change flips this red; regenerate with
     /// `UPDATE_OPENAPI=1 cargo test -p apps-rust openapi_spec_snapshot_is_up_to_date`.
     #[test]
     fn openapi_spec_snapshot_is_up_to_date() {
-        shared_structures_rust::openapi_snapshot::assert_up_to_date(&openapi_spec(), SPEC_PATH);
+        shared_structures_rust::openapi_snapshot::assert_up_to_date(
+            &super::openapi_spec(),
+            SPEC_PATH,
+        );
     }
 }

@@ -47,7 +47,7 @@ pub use control::TunnelControl;
 pub use db::{SettingsSeed, TunnelStore};
 pub use domain::{RelaySettings, TunnelDaemon, TunnelSettings};
 pub use health::HealthProbe;
-pub use http::TunnelState;
+pub use http::{openapi_spec, TunnelState};
 use relay_clients::RatholeRelayClient;
 // Re-export the tunnel service contract this slice implements, so consumers can
 // name the types without depending on `shared-structures-rust` directly.

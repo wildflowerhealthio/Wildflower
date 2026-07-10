@@ -116,6 +116,22 @@ defineSpecDriftTest({
   type parameters rather than narrowing its `clientApi` to `HttpApi.HttpApi.Any`
   — otherwise concrete slice APIs won't type-check against it.
 
+## Serving the merged spec at `/docs`
+
+The same document each snapshot pins is also served at runtime. Every documented
+slice exposes a public `openapi_spec() -> utoipa::openapi::OpenApi` (the snapshot
+test now delegates to it), and the Tauri host merges the four into one document
+and serves it as an interactive [Scalar](https://scalar.com) reference at
+`/docs`. The merge + Scalar router live in
+[`shared-structures-rust`'s `openapi_docs`](../../slices/shared-structures/shared-structures-rust/src/openapi_docs.rs)
+(behind the `openapi-docs` feature); the host wires it in `api_router`
+(`apps/wildflower-tauri/src-tauri/src/lib.rs`), gated exactly like the rest of
+the admin API. Paths in each slice's spec already carry that slice's host mount
+prefix, so the merge needs no re-nesting. It's the same generated document, so
+`/docs` can't drift from the snapshots — no extra guard is needed. FHIR/HFS is
+absent: it emits no OpenAPI spec, only a FHIR CapabilityStatement at
+`/fhir-r4/metadata`.
+
 ## See also
 
 - [HttpApi Composition How-To](./HttpApi%20Composition%20How-To.md) — composing
