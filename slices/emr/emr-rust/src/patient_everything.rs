@@ -21,42 +21,33 @@
 //! token — one that can read Patient and Observation but not MedicationRequest
 //! still gets a Bundle with the Patient and its Observations.
 //!
-//! ## Why the related resources are matched in memory
+//! ## How the related resources are matched (server-side, indexed)
 //!
-//! FHIR would express "the Patient's Observations" as a compartment search
-//! (`GET /Patient/{id}/Observation`, matched on `Observation.subject`). HFS
-//! supports that, but only when the `Observation.subject` search parameter is
-//! *indexed*, which requires the FHIR SearchParameter spec files loaded from a
-//! `data/` dir. This embedding ships none (the backend opens with
-//! `data_dir: None`), so only a minimal `_id`/`_lastUpdated` index exists and a
-//! `subject=` search returns nothing. We therefore fetch each related type's
-//! type-level search (which needs no index) and match its patient reference
-//! against `Patient/{id}` in memory.
+//! FHIR expresses "the Patient's Observations" as a search on the resource's
+//! patient reference (`GET /Observation?subject=Patient/{id}`, the same match a
+//! `Patient/{id}/Observation` compartment search performs). HFS resolves that
+//! **server-side** against its search index because `emr-rust` loads the full
+//! FHIR R4 `SearchParameter` set at startup (see `crate::setup_fhir_r4` and this
+//! crate's `docs/Capability Statement.md`), so `Observation.subject` /
+//! `MedicationRequest.subject` are indexed at write time. We delegate one such
+//! search per related type and let HFS do the filtering — no in-memory
+//! `subject.reference` match, and no store-wide candidate scan.
+//!
+//! Each delegated search is **paged to exhaustion**: HFS returns a page plus a
+//! `next` cursor link, and [`search_referencing_patient`] follows the cursor
+//! until no `next` remains, so every matching resource is returned regardless of
+//! how many the patient (or the store) holds.
 //!
 //! ## Scope
 //!
 //! Related resources are the patient-referencing types in
 //! [`RELATED_RESOURCE_TYPES`] — `Observation` and `MedicationRequest` today.
 //! FHIR `$everything` returns the whole patient compartment; we include only the
-//! types in that table, matched on their `subject` reference. HFS is a general
+//! types in that table, searched on their `subject` reference. HFS is a general
 //! FHIR store, so the table can grow to any patient-referencing type it serves.
 //! `_count` truncates the combined matched set (the primary Patient is always
 //! included on top). Adding a type is a one-row change to the table — record the
 //! divergence in this crate's `docs/Capability Statement.md` in the same change.
-//!
-//! ## Known limitation: each candidate fetch is a single page
-//!
-//! Each related type's candidates come from one type-level search page capped at
-//! [`RELATED_FETCH_LIMIT`] resources — it is *not* paged to exhaustion. Because
-//! the search is store-wide (not compartment-scoped) and only the first page is
-//! inspected, the cap bounds the *total* resources of that type the store may
-//! hold before results become lossy, not the target patient's own count: once
-//! the store holds more than [`RELATED_FETCH_LIMIT`] of a type across *all*
-//! patients, a target patient whose rows fall outside the first page has them
-//! silently omitted — even a patient with only a handful. Paging the delegated
-//! search to exhaustion (or a real indexed compartment search) would close the
-//! gap; see the server capability statement in this crate's
-//! `docs/Capability Statement.md`.
 
 use axum::body::{to_bytes, Body};
 use axum::extract::{Path, Query, State};
@@ -70,31 +61,26 @@ use tower::ServiceExt;
 
 use crate::FHIR_R4_PATH;
 
-/// Upper bound on bytes buffered from a delegated sub-response body. Each
-/// candidate fetch is capped at [`RELATED_FETCH_LIMIT`] resources, so a single
-/// body stays well under this; the cap just guards a pathological body.
+/// Upper bound on bytes buffered from a single delegated search *page* body.
+/// Pages are bounded by HFS's `max_page_size`, so one body stays well under
+/// this; the cap just guards a pathological body.
 const MAX_SUBRESPONSE_BYTES: usize = 32 * 1024 * 1024;
 
-/// How many resources of a related type to fetch as `$everything` candidates
-/// before matching the patient reference in memory. Set to HFS's default
-/// `max_page_size` (1000) so each type-level search returns as many as HFS will
-/// serve in one page. Only this first page is inspected: once the store holds
-/// more than this many of a type across *all* patients, a target patient's rows
-/// outside the page are dropped — see the module-level "Known limitation" note.
-const RELATED_FETCH_LIMIT: u32 = 1000;
-
 /// A FHIR resource type gathered into a Patient `$everything` Bundle alongside
-/// the Patient, and the element on each row that carries the `Patient/{id}`
-/// reference we match on. Each is fetched via an unindexed type-level search and
-/// matched to the target patient in memory (see the module docs for why).
+/// the Patient, and the search parameter whose value is the `Patient/{id}`
+/// reference. Each is gathered with an indexed, server-side, fully-paged search
+/// (`GET /{resource_type}?{patient_search_param}=Patient/{id}`).
 struct RelatedType {
     /// FHIR resource type name, e.g. `"Observation"` — the type-level search path
     /// (`/{resource_type}`) and the `resourceType` these rows carry.
     resource_type: &'static str,
-    /// Element holding the `Patient/{id}` reference to match on. FHIR names this
+    /// Search parameter carrying the `Patient/{id}` reference. FHIR names this
     /// per-resource; both types we gather today use `subject`
-    /// (`Observation.subject`, `MedicationRequest.subject`).
-    patient_reference_field: &'static str,
+    /// (`Observation.subject`, `MedicationRequest.subject`). We use `subject`
+    /// rather than the `patient` param because `subject` indexes a plain
+    /// reference, whereas `patient`'s `.where(resolve() is Patient)` expression
+    /// depends on `resolve()` at index time.
+    patient_search_param: &'static str,
 }
 
 /// The related resource types a Patient `$everything` gathers, in Bundle order
@@ -108,11 +94,11 @@ struct RelatedType {
 const RELATED_RESOURCE_TYPES: &[RelatedType] = &[
     RelatedType {
         resource_type: "Observation",
-        patient_reference_field: "subject",
+        patient_search_param: "subject",
     },
     RelatedType {
         resource_type: "MedicationRequest",
-        patient_reference_field: "subject",
+        patient_search_param: "subject",
     },
 ];
 
@@ -162,63 +148,29 @@ pub(crate) async fn patient_everything_handler(
     };
 
     // 2. Gather related resources. For each type in `RELATED_RESOURCE_TYPES`,
-    //    fetch a type-level search page (no index needed) and keep the parsed
-    //    Bundle alive so matched resources can be borrowed straight out of it at
-    //    serialize time — no clone. See the module docs for why we match in
-    //    memory rather than with a compartment/`subject=` search.
+    //    run an indexed, server-side search on its patient reference
+    //    (`?subject=Patient/{id}`) and page it to exhaustion — HFS does the
+    //    filtering, so no in-memory `subject.reference` match and no store-wide
+    //    candidate cap.
     //
     //    Unlike the primary Patient read, a related search that fails (a non-200
     //    or an unreadable body) is logged and treated as *no matches* rather than
     //    aborting the operation: a partial-scope token that can read Patient but
     //    not, say, MedicationRequest still gets a Bundle with everything it is
     //    allowed to see.
-    let mut related_bundles: Vec<(&'static str, Value)> =
-        Vec::with_capacity(RELATED_RESOURCE_TYPES.len());
-    for related in RELATED_RESOURCE_TYPES {
-        let resp = delegate_get(
+    let subject_ref = format!("Patient/{id}");
+    let mut related: Vec<Value> = Vec::new();
+    for related_type in RELATED_RESOURCE_TYPES {
+        let matches = search_referencing_patient(
             &state.hfs_router,
-            &format!("/{}?_count={RELATED_FETCH_LIMIT}", related.resource_type),
+            related_type.resource_type,
+            related_type.patient_search_param,
+            &subject_ref,
             &headers,
         )
         .await;
-        if resp.status() != StatusCode::OK {
-            tracing::warn!(
-                resource_type = related.resource_type,
-                status = %resp.status(),
-                "patient $everything: related search returned non-200; omitting this type",
-            );
-            continue;
-        }
-        match read_json(resp).await {
-            Ok(bundle) => related_bundles.push((related.patient_reference_field, bundle)),
-            Err(_) => tracing::warn!(
-                resource_type = related.resource_type,
-                "patient $everything: related search body unreadable; omitting this type",
-            ),
-        }
+        related.extend(matches);
     }
-
-    let subject_ref = format!("Patient/{id}");
-    let subject_ref = subject_ref.as_str();
-    let mut related: Vec<&Value> = related_bundles
-        .iter()
-        .flat_map(|(reference_field, bundle)| {
-            let reference_field = *reference_field;
-            bundle
-                .get("entry")
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-                .filter_map(|entry| entry.get("resource"))
-                .filter(move |resource| {
-                    resource
-                        .get(reference_field)
-                        .and_then(|reference| reference.get("reference"))
-                        .and_then(Value::as_str)
-                        == Some(subject_ref)
-                })
-        })
-        .collect();
 
     // `_count` caps the *matched* related resources; the primary Patient is
     // always included on top.
@@ -229,7 +181,7 @@ pub(crate) async fn patient_everything_handler(
     // 3. Merge into one searchset Bundle: Patient first, then its related
     //    resources.
     let mut resources: Vec<&Value> = vec![&patient];
-    resources.extend(related);
+    resources.extend(related.iter());
 
     let self_url = {
         let mut url = format!("{fhir_base}/Patient/{id}/$everything");
@@ -248,6 +200,98 @@ pub(crate) async fn patient_everything_handler(
         )),
     )
         .into_response()
+}
+
+/// Gather every resource of `resource_type` whose `search_param` references
+/// `subject_ref` (`Patient/{id}`), by delegating an indexed server-side search
+/// to HFS and following its `next` cursor link to exhaustion.
+///
+/// A search page that fails (non-200 — e.g. a partial-scope `403` — or an
+/// unreadable body) is logged and stops the walk for this type, yielding
+/// whatever pages were gathered so far (none, if the very first page failed).
+/// This preserves `$everything`'s graceful degradation: a token lacking scope
+/// for one related type still gets the rest.
+async fn search_referencing_patient(
+    router: &Router,
+    resource_type: &str,
+    search_param: &str,
+    subject_ref: &str,
+    headers: &HeaderMap,
+) -> Vec<Value> {
+    let mut matches: Vec<Value> = Vec::new();
+    // Cursor of the *next* page to fetch; `None` for the first page.
+    let mut cursor: Option<String> = None;
+    loop {
+        // Build the search path in a scope so the `Serializer` (which is not
+        // `Send`) is dropped before the `.await` below — otherwise the handler
+        // future is `!Send` and won't satisfy axum's `Handler` bound.
+        let path = {
+            let mut query = url::form_urlencoded::Serializer::new(String::new());
+            query.append_pair(search_param, subject_ref);
+            if let Some(cursor) = &cursor {
+                query.append_pair("_cursor", cursor);
+            }
+            format!("/{resource_type}?{}", query.finish())
+        };
+
+        let resp = delegate_get(router, &path, headers).await;
+        if resp.status() != StatusCode::OK {
+            tracing::warn!(
+                resource_type,
+                status = %resp.status(),
+                "patient $everything: related search returned non-200; omitting remaining pages",
+            );
+            break;
+        }
+        let bundle = match read_json(resp).await {
+            Ok(bundle) => bundle,
+            Err(_) => {
+                tracing::warn!(
+                    resource_type,
+                    "patient $everything: related search body unreadable; omitting remaining pages",
+                );
+                break;
+            }
+        };
+
+        if let Some(entries) = bundle.get("entry").and_then(Value::as_array) {
+            for entry in entries {
+                if let Some(resource) = entry.get("resource") {
+                    matches.push(resource.clone());
+                }
+            }
+        }
+
+        match next_page_cursor(&bundle) {
+            // Guard against a pathological `next` that doesn't advance: if the
+            // server hands back the cursor we just used, stop rather than loop
+            // forever (normal keyset cursors always move forward).
+            Some(next) if Some(&next) != cursor.as_ref() => cursor = Some(next),
+            _ => break,
+        }
+    }
+    matches
+}
+
+/// Extract the `_cursor` of a search Bundle's `next` link, if any — the token to
+/// pass as `_cursor` on the follow-up request. Returns `None` when there is no
+/// `next` link (last page) or it carries no `_cursor` (nothing more to page).
+fn next_page_cursor(bundle: &Value) -> Option<String> {
+    let next_url = bundle
+        .get("link")
+        .and_then(Value::as_array)?
+        .iter()
+        .find(|link| link.get("relation").and_then(Value::as_str) == Some("next"))
+        .and_then(|link| link.get("url"))
+        .and_then(Value::as_str)?;
+    // HFS builds the `next` link as an absolute URL off its configured base; we
+    // only need the opaque `_cursor` token from its query (already percent-decoded
+    // by the parser), re-issued against our own known search path.
+    url::Url::parse(next_url)
+        .ok()?
+        .query_pairs()
+        .find(|(key, _)| key == "_cursor")
+        .map(|(_, value)| value.into_owned())
 }
 
 /// Re-drive HFS's router with an in-process `GET` sub-request, forwarding the
