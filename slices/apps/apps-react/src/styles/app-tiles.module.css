@@ -52,7 +52,10 @@
   padding: var(--space-5) var(--space-7);
 }
 
-/* Button reset layered over `.app-tile__body` for the view-mode launch target. */
+/* Button/anchor reset layered over `.app-tile__body` for the view-mode launch
+ * target (a `<button>` on Tauri, an `<a href>` on web — see `-tiles.tsx`).
+ * `text-decoration: none` strips the anchor's default underline; `color: inherit`
+ * strips its link color, so both elements paint identically. */
 .app-tile__launch {
   background: transparent;
   border: none;
@@ -60,6 +63,7 @@
   color: inherit;
   font: inherit;
   cursor: inherit;
+  text-decoration: none;
 }
 
 /* iOS-style gentle wiggle while editing. Lives on the inner content wrapper so

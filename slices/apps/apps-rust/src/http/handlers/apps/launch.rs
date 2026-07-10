@@ -1,4 +1,11 @@
-//! `POST /apps/{id}` — resolve an app id to a launch target.
+//! `GET` / `POST /apps/{id}` — resolve an app id to a launch target.
+//!
+//! Both methods share one handler body ([`launch`]): the web arm is a native
+//! `<a href="/apps/{id}">` the browser follows (a `GET`, so a plain click
+//! navigates and a cmd/ctrl-click opens a new tab), while the loopback (Tauri)
+//! arm drives the typed client's `POST`. A `GET` that mints a `{launch}` nonce
+//! (and may bring the tunnel up) is intentional — a launch is a navigation, like
+//! an OAuth `authorize`. See `docs/Apps/Explanation.md`.
 //!
 //! Two orthogonal axes meet here: the parent registry row's
 //! [`Provenance`](crate::domain::Provenance) fixes how the launch URL is
@@ -42,8 +49,10 @@ use crate::http::response_templates::{AppNotFoundBody, HandlerError, LaunchUnava
 use crate::http::state::AppsState;
 use crate::id::mint_launch_nonce;
 
-/// `POST /apps/{id}` — launch an app (`404` if no app has this id). See the
-/// module docs for the resolve-then-dispatch flow and the auth posture.
+/// `POST /apps/{id}` — launch an app (`404` if no app has this id). The loopback
+/// (Tauri) arm drives this through the typed client so the owner bearer rides
+/// along. See the module docs for the resolve-then-dispatch flow and the auth
+/// posture; the body is shared with [`handle_launch_app_get`] via [`launch`].
 #[utoipa::path(
     post,
     path = "/apps/{id}",
@@ -60,6 +69,45 @@ pub(crate) async fn handle_launch_app(
     State(state): State<Arc<AppsState>>,
     headers: HeaderMap,
     Path(id): Path<String>,
+) -> Result<Response, HandlerError> {
+    launch(state, headers, id).await
+}
+
+/// `GET /apps/{id}` — the web launch arm. A home-screen tile is a real
+/// `<a href="/apps/{id}" rel="nofollow noreferrer">`, so a plain click navigates
+/// the current tab and a cmd/ctrl-click opens a new one — native affordances a
+/// form-`POST` or `fetch` can't preserve. The auth cookie rides the anchor
+/// navigation (even the initial document request, before any JS), so a forwarded
+/// `GET` authenticates and the server `302`s to the resolved target. Shares
+/// [`launch`] with the `POST` arm — identical resolve-then-dispatch and auth
+/// posture.
+#[utoipa::path(
+    get,
+    path = "/apps/{id}",
+    params(("id" = String, Path, description = "App id")),
+    responses(
+        (status = 204, description = "Host sink opened the launch URL for a loopback caller (no redirect)"),
+        (status = 302, description = "Redirect (Location header) to the resolved launch URL"),
+        (status = 401, description = "A loopback launch whose caller is not the device owner"),
+        (status = 404, description = "No app has this id", body = AppNotFoundBody),
+        (status = 503, description = "No reachable launch target (forwarded launch with no public host, or a requires_tunnel app while the tunnel is down)", body = LaunchUnavailableBody),
+    ),
+)]
+pub(crate) async fn handle_launch_app_get(
+    State(state): State<Arc<AppsState>>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Response, HandlerError> {
+    launch(state, headers, id).await
+}
+
+/// The shared launch body for both `GET` and `POST /apps/{id}` — the method only
+/// picks the arm (native anchor navigation vs. the typed loopback client); the
+/// resolve-then-dispatch flow and auth posture are identical.
+async fn launch(
+    state: Arc<AppsState>,
+    headers: HeaderMap,
+    id: String,
 ) -> Result<Response, HandlerError> {
     // Read once (see module docs, step 1): a header that fails validation reads
     // as Loopback; a forwarded host that cleared validation but failed to parse

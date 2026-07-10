@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/tes
 // `AppsHomeBody` reads its home-screen mutation from `queries.ts` and two
 // route-context values; stub both so the tests drive the banner + edit-mode
 // behavior purely off the mutation stub and local state.
-const { homeScreenStub } = vi.hoisted(() => ({
+const { homeScreenStub, routeContext } = vi.hoisted(() => ({
   homeScreenStub: {
     mutate: vi.fn(),
     reset: vi.fn(),
@@ -12,6 +12,10 @@ const { homeScreenStub } = vi.hoisted(() => ({
     isError: false,
     error: null as Error | null,
   },
+  // Mutable root-context stub the `useRouteContext` mock reads. `apiBaseUrl`
+  // undefined = the web arm (tiles are anchors); set = the Tauri arm (buttons).
+  // Tests flip it per case; `beforeEach` resets it to web.
+  routeContext: { apiBaseUrl: undefined as string | undefined, runAuthed: vi.fn() },
 }))
 
 vi.mock('@tanstack/react-router', async (importOriginal) => {
@@ -22,8 +26,7 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
     // module doesn't pull in the real router.
     createFileRoute: () => (options: unknown) => options,
     // The body reads `apiBaseUrl` + `runAuthed` off the root context.
-    useRouteContext: ({ select }: { select: (ctx: unknown) => unknown }) =>
-      select({ apiBaseUrl: undefined, runAuthed: vi.fn() }),
+    useRouteContext: ({ select }: { select: (ctx: unknown) => unknown }) => select(routeContext),
   }
 })
 
@@ -124,5 +127,43 @@ describe('<AppsHomeBody> edit mode', () => {
       { id: 'cloud-app', enabled: false },
       { id: 'other-app', enabled: true },
     ])
+  })
+})
+
+describe('<AppsHomeBody> launch tiles', () => {
+  beforeEach(() => {
+    homeScreenStub.isError = false
+    homeScreenStub.error = null
+    homeScreenStub.mutate.mockClear()
+    // Default each case to the web arm; the Tauri test opts in explicitly.
+    routeContext.apiBaseUrl = undefined
+  })
+
+  afterEach(() => {
+    cleanup()
+    routeContext.apiBaseUrl = undefined
+  })
+
+  test('web arm: each view-mode tile is an <a href="/apps/{id}"> the browser follows', () => {
+    render(<AppsHomeBody apps={[APP]} />)
+
+    // A real anchor to the page-relative launch route — a plain click navigates
+    // this tab, a cmd/ctrl-click opens a new one, and the auth cookie rides the
+    // request. `rel` keeps crawlers off the launch route and withholds referrer.
+    const link = screen.getByRole('link')
+    expect(link.getAttribute('href')).toBe('/apps/cloud-app')
+    expect(link.getAttribute('rel')).toBe('nofollow noreferrer')
+  })
+
+  test('Tauri arm (apiBaseUrl set): the tile is a non-navigating button, not an anchor', () => {
+    routeContext.apiBaseUrl = 'http://127.0.0.1:8080'
+
+    render(<AppsHomeBody apps={[APP]} />)
+
+    // No anchor — the loopback arm launches through the authed client and the
+    // webview must never navigate. The tile still renders (its name is present),
+    // it's just a button rather than a link.
+    expect(screen.queryByRole('link')).toBeNull()
+    expect(screen.getByText('Cloud App')).toBeDefined()
   })
 })
