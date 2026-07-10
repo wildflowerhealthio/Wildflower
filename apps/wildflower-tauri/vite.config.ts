@@ -19,6 +19,7 @@ const isSharedConfig = (
   loopback_hostname: string
   loopback_port: number
   local_granted_scopes: string
+  first_party_client_id: string
 } =>
   typeof value === 'object' &&
   value !== null &&
@@ -27,16 +28,19 @@ const isSharedConfig = (
   'loopback_port' in value &&
   typeof value.loopback_port === 'number' &&
   'local_granted_scopes' in value &&
-  typeof value.local_granted_scopes === 'string'
+  typeof value.local_granted_scopes === 'string' &&
+  'first_party_client_id' in value &&
+  typeof value.first_party_client_id === 'string'
 
 const parsedConfig: unknown = JSON.parse(readFileSync(sharedConfigPath, 'utf8'))
 if (!isSharedConfig(parsedConfig)) {
   throw new Error(
-    `tauri-shared-config.json must declare string "loopback_hostname", number "loopback_port", and string "local_granted_scopes" (at ${sharedConfigPath})`
+    `tauri-shared-config.json must declare string "loopback_hostname", number "loopback_port", string "local_granted_scopes", and string "first_party_client_id" (at ${sharedConfigPath})`
   )
 }
 const apiBaseUrl = `http://${parsedConfig.loopback_hostname}:${parsedConfig.loopback_port}`
 const localGrantedScopes = parsedConfig.local_granted_scopes
+const firstPartyClientId = parsedConfig.first_party_client_id
 
 export default defineConfig({
   plugins: [react()],
@@ -47,6 +51,7 @@ export default defineConfig({
   define: {
     WILDFLOWER_LOOPBACK_ORIGIN: JSON.stringify(apiBaseUrl),
     WILDFLOWER_LOCAL_GRANTED_SCOPES: JSON.stringify(localGrantedScopes),
+    WILDFLOWER_FIRST_PARTY_CLIENT_ID: JSON.stringify(firstPartyClientId),
   },
 
   // Match the rest of the monorepo (`vite.config.base.ts`): resolve

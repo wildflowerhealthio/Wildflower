@@ -29,7 +29,7 @@ pub async fn require_owner_auth(
             "forwarded header did not indicate a valid base URL",
         );
     };
-    let origin = base_url.origin().ascii_serialization();
+    let origin = shared_structures_rust::origin_string(&base_url);
     if let Err(e) = verify_owner_token(&state, &origin, token) {
         return response_templates::verify_error_response("verify_owner_token failed", e);
     }

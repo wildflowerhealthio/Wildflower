@@ -69,7 +69,7 @@ const SCOPES_SUPPORTED: &[&str] = &[
 fn build_smart_configuration(base_url: &url::Url) -> SmartConfiguration {
     // The advertised endpoints are per-request URL strings; derive the bare
     // origin (no trailing slash, no default port) once and interpolate.
-    let origin = base_url.origin().ascii_serialization();
+    let origin = shared_structures_rust::origin_string(base_url);
     let host = format!("{origin}/fhir-r4");
     SmartConfiguration {
         // `issuer` = `CANONICAL_ISSUER` (matches minted tokens' `iss`); the

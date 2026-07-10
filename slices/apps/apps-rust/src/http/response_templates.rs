@@ -1,9 +1,9 @@
-//! Shared HTTP response templates for the apps handlers. Mirrors
-//! `tunnel-rust`'s `response_templates`: the logged opaque-500
-//! ([`InternalError`]) and the `Result`-returning [`HandlerError`] so
-//! a fallible step bails with `?` instead of a `match` + `into_response`.
+//! Shared HTTP response templates for the apps handlers. The logged opaque-500
+//! ([`InternalError`]) is the shared one from `shared-structures-rust` (the same
+//! type the other `-rust` slices use); the `Result`-returning [`HandlerError`]
+//! lets a fallible step bail with `?` instead of a `match` + `into_response`.
 //!
-//! On top of `tunnel-rust`'s shape the apps slice carries domain-level
+//! On top of that shared shape the apps slice carries domain-level
 //! errors (404 `AppNotFound`, 400 `InvalidUrl`) that are part of the wire
 //! contract — they round-trip through the webview as structured
 //! `{ error: 'NAME', ... }` payloads. Every app is editable, so the only
@@ -13,32 +13,8 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde::Serialize;
+use shared_structures_rust::http_errors::InternalError;
 use utoipa::ToSchema;
-
-/// The "a server-side step failed" payload: an operator-facing `context`
-/// and the `source` detail. Logged + returned as an opaque 500.
-#[derive(Debug)]
-pub(crate) struct InternalError {
-    context: &'static str,
-    source: String,
-}
-
-impl InternalError {
-    pub(crate) fn new(context: &'static str, source: impl std::fmt::Display) -> Self {
-        Self {
-            context,
-            source: source.to_string(),
-        }
-    }
-}
-
-impl IntoResponse for InternalError {
-    fn into_response(self) -> Response {
-        let context = self.context;
-        tracing::error!(error = %&self.source, "{context}");
-        StatusCode::INTERNAL_SERVER_ERROR.into_response()
-    }
-}
 
 /// Wire shape for `AppNotFound`. Matches the TS `AppNotFoundSchema`.
 #[derive(Debug, Serialize, ToSchema)]

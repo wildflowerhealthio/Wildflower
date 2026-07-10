@@ -40,33 +40,14 @@ pub(crate) fn internal_error(context: &str, err: impl std::fmt::Display) -> Resp
 
 /// The "a server-side step failed" payload shared by every surface's error enum
 /// (`HandlerError` here, plus the OAuth `TokenError` and `AuthorizeError`): an
-/// operator-facing `context` and the `source` detail, rendered through
-/// [`internal_error`] (logs `source` against `context`, returns an opaque 500).
-/// Each enum holds this in its `Internal` variant instead of re-declaring the
-/// same fields, constructor, and render call three times. (`TokenError`
-/// additionally cache-suppresses the rendered 500 per RFC 6749 §5.1 by wrapping
-/// it.)
-#[derive(Debug)]
-pub(crate) struct InternalError {
-    context: &'static str,
-    source: String,
-}
-
-impl InternalError {
-    /// Capture an operator `context` and the `source` detail to log at render.
-    pub(crate) fn new(context: &'static str, source: impl std::fmt::Display) -> Self {
-        Self {
-            context,
-            source: source.to_string(),
-        }
-    }
-}
-
-impl IntoResponse for InternalError {
-    fn into_response(self) -> Response {
-        internal_error(self.context, self.source)
-    }
-}
+/// operator-facing `context` and the `source` detail, logged + returned as an
+/// opaque 500. This is the shared type from `shared-structures-rust` — the same
+/// one the other `-rust` slices hold in their `Internal` variant — re-exported
+/// here so the OAuth surfaces keep importing it from `response_templates`. Each
+/// enum holds it in its `Internal` variant instead of re-declaring the same
+/// fields, constructor, and render call. (`TokenError` additionally
+/// cache-suppresses the rendered 500 per RFC 6749 §5.1 by wrapping it.)
+pub(crate) use shared_structures_rust::http_errors::InternalError;
 
 /// Plain 401 used by the auth middleware when a request lacks a valid bearer
 /// token.

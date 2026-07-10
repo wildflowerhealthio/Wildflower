@@ -17,6 +17,19 @@ pub use on_device_webview_handle::OnDeviceWebviewHandle;
 /// a second tenant justifies it. See `docs/Origins/Explanation.md`.
 pub const CANONICAL_ISSUER: &str = "https://wildflowerhealth.io";
 
+/// Reduce a base URL to its bare origin string — `scheme://host[:port]`, no
+/// trailing slash (e.g. `http://127.0.0.1:8080`). The one place the
+/// `url::Origin::ascii_serialization` reduction is spelled, so the callers that
+/// stringify a loopback or per-request served base URL (loopback config origins,
+/// forwarded served origins, discovery-doc issuer URLs) can't each render it a
+/// slightly different way — the flap PR #224 warned about. Pure `url` code, so
+/// it stays out of the axum-gated `served_origin` module and non-HTTP crates
+/// (e.g. tunnel's daemon) can use it too. See `docs/Origins/Explanation.md`.
+#[must_use]
+pub fn origin_string(base_url: &url::Url) -> String {
+    base_url.origin().ascii_serialization()
+}
+
 #[cfg(feature = "http-errors")]
 pub mod http_errors;
 
@@ -54,3 +67,27 @@ pub mod served_origin;
 /// string code, no extra deps.
 #[cfg(feature = "subdomain-url")]
 pub mod subdomain_host;
+
+#[cfg(test)]
+mod tests {
+    use super::origin_string;
+    use url::Url;
+
+    /// The bare origin drops the trailing slash and, per the URL Standard, the
+    /// scheme's default port — the exact shape every consumer needs when it
+    /// interpolates a served origin into a `Location` / discovery URL. Pinning it
+    /// here is what lets the call sites stop each re-spelling the reduction.
+    #[test]
+    fn reduces_to_scheme_host_port_without_trailing_slash() {
+        let loopback = Url::parse("http://127.0.0.1:8080/").expect("valid url");
+        assert_eq!(origin_string(&loopback), "http://127.0.0.1:8080");
+
+        // A non-default port is kept; the trailing path is dropped.
+        let forwarded = Url::parse("https://emr.example.com:8443/token?x=1").expect("valid url");
+        assert_eq!(origin_string(&forwarded), "https://emr.example.com:8443");
+
+        // The scheme's default port (443 for https) is omitted from the origin.
+        let default_port = Url::parse("https://example.com/path").expect("valid url");
+        assert_eq!(origin_string(&default_port), "https://example.com");
+    }
+}

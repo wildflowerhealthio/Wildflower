@@ -45,7 +45,7 @@ pub async fn require_valid_bearer_token(
             "forwarded header did not indicate a valid base URL",
         );
     };
-    let origin = base_url.origin().ascii_serialization();
+    let origin = shared_structures_rust::origin_string(&base_url);
     if let Err(e) = verify_auth_token_claims(&gate.state, &origin, token) {
         return response_templates::verify_error_response("verify_auth_token_claims failed", e);
     }

@@ -46,6 +46,13 @@ const LOOPBACK_PORT: u16 = match u16::from_str_radix(env!("WILDFLOWER_LOOPBACK_P
 // covers `WILDFLOWER_WIDEST_SCOPES`).
 const LOCAL_GRANTED_SCOPES: &str = env!("WILDFLOWER_LOCAL_GRANTED_SCOPES");
 
+// The host's first-party OAuth `client_id`, sourced from the same
+// `apps/wildflower-tauri/tauri-shared-config.json` (re-emitted by `build.rs`).
+// The TS shell reads the same value as `WILDFLOWER_FIRST_PARTY_CLIENT_ID`
+// (`vite.config.ts`), so the WebView's device-login `client_id` can't drift from
+// the id gatekeeper seeds the first-party client and mints the owner token under.
+const FIRST_PARTY_CLIENT_ID: &str = env!("WILDFLOWER_FIRST_PARTY_CLIENT_ID");
+
 // Filenames of the host's SQLite databases under the shared app-data dir. These
 // are the single source of truth for each database's on-disk name: the slice
 // that opens it AND the data-management catalogue (`/databases`) reference the
@@ -185,7 +192,7 @@ async fn run_server(
     // slice's config (apps / gatekeeper / emr / tunnel). `loopback_origin` is its
     // bare origin string (no trailing slash) for the few sub-URLs built by hand.
     let loopback_base_url = runtime.loopback_base_url();
-    let loopback_origin = loopback_base_url.origin().ascii_serialization();
+    let loopback_origin = shared_structures_rust::origin_string(&loopback_base_url);
     // The FHIR R4 SearchParameter bundle HFS indexes from is a deployed asset,
     // not embedded in the binary — dev reads it from the workspace source tree,
     // release from the bundled resource dir (declared in `tauri.conf.json` under
@@ -215,6 +222,7 @@ async fn run_server(
             .split_whitespace()
             .map(str::to_owned)
             .collect(),
+        first_party_client_id: FIRST_PARTY_CLIENT_ID.to_owned(),
     };
 
     // One shared SQLite database for all persistence-rust-backed slices

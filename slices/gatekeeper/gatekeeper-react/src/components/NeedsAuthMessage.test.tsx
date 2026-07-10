@@ -47,9 +47,15 @@ const layerHolder: { current: Layer.Layer<GatekeeperHttpApiClient> } = {
 // set value proves the request forwards the injected config.
 const scopesHolder: { current: string | undefined } = { current: undefined }
 
+// Stands in for the host-threaded `firstPartyClientId` router-context value.
+// `undefined` (the default) exercises the standalone `FIRST_PARTY_CLIENT_ID`
+// fallback; a set value proves the device-login request forwards the injected id.
+const clientIdHolder: { current: string | undefined } = { current: undefined }
+
 vi.mock('../router-context.ts', () => ({
   useGatekeeperRuntimeLayer: (): Layer.Layer<GatekeeperHttpApiClient> => layerHolder.current,
   useGatekeeperLocalGrantedScopes: (): string | undefined => scopesHolder.current,
+  useGatekeeperFirstPartyClientId: (): string | undefined => clientIdHolder.current,
 }))
 
 // The device flow publishes the freshly-authed signal through the
@@ -76,6 +82,7 @@ afterEach(() => {
   cleanup()
   setAuthStateMock.mockReset()
   scopesHolder.current = undefined
+  clientIdHolder.current = undefined
 })
 
 /** The canned RFC 8628 §3.2 device-authorization response the stubs return. */
@@ -160,6 +167,37 @@ describe('<NeedsAuthMessage> device flow', () => {
     const payload = (capturedInput as { readonly payload: Record<string, unknown> }).payload
     expect(payload['device_name']).toBe('Ada')
     expect(payload['scope']).toBe('system/*.rs wildflower/*.rs')
+    // No host-threaded id → the standalone `FIRST_PARTY_CLIENT_ID` fallback.
+    expect(payload['client_id']).toBe('wildflower-host')
+  })
+
+  test('identifies the request with the host-threaded first-party client id', async () => {
+    // The live Tauri app threads the id from `tauri-shared-config.json`; the
+    // request must carry that value, not the standalone fallback — so the id
+    // gatekeeper-rust seeds and the id the WebView presents derive from one
+    // source and can't drift. A regression to a hardcoded literal fails this.
+    clientIdHolder.current = 'wildflower-host-from-config'
+    let capturedInput: unknown
+    layerHolder.current = makeClientLayer({
+      DeviceAuthorization: (input) => {
+        capturedInput = input
+        return Effect.succeed(DEVICE_AUTH_RESPONSE)
+      },
+      TokenExchange: () => PENDING_FOREVER,
+    })
+
+    render(withTokenStore(<NeedsAuthMessage />))
+    await startSignIn()
+
+    await waitFor(
+      () => {
+        expect(capturedInput).toBeDefined()
+      },
+      { timeout: 2000 }
+    )
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test assertion: narrow the captured `unknown` to read the payload
+    const payload = (capturedInput as { readonly payload: Record<string, unknown> }).payload
+    expect(payload['client_id']).toBe('wildflower-host-from-config')
   })
 
   test('renders the failure view when device authorization errors', async () => {

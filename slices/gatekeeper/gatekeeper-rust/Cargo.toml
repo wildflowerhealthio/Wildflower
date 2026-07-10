@@ -20,8 +20,9 @@ scopes-rust = { path = "../../scopes/scopes-rust" }
 # The shared forwarding-header provenance helpers (`served_base_url_for`,
 # `request_provenance`) — gatekeeper-rust resolves token issuer URLs through
 # them, and apps-rust dispatches launches off the same provenance, so the
-# `Forwarded`-header (RFC 7239) contract lives in one place.
-shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = ["served-origin"] }
+# `Forwarded`-header (RFC 7239) contract lives in one place. `http-errors` pulls
+# the shared opaque-500 `InternalError` the handler/OAuth error enums hold.
+shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = ["served-origin", "http-errors"] }
 parking_lot = "0.12"
 # jsonwebtoken 10 split the crypto backend out of the default features: `default`
 # only enables PEM parsing, so a signer backend must be selected explicitly.

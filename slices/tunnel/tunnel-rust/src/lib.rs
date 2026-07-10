@@ -86,7 +86,7 @@ pub fn setup_tunnel(
         probe,
         // The daemon renders the loopback origin into `TunnelLiveness.origin` (a
         // wire string), so hand it the bare origin (no trailing slash).
-        config.loopback_base_url.origin().ascii_serialization(),
+        shared_structures_rust::origin_string(&config.loopback_base_url),
         config
             .loopback_base_url
             .port_or_known_default()

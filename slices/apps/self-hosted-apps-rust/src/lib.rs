@@ -207,14 +207,13 @@ async fn render_and_cache(req: Request, next: Next) -> Response {
 /// error (e.g. a strict-mode miss on an unknown variable) is logged and
 /// answered with an opaque 500.
 fn render_template(state: &TemplateState, serve_path_lower: &str, headers: &HeaderMap) -> Response {
-    // Derived lazily — only the else-branch (a loopback caller) needs it.
-    let make_loopback_origin = || {
-        state
-            .context
-            .loopback_base_url
-            .origin()
-            .ascii_serialization()
-    };
+    // Derived lazily — only the else-branch (a loopback caller) needs it. The
+    // forwarded arm below deliberately does *not* use this: a self-hosted app is
+    // served on its own `<id>.<public_host>` subdomain, but its `apiOrigin` is the
+    // bare public host (where the API lives), so that arm builds the origin from
+    // the tunnel's configured public host, not from this request's origin.
+    let make_loopback_origin =
+        || shared_structures_rust::origin_string(&state.context.loopback_base_url);
     // Only the forwarded/loopback distinction matters, so `is_forwarded` is the
     // exact fit. A forwarded request with no configured public host 500s rather
     // than falling back to loopback — a remote browser can't reach loopback, and a

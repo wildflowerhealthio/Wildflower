@@ -50,6 +50,14 @@ interface RouterContext extends BaseRouterContext.RouterContextWith<SliceService
    * asks for exactly the scopes gatekeeper-rust seeds. Omitted on web/embedded.
    */
   readonly localGrantedScopes?: string
+  /**
+   * The host's first-party OAuth `client_id` (e.g. `wildflower-host`), sourced
+   * from the Tauri shell's `tauri-shared-config.json`. Read by the gatekeeper
+   * slice's `NeedsAuthMessage` so the WebView's device-login `client_id` matches
+   * the id gatekeeper-rust seeds the first-party client under. Omitted on
+   * web/embedded (the gatekeeper-core `FIRST_PARTY_CLIENT_ID` fallback applies).
+   */
+  readonly firstPartyClientId?: string
 }
 
 /**

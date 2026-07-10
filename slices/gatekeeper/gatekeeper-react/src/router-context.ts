@@ -11,10 +11,10 @@ type RunAuthed = BaseRouterContext.RunAuthedWith<GatekeeperHttpApiClient>
 /**
  * Slice-local router-context — `BaseRouterContext.RouterContextWith`
  * narrowed to this slice's client, plus the optional host-threaded
- * `localGrantedScopes`. `awaitAuthReady` is inherited only to keep this
- * structural context a faithful subset of the host app's `RouterContext`;
- * gatekeeper loaders don't read it — the gate guarantees the token before the
- * loader runs.
+ * `localGrantedScopes` and `firstPartyClientId`. `awaitAuthReady` is inherited
+ * only to keep this structural context a faithful subset of the host app's
+ * `RouterContext`; gatekeeper loaders don't read it — the gate guarantees the
+ * token before the loader runs.
  */
 type RouterContext = BaseRouterContext.RouterContextWith<GatekeeperHttpApiClient> & {
   /**
@@ -26,6 +26,15 @@ type RouterContext = BaseRouterContext.RouterContextWith<GatekeeperHttpApiClient
    * falls back to the canonical default.
    */
   readonly localGrantedScopes?: string
+  /**
+   * The host's first-party OAuth `client_id` (e.g. `wildflower-host`), threaded
+   * from the Tauri shell's `tauri-shared-config.json` so the WebView's
+   * device-login `client_id` matches the id gatekeeper-rust seeds the first-party
+   * client under. Omitted on web/standalone builds, where
+   * {@link useGatekeeperFirstPartyClientId} returns `undefined` and the caller
+   * falls back to gatekeeper-core's `FIRST_PARTY_CLIENT_ID`.
+   */
+  readonly firstPartyClientId?: string
 }
 
 /**
@@ -71,5 +80,24 @@ const useGatekeeperLocalGrantedScopes = (): string | undefined =>
     select: (context: RouterContext) => context.localGrantedScopes,
   })
 
-export { sliceRuntimeLayer, useGatekeeperLocalGrantedScopes, useGatekeeperRuntimeLayer }
+/**
+ * The host's first-party OAuth `client_id` from router context (see
+ * {@link RouterContext.firstPartyClientId}). `NeedsAuthMessage` identifies its
+ * device-login request with this so it matches the id gatekeeper seeds the
+ * first-party client under. `undefined` on standalone/web builds where the host
+ * context doesn't carry it — the caller falls back to gatekeeper-core's
+ * `FIRST_PARTY_CLIENT_ID`.
+ */
+const useGatekeeperFirstPartyClientId = (): string | undefined =>
+  useRouteContext({
+    from: '__root__',
+    select: (context: RouterContext) => context.firstPartyClientId,
+  })
+
+export {
+  sliceRuntimeLayer,
+  useGatekeeperFirstPartyClientId,
+  useGatekeeperLocalGrantedScopes,
+  useGatekeeperRuntimeLayer,
+}
 export type { RouterContext, RunAuthed, RuntimeLayer }
