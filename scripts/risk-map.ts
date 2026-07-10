@@ -1,25 +1,62 @@
 #!/usr/bin/env node
 import { execSync } from 'node:child_process'
-import { globSync, readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { globSync, readFileSync, realpathSync } from 'node:fs'
+import { dirname, join, matchesGlob } from 'node:path'
+import { fileURLToPath } from 'node:url'
 // Emits a JSON map of `{ <pkgName>: <multiplier> }` for the kitchen-sink
 // `numRunsFor` helper to consume via the FC_RISK_MAP env var. Packages
 // reachable in the reverse workspace dep graph from a changed file get the
 // HIGH multiplier (1.0); everything else gets LOW (0.2). Root-config or
 // lockfile changes promote every package to HIGH.
 import { Console, Effect, Either, Option, pipe, Schema } from 'effect'
+import { parse as parseYaml } from 'yaml'
 
 const HIGH = 1.0
 const LOW = 0.2
 
-const ROOT_CONFIG_FILES = new Set(['vite.config.base.ts', 'vite.config.ts', 'pnpm-workspace.yaml'])
+const WORKSPACE_FILE = 'pnpm-workspace.yaml'
 
-const WORKSPACE_PACKAGE_PATTERNS = [
-  'apps/*/package.json',
-  'global/*/package.json',
-  'global/effect-messaging/*/package.json',
-  'slices/**/package.json',
-] as const
+const ROOT_CONFIG_FILES = new Set(['vite.config.base.ts', 'vite.config.ts', WORKSPACE_FILE])
+
+/** Positive and negative package globs read from `pnpm-workspace.yaml`. */
+interface WorkspaceGlobs {
+  /** Directory globs whose packages ARE workspace members (e.g. `apps/*`). */
+  readonly positive: readonly string[]
+  /** `!`-prefixed globs (with the `!` stripped) excluded from the workspace. */
+  readonly negative: readonly string[]
+}
+
+/**
+ * Split raw `pnpm-workspace.yaml` `packages` entries into positive globs and
+ * negations (the `!`-prefixed entries, with the leading `!` stripped). Pure —
+ * exported for unit testing.
+ */
+const partitionWorkspaceGlobs = (entries: readonly string[]): WorkspaceGlobs => {
+  const positive: string[] = []
+  const negative: string[] = []
+  for (const entry of entries) {
+    if (entry.startsWith('!')) negative.push(entry.slice(1))
+    else positive.push(entry)
+  }
+  return { positive, negative }
+}
+
+const WorkspaceConfig = Schema.Struct({
+  packages: Schema.optionalWith(Schema.Array(Schema.String), { default: () => [] }),
+})
+const decodeWorkspaceConfig = Schema.decodeUnknownSync(WorkspaceConfig)
+
+/**
+ * Read the workspace package globs from `pnpm-workspace.yaml` — the single
+ * source of truth for which directories are workspace members. Deriving the
+ * risk-map's globs from here (rather than a second hardcoded copy) keeps the
+ * two lists from drifting when a workspace root is added or removed.
+ */
+const readWorkspaceGlobs = (repoRoot: string): WorkspaceGlobs => {
+  const raw = readFileSync(join(repoRoot, WORKSPACE_FILE), 'utf8')
+  const { packages } = decodeWorkspaceConfig(parseYaml(raw))
+  return partitionWorkspaceGlobs(packages)
+}
 
 const WorkspaceDeps = Schema.Record({ key: Schema.String, value: Schema.String })
 
@@ -84,13 +121,19 @@ const tryDecodePackage = (raw: string): Option.Option<PackageJson> =>
 
 const loadPackages = (repoRoot: string): Effect.Effect<readonly Pkg[]> =>
   Effect.sync(() => {
+    const { positive, negative } = readWorkspaceGlobs(repoRoot)
+    // pnpm globs match directories; risk-map matches their `package.json`.
+    const patterns = positive.map((glob) => `${glob}/package.json`)
+    // A `package.json` at `rel` is excluded when it (or its directory) matches
+    // a `!`-negation — testing both covers `.../**` globs and exact-dir globs.
+    const isExcluded = (rel: string): boolean =>
+      rel.includes('node_modules') ||
+      rel.includes('dist') ||
+      negative.some((neg) => matchesGlob(rel, neg) || matchesGlob(dirname(rel), neg))
     const seen = new Set<string>()
     const pkgs: Pkg[] = []
-    for (const pattern of WORKSPACE_PACKAGE_PATTERNS) {
-      for (const rel of globSync(pattern, {
-        cwd: repoRoot,
-        exclude: (p: string) => p.includes('node_modules') || p.includes('dist'),
-      })) {
+    for (const pattern of patterns) {
+      for (const rel of globSync(pattern, { cwd: repoRoot, exclude: isExcluded })) {
         if (seen.has(rel)) continue
         seen.add(rel)
         const raw = readFileSync(join(repoRoot, rel), 'utf8')
@@ -191,4 +234,22 @@ const main = Effect.gen(function* () {
   yield* Console.log(JSON.stringify(encodeRiskMap(map)))
 })
 
-Effect.runSync(Effect.orDie(main))
+/**
+ * True when this module is the process entrypoint (`node scripts/risk-map.ts`),
+ * false when imported — e.g. by the unit test, which must not run `main`'s git
+ * queries or emit to stdout on import.
+ */
+const runAsScript = (): boolean => {
+  const entry = process.argv[1]
+  if (entry === undefined) return false
+  try {
+    return realpathSync(entry) === realpathSync(fileURLToPath(import.meta.url))
+  } catch {
+    return false
+  }
+}
+
+if (runAsScript()) Effect.runSync(Effect.orDie(main))
+
+export type { WorkspaceGlobs }
+export { buildRiskMap, loadPackages, partitionWorkspaceGlobs, readWorkspaceGlobs }

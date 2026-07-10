@@ -192,6 +192,12 @@ importers:
       eslint-plugin-tsdoc:
         specifier: ^0.5.2
         version: 0.5.2(eslint@10.6.0(jiti@2.7.0))(typescript@5.9.3)
+      fast-check:
+        specifier: 'catalog:'
+        version: 3.23.1
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:global/kitchen-sink
       markdownlint:
         specifier: ^0.40.0
         version: 0.40.0
@@ -216,6 +222,9 @@ importers:
       why-is-node-running:
         specifier: 'catalog:'
         version: 3.2.2
+      yaml:
+        specifier: ^2.9.0
+        version: 2.9.0
 
   apps/website:
     dependencies:

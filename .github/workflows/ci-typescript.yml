@@ -68,11 +68,8 @@ jobs:
           path: |
             node_modules/.vite/task-cache
             apps/*/dist
-            domain/*/dist
             global/**/dist
-            packages/*/dist
             slices/**/dist
-            tools/*/dist
           key: vp-pack-${{ runner.os }}-${{ github.sha }}
           restore-keys: |
             vp-pack-${{ runner.os }}-

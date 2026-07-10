@@ -22,6 +22,8 @@
     "effect": "catalog:",
     "eslint": "^10.6.0",
     "eslint-plugin-tsdoc": "^0.5.2",
+    "fast-check": "catalog:",
+    "kitchen-sink": "workspace:*",
     "markdownlint": "^0.40.0",
     "markdownlint-cli2": "^0.21.0",
     "markdownlint-cli2-formatter-pretty": "^0.0.9",
@@ -29,7 +31,8 @@
     "typescript-eslint": "^8.57.1",
     "vite": "catalog:",
     "vite-plus": "catalog:",
-    "why-is-node-running": "catalog:"
+    "why-is-node-running": "catalog:",
+    "yaml": "^2.9.0"
   },
   "overrides": {},
   "engines": {
