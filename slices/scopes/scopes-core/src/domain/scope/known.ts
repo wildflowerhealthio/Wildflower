@@ -7,6 +7,7 @@
  * {@link KnownScope}, with `KnownScope.scopeParse`, `KnownScope.is`, `KnownScope.ALL`.
  */
 import { Equal, Hash } from 'effect'
+import { accessAfterExpiryCopy } from '../access-token-ttl.ts'
 import { BaseScope } from './scope.ts'
 
 /** Plain-language consent copy for each known scope (`spec.md §7`). */
@@ -14,10 +15,10 @@ const SCOPE_EXPLANATIONS: Readonly<Record<KnownScope.Name, string>> = {
   openid: 'Confirm who you are',
   profile: 'Your basic profile details',
   fhirUser: 'Link to your patient record',
-  // States the gatekeeper's 15-minute `ACCESS_TOKEN_TTL`: without
-  // offline_access there is no refresh token, so access ends when the
-  // short-lived token expires. Keep in step with that constant.
-  offline_access: 'Access your data after 15 minutes',
+  // States the gatekeeper's `ACCESS_TOKEN_TTL`: without offline_access there is no refresh
+  // token, so access ends when the short-lived token expires. The minute figure is computed
+  // from the single `AccessToken.ttlMinutes` source (kept in step with the Rust constant).
+  offline_access: accessAfterExpiryCopy(),
   launch: 'Know how the app was launched',
   'launch/patient': 'Open a specific patient',
 }

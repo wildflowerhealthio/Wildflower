@@ -69,10 +69,13 @@ const DeviceConsentForm = ({
   const errorMessage = mutationError ?? (denied ? 'Authorization request was denied.' : null)
 
   // The statement subject: the device's (possibly just-edited) name, falling back to the
-  // registered client name.
+  // registered client name. Two-step so the naming policy reads plainly:
+  //  1. the device name in play here — the approver's edit on the settings surface,
+  //     otherwise whatever the device supplied at pairing;
+  //  2. that, or the registered client name when no device name is available.
   const trimmedName = name.trim()
-  const subjectName =
-    (editableName ? trimmedName : (consent.deviceName ?? '')) || consent.clientName
+  const enteredDeviceName = editableName ? trimmedName : (consent.deviceName ?? '')
+  const subjectName = enteredDeviceName || consent.clientName
 
   // The device-name control: an editable field on the settings surface, a read-only line
   // elsewhere (only when the device actually named itself).

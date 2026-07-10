@@ -7,7 +7,7 @@
  * Never the auto-computed complement of the grant — informational only, rendered by the
  * `ScopePicker`'s `ExclusionRow` group.
  */
-import { Scope } from 'scopes-core'
+import { AccessToken, Scope } from 'scopes-core'
 import type { GrantDraft } from 'scopes-core'
 
 /** One "It won't be able to…" line — a statement about something the draft doesn't grant. */
@@ -16,8 +16,15 @@ type ExclusionStatement = {
   readonly label: string
 }
 
-/** The statements the draft leaves excluded — each dropped once the draft covers it. */
-const exclusionStatementsFrom = (draft: GrantDraft.GrantDraft): ExclusionStatement[] => {
+/**
+ * The statements the draft leaves excluded — each dropped once the draft covers it.
+ * `accessTokenTtlMinutes` phrases the "access ends after N minutes" offline line; it
+ * defaults to {@link AccessToken.ttlMinutes} so the minute figure is never hardcoded here.
+ */
+const exclusionStatementsFrom = (
+  draft: GrantDraft.GrantDraft,
+  accessTokenTtlMinutes: number = AccessToken.ttlMinutes
+): ExclusionStatement[] => {
   const fhirScopes = [...draft.fhirV1, ...draft.fhirV2]
   const hasFhirWildcard = fhirScopes.some((scope) => scope.resource.serialize() === '*')
   const hasWildflower = draft.wildflower.length > 0
@@ -32,9 +39,12 @@ const exclusionStatementsFrom = (draft: GrantDraft.GrantDraft): ExclusionStateme
     exclusions.push({ key: 'admin', label: 'Read or write admin settings & connected apps' })
   }
   if (!hasOfflineAccess) {
-    // No offline_access ⇒ no refresh token: access ends when the 15-minute
-    // token (`ACCESS_TOKEN_TTL`) expires.
-    exclusions.push({ key: 'offline', label: 'Access your data after 15 minutes' })
+    // No offline_access ⇒ no refresh token: access ends when the short-lived token
+    // (`ACCESS_TOKEN_TTL`) expires. The minute figure is computed from the passed TTL.
+    exclusions.push({
+      key: 'offline',
+      label: AccessToken.accessAfterExpiryCopy(accessTokenTtlMinutes),
+    })
   }
   if (!hasSystemFhir) {
     exclusions.push({ key: 'other-patients', label: 'Read or write records for other patients' })
