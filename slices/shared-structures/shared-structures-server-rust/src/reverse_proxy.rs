@@ -170,6 +170,12 @@ async fn maybe_forward_to_subdomain(
     // Only a `Forwarded` provenance carries a subdomain to dispatch on; `Loopback`
     // and a rejected `None` both fall through. This routing is opportunistic — it
     // never errors a request it can't route (like the fall-throughs below).
+    // Falling through on `None` does not downgrade a malformed-forwarded request to
+    // loopback trust: this layer only picks subdomain dispatch, and the
+    // presence-based `is_forwarded` contract still gates the fallback handlers — a
+    // malformed `Forwarded` header stays "forwarded" and `served_base_url_for`
+    // rejects it (a served-origin `500`) where an origin is actually needed. See
+    // `served_origin`'s module docs.
     let Some(RequestProvenance::Forwarded { base_url }) = request_provenance(req.headers()) else {
         return next.run(req).await;
     };
