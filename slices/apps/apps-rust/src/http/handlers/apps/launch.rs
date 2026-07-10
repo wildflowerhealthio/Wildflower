@@ -46,6 +46,7 @@ use crate::id::mint_launch_nonce;
 /// module docs for the resolve-then-dispatch flow and the auth posture.
 #[utoipa::path(
     post,
+    tag = "Launch",
     path = "/apps/{id}",
     params(("id" = String, Path, description = "App id")),
     responses(

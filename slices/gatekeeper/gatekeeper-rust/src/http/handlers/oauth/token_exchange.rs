@@ -59,6 +59,7 @@ pub enum TokenPayload {
 /// [`TokenResponse`], `Err` via [`TokenError`].
 #[utoipa::path(
     post,
+    tag = "OAuth 2.0",
     path = "/token",
     request_body(content = TokenRequestBody, content_type = "application/x-www-form-urlencoded"),
     responses(

@@ -24,6 +24,7 @@ use crate::http::state::TunnelState;
 /// via `routes!` in the parent module, which reads this `#[utoipa::path]`.
 #[utoipa::path(
     put,
+    tag = "Configuration",
     path = "/tunnel",
     request_body = ReplaceTunnelRequestBody,
     responses(

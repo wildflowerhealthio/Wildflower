@@ -12,6 +12,7 @@ use crate::http::state::TunnelState;
 /// parent module, which reads this `#[utoipa::path]`.
 #[utoipa::path(
     get,
+    tag = "Configuration",
     path = "/tunnel",
     responses(
         (status = 200, description = "Current tunnel settings + observed runtime", body = TunnelStateResponse)

@@ -7,6 +7,9 @@
   "paths": {
     "/databases": {
       "get": {
+        "tags": [
+          "Management"
+        ],
         "summary": "`GET /databases` — list every catalogued database with its on-disk metadata\n(existence, size, table count, last-modified). Infallible: a missing or\nunreadable file reports `exists: false` rather than failing the listing.",
         "operationId": "handle_list_databases",
         "responses": {
@@ -28,6 +31,9 @@
     },
     "/databases/{id}": {
       "get": {
+        "tags": [
+          "Management"
+        ],
         "summary": "`GET /databases/{id}` — stream the database file as `application/vnd.sqlite3`\n(a `VACUUM INTO` snapshot, so it's internally consistent even while the\nowning slice is writing). Unknown ids and not-yet-created databases are\n`404 DatabaseNotFound`.",
         "description": "The blocking snapshot + file IO runs on a blocking thread (`spawn_blocking`),\nand the result is streamed from the temp file rather than buffered into\nmemory, so a large database neither stalls the async runtime nor spikes RSS\nby its full size.\n\nThe body is binary, so this endpoint is documented here (utoipa) but is\nintentionally absent from the `databases-core` Effect `HttpApi`: the React\nclient downloads it through the raw `HttpClient` to get the bytes, not the\ngenerated JSON client. The spec-drift test scopes only the JSON endpoints.",
         "operationId": "handle_download_database",
@@ -62,6 +68,9 @@
         }
       },
       "delete": {
+        "tags": [
+          "Management"
+        ],
         "summary": "`DELETE /databases/{id}` — schedule the database for deletion. Unknown ids\nand already-absent databases are `404 DatabaseNotFound`.",
         "description": "The owning slice holds the database open for the whole app lifetime, so it\ncan't be removed reliably at runtime (a Windows sharing violation, or a live\ninode on Unix). Instead this drops a pending-deletion marker; the host\nremoves the file at the next startup, before any connection opens (see\n`files::purge_pending_deletions`). The database therefore still exists — and\nstays served — until the app is restarted, which the settings UI tells the\nOwner to do. `deleted: true` means \"the request was accepted/scheduled\".",
         "operationId": "handle_delete_database",

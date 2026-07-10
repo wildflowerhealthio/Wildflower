@@ -30,6 +30,7 @@ pub(crate) struct DeletedBody {
 /// Owner-gated by the host.
 #[utoipa::path(
     delete,
+    tag = "Catalogue",
     path = "/apps/{id}",
     params(("id" = String, Path, description = "App id")),
     responses(

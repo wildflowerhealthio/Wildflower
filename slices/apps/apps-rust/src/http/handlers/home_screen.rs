@@ -35,6 +35,7 @@ pub(crate) struct HomeScreenEntry {
 /// `400 InvalidHomeScreen`. Returns the resulting catalogue in its new order.
 #[utoipa::path(
     put,
+    tag = "Home screen",
     path = "/home-screen",
     request_body = [HomeScreenEntry],
     responses(

@@ -16,6 +16,7 @@ pub struct Jwks {
 /// `GET /.well-known/jwks.json` — serve the active public signing keys.
 #[utoipa::path(
     get,
+    tag = "Discovery",
     path = "/.well-known/jwks.json",
     responses((status = 200, description = "RFC 7517 JSON Web Key Set", body = Jwks))
 )]

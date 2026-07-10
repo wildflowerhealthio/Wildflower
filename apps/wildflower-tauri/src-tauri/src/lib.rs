@@ -443,23 +443,25 @@ async fn run_server(
 
     // The unified API docs (`/docs`): merge every documented slice's spec —
     // collected from the very routes that serve traffic — into one document and
-    // serve it as an interactive Scalar reference. The `api-docs` system app
-    // (`apps-rust`) already points here, so this fills a route that previously
-    // fell through to the SPA. Gated exactly like the rest of the admin API: a
-    // loopback caller passes on connection provenance (the host injects the owner
-    // bearer), a forwarded caller on a valid bearer. FHIR/HFS is absent — it
-    // exposes no OpenAPI spec, only a FHIR CapabilityStatement at
-    // `/fhir-r4/metadata`.
+    // serve it as an interactive Scalar reference. Each slice is a named group so
+    // Scalar renders a two-level sidebar (slice → the slice's operation tags);
+    // the group name is presentation-only and lives here, not in the snapshots.
+    // The `api-docs` system app (`apps-rust`) already points here, so this fills a
+    // route that previously fell through to the SPA. Gated exactly like the rest
+    // of the admin API: a loopback caller passes on connection provenance (the
+    // host injects the owner bearer), a forwarded caller on a valid bearer.
+    // FHIR/HFS is absent — it exposes no OpenAPI spec, only a FHIR
+    // CapabilityStatement at `/fhir-r4/metadata`.
     let gated_docs = layer_router_with_gatekeeper_auth_gating(
         shared_structures_rust::openapi_docs::merged_scalar_router(
             "/docs",
             "Wildflower API",
             env!("CARGO_PKG_VERSION"),
             [
-                gatekeeper_rust::openapi_spec(),
-                apps_rust::openapi_spec(),
-                databases_rust::openapi_spec(),
-                tunnel_rust::openapi_spec(),
+                ("Gatekeeper", gatekeeper_rust::openapi_spec()),
+                ("Apps", apps_rust::openapi_spec()),
+                ("Databases", databases_rust::openapi_spec()),
+                ("Tunnel", tunnel_rust::openapi_spec()),
             ],
         ),
         gatekeeper.state.clone(),

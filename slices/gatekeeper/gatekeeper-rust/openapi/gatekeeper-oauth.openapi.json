@@ -7,6 +7,9 @@
   "paths": {
     "/.well-known/jwks.json": {
       "get": {
+        "tags": [
+          "Discovery"
+        ],
         "summary": "`GET /.well-known/jwks.json` — serve the active public signing keys.",
         "operationId": "handle_jwks_request",
         "responses": {
@@ -25,6 +28,9 @@
     },
     "/oauth/authorize": {
       "get": {
+        "tags": [
+          "OAuth 2.0"
+        ],
         "summary": "The authorization endpoint (RFC 6749 §3.1), the public front door of the\nOAuth flow. Validates the request, then either auto-issues an authorization\ncode (when an existing grant pre-approves every requested scope) or\nredirects the user-agent to the Owner UI to drive the approval.",
         "description": "Nothing in-process calls this route. Registered clients (e.g.\nSMART-on-FHIR apps) discover it via the FHIR server's\n`.well-known/smart-configuration` (`authorization_endpoint`) and send the\n*user's browser* here with PKCE params to start an authorization-code\nflow:\n\n1. Browser lands here; the request is parked as an `AuthorizationRequest`\n   (5-minute TTL).\n2. Unless every requested scope is pre-approved by an existing grant for\n   this (client, `redirect_uri`) pair, the browser is 302'd to the Owner\n   UI's polling page, which polls `GET /oauth/authorize/{id}` (a custom\n   extension, not part of any RFC) until the Owner decides. RFC 6749\n   leaves the owner-interaction mechanism unspecified, so the polling\n   page is spec-legal; likewise §4.1 explicitly allows skipping consent\n   on a previously established authorization decision, which is what the\n   grant fast path implements.\n3. Approval 302s the browser back to the client's `redirect_uri` with\n   `code` + `state` (§4.1.2); the client then redeems the short-lived\n   code at `POST /oauth/token` (§4.1.3) with its PKCE verifier.",
         "operationId": "handle_authorize_request",
@@ -119,6 +125,9 @@
     },
     "/oauth/authorize/{id}": {
       "get": {
+        "tags": [
+          "OAuth 2.0"
+        ],
         "summary": "Return the current status of the pending authorization request, including\nthe final redirect URL once approved.",
         "description": "The error side is `axum::response::ErrorResponse` because two error shapes\nshare the handler: the Owner-surface [`HandlerError`] (404/logged 500) and\nthe OAuth-shaped [`OAuthErrorResponse`] `server_error` — `?` converts\neither through its `IntoResponse`.",
         "operationId": "handle_authorization_status_request",
@@ -169,6 +178,9 @@
     },
     "/oauth/device_authorization": {
       "post": {
+        "tags": [
+          "OAuth 2.0"
+        ],
         "summary": "Issue a `(device_code, user_code)` pair for the client to poll on while the\nuser pairs the device. `Ok` carries the §5.1 cache suppression via\n[`DeviceAuthorizationResponse`], `Err` via [`TokenError`].",
         "operationId": "handle_device_authorization_request",
         "requestBody": {
@@ -217,6 +229,9 @@
     },
     "/oauth/token": {
       "post": {
+        "tags": [
+          "OAuth 2.0"
+        ],
         "summary": "Render the dispatch outcome — `Ok` carries the §5.1 cache suppression via\n[`TokenResponse`], `Err` via [`TokenError`].",
         "operationId": "handle_token_request",
         "requestBody": {

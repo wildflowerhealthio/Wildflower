@@ -132,6 +132,14 @@ prefix, so the merge needs no re-nesting. It's the same generated document, so
 absent: it emits no OpenAPI spec, only a FHIR CapabilityStatement at
 `/fhir-r4/metadata`.
 
+To keep the merged page readable, each handler's `#[utoipa::path]` carries a
+fine-grained `tag` (e.g. `OAuth 2.0`, `Catalogue`) — so tags are part of the
+committed snapshot, and the drift check ignores them (it compares wire shape, not
+tags). The aggregator then groups each slice's tags under a slice-named
+`x-tagGroups` entry, which Scalar renders as a two-level sidebar (slice →
+operation tags). The group names are presentation-only and passed by the host, so
+they never touch the snapshots.
+
 ## See also
 
 - [HttpApi Composition How-To](./HttpApi%20Composition%20How-To.md) — composing

@@ -166,6 +166,7 @@ pub struct AuthorizeParams {
 ///    code at `POST /oauth/token` (§4.1.3) with its PKCE verifier.
 #[utoipa::path(
     get,
+    tag = "OAuth 2.0",
     path = "/authorize",
     params(AuthorizeParams),
     responses(

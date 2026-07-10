@@ -59,6 +59,7 @@ pub(crate) struct CreateAppMultipart {
 /// body limit is raised for the upload arm (see the router wiring).
 #[utoipa::path(
     post,
+    tag = "Catalogue",
     path = "/apps",
     request_body(content = CreateAppMultipart, content_type = "multipart/form-data"),
     responses(

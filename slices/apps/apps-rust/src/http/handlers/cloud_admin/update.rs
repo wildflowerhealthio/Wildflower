@@ -54,6 +54,7 @@ pub(crate) enum AppContentBody {
 /// `PUT /apps/{id}` — replace an editable app's content. Owner-gated by the host.
 #[utoipa::path(
     put,
+    tag = "Catalogue",
     path = "/apps/{id}",
     params(("id" = String, Path, description = "App id")),
     request_body = AppContentBody,

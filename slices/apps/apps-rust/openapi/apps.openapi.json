@@ -7,6 +7,9 @@
   "paths": {
     "/apps": {
       "get": {
+        "tags": [
+          "Catalogue"
+        ],
         "summary": "`GET /apps` — the full catalogue in display order. Gating is applied by the\nhost (the slice exposes one router; there is no longer an ungated public\nsurface here).",
         "operationId": "handle_list_apps",
         "responses": {
@@ -26,6 +29,9 @@
         }
       },
       "post": {
+        "tags": [
+          "Catalogue"
+        ],
         "summary": "`POST /apps` — create a cloud or self-hosted app. Owner-gated by the host; the\nbody limit is raised for the upload arm (see the router wiring).",
         "operationId": "handle_create_app",
         "requestBody": {
@@ -64,6 +70,9 @@
     },
     "/apps/{id}": {
       "put": {
+        "tags": [
+          "Catalogue"
+        ],
         "summary": "`PUT /apps/{id}` — replace an editable app's content. Owner-gated by the host.",
         "operationId": "handle_replace_app",
         "parameters": [
@@ -131,6 +140,9 @@
         }
       },
       "post": {
+        "tags": [
+          "Launch"
+        ],
         "summary": "`POST /apps/{id}` — launch an app (`404` if no app has this id). See the\nmodule docs for the resolve-then-dispatch flow and the auth posture.",
         "operationId": "handle_launch_app",
         "parameters": [
@@ -177,6 +189,9 @@
         }
       },
       "delete": {
+        "tags": [
+          "Catalogue"
+        ],
         "summary": "`DELETE /apps/{id}` — remove a cloud app or an uploaded self-hosted app.\nOwner-gated by the host.",
         "operationId": "handle_delete_app",
         "parameters": [
@@ -226,6 +241,9 @@
     },
     "/home-screen": {
       "put": {
+        "tags": [
+          "Home screen"
+        ],
         "summary": "`PUT /home-screen` — atomically reorder + enable/disable every app. Owner-gated\nby the host. The body must list **every** registry app exactly once (its order\nis the new display order); a missing / duplicated / unknown id is\n`400 InvalidHomeScreen`. Returns the resulting catalogue in its new order.",
         "operationId": "handle_replace_home_screen",
         "requestBody": {

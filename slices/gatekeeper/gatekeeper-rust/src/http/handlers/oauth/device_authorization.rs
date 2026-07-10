@@ -61,6 +61,7 @@ impl IntoResponse for DeviceAuthorizationResponse {
 /// [`DeviceAuthorizationResponse`], `Err` via [`TokenError`].
 #[utoipa::path(
     post,
+    tag = "OAuth 2.0",
     path = "/device_authorization",
     request_body(content = DeviceAuthorizationRequest, content_type = "application/x-www-form-urlencoded"),
     responses(
