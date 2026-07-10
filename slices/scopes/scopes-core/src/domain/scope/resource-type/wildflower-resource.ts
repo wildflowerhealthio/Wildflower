@@ -74,7 +74,9 @@ namespace WildflowerResourceType {
     }
 
     pluralLabel(): string {
-      return 'All records'
+      // Mid-sentence in the running statements ("Read all admin record
+      // types") — the Wildflower counterpart of the FHIR wildcard label.
+      return 'all admin record types'
     }
 
     protected equalityKey(): string {

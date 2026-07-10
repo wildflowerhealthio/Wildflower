@@ -86,9 +86,22 @@ describe('Rows.build — wildcard-row policy (§2/§3)', () => {
     expect(rowKeys(rows)).toEqual(['Observation', 'Condition'])
   })
 
-  test('request mode: a wildcard requested at another context does not leak in (exact context)', () => {
+  test('request mode: a covering system wildcard offers the * row in the patient section', () => {
+    // `system/*` can grant `patient/*` (context coverage), so the patient section
+    // must offer the wildcard row — the expandable "allow any record type" path.
     const req = request([fhirAt('system', '*', ['r'])])
     const rows = Rows.build(section, Grant.make([]), req, { includeWildcard: true })
+    expect(rowKeys(rows)).toEqual(['*', 'Observation', 'Condition'])
+    expect(rows[0]?.cellFor('r').state).toBe('off')
+  })
+
+  test('request mode: a patient wildcard does not leak into the system section (no upward coverage)', () => {
+    const systemSection: ResourceSection.ResourceSection<'fhirV2'> = {
+      ...section,
+      context: Scope.Contexts.Fhir.system,
+    }
+    const req = request([fhirV2('*', ['r'])])
+    const rows = Rows.build(systemSection, Grant.make([]), req, { includeWildcard: true })
     expect(rowKeys(rows)).toEqual(['Observation', 'Condition'])
   })
 })

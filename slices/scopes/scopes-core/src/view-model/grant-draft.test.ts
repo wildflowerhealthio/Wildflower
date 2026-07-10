@@ -18,6 +18,60 @@ const grant = (scopes: Scope.Any[]): GrantDraft.GrantDraft => ({
   ...Grant.make(scopes),
 })
 
+describe('GrantDraft.retargetFhirContext', () => {
+  const system = Scope.Contexts.Fhir.system
+  const user = Scope.Contexts.Fhir.user
+
+  test('moves patient-context FHIR scopes to system, leaving everything else alone', () => {
+    const draft = GrantDraft.fromScopes([
+      'patient/Observation.rs',
+      'patient/Condition.read',
+      'user/Encounter.r',
+      'wildflower/Client.r',
+      'offline_access',
+    ])
+
+    const moved = GrantDraft.retargetFhirContext(draft, patient, system)
+
+    expect(GrantDraft.serializeAll(moved)).toEqual([
+      'system/Condition.read',
+      'system/Observation.rs',
+      'user/Encounter.r',
+      'wildflower/Client.r',
+      'offline_access',
+    ])
+  })
+
+  test('round-trips: retargeting there and back is the original scope set (property)', () => {
+    const nameArb = fc.constantFrom('*', 'Observation', 'Condition', 'Patient')
+    const lettersArb = fc.uniqueArray(
+      fc.constantFrom<Scope.Permission.Cruds.Interaction>('c', 'r', 'u', 'd', 's'),
+      { minLength: 1 }
+    )
+    const scopeArb = fc
+      .record({ name: nameArb, letters: lettersArb })
+      .map(({ name, letters }) => fhirV2(name, letters))
+    fc.assert(
+      fc.property(fc.array(scopeArb), (scopes) => {
+        const draft = grant(scopes)
+        const roundTripped = GrantDraft.retargetFhirContext(
+          GrantDraft.retargetFhirContext(draft, patient, system),
+          system,
+          patient
+        )
+        expect(GrantDraft.serialize(roundTripped)).toEqual(GrantDraft.serialize(draft))
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  test('a no-match context pair is the identity', () => {
+    const draft = GrantDraft.fromScopes(['patient/Observation.r'])
+    const moved = GrantDraft.retargetFhirContext(draft, user, system)
+    expect(GrantDraft.serializeAll(moved)).toEqual(GrantDraft.serializeAll(draft))
+  })
+})
+
 describe('GrantDraft.hasScopes', () => {
   test('an empty draft has no scopes', () => {
     expect(GrantDraft.hasScopes(GrantDraft.fromScopes([]))).toBe(false)

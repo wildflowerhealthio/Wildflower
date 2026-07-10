@@ -165,9 +165,12 @@ instead.
 The first-party host browser's path to becoming an Owner-authenticated
 client. Flow:
 
-1. On the device-login screen the user names the device and builds a scope
+1. On the device-login screen the user names the device and adjusts a scope
    request with the shared scope picker (see [Device name](#device-name) and
-   [Expandable consent](#expandable-consent)), then starts sign-in. The browser
+   [Expandable consent](#expandable-consent)), then starts sign-in. The picker
+   is pre-seeded with the read+search happy path (`system/*.rs wildflower/*.rs`)
+   when the client's allowed set covers it, so the common case is
+   name-it-and-go. The browser
    POSTs `/oauth/device_authorization` with `client_id`, the built `scope`, and
    the chosen `device_name`. Server creates a `flow='device_code'`
    `AuthorizationRequest` and returns `{ device_code, user_code, verification_uri, ... }`.

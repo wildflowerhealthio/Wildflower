@@ -11,6 +11,7 @@ import { Equal } from 'effect'
 import type { JSX } from 'react'
 import { useMemo, useState } from 'react'
 import { cn } from 'react-kitchen-sink'
+import { Chip } from 'react-tundraish'
 import { GrantDraft, Rows, Scope, ResourceSection, ScopeRequest } from 'scopes-core'
 
 import { AddRuleButton, type AddRuleOption } from '../atoms/add-rule-button.tsx'
@@ -18,7 +19,11 @@ import { ExclusionRow } from '../atoms/exclusion-row.tsx'
 import { FlagToggleRow } from '../atoms/flag-toggle-row.tsx'
 import { PermissionPicker } from '../molecules/permission-picker.tsx'
 import { pickerItemsFor } from '../molecules/picker-items.ts'
-import { SubjectSelector, type SubjectContext } from '../molecules/subject-selector.tsx'
+import {
+  SubjectSelector,
+  type PatientOption,
+  type SubjectContext,
+} from '../molecules/subject-selector.tsx'
 import { exclusionStatementsFrom } from './exclusion-statements.ts'
 import { PermissionGrid } from './permission-grid.tsx'
 import { PermissionStatement } from './permission-statement.tsx'
@@ -33,6 +38,17 @@ import styles from './scope-picker.module.css'
  */
 type ScopePickerMode = 'clamped' | 'expandable'
 
+/**
+ * The sentence voice of the plain statements. `can` states standing ability ("<subject> can
+ * Read your …") — the app-consent/editing surfaces. `asking` frames a permission ask
+ * ("<subject> is asking to Read …") — the answering surface, where the subject is requesting
+ * access it doesn't have yet. `requesting` is first person ("You're requesting permission to
+ * Read …") — the device-setup surface, where the user composes their own request. Only `can`
+ * carries the "your" possessive; in the other voices the records aren't necessarily the
+ * reader's own.
+ */
+type ScopePickerPhrasing = 'can' | 'asking' | 'requesting'
+
 interface ScopePickerProps {
   /** The sentence subject of the first plain statement ("<subjectName> can …"). */
   readonly subjectName: string
@@ -43,6 +59,14 @@ interface ScopePickerProps {
   readonly onDraftChange: (draft: GrantDraft.GrantDraft) => void
   /** The clamp mode — defaults to `clamped` (app consent); `expandable` for device auth. */
   readonly mode?: ScopePickerMode
+  /** The statement voice — defaults to `can`; `asking` for the answering surface. */
+  readonly phrasing?: ScopePickerPhrasing
+  /**
+   * The account's patients, when the surface can name one (the answering side). Present ⇒
+   * the subject selector's "Just one patient" choice carries a which-patient pill, landing
+   * in {@link GrantDraft.GrantDraft.patient} (a UI concern — never serialized into scopes).
+   */
+  readonly patients?: readonly PatientOption[]
 }
 
 /** Which projection is showing — plain-language statements or the resource×interaction grid. */
@@ -70,14 +94,26 @@ const sectionChip = (section: ResourceSection.Any): string =>
   section.kind === 'wildflower' ? 'Admin' : 'FHIR'
 
 /**
- * The lead-in phrase for the running statement list: the subject carries the
- * first sentence, "It can also" the second, and later rows fall back to a
- * minimal "…and" so a long request doesn't chant the same phrase.
+ * The lead-in phrase for one section's running statement list: the subject carries the
+ * first sentence, a follow-on phrase the second, and later rows fall back to a
+ * minimal "…and" so a long section doesn't chant the same phrase. The `asking`
+ * voice frames a permission ask rather than a standing ability.
  */
-const subjectPhraseFor = (subjectName: string, index: number): string => {
-  if (index === 0) return `${subjectName} can`
-  if (index === 1) return 'It can also'
-  return '…and'
+const subjectPhraseFor = (
+  subjectName: string,
+  index: number,
+  phrasing: ScopePickerPhrasing
+): string => {
+  if (index >= 2) return '…and'
+  if (phrasing === 'asking') {
+    return index === 0 ? `${subjectName} is asking to` : 'It’s also asking to'
+  }
+  if (phrasing === 'requesting') {
+    // First person — the reader is composing their own request; the device
+    // name doesn't carry the sentence.
+    return index === 0 ? 'You’re requesting permission to' : '…and to'
+  }
+  return index === 0 ? `${subjectName} can` : 'It can also'
 }
 
 /** Whether the `available` envelope grants at the FHIR `system` context (⇒ patient too). */
@@ -90,10 +126,17 @@ const availableCoversSystem = (request: ScopeRequest.ScopeRequest): boolean =>
 const contextFor = (subject: SubjectContext): Scope.Contexts.Fhir =>
   subject === 'system' ? Scope.Contexts.Fhir.system : Scope.Contexts.Fhir.patient
 
-/** The subject the picker lands on: the requested FHIR context if any, else one patient (`spec.md §9`). */
-const initialSubject = (request: ScopeRequest.ScopeRequest): SubjectContext =>
-  Scope.MultiScope.fhirScopes(request.requested).some((scope) =>
-    scope.hasContext(Scope.Contexts.Fhir.system)
+/**
+ * The subject the picker lands on: `system` when the request *or the seeded draft* already
+ * reaches all patients (a preset-seeded draft carries `system/` scopes the request may not),
+ * else one patient (`spec.md §9`).
+ */
+const initialSubject = (
+  request: ScopeRequest.ScopeRequest,
+  draft: GrantDraft.GrantDraft
+): SubjectContext =>
+  [...Scope.MultiScope.fhirScopes(request.requested), ...Scope.MultiScope.fhirScopes(draft)].some(
+    (scope) => scope.hasContext(Scope.Contexts.Fhir.system)
   )
     ? 'system'
     : 'patient'
@@ -124,13 +167,15 @@ const ScopePicker = ({
   draft,
   onDraftChange,
   mode = 'clamped',
+  phrasing = 'can',
+  patients,
 }: ScopePickerProps): JSX.Element => {
   const isExpandable = mode === 'expandable'
 
-  const [view, setView] = useState<View>(isExpandable ? 'detail' : 'plain')
+  const [view, setView] = useState<View>('plain')
   const [openRow, setOpenRow] = useState<string | null>(null)
   // The FHIR context new rules target — driven by the one-patient / all-patients selector.
-  const [subject, setSubject] = useState<SubjectContext>(() => initialSubject(request))
+  const [subject, setSubject] = useState<SubjectContext>(() => initialSubject(request, draft))
   // Resources the user added via "+ Add rule" but hasn't toggled yet, keyed by section prefix.
   // Held here (never as empty-permission draft scopes) so `GrantDraft.hasScopes` stays honest.
   const [extra, setExtra] = useState<ReadonlyMap<string, readonly string[]>>(() => new Map())
@@ -158,7 +203,8 @@ const ScopePicker = ({
     () => Scope.Known.inCanonicalOrder(ScopeRequest.availableOf(request).known),
     [request]
   )
-  const exclusions = useMemo(() => exclusionStatementsFrom(request), [request])
+  // Derived from the live draft, so building the grant up retires covered statements.
+  const exclusions = useMemo(() => exclusionStatementsFrom(draft), [draft])
 
   const grids = useMemo(
     () =>
@@ -175,6 +221,32 @@ const ScopePicker = ({
       const next = new Map(previous)
       next.set(key, [...(next.get(key) ?? []), name])
       return next
+    })
+  }
+
+  const changeSubject = (next: SubjectContext): void => {
+    if (next === subject) return
+    setSubject(next)
+    const from = contextFor(subject)
+    const to = contextFor(next)
+    // The switch moves the WHOLE in-progress selection between contexts —
+    // mixing one-patient and all-patients sections is more confusing than
+    // helpful. All-patients reach has no single patient, so the UI-only
+    // choice clears with it.
+    const retargeted = GrantDraft.retargetFhirContext(draft, from, to)
+    onDraftChange(next === 'system' ? { ...retargeted, patient: null } : retargeted)
+    // Un-toggled "+ Add rule" rows follow their section across the switch.
+    setExtra((previous) => {
+      const migrated = new Map(previous)
+      for (const kind of ['fhirV1', 'fhirV2'] as const) {
+        const fromKey = ResourceSection.prefixFor(kind, from)
+        const toKey = ResourceSection.prefixFor(kind, to)
+        const moved = migrated.get(fromKey)
+        if (moved === undefined) continue
+        migrated.delete(fromKey)
+        migrated.set(toKey, [...(migrated.get(toKey) ?? []), ...moved])
+      }
+      return migrated
     })
   }
 
@@ -197,9 +269,6 @@ const ScopePicker = ({
     })
   }
 
-  // A single running index across all sections drives the lead-in phrases.
-  let statementIndex = 0
-
   const viewToggle = (
     <button
       type="button"
@@ -217,49 +286,76 @@ const ScopePicker = ({
       {showSubjectSelector ? (
         <div className={styles['section']}>
           <p className={styles['eyebrow']}>Whose records</p>
-          <SubjectSelector value={subject} onChange={setSubject} />
+          <SubjectSelector
+            value={subject}
+            onChange={changeSubject}
+            patients={patients}
+            patientId={draft.patient}
+            onPatientChange={(patientId) => {
+              onDraftChange({ ...draft, patient: patientId })
+            }}
+          />
         </div>
       ) : null}
 
       {view === 'plain' ? (
         <div className={styles['section']}>
           <p className={styles['eyebrow']}>What it&apos;s asking for</p>
-          {grids.map(({ section, rows }) =>
-            rows.map((row) => {
-              const rowKey = `${ResourceSection.scopePrefix(section)}/${row.resource.serialize()}`
-              // Plural in the running sentence ("Read your Conditions") — the
-              // grid keeps the singular row labels.
-              const label = row.resource.pluralLabel()
-              const items = pickerItemsFor(section.configuration, row)
-              const grantedNames = items
-                .filter((item) => item.state === 'on' || item.state === 'locked')
-                .map((item) => item.name)
-              const subjectPhrase = subjectPhraseFor(subjectName, statementIndex)
-              statementIndex += 1
-              return (
-                <PermissionStatement
-                  key={rowKey}
-                  subjectPhrase={subjectPhrase}
-                  connector={isPatientSection(section) ? 'your' : undefined}
-                  verbText={grantedNames.length === 0 ? 'not access' : grantedNames.join(' · ')}
-                  resourceLabel={label}
-                  open={openRow === rowKey}
-                  onToggleOpen={() => {
-                    setOpenRow((current) => (current === rowKey ? null : rowKey))
-                  }}
-                >
-                  <PermissionPicker
-                    items={items}
-                    variant="plain"
-                    ariaLabel={`Permissions on ${label}`}
-                    onToggle={(itemId) => {
-                      toggleCell(section, row.resource, itemId)
+          {grids.map(({ section, rows }) => (
+            <div key={ResourceSection.scopePrefix(section)} className={styles['plain-section']}>
+              {/* The same headings as the detail grid, so a wildcard statement always
+                  reads against its record set ("Health records — this patient", …). */}
+              <header className={styles['plain-header']}>
+                <h3 className={styles['plain-title']}>{sectionTitle(section, multipleContexts)}</h3>
+                <Chip>{sectionChip(section)}</Chip>
+              </header>
+              {rows.map((row, rowIndex) => {
+                const rowKey = `${ResourceSection.scopePrefix(section)}/${row.resource.serialize()}`
+                // Plural in the running sentence ("Read your Conditions") — the
+                // grid keeps the singular row labels.
+                const label = row.resource.pluralLabel()
+                const items = pickerItemsFor(section.configuration, row)
+                const grantedNames = items
+                  .filter((item) => item.state === 'on' || item.state === 'locked')
+                  .map((item) => item.name)
+                return (
+                  <PermissionStatement
+                    key={rowKey}
+                    subjectPhrase={subjectPhraseFor(subjectName, rowIndex, phrasing)}
+                    // The possessive only fits the `can` voice — in an ask, the records
+                    // aren't necessarily the approver's own.
+                    connector={phrasing === 'can' && isPatientSection(section) ? 'your' : undefined}
+                    verbText={grantedNames.length === 0 ? 'not access' : grantedNames.join(' · ')}
+                    resourceLabel={label}
+                    open={openRow === rowKey}
+                    onToggleOpen={() => {
+                      setOpenRow((current) => (current === rowKey ? null : rowKey))
                     }}
-                  />
-                </PermissionStatement>
-              )
-            })
-          )}
+                  >
+                    <PermissionPicker
+                      items={items}
+                      variant="plain"
+                      ariaLabel={`Permissions on ${label}`}
+                      onToggle={(itemId) => {
+                        toggleCell(section, row.resource, itemId)
+                      }}
+                    />
+                  </PermissionStatement>
+                )
+              })}
+              {isExpandable ? (
+                <AddRuleButton
+                  options={addOptionsFor(
+                    section,
+                    new Set(rows.map((row) => row.resource.serialize()))
+                  )}
+                  onAdd={(name) => {
+                    addRule(section, name)
+                  }}
+                />
+              ) : null}
+            </div>
+          ))}
         </div>
       ) : (
         <div className={styles['section']}>
@@ -347,4 +443,4 @@ const ScopePicker = ({
   )
 }
 
-export { ScopePicker, type ScopePickerProps, type ScopePickerMode }
+export { ScopePicker, type ScopePickerProps, type ScopePickerMode, type ScopePickerPhrasing }

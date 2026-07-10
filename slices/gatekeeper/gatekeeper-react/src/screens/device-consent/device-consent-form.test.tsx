@@ -1,6 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
+import { Effect, Layer } from 'effect'
+import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import { type JSX, type ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
@@ -34,10 +36,27 @@ vi.mock('@tanstack/react-router', () => ({
   }): unknown => select({ runAuthed: runAuthedStub }),
 }))
 
+/** The minimal FHIR Patient shape `usePatientOptions` reads. */
+type StubPatient = {
+  readonly id: string
+  readonly name?: readonly { readonly given?: readonly string[]; readonly family?: string }[]
+}
+let patientResources: readonly StubPatient[] = []
+
+// The which-patient pill's data source — stubbed like oauth-consent-form.test.tsx,
+// defaulting to empty; per-test overrides via `patientResources`.
+vi.mock('fhir-r4-react', () => ({
+  usePatientsQuery: (): { data: readonly StubPatient[]; isLoading: boolean } => ({
+    data: patientResources,
+    isLoading: false,
+  }),
+}))
+
 beforeEach(() => {
   runAuthedStub.mockReset()
   // Sensible default decision; each test overrides the first call.
   runAuthedStub.mockResolvedValue({ status: 'approved' })
+  patientResources = []
 })
 
 afterEach(() => {
@@ -54,8 +73,65 @@ describe('DeviceConsentForm', () => {
     expect(screen.getByText('BCDF-GHJK')).toBeDefined()
     expect(screen.getByText('Acme CLI')).toBeDefined()
     expect(screen.getByText('Only approve devices you recognize.')).toBeDefined()
-    // The scope picker mounted (its detail grid shows the requested scope string).
-    expect(screen.getByText('patient/Observation.rs')).toBeDefined()
+    // The scope picker mounted on its summary view, framing the ask in the
+    // asking voice (the client name is the subject when no device name is set).
+    expect(screen.getByText('Acme CLI is asking to')).toBeDefined()
+    expect(screen.queryByText('patient/Observation.rs')).toBeNull()
+  })
+
+  test('offers the which-patient pill when the account has patients', async () => {
+    // Arrange — one patient on the account; allowed scopes cover system/ so the
+    // whose-records selector renders.
+    patientResources = [{ id: 'p-1', name: [{ given: ['Ada'], family: 'Lovelace' }] }]
+    const { user } = renderConsentForm(makeConsent({ allowedScopes: ['system/*.cruds'] }), vi.fn())
+
+    // Act — the landing subject is "Just one patient"; pick the patient.
+    await user.click(screen.getByRole('button', { name: /Select a Patient/ }))
+    await user.click(screen.getByRole('option', { name: /Ada Lovelace/ }))
+
+    // Assert — the pill reflects the chosen patient.
+    expect(screen.getByRole('button', { name: /Ada Lovelace/ })).toBeDefined()
+  })
+
+  test('sends the chosen patient in the approve payload', async () => {
+    // Arrange — run the mutation's Effect for real against a stub client that
+    // captures the wire payload (the only place the body is observable).
+    let capturedPayload: unknown
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test stub: only `devices.ApproveDeviceConsent` is touched on this path
+    const clientLayer = Layer.succeed(GatekeeperHttpApiClient, {
+      devices: {
+        ApproveDeviceConsent: (input: { readonly payload: unknown }) => {
+          capturedPayload = input.payload
+          return Effect.succeed({ status: 'approved' })
+        },
+      },
+    } as unknown as GatekeeperHttpApiClient['Type'])
+    runAuthedStub.mockImplementationOnce((effect) =>
+      Effect.runPromise(
+        Effect.provide(
+          // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test runner: the mutation's Effect needs only the stubbed client
+          effect as Effect.Effect<unknown, never, GatekeeperHttpApiClient>,
+          clientLayer
+        )
+      )
+    )
+    patientResources = [{ id: 'p-1', name: [{ given: ['Ada'], family: 'Lovelace' }] }]
+    const onDone = vi.fn()
+    const { user } = renderConsentForm(makeConsent({ allowedScopes: ['system/*.cruds'] }), onDone)
+
+    // Act — pick the patient, then approve.
+    await user.click(screen.getByRole('button', { name: /Select a Patient/ }))
+    await user.click(screen.getByRole('option', { name: /Ada Lovelace/ }))
+    await user.click(screen.getByRole('button', { name: 'Approve' }))
+
+    // Assert — the wire body binds the grant to the chosen patient.
+    await waitFor(() => {
+      expect(onDone).toHaveBeenCalledTimes(1)
+    })
+    expect(capturedPayload).toEqual({
+      approvedScopes: ['patient/Observation.rs'],
+      patient: 'p-1',
+    })
   })
 
   test('approves and finishes when the server records the grant', async () => {

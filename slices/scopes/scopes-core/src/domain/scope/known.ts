@@ -14,7 +14,10 @@ const SCOPE_EXPLANATIONS: Readonly<Record<KnownScope.Name, string>> = {
   openid: 'Confirm who you are',
   profile: 'Your basic profile details',
   fhirUser: 'Link to your patient record',
-  offline_access: 'Stay connected in the background',
+  // States the gatekeeper's 15-minute `ACCESS_TOKEN_TTL`: without
+  // offline_access there is no refresh token, so access ends when the
+  // short-lived token expires. Keep in step with that constant.
+  offline_access: 'Access your data after 15 minutes',
   launch: 'Know how the app was launched',
   'launch/patient': 'Open a specific patient',
 }

@@ -2467,7 +2467,7 @@ fn set_cookie_values(res: &axum::response::Response) -> Vec<String> {
 
 /// The owner web-login path — a device-code grant — plants both session
 /// cookies: the `HttpOnly` `wf_auth` carrying the very JWT returned in the body,
-/// and the readable `wf_auth_exp` hint. `Max-Age` is the 1h `ACCESS_TOKEN_TTL`.
+/// and the readable `wf_auth_exp` hint. `Max-Age` is the 15m `ACCESS_TOKEN_TTL`.
 /// The test origin is http loopback (`LOOPBACK_ORIGIN`), so `Secure` is omitted
 /// — the direct-loopback web path Safari must be able to store (issue #218).
 #[tokio::test]
@@ -2494,14 +2494,14 @@ async fn device_grant_sets_session_cookies() {
     let access_token = token["access_token"].as_str().expect("access_token");
 
     // The HttpOnly cookie carries the exact JWT from the body with the full
-    // attribute set and the 1h TTL, and NO `Secure` over http loopback.
+    // attribute set and the 15m TTL, and NO `Secure` over http loopback.
     let auth_cookie = cookies
         .iter()
         .find(|c| c.starts_with(&format!("wf_auth={access_token};")))
         .expect("wf_auth cookie present");
     assert!(auth_cookie.contains("HttpOnly"), "wf_auth must be HttpOnly");
     assert!(auth_cookie.contains("SameSite=Lax") && auth_cookie.contains("Path=/"));
-    assert!(auth_cookie.contains("Max-Age=3600"));
+    assert!(auth_cookie.contains("Max-Age=900"));
     assert!(
         !auth_cookie.contains("Secure"),
         "http loopback must omit Secure: {auth_cookie}"
@@ -2515,7 +2515,7 @@ async fn device_grant_sets_session_cookies() {
         !exp_cookie.contains("HttpOnly"),
         "companion must stay readable"
     );
-    assert!(exp_cookie.contains("Max-Age=3600"));
+    assert!(exp_cookie.contains("Max-Age=900"));
 }
 
 /// The authorization-code grant is a third-party SMART app redeeming a code —

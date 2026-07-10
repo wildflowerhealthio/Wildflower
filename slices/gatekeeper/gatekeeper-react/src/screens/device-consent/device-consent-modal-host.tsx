@@ -1,8 +1,10 @@
 /**
- * Floats a non-dismissable device-consent modal over whatever route is
- * currently rendered, driven entirely by the host's
- * `bridge:DeviceConsentRequested` push. Inert until the
- * {@link useActiveDeviceUserCode} hook returns a non-null `userCode`.
+ * Floats the device-consent modal over whatever route is currently
+ * rendered, driven entirely by the host's `bridge:DeviceConsentRequested`
+ * push. Inert until the {@link useActiveDeviceUserCode} hook returns a
+ * non-null `userCode`. Dismissable: the × (or ESC / backdrop) closes the
+ * popup *without deciding* — the request stays pending and answerable
+ * from Settings until it expires.
  *
  * Mounted exactly once, alongside the router's `<Outlet />` (in
  * `RootShell`), so the popup overlays every route and only one modal
@@ -167,12 +169,13 @@ const DeviceConsentModalHost = (): JSX.Element | null => {
   return (
     <Dialog
       open={isOpen}
-      dismissable={false}
       title="Device Authorization"
       onClose={() => {
-        // Native `close()` path only fires when the dialog truly
-        // closes — for the non-dismissable variant, that's only the
-        // controlled `open={false}` rerender. Nothing to do here.
+        // × / ESC / backdrop: close without deciding — the request stays
+        // pending (still answerable from Settings). Also fires after the
+        // controlled `open={false}` close, where marking the userCode
+        // handled again is a no-op.
+        setHandledUserCode(activeUserCode)
       }}
     >
       {isOpen ? (

@@ -73,17 +73,17 @@ const build = <K extends Scope.MultiScope.Kind>(
   const rows = resources.map(rowFor)
 
   // §2/§3 wildcard-row policy: open mode always offers it (when the variant has a
-  // wildcard at all); request mode only when a `*` scope is grantable at this exact
-  // context (granting it stays within the envelope — without it, a requested wildcard
-  // could never be granted as such). Measured against the grantable `available` envelope
-  // (= `requested` in clamped mode), so expandable mode surfaces the `*` row wherever the
-  // client's allowed set carries a same-context wildcard.
+  // wildcard at all); request mode only when a `*` scope is grantable at this context
+  // (granting it stays within the envelope — without it, a requested wildcard could
+  // never be granted as such). Measured against the grantable `available` envelope
+  // (= `requested` in clamped mode) with context *coverage*, so a `system/*` allowance
+  // also offers the `*` row in the patient section it covers.
   const wildcardOffered =
     includeWildcard &&
     wildcardResource !== undefined &&
     (scopeRequest === null ||
       Scope.MultiScope.partition(ScopeRequest.availableOf(scopeRequest), configuration.id).some(
-        (scope) => scope.hasContext(context) && scope.hasResource(wildcardResource)
+        (scope) => scope.context.covers(context) && scope.hasResource(wildcardResource)
       ))
   return wildcardOffered ? [rowFor(wildcardResource), ...rows] : rows
 }

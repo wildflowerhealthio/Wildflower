@@ -17,8 +17,10 @@ use crate::domain::client::{Client, ClientKind};
 use crate::domain::token::{mint_access_token, NewJwtArgs};
 use crate::http::response_templates::InternalError;
 
-/// Lifetime of access tokens minted by the gatekeeper.
-pub const ACCESS_TOKEN_TTL: Duration = Duration::hours(1);
+/// Lifetime of access tokens minted by the gatekeeper. The consent UI's
+/// `offline_access` copy ("Access your data after 15 minutes") states this
+/// value — keep the two in step.
+pub const ACCESS_TOKEN_TTL: Duration = Duration::minutes(15);
 
 /// Absolute lifetime of a refresh-token family, measured from the original
 /// authorization. Rotation swaps generations but never extends this

@@ -28,6 +28,7 @@ import { GrantDraft, ScopeRequest } from 'scopes-core'
 import { ScopePicker } from 'scopes-react'
 
 import { useDeviceConsentMutation, type DeviceConsent } from '../../queries/index.ts'
+import { usePatientOptions } from '../oauth-consent/use-patient-options.ts'
 import styles from './device-consent-form.module.css'
 
 interface DeviceConsentFormProps {
@@ -57,6 +58,9 @@ const DeviceConsentForm = ({
   const [draft, setDraft] = useState(() => GrantDraft.fromScopes(consent.requestedScopes, null))
   const [name, setName] = useState(consent.deviceName ?? '')
   const [denied, setDenied] = useState(false)
+  // The account's patients feed the picker's "Just one patient" choice (a UI-only
+  // selection for now — the approved grant still carries plain `patient/` scopes).
+  const { options: patients } = usePatientOptions(true)
 
   const submitting = consentMutation.isPending
   const mutationError =
@@ -104,6 +108,9 @@ const DeviceConsentForm = ({
         // Only send an adjusted name from the settings surface, and only when non-empty —
         // an omitted name keeps whatever the device supplied (server-side COALESCE).
         ...(editableName && trimmedName !== '' ? { deviceName: trimmedName } : {}),
+        // The chosen launch patient rides to the token's `patient` claim; the picker
+        // clears it when the subject switches to all-patients.
+        ...(draft.patient === null ? {} : { patient: draft.patient }),
       },
       {
         onSuccess: (result) => {
@@ -154,6 +161,8 @@ const DeviceConsentForm = ({
         draft={draft}
         onDraftChange={setDraft}
         mode="expandable"
+        phrasing="asking"
+        patients={patients}
       />
 
       {errorMessage !== null ? (

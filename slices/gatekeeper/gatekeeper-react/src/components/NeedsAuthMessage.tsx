@@ -34,6 +34,14 @@ const DEVICE_GRANT_TYPE = 'urn:ietf:params:oauth:grant-type:device_code'
 /** The first-party client's allowed scopes when the host context carries none (standalone/web). */
 const DEFAULT_ALLOWED_SCOPES = 'system/*.cruds wildflower/*.cruds'
 
+/**
+ * The happy-path request the setup form starts from: read + search on every record
+ * across all patients, plus the Wildflower admin surface — the most common device
+ * grant, pre-filled so the default flow is name-it-and-go rather than rule-by-rule
+ * assembly. Only seeded when the client's allowed set actually covers it.
+ */
+const PRESET_REQUEST_SCOPES = ['system/*.rs', 'wildflower/*.rs']
+
 /** Where sign-in lands when no usable `returnTo` was supplied. */
 const POST_AUTH_DEFAULT_PATH = '/home'
 
@@ -95,9 +103,10 @@ const toErrorState = (error: unknown): DeviceFlowState =>
 
 /**
  * The device-login screen. On landing it shows a setup **form** — a device-name
- * field and the shared {@link ScopePicker} in `expandable` mode (seeded empty) —
- * so the user names the device and chooses what to request before anything hits
- * the network. Only on "Start sign-in" does it run the RFC 8628
+ * field and the shared {@link ScopePicker} in `expandable` mode, seeded with the
+ * {@link PRESET_REQUEST_SCOPES} happy path when the client's allowed set covers
+ * it — so the user names the device and adjusts what to request before anything
+ * hits the network. Only on "Start sign-in" does it run the RFC 8628
  * device-authorization flow: surface the `user_code`, poll `/oauth/token` until
  * approval, then write the token via the `AuthStateStore` provided by the
  * surrounding `<AuthStateProvider>` (resolved through {@link useAuthStateSetter})
@@ -138,7 +147,12 @@ const NeedsAuthMessage = (): JSX.Element => {
       }),
     [localGrantedScopes]
   )
-  const [draft, setDraft] = useState<GrantDraftModel.GrantDraft>(() => GrantDraft.initial(request))
+  const [draft, setDraft] = useState<GrantDraftModel.GrantDraft>(() => {
+    // Seed the read+search happy path when the envelope covers it; otherwise fall
+    // back to the empty draft (the user builds the request within what's allowed).
+    const preset = GrantDraft.fromScopes(PRESET_REQUEST_SCOPES, null)
+    return ScopeRequest.isWithin(preset, request) ? preset : GrantDraft.initial(request)
+  })
 
   // The forked flow, so an unmount mid-poll interrupts it (no orphan device code).
   const fiberRef = useRef<Fiber.RuntimeFiber<void, never> | null>(null)
@@ -221,7 +235,7 @@ const NeedsAuthMessage = (): JSX.Element => {
   if (state.tag === 'form') {
     return (
       <>
-        <h1 className="text-heading-6">Set up this device</h1>
+        <h1 className="text-heading-6">Set up temporary device access</h1>
         <p className="text-body-2">
           Name this device and choose what it should be able to access. A signed-in device will
           review and approve the request.
@@ -239,10 +253,11 @@ const NeedsAuthMessage = (): JSX.Element => {
           draft={draft}
           onDraftChange={setDraft}
           mode="expandable"
+          phrasing="requesting"
         />
         <div className={pageLayout['buttons']}>
           <button type="button" className="button-2 filled" onClick={handleStart}>
-            Start sign-in
+            Request access
           </button>
         </div>
       </>

@@ -15,7 +15,7 @@ import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 
 /**
  * Pins the `NeedsAuthMessage` stream/fiber consumer: the screen first shows a
- * setup form (device name + scope picker), and only on "Start sign-in" runs the
+ * setup form (device name + scope picker), and only on "Request access" runs the
  * RFC 8628 device-authorization flow against the composed runtime layer, walking
  * the `DeviceFlowState` machine as the gatekeeper client resolves. A regression
  * in how the screen gates, forks the flow, reads the `DeviceAuthorization`
@@ -87,14 +87,14 @@ const DEVICE_AUTH_RESPONSE = {
   interval: 5,
 }
 
-/** Click the form's "Start sign-in" button to launch the flow. */
+/** Click the form's "Request access" button to launch the flow. */
 const startSignIn = async (): Promise<void> => {
   const user = userEvent.setup()
-  await user.click(screen.getByRole('button', { name: 'Start sign-in' }))
+  await user.click(screen.getByRole('button', { name: 'Request access' }))
 }
 
 describe('<NeedsAuthMessage> device flow', () => {
-  test('shows the setup form on landing and fires no I/O until "Start sign-in"', () => {
+  test('shows the setup form on landing and fires no I/O until "Request access"', () => {
     let called = false
     layerHolder.current = makeClientLayer({
       DeviceAuthorization: () => {
@@ -108,8 +108,8 @@ describe('<NeedsAuthMessage> device flow', () => {
 
     // The flow is user-gated: the first paint is the form, not the spinner, and
     // nothing has hit the device-authorization endpoint yet.
-    expect(screen.getByText('Set up this device')).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Start sign-in' })).toBeTruthy()
+    expect(screen.getByText('Set up temporary device access')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Request access' })).toBeTruthy()
     expect(called).toBe(false)
   })
 
@@ -132,9 +132,10 @@ describe('<NeedsAuthMessage> device flow', () => {
     expect(screen.getByText('Sign in on another device')).toBeTruthy()
   })
 
-  test('forwards the typed device name and omits scope when nothing was picked', async () => {
-    // The picker starts empty (the user builds the request from scratch), so the
-    // built scope set is empty ⇒ no `scope` is sent; the typed name rides along.
+  test('forwards the typed device name and the seeded read+search preset scopes', async () => {
+    // The picker seeds the read+search happy path (all records, all patients, plus
+    // Wildflower admin), so an untouched form requests exactly that; the typed
+    // name rides along.
     let capturedInput: unknown
     layerHolder.current = makeClientLayer({
       DeviceAuthorization: (input) => {
@@ -147,7 +148,7 @@ describe('<NeedsAuthMessage> device flow', () => {
     const user = userEvent.setup()
     render(withTokenStore(<NeedsAuthMessage />))
     await user.type(screen.getByRole('textbox', { name: /Device name/ }), 'Ada')
-    await user.click(screen.getByRole('button', { name: 'Start sign-in' }))
+    await user.click(screen.getByRole('button', { name: 'Request access' }))
 
     await waitFor(
       () => {
@@ -158,7 +159,7 @@ describe('<NeedsAuthMessage> device flow', () => {
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test assertion: narrow the captured `unknown` to read the payload
     const payload = (capturedInput as { readonly payload: Record<string, unknown> }).payload
     expect(payload['device_name']).toBe('Ada')
-    expect(payload['scope']).toBeUndefined()
+    expect(payload['scope']).toBe('system/*.rs wildflower/*.rs')
   })
 
   test('renders the failure view when device authorization errors', async () => {

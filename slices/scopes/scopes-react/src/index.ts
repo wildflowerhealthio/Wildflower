@@ -47,6 +47,7 @@ export {
   ScopePicker,
   type ScopePickerProps,
   type ScopePickerMode,
+  type ScopePickerPhrasing,
 } from './organisms/scope-picker.tsx'
 export {
   PermissionStatement,

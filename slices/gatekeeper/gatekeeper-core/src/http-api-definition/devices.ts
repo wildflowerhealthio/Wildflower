@@ -30,6 +30,10 @@ const DeviceConsentBodySchema = Schema.Struct({
   // An optional adjusted device name the settings approver may set before approving; omitted
   // ⇒ the stored name is kept (server-side COALESCE).
   deviceName: Schema.optional(Schema.String),
+  // The launch patient a one-patient grant is bound to — stored on the authorization
+  // request and minted into the token's `patient` claim (mirrors the oauth-consents
+  // approve body). Omitted for all-patients grants.
+  patient: Schema.optional(Schema.String),
 })
 
 const httpApiGroup = HttpApiGroup.make('devices', { topLevel: false })

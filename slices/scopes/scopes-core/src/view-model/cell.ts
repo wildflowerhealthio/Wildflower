@@ -19,7 +19,7 @@ type State = 'on' | 'off' | 'locked' | 'disabled'
 /**
  * Why a control is locked or disabled — *structured data, not user-facing English*. Pure
  * `scopes-core` stays copy-free (the presentation layer renders the sentence, so the
- * `All records` label lives in exactly one place). `wildcard`: covered by the
+ * wildcard-row label lives in exactly one place). `wildcard`: covered by the
  * same-context `*` record-type row (`spec.md §3`). `required` / `notRequested`: inside /
  * outside the app's request envelope (`spec.md §2`).
  */

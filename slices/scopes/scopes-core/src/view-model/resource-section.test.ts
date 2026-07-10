@@ -76,21 +76,43 @@ describe('Sections.fromRequest — resource ordering / wildcard / dedupe', () =>
   })
 })
 
-describe('Sections.listForDraft — clamped-mode reduction to listFromRequest', () => {
-  test('empty draft + no extra reduces to listFromRequest', () => {
-    const request = req(['system/Observation.r', 'patient/Condition.rs', 'wildflower/Client.r'])
-    const fromDraft = ResourceSection.listForDraft(request, GrantDraft.initial(request))
+describe('Sections.listForDraft — seeded-draft reduction to listFromRequest', () => {
+  test('a draft seeded from the request reduces to listFromRequest', () => {
+    const scopes = ['system/Observation.r', 'patient/Condition.rs', 'wildflower/Client.r']
+    const request = req(scopes)
+    // How every consent surface mounts: the draft starts with everything requested.
+    const fromDraft = ResourceSection.listForDraft(request, draftOf(scopes))
     const fromRequest = ResourceSection.listFromRequest(request)
     expect(fromDraft.map(keyOf)).toEqual(fromRequest.map(keyOf))
     expect(fromDraft.map(resourceNames)).toEqual(fromRequest.map(resourceNames))
   })
 
-  test('a pruned draft (⊆ requested) still shows every requested section/resource', () => {
+  test('a fully-pruned draft keeps the active context (with its requested rows re-tickable)', () => {
     const request = req(['patient/Observation.r', 'patient/Condition.r'])
-    // Draft pruned everything — the rows must stay so the user can re-add.
-    const fromDraft = ResourceSection.listForDraft(request, draftOf([]))
+    const fromDraft = ResourceSection.listForDraft(
+      request,
+      draftOf([]),
+      new Map(),
+      Scope.Contexts.Fhir.patient
+    )
     expect(fromDraft.map(keyOf)).toEqual(['fhirV2/patient'])
     expect(fromDraft[0] && resourceNames(fromDraft[0])).toEqual(['Observation', 'Condition'])
+  })
+
+  test('a requested-but-deselected context hides (the subject switch re-homes the draft)', () => {
+    // The device asked at patient/, but the whole selection moved to system/ —
+    // the empty patient section must not linger as a mixed-context leftover.
+    const request = ScopeRequest.expandable({
+      requested: ['patient/Observation.r'],
+      available: ['system/*.cruds'],
+    })
+    const fromDraft = ResourceSection.listForDraft(
+      request,
+      draftOf(['system/Observation.r']),
+      new Map(),
+      Scope.Contexts.Fhir.system
+    )
+    expect(fromDraft.map(keyOf)).toEqual(['fhirV2/system'])
   })
 })
 
@@ -133,8 +155,9 @@ describe('Sections.listForDraft — expandable mode', () => {
     expect(patientV2 && resourceNames(patientV2)).toEqual(['Observation', 'Immunization'])
   })
 
-  test('an extra resource the envelope cannot grant is not offered as a section', () => {
-    // available covers only patient FHIR (patient/*), so a system-context extra is dropped.
+  test('an active context the envelope cannot grant is not offered as a section', () => {
+    // available covers only patient FHIR (patient/*), so the system active context is
+    // dropped — and the deselected, empty patient section doesn't linger either.
     const patientOnly = ScopeRequest.expandable({
       requested: ['patient/Observation.r'],
       available: ['patient/*.cruds'],
@@ -145,8 +168,7 @@ describe('Sections.listForDraft — expandable mode', () => {
       new Map(),
       Scope.Contexts.Fhir.system
     )
-    // No system section: patient/* does not cover the system context.
-    expect(sections.map(keyOf)).toEqual(['fhirV2/patient'])
+    expect(sections.map(keyOf)).toEqual([])
   })
 })
 

@@ -23,8 +23,13 @@ abstract class FhirResourceType extends BaseResourceType {
   }
 }
 
-/** Strict 1:1 FHIR `ResourceType` → display name. Extend as resources surface. */
+/**
+ * Strict 1:1 FHIR `ResourceType` → display name. Extend as resources surface.
+ * Insertion order is the display order everywhere ({@link FhirResourceType.catalog}):
+ * the most-used types lead, the rest follow.
+ */
 const fhirResourceLabels: Readonly<Record<string, { label: string; plural: string }>> = {
+  Patient: { label: 'Patient demographics', plural: 'Patient demographics' },
   Observation: { label: 'Observation', plural: 'Observations' },
   MedicationRequest: { label: 'Medication request', plural: 'Medication requests' },
   Appointment: { label: 'Appointment', plural: 'Appointments' },
@@ -38,7 +43,6 @@ const fhirResourceLabels: Readonly<Record<string, { label: string; plural: strin
   CarePlan: { label: 'Care plan', plural: 'Care plans' },
   Goal: { label: 'Goal', plural: 'Goals' },
   MedicationStatement: { label: 'Medication statement', plural: 'Medication statements' },
-  Patient: { label: 'Patient demographics', plural: 'Patient demographics' },
 }
 
 // oxlint-disable import/group-exports
@@ -85,7 +89,9 @@ namespace FhirResourceType {
     }
 
     pluralLabel(): string {
-      return 'All records'
+      // Mid-sentence in the running statements ("Read all medical record
+      // types") — specific about what set the wildcard reaches.
+      return 'all medical record types'
     }
 
     protected equalityKey(): string {

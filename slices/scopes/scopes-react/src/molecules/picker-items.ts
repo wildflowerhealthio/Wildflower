@@ -12,8 +12,9 @@ import type { PickerItem } from './permission-picker.tsx'
  * Resolve one {@link Rows.Row} into its picker items: the section's permission style
  * items in display order, each with its resolved cell state and the user-facing lock
  * copy. The §2/§3 lock *decisions* come from `scopes-core` ({@link Cell.LockReason});
- * only the sentences live here. The wildcard row's own label ("All records")
- * comes from the domain, so the wildcard lock copy doesn't duplicate it.
+ * only the sentences live here. The wildcard row's own label ("all medical
+ * record types") comes from the domain, so the wildcard lock copy doesn't
+ * duplicate it.
  */
 const pickerItemsFor = <K extends Scope.MultiScope.Kind>(
   configuration: Scope.MultiScope.ResourceScopeConfigurationFor<K>,

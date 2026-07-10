@@ -9,6 +9,10 @@ import {
 } from '../../active-device-consent/index.ts'
 import { makeEmbeddedAuthStateStore } from '../../client/auth-state-store.ts'
 
+// The host's onClose handler, captured so a test can simulate the user
+// dismissing the dialog (× / ESC / backdrop) without <dialog> shadow behaviour.
+let lastDialogClose: (() => void) | null = null
+
 vi.mock('react-tundraish', () => ({
   // Minimal Dialog stub: renders its children whenever `open`, and
   // surfaces the `dismissable` and `title` props as data attributes so
@@ -18,14 +22,17 @@ vi.mock('react-tundraish', () => ({
     open,
     dismissable = true,
     title,
+    onClose,
     children,
   }: {
     readonly open: boolean
     readonly dismissable?: boolean
     readonly title?: ReactNode
+    readonly onClose: () => void
     readonly children: ReactNode
-  }): JSX.Element | null =>
-    open ? (
+  }): JSX.Element | null => {
+    lastDialogClose = onClose
+    return open ? (
       <div
         data-testid="dialog"
         data-dismissable={String(dismissable)}
@@ -33,7 +40,8 @@ vi.mock('react-tundraish', () => ({
       >
         {children}
       </div>
-    ) : null,
+    ) : null
+  },
 }))
 
 // Replace the suspense-fetching consent body with a marker that
@@ -88,6 +96,7 @@ const renderWithProviders = (
 describe('DeviceConsentModalHost', () => {
   beforeEach(() => {
     lastFormDone = null
+    lastDialogClose = null
   })
 
   afterEach(() => {
@@ -115,7 +124,7 @@ describe('DeviceConsentModalHost', () => {
     expect(screen.queryByTestId('dialog')).toBeNull()
   })
 
-  test('opens a non-dismissable dialog with the form when a userCode arrives', async () => {
+  test('opens a dismissable dialog with the form when a userCode arrives', async () => {
     const store = makeActiveDeviceUserCodeStore()
     renderWithProviders(store, { authed: true })
 
@@ -125,9 +134,30 @@ describe('DeviceConsentModalHost', () => {
     })
 
     const dialog = screen.getByTestId('dialog')
-    expect(dialog.dataset['dismissable']).toBe('false')
+    // Dismissable: the × / ESC closes without deciding (the request stays
+    // pending, still answerable from Settings).
+    expect(dialog.dataset['dismissable']).toBe('true')
     expect(dialog.dataset['title']).toBe('Device Authorization')
     expect(screen.getByTestId('form').dataset['userCode']).toBe('ABC-123')
+  })
+
+  test('a dismissal closes the popup without deciding and it stays closed for that userCode', async () => {
+    const store = makeActiveDeviceUserCodeStore()
+    renderWithProviders(store, { authed: true })
+
+    await act(async () => {
+      store.setActiveUserCode('ABC-123')
+      await Promise.resolve()
+    })
+    expect(screen.getByTestId('dialog')).toBeDefined()
+
+    // The Dialog's onClose (× / ESC / backdrop) marks the code handled — the
+    // popup closes with no approve/deny sent, and does not re-open while the
+    // host still reports the same active code.
+    await act(async () => {
+      lastDialogClose?.()
+    })
+    expect(screen.queryByTestId('dialog')).toBeNull()
   })
 
   test('local handledUserCode closes the popup immediately on form.onDone, before the host clears', async () => {

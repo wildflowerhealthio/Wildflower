@@ -44,10 +44,20 @@
  * accent tint with an inset keyline and a caret, so it's obviously
  * interactive while the sentence stays the hero.
  */
+/* The pill + floating editor's shared anchor: the hover target, and the
+ * positioning context the popover hangs off — sized to the pill alone so
+ * hovering elsewhere on the sentence does nothing. */
+.verb-anchor {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+}
+
 .verb-token {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
+  display: inline-block;
+  /* A long verb list wraps *inside* the pill rather than overflowing. */
+  white-space: normal;
+  text-align: left;
   padding: var(--space-1) var(--space-4);
   border: 0;
   border-radius: var(--radius-2);
@@ -56,8 +66,11 @@
   color: var(--color-accent);
   font-size: inherit;
   font-weight: var(--font-weight-3);
-  white-space: nowrap;
   cursor: pointer;
+}
+
+.verb-token .caret {
+  margin-left: var(--space-2);
 }
 
 .verb-token:hover,
@@ -78,7 +91,6 @@
 .resource-token {
   color: var(--color-foreground);
   font-weight: var(--font-weight-3);
-  white-space: nowrap;
 }
 
 .trailing {
@@ -100,13 +112,19 @@
   color: var(--color-neutral-3);
 }
 
-/* The floating editor card the verb pill reveals — sized to its checklist,
- * not a fixed column, so a short action list gets a compact card. */
+/* The floating editor card the verb pill reveals — a true popover hung under
+ * the pill (absolute, out of flow, over the neighbouring rows), sized to its
+ * checklist, not a fixed column, so a short action list gets a compact card. */
 .editor {
+  position: absolute;
+  /* Flush under the pill — a gap here would be a dead zone that fires
+   * mouseleave while travelling from the pill into the editor. */
+  top: 100%;
+  left: 0;
+  z-index: 40;
   width: max-content;
   min-width: 200px;
-  max-width: 100%;
-  margin-top: var(--space-4);
+  max-width: min(320px, 80vw);
   padding: var(--space-6) var(--space-7);
   background: var(--color-raised);
   border: 1.5px solid var(--color-divider);

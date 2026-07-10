@@ -1,4 +1,4 @@
-import { fireEvent, render } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { useState, type JSX } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
@@ -160,6 +160,18 @@ describe('Dialog', () => {
 
     // Assert
     expect(onCancel).toHaveBeenCalledTimes(1)
+  })
+
+  it('names the × close button "Close" for assistive tech', () => {
+    // Arrange + Act
+    render(
+      <Dialog open={true} onClose={vi.fn()}>
+        Body
+      </Dialog>
+    )
+
+    // Assert — the glyph-only button carries an accessible name.
+    expect(screen.getByRole('button', { name: 'Close' })).toBeDefined()
   })
 
   describe('non-dismissable (dismissable={false})', () => {

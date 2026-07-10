@@ -159,12 +159,15 @@ const extraResourcesFor = <K extends Scope.MultiScope.Kind>(
 
 /**
  * The FHIR sections for one variant kind under {@link listForDraft}: one per context level that
- * carries a resource in `requested ∪ draft ∪ extra`, plus `activeContext` (the subject
- * selector's choice — always shown even when empty, so the picker has somewhere to add the
- * first rule). A context is only shown when the grantable `available` envelope covers it. Each
- * section's resources union the three sources, so an expandable approval can add rows beyond
- * what was requested. Reduces to {@link fhirSectionsFor} in clamped mode (`available =
- * requested`, no `activeContext`, `draft ⊆ requested`, `extra` empty).
+ * carries a resource in `draft ∪ extra`, plus `activeContext` (the subject selector's choice —
+ * always shown even when empty, so the picker has somewhere to add the first rule). Visibility
+ * deliberately does NOT follow `requested` alone: the subject switch re-homes the whole draft
+ * between contexts, and a requested-but-deselected context lingering as an empty section is
+ * exactly the patient/system mixing the switch exists to avoid. A live grant can still never
+ * hide — it's in the draft. A context is only offered when the grantable `available` envelope
+ * covers it. A shown section's resources union `requested ∪ draft ∪ extra`, so
+ * requested-but-pruned rows stay re-tickable and an expandable approval can add rows beyond
+ * what was requested.
  */
 const fhirSectionsForDraft = <K extends 'fhirV1' | 'fhirV2'>(
   request: ScopeRequest.ScopeRequest,
@@ -187,12 +190,7 @@ const fhirSectionsForDraft = <K extends 'fhirV1' | 'fhirV2'>(
     const draftHere = draftPart.filter((scope) => scope.hasContext(context))
     const extraHere = extraResourcesFor(configuration, extra, kind, context)
     const isActive = activeContext !== undefined && Equal.equals(activeContext, context)
-    if (
-      requestedHere.length === 0 &&
-      draftHere.length === 0 &&
-      extraHere.length === 0 &&
-      !isActive
-    ) {
+    if (draftHere.length === 0 && extraHere.length === 0 && !isActive) {
       continue
     }
 
