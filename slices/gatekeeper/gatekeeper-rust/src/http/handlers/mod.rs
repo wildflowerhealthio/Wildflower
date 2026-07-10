@@ -5,3 +5,4 @@ pub mod jwks;
 pub mod logout;
 pub mod oauth;
 pub mod oauth_consents;
+pub mod revocations;

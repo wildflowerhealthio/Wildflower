@@ -395,6 +395,32 @@ semantics. Issued at `/oauth/token` only when the granted scopes include
   stamps its live token consumed. Rows are never deleted, so the lineage
   stays auditable.
 
+### Access-token revocation (`jti` denylist + subject epoch)
+
+Refresh-token revocation (above) stops a client minting _new_ access tokens;
+this stops an _already-issued, still-unexpired_ access token — the leaked-cookie
+case (#218/#269). Every minted access token now carries a unique `jti` (RFC 7519
+§4.1.7), which is a **revocation handle, not a single-use nonce** — normal reuse
+of the one multi-use bearer is untouched. The shared store (`token-revocation-rust`,
+its own `token_revocation` migration namespace on the same database) holds two
+levers:
+
+- **`revoked_jtis`** — a per-token denylist. `POST /access/revocations` with a
+  `jti`, and logout of the presented token, add rows here.
+- **`revocation_epochs`** — a per-subject `not_before`. Bumping it (via
+  `POST /access/revocations` with a `subject`, or a grant revoke) invalidates
+  every token that subject holds whose `iat` predates the bump — cheap bulk
+  revocation with no per-issued-`jti` registry. `subject` is the `sub` claim
+  (today the `client_id`), so revocation is per-client; per-device needs a
+  device handle in the token (future work).
+
+A token is **revoked** iff its `jti` is denylisted **or** its `iat` predates its
+subject's epoch. The auth gate (`verify_auth_token_claims`) runs the full check
+on every Owner-gated and every `/fhir-r4/*` request; HFS additionally checks the
+per-`jti` denylist in-process (defense-in-depth). Expired denylist rows are swept
+at startup and daily. See `docs/Origins/Explanation.md` for how this composes
+with the served-origin model.
+
 ### Bearer token / `token_type=Bearer`
 
 The single token-type literal we hand back at `/oauth/token`. RFC 6750

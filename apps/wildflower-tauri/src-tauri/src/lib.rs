@@ -232,6 +232,14 @@ async fn run_server(
     let db = persistence_rust::Connection::open(&runtime.app_data_dir.join(WILDFLOWER_DB))
         .context("failed to open shared database")?;
 
+    // One shared token-revocation store on that same connection, built BEFORE
+    // both setups and threaded into each: gatekeeper's auth gate runs the full
+    // revocation check (denylist + subject epoch) through it, and HFS reads the
+    // per-jti denylist through it (defense-in-depth behind the gate). One store,
+    // two enforcement points. See #269.
+    let revocation_store = token_revocation_rust::RevocationStore::new(db.clone())
+        .context("failed to open token-revocation store")?;
+
     // Bind BEFORE minting/publishing the Owner token: `setup_gatekeeper`
     // pushes the freshly-minted token onto the bridge publisher, and the
     // bridge plants it as the webview's `wf_auth` cookie (and emits a
@@ -244,13 +252,14 @@ async fn run_server(
         .await
         .with_context(|| format!("failed to bind to {loopback_host}"))?;
 
-    let fhir_r4_router =
-        setup_fhir_r4(&runtime, &emr_config).context("failed to set up FHIR R4 router")?;
+    let fhir_r4_router = setup_fhir_r4(&runtime, &emr_config, revocation_store.clone())
+        .context("failed to set up FHIR R4 router")?;
     // `setup_gatekeeper` publishes the freshly-minted host owner token (and
     // device-consent heads) through the bridge publishers; `bridge::attach_bridge`
     // documents how the resident task delivers them to the webview.
     let gatekeeper = setup_gatekeeper(
         db.clone(),
+        revocation_store,
         &gatekeeper_config,
         &publishers.host_owner_token_sender,
         publishers.active_device_user_code_sender,

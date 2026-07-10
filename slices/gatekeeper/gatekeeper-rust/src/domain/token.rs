@@ -36,6 +36,12 @@ pub struct AccessTokenClaims {
     /// `client_id` the token is bound to.
     #[serde(rename = "sub")]
     pub subject: String,
+    /// Unique JWT ID (RFC 7519 §4.1.7) — a fresh random identifier stamped on
+    /// every mint. It is the handle the token-revocation store keys a per-token
+    /// denylist on, so a leaked token can be invalidated before its `exp`. Left
+    /// as the wire short form `jti` (like `scope`/`patient`) since the name is
+    /// itself the canonical spelling.
+    pub jti: String,
     /// Resource server the token is intended for.
     #[serde(rename = "aud")]
     pub audience: String,
@@ -104,6 +110,11 @@ pub fn mint_access_token(
     let claims = AccessTokenClaims {
         issuer: args.origin.to_string(),
         subject: args.client_id.to_string(),
+        // A fresh random `jti` per mint — generated here, not taken from
+        // `NewJwtArgs`, so *every* mint site (the OAuth token response, the boot
+        // host-owner token, the refresh/token-exchange path) gets a unique id
+        // without having to remember to pass one.
+        jti: uuid::Uuid::new_v4().to_string(),
         audience: args.audience.unwrap_or(args.origin).to_string(),
         expires_at: now + args.ttl,
         issued_at: now,
@@ -126,6 +137,13 @@ pub struct VerifiedClaims {
     /// `client_id` the token is bound to (`sub`).
     #[serde(rename = "sub")]
     pub subject: String,
+    /// Unique JWT ID (`jti`), if the token carries one. `Option` — and
+    /// `#[serde(default)]` — because verification stays tolerant of legacy
+    /// tokens minted before gatekeeper wrote a `jti`: they verify fine, they
+    /// just can't be denylisted individually (the per-subject epoch still
+    /// covers them). Every token gatekeeper mints today carries one.
+    #[serde(default)]
+    pub jti: Option<String>,
     /// Audience(s) the token is intended for (`aud`). Normalized at parse time —
     /// a wire-level string is wrapped into a one-element vector.
     #[serde(rename = "aud", deserialize_with = "deserialize_audience")]
@@ -173,6 +191,18 @@ pub enum VerifyError {
     /// `DecodingKey`.
     #[error("signing key material could not be loaded")]
     SigningKeyUnreadable(#[source] KeyMaterialError),
+    /// The token verified cryptographically but has since been revoked — its
+    /// `jti` is on the denylist, or the subject's revocation epoch post-dates
+    /// the token's `iat`. Surface as 401. Distinct from [`Self::TokenRejected`]
+    /// so the caller and the logs can tell a revoked token from a bad one.
+    #[error("token revoked")]
+    Revoked,
+    /// The revocation store could not be read (e.g. the database query failed)
+    /// while checking whether a token was revoked. An operator problem, and we
+    /// **fail closed** — surface as 500 rather than admit a possibly-revoked
+    /// token — matching how [`Self::KeyStoreUnavailable`] is treated.
+    #[error("revocation store unavailable")]
+    RevocationStoreUnavailable(#[source] rusqlite::Error),
 }
 
 /// Verify a JWT against `possible_signing_keys`, returning the decoded claims
@@ -294,11 +324,20 @@ mod tests {
                 audience: vec![expected_aud],
                 scope: Some(scopes.join(" ")),
                 patient: patient.clone(),
+                // `jti` is a fresh random id we can't predict, so mirror what
+                // was minted; asserted non-empty separately below. Cloned (not
+                // spread) because `Option<String>` isn't `Copy` — a bare
+                // `..verified_claims` would partially move it and break the
+                // `&verified_claims` comparison that follows.
+                jti: verified_claims.jti.clone(),
                 // Spread verified_claims for timestamps through —
                 // they come from `Utc::now()` so we can't predict them
                 ..verified_claims
             };
             prop_assert_eq!(&verified_claims, &expected);
+            // Every mint stamps a non-empty `jti` (uniqueness is covered by
+            // `each_mint_carries_a_unique_jti`).
+            prop_assert!(verified_claims.jti.as_deref().is_some_and(|jti| !jti.is_empty()));
             // The `wf_owner` marker round-trips: present-and-`true` only when minted.
             prop_assert_eq!(verified_claims.host_owner, is_host_owner.then_some(true));
 
@@ -366,5 +405,87 @@ mod tests {
         )
         .unwrap_err();
         assert!(matches!(err, VerifyError::NoSigningKeysConfigured));
+    }
+
+    fn owner_args<'a>(client_id: &'a str, origin: &'a str) -> NewJwtArgs<'a> {
+        NewJwtArgs {
+            client_id,
+            scope: &[],
+            ttl: Duration::seconds(60),
+            origin,
+            audience: None,
+            patient: None,
+            is_host_owner: false,
+        }
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(64))]
+
+        /// Every mint stamps a distinct `jti`: minting the *same* inputs twice
+        /// must still yield two different ids (the id is random, not derived
+        /// from the claims). This is the property the per-token denylist relies
+        /// on — two live tokens can't collide on one revocation handle.
+        #[test]
+        fn each_mint_carries_a_unique_jti(
+            client_id in "[a-zA-Z0-9_-]{1,32}",
+            origin in "https://[a-z]{3,16}\\.[a-z]{2,8}",
+            mints in 2usize..=16,
+        ) {
+            let key = shared_key();
+            let mut seen = std::collections::HashSet::new();
+            for _ in 0..mints {
+                let token = mint_access_token(key, &owner_args(&client_id, &origin)).expect("mint");
+                let claims = verify_jwt(
+                    &token,
+                    std::slice::from_ref(key),
+                    &VerifyOptions {
+                        expected_issuer: &origin,
+                        accepted_audiences: std::slice::from_ref(&origin),
+                    },
+                )
+                .expect("verify");
+                let jti = claims.jti.expect("minted token carries a jti");
+                prop_assert!(!jti.is_empty(), "jti must be non-empty");
+                prop_assert!(seen.insert(jti), "jti must be unique across mints");
+            }
+        }
+    }
+
+    /// `verify_jwt` still accepts a legacy token that carries no `jti` claim —
+    /// the tolerance that lets tokens minted before this change keep validating
+    /// (they surface `jti: None`, so the denylist just can't target them
+    /// individually). Encoded by hand because `mint_access_token` always writes
+    /// a `jti` now.
+    #[test]
+    fn verify_accepts_legacy_token_without_jti() {
+        let key = SigningKey::generate().expect("gen");
+        let origin = "tauri://localhost";
+        let now = Utc::now();
+        // A claims object with the same shape as a minted token minus `jti`.
+        let legacy_claims = serde_json::json!({
+            "iss": origin,
+            "sub": "legacy-client",
+            "aud": origin,
+            "exp": (now + Duration::seconds(60)).timestamp(),
+            "iat": now.timestamp(),
+            "scope": "system/*.read",
+        });
+        let mut header = Header::new(Algorithm::RS256);
+        header.kid = Some(key.kid.clone());
+        let enc = EncodingKey::try_from(&key).expect("encoding key");
+        let token = jsonwebtoken::encode(&header, &legacy_claims, &enc).expect("encode legacy");
+
+        let claims = verify_jwt(
+            &token,
+            &[key],
+            &VerifyOptions {
+                expected_issuer: origin,
+                accepted_audiences: &[origin.to_string()],
+            },
+        )
+        .expect("legacy no-jti token must still verify");
+        assert_eq!(claims.jti, None, "a legacy token surfaces no jti");
+        assert_eq!(claims.subject, "legacy-client");
     }
 }

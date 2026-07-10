@@ -1,5 +1,7 @@
 use tokio::sync::watch;
 
+use token_revocation_rust::RevocationStore;
+
 use crate::db::GatekeeperStore;
 
 /// Shared state threaded through every gatekeeper handler. Opaque to
@@ -10,6 +12,15 @@ use crate::db::GatekeeperStore;
 #[derive(Clone)]
 pub struct AppState {
     pub(crate) store: GatekeeperStore,
+    /// The shared token-revocation store. The auth gate
+    /// ([`verify_auth_token_claims`](crate::http::middleware::require_auth::verify_auth_token_claims))
+    /// runs the full `is_revoked` check (denylist + subject epoch) through it,
+    /// and the revoke control surface (logout, `/access/revocations`, grant
+    /// revoke) writes to it. Cheap to clone — it wraps the same shared
+    /// connection every other slice holds. The host builds one and threads it
+    /// into both [`crate::setup_gatekeeper`] and emr-rust's HFS adapter, so the
+    /// two enforcement points read one store.
+    pub(crate) revocation_store: RevocationStore,
     /// The loopback base URL (e.g. `http://127.0.0.1:8080/`), pinned from
     /// [`GatekeeperConfig`](crate::GatekeeperConfig) at
     /// [`crate::setup_gatekeeper`]. Handlers don't read it directly: it is only

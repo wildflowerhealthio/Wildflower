@@ -30,7 +30,10 @@ async fn main() -> anyhow::Result<()> {
             .join("assets"),
     };
 
-    let router = setup_fhir_r4(&runtime, &config)?;
+    // Dev binary: HFS auth is off (jwks_url is None), so the revocation store is
+    // never consulted — a throwaway in-memory one satisfies the signature.
+    let revocation_store = token_revocation_rust::RevocationStore::open_in_memory()?;
+    let router = setup_fhir_r4(&runtime, &config, revocation_store)?;
     let addr: SocketAddr = runtime
         .loopback_base_url_ref()
         .authority()

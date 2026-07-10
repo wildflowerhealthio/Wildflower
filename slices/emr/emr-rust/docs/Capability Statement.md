@@ -45,3 +45,7 @@ Two limits worth noting:
 When `EmrConfig::jwks_url` is `Some`, HFS auth is enabled: it validates the bearer JWT against the configured JWKS, enforces `iss`, parses SMART v2 scopes, and gates each FHIR operation against them (against gatekeeper's JWKS in the app). When it is `None`, the FHIR surface is unauthenticated.
 
 Either way, a fixed set of discovery/health paths stays unauthenticated per the SMART spec (`UNAUTHENTICATED_FHIR_PATHS` in `src/lib.rs`): `/metadata`, `/.well-known/smart-configuration`, `/$versions`, `/health`, `/_liveness`, `/_readiness`.
+
+## Token revocation on the FHIR path (a custom `JtiCache`)
+
+When auth is on, HFS also consults a custom `helios_auth::JtiCache` — `RevocationJtiCache` in `src/auth.rs` — once per validated token that carries a `jti`. Unlike helios's stock `memory` backend, it is **not** a single-use nonce cache (that would `401` every FHIR request after the first, since a gatekeeper access token is a multi-use bearer reused across many FHIR calls). It reports a "replay" **iff** the token's `jti` is on the shared revocation denylist (`token-revocation-rust`), and it never stores. This is the FHIR-side, per-`jti` half of token revocation (#269); the per-subject _epoch_ half needs `sub`/`iat`, which helios doesn't hand the cache, and is enforced by gatekeeper's bearer gate, which fronts every `/fhir-r4/*` request and runs first. A store read failure fails closed (HFS `InternalError` → the request is rejected, never admitted). Both enforcement points read the one store the host builds on the shared database.

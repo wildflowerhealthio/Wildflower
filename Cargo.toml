@@ -10,6 +10,7 @@ members = [
   "slices/databases/databases-rust",
   "slices/emr/emr-rust",
   "slices/gatekeeper/gatekeeper-rust",
+  "slices/gatekeeper/token-revocation-rust",
   "slices/persistence/persistence-rust",
   "slices/scopes/scopes-rust",
   "slices/shared-structures/shared-structures-rust",
