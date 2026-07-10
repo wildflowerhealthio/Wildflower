@@ -8,9 +8,12 @@
 //!   single token until its own expiry (the `expiresAt` lets the background
 //!   sweep drop the row once the token would have expired anyway).
 //! - **Bulk, per subject** — `{ "subject": "<client_id>" }` bumps the subject's
-//!   revocation epoch to *now*, invalidating every token that subject holds
-//!   whose `iat` predates the call. `subject` is the `sub` claim (today the
-//!   `client_id`); per-device granularity is future work (see #269).
+//!   revocation epoch to just past now (see
+//!   [`revoke_subject_as_of_now`](token_revocation_rust::RevocationStore::revoke_subject_as_of_now)),
+//!   invalidating every token that subject holds issued at or before the call —
+//!   including one minted in the current (second-granular) second. `subject` is
+//!   the `sub` claim (today the `client_id`); per-device granularity is future
+//!   work (see #269).
 //!
 //! The revoke-device endpoint the ticket mentions is deferred — it would be a
 //! thin wrapper over the same `subject` mode once a device/session handle is
@@ -30,9 +33,11 @@ pub fn router() -> Router<AppState> {
     Router::new().route("/revocations", post(handle_create_revocation))
 }
 
-/// Body of `POST /access/revocations`. Fields are optional at the type level so
-/// the handler can return a precise 400 for an ambiguous or empty body rather
-/// than a generic deserialization error.
+/// Wire body of `POST /access/revocations`. Purely the deserialization shape:
+/// the fields are optional so [`into_revocation`](RevocationRequest::into_revocation)
+/// can return a precise 400 for an ambiguous or empty body rather than a generic
+/// deserialization error. The *validated* request is the [`Revocation`] enum —
+/// the handler branches on that, never on these raw optionals.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RevocationRequest {
@@ -46,42 +51,59 @@ struct RevocationRequest {
     subject: Option<String>,
 }
 
+/// A validated revocation request: exactly one of the two mutually-exclusive
+/// modes. Constructed by [`RevocationRequest::into_revocation`], which rejects
+/// the ambiguous/empty/incomplete bodies with a 400 before this exists.
+enum Revocation {
+    /// Denylist a single token until its own `exp`.
+    Token {
+        jti: String,
+        expires_at: DateTime<Utc>,
+    },
+    /// Bulk-revoke a subject's whole token cohort via an epoch bump.
+    Subject { subject: String },
+}
+
+impl RevocationRequest {
+    /// Collapse the optional wire fields into exactly one [`Revocation`] mode,
+    /// or a 400 for a body that names neither, both, or an incomplete mode.
+    fn into_revocation(self) -> Result<Revocation, HandlerError> {
+        match (self.jti, self.subject) {
+            (Some(jti), None) => {
+                let expires_at = self.expires_at.ok_or_else(|| {
+                    HandlerError::bad_request(
+                        "MissingExpiresAt",
+                        "revoking by `jti` requires `expiresAt` (the token's own expiry)",
+                    )
+                })?;
+                Ok(Revocation::Token { jti, expires_at })
+            }
+            (None, Some(subject)) => Ok(Revocation::Subject { subject }),
+            (Some(_), Some(_)) => Err(HandlerError::bad_request(
+                "AmbiguousRevocation",
+                "provide exactly one of `jti` or `subject`, not both",
+            )),
+            (None, None) => Err(HandlerError::bad_request(
+                "EmptyRevocation",
+                "provide either `jti` (with `expiresAt`) or `subject`",
+            )),
+        }
+    }
+}
+
 async fn handle_create_revocation(
     State(state): State<AppState>,
     Json(request): Json<RevocationRequest>,
 ) -> Result<StatusCode, HandlerError> {
-    match (request.jti, request.subject) {
-        (Some(jti), None) => {
-            let expires_at = request.expires_at.ok_or_else(|| {
-                HandlerError::bad_request(
-                    "MissingExpiresAt",
-                    "revoking by `jti` requires `expiresAt` (the token's own expiry)",
-                )
-            })?;
-            state
-                .revocation_store
-                .revoke_jti(&jti, expires_at, "admin")
-                .map_err(|e| HandlerError::internal("revoke_jti failed", e))?;
-        }
-        (None, Some(subject)) => {
-            // Bulk revoke: everything this subject holds issued before now.
-            state
-                .revocation_store
-                .bump_subject_epoch(&subject, Utc::now())
-                .map_err(|e| HandlerError::internal("bump_subject_epoch failed", e))?;
-        }
-        (Some(_), Some(_)) => {
-            return Err(HandlerError::bad_request(
-                "AmbiguousRevocation",
-                "provide exactly one of `jti` or `subject`, not both",
-            ));
-        }
-        (None, None) => {
-            return Err(HandlerError::bad_request(
-                "EmptyRevocation",
-                "provide either `jti` (with `expiresAt`) or `subject`",
-            ));
-        }
+    match request.into_revocation()? {
+        Revocation::Token { jti, expires_at } => state
+            .revocation_store
+            .revoke_jti(&jti, expires_at, "admin")
+            .map_err(|e| HandlerError::internal("revoke_jti failed", e))?,
+        Revocation::Subject { subject } => state
+            .revocation_store
+            .revoke_subject_as_of_now(&subject)
+            .map_err(|e| HandlerError::internal("revoke_subject_as_of_now failed", e))?,
     }
     Ok(StatusCode::NO_CONTENT)
 }

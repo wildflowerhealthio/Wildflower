@@ -37,8 +37,8 @@ async fn handle_revoke_grant(
     // per-client; per-device needs a device handle in the token (see #269).
     state
         .revocation_store
-        .bump_subject_epoch(&grant.client_id, Utc::now())
-        .map_err(|e| HandlerError::internal("bump_subject_epoch failed", e))?;
+        .revoke_subject_as_of_now(&grant.client_id)
+        .map_err(|e| HandlerError::internal("revoke_subject_as_of_now failed", e))?;
     // Delete the grant and expire the client's refresh-token families in one
     // transaction, so a partial failure can't leave the grant gone while
     // `offline_access` tokens stay live. Refresh-token families don't record a
