@@ -294,9 +294,11 @@ mod tests {
 
     #[test]
     fn forwarded_host_that_passes_validation_but_fails_url_parse_reads_as_none() {
-        // `:8080` clears `safe_host` but isn't a valid URL authority, so
-        // `Url::parse` rejects it → `None`; the header is present, so `is_forwarded`.
-        let h = forwarded("host=:8080");
+        // `:8080` clears `safe_host` and `proto=https` clears `safe_scheme`, so
+        // both param checks pass and the `None` comes from `Url::parse` rejecting
+        // `https://:8080` (empty authority) — the URL-parse failure mode itself,
+        // not a missing param. The header is present, so `is_forwarded`.
+        let h = forwarded("host=:8080;proto=https");
         assert_eq!(request_provenance(&h), None);
         assert_eq!(served_base_url_for(&h, &loopback()), None);
         assert!(is_forwarded(&h));
@@ -419,11 +421,14 @@ mod tests {
     }
 
     #[test]
-    fn unknown_forwarded_proto_fails_to_parse() {
-        // `javascript:`/`file:` etc. must not land in a `Location` the browser
-        // follows — an unknown scheme reverts to the safe https default.
+    fn unknown_forwarded_proto_is_rejected() {
+        // First `proto` wins (`forwarded_param` takes the first match), so the
+        // leading `proto=javascript` is what's checked — and an unknown scheme is
+        // rejected (`safe_scheme` → `None`, resolver returns `None`, caller `500`s),
+        // never defaulted to https and never rescued by a later valid `proto`.
+        // Keeps `javascript:`/`file:` out of a `Location` the browser follows.
         let h = forwarded("proto=javascript;host=demo.example.com;proto=https");
-        assert_eq!(served_base_url_for(&h, &loopback()), None,);
+        assert_eq!(served_base_url_for(&h, &loopback()), None);
     }
 
     #[test]
