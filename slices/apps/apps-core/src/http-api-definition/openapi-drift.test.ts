@@ -28,16 +28,19 @@ defineSpecDriftTest({
   scope: [
     ['/apps', 'get'],
     ['/apps/{id}', 'post'],
+    ['/apps/{id}', 'get'],
   ],
   /**
-   * `post /apps/{id}` (LaunchApp) is a launch: the server answers a 302 (web) or
-   * 204 (Tauri host sink) with no JSON body. The TS side declares those two
-   * empty success statuses (so the loopback typed client decodes them — see the
-   * focused test below) but deliberately omits the server's `401`/`503` error
-   * bodies, which the client never models. Its path parameter is still compared;
-   * its responses are not.
+   * `post`/`get /apps/{id}` (LaunchApp / LaunchAppGet) are launches: the server
+   * answers a 302 (web) or 204 (Tauri host sink) with no JSON body. The TS side
+   * declares those two empty success statuses (so the loopback typed client
+   * decodes them — see the focused test below) but deliberately omits the
+   * server's `401`/`503` error bodies, which the client never models. Their path
+   * parameter is still compared; their responses are not. (`get /apps/{id}` is
+   * the native-anchor web arm — modelled for spec symmetry but never called by a
+   * typed client; the browser follows its `302` directly.)
    */
-  responsesNotCompared: new Set<string>(['post /apps/{id}']),
+  responsesNotCompared: new Set<string>(['post /apps/{id}', 'get /apps/{id}']),
 })
 
 describe('LaunchApp success statuses', () => {

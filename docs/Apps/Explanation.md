@@ -103,8 +103,8 @@ Read shapes expose the **stored, origin-independent templates** (the cloud `url`
 and the self-hosted `launchPath`, both with `{origin}` / `{launch}` tokens) but
 never a **request-resolved** launch URL: the concrete target — with the caller's
 origin and a fresh `{launch}` nonce substituted — is materialized only by the
-launch endpoint (`POST /apps/{id}`), per request, so a forwarded and a loopback
-caller each get the right origin. Exposing the templates lets the editor display
+launch endpoint (`GET`/`POST /apps/{id}`), per request, so a forwarded and a
+loopback caller each get the right origin. Exposing the templates lets the editor display
 and edit them without any value on the read shape ever being a live redirect
 target.
 
@@ -140,10 +140,19 @@ that:
 
 - `GET /apps` is **owner-gated** (a bearer the SPA already carries).
 - The **loopback** launch (`POST /apps/{id}` from the on-device webview) is
-  owner-gated.
+  owner-gated. The Tauri home tile drives this through the typed client so the
+  owner bearer rides along and the webview stays mounted.
 - The **forwarded** launch (a remote browser through the tunnel) stays on the
   network gate / front trust boundary — owner-gating it would require a bearer
-  whose audience matches the public origin, which is out of scope this pass.
+  whose audience matches the public origin, which is out of scope this pass. On
+  the web the home tile is a native `<a href="/apps/{id}">`, so the launch is a
+  `GET`: a plain click navigates the current tab and a cmd/ctrl-click opens a new
+  one — affordances a form-`POST`/`fetch` can't preserve. The web auth cookie
+  rides that anchor navigation (even the initial document request, before any
+  JS), so the forwarded `GET` authenticates. `GET` and `POST` share one handler;
+  a launch is a navigation (like an OAuth `authorize`), so a `GET` minting a
+  `{launch}` nonce — and bringing the tunnel up for a `requires_tunnel` app — is
+  intentional.
 
 Separately, a Self-Hosted app reachable remotely is served by the host's
 **subdomain reverse proxy**: a forwarded `<id>.<public_host>` request is proxied

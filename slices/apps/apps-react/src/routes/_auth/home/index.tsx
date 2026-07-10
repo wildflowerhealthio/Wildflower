@@ -13,7 +13,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { createFileRoute, useRouteContext } from '@tanstack/react-router'
-import { useEffect, useRef, useState, type JSX } from 'react'
+import { useEffect, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { AsyncErrorView, PageHeader } from 'react-tundraish'
 
@@ -24,7 +24,7 @@ import {
   type AppEntry,
 } from '../../../queries.ts'
 import type { RouterContext } from '../../../router-context.ts'
-import { launchApp } from './-launch.ts'
+import { launchApp, launchHref } from './-launch.ts'
 import { reorderApps } from './-reorder.ts'
 import { SortableAppTile } from './-tiles.tsx'
 import tileStyles from '../../../styles/app-tiles.module.css'
@@ -56,7 +56,6 @@ const AppsHomeBody = ({ apps }: AppsHomeBodyProps): JSX.Element => {
   // dragged. Toggling "Edit" arms drag-to-reorder and the per-tile "Hide"
   // (disable) control; "Done" returns to launch mode.
   const [editMode, setEditMode] = useState(false)
-  const formRef = useRef<HTMLFormElement | null>(null)
   const homeScreenMutation = useReplaceHomeScreenMutation()
   // Set only on the Tauri webview; its presence is the launch-arm signal —
   // see `launchApp` and `RouterContext.apiBaseUrl`.
@@ -95,11 +94,10 @@ const AppsHomeBody = ({ apps }: AppsHomeBodyProps): JSX.Element => {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
 
+  // Only the Tauri (loopback) arm runs JS on launch — the web arm is the
+  // anchor's own navigation (see `launchHref` / `launchApp`).
   const launch = (app: AppEntry): void => {
-    void launchApp(
-      { apiBaseUrl, runAuthed, pageOrigin: window.location.origin, form: formRef.current },
-      app
-    )
+    void launchApp({ apiBaseUrl, runAuthed }, app)
   }
 
   const onDragEnd = (event: DragEndEvent): void => {
@@ -192,6 +190,11 @@ const AppsHomeBody = ({ apps }: AppsHomeBodyProps): JSX.Element => {
                   key={app.id}
                   app={app}
                   editing={editMode}
+                  // On web, `href` makes the tile a real `<a href="/apps/{id}">`
+                  // the browser follows (the cookie rides the navigation); on
+                  // Tauri it's `undefined`, so the tile is a button that drives
+                  // the authed loopback launch and the webview stays put.
+                  href={launchHref(apiBaseUrl, app.id)}
                   onLaunch={launch}
                   onDisable={disable}
                 />
@@ -200,14 +203,6 @@ const AppsHomeBody = ({ apps }: AppsHomeBodyProps): JSX.Element => {
           </SortableContext>
         </DndContext>
       )}
-      {/*
-       * The launch vehicle for the web/tunnel-browser arm: a single hidden
-       * form whose `action` is set per click so the browser follows the
-       * server's 302. The loopback (Tauri) arm bypasses it entirely — it
-       * launches through the authed Effect client so the owner bearer rides
-       * along and the host's 204 never navigates the webview — see `launchApp`.
-       */}
-      <form ref={formRef} method="post" hidden />
     </>
   )
 }
