@@ -40,9 +40,9 @@ Implication: the typed client cannot ask "latest blood pressure for this patient
 
 Per FHIR R4, `MedicationRequest.search` and `MedicationDispense.search` define parameters such as `_id`, `_lastUpdated`, `code`, `subject`, `patient`, `encounter`/`context`, `status`, `intent` (request only), `authoredon` / `whenprepared` / `whenhandedover` (with date prefixes), `identifier`, `medication`, and `prescription` (dispense only). The `HttpApi` description declares `_count` and `_pageToken` only — same minimal paging surface as Observation. HFS indexes the full R4 parameter set server-side (e.g. `MedicationRequest.subject` feeds Patient `$everything`), but the typed client can't express those filters. Adding `subject`/`patient`/`code`/`status` would unlock the canonical medication workflows.
 
-## `$everything` declared on every resource, served for Patient only
+## `$everything` declared for Patient only (matches the server)
 
-The `HttpApi` declares `GET /:resourceType/{id}/$everything` (with `_count`, returning a `Bundle`) on **every** resource group — it's added by `buildDomainResourceHttpApiGroup`, so the typed client will happily issue it for `Patient`, `Observation`, or `Binary`. The server only implements `Patient/{id}/$everything`; a `$everything` call on any other resource falls through to HFS, which has no such handler.
+The `HttpApi` declares `GET /Patient/{id}/$everything` (with `_count`, returning a `Bundle`) on the Patient group only — added via `buildEverythingEndpoint` in `patient.ts`, not by `buildDomainResourceHttpApiGroup`. This matches the server, which implements the operation for Patient only. A resource that gains a server-side `$everything` later opts in with one `.add(buildEverythingEndpoint(...))` line.
 
 What the server actually returns for `Patient/{id}/$everything` — which related types it gathers, and how (an indexed, server-side, fully-paged `subject=` search per type) — is server behaviour and lives in the emr-rust [Capability Statement](../../emr-rust/docs/Capability%20Statement.md), not here.
 

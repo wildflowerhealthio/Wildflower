@@ -1,0 +1,3716 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "FHIR R4 (HFS)",
+    "version": "0.0.1",
+    "description": "The subset of the embedded HFS FHIR R4 server that the Wildflower client uses — generated from the `fhir-r4` Effect HttpApi, not from the server. See slices/emr/fhir-r4/docs/Client Capabilities Reference.md."
+  },
+  "paths": {
+    "/fhir-r4/Patient": {
+      "get": {
+        "tags": [
+          "Patient"
+        ],
+        "operationId": "Patient.SearchByGet",
+        "parameters": [
+          {
+            "name": "_count",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "a string to be decoded into a number"
+            },
+            "required": false,
+            "description": "a string to be decoded into a number"
+          },
+          {
+            "name": "_pageToken",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "gender",
+            "in": "query",
+            "schema": {
+              "$comment": "/schemas/enums",
+              "anyOf": [
+                {
+                  "type": "string",
+                  "title": "female",
+                  "enum": [
+                    "female"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "title": "male",
+                  "enum": [
+                    "male"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "title": "other",
+                  "enum": [
+                    "other"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "title": "unknown",
+                  "enum": [
+                    "unknown"
+                  ]
+                }
+              ]
+            },
+            "required": false
+          },
+          {
+            "name": "active",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            },
+            "required": false
+          },
+          {
+            "name": "birthdate",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "a string matching the pattern ^\\d{4}-\\d{2}-\\d{2}$",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+            },
+            "required": false,
+            "description": "a string matching the pattern ^\\d{4}-\\d{2}-\\d{2}$"
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Bundle",
+                  "description": "A container for a collection of resources.",
+                  "required": [
+                    "resourceType",
+                    "type"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Bundle"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "identifier": {
+                      "type": "object",
+                      "description": "A persistent identifier for the bundle that will not change as a bundle is copied from server to server."
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "document",
+                        "message",
+                        "transaction",
+                        "transaction-response",
+                        "batch",
+                        "batch-response",
+                        "history",
+                        "searchset",
+                        "collection"
+                      ],
+                      "description": "Indicates the purpose of this bundle - how it is intended to be used."
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "The date/time that the bundle was assembled."
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "If a set of search matches, this is the (potentially estimated) total number of entries of type \"match\" across all pages in the search."
+                    },
+                    "link": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A series of links that provide context to this bundle."
+                    },
+                    "entry": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "description": "An entry in a bundle resource - will either contain a resource or information about a resource (transactions and history only).",
+                        "properties": {
+                          "fullUrl": {
+                            "type": "string"
+                          },
+                          "link": {
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
+                          },
+                          "request": {
+                            "type": "object"
+                          },
+                          "resource": {
+                            "type": "object"
+                          },
+                          "response": {
+                            "type": "object"
+                          },
+                          "search": {
+                            "type": "object"
+                          }
+                        }
+                      },
+                      "description": "An entry in a bundle resource."
+                    },
+                    "signature": {
+                      "type": "object",
+                      "description": "Digital Signature - base64 encoded. XML-DSig or a JWT."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Patient"
+        ],
+        "operationId": "Patient.Create",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Patient",
+                  "description": "Demographics and other administrative information about an individual or animal receiving care or other health-related services.",
+                  "required": [
+                    "resourceType"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Patient"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "active": {
+                      "type": "boolean",
+                      "description": "Whether this patient record is in active use."
+                    },
+                    "address": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "An address for the individual. Patient may have multiple addresses with different uses or applicable periods."
+                    },
+                    "birthDate": {
+                      "type": "string",
+                      "format": "date",
+                      "description": "The date of birth for the individual."
+                    },
+                    "communication": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A language which may be used to communicate with the patient about his or her health."
+                    },
+                    "contact": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A contact party (e.g. guardian, partner, friend) for the patient."
+                    },
+                    "deceasedBoolean": {
+                      "type": "boolean",
+                      "description": "Indicates if the individual is deceased or not."
+                    },
+                    "deceasedDateTime": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "Indicates if the individual is deceased or not."
+                    },
+                    "gender": {
+                      "type": "string",
+                      "enum": [
+                        "male",
+                        "female",
+                        "other",
+                        "unknown"
+                      ],
+                      "description": "Administrative gender - the gender that the patient is considered to have."
+                    },
+                    "generalPractitioner": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Patient's nominated care provider. May be a primary care provider, a patient nominated care manager, or organization."
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "An identifier for this patient."
+                    },
+                    "link": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Link to another patient resource that concerns the same actual patient."
+                    },
+                    "managingOrganization": {
+                      "type": "object",
+                      "description": "Organization that is the custodian of the patient record. There is only one managing organization for a specific patient record."
+                    },
+                    "maritalStatus": {
+                      "type": "object",
+                      "description": "This field contains a patient's most recent marital (civil) status."
+                    },
+                    "multipleBirthBoolean": {
+                      "type": "boolean",
+                      "description": "Indicates whether the patient is part of a multiple (boolean) birth."
+                    },
+                    "multipleBirthInteger": {
+                      "type": "integer",
+                      "description": "Indicates the actual birth order when the patient is part of a multiple birth."
+                    },
+                    "name": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A name associated with the individual. A patient may have multiple names with different uses or applicable periods."
+                    },
+                    "photo": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Image of the patient."
+                    },
+                    "telecom": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A contact detail (e.g. a telephone number or an email address) by which the individual may be contacted."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "title": "Patient",
+                "description": "Demographics and other administrative information about an individual or animal receiving care or other health-related services.",
+                "required": [
+                  "resourceType"
+                ],
+                "properties": {
+                  "resourceType": {
+                    "type": "string",
+                    "enum": [
+                      "Patient"
+                    ]
+                  },
+                  "id": {
+                    "type": "string",
+                    "description": "Logical id of this artifact."
+                  },
+                  "meta": {
+                    "type": "object",
+                    "description": "Metadata about the resource."
+                  },
+                  "implicitRules": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "A set of rules under which this content was created."
+                  },
+                  "language": {
+                    "type": "string",
+                    "description": "Language of the resource content."
+                  },
+                  "text": {
+                    "type": "object",
+                    "description": "Human-readable summary of the resource."
+                  },
+                  "contained": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "extension": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "modifierExtension": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "active": {
+                    "type": "boolean",
+                    "description": "Whether this patient record is in active use."
+                  },
+                  "address": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "An address for the individual. Patient may have multiple addresses with different uses or applicable periods."
+                  },
+                  "birthDate": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "The date of birth for the individual."
+                  },
+                  "communication": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "A language which may be used to communicate with the patient about his or her health."
+                  },
+                  "contact": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "A contact party (e.g. guardian, partner, friend) for the patient."
+                  },
+                  "deceasedBoolean": {
+                    "type": "boolean",
+                    "description": "Indicates if the individual is deceased or not."
+                  },
+                  "deceasedDateTime": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Indicates if the individual is deceased or not."
+                  },
+                  "gender": {
+                    "type": "string",
+                    "enum": [
+                      "male",
+                      "female",
+                      "other",
+                      "unknown"
+                    ],
+                    "description": "Administrative gender - the gender that the patient is considered to have."
+                  },
+                  "generalPractitioner": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Patient's nominated care provider. May be a primary care provider, a patient nominated care manager, or organization."
+                  },
+                  "identifier": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "An identifier for this patient."
+                  },
+                  "link": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Link to another patient resource that concerns the same actual patient."
+                  },
+                  "managingOrganization": {
+                    "type": "object",
+                    "description": "Organization that is the custodian of the patient record. There is only one managing organization for a specific patient record."
+                  },
+                  "maritalStatus": {
+                    "type": "object",
+                    "description": "This field contains a patient's most recent marital (civil) status."
+                  },
+                  "multipleBirthBoolean": {
+                    "type": "boolean",
+                    "description": "Indicates whether the patient is part of a multiple (boolean) birth."
+                  },
+                  "multipleBirthInteger": {
+                    "type": "integer",
+                    "description": "Indicates the actual birth order when the patient is part of a multiple birth."
+                  },
+                  "name": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "A name associated with the individual. A patient may have multiple names with different uses or applicable periods."
+                  },
+                  "photo": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Image of the patient."
+                  },
+                  "telecom": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "A contact detail (e.g. a telephone number or an email address) by which the individual may be contacted."
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/fhir-r4/Patient/{id}": {
+      "get": {
+        "tags": [
+          "Patient"
+        ],
+        "operationId": "Patient.GetById",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Patient",
+                  "description": "Demographics and other administrative information about an individual or animal receiving care or other health-related services.",
+                  "required": [
+                    "resourceType"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Patient"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "active": {
+                      "type": "boolean",
+                      "description": "Whether this patient record is in active use."
+                    },
+                    "address": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "An address for the individual. Patient may have multiple addresses with different uses or applicable periods."
+                    },
+                    "birthDate": {
+                      "type": "string",
+                      "format": "date",
+                      "description": "The date of birth for the individual."
+                    },
+                    "communication": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A language which may be used to communicate with the patient about his or her health."
+                    },
+                    "contact": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A contact party (e.g. guardian, partner, friend) for the patient."
+                    },
+                    "deceasedBoolean": {
+                      "type": "boolean",
+                      "description": "Indicates if the individual is deceased or not."
+                    },
+                    "deceasedDateTime": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "Indicates if the individual is deceased or not."
+                    },
+                    "gender": {
+                      "type": "string",
+                      "enum": [
+                        "male",
+                        "female",
+                        "other",
+                        "unknown"
+                      ],
+                      "description": "Administrative gender - the gender that the patient is considered to have."
+                    },
+                    "generalPractitioner": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Patient's nominated care provider. May be a primary care provider, a patient nominated care manager, or organization."
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "An identifier for this patient."
+                    },
+                    "link": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Link to another patient resource that concerns the same actual patient."
+                    },
+                    "managingOrganization": {
+                      "type": "object",
+                      "description": "Organization that is the custodian of the patient record. There is only one managing organization for a specific patient record."
+                    },
+                    "maritalStatus": {
+                      "type": "object",
+                      "description": "This field contains a patient's most recent marital (civil) status."
+                    },
+                    "multipleBirthBoolean": {
+                      "type": "boolean",
+                      "description": "Indicates whether the patient is part of a multiple (boolean) birth."
+                    },
+                    "multipleBirthInteger": {
+                      "type": "integer",
+                      "description": "Indicates the actual birth order when the patient is part of a multiple birth."
+                    },
+                    "name": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A name associated with the individual. A patient may have multiple names with different uses or applicable periods."
+                    },
+                    "photo": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Image of the patient."
+                    },
+                    "telecom": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A contact detail (e.g. a telephone number or an email address) by which the individual may be contacted."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFound"
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Patient"
+        ],
+        "operationId": "Patient.Update",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Patient",
+                  "description": "Demographics and other administrative information about an individual or animal receiving care or other health-related services.",
+                  "required": [
+                    "resourceType"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Patient"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "active": {
+                      "type": "boolean",
+                      "description": "Whether this patient record is in active use."
+                    },
+                    "address": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "An address for the individual. Patient may have multiple addresses with different uses or applicable periods."
+                    },
+                    "birthDate": {
+                      "type": "string",
+                      "format": "date",
+                      "description": "The date of birth for the individual."
+                    },
+                    "communication": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A language which may be used to communicate with the patient about his or her health."
+                    },
+                    "contact": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A contact party (e.g. guardian, partner, friend) for the patient."
+                    },
+                    "deceasedBoolean": {
+                      "type": "boolean",
+                      "description": "Indicates if the individual is deceased or not."
+                    },
+                    "deceasedDateTime": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "Indicates if the individual is deceased or not."
+                    },
+                    "gender": {
+                      "type": "string",
+                      "enum": [
+                        "male",
+                        "female",
+                        "other",
+                        "unknown"
+                      ],
+                      "description": "Administrative gender - the gender that the patient is considered to have."
+                    },
+                    "generalPractitioner": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Patient's nominated care provider. May be a primary care provider, a patient nominated care manager, or organization."
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "An identifier for this patient."
+                    },
+                    "link": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Link to another patient resource that concerns the same actual patient."
+                    },
+                    "managingOrganization": {
+                      "type": "object",
+                      "description": "Organization that is the custodian of the patient record. There is only one managing organization for a specific patient record."
+                    },
+                    "maritalStatus": {
+                      "type": "object",
+                      "description": "This field contains a patient's most recent marital (civil) status."
+                    },
+                    "multipleBirthBoolean": {
+                      "type": "boolean",
+                      "description": "Indicates whether the patient is part of a multiple (boolean) birth."
+                    },
+                    "multipleBirthInteger": {
+                      "type": "integer",
+                      "description": "Indicates the actual birth order when the patient is part of a multiple birth."
+                    },
+                    "name": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A name associated with the individual. A patient may have multiple names with different uses or applicable periods."
+                    },
+                    "photo": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Image of the patient."
+                    },
+                    "telecom": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A contact detail (e.g. a telephone number or an email address) by which the individual may be contacted."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "title": "Patient",
+                "description": "Demographics and other administrative information about an individual or animal receiving care or other health-related services.",
+                "required": [
+                  "resourceType"
+                ],
+                "properties": {
+                  "resourceType": {
+                    "type": "string",
+                    "enum": [
+                      "Patient"
+                    ]
+                  },
+                  "id": {
+                    "type": "string",
+                    "description": "Logical id of this artifact."
+                  },
+                  "meta": {
+                    "type": "object",
+                    "description": "Metadata about the resource."
+                  },
+                  "implicitRules": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "A set of rules under which this content was created."
+                  },
+                  "language": {
+                    "type": "string",
+                    "description": "Language of the resource content."
+                  },
+                  "text": {
+                    "type": "object",
+                    "description": "Human-readable summary of the resource."
+                  },
+                  "contained": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "extension": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "modifierExtension": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "active": {
+                    "type": "boolean",
+                    "description": "Whether this patient record is in active use."
+                  },
+                  "address": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "An address for the individual. Patient may have multiple addresses with different uses or applicable periods."
+                  },
+                  "birthDate": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "The date of birth for the individual."
+                  },
+                  "communication": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "A language which may be used to communicate with the patient about his or her health."
+                  },
+                  "contact": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "A contact party (e.g. guardian, partner, friend) for the patient."
+                  },
+                  "deceasedBoolean": {
+                    "type": "boolean",
+                    "description": "Indicates if the individual is deceased or not."
+                  },
+                  "deceasedDateTime": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Indicates if the individual is deceased or not."
+                  },
+                  "gender": {
+                    "type": "string",
+                    "enum": [
+                      "male",
+                      "female",
+                      "other",
+                      "unknown"
+                    ],
+                    "description": "Administrative gender - the gender that the patient is considered to have."
+                  },
+                  "generalPractitioner": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Patient's nominated care provider. May be a primary care provider, a patient nominated care manager, or organization."
+                  },
+                  "identifier": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "An identifier for this patient."
+                  },
+                  "link": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Link to another patient resource that concerns the same actual patient."
+                  },
+                  "managingOrganization": {
+                    "type": "object",
+                    "description": "Organization that is the custodian of the patient record. There is only one managing organization for a specific patient record."
+                  },
+                  "maritalStatus": {
+                    "type": "object",
+                    "description": "This field contains a patient's most recent marital (civil) status."
+                  },
+                  "multipleBirthBoolean": {
+                    "type": "boolean",
+                    "description": "Indicates whether the patient is part of a multiple (boolean) birth."
+                  },
+                  "multipleBirthInteger": {
+                    "type": "integer",
+                    "description": "Indicates the actual birth order when the patient is part of a multiple birth."
+                  },
+                  "name": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "A name associated with the individual. A patient may have multiple names with different uses or applicable periods."
+                  },
+                  "photo": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Image of the patient."
+                  },
+                  "telecom": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "A contact detail (e.g. a telephone number or an email address) by which the individual may be contacted."
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/fhir-r4/Patient/_search": {
+      "post": {
+        "tags": [
+          "Patient"
+        ],
+        "operationId": "Patient.Search",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Bundle",
+                  "description": "A container for a collection of resources.",
+                  "required": [
+                    "resourceType",
+                    "type"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Bundle"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "identifier": {
+                      "type": "object",
+                      "description": "A persistent identifier for the bundle that will not change as a bundle is copied from server to server."
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "document",
+                        "message",
+                        "transaction",
+                        "transaction-response",
+                        "batch",
+                        "batch-response",
+                        "history",
+                        "searchset",
+                        "collection"
+                      ],
+                      "description": "Indicates the purpose of this bundle - how it is intended to be used."
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "The date/time that the bundle was assembled."
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "If a set of search matches, this is the (potentially estimated) total number of entries of type \"match\" across all pages in the search."
+                    },
+                    "link": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A series of links that provide context to this bundle."
+                    },
+                    "entry": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "description": "An entry in a bundle resource - will either contain a resource or information about a resource (transactions and history only).",
+                        "properties": {
+                          "fullUrl": {
+                            "type": "string"
+                          },
+                          "link": {
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
+                          },
+                          "request": {
+                            "type": "object"
+                          },
+                          "resource": {
+                            "type": "object"
+                          },
+                          "response": {
+                            "type": "object"
+                          },
+                          "search": {
+                            "type": "object"
+                          }
+                        }
+                      },
+                      "description": "An entry in a bundle resource."
+                    },
+                    "signature": {
+                      "type": "object",
+                      "description": "Digital Signature - base64 encoded. XML-DSig or a JWT."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [],
+                "properties": {
+                  "_count": {
+                    "type": "string",
+                    "description": "a string to be decoded into a number"
+                  },
+                  "_pageToken": {
+                    "type": "string"
+                  },
+                  "gender": {
+                    "$comment": "/schemas/enums",
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "title": "female",
+                        "enum": [
+                          "female"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "title": "male",
+                        "enum": [
+                          "male"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "title": "other",
+                        "enum": [
+                          "other"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "title": "unknown",
+                        "enum": [
+                          "unknown"
+                        ]
+                      }
+                    ]
+                  },
+                  "active": {
+                    "type": "string",
+                    "enum": [
+                      "true",
+                      "false"
+                    ]
+                  },
+                  "birthdate": {
+                    "type": "string",
+                    "description": "a string matching the pattern ^\\d{4}-\\d{2}-\\d{2}$",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/fhir-r4/Patient/{id}/$everything": {
+      "get": {
+        "tags": [
+          "Patient"
+        ],
+        "operationId": "Patient.Everything",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "name": "_count",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "a string to be decoded into a number"
+            },
+            "required": false,
+            "description": "a string to be decoded into a number"
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Bundle",
+                  "description": "A container for a collection of resources.",
+                  "required": [
+                    "resourceType",
+                    "type"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Bundle"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "identifier": {
+                      "type": "object",
+                      "description": "A persistent identifier for the bundle that will not change as a bundle is copied from server to server."
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "document",
+                        "message",
+                        "transaction",
+                        "transaction-response",
+                        "batch",
+                        "batch-response",
+                        "history",
+                        "searchset",
+                        "collection"
+                      ],
+                      "description": "Indicates the purpose of this bundle - how it is intended to be used."
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "The date/time that the bundle was assembled."
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "If a set of search matches, this is the (potentially estimated) total number of entries of type \"match\" across all pages in the search."
+                    },
+                    "link": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A series of links that provide context to this bundle."
+                    },
+                    "entry": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "description": "An entry in a bundle resource - will either contain a resource or information about a resource (transactions and history only).",
+                        "properties": {
+                          "fullUrl": {
+                            "type": "string"
+                          },
+                          "link": {
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
+                          },
+                          "request": {
+                            "type": "object"
+                          },
+                          "resource": {
+                            "type": "object"
+                          },
+                          "response": {
+                            "type": "object"
+                          },
+                          "search": {
+                            "type": "object"
+                          }
+                        }
+                      },
+                      "description": "An entry in a bundle resource."
+                    },
+                    "signature": {
+                      "type": "object",
+                      "description": "Digital Signature - base64 encoded. XML-DSig or a JWT."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "NotFound"
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/fhir-r4/Binary": {
+      "get": {
+        "tags": [
+          "Binary"
+        ],
+        "operationId": "Binary.SearchByGet",
+        "parameters": [
+          {
+            "name": "_count",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "a string to be decoded into a number"
+            },
+            "required": false,
+            "description": "a string to be decoded into a number"
+          },
+          {
+            "name": "_pageToken",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Bundle",
+                  "description": "A container for a collection of resources.",
+                  "required": [
+                    "resourceType",
+                    "type"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Bundle"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "identifier": {
+                      "type": "object",
+                      "description": "A persistent identifier for the bundle that will not change as a bundle is copied from server to server."
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "document",
+                        "message",
+                        "transaction",
+                        "transaction-response",
+                        "batch",
+                        "batch-response",
+                        "history",
+                        "searchset",
+                        "collection"
+                      ],
+                      "description": "Indicates the purpose of this bundle - how it is intended to be used."
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "The date/time that the bundle was assembled."
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "If a set of search matches, this is the (potentially estimated) total number of entries of type \"match\" across all pages in the search."
+                    },
+                    "link": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A series of links that provide context to this bundle."
+                    },
+                    "entry": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "description": "An entry in a bundle resource - will either contain a resource or information about a resource (transactions and history only).",
+                        "properties": {
+                          "fullUrl": {
+                            "type": "string"
+                          },
+                          "link": {
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
+                          },
+                          "request": {
+                            "type": "object"
+                          },
+                          "resource": {
+                            "type": "object"
+                          },
+                          "response": {
+                            "type": "object"
+                          },
+                          "search": {
+                            "type": "object"
+                          }
+                        }
+                      },
+                      "description": "An entry in a bundle resource."
+                    },
+                    "signature": {
+                      "type": "object",
+                      "description": "Digital Signature - base64 encoded. XML-DSig or a JWT."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Binary"
+        ],
+        "operationId": "Binary.Create",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Binary",
+                  "description": "A resource that represents the data of a single raw artifact as digital content accessible in its native format. A Binary resource can contain any content, whether text, image, pdf, zip archive, etc.",
+                  "required": [
+                    "resourceType",
+                    "contentType"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Binary"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "contentType": {
+                      "type": "string",
+                      "description": "MimeType of the binary content represented as a standard MimeType (BCP 13)."
+                    },
+                    "data": {
+                      "type": "string",
+                      "description": "The actual content, base64 encoded. If the content type is itself base64 encoding, then this will be base64 encoded twice."
+                    },
+                    "securityContext": {
+                      "type": "object",
+                      "description": "A reference to a resource that provides guides, context or identifies the access rules that should be applied to the binary."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "title": "Binary",
+                "description": "A resource that represents the data of a single raw artifact as digital content accessible in its native format. A Binary resource can contain any content, whether text, image, pdf, zip archive, etc.",
+                "required": [
+                  "resourceType",
+                  "contentType"
+                ],
+                "properties": {
+                  "resourceType": {
+                    "type": "string",
+                    "enum": [
+                      "Binary"
+                    ]
+                  },
+                  "id": {
+                    "type": "string",
+                    "description": "Logical id of this artifact."
+                  },
+                  "meta": {
+                    "type": "object",
+                    "description": "Metadata about the resource."
+                  },
+                  "implicitRules": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "A set of rules under which this content was created."
+                  },
+                  "language": {
+                    "type": "string",
+                    "description": "Language of the resource content."
+                  },
+                  "contentType": {
+                    "type": "string",
+                    "description": "MimeType of the binary content represented as a standard MimeType (BCP 13)."
+                  },
+                  "data": {
+                    "type": "string",
+                    "description": "The actual content, base64 encoded. If the content type is itself base64 encoding, then this will be base64 encoded twice."
+                  },
+                  "securityContext": {
+                    "type": "object",
+                    "description": "A reference to a resource that provides guides, context or identifies the access rules that should be applied to the binary."
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/fhir-r4/Binary/{id}": {
+      "get": {
+        "tags": [
+          "Binary"
+        ],
+        "operationId": "Binary.GetById",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Binary",
+                  "description": "A resource that represents the data of a single raw artifact as digital content accessible in its native format. A Binary resource can contain any content, whether text, image, pdf, zip archive, etc.",
+                  "required": [
+                    "resourceType",
+                    "contentType"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Binary"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "contentType": {
+                      "type": "string",
+                      "description": "MimeType of the binary content represented as a standard MimeType (BCP 13)."
+                    },
+                    "data": {
+                      "type": "string",
+                      "description": "The actual content, base64 encoded. If the content type is itself base64 encoding, then this will be base64 encoded twice."
+                    },
+                    "securityContext": {
+                      "type": "object",
+                      "description": "A reference to a resource that provides guides, context or identifies the access rules that should be applied to the binary."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFound"
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Binary"
+        ],
+        "operationId": "Binary.Update",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Binary",
+                  "description": "A resource that represents the data of a single raw artifact as digital content accessible in its native format. A Binary resource can contain any content, whether text, image, pdf, zip archive, etc.",
+                  "required": [
+                    "resourceType",
+                    "contentType"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Binary"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "contentType": {
+                      "type": "string",
+                      "description": "MimeType of the binary content represented as a standard MimeType (BCP 13)."
+                    },
+                    "data": {
+                      "type": "string",
+                      "description": "The actual content, base64 encoded. If the content type is itself base64 encoding, then this will be base64 encoded twice."
+                    },
+                    "securityContext": {
+                      "type": "object",
+                      "description": "A reference to a resource that provides guides, context or identifies the access rules that should be applied to the binary."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "title": "Binary",
+                "description": "A resource that represents the data of a single raw artifact as digital content accessible in its native format. A Binary resource can contain any content, whether text, image, pdf, zip archive, etc.",
+                "required": [
+                  "resourceType",
+                  "contentType"
+                ],
+                "properties": {
+                  "resourceType": {
+                    "type": "string",
+                    "enum": [
+                      "Binary"
+                    ]
+                  },
+                  "id": {
+                    "type": "string",
+                    "description": "Logical id of this artifact."
+                  },
+                  "meta": {
+                    "type": "object",
+                    "description": "Metadata about the resource."
+                  },
+                  "implicitRules": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "A set of rules under which this content was created."
+                  },
+                  "language": {
+                    "type": "string",
+                    "description": "Language of the resource content."
+                  },
+                  "contentType": {
+                    "type": "string",
+                    "description": "MimeType of the binary content represented as a standard MimeType (BCP 13)."
+                  },
+                  "data": {
+                    "type": "string",
+                    "description": "The actual content, base64 encoded. If the content type is itself base64 encoding, then this will be base64 encoded twice."
+                  },
+                  "securityContext": {
+                    "type": "object",
+                    "description": "A reference to a resource that provides guides, context or identifies the access rules that should be applied to the binary."
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/fhir-r4/Binary/_search": {
+      "post": {
+        "tags": [
+          "Binary"
+        ],
+        "operationId": "Binary.Search",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Bundle",
+                  "description": "A container for a collection of resources.",
+                  "required": [
+                    "resourceType",
+                    "type"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Bundle"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "identifier": {
+                      "type": "object",
+                      "description": "A persistent identifier for the bundle that will not change as a bundle is copied from server to server."
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "document",
+                        "message",
+                        "transaction",
+                        "transaction-response",
+                        "batch",
+                        "batch-response",
+                        "history",
+                        "searchset",
+                        "collection"
+                      ],
+                      "description": "Indicates the purpose of this bundle - how it is intended to be used."
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "The date/time that the bundle was assembled."
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "If a set of search matches, this is the (potentially estimated) total number of entries of type \"match\" across all pages in the search."
+                    },
+                    "link": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A series of links that provide context to this bundle."
+                    },
+                    "entry": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "description": "An entry in a bundle resource - will either contain a resource or information about a resource (transactions and history only).",
+                        "properties": {
+                          "fullUrl": {
+                            "type": "string"
+                          },
+                          "link": {
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
+                          },
+                          "request": {
+                            "type": "object"
+                          },
+                          "resource": {
+                            "type": "object"
+                          },
+                          "response": {
+                            "type": "object"
+                          },
+                          "search": {
+                            "type": "object"
+                          }
+                        }
+                      },
+                      "description": "An entry in a bundle resource."
+                    },
+                    "signature": {
+                      "type": "object",
+                      "description": "Digital Signature - base64 encoded. XML-DSig or a JWT."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [],
+                "properties": {
+                  "_count": {
+                    "type": "string",
+                    "description": "a string to be decoded into a number"
+                  },
+                  "_pageToken": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/fhir-r4/Observation": {
+      "get": {
+        "tags": [
+          "Observation"
+        ],
+        "operationId": "Observation.SearchByGet",
+        "parameters": [
+          {
+            "name": "_count",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "a string to be decoded into a number"
+            },
+            "required": false,
+            "description": "a string to be decoded into a number"
+          },
+          {
+            "name": "_pageToken",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Bundle",
+                  "description": "A container for a collection of resources.",
+                  "required": [
+                    "resourceType",
+                    "type"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Bundle"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "identifier": {
+                      "type": "object",
+                      "description": "A persistent identifier for the bundle that will not change as a bundle is copied from server to server."
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "document",
+                        "message",
+                        "transaction",
+                        "transaction-response",
+                        "batch",
+                        "batch-response",
+                        "history",
+                        "searchset",
+                        "collection"
+                      ],
+                      "description": "Indicates the purpose of this bundle - how it is intended to be used."
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "The date/time that the bundle was assembled."
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "If a set of search matches, this is the (potentially estimated) total number of entries of type \"match\" across all pages in the search."
+                    },
+                    "link": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A series of links that provide context to this bundle."
+                    },
+                    "entry": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "description": "An entry in a bundle resource - will either contain a resource or information about a resource (transactions and history only).",
+                        "properties": {
+                          "fullUrl": {
+                            "type": "string"
+                          },
+                          "link": {
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
+                          },
+                          "request": {
+                            "type": "object"
+                          },
+                          "resource": {
+                            "type": "object"
+                          },
+                          "response": {
+                            "type": "object"
+                          },
+                          "search": {
+                            "type": "object"
+                          }
+                        }
+                      },
+                      "description": "An entry in a bundle resource."
+                    },
+                    "signature": {
+                      "type": "object",
+                      "description": "Digital Signature - base64 encoded. XML-DSig or a JWT."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Observation"
+        ],
+        "operationId": "Observation.Create",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Observation",
+                  "description": "Measurements and simple assertions made about a patient, device or other subject.",
+                  "required": [
+                    "resourceType",
+                    "code",
+                    "status"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Observation"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "basedOn": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A plan, proposal or order that is fulfilled in whole or in part by this event."
+                    },
+                    "bodySite": {
+                      "type": "object",
+                      "description": "Indicates the site on the subject's body where the observation was made."
+                    },
+                    "category": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A code that classifies the general type of observation being made."
+                    },
+                    "code": {
+                      "type": "object",
+                      "description": "Describes what was observed. Sometimes this is called the observation 'name'."
+                    },
+                    "component": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Some observations have multiple component observations. These component observations are expressed as separate code value pairs that share the same attributes."
+                    },
+                    "dataAbsentReason": {
+                      "type": "object",
+                      "description": "Provides a reason why the expected value in the element Observation.value[x] is missing."
+                    },
+                    "derivedFrom": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The target resource that represents a measurement from which this observation value is derived."
+                    },
+                    "device": {
+                      "type": "object",
+                      "description": "The device used to generate the observation data."
+                    },
+                    "effectiveDateTime": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "The time or time-period the observed value is asserted as being true. At least a date should be present unless this observation is a historical report."
+                    },
+                    "effectivePeriod": {
+                      "type": "object"
+                    },
+                    "effectiveTiming": {
+                      "type": "object"
+                    },
+                    "effectiveInstant": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "encounter": {
+                      "type": "object",
+                      "description": "The healthcare event (e.g. a patient and healthcare provider interaction) during which this observation is made."
+                    },
+                    "focus": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The actual focus of an observation when it is not the patient of record representing something or someone associated with the patient such as a spouse, parent, fetus, or donor."
+                    },
+                    "hasMember": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "This observation is a group observation (e.g. a battery, a panel of tests, a set of vital sign measurements) that includes the target as a member of the group."
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A unique identifier assigned to this observation."
+                    },
+                    "interpretation": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A categorical assessment of an observation value."
+                    },
+                    "issued": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "The date and time this version of the observation was made available to providers, typically after the results have been reviewed and verified."
+                    },
+                    "method": {
+                      "type": "object",
+                      "description": "Indicates the mechanism used to perform the observation."
+                    },
+                    "note": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Comments about the observation or the results."
+                    },
+                    "partOf": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A larger event of which this particular Observation is a component or step."
+                    },
+                    "performer": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Who was responsible for asserting the observed value as \"true\"."
+                    },
+                    "referenceRange": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Guidance on how to interpret the value by comparison to a normal or recommended range."
+                    },
+                    "specimen": {
+                      "type": "object",
+                      "description": "The specimen that was used when this observation was made."
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "registered",
+                        "preliminary",
+                        "final",
+                        "amended",
+                        "corrected",
+                        "cancelled",
+                        "entered-in-error",
+                        "unknown"
+                      ],
+                      "description": "The status of the result value."
+                    },
+                    "subject": {
+                      "type": "object",
+                      "description": "The patient, or group of patients, location, or device this observation is about and into whose or what record the observation is placed."
+                    },
+                    "valueQuantity": {
+                      "type": "object",
+                      "description": "The information determined as a result of making the observation, if the information has a simple value."
+                    },
+                    "valueCodeableConcept": {
+                      "type": "object"
+                    },
+                    "valueString": {
+                      "type": "string"
+                    },
+                    "valueBoolean": {
+                      "type": "boolean"
+                    },
+                    "valueInteger": {
+                      "type": "integer"
+                    },
+                    "valueRange": {
+                      "type": "object"
+                    },
+                    "valueRatio": {
+                      "type": "object"
+                    },
+                    "valueSampledData": {
+                      "type": "object"
+                    },
+                    "valueTime": {
+                      "type": "string",
+                      "format": "time"
+                    },
+                    "valueDateTime": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "valuePeriod": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "title": "Observation",
+                "description": "Measurements and simple assertions made about a patient, device or other subject.",
+                "required": [
+                  "resourceType",
+                  "code",
+                  "status"
+                ],
+                "properties": {
+                  "resourceType": {
+                    "type": "string",
+                    "enum": [
+                      "Observation"
+                    ]
+                  },
+                  "id": {
+                    "type": "string",
+                    "description": "Logical id of this artifact."
+                  },
+                  "meta": {
+                    "type": "object",
+                    "description": "Metadata about the resource."
+                  },
+                  "implicitRules": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "A set of rules under which this content was created."
+                  },
+                  "language": {
+                    "type": "string",
+                    "description": "Language of the resource content."
+                  },
+                  "text": {
+                    "type": "object",
+                    "description": "Human-readable summary of the resource."
+                  },
+                  "contained": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "extension": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "modifierExtension": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "basedOn": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "A plan, proposal or order that is fulfilled in whole or in part by this event."
+                  },
+                  "bodySite": {
+                    "type": "object",
+                    "description": "Indicates the site on the subject's body where the observation was made."
+                  },
+                  "category": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "A code that classifies the general type of observation being made."
+                  },
+                  "code": {
+                    "type": "object",
+                    "description": "Describes what was observed. Sometimes this is called the observation 'name'."
+                  },
+                  "component": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Some observations have multiple component observations. These component observations are expressed as separate code value pairs that share the same attributes."
+                  },
+                  "dataAbsentReason": {
+                    "type": "object",
+                    "description": "Provides a reason why the expected value in the element Observation.value[x] is missing."
+                  },
+                  "derivedFrom": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "The target resource that represents a measurement from which this observation value is derived."
+                  },
+                  "device": {
+                    "type": "object",
+                    "description": "The device used to generate the observation data."
+                  },
+                  "effectiveDateTime": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "The time or time-period the observed value is asserted as being true. At least a date should be present unless this observation is a historical report."
+                  },
+                  "effectivePeriod": {
+                    "type": "object"
+                  },
+                  "effectiveTiming": {
+                    "type": "object"
+                  },
+                  "effectiveInstant": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "encounter": {
+                    "type": "object",
+                    "description": "The healthcare event (e.g. a patient and healthcare provider interaction) during which this observation is made."
+                  },
+                  "focus": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "The actual focus of an observation when it is not the patient of record representing something or someone associated with the patient such as a spouse, parent, fetus, or donor."
+                  },
+                  "hasMember": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "This observation is a group observation (e.g. a battery, a panel of tests, a set of vital sign measurements) that includes the target as a member of the group."
+                  },
+                  "identifier": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "A unique identifier assigned to this observation."
+                  },
+                  "interpretation": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "A categorical assessment of an observation value."
+                  },
+                  "issued": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "The date and time this version of the observation was made available to providers, typically after the results have been reviewed and verified."
+                  },
+                  "method": {
+                    "type": "object",
+                    "description": "Indicates the mechanism used to perform the observation."
+                  },
+                  "note": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Comments about the observation or the results."
+                  },
+                  "partOf": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "A larger event of which this particular Observation is a component or step."
+                  },
+                  "performer": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Who was responsible for asserting the observed value as \"true\"."
+                  },
+                  "referenceRange": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Guidance on how to interpret the value by comparison to a normal or recommended range."
+                  },
+                  "specimen": {
+                    "type": "object",
+                    "description": "The specimen that was used when this observation was made."
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "registered",
+                      "preliminary",
+                      "final",
+                      "amended",
+                      "corrected",
+                      "cancelled",
+                      "entered-in-error",
+                      "unknown"
+                    ],
+                    "description": "The status of the result value."
+                  },
+                  "subject": {
+                    "type": "object",
+                    "description": "The patient, or group of patients, location, or device this observation is about and into whose or what record the observation is placed."
+                  },
+                  "valueQuantity": {
+                    "type": "object",
+                    "description": "The information determined as a result of making the observation, if the information has a simple value."
+                  },
+                  "valueCodeableConcept": {
+                    "type": "object"
+                  },
+                  "valueString": {
+                    "type": "string"
+                  },
+                  "valueBoolean": {
+                    "type": "boolean"
+                  },
+                  "valueInteger": {
+                    "type": "integer"
+                  },
+                  "valueRange": {
+                    "type": "object"
+                  },
+                  "valueRatio": {
+                    "type": "object"
+                  },
+                  "valueSampledData": {
+                    "type": "object"
+                  },
+                  "valueTime": {
+                    "type": "string",
+                    "format": "time"
+                  },
+                  "valueDateTime": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "valuePeriod": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/fhir-r4/Observation/{id}": {
+      "get": {
+        "tags": [
+          "Observation"
+        ],
+        "operationId": "Observation.GetById",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Observation",
+                  "description": "Measurements and simple assertions made about a patient, device or other subject.",
+                  "required": [
+                    "resourceType",
+                    "code",
+                    "status"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Observation"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "basedOn": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A plan, proposal or order that is fulfilled in whole or in part by this event."
+                    },
+                    "bodySite": {
+                      "type": "object",
+                      "description": "Indicates the site on the subject's body where the observation was made."
+                    },
+                    "category": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A code that classifies the general type of observation being made."
+                    },
+                    "code": {
+                      "type": "object",
+                      "description": "Describes what was observed. Sometimes this is called the observation 'name'."
+                    },
+                    "component": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Some observations have multiple component observations. These component observations are expressed as separate code value pairs that share the same attributes."
+                    },
+                    "dataAbsentReason": {
+                      "type": "object",
+                      "description": "Provides a reason why the expected value in the element Observation.value[x] is missing."
+                    },
+                    "derivedFrom": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The target resource that represents a measurement from which this observation value is derived."
+                    },
+                    "device": {
+                      "type": "object",
+                      "description": "The device used to generate the observation data."
+                    },
+                    "effectiveDateTime": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "The time or time-period the observed value is asserted as being true. At least a date should be present unless this observation is a historical report."
+                    },
+                    "effectivePeriod": {
+                      "type": "object"
+                    },
+                    "effectiveTiming": {
+                      "type": "object"
+                    },
+                    "effectiveInstant": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "encounter": {
+                      "type": "object",
+                      "description": "The healthcare event (e.g. a patient and healthcare provider interaction) during which this observation is made."
+                    },
+                    "focus": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The actual focus of an observation when it is not the patient of record representing something or someone associated with the patient such as a spouse, parent, fetus, or donor."
+                    },
+                    "hasMember": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "This observation is a group observation (e.g. a battery, a panel of tests, a set of vital sign measurements) that includes the target as a member of the group."
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A unique identifier assigned to this observation."
+                    },
+                    "interpretation": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A categorical assessment of an observation value."
+                    },
+                    "issued": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "The date and time this version of the observation was made available to providers, typically after the results have been reviewed and verified."
+                    },
+                    "method": {
+                      "type": "object",
+                      "description": "Indicates the mechanism used to perform the observation."
+                    },
+                    "note": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Comments about the observation or the results."
+                    },
+                    "partOf": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A larger event of which this particular Observation is a component or step."
+                    },
+                    "performer": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Who was responsible for asserting the observed value as \"true\"."
+                    },
+                    "referenceRange": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Guidance on how to interpret the value by comparison to a normal or recommended range."
+                    },
+                    "specimen": {
+                      "type": "object",
+                      "description": "The specimen that was used when this observation was made."
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "registered",
+                        "preliminary",
+                        "final",
+                        "amended",
+                        "corrected",
+                        "cancelled",
+                        "entered-in-error",
+                        "unknown"
+                      ],
+                      "description": "The status of the result value."
+                    },
+                    "subject": {
+                      "type": "object",
+                      "description": "The patient, or group of patients, location, or device this observation is about and into whose or what record the observation is placed."
+                    },
+                    "valueQuantity": {
+                      "type": "object",
+                      "description": "The information determined as a result of making the observation, if the information has a simple value."
+                    },
+                    "valueCodeableConcept": {
+                      "type": "object"
+                    },
+                    "valueString": {
+                      "type": "string"
+                    },
+                    "valueBoolean": {
+                      "type": "boolean"
+                    },
+                    "valueInteger": {
+                      "type": "integer"
+                    },
+                    "valueRange": {
+                      "type": "object"
+                    },
+                    "valueRatio": {
+                      "type": "object"
+                    },
+                    "valueSampledData": {
+                      "type": "object"
+                    },
+                    "valueTime": {
+                      "type": "string",
+                      "format": "time"
+                    },
+                    "valueDateTime": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "valuePeriod": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFound"
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Observation"
+        ],
+        "operationId": "Observation.Update",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Observation",
+                  "description": "Measurements and simple assertions made about a patient, device or other subject.",
+                  "required": [
+                    "resourceType",
+                    "code",
+                    "status"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Observation"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "basedOn": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A plan, proposal or order that is fulfilled in whole or in part by this event."
+                    },
+                    "bodySite": {
+                      "type": "object",
+                      "description": "Indicates the site on the subject's body where the observation was made."
+                    },
+                    "category": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A code that classifies the general type of observation being made."
+                    },
+                    "code": {
+                      "type": "object",
+                      "description": "Describes what was observed. Sometimes this is called the observation 'name'."
+                    },
+                    "component": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Some observations have multiple component observations. These component observations are expressed as separate code value pairs that share the same attributes."
+                    },
+                    "dataAbsentReason": {
+                      "type": "object",
+                      "description": "Provides a reason why the expected value in the element Observation.value[x] is missing."
+                    },
+                    "derivedFrom": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The target resource that represents a measurement from which this observation value is derived."
+                    },
+                    "device": {
+                      "type": "object",
+                      "description": "The device used to generate the observation data."
+                    },
+                    "effectiveDateTime": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "The time or time-period the observed value is asserted as being true. At least a date should be present unless this observation is a historical report."
+                    },
+                    "effectivePeriod": {
+                      "type": "object"
+                    },
+                    "effectiveTiming": {
+                      "type": "object"
+                    },
+                    "effectiveInstant": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "encounter": {
+                      "type": "object",
+                      "description": "The healthcare event (e.g. a patient and healthcare provider interaction) during which this observation is made."
+                    },
+                    "focus": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The actual focus of an observation when it is not the patient of record representing something or someone associated with the patient such as a spouse, parent, fetus, or donor."
+                    },
+                    "hasMember": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "This observation is a group observation (e.g. a battery, a panel of tests, a set of vital sign measurements) that includes the target as a member of the group."
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A unique identifier assigned to this observation."
+                    },
+                    "interpretation": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A categorical assessment of an observation value."
+                    },
+                    "issued": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "The date and time this version of the observation was made available to providers, typically after the results have been reviewed and verified."
+                    },
+                    "method": {
+                      "type": "object",
+                      "description": "Indicates the mechanism used to perform the observation."
+                    },
+                    "note": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Comments about the observation or the results."
+                    },
+                    "partOf": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A larger event of which this particular Observation is a component or step."
+                    },
+                    "performer": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Who was responsible for asserting the observed value as \"true\"."
+                    },
+                    "referenceRange": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Guidance on how to interpret the value by comparison to a normal or recommended range."
+                    },
+                    "specimen": {
+                      "type": "object",
+                      "description": "The specimen that was used when this observation was made."
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "registered",
+                        "preliminary",
+                        "final",
+                        "amended",
+                        "corrected",
+                        "cancelled",
+                        "entered-in-error",
+                        "unknown"
+                      ],
+                      "description": "The status of the result value."
+                    },
+                    "subject": {
+                      "type": "object",
+                      "description": "The patient, or group of patients, location, or device this observation is about and into whose or what record the observation is placed."
+                    },
+                    "valueQuantity": {
+                      "type": "object",
+                      "description": "The information determined as a result of making the observation, if the information has a simple value."
+                    },
+                    "valueCodeableConcept": {
+                      "type": "object"
+                    },
+                    "valueString": {
+                      "type": "string"
+                    },
+                    "valueBoolean": {
+                      "type": "boolean"
+                    },
+                    "valueInteger": {
+                      "type": "integer"
+                    },
+                    "valueRange": {
+                      "type": "object"
+                    },
+                    "valueRatio": {
+                      "type": "object"
+                    },
+                    "valueSampledData": {
+                      "type": "object"
+                    },
+                    "valueTime": {
+                      "type": "string",
+                      "format": "time"
+                    },
+                    "valueDateTime": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "valuePeriod": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "title": "Observation",
+                "description": "Measurements and simple assertions made about a patient, device or other subject.",
+                "required": [
+                  "resourceType",
+                  "code",
+                  "status"
+                ],
+                "properties": {
+                  "resourceType": {
+                    "type": "string",
+                    "enum": [
+                      "Observation"
+                    ]
+                  },
+                  "id": {
+                    "type": "string",
+                    "description": "Logical id of this artifact."
+                  },
+                  "meta": {
+                    "type": "object",
+                    "description": "Metadata about the resource."
+                  },
+                  "implicitRules": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "A set of rules under which this content was created."
+                  },
+                  "language": {
+                    "type": "string",
+                    "description": "Language of the resource content."
+                  },
+                  "text": {
+                    "type": "object",
+                    "description": "Human-readable summary of the resource."
+                  },
+                  "contained": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "extension": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "modifierExtension": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "basedOn": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "A plan, proposal or order that is fulfilled in whole or in part by this event."
+                  },
+                  "bodySite": {
+                    "type": "object",
+                    "description": "Indicates the site on the subject's body where the observation was made."
+                  },
+                  "category": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "A code that classifies the general type of observation being made."
+                  },
+                  "code": {
+                    "type": "object",
+                    "description": "Describes what was observed. Sometimes this is called the observation 'name'."
+                  },
+                  "component": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Some observations have multiple component observations. These component observations are expressed as separate code value pairs that share the same attributes."
+                  },
+                  "dataAbsentReason": {
+                    "type": "object",
+                    "description": "Provides a reason why the expected value in the element Observation.value[x] is missing."
+                  },
+                  "derivedFrom": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "The target resource that represents a measurement from which this observation value is derived."
+                  },
+                  "device": {
+                    "type": "object",
+                    "description": "The device used to generate the observation data."
+                  },
+                  "effectiveDateTime": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "The time or time-period the observed value is asserted as being true. At least a date should be present unless this observation is a historical report."
+                  },
+                  "effectivePeriod": {
+                    "type": "object"
+                  },
+                  "effectiveTiming": {
+                    "type": "object"
+                  },
+                  "effectiveInstant": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "encounter": {
+                    "type": "object",
+                    "description": "The healthcare event (e.g. a patient and healthcare provider interaction) during which this observation is made."
+                  },
+                  "focus": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "The actual focus of an observation when it is not the patient of record representing something or someone associated with the patient such as a spouse, parent, fetus, or donor."
+                  },
+                  "hasMember": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "This observation is a group observation (e.g. a battery, a panel of tests, a set of vital sign measurements) that includes the target as a member of the group."
+                  },
+                  "identifier": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "A unique identifier assigned to this observation."
+                  },
+                  "interpretation": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "A categorical assessment of an observation value."
+                  },
+                  "issued": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "The date and time this version of the observation was made available to providers, typically after the results have been reviewed and verified."
+                  },
+                  "method": {
+                    "type": "object",
+                    "description": "Indicates the mechanism used to perform the observation."
+                  },
+                  "note": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Comments about the observation or the results."
+                  },
+                  "partOf": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "A larger event of which this particular Observation is a component or step."
+                  },
+                  "performer": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Who was responsible for asserting the observed value as \"true\"."
+                  },
+                  "referenceRange": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Guidance on how to interpret the value by comparison to a normal or recommended range."
+                  },
+                  "specimen": {
+                    "type": "object",
+                    "description": "The specimen that was used when this observation was made."
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "registered",
+                      "preliminary",
+                      "final",
+                      "amended",
+                      "corrected",
+                      "cancelled",
+                      "entered-in-error",
+                      "unknown"
+                    ],
+                    "description": "The status of the result value."
+                  },
+                  "subject": {
+                    "type": "object",
+                    "description": "The patient, or group of patients, location, or device this observation is about and into whose or what record the observation is placed."
+                  },
+                  "valueQuantity": {
+                    "type": "object",
+                    "description": "The information determined as a result of making the observation, if the information has a simple value."
+                  },
+                  "valueCodeableConcept": {
+                    "type": "object"
+                  },
+                  "valueString": {
+                    "type": "string"
+                  },
+                  "valueBoolean": {
+                    "type": "boolean"
+                  },
+                  "valueInteger": {
+                    "type": "integer"
+                  },
+                  "valueRange": {
+                    "type": "object"
+                  },
+                  "valueRatio": {
+                    "type": "object"
+                  },
+                  "valueSampledData": {
+                    "type": "object"
+                  },
+                  "valueTime": {
+                    "type": "string",
+                    "format": "time"
+                  },
+                  "valueDateTime": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "valuePeriod": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/fhir-r4/Observation/_search": {
+      "post": {
+        "tags": [
+          "Observation"
+        ],
+        "operationId": "Observation.Search",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Bundle",
+                  "description": "A container for a collection of resources.",
+                  "required": [
+                    "resourceType",
+                    "type"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Bundle"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "identifier": {
+                      "type": "object",
+                      "description": "A persistent identifier for the bundle that will not change as a bundle is copied from server to server."
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "document",
+                        "message",
+                        "transaction",
+                        "transaction-response",
+                        "batch",
+                        "batch-response",
+                        "history",
+                        "searchset",
+                        "collection"
+                      ],
+                      "description": "Indicates the purpose of this bundle - how it is intended to be used."
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "The date/time that the bundle was assembled."
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "If a set of search matches, this is the (potentially estimated) total number of entries of type \"match\" across all pages in the search."
+                    },
+                    "link": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A series of links that provide context to this bundle."
+                    },
+                    "entry": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "description": "An entry in a bundle resource - will either contain a resource or information about a resource (transactions and history only).",
+                        "properties": {
+                          "fullUrl": {
+                            "type": "string"
+                          },
+                          "link": {
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
+                          },
+                          "request": {
+                            "type": "object"
+                          },
+                          "resource": {
+                            "type": "object"
+                          },
+                          "response": {
+                            "type": "object"
+                          },
+                          "search": {
+                            "type": "object"
+                          }
+                        }
+                      },
+                      "description": "An entry in a bundle resource."
+                    },
+                    "signature": {
+                      "type": "object",
+                      "description": "Digital Signature - base64 encoded. XML-DSig or a JWT."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [],
+                "properties": {
+                  "_count": {
+                    "type": "string",
+                    "description": "a string to be decoded into a number"
+                  },
+                  "_pageToken": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {},
+    "securitySchemes": {}
+  },
+  "security": [],
+  "tags": [
+    {
+      "name": "Patient"
+    },
+    {
+      "name": "Binary"
+    },
+    {
+      "name": "Observation"
+    }
+  ]
+}

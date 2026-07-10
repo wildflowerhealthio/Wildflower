@@ -6,6 +6,12 @@ _Last triaged 2026-07-04 — durable lessons were promoted to `Strategies.md`, t
 
 <!-- Append new entries below this line -->
 
+## Workspace-wide `vp test` needs `vp run pack` first in a fresh container — unbuilt `dist/` fails hundreds of tests
+
+**Discovered during**: claude/fhir-r4-openapi-spec-ibzynx — a full `vp test` showed 438 failures that had nothing to do with the change
+**Learning**: Workspace packages' `exports` map `default` to `./dist/...`; only the `source` condition points at `src/`. Vitest resolves `source` for files _inside_ the project under test, but cross-package imports in some projects resolve to `dist/`, so on a fresh container (post `vp install`, nothing built) a workspace-wide `vp test` fails en masse with `Cannot find module .../dist/...` while any single package's suite (run from its directory) passes. Run `vp run pack` once first; after that the full suite is green. Corollary: a plain `node script.ts` importing a workspace package fails the same way — run one-off scripts as a temp test file through `vp test` instead.
+**Suggested destination**: CLAUDE.md commands section, or docs/Testing/Testing Reference.md
+
 ## Re-driving `hfs_router` in-process: strip `Accept-Encoding` or the delegated sub-response comes back compressed and won't parse
 
 **Discovered during**: claude/fhir-patient-everything-op-95ig70 — debugging a `$everything` 500 (`failed to parse sub-response JSON: expected value at line 1 column 1`)
