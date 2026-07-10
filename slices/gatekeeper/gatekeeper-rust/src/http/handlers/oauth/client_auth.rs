@@ -12,6 +12,7 @@
 use axum::http::{header, StatusCode};
 use axum::response::{IntoResponse, Response};
 use serde::Deserialize;
+use zeroize::{Zeroize, Zeroizing};
 
 use super::error_codes::OAuthErrorCode;
 use super::internal::{OAuthError, OAuthErrorResponse};
@@ -40,6 +41,10 @@ pub enum ClientAuthenticationMethod {
 /// Client credentials resolved from the `Authorization: Basic` header
 /// (RFC 6749 §2.3.1) and/or the form-body `client_id`/`client_secret`
 /// parameters.
+///
+/// The plaintext `client_secret` is scrubbed from memory on drop (see the [`Drop`]
+/// impl), so a resolved credential doesn't leave the presented secret lingering
+/// on the heap after the request that verified it completes.
 #[derive(Debug, PartialEq, Eq)]
 pub struct ClientCredentials {
     pub client_id: String,
@@ -47,6 +52,17 @@ pub struct ClientCredentials {
     /// How the client presented these credentials — drives the RFC 6749 §5.2
     /// `WWW-Authenticate: Basic` challenge on auth failure.
     pub presented_via: ClientAuthenticationMethod,
+}
+
+impl Drop for ClientCredentials {
+    /// Zero the transient plaintext client secret when the resolved credentials
+    /// go out of scope. `client_id` and `presented_via` are not secret, so only
+    /// the secret is scrubbed.
+    fn drop(&mut self) {
+        if let Some(secret) = self.client_secret.as_mut() {
+            secret.zeroize();
+        }
+    }
 }
 
 /// Failure modes of credential resolution, before any store lookup.
@@ -207,7 +223,11 @@ fn try_decode_basic_payload(
 ) -> Result<BasicCredentials, MalformedBasicHeader> {
     let decoded_bytes =
         base64::standard_decode(encoded_payload).map_err(|_| MalformedBasicHeader)?;
-    let decoded_pair = String::from_utf8(decoded_bytes).map_err(|_| MalformedBasicHeader)?;
+    // The decoded `id:secret` pair holds the plaintext secret; `Zeroizing` scrubs
+    // it when this frame returns. `from_utf8` reuses `decoded_bytes`' buffer, so
+    // wrapping the resulting string covers the raw bytes too.
+    let decoded_pair =
+        Zeroizing::new(String::from_utf8(decoded_bytes).map_err(|_| MalformedBasicHeader)?);
     let (encoded_client_id, encoded_client_secret) =
         decoded_pair.split_once(':').ok_or(MalformedBasicHeader)?;
     Ok(BasicCredentials {

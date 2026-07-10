@@ -5,12 +5,18 @@ use rsa::traits::PublicKeyParts;
 use rsa::{BigUint, RsaPrivateKey, RsaPublicKey};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+use zeroize::{ZeroizeOnDrop, Zeroizing};
 
 use crate::crypto_util::base64;
 use crate::crypto_util::public_jwk::PublicJwk;
 
 /// The base64url-encoded RSA key components stored in the `values_json` column of a `signing_keys` row.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+///
+/// Holds the private RSA exponents (`d`, `p`, `q`) in plaintext, so
+/// `#[derive(ZeroizeOnDrop)]` scrubs every component string from memory when the
+/// value is dropped. `n`/`e` are public but are zeroed alongside them — one
+/// blanket scrub is simpler than carving out the public halves.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ZeroizeOnDrop)]
 pub struct SigningKeyValues {
     /// The modulus `n` of the RSA key, base64url-encoded.
     pub n: String,
@@ -64,6 +70,13 @@ impl From<&RsaPrivateKey> for SigningKey {
         let primes = private.primes();
         let p = &primes[0];
         let q = &primes[1];
+        // The private components (`d`, `p`, `q`) pass through big-endian byte
+        // buffers on their way to base64url; scrub those transient copies so the
+        // only surviving plaintext is the `SigningKeyValues` (itself
+        // zero-on-drop). `n`/`e` are public and need no scrubbing.
+        let d_bytes = Zeroizing::new(private.d().to_bytes_be());
+        let p_bytes = Zeroizing::new(p.to_bytes_be());
+        let q_bytes = Zeroizing::new(q.to_bytes_be());
         SigningKey {
             kid: Uuid::new_v4().to_string(),
             kty: "RSA".to_string(),
@@ -71,9 +84,9 @@ impl From<&RsaPrivateKey> for SigningKey {
             values: SigningKeyValues {
                 n: base64::url_safe_no_pad_encode(&private.n().to_bytes_be()),
                 e: base64::url_safe_no_pad_encode(&private.e().to_bytes_be()),
-                d: base64::url_safe_no_pad_encode(&private.d().to_bytes_be()),
-                p: base64::url_safe_no_pad_encode(&p.to_bytes_be()),
-                q: base64::url_safe_no_pad_encode(&q.to_bytes_be()),
+                d: base64::url_safe_no_pad_encode(&d_bytes),
+                p: base64::url_safe_no_pad_encode(&p_bytes),
+                q: base64::url_safe_no_pad_encode(&q_bytes),
             },
             is_active: false,
         }
@@ -144,7 +157,12 @@ impl TryFrom<&SigningKey> for RsaPublicKey {
 
 /// Decode a base64url JWK component into a big-endian `BigUint`.
 fn base64_url_to_biguint(s: &str) -> Result<BigUint, KeyMaterialError> {
-    let bytes = base64::url_safe_no_pad_decode(s).map_err(KeyMaterialError::Decode)?;
+    // Scrub the decoded bytes on the way out — for the private components
+    // (`d`, `p`, `q`) they are plaintext key material. The reconstructed
+    // `BigUint` itself is not zeroizable (`num-bigint` doesn't implement
+    // `Zeroize`); `RsaPrivateKey` scrubs its own components on drop.
+    let bytes =
+        Zeroizing::new(base64::url_safe_no_pad_decode(s).map_err(KeyMaterialError::Decode)?);
     Ok(BigUint::from_bytes_be(&bytes))
 }
 

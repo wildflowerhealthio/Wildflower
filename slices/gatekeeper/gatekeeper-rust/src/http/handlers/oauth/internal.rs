@@ -121,7 +121,7 @@ pub struct OAuthError {
 impl OAuthError {
     pub fn new(error: OAuthErrorCode, description: Option<&str>) -> Self {
         Self {
-            error: error.as_str().to_string(),
+            error: error.as_ref().to_string(),
             error_description: description.map(str::to_string),
         }
     }
@@ -220,7 +220,7 @@ pub fn build_client_error_redirect_url(
 ) -> String {
     let mut url = redirect_uri.clone();
     url.query_pairs_mut()
-        .append_pair("error", error.as_str())
+        .append_pair("error", error.as_ref())
         .append_pair("state", client_state);
     url.to_string()
 }

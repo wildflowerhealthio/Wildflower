@@ -33,6 +33,15 @@ rsa = { version = "0.9", features = ["sha2"] }
 sha2 = "0.11"
 argon2 = "0.5"
 subtle = "2"
+# Scrub plaintext client secrets and RSA private-key material from memory on
+# drop (`Zeroizing<…>` wrappers and `#[derive(ZeroizeOnDrop)]`). Already resolved
+# in the lockfile transitively (via `rsa`), so this direct dep pins no new
+# version; the `derive` feature adds the already-locked `zeroize_derive`.
+zeroize = { version = "1.8", features = ["derive"] }
+# Derive the enum ↔ wire-string conversions (`EnumString`/`AsRefStr`/`Display`)
+# for the stored-as-text enums, replacing the hand-rolled `as_str`/`FromStr`
+# match arms so the variant set and its wire spellings can't drift apart.
+strum = { version = "0.27", features = ["derive"] }
 rand = "0.10"
 uuid = { version = "1", features = ["v4"] }
 base64 = "0.22"

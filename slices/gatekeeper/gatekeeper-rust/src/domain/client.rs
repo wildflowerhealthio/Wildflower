@@ -1,52 +1,25 @@
-use std::fmt;
-use std::str::FromStr;
-
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use strum::{AsRefStr, Display, EnumString};
 use url::Url;
 
 use persistence_rust::JsonColumn;
 
 /// OAuth client authentication category — `public` clients can't keep a secret (e.g. SPAs, native), `confidential` ones can.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+///
+/// The wire string (stored in the `kind` column and serialized) is the
+/// lowercased variant name: `Public` → `"public"`, `Confidential` →
+/// `"confidential"`. `strum` derives the `&str` ↔ enum conversions
+/// ([`AsRef<str>`], [`Display`], [`FromStr`](std::str::FromStr)) from the same
+/// `serialize_all` rule the serde `rename_all` uses, so the two can't drift.
+#[derive(
+    Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, EnumString, AsRefStr, Display,
+)]
 #[serde(rename_all = "lowercase")]
+#[strum(serialize_all = "lowercase")]
 pub enum ClientKind {
     Public,
     Confidential,
-}
-
-impl ClientKind {
-    /// The wire string this kind is stored and serialized as.
-    #[must_use]
-    pub const fn as_str(&self) -> &'static str {
-        match self {
-            ClientKind::Public => "public",
-            ClientKind::Confidential => "confidential",
-        }
-    }
-}
-
-impl fmt::Display for ClientKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-/// Returned when a string doesn't match any [`ClientKind`] wire value.
-#[derive(Debug, thiserror::Error)]
-#[error("unknown client kind {0}")]
-pub struct ParseClientKindError(String);
-
-impl FromStr for ClientKind {
-    type Err = ParseClientKindError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "public" => Ok(ClientKind::Public),
-            "confidential" => Ok(ClientKind::Confidential),
-            _ => Err(ParseClientKindError(s.to_string())),
-        }
-    }
 }
 
 /// A grant type the token endpoint supports, used for the per-client

@@ -6,18 +6,20 @@
 //! `"invalid_grnat"` no longer compiles), and so the valid set is enforced at
 //! every construction site and documented in one place.
 //!
-//! [`OAuthErrorCode::as_str`] returns the exact RFC wire value, so variants drop
-//! straight into the `OAuthErrorCode`-taking constructors (`OAuthError::new`,
-//! `OAuthErrorResponse::new`, `TokenError::bad_request`) and the redirect
-//! builder (`build_client_error_redirect_url`). Still untyped: the
+//! `AsRef<str>` (and the matching `Display`) returns the exact RFC wire value,
+//! so variants drop straight into the `OAuthErrorCode`-taking constructors
+//! (`OAuthError::new`, `OAuthErrorResponse::new`, `TokenError::bad_request`) and
+//! the redirect builder (`build_client_error_redirect_url`). Still untyped: the
 //! `authorize.rs` HTML local-error page, which renders its own markup rather
 //! than emitting a wire code.
 
-use std::fmt;
+use strum::{AsRefStr, Display};
 
 /// A code from the closed set of OAuth error codes the gatekeeper's JSON error
-/// surface may emit. [`as_str`](Self::as_str) yields the exact wire value.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// surface may emit. Its [`AsRef<str>`]/[`Display`] impls (derived by `strum`
+/// from the `snake_case` variant names) yield the exact RFC wire value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, AsRefStr, Display)]
+#[strum(serialize_all = "snake_case")]
 pub(crate) enum OAuthErrorCode {
     /// RFC 6749 §5.2 — the request is missing a required parameter, malformed,
     /// or otherwise invalid.
@@ -53,66 +55,41 @@ pub(crate) enum OAuthErrorCode {
     ExpiredToken,
 }
 
-impl OAuthErrorCode {
-    /// The exact RFC wire value for this code — the string that lands in the
-    /// `error` field of an OAuth error body. `const` so it stays usable in
-    /// const contexts.
-    pub(crate) const fn as_str(&self) -> &'static str {
-        match self {
-            Self::InvalidRequest => "invalid_request",
-            Self::InvalidClient => "invalid_client",
-            Self::InvalidGrant => "invalid_grant",
-            Self::UnauthorizedClient => "unauthorized_client",
-            Self::InvalidScope => "invalid_scope",
-            Self::UnsupportedResponseType => "unsupported_response_type",
-            Self::ServerError => "server_error",
-            Self::AccessDenied => "access_denied",
-            Self::AuthorizationPending => "authorization_pending",
-            Self::SlowDown => "slow_down",
-            Self::ExpiredToken => "expired_token",
-        }
-    }
-}
-
-impl fmt::Display for OAuthErrorCode {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::OAuthErrorCode;
 
     /// Each variant's wire value must match its exact RFC string — this guards
-    /// the variant rename from silently changing what ships on the wire.
+    /// the `strum` `serialize_all` rule (and any variant rename) from silently
+    /// changing what ships on the wire.
     #[test]
-    fn as_str_matches_rfc_wire_values() {
-        assert_eq!(OAuthErrorCode::InvalidRequest.as_str(), "invalid_request");
-        assert_eq!(OAuthErrorCode::InvalidClient.as_str(), "invalid_client");
-        assert_eq!(OAuthErrorCode::InvalidGrant.as_str(), "invalid_grant");
+    fn as_ref_matches_rfc_wire_values() {
+        assert_eq!(OAuthErrorCode::InvalidRequest.as_ref(), "invalid_request");
+        assert_eq!(OAuthErrorCode::InvalidClient.as_ref(), "invalid_client");
+        assert_eq!(OAuthErrorCode::InvalidGrant.as_ref(), "invalid_grant");
         assert_eq!(
-            OAuthErrorCode::UnauthorizedClient.as_str(),
+            OAuthErrorCode::UnauthorizedClient.as_ref(),
             "unauthorized_client"
         );
-        assert_eq!(OAuthErrorCode::InvalidScope.as_str(), "invalid_scope");
+        assert_eq!(OAuthErrorCode::InvalidScope.as_ref(), "invalid_scope");
         assert_eq!(
-            OAuthErrorCode::UnsupportedResponseType.as_str(),
+            OAuthErrorCode::UnsupportedResponseType.as_ref(),
             "unsupported_response_type"
         );
-        assert_eq!(OAuthErrorCode::ServerError.as_str(), "server_error");
-        assert_eq!(OAuthErrorCode::AccessDenied.as_str(), "access_denied");
+        assert_eq!(OAuthErrorCode::ServerError.as_ref(), "server_error");
+        assert_eq!(OAuthErrorCode::AccessDenied.as_ref(), "access_denied");
         assert_eq!(
-            OAuthErrorCode::AuthorizationPending.as_str(),
+            OAuthErrorCode::AuthorizationPending.as_ref(),
             "authorization_pending"
         );
-        assert_eq!(OAuthErrorCode::SlowDown.as_str(), "slow_down");
-        assert_eq!(OAuthErrorCode::ExpiredToken.as_str(), "expired_token");
+        assert_eq!(OAuthErrorCode::SlowDown.as_ref(), "slow_down");
+        assert_eq!(OAuthErrorCode::ExpiredToken.as_ref(), "expired_token");
     }
 
-    /// `Display` must delegate to `as_str()` byte-for-byte.
+    /// `Display` must match `AsRef<str>` byte-for-byte — both are `strum`-derived
+    /// from the same rule, and callers use each interchangeably.
     #[test]
-    fn display_delegates_to_as_str() {
+    fn display_matches_as_ref() {
         for code in [
             OAuthErrorCode::InvalidRequest,
             OAuthErrorCode::InvalidClient,
@@ -126,7 +103,7 @@ mod tests {
             OAuthErrorCode::SlowDown,
             OAuthErrorCode::ExpiredToken,
         ] {
-            assert_eq!(code.to_string(), code.as_str());
+            assert_eq!(code.to_string(), code.as_ref());
         }
     }
 }
