@@ -264,6 +264,10 @@ const buildImportEffect = ({
               return yield* client.Observation.Update({ path, payload: { ...resource, id } })
             case 'Binary':
               return yield* client.Binary.Update({ path, payload: { ...resource, id } })
+            case 'MedicationRequest':
+              return yield* client.MedicationRequest.Update({ path, payload: { ...resource, id } })
+            case 'MedicationDispense':
+              return yield* client.MedicationDispense.Update({ path, payload: { ...resource, id } })
             default: {
               const unreachable: never = resource
               return yield* Effect.dieMessage(

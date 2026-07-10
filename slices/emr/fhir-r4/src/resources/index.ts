@@ -1,3 +1,5 @@
 export * from './binary/index.ts'
+export * from './medication-dispense/index.ts'
+export * from './medication-request/index.ts'
 export * from './observation/index.ts'
 export * from './patient/index.ts'
