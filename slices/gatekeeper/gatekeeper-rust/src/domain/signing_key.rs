@@ -16,7 +16,7 @@ use crate::crypto_util::public_jwk::PublicJwk;
 /// `#[derive(ZeroizeOnDrop)]` scrubs every component string from memory when the
 /// value is dropped. `n`/`e` are public but are zeroed alongside them — one
 /// blanket scrub is simpler than carving out the public halves.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ZeroizeOnDrop)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, ZeroizeOnDrop)]
 pub struct SigningKeyValues {
     /// The modulus `n` of the RSA key, base64url-encoded.
     pub n: String,
@@ -28,6 +28,22 @@ pub struct SigningKeyValues {
     pub p: String,
     /// The second prime factor `q` of the RSA modulus, base64url-encoded.
     pub q: String,
+}
+
+/// Redact the private exponents (`d`, `p`, `q`) from `Debug` output so the
+/// plaintext key material that `ZeroizeOnDrop` scrubs from memory can't leak
+/// through a formatter (log line, panic message, `{:?}` in a test failure).
+/// The public `n`/`e` are shown so a formatted value stays identifiable.
+impl std::fmt::Debug for SigningKeyValues {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SigningKeyValues")
+            .field("n", &self.n)
+            .field("d", &"<redacted>")
+            .field("e", &self.e)
+            .field("p", &"<redacted>")
+            .field("q", &"<redacted>")
+            .finish()
+    }
 }
 
 /// An RSA signing key used to mint and verify access tokens; `is_active` distinguishes the current minter from rotated-out verify-only keys.
@@ -135,12 +151,25 @@ impl TryFrom<&SigningKey> for RsaPrivateKey {
 
     #[allow(clippy::many_single_char_names)]
     fn try_from(key: &SigningKey) -> Result<Self, Self::Error> {
-        let n = base64_url_to_biguint(&key.values.n)?;
-        let e = base64_url_to_biguint(&key.values.e)?;
-        let d = base64_url_to_biguint(&key.values.d)?;
-        let p = base64_url_to_biguint(&key.values.p)?;
-        let q = base64_url_to_biguint(&key.values.q)?;
-        RsaPrivateKey::from_components(n, e, d, vec![p, q]).map_err(KeyMaterialError::Compose)
+        // Keep every decoded component wrapped in `Zeroizing` until all five
+        // succeed: if a later `?` bails out, the private BigUints decoded so
+        // far (`d`, `p`) still scrub on their way out of scope rather than
+        // dropping as raw plaintext. Once all are in hand, `std::mem::take`
+        // moves each value out (leaving a zeroed `BigUint::default()` behind,
+        // which the wrappers then scrub) so `from_components` receives the
+        // integers without cloning.
+        let mut n = base64_url_to_biguint(&key.values.n)?;
+        let mut e = base64_url_to_biguint(&key.values.e)?;
+        let mut d = base64_url_to_biguint(&key.values.d)?;
+        let mut p = base64_url_to_biguint(&key.values.p)?;
+        let mut q = base64_url_to_biguint(&key.values.q)?;
+        RsaPrivateKey::from_components(
+            std::mem::take(&mut *n),
+            std::mem::take(&mut *e),
+            std::mem::take(&mut *d),
+            vec![std::mem::take(&mut *p), std::mem::take(&mut *q)],
+        )
+        .map_err(KeyMaterialError::Compose)
     }
 }
 
@@ -149,21 +178,30 @@ impl TryFrom<&SigningKey> for RsaPublicKey {
     type Error = KeyMaterialError;
 
     fn try_from(key: &SigningKey) -> Result<Self, Self::Error> {
-        let n = base64_url_to_biguint(&key.values.n)?;
-        let e = base64_url_to_biguint(&key.values.e)?;
-        RsaPublicKey::new(n, e).map_err(KeyMaterialError::Compose)
+        // `n`/`e` are public, so scrubbing is unnecessary here — but
+        // `base64_url_to_biguint` returns `Zeroizing` uniformly; move the
+        // integers out of the (harmless) wrappers before composing.
+        let mut n = base64_url_to_biguint(&key.values.n)?;
+        let mut e = base64_url_to_biguint(&key.values.e)?;
+        RsaPublicKey::new(std::mem::take(&mut *n), std::mem::take(&mut *e))
+            .map_err(KeyMaterialError::Compose)
     }
 }
 
-/// Decode a base64url JWK component into a big-endian `BigUint`.
-fn base64_url_to_biguint(s: &str) -> Result<BigUint, KeyMaterialError> {
+/// Decode a base64url JWK component into a big-endian `BigUint`, wrapped in
+/// `Zeroizing` so the value scrubs on drop.
+fn base64_url_to_biguint(s: &str) -> Result<Zeroizing<BigUint>, KeyMaterialError> {
     // Scrub the decoded bytes on the way out — for the private components
-    // (`d`, `p`, `q`) they are plaintext key material. The reconstructed
-    // `BigUint` itself is not zeroizable (`num-bigint` doesn't implement
-    // `Zeroize`); `RsaPrivateKey` scrubs its own components on drop.
+    // (`d`, `p`, `q`) they are plaintext key material. `rsa::BigUint` is
+    // `num_bigint_dig::BigUint`, which implements `Zeroize` (rsa 0.9 enables
+    // num-bigint-dig's `zeroize` feature), so the reconstructed integer is
+    // zeroizable too — return it wrapped so a caller that drops it before
+    // handing it to `RsaPrivateKey` (e.g. an error partway through decoding the
+    // five components) still scrubs the plaintext. Wrapping the public `n`/`e`
+    // is harmless.
     let bytes =
         Zeroizing::new(base64::url_safe_no_pad_decode(s).map_err(KeyMaterialError::Decode)?);
-    Ok(BigUint::from_bytes_be(&bytes))
+    Ok(Zeroizing::new(BigUint::from_bytes_be(&bytes)))
 }
 
 /// Failure modes when round-tripping a `SigningKey` through `jsonwebtoken`/`rsa` — bad JWK components, DER encode, RSA composition, or fresh-key generation.
@@ -206,5 +244,37 @@ mod tests {
         // Assert the whole round trip in one line so every claim is checked,
         // not just `sub`.
         assert_eq!(decoded.claims, claims);
+    }
+
+    #[test]
+    fn debug_redacts_private_exponents() {
+        let values = SigningKeyValues {
+            n: "public-modulus".to_string(),
+            d: "PRIVATE-D-SECRET".to_string(),
+            e: "public-exp".to_string(),
+            p: "PRIVATE-P-SECRET".to_string(),
+            q: "PRIVATE-Q-SECRET".to_string(),
+        };
+        let rendered = format!("{values:?}");
+        // The private exponents must never surface in a formatted value.
+        assert!(
+            !rendered.contains("PRIVATE-D-SECRET"),
+            "d leaked: {rendered}"
+        );
+        assert!(
+            !rendered.contains("PRIVATE-P-SECRET"),
+            "p leaked: {rendered}"
+        );
+        assert!(
+            !rendered.contains("PRIVATE-Q-SECRET"),
+            "q leaked: {rendered}"
+        );
+        assert!(
+            rendered.contains("<redacted>"),
+            "no redaction marker: {rendered}"
+        );
+        // Public components stay visible so a logged value is still identifiable.
+        assert!(rendered.contains("public-modulus"), "n hidden: {rendered}");
+        assert!(rendered.contains("public-exp"), "e hidden: {rendered}");
     }
 }
