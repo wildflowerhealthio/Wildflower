@@ -3154,10 +3154,12 @@ async fn revoking_a_grant_bumps_the_client_revocation_epoch() {
             id: "grant-1".to_string(),
             client_id: "granted-client".to_string(),
             scopes: JsonColumn(vec!["read".to_string()]),
-            redirect_uri: UriColumn(Url::parse("https://app.example/cb").expect("url")),
             granted_at: Utc::now(),
             last_used_at: None,
             patient: None,
+            kind: gatekeeper_rust::domain::grant::GrantKind::AuthorizationCode {
+                redirect_uri: UriColumn(Url::parse("https://app.example/cb").expect("url")),
+            },
         })
         .expect("create grant");
     // Revoke it.
@@ -3184,5 +3186,51 @@ async fn revoking_a_grant_bumps_the_client_revocation_epoch() {
             )
             .expect("query"),
         "grant revoke must bump the client's revocation epoch"
+    );
+}
+
+#[tokio::test]
+async fn revoking_a_device_grant_bumps_the_client_revocation_epoch() {
+    // Integration point with the polymorphic device grants (#332): the
+    // Authorized Devices list revokes a device through the same
+    // `DELETE /access/grants/{id}` surface, so token revocation must fire for a
+    // `DeviceCode` grant exactly as it does for an authorization-code one. This
+    // is the token-revocation half of "revoke this device" — the access-token
+    // epoch is keyed on `sub = client_id`, so revoking one device grant revokes
+    // that client's live access tokens (per-device token handles are deferred —
+    // see #269).
+    let (g, host_owner_token, db) = spin_up();
+    seed_client_with_redirect(&db, "device-client", "https://app.example/cb", &["read"]);
+    let store = store_handle(&db);
+    store
+        .create_grant(&gatekeeper_rust::domain::grant::Grant {
+            id: "device-grant-1".to_string(),
+            client_id: "device-client".to_string(),
+            scopes: JsonColumn(vec!["read".to_string()]),
+            granted_at: Utc::now(),
+            last_used_at: None,
+            patient: None,
+            kind: gatekeeper_rust::domain::grant::GrantKind::DeviceCode {
+                device_name: "Ada's laptop".to_string(),
+            },
+        })
+        .expect("create device grant");
+    let res = g
+        .router
+        .clone()
+        .oneshot(loopback_request(
+            Request::delete("/access/grants/device-grant-1")
+                .header("host", "127.0.0.1")
+                .header("authorization", format!("Bearer {host_owner_token}")),
+            Body::empty(),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::NO_CONTENT);
+    assert!(
+        revocation_store_handle(&db)
+            .is_revoked(None, Some(Utc::now() - Duration::hours(1)), "device-client")
+            .expect("query"),
+        "revoking a device grant must bump the client's revocation epoch"
     );
 }
