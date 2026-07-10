@@ -106,7 +106,13 @@ const DeviceConsentDialogBody = ({
   readonly onDone: () => void
 }): JSX.Element => {
   const { data: consent } = useDeviceConsentQuery(userCode)
-  return <DeviceConsentForm consent={consent} onDone={onDone} />
+  // `key={userCode}` is load-bearing: this body stays mounted across userCode
+  // changes (the outer Dialog deliberately doesn't unmount), and the form seeds
+  // `draft`/`name`/`denied` from `consent` via `useState` initializers that only
+  // run on mount. Without the key the previous request's scope draft / device
+  // name would carry onto a new head — approving the wrong grant. Keying remounts
+  // the whole subtree (ScopePicker's internal state included) per request.
+  return <DeviceConsentForm key={userCode} consent={consent} onDone={onDone} />
 }
 
 const DeviceConsentErrorFallback = ({
