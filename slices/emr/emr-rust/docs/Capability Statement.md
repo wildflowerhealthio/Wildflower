@@ -28,7 +28,7 @@ Narrowings relative to spec FHIR `$everything`:
 
 ## `SearchParameter` index (full R4 set, indexed at write time)
 
-`emr-rust` loads the **complete HL7 FHIR R4 `SearchParameter` bundle** into HFS. HFS's SQLite backend registers SearchParameters from a filesystem `data_dir`; the embedding bundles the R4 `search-parameters.json` (see `assets/README.md`), materializes it to an app-data subdirectory at startup, and points the backend there via `SqliteBackendConfig { data_dir: Some(...) }` (`src/lib.rs`, `materialize_search_parameter_specs`). HFS then extracts and indexes every standard R4 search parameter for a resource **at write time**.
+`emr-rust` loads the **complete HL7 FHIR R4 `SearchParameter` bundle** into HFS. HFS's SQLite backend registers SearchParameters from a filesystem `data_dir`; the R4 `search-parameters.json` ships as a **deployed asset** (see `assets/README.md`) — a bundled resource, not embedded in the binary — and the host points `EmrConfig::search_parameter_data_dir` at the directory holding it, which `setup_fhir_r4` passes to the backend via `SqliteBackendConfig { data_dir: Some(...) }` (`src/lib.rs`). HFS reads it read-only and extracts and indexes every standard R4 search parameter for a resource **at write time**. `setup_fhir_r4` fails fast if the bundle is missing from that directory, rather than silently falling back to the minimal index.
 
 Consequences:
 

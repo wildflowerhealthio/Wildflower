@@ -33,7 +33,8 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "../../../slices/apps/self-hosted-apps/": "self-hosted-apps/"
+      "../../../slices/apps/self-hosted-apps/": "self-hosted-apps/",
+      "../../../slices/emr/emr-rust/assets/search-parameters-r4.json": "fhir-search-params/search-parameters-r4.json"
     }
   }
 }

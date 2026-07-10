@@ -10,8 +10,6 @@ mod config;
 mod patient_everything;
 mod smart_configuration;
 
-use std::path::{Path, PathBuf};
-
 use anyhow::Context;
 use axum::routing::{get, Router};
 use helios_persistence::backends::sqlite::{SqliteBackend, SqliteBackendConfig};
@@ -50,8 +48,8 @@ pub const UNAUTHENTICATED_FHIR_PATHS: &[&str] = &[
 ///   advertise the SMART App Launch grant + gatekeeper's authorize/token URLs,
 ///   which HFS's built-in (Backend-Services-shaped) discovery doc doesn't.
 /// - `/fhir-r4/Patient/{id}/$everything` implements the FHIR `$everything`
-///   operation HFS doesn't ship, by delegating back into HFS's `read` +
-///   `Observation` search in-process (see [`patient_everything`]).
+///   operation HFS doesn't ship, by delegating back into HFS's `read` + indexed
+///   `subject=` searches in-process (see [`patient_everything`]).
 ///
 /// When [`EmrConfig::jwks_url`] is `Some`, HFS auth is enabled: it validates the
 /// JWT against the configured JWKS, enforces `iss`, parses SMART v2 scopes,
@@ -61,21 +59,32 @@ pub const UNAUTHENTICATED_FHIR_PATHS: &[&str] = &[
 ///
 /// # Errors
 ///
-/// Returns an error if the sqlite backend cannot be opened at the configured
-/// path or if initializing its schema fails.
+/// Returns an error if the configured SearchParameter asset directory does not
+/// contain the R4 spec bundle, if the sqlite backend cannot be opened at the
+/// configured path, or if initializing its schema fails.
 pub fn setup_fhir_r4(runtime: &ServerRuntimeConfig, config: &EmrConfig) -> anyhow::Result<Router> {
-    // Materialize the bundled FHIR R4 SearchParameter definitions to disk and
-    // point HFS's backend at that directory, so HFS registers every standard R4
-    // search parameter and indexes it at write time. Without this, HFS falls
-    // back to a ~9-parameter minimal set and `Observation.subject`-style searches
-    // return nothing — see [`materialize_search_parameter_specs`] and this
-    // crate's `docs/Capability Statement.md`.
-    let spec_dir = materialize_search_parameter_specs(&runtime.app_data_dir)
-        .context("failed to materialize FHIR SearchParameter definitions")?;
+    // Point HFS's backend at the on-disk FHIR R4 SearchParameter asset directory
+    // the host provides (a bundled resource — never embedded in the binary), so
+    // HFS registers every standard R4 search parameter and indexes it at write
+    // time. Without a real spec dir HFS falls back to a ~9-parameter minimal set
+    // and `Observation.subject`-style searches return nothing, so we fail fast if
+    // the bundle isn't there rather than silently degrade — see
+    // [`EmrConfig::search_parameter_data_dir`] and this crate's
+    // `docs/Capability Statement.md`.
+    let spec_dir = &config.search_parameter_data_dir;
+    let spec_file = spec_dir.join(SEARCH_PARAMETERS_R4_FILENAME);
+    if !spec_file.is_file() {
+        anyhow::bail!(
+            "FHIR R4 SearchParameter bundle not found at {} — the `{}` asset must be \
+             deployed and `EmrConfig::search_parameter_data_dir` must point at its directory",
+            spec_file.display(),
+            SEARCH_PARAMETERS_R4_FILENAME,
+        );
+    }
     let sqlite_backend = SqliteBackend::with_config(
         &config.db_file_path,
         SqliteBackendConfig {
-            data_dir: Some(spec_dir),
+            data_dir: Some(spec_dir.clone()),
             ..SqliteBackendConfig::default()
         },
     )
@@ -149,54 +158,11 @@ pub fn setup_fhir_r4(runtime: &ServerRuntimeConfig, config: &EmrConfig) -> anyho
     Ok(Router::new().nest(FHIR_R4_PATH, fhir_with_override))
 }
 
-/// The complete HL7 FHIR R4 (v4.0.1) `SearchParameter` conformance bundle,
-/// embedded at compile time. See `assets/README.md` for provenance/license.
-const SEARCH_PARAMETERS_R4_JSON: &str = include_str!("../assets/search-parameters-r4.json");
-
 /// Filename HFS's `SearchParameterLoader` expects for the R4 spec bundle inside
 /// `data_dir` — it derives this exact name from the FHIR version and loads no
-/// other. Must not be renamed.
+/// other. The vendored asset (`assets/search-parameters-r4.json`) and the
+/// bundled-resource copy the host deploys both use it; must not be renamed.
 const SEARCH_PARAMETERS_R4_FILENAME: &str = "search-parameters-r4.json";
-
-/// Subdirectory of the app-data dir where the embedded SearchParameter bundle is
-/// materialized for HFS to read.
-const SEARCH_PARAMS_SUBDIR: &str = "fhir-search-params";
-
-/// Write the embedded [`SEARCH_PARAMETERS_R4_JSON`] bundle into a stable
-/// subdirectory of `app_data_dir` and return that directory, suitable for
-/// [`SqliteBackendConfig::data_dir`].
-///
-/// HFS loads SearchParameter definitions from a *filesystem* `data_dir` (it has
-/// no in-memory registration path), so the compile-time bundle has to be
-/// materialized to disk first. We rewrite the file on every startup so the
-/// on-disk copy always matches the embedded one (surviving a bundle upgrade or a
-/// half-written file from an earlier crash); at ~2&nbsp;MB this is negligible.
-///
-/// The bundle keeps the [`SEARCH_PARAMETERS_R4_FILENAME`] name HFS derives from
-/// the FHIR version, and the subdirectory holds nothing else, so HFS's
-/// custom-SearchParameter directory scan finds no stray files to load.
-///
-/// # Errors
-///
-/// Returns an error if the subdirectory can't be created or the bundle can't be
-/// written.
-fn materialize_search_parameter_specs(app_data_dir: &Path) -> anyhow::Result<PathBuf> {
-    let spec_dir = app_data_dir.join(SEARCH_PARAMS_SUBDIR);
-    std::fs::create_dir_all(&spec_dir).with_context(|| {
-        format!(
-            "failed to create SearchParameter spec dir at {}",
-            spec_dir.display()
-        )
-    })?;
-    let spec_path = spec_dir.join(SEARCH_PARAMETERS_R4_FILENAME);
-    std::fs::write(&spec_path, SEARCH_PARAMETERS_R4_JSON).with_context(|| {
-        format!(
-            "failed to write SearchParameter bundle to {}",
-            spec_path.display()
-        )
-    })?;
-    Ok(spec_dir)
-}
 
 #[cfg(test)]
 mod tests {
@@ -218,13 +184,19 @@ mod tests {
         assert!(UNAUTHENTICATED_FHIR_PATHS.contains(&"/fhir-r4/.well-known/smart-configuration"));
     }
 
-    /// The embedded bundle must be the real, parseable HL7 R4 SearchParameter
-    /// set: a `Bundle` whose entries include `Observation.subject` (the param
-    /// `$everything`'s server-side compartment search depends on).
+    /// The vendored asset must ship under the filename HFS's loader expects, be
+    /// valid JSON, and cover `Observation.subject` — the parameter
+    /// `$everything`'s server-side search depends on. This guards the on-disk
+    /// asset (not embedded), which the host deploys as a bundled resource.
     #[test]
-    fn embedded_search_parameter_bundle_covers_observation_subject() {
-        let bundle: serde_json::Value = serde_json::from_str(super::SEARCH_PARAMETERS_R4_JSON)
-            .expect("embedded SearchParameter bundle is valid JSON");
+    fn vendored_search_parameter_asset_covers_observation_subject() {
+        let asset = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("assets")
+            .join(super::SEARCH_PARAMETERS_R4_FILENAME);
+        let json = std::fs::read_to_string(&asset)
+            .unwrap_or_else(|e| panic!("read vendored asset {}: {e}", asset.display()));
+        let bundle: serde_json::Value =
+            serde_json::from_str(&json).expect("vendored SearchParameter bundle is valid JSON");
         assert_eq!(bundle["resourceType"], "Bundle");
         let has_observation_subject = bundle["entry"]
             .as_array()
@@ -242,36 +214,5 @@ mod tests {
             has_observation_subject,
             "bundle must define the Observation.subject search parameter"
         );
-    }
-
-    /// [`materialize_search_parameter_specs`] writes the bundle under the
-    /// expected filename so HFS's loader finds it, and is idempotent across
-    /// repeated startups.
-    #[test]
-    fn materialize_writes_the_spec_bundle_under_the_expected_name() {
-        let tmp = std::env::temp_dir().join(format!(
-            "emr-rust-materialize-{}-{:?}",
-            std::process::id(),
-            std::thread::current().id()
-        ));
-        let _ = std::fs::remove_dir_all(&tmp);
-
-        let spec_dir = super::materialize_search_parameter_specs(&tmp).expect("materialize");
-        let spec_file = spec_dir.join(super::SEARCH_PARAMETERS_R4_FILENAME);
-        assert!(spec_file.is_file(), "spec bundle written to {spec_file:?}");
-        assert_eq!(
-            std::fs::read_to_string(&spec_file).expect("read back"),
-            super::SEARCH_PARAMETERS_R4_JSON,
-        );
-
-        // Idempotent: a second call over the same dir succeeds and leaves the
-        // same content (mirrors a restart).
-        super::materialize_search_parameter_specs(&tmp).expect("materialize again");
-        assert_eq!(
-            std::fs::read_to_string(&spec_file).expect("read back after re-run"),
-            super::SEARCH_PARAMETERS_R4_JSON,
-        );
-
-        let _ = std::fs::remove_dir_all(&tmp);
     }
 }

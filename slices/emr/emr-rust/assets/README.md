@@ -7,12 +7,15 @@ same `search-parameters.json` published as part of the R4 specification
 (`Bundle.id: "searchParams"`, `meta.lastUpdated: 2019-11-01`, 1375
 `SearchParameter` resources, every `url` under `http://hl7.org/fhir/...`).
 
-`emr-rust` embeds this file with `include_str!` and materializes it into an
-app-data subdirectory at startup, then points HFS's SQLite backend at that
-directory (`SqliteBackendConfig.data_dir`) so HFS registers every standard R4
-search parameter and indexes it at write time. See `src/lib.rs`
-(`materialize_search_parameter_specs`) and this crate's
-`docs/Capability Statement.md`.
+This file is a **deployed asset, not embedded in the binary**. The host ships it
+as a bundled resource and points `EmrConfig::search_parameter_data_dir` at the
+directory holding it; `emr-rust` passes that straight to HFS's SQLite backend
+(`SqliteBackendConfig.data_dir`), which reads the bundle read-only and indexes
+every standard R4 search parameter at write time. In the Tauri app the resource
+is declared in `apps/wildflower-tauri/src-tauri/tauri.conf.json`
+(`bundle.resources`) and resolved to `<resource_dir>/fhir-search-params/` in
+release, or read from this `assets/` tree directly in dev. See `src/lib.rs`
+(`setup_fhir_r4`) and this crate's `docs/Capability Statement.md`.
 
 The filename **must** stay `search-parameters-r4.json`: HFS's
 `SearchParameterLoader` derives the expected spec filename from the FHIR version

@@ -45,6 +45,10 @@ fn build_router() -> (Router, TempDb) {
         log_level: "error".to_string(),
         db_file_path: dir.join("health-data.sqlite"),
         jwks_url: None,
+        // The SearchParameter bundle is a deployed asset, not embedded — point
+        // HFS at the crate's vendored copy (the host ships it as a bundled
+        // resource in production).
+        search_parameter_data_dir: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets"),
     };
 
     let router = setup_fhir_r4(&runtime, &config).expect("setup_fhir_r4");
