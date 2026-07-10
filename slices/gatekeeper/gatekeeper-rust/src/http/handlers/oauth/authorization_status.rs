@@ -52,6 +52,7 @@ impl IntoResponse for AuthorizationStatus {
 /// either through its `IntoResponse`.
 #[utoipa::path(
     get,
+    tag = "OAuth 2.0",
     path = "/authorize/{id}",
     params(("id" = String, Path, description = "Authorization request id")),
     responses(

@@ -440,6 +440,33 @@ async fn run_server(
         gatekeeper.state.clone(),
         &[],
     );
+
+    // The unified API docs (`/docs`): merge every documented slice's spec —
+    // collected from the very routes that serve traffic — into one document and
+    // serve it as an interactive Scalar reference. Each slice is a named group so
+    // Scalar renders a two-level sidebar (slice → the slice's operation tags);
+    // the group name is presentation-only and lives here, not in the snapshots.
+    // The `api-docs` system app (`apps-rust`) already points here, so this fills a
+    // route that previously fell through to the SPA. Gated exactly like the rest
+    // of the admin API: a loopback caller passes on connection provenance (the
+    // host injects the owner bearer), a forwarded caller on a valid bearer.
+    // FHIR/HFS is absent — it exposes no OpenAPI spec, only a FHIR
+    // CapabilityStatement at `/fhir-r4/metadata`.
+    let gated_docs = layer_router_with_gatekeeper_auth_gating(
+        shared_structures_rust::openapi_docs::merged_scalar_router(
+            "/docs",
+            "Wildflower API",
+            env!("CARGO_PKG_VERSION"),
+            [
+                ("Gatekeeper", gatekeeper_rust::openapi_spec()),
+                ("Apps", apps_rust::openapi_spec()),
+                ("Databases", databases_rust::openapi_spec()),
+                ("Tunnel", tunnel_rust::openapi_spec()),
+            ],
+        ),
+        gatekeeper.state.clone(),
+        &[],
+    );
     // The webview page is NOT served from this origin — it loads from
     // the Vite dev server (`http://localhost:1420`) in dev and Tauri's
     // asset protocol (`tauri://localhost`) in builds, while API fetches
@@ -475,6 +502,7 @@ async fn run_server(
         // the launch handler owner-gates the loopback popup in-handler.
         .merge(apps.launch_router)
         .merge(gated_databases)
+        .merge(gated_docs)
         .fallback(spa::handle_serving_spa_html)
         // Desktop loopback-owner trust (see `inject_loopback_owner_token`):
         // present the host owner token for a direct-local caller so the webview

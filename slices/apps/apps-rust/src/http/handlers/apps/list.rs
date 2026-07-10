@@ -17,6 +17,7 @@ use crate::http::state::AppsState;
 /// surface here).
 #[utoipa::path(
     get,
+    tag = "Catalogue",
     path = "/apps",
     responses(
         (status = 200, description = "Every app in the registry, ordered by position", body = [AppListEntry]),

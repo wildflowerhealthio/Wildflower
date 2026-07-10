@@ -25,7 +25,7 @@ pub use config::GatekeeperConfig;
 pub use db::GatekeeperStore;
 pub use http::{
     ensure_bearer_header, is_pre_auth_public_path, layer_router_with_gatekeeper_auth_gating,
-    layer_router_with_loopback_peer_gating, owner_session_cookies,
+    layer_router_with_loopback_peer_gating, openapi_spec, owner_session_cookies,
     rescope_owner_session_set_cookies, verify_owner_bearer, AppState,
 };
 

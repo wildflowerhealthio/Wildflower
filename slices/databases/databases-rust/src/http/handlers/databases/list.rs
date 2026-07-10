@@ -13,6 +13,7 @@ use crate::metadata::DatabaseMetadata;
 /// unreadable file reports `exists: false` rather than failing the listing.
 #[utoipa::path(
     get,
+    tag = "Management",
     path = "/databases",
     responses(
         (status = 200, description = "Metadata for every host database", body = [DatabaseMetadata]),

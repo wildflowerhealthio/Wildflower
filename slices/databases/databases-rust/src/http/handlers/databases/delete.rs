@@ -28,6 +28,7 @@ pub(crate) struct DeletedBody {
 /// Owner to do. `deleted: true` means "the request was accepted/scheduled".
 #[utoipa::path(
     delete,
+    tag = "Management",
     path = "/databases/{id}",
     params(
         ("id" = String, Path, description = "Database resource id (filename)"),

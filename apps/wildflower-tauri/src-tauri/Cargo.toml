@@ -49,6 +49,9 @@ gatekeeper-rust = { path = "../../../slices/gatekeeper/gatekeeper-rust" }
 persistence-rust = { path = "../../../slices/persistence/persistence-rust" }
 shared-structures-rust = { path = "../../../slices/shared-structures/shared-structures-rust", features = [
   "health-check",
+  # The unified `/docs` Scalar surface — merge each slice's `openapi_spec()`
+  # into one document and serve it (see `api_router` in `src/lib.rs`).
+  "openapi-docs",
 ] }
 # Provides `resolve_http_url`, the http(s)-only validator the apps launch flow
 # gates its `RequestSandboxedWebView { url }` on before handing the URL to the

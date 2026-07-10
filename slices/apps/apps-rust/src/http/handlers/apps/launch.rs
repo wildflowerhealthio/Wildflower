@@ -55,6 +55,7 @@ use crate::id::mint_launch_nonce;
 /// posture; the body is shared with [`handle_launch_app_get`] via [`launch`].
 #[utoipa::path(
     post,
+    tag = "Launch",
     path = "/apps/{id}",
     params(("id" = String, Path, description = "App id")),
     responses(

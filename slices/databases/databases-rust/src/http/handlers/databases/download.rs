@@ -29,6 +29,7 @@ use crate::http::temp_file_stream::TempFileStream;
 /// generated JSON client. The spec-drift test scopes only the JSON endpoints.
 #[utoipa::path(
     get,
+    tag = "Management",
     path = "/databases/{id}",
     params(
         ("id" = String, Path, description = "Database resource id (filename), e.g. health-data.sqlite"),

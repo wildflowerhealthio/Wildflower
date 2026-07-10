@@ -31,30 +31,34 @@ pub fn router(state: Arc<TunnelState>) -> Router {
     router.with_state(state)
 }
 
+/// The tunnel admin `OpenAPI` document, collected from the same routes that
+/// serve traffic. `info` is set explicitly so the committed snapshot doesn't
+/// churn with the crate version. Two consumers read it: the committed snapshot
+/// the TS spec-drift test guards, and the host's unified `/docs` Scalar surface,
+/// which merges this with the other slices' documents.
+#[must_use]
+pub fn openapi_spec() -> utoipa::openapi::OpenApi {
+    let (_router, mut spec) = documented_router().split_for_parts();
+    spec.info = utoipa::openapi::Info::new("Tunnel Admin API", "0.0.0");
+    spec
+}
+
 #[cfg(test)]
 mod openapi_tests {
-    use utoipa::openapi::Info;
-
     /// The committed spec snapshot the TS spec-drift test reads.
     const SPEC_PATH: &str = concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/openapi/tunnel-admin.openapi.json"
     );
 
-    /// The tunnel admin `OpenAPI` document. `info` is set explicitly so the
-    /// committed snapshot doesn't churn with the crate version. Test-only —
-    /// nothing serves the spec at runtime.
-    fn openapi_spec() -> utoipa::openapi::OpenApi {
-        let (_router, mut spec) = super::documented_router().split_for_parts();
-        spec.info = Info::new("Tunnel Admin API", "0.0.0");
-        spec
-    }
-
     /// The generated `OpenAPI` document must match the committed snapshot. A wire
     /// type change flips this red; regenerate with
     /// `UPDATE_OPENAPI=1 cargo test -p tunnel-rust openapi_spec_snapshot_is_up_to_date`.
     #[test]
     fn openapi_spec_snapshot_is_up_to_date() {
-        shared_structures_rust::openapi_snapshot::assert_up_to_date(&openapi_spec(), SPEC_PATH);
+        shared_structures_rust::openapi_snapshot::assert_up_to_date(
+            &super::openapi_spec(),
+            SPEC_PATH,
+        );
     }
 }
