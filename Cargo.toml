@@ -7,6 +7,7 @@ members = [
   "slices/apps/apps-rust",
   "slices/apps/self-hosted-apps-rust",
   "slices/browser-sniffer/browser-sniffer-tauri-rust",
+  "slices/collector/collector-rust",
   "slices/databases/databases-rust",
   "slices/emr/emr-rust",
   "slices/gatekeeper/gatekeeper-rust",

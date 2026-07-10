@@ -1,4 +1,3 @@
-mod api_stubs;
 mod bridge;
 mod native_webview_handle;
 mod spa;
@@ -220,8 +219,13 @@ async fn run_server(
         emr_rust::UNAUTHENTICATED_FHIR_PATHS,
     );
 
-    let gated_stubs = layer_router_with_gatekeeper_auth_gating(
-        api_stubs::app_shell_stub_router(),
+    // The real `/collector/remotes` surface (replacing the former api_stubs
+    // stub — the demo FHIR remote it hardcoded is now seeded by migration).
+    // User-created remotes persist in the shared database; a remote's config
+    // JSON may carry pharmacy credentials, so the whole surface is Owner-gated
+    // like the rest of the admin API.
+    let gated_collector = layer_router_with_gatekeeper_auth_gating(
+        collector_rust::setup_collector(db.clone()).context("failed to set up collector")?,
         gatekeeper.state.clone(),
         &[],
     );
@@ -387,7 +391,7 @@ async fn run_server(
     let api_router = Router::new()
         .merge(gatekeeper.router)
         .merge(gated_fhir_r4)
-        .merge(gated_stubs)
+        .merge(gated_collector)
         .merge(gated_tunnel)
         // The app-layer `/health`: an unauthenticated liveness endpoint the
         // tunnel's reachability probe round-trips through the relay. Ungated so
