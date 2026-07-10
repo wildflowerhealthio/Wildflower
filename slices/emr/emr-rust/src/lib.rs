@@ -7,6 +7,7 @@
 
 mod auth;
 mod config;
+mod openapi;
 mod patient_everything;
 mod smart_configuration;
 
@@ -21,6 +22,7 @@ use crate::patient_everything::{patient_everything_handler, EverythingState};
 use crate::smart_configuration::{smart_configuration_handler, SmartConfigState};
 
 pub use crate::config::EmrConfig;
+pub use crate::openapi::openapi_spec;
 
 const FHIR_R4_PATH: &str = "/fhir-r4";
 

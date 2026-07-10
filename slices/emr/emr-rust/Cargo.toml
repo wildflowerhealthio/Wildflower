@@ -9,6 +9,7 @@ anyhow.workspace = true
 axum.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+utoipa.workspace = true
 # `$everything` re-drives HFS's own router in-process (a `read` + a compartment
 # search) via `tower::ServiceExt::oneshot`, so scope enforcement stays in the
 # path. Already in the tree transitively through axum; pinned here as a direct

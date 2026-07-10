@@ -2181,6 +2181,7 @@ dependencies = [
  "tower",
  "tracing",
  "url",
+ "utoipa",
 ]
 
 [[package]]

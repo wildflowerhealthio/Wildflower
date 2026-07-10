@@ -472,8 +472,11 @@ async fn run_server(
     // route that previously fell through to the SPA. Gated exactly like the rest
     // of the admin API: a loopback caller passes on connection provenance (the
     // host injects the owner bearer), a forwarded caller on a valid bearer.
-    // FHIR/HFS is absent — it exposes no OpenAPI spec, only a FHIR
-    // CapabilityStatement at `/fhir-r4/metadata`.
+    // FHIR/HFS itself exposes no OpenAPI spec (only a FHIR CapabilityStatement
+    // at `/fhir-r4/metadata`), so the "FHIR R4" group below is a committed
+    // snapshot generated from the TS `fhir-r4` `HttpApi` rather than collected
+    // from routes — it documents the FHIR surface as the Wildflower client
+    // uses it, not the whole of HFS. See `emr_rust::openapi_spec`.
     let gated_docs = layer_router_with_gatekeeper_auth_gating(
         shared_structures_rust::openapi_docs::merged_scalar_router(
             "/docs",
@@ -484,6 +487,7 @@ async fn run_server(
                 ("Apps", apps_rust::openapi_spec()),
                 ("Databases", databases_rust::openapi_spec()),
                 ("Tunnel", tunnel_rust::openapi_spec()),
+                ("FHIR R4", emr_rust::openapi_spec()),
             ],
         ),
         gatekeeper.state.clone(),
