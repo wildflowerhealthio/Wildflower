@@ -25,7 +25,7 @@ export {
   useGrantsQuery,
   useRevokeGrantMutation,
 } from './grants.ts'
-export type { Grant } from './grants.ts'
+export type { AppGrant, DeviceGrant, Grant } from './grants.ts'
 
 export {
   requestQueryOptions,

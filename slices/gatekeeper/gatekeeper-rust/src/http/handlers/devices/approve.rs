@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use axum::extract::{Path, State};
 use axum::routing::{post, MethodRouter};
 use axum::Json;
+use chrono::Utc;
 
 use super::internal::load_pending_device_request;
 use crate::http::handlers::consent::{deny_consent, ApproveBody, ConsentResult};
@@ -66,6 +67,28 @@ async fn handle_approve_device_consent(
             &user_code,
         ));
     }
+    // Mint (or refresh) the durable device grant — the whole point of this
+    // ticket: a device-code approval now leaves a standing record the owner can
+    // see under "Authorized Devices" in Settings. Keyed on the *effective*
+    // device name: the approver's adjustment, else the device's own name, else
+    // the client's name (RFC 8628 requesters may not name themselves — a NOT
+    // NULL default keeps the `(client_id, device_name)` upsert key total). Token
+    // exchange resolves this same key to stamp `refresh_token_families.grant_id`.
+    let effective_device_name = body
+        .device_name
+        .as_deref()
+        .or(device_request.device_name.as_deref())
+        .unwrap_or(client.name.as_str());
+    state
+        .store
+        .upsert_device_grant(
+            &device_request.client_id,
+            effective_device_name,
+            &granted_scopes,
+            body.patient.as_deref(),
+            Utc::now(),
+        )
+        .map_err(|e| HandlerError::internal("upsert_device_grant failed", e))?;
     // The popup's head may have just resolved; recompute and republish
     // so the modal either closes (no more pending) or jumps to the
     // next queued request.

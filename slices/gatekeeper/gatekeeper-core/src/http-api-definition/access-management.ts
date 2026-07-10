@@ -2,25 +2,45 @@ import { HttpApiEndpoint, HttpApiGroup } from '@effect/platform'
 import { Schema } from 'effect'
 import { RequireAuthMiddleware } from './require-auth.ts'
 /**
- * `Grant`: a record that the Owner approved a specific `(clientId, redirectUri)`
- * pair to receive tokens for a specific scope set, at a specific point in time.
- * A Grant is the materialized consent decision — it survives across requests
- * so the OAuth client doesn't have to be re-approved on every authorize call.
+ * A `Grant` is a materialized consent decision — the Owner approved a client for
+ * a scope set at a point in time — that survives across requests so the client
+ * isn't re-approved on every call. It's **polymorphic** (a discriminated union on
+ * `grantType`), mirroring the server's parent-`grants` + per-variant-child storage
+ * 1:1 (see docs/Persistence/Polymorphic Rows Explanation.md):
  *
- * The wire shape mirrors the server's `grants` storage row 1:1.
+ * - `authorization_code` — an OAuth code-flow grant, carrying the exact
+ *   `redirectUri` it covers ("Approved Apps");
+ * - `device_code` — an RFC 8628 device pairing, carrying the paired `deviceName`
+ *   ("Authorized Devices").
  *
- * `lastUsedAt` is null until the first time a token minted from this
- * Grant gets used.
+ * A consumer narrows on `grantType` to read `redirectUri` (code) or `deviceName`
+ * (device). `lastUsedAt` is null until the first time a token minted from this
+ * grant is used.
  */
-const GrantSchema = Schema.Struct({
+const sharedGrantFields = {
   id: Schema.String,
   clientId: Schema.String,
   scopes: Schema.Array(Schema.String),
-  redirectUri: Schema.String,
   grantedAt: Schema.DateTimeUtc,
   lastUsedAt: Schema.NullOr(Schema.DateTimeUtc),
   patient: Schema.NullOr(Schema.String),
+} as const
+
+/** A code-flow grant — carries the exact `redirectUri` the consent covers. */
+const AuthorizationCodeGrantSchema = Schema.Struct({
+  ...sharedGrantFields,
+  grantType: Schema.Literal('authorization_code'),
+  redirectUri: Schema.String,
 })
+
+/** A device-code grant — carries the paired device's `deviceName`. */
+const DeviceGrantSchema = Schema.Struct({
+  ...sharedGrantFields,
+  grantType: Schema.Literal('device_code'),
+  deviceName: Schema.String,
+})
+
+const GrantSchema = Schema.Union(AuthorizationCodeGrantSchema, DeviceGrantSchema)
 
 const GrantsSchema = Schema.Array(GrantSchema)
 

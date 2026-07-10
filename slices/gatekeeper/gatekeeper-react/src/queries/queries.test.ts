@@ -21,12 +21,14 @@ import {
  * that returns canned access-management bodies.
  */
 
-// Wire shape mirrors `AccessManagement.GrantSchema` (DateTimeUtc encodes as ISO).
+// Wire shape mirrors `AccessManagement.GrantSchema` — the `authorization_code`
+// variant of the grantType-tagged union (DateTimeUtc encodes as ISO).
 const GRANT_BODY = [
   {
     id: 'grant-1',
     clientId: 'client-a',
     scopes: ['system/*.cruds', 'wildflower/*.cruds'],
+    grantType: 'authorization_code',
     redirectUri: 'https://example.com/cb',
     grantedAt: '2024-01-01T00:00:00.000Z',
     lastUsedAt: null,

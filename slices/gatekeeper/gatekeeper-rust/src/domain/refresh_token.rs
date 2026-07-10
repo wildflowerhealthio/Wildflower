@@ -28,6 +28,13 @@ pub struct RefreshTokenFamily {
     /// this hash (RFC 6749 §4.1.2 / OAuth 2.1 §4.1.2.1). The plaintext code is
     /// never stored.
     pub authorization_code_hash: Option<String>,
+    /// The [`Grant`](crate::domain::grant::Grant) that authorized this family,
+    /// for **both** flows — the plumbing a future "revoke exactly this device's
+    /// session" ticket keys on. Written at family creation; read by nothing in
+    /// v1. `None` when no matching grant was found at exchange time (e.g. a grant
+    /// revoked between approval and the token poll). No FK: families outlive
+    /// grants by design (expired in place, never deleted).
+    pub grant_id: Option<String>,
 }
 
 /// One rotation of a refresh token. Presenting the plaintext at `/token`

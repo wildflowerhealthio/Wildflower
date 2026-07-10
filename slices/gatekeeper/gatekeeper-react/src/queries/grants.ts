@@ -16,6 +16,10 @@ import { GRANTS_QUERY_KEY, grantQueryKey } from './keys.ts'
 import { useRunAuthed } from './use-run-authed.ts'
 
 type Grant = Schema.Schema.Type<typeof AccessManagement.GrantSchema>
+/** The authorization-code ("Approved App") variant of the grant union. */
+type AppGrant = Extract<Grant, { readonly grantType: 'authorization_code' }>
+/** The device-code ("Authorized Device") variant of the grant union. */
+type DeviceGrant = Extract<Grant, { readonly grantType: 'device_code' }>
 
 /** Shared by the route `loader` (`ensureQueryData`) and {@link useGrantsQuery}. */
 const grantsQueryOptions = (
@@ -78,4 +82,4 @@ export {
   useGrantsQuery,
   useRevokeGrantMutation,
 }
-export type { Grant }
+export type { AppGrant, DeviceGrant, Grant }

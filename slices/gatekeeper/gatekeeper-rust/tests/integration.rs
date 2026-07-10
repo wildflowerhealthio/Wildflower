@@ -1204,6 +1204,7 @@ async fn consent_approval_persists_grant() {
             "id": id,
             "clientId": "test-app",
             "scopes": ["read"],
+            "grantType": "authorization_code",
             "redirectUri": "https://app.example/cb",
             "grantedAt": granted_at,
             "lastUsedAt": null,
@@ -1309,6 +1310,10 @@ async fn consent_approvals_union_scopes_into_grant() {
     assert_eq!(res.status(), StatusCode::OK);
     let body = body_json(res.into_body()).await;
     assert_eq!(body[0]["scopes"], serde_json::json!(["read", "write"]));
+    // The code-flow grant serializes as the `authorization_code` variant of the
+    // grantType-tagged union, carrying its redirectUri.
+    assert_eq!(body[0]["grantType"], "authorization_code");
+    assert_eq!(body[0]["redirectUri"], "https://app.example/cb");
     assert_eq!(body.as_array().map(Vec::len), Some(1), "body = {body}");
 }
 
@@ -1735,6 +1740,89 @@ async fn device_consent_approver_can_adjust_device_name() {
     assert_eq!(request.device_name.as_deref(), Some("Reception iPad"));
 }
 
+/// The headline behavior of this ticket: approving a device-code consent mints a
+/// **durable device grant** (the record "Authorized Devices" in Settings lists),
+/// and the family the device's `offline_access` token starts links back to that
+/// grant. This is the device-flow half of the "family carries grant_id for both
+/// flows" contract; `offline_access_issues_rotating_refresh_token` is the
+/// code-flow half.
+#[tokio::test]
+async fn device_approval_mints_durable_grant_and_links_refresh_family() {
+    let (g, host_owner_token, db) = spin_up();
+    seed_client_with_redirect(
+        &db,
+        "device-client",
+        "https://app.example/cb",
+        &["read", "offline_access"],
+    );
+    plant_device_request(
+        &store_handle(&db),
+        "device-client",
+        "dev-durable",
+        &["read", "offline_access"],
+        RequestStatus::Pending,
+        Utc::now() + Duration::minutes(5),
+    );
+
+    // Approve, naming the device.
+    let approve = loopback_request(
+        Request::post("/access/devices/WILD-FLWR/approve")
+            .header("host", "127.0.0.1")
+            .header("authorization", format!("Bearer {host_owner_token}"))
+            .header("content-type", "application/json"),
+        Body::from(r#"{"approvedScopes":["read","offline_access"],"deviceName":"Reception iPad"}"#),
+    );
+    let res = g.router.clone().oneshot(approve).await.expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+
+    // A durable device grant now shows in the access index as the `device_code`
+    // union variant, titled by its deviceName.
+    let res = g
+        .router
+        .clone()
+        .oneshot(loopback_request(
+            Request::get("/access/grants")
+                .header("host", "127.0.0.1")
+                .header("authorization", format!("Bearer {host_owner_token}")),
+            Body::empty(),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+    let grants = body_json(res.into_body()).await;
+    let device_grant = grants
+        .as_array()
+        .expect("grants array")
+        .iter()
+        .find(|grant| grant["grantType"] == "device_code")
+        .expect("a device grant was minted");
+    assert_eq!(device_grant["deviceName"], "Reception iPad");
+    assert_eq!(device_grant["clientId"], "device-client");
+    let scopes = device_grant["scopes"].as_array().expect("scopes array");
+    assert!(scopes.iter().any(|scope| scope == "read"));
+    assert!(scopes.iter().any(|scope| scope == "offline_access"));
+
+    // Redeeming the device_code issues the offline_access refresh token, whose
+    // family links back to the device grant just minted.
+    let body = "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Adevice_code&\
+                client_id=device-client&device_code=dev-durable";
+    let res = post_form(&g.router, "/oauth/token", body).await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let refresh = body_json(res.into_body()).await["refresh_token"]
+        .as_str()
+        .expect("offline_access refresh token")
+        .to_string();
+
+    let (_, family) = store_handle(&db)
+        .refresh_token_with_family_by_hash(&token_storage_hash(&refresh))
+        .expect("family query")
+        .expect("family present");
+    assert_eq!(
+        family.grant_id.as_deref(),
+        Some(device_grant["id"].as_str().expect("grant id")),
+    );
+}
+
 /// A client restricted to a grant-type subset is refused a grant outside it
 /// (RFC 6749 §5.2 `unauthorized_client`). Here a code-only client is rejected
 /// at the refresh-token grant before any token lookup.
@@ -1858,6 +1946,25 @@ async fn offline_access_issues_rotating_refresh_token() {
         .expect("refresh_token present with offline_access")
         .to_string();
 
+    // The minted family records the authorization-code grant that authorized it
+    // — write-only plumbing for a future per-device revoke. This is the
+    // code-flow half of the "family carries grant_id for both flows" contract.
+    {
+        let store = store_handle(&db);
+        let grant = store
+            .grant_by_client_and_redirect(
+                "test-app",
+                &Url::parse("https://app.example/cb").unwrap(),
+            )
+            .expect("grant query")
+            .expect("code grant minted at approval");
+        let (_, family) = store
+            .refresh_token_with_family_by_hash(&token_storage_hash(&first_refresh))
+            .expect("family query")
+            .expect("family present");
+        assert_eq!(family.grant_id.as_deref(), Some(grant.id.as_str()));
+    }
+
     // Redeem the refresh token: fresh access token + the next generation.
     let body = format!("grant_type=refresh_token&client_id=test-app&refresh_token={first_refresh}");
     let res = g
@@ -1947,6 +2054,7 @@ fn plant_refresh_token(
                 issued_at: now,
                 expires_at: family_expires_at,
                 authorization_code_hash: None,
+                grant_id: None,
             },
             &RefreshToken {
                 token_hash: token_storage_hash(plaintext),
