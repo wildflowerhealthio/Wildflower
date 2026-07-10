@@ -134,7 +134,7 @@
 
 .app-tile__subtitle {
   font-family: var(--font-sans);
-  font-size: var(--font-size-2);
+  font-size: var(--font-size-3);
   color: var(--color-neutral-5);
   overflow: hidden;
   text-overflow: ellipsis;

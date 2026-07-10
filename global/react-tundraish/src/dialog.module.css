@@ -22,7 +22,7 @@
   width: calc(100vw - 2 * var(--space-6));
   max-width: none;
 
-  max-height: calc(100vh - var(--space-9));
+  max-height: calc(100vh - max(var(--space-9), env(safe-area-inset-top) + var(--space-6)));
   overflow-y: auto;
 
   /* Soft, low-spread elevation (design "dialog" shadow). */
