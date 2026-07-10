@@ -96,10 +96,24 @@ async fn handle_create_revocation(
     Json(request): Json<RevocationRequest>,
 ) -> Result<StatusCode, HandlerError> {
     match request.into_revocation()? {
-        Revocation::Token { jti, expires_at } => state
-            .revocation_store
-            .revoke_jti(&jti, expires_at, "admin")
-            .map_err(|e| HandlerError::internal("revoke_jti failed", e))?,
+        Revocation::Token { jti, expires_at } => {
+            // Reject an `expiresAt` already in the past: the token is expired
+            // (so verification rejects it anyway) and denylisting it just leaves
+            // a dead row. A clear 400 surfaces the stale/mistyped value rather
+            // than silently no-op'ing. (A too-early-but-future `expiresAt` can't
+            // prematurely un-revoke a live token — the store's `purge_expired`
+            // retention floor guards that.)
+            if expires_at <= Utc::now() {
+                return Err(HandlerError::bad_request(
+                    "ExpiresAtInPast",
+                    "`expiresAt` is in the past; the token has already expired",
+                ));
+            }
+            state
+                .revocation_store
+                .revoke_jti(&jti, expires_at, "admin")
+                .map_err(|e| HandlerError::internal("revoke_jti failed", e))?;
+        }
         Revocation::Subject { subject } => state
             .revocation_store
             .revoke_subject_as_of_now(&subject)

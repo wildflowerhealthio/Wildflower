@@ -154,10 +154,15 @@ impl RevocationStore {
         )
     }
 
-    /// Add `jti` to the denylist, recording the token's own `expires_at` (so the
-    /// sweep can later drop it) and an audit `reason`. Idempotent: re-revoking a
-    /// `jti` keeps the original row (`ON CONFLICT DO NOTHING`) — the token is
-    /// already revoked; the first record is the operative one.
+    /// Add `jti` to the denylist, recording the token's own `expires_at` (a sweep
+    /// hint) and an audit `reason`. Idempotent. On a re-revoke the **audit fields
+    /// stay first-write** (`revoked_at`/`reason` are the operative first record),
+    /// but `expires_at` is bumped **monotonically** (`MAX`) — never walked back.
+    /// Monotonicity is the safe direction: a later, more-correct `expires_at` can
+    /// extend how long the row is retained, but a stale or too-early re-revoke can
+    /// never shorten it and let the sweep drop the row while the token is still
+    /// live. (A single too-early *first* `expires_at` is separately neutralised by
+    /// the `revoked_at`-based retention floor in [`Self::purge_expired`].)
     ///
     /// # Errors
     ///
@@ -169,7 +174,8 @@ impl RevocationStore {
         conn.lock().execute(
             "INSERT INTO revoked_jtis (jti, expires_at, revoked_at, reason)
              VALUES (?1, ?2, ?3, ?4)
-             ON CONFLICT(jti) DO NOTHING",
+             ON CONFLICT(jti) DO UPDATE SET
+                 expires_at = MAX(revoked_jtis.expires_at, excluded.expires_at)",
             params![jti, expires_at.timestamp(), Utc::now().timestamp(), reason],
         )?;
         Ok(())
@@ -215,22 +221,31 @@ impl RevocationStore {
         self.bump_subject_epoch(subject, Utc::now() + Duration::seconds(1))
     }
 
-    /// Delete denylist rows whose token has already expired (`expires_at < now`)
-    /// — a token past its `exp` is rejected by expiry validation regardless, so
-    /// its denylist row is redundant. Returns the number of rows purged. The
-    /// per-subject epochs are *not* purged: they're one small row per subject and
-    /// must outlive any token they revoke.
+    /// Delete denylist rows whose token is **guaranteed dead** — both its recorded
+    /// `expires_at` has passed **and** it was revoked at least `max_token_ttl`
+    /// ago. Returns the number of rows purged. Per-subject epochs are never purged
+    /// (one small row per subject; must outlive any token they revoke).
+    ///
+    /// The `revoked_at + max_token_ttl` floor is the load-bearing half.
+    /// `expires_at` is caller-supplied on the `POST /access/revocations` path, so
+    /// a too-early value could otherwise let the sweep drop a row while the token
+    /// is still live — silently un-revoking it. But a token revoked at
+    /// `revoked_at` was minted no later than then (`iat ≤ revoked_at`), so its
+    /// `exp = iat + ttl ≤ revoked_at + max_token_ttl`: once `now` is past that
+    /// floor the token is expired regardless of what `expires_at` claims. Pass the
+    /// **longest** access-token TTL the issuer mints as `max_token_ttl`.
     ///
     /// # Errors
     ///
     /// Returns a `rusqlite::Error` if the delete fails.
-    pub fn purge_expired(&self, now: DateTime<Utc>) -> DbResult<usize> {
+    pub fn purge_expired(&self, now: DateTime<Utc>, max_token_ttl: Duration) -> DbResult<usize> {
         let Backend::Sqlite(conn) = &self.backend else {
             return Ok(0);
         };
+        let retention_floor = (now - max_token_ttl).timestamp();
         conn.lock().execute(
-            "DELETE FROM revoked_jtis WHERE expires_at < ?1",
-            params![now.timestamp()],
+            "DELETE FROM revoked_jtis WHERE expires_at < ?1 AND revoked_at < ?2",
+            params![now.timestamp(), retention_floor],
         )
     }
 
@@ -403,23 +418,108 @@ mod tests {
                 "client"
             )
             .expect("query"));
-        assert_eq!(store.purge_expired(Utc::now()).expect("purge"), 0);
+        assert_eq!(
+            store
+                .purge_expired(Utc::now(), Duration::hours(2))
+                .expect("purge"),
+            0
+        );
+    }
+
+    /// Read the stored `expires_at` (epoch seconds) for a `jti` directly, to
+    /// assert the `ON CONFLICT` bump behaviour.
+    fn stored_expires_at(store: &RevocationStore, jti: &str) -> i64 {
+        let Backend::Sqlite(conn) = &store.backend else {
+            panic!("sqlite-backed store expected");
+        };
+        conn.lock()
+            .query_row(
+                "SELECT expires_at FROM revoked_jtis WHERE jti = ?1",
+                params![jti],
+                |row| row.get(0),
+            )
+            .expect("row exists")
     }
 
     #[test]
-    fn purge_drops_expired_rows_and_keeps_live_ones() {
+    fn revoke_jti_bumps_expires_at_monotonically_on_conflict() {
+        let store = store();
+        let base = Utc::now();
+        let late = base + Duration::hours(2);
+        let early = base + Duration::minutes(10);
+        // First revoke with the later expiry, then re-revoke with an earlier one:
+        // the earlier value must NOT walk `expires_at` back (that would let the
+        // sweep drop the row too soon).
+        store.revoke_jti("j", late, "admin").expect("first");
+        store
+            .revoke_jti("j", early, "admin")
+            .expect("second (earlier)");
+        assert_eq!(
+            stored_expires_at(&store, "j"),
+            late.timestamp(),
+            "an earlier re-revoke must not shorten retention"
+        );
+        // A still-later re-revoke DOES extend it (monotonic upward).
+        let later = base + Duration::hours(5);
+        store
+            .revoke_jti("j", later, "admin")
+            .expect("third (later)");
+        assert_eq!(
+            stored_expires_at(&store, "j"),
+            later.timestamp(),
+            "a later re-revoke extends retention"
+        );
+    }
+
+    #[test]
+    fn purge_keeps_a_recently_revoked_row_despite_a_too_early_expires_at() {
+        // The core hardening: a too-early `expires_at` (e.g. a bad value on
+        // `POST /access/revocations`) must not let the sweep drop the row while
+        // the token could still be live. The `revoked_at + max_token_ttl` floor
+        // holds it.
         let store = store();
         let now = Utc::now();
+        // Revoked ~now, but with a bogus expiry a minute in the past.
         store
-            .revoke_jti("expired", now - Duration::minutes(1), "logout")
-            .expect("revoke expired");
+            .revoke_jti("leaked", now - Duration::minutes(1), "admin")
+            .expect("revoke");
+        // Sweep an hour later with a 2h max TTL: `expires_at` is long past, but
+        // the row was revoked well under `max_token_ttl` ago, so it stays.
+        let purged = store
+            .purge_expired(now + Duration::hours(1), Duration::hours(2))
+            .expect("purge");
+        assert_eq!(purged, 0, "the retention floor must keep the row");
+        assert!(
+            store.is_revoked_by_jti("leaked").expect("query"),
+            "a too-early expiresAt must not prematurely un-revoke a still-live token"
+        );
+    }
+
+    #[test]
+    fn purge_drops_rows_only_once_past_the_retention_floor() {
+        let store = store();
+        let now = Utc::now();
+        let max_ttl = Duration::hours(2);
+        // Both revoked ~now. `dead` claims a past expiry; `live` a far-future one.
         store
-            .revoke_jti("live", now + Duration::hours(1), "logout")
+            .revoke_jti("dead", now - Duration::minutes(1), "logout")
+            .expect("revoke dead");
+        store
+            .revoke_jti("live", now + Duration::hours(6), "logout")
             .expect("revoke live");
-        let purged = store.purge_expired(now).expect("purge");
-        assert_eq!(purged, 1, "exactly the expired row is dropped");
-        assert!(!store.is_revoked_by_jti("expired").expect("query"));
-        assert!(store.is_revoked_by_jti("live").expect("query"));
+        // Sweep 3h later — past the 2h floor for both, so the floor no longer
+        // protects either; only `expires_at` decides.
+        let later = now + Duration::hours(3);
+        let purged = store.purge_expired(later, max_ttl).expect("purge");
+        assert_eq!(
+            purged, 1,
+            "only the row whose token is guaranteed dead drops"
+        );
+        assert!(!store.is_revoked_by_jti("dead").expect("query"));
+        assert!(
+            store.is_revoked_by_jti("live").expect("query"),
+            "a row whose expires_at is still in the future survives"
+        );
     }
 
     #[test]

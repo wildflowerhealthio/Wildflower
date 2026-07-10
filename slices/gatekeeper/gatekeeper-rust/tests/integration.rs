@@ -3110,6 +3110,11 @@ async fn revocations_endpoint_rejects_invalid_bodies() {
         serde_json::json!({ "jti": "abc", "expiresAt": Utc::now().to_rfc3339(), "subject": "c" }),
         // neither mode
         serde_json::json!({}),
+        // jti with an expiresAt already in the past (stale/mistyped)
+        serde_json::json!({
+            "jti": "abc",
+            "expiresAt": (Utc::now() - Duration::hours(1)).to_rfc3339(),
+        }),
     ];
     for body in bad_bodies {
         let res = g

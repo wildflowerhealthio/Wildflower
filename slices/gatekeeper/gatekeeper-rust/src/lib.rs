@@ -298,7 +298,12 @@ fn spawn_revocation_purge(revocation_store: RevocationStore) {
         loop {
             // First tick is immediate → startup purge; then daily.
             ticks.tick().await;
-            match revocation_store.purge_expired(Utc::now()) {
+            // Retention floor = the longest access token we mint (the 2h host
+            // owner token dwarfs the 15-min OAuth `ACCESS_TOKEN_TTL`), so a
+            // denylist row is never dropped while its token could still be live —
+            // even if the `/access/revocations` caller supplied a too-early
+            // `expiresAt`. See `RevocationStore::purge_expired`.
+            match revocation_store.purge_expired(Utc::now(), HOST_OWNER_TOKEN_TTL) {
                 Ok(purged) if purged > 0 => {
                     tracing::info!(purged, "swept expired revoked jtis");
                 }
