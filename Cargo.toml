@@ -39,7 +39,10 @@ include_dir = "0.7"
 # build, driven by both connections. Tilde-pinned to the 2.2.x line: diesel
 # 2.3 drags wasm-target deps (`sqlite-wasm-rs`, carrying its own SQLite build)
 # into the lockfile, which cargo-deny scans, for no native benefit.
-diesel = { version = "~2.2.7", features = ["sqlite"] }
+# `returning_clauses_for_sqlite_3_35` unlocks `RETURNING` on SQLite statements
+# (atomic write-and-read-back, no explicit transaction); the bundled SQLite
+# from `libsqlite3-sys 0.31` is 3.47.x, well past the 3.35 floor.
+diesel = { version = "~2.2.7", features = ["sqlite", "returning_clauses_for_sqlite_3_35"] }
 # Compile-time-embedded diesel migrations for that connection (records applied
 # versions in diesel's own `__diesel_schema_migrations`, disjoint from
 # persistence-rust's namespaced `schema_migrations`).

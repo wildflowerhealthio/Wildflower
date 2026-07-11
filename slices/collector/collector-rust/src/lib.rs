@@ -18,8 +18,8 @@
 //!
 //! Layered like `tunnel-rust` and `apps-rust`:
 //!
-//!  - [`domain`] — pure types: [`domain::Remote`] (the row **and** wire shape)
-//!    and the [`domain::config_tag`] discriminant reader.
+//!  - [`domain`] — core types: [`domain::Remote`] (the diesel-mapped row
+//!    **and** wire shape) and the [`domain::config_tag`] discriminant reader.
 //!  - [`db`] — the SQLite store ([`db::RemotesStore`]) built on Diesel over the
 //!    crate's own connection onto the shared database file, migrated with
 //!    embedded diesel migrations.

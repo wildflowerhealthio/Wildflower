@@ -1,7 +1,9 @@
 //! Diesel table definition for `collector_remotes`, mirroring the STRICT table
-//! created by migration `0001_initial_schema`. `config` is JSON TEXT (opaque to
-//! Rust — see [`crate::domain::Remote::config`]); the row struct in
-//! [`super::remotes_store`] converts it to/from `serde_json::Value`.
+//! created by migration `0001_initial_schema`. `config` is declared `Text`
+//! because that is what the STRICT column stores: JSON TEXT, opaque to Rust
+//! (see [`crate::domain::Remote::config`]). The
+//! [`super::json_text::JsonText`] newtype converts it to/from
+//! `serde_json::Value` at the diesel bind/read boundary.
 
 diesel::table! {
     collector_remotes (id) {

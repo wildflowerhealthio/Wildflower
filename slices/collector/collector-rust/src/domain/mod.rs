@@ -1,17 +1,26 @@
-//! Pure types for the collector slice's host side: the [`Remote`] row/wire
+//! Core types for the collector slice's host side: the [`Remote`] row/wire
 //! shape and the [`config_tag`] discriminant reader.
 
+use diesel::prelude::{Insertable, Queryable, Selectable};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+use crate::db::json_text::JsonText;
+use crate::db::schema::collector_remotes;
+
 /// A stored remote — the wire shape the `/collector/remotes` endpoints serve
 /// (the TS `RemoteSchema` in
-/// `collector-core/src/http-api-definition/remotes.ts`) AND, field-for-field,
-/// the `collector_remotes` row. The db layer maps it to/from an internal row
-/// struct (converting `config` between this `Value` and the TEXT column);
-/// serde's camelCase rename produces the wire's `addedAt`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+/// `collector-core/src/http-api-definition/remotes.ts`) AND the
+/// `collector_remotes` row: the diesel derives map this type straight to/from
+/// the table, with [`JsonText`] converting `config` between `Value` and the
+/// JSON TEXT column at the bind/read boundary. serde's camelCase rename
+/// produces the wire's `addedAt`.
+#[derive(
+    Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, Queryable, Selectable, Insertable,
+)]
 #[serde(rename_all = "camelCase")]
+#[diesel(table_name = collector_remotes)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 pub struct Remote {
     pub id: String,
     pub name: String,
@@ -24,11 +33,12 @@ pub struct Remote {
     /// The full tagged `CollectorConfig` JSON, **opaque to Rust**: the
     /// per-collector config union is TS-owned (`collector-core`'s registry),
     /// so this crate stores and serves it verbatim rather than modeling it —
-    /// adding a TS collector never requires a Rust change. The db layer keeps
-    /// it as JSON TEXT and round-trips it through `serde_json`. `value_type =
-    /// Value` keeps the OpenAPI schema an unconstrained `{}` (a wildcard to
-    /// the TS spec-drift engine), matching that opacity.
+    /// adding a TS collector never requires a Rust change. The column keeps
+    /// it as JSON TEXT; [`JsonText`] round-trips it through `serde_json`.
+    /// `value_type = Value` keeps the OpenAPI schema an unconstrained `{}` (a
+    /// wildcard to the TS spec-drift engine), matching that opacity.
     #[schema(value_type = Value)]
+    #[diesel(serialize_as = JsonText, deserialize_as = JsonText)]
     pub config: serde_json::Value,
     /// ISO-8601 UTC with milliseconds (e.g. `2026-06-17T14:29:22.363Z`) —
     /// the encoding the TS `Schema.DateTimeUtc` round-trips.

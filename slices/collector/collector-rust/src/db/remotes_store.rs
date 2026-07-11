@@ -1,6 +1,9 @@
 //! The `RemotesStore` handle — owns a Diesel `SqliteConnection` onto the shared
 //! database file, applies the embedded collector migrations onto it, and
 //! exposes the `collector_remotes` CRUD the `/collector/remotes` handlers serve.
+//! Queries load and write the domain [`Remote`] directly — it carries the
+//! diesel derives, with [`JsonText`] mapping `config` at the bind/read
+//! boundary.
 
 use std::path::Path;
 use std::sync::Arc;
@@ -12,6 +15,7 @@ use diesel::sqlite::SqliteConnection;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 use parking_lot::Mutex;
 
+use crate::db::json_text::JsonText;
 use crate::db::schema::collector_remotes;
 use crate::domain::Remote;
 
@@ -25,56 +29,6 @@ use crate::domain::Remote;
 /// api_stubs stub used to hardcode; because each migration runs only once per
 /// database, a user-deleted seed stays deleted across upgrades.
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
-
-/// Internal row shape — [`Remote`] with `config` held as JSON TEXT (the column
-/// type). The store converts between this and [`Remote`], so the domain type
-/// stays a plain `serde_json::Value` while the column stays TEXT.
-#[derive(Queryable, Selectable, Insertable)]
-#[diesel(table_name = collector_remotes)]
-#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
-struct RemoteRow {
-    id: String,
-    name: String,
-    tag: String,
-    config: String,
-    added_at: String,
-}
-
-impl From<&Remote> for RemoteRow {
-    fn from(remote: &Remote) -> Self {
-        Self {
-            id: remote.id.clone(),
-            name: remote.name.clone(),
-            tag: remote.tag.clone(),
-            // `serde_json::Value`'s `Display` is compact canonical JSON — the
-            // TEXT stored for the config column.
-            config: remote.config.to_string(),
-            added_at: remote.added_at.clone(),
-        }
-    }
-}
-
-impl TryFrom<RemoteRow> for Remote {
-    type Error = anyhow::Error;
-
-    fn try_from(row: RemoteRow) -> anyhow::Result<Self> {
-        // A corrupt config TEXT surfaces as an error, never a panic — the
-        // handler maps it to an opaque 500.
-        let config = serde_json::from_str(&row.config).with_context(|| {
-            format!(
-                "collector_remotes.config for id {} is not valid JSON",
-                row.id
-            )
-        })?;
-        Ok(Remote {
-            id: row.id,
-            name: row.name,
-            tag: row.tag,
-            config,
-            added_at: row.added_at,
-        })
-    }
-}
 
 #[derive(Clone)]
 pub struct RemotesStore {
@@ -151,11 +105,10 @@ impl RemotesStore {
     /// Returns any error from the read or a corrupt stored config.
     pub fn list_remotes(&self) -> anyhow::Result<Vec<Remote>> {
         let mut guard = self.conn.lock();
-        let rows: Vec<RemoteRow> = collector_remotes::table
+        Ok(collector_remotes::table
             .order((collector_remotes::added_at, collector_remotes::id))
-            .select(RemoteRow::as_select())
-            .load(&mut *guard)?;
-        rows.into_iter().map(Remote::try_from).collect()
+            .select(Remote::as_select())
+            .load(&mut *guard)?)
     }
 
     /// A single remote by id, `None` when absent.
@@ -165,12 +118,11 @@ impl RemotesStore {
     /// Returns any error from the read or a corrupt stored config.
     pub fn find_remote(&self, id: &str) -> anyhow::Result<Option<Remote>> {
         let mut guard = self.conn.lock();
-        let row: Option<RemoteRow> = collector_remotes::table
-            .filter(collector_remotes::id.eq(id))
-            .select(RemoteRow::as_select())
+        Ok(collector_remotes::table
+            .find(id)
+            .select(Remote::as_select())
             .first(&mut *guard)
-            .optional()?;
-        row.map(Remote::try_from).transpose()
+            .optional()?)
     }
 
     /// Insert a fresh remote. Returns `false` when the id is already taken
@@ -181,10 +133,12 @@ impl RemotesStore {
     ///
     /// Returns any error from the insert.
     pub fn insert_remote(&self, remote: &Remote) -> anyhow::Result<bool> {
-        let row = RemoteRow::from(remote);
         let mut guard = self.conn.lock();
         let affected = diesel::insert_into(collector_remotes::table)
-            .values(&row)
+            // `Remote`'s `config` uses `#[diesel(serialize_as)]`, which
+            // consumes the value — diesel generates no borrowed `Insertable`
+            // impl for the struct, so the insert takes a clone.
+            .values(remote.clone())
             .on_conflict(collector_remotes::id)
             .do_nothing()
             .execute(&mut *guard)?;
@@ -193,14 +147,14 @@ impl RemotesStore {
 
     /// Update an existing remote's `name` / `tag` / `config` (id and
     /// `added_at` are immutable) and return the resulting row, or `None` when
-    /// no remote has this id. The post-update read happens inside the same
-    /// transaction as the write, so the returned row can't reflect a
-    /// concurrent write — and a concurrent delete can't produce the
-    /// updated-but-gone race a separate find-then-replace would.
+    /// no remote has this id. A single `UPDATE … RETURNING` statement, so the
+    /// write and the returned row are atomic — the row can't reflect a
+    /// concurrent write, and a concurrent delete can't produce an
+    /// updated-but-gone race.
     ///
     /// # Errors
     ///
-    /// Returns any error from the transaction or a corrupt stored config.
+    /// Returns any error from the update or a corrupt stored config.
     pub fn update_remote(
         &self,
         id: &str,
@@ -208,30 +162,16 @@ impl RemotesStore {
         tag: &str,
         config: &serde_json::Value,
     ) -> anyhow::Result<Option<Remote>> {
-        let config_text = config.to_string();
         let mut guard = self.conn.lock();
-        let row: Option<RemoteRow> = guard.transaction::<_, diesel::result::Error, _>(|conn| {
-            let affected =
-                diesel::update(collector_remotes::table.filter(collector_remotes::id.eq(id)))
-                    .set((
-                        collector_remotes::name.eq(name),
-                        collector_remotes::tag.eq(tag),
-                        collector_remotes::config.eq(&config_text),
-                    ))
-                    .execute(conn)?;
-            if affected != 1 {
-                // No such id — nothing was written; return `None` and let
-                // the transaction commit (a no-op). The handler turns it
-                // into `404 RemoteNotFound`.
-                return Ok(None);
-            }
-            let updated = collector_remotes::table
-                .filter(collector_remotes::id.eq(id))
-                .select(RemoteRow::as_select())
-                .first(conn)?;
-            Ok(Some(updated))
-        })?;
-        row.map(Remote::try_from).transpose()
+        Ok(diesel::update(collector_remotes::table.find(id))
+            .set((
+                collector_remotes::name.eq(name),
+                collector_remotes::tag.eq(tag),
+                collector_remotes::config.eq(JsonText::from(config.clone())),
+            ))
+            .returning(Remote::as_returning())
+            .get_result(&mut *guard)
+            .optional()?)
     }
 
     /// Remove a remote by id. Returns `true` iff a row was deleted; the
@@ -242,9 +182,7 @@ impl RemotesStore {
     /// Returns any error from the delete.
     pub fn delete_remote(&self, id: &str) -> anyhow::Result<bool> {
         let mut guard = self.conn.lock();
-        let affected =
-            diesel::delete(collector_remotes::table.filter(collector_remotes::id.eq(id)))
-                .execute(&mut *guard)?;
+        let affected = diesel::delete(collector_remotes::table.find(id)).execute(&mut *guard)?;
         Ok(affected == 1)
     }
 }
