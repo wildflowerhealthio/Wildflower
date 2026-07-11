@@ -22,7 +22,7 @@ use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::post;
 use axum::Router;
 
-use crate::http::cookies;
+use crate::cookies;
 use crate::http::middleware::require_auth::{
     try_access_token_from_request, verify_auth_token_claims,
 };

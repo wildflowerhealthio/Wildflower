@@ -11,10 +11,11 @@ use super::internal::{
 };
 use crate::crypto_util::random_token::generate_authorization_code;
 use crate::domain::authorization_code::AuthorizationCode;
-use crate::http::handlers::consent::{deny_consent, ApproveBody, ConsentResult};
-use crate::http::handlers::oauth::build_client_redirect_url;
 use crate::http::response_templates::HandlerError;
+use crate::http::routes::consent::deny_consent;
+use crate::http::routes::oauth::build_client_redirect_url;
 use crate::http::state::AppState;
+use crate::http::wire_representations::{ApproveBody, ConsentResult};
 use persistence_rust::{JsonColumn, UriColumn};
 use scopes_rust::grantable_scopes;
 

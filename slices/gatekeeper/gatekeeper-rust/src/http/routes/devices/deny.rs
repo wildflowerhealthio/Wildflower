@@ -3,9 +3,10 @@ use axum::routing::{post, MethodRouter};
 use axum::Json;
 
 use super::internal::load_pending_device_request;
-use crate::http::handlers::consent::{deny_consent, ConsentResult};
 use crate::http::response_templates::HandlerError;
+use crate::http::routes::consent::deny_consent;
 use crate::http::state::AppState;
+use crate::http::wire_representations::ConsentResult;
 
 /// `POST /devices/{userCode}/deny` — the Owner declines a device-code consent
 /// prompt.

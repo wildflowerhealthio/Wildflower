@@ -7,8 +7,8 @@ use axum::http::HeaderMap;
 use serde::de::DeserializeOwned;
 
 use super::client_auth::{resolve_client_credentials, ClientCredentials};
-use super::error_codes::OAuthErrorCode;
 use super::internal::TokenError;
+use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::http::state::AppState;
 
 /// The media type RFC 6749 §3.2 (and §4 device-flow extensions) require on a

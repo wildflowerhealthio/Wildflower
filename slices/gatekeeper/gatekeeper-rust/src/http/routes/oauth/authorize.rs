@@ -8,14 +8,14 @@ use url::Url;
 use utoipa::IntoParams;
 use uuid::Uuid;
 
-use super::error_codes::OAuthErrorCode;
 use super::internal::{build_client_error_redirect_url, build_client_redirect_url};
 use crate::crypto_util::random_token::generate_authorization_code;
 use crate::domain::authorization_code::AuthorizationCode;
 use crate::domain::authorization_request::{AuthorizationRequest, StartCodeAuthorizationArgs};
 use crate::domain::client::Client;
+use crate::domain::oauth_error_code::OAuthErrorCode;
+use crate::domain::page_paths;
 use crate::http::error_pages::{oauth_error_html, OAuthErrorKind};
-use crate::http::page_paths;
 use crate::http::response_templates::InternalError;
 use crate::http::state::AppState;
 use crate::http::ServedOrigin;

@@ -10,10 +10,10 @@ use super::client_auth::{
     ClientAuthenticationMethod, ClientCredentials, ResolveClientCredentialsError,
     BASIC_AUTH_CHALLENGE,
 };
-use super::error_codes::OAuthErrorCode;
 use crate::crypto_util::client_secret::verify_client_secret;
 use crate::db::GatekeeperStore;
 use crate::domain::client::{Client, ClientKind};
+use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::domain::token::{mint_access_token, NewJwtArgs};
 use crate::http::response_templates::InternalError;
 

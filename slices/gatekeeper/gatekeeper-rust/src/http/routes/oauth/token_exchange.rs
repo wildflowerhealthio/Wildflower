@@ -8,21 +8,21 @@ use url::Url;
 use uuid::Uuid;
 
 use super::client_auth::ClientCredentials;
-use super::error_codes::OAuthErrorCode;
 use super::internal::{
     issue_token_response, require_valid_client_for_token, IssueTokenInput, OAuthError, TokenError,
     TokenResponse, DEVICE_CODE_POLL_INTERVAL, REFRESH_TOKEN_FAMILY_TTL,
 };
 use super::openapi::TokenRequestBody;
 use super::token_request::TokenRequest;
+use crate::cookies;
 use crate::crypto_util::pkce::{compute_code_challenge, is_valid_code_verifier_length};
 use crate::crypto_util::random_token::{generate_refresh_token, token_storage_hash};
 use crate::db::RefreshTokenConsumeOutcome;
 use crate::domain::authorization_code::AuthorizationCode;
 use crate::domain::authorization_request::{GrantType, RequestStatus};
 use crate::domain::client::AllowedGrantType;
+use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
-use crate::http::cookies;
 use crate::http::state::AppState;
 use crate::http::ServedOrigin;
 use persistence_rust::JsonColumn;

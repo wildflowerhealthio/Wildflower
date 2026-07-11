@@ -6,9 +6,10 @@ use axum::Json;
 use chrono::Utc;
 
 use super::internal::load_pending_device_request;
-use crate::http::handlers::consent::{deny_consent, ApproveBody, ConsentResult};
 use crate::http::response_templates::HandlerError;
+use crate::http::routes::consent::deny_consent;
 use crate::http::state::AppState;
+use crate::http::wire_representations::{ApproveBody, ConsentResult};
 use scopes_rust::grantable_scopes;
 
 /// `POST /devices/{userCode}/approve` — the Owner approves a device-code

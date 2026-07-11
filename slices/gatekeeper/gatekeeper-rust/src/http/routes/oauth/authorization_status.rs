@@ -5,12 +5,12 @@ use chrono::Utc;
 use serde::Serialize;
 use utoipa::ToSchema;
 
-use super::error_codes::OAuthErrorCode;
 use super::internal::{
     build_client_error_redirect_url, build_client_redirect_url, OAuthError, OAuthErrorResponse,
 };
 use super::openapi::AuthorizationRequestNotFound;
 use crate::domain::authorization_request::RequestStatus;
+use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::http::response_templates::HandlerError;
 use crate::http::state::AppState;
 use persistence_rust::UriColumn;

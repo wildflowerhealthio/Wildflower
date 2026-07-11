@@ -49,7 +49,7 @@ pub enum AccessTokenSource {
 }
 
 /// Extract the access token from a request, preferring the `Authorization:
-/// Bearer` header and falling back to the [`wf_auth`](crate::http::cookies)
+/// Bearer` header and falling back to the [`wf_auth`](crate::cookies)
 /// cookie when no bearer header is present. Returns the token alongside its
 /// [`AccessTokenSource`].
 ///
@@ -65,9 +65,8 @@ pub fn try_access_token_from_request(headers: &HeaderMap) -> Option<(&str, Acces
     if let Some(bearer) = try_bearer_token_from_headers(headers) {
         return Some((bearer, AccessTokenSource::Bearer));
     }
-    let cookie =
-        crate::http::cookies::cookie_value(headers, crate::http::cookies::AUTH_COOKIE_NAME)
-            .filter(|token| !token.is_empty())?;
+    let cookie = crate::cookies::cookie_value(headers, crate::cookies::AUTH_COOKIE_NAME)
+        .filter(|token| !token.is_empty())?;
     Some((cookie, AccessTokenSource::Cookie))
 }
 

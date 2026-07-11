@@ -6,6 +6,11 @@ pub mod config;
 // `pub(crate)` while a `pub` module's doc links into it fails
 // `cargo doc -D warnings` (rustdoc's `private_intra_doc_links`). `seeding` has no
 // inbound doc links, so it is the one narrowed to `pub(crate)`.
+// The web Owner-session cookie builders — a package-level capability lifted out
+// of `http`: the desktop host seeds these cookies into the native-webview popup
+// (#256) and the forwarded self-hosted launch re-scopes them, neither of which
+// is an HTTP-handler concern. See `docs/Apps/Explanation.md`.
+pub mod cookies;
 pub mod crypto_util;
 pub mod db;
 pub mod domain;
@@ -24,10 +29,13 @@ use tokio::time::{interval, MissedTickBehavior};
 
 pub use config::GatekeeperConfig;
 pub use db::GatekeeperStore;
+// The owner-session cookie builders keep their top-level path
+// (`gatekeeper_rust::owner_session_cookies`) after the lift out of `http`, so
+// the desktop host's call sites don't move.
+pub use cookies::{owner_session_cookies, rescope_owner_session_set_cookies};
 pub use http::{
     ensure_bearer_header, is_pre_auth_public_path, layer_router_with_gatekeeper_auth_gating,
-    layer_router_with_loopback_peer_gating, openapi_spec, owner_session_cookies,
-    rescope_owner_session_set_cookies, verify_owner_bearer, AppState,
+    layer_router_with_loopback_peer_gating, openapi_spec, verify_owner_bearer, AppState,
 };
 
 /// `client_id` of the host application's first-party OAuth client. The host

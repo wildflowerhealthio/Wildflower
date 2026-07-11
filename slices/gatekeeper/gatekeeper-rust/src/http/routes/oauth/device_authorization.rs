@@ -8,7 +8,6 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use super::device_name_hint::device_name_from_user_agent;
-use super::error_codes::OAuthErrorCode;
 use super::internal::{
     require_valid_client_for_token, CacheSuppressed, OAuthError, TokenError,
     DEVICE_CODE_POLL_INTERVAL,
@@ -18,7 +17,8 @@ use super::token_request::TokenRequest;
 use crate::crypto_util::oauth_user_code::generate_oauth_user_code;
 use crate::crypto_util::random_token::generate_authorization_code;
 use crate::domain::authorization_request::{AuthorizationRequest, StartDeviceAuthorizationArgs};
-use crate::http::page_paths;
+use crate::domain::oauth_error_code::OAuthErrorCode;
+use crate::domain::page_paths;
 use crate::http::state::AppState;
 use crate::http::ServedOrigin;
 
