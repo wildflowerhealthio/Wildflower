@@ -1,4 +1,3 @@
-mod api_stubs;
 mod bridge;
 mod native_webview_handle;
 mod spa;
@@ -229,8 +228,9 @@ async fn run_server(
     // (gatekeeper, and the tunnel slice); each runs its own namespaced
     // migrations on it. (The FHIR/emr store is managed separately by
     // helios-persistence.)
-    let db = persistence_rust::Connection::open(&runtime.app_data_dir.join(WILDFLOWER_DB))
-        .context("failed to open shared database")?;
+    let db_path = runtime.app_data_dir.join(WILDFLOWER_DB);
+    let db =
+        persistence_rust::Connection::open(&db_path).context("failed to open shared database")?;
 
     // One shared token-revocation store on that same connection, built BEFORE
     // both setups and threaded into each: gatekeeper's auth gate runs the full
@@ -275,8 +275,26 @@ async fn run_server(
         emr_rust::UNAUTHENTICATED_FHIR_PATHS,
     );
 
-    let gated_stubs = layer_router_with_gatekeeper_auth_gating(
-        api_stubs::app_shell_stub_router(),
+    // The real `/collector/remotes` surface (replacing the former api_stubs
+    // stub — the demo FHIR remote it hardcoded is now seeded by migration).
+    // The collector runs over the app-wide diesel r2d2 pool onto the same shared
+    // database file `db` serves the other slices from — additional openers on
+    // the same file. This is the shared diesel pool future diesel-backed slices
+    // should reuse rather than each opening their own. User-created remotes
+    // persist there; a remote's config JSON may carry pharmacy credentials, so
+    // the whole surface is Owner-gated like the rest of the admin API.
+    //
+    // ACCEPTED TRADEOFF: the pool's connections are NOT synchronized with the
+    // `Arc<Mutex<rusqlite::Connection>>` every other slice writes through, so a
+    // collector write can now contend with a rusqlite write at the SQLite
+    // file-lock level (WAL is off → single writer) — "no cross-connection write
+    // contention" no longer holds. Both sides set `busy_timeout = 5000`, ample
+    // for a single-user desktop app with short writes; a pathological stalled
+    // write elsewhere can surface here as a ≤5 s stall → `SQLITE_BUSY` → 500.
+    let collector_pool =
+        persistence_rust::open_pool(&db_path).context("failed to open diesel db pool")?;
+    let gated_collector = layer_router_with_gatekeeper_auth_gating(
+        collector_rust::setup_collector(collector_pool).context("failed to set up collector")?,
         gatekeeper.state.clone(),
         &[],
     );
@@ -520,7 +538,7 @@ async fn run_server(
     let api_router = Router::new()
         .merge(gatekeeper.router)
         .merge(gated_fhir_r4)
-        .merge(gated_stubs)
+        .merge(gated_collector)
         .merge(gated_tunnel)
         // The app-layer `/health`: an unauthenticated liveness endpoint the
         // tunnel's reachability probe round-trips through the relay. Ungated so

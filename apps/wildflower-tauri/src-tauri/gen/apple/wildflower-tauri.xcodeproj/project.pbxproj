@@ -23,7 +23,6 @@
 
 /* Begin PBXFileReference section */
 		036F6113582DF66D46F01404 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
-		1A2F32CE35B47EEF00E3D054 /* api_stubs.rs */ = {isa = PBXFileReference; lastKnownFileType = text; path = api_stubs.rs; sourceTree = "<group>"; };
 		22933AC1B70CC5564AFE5884 /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
 		2E0F5797DFE2D269A10E593B /* assets */ = {isa = PBXFileReference; lastKnownFileType = folder; path = assets; sourceTree = SOURCE_ROOT; };
 		3177D1BE441185CF382DC51B /* bindings.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = bindings.h; sourceTree = "<group>"; };
@@ -139,7 +138,6 @@
 		A85E32B91264FDC11E4FBD64 /* src */ = {
 			isa = PBXGroup;
 			children = (
-				1A2F32CE35B47EEF00E3D054 /* api_stubs.rs */,
 				4BF3E98649443DDDF7EDDCE7 /* bridge.rs */,
 				57A3C147DE83C9898C705F16 /* lib.rs */,
 				AF9A88A79F74A288235FAF72 /* main.rs */,

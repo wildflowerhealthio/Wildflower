@@ -37,6 +37,11 @@ http-errors = ["dep:axum", "dep:tracing"]
 # crates don't pull `axum`; the slices that resolve a request's served origin
 # (gatekeeper-rust, apps-rust) enable it.
 served-origin = ["dep:axum"]
+# Opt-in: the diesel `JsonText` SQLite mapping (a `serde_json::Value` field
+# stored in a JSON TEXT column), shared by the diesel-backed slices. Gated so
+# only the `-rust` slices that persist with diesel pull `diesel`/`serde_json`;
+# the lean default build is unaffected.
+diesel-json-text = ["dep:diesel", "dep:serde_json"]
 # Opt-in: the `<id>.<public_host>` subdomain shape (`subdomain_host`,
 # `subdomain_url`, `try_split_subdomain`) shared by the apps slice's launch
 # redirect (producer) and the host's forwarded-request reverse proxy (consumer).
@@ -58,6 +63,8 @@ url = { version = "2" }
 utoipa = { workspace = true, optional = true }
 # Only for the `openapi-docs` feature: renders the merged spec as a Scalar page.
 utoipa-scalar = { workspace = true, optional = true }
+# Only for the `diesel-json-text` feature: the shared `JsonText` column mapping.
+diesel = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 # Only for the `tunnel-service` contract (watch channel + async trait method).
 tokio = { workspace = true, optional = true, features = ["sync"] }

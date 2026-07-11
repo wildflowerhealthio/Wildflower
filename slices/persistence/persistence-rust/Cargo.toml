@@ -6,7 +6,8 @@ publish.workspace = true
 
 # Common SQLite persistence utilities shared across Rust slices (gatekeeper,
 # tunnel, ...). Holds the generic, slice-agnostic pieces lifted out of
-# gatekeeper-rust's `db_utils`: a synchronized connection handle, a
+# gatekeeper-rust's `db_utils`: a synchronized rusqlite connection handle, the
+# app-wide diesel r2d2 pool onto the same file (`diesel_pool`), a
 # `PRAGMA user_version` migration runner, the `JsonColumn`/`UriColumn` column
 # newtypes, the `sql_row!` row-mapping macro, and the insert-SQL builder. Each
 # slice keeps its own named store + migration list on top of these.
@@ -17,6 +18,16 @@ serde.workspace = true
 serde_json.workspace = true
 parking_lot = "0.12"
 url = { version = "2", features = ["serde"] }
+# The diesel counterpart of the rusqlite `Connection`: an r2d2 pool for
+# diesel-backed slices. Inherits the workspace features (sqlite, r2d2,
+# returning_clauses); migrations stay slice-owned, so no `diesel_migrations`.
+# Cargo unifies diesel's `libsqlite3-sys` with rusqlite's already-bundled one.
+diesel = { workspace = true }
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+# Real on-disk databases for the diesel pool's cross-connection round-trip test
+# (an in-memory `:memory:` pool would give each connection its own empty db).
+tempfile = "3"

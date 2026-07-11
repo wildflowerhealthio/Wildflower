@@ -34,6 +34,26 @@ const RemoteNotFoundSchema = Schema.Struct({
   id: Schema.String,
 })
 
+/**
+ * 400 on create/update when the submitted `config` carries no string `_tag`,
+ * so the denormalized `tag` can't be produced. Unreachable through this typed
+ * client (which validates the config union before sending), but modeled so the
+ * failure is decodable for any non-UI caller.
+ */
+const InvalidConfigSchema = Schema.Struct({
+  error: Schema.Literal('InvalidConfig'),
+  message: Schema.String,
+})
+
+/**
+ * 409 on create when the client-minted id is already taken — a conflict rather
+ * than a silent overwrite.
+ */
+const RemoteAlreadyExistsSchema = Schema.Struct({
+  error: Schema.Literal('RemoteAlreadyExists'),
+  id: Schema.String,
+})
+
 const httpApiGroup = HttpApiGroup.make('collector-remotes', { topLevel: false })
   .add(HttpApiEndpoint.get('ListRemotes', '/remotes').addSuccess(RemotesSchema))
   .add(
@@ -46,12 +66,15 @@ const httpApiGroup = HttpApiGroup.make('collector-remotes', { topLevel: false })
     HttpApiEndpoint.post('CreateRemote', '/remotes')
       .setPayload(CreateRemotePayloadSchema)
       .addSuccess(RemoteSchema)
+      .addError(InvalidConfigSchema, { status: 400 })
+      .addError(RemoteAlreadyExistsSchema, { status: 409 })
   )
   .add(
     HttpApiEndpoint.put('UpdateRemote', '/remotes/:id')
       .setPath(Schema.Struct({ id: Schema.String }))
       .setPayload(UpdateRemotePayloadSchema)
       .addSuccess(RemoteSchema)
+      .addError(InvalidConfigSchema, { status: 400 })
       .addError(RemoteNotFoundSchema, { status: 404 })
   )
   .add(
@@ -69,4 +92,6 @@ export {
   CreateRemotePayloadSchema,
   UpdateRemotePayloadSchema,
   RemoteNotFoundSchema,
+  InvalidConfigSchema,
+  RemoteAlreadyExistsSchema,
 }

@@ -1,0 +1,49 @@
+[package]
+name = "collector-rust"
+version = "0.0.0"
+edition.workspace = true
+publish.workspace = true
+
+# The collector slice, host-side: SQLite-backed CRUD for user-created remotes
+# (the `/collector/remotes` surface the React shell's remotes screens speak).
+# The per-collector config union is TS-owned (`collector-core`'s registry);
+# this crate stores and serves each remote's tagged `CollectorConfig` JSON
+# verbatim, so adding a TS collector never requires a Rust change. Layered like
+# `tunnel-rust` / `apps-rust`: pure `domain`, `db`, and `http`.
+#
+# Persistence is Diesel over the app-wide r2d2 connection pool
+# (`persistence_rust::DieselPool`), built by the host on the same shared database
+# file its rusqlite `persistence-rust::Connection` serves the other slices from.
+# This crate depends on `persistence-rust` ONLY for the pool type — it does not
+# touch `rusqlite` directly. Cargo unifies diesel's `libsqlite3-sys` with
+# rusqlite's already-bundled one, so both connections drive the same bundled
+# SQLite build. Diesel's `r2d2` feature reuses the `r2d2 0.8` already in the tree
+# (via `helios-persistence`), so no new external crate for cargo-deny.
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+serde = { workspace = true }
+serde_json.workspace = true
+diesel = { workspace = true }
+diesel_migrations.workspace = true
+# The app-wide diesel connection pool (`DieselPool` / `open_pool`) shared across
+# diesel-backed slices; this crate names the pool type but not rusqlite.
+persistence-rust = { path = "../../persistence/persistence-rust" }
+utoipa.workspace = true
+utoipa-axum.workspace = true
+# The shared opaque-500 `InternalError` template (`http-errors`) and the diesel
+# `JsonText` JSON-TEXT column mapping (`diesel-json-text`).
+shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = ["http-errors", "diesel-json-text"] }
+# `Utc::now()` for a created remote's `added_at` stamp; the workspace pins the
+# version, `clock` adds the system-time source on top of its lean base.
+chrono = { workspace = true, features = ["clock"] }
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+# The OpenAPI snapshot helper enables the extra `openapi-snapshot` feature.
+shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = ["openapi-snapshot"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+http-body-util = { workspace = true }
+tower = { workspace = true, features = ["util"] }

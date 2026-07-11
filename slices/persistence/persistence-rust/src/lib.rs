@@ -8,6 +8,9 @@
 //!
 //!  - [`Connection`] / [`DbResult`] — a clonable, mutex-synchronized rusqlite
 //!    connection handle, opened once and shared.
+//!  - [`DieselPool`] / [`open_pool`] — the diesel counterpart: an app-wide r2d2
+//!    pool onto the same database file, shared across diesel-backed slices, with
+//!    per-connection pragmas mirroring [`Connection`].
 //!  - [`run_migrations`] — a per-namespace `schema_migrations` runner so slices
 //!    coexist in one database.
 //!  - [`JsonColumn`] / [`UriColumn`] — column newtypes with `FromSql`/`ToSql`.
@@ -18,6 +21,7 @@
 // below, so there's exactly one path to each (`persistence_rust::Connection`,
 // not also `persistence_rust::connection::Connection`).
 mod connection;
+mod diesel_pool;
 mod json_column;
 mod migrations;
 // `sql_row!` is `#[macro_export]`ed at the crate root (see `row_mapping`);
@@ -27,6 +31,7 @@ mod sql_builder;
 mod uri_column;
 
 pub use connection::{Connection, DbResult};
+pub use diesel_pool::{open_in_memory_pool, open_pool, DieselPool};
 pub use json_column::JsonColumn;
 pub use migrations::run_migrations;
 pub use sql_builder::build_insert_sql;
