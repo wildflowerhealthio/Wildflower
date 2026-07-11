@@ -8,7 +8,7 @@ use serde::Serialize;
 use utoipa::ToSchema;
 
 use crate::files::schedule_deletion;
-use crate::http::response_templates::HandlerError;
+use crate::http::errors::HandlerError;
 use crate::http::state::DatabasesState;
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -35,7 +35,7 @@ pub(crate) struct DeletedBody {
     ),
     responses(
         (status = 200, description = "Deletion was scheduled (takes effect on restart)", body = DeletedBody),
-        (status = 404, description = "No database has this id, or it doesn't exist", body = crate::http::response_templates::DatabaseNotFoundBody),
+        (status = 404, description = "No database has this id, or it doesn't exist", body = crate::http::errors::DatabaseNotFoundBody),
     ),
 )]
 pub(crate) async fn handle_delete_database(
