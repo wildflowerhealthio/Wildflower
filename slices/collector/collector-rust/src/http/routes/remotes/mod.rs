@@ -1,5 +1,4 @@
-//! The five `/collector/remotes` handlers, one module per verb (the
-//! apps-slice layout).
+//! The five `/collector/remotes` routes, one module per operation.
 
 pub(crate) mod create;
 pub(crate) mod delete;

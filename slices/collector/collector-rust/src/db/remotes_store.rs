@@ -13,7 +13,7 @@ use persistence_rust::DieselPool;
 
 use crate::db::json_text::JsonText;
 use crate::db::schema::collector_remotes;
-use crate::domain::Remote;
+use crate::domain::{Remote, RemoteError};
 
 /// The collector migrations, embedded from the crate's `migrations/` tree at
 /// compile time (diesel layout: `<version>_<name>/up.sql` + `down.sql`).
@@ -80,33 +80,37 @@ impl RemotesStore {
     ///
     /// # Errors
     ///
-    /// Returns any error from the read or a corrupt stored config.
-    pub fn list_remotes(&self) -> anyhow::Result<Vec<Remote>> {
+    /// [`RemoteError::Backend`] on a checkout / read failure or a corrupt
+    /// stored config.
+    pub fn list_remotes(&self) -> Result<Vec<Remote>, RemoteError> {
         let mut conn = self
             .pool
             .get()
-            .context("failed to check out a connection")?;
-        Ok(collector_remotes::table
+            .map_err(|e| RemoteError::backend("failed to check out a connection", e))?;
+        collector_remotes::table
             .order((collector_remotes::added_at, collector_remotes::id))
             .select(Remote::as_select())
-            .load(&mut conn)?)
+            .load(&mut conn)
+            .map_err(|e| RemoteError::backend("list_remotes failed", e))
     }
 
     /// A single remote by id, `None` when absent.
     ///
     /// # Errors
     ///
-    /// Returns any error from the read or a corrupt stored config.
-    pub fn find_remote(&self, id: &str) -> anyhow::Result<Option<Remote>> {
+    /// [`RemoteError::Backend`] on a checkout / read failure or a corrupt
+    /// stored config.
+    pub fn find_remote(&self, id: &str) -> Result<Option<Remote>, RemoteError> {
         let mut conn = self
             .pool
             .get()
-            .context("failed to check out a connection")?;
-        Ok(collector_remotes::table
+            .map_err(|e| RemoteError::backend("failed to check out a connection", e))?;
+        collector_remotes::table
             .find(id)
             .select(Remote::as_select())
             .first(&mut conn)
-            .optional()?)
+            .optional()
+            .map_err(|e| RemoteError::backend("find_remote failed", e))
     }
 
     /// Insert a fresh remote. Returns `false` when the id is already taken
@@ -115,12 +119,12 @@ impl RemotesStore {
     ///
     /// # Errors
     ///
-    /// Returns any error from the insert.
-    pub fn insert_remote(&self, remote: &Remote) -> anyhow::Result<bool> {
+    /// [`RemoteError::Backend`] on a checkout / insert failure.
+    pub fn insert_remote(&self, remote: &Remote) -> Result<bool, RemoteError> {
         let mut conn = self
             .pool
             .get()
-            .context("failed to check out a connection")?;
+            .map_err(|e| RemoteError::backend("failed to check out a connection", e))?;
         let affected = diesel::insert_into(collector_remotes::table)
             // `Remote`'s `config` uses `#[diesel(serialize_as)]`, which
             // consumes the value — diesel generates no borrowed `Insertable`
@@ -128,7 +132,8 @@ impl RemotesStore {
             .values(remote.clone())
             .on_conflict(collector_remotes::id)
             .do_nothing()
-            .execute(&mut conn)?;
+            .execute(&mut conn)
+            .map_err(|e| RemoteError::backend("insert_remote failed", e))?;
         Ok(affected == 1)
     }
 
@@ -141,19 +146,20 @@ impl RemotesStore {
     ///
     /// # Errors
     ///
-    /// Returns any error from the update or a corrupt stored config.
+    /// [`RemoteError::Backend`] on a checkout / update failure or a corrupt
+    /// stored config.
     pub fn update_remote(
         &self,
         id: &str,
         name: &str,
         tag: &str,
         config: &serde_json::Value,
-    ) -> anyhow::Result<Option<Remote>> {
+    ) -> Result<Option<Remote>, RemoteError> {
         let mut conn = self
             .pool
             .get()
-            .context("failed to check out a connection")?;
-        Ok(diesel::update(collector_remotes::table.find(id))
+            .map_err(|e| RemoteError::backend("failed to check out a connection", e))?;
+        diesel::update(collector_remotes::table.find(id))
             .set((
                 collector_remotes::name.eq(name),
                 collector_remotes::tag.eq(tag),
@@ -161,7 +167,8 @@ impl RemotesStore {
             ))
             .returning(Remote::as_returning())
             .get_result(&mut conn)
-            .optional()?)
+            .optional()
+            .map_err(|e| RemoteError::backend("update_remote failed", e))
     }
 
     /// Remove a remote by id. Returns `true` iff a row was deleted; the
@@ -169,13 +176,15 @@ impl RemotesStore {
     ///
     /// # Errors
     ///
-    /// Returns any error from the delete.
-    pub fn delete_remote(&self, id: &str) -> anyhow::Result<bool> {
+    /// [`RemoteError::Backend`] on a checkout / delete failure.
+    pub fn delete_remote(&self, id: &str) -> Result<bool, RemoteError> {
         let mut conn = self
             .pool
             .get()
-            .context("failed to check out a connection")?;
-        let affected = diesel::delete(collector_remotes::table.find(id)).execute(&mut conn)?;
+            .map_err(|e| RemoteError::backend("failed to check out a connection", e))?;
+        let affected = diesel::delete(collector_remotes::table.find(id))
+            .execute(&mut conn)
+            .map_err(|e| RemoteError::backend("delete_remote failed", e))?;
         Ok(affected == 1)
     }
 }

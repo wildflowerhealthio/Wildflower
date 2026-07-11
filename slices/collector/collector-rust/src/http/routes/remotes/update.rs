@@ -9,9 +9,8 @@ use axum::Json;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-use crate::domain::Remote;
-use crate::http::handlers::remotes::create::required_config_tag;
-use crate::http::response_templates::{HandlerError, RemoteNotFoundBody};
+use crate::domain::{required_config_tag, Remote, RemoteError};
+use crate::http::errors::RemoteNotFoundBody;
 use crate::http::state::CollectorState;
 
 /// PUT body — matches the TS `UpdateRemotePayloadSchema`. Both fields are
@@ -40,12 +39,11 @@ pub(crate) async fn handle_update_remote(
     State(state): State<Arc<CollectorState>>,
     Path(id): Path<String>,
     Json(body): Json<UpdateRemoteBody>,
-) -> Result<Json<Remote>, HandlerError> {
+) -> Result<Json<Remote>, RemoteError> {
     let tag = required_config_tag(&body.config)?;
     let updated = state
         .store
-        .update_remote(&id, &body.name, &tag, &body.config)
-        .map_err(|e| HandlerError::internal("update_remote failed", e))?
-        .ok_or(HandlerError::NotFound { id })?;
+        .update_remote(&id, &body.name, &tag, &body.config)?
+        .ok_or(RemoteError::NotFound { id })?;
     Ok(Json(updated))
 }

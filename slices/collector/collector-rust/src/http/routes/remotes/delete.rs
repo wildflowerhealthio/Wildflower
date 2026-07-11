@@ -8,7 +8,8 @@ use axum::Json;
 use serde::Serialize;
 use utoipa::ToSchema;
 
-use crate::http::response_templates::{HandlerError, RemoteNotFoundBody};
+use crate::domain::RemoteError;
+use crate::http::errors::RemoteNotFoundBody;
 use crate::http::state::CollectorState;
 
 /// Wire shape for the delete acknowledgement — matches the TS success schema
@@ -31,13 +32,10 @@ pub(crate) struct DeletedBody {
 pub(crate) async fn handle_delete_remote(
     State(state): State<Arc<CollectorState>>,
     Path(id): Path<String>,
-) -> Result<Json<DeletedBody>, HandlerError> {
-    let deleted = state
-        .store
-        .delete_remote(&id)
-        .map_err(|e| HandlerError::internal("delete_remote failed", e))?;
+) -> Result<Json<DeletedBody>, RemoteError> {
+    let deleted = state.store.delete_remote(&id)?;
     if !deleted {
-        return Err(HandlerError::NotFound { id });
+        return Err(RemoteError::NotFound { id });
     }
     Ok(Json(DeletedBody { deleted: true }))
 }

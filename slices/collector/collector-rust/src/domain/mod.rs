@@ -1,5 +1,6 @@
 //! Core types for the collector slice's host side: the [`Remote`] row/wire
-//! shape and the [`config_tag`] discriminant reader.
+//! shape, the [`config_tag`]/[`required_config_tag`] discriminant readers, and
+//! [`RemoteError`] — the semantic failure vocabulary the HTTP layer renders.
 
 use diesel::prelude::{Insertable, Queryable, Selectable};
 use serde::{Deserialize, Serialize};
@@ -55,6 +56,63 @@ pub fn config_tag(config: &serde_json::Value) -> Option<&str> {
     config.get("_tag").and_then(serde_json::Value::as_str)
 }
 
+/// The `config._tag` discriminant as an owned `String`, or
+/// [`RemoteError::InvalidConfig`] when it's absent — without it neither the
+/// `tag` column nor the wire `tag` field can be produced. Shared by the write
+/// operations (create + update). Unreachable through the typed TS client, which
+/// validates the config union before sending.
+///
+/// # Errors
+///
+/// [`RemoteError::InvalidConfig`] when `config` carries no string `_tag`.
+pub fn required_config_tag(config: &serde_json::Value) -> Result<String, RemoteError> {
+    config_tag(config)
+        .map(str::to_owned)
+        .ok_or_else(|| RemoteError::InvalidConfig {
+            message: "config._tag must be a string".to_owned(),
+        })
+}
+
+/// The ways a remotes operation can fail — the domain's failure vocabulary. The
+/// first three are **semantic**, client-facing outcomes that are part of the
+/// wire contract; [`Backend`](RemoteError::Backend) is an opaque infrastructure
+/// failure. The HTTP layer ([`crate::http::errors`]) renders each to a status
+/// and wire body (or a logged opaque 500 for `Backend`); nothing here knows
+/// about HTTP, and the store ([`crate::db`]) produces `Backend` without leaking
+/// its db/`anyhow` types up to the routes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RemoteError {
+    /// No remote has this id (a read / update / delete addressed an unknown id).
+    NotFound { id: String },
+    /// The submitted config carries no string `_tag`, so the denormalized `tag`
+    /// (column + wire field) can't be produced.
+    InvalidConfig { message: String },
+    /// A create used a client-minted id that's already taken.
+    AlreadyExists { id: String },
+    /// An infrastructure failure in the backing store (a checkout or query
+    /// error) — opaque to clients: the HTTP layer logs `context` + `source` and
+    /// answers an empty 500. The cause is captured as text so this type stays
+    /// free of the store's db/`anyhow` error types.
+    Backend {
+        context: &'static str,
+        source: String,
+    },
+}
+
+impl RemoteError {
+    /// Wrap an infrastructure failure (a store checkout or query error) as an
+    /// opaque [`Backend`](RemoteError::Backend), capturing `context` and the
+    /// cause's `Display` text. The store calls this so its db/`anyhow` error
+    /// types never reach the HTTP layer.
+    #[must_use]
+    pub fn backend(context: &'static str, source: impl std::fmt::Display) -> Self {
+        RemoteError::Backend {
+            context,
+            source: source.to_string(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -76,6 +134,23 @@ mod tests {
         );
         assert_eq!(config_tag(&serde_json::json!({ "_tag": 7 })), None);
         assert_eq!(config_tag(&serde_json::json!("fhir-r4")), None);
+    }
+
+    /// A config without a string `_tag` can't produce the `tag` column, so the
+    /// write path refuses it with [`RemoteError::InvalidConfig`]; a valid tag
+    /// round-trips as an owned `String`.
+    #[test]
+    fn required_config_tag_reads_the_tag_or_rejects() {
+        assert_eq!(
+            required_config_tag(&serde_json::json!({ "_tag": "fhir-r4" })),
+            Ok("fhir-r4".to_owned()),
+        );
+        assert_eq!(
+            required_config_tag(&serde_json::json!({ "rootUrl": "x" })),
+            Err(RemoteError::InvalidConfig {
+                message: "config._tag must be a string".to_owned(),
+            }),
+        );
     }
 
     /// The wire shape: camelCase `addedAt`, and `config` serialized as the raw

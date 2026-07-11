@@ -10,8 +10,8 @@
 //! (`gatekeeper_rust::layer_router_with_gatekeeper_auth_gating`), mirroring
 //! the tunnel and databases surfaces.
 
-mod handlers;
-mod response_templates;
+mod errors;
+mod routes;
 mod state;
 
 pub use state::CollectorState;
@@ -23,7 +23,7 @@ use axum::Router;
 /// Build the `/collector/remotes` routes. Carries no middleware — the host
 /// wraps it with its bearer gate.
 pub fn router(state: Arc<CollectorState>) -> Router {
-    let (router, _spec) = handlers::openapi_router().split_for_parts();
+    let (router, _spec) = routes::openapi_router().split_for_parts();
     router.with_state(state)
 }
 
@@ -49,7 +49,7 @@ mod openapi_tests {
     /// serves the spec at runtime.
     fn openapi_spec() -> utoipa::openapi::OpenApi {
         let combined =
-            OpenApiRouter::with_openapi(ApiDoc::openapi()).merge(super::handlers::openapi_router());
+            OpenApiRouter::with_openapi(ApiDoc::openapi()).merge(super::routes::openapi_router());
         let (_router, mut spec) = combined.split_for_parts();
         spec.info = Info::new("Collector Remotes API", "0.0.0");
         spec

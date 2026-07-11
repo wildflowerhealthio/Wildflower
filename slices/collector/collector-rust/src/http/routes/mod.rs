@@ -1,4 +1,4 @@
-//! HTTP handlers for the collector slice — the five `/collector/remotes`
+//! HTTP routes for the collector slice — the five `/collector/remotes`
 //! endpoints as one [`openapi_router`]. The served routes and the OpenAPI spec
 //! come from the same `#[utoipa::path]`-annotated handlers.
 

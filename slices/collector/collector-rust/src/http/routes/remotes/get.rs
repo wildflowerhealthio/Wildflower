@@ -5,8 +5,8 @@ use std::sync::Arc;
 use axum::extract::{Path, State};
 use axum::Json;
 
-use crate::domain::Remote;
-use crate::http::response_templates::{HandlerError, RemoteNotFoundBody};
+use crate::domain::{Remote, RemoteError};
+use crate::http::errors::RemoteNotFoundBody;
 use crate::http::state::CollectorState;
 
 /// `GET /collector/remotes/{id}` — fetch one remote. Owner-gated by the host.
@@ -22,11 +22,10 @@ use crate::http::state::CollectorState;
 pub(crate) async fn handle_get_remote(
     State(state): State<Arc<CollectorState>>,
     Path(id): Path<String>,
-) -> Result<Json<Remote>, HandlerError> {
+) -> Result<Json<Remote>, RemoteError> {
     let remote = state
         .store
-        .find_remote(&id)
-        .map_err(|e| HandlerError::internal("find_remote failed", e))?
-        .ok_or(HandlerError::NotFound { id })?;
+        .find_remote(&id)?
+        .ok_or(RemoteError::NotFound { id })?;
     Ok(Json(remote))
 }
