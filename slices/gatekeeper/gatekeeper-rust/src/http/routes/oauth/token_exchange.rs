@@ -9,8 +9,7 @@ use uuid::Uuid;
 
 use super::client_auth::ClientCredentials;
 use super::internal::{
-    issue_token_response, require_valid_client_for_token, IssueTokenInput, OAuthError, TokenError,
-    TokenResponse, DEVICE_CODE_POLL_INTERVAL, REFRESH_TOKEN_FAMILY_TTL,
+    issue_token_response, require_valid_client_for_token, IssueTokenInput, TokenError,
 };
 use super::openapi::TokenRequestBody;
 use super::token_request::TokenRequest;
@@ -19,11 +18,12 @@ use crate::crypto_util::pkce::{compute_code_challenge, is_valid_code_verifier_le
 use crate::crypto_util::random_token::{generate_refresh_token, token_storage_hash};
 use crate::db::RefreshTokenConsumeOutcome;
 use crate::domain::authorization_code::AuthorizationCode;
-use crate::domain::authorization_request::{GrantType, RequestStatus};
+use crate::domain::authorization_request::{GrantType, RequestStatus, DEVICE_CODE_POLL_INTERVAL};
 use crate::domain::client::AllowedGrantType;
 use crate::domain::oauth_error_code::OAuthErrorCode;
-use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
+use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily, REFRESH_TOKEN_FAMILY_TTL};
 use crate::http::state::AppState;
+use crate::http::wire_representations::{OAuthError, TokenResponse};
 use crate::http::ServedOrigin;
 use persistence_rust::JsonColumn;
 use scopes_rust::KnownScope;

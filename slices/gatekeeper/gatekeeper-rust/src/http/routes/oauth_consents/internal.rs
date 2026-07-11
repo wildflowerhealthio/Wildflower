@@ -1,22 +1,15 @@
-//! Shared types and helpers for the `/oauth-consents/{id}` routes — the
-//! request/response DTOs, the pending-request loader, and grant upsert. The
-//! per-route handlers (`get`, `approve`, `deny`) live in sibling modules and
-//! pull what they need from here.
+//! Shared helpers for the `/oauth-consents/{id}` routes — the pending-request
+//! loader and grant upsert. The per-route handlers (`get`, `approve`, `deny`)
+//! live in sibling modules; the wire DTOs they serve live in
+//! [`crate::http::wire_representations`].
 
-use chrono::{Duration, Utc};
-use serde::Serialize;
+use chrono::Utc;
 use url::Url;
 
 use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
 use crate::http::response_templates::HandlerError;
 use crate::http::state::AppState;
 use persistence_rust::{DbResult, UriColumn};
-
-/// Lifetime of the `authorization_code` minted when an Owner approves a
-/// code-flow consent, from issuance to the client redeeming it at `/token`
-/// (RFC 6749 §4.1.2 — "MUST be short lived"). Mirrors the fast-path TTL in
-/// `authorize.rs`.
-pub(super) const AUTHORIZATION_CODE_TTL: Duration = Duration::seconds(60);
 
 /// A pending authorization-code consent request that has already passed the
 /// loader's validation: it's `Pending`, an `AuthorizationCode` grant flow,
@@ -27,23 +20,6 @@ pub(super) struct PendingCodeConsent {
     pub(super) request: AuthorizationRequest,
     pub(super) redirect_uri: Url,
     pub(super) code_challenge: String,
-}
-
-/// Body returned to the Owner UI when it loads an authorization-code consent
-/// prompt — describes the client, scopes, and any pre-approved subset.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct OAuthConsent {
-    pub id: String,
-    pub client_id: String,
-    /// The client's registered display name, so the consent UI can name the
-    /// app instead of showing a raw `client_id`. Falls back to the
-    /// `client_id` when the registration lookup misses.
-    pub client_name: String,
-    pub scopes: Vec<String>,
-    pub redirect_uri: Url,
-    pub pre_approved_scopes: Vec<String>,
-    pub patient: Option<String>,
 }
 
 /// Load the authorization request for `id` and verify it's a pending,

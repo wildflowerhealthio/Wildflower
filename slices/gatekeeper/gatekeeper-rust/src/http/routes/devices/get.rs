@@ -2,9 +2,10 @@ use axum::extract::{Path, State};
 use axum::routing::{get, MethodRouter};
 use axum::Json;
 
-use super::internal::{load_pending_device_request, DeviceConsent};
+use super::internal::load_pending_device_request;
 use crate::http::response_templates::HandlerError;
 use crate::http::state::AppState;
+use crate::http::wire_representations::DeviceConsent;
 
 /// `GET /devices/{userCode}` — load a pending device-code consent prompt for
 /// the Owner UI to render.

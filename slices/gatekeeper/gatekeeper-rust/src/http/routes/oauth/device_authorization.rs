@@ -8,18 +8,18 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use super::device_name_hint::device_name_from_user_agent;
-use super::internal::{
-    require_valid_client_for_token, CacheSuppressed, OAuthError, TokenError,
-    DEVICE_CODE_POLL_INTERVAL,
-};
+use super::internal::{require_valid_client_for_token, TokenError};
 use super::openapi::DeviceAuthorizationRequest;
 use super::token_request::TokenRequest;
 use crate::crypto_util::oauth_user_code::generate_oauth_user_code;
 use crate::crypto_util::random_token::generate_authorization_code;
-use crate::domain::authorization_request::{AuthorizationRequest, StartDeviceAuthorizationArgs};
+use crate::domain::authorization_request::{
+    AuthorizationRequest, StartDeviceAuthorizationArgs, DEVICE_CODE_POLL_INTERVAL,
+};
 use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::domain::page_paths;
 use crate::http::state::AppState;
+use crate::http::wire_representations::{CacheSuppressed, OAuthError};
 use crate::http::ServedOrigin;
 
 /// Lifetime of a device-flow authorization request — the user has this long

@@ -1,6 +1,11 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 
 use persistence_rust::JsonColumn;
+
+/// Absolute lifetime of a refresh-token family, measured from the original
+/// authorization. Rotation swaps generations but never extends this
+/// deadline — past it the client re-runs the authorization flow.
+pub const REFRESH_TOKEN_FAMILY_TTL: Duration = Duration::days(90);
 
 /// One authorization's refresh-token lineage (RFC 6749 §6). The family owns
 /// every fact shared by all the tokens rotated under it — client, scopes,

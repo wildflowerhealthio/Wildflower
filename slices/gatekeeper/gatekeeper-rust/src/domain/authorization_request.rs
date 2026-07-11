@@ -4,6 +4,11 @@ use url::Url;
 
 use persistence_rust::{JsonColumn, UriColumn};
 
+/// Minimum polling interval the device-code flow enforces (RFC 8628 §3.5) —
+/// advertised as `interval` in the device-authorization response and enforced
+/// against `last_polled_at` with `slow_down` at `/token`.
+pub const DEVICE_CODE_POLL_INTERVAL: Duration = Duration::seconds(5);
+
 /// Which OAuth grant flow an `AuthorizationRequest` represents. Stored as the
 /// wire-level RFC string in the `grantType` column.
 ///

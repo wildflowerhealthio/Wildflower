@@ -5,12 +5,9 @@ use axum::routing::{post, MethodRouter};
 use axum::Json;
 use chrono::Utc;
 
-use super::internal::{
-    load_pending_authorization_code_request, upsert_grant, PendingCodeConsent,
-    AUTHORIZATION_CODE_TTL,
-};
+use super::internal::{load_pending_authorization_code_request, upsert_grant, PendingCodeConsent};
 use crate::crypto_util::random_token::generate_authorization_code;
-use crate::domain::authorization_code::AuthorizationCode;
+use crate::domain::authorization_code::{AuthorizationCode, AUTHORIZATION_CODE_TTL};
 use crate::http::response_templates::HandlerError;
 use crate::http::routes::consent::deny_consent;
 use crate::http::routes::oauth::build_client_redirect_url;

@@ -6,13 +6,14 @@ use serde::Serialize;
 use utoipa::ToSchema;
 
 use super::internal::{
-    build_client_error_redirect_url, build_client_redirect_url, OAuthError, OAuthErrorResponse,
+    build_client_error_redirect_url, build_client_redirect_url, OAuthErrorResponse,
 };
 use super::openapi::AuthorizationRequestNotFound;
 use crate::domain::authorization_request::RequestStatus;
 use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::http::response_templates::HandlerError;
 use crate::http::state::AppState;
+use crate::http::wire_representations::OAuthError;
 use persistence_rust::UriColumn;
 
 /// Polling response for the Owner UI watching an authorization request as it

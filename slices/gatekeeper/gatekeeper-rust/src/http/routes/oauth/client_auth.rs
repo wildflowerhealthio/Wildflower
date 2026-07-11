@@ -14,9 +14,10 @@ use axum::response::{IntoResponse, Response};
 use serde::Deserialize;
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
-use super::internal::{OAuthError, OAuthErrorResponse};
+use super::internal::OAuthErrorResponse;
 use crate::crypto_util::base64;
 use crate::domain::oauth_error_code::OAuthErrorCode;
+use crate::http::wire_representations::OAuthError;
 
 /// `WWW-Authenticate` challenge attached to 401 responses when the client
 /// attempted Basic authentication (RFC 6749 §5.2: the response "MUST include

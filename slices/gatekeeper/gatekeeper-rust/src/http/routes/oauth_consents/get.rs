@@ -2,9 +2,10 @@ use axum::extract::{Path, State};
 use axum::routing::{get, MethodRouter};
 use axum::Json;
 
-use super::internal::{load_pending_authorization_code_request, OAuthConsent, PendingCodeConsent};
+use super::internal::{load_pending_authorization_code_request, PendingCodeConsent};
 use crate::http::response_templates::HandlerError;
 use crate::http::state::AppState;
+use crate::http::wire_representations::OAuthConsent;
 
 /// `GET /oauth-consents/{id}` — load a pending authorization-code consent
 /// prompt for the Owner UI to render.

@@ -1,28 +1,15 @@
-//! Shared types and the pending-request loader for the `/devices/{userCode}`
-//! device-flow consent routes. The per-route handlers (`get`, `approve`,
-//! `deny`) live in sibling modules and pull what they need from here.
+//! The pending-request loader for the `/devices/{userCode}` device-flow
+//! consent routes. The per-route handlers (`get`, `approve`, `deny`) live in
+//! sibling modules; the wire DTO they serve ([`DeviceConsent`]) lives in
+//! [`crate::http::wire_representations`].
+//!
+//! [`DeviceConsent`]: crate::http::wire_representations::DeviceConsent
 
 use chrono::Utc;
-use serde::Serialize;
 
 use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
 use crate::http::response_templates::HandlerError;
 use crate::http::state::AppState;
-
-/// Body returned to the Owner UI when it loads a pending device-code consent
-/// prompt — describes the requesting client, the device's chosen name, its
-/// requested scopes, and the client's full allowed-scope set (the *expansion
-/// envelope* the approver may grant up to, since device consent is expandable).
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DeviceConsent {
-    pub user_code: String,
-    pub client_id: String,
-    pub client_name: String,
-    pub device_name: Option<String>,
-    pub requested_scopes: Vec<String>,
-    pub allowed_scopes: Vec<String>,
-}
 
 /// Load the authorization request for `user_code` and verify it's a pending
 /// device-code flow. The error side is a [`HandlerError`] ("not found" or

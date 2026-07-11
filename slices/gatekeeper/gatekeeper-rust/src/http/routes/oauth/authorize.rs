@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use super::internal::{build_client_error_redirect_url, build_client_redirect_url};
 use crate::crypto_util::random_token::generate_authorization_code;
-use crate::domain::authorization_code::AuthorizationCode;
+use crate::domain::authorization_code::{AuthorizationCode, AUTHORIZATION_CODE_TTL};
 use crate::domain::authorization_request::{AuthorizationRequest, StartCodeAuthorizationArgs};
 use crate::domain::client::Client;
 use crate::domain::oauth_error_code::OAuthErrorCode;
@@ -99,10 +99,6 @@ impl IntoResponse for AuthorizeError {
         }
     }
 }
-
-/// Lifetime of an `authorization_code` from issuance to the client redeeming it
-/// at `/token` (RFC 6749 §4.1.2 — "MUST be short lived").
-const AUTHORIZATION_CODE_TTL: Duration = Duration::seconds(60);
 
 /// Lifetime of a pending authorization request waiting for Owner approval.
 const AUTHORIZATION_REQUEST_TTL: Duration = Duration::minutes(5);

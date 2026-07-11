@@ -1,10 +1,7 @@
 use axum::http::{header, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
-use chrono::Duration;
-use serde::{Deserialize, Serialize};
 use url::Url;
-use utoipa::ToSchema;
 
 use super::client_auth::{
     ClientAuthenticationMethod, ClientCredentials, ResolveClientCredentialsError,
@@ -14,41 +11,9 @@ use crate::crypto_util::client_secret::verify_client_secret;
 use crate::db::GatekeeperStore;
 use crate::domain::client::{Client, ClientKind};
 use crate::domain::oauth_error_code::OAuthErrorCode;
-use crate::domain::token::{mint_access_token, NewJwtArgs};
+use crate::domain::token::{mint_access_token, NewJwtArgs, ACCESS_TOKEN_TTL};
 use crate::http::response_templates::InternalError;
-
-/// Lifetime of access tokens minted by the gatekeeper. The consent UI's
-/// `offline_access` copy ("Access your data after 15 minutes") states this
-/// value — keep the two in step.
-pub const ACCESS_TOKEN_TTL: Duration = Duration::minutes(15);
-
-/// Absolute lifetime of a refresh-token family, measured from the original
-/// authorization. Rotation swaps generations but never extends this
-/// deadline — past it the client re-runs the authorization flow.
-pub const REFRESH_TOKEN_FAMILY_TTL: Duration = Duration::days(90);
-
-/// Minimum polling interval the device-code flow enforces (RFC 8628 §3.5).
-pub const DEVICE_CODE_POLL_INTERVAL: Duration = Duration::seconds(5);
-
-/// Wrapper that stamps the RFC 6749 §5.1/§5.2 cache-suppression headers
-/// (`Cache-Control: no-store`, `Pragma: no-cache`) onto the wrapped response.
-/// Token- and device-authorization-endpoint responses — success or error —
-/// must never be cached; wrapping makes that part of the value instead of a
-/// step a call site can forget.
-pub struct CacheSuppressed<T>(pub T);
-
-impl<T: IntoResponse> IntoResponse for CacheSuppressed<T> {
-    fn into_response(self) -> Response {
-        (
-            [
-                (header::CACHE_CONTROL, "no-store"),
-                (header::PRAGMA, "no-cache"),
-            ],
-            self.0,
-        )
-            .into_response()
-    }
-}
+use crate::http::wire_representations::{CacheSuppressed, OAuthError, TokenResponse};
 
 /// An [`OAuthError`] paired with the HTTP status it renders at — the
 /// `(status, JSON body)` shape every OAuth-surface error response shares.
@@ -83,47 +48,6 @@ impl OAuthErrorResponse {
 impl IntoResponse for OAuthErrorResponse {
     fn into_response(self) -> Response {
         (self.status, Json(self.error)).into_response()
-    }
-}
-
-/// RFC 6749 §5.1 successful token-endpoint response.
-#[derive(Debug, Serialize, ToSchema)]
-pub struct TokenResponse {
-    pub access_token: String,
-    pub token_type: String,
-    pub expires_in: i64,
-    pub scope: String,
-    /// Present only when the grant carries [`scopes_rust::KnownScope::OfflineAccess`]
-    /// — the plaintext of the freshly-minted refresh-token generation (RFC 6749
-    /// §5.1; only its hash is persisted).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub refresh_token: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub patient: Option<String>,
-}
-
-impl IntoResponse for TokenResponse {
-    /// RFC 6749 §5.1: a token response MUST carry `Cache-Control: no-store` —
-    /// rendering through [`CacheSuppressed`] makes that unforgettable.
-    fn into_response(self) -> Response {
-        CacheSuppressed(Json(self)).into_response()
-    }
-}
-
-/// RFC 6749 §5.2 token-endpoint error body.
-#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
-pub struct OAuthError {
-    pub error: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error_description: Option<String>,
-}
-
-impl OAuthError {
-    pub fn new(error: OAuthErrorCode, description: Option<&str>) -> Self {
-        Self {
-            error: error.as_ref().to_string(),
-            error_description: description.map(str::to_string),
-        }
     }
 }
 

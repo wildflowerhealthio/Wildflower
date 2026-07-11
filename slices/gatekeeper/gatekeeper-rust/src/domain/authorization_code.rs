@@ -1,6 +1,12 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 
 use persistence_rust::{JsonColumn, UriColumn};
+
+/// Lifetime of an `authorization_code`, from issuance (the `/authorize`
+/// fast path or an Owner's consent approval) to the client redeeming it at
+/// `/token` (RFC 6749 §4.1.2 — "MUST be short lived"). One value for both
+/// mint sites so the two flows can't drift.
+pub const AUTHORIZATION_CODE_TTL: Duration = Duration::seconds(60);
 
 /// A short-lived single-use authorization code issued at `/authorize` and
 /// redeemed at `/token` (RFC 6749 §4.1.2). The PKCE `code_challenge` is

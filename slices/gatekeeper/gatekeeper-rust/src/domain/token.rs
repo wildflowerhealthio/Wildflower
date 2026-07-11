@@ -5,6 +5,11 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::domain::signing_key::{KeyMaterialError, SigningKey};
 
+/// Lifetime of access tokens minted by the gatekeeper. The consent UI's
+/// `offline_access` copy ("Access your data after 15 minutes") states this
+/// value — keep the two in step.
+pub const ACCESS_TOKEN_TTL: Duration = Duration::minutes(15);
+
 /// Normalize the `aud` claim — RFC 7519 lets it be a string or an array of
 /// strings — into a single canonical `Vec<String>` so downstream code has one
 /// shape to consume.
