@@ -15,7 +15,7 @@ const RelayViewSchema = Schema.Struct({
 
 /**
  * Tunnel state on the wire — mirrors the Rust `TunnelStateResponse`
- * (`slices/tunnel/tunnel-rust/.../tunnel_state_response.rs`,
+ * (`slices/tunnel/tunnel-rust/.../routes/tunnel/wire_representations.rs`,
  * `#[serde(rename_all = "camelCase")]`). The relay's non-secret fields are
  * returned in `relay` (the `token` stays write-only and never appears here).
  *

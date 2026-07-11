@@ -1,9 +1,9 @@
 //! The tunnel slice's HTTP surface. The only crate-facing surface is
-//! [`router`] and [`TunnelState`]; the handler files are private
-//! implementation detail behind the route table.
+//! [`router`] and [`TunnelState`]; the route files are private implementation
+//! detail behind the route table.
 
-mod handlers;
-mod response_templates;
+mod errors;
+mod routes;
 mod state;
 
 pub use state::TunnelState;
@@ -21,7 +21,7 @@ struct ApiDoc;
 /// The `/tunnel` surface as an `OpenApiRouter`, so the spec is collected from
 /// the same routes that serve traffic (mirrors `gatekeeper-rust`).
 fn documented_router() -> OpenApiRouter<Arc<TunnelState>> {
-    OpenApiRouter::with_openapi(ApiDoc::openapi()).merge(handlers::openapi_router())
+    OpenApiRouter::with_openapi(ApiDoc::openapi()).merge(routes::openapi_router())
 }
 
 /// Build the tunnel's `/tunnel` router (GET + PUT) over a [`TunnelState`]. The

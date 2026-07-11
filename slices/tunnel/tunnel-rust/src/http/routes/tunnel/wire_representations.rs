@@ -1,6 +1,7 @@
 //! Shared wire types and the snapshot helper for the `/tunnel` GET/PUT
-//! handlers. The per-route handlers (`get`, `put`) live in sibling modules and
-//! pull what they need from here.
+//! handlers — the response shape both operations serve on the same path. The
+//! per-operation handlers (`get`, `replace`) live in sibling modules and pull
+//! what they need from here.
 //!
 use serde::Serialize;
 use utoipa::ToSchema;

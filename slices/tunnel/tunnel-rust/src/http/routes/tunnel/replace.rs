@@ -6,10 +6,9 @@ use axum::Json;
 use serde::{Deserialize, Deserializer};
 use utoipa::ToSchema;
 
-use super::tunnel_state_response::TunnelStateResponse;
+use super::wire_representations::TunnelStateResponse;
 use crate::db::{SettingsUpdate, SettingsUpdateOutcome};
-use crate::domain::RelaySettings;
-use crate::http::response_templates::HandlerError;
+use crate::domain::{RelaySettings, TunnelError};
 use crate::http::state::TunnelState;
 
 /// `PUT /tunnel` — full-replace of the visible settings under the caller's
@@ -32,19 +31,22 @@ use crate::http::state::TunnelState;
         (status = 409, description = "Stale revision; no write happened — the current snapshot is returned", body = TunnelStateResponse)
     )
 )]
-pub(super) async fn handle_put_tunnel(
+pub(super) async fn handle_replace_tunnel(
     State(state): State<Arc<TunnelState>>,
     Json(body): Json<ReplaceTunnelRequestBody>,
-) -> Result<(StatusCode, Json<TunnelStateResponse>), HandlerError> {
+) -> Result<(StatusCode, Json<TunnelStateResponse>), TunnelError> {
     let update = SettingsUpdate {
         public_host: body.public_host.0,
         requested_running: body.requested_running,
         relay_settings: body.relay.map(RelaySettings::from),
     };
+    // Call-site wrap of the store's raw db error into the domain vocabulary,
+    // until the store itself moves onto `Result<_, TunnelError>` with the
+    // diesel migration.
     let settings_update_outcome = state
         .store
         .replace_settings(body.settings_revision, update)
-        .map_err(|e| HandlerError::internal("replace_settings failed", e))?;
+        .map_err(|e| TunnelError::backend("replace_settings failed", e))?;
 
     match settings_update_outcome {
         SettingsUpdateOutcome::Applied(settings) => {
