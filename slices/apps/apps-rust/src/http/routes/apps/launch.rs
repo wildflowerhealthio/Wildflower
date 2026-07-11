@@ -45,7 +45,7 @@ use axum::response::{IntoResponse, Response};
 use shared_structures_rust::served_origin::{request_provenance, RequestProvenance};
 
 use crate::domain::{App, AppKind, CloudApp, LaunchParams, SelfHostedApp};
-use crate::http::response_templates::{AppNotFoundBody, HandlerError, LaunchUnavailableBody};
+use crate::http::errors::{AppNotFoundBody, HandlerError, LaunchUnavailableBody};
 use crate::http::state::AppsState;
 use crate::id::mint_launch_nonce;
 

@@ -18,7 +18,7 @@ use serde::Serialize;
 use utoipa::ToSchema;
 
 use crate::domain::{AppKind, SelfHostedApp};
-use crate::http::response_templates::{AppNotEditableBody, AppNotFoundBody, HandlerError};
+use crate::http::errors::{AppNotEditableBody, AppNotFoundBody, HandlerError};
 use crate::http::state::AppsState;
 
 #[derive(Debug, Serialize, ToSchema)]

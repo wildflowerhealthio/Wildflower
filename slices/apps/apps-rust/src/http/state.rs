@@ -9,8 +9,8 @@ use shared_structures_rust::tunnel_service::TunnelService;
 use url::Url;
 
 use crate::db::AppsStore;
-use crate::http::launch_cookies::LaunchCookies;
-use crate::http::owner_auth::OwnerAuth;
+use crate::http::ports::launch_cookies::LaunchCookies;
+use crate::http::ports::owner_auth::OwnerAuth;
 use crate::self_hosted_apps::SelfHostedAppsService;
 use crate::OnDeviceWebviewHandle;
 

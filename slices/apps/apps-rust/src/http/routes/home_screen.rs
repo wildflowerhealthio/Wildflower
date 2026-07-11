@@ -16,7 +16,7 @@ use serde::Deserialize;
 use utoipa::ToSchema;
 
 use crate::domain::AppListEntry;
-use crate::http::response_templates::{HandlerError, InvalidHomeScreenBody};
+use crate::http::errors::{HandlerError, InvalidHomeScreenBody};
 use crate::http::state::AppsState;
 
 /// One entry in the `PUT /home-screen` body: an app id and its desired `enabled`

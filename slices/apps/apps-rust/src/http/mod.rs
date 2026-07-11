@@ -13,18 +13,19 @@
 //! path from the gated `PATCH`/`DELETE /apps/{id}`, hence the split. See
 //! [`openapi_tests`].
 
-mod handlers;
-pub mod launch_cookies;
-pub mod owner_auth;
-mod response_templates;
+mod errors;
+pub mod ports;
+mod routes;
 mod state;
+#[cfg(test)]
+pub(crate) mod test_support;
 
-pub use launch_cookies::{LaunchCookies, NoLaunchCookies};
-pub use owner_auth::OwnerAuth;
+pub use ports::launch_cookies::{LaunchCookies, NoLaunchCookies};
+pub use ports::owner_auth::OwnerAuth;
 // Re-exported for tests (incl. the integration crate); the `#[deprecated]` is the
 // intended signal, so silence it on the re-export itself.
 #[allow(deprecated)]
-pub use owner_auth::StubOwnerAuth;
+pub use ports::owner_auth::StubOwnerAuth;
 pub use state::AppsState;
 
 use std::sync::Arc;
@@ -45,7 +46,7 @@ struct ApiDoc;
 /// surface, which merges this with the other slices' documents.
 #[must_use]
 pub fn openapi_spec() -> utoipa::openapi::OpenApi {
-    let combined = OpenApiRouter::with_openapi(ApiDoc::openapi()).merge(handlers::openapi_router());
+    let combined = OpenApiRouter::with_openapi(ApiDoc::openapi()).merge(routes::openapi_router());
     let (_router, mut spec) = combined.split_for_parts();
     spec.info = utoipa::openapi::Info::new("Apps Catalogue API", "0.0.0");
     spec
@@ -55,7 +56,7 @@ pub fn openapi_spec() -> utoipa::openapi::OpenApi {
 /// `PATCH`/`DELETE /apps/{id}`, `PUT /home-screen`). Carries no
 /// middleware — the host wraps it with its bearer gate.
 pub fn gated_router(state: Arc<AppsState>) -> Router {
-    let (router, _spec) = handlers::gated_openapi_router().split_for_parts();
+    let (router, _spec) = routes::gated_openapi_router().split_for_parts();
     router.with_state(state)
 }
 
@@ -64,7 +65,7 @@ pub fn gated_router(state: Arc<AppsState>) -> Router {
 /// gate, and the launch handler owner-gates the loopback popup internally via
 /// [`OwnerAuth`] while a forwarded launch rides the front trust boundary.
 pub fn launch_router(state: Arc<AppsState>) -> Router {
-    let (router, _spec) = handlers::launch_openapi_router().split_for_parts();
+    let (router, _spec) = routes::launch_openapi_router().split_for_parts();
     router.with_state(state)
 }
 

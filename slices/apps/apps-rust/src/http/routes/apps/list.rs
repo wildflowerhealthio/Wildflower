@@ -9,7 +9,7 @@ use axum::extract::State;
 use axum::Json;
 
 use crate::domain::AppListEntry;
-use crate::http::response_templates::HandlerError;
+use crate::http::errors::HandlerError;
 use crate::http::state::AppsState;
 
 /// `GET /apps` — the full catalogue in display order. Gating is applied by the

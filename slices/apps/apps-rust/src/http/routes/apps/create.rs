@@ -26,7 +26,7 @@ use utoipa::ToSchema;
 
 use crate::db::{CloudContent, NewCloudApp, NewSelfHostedUpload, UploadInsertError};
 use crate::domain::{AppKind, AppListEntry, AppUrl};
-use crate::http::response_templates::{HandlerError, InvalidFieldBody};
+use crate::http::errors::{HandlerError, InvalidFieldBody};
 use crate::http::state::AppsState;
 use crate::id::mint_app_id;
 use crate::install::{self, extract_zip_bundle, infer_launch_path, slugify};

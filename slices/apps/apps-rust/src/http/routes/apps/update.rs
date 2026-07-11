@@ -22,9 +22,7 @@ use utoipa::ToSchema;
 
 use crate::db::CloudContent;
 use crate::domain::{AppKind, AppListEntry, AppUrl};
-use crate::http::response_templates::{
-    AppNotEditableBody, AppNotFoundBody, HandlerError, InvalidFieldBody,
-};
+use crate::http::errors::{AppNotEditableBody, AppNotFoundBody, HandlerError, InvalidFieldBody};
 use crate::http::state::AppsState;
 
 /// `PUT /apps/{id}` body — a `provenance`-discriminated union matching the TS

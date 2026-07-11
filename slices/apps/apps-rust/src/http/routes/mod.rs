@@ -6,10 +6,7 @@
 //! [`crate::http`] router builders these back.
 
 mod apps;
-mod cloud_admin;
 mod home_screen;
-#[cfg(test)]
-pub(crate) mod test_utils;
 
 use std::sync::Arc;
 
@@ -28,9 +25,8 @@ const UPLOAD_BODY_LIMIT_BYTES: usize = 64 * 1024 * 1024;
 /// The owner-gated routes as an `OpenApiRouter` (the spec-bearing inner of
 /// [`gated_router`](super::gated_router), which documents the gating split):
 ///
-///  - `GET /apps` (list) — see [`apps`];
-///  - `POST /apps` (create a cloud or self-hosted app) + `PUT`/`DELETE /apps/{id}`
-///    (content replace + delete) — see [`cloud_admin`];
+///  - `GET /apps` (list), `POST /apps` (create a cloud or self-hosted app) +
+///    `PUT`/`DELETE /apps/{id}` (content replace + delete) — see [`apps`];
 ///  - `PUT /home-screen` (atomic reorder / enable, any provenance) — see
 ///    [`home_screen`].
 pub(crate) fn gated_openapi_router() -> OpenApiRouter<Arc<AppsState>> {
@@ -39,14 +35,14 @@ pub(crate) fn gated_openapi_router() -> OpenApiRouter<Arc<AppsState>> {
     // limit there scopes the raise to this one route (a `.layer` on the whole
     // router would loosen every endpoint).
     let create_router = OpenApiRouter::new()
-        .routes(routes!(cloud_admin::create::handle_create_app))
+        .routes(routes!(apps::create::handle_create_app))
         .layer(DefaultBodyLimit::max(UPLOAD_BODY_LIMIT_BYTES));
 
     OpenApiRouter::new()
         .routes(routes!(apps::list::handle_list_apps))
         .routes(routes!(
-            cloud_admin::update::handle_replace_app,
-            cloud_admin::delete::handle_delete_app
+            apps::update::handle_replace_app,
+            apps::delete::handle_delete_app
         ))
         .routes(routes!(home_screen::handle_replace_home_screen))
         .merge(create_router)
@@ -85,14 +81,14 @@ mod tests {
     use shared_structures_rust::OnDeviceWebviewHandle;
     use tower::ServiceExt;
 
-    use super::test_utils::{
+    use crate::db::{CloudContent, NewCloudApp, NewSelfHostedUpload};
+    use crate::domain::AppUrl;
+    use crate::http::state::AppsState;
+    use crate::http::test_support::{
         state, state_owner_denied, state_owner_denied_with_sink, state_with_launch_cookies,
         state_with_sink, state_with_tunnel, state_with_tunnel_and_handle, tunnel_at,
         tunnel_unavailable, tunnel_with_public_host, RecordingLaunchCookies, SENTINEL_SET_COOKIE,
     };
-    use crate::db::{CloudContent, NewCloudApp, NewSelfHostedUpload};
-    use crate::domain::AppUrl;
-    use crate::http::state::AppsState;
     use crate::http::LaunchCookies;
 
     /// The served router (state applied per-call). Spec half of

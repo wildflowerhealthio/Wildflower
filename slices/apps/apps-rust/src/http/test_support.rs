@@ -19,8 +19,8 @@ use shared_structures_server_rust::ProxyTable;
 use url::Url;
 
 use crate::db::AppsStore;
-use crate::http::launch_cookies::{LaunchCookies, NoLaunchCookies};
-use crate::http::owner_auth::{OwnerAuth, StubOwnerAuth};
+use crate::http::ports::launch_cookies::{LaunchCookies, NoLaunchCookies};
+use crate::http::ports::owner_auth::{OwnerAuth, StubOwnerAuth};
 use crate::http::state::AppsState;
 use crate::self_hosted_apps::SelfHostedAppsService;
 use crate::OnDeviceWebviewHandle;
