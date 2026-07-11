@@ -299,9 +299,11 @@ mod tests {
     fn corrupt_stored_config_reads_as_a_backend_error_not_a_panic() {
         let store = RemotesStore::open_in_memory().unwrap();
         let mut conn = store.pool.get().expect("check out a connection");
-        diesel::sql_query("UPDATE collector_remotes SET config = 'not json' WHERE id = 'fhir-demo'")
-            .execute(&mut conn)
-            .expect("corrupt the stored config");
+        diesel::sql_query(
+            "UPDATE collector_remotes SET config = 'not json' WHERE id = 'fhir-demo'",
+        )
+        .execute(&mut conn)
+        .expect("corrupt the stored config");
         drop(conn);
         assert!(matches!(
             store.get_remote("fhir-demo"),
