@@ -1801,7 +1801,6 @@ checksum = "be1e0bca6c3637f992fc1cc7cbc52a78c1ef6db076dbf1059c4323d6a2048376"
 name = "databases-rust"
 version = "0.0.0"
 dependencies = [
- "anyhow",
  "axum",
  "chrono",
  "futures-core",

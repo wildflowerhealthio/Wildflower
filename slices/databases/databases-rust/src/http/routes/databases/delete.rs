@@ -7,8 +7,9 @@ use axum::Json;
 use serde::Serialize;
 use utoipa::ToSchema;
 
+use crate::domain::DatabaseError;
 use crate::files::schedule_deletion;
-use crate::http::errors::HandlerError;
+use crate::http::errors::DatabaseNotFoundBody;
 use crate::http::state::DatabasesState;
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -35,17 +36,16 @@ pub(crate) struct DeletedBody {
     ),
     responses(
         (status = 200, description = "Deletion was scheduled (takes effect on restart)", body = DeletedBody),
-        (status = 404, description = "No database has this id, or it doesn't exist", body = crate::http::errors::DatabaseNotFoundBody),
+        (status = 404, description = "No database has this id, or it doesn't exist", body = DatabaseNotFoundBody),
     ),
 )]
 pub(crate) async fn handle_delete_database(
     State(state): State<Arc<DatabasesState>>,
     Path(id): Path<String>,
-) -> Result<Json<DeletedBody>, HandlerError> {
-    let Some((_descriptor, path)) = state.existing(&id) else {
-        return Err(HandlerError::NotFound { id });
-    };
-    schedule_deletion(&path)
-        .map_err(|error| HandlerError::internal("schedule_deletion failed", error))?;
+) -> Result<Json<DeletedBody>, DatabaseError> {
+    let (_descriptor, path) = state
+        .existing(&id)
+        .ok_or_else(|| DatabaseError::NotFound { id: id.clone() })?;
+    schedule_deletion(&path)?;
     Ok(Json(DeletedBody { deleted: true }))
 }

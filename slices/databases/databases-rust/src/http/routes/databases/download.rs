@@ -14,8 +14,9 @@ use futures_core::Stream;
 use tokio::fs::File;
 use tokio_util::io::ReaderStream;
 
+use crate::domain::DatabaseError;
 use crate::files::snapshot_to_temp;
-use crate::http::errors::HandlerError;
+use crate::http::errors::DatabaseNotFoundBody;
 use crate::http::state::DatabasesState;
 
 /// `GET /databases/{id}` — stream the database file as `application/vnd.sqlite3`
@@ -41,27 +42,26 @@ use crate::http::state::DatabasesState;
     ),
     responses(
         (status = 200, description = "The database as a consistent SQLite snapshot", content_type = "application/vnd.sqlite3"),
-        (status = 404, description = "No database has this id, or it doesn't exist yet", body = crate::http::errors::DatabaseNotFoundBody),
+        (status = 404, description = "No database has this id, or it doesn't exist yet", body = DatabaseNotFoundBody),
     ),
 )]
 pub(crate) async fn handle_download_database(
     State(state): State<Arc<DatabasesState>>,
     Path(id): Path<String>,
-) -> Result<Response, HandlerError> {
-    let Some((descriptor, path)) = state.existing(&id) else {
-        return Err(HandlerError::NotFound { id });
-    };
+) -> Result<Response, DatabaseError> {
+    let (descriptor, path) = state
+        .existing(&id)
+        .ok_or_else(|| DatabaseError::NotFound { id: id.clone() })?;
     // Own the filename before the await (the descriptor borrows `state`).
     let filename = descriptor.id.clone();
 
     let temp_path = tokio::task::spawn_blocking(move || snapshot_to_temp(&path))
         .await
-        .map_err(|error| HandlerError::internal("snapshot task panicked", error))?
-        .map_err(|error| HandlerError::internal("snapshot_database failed", error))?;
+        .map_err(|error| DatabaseError::backend("snapshot task panicked", error))??;
 
     let file = File::open(&temp_path)
         .await
-        .map_err(|error| HandlerError::internal("open snapshot failed", error))?;
+        .map_err(|error| DatabaseError::backend("open snapshot", error))?;
     let body = Body::from_stream(TempFileStream::new(file, temp_path));
 
     // The filename is a fixed catalogue id (a bare `*.sqlite` filename), so it's

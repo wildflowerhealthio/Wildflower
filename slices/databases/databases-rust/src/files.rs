@@ -23,8 +23,9 @@
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use anyhow::Context;
 use rusqlite::Connection;
+
+use crate::domain::DatabaseError;
 
 /// How long the export connection waits on a lock held by the live writer
 /// before giving up — generous enough to ride out the brief per-statement
@@ -47,13 +48,14 @@ const MARKER_SUFFIX: &str = ".pending-delete";
 ///
 /// # Errors
 ///
-/// Returns an error if the source can't be opened or the snapshot can't be
-/// written.
-pub(crate) fn snapshot_to_temp(path: &Path) -> anyhow::Result<PathBuf> {
-    let conn =
-        Connection::open(path).with_context(|| format!("open {} for export", path.display()))?;
+/// [`DatabaseError::Backend`] if the source can't be opened or the snapshot
+/// can't be written — an opaque infrastructure failure the HTTP layer renders as
+/// a logged 500.
+pub(crate) fn snapshot_to_temp(path: &Path) -> Result<PathBuf, DatabaseError> {
+    let conn = Connection::open(path)
+        .map_err(|error| DatabaseError::backend("open database for export", error))?;
     conn.busy_timeout(EXPORT_BUSY_TIMEOUT)
-        .context("set export busy_timeout")?;
+        .map_err(|error| DatabaseError::backend("set export busy_timeout", error))?;
 
     let temp_path = unique_sibling(path, "export");
     // The temp path is an internally-generated sibling (process id + nanos), so
@@ -61,7 +63,7 @@ pub(crate) fn snapshot_to_temp(path: &Path) -> anyhow::Result<PathBuf> {
     // belt-and-braces measure.
     let escaped = temp_path.to_string_lossy().replace('\'', "''");
     conn.execute_batch(&format!("VACUUM INTO '{escaped}'"))
-        .with_context(|| format!("VACUUM INTO snapshot of {}", path.display()))?;
+        .map_err(|error| DatabaseError::backend("VACUUM INTO snapshot", error))?;
     Ok(temp_path)
 }
 
@@ -70,9 +72,11 @@ pub(crate) fn snapshot_to_temp(path: &Path) -> anyhow::Result<PathBuf> {
 ///
 /// # Errors
 ///
-/// Returns an error if the marker file can't be written.
-pub(crate) fn schedule_deletion(path: &Path) -> std::io::Result<()> {
+/// [`DatabaseError::Backend`] if the marker file can't be written — an opaque
+/// infrastructure failure the HTTP layer renders as a logged 500.
+pub(crate) fn schedule_deletion(path: &Path) -> Result<(), DatabaseError> {
     std::fs::write(marker_path(path), b"")
+        .map_err(|error| DatabaseError::backend("write pending-deletion marker", error))
 }
 
 /// Whether the database at `path` has a pending-deletion marker.
