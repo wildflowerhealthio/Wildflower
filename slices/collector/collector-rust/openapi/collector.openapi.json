@@ -48,6 +48,26 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "The config carries no string `_tag`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidConfigBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A remote with this id already exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemoteAlreadyExistsBody"
+                }
+              }
+            }
           }
         }
       }
@@ -121,6 +141,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Remote"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The config carries no string `_tag`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidConfigBody"
                 }
               }
             }
@@ -208,6 +238,22 @@
           }
         }
       },
+      "InvalidConfigBody": {
+        "type": "object",
+        "description": "Wire shape for a 400 `InvalidConfig` — the submitted config carries no\nstring `_tag`, so the denormalized `tag` column (and the wire `tag` field)\ncan't be produced. Matches the TS `InvalidConfigSchema`. Unreachable through\nthe typed TS client (which validates the config union before sending), but\nmodeled so a non-UI client gets a decodable failure.",
+        "required": [
+          "error",
+          "message"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
       "Remote": {
         "type": "object",
         "description": "A stored remote — the wire shape the `/collector/remotes` endpoints serve\n(the TS `RemoteSchema` in\n`collector-core/src/http-api-definition/remotes.ts`) AND the\n`collector_remotes` row: the diesel derives map this type straight to/from\nthe table, with [`JsonText`] converting `config` between `Value` and the\nJSON TEXT column at the bind/read boundary. serde's camelCase rename\nproduces the wire's `addedAt`.",
@@ -235,6 +281,22 @@
           "addedAt": {
             "type": "string",
             "description": "ISO-8601 UTC with milliseconds (e.g. `2026-06-17T14:29:22.363Z`) —\nthe encoding the TS `Schema.DateTimeUtc` round-trips."
+          }
+        }
+      },
+      "RemoteAlreadyExistsBody": {
+        "type": "object",
+        "description": "Wire shape for a 409 `RemoteAlreadyExists` — a create with a client-minted\nid that's already taken. Matches the TS `RemoteAlreadyExistsSchema`.",
+        "required": [
+          "error",
+          "id"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
           }
         }
       },

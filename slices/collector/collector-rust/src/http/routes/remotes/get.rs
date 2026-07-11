@@ -23,9 +23,5 @@ pub(crate) async fn handle_get_remote(
     State(state): State<Arc<CollectorState>>,
     Path(id): Path<String>,
 ) -> Result<Json<Remote>, RemoteError> {
-    let remote = state
-        .store
-        .find_remote(&id)?
-        .ok_or(RemoteError::NotFound { id })?;
-    Ok(Json(remote))
+    Ok(Json(state.store.get_remote(&id)?))
 }

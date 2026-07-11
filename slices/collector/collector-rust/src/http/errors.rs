@@ -6,11 +6,13 @@
 //! its `Result<_, RemoteError>` becomes a response with no HTTP glue at the
 //! call site.
 //!
-//! Only [`RemoteNotFoundBody`] is part of the wire contract (the TS
-//! `RemoteNotFoundSchema`); the 400/409 shapes are server-side guardrails the
-//! TS client never models, so they are deliberately **absent from the utoipa
-//! annotations** — declaring them would fail the TS spec-drift gate, which
-//! compares every declared status.
+//! All three semantic shapes are part of the wire contract and modeled on both
+//! sides: `RemoteNotFoundBody` (404), `InvalidConfigBody` (400), and
+//! `RemoteAlreadyExistsBody` (409) each `derive(ToSchema)` and are declared in
+//! the routes' `#[utoipa::path]` `responses`, matching the errors the TS
+//! `collector-remotes` group adds (`remotes.ts`) so the spec-drift gate stays
+//! green. `Backend` is deliberately **not** modeled — an opaque 500 carries no
+//! body a client decodes.
 
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
@@ -30,18 +32,18 @@ pub(crate) struct RemoteNotFoundBody {
 
 /// Wire shape for a 400 `InvalidConfig` — the submitted config carries no
 /// string `_tag`, so the denormalized `tag` column (and the wire `tag` field)
-/// can't be produced. Unreachable through the typed TS client, which validates
-/// the config union before sending; kept undocumented in the spec (see the
-/// module doc).
-#[derive(Debug, Serialize)]
+/// can't be produced. Matches the TS `InvalidConfigSchema`. Unreachable through
+/// the typed TS client (which validates the config union before sending), but
+/// modeled so a non-UI client gets a decodable failure.
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct InvalidConfigBody {
     pub(crate) error: &'static str,
     pub(crate) message: String,
 }
 
 /// Wire shape for a 409 `RemoteAlreadyExists` — a create with a client-minted
-/// id that's already taken. Undocumented in the spec (see the module doc).
-#[derive(Debug, Serialize)]
+/// id that's already taken. Matches the TS `RemoteAlreadyExistsSchema`.
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct RemoteAlreadyExistsBody {
     pub(crate) error: &'static str,
     pub(crate) id: String,

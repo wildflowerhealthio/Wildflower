@@ -33,9 +33,6 @@ pub(crate) async fn handle_delete_remote(
     State(state): State<Arc<CollectorState>>,
     Path(id): Path<String>,
 ) -> Result<Json<DeletedBody>, RemoteError> {
-    let deleted = state.store.delete_remote(&id)?;
-    if !deleted {
-        return Err(RemoteError::NotFound { id });
-    }
+    state.store.delete_remote(&id)?;
     Ok(Json(DeletedBody { deleted: true }))
 }

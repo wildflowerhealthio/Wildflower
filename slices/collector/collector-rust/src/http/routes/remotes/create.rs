@@ -11,6 +11,7 @@ use serde::Deserialize;
 use utoipa::ToSchema;
 
 use crate::domain::{required_config_tag, Remote, RemoteError};
+use crate::http::errors::{InvalidConfigBody, RemoteAlreadyExistsBody};
 use crate::http::state::CollectorState;
 
 /// POST body — matches the TS `CreateRemotePayloadSchema`. `config` is the
@@ -32,6 +33,8 @@ pub(crate) struct CreateRemoteBody {
     request_body = CreateRemoteBody,
     responses(
         (status = 200, description = "The created remote", body = Remote),
+        (status = 400, description = "The config carries no string `_tag`", body = InvalidConfigBody),
+        (status = 409, description = "A remote with this id already exists", body = RemoteAlreadyExistsBody),
     ),
 )]
 pub(crate) async fn handle_create_remote(
@@ -46,10 +49,7 @@ pub(crate) async fn handle_create_remote(
         config: body.config,
         added_at: now_added_at(),
     };
-    let inserted = state.store.insert_remote(&remote)?;
-    if !inserted {
-        return Err(RemoteError::AlreadyExists { id: remote.id });
-    }
+    state.store.insert_remote(&remote)?;
     Ok(Json(remote))
 }
 

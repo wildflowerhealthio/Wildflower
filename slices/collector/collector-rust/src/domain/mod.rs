@@ -6,8 +6,8 @@ use diesel::prelude::{Insertable, Queryable, Selectable};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use crate::db::json_text::JsonText;
 use crate::db::schema::collector_remotes;
+use shared_structures_rust::json_text::JsonText;
 
 /// A stored remote — the wire shape the `/collector/remotes` endpoints serve
 /// (the TS `RemoteSchema` in

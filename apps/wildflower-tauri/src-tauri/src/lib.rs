@@ -283,6 +283,14 @@ async fn run_server(
     // should reuse rather than each opening their own. User-created remotes
     // persist there; a remote's config JSON may carry pharmacy credentials, so
     // the whole surface is Owner-gated like the rest of the admin API.
+    //
+    // ACCEPTED TRADEOFF: the pool's connections are NOT synchronized with the
+    // `Arc<Mutex<rusqlite::Connection>>` every other slice writes through, so a
+    // collector write can now contend with a rusqlite write at the SQLite
+    // file-lock level (WAL is off → single writer) — "no cross-connection write
+    // contention" no longer holds. Both sides set `busy_timeout = 5000`, ample
+    // for a single-user desktop app with short writes; a pathological stalled
+    // write elsewhere can surface here as a ≤5 s stall → `SQLITE_BUSY` → 500.
     let collector_pool =
         persistence_rust::open_pool(&db_path).context("failed to open diesel db pool")?;
     let gated_collector = layer_router_with_gatekeeper_auth_gating(

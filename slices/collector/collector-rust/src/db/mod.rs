@@ -3,10 +3,10 @@
 //! connection pool (`persistence_rust::DieselPool`) onto the shared database
 //! file. The store embeds and applies the collector migrations on construction
 //! and loads / writes [`crate::domain::Remote`] directly (the domain type
-//! carries the diesel derives); the [`json_text::JsonText`] newtype maps its
+//! carries the diesel derives); the shared
+//! [`JsonText`](shared_structures_rust::json_text::JsonText) newtype maps its
 //! `config` field to the JSON TEXT column.
 
-pub mod json_text;
 mod remotes_store;
 pub(crate) mod schema;
 

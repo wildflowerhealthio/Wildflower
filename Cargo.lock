@@ -6971,6 +6971,7 @@ version = "0.0.0"
 dependencies = [
  "async-trait",
  "axum",
+ "diesel",
  "http-body-util",
  "serde",
  "serde_json",

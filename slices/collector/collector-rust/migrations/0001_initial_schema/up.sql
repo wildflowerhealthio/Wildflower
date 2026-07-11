@@ -10,7 +10,9 @@
 -- may carry pharmacy credentials, stored plaintext inside the JSON. Moving
 -- secrets to OS keychain / encrypted storage is a tracked follow-up.
 CREATE TABLE collector_remotes (
-    id       TEXT PRIMARY KEY,
+    -- A non-INTEGER PRIMARY KEY still permits NULL in SQLite (a historical
+    -- quirk STRICT does not override), so pin NOT NULL explicitly.
+    id       TEXT PRIMARY KEY NOT NULL,
     name     TEXT NOT NULL,
     tag      TEXT NOT NULL,
     config   TEXT NOT NULL,

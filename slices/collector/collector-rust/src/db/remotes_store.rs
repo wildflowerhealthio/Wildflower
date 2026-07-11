@@ -11,9 +11,9 @@ use diesel::prelude::*;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 use persistence_rust::DieselPool;
 
-use crate::db::json_text::JsonText;
 use crate::db::schema::collector_remotes;
 use crate::domain::{Remote, RemoteError};
+use shared_structures_rust::json_text::JsonText;
 
 /// The collector migrations, embedded from the crate's `migrations/` tree at
 /// compile time (diesel layout: `<version>_<name>/up.sql` + `down.sql`).
@@ -94,13 +94,16 @@ impl RemotesStore {
             .map_err(|e| RemoteError::backend("list_remotes failed", e))
     }
 
-    /// A single remote by id, `None` when absent.
+    /// A single remote by id, or [`RemoteError::NotFound`] when absent — the
+    /// `GET /collector/remotes/{id}` read. The store owns the not-found
+    /// semantics so the handler is a straight `?`.
     ///
     /// # Errors
     ///
+    /// [`RemoteError::NotFound`] when no remote has this id;
     /// [`RemoteError::Backend`] on a checkout / read failure or a corrupt
     /// stored config.
-    pub fn find_remote(&self, id: &str) -> Result<Option<Remote>, RemoteError> {
+    pub fn get_remote(&self, id: &str) -> Result<Remote, RemoteError> {
         let mut conn = self
             .pool
             .get()
@@ -110,17 +113,19 @@ impl RemotesStore {
             .select(Remote::as_select())
             .first(&mut conn)
             .optional()
-            .map_err(|e| RemoteError::backend("find_remote failed", e))
+            .map_err(|e| RemoteError::backend("get_remote failed", e))?
+            .ok_or_else(|| RemoteError::NotFound { id: id.to_owned() })
     }
 
-    /// Insert a fresh remote. Returns `false` when the id is already taken
-    /// (`INSERT … ON CONFLICT(id) DO NOTHING` affects 0 rows) — the create
-    /// handler maps that to a conflict rather than silently overwriting.
+    /// Insert a fresh remote, or [`RemoteError::AlreadyExists`] when the id is
+    /// already taken (`INSERT … ON CONFLICT(id) DO NOTHING` affects 0 rows) — a
+    /// conflict rather than a silent overwrite.
     ///
     /// # Errors
     ///
+    /// [`RemoteError::AlreadyExists`] when the id is taken;
     /// [`RemoteError::Backend`] on a checkout / insert failure.
-    pub fn insert_remote(&self, remote: &Remote) -> Result<bool, RemoteError> {
+    pub fn insert_remote(&self, remote: &Remote) -> Result<(), RemoteError> {
         let mut conn = self
             .pool
             .get()
@@ -134,18 +139,25 @@ impl RemotesStore {
             .do_nothing()
             .execute(&mut conn)
             .map_err(|e| RemoteError::backend("insert_remote failed", e))?;
-        Ok(affected == 1)
+        if affected == 1 {
+            Ok(())
+        } else {
+            Err(RemoteError::AlreadyExists {
+                id: remote.id.clone(),
+            })
+        }
     }
 
     /// Update an existing remote's `name` / `tag` / `config` (id and
-    /// `added_at` are immutable) and return the resulting row, or `None` when
-    /// no remote has this id. A single `UPDATE … RETURNING` statement, so the
-    /// write and the returned row are atomic — the row can't reflect a
-    /// concurrent write, and a concurrent delete can't produce an
-    /// updated-but-gone race.
+    /// `added_at` are immutable) and return the resulting row, or
+    /// [`RemoteError::NotFound`] when no remote has this id. A single
+    /// `UPDATE … RETURNING` statement, so the write and the returned row are
+    /// atomic — the row can't reflect a concurrent write, and a concurrent
+    /// delete can't produce an updated-but-gone race.
     ///
     /// # Errors
     ///
+    /// [`RemoteError::NotFound`] when no remote has this id;
     /// [`RemoteError::Backend`] on a checkout / update failure or a corrupt
     /// stored config.
     pub fn update_remote(
@@ -154,7 +166,7 @@ impl RemotesStore {
         name: &str,
         tag: &str,
         config: &serde_json::Value,
-    ) -> Result<Option<Remote>, RemoteError> {
+    ) -> Result<Remote, RemoteError> {
         let mut conn = self
             .pool
             .get()
@@ -168,16 +180,18 @@ impl RemotesStore {
             .returning(Remote::as_returning())
             .get_result(&mut conn)
             .optional()
-            .map_err(|e| RemoteError::backend("update_remote failed", e))
+            .map_err(|e| RemoteError::backend("update_remote failed", e))?
+            .ok_or_else(|| RemoteError::NotFound { id: id.to_owned() })
     }
 
-    /// Remove a remote by id. Returns `true` iff a row was deleted; the
-    /// handler maps `false` to `404 RemoteNotFound`.
+    /// Remove a remote by id, or [`RemoteError::NotFound`] when no remote has
+    /// this id.
     ///
     /// # Errors
     ///
+    /// [`RemoteError::NotFound`] when no remote has this id;
     /// [`RemoteError::Backend`] on a checkout / delete failure.
-    pub fn delete_remote(&self, id: &str) -> Result<bool, RemoteError> {
+    pub fn delete_remote(&self, id: &str) -> Result<(), RemoteError> {
         let mut conn = self
             .pool
             .get()
@@ -185,7 +199,11 @@ impl RemotesStore {
         let affected = diesel::delete(collector_remotes::table.find(id))
             .execute(&mut conn)
             .map_err(|e| RemoteError::backend("delete_remote failed", e))?;
-        Ok(affected == 1)
+        if affected == 1 {
+            Ok(())
+        } else {
+            Err(RemoteError::NotFound { id: id.to_owned() })
+        }
     }
 }
 
@@ -226,7 +244,7 @@ mod tests {
     #[test]
     fn migration_seeds_the_demo_fhir_remote() {
         let store = RemotesStore::open_in_memory().unwrap();
-        let seeded = store.find_remote("fhir-demo").unwrap().expect("seeded row");
+        let seeded = store.get_remote("fhir-demo").unwrap();
         assert_eq!(seeded.name, "FHIR Demo");
         assert_eq!(seeded.tag, "fhir-r4");
         assert_eq!(seeded.added_at, "2026-06-17T14:29:22.363Z");
@@ -254,20 +272,41 @@ mod tests {
             "password": "p",
             "nested": { "deep": [1, 2, 3] },
         });
-        assert!(store.insert_remote(&fresh).unwrap());
-        let read = store.find_remote("r1").unwrap().expect("inserted row");
+        store.insert_remote(&fresh).unwrap();
+        let read = store.get_remote("r1").unwrap();
         assert_eq!(read, fresh);
     }
 
     #[test]
-    fn insert_remote_returns_false_on_duplicate_id_without_overwriting() {
+    fn insert_remote_conflicts_on_duplicate_id_without_overwriting() {
         let store = RemotesStore::open_in_memory().unwrap();
         let first = remote("dup", "2026-07-01T00:00:00.000Z");
-        assert!(store.insert_remote(&first).unwrap());
+        store.insert_remote(&first).unwrap();
         let second = remote("dup", "2026-07-02T00:00:00.000Z");
-        assert!(!store.insert_remote(&second).unwrap());
+        assert!(matches!(
+            store.insert_remote(&second),
+            Err(RemoteError::AlreadyExists { id }) if id == "dup"
+        ));
         // The original row is untouched.
-        assert_eq!(store.find_remote("dup").unwrap().unwrap(), first);
+        assert_eq!(store.get_remote("dup").unwrap(), first);
+    }
+
+    /// A row whose `config` TEXT is not valid JSON surfaces from a read as a
+    /// [`RemoteError::Backend`] (diesel deserialization error), never a panic —
+    /// so a future refactor can't quietly swap the `?` in [`JsonText`]'s
+    /// `from_sql` for an `.unwrap()`.
+    #[test]
+    fn corrupt_stored_config_reads_as_a_backend_error_not_a_panic() {
+        let store = RemotesStore::open_in_memory().unwrap();
+        let mut conn = store.pool.get().expect("check out a connection");
+        diesel::sql_query("UPDATE collector_remotes SET config = 'not json' WHERE id = 'fhir-demo'")
+            .execute(&mut conn)
+            .expect("corrupt the stored config");
+        drop(conn);
+        assert!(matches!(
+            store.get_remote("fhir-demo"),
+            Err(RemoteError::Backend { .. })
+        ));
     }
 
     /// Listing returns every row oldest-first, with the id as tiebreaker for
@@ -305,23 +344,22 @@ mod tests {
         let new_config = serde_json::json!({ "_tag": "rexall", "username": "u" });
         let updated = store
             .update_remote("r1", "Renamed", "rexall", &new_config)
-            .unwrap()
-            .expect("existing row updates");
+            .unwrap();
         assert_eq!(updated.name, "Renamed");
         assert_eq!(updated.tag, "rexall");
         assert_eq!(updated.config, new_config);
         assert_eq!(updated.added_at, "2026-07-01T00:00:00.000Z");
-        assert_eq!(store.find_remote("r1").unwrap().unwrap(), updated);
+        assert_eq!(store.get_remote("r1").unwrap(), updated);
     }
 
     #[test]
-    fn update_remote_returns_none_for_an_unknown_id() {
+    fn update_remote_is_not_found_for_an_unknown_id() {
         let store = RemotesStore::open_in_memory().unwrap();
         let config = serde_json::json!({ "_tag": "fhir-r4" });
-        assert!(store
-            .update_remote("no-such-id", "n", "fhir-r4", &config)
-            .unwrap()
-            .is_none());
+        assert!(matches!(
+            store.update_remote("no-such-id", "n", "fhir-r4", &config),
+            Err(RemoteError::NotFound { id }) if id == "no-such-id"
+        ));
     }
 
     #[test]
@@ -330,11 +368,14 @@ mod tests {
         store
             .insert_remote(&remote("r1", "2026-07-01T00:00:00.000Z"))
             .unwrap();
-        assert!(store.delete_remote("r1").unwrap());
-        assert!(store.find_remote("r1").unwrap().is_none());
+        store.delete_remote("r1").unwrap();
+        assert!(matches!(
+            store.get_remote("r1"),
+            Err(RemoteError::NotFound { .. })
+        ));
         assert!(
-            !store.delete_remote("r1").unwrap(),
-            "second delete is a miss"
+            matches!(store.delete_remote("r1"), Err(RemoteError::NotFound { .. })),
+            "second delete is a miss",
         );
     }
 }

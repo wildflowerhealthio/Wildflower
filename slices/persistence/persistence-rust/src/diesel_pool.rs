@@ -104,6 +104,12 @@ pub fn open_in_memory_pool() -> anyhow::Result<DieselPool> {
 fn build_pool(database_url: &str, max_size: u32) -> anyhow::Result<DieselPool> {
     Pool::builder()
         .max_size(max_size)
+        // Fail an exhausted-pool checkout fast rather than blocking the async
+        // worker for r2d2's 30 s default: every store method calls the
+        // synchronous `pool.get()` inside an axum handler, so a stuck checkout
+        // pins a tokio worker. 5 s matches the single-writer `busy_timeout`, so
+        // a checkout only outlives the contention it's waiting on by a hair.
+        .connection_timeout(std::time::Duration::from_secs(5))
         .connection_customizer(Box::new(PragmaCustomizer))
         .build(ConnectionManager::<SqliteConnection>::new(database_url))
         .with_context(|| format!("failed to build diesel connection pool for {database_url}"))

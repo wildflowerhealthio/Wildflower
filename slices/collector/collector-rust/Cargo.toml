@@ -31,11 +31,12 @@ diesel_migrations.workspace = true
 persistence-rust = { path = "../../persistence/persistence-rust" }
 utoipa.workspace = true
 utoipa-axum.workspace = true
-# The shared opaque-500 `InternalError` template (see `response_templates`).
-shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = ["http-errors"] }
-# `Utc::now()` for a created remote's `added_at` stamp (same minimal feature
-# set as `gatekeeper-rust` / `databases-rust`).
-chrono = { version = "0.4", default-features = false, features = ["clock"] }
+# The shared opaque-500 `InternalError` template (`http-errors`) and the diesel
+# `JsonText` JSON-TEXT column mapping (`diesel-json-text`).
+shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = ["http-errors", "diesel-json-text"] }
+# `Utc::now()` for a created remote's `added_at` stamp; the workspace pins the
+# version, `clock` adds the system-time source on top of its lean base.
+chrono = { workspace = true, features = ["clock"] }
 
 [lints]
 workspace = true
@@ -44,5 +45,5 @@ workspace = true
 # The OpenAPI snapshot helper enables the extra `openapi-snapshot` feature.
 shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = ["openapi-snapshot"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
-http-body-util = "0.1"
-tower = { version = "0.5", features = ["util"] }
+http-body-util = { workspace = true }
+tower = { workspace = true, features = ["util"] }
