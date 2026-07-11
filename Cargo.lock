@@ -1332,7 +1332,7 @@ dependencies = [
  "diesel",
  "diesel_migrations",
  "http-body-util",
- "parking_lot",
+ "persistence-rust",
  "serde",
  "serde_json",
  "shared-structures-rust",
@@ -1928,6 +1928,7 @@ checksum = "229850a212cd9b84d4f0290ad9d294afc0ae70fccaa8949dbe8b43ffafa1e20c"
 dependencies = [
  "diesel_derives",
  "libsqlite3-sys",
+ "r2d2",
  "time",
 ]
 
@@ -5354,10 +5355,12 @@ name = "persistence-rust"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "diesel",
  "parking_lot",
  "rusqlite",
  "serde",
  "serde_json",
+ "tempfile",
  "url",
 ]
 

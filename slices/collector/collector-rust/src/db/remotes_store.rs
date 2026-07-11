@@ -1,19 +1,15 @@
-//! The `RemotesStore` handle — owns a Diesel `SqliteConnection` onto the shared
-//! database file, applies the embedded collector migrations onto it, and
+//! The `RemotesStore` handle — holds the app-wide r2d2 pool of Diesel
+//! `SqliteConnection`s (`persistence_rust::DieselPool`) onto the shared database
+//! file, applies the embedded collector migrations once on construction, and
 //! exposes the `collector_remotes` CRUD the `/collector/remotes` handlers serve.
-//! Queries load and write the domain [`Remote`] directly — it carries the
-//! diesel derives, with [`JsonText`] mapping `config` at the bind/read
-//! boundary.
-
-use std::path::Path;
-use std::sync::Arc;
+//! Queries check a connection out of the pool and load / write the domain
+//! [`Remote`] directly — it carries the diesel derives, with [`JsonText`]
+//! mapping `config` at the bind/read boundary.
 
 use anyhow::Context;
-use diesel::connection::SimpleConnection;
 use diesel::prelude::*;
-use diesel::sqlite::SqliteConnection;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
-use parking_lot::Mutex;
+use persistence_rust::DieselPool;
 
 use crate::db::json_text::JsonText;
 use crate::db::schema::collector_remotes;
@@ -21,80 +17,62 @@ use crate::domain::Remote;
 
 /// The collector migrations, embedded from the crate's `migrations/` tree at
 /// compile time (diesel layout: `<version>_<name>/up.sql` + `down.sql`).
-/// Applied once per database in [`RemotesStore::from_connection`]; diesel
-/// records applied versions in its own `__diesel_schema_migrations` table,
-/// which is disjoint from persistence-rust's namespaced `schema_migrations`, so
-/// the two migration bookkeepers coexist in the shared database with no
-/// collision. Migration `0002` seeds the demo FHIR remote the retired
-/// api_stubs stub used to hardcode; because each migration runs only once per
-/// database, a user-deleted seed stays deleted across upgrades.
+/// Applied once per database in [`RemotesStore::new`]; diesel records applied
+/// versions in its own `__diesel_schema_migrations` table, which is disjoint
+/// from persistence-rust's namespaced `schema_migrations`, so the two migration
+/// bookkeepers coexist in the shared database with no collision. Migration
+/// `0002` seeds the demo FHIR remote the retired api_stubs stub used to
+/// hardcode; because each migration runs only once per database, a user-deleted
+/// seed stays deleted across upgrades.
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
 #[derive(Clone)]
 pub struct RemotesStore {
-    // Diesel's connection API is `&mut`, so the single connection is serialized
-    // behind a mutex; the `Arc` makes the store cheap to clone into the axum
-    // state. This is a SECOND connection onto the same file the host's rusqlite
-    // `persistence-rust::Connection` serves the other slices from — SQLite
-    // permits multiple connections per file; the `busy_timeout` pragma below
-    // rides out the brief write locks either connection takes.
-    conn: Arc<Mutex<SqliteConnection>>,
+    // The app-wide r2d2 pool onto the shared database file, built and owned by
+    // the host (`persistence_rust::open_pool`). Diesel's connection API is
+    // `&mut`, so each call checks a connection out of the pool rather than
+    // sharing one behind a mutex; the pool (an `Arc` inside) makes the store
+    // cheap to clone into the axum state. These are additional openers onto the
+    // same file the host's rusqlite `persistence-rust::Connection` serves the
+    // other slices from — SQLite permits multiple connections per file; the
+    // pool's `busy_timeout` pragma rides out the brief write locks any
+    // connection takes (see `persistence_rust::open_pool`).
+    pool: DieselPool,
 }
 
 impl RemotesStore {
-    /// Open the collector's own connection onto the shared database at
-    /// `db_path` and apply pending collector migrations onto it. The host opens
-    /// its rusqlite connection onto the same file for the other slices; both
-    /// coexist (see the `conn` field).
+    /// Wrap the host-owned connection `pool` and apply pending collector
+    /// migrations once, on a single checked-out connection. The host builds the
+    /// app-wide pool (via `persistence_rust::open_pool`) on the same file its
+    /// rusqlite connection opens for the other slices; both coexist (see the
+    /// `pool` field).
     ///
     /// # Errors
     ///
-    /// Returns an error if the parent directory can't be created, the
-    /// connection can't be established or configured, or a migration fails.
-    pub fn new(db_path: &Path) -> anyhow::Result<Self> {
-        // Be robust if the collector opens the file before the host has: create
-        // the parent dir the same way `persistence_rust::Connection::open` does.
-        if let Some(parent) = db_path.parent() {
-            std::fs::create_dir_all(parent)
-                .with_context(|| format!("failed to create db dir {}", parent.display()))?;
-        }
-        let database_url = db_path
-            .to_str()
-            .with_context(|| format!("db path {} is not valid UTF-8", db_path.display()))?;
-        let conn = SqliteConnection::establish(database_url)
-            .with_context(|| format!("failed to open sqlite at {}", db_path.display()))?;
-        Self::from_connection(conn)
-    }
-
-    /// Open a private in-memory database and wrap it — for tests. Each call is
-    /// an independent database (the connection is the only handle to it).
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the in-memory connection can't be opened or migrated.
-    pub fn open_in_memory() -> anyhow::Result<Self> {
-        let conn =
-            SqliteConnection::establish(":memory:").context("failed to open in-memory sqlite")?;
-        Self::from_connection(conn)
-    }
-
-    /// Apply the per-connection runtime settings the host's rusqlite opener
-    /// also applies (`persistence_rust::Connection::configured`) so the two
-    /// connections behave identically, then run pending migrations.
-    ///
-    /// - `busy_timeout` (5s) so a write rides out brief contention from the
-    ///   host's connection on the same file instead of failing instantly with
-    ///   `SQLITE_BUSY`.
-    /// - `foreign_keys = ON`, which SQLite defaults OFF per connection — set
-    ///   outside any transaction (the migrations open their own).
-    fn from_connection(mut conn: SqliteConnection) -> anyhow::Result<Self> {
-        conn.batch_execute("PRAGMA busy_timeout = 5000; PRAGMA foreign_keys = ON;")
-            .context("failed to apply collector connection pragmas")?;
+    /// Returns an error if a connection can't be checked out of the pool or a
+    /// migration fails.
+    pub fn new(pool: DieselPool) -> anyhow::Result<Self> {
+        let mut conn = pool
+            .get()
+            .context("failed to check out a connection to run collector migrations")?;
         conn.run_pending_migrations(MIGRATIONS)
             .map_err(|e| anyhow::anyhow!("failed to apply collector migrations: {e}"))?;
-        Ok(Self {
-            conn: Arc::new(Mutex::new(conn)),
-        })
+        drop(conn);
+        Ok(Self { pool })
+    }
+
+    /// Build a store over a private in-memory database — for tests. Each call is
+    /// an independent, freshly-migrated database. Uses
+    /// `persistence_rust::open_in_memory_pool`, whose shared-cache URI keeps the
+    /// pooled connections on one in-memory database (a naive `:memory:` pool
+    /// gives each connection its own empty db).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the in-memory pool can't be built or migrated.
+    #[cfg(test)]
+    pub fn open_in_memory() -> anyhow::Result<Self> {
+        Self::new(persistence_rust::open_in_memory_pool()?)
     }
 
     /// Every remote, oldest first (ties broken by id so the order is total) —
@@ -104,11 +82,14 @@ impl RemotesStore {
     ///
     /// Returns any error from the read or a corrupt stored config.
     pub fn list_remotes(&self) -> anyhow::Result<Vec<Remote>> {
-        let mut guard = self.conn.lock();
+        let mut conn = self
+            .pool
+            .get()
+            .context("failed to check out a connection")?;
         Ok(collector_remotes::table
             .order((collector_remotes::added_at, collector_remotes::id))
             .select(Remote::as_select())
-            .load(&mut *guard)?)
+            .load(&mut conn)?)
     }
 
     /// A single remote by id, `None` when absent.
@@ -117,11 +98,14 @@ impl RemotesStore {
     ///
     /// Returns any error from the read or a corrupt stored config.
     pub fn find_remote(&self, id: &str) -> anyhow::Result<Option<Remote>> {
-        let mut guard = self.conn.lock();
+        let mut conn = self
+            .pool
+            .get()
+            .context("failed to check out a connection")?;
         Ok(collector_remotes::table
             .find(id)
             .select(Remote::as_select())
-            .first(&mut *guard)
+            .first(&mut conn)
             .optional()?)
     }
 
@@ -133,7 +117,10 @@ impl RemotesStore {
     ///
     /// Returns any error from the insert.
     pub fn insert_remote(&self, remote: &Remote) -> anyhow::Result<bool> {
-        let mut guard = self.conn.lock();
+        let mut conn = self
+            .pool
+            .get()
+            .context("failed to check out a connection")?;
         let affected = diesel::insert_into(collector_remotes::table)
             // `Remote`'s `config` uses `#[diesel(serialize_as)]`, which
             // consumes the value — diesel generates no borrowed `Insertable`
@@ -141,7 +128,7 @@ impl RemotesStore {
             .values(remote.clone())
             .on_conflict(collector_remotes::id)
             .do_nothing()
-            .execute(&mut *guard)?;
+            .execute(&mut conn)?;
         Ok(affected == 1)
     }
 
@@ -162,7 +149,10 @@ impl RemotesStore {
         tag: &str,
         config: &serde_json::Value,
     ) -> anyhow::Result<Option<Remote>> {
-        let mut guard = self.conn.lock();
+        let mut conn = self
+            .pool
+            .get()
+            .context("failed to check out a connection")?;
         Ok(diesel::update(collector_remotes::table.find(id))
             .set((
                 collector_remotes::name.eq(name),
@@ -170,7 +160,7 @@ impl RemotesStore {
                 collector_remotes::config.eq(JsonText::from(config.clone())),
             ))
             .returning(Remote::as_returning())
-            .get_result(&mut *guard)
+            .get_result(&mut conn)
             .optional()?)
     }
 
@@ -181,14 +171,19 @@ impl RemotesStore {
     ///
     /// Returns any error from the delete.
     pub fn delete_remote(&self, id: &str) -> anyhow::Result<bool> {
-        let mut guard = self.conn.lock();
-        let affected = diesel::delete(collector_remotes::table.find(id)).execute(&mut *guard)?;
+        let mut conn = self
+            .pool
+            .get()
+            .context("failed to check out a connection")?;
+        let affected = diesel::delete(collector_remotes::table.find(id)).execute(&mut conn)?;
         Ok(affected == 1)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use diesel::sqlite::SqliteConnection;
+
     use super::*;
 
     fn remote(id: &str, added_at: &str) -> Remote {

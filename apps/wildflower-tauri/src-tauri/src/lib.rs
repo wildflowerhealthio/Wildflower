@@ -277,13 +277,16 @@ async fn run_server(
 
     // The real `/collector/remotes` surface (replacing the former api_stubs
     // stub — the demo FHIR remote it hardcoded is now seeded by migration).
-    // The collector opens its own diesel `SqliteConnection` onto the same
-    // shared database file `db` serves the other slices from. User-created
-    // remotes persist there; a remote's config JSON may carry pharmacy
-    // credentials, so the whole surface is Owner-gated like the rest of the
-    // admin API.
+    // The collector runs over the app-wide diesel r2d2 pool onto the same shared
+    // database file `db` serves the other slices from — additional openers on
+    // the same file. This is the shared diesel pool future diesel-backed slices
+    // should reuse rather than each opening their own. User-created remotes
+    // persist there; a remote's config JSON may carry pharmacy credentials, so
+    // the whole surface is Owner-gated like the rest of the admin API.
+    let collector_pool =
+        persistence_rust::open_pool(&db_path).context("failed to open diesel db pool")?;
     let gated_collector = layer_router_with_gatekeeper_auth_gating(
-        collector_rust::setup_collector(&db_path).context("failed to set up collector")?,
+        collector_rust::setup_collector(collector_pool).context("failed to set up collector")?,
         gatekeeper.state.clone(),
         &[],
     );

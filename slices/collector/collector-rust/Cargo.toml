@@ -11,12 +11,14 @@ publish.workspace = true
 # verbatim, so adding a TS collector never requires a Rust change. Layered like
 # `tunnel-rust` / `apps-rust`: pure `domain`, `db`, and `http`.
 #
-# Persistence is Diesel over the crate's own `SqliteConnection`, opened on the
-# same shared database file the host's rusqlite `persistence-rust::Connection`
-# serves the other slices from (see `db::RemotesStore`). It does NOT depend on
-# `persistence-rust` / `rusqlite`; Cargo unifies diesel's `libsqlite3-sys` with
+# Persistence is Diesel over the app-wide r2d2 connection pool
+# (`persistence_rust::DieselPool`), built by the host on the same shared database
+# file its rusqlite `persistence-rust::Connection` serves the other slices from.
+# This crate depends on `persistence-rust` ONLY for the pool type — it does not
+# touch `rusqlite` directly. Cargo unifies diesel's `libsqlite3-sys` with
 # rusqlite's already-bundled one, so both connections drive the same bundled
-# SQLite build.
+# SQLite build. Diesel's `r2d2` feature reuses the `r2d2 0.8` already in the tree
+# (via `helios-persistence`), so no new external crate for cargo-deny.
 [dependencies]
 anyhow.workspace = true
 axum.workspace = true
@@ -24,9 +26,9 @@ serde = { workspace = true }
 serde_json.workspace = true
 diesel = { workspace = true }
 diesel_migrations.workspace = true
-# `parking_lot::Mutex` around the single `SqliteConnection` (diesel's API is
-# `&mut`), matching persistence-rust's synchronized-handle shape.
-parking_lot = "0.12"
+# The app-wide diesel connection pool (`DieselPool` / `open_pool`) shared across
+# diesel-backed slices; this crate names the pool type but not rusqlite.
+persistence-rust = { path = "../../persistence/persistence-rust" }
 utoipa.workspace = true
 utoipa-axum.workspace = true
 # The shared opaque-500 `InternalError` template (see `response_templates`).

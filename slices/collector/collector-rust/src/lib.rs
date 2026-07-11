@@ -21,8 +21,8 @@
 //!  - [`domain`] — core types: [`domain::Remote`] (the diesel-mapped row
 //!    **and** wire shape) and the [`domain::config_tag`] discriminant reader.
 //!  - [`db`] — the SQLite store ([`db::RemotesStore`]) built on Diesel over the
-//!    crate's own connection onto the shared database file, migrated with
-//!    embedded diesel migrations.
+//!    app-wide r2d2 connection pool (`persistence_rust::DieselPool`) onto the
+//!    shared database file, migrated with embedded diesel migrations.
 //!  - [`http`] — the slice's router; the wire contract is pinned from both
 //!    sides by the committed OpenAPI snapshot (see [`http`]).
 
@@ -30,23 +30,29 @@ pub mod db;
 pub mod domain;
 pub mod http;
 
-use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::Context;
 use axum::Router;
+// Re-exported so the host can name the pool type at the `setup_collector` call
+// site without a direct diesel dependency; the canonical home is
+// persistence-rust.
+pub use persistence_rust::DieselPool;
 
 pub use db::RemotesStore;
 pub use http::CollectorState;
 
-/// Build the collector router over its own connection onto the shared database
-/// at `db_path`, mirroring `tunnel-rust`'s `setup_tunnel` and `apps-rust`'s
-/// `setup_apps`. The host opens the shared database with its rusqlite
-/// `persistence-rust::Connection` for the other slices and passes the same
-/// path here; the collector opens a SECOND `diesel::SqliteConnection` onto that
-/// file (SQLite permits multiple connections per file), and constructing the
-/// store applies the embedded collector migrations (including the demo-remote
-/// seed).
+/// Build the collector router over the host-owned connection `pool`, mirroring
+/// `tunnel-rust`'s `setup_tunnel` and `apps-rust`'s `setup_apps`. The host opens
+/// the shared database with its rusqlite `persistence-rust::Connection` for the
+/// other slices and builds the app-wide diesel pool (via
+/// `persistence_rust::open_pool`) as an additional opener onto the same file
+/// (SQLite permits multiple connections per file); constructing the store
+/// applies the embedded collector migrations (including the demo-remote seed)
+/// once. Because WAL is deliberately OFF repo-wide, SQLite allows a single
+/// writer at a time across ALL connections; the pool's `busy_timeout` covers
+/// both cross-connection contention (with the host's rusqlite connection) and
+/// intra-pool write contention.
 ///
 /// The returned router carries no middleware — every endpoint exposes
 /// owner-only data, so the consumer MUST wrap it with its auth gate (the Tauri
@@ -54,8 +60,9 @@ pub use http::CollectorState;
 ///
 /// # Errors
 ///
-/// Returns an error if the store can't open its connection or be migrated.
-pub fn setup_collector(db_path: &Path) -> anyhow::Result<Router> {
-    let store = RemotesStore::new(db_path).context("failed to open remotes store")?;
+/// Returns an error if the store can't run its migrations on a pooled
+/// connection.
+pub fn setup_collector(pool: DieselPool) -> anyhow::Result<Router> {
+    let store = RemotesStore::new(pool).context("failed to open remotes store")?;
     Ok(http::router(Arc::new(CollectorState::new(store))))
 }

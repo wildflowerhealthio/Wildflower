@@ -42,7 +42,10 @@ include_dir = "0.7"
 # `returning_clauses_for_sqlite_3_35` unlocks `RETURNING` on SQLite statements
 # (atomic write-and-read-back, no explicit transaction); the bundled SQLite
 # from `libsqlite3-sys 0.31` is 3.47.x, well past the 3.35 floor.
-diesel = { version = "~2.2.7", features = ["sqlite", "returning_clauses_for_sqlite_3_35"] }
+# `r2d2` enables diesel's `ConnectionManager`/`Pool`, reusing the `r2d2 0.8`
+# already in the tree via `helios-persistence` (its `r2d2_sqlite` pools rusqlite
+# the same way for the FHIR store) — no new external crate for cargo-deny.
+diesel = { version = "~2.2.7", features = ["sqlite", "returning_clauses_for_sqlite_3_35", "r2d2"] }
 # Compile-time-embedded diesel migrations for that connection (records applied
 # versions in diesel's own `__diesel_schema_migrations`, disjoint from
 # persistence-rust's namespaced `schema_migrations`).
