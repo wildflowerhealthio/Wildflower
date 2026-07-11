@@ -2,8 +2,8 @@ use axum::extract::{Path, State};
 use axum::routing::{post, MethodRouter};
 use axum::Json;
 
-use super::internal::load_pending_device_request;
-use crate::http::response_templates::HandlerError;
+use crate::domain::consent::load_pending_device_request;
+use crate::http::errors::HandlerError;
 use crate::http::routes::consent::deny_consent;
 use crate::http::state::AppState;
 use crate::http::wire_representations::ConsentResult;
@@ -18,6 +18,6 @@ async fn handle_deny_device_consent(
     State(state): State<AppState>,
     Path(user_code): Path<String>,
 ) -> Result<Json<ConsentResult>, HandlerError> {
-    let device_request = load_pending_device_request(&state, &user_code)?;
+    let device_request = load_pending_device_request(&state.store, &user_code)?;
     deny_consent(&state, &device_request.id)
 }

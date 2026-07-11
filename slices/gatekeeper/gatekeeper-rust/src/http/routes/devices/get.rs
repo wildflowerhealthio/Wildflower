@@ -2,8 +2,8 @@ use axum::extract::{Path, State};
 use axum::routing::{get, MethodRouter};
 use axum::Json;
 
-use super::internal::load_pending_device_request;
-use crate::http::response_templates::HandlerError;
+use crate::domain::consent::load_pending_device_request;
+use crate::http::errors::HandlerError;
 use crate::http::state::AppState;
 use crate::http::wire_representations::DeviceConsent;
 
@@ -17,7 +17,7 @@ async fn handle_get_device_consent(
     State(state): State<AppState>,
     Path(user_code): Path<String>,
 ) -> Result<Json<DeviceConsent>, HandlerError> {
-    let device_request = load_pending_device_request(&state, &user_code)?;
+    let device_request = load_pending_device_request(&state.store, &user_code)?;
     let (client_name, allowed_scopes) = match state.store.client_by_id(&device_request.client_id) {
         Ok(Some(c)) => (c.name, c.allowed_scopes.into_inner()),
         // Fall back to the raw client_id (and no expansion envelope) if lookup

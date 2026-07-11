@@ -2,8 +2,8 @@ use axum::extract::{Path, State};
 use axum::routing::{get, MethodRouter};
 use axum::Json;
 
-use super::internal::{load_pending_authorization_code_request, PendingCodeConsent};
-use crate::http::response_templates::HandlerError;
+use crate::domain::consent::{load_pending_authorization_code_request, PendingCodeConsent};
+use crate::http::errors::HandlerError;
 use crate::http::state::AppState;
 use crate::http::wire_representations::OAuthConsent;
 
@@ -21,7 +21,7 @@ async fn handle_get_oauth_consent(
         request,
         redirect_uri,
         ..
-    } = load_pending_authorization_code_request(&state, &id)?;
+    } = load_pending_authorization_code_request(&state.store, &id)?;
     let client_name = match state.store.client_by_id(&request.client_id) {
         Ok(Some(c)) => c.name,
         // Fall back to the raw client_id if lookup misses or fails — the UI

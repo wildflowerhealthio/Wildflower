@@ -1,18 +1,26 @@
-//! Shared HTTP response templates for the gatekeeper's handlers and
-//! middleware. Callers invoke these through the module namespace
-//! (`response_templates::internal_error(..)`) so a reader sees at the call
-//! site that a canned response shape is being produced.
+//! Error **wire-representations** for the gatekeeper's routes and middleware —
+//! how failures render onto the wire, and nothing else. The failure
+//! *vocabulary* is domain ([`crate::domain::error::GatekeeperError`]); this
+//! file only renders it — a semantic status + JSON body for the `*NotFound`
+//! variants, a logged opaque 500 for a
+//! [`Backend`](GatekeeperError::Backend) failure — so a route bails with `?`
+//! and its `Result` becomes a response with no HTTP glue at the call site.
 //!
-//! These factor out the error-response shapes that were previously
-//! copy-pasted across nearly every handler and middleware file: a logged
-//! 500 ([`internal_error`]), a plain 401 ([`unauthorized`]), and a JSON
-//! 404 ([`not_found`]).
+//! Also holds the canned response shapes the middleware produces directly
+//! (a logged 500 via [`internal_error`], a plain 401 via [`unauthorized`],
+//! the [`verify_error_response`] status mapping for token verification), the
+//! route-level [`HandlerError`], and the local HTML error pages the
+//! `/oauth/authorize` endpoint renders for failures that may NOT be
+//! redirected back to the client (RFC 6749 §4.1.2.1 restricts those to
+//! `redirect_uri`/`client_id` validation failures — every other spec'd error
+//! is delivered by redirecting to the already-validated `redirect_uri`).
 
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde_json::json;
 
+use crate::domain::error::GatekeeperError;
 use crate::domain::token::VerifyError;
 
 /// Map a token-[`VerifyError`] to its HTTP response, shared by the auth
@@ -44,7 +52,7 @@ pub(crate) fn internal_error(context: &str, err: impl std::fmt::Display) -> Resp
 /// operator-facing `context` and the `source` detail, logged + returned as an
 /// opaque 500. This is the shared type from `shared-structures-rust` — the same
 /// one the other `-rust` slices hold in their `Internal` variant — re-exported
-/// here so the OAuth surfaces keep importing it from `response_templates`. Each
+/// here so the OAuth surfaces keep importing it from `errors`. Each
 /// enum holds it in its `Internal` variant instead of re-declaring the same
 /// fields, constructor, and render call. (`TokenError` additionally
 /// cache-suppresses the rendered 500 per RFC 6749 §5.1 by wrapping it.)
@@ -127,6 +135,89 @@ impl IntoResponse for HandlerError {
     }
 }
 
+/// Render the domain's failure vocabulary through the route-level
+/// [`HandlerError`]: each semantic `*NotFound` variant becomes its structured
+/// JSON 404 (keyed by the resource's identifying field), and an opaque
+/// [`Backend`](GatekeeperError::Backend) failure becomes the logged, empty
+/// 500. This `From` is what lets a handler `?` a
+/// `Result<_, GatekeeperError>` from the store or a domain loader.
+impl From<GatekeeperError> for HandlerError {
+    fn from(error: GatekeeperError) -> Self {
+        match error {
+            GatekeeperError::OAuthConsentNotFound { id } => {
+                HandlerError::not_found("OAuthConsentNotFound", "id", &id)
+            }
+            GatekeeperError::DeviceConsentNotFound { user_code } => {
+                HandlerError::not_found("DeviceConsentNotFound", "userCode", &user_code)
+            }
+            GatekeeperError::GrantNotFound { id } => {
+                HandlerError::not_found("GrantNotFound", "id", &id)
+            }
+            GatekeeperError::AuthorizationRequestNotFound { id } => {
+                HandlerError::not_found("AuthorizationRequestNotFound", "id", &id)
+            }
+            GatekeeperError::Backend { context, source } => {
+                HandlerError::Internal(InternalError::new(context, source))
+            }
+        }
+    }
+}
+
+/// Local HTML error pages for `/oauth/authorize` failures that may NOT be
+/// redirected back to the client. RFC 6749 §4.1.2.1 restricts these to
+/// `redirect_uri`/`client_id` validation failures — every other spec'd
+/// error is delivered by redirecting to the (already validated)
+/// `redirect_uri` with `error` + `state` query params instead.
+pub enum OAuthErrorKind {
+    InvalidRedirectUri,
+    InvalidScheme,
+    UnknownClient,
+    DisabledClient,
+    RedirectUriNotAllowed,
+}
+
+fn title_and_body(kind: &OAuthErrorKind) -> (&'static str, &'static str) {
+    match kind {
+        OAuthErrorKind::InvalidRedirectUri => (
+            "Invalid redirect URI",
+            "The supplied redirect_uri is not a well-formed URL.",
+        ),
+        OAuthErrorKind::InvalidScheme => (
+            "Invalid redirect URI scheme",
+            "The supplied redirect_uri must use http or https.",
+        ),
+        OAuthErrorKind::UnknownClient => (
+            "Unknown client",
+            "The supplied client_id is not registered.",
+        ),
+        OAuthErrorKind::DisabledClient => (
+            "Disabled client",
+            "The supplied client_id has been disabled.",
+        ),
+        OAuthErrorKind::RedirectUriNotAllowed => (
+            "Redirect URI not allowed",
+            "The supplied redirect_uri is not registered for this client.",
+        ),
+    }
+}
+
+pub fn oauth_error_html(kind: &OAuthErrorKind) -> String {
+    let (title, body) = title_and_body(kind);
+    format!(
+        "<!doctype html>\n\
+<html lang=\"en\">\n\
+<head>\n\
+  <meta charset=\"utf-8\">\n\
+  <title>{title}</title>\n\
+</head>\n\
+<body>\n\
+  <h1>{title}</h1>\n\
+  <p>{body}</p>\n\
+</body>\n\
+</html>"
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -145,7 +236,10 @@ mod tests {
 
     #[test]
     fn key_store_unavailable_maps_to_500() {
-        let err = VerifyError::KeyStoreUnavailable(rusqlite::Error::QueryReturnedNoRows);
+        let err = VerifyError::KeyStoreUnavailable(GatekeeperError::backend(
+            "all_signing_keys failed",
+            "query returned no rows",
+        ));
         let response = verify_error_response("test", err);
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }

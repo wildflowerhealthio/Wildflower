@@ -2,9 +2,10 @@ use chrono::{DateTime, Utc};
 use rusqlite::{params, OptionalExtension, ToSql};
 
 use crate::db::GatekeeperStore;
+use crate::domain::error::GatekeeperError;
 use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 use persistence_rust::build_insert_sql;
-use persistence_rust::{sql_row, DbResult};
+use persistence_rust::sql_row;
 
 // `RefreshTokenFamily` is mapped by hand: its read path is a JOIN aliasing
 // `f.issued_at AS family_issued_at` (see `refresh_token_with_family_by_hash`),
@@ -61,41 +62,45 @@ impl GatekeeperStore {
     ///
     /// # Errors
     ///
-    /// Returns a `rusqlite::Error` if opening the transaction, either insert,
+    /// [`GatekeeperError::Backend`] if opening the transaction, either insert,
     /// or the commit fails.
     pub fn insert_refresh_token_family(
         &self,
         family: &RefreshTokenFamily,
         first_token: &RefreshToken,
-    ) -> DbResult<()> {
+    ) -> Result<(), GatekeeperError> {
+        let backend = |e| GatekeeperError::backend("insert_refresh_token_family failed", e);
         let mut guard = self.conn().lock();
-        let tx = guard.transaction()?;
+        let tx = guard.transaction().map_err(backend)?;
         {
             let family_params = family_named_sql_params(family);
             tx.execute(
                 &build_insert_sql("refresh_token_families", &family_params),
                 &family_params,
-            )?;
+            )
+            .map_err(backend)?;
             let token_params = token_named_sql_params(first_token);
             tx.execute(
                 &build_insert_sql("refresh_tokens", &token_params),
                 &token_params,
-            )?;
+            )
+            .map_err(backend)?;
         }
-        tx.commit()
+        tx.commit().map_err(backend)
     }
 
     /// Persist the successor token in an existing family's rotation.
     ///
     /// # Errors
     ///
-    /// Returns a `rusqlite::Error` if the insert fails (for example a
+    /// [`GatekeeperError::Backend`] if the insert fails (for example a
     /// unique-constraint violation on the token hash).
-    pub fn insert_refresh_token(&self, token: &RefreshToken) -> DbResult<()> {
+    pub fn insert_refresh_token(&self, token: &RefreshToken) -> Result<(), GatekeeperError> {
         let params = token_named_sql_params(token);
         self.conn()
             .lock()
-            .execute(&build_insert_sql("refresh_tokens", &params), &params)?;
+            .execute(&build_insert_sql("refresh_tokens", &params), &params)
+            .map_err(|e| GatekeeperError::backend("insert_refresh_token failed", e))?;
         Ok(())
     }
 
@@ -105,12 +110,12 @@ impl GatekeeperStore {
     ///
     /// # Errors
     ///
-    /// Returns a `rusqlite::Error` if the join query fails or a returned row
+    /// [`GatekeeperError::Backend`] if the join query fails or a returned row
     /// cannot be mapped to a [`RefreshToken`]/[`RefreshTokenFamily`] pair.
     pub fn refresh_token_with_family_by_hash(
         &self,
         token_hash: &str,
-    ) -> DbResult<Option<(RefreshToken, RefreshTokenFamily)>> {
+    ) -> Result<Option<(RefreshToken, RefreshTokenFamily)>, GatekeeperError> {
         self.conn()
             .lock()
             .query_row(
@@ -138,6 +143,7 @@ impl GatekeeperStore {
                 },
             )
             .optional()
+            .map_err(|e| GatekeeperError::backend("refresh_token_with_family_by_hash failed", e))
     }
 
     /// Look up a single token by hash — enough for callers that don't need
@@ -145,9 +151,12 @@ impl GatekeeperStore {
     ///
     /// # Errors
     ///
-    /// Returns a `rusqlite::Error` if the select query fails or a returned row
-    /// cannot be mapped to a [`RefreshToken`].
-    pub fn refresh_token_by_hash(&self, token_hash: &str) -> DbResult<Option<RefreshToken>> {
+    /// [`GatekeeperError::Backend`] if the select query fails or a returned
+    /// row cannot be mapped to a [`RefreshToken`].
+    pub fn refresh_token_by_hash(
+        &self,
+        token_hash: &str,
+    ) -> Result<Option<RefreshToken>, GatekeeperError> {
         self.conn()
             .lock()
             .query_row(
@@ -157,6 +166,7 @@ impl GatekeeperStore {
                 |row| RefreshToken::try_from(row),
             )
             .optional()
+            .map_err(|e| GatekeeperError::backend("refresh_token_by_hash failed", e))
     }
 
     /// Atomically consume a live refresh token, reporting which
@@ -167,35 +177,40 @@ impl GatekeeperStore {
     ///
     /// # Errors
     ///
-    /// Returns a `rusqlite::Error` if opening the transaction, the update, the
+    /// [`GatekeeperError::Backend`] if opening the transaction, the update, the
     /// existence probe, or the commit fails.
     pub fn consume_refresh_token(
         &self,
         token_hash: &str,
         now: DateTime<Utc>,
-    ) -> DbResult<RefreshTokenConsumeOutcome> {
+    ) -> Result<RefreshTokenConsumeOutcome, GatekeeperError> {
+        let backend = |e| GatekeeperError::backend("consume_refresh_token failed", e);
         let mut guard = self.conn().lock();
-        let tx = guard.transaction()?;
-        let affected = tx.execute(
-            "UPDATE refresh_tokens SET consumed_at = ?2
-             WHERE token_hash = ?1 AND consumed_at IS NULL",
-            params![token_hash, now],
-        )?;
+        let tx = guard.transaction().map_err(backend)?;
+        let affected = tx
+            .execute(
+                "UPDATE refresh_tokens SET consumed_at = ?2
+                 WHERE token_hash = ?1 AND consumed_at IS NULL",
+                params![token_hash, now],
+            )
+            .map_err(backend)?;
         let result = if affected == 1 {
             RefreshTokenConsumeOutcome::Consumed
         } else {
-            let exists: bool = tx.query_row(
-                "SELECT EXISTS(SELECT 1 FROM refresh_tokens WHERE token_hash = ?1)",
-                params![token_hash],
-                |row| row.get(0),
-            )?;
+            let exists: bool = tx
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM refresh_tokens WHERE token_hash = ?1)",
+                    params![token_hash],
+                    |row| row.get(0),
+                )
+                .map_err(backend)?;
             if exists {
                 RefreshTokenConsumeOutcome::Replayed
             } else {
                 RefreshTokenConsumeOutcome::NotFound
             }
         };
-        tx.commit()?;
+        tx.commit().map_err(backend)?;
         Ok(result)
     }
 
@@ -210,38 +225,44 @@ impl GatekeeperStore {
     ///
     /// # Errors
     ///
-    /// Returns a `rusqlite::Error` if opening the transaction, the update, the
+    /// [`GatekeeperError::Backend`] if opening the transaction, the update, the
     /// existence probe, the successor insert, or the commit fails.
     pub fn rotate_refresh_token(
         &self,
         presented_hash: &str,
         successor: &RefreshToken,
         now: DateTime<Utc>,
-    ) -> DbResult<RefreshTokenConsumeOutcome> {
+    ) -> Result<RefreshTokenConsumeOutcome, GatekeeperError> {
+        let backend = |e| GatekeeperError::backend("rotate_refresh_token failed", e);
         let mut guard = self.conn().lock();
-        let tx = guard.transaction()?;
-        let consumed_refresh_token_count = tx.execute(
-            "UPDATE refresh_tokens SET consumed_at = ?2
-             WHERE token_hash = ?1 AND consumed_at IS NULL",
-            params![presented_hash, now],
-        )?;
+        let tx = guard.transaction().map_err(backend)?;
+        let consumed_refresh_token_count = tx
+            .execute(
+                "UPDATE refresh_tokens SET consumed_at = ?2
+                 WHERE token_hash = ?1 AND consumed_at IS NULL",
+                params![presented_hash, now],
+            )
+            .map_err(backend)?;
         let outcome = if consumed_refresh_token_count == 1 {
             let params = token_named_sql_params(successor);
-            tx.execute(&build_insert_sql("refresh_tokens", &params), &params)?;
+            tx.execute(&build_insert_sql("refresh_tokens", &params), &params)
+                .map_err(backend)?;
             RefreshTokenConsumeOutcome::Consumed
         } else {
-            let exists: bool = tx.query_row(
-                "SELECT EXISTS(SELECT 1 FROM refresh_tokens WHERE token_hash = ?1)",
-                params![presented_hash],
-                |row| row.get(0),
-            )?;
+            let exists: bool = tx
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM refresh_tokens WHERE token_hash = ?1)",
+                    params![presented_hash],
+                    |row| row.get(0),
+                )
+                .map_err(backend)?;
             if exists {
                 RefreshTokenConsumeOutcome::Replayed
             } else {
                 RefreshTokenConsumeOutcome::NotFound
             }
         };
-        tx.commit()?;
+        tx.commit().map_err(backend)?;
         Ok(outcome)
     }
 
@@ -254,21 +275,28 @@ impl GatekeeperStore {
     ///
     /// # Errors
     ///
-    /// Returns a `rusqlite::Error` if opening the transaction, either update,
+    /// [`GatekeeperError::Backend`] if opening the transaction, either update,
     /// or the commit fails.
-    pub fn expire_refresh_token_family(&self, family_id: &str, now: DateTime<Utc>) -> DbResult<()> {
+    pub fn expire_refresh_token_family(
+        &self,
+        family_id: &str,
+        now: DateTime<Utc>,
+    ) -> Result<(), GatekeeperError> {
+        let backend = |e| GatekeeperError::backend("expire_refresh_token_family failed", e);
         let mut guard = self.conn().lock();
-        let tx = guard.transaction()?;
+        let tx = guard.transaction().map_err(backend)?;
         tx.execute(
             "UPDATE refresh_token_families SET expires_at = ?2 WHERE family_id = ?1",
             params![family_id, now],
-        )?;
+        )
+        .map_err(backend)?;
         tx.execute(
             "UPDATE refresh_tokens SET consumed_at = ?2
              WHERE family_id = ?1 AND consumed_at IS NULL",
             params![family_id, now],
-        )?;
-        tx.commit()
+        )
+        .map_err(backend)?;
+        tx.commit().map_err(backend)
     }
 
     /// End every refresh-token family issued to a client, with the same
@@ -278,26 +306,30 @@ impl GatekeeperStore {
     ///
     /// # Errors
     ///
-    /// Returns a `rusqlite::Error` if opening the transaction, either update,
+    /// [`GatekeeperError::Backend`] if opening the transaction, either update,
     /// or the commit fails.
     pub fn expire_refresh_token_families_for_client(
         &self,
         client_id: &str,
         now: DateTime<Utc>,
-    ) -> DbResult<()> {
+    ) -> Result<(), GatekeeperError> {
+        let backend =
+            |e| GatekeeperError::backend("expire_refresh_token_families_for_client failed", e);
         let mut guard = self.conn().lock();
-        let tx = guard.transaction()?;
+        let tx = guard.transaction().map_err(backend)?;
         tx.execute(
             "UPDATE refresh_tokens SET consumed_at = ?2
              WHERE consumed_at IS NULL AND family_id IN
                  (SELECT family_id FROM refresh_token_families WHERE client_id = ?1)",
             params![client_id, now],
-        )?;
+        )
+        .map_err(backend)?;
         tx.execute(
             "UPDATE refresh_token_families SET expires_at = ?2 WHERE client_id = ?1",
             params![client_id, now],
-        )?;
-        tx.commit()
+        )
+        .map_err(backend)?;
+        tx.commit().map_err(backend)
     }
 
     /// End every refresh-token family minted from a given authorization code
@@ -310,28 +342,36 @@ impl GatekeeperStore {
     ///
     /// # Errors
     ///
-    /// Returns a `rusqlite::Error` if opening the transaction, either update,
+    /// [`GatekeeperError::Backend`] if opening the transaction, either update,
     /// or the commit fails.
     pub fn expire_refresh_token_families_for_authorization_code(
         &self,
         authorization_code_hash: &str,
         now: DateTime<Utc>,
-    ) -> DbResult<()> {
+    ) -> Result<(), GatekeeperError> {
+        let backend = |e| {
+            GatekeeperError::backend(
+                "expire_refresh_token_families_for_authorization_code failed",
+                e,
+            )
+        };
         let mut guard = self.conn().lock();
-        let tx = guard.transaction()?;
+        let tx = guard.transaction().map_err(backend)?;
         tx.execute(
             "UPDATE refresh_tokens SET consumed_at = ?1
              WHERE consumed_at IS NULL AND family_id IN
                  (SELECT family_id FROM refresh_token_families
                   WHERE authorization_code_hash = ?2)",
             params![now, authorization_code_hash],
-        )?;
+        )
+        .map_err(backend)?;
         tx.execute(
             "UPDATE refresh_token_families SET expires_at = ?1
              WHERE authorization_code_hash = ?2",
             params![now, authorization_code_hash],
-        )?;
-        tx.commit()
+        )
+        .map_err(backend)?;
+        tx.commit().map_err(backend)
     }
 }
 
@@ -455,9 +495,9 @@ mod tests {
             .expect_err("orphan insert must violate the foreign key");
         assert!(
             matches!(
-                err,
-                rusqlite::Error::SqliteFailure(e, _)
-                    if e.code == rusqlite::ErrorCode::ConstraintViolation
+                &err,
+                GatekeeperError::Backend { source, .. }
+                    if source.to_uppercase().contains("FOREIGN KEY")
             ),
             "expected a foreign-key constraint violation, got {err:?}"
         );

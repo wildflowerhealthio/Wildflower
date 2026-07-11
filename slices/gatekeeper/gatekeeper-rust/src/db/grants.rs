@@ -7,6 +7,7 @@ use uuid::Uuid;
 
 use crate::db::GatekeeperStore;
 use crate::domain::authorization_request::GrantType;
+use crate::domain::error::GatekeeperError;
 use crate::domain::grant::{Grant, GrantKind};
 use persistence_rust::{DbResult, JsonColumn};
 
@@ -77,22 +78,28 @@ impl GatekeeperStore {
     ///
     /// # Errors
     ///
-    /// Returns a `rusqlite::Error` if preparing or running the select query fails
-    /// or any returned row cannot be mapped to a [`Grant`].
-    pub fn all_grants(&self) -> DbResult<Vec<Grant>> {
+    /// [`GatekeeperError::Backend`] if preparing or running the select query
+    /// fails or any returned row cannot be mapped to a [`Grant`].
+    pub fn all_grants(&self) -> Result<Vec<Grant>, GatekeeperError> {
+        let backend = |e| GatekeeperError::backend("all_grants failed", e);
         let conn = self.conn().lock();
-        let mut stmt = conn.prepare(&format!("SELECT {GRANT_COLUMNS} ORDER BY g.granted_at"))?;
-        let rows: rusqlite::Result<Vec<_>> = stmt.query_map([], grant_from_row)?.collect();
-        rows
+        let mut stmt = conn
+            .prepare(&format!("SELECT {GRANT_COLUMNS} ORDER BY g.granted_at"))
+            .map_err(backend)?;
+        let rows: rusqlite::Result<Vec<_>> = stmt
+            .query_map([], grant_from_row)
+            .map_err(backend)?
+            .collect();
+        rows.map_err(backend)
     }
 
     /// Load a single grant by primary id.
     ///
     /// # Errors
     ///
-    /// Returns a `rusqlite::Error` if the select query fails or a returned row
-    /// cannot be mapped to a [`Grant`].
-    pub fn grant_by_id(&self, id: &str) -> DbResult<Option<Grant>> {
+    /// [`GatekeeperError::Backend`] if the select query fails or a returned
+    /// row cannot be mapped to a [`Grant`].
+    pub fn grant_by_id(&self, id: &str) -> Result<Option<Grant>, GatekeeperError> {
         self.conn()
             .lock()
             .query_row(
@@ -101,6 +108,7 @@ impl GatekeeperStore {
                 grant_from_row,
             )
             .optional()
+            .map_err(|e| GatekeeperError::backend("grant_by_id failed", e))
     }
 
     /// Find an existing authorization-code grant for the (`client_id`,
@@ -110,13 +118,13 @@ impl GatekeeperStore {
     ///
     /// # Errors
     ///
-    /// Returns a `rusqlite::Error` if the select query fails or a returned row
-    /// cannot be mapped to a [`Grant`].
+    /// [`GatekeeperError::Backend`] if the select query fails or a returned
+    /// row cannot be mapped to a [`Grant`].
     pub fn grant_by_client_and_redirect(
         &self,
         client_id: &str,
         redirect_uri: &Url,
-    ) -> DbResult<Option<Grant>> {
+    ) -> Result<Option<Grant>, GatekeeperError> {
         self.conn()
             .lock()
             .query_row(
@@ -125,6 +133,7 @@ impl GatekeeperStore {
                 grant_from_row,
             )
             .optional()
+            .map_err(|e| GatekeeperError::backend("grant_by_client_and_redirect failed", e))
     }
 
     /// Find an existing device grant for the (`client_id`, `device_name`) pair —
@@ -133,13 +142,13 @@ impl GatekeeperStore {
     ///
     /// # Errors
     ///
-    /// Returns a `rusqlite::Error` if the select query fails or a returned row
-    /// cannot be mapped to a [`Grant`].
+    /// [`GatekeeperError::Backend`] if the select query fails or a returned
+    /// row cannot be mapped to a [`Grant`].
     pub fn device_grant_by_client_and_device_name(
         &self,
         client_id: &str,
         device_name: &str,
-    ) -> DbResult<Option<Grant>> {
+    ) -> Result<Option<Grant>, GatekeeperError> {
         self.conn()
             .lock()
             .query_row(
@@ -148,6 +157,9 @@ impl GatekeeperStore {
                 grant_from_row,
             )
             .optional()
+            .map_err(|e| {
+                GatekeeperError::backend("device_grant_by_client_and_device_name failed", e)
+            })
     }
 
     /// Insert a brand-new grant row — the parent plus the child its kind implies,
@@ -157,11 +169,12 @@ impl GatekeeperStore {
     ///
     /// # Errors
     ///
-    /// Returns a `rusqlite::Error` if opening the transaction, either insert, or
-    /// the commit fails (for example a unique-constraint violation).
-    pub fn create_grant(&self, grant: &Grant) -> DbResult<()> {
+    /// [`GatekeeperError::Backend`] if opening the transaction, either insert,
+    /// or the commit fails (for example a unique-constraint violation).
+    pub fn create_grant(&self, grant: &Grant) -> Result<(), GatekeeperError> {
+        let backend = |e| GatekeeperError::backend("create_grant failed", e);
         let mut guard = self.conn().lock();
-        let tx = guard.transaction()?;
+        let tx = guard.transaction().map_err(backend)?;
         tx.execute(
             "INSERT INTO grants (id, client_id, scopes, granted_at, last_used_at, patient, grant_type) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
@@ -174,9 +187,10 @@ impl GatekeeperStore {
                 grant.patient,
                 grant.kind.grant_type(),
             ],
-        )?;
-        insert_child(&tx, &grant.id, &grant.client_id, &grant.kind)?;
-        tx.commit()
+        )
+        .map_err(backend)?;
+        insert_child(&tx, &grant.id, &grant.client_id, &grant.kind).map_err(backend)?;
+        tx.commit().map_err(backend)
     }
 
     /// Insert or update the standing **authorization-code** grant for
@@ -188,7 +202,7 @@ impl GatekeeperStore {
     ///
     /// # Errors
     ///
-    /// Returns a `rusqlite::Error` if opening the transaction, the read, the
+    /// [`GatekeeperError::Backend`] if opening the transaction, the read, the
     /// insert/update, or the commit fails.
     pub fn upsert_grant(
         &self,
@@ -197,9 +211,10 @@ impl GatekeeperStore {
         scopes: &[String],
         patient: Option<&str>,
         now: DateTime<Utc>,
-    ) -> DbResult<()> {
+    ) -> Result<(), GatekeeperError> {
+        let backend = |e| GatekeeperError::backend("upsert_grant failed", e);
         let mut guard = self.conn().lock();
-        let tx = guard.transaction()?;
+        let tx = guard.transaction().map_err(backend)?;
         let existing: Option<(String, JsonColumn<Vec<String>>)> = tx
             .query_row(
                 "SELECT g.id, g.scopes FROM authorization_code_grants ac \
@@ -208,13 +223,15 @@ impl GatekeeperStore {
                 params![client_id, redirect_uri.as_str()],
                 |row| Ok((row.get("id")?, row.get("scopes")?)),
             )
-            .optional()?;
+            .optional()
+            .map_err(backend)?;
         if let Some((id, JsonColumn(merged))) = existing {
             let scopes_json = JsonColumn(union_scopes(merged, scopes));
             tx.execute(
                 "UPDATE grants SET scopes = ?2, granted_at = ?3, patient = ?4 WHERE id = ?1",
                 params![id, scopes_json, now, patient],
-            )?;
+            )
+            .map_err(backend)?;
         } else {
             let id = Uuid::new_v4().to_string();
             insert_parent(
@@ -225,10 +242,11 @@ impl GatekeeperStore {
                 patient,
                 now,
                 GrantType::AuthorizationCode,
-            )?;
-            insert_authorization_code_child(&tx, &id, client_id, redirect_uri)?;
+            )
+            .map_err(backend)?;
+            insert_authorization_code_child(&tx, &id, client_id, redirect_uri).map_err(backend)?;
         }
-        tx.commit()
+        tx.commit().map_err(backend)
     }
 
     /// Insert or update the standing **device** grant for
@@ -240,7 +258,7 @@ impl GatekeeperStore {
     ///
     /// # Errors
     ///
-    /// Returns a `rusqlite::Error` if opening the transaction, the read, the
+    /// [`GatekeeperError::Backend`] if opening the transaction, the read, the
     /// insert/update, or the commit fails.
     pub fn upsert_device_grant(
         &self,
@@ -249,9 +267,10 @@ impl GatekeeperStore {
         scopes: &[String],
         patient: Option<&str>,
         now: DateTime<Utc>,
-    ) -> DbResult<()> {
+    ) -> Result<(), GatekeeperError> {
+        let backend = |e| GatekeeperError::backend("upsert_device_grant failed", e);
         let mut guard = self.conn().lock();
-        let tx = guard.transaction()?;
+        let tx = guard.transaction().map_err(backend)?;
         let existing: Option<(String, JsonColumn<Vec<String>>)> = tx
             .query_row(
                 "SELECT g.id, g.scopes FROM device_grants dc \
@@ -260,13 +279,15 @@ impl GatekeeperStore {
                 params![client_id, device_name],
                 |row| Ok((row.get("id")?, row.get("scopes")?)),
             )
-            .optional()?;
+            .optional()
+            .map_err(backend)?;
         if let Some((id, JsonColumn(merged))) = existing {
             let scopes_json = JsonColumn(union_scopes(merged, scopes));
             tx.execute(
                 "UPDATE grants SET scopes = ?2, granted_at = ?3, patient = ?4 WHERE id = ?1",
                 params![id, scopes_json, now, patient],
-            )?;
+            )
+            .map_err(backend)?;
         } else {
             let id = Uuid::new_v4().to_string();
             insert_parent(
@@ -277,10 +298,11 @@ impl GatekeeperStore {
                 patient,
                 now,
                 GrantType::DeviceCode,
-            )?;
-            insert_device_child(&tx, &id, client_id, device_name)?;
+            )
+            .map_err(backend)?;
+            insert_device_child(&tx, &id, client_id, device_name).map_err(backend)?;
         }
-        tx.commit()
+        tx.commit().map_err(backend)
     }
 
     /// Revoke a grant and expire the refresh-token families of its client in a
@@ -294,28 +316,34 @@ impl GatekeeperStore {
     ///
     /// # Errors
     ///
-    /// Returns a `rusqlite::Error` if opening the transaction, any statement, or
-    /// the commit fails.
+    /// [`GatekeeperError::Backend`] if opening the transaction, any statement,
+    /// or the commit fails.
     pub fn revoke_grant_and_expire_client_families(
         &self,
         grant_id: &str,
         client_id: &str,
         now: DateTime<Utc>,
-    ) -> DbResult<bool> {
+    ) -> Result<bool, GatekeeperError> {
+        let backend =
+            |e| GatekeeperError::backend("revoke_grant_and_expire_client_families failed", e);
         let mut guard = self.conn().lock();
-        let tx = guard.transaction()?;
-        let affected = tx.execute("DELETE FROM grants WHERE id = ?1", params![grant_id])?;
+        let tx = guard.transaction().map_err(backend)?;
+        let affected = tx
+            .execute("DELETE FROM grants WHERE id = ?1", params![grant_id])
+            .map_err(backend)?;
         tx.execute(
             "UPDATE refresh_tokens SET consumed_at = ?2
              WHERE consumed_at IS NULL AND family_id IN
                  (SELECT family_id FROM refresh_token_families WHERE client_id = ?1)",
             params![client_id, now],
-        )?;
+        )
+        .map_err(backend)?;
         tx.execute(
             "UPDATE refresh_token_families SET expires_at = ?2 WHERE client_id = ?1",
             params![client_id, now],
-        )?;
-        tx.commit()?;
+        )
+        .map_err(backend)?;
+        tx.commit().map_err(backend)?;
         Ok(affected > 0)
     }
 }

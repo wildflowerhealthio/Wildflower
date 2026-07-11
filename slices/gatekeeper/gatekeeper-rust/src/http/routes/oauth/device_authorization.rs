@@ -151,10 +151,7 @@ fn device_authorization(
             .or_else(|| user_agent.and_then(device_name_from_user_agent)),
         ttl: DEVICE_AUTHORIZATION_TTL,
     });
-    state
-        .store
-        .insert_authorization_request(&request)
-        .map_err(|e| TokenError::internal("insert_authorization_request failed", e))?;
+    state.store.insert_authorization_request(&request)?;
     // A fresh pending row may have just become the head of the
     // device-consent queue (it always does, unless an older
     // non-expired pending request still leads). Republish so the

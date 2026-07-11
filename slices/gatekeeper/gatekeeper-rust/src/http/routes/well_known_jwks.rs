@@ -4,7 +4,7 @@ use serde::Serialize;
 use utoipa::ToSchema;
 
 use crate::crypto_util::public_jwk::PublicJwk;
-use crate::http::response_templates::HandlerError;
+use crate::http::errors::HandlerError;
 use crate::http::state::AppState;
 
 /// RFC 7517 JSON Web Key Set body served at `/.well-known/jwks.json`.
@@ -23,10 +23,7 @@ pub struct Jwks {
 pub(crate) async fn handle_jwks_request(
     State(state): State<AppState>,
 ) -> Result<Json<Jwks>, HandlerError> {
-    let keys = state
-        .store
-        .all_signing_keys()
-        .map_err(|e| HandlerError::internal("all_signing_keys lookup failed", e))?;
+    let keys = state.store.all_signing_keys()?;
     Ok(Json(Jwks {
         keys: keys.iter().map(PublicJwk::from).collect(),
     }))

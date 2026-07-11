@@ -26,7 +26,7 @@ use axum::{Json, Router};
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 
-use crate::http::response_templates::HandlerError;
+use crate::http::errors::HandlerError;
 use crate::http::state::AppState;
 
 pub fn router() -> Router<AppState> {

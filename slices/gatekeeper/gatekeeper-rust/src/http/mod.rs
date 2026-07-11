@@ -4,10 +4,9 @@
 //! and middleware files are private implementation detail behind the route
 //! table.
 
-mod error_pages;
+mod errors;
 mod extractors;
 mod middleware;
-mod response_templates;
 mod routes;
 mod state;
 mod wire_representations;

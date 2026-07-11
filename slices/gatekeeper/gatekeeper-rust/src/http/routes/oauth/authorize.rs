@@ -15,8 +15,8 @@ use crate::domain::authorization_request::{AuthorizationRequest, StartCodeAuthor
 use crate::domain::client::Client;
 use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::domain::page_paths;
-use crate::http::error_pages::{oauth_error_html, OAuthErrorKind};
-use crate::http::response_templates::InternalError;
+use crate::http::errors::InternalError;
+use crate::http::errors::{oauth_error_html, OAuthErrorKind};
 use crate::http::state::AppState;
 use crate::http::ServedOrigin;
 use persistence_rust::{JsonColumn, UriColumn};
@@ -50,7 +50,7 @@ fn found_redirect(location: &str) -> Response {
 /// renders one of the endpoint's three distinct failure shapes through
 /// `IntoResponse`, so a fallible step bails with `?` instead of a `match` +
 /// `return` at every call site — the authorization-endpoint analogue of
-/// [`HandlerError`](crate::http::response_templates::HandlerError) and
+/// [`HandlerError`](crate::http::errors::HandlerError) and
 /// [`TokenError`](super::internal::TokenError). Kept small (no embedded
 /// `Response`) so `Result<_, AuthorizeError>` doesn't trip
 /// `clippy::result_large_err`.
@@ -86,6 +86,19 @@ impl AuthorizeError {
     /// A server-side failure: logs `source` against `context` and 500s opaquely.
     fn internal(context: &'static str, source: impl std::fmt::Display) -> Self {
         AuthorizeError::Internal(InternalError::new(context, source))
+    }
+}
+
+/// Render a domain failure on the authorization endpoint: any store failure —
+/// expected only the opaque `Backend` variant here — becomes the logged,
+/// opaque 500. Lets the validation helpers `?` a `Result<_, GatekeeperError>`
+/// from the store.
+impl From<crate::domain::error::GatekeeperError> for AuthorizeError {
+    fn from(error: crate::domain::error::GatekeeperError) -> Self {
+        AuthorizeError::Internal(InternalError::new(
+            "store operation failed at /oauth/authorize",
+            error,
+        ))
     }
 }
 
@@ -217,10 +230,7 @@ pub(super) async fn handle_authorize_request(
         pre_approved_scopes: grant_coverage.pre_approved_scopes,
         ttl: AUTHORIZATION_REQUEST_TTL,
     });
-    state
-        .store
-        .insert_authorization_request(&request)
-        .map_err(|e| AuthorizeError::internal("insert_authorization_request failed", e))?;
+    state.store.insert_authorization_request(&request)?;
     // `insert_authorization_request` opportunistically prunes every
     // row past its `expires_at`, including pending device-code rows.
     // Republish the head so the popup doesn't keep advertising a
@@ -253,13 +263,10 @@ pub(super) async fn handle_authorize_request(
 /// every key's private material; the mint path fetches `active_signing_key()`
 /// anyway.
 fn ensure_active_signing_key(state: &AppState) -> Result<(), AuthorizeError> {
-    match state.store.has_active_signing_key() {
-        Ok(true) => Ok(()),
-        Ok(false) => Err(AuthorizeError::ServiceUnavailable),
-        Err(e) => Err(AuthorizeError::internal(
-            "has_active_signing_key probe failed",
-            e,
-        )),
+    if state.store.has_active_signing_key()? {
+        Ok(())
+    } else {
+        Err(AuthorizeError::ServiceUnavailable)
     }
 }
 
@@ -270,11 +277,10 @@ fn validate_and_load_client(
     state: &AppState,
     params: &AuthorizeParams,
 ) -> Result<Client, AuthorizeError> {
-    let client = match state.store.client_by_id(&params.client_id) {
-        Ok(Some(c)) => c,
-        Ok(None) => return Err(AuthorizeError::LocalPage(OAuthErrorKind::UnknownClient)),
-        Err(e) => return Err(AuthorizeError::internal("client_by_id lookup failed", e)),
-    };
+    let client = state
+        .store
+        .client_by_id(&params.client_id)?
+        .ok_or(AuthorizeError::LocalPage(OAuthErrorKind::UnknownClient))?;
     if client.disabled_at.is_some() {
         return Err(AuthorizeError::LocalPage(OAuthErrorKind::DisabledClient));
     }
@@ -402,8 +408,7 @@ fn resolve_existing_grant_coverage(
 ) -> Result<ExistingGrantCoverage, AuthorizeError> {
     let Some(existing_grant) = state
         .store
-        .grant_by_client_and_redirect(&params.client_id, parsed_redirect)
-        .map_err(|e| AuthorizeError::internal("grant_by_client_and_redirect lookup failed", e))?
+        .grant_by_client_and_redirect(&params.client_id, parsed_redirect)?
     else {
         return Ok(ExistingGrantCoverage::none());
     };
@@ -450,14 +455,11 @@ fn issue_code(
         issued_at,
         expires_at: issued_at + AUTHORIZATION_CODE_TTL,
     };
-    state
-        .store
-        .issue_authorization_code(&authorization_code)
-        .map_err(|e| AuthorizeError::internal("issue_authorization_code failed", e))?;
-    let approved = state
-        .store
-        .approve_authorization_request(request_id, requested_scopes, patient, None)
-        .map_err(|e| AuthorizeError::internal("approve_authorization_request failed", e))?;
+    state.store.issue_authorization_code(&authorization_code)?;
+    let approved =
+        state
+            .store
+            .approve_authorization_request(request_id, requested_scopes, patient, None)?;
     if !approved {
         // The request was just inserted as pending in this same handler, so a
         // non-pending row here is an unexpected concurrent transition.

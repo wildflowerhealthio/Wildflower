@@ -1,12 +1,12 @@
 //! `/oauth-consents/{id}` routes — the Owner-facing consent prompt for the
 //! authorization-code flow. One module per route (`get`, `approve`, `deny`),
-//! each exposing a `MethodRouter`; shared DTOs and helpers live in
-//! [`internal`]. `router()` is the only path table.
+//! each exposing a `MethodRouter`; the wire DTOs live in
+//! [`crate::http::wire_representations`] and the pending-request loader in
+//! [`crate::domain::consent`]. `router()` is the only path table.
 
 mod approve;
 mod deny;
 mod get;
-mod internal;
 
 use axum::Router;
 

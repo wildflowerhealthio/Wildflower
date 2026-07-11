@@ -1,9 +1,9 @@
 use rusqlite::{params, OptionalExtension, Row, ToSql};
 
 use crate::db::GatekeeperStore;
+use crate::domain::error::GatekeeperError;
 use crate::domain::signing_key::{SigningKey, SigningKeyValues};
 use persistence_rust::build_insert_sql;
-use persistence_rust::DbResult;
 use persistence_rust::JsonColumn;
 
 impl TryFrom<&Row<'_>> for SigningKey {
@@ -42,26 +42,28 @@ impl GatekeeperStore {
     ///
     /// # Errors
     ///
-    /// Returns a `rusqlite::Error` if preparing or running the select query
+    /// [`GatekeeperError::Backend`] if preparing or running the select query
     /// fails or any returned row cannot be mapped to a [`SigningKey`].
-    pub fn all_signing_keys(&self) -> DbResult<Vec<SigningKey>> {
+    pub fn all_signing_keys(&self) -> Result<Vec<SigningKey>, GatekeeperError> {
+        let backend = |e| GatekeeperError::backend("all_signing_keys failed", e);
         let conn = self.conn().lock();
         let mut stmt = conn.prepare(
             "SELECT kid, kty, alg, values_json, is_active FROM signing_keys ORDER BY is_active DESC, kid",
-        )?;
+        ).map_err(backend)?;
         let rows: rusqlite::Result<Vec<_>> = stmt
-            .query_map([], |row| SigningKey::try_from(row))?
+            .query_map([], |row| SigningKey::try_from(row))
+            .map_err(backend)?
             .collect();
-        rows
+        rows.map_err(backend)
     }
 
     /// Load the active signing key, if one exists.
     ///
     /// # Errors
     ///
-    /// Returns a `rusqlite::Error` if the select query fails or a returned row
-    /// cannot be mapped to a [`SigningKey`].
-    pub fn active_signing_key(&self) -> DbResult<Option<SigningKey>> {
+    /// [`GatekeeperError::Backend`] if the select query fails or a returned
+    /// row cannot be mapped to a [`SigningKey`].
+    pub fn active_signing_key(&self) -> Result<Option<SigningKey>, GatekeeperError> {
         self.conn()
             .lock()
             .query_row(
@@ -70,6 +72,7 @@ impl GatekeeperStore {
                 |row| SigningKey::try_from(row),
             )
             .optional()
+            .map_err(|e| GatekeeperError::backend("active_signing_key failed", e))
     }
 
     /// Whether an active signing key exists, without loading its (private) key
@@ -78,27 +81,31 @@ impl GatekeeperStore {
     ///
     /// # Errors
     ///
-    /// Returns a `rusqlite::Error` if the query fails.
-    pub fn has_active_signing_key(&self) -> DbResult<bool> {
-        self.conn().lock().query_row(
-            "SELECT EXISTS(SELECT 1 FROM signing_keys WHERE is_active = 1)",
-            params![],
-            |row| row.get(0),
-        )
+    /// [`GatekeeperError::Backend`] if the query fails.
+    pub fn has_active_signing_key(&self) -> Result<bool, GatekeeperError> {
+        self.conn()
+            .lock()
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM signing_keys WHERE is_active = 1)",
+                params![],
+                |row| row.get(0),
+            )
+            .map_err(|e| GatekeeperError::backend("has_active_signing_key failed", e))
     }
 
     /// Persist a signing key.
     ///
     /// # Errors
     ///
-    /// Returns a `rusqlite::Error` if the insert fails (for example a
+    /// [`GatekeeperError::Backend`] if the insert fails (for example a
     /// unique-constraint violation on the `kid`).
-    pub fn insert_signing_key(&self, key: &SigningKey) -> DbResult<()> {
+    pub fn insert_signing_key(&self, key: &SigningKey) -> Result<(), GatekeeperError> {
         let values_json = JsonColumn(&key.values);
         let params = make_named_sql_params(key, &values_json);
         self.conn()
             .lock()
-            .execute(&build_insert_sql("signing_keys", &params), &params)?;
+            .execute(&build_insert_sql("signing_keys", &params), &params)
+            .map_err(|e| GatekeeperError::backend("insert_signing_key failed", e))?;
         Ok(())
     }
 }

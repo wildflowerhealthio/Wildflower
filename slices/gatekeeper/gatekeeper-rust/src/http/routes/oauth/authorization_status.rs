@@ -10,8 +10,9 @@ use super::internal::{
 };
 use super::openapi::AuthorizationRequestNotFound;
 use crate::domain::authorization_request::RequestStatus;
+use crate::domain::error::GatekeeperError;
 use crate::domain::oauth_error_code::OAuthErrorCode;
-use crate::http::response_templates::HandlerError;
+use crate::http::errors::HandlerError;
 use crate::http::state::AppState;
 use crate::http::wire_representations::OAuthError;
 use persistence_rust::UriColumn;
@@ -69,8 +70,10 @@ pub(super) async fn handle_authorization_status_request(
     let request = state
         .store
         .authorization_request_by_id(&id)
-        .map_err(|e| HandlerError::internal("authorization_request_by_id lookup failed", e))?
-        .ok_or_else(|| HandlerError::not_found("AuthorizationRequestNotFound", "id", &id))?;
+        .map_err(HandlerError::from)?
+        .ok_or_else(|| {
+            HandlerError::from(GatekeeperError::AuthorizationRequestNotFound { id: id.clone() })
+        })?;
     // Nothing actively transitions code-flow requests from Pending to Expired,
     // so a Pending request past its TTL must be reported as expired here rather
     // than left polling forever.
@@ -113,9 +116,7 @@ pub(super) async fn handle_authorization_status_request(
             let code = state
                 .store
                 .authorization_code_by_request_id(&id)
-                .map_err(|e| {
-                    HandlerError::internal("authorization_code_by_request_id lookup failed", e)
-                })?
+                .map_err(HandlerError::from)?
                 .ok_or_else(|| OAuthErrorResponse::server_error("Authorization code missing"))?;
             AuthorizationStatus::Approved {
                 redirect: build_client_redirect_url(&redirect_uri, &code.code, &client_state),

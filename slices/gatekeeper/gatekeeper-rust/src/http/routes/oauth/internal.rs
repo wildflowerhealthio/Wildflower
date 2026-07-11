@@ -12,7 +12,7 @@ use crate::db::GatekeeperStore;
 use crate::domain::client::{Client, ClientKind};
 use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::domain::token::{mint_access_token, NewJwtArgs, ACCESS_TOKEN_TTL};
-use crate::http::response_templates::InternalError;
+use crate::http::errors::InternalError;
 use crate::http::wire_representations::{CacheSuppressed, OAuthError, TokenResponse};
 
 /// An [`OAuthError`] paired with the HTTP status it renders at — the
@@ -53,7 +53,7 @@ impl IntoResponse for OAuthErrorResponse {
 
 /// Error half of the token / device-authorization endpoints' `Result`-returning
 /// handlers (the OAuth-surface analogue of
-/// [`HandlerError`](crate::http::response_templates::HandlerError)). Every
+/// [`HandlerError`](crate::http::errors::HandlerError)). Every
 /// variant renders the matching RFC 6749 §5.2 response, cache-suppressed per
 /// §5.1, through `IntoResponse` — so a fallible step bails with `?` instead of
 /// a `match` + `return` at each call site. Kept small (no embedded `Response`)
@@ -97,6 +97,20 @@ impl TokenError {
     /// A server-side failure: logs `source` against `context` and 500s opaquely.
     pub fn internal(context: &'static str, source: impl std::fmt::Display) -> Self {
         TokenError::Internal(InternalError::new(context, source))
+    }
+}
+
+/// Render a domain failure on the token surface: any store failure — expected
+/// only the opaque [`Backend`](crate::domain::error::GatekeeperError::Backend)
+/// variant here — becomes the logged, cache-suppressed opaque 500. This `From`
+/// is what lets the exchange helpers `?` a `Result<_, GatekeeperError>` from
+/// the store.
+impl From<crate::domain::error::GatekeeperError> for TokenError {
+    fn from(error: crate::domain::error::GatekeeperError) -> Self {
+        TokenError::Internal(InternalError::new(
+            "store operation failed on the token surface",
+            error,
+        ))
     }
 }
 

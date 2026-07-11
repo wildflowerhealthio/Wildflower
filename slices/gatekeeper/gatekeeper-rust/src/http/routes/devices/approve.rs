@@ -5,8 +5,9 @@ use axum::routing::{post, MethodRouter};
 use axum::Json;
 use chrono::Utc;
 
-use super::internal::load_pending_device_request;
-use crate::http::response_templates::HandlerError;
+use crate::domain::consent::load_pending_device_request;
+use crate::domain::error::GatekeeperError;
+use crate::http::errors::HandlerError;
 use crate::http::routes::consent::deny_consent;
 use crate::http::state::AppState;
 use crate::http::wire_representations::{ApproveBody, ConsentResult};
@@ -23,14 +24,15 @@ async fn handle_approve_device_consent(
     Path(user_code): Path<String>,
     Json(body): Json<ApproveBody>,
 ) -> Result<Json<ConsentResult>, HandlerError> {
-    let device_request = load_pending_device_request(&state, &user_code)?;
+    let device_request = load_pending_device_request(&state.store, &user_code)?;
     let client = state
         .store
-        .client_by_id(&device_request.client_id)
-        .map_err(|e| HandlerError::internal("client_by_id lookup failed", e))?
+        .client_by_id(&device_request.client_id)?
         // The request can't be approved against a client that no longer
         // exists — treat it as gone.
-        .ok_or_else(|| HandlerError::not_found("DeviceConsentNotFound", "userCode", &user_code))?;
+        .ok_or_else(|| GatekeeperError::DeviceConsentNotFound {
+            user_code: user_code.clone(),
+        })?;
     let client_allowed_scopes: HashSet<&str> =
         client.allowed_scopes.iter().map(String::as_str).collect();
     // Device-code consent is EXPANDABLE (unlike the code-flow path): the Owner
@@ -51,22 +53,15 @@ async fn handle_approve_device_consent(
         // `deny_consent` republishes the active head itself.
         return deny_consent(&state, &device_request.id);
     }
-    let approved = state
-        .store
-        .approve_authorization_request(
-            &device_request.id,
-            &granted_scopes,
-            body.patient.as_deref(),
-            body.device_name.as_deref(),
-        )
-        .map_err(|e| HandlerError::internal("approve_authorization_request failed", e))?;
+    let approved = state.store.approve_authorization_request(
+        &device_request.id,
+        &granted_scopes,
+        body.patient.as_deref(),
+        body.device_name.as_deref(),
+    )?;
     if !approved {
         // No longer pending (concurrently consumed/denied/expired) — treat as gone.
-        return Err(HandlerError::not_found(
-            "DeviceConsentNotFound",
-            "userCode",
-            &user_code,
-        ));
+        return Err(GatekeeperError::DeviceConsentNotFound { user_code }.into());
     }
     // Mint (or refresh) the durable device grant — the whole point of this
     // ticket: a device-code approval now leaves a standing record the owner can
@@ -80,16 +75,13 @@ async fn handle_approve_device_consent(
         .as_deref()
         .or(device_request.device_name.as_deref())
         .unwrap_or(client.name.as_str());
-    state
-        .store
-        .upsert_device_grant(
-            &device_request.client_id,
-            effective_device_name,
-            &granted_scopes,
-            body.patient.as_deref(),
-            Utc::now(),
-        )
-        .map_err(|e| HandlerError::internal("upsert_device_grant failed", e))?;
+    state.store.upsert_device_grant(
+        &device_request.client_id,
+        effective_device_name,
+        &granted_scopes,
+        body.patient.as_deref(),
+        Utc::now(),
+    )?;
     // The popup's head may have just resolved; recompute and republish
     // so the modal either closes (no more pending) or jumps to the
     // next queued request.

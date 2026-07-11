@@ -4,9 +4,10 @@ use rusqlite::{params, OptionalExtension, ToSql};
 
 use crate::db::GatekeeperStore;
 use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
+use crate::domain::error::GatekeeperError;
 use persistence_rust::build_insert_sql;
+use persistence_rust::sql_row;
 use persistence_rust::JsonColumn;
-use persistence_rust::{sql_row, DbResult};
 
 impl ToSql for GrantType {
     fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
@@ -64,9 +65,12 @@ impl GatekeeperStore {
     ///
     /// # Errors
     ///
-    /// Returns an error if the select query fails or a returned row cannot be
-    /// mapped to an [`AuthorizationRequest`].
-    pub fn authorization_request_by_id(&self, id: &str) -> DbResult<Option<AuthorizationRequest>> {
+    /// [`GatekeeperError::Backend`] if the select query fails or a returned
+    /// row cannot be mapped to an [`AuthorizationRequest`].
+    pub fn authorization_request_by_id(
+        &self,
+        id: &str,
+    ) -> Result<Option<AuthorizationRequest>, GatekeeperError> {
         self.conn()
             .lock()
             .query_row(
@@ -75,6 +79,7 @@ impl GatekeeperStore {
                 |row| AuthorizationRequest::try_from(row),
             )
             .optional()
+            .map_err(|e| GatekeeperError::backend("authorization_request_by_id failed", e))
     }
 
     /// Load an authorization request by the human-typed `user_code` that the
@@ -88,12 +93,12 @@ impl GatekeeperStore {
     ///
     /// # Errors
     ///
-    /// Returns an error if the select query fails or a returned row cannot be
-    /// mapped to an [`AuthorizationRequest`].
+    /// [`GatekeeperError::Backend`] if the select query fails or a returned
+    /// row cannot be mapped to an [`AuthorizationRequest`].
     pub fn authorization_request_by_user_code(
         &self,
         user_code: &str,
-    ) -> DbResult<Option<AuthorizationRequest>> {
+    ) -> Result<Option<AuthorizationRequest>, GatekeeperError> {
         self.conn()
             .lock()
             .query_row(
@@ -102,6 +107,7 @@ impl GatekeeperStore {
                 |row| AuthorizationRequest::try_from(row),
             )
             .optional()
+            .map_err(|e| GatekeeperError::backend("authorization_request_by_user_code failed", e))
     }
 
     /// Load the *pending* authorization request for `user_code`. Filtering on
@@ -110,12 +116,12 @@ impl GatekeeperStore {
     ///
     /// # Errors
     ///
-    /// Returns an error if the select query fails or a returned row cannot be
-    /// mapped to an [`AuthorizationRequest`].
+    /// [`GatekeeperError::Backend`] if the select query fails or a returned
+    /// row cannot be mapped to an [`AuthorizationRequest`].
     pub fn pending_authorization_request_by_user_code(
         &self,
         user_code: &str,
-    ) -> DbResult<Option<AuthorizationRequest>> {
+    ) -> Result<Option<AuthorizationRequest>, GatekeeperError> {
         self.conn()
             .lock()
             .query_row(
@@ -127,6 +133,9 @@ impl GatekeeperStore {
                 |row| AuthorizationRequest::try_from(row),
             )
             .optional()
+            .map_err(|e| {
+                GatekeeperError::backend("pending_authorization_request_by_user_code failed", e)
+            })
     }
 
     /// Return the `user_code` of the oldest pending, non-expired device-code
@@ -149,9 +158,9 @@ impl GatekeeperStore {
     ///
     /// # Errors
     ///
-    /// Returns an error if the select query fails or the column can't be
-    /// decoded as `String`.
-    pub fn oldest_pending_device_user_code(&self) -> DbResult<Option<String>> {
+    /// [`GatekeeperError::Backend`] if the select query fails or the column
+    /// can't be decoded as `String`.
+    pub fn oldest_pending_device_user_code(&self) -> Result<Option<String>, GatekeeperError> {
         let now = Utc::now();
         self.conn()
             .lock()
@@ -167,15 +176,20 @@ impl GatekeeperStore {
                 |row| row.get::<_, String>(0),
             )
             .optional()
+            .map_err(|e| GatekeeperError::backend("oldest_pending_device_user_code failed", e))
     }
 
     /// Persist a freshly-constructed `AuthorizationRequest`.
     ///
     /// # Errors
     ///
-    /// Returns an error if the insert fails (for example a unique-constraint
-    /// violation on the id).
-    pub fn insert_authorization_request(&self, request: &AuthorizationRequest) -> DbResult<()> {
+    /// [`GatekeeperError::Backend`] if the prune or insert fails (for example
+    /// a unique-constraint violation on the id).
+    pub fn insert_authorization_request(
+        &self,
+        request: &AuthorizationRequest,
+    ) -> Result<(), GatekeeperError> {
+        let backend = |e| GatekeeperError::backend("insert_authorization_request failed", e);
         let guard = self.conn().lock();
         // Opportunistically prune expired requests before inserting, so a
         // caller hitting /authorize or /device_authorization can't grow the
@@ -183,15 +197,19 @@ impl GatekeeperStore {
         // and there is no background reaper. Best-effort cleanup keyed on the
         // 5-minute request TTL; the prune runs first so it also clears a stale
         // row that would otherwise collide on the pending-user_code index.
-        guard.execute(
-            "DELETE FROM authorization_requests WHERE expires_at < ?1",
-            params![Utc::now()],
-        )?;
+        guard
+            .execute(
+                "DELETE FROM authorization_requests WHERE expires_at < ?1",
+                params![Utc::now()],
+            )
+            .map_err(backend)?;
         let params = make_named_sql_params(request);
-        guard.execute(
-            &build_insert_sql("authorization_requests", &params),
-            &params,
-        )?;
+        guard
+            .execute(
+                &build_insert_sql("authorization_requests", &params),
+                &params,
+            )
+            .map_err(backend)?;
         Ok(())
     }
 
@@ -211,27 +229,31 @@ impl GatekeeperStore {
     ///
     /// # Errors
     ///
-    /// Returns an error if the update statement fails.
+    /// [`GatekeeperError::Backend`] if the update statement fails.
     pub fn approve_authorization_request(
         &self,
         id: &str,
         granted_scopes: &[String],
         patient: Option<&str>,
         device_name: Option<&str>,
-    ) -> DbResult<bool> {
+    ) -> Result<bool, GatekeeperError> {
         let granted = JsonColumn(granted_scopes.to_vec());
-        let affected = self.conn().lock().execute(
-            "UPDATE authorization_requests
+        let affected = self
+            .conn()
+            .lock()
+            .execute(
+                "UPDATE authorization_requests
              SET status = 'approved', granted_scopes = :granted_scopes, patient = :patient,
                  device_name = COALESCE(:device_name, device_name)
              WHERE id = :id AND status = 'pending'",
-            rusqlite::named_params! {
-                ":id": id,
-                ":granted_scopes": granted,
-                ":patient": patient,
-                ":device_name": device_name,
-            },
-        )?;
+                rusqlite::named_params! {
+                    ":id": id,
+                    ":granted_scopes": granted,
+                    ":patient": patient,
+                    ":device_name": device_name,
+                },
+            )
+            .map_err(|e| GatekeeperError::backend("approve_authorization_request failed", e))?;
         Ok(affected == 1)
     }
 
@@ -239,12 +261,15 @@ impl GatekeeperStore {
     ///
     /// # Errors
     ///
-    /// Returns a `rusqlite::Error` if the update statement fails.
-    pub fn deny_authorization_request(&self, id: &str) -> DbResult<()> {
-        self.conn().lock().execute(
-            "UPDATE authorization_requests SET status = 'denied' WHERE id = ?1",
-            params![id],
-        )?;
+    /// [`GatekeeperError::Backend`] if the update statement fails.
+    pub fn deny_authorization_request(&self, id: &str) -> Result<(), GatekeeperError> {
+        self.conn()
+            .lock()
+            .execute(
+                "UPDATE authorization_requests SET status = 'denied' WHERE id = ?1",
+                params![id],
+            )
+            .map_err(|e| GatekeeperError::backend("deny_authorization_request failed", e))?;
         Ok(())
     }
 
@@ -262,13 +287,22 @@ impl GatekeeperStore {
     ///
     /// # Errors
     ///
-    /// Returns a `rusqlite::Error` if the update statement fails.
-    pub fn consume_approved_authorization_request(&self, id: &str) -> DbResult<bool> {
-        let affected = self.conn().lock().execute(
-            "UPDATE authorization_requests SET status = 'expired' \
-             WHERE id = ?1 AND status = 'approved'",
-            params![id],
-        )?;
+    /// [`GatekeeperError::Backend`] if the update statement fails.
+    pub fn consume_approved_authorization_request(
+        &self,
+        id: &str,
+    ) -> Result<bool, GatekeeperError> {
+        let affected = self
+            .conn()
+            .lock()
+            .execute(
+                "UPDATE authorization_requests SET status = 'expired' \
+                 WHERE id = ?1 AND status = 'approved'",
+                params![id],
+            )
+            .map_err(|e| {
+                GatekeeperError::backend("consume_approved_authorization_request failed", e)
+            })?;
         Ok(affected == 1)
     }
 
@@ -277,12 +311,19 @@ impl GatekeeperStore {
     ///
     /// # Errors
     ///
-    /// Returns a `rusqlite::Error` if the update statement fails.
-    pub fn record_device_poll(&self, id: &str, polled_at: DateTime<Utc>) -> DbResult<()> {
-        self.conn().lock().execute(
-            "UPDATE authorization_requests SET last_polled_at = ?2 WHERE id = ?1",
-            params![id, polled_at],
-        )?;
+    /// [`GatekeeperError::Backend`] if the update statement fails.
+    pub fn record_device_poll(
+        &self,
+        id: &str,
+        polled_at: DateTime<Utc>,
+    ) -> Result<(), GatekeeperError> {
+        self.conn()
+            .lock()
+            .execute(
+                "UPDATE authorization_requests SET last_polled_at = ?2 WHERE id = ?1",
+                params![id, polled_at],
+            )
+            .map_err(|e| GatekeeperError::backend("record_device_poll failed", e))?;
         Ok(())
     }
 }

@@ -11,7 +11,7 @@ use axum::response::Response;
 
 use shared_structures_rust::served_origin::served_base_url_for;
 
-use crate::http::response_templates;
+use crate::http::errors;
 use crate::http::state::AppState;
 
 /// [`served_base_url_for`] as an axum extractor: resolves the request's served
@@ -42,7 +42,7 @@ impl FromRequestParts<AppState> for ServedOrigin {
     ) -> Result<Self, Self::Rejection> {
         let base_url =
             served_base_url_for(&parts.headers, &state.loopback_base_url).ok_or_else(|| {
-                response_templates::internal_error(
+                errors::internal_error(
                     "served base url",
                     "forwarded header did not indicate a valid base URL",
                 )

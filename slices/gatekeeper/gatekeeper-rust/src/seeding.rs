@@ -92,7 +92,7 @@ fn ensure_first_party_client(
 pub(crate) enum HostTokenError {
     /// Reading signing keys from the store failed.
     #[error("read signing keys from store")]
-    Sqlite(#[from] rusqlite::Error),
+    Store(#[from] crate::domain::error::GatekeeperError),
     /// No signing keys are present in the store — bootstrap has not run, or
     /// the database has been tampered with.
     #[error("no signing keys in store")]

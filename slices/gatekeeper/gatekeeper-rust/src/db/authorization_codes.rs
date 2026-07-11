@@ -2,8 +2,9 @@ use rusqlite::{params, OptionalExtension};
 
 use crate::db::GatekeeperStore;
 use crate::domain::authorization_code::AuthorizationCode;
+use crate::domain::error::GatekeeperError;
 use persistence_rust::build_insert_sql;
-use persistence_rust::{sql_row, DbResult};
+use persistence_rust::sql_row;
 
 sql_row!(AuthorizationCode {
     code,
@@ -26,9 +27,12 @@ impl GatekeeperStore {
     ///
     /// # Errors
     ///
-    /// Returns an error if the delete-returning query fails or a returned row
-    /// cannot be mapped to an [`AuthorizationCode`].
-    pub fn redeem_authorization_code(&self, code: &str) -> DbResult<Option<AuthorizationCode>> {
+    /// [`GatekeeperError::Backend`] if the delete-returning query fails or a
+    /// returned row cannot be mapped to an [`AuthorizationCode`].
+    pub fn redeem_authorization_code(
+        &self,
+        code: &str,
+    ) -> Result<Option<AuthorizationCode>, GatekeeperError> {
         self.conn()
             .lock()
             .query_row(
@@ -37,6 +41,7 @@ impl GatekeeperStore {
                 |row| AuthorizationCode::try_from(row),
             )
             .optional()
+            .map_err(|e| GatekeeperError::backend("redeem_authorization_code failed", e))
     }
 
     /// Look up the code that was issued for a given `request_id`, used by the
@@ -44,12 +49,12 @@ impl GatekeeperStore {
     ///
     /// # Errors
     ///
-    /// Returns an error if the select query fails or a returned row cannot be
-    /// mapped to an [`AuthorizationCode`].
+    /// [`GatekeeperError::Backend`] if the select query fails or a returned
+    /// row cannot be mapped to an [`AuthorizationCode`].
     pub fn authorization_code_by_request_id(
         &self,
         request_id: &str,
-    ) -> DbResult<Option<AuthorizationCode>> {
+    ) -> Result<Option<AuthorizationCode>, GatekeeperError> {
         self.conn()
             .lock()
             .query_row(
@@ -58,19 +63,24 @@ impl GatekeeperStore {
                 |row| AuthorizationCode::try_from(row),
             )
             .optional()
+            .map_err(|e| GatekeeperError::backend("authorization_code_by_request_id failed", e))
     }
 
     /// Persist a freshly-minted authorization code.
     ///
     /// # Errors
     ///
-    /// Returns an error if the insert fails (for example a unique-constraint
-    /// violation on the code).
-    pub fn issue_authorization_code(&self, code: &AuthorizationCode) -> DbResult<()> {
+    /// [`GatekeeperError::Backend`] if the insert fails (for example a
+    /// unique-constraint violation on the code).
+    pub fn issue_authorization_code(
+        &self,
+        code: &AuthorizationCode,
+    ) -> Result<(), GatekeeperError> {
         let params = make_named_sql_params(code);
         self.conn()
             .lock()
-            .execute(&build_insert_sql("authorization_codes", &params), &params)?;
+            .execute(&build_insert_sql("authorization_codes", &params), &params)
+            .map_err(|e| GatekeeperError::backend("issue_authorization_code failed", e))?;
         Ok(())
     }
 }

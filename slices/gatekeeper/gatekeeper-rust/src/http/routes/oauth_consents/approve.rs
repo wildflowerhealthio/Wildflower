@@ -5,10 +5,11 @@ use axum::routing::{post, MethodRouter};
 use axum::Json;
 use chrono::Utc;
 
-use super::internal::{load_pending_authorization_code_request, upsert_grant, PendingCodeConsent};
 use crate::crypto_util::random_token::generate_authorization_code;
 use crate::domain::authorization_code::{AuthorizationCode, AUTHORIZATION_CODE_TTL};
-use crate::http::response_templates::HandlerError;
+use crate::domain::consent::{load_pending_authorization_code_request, PendingCodeConsent};
+use crate::domain::error::GatekeeperError;
+use crate::http::errors::HandlerError;
 use crate::http::routes::consent::deny_consent;
 use crate::http::routes::oauth::build_client_redirect_url;
 use crate::http::state::AppState;
@@ -32,7 +33,7 @@ async fn handle_approve_oauth_consent(
         request,
         redirect_uri,
         code_challenge,
-    } = load_pending_authorization_code_request(&state, &id)?;
+    } = load_pending_authorization_code_request(&state.store, &id)?;
 
     // The Owner can only narrow, never widen: intersect what they approved
     // with what the client requested (mirrors `devices.rs`), then clamp the
@@ -45,11 +46,10 @@ async fn handle_approve_oauth_consent(
         .collect();
     let client = state
         .store
-        .client_by_id(&request.client_id)
-        .map_err(|e| HandlerError::internal("client_by_id lookup failed", e))?
+        .client_by_id(&request.client_id)?
         // The request can't be approved against a client that no longer
         // exists — treat it as gone.
-        .ok_or_else(|| HandlerError::not_found("OAuthConsentNotFound", "id", &id))?;
+        .ok_or_else(|| GatekeeperError::OAuthConsentNotFound { id: id.clone() })?;
     let allowed: HashSet<&str> = client.allowed_scopes.iter().map(String::as_str).collect();
     let granted_scopes = grantable_scopes(body.approved_scopes, &requested, &allowed);
     if granted_scopes.is_empty() {
@@ -57,14 +57,16 @@ async fn handle_approve_oauth_consent(
         return deny_consent(&state, &id);
     }
 
-    let approved = state
-        .store
-        .approve_authorization_request(&id, &granted_scopes, body.patient.as_deref(), None)
-        .map_err(|e| HandlerError::internal("approve_authorization_request failed", e))?;
+    let approved = state.store.approve_authorization_request(
+        &id,
+        &granted_scopes,
+        body.patient.as_deref(),
+        None,
+    )?;
     if !approved {
         // No longer pending (concurrently consumed/denied/expired) — treat the
         // consent as gone rather than minting a code against a stale request.
-        return Err(HandlerError::not_found("OAuthConsentNotFound", "id", &id));
+        return Err(GatekeeperError::OAuthConsentNotFound { id }.into());
     }
 
     // Mint and persist the authorization code so the polling endpoint's
@@ -84,19 +86,19 @@ async fn handle_approve_oauth_consent(
         issued_at,
         expires_at: issued_at + AUTHORIZATION_CODE_TTL,
     };
-    state
-        .store
-        .issue_authorization_code(&authorization_code)
-        .map_err(|e| HandlerError::internal("issue_authorization_code failed", e))?;
+    state.store.issue_authorization_code(&authorization_code)?;
 
-    upsert_grant(
-        &state,
+    // The read-merge-write (scope union with any standing grant) lives in a
+    // single store transaction, paired with a UNIQUE index on
+    // (client_id, redirect_uri), so two concurrent approvals can't each insert
+    // a duplicate grant that would then survive revocation.
+    state.store.upsert_grant(
         &request.client_id,
         &redirect_uri,
         &granted_scopes,
         body.patient.as_deref(),
-    )
-    .map_err(|e| HandlerError::internal("upsert_grant failed", e))?;
+        Utc::now(),
+    )?;
 
     // Hand back the client callback URL so an approving surface that *is* the
     // requesting client can finish the flow inline (mirrors `authorization_status`'s

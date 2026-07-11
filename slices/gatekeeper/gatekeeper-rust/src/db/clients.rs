@@ -3,8 +3,9 @@ use rusqlite::{params, OptionalExtension, ToSql};
 
 use crate::db::GatekeeperStore;
 use crate::domain::client::{Client, ClientKind};
+use crate::domain::error::GatekeeperError;
 use persistence_rust::build_insert_sql;
-use persistence_rust::{sql_row, DbResult};
+use persistence_rust::sql_row;
 
 impl ToSql for ClientKind {
     fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
@@ -38,9 +39,9 @@ impl GatekeeperStore {
     ///
     /// # Errors
     ///
-    /// Returns a `rusqlite::Error` if the select query fails or a returned row
-    /// cannot be mapped to a [`Client`].
-    pub fn client_by_id(&self, client_id: &str) -> DbResult<Option<Client>> {
+    /// [`GatekeeperError::Backend`] if the select query fails or a returned
+    /// row cannot be mapped to a [`Client`].
+    pub fn client_by_id(&self, client_id: &str) -> Result<Option<Client>, GatekeeperError> {
         self.conn()
             .lock()
             .query_row(
@@ -49,19 +50,21 @@ impl GatekeeperStore {
                 |row| Client::try_from(row),
             )
             .optional()
+            .map_err(|e| GatekeeperError::backend("client_by_id failed", e))
     }
 
     /// Persist a new OAuth client.
     ///
     /// # Errors
     ///
-    /// Returns a `rusqlite::Error` if the insert fails (for example a
+    /// [`GatekeeperError::Backend`] if the insert fails (for example a
     /// unique-constraint violation on the `client_id`).
-    pub fn register_client(&self, client: &Client) -> DbResult<()> {
+    pub fn register_client(&self, client: &Client) -> Result<(), GatekeeperError> {
         let params = make_named_sql_params(client);
         self.conn()
             .lock()
-            .execute(&build_insert_sql("clients", &params), &params)?;
+            .execute(&build_insert_sql("clients", &params), &params)
+            .map_err(|e| GatekeeperError::backend("register_client failed", e))?;
         Ok(())
     }
 
@@ -75,8 +78,8 @@ impl GatekeeperStore {
     ///
     /// # Errors
     ///
-    /// Returns a `rusqlite::Error` if the upsert fails.
-    pub fn upsert_client(&self, client: &Client) -> DbResult<()> {
+    /// [`GatekeeperError::Backend`] if the upsert fails.
+    pub fn upsert_client(&self, client: &Client) -> Result<(), GatekeeperError> {
         let params = make_named_sql_params(client);
         let sql = format!(
             "{} ON CONFLICT(client_id) DO UPDATE SET \
@@ -88,7 +91,10 @@ impl GatekeeperStore {
              secret_hash = excluded.secret_hash",
             build_insert_sql("clients", &params)
         );
-        self.conn().lock().execute(&sql, &params)?;
+        self.conn()
+            .lock()
+            .execute(&sql, &params)
+            .map_err(|e| GatekeeperError::backend("upsert_client failed", e))?;
         Ok(())
     }
 }
