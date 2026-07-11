@@ -2,21 +2,39 @@
 //!
 //! The row is seeded by the migration (id = `'tunnel'`), so reads always find
 //! it and writes are a plain `UPDATE` guarded on `revision` — an atomic
-//! compare-and-swap, no upsert and no read-modify-write. The row mapping reads
-//! columns by name (not position) so the column list can't silently drift.
+//! compare-and-swap, no upsert and no read-modify-write. The row is loaded into
+//! a [`TunnelSettingsRow`] via diesel and folded into the domain
+//! [`TunnelSettings`] ([`relay_from_columns`] collapses blank/partial relay
+//! columns to "unconfigured").
 
-use rusqlite::{named_params, Row};
+use diesel::prelude::*;
+use diesel::sqlite::SqliteConnection;
 
+use crate::db::schema::tunnel_settings;
 use crate::db::TunnelStore;
-use crate::domain::{RelaySettings, TunnelSettings};
-use persistence_rust::DbResult;
+use crate::domain::{RelaySettings, TunnelError, TunnelSettings};
 
 /// The settings table only ever holds one row, addressed by this id.
 pub(super) const TUNNEL_SETTINGS_ID: &str = "tunnel";
 
-/// The full column list, shared by every read.
-const COLS: &str = "revision, public_host, requested_running, \
-                    relay_remote_addr, relay_token, relay_public_key, service_name";
+/// The `tunnel_settings` row as diesel loads it — the mutable column shape,
+/// before it's folded into the domain [`TunnelSettings`] (which nests the relay
+/// block). The `id` column is omitted: it's the constant singleton key, never
+/// read, and `Selectable` selects exactly the listed columns.
+/// `revision`/`requested_running` map the SQLite `INTEGER` columns to
+/// `i64`/`bool`; the `relay_*` columns are nullable text.
+#[derive(Debug, Queryable, Selectable)]
+#[diesel(table_name = tunnel_settings)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+pub(super) struct TunnelSettingsRow {
+    pub(super) revision: i64,
+    pub(super) public_host: Option<String>,
+    pub(super) requested_running: bool,
+    pub(super) relay_remote_addr: Option<String>,
+    pub(super) relay_token: Option<String>,
+    pub(super) relay_public_key: Option<String>,
+    pub(super) service_name: Option<String>,
+}
 
 /// `Some(owned)` only for a present, non-empty string — treats `Some("")` like
 /// `None` so a blanked-out setting counts as unconfigured.
@@ -24,63 +42,62 @@ fn as_none_if_empty(value: Option<String>) -> Option<String> {
     value.filter(|s| !s.is_empty())
 }
 
-impl TryFrom<&Row<'_>> for RelaySettings {
-    /// Wrap the row-mapping error in an Option to distinguish an actual SQL error from
-    /// the expected "no relay settings" case, when not all relay columns are present.
-    type Error = Option<rusqlite::Error>;
-
-    fn try_from(row: &Row<'_>) -> Result<Self, Self::Error> {
-        let maybe_remote_addr = as_none_if_empty(row.get("relay_remote_addr")?);
-        let maybe_token = as_none_if_empty(row.get("relay_token")?);
-        let maybe_public_key = as_none_if_empty(row.get("relay_public_key")?);
-        let maybe_service_name = as_none_if_empty(row.get("service_name")?);
-
-        match (
-            maybe_remote_addr,
-            maybe_token,
-            maybe_public_key,
-            maybe_service_name,
-        ) {
-            (Some(remote_addr), Some(token), Some(public_key), Some(service_name)) => {
-                Ok(RelaySettings {
-                    remote_addr,
-                    token,
-                    public_key,
-                    service_name,
-                })
-            }
-            (None, None, None, None) => Err(None),
-            (maybe_remote_addr, maybe_token, maybe_public_key, maybe_service_name) => {
-                tracing::warn!(
-                    "incomplete relay settings in db: \
-                     remote_addr={:?} token={:?} public_key={:?} service_name={:?}",
-                    maybe_remote_addr,
-                    maybe_token,
-                    maybe_public_key,
-                    maybe_service_name
-                );
-                Err(None)
-            }
+/// Fold the four relay columns into a [`RelaySettings`], or `None` when the
+/// relay is unconfigured. Configuration is all-or-nothing: every field must be
+/// present and non-empty. A *partial* set (some present, some blank) is a
+/// corrupt/legacy shape the API can't produce — logged and treated as
+/// unconfigured rather than surfaced, matching the pre-diesel row mapping.
+fn relay_from_columns(
+    remote_addr: Option<String>,
+    token: Option<String>,
+    public_key: Option<String>,
+    service_name: Option<String>,
+) -> Option<RelaySettings> {
+    match (
+        as_none_if_empty(remote_addr),
+        as_none_if_empty(token),
+        as_none_if_empty(public_key),
+        as_none_if_empty(service_name),
+    ) {
+        (Some(remote_addr), Some(token), Some(public_key), Some(service_name)) => {
+            Some(RelaySettings {
+                remote_addr,
+                token,
+                public_key,
+                service_name,
+            })
+        }
+        (None, None, None, None) => None,
+        (maybe_remote_addr, maybe_token, maybe_public_key, maybe_service_name) => {
+            tracing::warn!(
+                "incomplete relay settings in db: \
+                 remote_addr={:?} token={:?} public_key={:?} service_name={:?}",
+                maybe_remote_addr,
+                maybe_token,
+                maybe_public_key,
+                maybe_service_name
+            );
+            None
         }
     }
 }
 
-impl TryFrom<&Row<'_>> for TunnelSettings {
-    type Error = rusqlite::Error;
-    fn try_from(row: &Row<'_>) -> rusqlite::Result<Self> {
-        let relay_settings = match RelaySettings::try_from(row) {
-            Ok(relay_settings) => Some(relay_settings),
-            // No complete relay settings configured, not an error.
-            Err(None) => None,
-            // A true error, surface it.
-            Err(Some(e)) => return Err(e),
-        };
-        Ok(TunnelSettings {
-            revision: row.get("revision")?,
-            public_host: row.get("public_host")?,
-            requested_running: row.get("requested_running")?,
-            relay_settings,
-        })
+impl From<TunnelSettingsRow> for TunnelSettings {
+    fn from(row: TunnelSettingsRow) -> Self {
+        TunnelSettings {
+            revision: row.revision,
+            // `public_host` passes through as stored (a blank string is
+            // normalized to `None` only at the seed/consume points that care —
+            // see `seed_if_absent` and `TunnelControl::current_public_host`).
+            public_host: row.public_host,
+            requested_running: row.requested_running,
+            relay_settings: relay_from_columns(
+                row.relay_remote_addr,
+                row.relay_token,
+                row.relay_public_key,
+                row.service_name,
+            ),
+        }
     }
 }
 
@@ -108,58 +125,71 @@ impl TunnelStore {
     ///
     /// # Errors
     ///
-    /// Returns any rusqlite error from the read.
-    pub fn get_settings(&self) -> DbResult<TunnelSettings> {
-        read_settings_with_connection(&self.conn().lock())
+    /// [`TunnelError::Backend`] on a checkout / read failure.
+    pub fn get_settings(&self) -> Result<TunnelSettings, TunnelError> {
+        let mut conn = self
+            .pool()
+            .get()
+            .map_err(|e| TunnelError::backend("failed to check out a connection", e))?;
+        read_settings(&mut conn)
     }
 
     /// Replace the settings iff `expected_revision` still matches the stored
     /// revision, bumping the revision on success. The visible fields are fully
-    /// replaced; the relay block is replaced only when `update.relay_settings` is set
-    /// (otherwise the stored relay connection is kept). Returns
-    /// [`SettingsUpdateOutcome::Conflict`] (with the current row) when the revision
-    /// has moved on.
+    /// replaced; the relay block is replaced only when `update.relay_settings` is
+    /// set (otherwise the stored relay connection is kept). Returns
+    /// [`SettingsUpdateOutcome::Conflict`] (with the current row) when the
+    /// revision has moved on.
+    ///
+    /// The two arms below differ only in whether they touch the relay columns:
+    /// relay-present replaces all four, relay-absent leaves them as stored. Any
+    /// future *visible* column must be added to BOTH arms (the pre-diesel single
+    /// `COALESCE` statement folded them; diesel's typed `.set()` needs the split).
     ///
     /// # Errors
     ///
-    /// Returns any rusqlite error from the update or the read-back.
+    /// [`TunnelError::Backend`] on a checkout / update / read-back failure.
     pub fn replace_settings(
         &self,
         expected_revision: i64,
         update: SettingsUpdate,
-    ) -> DbResult<SettingsUpdateOutcome> {
-        let conn = self.conn().lock();
-        // One UPDATE for both relay-present and relay-absent: the relay
-        // columns use `COALESCE(:bind, column)` so a NULL bind (relay absent)
-        // falls through to the stored value, while a non-null bind (relay
-        // present) replaces it. Safe because `RelaySettings` fields are
-        // `String` (never `None`), so "relay present" always provides
-        // non-null binds. Collapsing the two arms means a future visible
-        // column lands in one SET list — no risk of being added to the
-        // relay-present arm and silently skipped on the relay-absent path.
-        let relay = update.relay_settings.as_ref();
-        let affected = conn.execute(
-            "UPDATE tunnel_settings SET \
-                public_host = :public_host, \
-                requested_running = :requested_running, \
-                relay_remote_addr = COALESCE(:relay_remote_addr, relay_remote_addr), \
-                relay_token = COALESCE(:relay_token, relay_token), \
-                relay_public_key = COALESCE(:relay_public_key, relay_public_key), \
-                service_name = COALESCE(:service_name, service_name), \
-                revision = revision + 1 \
-             WHERE id = :id AND revision = :expected",
-            named_params! {
-                ":public_host": update.public_host,
-                ":requested_running": update.requested_running,
-                ":relay_remote_addr": relay.map(|r| &r.remote_addr),
-                ":relay_token": relay.map(|r| &r.token),
-                ":relay_public_key": relay.map(|r| &r.public_key),
-                ":service_name": relay.map(|r| &r.service_name),
-                ":id": TUNNEL_SETTINGS_ID,
-                ":expected": expected_revision,
-            },
-        )?;
-        let current = read_settings_with_connection(&conn)?;
+    ) -> Result<SettingsUpdateOutcome, TunnelError> {
+        let mut conn = self
+            .pool()
+            .get()
+            .map_err(|e| TunnelError::backend("failed to check out a connection", e))?;
+
+        let affected = match update.relay_settings.as_ref() {
+            Some(relay) => diesel::update(
+                tunnel_settings::table
+                    .find(TUNNEL_SETTINGS_ID)
+                    .filter(tunnel_settings::revision.eq(expected_revision)),
+            )
+            .set((
+                tunnel_settings::public_host.eq(update.public_host.as_deref()),
+                tunnel_settings::requested_running.eq(update.requested_running),
+                tunnel_settings::relay_remote_addr.eq(Some(relay.remote_addr.as_str())),
+                tunnel_settings::relay_token.eq(Some(relay.token.as_str())),
+                tunnel_settings::relay_public_key.eq(Some(relay.public_key.as_str())),
+                tunnel_settings::service_name.eq(Some(relay.service_name.as_str())),
+                tunnel_settings::revision.eq(tunnel_settings::revision + 1),
+            ))
+            .execute(&mut conn),
+            None => diesel::update(
+                tunnel_settings::table
+                    .find(TUNNEL_SETTINGS_ID)
+                    .filter(tunnel_settings::revision.eq(expected_revision)),
+            )
+            .set((
+                tunnel_settings::public_host.eq(update.public_host.as_deref()),
+                tunnel_settings::requested_running.eq(update.requested_running),
+                tunnel_settings::revision.eq(tunnel_settings::revision + 1),
+            ))
+            .execute(&mut conn),
+        }
+        .map_err(|e| TunnelError::backend("replace_settings failed", e))?;
+
+        let current = read_settings(&mut conn)?;
         Ok(if affected == 1 {
             SettingsUpdateOutcome::Applied(current)
         } else {
@@ -168,14 +198,17 @@ impl TunnelStore {
     }
 }
 
-pub(super) fn read_settings_with_connection(
-    conn: &rusqlite::Connection,
-) -> DbResult<TunnelSettings> {
-    conn.query_row(
-        &format!("SELECT {COLS} FROM tunnel_settings WHERE id = ?1"),
-        [TUNNEL_SETTINGS_ID],
-        |row| TunnelSettings::try_from(row),
-    )
+/// Load the singleton row and fold it into the domain [`TunnelSettings`]. Shared
+/// by [`TunnelStore::get_settings`], the `replace_settings` read-back, and the
+/// seed path. The row always exists (the migration seeds it), so a missing row
+/// is a genuine backend error, not an expected empty result.
+pub(super) fn read_settings(conn: &mut SqliteConnection) -> Result<TunnelSettings, TunnelError> {
+    tunnel_settings::table
+        .find(TUNNEL_SETTINGS_ID)
+        .select(TunnelSettingsRow::as_select())
+        .first(conn)
+        .map(TunnelSettings::from)
+        .map_err(|e| TunnelError::backend("read tunnel settings failed", e))
 }
 
 #[cfg(test)]
@@ -246,68 +279,55 @@ mod tests {
         assert!(s.requested_running, "unchanged");
     }
 
-    /// Synthesize a single-row result-set with the four relay columns named the
-    /// way `RelaySettings::try_from` reads them, and run the mapping against it.
-    /// Sidesteps the migrated store so we can poke at partial/blank shapes the
-    /// `replace_settings` API can't produce.
-    fn try_relay_settings_from_row_content(
-        remote_addr: Option<&str>,
-        token: Option<&str>,
-        public_key: Option<&str>,
-        service_name: Option<&str>,
-    ) -> Result<RelaySettings, Option<rusqlite::Error>> {
-        let conn = rusqlite::Connection::open_in_memory().unwrap();
-        let mut stmt = conn
-            .prepare(
-                "SELECT \
-                    ?1 AS relay_remote_addr, \
-                    ?2 AS relay_token, \
-                    ?3 AS relay_public_key, \
-                    ?4 AS service_name",
-            )
+    /// An explicit `publicHost: null` clears a configured host — the write binds
+    /// SQL NULL rather than skipping the column.
+    #[test]
+    fn replace_with_none_public_host_clears_it() {
+        let store = store();
+        store
+            .replace_settings(0, update(Some("dev1.example.com"), true))
             .unwrap();
-        let mut rows = stmt
-            .query(rusqlite::params![
-                remote_addr,
-                token,
-                public_key,
-                service_name
-            ])
-            .unwrap();
-        let row = rows.next().unwrap().expect("one row");
-        RelaySettings::try_from(row)
+        store.replace_settings(1, update(None, true)).unwrap();
+        assert_eq!(store.get_settings().unwrap().public_host, None);
     }
 
+    /// Relay configuration is all-or-nothing: a partial column set (here a
+    /// missing `service_name`) reads as unconfigured, and a complete set folds
+    /// into a `RelaySettings`. Exercises [`relay_from_columns`] directly so the
+    /// partial/blank shapes the `replace_settings` API can't produce are covered.
     #[test]
-    fn relay_settings_is_none_until_all_columns_present() {
-        assert!(
-            matches!(
-                try_relay_settings_from_row_content(
-                    Some("relay:2333"),
-                    Some("tok"),
-                    Some("key"),
-                    None
-                ),
-                Err(None),
+    fn relay_from_columns_needs_every_field_present() {
+        assert_eq!(
+            relay_from_columns(
+                Some("relay:2333".into()),
+                Some("tok".into()),
+                Some("key".into()),
+                None,
             ),
-            "missing service_name"
+            None,
+            "missing service_name",
         );
-        let full = try_relay_settings_from_row_content(
-            Some("relay:2333"),
-            Some("tok"),
-            Some("key"),
-            Some("dev1"),
+        let full = relay_from_columns(
+            Some("relay:2333".into()),
+            Some("tok".into()),
+            Some("key".into()),
+            Some("dev1".into()),
         )
-        .expect("complete row");
+        .expect("complete columns");
         assert_eq!(full.service_name, "dev1");
     }
 
     #[test]
     fn blank_relay_columns_count_as_unconfigured() {
-        assert!(matches!(
-            try_relay_settings_from_row_content(Some(""), Some("tok"), Some("key"), Some("dev1")),
-            Err(None),
-        ));
+        assert_eq!(
+            relay_from_columns(
+                Some(String::new()),
+                Some("tok".into()),
+                Some("key".into()),
+                Some("dev1".into()),
+            ),
+            None,
+        );
     }
 
     #[test]

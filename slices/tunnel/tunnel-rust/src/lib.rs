@@ -4,8 +4,9 @@
 //!
 //!  - [`domain`] — pure settings types ([`TunnelSettings`]) and the
 //!    [`RelayClient`](domain::RelayClient) trait.
-//!  - [`db`] — the `SQLite` [`TunnelStore`] (on the shared `persistence-rust`
-//!    primitives) and its queries.
+//!  - [`db`] — the `SQLite` [`TunnelStore`], built on Diesel over the app-wide
+//!    r2d2 connection pool (`persistence_rust::DieselPool`) onto the shared
+//!    database file, and its queries.
 //!  - `relay_clients` — the embedded `rathole` impl of `RelayClient` that
 //!    dials the self-hosted relay.
 //!  - [`http`] — the `/tunnel` wire contract.
@@ -45,9 +46,13 @@ use axum::Router;
 pub use config::TunnelConfig;
 pub use control::TunnelControl;
 pub use db::{SettingsSeed, TunnelStore};
+// Re-exported so the host can name the pool type at the `setup_tunnel` call
+// site without a direct diesel dependency; the canonical home is
+// persistence-rust.
 pub use domain::{RelaySettings, TunnelDaemon, TunnelSettings};
 pub use health::HealthProbe;
 pub use http::{openapi_spec, TunnelState};
+pub use persistence_rust::DieselPool;
 use relay_clients::RatholeRelayClient;
 // Re-export the tunnel service contract this slice implements, so consumers can
 // name the types without depending on `shared-structures-rust` directly.
@@ -63,23 +68,27 @@ pub struct Tunnel {
     pub control: TunnelControl,
 }
 
-/// Build the `/tunnel` router + control seam over the shared `conn` and an
-/// embedded rathole client, mirroring `gatekeeper-rust`'s `setup_gatekeeper`.
-/// The host opens one database and passes it in, along with the `probe` adapter
-/// the daemon uses to verify the tunnel is actually reachable (it GETs the
-/// served origin's assumed-present `/health`). Resumes the tunnel from persisted
-/// settings.
+/// Build the `/tunnel` router + control seam over the host-owned connection
+/// `pool` and an embedded rathole client, mirroring `collector-rust`'s
+/// `setup_collector`. The host builds the app-wide diesel pool (via
+/// `persistence_rust::open_pool`) as an additional opener onto the same shared
+/// database file its rusqlite `persistence-rust::Connection` serves the other
+/// slices from (SQLite permits multiple connections per file), and passes it in
+/// along with the `probe` adapter the daemon uses to verify the tunnel is
+/// actually reachable (it GETs the served origin's assumed-present `/health`).
+/// Constructing the store applies the embedded tunnel migrations once. Resumes
+/// the tunnel from persisted settings.
 ///
 /// # Errors
 ///
 /// Returns an error if the store can't be migrated or the persisted settings
 /// can't be read.
 pub fn setup_tunnel(
-    conn: persistence_rust::Connection,
+    pool: DieselPool,
     config: &TunnelConfig,
     probe: Arc<dyn HealthProbe>,
 ) -> anyhow::Result<Tunnel> {
-    let store = TunnelStore::new(conn).context("failed to open tunnel store")?;
+    let store = TunnelStore::new(pool).context("failed to open tunnel store")?;
     let client = Arc::new(RatholeRelayClient::new());
     let tunnel_daemon = TunnelDaemon::new(
         client,

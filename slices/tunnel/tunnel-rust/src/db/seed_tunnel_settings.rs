@@ -5,12 +5,12 @@
 //! without bumping `revision`, so a fresh install picks up the relay connection
 //! while an in-app edit is never overwritten.
 
-use rusqlite::named_params;
+use diesel::prelude::*;
 
-use super::tunnel_settings::{read_settings_with_connection, TUNNEL_SETTINGS_ID};
+use super::tunnel_settings::{read_settings, TUNNEL_SETTINGS_ID};
+use crate::db::schema::tunnel_settings;
 use crate::db::TunnelStore;
-use crate::domain::{RelaySettings, TunnelSettings};
-use persistence_rust::DbResult;
+use crate::domain::{RelaySettings, TunnelError};
 
 /// Build-time defaults seeded into the row at startup. Each field fills the
 /// stored value only when it's currently unconfigured (see
@@ -28,61 +28,58 @@ impl TunnelStore {
     /// never clobbered. Does **not** bump `revision` (this is initialization,
     /// not a user write). A no-op once configured, or when the seed is empty.
     ///
-    /// Runs once at startup before the slice serves, so the single shared
-    /// connection has no concurrent writer to race.
+    /// Runs once at startup before the slice serves, so the read-then-write has
+    /// no concurrent writer to race. Each field seeds through its own targeted
+    /// `UPDATE`, so a `None` bind can never overwrite a stored value with NULL
+    /// (the pre-diesel single `COALESCE` statement kept the stored value on a
+    /// `None` bind; the split, guarded updates achieve the same).
     ///
     /// # Errors
     ///
-    /// Returns any rusqlite error from the read-back or the update.
-    pub fn seed_if_absent(&self, seed: &SettingsSeed) -> DbResult<()> {
-        let conn = self.conn().lock();
-        // Migration 001 always inserts the singleton row and every `TunnelStore`
-        // migrates before seeding, so the read always finds it — a missing row
-        // is a genuine error, not a fresh namespace to INSERT into.
-        let TunnelSettings {
-            public_host: current_public_host,
-            relay_settings: current_relay_settings,
-            ..
-        } = read_settings_with_connection(&conn)?;
+    /// [`TunnelError::Backend`] on a checkout / read-back / update failure.
+    pub fn seed_if_absent(&self, seed: &SettingsSeed) -> Result<(), TunnelError> {
+        let mut conn = self
+            .pool()
+            .get()
+            .map_err(|e| TunnelError::backend("failed to check out a connection", e))?;
+
+        // The migration always inserts the singleton row and every `TunnelStore`
+        // migrates before seeding, so the read always finds it.
+        let current = read_settings(&mut conn)?;
 
         // Seed a field only where the stored value is unconfigured; the relay is
-        // all-or-nothing, gated on the whole block being unset. A `None` bind
-        // makes `COALESCE` keep the stored value, so this is the same single
-        // SET list as `replace_settings` — a future column can't be skipped on
-        // one path. `revision`/`requested_running` are intentionally untouched.
-        let maybe_new_public_host = if current_public_host.as_ref().is_none_or(String::is_empty) {
-            seed.public_host.as_deref()
-        } else {
-            None
-        };
-        let maybe_new_relay_settings = if current_relay_settings.is_none() {
-            seed.relay.as_ref()
-        } else {
-            None
-        };
+        // all-or-nothing, gated on the whole block being unset.
+        // `revision`/`requested_running` are intentionally untouched.
+        let host_to_seed = current
+            .public_host
+            .as_ref()
+            .is_none_or(String::is_empty)
+            .then_some(seed.public_host.as_deref())
+            .flatten();
+        let relay_to_seed = current
+            .relay_settings
+            .is_none()
+            .then_some(seed.relay.as_ref())
+            .flatten();
 
-        if maybe_new_public_host.is_none() && maybe_new_relay_settings.is_none() {
-            return Ok(());
+        if let Some(host) = host_to_seed {
+            diesel::update(tunnel_settings::table.find(TUNNEL_SETTINGS_ID))
+                .set(tunnel_settings::public_host.eq(Some(host)))
+                .execute(&mut conn)
+                .map_err(|e| TunnelError::backend("seed public_host failed", e))?;
         }
-
-        conn.execute(
-            "UPDATE tunnel_settings SET \
-                public_host = COALESCE(:public_host, public_host), \
-                relay_remote_addr = COALESCE(:relay_remote_addr, relay_remote_addr), \
-                relay_token = COALESCE(:relay_token, relay_token), \
-                relay_public_key = COALESCE(:relay_public_key, relay_public_key), \
-                service_name = COALESCE(:service_name, service_name) \
-             WHERE id = :id",
-            named_params! {
-                ":public_host": maybe_new_public_host,
-                ":relay_remote_addr": maybe_new_relay_settings.map(|r| &r.remote_addr),
-                ":relay_token": maybe_new_relay_settings.map(|r| &r.token),
-                ":relay_public_key": maybe_new_relay_settings.map(|r| &r.public_key),
-                ":service_name": maybe_new_relay_settings.map(|r| &r.service_name),
-                ":id": TUNNEL_SETTINGS_ID,
-            },
-        )
-        .map(|_| ())
+        if let Some(relay) = relay_to_seed {
+            diesel::update(tunnel_settings::table.find(TUNNEL_SETTINGS_ID))
+                .set((
+                    tunnel_settings::relay_remote_addr.eq(Some(relay.remote_addr.as_str())),
+                    tunnel_settings::relay_token.eq(Some(relay.token.as_str())),
+                    tunnel_settings::relay_public_key.eq(Some(relay.public_key.as_str())),
+                    tunnel_settings::service_name.eq(Some(relay.service_name.as_str())),
+                ))
+                .execute(&mut conn)
+                .map_err(|e| TunnelError::backend("seed relay failed", e))?;
+        }
+        Ok(())
     }
 }
 

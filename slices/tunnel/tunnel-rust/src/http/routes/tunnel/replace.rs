@@ -40,13 +40,9 @@ pub(super) async fn handle_replace_tunnel(
         requested_running: body.requested_running,
         relay_settings: body.relay.map(RelaySettings::from),
     };
-    // Call-site wrap of the store's raw db error into the domain vocabulary,
-    // until the store itself moves onto `Result<_, TunnelError>` with the
-    // diesel migration.
     let settings_update_outcome = state
         .store
-        .replace_settings(body.settings_revision, update)
-        .map_err(|e| TunnelError::backend("replace_settings failed", e))?;
+        .replace_settings(body.settings_revision, update)?;
 
     match settings_update_outcome {
         SettingsUpdateOutcome::Applied(settings) => {
