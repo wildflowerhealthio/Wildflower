@@ -15,8 +15,8 @@ use axum::Json;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-use crate::domain::AppListEntry;
-use crate::http::errors::{HandlerError, InvalidHomeScreenBody};
+use crate::domain::{AppError, AppListEntry};
+use crate::http::errors::InvalidHomeScreenBody;
 use crate::http::state::AppsState;
 
 /// One entry in the `PUT /home-screen` body: an app id and its desired `enabled`
@@ -46,7 +46,7 @@ pub(crate) struct HomeScreenEntry {
 pub(crate) async fn handle_replace_home_screen(
     State(state): State<Arc<AppsState>>,
     Json(body): Json<Vec<HomeScreenEntry>>,
-) -> Result<Json<Vec<AppListEntry>>, HandlerError> {
+) -> Result<Json<Vec<AppListEntry>>, AppError> {
     // The home screen *is* the whole registry, reordered — so the body must be an
     // exact permutation of the current ids. `replace_home_screen` validates that
     // against the live registry **and** renumbers in one transaction (the
@@ -54,13 +54,9 @@ pub(crate) async fn handle_replace_home_screen(
     // returns the resulting catalogue. `Ok(None)` means the body wasn't an exact
     // permutation → `400 InvalidHomeScreen`.
     let entries: Vec<(String, bool)> = body.into_iter().map(|e| (e.id, e.enabled)).collect();
-    match state
-        .store
-        .replace_home_screen(&entries)
-        .map_err(|e| HandlerError::internal("replace_home_screen failed", e))?
-    {
+    match state.store.replace_home_screen(&entries)? {
         Some(updated) => Ok(Json(updated.iter().map(AppListEntry::from).collect())),
-        None => Err(HandlerError::InvalidHomeScreen {
+        None => Err(AppError::InvalidHomeScreen {
             message: "home-screen body must list every app exactly once".to_owned(),
         }),
     }

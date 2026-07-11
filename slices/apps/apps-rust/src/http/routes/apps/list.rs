@@ -1,15 +1,15 @@
-//! `GET /apps` — return the catalogue: every parent registry row projected to
-//! [`AppListEntry`], already ordered by `position` (the store does the JOIN +
-//! ORDER BY). The wire shape omits the launch `url` (resolved per-request at
-//! launch; see [`AppListEntry`]).
+//! `GET /apps` — return the catalogue: every registry app projected to
+//! [`AppListEntry`], already ordered by `position` (the store reads the
+//! cross-kind `apps_view` + the `home_screen` ordering). The wire shape omits the
+//! request-resolved launch URL (materialized per-request at launch; see
+//! [`AppListEntry`]).
 
 use std::sync::Arc;
 
 use axum::extract::State;
 use axum::Json;
 
-use crate::domain::AppListEntry;
-use crate::http::errors::HandlerError;
+use crate::domain::{AppError, AppListEntry};
 use crate::http::state::AppsState;
 
 /// `GET /apps` — the full catalogue in display order. Gating is applied by the
@@ -25,10 +25,7 @@ use crate::http::state::AppsState;
 )]
 pub(crate) async fn handle_list_apps(
     State(state): State<Arc<AppsState>>,
-) -> Result<Json<Vec<AppListEntry>>, HandlerError> {
-    let apps = state
-        .store
-        .list_apps()
-        .map_err(|e| HandlerError::internal("list_apps lookup failed", e))?;
+) -> Result<Json<Vec<AppListEntry>>, AppError> {
+    let apps = state.store.list_apps()?;
     Ok(Json(apps.iter().map(AppListEntry::from).collect()))
 }

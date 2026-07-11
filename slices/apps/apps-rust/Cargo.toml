@@ -14,7 +14,12 @@ anyhow.workspace = true
 axum.workspace = true
 serde = { workspace = true }
 serde_json.workspace = true
-rusqlite.workspace = true
+# Persistence is Diesel over the app-wide r2d2 connection pool
+# (`persistence_rust::DieselPool`), mirroring collector-rust. This crate depends
+# on `persistence-rust` ONLY for the pool type — it does not touch `rusqlite`
+# directly. Diesel's `r2d2` feature reuses the one already in the tree.
+diesel = { workspace = true }
+diesel_migrations.workspace = true
 utoipa.workspace = true
 utoipa-axum.workspace = true
 persistence-rust = { path = "../../persistence/persistence-rust" }

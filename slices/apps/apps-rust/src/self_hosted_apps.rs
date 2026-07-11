@@ -256,6 +256,11 @@ mod tests {
             }),
         );
         let app = SelfHostedApp {
+            id: "patient-browser".to_owned(),
+            name: "Patient Browser".to_owned(),
+            subtitle: None,
+            local_only: true,
+            client_id: None,
             port,
             content_folder: "patient-browser".to_owned(),
             subdomain: "patient-browser".to_owned(),
@@ -332,7 +337,7 @@ mod tests {
                 public_host: "demo.example.com".to_owned(),
             }),
         );
-        service.start(&inserted.id, &app).await.unwrap();
+        service.start(inserted.id(), &app).await.unwrap();
 
         let res = proxy_router(table.clone())
             .oneshot(forwarded_request(&format!(

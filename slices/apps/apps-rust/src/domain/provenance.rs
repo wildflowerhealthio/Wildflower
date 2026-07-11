@@ -1,8 +1,10 @@
-//! `Provenance` — how an app's launch target is resolved. Fixed per parent
-//! registry row (the `apps.provenance` column) and what the launch handler
-//! dispatches on. The provenance taxonomy and privacy model are canonical in
-//! `docs/Apps/Explanation.md`; the launch-resolution mechanics per variant are
-//! on the [`Provenance`] variants below.
+//! `Provenance` — how an app's launch target is resolved. Under table-per-struct
+//! storage the provenance is **implicit** — the concrete table a row lives in (or
+//! the compiled-in system list) IS its provenance, and the `apps_view` projects a
+//! matching string tag. This enum is the in-memory discriminant [`App`](super::App)
+//! reports via [`App::provenance`](super::App::provenance) and what the launch
+//! handler dispatches on. The taxonomy and privacy model are canonical in
+//! `docs/Apps/Explanation.md`.
 
 use std::fmt;
 use std::str::FromStr;
@@ -10,12 +12,13 @@ use std::str::FromStr;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-/// How an app's launch target resolves. Serialized — wire + SQLite — as its
-/// kebab string (`"system"` / `"self-hosted"` / `"cloud"`).
+/// How an app's launch target resolves. Serialized as its kebab string
+/// (`"system"` / `"self-hosted"` / `"cloud"`) — the same tag the `apps_view`
+/// projects.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum Provenance {
-    /// Compiled-in source ([`SystemApp`](super::SystemApp)); no child table row.
+    /// Compiled-in source ([`SystemApp`](super::SystemApp)); no stored table.
     System,
     /// Locally-served app on a dedicated loopback `port` (`self_hosted_apps`).
     SelfHosted,
@@ -24,10 +27,8 @@ pub enum Provenance {
 }
 
 impl Provenance {
-    /// The canonical kebab string stored in the `apps.provenance` column and
-    /// matched by the table's `CHECK` constraint. The single source of truth
-    /// for the DB [`ToSql`](rusqlite::ToSql) / [`FromSql`](rusqlite::types::FromSql)
-    /// mapping and [`fmt::Display`].
+    /// The canonical kebab string — the `apps_view` `provenance` tag the store
+    /// decoder matches on, and the single source of truth for [`fmt::Display`].
     #[must_use]
     pub fn as_str(&self) -> &'static str {
         match self {

@@ -9,7 +9,6 @@ use std::sync::Arc;
 use apps_rust::{setup_apps, Apps, AppsConfig, NoLaunchCookies, OwnerAuth, SelfHostedAppsService};
 use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
-use persistence_rust::Connection;
 use serde_json::Value;
 use shared_structures_rust::tunnel_service::OfflineTunnel;
 use shared_structures_server_rust::ProxyTable;
@@ -27,7 +26,7 @@ const LOOPBACK_BASE_URL: &str = "http://127.0.0.1:8080/";
 /// [`OfflineTunnel`]): a `requires_tunnel` launch would `503`, so the harness
 /// only issues loopback launches of non-tunnel apps.
 fn spin_up_with_handle() -> (Apps, Arc<RecordingStubWebviewHandle>) {
-    let db = Connection::open_in_memory().expect("open shared db");
+    let pool = persistence_rust::open_in_memory_pool().expect("open in-memory diesel pool");
     let config = AppsConfig {
         loopback_base_url: Url::parse(LOOPBACK_BASE_URL).expect("valid base url"),
     };
@@ -54,7 +53,7 @@ fn spin_up_with_handle() -> (Apps, Arc<RecordingStubWebviewHandle>) {
         tunnel.clone(),
     ));
     let apps = setup_apps(
-        db,
+        pool,
         &config,
         tunnel,
         handle.clone(),
@@ -159,7 +158,7 @@ async fn self_hosted_apps_catalogue_is_materialized() {
     let pb = apps
         .self_hosted_apps_at_start
         .iter()
-        .find(|a| a.id == "patient-browser")
+        .find(|a| a.id() == "patient-browser")
         .expect("patient-browser is self-hosted");
     assert_eq!(pb.as_self_hosted().expect("self-hosted payload").port, 8081,);
 }

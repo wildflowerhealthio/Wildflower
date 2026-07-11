@@ -1,21 +1,24 @@
-//! `SystemApp` — the compiled-in launch source for `provenance = 'system'`
-//! apps. A system app's parent registry row carries no child table row; its
-//! launch URL comes from the [`SYSTEM_APPS`] list below, which **must stay in
-//! sync** with the seeded system parent rows in migration `004` (id / name /
-//! subtitle / `local_only`). The consistency is asserted in the store layer's
-//! tests.
+//! `SystemApp` — the compiled-in launch source + catalogue metadata for system
+//! apps. A system app has **no stored table**: its id / name / subtitle /
+//! `local_only` / launch URL all come from the [`SYSTEM_APPS`] list below, and a
+//! `home_screen` row referencing its id is its only stored state. The store
+//! folds these compiled-in entries into the catalogue for every `home_screen`
+//! row whose id isn't a cloud or self-hosted row. The store tests pin that every
+//! seeded `home_screen` system id resolves to a [`SYSTEM_APPS`] entry.
 //!
 //! Every system app is `{origin}`-relative (an on-device target served by this
 //! host), so [`SystemApp::app_url`] always parses to
 //! [`AppUrl::OriginRelative`](super::AppUrl::OriginRelative).
 
-use super::AppUrl;
+use super::{AppRecord, AppUrl};
 
 /// One compiled-in system-app source. `'static` because the whole catalogue is
-/// a `const` baked into the binary.
+/// a `const` baked into the binary. A system app has no stored table — its
+/// name / subtitle / launch URL live here, and a `home_screen` row referencing
+/// its [`id`](Self::id) is its only stored state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SystemApp {
-    /// Stable id — matches the seeded parent row's `id`.
+    /// Stable id — matches the seeded `home_screen` row's `app_id`.
     pub id: &'static str,
     pub name: &'static str,
     pub subtitle: Option<&'static str>,
@@ -23,6 +26,18 @@ pub struct SystemApp {
     /// [`AppUrl::OriginRelative`](super::AppUrl::OriginRelative).
     pub url: &'static str,
     pub local_only: bool,
+}
+
+impl AppRecord for SystemApp {
+    /// A system app is never a SMART app — it carries no `client_id`.
+    fn smart(&self) -> bool {
+        false
+    }
+
+    /// A system app is source-defined and never user-removable.
+    fn removable(&self) -> bool {
+        false
+    }
 }
 
 impl SystemApp {
@@ -41,9 +56,9 @@ impl SystemApp {
     }
 }
 
-/// The compiled-in system-app catalogue. Kept in sync with the seeded
-/// `provenance = 'system'` parent rows in migration `004` (the store tests
-/// assert the two agree).
+/// The compiled-in system-app catalogue. The seeded `home_screen` system ids
+/// (migration `2026-07-11-000000`) must each resolve to an entry here (the store
+/// tests assert the two agree).
 pub const SYSTEM_APPS: &[SystemApp] = &[
     SystemApp {
         id: "api-view",

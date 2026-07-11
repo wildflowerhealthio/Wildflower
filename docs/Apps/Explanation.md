@@ -10,12 +10,13 @@ question about any app is **where it runs and whether the patient's data can
 leave the device when it does**. Two orthogonal axes answer it: **provenance**
 (where the app is served from) and a set of **capability flags** (what it may do
 with PHI). Provenance fixes how a launch target resolves; the flags carry the
-privacy verdict. The storage layout follows from the taxonomy — a curated parent
-registry with one globally-unique `id` per app, plus a per-kind child table —
-rather than driving it. That parent-registry-plus-child-tables layout is a
-repo-wide convention (apps is its reference implementation, gatekeeper grants the
-second); the [Polymorphic Rows Explanation](../Persistence/Polymorphic%20Rows%20Explanation.md)
-describes the pattern in the abstract.
+privacy verdict. The storage layout follows from the taxonomy — **one standalone
+table per concrete kind** (`cloud_apps`, `self_hosted_apps`), each carrying all
+of its own columns, plus a `home_screen` table owning the cross-kind ordering —
+rather than driving it. The table a row lives in **is** its provenance; there is
+no stored `provenance` column. System apps have no table at all (their metadata
+and launch URL are compiled in), so a `home_screen` row referencing a compiled-in
+id is a system app's only stored state.
 
 ## Group A — Provenance (one per app, fixed identity)
 
@@ -26,9 +27,9 @@ cloud↔self-hosted re-point, but there is no switch UI yet.
 - **System** — served by the structure of Wildflower itself: a shell route (API
   View, API Docs) or a compiled-in backend. Source-defined only — the user can
   never add, register, or delete one. Always ready to serve. System apps have a
-  parent registry row (so they can be reordered/hidden) but **no child config
-  row**; their launch URL comes from a compiled-in `SystemApp` source list that
-  is the single authority for resolving them.
+  `home_screen` row (so they can be reordered/hidden) but **no stored table**;
+  their metadata and launch URL come from a compiled-in `SystemApp` source list
+  that is the single authority for resolving them.
 - **Self-Hosted** — web assets served from the device on a **dedicated, isolated
   origin** (a loopback port, or the user's domain via subdomain dispatch). The
   isolated origin is what lets a Self-Hosted app make data-residence guarantees.
@@ -63,15 +64,13 @@ app is not automatically safe — the flags decide.
 
 ## Data model
 
-A **curated parent registry** (`apps`) holds the homescreen list: a globally
-unique `id` (so there is no cross-kind collision to resolve), `name`, `subtitle`,
-`enabled`, `position` (for ordering + drag-to-reorder), `provenance`,
-`local_only`, and the soft `client_id` reference. Per-kind detail lives in child
-tables joined by `id`:
+**Table-per-struct.** Each concrete kind is one **standalone** table carrying all
+of its own columns — the shared catalogue fields (`id`, `name`, `subtitle`,
+`local_only`, and the soft `client_id` reference) plus that kind's payload:
 
-- `cloud_apps` — `url` (the **only** place a launch URL is stored) and
+- `cloud_apps` — adds `url` (the **only** place a launch URL is stored) and
   `requires_tunnel`.
-- `self_hosted_apps` — the stable dedicated loopback `port`, the on-disk
+- `self_hosted_apps` — adds the stable dedicated loopback `port`, the on-disk
   `content_folder` the files are served from, the public `subdomain` label
   (`<subdomain>.<public_host>`), a `seeded` flag, and a nullable `launch_path`.
   Folder and subdomain are explicit columns, not derived from the `id`, so an
@@ -83,7 +82,24 @@ tables joined by `id`:
   for a root-served (`index.html`) app. Like the cloud `url` it's an
   origin-independent template; the launch handler hangs it off the app's own
   origin and substitutes `{origin}` with the served FHIR origin per request.
-- System apps have no child row.
+- **System apps have no table.** Their `id` / `name` / `subtitle` / `local_only`
+  and launch URL are compiled into the `SYSTEM_APPS` source list; the store folds
+  them into the catalogue for every `home_screen` row whose id isn't a concrete
+  row.
+
+A separate **`home_screen`** table owns the cross-kind homescreen state: one row
+per app of every kind — `app_id` (a globally-unique **soft** reference into a
+concrete table or a compiled-in system id — SQLite foreign keys can't span the
+several concrete tables, matching the soft `client_id` precedent), `position`
+(UNIQUE, for ordering + drag-to-reorder), and the `enabled` flag. It is the
+global id space (a create checks it for uniqueness) and the single writer of
+ordering + `enabled` (`PUT /home-screen`).
+
+**Cross-kind reads** (`GET /apps` etc.) go through a SQL view, `apps_view` — a
+`UNION ALL` of the concrete tables joined to `home_screen`, projecting the shared
+columns, a `provenance` kind tag, and each kind's NULLable payload columns.
+Single-kind writes hit the concrete tables directly; there are no cross-_kind_
+transactions.
 
 **Removability.** A Cloud app and an **uploaded** (`seeded = 0`) Self-Hosted app
 can be deleted — `DELETE /apps/{id}` drops the rows (and, for self-hosted, stops
@@ -96,11 +112,11 @@ self-hosted rows), which the editor's Remove button follows.
 
 `AppListEntry` — the shape of `GET /apps` and every create/replace response — is
 a **union discriminated on `provenance`**, mirroring the data model: the shared
-fields are the `apps` parent row (`id`, `name`, `subtitle`, `enabled`,
-`localOnly`, `smart`, `removable`); each variant adds its typed child-table
-fields — **cloud** carries `url` + `requiresTunnel`, **self-hosted** carries
-`launchPath`, **system** adds nothing. A client narrows on `provenance` to reach
-a variant field.
+fields (`id`, `name`, `subtitle`, `enabled`, `localOnly`, `smart`, `removable`)
+come from the concrete record + its `home_screen` placement; each variant adds
+its typed payload fields — **cloud** carries `url` + `requiresTunnel`,
+**self-hosted** carries `launchPath`, **system** adds nothing. A client narrows
+on `provenance` to reach a variant field.
 
 Read shapes expose the **stored, origin-independent templates** (the cloud `url`
 and the self-hosted `launchPath`, both with `{origin}` / `{launch}` tokens) but
@@ -125,16 +141,17 @@ self-hosted app returns `409 AppNotEditable`. The response is the refreshed
 
 ### `client_id` is a soft reference
 
-`apps.client_id` references `clients.client_id` but is **not** an enforced SQL
-foreign key. The `clients` table is owned by the gatekeeper slice; an enforced
-cross-slice FK would couple the apps migrations to gatekeeper's schema and impose
-a migration ordering across slice boundaries, violating the slice layering. So
-the column is a plain reference: the apps slice derives `smart` from its presence
-alone and never reads the `clients` table. The invariant — every seeded
-`client_id` corresponds to a seeded gatekeeper client — is held by keeping the
-two SQL seed migrations in lockstep (the apps registry's `client_id`s in apps
-migration `004`, the gatekeeper sample clients in gatekeeper migration `008`),
-each guarded by its own seed test, rather than by the database.
+Each concrete table's `client_id` column references `clients.client_id` but is
+**not** an enforced SQL foreign key. The `clients` table is owned by the
+gatekeeper slice; an enforced cross-slice FK would couple the apps migrations to
+gatekeeper's schema and impose a migration ordering across slice boundaries,
+violating the slice layering. So the column is a plain reference: the apps slice
+derives `smart` from its presence alone and never reads the `clients` table. The
+invariant — every seeded `client_id` corresponds to a seeded gatekeeper client —
+is held by keeping the two SQL seed migrations in lockstep (the seeded cloud
+apps' `client_id`s in the apps migration, the gatekeeper sample clients in
+gatekeeper migration `008`), each guarded by its own seed test, rather than by
+the database.
 
 ## Auth posture and the remote trust boundary
 

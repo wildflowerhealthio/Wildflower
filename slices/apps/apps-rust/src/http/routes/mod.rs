@@ -1,9 +1,11 @@
-//! HTTP handlers for the apps slice, grouped into a [`gated_openapi_router`]
+//! HTTP routes for the apps slice, grouped into a [`gated_openapi_router`]
 //! (list, cloud-admin, home-screen) and a [`launch_openapi_router`]
-//! (`GET` + `POST /apps/{id}`), merged into [`openapi_router`] for the spec + handler
+//! (`GET` + `POST /apps/{id}`), merged into [`openapi_router`] for the spec + route
 //! tests. The served routes and the OpenAPI spec come from the same
-//! `#[utoipa::path]`-annotated handlers. The gating split is documented on the
-//! [`crate::http`] router builders these back.
+//! `#[utoipa::path]`-annotated handlers. One file per route named by operation,
+//! under a folder tree mirroring the URL tree: [`apps`] holds the `/apps`
+//! segment's routes, [`home_screen`] the flat `/home-screen` route. The gating
+//! split is documented on the [`crate::http`] router builders these back.
 
 mod apps;
 mod home_screen;
@@ -438,21 +440,23 @@ mod tests {
         assert_eq!(opened, vec!["http://127.0.0.1:8080/docs".to_string()]);
     }
 
-    /// A seeded `system` row with no compiled-in source resolves to a logged 500
-    /// (never a panic).
+    /// A `home_screen` row whose id is neither a concrete row nor a compiled-in
+    /// system source is a corrupt registry — the launch read fails as a logged
+    /// 500 (never a panic).
     #[tokio::test]
-    async fn launch_system_app_without_source_is_500() {
+    async fn launch_dangling_home_screen_row_is_500() {
+        use diesel::prelude::*;
+
         let st = state();
-        // Insert a system parent row whose id has no SYSTEM_APPS entry.
-        st.store
-            .conn()
-            .lock()
-            .execute(
-                "INSERT INTO apps (id, name, enabled, position, provenance, local_only) \
-                 VALUES ('ghost-system', 'Ghost', 1, 99, 'system', 1)",
-                [],
-            )
-            .unwrap();
+        // A home_screen row pointing at an id with no cloud/self-hosted row and no
+        // SYSTEM_APPS entry.
+        let mut conn = st.store.pool().get().unwrap();
+        diesel::sql_query(
+            "INSERT INTO home_screen (app_id, position, enabled) VALUES ('ghost-system', 99, 1)",
+        )
+        .execute(&mut conn)
+        .unwrap();
+        drop(conn);
         let res = send_raw(&st, post_launch("/apps/ghost-system")).await;
         assert_eq!(res.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
@@ -623,25 +627,21 @@ mod tests {
     /// A cloud row whose stored url no longer parses fails the typed read → 500.
     #[tokio::test]
     async fn launch_rejects_unparseable_stored_cloud_url_as_500() {
+        use diesel::prelude::*;
+
         let st = state();
-        st.store
-            .conn()
-            .lock()
-            .execute(
-                "UPDATE cloud_apps SET url = 'http://evil.example.com' WHERE id = 'growth-chart'",
-                [],
-            )
+        let mut conn = st.store.pool().get().unwrap();
+        diesel::sql_query(
+            "UPDATE cloud_apps SET url = 'http://evil.example.com' WHERE id = 'growth-chart'",
+        )
+        .execute(&mut conn)
+        .unwrap();
+        // growth-chart requires the tunnel; drop requires_tunnel so the launch
+        // reaches the url read rather than 503-ing on the down tunnel first.
+        diesel::sql_query("UPDATE cloud_apps SET requires_tunnel = 0 WHERE id = 'growth-chart'")
+            .execute(&mut conn)
             .unwrap();
-        // growth-chart requires the tunnel; use a non-tunnel cloud app instead by
-        // dropping requires_tunnel so the launch reaches the url read.
-        st.store
-            .conn()
-            .lock()
-            .execute(
-                "UPDATE cloud_apps SET requires_tunnel = 0 WHERE id = 'growth-chart'",
-                [],
-            )
-            .unwrap();
+        drop(conn);
         let res = send_raw(&st, post_launch("/apps/growth-chart")).await;
         assert_eq!(res.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }

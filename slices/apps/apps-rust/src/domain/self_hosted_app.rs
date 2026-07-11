@@ -1,23 +1,53 @@
-//! `SelfHostedApp` — the self-hosted kind payload on [`App`](super::App): a
-//! locally-served app's dedicated loopback `port`, its on-disk
-//! `content_folder`, its public `subdomain` label, the `seeded` flag, and the
-//! optional SMART `launch_path`. The catalogue fields (name / subtitle /
-//! enabled) live on the parent `App`.
+//! [`SelfHostedApp`] — a self-hosted app: web assets served from the device on a
+//! dedicated, isolated loopback origin (and remotely at
+//! `<subdomain>.<public_host>`). The standalone `self_hosted_apps` row, carrying
+//! every one of its own columns: the shared catalogue fields (`id` / `name` /
+//! `subtitle` / `local_only` / `client_id`) plus the payload (`port`,
+//! `content_folder`, `subdomain`, `seeded`, `launch_path`). The table it lives in
+//! IS its provenance; the home-screen ordering + `enabled` flag live in the
+//! separate `home_screen` table (see [`App`](super::App)).
 //!
-//! The host binds the listener that serves the files. Rows come from two
-//! sources: the migration seed (`seeded = true`, protected from delete through
-//! the admin surface) and runtime uploads through the create surface
-//! (`seeded = false`, removable). The launch URL is rendered on demand via
-//! [`SelfHostedApp::launch_url`] / [`SelfHostedApp::subdomain_url`].
+//! Rows come from two sources: the migration seed (`seeded = true`, protected
+//! from delete through the admin surface) and runtime uploads through the create
+//! surface (`seeded = false`, removable). The launch URL is rendered on demand
+//! via [`SelfHostedApp::launch_url`] / [`SelfHostedApp::subdomain_url`].
+//!
+//! Diesel maps this type straight to/from the `self_hosted_apps` table: the
+//! derives plus the [`PortColumn`](crate::db::columns::PortColumn) mapping on
+//! `port` (a `u16` stored as `INTEGER`). A plain-data row type — the catalogue
+//! verdicts (`smart` / `removable`) are the behavioural
+//! [`AppRecord`](super::AppRecord) impl below.
 
-/// The `self_hosted_apps` child payload: a locally-served app's loopback
-/// binding and launch-render inputs.
-#[derive(Debug, Clone, PartialEq, Eq)]
+use diesel::prelude::{Insertable, Queryable, Selectable};
+
+use super::AppRecord;
+use crate::db::columns::PortColumn;
+use crate::db::schema::self_hosted_apps;
+
+/// A stored self-hosted app — the `self_hosted_apps` row: a locally-served app's
+/// loopback binding and launch-render inputs plus its shared catalogue fields.
+#[derive(Debug, Clone, PartialEq, Eq, Queryable, Selectable, Insertable)]
+#[diesel(table_name = self_hosted_apps)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 pub struct SelfHostedApp {
+    /// Stable id, globally unique across all kinds. The seeds happen to match the
+    /// `subdomain`, but they're independent columns.
+    pub id: String,
+    pub name: String,
+    /// `None` means "no subtitle"; the wire serializes it as an absent field.
+    pub subtitle: Option<String>,
+    /// The declared no-egress flag (a UI badge this pass).
+    pub local_only: bool,
+    /// Soft reference to a gatekeeper `clients.client_id`; `None` for non-SMART
+    /// apps. Its presence is what [`AppRecord::smart`] reports.
+    pub client_id: Option<String>,
     /// The loopback TCP port the host binds this app on, combined with the
     /// loopback hostname at read time into the `http://{host}:{port}/` launch
-    /// target. The column keeps the port stable across reinstalls — see the
-    /// port-allocation section of `docs/Apps/Store and Install Explanation.md`.
+    /// target. Mapped to/from the `INTEGER` column via
+    /// [`PortColumn`](crate::db::columns::PortColumn). The column keeps the port
+    /// stable across reinstalls — see the port-allocation section of
+    /// `docs/Apps/Store and Install Explanation.md`.
+    #[diesel(serialize_as = PortColumn, deserialize_as = PortColumn)]
     pub port: u16,
     /// The on-disk subdirectory (under the host's `self-hosted-apps/` dir) whose
     /// files this app serves, e.g. `patient-browser`. Explicit rather than
@@ -37,6 +67,19 @@ pub struct SelfHostedApp {
     /// same `{origin}` / `{launch}` placeholders the cloud `url` uses, substituted
     /// per request by [`Self::render_launch`]. See `docs/Apps/Explanation.md`.
     pub launch_path: Option<String>,
+}
+
+impl AppRecord for SelfHostedApp {
+    /// A self-hosted app is a SMART app iff it carries a `client_id`.
+    fn smart(&self) -> bool {
+        self.client_id.is_some()
+    }
+
+    /// Only an uploaded (non-seeded) self-hosted app is removable; a
+    /// migration-seeded one is protected.
+    fn removable(&self) -> bool {
+        !self.seeded
+    }
 }
 
 impl SelfHostedApp {
@@ -88,6 +131,11 @@ mod tests {
 
     fn app(launch_path: Option<&str>) -> SelfHostedApp {
         SelfHostedApp {
+            id: "zip-app".to_owned(),
+            name: "Zip App".to_owned(),
+            subtitle: None,
+            local_only: true,
+            client_id: None,
             port: 8082,
             content_folder: "zip-app".to_owned(),
             subdomain: "zip-app".to_owned(),
@@ -131,5 +179,19 @@ mod tests {
             app.render_launch(&base, "https://demo.example.com", "N"),
             "https://zip-app.demo.example.com/launch.html?launch=N&iss=https://demo.example.com/fhir-r4",
         );
+    }
+
+    /// `smart` follows `client_id`; `removable` is exactly "not seeded".
+    #[test]
+    fn capability_verdicts_follow_client_id_and_seeded() {
+        let mut uploaded = app(None);
+        assert!(!uploaded.smart());
+        assert!(uploaded.removable(), "an uploaded app is removable");
+        uploaded.client_id = Some("client".to_owned());
+        assert!(uploaded.smart());
+
+        let mut seeded = app(None);
+        seeded.seeded = true;
+        assert!(!seeded.removable(), "a seeded app is protected");
     }
 }

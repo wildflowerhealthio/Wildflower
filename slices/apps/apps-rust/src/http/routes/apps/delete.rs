@@ -1,7 +1,7 @@
 //! `DELETE /apps/{id}` — remove an app. What "removable" means depends on the
-//! provenance:
+//! kind:
 //!
-//!  - **cloud** — delete the row (CASCADE removes its child), as ever;
+//!  - **cloud** — delete the row, as ever;
 //!  - **self-hosted** — only an *uploaded* app (`seeded = 0`) is removable: stop
 //!    its listener, delete the rows, and best-effort remove its files; a
 //!    migration-seeded self-hosted app (e.g. patient-browser) stays protected
@@ -17,8 +17,8 @@ use axum::Json;
 use serde::Serialize;
 use utoipa::ToSchema;
 
-use crate::domain::{AppKind, SelfHostedApp};
-use crate::http::errors::{AppNotEditableBody, AppNotFoundBody, HandlerError};
+use crate::domain::{App, AppError, SelfHostedApp};
+use crate::http::errors::{AppNotEditableBody, AppNotFoundBody};
 use crate::http::state::AppsState;
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -42,34 +42,30 @@ pub(crate) struct DeletedBody {
 pub(crate) async fn handle_delete_app(
     State(state): State<Arc<AppsState>>,
     Path(id): Path<String>,
-) -> Result<Json<DeletedBody>, HandlerError> {
+) -> Result<Json<DeletedBody>, AppError> {
     let app = state
         .store
-        .find_app(&id)
-        .map_err(|e| HandlerError::internal("find_app lookup failed", e))?
-        .ok_or_else(|| HandlerError::NotFound { id: id.clone() })?;
+        .find_app(&id)?
+        .ok_or_else(|| AppError::NotFound { id: id.clone() })?;
 
-    match &app.kind {
-        AppKind::Cloud(_) => {
+    match &app {
+        App::Cloud { .. } => {
             delete_row(&state, &id)?;
             Ok(Json(DeletedBody { deleted: true }))
         }
-        AppKind::SelfHosted(child) => delete_self_hosted(&state, &id, child),
-        // System apps have no child row and are not user-removable.
-        AppKind::System => Err(HandlerError::NotEditable { id }),
+        App::SelfHosted { app: child, .. } => delete_self_hosted(&state, &id, child),
+        // System apps are not user-removable.
+        App::System { .. } => Err(AppError::NotEditable { id }),
     }
 }
 
-/// Delete the app's rows (parent + CASCADEd child), mapping "nothing deleted"
-/// to a logged 500 — the row was just read under the same connection, so it
+/// Delete the app's rows (`home_screen` + the concrete row), mapping "nothing
+/// deleted" to a logged 500 — the row was just read under the same store, so it
 /// can't have vanished; never a misleading 404.
-fn delete_row(state: &AppsState, id: &str) -> Result<(), HandlerError> {
-    let deleted = state
-        .store
-        .delete_app(id)
-        .map_err(|e| HandlerError::internal("delete_app failed", e))?;
+fn delete_row(state: &AppsState, id: &str) -> Result<(), AppError> {
+    let deleted = state.store.delete_app(id)?;
     if !deleted {
-        return Err(HandlerError::internal(
+        return Err(AppError::backend(
             "row vanished between find_app and delete_app",
             format!("id={id}"),
         ));
@@ -78,17 +74,17 @@ fn delete_row(state: &AppsState, id: &str) -> Result<(), HandlerError> {
 }
 
 /// The self-hosted arm: seeded rows are protected, uploaded rows are torn down
-/// (listener stopped, rows deleted, files removed best-effort). The `child`
-/// payload came off the already-loaded app — no second lookup.
+/// (listener stopped, rows deleted, files removed best-effort). The `child` record
+/// came off the already-loaded app — no second lookup.
 fn delete_self_hosted(
     state: &Arc<AppsState>,
     id: &str,
     child: &SelfHostedApp,
-) -> Result<Json<DeletedBody>, HandlerError> {
+) -> Result<Json<DeletedBody>, AppError> {
     if child.seeded {
         // A migration-seeded app (patient-browser) is read-only, same 409 as
         // before this route learned to delete uploads.
-        return Err(HandlerError::NotEditable { id: id.to_owned() });
+        return Err(AppError::NotEditable { id: id.to_owned() });
     }
 
     // Take the listener down first. A lock-poison here is logged and tolerated —

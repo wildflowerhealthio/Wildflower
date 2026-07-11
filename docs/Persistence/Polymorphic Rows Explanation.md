@@ -5,8 +5,11 @@ system / cloud / self-hosted, a grant that is an authorization-code consent or a
 device pairing — and how that one storage shape reaches the wire as a
 discriminated union. This is a **convention, not a library**: there is no shared
 helper in `persistence-rust`; each slice writes the same small pattern by hand,
-and this doc is the single description they share. Its two implementations are
-[apps](../Apps/Explanation.md) (the reference) and gatekeeper grants.
+and this doc is the single description they share. Its live implementation is
+**gatekeeper grants**. (The apps slice formerly used this parent+child shape too,
+but moved to a **table-per-struct** variant — one standalone table per kind, no
+parent — in issue #350; see [Apps Explanation](../Apps/Explanation.md) §"Data
+model". The wire-union half below still applies to both.)
 
 ## The problem
 
@@ -44,18 +47,13 @@ CREATE TABLE device_grants (
 );
 ```
 
-The apps schema is the same shape with three kinds
-(`apps` + `cloud_apps` / `self_hosted_apps`, one kind carrying no child at all);
-see `apps-rust/src/migrations/004_apps_registry.sql`.
-
 ### Why child tables, not nullable columns
 
 Each variant's columns stay `NOT NULL` in their own table — the invariant lives
-in the schema, not in prose. Per-variant `UNIQUE` indexes (the grant upsert keys,
-apps' `subdomain`) can't be expressed across a parent+child JOIN, so they live on
-the child; that's why **`client_id` is denormalized onto the children** even
-though the parent already has it. `ON DELETE CASCADE` makes deleting the parent
-delete the payload.
+in the schema, not in prose. Per-variant `UNIQUE` indexes (the grant upsert keys)
+can't be expressed across a parent+child JOIN, so they live on the child; that's
+why **`client_id` is denormalized onto the children** even though the parent
+already has it. `ON DELETE CASCADE` makes deleting the parent delete the payload.
 
 ## The invariants and how they're held
 
@@ -67,13 +65,12 @@ carry it:
   child, then commit — never a parent without its child. `client_id` is written
   identically to both in that transaction, so `child.client_id == parent.client_id`
   holds by construction. See `upsert_grant` / `upsert_device_grant` / `create_grant`
-  in `gatekeeper-rust/src/db/grants.rs` and apps' `db/writes.rs`.
+  in `gatekeeper-rust/src/db/grants.rs`.
 - **Reads fail typed on a missing child.** One `SELECT` with a `LEFT JOIN` per
   child decodes the whole row; the decoder dispatches on the discriminator and
   reads the child columns its kind needs through a helper that maps a `NULL`
   (LEFT JOIN found no child) to a typed error naming the column — never a partial
-  value. See `grant_from_row` / `get_child` in `db/grants.rs` and `app_from_row`
-  in `apps-rust/src/db/reads.rs`.
+  value. See `grant_from_row` / `get_child` in `db/grants.rs`.
 
 **The discriminator is the variant, not a separate field.** The Rust domain is a
 struct of shared fields plus a payload-carrying enum; a `grant_type()` /
@@ -89,8 +86,9 @@ pub enum GrantKind {
 impl GrantKind { pub fn grant_type(&self) -> GrantType { /* variant → column value */ } }
 ```
 
-Mirror in `gatekeeper-rust/src/domain/grant.rs` and `apps-rust/src/domain/app.rs`
-(`AppKind`).
+Mirror in `gatekeeper-rust/src/domain/grant.rs`. (apps applies the same
+"discriminator is the variant" idea in its table-per-struct `App` enum, where the
+variant _is_ the table a record came from.)
 
 ## The wire: one discriminated union
 

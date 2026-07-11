@@ -1,105 +1,215 @@
-//! The store's read side: one JOIN projection decoding a whole [`App`] —
-//! parent row plus the kind payload — so every read (catalogue, single row,
-//! host listener list) goes through the same columns and the same decoder and
-//! can't drift.
+//! The store's read side: the cross-kind `apps_view` (a `UNION ALL` of the
+//! concrete tables joined to `home_screen`) decoded into whole [`App`]s, folded
+//! together with the compiled-in system apps by `home_screen` position. Every
+//! read (catalogue, single row, host listener list) goes through the same view
+//! projection + the same decoder, so cloud / self-hosted reads can't drift; the
+//! decoder synthesizes the tableless system apps from `home_screen` rows whose id
+//! isn't a concrete row.
 
-use persistence_rust::DbResult;
-use rusqlite::types::{FromSqlError, Type};
-use rusqlite::{params, OptionalExtension};
+use std::collections::HashMap;
 
+use diesel::prelude::*;
+use diesel::sql_types::{BigInt, Bool, Integer, Nullable, Text};
+
+use super::schema::{home_screen, self_hosted_apps};
 use super::AppsStore;
-use crate::domain::{App, AppKind, CloudApp, Provenance, SelfHostedApp};
+use crate::domain::{system_app, App, AppError, AppUrl, CloudApp, SelfHostedApp};
 
-/// The one SELECT every app read uses: the parent columns plus both LEFT-JOINed
-/// children. No computed columns — `smart` / `removable` are derived in Rust
-/// ([`App::smart`] / [`App::removable`]); [`app_from_row`] picks the child
-/// columns its provenance needs.
-const APP_COLUMNS: &str = "a.id, a.name, a.subtitle, a.enabled, a.position, a.local_only, \
-     a.client_id, a.provenance, \
-     c.url, c.requires_tunnel, \
-     s.port, s.content_folder, s.subdomain, s.seeded, s.launch_path \
-     FROM apps a \
-     LEFT JOIN cloud_apps c ON c.id = a.id \
-     LEFT JOIN self_hosted_apps s ON s.id = a.id";
+/// The explicit `apps_view` column list — the shared columns, the `provenance`
+/// kind tag, and each kind's NULLable payload columns. Named identically to the
+/// [`AppViewRow`] fields so `QueryableByName` maps them by name.
+const VIEW_COLUMNS: &str = "id, name, subtitle, local_only, client_id, position, enabled, \
+     provenance, url, requires_tunnel, port, content_folder, subdomain, seeded, launch_path";
 
-/// Decode one [`APP_COLUMNS`] row into a whole [`App`], dispatching the kind
-/// payload on the stored `provenance`.
-///
-/// The single enforcement point of parent-implies-child: a `cloud` /
-/// `self-hosted` parent whose child row is missing reads `NULL` into a
-/// non-nullable payload field and surfaces as a typed
-/// [`rusqlite::Error::InvalidColumnType`] (a logged 500 at the handler seam),
-/// never a partial `App`. See `docs/Apps/Store and Install Explanation.md`.
-pub(super) fn app_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<App> {
-    let kind = match row.get::<_, Provenance>("provenance")? {
-        Provenance::System => AppKind::System,
-        Provenance::Cloud => AppKind::Cloud(CloudApp {
-            url: get_child(row, "url")?,
-            requires_tunnel: get_child(row, "requires_tunnel")?,
-        }),
-        Provenance::SelfHosted => AppKind::SelfHosted(SelfHostedApp {
-            port: get_child(row, "port")?,
-            content_folder: get_child(row, "content_folder")?,
-            subdomain: get_child(row, "subdomain")?,
-            seeded: get_child(row, "seeded")?,
-            // Genuinely nullable — an absent launch path is a root-served app.
-            launch_path: row.get("launch_path")?,
-        }),
-    };
-    Ok(App {
-        id: row.get("id")?,
-        name: row.get("name")?,
-        subtitle: row.get("subtitle")?,
-        enabled: row.get("enabled")?,
-        position: row.get("position")?,
-        local_only: row.get("local_only")?,
-        client_id: row.get("client_id")?,
-        kind,
-    })
+/// One decoded `apps_view` row — the shared columns plus the NULLable per-kind
+/// payload columns, read as raw scalars and turned into a whole [`App`] by
+/// [`app_from_view_row`]. System apps are not in the view (they have no table);
+/// the catalogue reads fold them in separately.
+#[derive(QueryableByName)]
+struct AppViewRow {
+    #[diesel(sql_type = Text)]
+    id: String,
+    #[diesel(sql_type = Text)]
+    name: String,
+    #[diesel(sql_type = Nullable<Text>)]
+    subtitle: Option<String>,
+    #[diesel(sql_type = Bool)]
+    local_only: bool,
+    #[diesel(sql_type = Nullable<Text>)]
+    client_id: Option<String>,
+    #[diesel(sql_type = BigInt)]
+    position: i64,
+    #[diesel(sql_type = Bool)]
+    enabled: bool,
+    #[diesel(sql_type = Text)]
+    provenance: String,
+    #[diesel(sql_type = Nullable<Text>)]
+    url: Option<String>,
+    #[diesel(sql_type = Nullable<Bool>)]
+    requires_tunnel: Option<bool>,
+    #[diesel(sql_type = Nullable<Integer>)]
+    port: Option<i32>,
+    #[diesel(sql_type = Nullable<Text>)]
+    content_folder: Option<String>,
+    #[diesel(sql_type = Nullable<Text>)]
+    subdomain: Option<String>,
+    #[diesel(sql_type = Nullable<Bool>)]
+    seeded: Option<bool>,
+    #[diesel(sql_type = Nullable<Text>)]
+    launch_path: Option<String>,
 }
 
-/// Read a required child column, mapping a `NULL` (the LEFT JOIN found no child
-/// row) to an [`rusqlite::Error::InvalidColumnType`] that names the column —
-/// the typed "parent has no child row" error [`app_from_row`] promises.
-fn get_child<T: rusqlite::types::FromSql>(
-    row: &rusqlite::Row<'_>,
-    column: &str,
-) -> rusqlite::Result<T> {
-    row.get(column).map_err(|error| match error {
-        rusqlite::Error::InvalidColumnType(index, name, Type::Null) => {
-            rusqlite::Error::FromSqlConversionFailure(
-                index,
-                Type::Null,
-                Box::new(FromSqlError::Other(
-                    format!("child row missing: {name} is NULL for this provenance").into(),
-                )),
-            )
+/// A required payload column was NULL for a row whose `provenance` needs it — a
+/// corrupt view row (e.g. a cloud row with no `url`). Surfaces as a typed
+/// [`AppError::Backend`] (a logged 500), never a partial [`App`].
+fn missing(column: &str, provenance: &str) -> AppError {
+    AppError::backend(
+        "apps_view row missing a required payload column",
+        format!("{column} is NULL for a {provenance} row"),
+    )
+}
+
+/// Decode one [`AppViewRow`] into a whole [`App`], dispatching on the `provenance`
+/// kind tag and parsing the stored scalars into their domain types (the cloud
+/// `url` through [`AppUrl`], the `port` narrowed to `u16`). Only `cloud` /
+/// `self-hosted` reach here — system apps have no view row.
+fn app_from_view_row(row: AppViewRow) -> Result<App, AppError> {
+    match row.provenance.as_str() {
+        "cloud" => {
+            let url = row
+                .url
+                .ok_or_else(|| missing("url", "cloud"))?
+                .parse::<AppUrl>()
+                .map_err(|e| AppError::backend("apps_view stored cloud url failed to parse", e))?;
+            let requires_tunnel = row
+                .requires_tunnel
+                .ok_or_else(|| missing("requires_tunnel", "cloud"))?;
+            Ok(App::Cloud {
+                position: row.position,
+                enabled: row.enabled,
+                app: CloudApp {
+                    id: row.id,
+                    name: row.name,
+                    subtitle: row.subtitle,
+                    local_only: row.local_only,
+                    client_id: row.client_id,
+                    url,
+                    requires_tunnel,
+                },
+            })
         }
-        other => other,
-    })
+        "self-hosted" => {
+            let raw_port = row.port.ok_or_else(|| missing("port", "self-hosted"))?;
+            let port = u16::try_from(raw_port)
+                .map_err(|e| AppError::backend("apps_view stored port is out of range", e))?;
+            Ok(App::SelfHosted {
+                position: row.position,
+                enabled: row.enabled,
+                app: SelfHostedApp {
+                    id: row.id,
+                    name: row.name,
+                    subtitle: row.subtitle,
+                    local_only: row.local_only,
+                    client_id: row.client_id,
+                    port,
+                    content_folder: row
+                        .content_folder
+                        .ok_or_else(|| missing("content_folder", "self-hosted"))?,
+                    subdomain: row
+                        .subdomain
+                        .ok_or_else(|| missing("subdomain", "self-hosted"))?,
+                    seeded: row.seeded.ok_or_else(|| missing("seeded", "self-hosted"))?,
+                    launch_path: row.launch_path,
+                },
+            })
+        }
+        other => Err(AppError::backend(
+            "apps_view carried an unknown provenance",
+            other.to_owned(),
+        )),
+    }
 }
 
 /// The catalogue read against an arbitrary connection — shared by
-/// [`AppsStore::list_apps`] (which locks then calls this) and the home-screen
-/// transaction (which calls it on its open transaction so the post-renumber
-/// read stays inside the same transaction).
-pub(super) fn list_apps_on(conn: &rusqlite::Connection) -> DbResult<Vec<App>> {
-    let mut stmt = conn.prepare(&format!("SELECT {APP_COLUMNS} ORDER BY a.position"))?;
-    let rows = stmt.query_map([], app_from_row)?;
-    rows.collect()
+/// [`AppsStore::list_apps`] and the home-screen transaction (which calls it on
+/// its open transaction so the post-renumber read stays in the same transaction).
+///
+/// Reads the `apps_view` (cloud + self-hosted) into a by-id map, then walks the
+/// `home_screen` rows in `position` order: each id resolves to its view app or, if
+/// it isn't a concrete row, to a compiled-in [`system_app`] entry. A `home_screen`
+/// row that resolves to neither is a corrupt registry → typed [`AppError`].
+pub(super) fn list_apps_on(conn: &mut SqliteConnection) -> Result<Vec<App>, AppError> {
+    let view_rows: Vec<AppViewRow> =
+        diesel::sql_query(format!("SELECT {VIEW_COLUMNS} FROM apps_view")).load(conn)?;
+    let mut by_id: HashMap<String, App> = HashMap::with_capacity(view_rows.len());
+    for row in view_rows {
+        let app = app_from_view_row(row)?;
+        by_id.insert(app.id().to_owned(), app);
+    }
+
+    let placements: Vec<(String, i64, bool)> = home_screen::table
+        .order(home_screen::position)
+        .select((
+            home_screen::app_id,
+            home_screen::position,
+            home_screen::enabled,
+        ))
+        .load(conn)?;
+
+    let mut apps = Vec::with_capacity(placements.len());
+    for (app_id, position, enabled) in placements {
+        if let Some(app) = by_id.remove(&app_id) {
+            apps.push(app);
+        } else if let Some(source) = system_app::find(&app_id) {
+            apps.push(App::System {
+                position,
+                enabled,
+                app: *source,
+            });
+        } else {
+            return Err(AppError::backend(
+                "home_screen row resolves to no cloud, self-hosted, or system app",
+                app_id,
+            ));
+        }
+    }
+    Ok(apps)
 }
 
-/// The single-app read against an arbitrary connection — what every store
-/// mutator calls **on its own open transaction** to return the hydrated
-/// [`App`] it just wrote, so a write's response can never drift from what a
-/// subsequent read would produce.
-pub(super) fn find_app_on(conn: &rusqlite::Connection, id: &str) -> DbResult<Option<App>> {
-    conn.query_row(
-        &format!("SELECT {APP_COLUMNS} WHERE a.id = ?1"),
-        params![id],
-        app_from_row,
-    )
-    .optional()
+/// The single-app read against an arbitrary connection — what every store mutator
+/// calls **on its own open transaction** to return the hydrated [`App`] it just
+/// wrote, so a write's response can never drift from what a subsequent read would
+/// produce. A `home_screen` row whose id is neither a concrete row nor a
+/// compiled-in system app is a corrupt registry → typed [`AppError`].
+pub(super) fn find_app_on(conn: &mut SqliteConnection, id: &str) -> Result<Option<App>, AppError> {
+    let view_row: Option<AppViewRow> =
+        diesel::sql_query(format!("SELECT {VIEW_COLUMNS} FROM apps_view WHERE id = ?"))
+            .bind::<Text, _>(id)
+            .get_result(conn)
+            .optional()?;
+    if let Some(row) = view_row {
+        return Ok(Some(app_from_view_row(row)?));
+    }
+
+    let placement: Option<(i64, bool)> = home_screen::table
+        .find(id)
+        .select((home_screen::position, home_screen::enabled))
+        .first(conn)
+        .optional()?;
+    match placement {
+        Some((position, enabled)) => match system_app::find(id) {
+            Some(source) => Ok(Some(App::System {
+                position,
+                enabled,
+                app: *source,
+            })),
+            None => Err(AppError::backend(
+                "home_screen row resolves to no app kind",
+                id.to_owned(),
+            )),
+        },
+        None => Ok(None),
+    }
 }
 
 impl AppsStore {
@@ -107,53 +217,102 @@ impl AppsStore {
     ///
     /// # Errors
     ///
-    /// Returns any rusqlite error from the read.
-    pub fn list_apps(&self) -> DbResult<Vec<App>> {
-        let conn = self.conn().lock();
-        list_apps_on(&conn)
+    /// [`AppError::Backend`] on a checkout / read failure or a corrupt row.
+    pub fn list_apps(&self) -> Result<Vec<App>, AppError> {
+        let mut conn = self.checkout()?;
+        list_apps_on(&mut conn)
     }
 
-    /// A single whole app by id, `None` when absent. Backs the launch dispatch
-    /// (the kind payload carries the launch data) and the admin existence /
-    /// editability checks.
+    /// A single whole app by id, `None` when absent. Backs the launch dispatch and
+    /// the admin existence / editability checks.
     ///
     /// # Errors
     ///
-    /// Returns any rusqlite error other than `QueryReturnedNoRows`.
-    pub fn find_app(&self, id: &str) -> DbResult<Option<App>> {
-        let conn = self.conn().lock();
-        find_app_on(&conn, id)
+    /// [`AppError::Backend`] on a checkout / read failure or a corrupt row.
+    pub fn find_app(&self, id: &str) -> Result<Option<App>, AppError> {
+        let mut conn = self.checkout()?;
+        find_app_on(&mut conn, id)
     }
 
-    /// Every self-hosted app, whole, in seed/insertion order. The host
-    /// materializes this once at setup to bind a loopback listener per app.
+    /// Every self-hosted app, whole, in display order. The host materializes this
+    /// once at setup to bind a loopback listener per app.
     ///
     /// # Errors
     ///
-    /// Returns any rusqlite error from the read.
-    pub fn list_self_hosted_apps(&self) -> DbResult<Vec<App>> {
-        let conn = self.conn().lock();
-        let mut stmt = conn.prepare(&format!(
-            "SELECT {APP_COLUMNS} WHERE a.provenance = 'self-hosted' ORDER BY s.rowid"
-        ))?;
-        let rows = stmt.query_map([], app_from_row)?;
-        rows.collect()
+    /// [`AppError::Backend`] on a checkout / read failure or a corrupt row.
+    pub fn list_self_hosted_apps(&self) -> Result<Vec<App>, AppError> {
+        let mut conn = self.checkout()?;
+        // The seeded self-hosted set is small; ordering by position keeps the
+        // host's bind order stable.
+        let rows: Vec<AppViewRow> = diesel::sql_query(format!(
+            "SELECT {VIEW_COLUMNS} FROM apps_view WHERE provenance = 'self-hosted' ORDER BY position"
+        ))
+        .load(&mut conn)?;
+        rows.into_iter().map(app_from_view_row).collect()
     }
+}
+
+/// Insert a `home_screen` row (used by the create paths). Split out so the create
+/// mutators share one place that stamps the ordering row.
+pub(super) fn insert_home_screen_row(
+    conn: &mut SqliteConnection,
+    app_id: &str,
+    position: i64,
+) -> Result<(), AppError> {
+    diesel::insert_into(home_screen::table)
+        .values((
+            home_screen::app_id.eq(app_id),
+            home_screen::position.eq(position),
+            home_screen::enabled.eq(true),
+        ))
+        .execute(conn)?;
+    Ok(())
+}
+
+/// Whether any app already holds this id — checked against `home_screen`, which
+/// carries exactly one row per app of every kind (so it is the global id space).
+pub(super) fn id_taken(conn: &mut SqliteConnection, id: &str) -> Result<bool, AppError> {
+    let taken = diesel::select(diesel::dsl::exists(
+        home_screen::table.filter(home_screen::app_id.eq(id)),
+    ))
+    .get_result::<bool>(conn)?;
+    Ok(taken)
+}
+
+/// The next display position: `MAX(position) + 1` (0 for an empty registry).
+pub(super) fn next_position(conn: &mut SqliteConnection) -> Result<i64, AppError> {
+    let max: Option<i64> = home_screen::table
+        .select(diesel::dsl::max(home_screen::position))
+        .first(conn)?;
+    Ok(max.map_or(0, |m| m + 1))
+}
+
+/// Delete an app's `home_screen` row plus its concrete row (whichever table holds
+/// it). Returns whether a `home_screen` row was removed (i.e. the app existed).
+pub(super) fn delete_app_rows(conn: &mut SqliteConnection, id: &str) -> Result<bool, AppError> {
+    use super::schema::cloud_apps;
+
+    let removed = diesel::delete(home_screen::table.find(id)).execute(conn)?;
+    diesel::delete(cloud_apps::table.find(id)).execute(conn)?;
+    diesel::delete(self_hosted_apps::table.find(id)).execute(conn)?;
+    Ok(removed == 1)
 }
 
 #[cfg(test)]
 mod tests {
+    use diesel::prelude::*;
+
     use crate::db::AppsStore;
     use crate::domain::system_app::SYSTEM_APPS;
-    use crate::domain::{App, AppKind, Provenance};
+    use crate::domain::{App, Provenance};
 
-    /// Migration 004 seeds the full default set: 6 parent rows in display order
-    /// with the right provenance, plus the matching child rows.
+    /// The migration seeds the full default set: 6 apps in display order with the
+    /// right provenance.
     #[test]
     fn migration_seeds_the_default_registry() {
         let store = AppsStore::open_in_memory().unwrap();
         let apps = store.list_apps().unwrap();
-        let ids: Vec<&str> = apps.iter().map(|a| a.id.as_str()).collect();
+        let ids: Vec<&str> = apps.iter().map(App::id).collect();
         assert_eq!(
             ids,
             vec![
@@ -169,15 +328,14 @@ mod tests {
     }
 
     /// `list_apps` reports `smart` only for the cloud (SMART-client) rows and
-    /// `local_only` for the loopback ones, with the cloud payloads carrying
-    /// their tunnel requirement.
+    /// `local_only` for the loopback ones, with the cloud payloads carrying their
+    /// tunnel requirement.
     #[test]
     fn list_apps_reports_smart_and_local_only_per_row() {
         let store = AppsStore::open_in_memory().unwrap();
         let apps = store.list_apps().unwrap();
-        let by_id = |id: &str| apps.iter().find(|a| a.id == id).expect("seeded row");
+        let by_id = |id: &str| apps.iter().find(|a| a.id() == id).expect("seeded row");
 
-        // The 3 cloud apps carry a gatekeeper client_id → smart.
         for cloud in ["growth-chart", "medication-viewer", "precise-hbr"] {
             let app = by_id(cloud);
             assert!(app.smart(), "{cloud} must be smart");
@@ -187,10 +345,9 @@ mod tests {
                 "{cloud} requires the tunnel",
             );
         }
-        // The loopback apps are local-only and not smart.
         for local in ["patient-browser", "api-view", "api-docs"] {
             let app = by_id(local);
-            assert!(app.local_only, "{local} must be local-only");
+            assert!(app.local_only(), "{local} must be local-only");
             assert!(!app.smart(), "{local} must not be smart");
             assert!(
                 app.as_cloud().is_none(),
@@ -213,9 +370,9 @@ mod tests {
         let apps = store.list_self_hosted_apps().unwrap();
         let pb = apps
             .iter()
-            .find(|a| a.id == "patient-browser")
+            .find(|a| a.id() == "patient-browser")
             .expect("patient-browser is seeded");
-        assert_eq!(pb.name, "Patient Browser");
+        assert_eq!(pb.name(), "Patient Browser");
         let payload = pb.as_self_hosted().expect("self-hosted payload");
         assert_eq!(payload.port, 8081);
         assert_eq!(payload.content_folder, "patient-browser");
@@ -230,10 +387,11 @@ mod tests {
         );
     }
 
-    /// The compiled-in [`SYSTEM_APPS`] source list must agree with the seeded
-    /// `provenance = 'system'` parent rows on id / name / subtitle / local_only.
+    /// Every seeded `system` `home_screen` id resolves to a compiled-in
+    /// [`SYSTEM_APPS`] source, and the synthesized catalogue entry carries the
+    /// compiled-in name / subtitle / local_only (system apps store none of that).
     #[test]
-    fn system_app_source_matches_seeded_system_rows() {
+    fn system_home_screen_rows_resolve_to_the_compiled_in_source() {
         let store = AppsStore::open_in_memory().unwrap();
         let apps = store.list_apps().unwrap();
         let system_rows: Vec<&App> = apps
@@ -243,40 +401,36 @@ mod tests {
         assert_eq!(
             system_rows.len(),
             SYSTEM_APPS.len(),
-            "seeded system rows and the SYSTEM_APPS source must be 1:1",
+            "seeded system home_screen rows and the SYSTEM_APPS source must be 1:1",
         );
         for source in SYSTEM_APPS {
             let row = system_rows
                 .iter()
-                .find(|a| a.id == source.id)
+                .find(|a| a.id() == source.id)
                 .unwrap_or_else(|| panic!("no seeded system row for {}", source.id));
-            assert_eq!(row.name, source.name, "{} name", source.id);
+            assert_eq!(row.name(), source.name, "{} name", source.id);
+            assert_eq!(row.subtitle(), source.subtitle, "{} subtitle", source.id);
             assert_eq!(
-                row.subtitle.as_deref(),
-                source.subtitle,
-                "{} subtitle",
-                source.id,
-            );
-            assert_eq!(
-                row.local_only, source.local_only,
+                row.local_only(),
+                source.local_only,
                 "{} local_only",
-                source.id,
+                source.id
             );
         }
     }
 
-    /// `find_app` hydrates the whole app: parent fields plus the kind payload
-    /// decoded from the child table (or fieldless for system apps).
+    /// `find_app` hydrates the whole app: shared fields plus the kind payload from
+    /// the concrete table (or the compiled-in source for system apps).
     #[test]
     fn find_app_reads_the_whole_app_per_kind() {
         let store = AppsStore::open_in_memory().unwrap();
 
         let cloud = store.find_app("growth-chart").unwrap().expect("seeded");
-        assert_eq!(cloud.name, "Growth Chart");
+        assert_eq!(cloud.name(), "Growth Chart");
         assert_eq!(cloud.provenance(), Provenance::Cloud);
-        assert_eq!(cloud.client_id.as_deref(), Some("growth_chart"));
         assert!(cloud.smart());
         let payload = cloud.as_cloud().expect("cloud payload");
+        assert_eq!(payload.client_id.as_deref(), Some("growth_chart"));
         assert!(payload.requires_tunnel);
         assert!(payload.url.to_string().contains("growth-chart-app"));
 
@@ -288,44 +442,51 @@ mod tests {
         assert!(payload.seeded);
 
         let system = store.find_app("api-docs").unwrap().expect("seeded");
-        assert_eq!(system.kind, AppKind::System);
+        assert_eq!(system.provenance(), Provenance::System);
+        assert_eq!(system.name(), "API Docs");
 
         assert!(store.find_app("no-such-id").unwrap().is_none());
     }
 
-    /// A `cloud` parent whose child row is gone (raw SQL tampering) is a typed
-    /// read error, not a partial `App` — pins the parent-implies-child posture
-    /// that used to be re-checked in the launch handler.
+    /// A `home_screen` row whose concrete row is gone (raw SQL tampering) and
+    /// which isn't a compiled-in system id is a typed read error, not a partial
+    /// `App` — pins the corrupt-registry posture.
     #[test]
-    fn missing_child_row_is_a_typed_read_error() {
+    fn dangling_home_screen_row_is_a_typed_read_error() {
         let store = AppsStore::open_in_memory().unwrap();
-        store
-            .conn()
-            .lock()
-            .execute("DELETE FROM cloud_apps WHERE id = 'growth-chart'", [])
+        let mut conn = store.pool().get().unwrap();
+        diesel::sql_query("DELETE FROM cloud_apps WHERE id = 'growth-chart'")
+            .execute(&mut conn)
             .unwrap();
+        drop(conn);
         let error = store
             .find_app("growth-chart")
-            .expect_err("a cloud parent with no child must fail the read");
+            .expect_err("a home_screen row with no concrete or system source must fail the read");
         assert!(
-            error.to_string().contains("child row missing"),
-            "error should name the invariant: {error}",
+            error_text(&error).contains("no app kind"),
+            "error should name the invariant: {error:?}",
         );
     }
 
-    /// A stored cloud `url` that no longer parses surfaces as a typed read
-    /// error (via `AppUrl`'s `FromSql`), not a silent unsafe value.
+    /// A stored cloud `url` that no longer parses surfaces as a typed read error
+    /// (via the view decoder), not a silent unsafe value.
     #[test]
     fn find_app_rejects_an_unparseable_stored_url() {
         let store = AppsStore::open_in_memory().unwrap();
-        store
-            .conn()
-            .lock()
-            .execute(
-                "UPDATE cloud_apps SET url = 'http://evil.example.com' WHERE id = 'growth-chart'",
-                [],
-            )
-            .unwrap();
+        let mut conn = store.pool().get().unwrap();
+        diesel::sql_query(
+            "UPDATE cloud_apps SET url = 'http://evil.example.com' WHERE id = 'growth-chart'",
+        )
+        .execute(&mut conn)
+        .unwrap();
+        drop(conn);
         assert!(store.find_app("growth-chart").is_err());
+    }
+
+    fn error_text(error: &crate::domain::AppError) -> String {
+        match error {
+            crate::domain::AppError::Backend { context, source } => format!("{context}: {source}"),
+            other => format!("{other:?}"),
+        }
     }
 }

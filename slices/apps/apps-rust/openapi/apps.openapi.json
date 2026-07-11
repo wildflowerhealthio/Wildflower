@@ -401,7 +401,7 @@
         "oneOf": [
           {
             "type": "object",
-            "description": "A system app — a compiled-in shell route. No child table, no extra fields.",
+            "description": "A system app — a compiled-in shell route. No record table, no extra fields.",
             "required": [
               "id",
               "enabled",
@@ -446,7 +446,7 @@
           },
           {
             "type": "object",
-            "description": "A cloud app — carries its stored launch `url` template and the\ntunnel-requirement flag from the `cloud_apps` child.",
+            "description": "A cloud app — carries its stored launch `url` template and the\ntunnel-requirement flag from the `cloud_apps` record.",
             "required": [
               "id",
               "enabled",
@@ -500,7 +500,7 @@
           },
           {
             "type": "object",
-            "description": "A self-hosted app — carries its stored `launch_path` (absent for a\nroot-served bundle) from the `self_hosted_apps` child.",
+            "description": "A self-hosted app — carries its stored `launch_path` (absent for a\nroot-served bundle) from the `self_hosted_apps` record.",
             "required": [
               "id",
               "enabled",
@@ -555,7 +555,7 @@
       },
       "AppNotEditableBody": {
         "type": "object",
-        "description": "Wire shape for `AppNotEditable` (409) — the app exists but isn't a cloud app,\nso the cloud-admin update/delete surface can't touch it (system + self-hosted\napps are not user-editable).",
+        "description": "Wire shape for `AppNotEditable` (409) — the app exists but isn't editable\nthrough the surface a mutation used (a system app, a seeded self-hosted app,\nor a body whose provenance doesn't match the stored app).",
         "required": [
           "error",
           "id"
@@ -587,7 +587,7 @@
       },
       "CreateAppMultipart": {
         "type": "object",
-        "description": "Documents the `multipart/form-data` body for OpenAPI. The handler reads the\nparts manually via [`Multipart`], so this is never deserialized directly (the\n`Deserialize` derive only carries the `serde` rename to the generated schema).\nFields cross the wire as text — `requiresTunnel` is `\"true\"` / `\"false\"` —\nand `bundle` is the uploaded file. `provenance` and `name` are always\npresent; the rest are kind-specific, so they're optional here and the handler\nrequires the right ones per `provenance`. Mirrors the TS `CreateAppBodySchema`.",
+        "description": "Documents the `multipart/form-data` body for OpenAPI. The handler reads the\nparts manually via [`Multipart`], so this is never deserialized directly (the\n`Deserialize` derive only carries the `serde` rename to the generated schema).\nFields cross the wire as text — `requiresTunnel` is `\"true\"` / `\"false\"` — and\n`bundle` is the uploaded file. `provenance` and `name` are always present; the\nrest are kind-specific, so they're optional here and the handler requires the\nright ones per `provenance`. Mirrors the TS `CreateAppBodySchema`.",
         "required": [
           "provenance",
           "name"
@@ -659,7 +659,7 @@
       },
       "InvalidFieldBody": {
         "type": "object",
-        "description": "Wire shape for a 400 carrying a discriminant + human-readable reason.\nReused for `InvalidUrl` (a bad app URL), `InvalidName` (an empty name), and\n`InvalidZip` (an unusable uploaded bundle) — all write-side field validations\nthe client renders inline. The `error` discriminant lets a client tell them\napart rather than seeing a URL-error tag for a name or upload problem.",
+        "description": "Wire shape for a 400 carrying a discriminant + human-readable reason. Reused\nfor `InvalidUrl` (a bad app URL / launch path), `InvalidName` (an empty name),\nand `InvalidZip` (an unusable uploaded bundle) — all write-side field\nvalidations the client renders inline. The `error` discriminant lets a client\ntell them apart.",
         "required": [
           "error",
           "message"
@@ -675,7 +675,7 @@
       },
       "InvalidHomeScreenBody": {
         "type": "object",
-        "description": "Wire shape for a 400 `InvalidHomeScreen` — the `PUT /home-screen` body wasn't\nan exact permutation of the registry (a missing, duplicated, or unknown id),\nso the atomic reorder/enable can't be applied as a well-ordered whole. Matches\nthe TS `InvalidHomeScreenSchema`.",
+        "description": "Wire shape for a 400 `InvalidHomeScreen` — the `PUT /home-screen` body wasn't\nan exact permutation of the registry. Matches the TS `InvalidHomeScreenSchema`.",
         "required": [
           "error",
           "message"
@@ -691,7 +691,7 @@
       },
       "LaunchUnavailableBody": {
         "type": "object",
-        "description": "Wire shape for a 503 `LaunchUnavailable` — a launch with no *reachable*\ntarget (see [`HandlerError::Unavailable`]). The SPA surfaces the failure\nrather than following a dead redirect / a popup pointed at an unreachable\norigin.",
+        "description": "Wire shape for a 503 `LaunchUnavailable` — a launch with no *reachable*\ntarget. The SPA surfaces the failure rather than following a dead redirect.",
         "required": [
           "error",
           "reason"

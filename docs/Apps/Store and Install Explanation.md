@@ -7,18 +7,26 @@ them — the invariants the code leans on so the HTTP handlers stay thin.
 
 ## The store speaks whole apps
 
-One parent `apps` registry row plus a per-kind child table (`cloud_apps`,
-`self_hosted_apps`), fronted by a single `AppsStore`. Every read goes through
-**one JOIN projection** (`db::reads`) that decodes a whole `App` — the parent row
-plus its `AppKind` payload — so the catalogue, a single-row lookup, and the host
-listener list can't drift on columns or decoding. `smart` / `removable` are
-derived in Rust, not stored as computed columns.
+**Table-per-struct** persistence over the app-wide diesel pool
+(`persistence_rust::DieselPool`), fronted by a single `AppsStore`: one standalone
+table per concrete kind (`cloud_apps`, `self_hosted_apps`) carrying all of its
+own columns, plus a `home_screen` table for the cross-kind ordering + `enabled`
+flag. System apps have no table (their metadata + launch URL are compiled in).
 
-**Parent-implies-child is enforced in one place.** A `cloud` / `self-hosted`
-parent whose child row is missing — or whose stored `url` no longer parses —
-surfaces as a _typed read error_ (a logged 500 at the handler seam), never a
-partial `App`. `app_from_row` is the single enforcement point; handlers don't
-re-check it per call site.
+Every cross-kind read goes through the **`apps_view`** SQL view — a `UNION ALL`
+of the concrete tables joined to `home_screen` — decoded (`db::reads`) into a
+whole `App` (the concrete record + its `home_screen` placement), then folded
+together with the compiled-in system apps by `home_screen` position. So the
+catalogue, a single-row lookup, and the host listener list can't drift on columns
+or decoding. `smart` / `removable` are derived in Rust (the `AppRecord` trait),
+not stored as computed columns.
+
+**A corrupt registry surfaces as a typed read error.** A stored `url` that no
+longer parses, a NULL where a payload column is required, or a `home_screen` row
+whose id is neither a concrete row nor a compiled-in system id — each surfaces as
+a _typed read error_ (a logged 500 at the handler seam), never a partial `App`.
+The view decoder is the single enforcement point; handlers don't re-check it per
+call site.
 
 ## Transaction discipline
 
@@ -43,8 +51,8 @@ store:
 
 Kind- and seeded-_policy_ gating (which kinds or rows an HTTP surface may edit)
 stays in the handlers, which already hold the whole `App`. The SQL only guards
-its own invariants (e.g. a cloud content replace matches `provenance = 'cloud'`,
-so a mis-targeted id is a no-op).
+its own invariants (e.g. a cloud content replace updates `cloud_apps` by id, so a
+non-cloud id matches no row and is a no-op).
 
 ## The self-hosted upload pipeline
 

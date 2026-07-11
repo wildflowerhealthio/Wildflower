@@ -7,7 +7,7 @@
 //! `create` registers cloud apps and installs uploaded self-hosted apps
 //! (multipart, discriminated on `provenance`). `update` and `delete` edit both
 //! cloud apps and uploaded (non-seeded) self-hosted apps, dispatching on the
-//! stored app's provenance; system apps and seeded self-hosted apps return
+//! stored app's kind; system apps and seeded self-hosted apps return
 //! `409 AppNotEditable`.
 
 pub(crate) mod create;
