@@ -1,38 +1,12 @@
-use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, ValueRef};
-use rusqlite::{params, OptionalExtension, ToSql};
+//! `clients` queries — lookup and registration/seeding upserts for
+//! [`Client`].
 
+use diesel::prelude::*;
+
+use crate::db::schema::clients;
 use crate::db::GatekeeperStore;
-use crate::domain::client::{Client, ClientKind};
+use crate::domain::client::Client;
 use crate::domain::error::GatekeeperError;
-use persistence_rust::build_insert_sql;
-use persistence_rust::sql_row;
-
-impl ToSql for ClientKind {
-    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
-        let wire: &str = self.as_ref();
-        Ok(ToSqlOutput::Borrowed(ValueRef::Text(wire.as_bytes())))
-    }
-}
-
-impl FromSql for ClientKind {
-    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
-        let s = value.as_str()?;
-        s.parse::<ClientKind>()
-            .map_err(|e| FromSqlError::Other(Box::new(e)))
-    }
-}
-
-sql_row!(Client {
-    client_id,
-    name,
-    kind,
-    redirect_uris,
-    allowed_scopes,
-    allowed_grant_types,
-    secret_hash,
-    registered_at,
-    disabled_at,
-});
 
 impl GatekeeperStore {
     /// Look up a registered client by its `client_id`.
@@ -42,13 +16,10 @@ impl GatekeeperStore {
     /// [`GatekeeperError::Backend`] if the select query fails or a returned
     /// row cannot be mapped to a [`Client`].
     pub fn client_by_id(&self, client_id: &str) -> Result<Option<Client>, GatekeeperError> {
-        self.conn()
-            .lock()
-            .query_row(
-                &format!("SELECT {ALL_COLS} FROM clients WHERE client_id = ?1"),
-                params![client_id],
-                |row| Client::try_from(row),
-            )
+        clients::table
+            .find(client_id)
+            .select(Client::as_select())
+            .first(&mut self.conn()?)
             .optional()
             .map_err(|e| GatekeeperError::backend("client_by_id failed", e))
     }
@@ -60,40 +31,42 @@ impl GatekeeperStore {
     /// [`GatekeeperError::Backend`] if the insert fails (for example a
     /// unique-constraint violation on the `client_id`).
     pub fn register_client(&self, client: &Client) -> Result<(), GatekeeperError> {
-        let params = make_named_sql_params(client);
-        self.conn()
-            .lock()
-            .execute(&build_insert_sql("clients", &params), &params)
+        diesel::insert_into(clients::table)
+            // `Client`'s JSON list fields use `#[diesel(serialize_as)]`, which
+            // consumes the value — diesel generates no borrowed `Insertable`
+            // impl for the struct, so the insert takes a clone.
+            .values(client.clone())
+            .execute(&mut self.conn()?)
             .map_err(|e| GatekeeperError::backend("register_client failed", e))?;
         Ok(())
     }
 
     /// Insert a client, or update its policy fields if one with the same
     /// `client_id` already exists. Used by first-boot seeding so a seeded
-    /// client's definition always matches the code, even on a store created by an
-    /// older build. Uses `ON CONFLICT … DO UPDATE`, so it never deletes the row
-    /// (no FK cascade) and preserves `registered_at` and `disabled_at` — an
-    /// upgrade keeps the original registration time and any admin disable rather
-    /// than resurrecting the client.
+    /// client's definition always matches the code, even on a store created by
+    /// an older build. Uses `ON CONFLICT … DO UPDATE`, so it never deletes the
+    /// row and preserves `registered_at` and `disabled_at` — an upgrade keeps
+    /// the original registration time and any admin disable rather than
+    /// resurrecting the client.
     ///
     /// # Errors
     ///
     /// [`GatekeeperError::Backend`] if the upsert fails.
     pub fn upsert_client(&self, client: &Client) -> Result<(), GatekeeperError> {
-        let params = make_named_sql_params(client);
-        let sql = format!(
-            "{} ON CONFLICT(client_id) DO UPDATE SET \
-             name = excluded.name, \
-             kind = excluded.kind, \
-             redirect_uris = excluded.redirect_uris, \
-             allowed_scopes = excluded.allowed_scopes, \
-             allowed_grant_types = excluded.allowed_grant_types, \
-             secret_hash = excluded.secret_hash",
-            build_insert_sql("clients", &params)
-        );
-        self.conn()
-            .lock()
-            .execute(&sql, &params)
+        use diesel::upsert::excluded;
+        diesel::insert_into(clients::table)
+            .values(client.clone())
+            .on_conflict(clients::client_id)
+            .do_update()
+            .set((
+                clients::name.eq(excluded(clients::name)),
+                clients::kind.eq(excluded(clients::kind)),
+                clients::redirect_uris.eq(excluded(clients::redirect_uris)),
+                clients::allowed_scopes.eq(excluded(clients::allowed_scopes)),
+                clients::allowed_grant_types.eq(excluded(clients::allowed_grant_types)),
+                clients::secret_hash.eq(excluded(clients::secret_hash)),
+            ))
+            .execute(&mut self.conn()?)
             .map_err(|e| GatekeeperError::backend("upsert_client failed", e))?;
         Ok(())
     }
@@ -104,7 +77,6 @@ mod tests {
     use super::*;
     use crate::db::test_support::{arb_opt_timestamp, arb_timestamp, arb_url};
     use crate::domain::client::{AllowedGrantType, ClientKind};
-    use persistence_rust::JsonColumn;
     use proptest::prelude::*;
 
     fn arb_client() -> impl Strategy<Value = Client> {
@@ -132,9 +104,9 @@ mod tests {
                     client_id,
                     name,
                     kind,
-                    redirect_uris: JsonColumn(redirect_uris),
-                    allowed_scopes: JsonColumn(allowed_scopes),
-                    allowed_grant_types: JsonColumn(AllowedGrantType::ALL.to_vec()),
+                    redirect_uris,
+                    allowed_scopes,
+                    allowed_grant_types: AllowedGrantType::ALL.to_vec(),
                     secret_hash,
                     registered_at,
                     disabled_at,
@@ -166,9 +138,9 @@ mod tests {
             client_id: "c1".to_string(),
             name: "First".to_string(),
             kind: ClientKind::Public,
-            redirect_uris: JsonColumn(vec![]),
-            allowed_scopes: JsonColumn(vec!["openid".to_string()]),
-            allowed_grant_types: JsonColumn(AllowedGrantType::ALL.to_vec()),
+            redirect_uris: vec![],
+            allowed_scopes: vec!["openid".to_string()],
+            allowed_grant_types: AllowedGrantType::ALL.to_vec(),
             secret_hash: None,
             registered_at,
             disabled_at: Some(disabled_at),
@@ -179,7 +151,7 @@ mod tests {
         // cleared: the policy fields update, but registration time and the admin
         // disable are preserved (the row is updated in place, never resurrected).
         client.name = "Renamed".to_string();
-        client.allowed_scopes = JsonColumn(vec!["system/*.cruds".to_string()]);
+        client.allowed_scopes = vec!["system/*.cruds".to_string()];
         client.registered_at = chrono::DateTime::from_timestamp(2_000, 0).unwrap();
         client.disabled_at = None;
         store.upsert_client(&client).expect("update");
@@ -189,16 +161,17 @@ mod tests {
             .expect("query")
             .expect("row present");
         assert_eq!(fetched.name, "Renamed");
-        assert_eq!(fetched.allowed_scopes.0, vec!["system/*.cruds".to_string()]);
+        assert_eq!(fetched.allowed_scopes, vec!["system/*.cruds".to_string()]);
         assert_eq!(fetched.registered_at, registered_at);
         assert_eq!(fetched.disabled_at, Some(disabled_at));
     }
 
-    /// The SMART sample-app clients are seeded by migration `008` (not Rust), so a
-    /// freshly-migrated store has them — and every hand-written row decodes back to
-    /// a valid `Client`. This is the guard that the SQL seed's JSON columns and
-    /// `registered_at` text stay in the exact shape the store's read path parses
-    /// (a malformed value would fail `client_by_id`'s row mapping, not silently).
+    /// The SMART sample-app clients are seeded by migration `0002` (not Rust),
+    /// so a freshly-migrated store has them — and every hand-written row
+    /// decodes back to a valid `Client`. This is the guard that the SQL seed's
+    /// JSON columns and `registered_at` text stay in the exact shape the
+    /// store's read path parses (a malformed value would fail `client_by_id`'s
+    /// row mapping, not silently).
     #[test]
     fn migration_seeds_the_sample_smart_clients() {
         let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
@@ -210,23 +183,23 @@ mod tests {
             let client = store
                 .client_by_id(client_id)
                 .expect("query (a decode failure surfaces here)")
-                .unwrap_or_else(|| panic!("{client_id} is seeded by migration 008"));
+                .unwrap_or_else(|| panic!("{client_id} is seeded by migration 0002"));
             assert_eq!(client.client_id, client_id);
             assert_eq!(client.kind, ClientKind::Public);
             assert!(
                 client.secret_hash.is_none(),
                 "{client_id} is a public client"
             );
-            assert!(!client.allowed_scopes.0.is_empty());
-            assert!(!client.redirect_uris.0.is_empty());
-            assert!(!client.allowed_grant_types.0.is_empty());
+            assert!(!client.allowed_scopes.is_empty());
+            assert!(!client.redirect_uris.is_empty());
+            assert!(!client.allowed_grant_types.is_empty());
         }
 
         // `my_web_app` (the Medication Viewer registration) carries the exact
         // scope + redirect from the review comment.
         let mwa = store.client_by_id("my_web_app").unwrap().unwrap();
         assert_eq!(
-            mwa.allowed_scopes.0,
+            mwa.allowed_scopes,
             vec![
                 "launch".to_string(),
                 "openid".to_string(),
@@ -235,11 +208,11 @@ mod tests {
             ],
         );
         assert_eq!(
-            mwa.redirect_uris.0[0].as_str(),
+            mwa.redirect_uris[0].as_str(),
             "https://mitre.github.io/smart-on-fhir-demo/index.html",
         );
         assert_eq!(
-            mwa.allowed_grant_types.0,
+            mwa.allowed_grant_types,
             vec![
                 AllowedGrantType::AuthorizationCode,
                 AllowedGrantType::RefreshToken

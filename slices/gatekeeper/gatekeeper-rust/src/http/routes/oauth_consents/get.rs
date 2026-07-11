@@ -32,9 +32,9 @@ async fn handle_get_oauth_consent(
         id: id.clone(),
         client_id: request.client_id,
         client_name,
-        scopes: request.requested_scopes.into_inner(),
+        scopes: request.requested_scopes,
         redirect_uri,
-        pre_approved_scopes: request.pre_approved_scopes.into_inner(),
+        pre_approved_scopes: request.pre_approved_scopes,
         patient: request.patient,
     }))
 }

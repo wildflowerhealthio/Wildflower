@@ -1,40 +1,14 @@
-use chrono::{DateTime, Utc};
-use rusqlite::{params, OptionalExtension, ToSql};
+//! `refresh_token_families` / `refresh_tokens` queries — the rotating
+//! refresh-token lineage (RFC 6749 §6, OAuth 2.1 rotation semantics), loaded
+//! and stored as [`RefreshTokenFamily`] / [`RefreshToken`].
 
+use chrono::{DateTime, Utc};
+use diesel::prelude::*;
+
+use crate::db::schema::{refresh_token_families, refresh_tokens};
 use crate::db::GatekeeperStore;
 use crate::domain::error::GatekeeperError;
 use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
-use persistence_rust::build_insert_sql;
-use persistence_rust::sql_row;
-
-// `RefreshTokenFamily` is mapped by hand: its read path is a JOIN aliasing
-// `f.issued_at AS family_issued_at` (see `refresh_token_with_family_by_hash`),
-// columns the field-name-keyed `sql_row!` `TryFrom` couldn't read.
-fn family_named_sql_params(family: &RefreshTokenFamily) -> [(&str, &dyn ToSql); 8] {
-    [
-        (":family_id", &family.family_id),
-        (":client_id", &family.client_id),
-        (":scopes", &family.scopes),
-        (":patient", &family.patient),
-        (":issued_at", &family.issued_at),
-        (":expires_at", &family.expires_at),
-        (":authorization_code_hash", &family.authorization_code_hash),
-        (":grant_id", &family.grant_id),
-    ]
-}
-
-// `RefreshToken` is uniform; its params builder keeps the `token_named_sql_params`
-// name (the module also owns the hand-written family builder above, so the
-// default `make_named_sql_params` name would collide).
-sql_row!(
-    RefreshToken {
-        token_hash,
-        family_id,
-        issued_at,
-        consumed_at,
-    },
-    token_named_sql_params
-);
 
 /// Outcome of attempting to consume a refresh token.
 ///
@@ -55,6 +29,36 @@ pub enum RefreshTokenConsumeOutcome {
     NotFound,
 }
 
+/// Consume-or-probe, shared by [`GatekeeperStore::consume_refresh_token`] and
+/// [`GatekeeperStore::rotate_refresh_token`]: stamp the live row consumed, and
+/// when no live row matched, probe whether the hash exists at all to tell a
+/// replay from a miss. Runs inside the caller's transaction.
+fn consume_within_transaction(
+    conn: &mut diesel::sqlite::SqliteConnection,
+    token_hash_value: &str,
+    now: DateTime<Utc>,
+) -> Result<RefreshTokenConsumeOutcome, diesel::result::Error> {
+    let affected = diesel::update(
+        refresh_tokens::table
+            .find(token_hash_value)
+            .filter(refresh_tokens::consumed_at.is_null()),
+    )
+    .set(refresh_tokens::consumed_at.eq(now))
+    .execute(conn)?;
+    if affected == 1 {
+        return Ok(RefreshTokenConsumeOutcome::Consumed);
+    }
+    let exists: bool = diesel::select(diesel::dsl::exists(
+        refresh_tokens::table.find(token_hash_value),
+    ))
+    .get_result(conn)?;
+    Ok(if exists {
+        RefreshTokenConsumeOutcome::Replayed
+    } else {
+        RefreshTokenConsumeOutcome::NotFound
+    })
+}
+
 impl GatekeeperStore {
     /// Persist a new refresh-token family alongside its first token — one
     /// transaction, since a family with no token (or a token with no family)
@@ -62,31 +66,25 @@ impl GatekeeperStore {
     ///
     /// # Errors
     ///
-    /// [`GatekeeperError::Backend`] if opening the transaction, either insert,
-    /// or the commit fails.
+    /// [`GatekeeperError::Backend`] if the transaction or either insert fails.
     pub fn insert_refresh_token_family(
         &self,
         family: &RefreshTokenFamily,
         first_token: &RefreshToken,
     ) -> Result<(), GatekeeperError> {
-        let backend = |e| GatekeeperError::backend("insert_refresh_token_family failed", e);
-        let mut guard = self.conn().lock();
-        let tx = guard.transaction().map_err(backend)?;
-        {
-            let family_params = family_named_sql_params(family);
-            tx.execute(
-                &build_insert_sql("refresh_token_families", &family_params),
-                &family_params,
-            )
-            .map_err(backend)?;
-            let token_params = token_named_sql_params(first_token);
-            tx.execute(
-                &build_insert_sql("refresh_tokens", &token_params),
-                &token_params,
-            )
-            .map_err(backend)?;
-        }
-        tx.commit().map_err(backend)
+        let mut conn = self.conn()?;
+        conn.transaction(|conn| {
+            diesel::insert_into(refresh_token_families::table)
+                .values(family.clone())
+                .execute(conn)?;
+            diesel::insert_into(refresh_tokens::table)
+                .values(first_token.clone())
+                .execute(conn)?;
+            Ok(())
+        })
+        .map_err(|e: diesel::result::Error| {
+            GatekeeperError::backend("insert_refresh_token_family failed", e)
+        })
     }
 
     /// Persist the successor token in an existing family's rotation.
@@ -94,12 +92,12 @@ impl GatekeeperStore {
     /// # Errors
     ///
     /// [`GatekeeperError::Backend`] if the insert fails (for example a
-    /// unique-constraint violation on the token hash).
+    /// unique-constraint violation on the token hash, or a foreign-key
+    /// violation for an unknown family).
     pub fn insert_refresh_token(&self, token: &RefreshToken) -> Result<(), GatekeeperError> {
-        let params = token_named_sql_params(token);
-        self.conn()
-            .lock()
-            .execute(&build_insert_sql("refresh_tokens", &params), &params)
+        diesel::insert_into(refresh_tokens::table)
+            .values(token.clone())
+            .execute(&mut self.conn()?)
             .map_err(|e| GatekeeperError::backend("insert_refresh_token failed", e))?;
         Ok(())
     }
@@ -116,32 +114,11 @@ impl GatekeeperStore {
         &self,
         token_hash: &str,
     ) -> Result<Option<(RefreshToken, RefreshTokenFamily)>, GatekeeperError> {
-        self.conn()
-            .lock()
-            .query_row(
-                "SELECT t.token_hash, t.family_id, t.issued_at, t.consumed_at,
-                        f.client_id, f.scopes, f.patient,
-                        f.issued_at AS family_issued_at, f.expires_at,
-                        f.authorization_code_hash, f.grant_id
-                 FROM refresh_tokens t
-                 JOIN refresh_token_families f ON f.family_id = t.family_id
-                 WHERE t.token_hash = ?1",
-                params![token_hash],
-                |row| {
-                    let token = RefreshToken::try_from(row)?;
-                    let family = RefreshTokenFamily {
-                        family_id: row.get("family_id")?,
-                        client_id: row.get("client_id")?,
-                        scopes: row.get("scopes")?,
-                        patient: row.get("patient")?,
-                        issued_at: row.get("family_issued_at")?,
-                        expires_at: row.get("expires_at")?,
-                        authorization_code_hash: row.get("authorization_code_hash")?,
-                        grant_id: row.get("grant_id")?,
-                    };
-                    Ok((token, family))
-                },
-            )
+        refresh_tokens::table
+            .inner_join(refresh_token_families::table)
+            .filter(refresh_tokens::token_hash.eq(token_hash))
+            .select((RefreshToken::as_select(), RefreshTokenFamily::as_select()))
+            .first(&mut self.conn()?)
             .optional()
             .map_err(|e| GatekeeperError::backend("refresh_token_with_family_by_hash failed", e))
     }
@@ -157,14 +134,10 @@ impl GatekeeperStore {
         &self,
         token_hash: &str,
     ) -> Result<Option<RefreshToken>, GatekeeperError> {
-        self.conn()
-            .lock()
-            .query_row(
-                "SELECT token_hash, family_id, issued_at, consumed_at
-                 FROM refresh_tokens WHERE token_hash = ?1",
-                params![token_hash],
-                |row| RefreshToken::try_from(row),
-            )
+        refresh_tokens::table
+            .find(token_hash)
+            .select(RefreshToken::as_select())
+            .first(&mut self.conn()?)
             .optional()
             .map_err(|e| GatekeeperError::backend("refresh_token_by_hash failed", e))
     }
@@ -177,41 +150,18 @@ impl GatekeeperStore {
     ///
     /// # Errors
     ///
-    /// [`GatekeeperError::Backend`] if opening the transaction, the update, the
-    /// existence probe, or the commit fails.
+    /// [`GatekeeperError::Backend`] if the transaction, the update, or the
+    /// existence probe fails.
     pub fn consume_refresh_token(
         &self,
         token_hash: &str,
         now: DateTime<Utc>,
     ) -> Result<RefreshTokenConsumeOutcome, GatekeeperError> {
-        let backend = |e| GatekeeperError::backend("consume_refresh_token failed", e);
-        let mut guard = self.conn().lock();
-        let tx = guard.transaction().map_err(backend)?;
-        let affected = tx
-            .execute(
-                "UPDATE refresh_tokens SET consumed_at = ?2
-                 WHERE token_hash = ?1 AND consumed_at IS NULL",
-                params![token_hash, now],
-            )
-            .map_err(backend)?;
-        let result = if affected == 1 {
-            RefreshTokenConsumeOutcome::Consumed
-        } else {
-            let exists: bool = tx
-                .query_row(
-                    "SELECT EXISTS(SELECT 1 FROM refresh_tokens WHERE token_hash = ?1)",
-                    params![token_hash],
-                    |row| row.get(0),
-                )
-                .map_err(backend)?;
-            if exists {
-                RefreshTokenConsumeOutcome::Replayed
-            } else {
-                RefreshTokenConsumeOutcome::NotFound
-            }
-        };
-        tx.commit().map_err(backend)?;
-        Ok(result)
+        let mut conn = self.conn()?;
+        conn.transaction(|conn| consume_within_transaction(conn, token_hash, now))
+            .map_err(|e: diesel::result::Error| {
+                GatekeeperError::backend("consume_refresh_token failed", e)
+            })
     }
 
     /// Atomically rotate a refresh token: consume the presented token and, only
@@ -225,45 +175,27 @@ impl GatekeeperStore {
     ///
     /// # Errors
     ///
-    /// [`GatekeeperError::Backend`] if opening the transaction, the update, the
-    /// existence probe, the successor insert, or the commit fails.
+    /// [`GatekeeperError::Backend`] if the transaction, the update, the
+    /// existence probe, or the successor insert fails.
     pub fn rotate_refresh_token(
         &self,
         presented_hash: &str,
         successor: &RefreshToken,
         now: DateTime<Utc>,
     ) -> Result<RefreshTokenConsumeOutcome, GatekeeperError> {
-        let backend = |e| GatekeeperError::backend("rotate_refresh_token failed", e);
-        let mut guard = self.conn().lock();
-        let tx = guard.transaction().map_err(backend)?;
-        let consumed_refresh_token_count = tx
-            .execute(
-                "UPDATE refresh_tokens SET consumed_at = ?2
-                 WHERE token_hash = ?1 AND consumed_at IS NULL",
-                params![presented_hash, now],
-            )
-            .map_err(backend)?;
-        let outcome = if consumed_refresh_token_count == 1 {
-            let params = token_named_sql_params(successor);
-            tx.execute(&build_insert_sql("refresh_tokens", &params), &params)
-                .map_err(backend)?;
-            RefreshTokenConsumeOutcome::Consumed
-        } else {
-            let exists: bool = tx
-                .query_row(
-                    "SELECT EXISTS(SELECT 1 FROM refresh_tokens WHERE token_hash = ?1)",
-                    params![presented_hash],
-                    |row| row.get(0),
-                )
-                .map_err(backend)?;
-            if exists {
-                RefreshTokenConsumeOutcome::Replayed
-            } else {
-                RefreshTokenConsumeOutcome::NotFound
+        let mut conn = self.conn()?;
+        conn.transaction(|conn| {
+            let outcome = consume_within_transaction(conn, presented_hash, now)?;
+            if outcome == RefreshTokenConsumeOutcome::Consumed {
+                diesel::insert_into(refresh_tokens::table)
+                    .values(successor.clone())
+                    .execute(conn)?;
             }
-        };
-        tx.commit().map_err(backend)?;
-        Ok(outcome)
+            Ok(outcome)
+        })
+        .map_err(|e: diesel::result::Error| {
+            GatekeeperError::backend("rotate_refresh_token failed", e)
+        })
     }
 
     /// End a token family by pulling its `expires_at` back to `now`, and
@@ -275,28 +207,29 @@ impl GatekeeperStore {
     ///
     /// # Errors
     ///
-    /// [`GatekeeperError::Backend`] if opening the transaction, either update,
-    /// or the commit fails.
+    /// [`GatekeeperError::Backend`] if the transaction or either update fails.
     pub fn expire_refresh_token_family(
         &self,
         family_id: &str,
         now: DateTime<Utc>,
     ) -> Result<(), GatekeeperError> {
-        let backend = |e| GatekeeperError::backend("expire_refresh_token_family failed", e);
-        let mut guard = self.conn().lock();
-        let tx = guard.transaction().map_err(backend)?;
-        tx.execute(
-            "UPDATE refresh_token_families SET expires_at = ?2 WHERE family_id = ?1",
-            params![family_id, now],
-        )
-        .map_err(backend)?;
-        tx.execute(
-            "UPDATE refresh_tokens SET consumed_at = ?2
-             WHERE family_id = ?1 AND consumed_at IS NULL",
-            params![family_id, now],
-        )
-        .map_err(backend)?;
-        tx.commit().map_err(backend)
+        let mut conn = self.conn()?;
+        conn.transaction(|conn| {
+            diesel::update(refresh_token_families::table.find(family_id))
+                .set(refresh_token_families::expires_at.eq(now))
+                .execute(conn)?;
+            diesel::update(
+                refresh_tokens::table
+                    .filter(refresh_tokens::family_id.eq(family_id))
+                    .filter(refresh_tokens::consumed_at.is_null()),
+            )
+            .set(refresh_tokens::consumed_at.eq(now))
+            .execute(conn)?;
+            Ok(())
+        })
+        .map_err(|e: diesel::result::Error| {
+            GatekeeperError::backend("expire_refresh_token_family failed", e)
+        })
     }
 
     /// End every refresh-token family issued to a client, with the same
@@ -306,30 +239,38 @@ impl GatekeeperStore {
     ///
     /// # Errors
     ///
-    /// [`GatekeeperError::Backend`] if opening the transaction, either update,
-    /// or the commit fails.
+    /// [`GatekeeperError::Backend`] if the transaction or either update fails.
     pub fn expire_refresh_token_families_for_client(
         &self,
         client_id: &str,
         now: DateTime<Utc>,
     ) -> Result<(), GatekeeperError> {
-        let backend =
-            |e| GatekeeperError::backend("expire_refresh_token_families_for_client failed", e);
-        let mut guard = self.conn().lock();
-        let tx = guard.transaction().map_err(backend)?;
-        tx.execute(
-            "UPDATE refresh_tokens SET consumed_at = ?2
-             WHERE consumed_at IS NULL AND family_id IN
-                 (SELECT family_id FROM refresh_token_families WHERE client_id = ?1)",
-            params![client_id, now],
-        )
-        .map_err(backend)?;
-        tx.execute(
-            "UPDATE refresh_token_families SET expires_at = ?2 WHERE client_id = ?1",
-            params![client_id, now],
-        )
-        .map_err(backend)?;
-        tx.commit().map_err(backend)
+        let mut conn = self.conn()?;
+        conn.transaction(|conn| {
+            diesel::update(
+                refresh_tokens::table
+                    .filter(refresh_tokens::consumed_at.is_null())
+                    .filter(
+                        refresh_tokens::family_id.eq_any(
+                            refresh_token_families::table
+                                .filter(refresh_token_families::client_id.eq(client_id))
+                                .select(refresh_token_families::family_id),
+                        ),
+                    ),
+            )
+            .set(refresh_tokens::consumed_at.eq(now))
+            .execute(conn)?;
+            diesel::update(
+                refresh_token_families::table
+                    .filter(refresh_token_families::client_id.eq(client_id)),
+            )
+            .set(refresh_token_families::expires_at.eq(now))
+            .execute(conn)?;
+            Ok(())
+        })
+        .map_err(|e: diesel::result::Error| {
+            GatekeeperError::backend("expire_refresh_token_families_for_client failed", e)
+        })
     }
 
     /// End every refresh-token family minted from a given authorization code
@@ -342,36 +283,43 @@ impl GatekeeperStore {
     ///
     /// # Errors
     ///
-    /// [`GatekeeperError::Backend`] if opening the transaction, either update,
-    /// or the commit fails.
+    /// [`GatekeeperError::Backend`] if the transaction or either update fails.
     pub fn expire_refresh_token_families_for_authorization_code(
         &self,
         authorization_code_hash: &str,
         now: DateTime<Utc>,
     ) -> Result<(), GatekeeperError> {
-        let backend = |e| {
+        let mut conn = self.conn()?;
+        conn.transaction(|conn| {
+            diesel::update(
+                refresh_tokens::table
+                    .filter(refresh_tokens::consumed_at.is_null())
+                    .filter(
+                        refresh_tokens::family_id.eq_any(
+                            refresh_token_families::table
+                                .filter(
+                                    refresh_token_families::authorization_code_hash
+                                        .eq(authorization_code_hash),
+                                )
+                                .select(refresh_token_families::family_id),
+                        ),
+                    ),
+            )
+            .set(refresh_tokens::consumed_at.eq(now))
+            .execute(conn)?;
+            diesel::update(refresh_token_families::table.filter(
+                refresh_token_families::authorization_code_hash.eq(authorization_code_hash),
+            ))
+            .set(refresh_token_families::expires_at.eq(now))
+            .execute(conn)?;
+            Ok(())
+        })
+        .map_err(|e: diesel::result::Error| {
             GatekeeperError::backend(
                 "expire_refresh_token_families_for_authorization_code failed",
                 e,
             )
-        };
-        let mut guard = self.conn().lock();
-        let tx = guard.transaction().map_err(backend)?;
-        tx.execute(
-            "UPDATE refresh_tokens SET consumed_at = ?1
-             WHERE consumed_at IS NULL AND family_id IN
-                 (SELECT family_id FROM refresh_token_families
-                  WHERE authorization_code_hash = ?2)",
-            params![now, authorization_code_hash],
-        )
-        .map_err(backend)?;
-        tx.execute(
-            "UPDATE refresh_token_families SET expires_at = ?1
-             WHERE authorization_code_hash = ?2",
-            params![now, authorization_code_hash],
-        )
-        .map_err(backend)?;
-        tx.commit().map_err(backend)
+        })
     }
 }
 
@@ -379,7 +327,7 @@ impl GatekeeperStore {
 mod tests {
     use super::*;
     use crate::db::test_support::{arb_opt_timestamp, arb_timestamp};
-    use persistence_rust::JsonColumn;
+    use crate::domain::error::GatekeeperError;
     use proptest::prelude::*;
 
     fn arb_family() -> impl Strategy<Value = RefreshTokenFamily> {
@@ -407,7 +355,7 @@ mod tests {
                     RefreshTokenFamily {
                         family_id,
                         client_id,
-                        scopes: JsonColumn(scopes),
+                        scopes,
                         patient,
                         issued_at,
                         expires_at,
@@ -486,7 +434,8 @@ mod tests {
     // Foreign-key enforcement (`PRAGMA foreign_keys = ON`): a refresh token
     // whose family does not exist is rejected at insert time instead of
     // becoming an orphan that later reads as "not found" (so a genuine replay
-    // of such a token would fail to revoke anything).
+    // of such a token would fail to revoke anything). The store surfaces it as
+    // the opaque Backend whose text names the constraint.
     #[test]
     fn insert_refresh_token_rejects_orphan_without_family() {
         let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
@@ -550,7 +499,7 @@ mod tests {
         RefreshTokenFamily {
             family_id: family_id.to_string(),
             client_id: client_id.to_string(),
-            scopes: JsonColumn(vec!["read".to_string()]),
+            scopes: vec!["read".to_string()],
             patient: None,
             issued_at: Utc::now(),
             expires_at: Utc::now() + chrono::Duration::days(90),

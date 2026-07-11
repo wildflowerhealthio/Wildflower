@@ -7,13 +7,13 @@
 //!
 //! The bundled SMART sample-app clients (growth-chart, medication-viewer →
 //! `my_web_app`, PRECISE-HBR) are seeded in SQL instead — migration
-//! `008_seed_sample_clients.sql` — since they're static definitions a migration
+//! `0002_seed_sample_clients` — since they're static definitions a migration
 //! can express. Only the runtime-derived seeds (the first-party client's scopes,
 //! the generated signing key) stay here.
 
 use anyhow::Context;
 use chrono::{Duration, Utc};
-use persistence_rust::{Connection, JsonColumn};
+use persistence_rust::DieselPool;
 use thiserror::Error;
 
 use crate::db::GatekeeperStore;
@@ -21,21 +21,21 @@ use crate::domain::client::{AllowedGrantType, Client, ClientKind};
 use crate::domain::signing_key::SigningKey;
 use crate::domain::token::{mint_access_token, MintError, NewJwtArgs};
 
-/// Wrap the shared `conn` in a gatekeeper store (applying migrations, which
-/// includes the SQL seed of the SMART sample-app clients) and run the
-/// runtime-derived first-boot seeding steps — the signing key and the first-party
-/// host client. Safe to call on every boot.
+/// Wrap the host-owned connection `pool` in a gatekeeper store (applying
+/// migrations, which includes the SQL seed of the SMART sample-app clients)
+/// and run the runtime-derived first-boot seeding steps — the signing key and
+/// the first-party host client. Safe to call on every boot.
 ///
 /// # Errors
 ///
 /// Returns an error if the store cannot be created (migrations) or if any seeding
 /// step fails.
 pub fn open_and_seed_store(
-    conn: Connection,
+    pool: DieselPool,
     granted_scopes: &[String],
     first_party_client_id: &str,
 ) -> anyhow::Result<GatekeeperStore> {
-    let store = GatekeeperStore::new(conn).context("failed to open gatekeeper store")?;
+    let store = GatekeeperStore::new(pool).context("failed to open gatekeeper store")?;
     ensure_some_active_signing_key(&store).context("failed to seed signing key")?;
     ensure_first_party_client(&store, granted_scopes, first_party_client_id)
         .context("failed to seed first-party client")?;
@@ -74,9 +74,9 @@ fn ensure_first_party_client(
         client_id: first_party_client_id.to_string(),
         name: "Wildflower (host)".to_string(),
         kind: ClientKind::Public,
-        redirect_uris: JsonColumn(vec![]),
-        allowed_scopes: JsonColumn(granted_scopes.to_vec()),
-        allowed_grant_types: JsonColumn(AllowedGrantType::ALL.to_vec()),
+        redirect_uris: vec![],
+        allowed_scopes: granted_scopes.to_vec(),
+        allowed_grant_types: AllowedGrantType::ALL.to_vec(),
         secret_hash: None,
         registered_at: Utc::now(),
         disabled_at: None,
@@ -156,19 +156,19 @@ mod tests {
     /// / the TS side) fails this test.
     #[test]
     fn seeds_first_party_client_under_the_configured_id() {
-        let conn = Connection::open_in_memory().expect("open in-memory db");
+        let pool = persistence_rust::open_in_memory_pool().expect("open in-memory pool");
         let scopes = vec![
             "system/*.cruds".to_string(),
             "wildflower/*.cruds".to_string(),
         ];
-        let store = open_and_seed_store(conn, &scopes, "custom-host-client").expect("seed store");
+        let store = open_and_seed_store(pool, &scopes, "custom-host-client").expect("seed store");
 
         let seeded = store
             .client_by_id("custom-host-client")
             .expect("query client")
             .expect("first-party client seeded under the configured id");
         assert_eq!(seeded.client_id, "custom-host-client");
-        assert_eq!(seeded.allowed_scopes.0, scopes);
+        assert_eq!(seeded.allowed_scopes, scopes);
 
         // Nothing is seeded under the fallback const's literal — proving the id
         // came from the argument, not `FIRST_PARTY_CLIENT_ID`.

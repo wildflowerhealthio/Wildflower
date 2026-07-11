@@ -1,105 +1,128 @@
-//! The `GatekeeperStore` handle — wraps the shared connection and applies the
-//! gatekeeper schema migrations onto it. Per-table query methods are added as
-//! inherent `impl GatekeeperStore` blocks in the sibling `db/*` modules.
+//! The `GatekeeperStore` handle — holds the app-wide r2d2 pool of Diesel
+//! `SqliteConnection`s (`persistence_rust::DieselPool`) onto the shared
+//! database file and applies the embedded gatekeeper migrations once on
+//! construction. Per-table query methods are added as inherent
+//! `impl GatekeeperStore` blocks in the sibling `db/*` modules; each one
+//! checks a connection out of the pool.
 
 use anyhow::Context;
-use persistence_rust::Connection;
+use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
+use persistence_rust::DieselPool;
+
+use crate::domain::error::GatekeeperError;
+
+/// The gatekeeper migrations, embedded from the crate's `migrations/` tree at
+/// compile time (diesel layout: `<version>_<name>/up.sql` + `down.sql`).
+/// Applied once per database in [`GatekeeperStore::new`]; diesel records
+/// applied versions in its own `__diesel_schema_migrations` table, disjoint
+/// from persistence-rust's namespaced `schema_migrations`, so the two
+/// migration bookkeepers coexist in the shared database. Migration `0001`
+/// deliberately DROPs the tables the retired rusqlite migrations managed
+/// (destructive rebaseline — see its header) and `0002` seeds the SMART
+/// sample-app clients.
+const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
 #[derive(Clone)]
 pub struct GatekeeperStore {
-    conn: Connection,
+    // The app-wide r2d2 pool onto the shared database file, built and owned by
+    // the host (`persistence_rust::open_pool`) — the same pool collector's
+    // RemotesStore rides. Diesel's connection API is `&mut`, so each call
+    // checks a connection out of the pool rather than sharing one behind a
+    // mutex; the pool (an `Arc` inside) makes the store cheap to clone into
+    // the axum state. These are additional openers onto the same file the
+    // host's rusqlite `persistence-rust::Connection` serves the remaining
+    // rusqlite slices from — SQLite permits multiple connections per file; the
+    // pool's `busy_timeout` pragma rides out the brief write locks any
+    // connection takes (see `persistence_rust::open_pool`).
+    pool: DieselPool,
 }
+
+/// A connection checked out of the store's pool — the type every per-table
+/// query method works against.
+pub(crate) type PooledSqliteConnection = diesel::r2d2::PooledConnection<
+    diesel::r2d2::ConnectionManager<diesel::sqlite::SqliteConnection>,
+>;
 
 impl GatekeeperStore {
-    /// Wrap the shared `conn` and apply pending gatekeeper migrations onto it.
-    /// The connection is opened once by the host and shared across slices;
-    /// migrations are namespaced so they don't collide with another slice's.
+    /// Wrap the host-owned connection `pool` and apply pending gatekeeper
+    /// migrations once, on a single checked-out connection. The host builds
+    /// the app-wide pool (via `persistence_rust::open_pool`) on the same file
+    /// its rusqlite connection opens for the other slices; both coexist (see
+    /// the `pool` field).
     ///
     /// # Errors
     ///
-    /// Returns an error if applying the gatekeeper migrations fails.
-    pub fn new(conn: Connection) -> anyhow::Result<Self> {
-        {
-            let mut guard = conn.lock();
-            migrate(&mut guard).context("failed to apply gatekeeper migrations")?;
-        }
-        Ok(Self { conn })
+    /// Returns an error if a connection can't be checked out of the pool or a
+    /// migration fails.
+    pub fn new(pool: DieselPool) -> anyhow::Result<Self> {
+        let mut conn = pool
+            .get()
+            .context("failed to check out a connection to run gatekeeper migrations")?;
+        conn.run_pending_migrations(MIGRATIONS)
+            .map_err(|e| anyhow::anyhow!("failed to apply gatekeeper migrations: {e}"))?;
+        drop(conn);
+        Ok(Self { pool })
     }
 
-    /// Open a private in-memory shared connection and wrap it — for tests.
+    /// Build a store over a private in-memory database — for tests. Each call
+    /// is an independent, freshly-migrated database. Uses
+    /// `persistence_rust::open_in_memory_pool`, whose shared-cache URI keeps
+    /// the pooled connections on one in-memory database (a naive `:memory:`
+    /// pool gives each connection its own empty db).
     ///
     /// # Errors
     ///
-    /// Returns an error if the in-memory connection can't be opened or migrated.
+    /// Returns an error if the in-memory pool can't be built or migrated.
     pub fn open_in_memory() -> anyhow::Result<Self> {
-        Self::new(Connection::open_in_memory().context("failed to open in-memory sqlite")?)
+        Self::new(persistence_rust::open_in_memory_pool()?)
     }
 
-    pub(crate) fn conn(&self) -> &Connection {
-        &self.conn
+    /// Check a connection out of the pool, mapping a checkout failure to the
+    /// domain's opaque [`GatekeeperError::Backend`] — the shared first step of
+    /// every query method in the sibling `db/*` modules.
+    pub(crate) fn conn(&self) -> Result<PooledSqliteConnection, GatekeeperError> {
+        self.pool
+            .get()
+            .map_err(|e| GatekeeperError::backend("failed to check out a connection", e))
     }
 }
-
-/// Migration namespace for the gatekeeper tables in the shared database.
-const NAMESPACE: &str = "gatekeeper";
-
-/// Apply pending gatekeeper migrations through the shared
-/// [`persistence_rust::run_migrations`] runner under the `gatekeeper` namespace.
-fn migrate(conn: &mut rusqlite::Connection) -> rusqlite::Result<()> {
-    persistence_rust::run_migrations(conn, NAMESPACE, MIGRATIONS)
-}
-
-/// Ordered list of schema migrations. The array index is the recorded
-/// `schema_migrations` version — append-only; never reorder or rewrite an
-/// already-shipped entry. New migrations land as a sibling `.sql` file under
-/// `src/migrations/` plus one new `include_str!` line below.
-const MIGRATIONS: &[&str] = &[
-    include_str!("../migrations/001_initial_schema.sql"),
-    include_str!("../migrations/002_refresh_tokens.sql"),
-    include_str!("../migrations/003_refresh_family_authorization_code.sql"),
-    include_str!("../migrations/004_unique_authorization_code_request_id.sql"),
-    include_str!("../migrations/005_unique_pending_user_code.sql"),
-    include_str!("../migrations/006_unique_grant_client_redirect.sql"),
-    include_str!("../migrations/007_client_allowed_grant_types.sql"),
-    include_str!("../migrations/008_seed_sample_clients.sql"),
-    include_str!("../migrations/009_authorization_request_device_name.sql"),
-    include_str!("../migrations/010_polymorphic_grants.sql"),
-    include_str!("../migrations/011_refresh_family_grant_id.sql"),
-];
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use diesel::connection::SimpleConnection;
+    use diesel::prelude::*;
+    use diesel::sqlite::SqliteConnection;
+    use diesel_migrations::MigrationHarness;
 
-    #[test]
-    fn migrate_is_idempotent() {
-        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-        migrate(&mut conn).unwrap();
-        migrate(&mut conn).unwrap();
-        let v: i64 = conn
-            .query_row(
-                "SELECT version FROM schema_migrations WHERE namespace = ?1",
-                [NAMESPACE],
-                |row| row.get(0),
-            )
-            .unwrap();
-        assert_eq!(v as usize, MIGRATIONS.len());
+    use super::MIGRATIONS;
+    use crate::db::GatekeeperStore;
+
+    #[derive(QueryableByName)]
+    struct Name {
+        #[diesel(sql_type = diesel::sql_types::Text)]
+        name: String,
     }
 
+    /// Running the migrations twice is a no-op the second time (diesel skips
+    /// already-applied versions) and every expected table — plus the `grants`
+    /// view — exists afterwards, so opening an existing database never
+    /// re-drops or errors.
     #[test]
-    fn migrate_creates_expected_tables() {
-        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-        migrate(&mut conn).unwrap();
-        let names: Vec<String> = conn
-            .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
-            .unwrap()
-            .query_map([], |row| row.get(0))
-            .unwrap()
-            .collect::<Result<_, _>>()
-            .unwrap();
+    fn migrations_are_idempotent_and_create_the_schema() {
+        let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
+        conn.run_pending_migrations(MIGRATIONS).expect("first run");
+        conn.run_pending_migrations(MIGRATIONS).expect("second run");
+        let names: Vec<String> = diesel::sql_query(
+            "SELECT name FROM sqlite_master WHERE type IN ('table', 'view') ORDER BY name",
+        )
+        .load::<Name>(&mut conn)
+        .expect("list tables")
+        .into_iter()
+        .map(|n| n.name)
+        .collect();
         for expected in [
-            "authorization_codes",
             "authorization_code_grants",
+            "authorization_codes",
             "authorization_requests",
             "clients",
             "device_grants",
@@ -112,62 +135,66 @@ mod tests {
         }
     }
 
-    /// Migration 010 splits the flat `grants` table into a parent + per-variant
-    /// children. A row that existed before the split must land intact as an
-    /// `authorization_code` parent with its `redirect_uri` moved into the
-    /// authorization-code child. Applying migrations 001..=009 first, seeding a
-    /// legacy flat row, then applying the rest exercises the data migration —
-    /// `open_in_memory` would apply everything at once and skip the copy.
+    /// Migration `0001` is a destructive rebaseline: applied over a database
+    /// carrying the retired rusqlite-migrated tables (simulated here by
+    /// pre-creating an old-shape `grants` parent + child with a row in it),
+    /// it drops them and recreates the final shape — no copy, no error.
     #[test]
-    fn migration_010_moves_existing_grants_into_parent_and_child() {
-        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-        conn.pragma_update(None, "foreign_keys", true).unwrap();
-
-        // The pre-polymorphic schema (through migration 009).
-        persistence_rust::run_migrations(&mut conn, NAMESPACE, &MIGRATIONS[..9]).unwrap();
-        conn.execute(
-            "INSERT INTO grants (id, client_id, scopes, redirect_uri, granted_at, last_used_at, patient) \
-             VALUES ('g1', 'client-a', '[\"read\"]', 'https://example.com/cb', \
-                     '2024-01-01T00:00:00Z', NULL, 'patient-1')",
-            [],
+    fn migration_rebaselines_over_the_old_rusqlite_tables() {
+        let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
+        conn.batch_execute(
+            "PRAGMA foreign_keys = ON;
+             CREATE TABLE grants (
+                 id TEXT PRIMARY KEY NOT NULL,
+                 client_id TEXT NOT NULL,
+                 scopes TEXT NOT NULL,
+                 granted_at TEXT NOT NULL,
+                 last_used_at TEXT,
+                 patient TEXT,
+                 grant_type TEXT NOT NULL
+             );
+             CREATE TABLE authorization_code_grants (
+                 id TEXT PRIMARY KEY NOT NULL REFERENCES grants(id) ON DELETE CASCADE,
+                 client_id TEXT NOT NULL,
+                 redirect_uri TEXT NOT NULL
+             );
+             INSERT INTO grants VALUES
+                 ('g1', 'c1', '[]', '2024-01-01 00:00:00+00:00', NULL, NULL,
+                  'authorization_code');
+             INSERT INTO authorization_code_grants VALUES
+                 ('g1', 'c1', 'https://example.com/cb');",
         )
-        .unwrap();
+        .expect("simulate the old schema");
 
-        // Apply the polymorphic split (migration 010) and the rest.
-        persistence_rust::run_migrations(&mut conn, NAMESPACE, MIGRATIONS).unwrap();
+        conn.run_pending_migrations(MIGRATIONS).expect("rebaseline");
 
-        // The parent keeps the shared fields and gains `grant_type`; the flat
-        // `redirect_uri` column is gone.
-        let (client_id, grant_type, patient): (String, String, Option<String>) = conn
-            .query_row(
-                "SELECT client_id, grant_type, patient FROM grants WHERE id = 'g1'",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-            )
-            .unwrap();
-        assert_eq!(client_id, "client-a");
-        assert_eq!(grant_type, "authorization_code");
-        assert_eq!(patient.as_deref(), Some("patient-1"));
+        // The old parent's row is gone (destructive) and `grants` is now the
+        // UNION ALL view over the two rebuilt concrete tables.
+        let grants: Vec<Name> = diesel::sql_query("SELECT id AS name FROM grants")
+            .load(&mut conn)
+            .expect("grants view is queryable");
+        assert!(grants.is_empty(), "the rebaseline copies no data");
+        let kind: Vec<Name> =
+            diesel::sql_query("SELECT type AS name FROM sqlite_master WHERE name = 'grants'")
+                .load(&mut conn)
+                .expect("sqlite_master");
+        assert_eq!(kind.len(), 1);
+        assert_eq!(kind[0].name, "view");
+    }
 
-        let parent_has_redirect: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM pragma_table_info('grants') WHERE name = 'redirect_uri'",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap();
-        assert_eq!(parent_has_redirect, 0, "parent must drop redirect_uri");
-
-        // The redirect_uri moved into the authorization-code child, denormalized
-        // client_id alongside it.
-        let (child_client_id, redirect_uri): (String, String) = conn
-            .query_row(
-                "SELECT client_id, redirect_uri FROM authorization_code_grants WHERE id = 'g1'",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .unwrap();
-        assert_eq!(child_client_id, "client-a");
-        assert_eq!(redirect_uri, "https://example.com/cb");
+    /// The in-memory constructor produces an independent, migrated store per
+    /// call — the isolation every store test relies on.
+    #[test]
+    fn open_in_memory_stores_are_independent() {
+        let a = GatekeeperStore::open_in_memory().expect("store a");
+        let b = GatekeeperStore::open_in_memory().expect("store b");
+        let key = crate::domain::signing_key::SigningKey::generate().expect("generate key");
+        a.insert_signing_key(&key).expect("insert into a");
+        assert_eq!(a.all_signing_keys().expect("read a").len(), 1);
+        assert_eq!(
+            b.all_signing_keys().expect("read b").len(),
+            0,
+            "store b must not see store a's key",
+        );
     }
 }

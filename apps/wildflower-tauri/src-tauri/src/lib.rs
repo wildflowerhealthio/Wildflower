@@ -257,11 +257,27 @@ async fn run_server(
 
     let fhir_r4_router = setup_fhir_r4(&runtime, &emr_config, revocation_store.clone())
         .context("failed to set up FHIR R4 router")?;
+
+    // The app-wide diesel r2d2 pool, built once here on the same database file
+    // `db` serves the other slices from and shared (cheap `Arc` clone) across
+    // every diesel-backed slice — the gatekeeper OAuth surface, the collector
+    // `/collector/remotes` surface, and the tunnel `/tunnel` surface all run
+    // over it rather than each opening their own. Its connections are NOT
+    // synchronized with the `Arc<Mutex<rusqlite::Connection>>` the other slices
+    // write through: an accepted single-writer file-lock contention trade-off,
+    // ridden out by a shared `busy_timeout`. This is where that trade-off is
+    // accepted — see docs/Persistence/Shared Diesel Pool Explanation.md.
+    //
+    // Built BEFORE `setup_gatekeeper` because the gatekeeper store now rides
+    // this pool too (its diesel migrations run when the store is constructed).
+    let diesel_pool =
+        persistence_rust::open_pool(&db_path).context("failed to open diesel db pool")?;
+
     // `setup_gatekeeper` publishes the freshly-minted host owner token (and
     // device-consent heads) through the bridge publishers; `bridge::attach_bridge`
     // documents how the resident task delivers them to the webview.
     let gatekeeper = setup_gatekeeper(
-        db.clone(),
+        diesel_pool.clone(),
         revocation_store,
         &gatekeeper_config,
         &publishers.host_owner_token_sender,
@@ -278,21 +294,10 @@ async fn run_server(
         emr_rust::UNAUTHENTICATED_FHIR_PATHS,
     );
 
-    // The app-wide diesel r2d2 pool, built once here on the same database file
-    // `db` serves the other slices from and shared (cheap `Arc` clone) across
-    // every diesel-backed slice — the collector `/collector/remotes` and tunnel
-    // `/tunnel` surfaces both run over it rather than each opening their own. Its
-    // connections are NOT synchronized with the `Arc<Mutex<rusqlite::Connection>>`
-    // the other slices write through: an accepted single-writer file-lock
-    // contention trade-off, ridden out by a shared `busy_timeout`. This is where
-    // that trade-off is accepted — see
-    // docs/Persistence/Shared Diesel Pool Explanation.md.
-    let diesel_pool =
-        persistence_rust::open_pool(&db_path).context("failed to open diesel db pool")?;
-
     // The real `/collector/remotes` surface (replacing the former api_stubs
     // stub — the demo FHIR remote it hardcoded is now seeded by migration).
-    // User-created remotes persist in the shared database; a remote's config
+    // The collector rides the same shared diesel pool as the gatekeeper (see
+    // `diesel_pool` above). User-created remotes persist there; a remote's config
     // JSON may carry pharmacy credentials, so the whole surface is Owner-gated
     // like the rest of the admin API.
     let gated_collector = layer_router_with_gatekeeper_auth_gating(

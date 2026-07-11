@@ -1,209 +1,208 @@
-use chrono::{DateTime, Utc};
-use rusqlite::types::{FromSqlError, Type};
-use rusqlite::{params, OptionalExtension};
-use url::Url;
+//! Grant queries — ONE TABLE PER CONCRETE KIND. Single-kind operations
+//! (upserts, keyed lookups) hit their concrete table
+//! (`authorization_code_grants` / `device_grants`) as single-table statements;
+//! cross-kind reads ([`GatekeeperStore::all_grants`],
+//! [`GatekeeperStore::grant_by_id`]) come off the `grants` SQL VIEW
+//! (`UNION ALL` of the two tables — shared columns + kind tag + NULLable
+//! payload columns). There is no parent registry, so there is no
+//! parent-implies-child invariant to enforce and no cross-table transaction
+//! anywhere in this file except the revoke (grant delete + refresh-family
+//! expiry, which must be atomic together).
 
+use chrono::{DateTime, Utc};
+use diesel::prelude::*;
+use url::Url;
 use uuid::Uuid;
 
+use crate::db::columns::{JsonStrings, UrlText};
+use crate::db::schema::{authorization_code_grants, device_grants, grants};
 use crate::db::GatekeeperStore;
 use crate::domain::authorization_request::GrantType;
 use crate::domain::error::GatekeeperError;
-use crate::domain::grant::{Grant, GrantKind};
-use persistence_rust::{DbResult, JsonColumn};
+use crate::domain::grant::{AuthorizationCodeGrant, CumulativeConsent, DeviceGrant, Grant};
 
-/// The one SELECT every grant read uses: the parent `grants` columns plus both
-/// LEFT-JOINed children. [`grant_from_row`] picks the child columns its
-/// `grant_type` needs — a code grant's `redirect_uri`, a device grant's
-/// `device_name`. Mirrors apps' `APP_COLUMNS` (`apps-rust/src/db/reads.rs`).
-const GRANT_COLUMNS: &str =
-    "g.id, g.client_id, g.scopes, g.granted_at, g.last_used_at, g.patient, \
-     g.grant_type, \
-     ac.redirect_uri, \
-     dc.device_name \
-     FROM grants g \
-     LEFT JOIN authorization_code_grants ac ON ac.id = g.id \
-     LEFT JOIN device_grants dc ON dc.id = g.id";
-
-/// Decode one [`GRANT_COLUMNS`] row into a whole [`Grant`], dispatching the kind
-/// payload on the stored `grant_type`.
-///
-/// The single enforcement point of parent-implies-child: a parent whose expected
-/// child row is missing reads `NULL` into a non-nullable payload field and
-/// surfaces as a typed error (a logged 500 at the handler seam), never a partial
-/// `Grant`. Mirrors `app_from_row` (`apps-rust/src/db/reads.rs`).
-fn grant_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Grant> {
-    let kind = match row.get::<_, GrantType>("grant_type")? {
-        GrantType::AuthorizationCode => GrantKind::AuthorizationCode {
-            redirect_uri: get_child(row, "redirect_uri")?,
-        },
-        GrantType::DeviceCode => GrantKind::DeviceCode {
-            device_name: get_child(row, "device_name")?,
-        },
-    };
-    Ok(Grant {
-        id: row.get("id")?,
-        client_id: row.get("client_id")?,
-        scopes: row.get("scopes")?,
-        granted_at: row.get("granted_at")?,
-        last_used_at: row.get("last_used_at")?,
-        patient: row.get("patient")?,
-        kind,
-    })
+/// A row off the `grants` VIEW: the shared columns, the kind tag, and each
+/// kind's payload column (NULL for the other kind). [`TryFrom`] repacks it
+/// into the [`Grant`] enum, dispatching on the tag.
+#[derive(Queryable)]
+struct GrantViewRow {
+    id: String,
+    client_id: String,
+    scopes: JsonStrings,
+    granted_at: DateTime<Utc>,
+    last_used_at: Option<DateTime<Utc>>,
+    patient: Option<String>,
+    grant_type: GrantType,
+    redirect_uri: Option<UrlText>,
+    device_name: Option<String>,
 }
 
-/// Read a required child column, mapping a `NULL` (the LEFT JOIN found no child
-/// row) to a typed error that names the column — the "parent has no child row"
-/// failure [`grant_from_row`] promises. Mirrors apps' `get_child`.
-fn get_child<T: rusqlite::types::FromSql>(
-    row: &rusqlite::Row<'_>,
-    column: &str,
-) -> rusqlite::Result<T> {
-    row.get(column).map_err(|error| match error {
-        rusqlite::Error::InvalidColumnType(index, name, Type::Null) => {
-            rusqlite::Error::FromSqlConversionFailure(
-                index,
-                Type::Null,
-                Box::new(FromSqlError::Other(
-                    format!("child row missing: {name} is NULL for this grant_type").into(),
-                )),
-            )
+impl TryFrom<GrantViewRow> for Grant {
+    type Error = GatekeeperError;
+
+    fn try_from(row: GrantViewRow) -> Result<Self, Self::Error> {
+        // The UNION ALL projects each kind's payload column NOT NULL from its
+        // own table, so a NULL payload for the row's own kind is structurally
+        // impossible — guarded anyway so a future view edit degrades to a
+        // logged 500, never a panic.
+        let missing_payload = || {
+            GatekeeperError::backend("grants view row missing its kind's payload column", &row.id)
+        };
+        match row.grant_type {
+            GrantType::AuthorizationCode => {
+                let redirect_uri = row.redirect_uri.ok_or_else(missing_payload)?.0;
+                Ok(Grant::AuthorizationCode(AuthorizationCodeGrant {
+                    id: row.id,
+                    client_id: row.client_id,
+                    scopes: row.scopes.0,
+                    granted_at: row.granted_at,
+                    last_used_at: row.last_used_at,
+                    patient: row.patient,
+                    redirect_uri,
+                }))
+            }
+            GrantType::DeviceCode => {
+                let device_name = row.device_name.ok_or_else(missing_payload)?;
+                Ok(Grant::DeviceCode(DeviceGrant {
+                    id: row.id,
+                    client_id: row.client_id,
+                    scopes: row.scopes.0,
+                    granted_at: row.granted_at,
+                    last_used_at: row.last_used_at,
+                    patient: row.patient,
+                    device_name,
+                }))
+            }
         }
-        other => other,
-    })
+    }
 }
 
 impl GatekeeperStore {
     /// All grants in `granted_at` order — backs the Owner UI's access index
-    /// (Approved Apps + Authorized Devices).
+    /// (Approved Apps + Authorized Devices). Reads the cross-kind `grants`
+    /// view.
     ///
     /// # Errors
     ///
-    /// [`GatekeeperError::Backend`] if preparing or running the select query
-    /// fails or any returned row cannot be mapped to a [`Grant`].
+    /// [`GatekeeperError::Backend`] if the view read fails or a returned row
+    /// cannot be mapped to a [`Grant`].
     pub fn all_grants(&self) -> Result<Vec<Grant>, GatekeeperError> {
-        let backend = |e| GatekeeperError::backend("all_grants failed", e);
-        let conn = self.conn().lock();
-        let mut stmt = conn
-            .prepare(&format!("SELECT {GRANT_COLUMNS} ORDER BY g.granted_at"))
-            .map_err(backend)?;
-        let rows: rusqlite::Result<Vec<_>> = stmt
-            .query_map([], grant_from_row)
-            .map_err(backend)?
-            .collect();
-        rows.map_err(backend)
+        grants::table
+            .order(grants::granted_at)
+            .load::<GrantViewRow>(&mut self.conn()?)
+            .map_err(|e| GatekeeperError::backend("all_grants failed", e))?
+            .into_iter()
+            .map(Grant::try_from)
+            .collect()
     }
 
-    /// Load a single grant by primary id.
+    /// Load a single grant by primary id — a cross-kind read off the `grants`
+    /// view (ids are UUIDs, unique across both concrete tables).
     ///
     /// # Errors
     ///
-    /// [`GatekeeperError::Backend`] if the select query fails or a returned
-    /// row cannot be mapped to a [`Grant`].
+    /// [`GatekeeperError::Backend`] if the view read fails or the returned row
+    /// cannot be mapped to a [`Grant`].
     pub fn grant_by_id(&self, id: &str) -> Result<Option<Grant>, GatekeeperError> {
-        self.conn()
-            .lock()
-            .query_row(
-                &format!("SELECT {GRANT_COLUMNS} WHERE g.id = ?1"),
-                params![id],
-                grant_from_row,
-            )
+        grants::table
+            .find(id)
+            .first::<GrantViewRow>(&mut self.conn()?)
             .optional()
-            .map_err(|e| GatekeeperError::backend("grant_by_id failed", e))
+            .map_err(|e| GatekeeperError::backend("grant_by_id failed", e))?
+            .map(Grant::try_from)
+            .transpose()
     }
 
     /// Find an existing authorization-code grant for the (`client_id`,
     /// `redirect_uri`) pair so `/authorize` can decide whether to short-circuit
-    /// the consent prompt. Keyed on the code-grant child, so a device grant for
-    /// the same client can never satisfy it.
+    /// the consent prompt. A single-kind lookup, so it hits the concrete table
+    /// and returns the concrete struct — a device grant for the same client
+    /// can never satisfy it.
     ///
     /// # Errors
     ///
     /// [`GatekeeperError::Backend`] if the select query fails or a returned
-    /// row cannot be mapped to a [`Grant`].
+    /// row cannot be mapped to an [`AuthorizationCodeGrant`].
     pub fn grant_by_client_and_redirect(
         &self,
         client_id: &str,
         redirect_uri: &Url,
-    ) -> Result<Option<Grant>, GatekeeperError> {
-        self.conn()
-            .lock()
-            .query_row(
-                &format!("SELECT {GRANT_COLUMNS} WHERE ac.client_id = ?1 AND ac.redirect_uri = ?2"),
-                params![client_id, redirect_uri.as_str()],
-                grant_from_row,
-            )
+    ) -> Result<Option<AuthorizationCodeGrant>, GatekeeperError> {
+        authorization_code_grants::table
+            .filter(authorization_code_grants::client_id.eq(client_id))
+            .filter(authorization_code_grants::redirect_uri.eq(redirect_uri.as_str()))
+            .select(AuthorizationCodeGrant::as_select())
+            .first(&mut self.conn()?)
             .optional()
             .map_err(|e| GatekeeperError::backend("grant_by_client_and_redirect failed", e))
     }
 
     /// Find an existing device grant for the (`client_id`, `device_name`) pair —
     /// the identity a re-pairing upserts against, and the lookup token exchange
-    /// uses to stamp `refresh_token_families.grant_id`.
+    /// uses to stamp `refresh_token_families.grant_id`. Hits the concrete
+    /// table.
     ///
     /// # Errors
     ///
     /// [`GatekeeperError::Backend`] if the select query fails or a returned
-    /// row cannot be mapped to a [`Grant`].
+    /// row cannot be mapped to a [`DeviceGrant`].
     pub fn device_grant_by_client_and_device_name(
         &self,
         client_id: &str,
         device_name: &str,
-    ) -> Result<Option<Grant>, GatekeeperError> {
-        self.conn()
-            .lock()
-            .query_row(
-                &format!("SELECT {GRANT_COLUMNS} WHERE dc.client_id = ?1 AND dc.device_name = ?2"),
-                params![client_id, device_name],
-                grant_from_row,
-            )
+    ) -> Result<Option<DeviceGrant>, GatekeeperError> {
+        device_grants::table
+            .filter(device_grants::client_id.eq(client_id))
+            .filter(device_grants::device_name.eq(device_name))
+            .select(DeviceGrant::as_select())
+            .first(&mut self.conn()?)
             .optional()
             .map_err(|e| {
                 GatekeeperError::backend("device_grant_by_client_and_device_name failed", e)
             })
     }
 
-    /// Insert a brand-new grant row — the parent plus the child its kind implies,
-    /// in one transaction (parent first so the child FK resolves), upholding the
-    /// parent-implies-child invariant. Chiefly a test/seed helper; the flows use
-    /// [`Self::upsert_grant`] / [`Self::upsert_device_grant`].
+    /// Insert a brand-new grant row into its kind's concrete table — a plain
+    /// single-table insert (no parent, no transaction). Chiefly a test/seed
+    /// helper; the flows use [`Self::upsert_grant`] /
+    /// [`Self::upsert_device_grant`].
     ///
     /// # Errors
     ///
-    /// [`GatekeeperError::Backend`] if opening the transaction, either insert,
-    /// or the commit fails (for example a unique-constraint violation).
+    /// [`GatekeeperError::Backend`] if the insert fails (for example a
+    /// unique-constraint violation).
     pub fn create_grant(&self, grant: &Grant) -> Result<(), GatekeeperError> {
         let backend = |e| GatekeeperError::backend("create_grant failed", e);
-        let mut guard = self.conn().lock();
-        let tx = guard.transaction().map_err(backend)?;
-        tx.execute(
-            "INSERT INTO grants (id, client_id, scopes, granted_at, last_used_at, patient, grant_type) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            params![
-                grant.id,
-                grant.client_id,
-                grant.scopes,
-                grant.granted_at,
-                grant.last_used_at,
-                grant.patient,
-                grant.kind.grant_type(),
-            ],
-        )
-        .map_err(backend)?;
-        insert_child(&tx, &grant.id, &grant.client_id, &grant.kind).map_err(backend)?;
-        tx.commit().map_err(backend)
+        let mut conn = self.conn()?;
+        match grant {
+            Grant::AuthorizationCode(grant) => {
+                diesel::insert_into(authorization_code_grants::table)
+                    .values(grant.clone())
+                    .execute(&mut conn)
+                    .map_err(backend)?;
+            }
+            Grant::DeviceCode(grant) => {
+                diesel::insert_into(device_grants::table)
+                    .values(grant.clone())
+                    .execute(&mut conn)
+                    .map_err(backend)?;
+            }
+        }
+        Ok(())
     }
 
     /// Insert or update the standing **authorization-code** grant for
-    /// `(client_id, redirect_uri)` in a single transaction. Consent is
-    /// cumulative: an existing grant's scopes are unioned with `scopes`, and
-    /// `granted_at`/`patient` are refreshed. The read-merge-write under one
-    /// transaction (paired with the child's `UNIQUE(client_id, redirect_uri)`)
-    /// means two concurrent approvals can't both insert a duplicate grant.
+    /// `(client_id, redirect_uri)` in a single transaction on its one table.
+    /// Consent is cumulative ([`CumulativeConsent`]): an existing grant absorbs
+    /// the re-approval (scope union, refreshed `granted_at`/`patient`). The
+    /// read-merge-write under one transaction (paired with the table's
+    /// `UNIQUE(client_id, redirect_uri)`) means two concurrent approvals can't
+    /// both insert a duplicate grant.
     ///
     /// # Errors
     ///
-    /// [`GatekeeperError::Backend`] if opening the transaction, the read, the
-    /// insert/update, or the commit fails.
+    /// [`GatekeeperError::Backend`] if the transaction, the read, or the
+    /// insert/update fails.
     pub fn upsert_grant(
         &self,
         client_id: &str,
@@ -212,54 +211,56 @@ impl GatekeeperStore {
         patient: Option<&str>,
         now: DateTime<Utc>,
     ) -> Result<(), GatekeeperError> {
-        let backend = |e| GatekeeperError::backend("upsert_grant failed", e);
-        let mut guard = self.conn().lock();
-        let tx = guard.transaction().map_err(backend)?;
-        let existing: Option<(String, JsonColumn<Vec<String>>)> = tx
-            .query_row(
-                "SELECT g.id, g.scopes FROM authorization_code_grants ac \
-                 JOIN grants g ON g.id = ac.id \
-                 WHERE ac.client_id = ?1 AND ac.redirect_uri = ?2",
-                params![client_id, redirect_uri.as_str()],
-                |row| Ok((row.get("id")?, row.get("scopes")?)),
-            )
-            .optional()
-            .map_err(backend)?;
-        if let Some((id, JsonColumn(merged))) = existing {
-            let scopes_json = JsonColumn(union_scopes(merged, scopes));
-            tx.execute(
-                "UPDATE grants SET scopes = ?2, granted_at = ?3, patient = ?4 WHERE id = ?1",
-                params![id, scopes_json, now, patient],
-            )
-            .map_err(backend)?;
-        } else {
-            let id = Uuid::new_v4().to_string();
-            insert_parent(
-                &tx,
-                &id,
-                client_id,
-                scopes,
-                patient,
-                now,
-                GrantType::AuthorizationCode,
-            )
-            .map_err(backend)?;
-            insert_authorization_code_child(&tx, &id, client_id, redirect_uri).map_err(backend)?;
-        }
-        tx.commit().map_err(backend)
+        let mut conn = self.conn()?;
+        conn.transaction(|conn| {
+            let existing: Option<AuthorizationCodeGrant> = authorization_code_grants::table
+                .filter(authorization_code_grants::client_id.eq(client_id))
+                .filter(authorization_code_grants::redirect_uri.eq(redirect_uri.as_str()))
+                .select(AuthorizationCodeGrant::as_select())
+                .first(conn)
+                .optional()?;
+            match existing {
+                Some(mut grant) => {
+                    grant.absorb_reapproval(scopes, patient, now);
+                    diesel::update(authorization_code_grants::table.find(&grant.id))
+                        .set((
+                            authorization_code_grants::scopes.eq(JsonStrings(grant.scopes)),
+                            authorization_code_grants::granted_at.eq(grant.granted_at),
+                            authorization_code_grants::patient.eq(grant.patient),
+                        ))
+                        .execute(conn)?;
+                }
+                None => {
+                    diesel::insert_into(authorization_code_grants::table)
+                        .values(AuthorizationCodeGrant {
+                            id: Uuid::new_v4().to_string(),
+                            client_id: client_id.to_owned(),
+                            scopes: scopes.to_vec(),
+                            granted_at: now,
+                            last_used_at: None,
+                            patient: patient.map(str::to_owned),
+                            redirect_uri: redirect_uri.clone(),
+                        })
+                        .execute(conn)?;
+                }
+            }
+            Ok(())
+        })
+        .map_err(|e: diesel::result::Error| GatekeeperError::backend("upsert_grant failed", e))
     }
 
     /// Insert or update the standing **device** grant for
-    /// `(client_id, device_name)` in a single transaction, with the same
-    /// cumulative-scopes semantics as [`Self::upsert_grant`] — this is what makes
-    /// a device-code approval leave a durable record. Re-pairing the same device
-    /// (same name) unions scopes onto the existing grant; the child's
-    /// `UNIQUE(client_id, device_name)` keeps concurrent approvals race-safe.
+    /// `(client_id, device_name)` in a single transaction on its one table,
+    /// with the same cumulative-consent semantics as [`Self::upsert_grant`] —
+    /// this is what makes a device-code approval leave a durable record.
+    /// Re-pairing the same device (same name) absorbs the re-approval onto the
+    /// existing grant; the table's `UNIQUE(client_id, device_name)` keeps
+    /// concurrent approvals race-safe.
     ///
     /// # Errors
     ///
-    /// [`GatekeeperError::Backend`] if opening the transaction, the read, the
-    /// insert/update, or the commit fails.
+    /// [`GatekeeperError::Backend`] if the transaction, the read, or the
+    /// insert/update fails.
     pub fn upsert_device_grant(
         &self,
         client_id: &str,
@@ -268,41 +269,44 @@ impl GatekeeperStore {
         patient: Option<&str>,
         now: DateTime<Utc>,
     ) -> Result<(), GatekeeperError> {
-        let backend = |e| GatekeeperError::backend("upsert_device_grant failed", e);
-        let mut guard = self.conn().lock();
-        let tx = guard.transaction().map_err(backend)?;
-        let existing: Option<(String, JsonColumn<Vec<String>>)> = tx
-            .query_row(
-                "SELECT g.id, g.scopes FROM device_grants dc \
-                 JOIN grants g ON g.id = dc.id \
-                 WHERE dc.client_id = ?1 AND dc.device_name = ?2",
-                params![client_id, device_name],
-                |row| Ok((row.get("id")?, row.get("scopes")?)),
-            )
-            .optional()
-            .map_err(backend)?;
-        if let Some((id, JsonColumn(merged))) = existing {
-            let scopes_json = JsonColumn(union_scopes(merged, scopes));
-            tx.execute(
-                "UPDATE grants SET scopes = ?2, granted_at = ?3, patient = ?4 WHERE id = ?1",
-                params![id, scopes_json, now, patient],
-            )
-            .map_err(backend)?;
-        } else {
-            let id = Uuid::new_v4().to_string();
-            insert_parent(
-                &tx,
-                &id,
-                client_id,
-                scopes,
-                patient,
-                now,
-                GrantType::DeviceCode,
-            )
-            .map_err(backend)?;
-            insert_device_child(&tx, &id, client_id, device_name).map_err(backend)?;
-        }
-        tx.commit().map_err(backend)
+        let mut conn = self.conn()?;
+        conn.transaction(|conn| {
+            let existing: Option<DeviceGrant> = device_grants::table
+                .filter(device_grants::client_id.eq(client_id))
+                .filter(device_grants::device_name.eq(device_name))
+                .select(DeviceGrant::as_select())
+                .first(conn)
+                .optional()?;
+            match existing {
+                Some(mut grant) => {
+                    grant.absorb_reapproval(scopes, patient, now);
+                    diesel::update(device_grants::table.find(&grant.id))
+                        .set((
+                            device_grants::scopes.eq(JsonStrings(grant.scopes)),
+                            device_grants::granted_at.eq(grant.granted_at),
+                            device_grants::patient.eq(grant.patient),
+                        ))
+                        .execute(conn)?;
+                }
+                None => {
+                    diesel::insert_into(device_grants::table)
+                        .values(DeviceGrant {
+                            id: Uuid::new_v4().to_string(),
+                            client_id: client_id.to_owned(),
+                            scopes: scopes.to_vec(),
+                            granted_at: now,
+                            last_used_at: None,
+                            patient: patient.map(str::to_owned),
+                            device_name: device_name.to_owned(),
+                        })
+                        .execute(conn)?;
+                }
+            }
+            Ok(())
+        })
+        .map_err(|e: diesel::result::Error| {
+            GatekeeperError::backend("upsert_device_grant failed", e)
+        })
     }
 
     /// Revoke a grant and expire the refresh-token families of its client in a
@@ -310,124 +314,54 @@ impl GatekeeperStore {
     /// one transaction means a partial failure can't leave the grant deleted
     /// while `offline_access` refresh tokens stay live (up to 90 days) —
     /// standing consent and standing credentials die together or not at all.
-    /// Deleting the parent cascades to its child (`ON DELETE CASCADE`); families
-    /// are expired in place (deadline pulled to `now`, live tokens stamped
-    /// consumed), not deleted, so the lineage stays auditable.
+    ///
+    /// The delete targets BOTH concrete tables rather than dispatching on the
+    /// kind: grant ids are UUIDs unique across the two tables, so exactly one
+    /// (or neither) delete affects a row, and the caller doesn't have to
+    /// thread the kind through. Families are expired in place (deadline pulled
+    /// to `now`, live tokens stamped consumed), not deleted, so the lineage
+    /// stays auditable.
     ///
     /// # Errors
     ///
-    /// [`GatekeeperError::Backend`] if opening the transaction, any statement,
-    /// or the commit fails.
+    /// [`GatekeeperError::Backend`] if the transaction or any statement fails.
     pub fn revoke_grant_and_expire_client_families(
         &self,
         grant_id: &str,
         client_id: &str,
         now: DateTime<Utc>,
     ) -> Result<bool, GatekeeperError> {
-        let backend =
-            |e| GatekeeperError::backend("revoke_grant_and_expire_client_families failed", e);
-        let mut guard = self.conn().lock();
-        let tx = guard.transaction().map_err(backend)?;
-        let affected = tx
-            .execute("DELETE FROM grants WHERE id = ?1", params![grant_id])
-            .map_err(backend)?;
-        tx.execute(
-            "UPDATE refresh_tokens SET consumed_at = ?2
-             WHERE consumed_at IS NULL AND family_id IN
-                 (SELECT family_id FROM refresh_token_families WHERE client_id = ?1)",
-            params![client_id, now],
-        )
-        .map_err(backend)?;
-        tx.execute(
-            "UPDATE refresh_token_families SET expires_at = ?2 WHERE client_id = ?1",
-            params![client_id, now],
-        )
-        .map_err(backend)?;
-        tx.commit().map_err(backend)?;
-        Ok(affected > 0)
-    }
-}
-
-/// Union `additional` scopes into `merged`, preserving order and skipping
-/// duplicates — consent is cumulative (approving a narrower request never
-/// withdraws previously-consented scopes; revocation is the way to withdraw).
-fn union_scopes(mut merged: Vec<String>, additional: &[String]) -> Vec<String> {
-    for scope in additional {
-        if !merged.contains(scope) {
-            merged.push(scope.clone());
-        }
-    }
-    merged
-}
-
-/// Insert a fresh parent `grants` row (`last_used_at` NULL) with the given
-/// discriminator — shared by the insert arms of both upserts.
-fn insert_parent(
-    tx: &rusqlite::Transaction<'_>,
-    id: &str,
-    client_id: &str,
-    scopes: &[String],
-    patient: Option<&str>,
-    now: DateTime<Utc>,
-    grant_type: GrantType,
-) -> DbResult<()> {
-    let scopes_json = JsonColumn(scopes.to_vec());
-    tx.execute(
-        "INSERT INTO grants (id, client_id, scopes, granted_at, last_used_at, patient, grant_type) \
-         VALUES (?1, ?2, ?3, ?4, NULL, ?5, ?6)",
-        params![id, client_id, scopes_json, now, patient, grant_type],
-    )?;
-    Ok(())
-}
-
-/// Insert the authorization-code child row — the single write site for the
-/// `authorization_code_grants` shape, shared by [`insert_child`] and
-/// [`GatekeeperStore::upsert_grant`]'s insert arm.
-fn insert_authorization_code_child(
-    tx: &rusqlite::Transaction<'_>,
-    id: &str,
-    client_id: &str,
-    redirect_uri: &Url,
-) -> DbResult<()> {
-    tx.execute(
-        "INSERT INTO authorization_code_grants (id, client_id, redirect_uri) \
-         VALUES (?1, ?2, ?3)",
-        params![id, client_id, redirect_uri.as_str()],
-    )?;
-    Ok(())
-}
-
-/// Insert the device child row — the single write site for the `device_grants`
-/// shape, shared by [`insert_child`] and
-/// [`GatekeeperStore::upsert_device_grant`]'s insert arm.
-fn insert_device_child(
-    tx: &rusqlite::Transaction<'_>,
-    id: &str,
-    client_id: &str,
-    device_name: &str,
-) -> DbResult<()> {
-    tx.execute(
-        "INSERT INTO device_grants (id, client_id, device_name) VALUES (?1, ?2, ?3)",
-        params![id, client_id, device_name],
-    )?;
-    Ok(())
-}
-
-/// Insert the child row a [`GrantKind`] implies — the write half of
-/// parent-implies-child for [`GatekeeperStore::create_grant`].
-fn insert_child(
-    tx: &rusqlite::Transaction<'_>,
-    id: &str,
-    client_id: &str,
-    kind: &GrantKind,
-) -> DbResult<()> {
-    match kind {
-        GrantKind::AuthorizationCode { redirect_uri } => {
-            insert_authorization_code_child(tx, id, client_id, redirect_uri)
-        }
-        GrantKind::DeviceCode { device_name } => {
-            insert_device_child(tx, id, client_id, device_name)
-        }
+        use crate::db::schema::{refresh_token_families, refresh_tokens};
+        let mut conn = self.conn()?;
+        conn.transaction(|conn| {
+            let from_code_grants =
+                diesel::delete(authorization_code_grants::table.find(grant_id)).execute(conn)?;
+            let from_device_grants =
+                diesel::delete(device_grants::table.find(grant_id)).execute(conn)?;
+            diesel::update(
+                refresh_tokens::table
+                    .filter(refresh_tokens::consumed_at.is_null())
+                    .filter(
+                        refresh_tokens::family_id.eq_any(
+                            refresh_token_families::table
+                                .filter(refresh_token_families::client_id.eq(client_id))
+                                .select(refresh_token_families::family_id),
+                        ),
+                    ),
+            )
+            .set(refresh_tokens::consumed_at.eq(now))
+            .execute(conn)?;
+            diesel::update(
+                refresh_token_families::table
+                    .filter(refresh_token_families::client_id.eq(client_id)),
+            )
+            .set(refresh_token_families::expires_at.eq(now))
+            .execute(conn)?;
+            Ok(from_code_grants + from_device_grants > 0)
+        })
+        .map_err(|e: diesel::result::Error| {
+            GatekeeperError::backend("revoke_grant_and_expire_client_families failed", e)
+        })
     }
 }
 
@@ -435,19 +369,19 @@ fn insert_child(
 mod tests {
     use super::*;
     use crate::db::test_support::{arb_opt_timestamp, arb_timestamp, arb_url};
-    use persistence_rust::{JsonColumn, UriColumn};
     use proptest::prelude::*;
 
-    fn arb_kind() -> impl Strategy<Value = GrantKind> {
-        prop_oneof![
-            arb_url().prop_map(|url| GrantKind::AuthorizationCode {
-                redirect_uri: UriColumn(url),
-            }),
-            "[ -~]{1,40}".prop_map(|device_name| GrantKind::DeviceCode { device_name }),
-        ]
-    }
+    /// The columns both grant kinds share, in field order.
+    type SharedGrantFields = (
+        String,
+        String,
+        Vec<String>,
+        chrono::DateTime<Utc>,
+        Option<chrono::DateTime<Utc>>,
+        Option<String>,
+    );
 
-    fn arb_grant() -> impl Strategy<Value = Grant> {
+    fn arb_shared() -> impl Strategy<Value = SharedGrantFields> {
         (
             "[a-zA-Z0-9_-]{1,32}",
             "[a-zA-Z0-9_-]{1,32}",
@@ -455,19 +389,37 @@ mod tests {
             arb_timestamp(),
             arb_opt_timestamp(),
             prop::option::of("[a-zA-Z0-9-]{1,32}"),
-            arb_kind(),
         )
-            .prop_map(
-                |(id, client_id, scopes, granted_at, last_used_at, patient, kind)| Grant {
+    }
+
+    fn arb_grant() -> impl Strategy<Value = Grant> {
+        let code = (arb_shared(), arb_url()).prop_map(
+            |((id, client_id, scopes, granted_at, last_used_at, patient), redirect_uri)| {
+                Grant::AuthorizationCode(AuthorizationCodeGrant {
                     id,
                     client_id,
-                    scopes: JsonColumn(scopes),
+                    scopes,
                     granted_at,
                     last_used_at,
                     patient,
-                    kind,
-                },
-            )
+                    redirect_uri,
+                })
+            },
+        );
+        let device = (arb_shared(), "[ -~]{1,40}").prop_map(
+            |((id, client_id, scopes, granted_at, last_used_at, patient), device_name)| {
+                Grant::DeviceCode(DeviceGrant {
+                    id,
+                    client_id,
+                    scopes,
+                    granted_at,
+                    last_used_at,
+                    patient,
+                    device_name,
+                })
+            },
+        );
+        prop_oneof![code, device]
     }
 
     fn read(url: &str) -> Url {
@@ -477,14 +429,15 @@ mod tests {
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(48))]
 
-        /// Both variants round-trip through the JOIN decoder: `create_grant`
-        /// writes parent + child, and `grant_by_id` reconstructs the whole grant.
+        /// Both kinds round-trip through the view decoder: `create_grant`
+        /// writes the concrete table, and `grant_by_id` reconstructs the whole
+        /// grant off the `grants` view.
         #[test]
         fn create_and_fetch_round_trip(grant in arb_grant()) {
             let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
             store.create_grant(&grant).expect("create");
             let fetched = store
-                .grant_by_id(&grant.id)
+                .grant_by_id(grant.id())
                 .expect("query")
                 .expect("row present");
             prop_assert_eq!(fetched, grant);
@@ -512,9 +465,8 @@ mod tests {
             .grant_by_client_and_redirect("client-a", &redirect)
             .expect("query")
             .expect("present");
-        assert_eq!(&*grant.scopes, &["read".to_owned()]);
+        assert_eq!(grant.scopes, vec!["read".to_owned()]);
         assert_eq!(grant.patient.as_deref(), Some("pat-1"));
-        assert!(matches!(grant.kind, GrantKind::AuthorizationCode { .. }));
 
         // Re-approve with an overlapping + a new scope: union, not replace.
         store
@@ -534,7 +486,7 @@ mod tests {
             updated.id, grant.id,
             "the same grant is updated, not duplicated"
         );
-        assert_eq!(&*updated.scopes, &["read".to_owned(), "write".to_owned()]);
+        assert_eq!(updated.scopes, vec!["read".to_owned(), "write".to_owned()]);
         assert_eq!(updated.patient.as_deref(), Some("pat-2"));
         assert_eq!(store.all_grants().expect("list").len(), 1);
     }
@@ -559,11 +511,8 @@ mod tests {
             .device_grant_by_client_and_device_name("client-a", "Ada's laptop")
             .expect("query")
             .expect("present");
-        assert_eq!(&*grant.scopes, &["openid".to_owned()]);
-        match &grant.kind {
-            GrantKind::DeviceCode { device_name } => assert_eq!(device_name, "Ada's laptop"),
-            other => panic!("expected a device grant, got {other:?}"),
-        }
+        assert_eq!(grant.scopes, vec!["openid".to_owned()]);
+        assert_eq!(grant.device_name, "Ada's laptop");
 
         store
             .upsert_device_grant(
@@ -583,8 +532,8 @@ mod tests {
             "re-pairing the same device updates one grant"
         );
         assert_eq!(
-            &*updated.scopes,
-            &["openid".to_owned(), "offline_access".to_owned()],
+            updated.scopes,
+            vec!["openid".to_owned(), "offline_access".to_owned()],
         );
         assert_eq!(store.all_grants().expect("list").len(), 1);
 
@@ -637,42 +586,16 @@ mod tests {
         assert_eq!(store.all_grants().expect("list").len(), 2);
     }
 
-    /// A parent whose expected child row is gone (raw SQL tampering) is a typed
-    /// read error naming the invariant, never a partial `Grant`.
+    /// Revoking removes the concrete row — visible both through the view read
+    /// and the concrete-table lookup — and, in the SAME transaction, expires
+    /// the client's refresh-token families (deadline pulled to the revocation
+    /// instant, live token stamped consumed): standing consent and standing
+    /// credentials die together. A second revoke of the same id reports the
+    /// miss.
     #[test]
-    fn missing_child_row_is_a_typed_read_error() {
-        let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
-        store
-            .upsert_grant(
-                "client-a",
-                &read("https://example.com/cb"),
-                &["read".to_owned()],
-                None,
-                Utc::now(),
-            )
-            .expect("insert");
-        let id = store.all_grants().expect("list")[0].id.clone();
-        // Drop the child directly (bypassing the cascade) to orphan the parent.
-        store
-            .conn()
-            .lock()
-            .execute(
-                "DELETE FROM authorization_code_grants WHERE id = ?1",
-                params![id],
-            )
-            .expect("delete child");
-        let error = store
-            .grant_by_id(&id)
-            .expect_err("a code parent with no child must fail the read");
-        assert!(
-            error.to_string().contains("child row missing"),
-            "error should name the invariant: {error}",
-        );
-    }
+    fn revoke_removes_the_row_and_expires_the_clients_families() {
+        use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 
-    /// Revoking deletes the parent and cascades to the child.
-    #[test]
-    fn revoke_cascades_to_the_child() {
         let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
         store
             .upsert_device_grant(
@@ -683,21 +606,50 @@ mod tests {
                 Utc::now(),
             )
             .expect("insert");
-        let id = store.all_grants().expect("list")[0].id.clone();
+        let id = store.all_grants().expect("list")[0].id().to_owned();
+        // A standing credential minted under this client, live at revoke time.
+        let family = RefreshTokenFamily {
+            family_id: "fam-1".to_owned(),
+            client_id: "client-a".to_owned(),
+            scopes: vec!["openid".to_owned()],
+            patient: None,
+            issued_at: Utc::now(),
+            expires_at: Utc::now() + chrono::Duration::days(90),
+            authorization_code_hash: None,
+            grant_id: Some(id.clone()),
+        };
+        let live = RefreshToken {
+            token_hash: "live-token".to_owned(),
+            family_id: "fam-1".to_owned(),
+            issued_at: Utc::now(),
+            consumed_at: None,
+        };
+        store
+            .insert_refresh_token_family(&family, &live)
+            .expect("insert family");
 
+        let revoked_at = Utc::now();
         assert!(store
-            .revoke_grant_and_expire_client_families(&id, "client-a", Utc::now())
+            .revoke_grant_and_expire_client_families(&id, "client-a", revoked_at)
             .expect("revoke"));
         assert!(store.grant_by_id(&id).expect("query").is_none());
-        let child_count: i64 = store
-            .conn()
-            .lock()
-            .query_row(
-                "SELECT COUNT(*) FROM device_grants WHERE id = ?1",
-                params![id],
-                |row| row.get(0),
-            )
-            .expect("count");
-        assert_eq!(child_count, 0, "the child row is gone via CASCADE");
+        assert!(store
+            .device_grant_by_client_and_device_name("client-a", "Ada's laptop")
+            .expect("query")
+            .is_none());
+        // The family died with the consent: deadline pulled back, live token
+        // stamped at the same instant.
+        let (token, family) = store
+            .refresh_token_with_family_by_hash("live-token")
+            .expect("query")
+            .expect("row kept for auditability");
+        assert_eq!(family.expires_at, revoked_at);
+        assert_eq!(token.consumed_at, Some(revoked_at));
+        assert!(
+            !store
+                .revoke_grant_and_expire_client_families(&id, "client-a", Utc::now())
+                .expect("second revoke"),
+            "a second revoke of the same id is a miss",
+        );
     }
 }

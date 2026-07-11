@@ -1,60 +1,26 @@
-use rusqlite::{params, OptionalExtension, Row, ToSql};
+//! `signing_keys` queries — the RSA keys backing JWS signatures and the JWKS
+//! endpoint, loaded/stored as [`SigningKey`].
 
+use diesel::prelude::*;
+
+use crate::db::schema::signing_keys;
 use crate::db::GatekeeperStore;
 use crate::domain::error::GatekeeperError;
-use crate::domain::signing_key::{SigningKey, SigningKeyValues};
-use persistence_rust::build_insert_sql;
-use persistence_rust::JsonColumn;
-
-impl TryFrom<&Row<'_>> for SigningKey {
-    type Error = rusqlite::Error;
-    fn try_from(row: &Row<'_>) -> rusqlite::Result<Self> {
-        Ok(SigningKey {
-            kid: row.get("kid")?,
-            kty: row.get("kty")?,
-            alg: row.get("alg")?,
-            values: row
-                .get::<_, JsonColumn<SigningKeyValues>>("values_json")?
-                .into_inner(),
-            is_active: row.get("is_active")?,
-        })
-    }
-}
-
-/// `values` isn't stored as a `JsonColumn` field on `SigningKey`, so the JSON
-/// wrapper is a temporary the caller must own — hence the `values_json`
-/// parameter binds to a `&JsonColumn` local in `insert_signing_key`.
-fn make_named_sql_params<'a>(
-    key: &'a SigningKey,
-    values_json: &'a JsonColumn<&'a SigningKeyValues>,
-) -> [(&'a str, &'a dyn ToSql); 5] {
-    [
-        (":kid", &key.kid),
-        (":kty", &key.kty),
-        (":alg", &key.alg),
-        (":values_json", values_json),
-        (":is_active", &key.is_active),
-    ]
-}
+use crate::domain::signing_key::SigningKey;
 
 impl GatekeeperStore {
     /// Load every signing key, active keys first then by `kid`.
     ///
     /// # Errors
     ///
-    /// [`GatekeeperError::Backend`] if preparing or running the select query
-    /// fails or any returned row cannot be mapped to a [`SigningKey`].
+    /// [`GatekeeperError::Backend`] if the select query fails or any returned
+    /// row cannot be mapped to a [`SigningKey`].
     pub fn all_signing_keys(&self) -> Result<Vec<SigningKey>, GatekeeperError> {
-        let backend = |e| GatekeeperError::backend("all_signing_keys failed", e);
-        let conn = self.conn().lock();
-        let mut stmt = conn.prepare(
-            "SELECT kid, kty, alg, values_json, is_active FROM signing_keys ORDER BY is_active DESC, kid",
-        ).map_err(backend)?;
-        let rows: rusqlite::Result<Vec<_>> = stmt
-            .query_map([], |row| SigningKey::try_from(row))
-            .map_err(backend)?
-            .collect();
-        rows.map_err(backend)
+        signing_keys::table
+            .order((signing_keys::is_active.desc(), signing_keys::kid))
+            .select(SigningKey::as_select())
+            .load(&mut self.conn()?)
+            .map_err(|e| GatekeeperError::backend("all_signing_keys failed", e))
     }
 
     /// Load the active signing key, if one exists.
@@ -64,13 +30,10 @@ impl GatekeeperStore {
     /// [`GatekeeperError::Backend`] if the select query fails or a returned
     /// row cannot be mapped to a [`SigningKey`].
     pub fn active_signing_key(&self) -> Result<Option<SigningKey>, GatekeeperError> {
-        self.conn()
-            .lock()
-            .query_row(
-                "SELECT kid, kty, alg, values_json, is_active FROM signing_keys WHERE is_active = 1 LIMIT 1",
-                params![],
-                |row| SigningKey::try_from(row),
-            )
+        signing_keys::table
+            .filter(signing_keys::is_active.eq(true))
+            .select(SigningKey::as_select())
+            .first(&mut self.conn()?)
             .optional()
             .map_err(|e| GatekeeperError::backend("active_signing_key failed", e))
     }
@@ -83,14 +46,11 @@ impl GatekeeperStore {
     ///
     /// [`GatekeeperError::Backend`] if the query fails.
     pub fn has_active_signing_key(&self) -> Result<bool, GatekeeperError> {
-        self.conn()
-            .lock()
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM signing_keys WHERE is_active = 1)",
-                params![],
-                |row| row.get(0),
-            )
-            .map_err(|e| GatekeeperError::backend("has_active_signing_key failed", e))
+        diesel::select(diesel::dsl::exists(
+            signing_keys::table.filter(signing_keys::is_active.eq(true)),
+        ))
+        .get_result(&mut self.conn()?)
+        .map_err(|e| GatekeeperError::backend("has_active_signing_key failed", e))
     }
 
     /// Persist a signing key.
@@ -100,11 +60,9 @@ impl GatekeeperStore {
     /// [`GatekeeperError::Backend`] if the insert fails (for example a
     /// unique-constraint violation on the `kid`).
     pub fn insert_signing_key(&self, key: &SigningKey) -> Result<(), GatekeeperError> {
-        let values_json = JsonColumn(&key.values);
-        let params = make_named_sql_params(key, &values_json);
-        self.conn()
-            .lock()
-            .execute(&build_insert_sql("signing_keys", &params), &params)
+        diesel::insert_into(signing_keys::table)
+            .values(key.clone())
+            .execute(&mut self.conn()?)
             .map_err(|e| GatekeeperError::backend("insert_signing_key failed", e))?;
         Ok(())
     }
@@ -113,6 +71,7 @@ impl GatekeeperStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::signing_key::SigningKeyValues;
     use proptest::prelude::*;
 
     /// The db layer treats `SigningKeyValues` as opaque JSON, so the

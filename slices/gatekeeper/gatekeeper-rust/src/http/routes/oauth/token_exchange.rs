@@ -25,7 +25,6 @@ use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily, REFRESH_TOK
 use crate::http::state::AppState;
 use crate::http::wire_representations::{OAuthError, TokenResponse};
 use crate::http::ServedOrigin;
-use persistence_rust::JsonColumn;
 use scopes_rust::KnownScope;
 
 /// Body of an RFC 6749 / RFC 8628 token endpoint request, dispatched by the
@@ -294,9 +293,9 @@ fn validate_code_and_issue_token(
         );
         return Err(invalid_grant());
     }
-    if code_record.redirect_uri.0 != *redirect_uri {
+    if code_record.redirect_uri != *redirect_uri {
         tracing::warn!(
-            code_redirect_uri = %code_record.redirect_uri.0,
+            code_redirect_uri = %code_record.redirect_uri,
             presented_redirect_uri = %redirect_uri,
             "authorization_code grant rejected: redirect_uri does not match the code"
         );
@@ -435,10 +434,7 @@ fn exchange_device_code(
             Some("Device code already redeemed"),
         ));
     }
-    let granted_scopes: &[String] = request_record
-        .granted_scopes
-        .as_deref()
-        .map_or(&[], Vec::as_slice);
+    let granted_scopes: &[String] = request_record.granted_scopes.as_deref().unwrap_or(&[]);
     // Resolve the durable device grant minted at approval so the family records
     // it (write-only in v1). The grant is keyed on the *effective* device name —
     // the request's name, or the client name it defaulted to when the device
@@ -500,7 +496,7 @@ fn start_refresh_token_family_if_granted(
     let family = RefreshTokenFamily {
         family_id: Uuid::new_v4().to_string(),
         client_id: client_id.to_string(),
-        scopes: JsonColumn(granted_scopes.to_vec()),
+        scopes: granted_scopes.to_vec(),
         patient: patient.map(str::to_string),
         issued_at: now,
         expires_at: now + REFRESH_TOKEN_FAMILY_TTL,

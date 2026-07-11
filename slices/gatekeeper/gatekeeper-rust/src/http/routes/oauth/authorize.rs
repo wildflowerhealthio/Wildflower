@@ -19,7 +19,6 @@ use crate::http::errors::InternalError;
 use crate::http::errors::{oauth_error_html, OAuthErrorKind};
 use crate::http::state::AppState;
 use crate::http::ServedOrigin;
-use persistence_rust::{JsonColumn, UriColumn};
 
 /// A `code_challenge` for the S256 method is the base64url SHA-256 digest:
 /// exactly 43 unpadded base64url characters (RFC 7636 §4.2).
@@ -448,9 +447,9 @@ fn issue_code(
         code: code.clone(),
         request_id: request_id.to_string(),
         client_id: params.client_id.clone(),
-        redirect_uri: UriColumn(parsed_redirect.clone()),
+        redirect_uri: parsed_redirect.clone(),
         code_challenge: params.code_challenge.clone(),
-        granted_scopes: JsonColumn(requested_scopes.to_vec()),
+        granted_scopes: requested_scopes.to_vec(),
         patient: patient.map(str::to_string),
         issued_at,
         expires_at: issued_at + AUTHORIZATION_CODE_TTL,

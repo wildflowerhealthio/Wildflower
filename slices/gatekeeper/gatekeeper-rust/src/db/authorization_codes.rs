@@ -1,28 +1,18 @@
-use rusqlite::{params, OptionalExtension};
+//! `authorization_codes` queries — issue, look up, and atomically redeem the
+//! single-use codes ([`AuthorizationCode`]) minted at `/authorize`.
 
+use diesel::prelude::*;
+
+use crate::db::schema::authorization_codes;
 use crate::db::GatekeeperStore;
 use crate::domain::authorization_code::AuthorizationCode;
 use crate::domain::error::GatekeeperError;
-use persistence_rust::build_insert_sql;
-use persistence_rust::sql_row;
-
-sql_row!(AuthorizationCode {
-    code,
-    request_id,
-    client_id,
-    redirect_uri,
-    code_challenge,
-    granted_scopes,
-    patient,
-    issued_at,
-    expires_at,
-});
 
 impl GatekeeperStore {
     /// Atomically read-and-delete the authorization code so a `/token`
     /// redemption either gets the row exactly once or sees `None`. Wins the
     /// RFC 6749 §10.5 single-use race against any concurrent redeemer of the
-    /// same code — `DELETE ... RETURNING` runs under `SQLite`'s write lock, so
+    /// same code — `DELETE … RETURNING` runs under `SQLite`'s write lock, so
     /// only one caller's `Ok(Some)` lands and any racer sees `Ok(None)`.
     ///
     /// # Errors
@@ -33,13 +23,9 @@ impl GatekeeperStore {
         &self,
         code: &str,
     ) -> Result<Option<AuthorizationCode>, GatekeeperError> {
-        self.conn()
-            .lock()
-            .query_row(
-                &format!("DELETE FROM authorization_codes WHERE code = ?1 RETURNING {ALL_COLS}"),
-                params![code],
-                |row| AuthorizationCode::try_from(row),
-            )
+        diesel::delete(authorization_codes::table.find(code))
+            .returning(AuthorizationCode::as_returning())
+            .get_result(&mut self.conn()?)
             .optional()
             .map_err(|e| GatekeeperError::backend("redeem_authorization_code failed", e))
     }
@@ -55,13 +41,10 @@ impl GatekeeperStore {
         &self,
         request_id: &str,
     ) -> Result<Option<AuthorizationCode>, GatekeeperError> {
-        self.conn()
-            .lock()
-            .query_row(
-                &format!("SELECT {ALL_COLS} FROM authorization_codes WHERE request_id = ?1"),
-                params![request_id],
-                |row| AuthorizationCode::try_from(row),
-            )
+        authorization_codes::table
+            .filter(authorization_codes::request_id.eq(request_id))
+            .select(AuthorizationCode::as_select())
+            .first(&mut self.conn()?)
             .optional()
             .map_err(|e| GatekeeperError::backend("authorization_code_by_request_id failed", e))
     }
@@ -76,10 +59,9 @@ impl GatekeeperStore {
         &self,
         code: &AuthorizationCode,
     ) -> Result<(), GatekeeperError> {
-        let params = make_named_sql_params(code);
-        self.conn()
-            .lock()
-            .execute(&build_insert_sql("authorization_codes", &params), &params)
+        diesel::insert_into(authorization_codes::table)
+            .values(code.clone())
+            .execute(&mut self.conn()?)
             .map_err(|e| GatekeeperError::backend("issue_authorization_code failed", e))?;
         Ok(())
     }
@@ -89,7 +71,6 @@ impl GatekeeperStore {
 mod tests {
     use super::*;
     use crate::db::test_support::{arb_timestamp, arb_url};
-    use persistence_rust::{JsonColumn, UriColumn};
     use proptest::prelude::*;
 
     fn arb_authorization_code() -> impl Strategy<Value = AuthorizationCode> {
@@ -119,9 +100,9 @@ mod tests {
                     code,
                     request_id,
                     client_id,
-                    redirect_uri: UriColumn(redirect_uri),
+                    redirect_uri,
                     code_challenge,
-                    granted_scopes: JsonColumn(granted_scopes),
+                    granted_scopes,
                     patient,
                     issued_at,
                     expires_at,
@@ -142,5 +123,37 @@ mod tests {
                 .expect("row present");
             prop_assert_eq!(fetched, code);
         }
+    }
+
+    /// Redemption is destructive and single-winner: the first call returns the
+    /// row, the second sees `None` (RFC 6749 §10.5).
+    #[test]
+    fn redeem_returns_the_row_exactly_once() {
+        let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
+        let now = chrono::Utc::now();
+        let code = AuthorizationCode {
+            code: "the-code".to_string(),
+            request_id: "req-1".to_string(),
+            client_id: "client-a".to_string(),
+            redirect_uri: url::Url::parse("https://example.com/cb").expect("url"),
+            code_challenge: "c".repeat(43),
+            granted_scopes: vec!["read".to_string()],
+            patient: None,
+            issued_at: now,
+            expires_at: now + chrono::Duration::seconds(60),
+        };
+        store.issue_authorization_code(&code).expect("issue");
+        let first = store
+            .redeem_authorization_code("the-code")
+            .expect("redeem")
+            .expect("first redemption wins");
+        assert_eq!(first, code);
+        assert!(
+            store
+                .redeem_authorization_code("the-code")
+                .expect("redeem again")
+                .is_none(),
+            "second redemption must lose",
+        );
     }
 }

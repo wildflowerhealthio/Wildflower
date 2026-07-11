@@ -10,7 +10,6 @@ use url::Url;
 use crate::db::GatekeeperStore;
 use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
 use crate::domain::error::GatekeeperError;
-use persistence_rust::UriColumn;
 
 /// A pending authorization-code consent request that has already passed the
 /// loader's validation: it's `Pending`, an `AuthorizationCode` grant flow,
@@ -52,7 +51,7 @@ pub fn load_pending_authorization_code_request(
             // `new_code_authorization`; if either is somehow absent the row is
             // malformed and we refuse it rather than panic.
             match (r.redirect_uri.clone(), r.code_challenge.clone()) {
-                (Some(UriColumn(redirect_uri)), Some(code_challenge)) => Ok(PendingCodeConsent {
+                (Some(redirect_uri), Some(code_challenge)) => Ok(PendingCodeConsent {
                     request: r,
                     redirect_uri,
                     code_challenge,

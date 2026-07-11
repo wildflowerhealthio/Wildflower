@@ -10,11 +10,12 @@
 --
 -- Column formats must match what the store's read path expects (see
 -- `db/clients.rs`): `kind` is the lowercase `ClientKind` discriminant; the three
--- list columns are compact JSON (the `JsonColumn` serde form), with
--- `allowed_grant_types` using the renamed wire values; `registered_at` is the
--- `DateTime<Utc>` text rusqlite writes (`%F %T%.f%:z`). `INSERT OR IGNORE` keeps
--- this idempotent against a dev store that an older build already populated via
--- the Rust seeder (the row is left as-is rather than conflicting).
+-- list columns are compact JSON (the serde form the db layer's JSON TEXT
+-- newtypes read), with `allowed_grant_types` using the renamed wire values;
+-- `registered_at` is a `DateTime<Utc>` text diesel's chrono mapping parses
+-- (`%F %T%:z`). `INSERT OR IGNORE` keeps this idempotent against a dev store
+-- an older build already populated via the Rust seeder (the row is left as-is
+-- rather than conflicting).
 
 INSERT OR IGNORE INTO clients
     (client_id, name, kind, redirect_uris, allowed_scopes, allowed_grant_types, secret_hash, registered_at, disabled_at)

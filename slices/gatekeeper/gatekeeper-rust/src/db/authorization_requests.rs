@@ -1,63 +1,94 @@
-use chrono::{DateTime, Utc};
-use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, ValueRef};
-use rusqlite::{params, OptionalExtension, ToSql};
+//! `authorization_requests` queries — the in-flight OAuth authorizations for
+//! both flows, loaded/stored as [`AuthorizationRequest`].
+//!
+//! The domain struct is not diesel-mapped directly: its `Option<Url>` and
+//! `Option<Vec<String>>` fields would need `From` impls between two foreign
+//! `Option` types, which coherence forbids — so a private [`Row`] mirrors the
+//! table with the wrapper types ([`UrlText`], [`JsonStrings`]) as field types
+//! and converts at the query boundary.
 
+use chrono::{DateTime, Utc};
+use diesel::prelude::*;
+
+use crate::db::columns::{JsonStrings, UrlText};
+use crate::db::schema::authorization_requests;
 use crate::db::GatekeeperStore;
 use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
 use crate::domain::error::GatekeeperError;
-use persistence_rust::build_insert_sql;
-use persistence_rust::sql_row;
-use persistence_rust::JsonColumn;
 
-impl ToSql for GrantType {
-    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
-        let wire: &str = self.as_ref();
-        Ok(ToSqlOutput::Borrowed(ValueRef::Text(wire.as_bytes())))
+/// The diesel-facing mirror of [`AuthorizationRequest`] — same columns, with
+/// the JSON/URL fields as their wrapper types so the nullable ones map
+/// without orphan-rule violations.
+#[derive(Queryable, Selectable, Insertable)]
+#[diesel(table_name = authorization_requests)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+struct Row {
+    id: String,
+    grant_type: GrantType,
+    client_id: String,
+    requested_scopes: JsonStrings,
+    code_challenge: Option<String>,
+    code_challenge_method: Option<String>,
+    redirect_uri: Option<UrlText>,
+    client_state: Option<String>,
+    user_code: Option<String>,
+    pre_approved_scopes: JsonStrings,
+    requested_at: DateTime<Utc>,
+    expires_at: DateTime<Utc>,
+    last_polled_at: Option<DateTime<Utc>>,
+    status: RequestStatus,
+    granted_scopes: Option<JsonStrings>,
+    patient: Option<String>,
+    device_name: Option<String>,
+}
+
+impl From<Row> for AuthorizationRequest {
+    fn from(row: Row) -> Self {
+        AuthorizationRequest {
+            id: row.id,
+            grant_type: row.grant_type,
+            client_id: row.client_id,
+            requested_scopes: row.requested_scopes.0,
+            code_challenge: row.code_challenge,
+            code_challenge_method: row.code_challenge_method,
+            redirect_uri: row.redirect_uri.map(|u| u.0),
+            client_state: row.client_state,
+            user_code: row.user_code,
+            pre_approved_scopes: row.pre_approved_scopes.0,
+            requested_at: row.requested_at,
+            expires_at: row.expires_at,
+            last_polled_at: row.last_polled_at,
+            status: row.status,
+            granted_scopes: row.granted_scopes.map(|s| s.0),
+            patient: row.patient,
+            device_name: row.device_name,
+        }
     }
 }
 
-impl FromSql for GrantType {
-    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
-        let s = value.as_str()?;
-        s.parse::<GrantType>()
-            .map_err(|e| FromSqlError::Other(Box::new(e)))
+impl From<&AuthorizationRequest> for Row {
+    fn from(request: &AuthorizationRequest) -> Self {
+        Row {
+            id: request.id.clone(),
+            grant_type: request.grant_type,
+            client_id: request.client_id.clone(),
+            requested_scopes: JsonStrings(request.requested_scopes.clone()),
+            code_challenge: request.code_challenge.clone(),
+            code_challenge_method: request.code_challenge_method.clone(),
+            redirect_uri: request.redirect_uri.clone().map(UrlText),
+            client_state: request.client_state.clone(),
+            user_code: request.user_code.clone(),
+            pre_approved_scopes: JsonStrings(request.pre_approved_scopes.clone()),
+            requested_at: request.requested_at,
+            expires_at: request.expires_at,
+            last_polled_at: request.last_polled_at,
+            status: request.status,
+            granted_scopes: request.granted_scopes.clone().map(JsonStrings),
+            patient: request.patient.clone(),
+            device_name: request.device_name.clone(),
+        }
     }
 }
-
-impl ToSql for RequestStatus {
-    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
-        let wire: &str = self.as_ref();
-        Ok(ToSqlOutput::Borrowed(ValueRef::Text(wire.as_bytes())))
-    }
-}
-
-impl FromSql for RequestStatus {
-    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
-        let s = value.as_str()?;
-        s.parse::<RequestStatus>()
-            .map_err(|e| FromSqlError::Other(Box::new(e)))
-    }
-}
-
-sql_row!(AuthorizationRequest {
-    id,
-    grant_type,
-    client_id,
-    requested_scopes,
-    code_challenge,
-    code_challenge_method,
-    redirect_uri,
-    client_state,
-    user_code,
-    pre_approved_scopes,
-    requested_at,
-    expires_at,
-    last_polled_at,
-    status,
-    granted_scopes,
-    patient,
-    device_name,
-});
 
 impl GatekeeperStore {
     /// Load an authorization request by its primary id (the `device_code` for
@@ -71,15 +102,13 @@ impl GatekeeperStore {
         &self,
         id: &str,
     ) -> Result<Option<AuthorizationRequest>, GatekeeperError> {
-        self.conn()
-            .lock()
-            .query_row(
-                &format!("SELECT {ALL_COLS} FROM authorization_requests WHERE id = ?1"),
-                params![id],
-                |row| AuthorizationRequest::try_from(row),
-            )
+        authorization_requests::table
+            .find(id)
+            .select(Row::as_select())
+            .first(&mut self.conn()?)
             .optional()
             .map_err(|e| GatekeeperError::backend("authorization_request_by_id failed", e))
+            .map(|row| row.map(AuthorizationRequest::from))
     }
 
     /// Load an authorization request by the human-typed `user_code` that the
@@ -99,15 +128,13 @@ impl GatekeeperStore {
         &self,
         user_code: &str,
     ) -> Result<Option<AuthorizationRequest>, GatekeeperError> {
-        self.conn()
-            .lock()
-            .query_row(
-                &format!("SELECT {ALL_COLS} FROM authorization_requests WHERE user_code = ?1"),
-                params![user_code],
-                |row| AuthorizationRequest::try_from(row),
-            )
+        authorization_requests::table
+            .filter(authorization_requests::user_code.eq(user_code))
+            .select(Row::as_select())
+            .first(&mut self.conn()?)
             .optional()
             .map_err(|e| GatekeeperError::backend("authorization_request_by_user_code failed", e))
+            .map(|row| row.map(AuthorizationRequest::from))
     }
 
     /// Load the *pending* authorization request for `user_code`. Filtering on
@@ -122,20 +149,16 @@ impl GatekeeperStore {
         &self,
         user_code: &str,
     ) -> Result<Option<AuthorizationRequest>, GatekeeperError> {
-        self.conn()
-            .lock()
-            .query_row(
-                &format!(
-                    "SELECT {ALL_COLS} FROM authorization_requests \
-                     WHERE user_code = ?1 AND status = 'pending'"
-                ),
-                params![user_code],
-                |row| AuthorizationRequest::try_from(row),
-            )
+        authorization_requests::table
+            .filter(authorization_requests::user_code.eq(user_code))
+            .filter(authorization_requests::status.eq(RequestStatus::Pending))
+            .select(Row::as_select())
+            .first(&mut self.conn()?)
             .optional()
             .map_err(|e| {
                 GatekeeperError::backend("pending_authorization_request_by_user_code failed", e)
             })
+            .map(|row| row.map(AuthorizationRequest::from))
     }
 
     /// Return the `user_code` of the oldest pending, non-expired device-code
@@ -151,32 +174,26 @@ impl GatekeeperStore {
     /// `GET /access/devices/{userCode}` fetch path to hydrate the form,
     /// so this slice doesn't grow a second DTO for the same row.
     ///
-    /// `NULLS LAST` isn't needed because the `user_code IS NOT NULL`
-    /// filter rules them out; that guard exists at all because a malformed
-    /// half-row could otherwise float to the head with `user_code = NULL`
-    /// and crash the SPA's `string` decoder.
+    /// The `user_code IS NOT NULL` guard exists because a malformed half-row
+    /// could otherwise float to the head with `user_code = NULL` and crash
+    /// the SPA's `string` decoder.
     ///
     /// # Errors
     ///
     /// [`GatekeeperError::Backend`] if the select query fails or the column
     /// can't be decoded as `String`.
     pub fn oldest_pending_device_user_code(&self) -> Result<Option<String>, GatekeeperError> {
-        let now = Utc::now();
-        self.conn()
-            .lock()
-            .query_row(
-                "SELECT user_code FROM authorization_requests \
-                 WHERE grant_type = 'device_code' \
-                   AND status = 'pending' \
-                   AND user_code IS NOT NULL \
-                   AND expires_at > ?1 \
-                 ORDER BY requested_at ASC \
-                 LIMIT 1",
-                params![now],
-                |row| row.get::<_, String>(0),
-            )
+        authorization_requests::table
+            .filter(authorization_requests::grant_type.eq(GrantType::DeviceCode))
+            .filter(authorization_requests::status.eq(RequestStatus::Pending))
+            .filter(authorization_requests::user_code.is_not_null())
+            .filter(authorization_requests::expires_at.gt(Utc::now()))
+            .order(authorization_requests::requested_at.asc())
+            .select(authorization_requests::user_code)
+            .first::<Option<String>>(&mut self.conn()?)
             .optional()
             .map_err(|e| GatekeeperError::backend("oldest_pending_device_user_code failed", e))
+            .map(Option::flatten)
     }
 
     /// Persist a freshly-constructed `AuthorizationRequest`.
@@ -190,25 +207,21 @@ impl GatekeeperStore {
         request: &AuthorizationRequest,
     ) -> Result<(), GatekeeperError> {
         let backend = |e| GatekeeperError::backend("insert_authorization_request failed", e);
-        let guard = self.conn().lock();
+        let mut conn = self.conn()?;
         // Opportunistically prune expired requests before inserting, so a
         // caller hitting /authorize or /device_authorization can't grow the
         // table without bound — nothing else transitions abandoned rows out,
         // and there is no background reaper. Best-effort cleanup keyed on the
         // 5-minute request TTL; the prune runs first so it also clears a stale
         // row that would otherwise collide on the pending-user_code index.
-        guard
-            .execute(
-                "DELETE FROM authorization_requests WHERE expires_at < ?1",
-                params![Utc::now()],
-            )
-            .map_err(backend)?;
-        let params = make_named_sql_params(request);
-        guard
-            .execute(
-                &build_insert_sql("authorization_requests", &params),
-                &params,
-            )
+        diesel::delete(
+            authorization_requests::table.filter(authorization_requests::expires_at.lt(Utc::now())),
+        )
+        .execute(&mut conn)
+        .map_err(backend)?;
+        diesel::insert_into(authorization_requests::table)
+            .values(Row::from(request))
+            .execute(&mut conn)
             .map_err(backend)?;
         Ok(())
     }
@@ -222,10 +235,10 @@ impl GatekeeperStore {
     /// affected-row check lets the caller detect a no-op (e.g. the request was
     /// consumed concurrently between its read and this update).
     ///
-    /// `device_name` is `COALESCE`d: `Some` overwrites the stored name (the
-    /// settings approver adjusting it), `None` keeps whatever the device
-    /// supplied — so the auth-code consent path can pass `None` without erasing
-    /// a device name it never had.
+    /// `device_name` keeps COALESCE semantics: `Some` overwrites the stored
+    /// name (the settings approver adjusting it), `None` keeps whatever the
+    /// device supplied — so the auth-code consent path can pass `None` without
+    /// erasing a device name it never had.
     ///
     /// # Errors
     ///
@@ -237,23 +250,28 @@ impl GatekeeperStore {
         patient: Option<&str>,
         device_name: Option<&str>,
     ) -> Result<bool, GatekeeperError> {
-        let granted = JsonColumn(granted_scopes.to_vec());
-        let affected = self
-            .conn()
-            .lock()
-            .execute(
-                "UPDATE authorization_requests
-             SET status = 'approved', granted_scopes = :granted_scopes, patient = :patient,
-                 device_name = COALESCE(:device_name, device_name)
-             WHERE id = :id AND status = 'pending'",
-                rusqlite::named_params! {
-                    ":id": id,
-                    ":granted_scopes": granted,
-                    ":patient": patient,
-                    ":device_name": device_name,
-                },
-            )
-            .map_err(|e| GatekeeperError::backend("approve_authorization_request failed", e))?;
+        let backend = |e| GatekeeperError::backend("approve_authorization_request failed", e);
+        let target = authorization_requests::table
+            .find(id)
+            .filter(authorization_requests::status.eq(RequestStatus::Pending));
+        let shared = (
+            authorization_requests::status.eq(RequestStatus::Approved),
+            authorization_requests::granted_scopes.eq(JsonStrings(granted_scopes.to_vec())),
+            authorization_requests::patient.eq(patient),
+        );
+        let mut conn = self.conn()?;
+        // COALESCE(:device_name, device_name) as two typed branches: only a
+        // present adjustment touches the stored name.
+        let affected = match device_name {
+            Some(name) => diesel::update(target)
+                .set((shared, authorization_requests::device_name.eq(name)))
+                .execute(&mut conn)
+                .map_err(backend)?,
+            None => diesel::update(target)
+                .set(shared)
+                .execute(&mut conn)
+                .map_err(backend)?,
+        };
         Ok(affected == 1)
     }
 
@@ -263,12 +281,9 @@ impl GatekeeperStore {
     ///
     /// [`GatekeeperError::Backend`] if the update statement fails.
     pub fn deny_authorization_request(&self, id: &str) -> Result<(), GatekeeperError> {
-        self.conn()
-            .lock()
-            .execute(
-                "UPDATE authorization_requests SET status = 'denied' WHERE id = ?1",
-                params![id],
-            )
+        diesel::update(authorization_requests::table.find(id))
+            .set(authorization_requests::status.eq(RequestStatus::Denied))
+            .execute(&mut self.conn()?)
             .map_err(|e| GatekeeperError::backend("deny_authorization_request failed", e))?;
         Ok(())
     }
@@ -281,9 +296,7 @@ impl GatekeeperStore {
     /// device-flow redemption single-use (RFC 8628 §3.4) even under concurrent
     /// polls: `SQLite`'s write lock serialises the two `UPDATE`s, so exactly one
     /// sees a row to change (`true`) and any racer sees zero rows (`false`) and
-    /// must be rejected before a token is minted. A plain unguarded `UPDATE …
-    /// SET status='expired'` (the previous implementation) could not detect that
-    /// another poll had already redeemed the request.
+    /// must be rejected before a token is minted.
     ///
     /// # Errors
     ///
@@ -292,17 +305,16 @@ impl GatekeeperStore {
         &self,
         id: &str,
     ) -> Result<bool, GatekeeperError> {
-        let affected = self
-            .conn()
-            .lock()
-            .execute(
-                "UPDATE authorization_requests SET status = 'expired' \
-                 WHERE id = ?1 AND status = 'approved'",
-                params![id],
-            )
-            .map_err(|e| {
-                GatekeeperError::backend("consume_approved_authorization_request failed", e)
-            })?;
+        let affected = diesel::update(
+            authorization_requests::table
+                .find(id)
+                .filter(authorization_requests::status.eq(RequestStatus::Approved)),
+        )
+        .set(authorization_requests::status.eq(RequestStatus::Expired))
+        .execute(&mut self.conn()?)
+        .map_err(|e| {
+            GatekeeperError::backend("consume_approved_authorization_request failed", e)
+        })?;
         Ok(affected == 1)
     }
 
@@ -317,12 +329,9 @@ impl GatekeeperStore {
         id: &str,
         polled_at: DateTime<Utc>,
     ) -> Result<(), GatekeeperError> {
-        self.conn()
-            .lock()
-            .execute(
-                "UPDATE authorization_requests SET last_polled_at = ?2 WHERE id = ?1",
-                params![id, polled_at],
-            )
+        diesel::update(authorization_requests::table.find(id))
+            .set(authorization_requests::last_polled_at.eq(polled_at))
+            .execute(&mut self.conn()?)
             .map_err(|e| GatekeeperError::backend("record_device_poll failed", e))?;
         Ok(())
     }
@@ -332,7 +341,6 @@ impl GatekeeperStore {
 mod tests {
     use super::*;
     use crate::db::test_support::{arb_opt_timestamp, arb_timestamp, arb_url};
-    use persistence_rust::{JsonColumn, UriColumn};
     use proptest::prelude::*;
 
     fn arb_scopes() -> impl Strategy<Value = Vec<String>> {
@@ -350,7 +358,7 @@ mod tests {
 
     // Each nullable field is generated independently so every property run
     // mixes present and absent values regardless of `grant_type`, covering the
-    // "optional fields both present and absent" case the reviewer asked for.
+    // "optional fields both present and absent" case.
     prop_compose! {
         fn arb_authorization_request()(
             id in "[a-zA-Z0-9_-]{1,40}",
@@ -378,18 +386,18 @@ mod tests {
                 id,
                 grant_type,
                 client_id,
-                requested_scopes: JsonColumn(requested_scopes),
+                requested_scopes,
                 code_challenge,
                 code_challenge_method,
-                redirect_uri: redirect_uri.map(UriColumn),
+                redirect_uri,
                 client_state,
                 user_code,
-                pre_approved_scopes: JsonColumn(pre_approved_scopes),
+                pre_approved_scopes,
                 requested_at,
                 expires_at,
                 last_polled_at,
                 status,
-                granted_scopes: granted_scopes.map(JsonColumn),
+                granted_scopes,
                 patient,
                 device_name,
             }
@@ -419,7 +427,7 @@ mod tests {
             id: id.to_string(),
             grant_type: GrantType::DeviceCode,
             client_id: "device-client".to_string(),
-            requested_scopes: JsonColumn(vec!["openid".to_string()]),
+            requested_scopes: vec!["openid".to_string()],
             code_challenge: None,
             code_challenge_method: None,
             redirect_uri: None,
@@ -427,12 +435,12 @@ mod tests {
             // Distinct per id so two pending rows don't collide on the
             // pending-user_code partial unique index in multi-row tests.
             user_code: Some(format!("UC-{id}")),
-            pre_approved_scopes: JsonColumn(vec![]),
+            pre_approved_scopes: vec![],
             requested_at: now,
             expires_at: now + chrono::Duration::minutes(5),
             last_polled_at: None,
             status,
-            granted_scopes: Some(JsonColumn(vec!["openid".to_string()])),
+            granted_scopes: Some(vec!["openid".to_string()]),
             patient: None,
             device_name: None,
         }
@@ -500,13 +508,13 @@ mod tests {
             id: id.to_string(),
             grant_type: GrantType::DeviceCode,
             client_id: "device-client".to_string(),
-            requested_scopes: JsonColumn(vec!["openid".to_string()]),
+            requested_scopes: vec!["openid".to_string()],
             code_challenge: None,
             code_challenge_method: None,
             redirect_uri: None,
             client_state: None,
             user_code: Some(user_code.to_string()),
-            pre_approved_scopes: JsonColumn(vec![]),
+            pre_approved_scopes: vec![],
             requested_at: now,
             expires_at: now + chrono::Duration::minutes(5),
             last_polled_at: None,

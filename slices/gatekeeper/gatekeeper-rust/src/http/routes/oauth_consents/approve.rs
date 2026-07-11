@@ -14,7 +14,6 @@ use crate::http::routes::consent::deny_consent;
 use crate::http::routes::oauth::build_client_redirect_url;
 use crate::http::state::AppState;
 use crate::http::wire_representations::{ApproveBody, ConsentResult};
-use persistence_rust::{JsonColumn, UriColumn};
 use scopes_rust::grantable_scopes;
 
 /// `POST /oauth-consents/{id}/approve` — the Owner approves a consent prompt,
@@ -79,9 +78,9 @@ async fn handle_approve_oauth_consent(
         code: generate_authorization_code(),
         request_id: id.clone(),
         client_id: request.client_id.clone(),
-        redirect_uri: UriColumn(redirect_uri.clone()),
+        redirect_uri: redirect_uri.clone(),
         code_challenge,
-        granted_scopes: JsonColumn(granted_scopes.clone()),
+        granted_scopes: granted_scopes.clone(),
         patient: body.patient.clone(),
         issued_at,
         expires_at: issued_at + AUTHORIZATION_CODE_TTL,

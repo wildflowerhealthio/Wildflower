@@ -15,7 +15,6 @@ use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::http::errors::HandlerError;
 use crate::http::state::AppState;
 use crate::http::wire_representations::OAuthError;
-use persistence_rust::UriColumn;
 
 /// Polling response for the Owner UI watching an authorization request as it
 /// moves from `Pending` toward approval or denial.
@@ -90,13 +89,11 @@ pub(super) async fn handle_authorization_status_request(
             // and stops hanging. Device-flow denials have no redirect_uri /
             // client_state, so they fall back to a bare `denied`.
             let redirect = match (&request.redirect_uri, &request.client_state) {
-                (Some(UriColumn(redirect_uri)), Some(client_state)) => {
-                    Some(build_client_error_redirect_url(
-                        redirect_uri,
-                        OAuthErrorCode::AccessDenied,
-                        client_state,
-                    ))
-                }
+                (Some(redirect_uri), Some(client_state)) => Some(build_client_error_redirect_url(
+                    redirect_uri,
+                    OAuthErrorCode::AccessDenied,
+                    client_state,
+                )),
                 _ => None,
             };
             AuthorizationStatus::Denied { redirect }
@@ -105,7 +102,7 @@ pub(super) async fn handle_authorization_status_request(
             message: "Authorization request expired".to_string(),
         },
         RequestStatus::Approved => {
-            let (Some(UriColumn(redirect_uri)), Some(client_state)) =
+            let (Some(redirect_uri), Some(client_state)) =
                 (request.redirect_uri, request.client_state)
             else {
                 return Err(OAuthErrorResponse::server_error(

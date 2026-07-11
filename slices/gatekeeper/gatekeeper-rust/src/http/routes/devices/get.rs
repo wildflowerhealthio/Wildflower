@@ -19,7 +19,7 @@ async fn handle_get_device_consent(
 ) -> Result<Json<DeviceConsent>, HandlerError> {
     let device_request = load_pending_device_request(&state.store, &user_code)?;
     let (client_name, allowed_scopes) = match state.store.client_by_id(&device_request.client_id) {
-        Ok(Some(c)) => (c.name, c.allowed_scopes.into_inner()),
+        Ok(Some(c)) => (c.name, c.allowed_scopes),
         // Fall back to the raw client_id (and no expansion envelope) if lookup
         // misses or fails — the UI still works, the approver just sees less
         // context and can only grant within the requested set.
@@ -30,7 +30,7 @@ async fn handle_get_device_consent(
         client_id: device_request.client_id,
         client_name,
         device_name: device_request.device_name,
-        requested_scopes: device_request.requested_scopes.into_inner(),
+        requested_scopes: device_request.requested_scopes,
         allowed_scopes,
     }))
 }

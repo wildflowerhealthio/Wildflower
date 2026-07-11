@@ -1,8 +1,8 @@
 use chrono::{DateTime, Duration, Utc};
+use diesel::deserialize::FromSqlRow;
+use diesel::expression::AsExpression;
 use strum::{AsRefStr, Display, EnumString};
 use url::Url;
-
-use persistence_rust::{JsonColumn, UriColumn};
 
 /// Minimum polling interval the device-code flow enforces (RFC 8628 §3.5) —
 /// advertised as `interval` in the device-authorization response and enforced
@@ -15,8 +15,11 @@ pub const DEVICE_CODE_POLL_INTERVAL: Duration = Duration::seconds(5);
 /// `strum` derives the `&str` ↔ enum conversions from the `snake_case` variant
 /// names — `AuthorizationCode` → `"authorization_code"`, `DeviceCode` →
 /// `"device_code"` — matching the RFC 6749 / RFC 8628 `grant_type` values.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumString, AsRefStr, Display)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, EnumString, AsRefStr, Display, AsExpression, FromSqlRow,
+)]
 #[strum(serialize_all = "snake_case")]
+#[diesel(sql_type = diesel::sql_types::Text)]
 pub enum GrantType {
     /// RFC 6749 §4.1 authorization-code flow.
     AuthorizationCode,
@@ -30,8 +33,11 @@ pub enum GrantType {
 /// `strum` derives the `&str` ↔ enum conversions from the `snake_case` variant
 /// names — `Pending` → `"pending"`, and so on — the values stored in the
 /// `status` column.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumString, AsRefStr, Display)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, EnumString, AsRefStr, Display, AsExpression, FromSqlRow,
+)]
 #[strum(serialize_all = "snake_case")]
+#[diesel(sql_type = diesel::sql_types::Text)]
 pub enum RequestStatus {
     /// Awaiting user (or pre-approved grant) decision.
     Pending,
@@ -56,13 +62,13 @@ pub struct AuthorizationRequest {
     /// `client_id` that initiated the request.
     pub client_id: String,
     /// Scopes the client asked for at request time.
-    pub requested_scopes: JsonColumn<Vec<String>>,
+    pub requested_scopes: Vec<String>,
     /// PKCE S256 challenge (auth-code flow only).
     pub code_challenge: Option<String>,
     /// PKCE method — always `"S256"` when present; `plain` is rejected at the boundary.
     pub code_challenge_method: Option<String>,
     /// Redirect target supplied at `/authorize` (auth-code flow only).
-    pub redirect_uri: Option<UriColumn>,
+    pub redirect_uri: Option<Url>,
     /// Opaque `state` value the client supplied and expects echoed back in the redirect (auth-code flow only).
     pub client_state: Option<String>,
     /// Human-typed pairing code shown to the user on the device (device-code flow only, RFC 8628).
@@ -70,7 +76,7 @@ pub struct AuthorizationRequest {
     /// Subset of `requested_scopes` already covered by an existing `Grant`; the
     /// consent UI marks these as pre-approved. Empty means nothing was
     /// pre-approved — there is no distinct "absent" state.
-    pub pre_approved_scopes: JsonColumn<Vec<String>>,
+    pub pre_approved_scopes: Vec<String>,
     /// When `/authorize` or `/device_authorization` created the request.
     pub requested_at: DateTime<Utc>,
     /// Instant after which the request stops accepting approval.
@@ -80,7 +86,7 @@ pub struct AuthorizationRequest {
     /// Current lifecycle state — moves from `Pending` to one of `Approved`/`Denied`/`Expired`.
     pub status: RequestStatus,
     /// Scopes the user actually approved; populated once `status == Approved`.
-    pub granted_scopes: Option<JsonColumn<Vec<String>>>,
+    pub granted_scopes: Option<Vec<String>>,
     /// SMART-on-FHIR patient context recorded at approval time, if any.
     pub patient: Option<String>,
     /// Human-chosen name for the requesting device (RFC 8628 extension, device-code flow only);
@@ -134,13 +140,13 @@ impl AuthorizationRequest {
             id: input.id,
             grant_type: GrantType::AuthorizationCode,
             client_id: input.client_id,
-            requested_scopes: JsonColumn(input.requested_scopes),
+            requested_scopes: input.requested_scopes,
             code_challenge: Some(input.code_challenge),
             code_challenge_method: Some("S256".to_string()),
-            redirect_uri: Some(UriColumn(input.redirect_uri)),
+            redirect_uri: Some(input.redirect_uri),
             client_state: Some(input.client_state),
             user_code: None,
-            pre_approved_scopes: JsonColumn(input.pre_approved_scopes),
+            pre_approved_scopes: input.pre_approved_scopes,
             requested_at: now,
             expires_at: now + input.ttl,
             last_polled_at: None,
@@ -158,13 +164,13 @@ impl AuthorizationRequest {
             id: input.id,
             grant_type: GrantType::DeviceCode,
             client_id: input.client_id,
-            requested_scopes: JsonColumn(input.requested_scopes),
+            requested_scopes: input.requested_scopes,
             code_challenge: None,
             code_challenge_method: None,
             redirect_uri: None,
             client_state: None,
             user_code: Some(input.user_code),
-            pre_approved_scopes: JsonColumn(Vec::new()),
+            pre_approved_scopes: Vec::new(),
             requested_at: now,
             expires_at: now + input.ttl,
             last_polled_at: None,

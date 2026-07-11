@@ -37,7 +37,7 @@ async fn handle_revoke_grant(
     // per-client; per-device needs a device handle in the token (see #269).
     state
         .revocation_store
-        .revoke_subject_as_of_now(&grant.client_id)
+        .revoke_subject_as_of_now(grant.client_id())
         .map_err(|e| HandlerError::internal("revoke_subject_as_of_now failed", e))?;
     // Delete the grant and expire the client's refresh-token families in one
     // transaction, so a partial failure can't leave the grant gone while
@@ -49,7 +49,7 @@ async fn handle_revoke_grant(
     let revoked =
         state
             .store
-            .revoke_grant_and_expire_client_families(&id, &grant.client_id, Utc::now())?;
+            .revoke_grant_and_expire_client_families(&id, grant.client_id(), Utc::now())?;
     if !revoked {
         return Err(GatekeeperError::GrantNotFound { id }.into());
     }

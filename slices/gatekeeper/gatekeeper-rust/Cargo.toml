@@ -7,12 +7,23 @@ publish.workspace = true
 [dependencies]
 anyhow.workspace = true
 axum.workspace = true
-rusqlite.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 utoipa.workspace = true
 utoipa-axum.workspace = true
+# Persistence is Diesel over the app-wide r2d2 connection pool
+# (`persistence_rust::DieselPool`), mirroring collector-rust: the host builds
+# one pool on the shared database file and hands it to every diesel-backed
+# slice. The `chrono` feature maps the `DateTime<Utc>` columns natively
+# (`TimestamptzSqlite` text, `%F %T%.f%:z`), so no timestamp wrapper types.
+diesel = { workspace = true, features = ["chrono"] }
+diesel_migrations.workspace = true
+# The app-wide diesel connection pool (`DieselPool` / `open_in_memory_pool`)
+# shared across diesel-backed slices; this crate names the pool type but not
+# rusqlite — the token-revocation store (a separate crate) keeps its own
+# rusqlite connection, whose error type `domain/token.rs` still names.
 persistence-rust = { path = "../../persistence/persistence-rust" }
+rusqlite.workspace = true
 # The shared token-revocation store (per-jti denylist + per-subject epoch).
 # gatekeeper owns the *policy*: it runs the full revocation check in the auth
 # gate and exposes the revoke control surface (`/access/revocations`, logout).

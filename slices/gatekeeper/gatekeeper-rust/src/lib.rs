@@ -29,6 +29,10 @@ use tokio::time::{interval, MissedTickBehavior};
 
 pub use config::GatekeeperConfig;
 pub use db::GatekeeperStore;
+// Re-exported so the host can name the pool type at the `setup_gatekeeper`
+// call site without a direct diesel dependency; the canonical home is
+// persistence-rust (collector re-exports it the same way).
+pub use persistence_rust::DieselPool;
 // The owner-session cookie builders keep their top-level path
 // (`gatekeeper_rust::owner_session_cookies`) after the lift out of `http`, so
 // the desktop host's call sites don't move.
@@ -145,7 +149,9 @@ pub struct Gatekeeper {
     pub state: AppState,
 }
 
-/// Build the gatekeeper-rust HTTP surface. Runs idempotent bootstrap
+/// Build the gatekeeper-rust HTTP surface over the host-owned diesel
+/// connection `pool` (the same app-wide `persistence_rust::open_pool` pool the
+/// collector rides). Runs idempotent bootstrap
 /// (schema migrations, signing-key seed, first-party client seed), mints
 /// the boot-time host owner token against `config.loopback_base_url`, and:
 ///
@@ -183,7 +189,7 @@ pub struct Gatekeeper {
 /// host owner token fails, or the `local_owner_token_tx` receiver has already
 /// been dropped when publishing the token.
 pub fn setup_gatekeeper(
-    conn: persistence_rust::Connection,
+    pool: DieselPool,
     revocation_store: RevocationStore,
     config: &GatekeeperConfig,
     local_owner_token_tx: &watch::Sender<Option<String>>,
@@ -209,7 +215,7 @@ pub fn setup_gatekeeper(
         config.granted_scopes
     );
     let store =
-        seeding::open_and_seed_store(conn, &config.granted_scopes, &config.first_party_client_id)?;
+        seeding::open_and_seed_store(pool, &config.granted_scopes, &config.first_party_client_id)?;
     // `iss` and `aud` are both the canonical issuer: the one token is presented
     // over loopback and at the tunnel origin (#256), so a served-origin `aud`
     // couldn't cover both. See `docs/Origins/Explanation.md`.
