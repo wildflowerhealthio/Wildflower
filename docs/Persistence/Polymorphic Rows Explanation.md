@@ -111,7 +111,7 @@ cross-kind reads go through a `grants` SQL VIEW (`UNION ALL` of the tables —
 shared columns + a kind tag + each kind's payload column, NULL for the other
 kind). Ids are UUIDs minted at insert, so they stay unique across the tables and
 a by-id read through the view is unambiguous. The domain is one plain struct per
-kind sharing *behaviour* through a trait (never field-getter bags), with a thin
+kind sharing _behaviour_ through a trait (never field-getter bags), with a thin
 enum at the wire/list seam keeping the same internally-tagged union. See
 `gatekeeper-rust/src/db/grants.rs` and `src/domain/grant.rs`, and migration
 `0001_gatekeeper_schema` for the view.
