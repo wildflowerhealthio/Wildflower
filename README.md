@@ -1,6 +1,6 @@
-# Vite+ Monorepo Starter
+# Wildflower Monorepo
 
-A starter for creating a Vite+ monorepo.
+A monorepo.
 
 ## Development
 
