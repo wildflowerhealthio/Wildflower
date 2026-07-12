@@ -57,11 +57,11 @@ pub(crate) async fn handle_download_database(
 
     let temp_path = tokio::task::spawn_blocking(move || snapshot_to_temp(&path))
         .await
-        .map_err(|error| DatabaseError::backend("snapshot task panicked", error))??;
+        .map_err(|error| DatabaseError::infrastructure("snapshot task panicked", error))??;
 
     let file = File::open(&temp_path)
         .await
-        .map_err(|error| DatabaseError::backend("open snapshot", error))?;
+        .map_err(|error| DatabaseError::infrastructure("open snapshot", error))?;
     let body = Body::from_stream(TempFileStream::new(file, temp_path));
 
     // The filename is a fixed catalogue id (a bare `*.sqlite` filename), so it's

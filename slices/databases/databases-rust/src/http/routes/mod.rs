@@ -19,10 +19,10 @@ use crate::http::state::DatabasesState;
 /// with its auth gate.
 pub(crate) fn openapi_router() -> OpenApiRouter<Arc<DatabasesState>> {
     OpenApiRouter::new()
-        .routes(routes!(databases::list::handle_list_databases))
+        .routes(routes!(databases::list_all::handle_list_databases))
         .routes(routes!(
-            databases::download::handle_download_database,
-            databases::delete::handle_delete_database
+            databases::download_by_id::handle_download_database,
+            databases::delete_by_id::handle_delete_database
         ))
 }
 

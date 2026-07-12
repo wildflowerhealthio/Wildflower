@@ -2,15 +2,16 @@
 //! and the [`DatabaseError`]→response rendering. The failure *vocabulary* is
 //! domain ([`crate::domain::DatabaseError`]); this file only renders it onto the
 //! wire — a semantic status + body, or a logged opaque 500 for a
-//! [`Backend`](DatabaseError::Backend) failure — so a route bails with `?` and
-//! its `Result<_, DatabaseError>` becomes a response with no HTTP glue at the
-//! call site.
+//! [`Infrastructure`](DatabaseError::Infrastructure) failure — so a route bails
+//! with `?` and its `Result<_, DatabaseError>` becomes a response with no HTTP
+//! glue at the call site.
 //!
 //! The one semantic shape is part of the wire contract and modeled on both
 //! sides: `DatabaseNotFoundBody` (404) `derive(ToSchema)` and is declared in the
 //! routes' `#[utoipa::path]` `responses`, matching the error the TS `databases`
-//! group adds (`databases.ts`) so the spec-drift gate stays green. `Backend` is
-//! deliberately **not** modeled — an opaque 500 carries no body a client decodes.
+//! group adds (`databases.ts`) so the spec-drift gate stays green.
+//! `Infrastructure` is deliberately **not** modeled — an opaque 500 carries no
+//! body a client decodes.
 
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
@@ -31,7 +32,8 @@ pub(crate) struct DatabaseNotFoundBody {
 
 /// Render each [`DatabaseError`] onto the wire. The semantic
 /// [`NotFound`](DatabaseError::NotFound) becomes its documented `404` + JSON
-/// body; a [`Backend`](DatabaseError::Backend) failure is logged (via the shared
+/// body; an [`Infrastructure`](DatabaseError::Infrastructure) failure is logged
+/// (via the shared
 /// [`InternalError`]) and answered as an opaque, empty 500 — the operator sees
 /// the detail, the client doesn't. This is the whole of the HTTP layer's error
 /// knowledge; the routes just `?`.
@@ -46,7 +48,7 @@ impl IntoResponse for DatabaseError {
                 }),
             )
                 .into_response(),
-            DatabaseError::Backend { context, source } => {
+            DatabaseError::Infrastructure { context, source } => {
                 InternalError::new(context, source).into_response()
             }
         }

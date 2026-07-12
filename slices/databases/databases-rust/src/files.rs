@@ -48,14 +48,14 @@ const MARKER_SUFFIX: &str = ".pending-delete";
 ///
 /// # Errors
 ///
-/// [`DatabaseError::Backend`] if the source can't be opened or the snapshot
+/// [`DatabaseError::Infrastructure`] if the source can't be opened or the snapshot
 /// can't be written — an opaque infrastructure failure the HTTP layer renders as
 /// a logged 500.
 pub(crate) fn snapshot_to_temp(path: &Path) -> Result<PathBuf, DatabaseError> {
     let conn = Connection::open(path)
-        .map_err(|error| DatabaseError::backend("open database for export", error))?;
+        .map_err(|error| DatabaseError::infrastructure("open database for export", error))?;
     conn.busy_timeout(EXPORT_BUSY_TIMEOUT)
-        .map_err(|error| DatabaseError::backend("set export busy_timeout", error))?;
+        .map_err(|error| DatabaseError::infrastructure("set export busy_timeout", error))?;
 
     let temp_path = unique_sibling(path, "export");
     // The temp path is an internally-generated sibling (process id + nanos), so
@@ -63,7 +63,7 @@ pub(crate) fn snapshot_to_temp(path: &Path) -> Result<PathBuf, DatabaseError> {
     // belt-and-braces measure.
     let escaped = temp_path.to_string_lossy().replace('\'', "''");
     conn.execute_batch(&format!("VACUUM INTO '{escaped}'"))
-        .map_err(|error| DatabaseError::backend("VACUUM INTO snapshot", error))?;
+        .map_err(|error| DatabaseError::infrastructure("VACUUM INTO snapshot", error))?;
     Ok(temp_path)
 }
 
@@ -72,11 +72,11 @@ pub(crate) fn snapshot_to_temp(path: &Path) -> Result<PathBuf, DatabaseError> {
 ///
 /// # Errors
 ///
-/// [`DatabaseError::Backend`] if the marker file can't be written — an opaque
+/// [`DatabaseError::Infrastructure`] if the marker file can't be written — an opaque
 /// infrastructure failure the HTTP layer renders as a logged 500.
 pub(crate) fn schedule_deletion(path: &Path) -> Result<(), DatabaseError> {
     std::fs::write(marker_path(path), b"")
-        .map_err(|error| DatabaseError::backend("write pending-deletion marker", error))
+        .map_err(|error| DatabaseError::infrastructure("write pending-deletion marker", error))
 }
 
 /// Whether the database at `path` has a pending-deletion marker.
