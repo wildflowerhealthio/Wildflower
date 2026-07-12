@@ -1,27 +1,35 @@
-//! The `TunnelStore` handle — holds the app-wide r2d2 pool of Diesel
-//! `SqliteConnection`s (`persistence_rust::DieselPool`) onto the shared database
-//! file, applies the embedded tunnel migrations once on construction, and is the
-//! seam the per-concern query modules (`tunnel_settings`, `seed_tunnel_settings`)
-//! hang their inherent `impl TunnelStore` blocks off. Mirrors
+//! The `SqliteTunnelStore` adapter — the `SQLite` implementation of the
+//! [`TunnelStore`](crate::domain::TunnelStore) port. Holds the app-wide r2d2
+//! pool of Diesel `SqliteConnection`s (`persistence_rust::DieselPool`) onto the
+//! shared database file, applies the embedded tunnel migrations once on
+//! construction, and implements the port by delegating to the per-concern query
+//! bodies (`tunnel_settings`, `seed_tunnel_settings`). Mirrors
 //! `collector-rust`'s `RemotesStore`.
 
 use anyhow::Context;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 use persistence_rust::DieselPool;
 
+use crate::db::{seed_tunnel_settings, tunnel_settings};
+use crate::domain::{
+    SettingsSeed, SettingsUpdate, SettingsUpdateOutcome, TunnelError, TunnelSettings, TunnelStore,
+};
+
 /// The tunnel migrations, embedded from the crate's `migrations/` tree at
 /// compile time (diesel layout: `<version>_<name>/up.sql` + `down.sql`).
-/// Applied once per database in [`TunnelStore::new`]; diesel records applied
-/// versions in its own `__diesel_schema_migrations` table, disjoint from the
-/// namespaced `schema_migrations` the other (rusqlite) slices use, so the two
-/// bookkeepers coexist in the shared database with no collision. Migration
+/// Applied once per database in [`SqliteTunnelStore::new`]; diesel records
+/// applied versions in its own `__diesel_schema_migrations` table, disjoint from
+/// the namespaced `schema_migrations` the other (rusqlite) slices use, so the
+/// two bookkeepers coexist in the shared database with no collision. Migration
 /// `0001` uses idempotent DDL so it's a no-op on a database whose
 /// `tunnel_settings` table predates this diesel migration (see the migration's
 /// `up.sql`).
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
+/// The `SQLite` adapter for the [`TunnelStore`] port. Cheap to clone (the pool
+/// is an `Arc` inside), so it drops straight into the axum state.
 #[derive(Clone)]
-pub struct TunnelStore {
+pub struct SqliteTunnelStore {
     // The app-wide r2d2 pool onto the shared database file, built and owned by
     // the host (`persistence_rust::open_pool`). Diesel's connection API is
     // `&mut`, so each query checks a connection out of the pool rather than
@@ -34,7 +42,7 @@ pub struct TunnelStore {
     pool: DieselPool,
 }
 
-impl TunnelStore {
+impl SqliteTunnelStore {
     /// Wrap the host-owned connection `pool` and apply pending tunnel migrations
     /// once, on a single checked-out connection. The host builds the app-wide
     /// pool (via `persistence_rust::open_pool`) on the same file its rusqlite
@@ -69,11 +77,32 @@ impl TunnelStore {
         Self::new(persistence_rust::open_in_memory_pool()?)
     }
 
-    /// The pool the sibling query modules check connections out of. Crate-private
-    /// so `tunnel_settings` / `seed_tunnel_settings` (sibling modules, not
-    /// descendants of this one) can reach the private field's contents.
-    pub(crate) fn pool(&self) -> &DieselPool {
+    /// The pool the sibling query modules check connections out of.
+    fn pool(&self) -> &DieselPool {
         &self.pool
+    }
+}
+
+/// The `SQLite` implementation of the port: each method is a thin delegation to
+/// the per-concern query body, handing it a checked-out connection from the
+/// pool. The bodies live in `tunnel_settings` / `seed_tunnel_settings` so this
+/// file stays the migration + pool handle, and the query SQL stays next to the
+/// row types it maps.
+impl TunnelStore for SqliteTunnelStore {
+    fn get_settings(&self) -> Result<TunnelSettings, TunnelError> {
+        tunnel_settings::get_settings(self.pool())
+    }
+
+    fn replace_settings(
+        &self,
+        expected_revision: i64,
+        update: SettingsUpdate,
+    ) -> Result<SettingsUpdateOutcome, TunnelError> {
+        tunnel_settings::replace_settings(self.pool(), expected_revision, update)
+    }
+
+    fn seed_if_absent(&self, seed: &SettingsSeed) -> Result<(), TunnelError> {
+        seed_tunnel_settings::seed_if_absent(self.pool(), seed)
     }
 }
 

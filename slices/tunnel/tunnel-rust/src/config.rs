@@ -4,7 +4,7 @@
 
 use url::Url;
 
-use crate::db::SettingsSeed;
+use crate::domain::SettingsSeed;
 
 /// What [`setup_tunnel`](crate::setup_tunnel) needs to stand up the slice: the
 /// loopback origin used as the `servedOrigin` fallback and the loopback port the

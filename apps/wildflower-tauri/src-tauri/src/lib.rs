@@ -310,7 +310,7 @@ async fn run_server(
     // on a fresh install the relay is unconfigured and toggling the tunnel on
     // just reports that.
     // Build-time tunnel connection defaults, baked into the binary so a
-    // reinstall re-seeds them (see `tunnel_rust::TunnelStore::seed_if_absent`,
+    // reinstall re-seeds them (see `tunnel_rust::SqliteTunnelStore::seed_if_absent`,
     // which only fills unconfigured fields). The relay is seeded only when all
     // four fields are present at build time.
     //

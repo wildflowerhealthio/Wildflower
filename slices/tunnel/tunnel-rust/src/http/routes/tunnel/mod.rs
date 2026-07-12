@@ -33,7 +33,7 @@ mod tests {
     use tower::ServiceExt;
 
     use super::*;
-    use crate::db::TunnelStore;
+    use crate::db::SqliteTunnelStore;
     use crate::domain::{RelayClient, RelaySettings};
     use crate::health::HealthProbe;
     use crate::test_support::StubProbe;
@@ -102,7 +102,7 @@ mod tests {
     ) -> (Arc<TunnelState>, mpsc::UnboundedReceiver<()>) {
         let (started, rx) = mpsc::unbounded_channel();
         let client = Arc::new(FakeClient { behavior, started });
-        let store = TunnelStore::open_in_memory().expect("store");
+        let store = SqliteTunnelStore::open_in_memory().expect("store");
         let state = Arc::new(TunnelState {
             store,
             daemon: TunnelDaemon::new_test(client, probe, "http://127.0.0.1:8080", 8080),

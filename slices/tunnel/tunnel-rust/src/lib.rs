@@ -2,11 +2,14 @@
 //!
 //! Layered like `gatekeeper-rust`:
 //!
-//!  - [`domain`] — pure settings types ([`TunnelSettings`]) and the
-//!    [`RelayClient`](domain::RelayClient) trait.
-//!  - [`db`] — the `SQLite` [`TunnelStore`], built on Diesel over the app-wide
-//!    r2d2 connection pool (`persistence_rust::DieselPool`) onto the shared
-//!    database file, and its queries.
+//!  - [`domain`] — pure settings types ([`TunnelSettings`]), the
+//!    [`RelayClient`](domain::RelayClient) trait, and the
+//!    [`TunnelStore`](domain::TunnelStore) persistence *port* plus the
+//!    `actions` the HTTP routes drive it through.
+//!  - [`db`] — the [`SqliteTunnelStore`] adapter implementing that port, built
+//!    on Diesel over the app-wide r2d2 connection pool
+//!    (`persistence_rust::DieselPool`) onto the shared database file, and its
+//!    queries.
 //!  - `relay_clients` — the embedded `rathole` impl of `RelayClient` that
 //!    dials the self-hosted relay.
 //!  - [`http`] — the `/tunnel` wire contract.
@@ -45,11 +48,11 @@ use axum::Router;
 
 pub use config::TunnelConfig;
 pub use control::TunnelControl;
-pub use db::{SettingsSeed, TunnelStore};
+pub use db::SqliteTunnelStore;
 // Re-exported so the host can name the pool type at the `setup_tunnel` call
 // site without a direct diesel dependency; the canonical home is
 // persistence-rust.
-pub use domain::{RelaySettings, TunnelDaemon, TunnelSettings};
+pub use domain::{RelaySettings, SettingsSeed, TunnelDaemon, TunnelSettings};
 pub use health::HealthProbe;
 pub use http::{openapi_spec, TunnelState};
 pub use persistence_rust::DieselPool;
@@ -88,7 +91,7 @@ pub fn setup_tunnel(
     config: &TunnelConfig,
     probe: Arc<dyn HealthProbe>,
 ) -> anyhow::Result<Tunnel> {
-    let store = TunnelStore::new(pool).context("failed to open tunnel store")?;
+    let store = SqliteTunnelStore::new(pool).context("failed to open tunnel store")?;
     let client = Arc::new(RatholeRelayClient::new());
     let tunnel_daemon = TunnelDaemon::new(
         client,
@@ -110,18 +113,14 @@ pub fn setup_tunnel(
     // Seed build-time connection defaults into a fresh row (only where
     // unconfigured) before resuming, so a reinstall picks up the baked-in
     // tunnel connection without clobbering any in-app edits.
-    state
-        .store
-        .seed_if_absent(&config.seed)
+    domain::actions::seed_if_absent(&state.store, &config.seed)
         .context("failed to seed tunnel settings")?;
 
     // Resume persisted intent: reconcile spawns a supervisor for the stored
     // revision (a no-op when the tunnel isn't requested or the relay isn't
     // configured).
-    let settings = state
-        .store
-        .get_settings()
-        .context("failed to read tunnel settings")?;
+    let settings =
+        domain::actions::get_settings(&state.store).context("failed to read tunnel settings")?;
     state.daemon.reconcile(&settings);
 
     // The control seam shares the daemon's liveness watch; a start persists,

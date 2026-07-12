@@ -7,8 +7,7 @@ use serde::{Deserialize, Deserializer};
 use utoipa::ToSchema;
 
 use super::wire_representations::TunnelStateResponse;
-use crate::db::{SettingsUpdate, SettingsUpdateOutcome};
-use crate::domain::{RelaySettings, TunnelError};
+use crate::domain::{RelaySettings, SettingsUpdate, SettingsUpdateOutcome, TunnelError};
 use crate::http::state::TunnelState;
 
 /// `PUT /tunnel` — full-replace of the visible settings under the caller's
@@ -40,9 +39,8 @@ pub(super) async fn handle_replace_tunnel(
         requested_running: body.requested_running,
         relay_settings: body.relay.map(RelaySettings::from),
     };
-    let settings_update_outcome = state
-        .store
-        .replace_settings(body.settings_revision, update)?;
+    let settings_update_outcome =
+        crate::domain::actions::replace_settings(&state.store, body.settings_revision, update)?;
 
     match settings_update_outcome {
         SettingsUpdateOutcome::Applied(settings) => {

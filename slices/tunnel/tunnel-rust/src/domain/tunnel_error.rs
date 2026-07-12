@@ -3,8 +3,8 @@
 //! stale-revision write is a normal `409` carrying the current snapshot (part of
 //! the success type, not an error), so the only failure a store call can raise
 //! is an opaque infrastructure one. `TunnelError` therefore carries a single
-//! [`Backend`](TunnelError::Backend) variant, mirroring collector's
-//! `RemoteError::Backend`: the store produces it without leaking its
+//! [`Infrastructure`](TunnelError::Infrastructure) variant, mirroring
+//! collector's `RemoteError::Backend`: the store produces it without leaking its
 //! db/diesel/`r2d2` error types up to the routes, and the HTTP layer
 //! ([`crate::http::errors`]) logs it and answers an empty 500.
 
@@ -19,7 +19,7 @@ pub enum TunnelError {
     /// error) — opaque to clients: the HTTP layer logs `context` + `source` and
     /// answers an empty 500. The cause is captured as text so this type stays
     /// free of the store's db/`r2d2` error types.
-    Backend {
+    Infrastructure {
         context: &'static str,
         source: String,
     },
@@ -27,12 +27,12 @@ pub enum TunnelError {
 
 impl TunnelError {
     /// Wrap an infrastructure failure (a store checkout or query error) as an
-    /// opaque [`Backend`](TunnelError::Backend), capturing `context` and the
-    /// cause's `Display` text. The store calls this so its db/`r2d2` error types
-    /// never reach the HTTP layer.
+    /// opaque [`Infrastructure`](TunnelError::Infrastructure), capturing
+    /// `context` and the cause's `Display` text. The store calls this so its
+    /// db/`r2d2` error types never reach the HTTP layer.
     #[must_use]
-    pub fn backend(context: &'static str, source: impl std::fmt::Display) -> Self {
-        TunnelError::Backend {
+    pub fn infrastructure(context: &'static str, source: impl std::fmt::Display) -> Self {
+        TunnelError::Infrastructure {
             context,
             source: source.to_string(),
         }
@@ -42,7 +42,7 @@ impl TunnelError {
 impl std::fmt::Display for TunnelError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TunnelError::Backend { context, source } => write!(f, "{context}: {source}"),
+            TunnelError::Infrastructure { context, source } => write!(f, "{context}: {source}"),
         }
     }
 }

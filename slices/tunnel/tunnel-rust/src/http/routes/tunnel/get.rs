@@ -23,7 +23,7 @@ use crate::http::state::TunnelState;
 pub(super) async fn handle_get_tunnel(
     State(state): State<Arc<TunnelState>>,
 ) -> Result<Json<TunnelStateResponse>, TunnelError> {
-    let settings = state.store.get_settings()?;
+    let settings = crate::domain::actions::get_settings(&state.store)?;
     Ok(Json(TunnelStateResponse::from_current_state(
         &state.daemon,
         &settings,

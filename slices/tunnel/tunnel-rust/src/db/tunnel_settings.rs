@@ -1,4 +1,5 @@
-//! `tunnel_settings` singleton-row queries.
+//! `tunnel_settings` singleton-row queries — the `SQLite` adapter bodies behind
+//! `SqliteTunnelStore`'s [`TunnelStore`](crate::domain::TunnelStore) impl.
 //!
 //! The row is seeded by the migration (id = `'tunnel'`), so reads always find
 //! it and writes are a plain `UPDATE` guarded on `revision` — an atomic
@@ -9,10 +10,12 @@
 
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
+use persistence_rust::DieselPool;
 
 use crate::db::schema::tunnel_settings;
-use crate::db::TunnelStore;
-use crate::domain::{RelaySettings, TunnelError, TunnelSettings};
+use crate::domain::{
+    RelaySettings, SettingsUpdate, SettingsUpdateOutcome, TunnelError, TunnelSettings,
+};
 
 /// The settings table only ever holds one row, addressed by this id.
 pub(super) const TUNNEL_SETTINGS_ID: &str = "tunnel";
@@ -101,122 +104,116 @@ impl From<TunnelSettingsRow> for TunnelSettings {
     }
 }
 
-/// A full replacement of the settings' visible fields, plus an optional
-/// write-only relay block: `relay: None` keeps the stored relay connection,
-/// `relay: Some(_)` replaces all four relay fields together.
-#[derive(Debug, Clone)]
-pub struct SettingsUpdate {
-    pub public_host: Option<String>,
-    pub requested_running: bool,
-    pub relay_settings: Option<RelaySettings>,
+/// Read the singleton settings row over a connection checked out of `pool`.
+/// Backs [`SqliteTunnelStore::get_settings`](crate::db::SqliteTunnelStore).
+///
+/// # Errors
+///
+/// [`TunnelError::Infrastructure`] on a checkout / read failure.
+pub(super) fn get_settings(pool: &DieselPool) -> Result<TunnelSettings, TunnelError> {
+    let mut conn = pool
+        .get()
+        .map_err(|e| TunnelError::infrastructure("failed to check out a connection", e))?;
+    read_settings(&mut conn)
 }
 
-/// The result of a compare-and-swap write: `Applied` when the expected revision
-/// matched (carrying the new row), `Conflict` when it didn't (carrying the
-/// current row so the caller can re-read and retry).
-#[derive(Debug)]
-pub enum SettingsUpdateOutcome {
-    Applied(TunnelSettings),
-    Conflict(TunnelSettings),
-}
+/// Replace the settings iff `expected_revision` still matches the stored
+/// revision, bumping the revision on success. The visible fields are fully
+/// replaced; the relay block is replaced only when `update.relay_settings` is
+/// set (otherwise the stored relay connection is kept). Returns
+/// [`SettingsUpdateOutcome::Conflict`] (with the current row) when the revision
+/// has moved on. Backs
+/// [`SqliteTunnelStore::replace_settings`](crate::db::SqliteTunnelStore).
+///
+/// The two arms below differ only in whether they touch the relay columns:
+/// relay-present replaces all four, relay-absent omits them entirely so SQLite
+/// leaves their stored values in place. Any future *visible* column must be
+/// added to BOTH arms (the pre-diesel single `COALESCE` statement folded them;
+/// diesel's typed `.set()` can't express per-column COALESCE, so it needs the
+/// split).
+///
+/// # Errors
+///
+/// [`TunnelError::Infrastructure`] on a checkout / update / read-back failure.
+pub(super) fn replace_settings(
+    pool: &DieselPool,
+    expected_revision: i64,
+    update: SettingsUpdate,
+) -> Result<SettingsUpdateOutcome, TunnelError> {
+    let mut conn = pool
+        .get()
+        .map_err(|e| TunnelError::infrastructure("failed to check out a connection", e))?;
 
-impl TunnelStore {
-    /// Read the singleton settings row.
-    ///
-    /// # Errors
-    ///
-    /// [`TunnelError::Backend`] on a checkout / read failure.
-    pub fn get_settings(&self) -> Result<TunnelSettings, TunnelError> {
-        let mut conn = self
-            .pool()
-            .get()
-            .map_err(|e| TunnelError::backend("failed to check out a connection", e))?;
-        read_settings(&mut conn)
+    // Both arms target the same CAS-guarded singleton row and bump `revision`;
+    // they differ ONLY in whether they name the four `relay_*` columns.
+    let affected = match update.relay_settings.as_ref() {
+        // Relay present: replace all four relay columns alongside the visible
+        // fields.
+        Some(relay) => diesel::update(
+            tunnel_settings::table
+                .find(TUNNEL_SETTINGS_ID)
+                .filter(tunnel_settings::revision.eq(expected_revision)),
+        )
+        .set((
+            tunnel_settings::public_host.eq(update.public_host.as_deref()),
+            tunnel_settings::requested_running.eq(update.requested_running),
+            tunnel_settings::relay_remote_addr.eq(Some(relay.remote_addr.as_str())),
+            tunnel_settings::relay_token.eq(Some(relay.token.as_str())),
+            tunnel_settings::relay_public_key.eq(Some(relay.public_key.as_str())),
+            tunnel_settings::service_name.eq(Some(relay.service_name.as_str())),
+            tunnel_settings::revision.eq(tunnel_settings::revision + 1),
+        ))
+        .execute(&mut conn),
+        // Relay absent (`relay_settings: None` — the write-only block was
+        // omitted, so the stored connection must be kept). This `.set()` tuple
+        // deliberately lists ONLY the visible columns + `revision` and OMITS the
+        // four `relay_*` columns: a column the UPDATE never names keeps its
+        // stored value. That per-column "keep" is exactly what diesel's typed
+        // `.set()` can't express as a COALESCE, so it lives in its own arm rather
+        // than a shared tuple.
+        None => diesel::update(
+            tunnel_settings::table
+                .find(TUNNEL_SETTINGS_ID)
+                .filter(tunnel_settings::revision.eq(expected_revision)),
+        )
+        .set((
+            tunnel_settings::public_host.eq(update.public_host.as_deref()),
+            tunnel_settings::requested_running.eq(update.requested_running),
+            tunnel_settings::revision.eq(tunnel_settings::revision + 1),
+        ))
+        .execute(&mut conn),
     }
+    .map_err(|e| TunnelError::infrastructure("replace_settings failed", e))?;
 
-    /// Replace the settings iff `expected_revision` still matches the stored
-    /// revision, bumping the revision on success. The visible fields are fully
-    /// replaced; the relay block is replaced only when `update.relay_settings` is
-    /// set (otherwise the stored relay connection is kept). Returns
-    /// [`SettingsUpdateOutcome::Conflict`] (with the current row) when the
-    /// revision has moved on.
-    ///
-    /// The two arms below differ only in whether they touch the relay columns:
-    /// relay-present replaces all four, relay-absent leaves them as stored. Any
-    /// future *visible* column must be added to BOTH arms (the pre-diesel single
-    /// `COALESCE` statement folded them; diesel's typed `.set()` needs the split).
-    ///
-    /// # Errors
-    ///
-    /// [`TunnelError::Backend`] on a checkout / update / read-back failure.
-    pub fn replace_settings(
-        &self,
-        expected_revision: i64,
-        update: SettingsUpdate,
-    ) -> Result<SettingsUpdateOutcome, TunnelError> {
-        let mut conn = self
-            .pool()
-            .get()
-            .map_err(|e| TunnelError::backend("failed to check out a connection", e))?;
-
-        let affected = match update.relay_settings.as_ref() {
-            Some(relay) => diesel::update(
-                tunnel_settings::table
-                    .find(TUNNEL_SETTINGS_ID)
-                    .filter(tunnel_settings::revision.eq(expected_revision)),
-            )
-            .set((
-                tunnel_settings::public_host.eq(update.public_host.as_deref()),
-                tunnel_settings::requested_running.eq(update.requested_running),
-                tunnel_settings::relay_remote_addr.eq(Some(relay.remote_addr.as_str())),
-                tunnel_settings::relay_token.eq(Some(relay.token.as_str())),
-                tunnel_settings::relay_public_key.eq(Some(relay.public_key.as_str())),
-                tunnel_settings::service_name.eq(Some(relay.service_name.as_str())),
-                tunnel_settings::revision.eq(tunnel_settings::revision + 1),
-            ))
-            .execute(&mut conn),
-            None => diesel::update(
-                tunnel_settings::table
-                    .find(TUNNEL_SETTINGS_ID)
-                    .filter(tunnel_settings::revision.eq(expected_revision)),
-            )
-            .set((
-                tunnel_settings::public_host.eq(update.public_host.as_deref()),
-                tunnel_settings::requested_running.eq(update.requested_running),
-                tunnel_settings::revision.eq(tunnel_settings::revision + 1),
-            ))
-            .execute(&mut conn),
-        }
-        .map_err(|e| TunnelError::backend("replace_settings failed", e))?;
-
-        let current = read_settings(&mut conn)?;
-        Ok(if affected == 1 {
-            SettingsUpdateOutcome::Applied(current)
-        } else {
-            SettingsUpdateOutcome::Conflict(current)
-        })
-    }
+    let current = read_settings(&mut conn)?;
+    Ok(if affected == 1 {
+        SettingsUpdateOutcome::Applied(current)
+    } else {
+        SettingsUpdateOutcome::Conflict(current)
+    })
 }
 
 /// Load the singleton row and fold it into the domain [`TunnelSettings`]. Shared
-/// by [`TunnelStore::get_settings`], the `replace_settings` read-back, and the
-/// seed path. The row always exists (the migration seeds it), so a missing row
-/// is a genuine backend error, not an expected empty result.
+/// by [`get_settings`], the [`replace_settings`] read-back, and the seed path.
+/// The row always exists (the migration seeds it), so a missing row is a genuine
+/// infrastructure error, not an expected empty result.
 pub(super) fn read_settings(conn: &mut SqliteConnection) -> Result<TunnelSettings, TunnelError> {
     tunnel_settings::table
         .find(TUNNEL_SETTINGS_ID)
         .select(TunnelSettingsRow::as_select())
         .first(conn)
         .map(TunnelSettings::from)
-        .map_err(|e| TunnelError::backend("read tunnel settings failed", e))
+        .map_err(|e| TunnelError::infrastructure("read tunnel settings failed", e))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::SqliteTunnelStore;
+    use crate::domain::TunnelStore;
 
-    fn store() -> TunnelStore {
-        TunnelStore::open_in_memory().expect("open in-memory store")
+    fn store() -> SqliteTunnelStore {
+        SqliteTunnelStore::open_in_memory().expect("open in-memory store")
     }
 
     fn update(public_host: Option<&str>, requested_running: bool) -> SettingsUpdate {

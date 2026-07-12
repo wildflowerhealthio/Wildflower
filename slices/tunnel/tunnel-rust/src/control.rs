@@ -16,7 +16,7 @@ use std::sync::Arc;
 use shared_structures_rust::tunnel_service::{TunnelLiveness, TunnelService, TunnelStatus};
 use tokio::sync::watch;
 
-use crate::db::{SettingsUpdate, SettingsUpdateOutcome};
+use crate::domain::{SettingsUpdate, SettingsUpdateOutcome, TunnelStore};
 use crate::http::TunnelState;
 
 /// How many times the start path re-reads and retries its persist
@@ -242,7 +242,7 @@ fn persist_start_blocking(state: &TunnelState) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::TunnelStore;
+    use crate::db::SqliteTunnelStore;
     use crate::domain::{RelayClient, RelaySettings, TunnelDaemon};
     use crate::health::HealthProbe;
     use crate::test_support::{HoldUntilCancelRelayClient, StubProbe};
@@ -264,7 +264,7 @@ mod tests {
         client: Arc<dyn RelayClient>,
         probe: Arc<dyn HealthProbe>,
     ) -> Arc<TunnelState> {
-        let store = TunnelStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteTunnelStore::open_in_memory().expect("open in-memory store");
         store
             .replace_settings(
                 0,

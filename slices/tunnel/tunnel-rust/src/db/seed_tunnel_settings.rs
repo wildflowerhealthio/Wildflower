@@ -1,95 +1,87 @@
-//! Build-time seeding for the `tunnel_settings` singleton row.
+//! Build-time seeding for the `tunnel_settings` singleton row — the `SQLite`
+//! adapter body behind `SqliteTunnelStore`'s
+//! [`seed_if_absent`](crate::domain::TunnelStore::seed_if_absent).
 //!
 //! Split from `tunnel_settings` (the runtime read/replace queries): seeding is a
 //! startup-only concern that fills *unconfigured* fields from baked-in defaults
 //! without bumping `revision`, so a fresh install picks up the relay connection
-//! while an in-app edit is never overwritten.
+//! while an in-app edit is never overwritten. The [`SettingsSeed`] param type is
+//! a pure domain type ([`crate::domain::SettingsSeed`]).
 
 use diesel::prelude::*;
+use persistence_rust::DieselPool;
 
 use super::tunnel_settings::{read_settings, TUNNEL_SETTINGS_ID};
 use crate::db::schema::tunnel_settings;
-use crate::db::TunnelStore;
-use crate::domain::{RelaySettings, TunnelError};
+use crate::domain::{SettingsSeed, TunnelError};
 
-/// Build-time defaults seeded into the row at startup. Each field fills the
-/// stored value only when it's currently unconfigured (see
-/// [`TunnelStore::seed_if_absent`]), so a fresh install picks up the baked-in
-/// connection while an in-app edit is never overwritten.
-#[derive(Debug, Clone, Default)]
-pub struct SettingsSeed {
-    pub public_host: Option<String>,
-    pub relay: Option<RelaySettings>,
-}
+/// Fill `public_host` and/or the relay block from build-time defaults, but only
+/// where the stored value is currently unconfigured — an in-app edit is never
+/// clobbered. Does **not** bump `revision` (this is initialization, not a user
+/// write). A no-op once configured, or when the seed is empty. Backs
+/// [`SqliteTunnelStore::seed_if_absent`](crate::db::SqliteTunnelStore).
+///
+/// Runs once at startup before the slice serves, so the read-then-write has no
+/// concurrent writer to race. Each field seeds through its own targeted
+/// `UPDATE`, so a `None` bind can never overwrite a stored value with NULL (the
+/// pre-diesel single `COALESCE` statement kept the stored value on a `None`
+/// bind; the split, guarded updates achieve the same).
+///
+/// # Errors
+///
+/// [`TunnelError::Infrastructure`] on a checkout / read-back / update failure.
+pub(super) fn seed_if_absent(pool: &DieselPool, seed: &SettingsSeed) -> Result<(), TunnelError> {
+    let mut conn = pool
+        .get()
+        .map_err(|e| TunnelError::infrastructure("failed to check out a connection", e))?;
 
-impl TunnelStore {
-    /// Fill `public_host` and/or the relay block from build-time defaults, but
-    /// only where the stored value is currently unconfigured — an in-app edit is
-    /// never clobbered. Does **not** bump `revision` (this is initialization,
-    /// not a user write). A no-op once configured, or when the seed is empty.
-    ///
-    /// Runs once at startup before the slice serves, so the read-then-write has
-    /// no concurrent writer to race. Each field seeds through its own targeted
-    /// `UPDATE`, so a `None` bind can never overwrite a stored value with NULL
-    /// (the pre-diesel single `COALESCE` statement kept the stored value on a
-    /// `None` bind; the split, guarded updates achieve the same).
-    ///
-    /// # Errors
-    ///
-    /// [`TunnelError::Backend`] on a checkout / read-back / update failure.
-    pub fn seed_if_absent(&self, seed: &SettingsSeed) -> Result<(), TunnelError> {
-        let mut conn = self
-            .pool()
-            .get()
-            .map_err(|e| TunnelError::backend("failed to check out a connection", e))?;
+    // The migration always inserts the singleton row and every store migrates
+    // before seeding, so the read always finds it.
+    let current = read_settings(&mut conn)?;
 
-        // The migration always inserts the singleton row and every `TunnelStore`
-        // migrates before seeding, so the read always finds it.
-        let current = read_settings(&mut conn)?;
+    // Seed a field only where the stored value is unconfigured; the relay is
+    // all-or-nothing, gated on the whole block being unset.
+    // `revision`/`requested_running` are intentionally untouched.
+    let host_to_seed = current
+        .public_host
+        .as_ref()
+        .is_none_or(String::is_empty)
+        .then_some(seed.public_host.as_deref())
+        .flatten();
+    let relay_to_seed = current
+        .relay_settings
+        .is_none()
+        .then_some(seed.relay.as_ref())
+        .flatten();
 
-        // Seed a field only where the stored value is unconfigured; the relay is
-        // all-or-nothing, gated on the whole block being unset.
-        // `revision`/`requested_running` are intentionally untouched.
-        let host_to_seed = current
-            .public_host
-            .as_ref()
-            .is_none_or(String::is_empty)
-            .then_some(seed.public_host.as_deref())
-            .flatten();
-        let relay_to_seed = current
-            .relay_settings
-            .is_none()
-            .then_some(seed.relay.as_ref())
-            .flatten();
-
-        if let Some(host) = host_to_seed {
-            diesel::update(tunnel_settings::table.find(TUNNEL_SETTINGS_ID))
-                .set(tunnel_settings::public_host.eq(Some(host)))
-                .execute(&mut conn)
-                .map_err(|e| TunnelError::backend("seed public_host failed", e))?;
-        }
-        if let Some(relay) = relay_to_seed {
-            diesel::update(tunnel_settings::table.find(TUNNEL_SETTINGS_ID))
-                .set((
-                    tunnel_settings::relay_remote_addr.eq(Some(relay.remote_addr.as_str())),
-                    tunnel_settings::relay_token.eq(Some(relay.token.as_str())),
-                    tunnel_settings::relay_public_key.eq(Some(relay.public_key.as_str())),
-                    tunnel_settings::service_name.eq(Some(relay.service_name.as_str())),
-                ))
-                .execute(&mut conn)
-                .map_err(|e| TunnelError::backend("seed relay failed", e))?;
-        }
-        Ok(())
+    if let Some(host) = host_to_seed {
+        diesel::update(tunnel_settings::table.find(TUNNEL_SETTINGS_ID))
+            .set(tunnel_settings::public_host.eq(Some(host)))
+            .execute(&mut conn)
+            .map_err(|e| TunnelError::infrastructure("seed public_host failed", e))?;
     }
+    if let Some(relay) = relay_to_seed {
+        diesel::update(tunnel_settings::table.find(TUNNEL_SETTINGS_ID))
+            .set((
+                tunnel_settings::relay_remote_addr.eq(Some(relay.remote_addr.as_str())),
+                tunnel_settings::relay_token.eq(Some(relay.token.as_str())),
+                tunnel_settings::relay_public_key.eq(Some(relay.public_key.as_str())),
+                tunnel_settings::service_name.eq(Some(relay.service_name.as_str())),
+            ))
+            .execute(&mut conn)
+            .map_err(|e| TunnelError::infrastructure("seed relay failed", e))?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::SettingsUpdate;
+    use crate::db::SqliteTunnelStore;
+    use crate::domain::{RelaySettings, SettingsUpdate, TunnelStore};
 
-    fn store() -> TunnelStore {
-        TunnelStore::open_in_memory().expect("open in-memory store")
+    fn store() -> SqliteTunnelStore {
+        SqliteTunnelStore::open_in_memory().expect("open in-memory store")
     }
 
     fn relay() -> RelaySettings {
