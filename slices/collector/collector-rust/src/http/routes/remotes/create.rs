@@ -6,11 +6,10 @@ use std::sync::Arc;
 
 use axum::extract::State;
 use axum::Json;
-use chrono::{SecondsFormat, Utc};
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-use crate::domain::{required_config_tag, Remote, RemoteError};
+use crate::domain::{actions, Remote, RemoteError};
 use crate::http::errors::{InvalidConfigBody, RemoteAlreadyExistsBody};
 use crate::http::state::CollectorState;
 
@@ -41,21 +40,6 @@ pub(crate) async fn handle_create_remote(
     State(state): State<Arc<CollectorState>>,
     Json(body): Json<CreateRemoteBody>,
 ) -> Result<Json<Remote>, RemoteError> {
-    let tag = required_config_tag(&body.config)?;
-    let remote = Remote {
-        id: body.id,
-        name: body.name,
-        tag,
-        config: body.config,
-        added_at: now_added_at(),
-    };
-    state.store.insert_remote(&remote)?;
+    let remote = actions::create_remote(&state.store, body.id, body.name, body.config)?;
     Ok(Json(remote))
-}
-
-/// Now, as ISO-8601 UTC with milliseconds (e.g. `2026-06-17T14:29:22.363Z`) —
-/// the encoding the TS `Schema.DateTimeUtc` round-trips and the seed migration
-/// pins.
-fn now_added_at() -> String {
-    Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
 }

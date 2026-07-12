@@ -9,7 +9,7 @@ use axum::Json;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-use crate::domain::{required_config_tag, Remote, RemoteError};
+use crate::domain::{actions, Remote, RemoteError};
 use crate::http::errors::{InvalidConfigBody, RemoteNotFoundBody};
 use crate::http::state::CollectorState;
 
@@ -41,9 +41,6 @@ pub(crate) async fn handle_update_remote(
     Path(id): Path<String>,
     Json(body): Json<UpdateRemoteBody>,
 ) -> Result<Json<Remote>, RemoteError> {
-    let tag = required_config_tag(&body.config)?;
-    let updated = state
-        .store
-        .update_remote(&id, &body.name, &tag, &body.config)?;
+    let updated = actions::update_remote(&state.store, &id, &body.name, &body.config)?;
     Ok(Json(updated))
 }

@@ -1,36 +1,35 @@
-//! The `RemotesStore` handle — holds the app-wide r2d2 pool of Diesel
-//! `SqliteConnection`s (`persistence_rust::DieselPool`) onto the shared database
-//! file, applies the embedded collector migrations once on construction, and
-//! exposes the `collector_remotes` CRUD the `/collector/remotes` handlers serve.
-//! Queries check a connection out of the pool and load / write the domain
-//! [`Remote`] directly — it carries the diesel derives, with [`JsonText`]
-//! mapping `config` at the bind/read boundary.
+//! The `SqliteRemotesStore` adapter — the `SQLite` implementation of the
+//! [`RemotesStore`](crate::domain::RemotesStore) port. Holds the app-wide r2d2
+//! pool of Diesel `SqliteConnection`s (`persistence_rust::DieselPool`) onto the
+//! shared database file, applies the embedded collector migrations once on
+//! construction, and implements the port by delegating to the per-concern query
+//! bodies in [`crate::db::remotes`]. Mirrors `tunnel-rust`'s `SqliteTunnelStore`.
 
 use anyhow::Context;
-use diesel::prelude::*;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 use persistence_rust::DieselPool;
 
-use crate::db::schema::collector_remotes;
-use crate::domain::{Remote, RemoteError};
-use shared_structures_rust::json_text::JsonText;
+use crate::db::remotes;
+use crate::domain::{Remote, RemoteError, RemotesStore};
 
 /// The collector migrations, embedded from the crate's `migrations/` tree at
 /// compile time (diesel layout: `<version>_<name>/up.sql` + `down.sql`).
-/// Applied once per database in [`RemotesStore::new`]; diesel records applied
-/// versions in its own `__diesel_schema_migrations` table, which is disjoint
-/// from persistence-rust's namespaced `schema_migrations`, so the two migration
-/// bookkeepers coexist in the shared database with no collision. Migration
-/// `0002` seeds the demo FHIR remote the retired api_stubs stub used to
-/// hardcode; because each migration runs only once per database, a user-deleted
-/// seed stays deleted across upgrades.
+/// Applied once per database in [`SqliteRemotesStore::new`]; diesel records
+/// applied versions in its own `__diesel_schema_migrations` table, which is
+/// disjoint from persistence-rust's namespaced `schema_migrations`, so the two
+/// migration bookkeepers coexist in the shared database with no collision.
+/// Migration `0002` seeds the demo FHIR remote the retired api_stubs stub used
+/// to hardcode; because each migration runs only once per database, a
+/// user-deleted seed stays deleted across upgrades.
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
+/// The `SQLite` adapter for the [`RemotesStore`] port. Cheap to clone (the pool
+/// is an `Arc` inside), so it drops straight into the axum state.
 #[derive(Clone)]
-pub struct RemotesStore {
+pub struct SqliteRemotesStore {
     // The app-wide r2d2 pool onto the shared database file, built and owned by
     // the host (`persistence_rust::open_pool`). Diesel's connection API is
-    // `&mut`, so each call checks a connection out of the pool rather than
+    // `&mut`, so each query checks a connection out of the pool rather than
     // sharing one behind a mutex; the pool (an `Arc` inside) makes the store
     // cheap to clone into the axum state. These are additional openers onto the
     // same file the host's rusqlite `persistence-rust::Connection` serves the
@@ -40,7 +39,7 @@ pub struct RemotesStore {
     pool: DieselPool,
 }
 
-impl RemotesStore {
+impl SqliteRemotesStore {
     /// Wrap the host-owned connection `pool` and apply pending collector
     /// migrations once, on a single checked-out connection. The host builds the
     /// app-wide pool (via `persistence_rust::open_pool`) on the same file its
@@ -75,143 +74,54 @@ impl RemotesStore {
         Self::new(persistence_rust::open_in_memory_pool()?)
     }
 
-    /// Every remote, oldest first (ties broken by id so the order is total) —
-    /// the `GET /collector/remotes` catalogue.
-    ///
-    /// # Errors
-    ///
-    /// [`RemoteError::Backend`] on a checkout / read failure or a corrupt
-    /// stored config.
-    pub fn list_remotes(&self) -> Result<Vec<Remote>, RemoteError> {
-        let mut conn = self
-            .pool
-            .get()
-            .map_err(|e| RemoteError::backend("failed to check out a connection", e))?;
-        collector_remotes::table
-            .order((collector_remotes::added_at, collector_remotes::id))
-            .select(Remote::as_select())
-            .load(&mut conn)
-            .map_err(|e| RemoteError::backend("list_remotes failed", e))
+    /// The pool the sibling query module checks connections out of.
+    fn pool(&self) -> &DieselPool {
+        &self.pool
+    }
+}
+
+/// The `SQLite` implementation of the port: each method is a thin delegation to
+/// the matching query body in [`crate::db::remotes`], handing it the pool to
+/// check a connection out of. The bodies live there so this file stays the
+/// migration + pool handle, and the query SQL stays next to the row type it
+/// maps. Every method returns the port's PRIMITIVE shape — absence as `None`,
+/// insert/delete outcome as `bool` — leaving the `NotFound`/`AlreadyExists`
+/// semantics to [`crate::domain::actions`].
+impl RemotesStore for SqliteRemotesStore {
+    fn list(&self) -> Result<Vec<Remote>, RemoteError> {
+        remotes::list(self.pool())
     }
 
-    /// A single remote by id, or [`RemoteError::NotFound`] when absent — the
-    /// `GET /collector/remotes/{id}` read. The store owns the not-found
-    /// semantics so the handler is a straight `?`.
-    ///
-    /// # Errors
-    ///
-    /// [`RemoteError::NotFound`] when no remote has this id;
-    /// [`RemoteError::Backend`] on a checkout / read failure or a corrupt
-    /// stored config.
-    pub fn get_remote(&self, id: &str) -> Result<Remote, RemoteError> {
-        let mut conn = self
-            .pool
-            .get()
-            .map_err(|e| RemoteError::backend("failed to check out a connection", e))?;
-        collector_remotes::table
-            .find(id)
-            .select(Remote::as_select())
-            .first(&mut conn)
-            .optional()
-            .map_err(|e| RemoteError::backend("get_remote failed", e))?
-            .ok_or_else(|| RemoteError::NotFound { id: id.to_owned() })
+    fn get(&self, id: &str) -> Result<Option<Remote>, RemoteError> {
+        remotes::get(self.pool(), id)
     }
 
-    /// Insert a fresh remote, or [`RemoteError::AlreadyExists`] when the id is
-    /// already taken (`INSERT … ON CONFLICT(id) DO NOTHING` affects 0 rows) — a
-    /// conflict rather than a silent overwrite.
-    ///
-    /// # Errors
-    ///
-    /// [`RemoteError::AlreadyExists`] when the id is taken;
-    /// [`RemoteError::Backend`] on a checkout / insert failure.
-    pub fn insert_remote(&self, remote: &Remote) -> Result<(), RemoteError> {
-        let mut conn = self
-            .pool
-            .get()
-            .map_err(|e| RemoteError::backend("failed to check out a connection", e))?;
-        let affected = diesel::insert_into(collector_remotes::table)
-            // `Remote`'s `config` uses `#[diesel(serialize_as)]`, which
-            // consumes the value — diesel generates no borrowed `Insertable`
-            // impl for the struct, so the insert takes a clone.
-            .values(remote.clone())
-            .on_conflict(collector_remotes::id)
-            .do_nothing()
-            .execute(&mut conn)
-            .map_err(|e| RemoteError::backend("insert_remote failed", e))?;
-        if affected == 1 {
-            Ok(())
-        } else {
-            Err(RemoteError::AlreadyExists {
-                id: remote.id.clone(),
-            })
-        }
+    fn insert(&self, remote: &Remote) -> Result<bool, RemoteError> {
+        remotes::insert(self.pool(), remote)
     }
 
-    /// Update an existing remote's `name` / `tag` / `config` (id and
-    /// `added_at` are immutable) and return the resulting row, or
-    /// [`RemoteError::NotFound`] when no remote has this id. A single
-    /// `UPDATE … RETURNING` statement, so the write and the returned row are
-    /// atomic — the row can't reflect a concurrent write, and a concurrent
-    /// delete can't produce an updated-but-gone race.
-    ///
-    /// # Errors
-    ///
-    /// [`RemoteError::NotFound`] when no remote has this id;
-    /// [`RemoteError::Backend`] on a checkout / update failure or a corrupt
-    /// stored config.
-    pub fn update_remote(
+    fn update(
         &self,
         id: &str,
         name: &str,
         tag: &str,
         config: &serde_json::Value,
-    ) -> Result<Remote, RemoteError> {
-        let mut conn = self
-            .pool
-            .get()
-            .map_err(|e| RemoteError::backend("failed to check out a connection", e))?;
-        diesel::update(collector_remotes::table.find(id))
-            .set((
-                collector_remotes::name.eq(name),
-                collector_remotes::tag.eq(tag),
-                collector_remotes::config.eq(JsonText::from(config.clone())),
-            ))
-            .returning(Remote::as_returning())
-            .get_result(&mut conn)
-            .optional()
-            .map_err(|e| RemoteError::backend("update_remote failed", e))?
-            .ok_or_else(|| RemoteError::NotFound { id: id.to_owned() })
+    ) -> Result<Option<Remote>, RemoteError> {
+        remotes::update(self.pool(), id, name, tag, config)
     }
 
-    /// Remove a remote by id, or [`RemoteError::NotFound`] when no remote has
-    /// this id.
-    ///
-    /// # Errors
-    ///
-    /// [`RemoteError::NotFound`] when no remote has this id;
-    /// [`RemoteError::Backend`] on a checkout / delete failure.
-    pub fn delete_remote(&self, id: &str) -> Result<(), RemoteError> {
-        let mut conn = self
-            .pool
-            .get()
-            .map_err(|e| RemoteError::backend("failed to check out a connection", e))?;
-        let affected = diesel::delete(collector_remotes::table.find(id))
-            .execute(&mut conn)
-            .map_err(|e| RemoteError::backend("delete_remote failed", e))?;
-        if affected == 1 {
-            Ok(())
-        } else {
-            Err(RemoteError::NotFound { id: id.to_owned() })
-        }
+    fn delete(&self, id: &str) -> Result<bool, RemoteError> {
+        remotes::delete(self.pool(), id)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use diesel::prelude::*;
     use diesel::sqlite::SqliteConnection;
 
     use super::*;
+    use crate::db::schema::collector_remotes;
 
     fn remote(id: &str, added_at: &str) -> Remote {
         Remote {
@@ -243,8 +153,8 @@ mod tests {
     /// `added_at` — so a fresh install keeps today's demo behavior.
     #[test]
     fn migration_seeds_the_demo_fhir_remote() {
-        let store = RemotesStore::open_in_memory().unwrap();
-        let seeded = store.get_remote("fhir-demo").unwrap();
+        let store = SqliteRemotesStore::open_in_memory().unwrap();
+        let seeded = store.get("fhir-demo").unwrap().expect("seeded demo remote");
         assert_eq!(seeded.name, "FHIR Demo");
         assert_eq!(seeded.tag, "fhir-r4");
         assert_eq!(seeded.added_at, "2026-06-17T14:29:22.363Z");
@@ -263,7 +173,7 @@ mod tests {
     /// and a new collector's config must survive storage unchanged.
     #[test]
     fn insert_round_trips_an_unmodeled_config_verbatim() {
-        let store = RemotesStore::open_in_memory().unwrap();
+        let store = SqliteRemotesStore::open_in_memory().unwrap();
         let mut fresh = remote("r1", "2026-07-01T00:00:00.000Z");
         fresh.tag = "rexall".to_owned();
         fresh.config = serde_json::json!({
@@ -272,32 +182,31 @@ mod tests {
             "password": "p",
             "nested": { "deep": [1, 2, 3] },
         });
-        store.insert_remote(&fresh).unwrap();
-        let read = store.get_remote("r1").unwrap();
+        assert!(store.insert(&fresh).unwrap(), "fresh id inserts");
+        let read = store.get("r1").unwrap().expect("just inserted");
         assert_eq!(read, fresh);
     }
 
+    /// A duplicate id is the primitive `false` (0 rows affected) — the store no
+    /// longer decides `AlreadyExists`, and the existing row is untouched.
     #[test]
-    fn insert_remote_conflicts_on_duplicate_id_without_overwriting() {
-        let store = RemotesStore::open_in_memory().unwrap();
+    fn insert_reports_false_on_a_duplicate_id_without_overwriting() {
+        let store = SqliteRemotesStore::open_in_memory().unwrap();
         let first = remote("dup", "2026-07-01T00:00:00.000Z");
-        store.insert_remote(&first).unwrap();
+        assert!(store.insert(&first).unwrap());
         let second = remote("dup", "2026-07-02T00:00:00.000Z");
-        assert!(matches!(
-            store.insert_remote(&second),
-            Err(RemoteError::AlreadyExists { id }) if id == "dup"
-        ));
+        assert!(!store.insert(&second).unwrap(), "duplicate id is false");
         // The original row is untouched.
-        assert_eq!(store.get_remote("dup").unwrap(), first);
+        assert_eq!(store.get("dup").unwrap().as_ref(), Some(&first));
     }
 
     /// A row whose `config` TEXT is not valid JSON surfaces from a read as a
-    /// [`RemoteError::Backend`] (diesel deserialization error), never a panic —
-    /// so a future refactor can't quietly swap the `?` in [`JsonText`]'s
+    /// [`RemoteError::Infrastructure`] (diesel deserialization error), never a
+    /// panic — so a future refactor can't quietly swap the `?` in `JsonText`'s
     /// `from_sql` for an `.unwrap()`.
     #[test]
-    fn corrupt_stored_config_reads_as_a_backend_error_not_a_panic() {
-        let store = RemotesStore::open_in_memory().unwrap();
+    fn corrupt_stored_config_reads_as_an_infrastructure_error_not_a_panic() {
+        let store = SqliteRemotesStore::open_in_memory().unwrap();
         let mut conn = store.pool.get().expect("check out a connection");
         diesel::sql_query(
             "UPDATE collector_remotes SET config = 'not json' WHERE id = 'fhir-demo'",
@@ -306,78 +215,72 @@ mod tests {
         .expect("corrupt the stored config");
         drop(conn);
         assert!(matches!(
-            store.get_remote("fhir-demo"),
-            Err(RemoteError::Backend { .. })
+            store.get("fhir-demo"),
+            Err(RemoteError::Infrastructure { .. })
         ));
     }
 
     /// Listing returns every row oldest-first, with the id as tiebreaker for
     /// same-instant rows — a total order, so the catalogue is deterministic.
     #[test]
-    fn list_remotes_orders_by_added_at_then_id() {
-        let store = RemotesStore::open_in_memory().unwrap();
-        store
-            .insert_remote(&remote("b-newer", "2026-07-02T00:00:00.000Z"))
-            .unwrap();
-        store
-            .insert_remote(&remote("z-old", "2026-07-01T00:00:00.000Z"))
-            .unwrap();
-        store
-            .insert_remote(&remote("a-old", "2026-07-01T00:00:00.000Z"))
-            .unwrap();
-        let ids: Vec<String> = store
-            .list_remotes()
-            .unwrap()
-            .into_iter()
-            .map(|r| r.id)
-            .collect();
+    fn list_orders_by_added_at_then_id() {
+        let store = SqliteRemotesStore::open_in_memory().unwrap();
+        assert!(store
+            .insert(&remote("b-newer", "2026-07-02T00:00:00.000Z"))
+            .unwrap());
+        assert!(store
+            .insert(&remote("z-old", "2026-07-01T00:00:00.000Z"))
+            .unwrap());
+        assert!(store
+            .insert(&remote("a-old", "2026-07-01T00:00:00.000Z"))
+            .unwrap());
+        let ids: Vec<String> = store.list().unwrap().into_iter().map(|r| r.id).collect();
         // The 2026-06 seed sorts first; same-instant rows sort by id.
         assert_eq!(ids, vec!["fhir-demo", "a-old", "z-old", "b-newer"]);
     }
 
-    /// `update_remote` rewrites name/tag/config, preserves id + `added_at`,
-    /// and returns the row as stored.
+    /// `update` rewrites name/tag/config, preserves id + `added_at`, and returns
+    /// the row as stored.
     #[test]
-    fn update_remote_rewrites_mutable_fields_and_keeps_added_at() {
-        let store = RemotesStore::open_in_memory().unwrap();
-        store
-            .insert_remote(&remote("r1", "2026-07-01T00:00:00.000Z"))
-            .unwrap();
+    fn update_rewrites_mutable_fields_and_keeps_added_at() {
+        let store = SqliteRemotesStore::open_in_memory().unwrap();
+        assert!(store
+            .insert(&remote("r1", "2026-07-01T00:00:00.000Z"))
+            .unwrap());
         let new_config = serde_json::json!({ "_tag": "rexall", "username": "u" });
         let updated = store
-            .update_remote("r1", "Renamed", "rexall", &new_config)
-            .unwrap();
+            .update("r1", "Renamed", "rexall", &new_config)
+            .unwrap()
+            .expect("existing row updates");
         assert_eq!(updated.name, "Renamed");
         assert_eq!(updated.tag, "rexall");
         assert_eq!(updated.config, new_config);
         assert_eq!(updated.added_at, "2026-07-01T00:00:00.000Z");
-        assert_eq!(store.get_remote("r1").unwrap(), updated);
+        assert_eq!(store.get("r1").unwrap().as_ref(), Some(&updated));
     }
 
+    /// An update addressed to an unknown id is the primitive `None` — the store
+    /// no longer decides `NotFound`.
     #[test]
-    fn update_remote_is_not_found_for_an_unknown_id() {
-        let store = RemotesStore::open_in_memory().unwrap();
+    fn update_is_none_for_an_unknown_id() {
+        let store = SqliteRemotesStore::open_in_memory().unwrap();
         let config = serde_json::json!({ "_tag": "fhir-r4" });
-        assert!(matches!(
-            store.update_remote("no-such-id", "n", "fhir-r4", &config),
-            Err(RemoteError::NotFound { id }) if id == "no-such-id"
-        ));
+        assert_eq!(
+            store.update("no-such-id", "n", "fhir-r4", &config).unwrap(),
+            None,
+        );
     }
 
+    /// `delete` reports `true` for a removed row and `false` for a miss — the
+    /// store no longer decides `NotFound`.
     #[test]
-    fn delete_remote_removes_the_row_and_reports_absence() {
-        let store = RemotesStore::open_in_memory().unwrap();
-        store
-            .insert_remote(&remote("r1", "2026-07-01T00:00:00.000Z"))
-            .unwrap();
-        store.delete_remote("r1").unwrap();
-        assert!(matches!(
-            store.get_remote("r1"),
-            Err(RemoteError::NotFound { .. })
-        ));
-        assert!(
-            matches!(store.delete_remote("r1"), Err(RemoteError::NotFound { .. })),
-            "second delete is a miss",
-        );
+    fn delete_reports_true_then_false() {
+        let store = SqliteRemotesStore::open_in_memory().unwrap();
+        assert!(store
+            .insert(&remote("r1", "2026-07-01T00:00:00.000Z"))
+            .unwrap());
+        assert!(store.delete("r1").unwrap(), "removed row is true");
+        assert_eq!(store.get("r1").unwrap(), None);
+        assert!(!store.delete("r1").unwrap(), "second delete is a miss");
     }
 }

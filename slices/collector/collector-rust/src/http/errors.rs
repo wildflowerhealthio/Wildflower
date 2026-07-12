@@ -1,18 +1,18 @@
 //! Error **wire-representations** for the collector routes — the JSON body
 //! shapes and the [`RemoteError`]→response rendering. The failure *vocabulary*
 //! is domain ([`crate::domain::RemoteError`]); this file only renders it onto
-//! the wire — a semantic status + body, or a logged opaque 500 for a
-//! [`Backend`](RemoteError::Backend) failure — so a route bails with `?` and
-//! its `Result<_, RemoteError>` becomes a response with no HTTP glue at the
-//! call site.
+//! the wire — a semantic status + body, or a logged opaque 500 for an
+//! [`Infrastructure`](RemoteError::Infrastructure) failure — so a route bails
+//! with `?` and its `Result<_, RemoteError>` becomes a response with no HTTP
+//! glue at the call site.
 //!
 //! All three semantic shapes are part of the wire contract and modeled on both
 //! sides: `RemoteNotFoundBody` (404), `InvalidConfigBody` (400), and
 //! `RemoteAlreadyExistsBody` (409) each `derive(ToSchema)` and are declared in
 //! the routes' `#[utoipa::path]` `responses`, matching the errors the TS
 //! `collector-remotes` group adds (`remotes.ts`) so the spec-drift gate stays
-//! green. `Backend` is deliberately **not** modeled — an opaque 500 carries no
-//! body a client decodes.
+//! green. `Infrastructure` is deliberately **not** modeled — an opaque 500
+//! carries no body a client decodes.
 
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
@@ -50,10 +50,11 @@ pub(crate) struct RemoteAlreadyExistsBody {
 }
 
 /// Render each [`RemoteError`] onto the wire. The three semantic variants
-/// become their documented status + JSON body; a [`Backend`](RemoteError::Backend)
-/// failure is logged (via the shared [`InternalError`]) and answered as an
-/// opaque, empty 500 — the operator sees the detail, the client doesn't. This
-/// is the whole of the HTTP layer's error knowledge; the routes just `?`.
+/// become their documented status + JSON body; an
+/// [`Infrastructure`](RemoteError::Infrastructure) failure is logged (via the
+/// shared [`InternalError`]) and answered as an opaque, empty 500 — the operator
+/// sees the detail, the client doesn't. This is the whole of the HTTP layer's
+/// error knowledge; the routes just `?`.
 impl IntoResponse for RemoteError {
     fn into_response(self) -> Response {
         match self {
@@ -81,7 +82,7 @@ impl IntoResponse for RemoteError {
                 }),
             )
                 .into_response(),
-            RemoteError::Backend { context, source } => {
+            RemoteError::Infrastructure { context, source } => {
                 InternalError::new(context, source).into_response()
             }
         }

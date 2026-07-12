@@ -17,13 +17,13 @@ use crate::http::state::CollectorState;
 pub(crate) fn openapi_router() -> OpenApiRouter<Arc<CollectorState>> {
     OpenApiRouter::new()
         .routes(routes!(
-            remotes::list::handle_list_remotes,
+            remotes::list_all::handle_list_remotes,
             remotes::create::handle_create_remote
         ))
         .routes(routes!(
-            remotes::get::handle_get_remote,
-            remotes::update::handle_update_remote,
-            remotes::delete::handle_delete_remote
+            remotes::get_by_id::handle_get_remote,
+            remotes::update_by_id::handle_update_remote,
+            remotes::delete_by_id::handle_delete_remote
         ))
 }
 
@@ -37,12 +37,12 @@ mod tests {
     use http_body_util::BodyExt;
     use tower::ServiceExt;
 
-    use crate::db::RemotesStore;
+    use crate::db::SqliteRemotesStore;
     use crate::http::state::CollectorState;
 
     fn state() -> Arc<CollectorState> {
         Arc::new(CollectorState::new(
-            RemotesStore::open_in_memory().expect("in-memory store"),
+            SqliteRemotesStore::open_in_memory().expect("in-memory store"),
         ))
     }
 
