@@ -78,7 +78,7 @@ pub(super) fn seed_if_absent(pool: &DieselPool, seed: &SettingsSeed) -> Result<(
 mod tests {
     use super::*;
     use crate::db::SqliteTunnelStore;
-    use crate::domain::{RelaySettings, SettingsUpdate, TunnelStore};
+    use crate::domain::{RelaySettings, TunnelStore};
 
     fn store() -> SqliteTunnelStore {
         SqliteTunnelStore::open_in_memory().expect("open in-memory store")
@@ -113,14 +113,7 @@ mod tests {
         let store = store();
         // The user configures via the API (bumps revision to 1).
         store
-            .replace_settings(
-                0,
-                SettingsUpdate {
-                    public_host: Some("user.example.com".into()),
-                    requested_running: false,
-                    relay_settings: Some(relay()),
-                },
-            )
+            .update_all_settings(0, Some("user.example.com"), false, &relay())
             .unwrap();
         // A later boot with different baked-in defaults must not overwrite it.
         store

@@ -23,8 +23,15 @@ pub fn get_settings(store: &impl TunnelStore) -> Result<TunnelSettings, TunnelEr
     store.get_settings()
 }
 
-/// Compare-and-swap the settings under `expected_revision` (see
-/// [`TunnelStore::replace_settings`] for the relay-keep semantics).
+/// Compare-and-swap the settings under `expected_revision`, routing to the store
+/// method that matches the update's shape: an update **with** a relay block
+/// writes every column via [`TunnelStore::update_all_settings`]; one **without**
+/// leaves the stored relay connection in place via
+/// [`TunnelStore::update_basic_settings`].
+///
+/// This relay-present / relay-absent choice lives here, in the domain, rather
+/// than inside the store — so a fake store can validate the routing without a
+/// database (the store's two methods each do a single unconditional write).
 ///
 /// # Errors
 ///
@@ -34,7 +41,19 @@ pub fn replace_settings(
     expected_revision: i64,
     update: SettingsUpdate,
 ) -> Result<SettingsUpdateOutcome, TunnelError> {
-    store.replace_settings(expected_revision, update)
+    match update.relay_settings.as_ref() {
+        Some(relay) => store.update_all_settings(
+            expected_revision,
+            update.public_host.as_deref(),
+            update.requested_running,
+            relay,
+        ),
+        None => store.update_basic_settings(
+            expected_revision,
+            update.public_host.as_deref(),
+            update.requested_running,
+        ),
+    }
 }
 
 /// Seed build-time defaults into any unconfigured fields (see
@@ -54,13 +73,40 @@ mod tests {
     use super::*;
     use crate::domain::RelaySettings;
 
+    /// Which store method the action routed a `replace_settings` call to, with
+    /// the args it forwarded. Recorded by [`FakeTunnelStore`] so a test can
+    /// assert the relay-present / relay-absent switch *without* a database — the
+    /// whole point of moving that switch into the action.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    enum LastCall {
+        Basic {
+            public_host: Option<String>,
+            requested_running: bool,
+        },
+        All {
+            public_host: Option<String>,
+            requested_running: bool,
+            relay: RelaySettings,
+        },
+    }
+
     /// An in-memory [`TunnelStore`] modelling the real compare-and-swap and
     /// seed-if-absent semantics — no diesel, no database. Lets the actions be
     /// exercised directly; the `SQLite` adapter's own coverage lives in
-    /// `crate::db`.
+    /// `crate::db`. It also records the [`LastCall`] the action routed to, so a
+    /// test can assert the switch as well as its effect.
     #[derive(Default)]
     struct FakeTunnelStore {
         settings: RefCell<TunnelSettings>,
+        last_call: RefCell<Option<LastCall>>,
+    }
+
+    impl FakeTunnelStore {
+        /// The store method the action last routed to (and its args), or `None`
+        /// if no write has been routed yet.
+        fn last_call(&self) -> Option<LastCall> {
+            self.last_call.borrow().clone()
+        }
     }
 
     impl TunnelStore for FakeTunnelStore {
@@ -68,24 +114,47 @@ mod tests {
             Ok(self.settings.borrow().clone())
         }
 
-        fn replace_settings(
+        fn update_basic_settings(
             &self,
             expected_revision: i64,
-            update: SettingsUpdate,
+            public_host: Option<&str>,
+            requested_running: bool,
         ) -> Result<SettingsUpdateOutcome, TunnelError> {
+            self.last_call.replace(Some(LastCall::Basic {
+                public_host: public_host.map(str::to_owned),
+                requested_running,
+            }));
             let mut current = self.settings.borrow_mut();
             if current.revision != expected_revision {
                 return Ok(SettingsUpdateOutcome::Conflict(current.clone()));
             }
-            *current = TunnelSettings {
-                revision: current.revision + 1,
-                public_host: update.public_host,
-                requested_running: update.requested_running,
-                // `None` keeps the stored relay connection, mirroring the adapter.
-                relay_settings: update
-                    .relay_settings
-                    .or_else(|| current.relay_settings.clone()),
-            };
+            current.revision += 1;
+            current.public_host = public_host.map(str::to_owned);
+            current.requested_running = requested_running;
+            // The relay block is deliberately left as stored — the basic write.
+            Ok(SettingsUpdateOutcome::Applied(current.clone()))
+        }
+
+        fn update_all_settings(
+            &self,
+            expected_revision: i64,
+            public_host: Option<&str>,
+            requested_running: bool,
+            relay: &RelaySettings,
+        ) -> Result<SettingsUpdateOutcome, TunnelError> {
+            self.last_call.replace(Some(LastCall::All {
+                public_host: public_host.map(str::to_owned),
+                requested_running,
+                relay: relay.clone(),
+            }));
+            let mut current = self.settings.borrow_mut();
+            if current.revision != expected_revision {
+                return Ok(SettingsUpdateOutcome::Conflict(current.clone()));
+            }
+            current.revision += 1;
+            current.public_host = public_host.map(str::to_owned);
+            current.requested_running = requested_running;
+            current.relay_settings = Some(relay.clone());
             Ok(SettingsUpdateOutcome::Applied(current.clone()))
         }
 
@@ -128,18 +197,74 @@ mod tests {
         assert!(!s.requested_running);
     }
 
+    /// An update carrying a relay block routes to `update_all_settings`, which
+    /// writes the relay alongside the visible fields. Asserted through the
+    /// recorded [`LastCall`] as well as the effect — no database.
     #[test]
-    fn replace_applies_on_matching_revision_and_bumps_it() {
+    fn replace_with_relay_routes_to_update_all_settings() {
         let store = FakeTunnelStore::default();
-        let outcome =
-            replace_settings(&store, 0, update(Some("dev1.example.com"), true)).expect("write");
+        let outcome = replace_settings(
+            &store,
+            0,
+            SettingsUpdate {
+                public_host: Some("dev1.example.com".into()),
+                requested_running: true,
+                relay_settings: Some(relay()),
+            },
+        )
+        .expect("write");
         let SettingsUpdateOutcome::Applied(s) = outcome else {
             panic!("expected Applied, got {outcome:?}");
         };
         assert_eq!(s.revision, 1);
         assert_eq!(s.public_host.as_deref(), Some("dev1.example.com"));
         assert!(s.requested_running);
-        assert_eq!(get_settings(&store).unwrap().revision, 1, "persisted");
+        assert_eq!(s.relay_settings, Some(relay()), "relay applied");
+        assert_eq!(
+            store.last_call(),
+            Some(LastCall::All {
+                public_host: Some("dev1.example.com".into()),
+                requested_running: true,
+                relay: relay(),
+            }),
+            "routed to update_all_settings",
+        );
+    }
+
+    /// An update with no relay block routes to `update_basic_settings`, which
+    /// leaves the stored relay connection in place. Again asserted via the
+    /// recorded [`LastCall`] and the effect, without SQLite.
+    #[test]
+    fn replace_without_relay_routes_to_update_basic_settings() {
+        let store = FakeTunnelStore::default();
+        // Seed a stored relay via a first (relay-carrying) write.
+        replace_settings(
+            &store,
+            0,
+            SettingsUpdate {
+                public_host: Some("dev1.example.com".into()),
+                requested_running: false,
+                relay_settings: Some(relay()),
+            },
+        )
+        .unwrap();
+
+        let outcome =
+            replace_settings(&store, 1, update(Some("dev2.example.com"), true)).expect("write");
+        let SettingsUpdateOutcome::Applied(s) = outcome else {
+            panic!("expected Applied, got {outcome:?}");
+        };
+        assert_eq!(s.public_host.as_deref(), Some("dev2.example.com"));
+        assert!(s.requested_running);
+        assert_eq!(s.relay_settings, Some(relay()), "stored relay untouched");
+        assert_eq!(
+            store.last_call(),
+            Some(LastCall::Basic {
+                public_host: Some("dev2.example.com".into()),
+                requested_running: true,
+            }),
+            "routed to update_basic_settings",
+        );
     }
 
     #[test]
@@ -153,26 +278,6 @@ mod tests {
         assert_eq!(s.revision, 1, "current row returned");
         assert_eq!(s.public_host.as_deref(), Some("dev1"), "unchanged");
         assert!(s.requested_running, "unchanged");
-    }
-
-    #[test]
-    fn replace_keeps_the_stored_relay_when_the_update_omits_it() {
-        let store = FakeTunnelStore::default();
-        replace_settings(
-            &store,
-            0,
-            SettingsUpdate {
-                public_host: Some("dev1.example.com".into()),
-                requested_running: false,
-                relay_settings: Some(relay()),
-            },
-        )
-        .unwrap();
-        // A later write that omits the relay keeps the stored connection.
-        replace_settings(&store, 1, update(Some("dev2.example.com"), true)).unwrap();
-        let s = get_settings(&store).unwrap();
-        assert_eq!(s.public_host.as_deref(), Some("dev2.example.com"));
-        assert_eq!(s.relay_settings, Some(relay()), "relay kept");
     }
 
     #[test]

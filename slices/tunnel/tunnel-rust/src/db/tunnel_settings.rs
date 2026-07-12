@@ -13,9 +13,7 @@ use diesel::sqlite::SqliteConnection;
 use persistence_rust::DieselPool;
 
 use crate::db::schema::tunnel_settings;
-use crate::domain::{
-    RelaySettings, SettingsUpdate, SettingsUpdateOutcome, TunnelError, TunnelSettings,
-};
+use crate::domain::{RelaySettings, SettingsUpdateOutcome, TunnelError, TunnelSettings};
 
 /// The settings table only ever holds one row, addressed by this id.
 pub(super) const TUNNEL_SETTINGS_ID: &str = "tunnel";
@@ -117,75 +115,98 @@ pub(super) fn get_settings(pool: &DieselPool) -> Result<TunnelSettings, TunnelEr
     read_settings(&mut conn)
 }
 
-/// Replace the settings iff `expected_revision` still matches the stored
-/// revision, bumping the revision on success. The visible fields are fully
-/// replaced; the relay block is replaced only when `update.relay_settings` is
-/// set (otherwise the stored relay connection is kept). Returns
-/// [`SettingsUpdateOutcome::Conflict`] (with the current row) when the revision
-/// has moved on. Backs
-/// [`SqliteTunnelStore::replace_settings`](crate::db::SqliteTunnelStore).
+/// Compare-and-swap the visible settings (`public_host`, `requested_running`)
+/// under `expected_revision`, bumping the revision on success. The four
+/// `relay_*` columns are **deliberately not named**, so SQLite leaves them at
+/// their stored values — this is the "keep the stored relay connection" write.
+/// Backs
+/// [`SqliteTunnelStore::update_basic_settings`](crate::db::SqliteTunnelStore).
 ///
-/// The two arms below differ only in whether they touch the relay columns:
-/// relay-present replaces all four, relay-absent omits them entirely so SQLite
-/// leaves their stored values in place. Any future *visible* column must be
-/// added to BOTH arms (the pre-diesel single `COALESCE` statement folded them;
-/// diesel's typed `.set()` can't express per-column COALESCE, so it needs the
-/// split).
+/// The domain [`actions`](crate::domain::actions) picks this over
+/// [`update_all_settings`] from the `SettingsUpdate`; the store never branches on
+/// the relay's presence. A column the UPDATE never names keeps its stored value
+/// — the per-column "keep" diesel's typed `.set()` can't express as a COALESCE.
 ///
 /// # Errors
 ///
 /// [`TunnelError::Infrastructure`] on a checkout / update / read-back failure.
-pub(super) fn replace_settings(
+pub(super) fn update_basic_settings(
     pool: &DieselPool,
     expected_revision: i64,
-    update: SettingsUpdate,
+    public_host: Option<&str>,
+    requested_running: bool,
 ) -> Result<SettingsUpdateOutcome, TunnelError> {
     let mut conn = pool
         .get()
         .map_err(|e| TunnelError::infrastructure("failed to check out a connection", e))?;
 
-    // Both arms target the same CAS-guarded singleton row and bump `revision`;
-    // they differ ONLY in whether they name the four `relay_*` columns.
-    let affected = match update.relay_settings.as_ref() {
-        // Relay present: replace all four relay columns alongside the visible
-        // fields.
-        Some(relay) => diesel::update(
-            tunnel_settings::table
-                .find(TUNNEL_SETTINGS_ID)
-                .filter(tunnel_settings::revision.eq(expected_revision)),
-        )
-        .set((
-            tunnel_settings::public_host.eq(update.public_host.as_deref()),
-            tunnel_settings::requested_running.eq(update.requested_running),
-            tunnel_settings::relay_remote_addr.eq(Some(relay.remote_addr.as_str())),
-            tunnel_settings::relay_token.eq(Some(relay.token.as_str())),
-            tunnel_settings::relay_public_key.eq(Some(relay.public_key.as_str())),
-            tunnel_settings::service_name.eq(Some(relay.service_name.as_str())),
-            tunnel_settings::revision.eq(tunnel_settings::revision + 1),
-        ))
-        .execute(&mut conn),
-        // Relay absent (`relay_settings: None` — the write-only block was
-        // omitted, so the stored connection must be kept). This `.set()` tuple
-        // deliberately lists ONLY the visible columns + `revision` and OMITS the
-        // four `relay_*` columns: a column the UPDATE never names keeps its
-        // stored value. That per-column "keep" is exactly what diesel's typed
-        // `.set()` can't express as a COALESCE, so it lives in its own arm rather
-        // than a shared tuple.
-        None => diesel::update(
-            tunnel_settings::table
-                .find(TUNNEL_SETTINGS_ID)
-                .filter(tunnel_settings::revision.eq(expected_revision)),
-        )
-        .set((
-            tunnel_settings::public_host.eq(update.public_host.as_deref()),
-            tunnel_settings::requested_running.eq(update.requested_running),
-            tunnel_settings::revision.eq(tunnel_settings::revision + 1),
-        ))
-        .execute(&mut conn),
-    }
-    .map_err(|e| TunnelError::infrastructure("replace_settings failed", e))?;
+    let affected = diesel::update(
+        tunnel_settings::table
+            .find(TUNNEL_SETTINGS_ID)
+            .filter(tunnel_settings::revision.eq(expected_revision)),
+    )
+    .set((
+        tunnel_settings::public_host.eq(public_host),
+        tunnel_settings::requested_running.eq(requested_running),
+        tunnel_settings::revision.eq(tunnel_settings::revision + 1),
+    ))
+    .execute(&mut conn)
+    .map_err(|e| TunnelError::infrastructure("update_basic_settings failed", e))?;
 
-    let current = read_settings(&mut conn)?;
+    outcome_after_cas(&mut conn, affected)
+}
+
+/// Compare-and-swap the visible settings **and all four relay columns** under
+/// `expected_revision`, bumping the revision on success. Backs
+/// [`SqliteTunnelStore::update_all_settings`](crate::db::SqliteTunnelStore).
+///
+/// Pair to [`update_basic_settings`], which omits the relay columns. Any future
+/// *visible* column must be added to both writes.
+///
+/// # Errors
+///
+/// [`TunnelError::Infrastructure`] on a checkout / update / read-back failure.
+pub(super) fn update_all_settings(
+    pool: &DieselPool,
+    expected_revision: i64,
+    public_host: Option<&str>,
+    requested_running: bool,
+    relay: &RelaySettings,
+) -> Result<SettingsUpdateOutcome, TunnelError> {
+    let mut conn = pool
+        .get()
+        .map_err(|e| TunnelError::infrastructure("failed to check out a connection", e))?;
+
+    let affected = diesel::update(
+        tunnel_settings::table
+            .find(TUNNEL_SETTINGS_ID)
+            .filter(tunnel_settings::revision.eq(expected_revision)),
+    )
+    .set((
+        tunnel_settings::public_host.eq(public_host),
+        tunnel_settings::requested_running.eq(requested_running),
+        tunnel_settings::relay_remote_addr.eq(Some(relay.remote_addr.as_str())),
+        tunnel_settings::relay_token.eq(Some(relay.token.as_str())),
+        tunnel_settings::relay_public_key.eq(Some(relay.public_key.as_str())),
+        tunnel_settings::service_name.eq(Some(relay.service_name.as_str())),
+        tunnel_settings::revision.eq(tunnel_settings::revision + 1),
+    ))
+    .execute(&mut conn)
+    .map_err(|e| TunnelError::infrastructure("update_all_settings failed", e))?;
+
+    outcome_after_cas(&mut conn, affected)
+}
+
+/// Read the current row back over `conn` and fold the CAS's affected-row count
+/// into the outcome: exactly one row means the revision matched
+/// ([`SettingsUpdateOutcome::Applied`]), zero means it had moved on
+/// ([`SettingsUpdateOutcome::Conflict`]). Shared by the two single-purpose
+/// writes above so the read-back-and-classify step lives in one place.
+fn outcome_after_cas(
+    conn: &mut SqliteConnection,
+    affected: usize,
+) -> Result<SettingsUpdateOutcome, TunnelError> {
+    let current = read_settings(conn)?;
     Ok(if affected == 1 {
         SettingsUpdateOutcome::Applied(current)
     } else {
@@ -194,9 +215,10 @@ pub(super) fn replace_settings(
 }
 
 /// Load the singleton row and fold it into the domain [`TunnelSettings`]. Shared
-/// by [`get_settings`], the [`replace_settings`] read-back, and the seed path.
-/// The row always exists (the migration seeds it), so a missing row is a genuine
-/// infrastructure error, not an expected empty result.
+/// by [`get_settings`], the [`update_basic_settings`] / [`update_all_settings`]
+/// read-back (via [`outcome_after_cas`]), and the seed path. The row always
+/// exists (the migration seeds it), so a missing row is a genuine infrastructure
+/// error, not an expected empty result.
 pub(super) fn read_settings(conn: &mut SqliteConnection) -> Result<TunnelSettings, TunnelError> {
     tunnel_settings::table
         .find(TUNNEL_SETTINGS_ID)
@@ -214,14 +236,6 @@ mod tests {
 
     fn store() -> SqliteTunnelStore {
         SqliteTunnelStore::open_in_memory().expect("open in-memory store")
-    }
-
-    fn update(public_host: Option<&str>, requested_running: bool) -> SettingsUpdate {
-        SettingsUpdate {
-            public_host: public_host.map(str::to_owned),
-            requested_running,
-            relay_settings: None,
-        }
     }
 
     fn relay() -> RelaySettings {
@@ -243,10 +257,10 @@ mod tests {
     }
 
     #[test]
-    fn replace_applies_on_matching_revision_and_bumps_it() {
+    fn update_basic_applies_on_matching_revision_and_bumps_it() {
         let store = store();
         let outcome = store
-            .replace_settings(0, update(Some("dev1.example.com"), true))
+            .update_basic_settings(0, Some("dev1.example.com"), true)
             .unwrap();
         let SettingsUpdateOutcome::Applied(s) = outcome else {
             panic!("expected Applied, got {outcome:?}");
@@ -259,15 +273,11 @@ mod tests {
     }
 
     #[test]
-    fn replace_conflicts_on_stale_revision_and_leaves_state_untouched() {
+    fn update_basic_conflicts_on_stale_revision_and_leaves_state_untouched() {
         let store = store();
-        store
-            .replace_settings(0, update(Some("dev1"), true))
-            .unwrap();
+        store.update_basic_settings(0, Some("dev1"), true).unwrap();
         // a second writer still holding revision 0 loses
-        let outcome = store
-            .replace_settings(0, update(Some("evil"), false))
-            .unwrap();
+        let outcome = store.update_basic_settings(0, Some("evil"), false).unwrap();
         let SettingsUpdateOutcome::Conflict(s) = outcome else {
             panic!("expected Conflict, got {outcome:?}");
         };
@@ -279,19 +289,19 @@ mod tests {
     /// An explicit `publicHost: null` clears a configured host — the write binds
     /// SQL NULL rather than skipping the column.
     #[test]
-    fn replace_with_none_public_host_clears_it() {
+    fn update_basic_with_none_public_host_clears_it() {
         let store = store();
         store
-            .replace_settings(0, update(Some("dev1.example.com"), true))
+            .update_basic_settings(0, Some("dev1.example.com"), true)
             .unwrap();
-        store.replace_settings(1, update(None, true)).unwrap();
+        store.update_basic_settings(1, None, true).unwrap();
         assert_eq!(store.get_settings().unwrap().public_host, None);
     }
 
     /// Relay configuration is all-or-nothing: a partial column set (here a
     /// missing `service_name`) reads as unconfigured, and a complete set folds
     /// into a `RelaySettings`. Exercises [`relay_from_columns`] directly so the
-    /// partial/blank shapes the `replace_settings` API can't produce are covered.
+    /// partial/blank shapes the write API can't produce are covered.
     #[test]
     fn relay_from_columns_needs_every_field_present() {
         assert_eq!(
@@ -328,24 +338,17 @@ mod tests {
     }
 
     #[test]
-    fn relay_block_is_set_when_present_and_kept_when_absent() {
+    fn update_all_sets_the_relay_block_and_update_basic_keeps_it() {
         let store = store();
-        // set the relay block
+        // `update_all_settings` writes the relay block
         store
-            .replace_settings(
-                0,
-                SettingsUpdate {
-                    public_host: Some("dev1.example.com".into()),
-                    requested_running: false,
-                    relay_settings: Some(relay()),
-                },
-            )
+            .update_all_settings(0, Some("dev1.example.com"), false, &relay())
             .unwrap();
         assert_eq!(store.get_settings().unwrap().relay_settings, Some(relay()));
 
-        // a later write that omits relay keeps it
+        // a later `update_basic_settings` leaves the stored relay columns alone
         store
-            .replace_settings(1, update(Some("dev2.example.com"), true))
+            .update_basic_settings(1, Some("dev2.example.com"), true)
             .unwrap();
         let s = store.get_settings().unwrap();
         assert_eq!(s.public_host.as_deref(), Some("dev2.example.com"));

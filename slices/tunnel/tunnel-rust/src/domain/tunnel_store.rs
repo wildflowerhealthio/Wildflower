@@ -57,21 +57,49 @@ pub trait TunnelStore {
     /// [`TunnelError::Infrastructure`] on a checkout / read failure.
     fn get_settings(&self) -> Result<TunnelSettings, TunnelError>;
 
-    /// Replace the settings iff `expected_revision` still matches the stored
-    /// revision, bumping the revision on success. The visible fields are fully
-    /// replaced; the relay block is replaced only when `update.relay_settings`
-    /// is set (otherwise the stored relay connection is kept). Returns
+    /// Compare-and-swap the visible settings (`public_host`, `requested_running`)
+    /// under `expected_revision`, bumping the revision on success, and
+    /// **deliberately leaving the four `relay_*` columns at their stored values**
+    /// — the caller has no relay block to write. Returns
     /// [`SettingsUpdateOutcome::Conflict`] (with the current row) when the
     /// revision has moved on.
+    ///
+    /// Pair to [`update_all_settings`](Self::update_all_settings), which writes
+    /// the relay block too. The domain [`actions`](crate::domain::actions)
+    /// chooses between the two from a [`SettingsUpdate`]; keeping that choice in
+    /// the action (not the store) lets a fake store validate the routing without
+    /// SQLite.
     ///
     /// # Errors
     ///
     /// [`TunnelError::Infrastructure`] on a checkout / update / read-back
     /// failure.
-    fn replace_settings(
+    fn update_basic_settings(
         &self,
         expected_revision: i64,
-        update: SettingsUpdate,
+        public_host: Option<&str>,
+        requested_running: bool,
+    ) -> Result<SettingsUpdateOutcome, TunnelError>;
+
+    /// Compare-and-swap the visible settings **and all four relay columns**
+    /// (`relay`) under `expected_revision`, bumping the revision on success.
+    /// Returns [`SettingsUpdateOutcome::Conflict`] (with the current row) when
+    /// the revision has moved on.
+    ///
+    /// Pair to [`update_basic_settings`](Self::update_basic_settings), which
+    /// leaves the relay columns untouched. See its note for why the
+    /// relay-present / relay-absent choice lives in the action rather than here.
+    ///
+    /// # Errors
+    ///
+    /// [`TunnelError::Infrastructure`] on a checkout / update / read-back
+    /// failure.
+    fn update_all_settings(
+        &self,
+        expected_revision: i64,
+        public_host: Option<&str>,
+        requested_running: bool,
+        relay: &RelaySettings,
     ) -> Result<SettingsUpdateOutcome, TunnelError>;
 
     /// Fill `public_host` and/or the relay block from build-time defaults, but

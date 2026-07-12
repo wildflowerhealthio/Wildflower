@@ -12,7 +12,7 @@ use persistence_rust::DieselPool;
 
 use crate::db::{seed_tunnel_settings, tunnel_settings};
 use crate::domain::{
-    SettingsSeed, SettingsUpdate, SettingsUpdateOutcome, TunnelError, TunnelSettings, TunnelStore,
+    RelaySettings, SettingsSeed, SettingsUpdateOutcome, TunnelError, TunnelSettings, TunnelStore,
 };
 
 /// The tunnel migrations, embedded from the crate's `migrations/` tree at
@@ -93,12 +93,34 @@ impl TunnelStore for SqliteTunnelStore {
         tunnel_settings::get_settings(self.pool())
     }
 
-    fn replace_settings(
+    fn update_basic_settings(
         &self,
         expected_revision: i64,
-        update: SettingsUpdate,
+        public_host: Option<&str>,
+        requested_running: bool,
     ) -> Result<SettingsUpdateOutcome, TunnelError> {
-        tunnel_settings::replace_settings(self.pool(), expected_revision, update)
+        tunnel_settings::update_basic_settings(
+            self.pool(),
+            expected_revision,
+            public_host,
+            requested_running,
+        )
+    }
+
+    fn update_all_settings(
+        &self,
+        expected_revision: i64,
+        public_host: Option<&str>,
+        requested_running: bool,
+        relay: &RelaySettings,
+    ) -> Result<SettingsUpdateOutcome, TunnelError> {
+        tunnel_settings::update_all_settings(
+            self.pool(),
+            expected_revision,
+            public_host,
+            requested_running,
+            relay,
+        )
     }
 
     fn seed_if_absent(&self, seed: &SettingsSeed) -> Result<(), TunnelError> {

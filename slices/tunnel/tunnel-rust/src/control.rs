@@ -16,7 +16,7 @@ use std::sync::Arc;
 use shared_structures_rust::tunnel_service::{TunnelLiveness, TunnelService, TunnelStatus};
 use tokio::sync::watch;
 
-use crate::domain::{SettingsUpdate, SettingsUpdateOutcome, TunnelStore};
+use crate::domain::{SettingsUpdateOutcome, TunnelStore};
 use crate::http::TunnelState;
 
 /// How many times the start path re-reads and retries its persist
@@ -217,17 +217,12 @@ fn persist_start_blocking(state: &TunnelState) -> Result<(), String> {
             return Ok(());
         }
 
+        // Start only flips `requested_running`; it never edits the relay block,
+        // so this is the basic write that leaves the stored relay connection in
+        // place.
         let outcome = state
             .store
-            .replace_settings(
-                current.revision,
-                SettingsUpdate {
-                    public_host: current.public_host.clone(),
-                    requested_running: true,
-                    // Keep the stored relay connection — start never edits it.
-                    relay_settings: None,
-                },
-            )
+            .update_basic_settings(current.revision, current.public_host.as_deref(), true)
             .map_err(|e| format!("failed to persist tunnel start: {e}"))?;
 
         if let SettingsUpdateOutcome::Applied(settings) = outcome {
@@ -243,7 +238,7 @@ fn persist_start_blocking(state: &TunnelState) -> Result<(), String> {
 mod tests {
     use super::*;
     use crate::db::SqliteTunnelStore;
-    use crate::domain::{RelayClient, RelaySettings, TunnelDaemon};
+    use crate::domain::{RelayClient, RelaySettings, SettingsUpdate, TunnelDaemon};
     use crate::health::HealthProbe;
     use crate::test_support::{HoldUntilCancelRelayClient, StubProbe};
 
@@ -265,16 +260,18 @@ mod tests {
         probe: Arc<dyn HealthProbe>,
     ) -> Arc<TunnelState> {
         let store = SqliteTunnelStore::open_in_memory().expect("open in-memory store");
-        store
-            .replace_settings(
-                0,
-                SettingsUpdate {
-                    public_host: public_host.map(str::to_owned),
-                    requested_running: false,
-                    relay_settings,
-                },
-            )
-            .expect("seed settings");
+        // Route through the action so the relay-present / relay-absent switch is
+        // exercised here exactly as the PUT handler drives it.
+        crate::domain::actions::replace_settings(
+            &store,
+            0,
+            SettingsUpdate {
+                public_host: public_host.map(str::to_owned),
+                requested_running: false,
+                relay_settings,
+            },
+        )
+        .expect("seed settings");
         let daemon = TunnelDaemon::new_test(client, probe, "http://127.0.0.1:8080", 8080);
         daemon.reconcile(&store.get_settings().expect("read settings"));
         Arc::new(TunnelState { store, daemon })
