@@ -13,12 +13,23 @@ on:
     # job installs them and stubs the generated web bundles the Tauri crates
     # `include_str!`. (This used to be a separate ci-rust-tauri.yml; the split
     # saved little because most Rust PRs touch a Tauri crate anyway.)
+    #
+    # The full-workspace test pass also runs each slice's
+    # `openapi_spec_snapshot_is_up_to_date` test — the Rust half of the OpenAPI
+    # drift gate (previously api-sync.yml's rust-snapshot job). So a snapshot-only
+    # regen with no *.rs change is matched via the committed JSON path below;
+    # api-sync.yml keeps only the TS drift half.
     paths:
       - '**/*.rs'
       - '**/Cargo.toml'
       - 'Cargo.lock'
       - 'rust-toolchain.toml'
       - 'deny.toml'
+      # Committed OpenAPI snapshots. `openapi_spec_snapshot_is_up_to_date` (run
+      # as part of the workspace test suite) verifies each still matches what
+      # utoipa emits from the live axum routes; a snapshot-only regen (no *.rs
+      # change) must still trigger that check, so match the generated JSON.
+      - 'slices/**/*-rust/openapi/*.openapi.json'
       # Tauri bootstrap inputs (not *.rs): browser-sniffer-tauri-rust
       # `include_str!`s a JS bundle generated from this TS package, and the
       # lockfiles affect that bootstrap build — a change to either can break the
@@ -119,9 +130,10 @@ jobs:
       - name: Set up Rust toolchain
         # Reads rust-toolchain.toml (channel + rustfmt/clippy), caches build
         # artifacts, and registers clippy/rustfmt problem matchers for inline
-        # annotations. Its own cache key: this job compiles the full workspace
-        # incl. the Tauri dep tree, which api-sync.yml's excl-tauri snapshot job
-        # deliberately omits — so they don't share a key.
+        # annotations. Its own cache key (`rust-workspace-all`): this job
+        # compiles the full workspace incl. the Tauri dep tree, so it doesn't
+        # share the excl-tauri cache the pre-merge Rust checks used before the
+        # Tauri crates were folded in here.
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           cache-shared-key: rust-workspace-all

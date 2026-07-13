@@ -3,31 +3,31 @@ name: API Sync
 # Each slice that exposes an HTTP surface pins a cross-language wire contract via
 # a committed OpenAPI snapshot (`slices/<slice>/<slice>-rust/openapi/*.openapi.json`):
 #   - a Rust snapshot test proves that file matches what `utoipa` emits from the
-#     live axum routes, and
+#     live axum routes. That half runs in ci-rust.yml, whose full-workspace test
+#     pass includes `openapi_spec_snapshot_is_up_to_date` and which triggers on
+#     both the Rust sources and the committed snapshots.
 #   - a TS drift test proves the slice's Effect `HttpApi` matches that same file.
-# Those two halves otherwise live in the path-filtered Rust/TypeScript workflows,
-# so a one-sided change can satisfy its own language's gate while the other half
-# is skipped — letting drift through. This workflow runs BOTH halves whenever
-# either side (or a snapshot) changes, closing that gap. It is project-agnostic:
-# a new slice is picked up with no edit here — its Rust snapshot test shares the
-# name `openapi_spec_snapshot_is_up_to_date` (run across the workspace) and its
-# TS test matches the `openapi-drift` filter.
+#     That half is this workflow.
+# The TS half lives here (not just in ci-typescript.yml) because that workflow's
+# `test:changed` is gated to TS/JS paths, so a change to a committed snapshot
+# alone would never run the drift check there. Running it here whenever either
+# the TS definition or a snapshot changes closes that gap. It is project-agnostic:
+# a new slice is picked up with no edit here — its TS test matches the
+# `openapi-drift` filter.
 
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-    # Gated at the trigger to changes that touch either side of any slice's
-    # contract, so an unrelated PR never starts this workflow (no
-    # change-detection job needed). CI is a pre-merge gate only; this workflow no
-    # longer runs on pushes to main. Broad on purpose: any slice's Rust crate,
-    # any TS HttpApi definition, the shared engine, or a committed snapshot — so
-    # a new consumer needs no edit here.
+    # Gated at the trigger to changes that touch the TS side of any slice's
+    # contract or a committed snapshot, so an unrelated PR never starts this
+    # workflow (no change-detection job needed). CI is a pre-merge gate only;
+    # this workflow no longer runs on pushes to main.
     paths:
-      # Any slice's Rust crate (handlers) + its committed snapshot. Also covers
-      # the shared Rust snapshot-test helper (`shared-structures-rust`).
-      - 'slices/**/*-rust/**'
       # Any slice's Effect HttpApi definition + its TS drift test.
       - 'slices/**/http-api-definition/**'
+      # The committed snapshots the drift test diffs against. A Rust route change
+      # instead lands as *.rs and is gated by ci-rust.yml's Rust snapshot half.
+      - 'slices/**/*-rust/openapi/*.openapi.json'
       # The shared wire-shape engine + the spec-drift test factory.
       - 'slices/shared-structures/shared-structures-core/src/openapi-drift/**'
       # This workflow itself.
@@ -42,32 +42,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  rust-snapshot:
-    name: Rust Snapshot
-    # Skip on draft PRs.
-    if: github.event.pull_request.draft != true
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - name: Set up Rust toolchain
-        # Dedicated excl-tauri cache: this job compiles everything except the
-        # tauri crates, so it keeps its own key rather than reusing ci-rust.yml's
-        # (which now compiles the full workspace incl. tauri under
-        # `rust-workspace-all`).
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          cache-shared-key: rust-workspace-excl-tauri
-      - name: Verify every committed OpenAPI spec matches its utoipa routes
-        # One shared test name across the workspace, so adding a slice's snapshot
-        # test needs no edit here. Regenerate a stale snapshot with e.g.
-        #   UPDATE_OPENAPI=1 cargo test -p <slice>-rust openapi_spec_snapshot_is_up_to_date
-        # wildflower-tauri, browser-sniffer-tauri-rust,
-        # shared-structures-tauri-rust, and tauri-plugin-native-webview are
-        # excluded — all pull in `tauri = "2"` which needs GTK/webkit system
-        # libs to build (ci-rust.yml installs those and compiles them there).
-        # None owns a documented OpenAPI surface.
-        run: cargo test --workspace --exclude wildflower-tauri --exclude browser-sniffer-tauri-rust --exclude shared-structures-tauri-rust --exclude tauri-plugin-native-webview --all-features openapi_spec_snapshot_is_up_to_date
-
   ts-drift:
     name: TS Drift
     if: github.event.pull_request.draft != true

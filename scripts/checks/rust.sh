@@ -37,8 +37,8 @@ fi
 # The workspace partitions: everything except the GTK/webkit-dependent Tauri
 # crates vs. the Tauri crates themselves. ci-rust.yml now compiles the FULL
 # workspace in one job (clippy-all / test-all), so these partitions are used by
-# the changed-crate hooks (pre-commit / pre-push), the local Tauri degrade path,
-# and api-sync.yml's excl-tauri snapshot run — not to split CI into two jobs.
+# the changed-crate hooks (pre-commit / pre-push) and the local Tauri degrade
+# path — not to split CI into two jobs.
 non_tauri=(--workspace
   --exclude wildflower-tauri
   --exclude browser-sniffer-tauri-rust
