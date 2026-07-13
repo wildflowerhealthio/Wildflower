@@ -13,16 +13,16 @@ instead of restating it.
 
 The Tauri host opens **one** rusqlite `persistence_rust::Connection` (the original
 persistence primitive the pre-diesel slices write through) **and** builds **one**
-`DieselPool` on the *same* database file, then shares the pool across every
+`DieselPool` on the _same_ database file, then shares the pool across every
 diesel-backed slice. SQLite permits multiple connections per file, so the pool's
 connections are simply additional openers onto it.
 
 WAL is deliberately off repo-wide (see `Connection` in
 `persistence-rust/src/connection.rs`), so SQLite allows only **one writer at a
-time across all connections** to the file — the pool buys concurrent *reads*,
+time across all connections** to the file — the pool buys concurrent _reads_,
 never concurrent writes.
 
-**Accepted trade-off.** The pool's connections are *not* synchronized with the
+**Accepted trade-off.** The pool's connections are _not_ synchronized with the
 `Arc<Mutex<rusqlite::Connection>>` the other slices write through, so a diesel
 write can contend with a rusqlite write at the SQLite file-lock level — the old
 "no cross-connection write contention" guarantee no longer holds. Both openers set
@@ -68,7 +68,7 @@ fresh one. A genuinely new table keeps plain `CREATE TABLE`.
 - `persistence-rust/src/namespaced_migrations.rs` — `run_diesel_migrations` and
   why the stock diesel harness collides.
 - [Polymorphic Rows Explanation](./Polymorphic%20Rows%20Explanation.md) — the row
-  shape *within* these tables, for records whose columns vary by kind.
+  shape _within_ these tables, for records whose columns vary by kind.
 - The implementations: collector's `SqliteRemotesStore`
   (`collector-rust/src/db/remotes_store.rs`) and tunnel's `SqliteTunnelStore`
   (`tunnel-rust/src/db/tunnel_store.rs`).
