@@ -9,8 +9,10 @@
 //!  - [`removable`](AppRecord::removable) — may the owner delete it through the
 //!    admin surface? Cloud: yes; self-hosted: only when not `seeded`; system: no.
 //!
-//! The wire projection ([`AppListEntry`](super::AppListEntry)) is the sole place
-//! these reach the client, through the [`App`](super::App) seam.
+//! `smart` also rides the uniform [`AppRegistration`](super::AppRegistration) list
+//! item (derived there from `client_id`); `removable` reaches the client only on
+//! the per-kind detail shapes ([`CloudAppDetail`](super::CloudAppDetail) etc.),
+//! projected through the [`App`](super::App) seam.
 
 /// The shared catalogue verdicts a concrete app record computes from its own
 /// fields. See the module docs for why this is the only shared behaviour and why

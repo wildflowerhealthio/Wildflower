@@ -28,9 +28,9 @@ pub(crate) struct AppNotFoundBody {
     pub(crate) id: String,
 }
 
-/// Wire shape for `AppNotEditable` (409) — the app exists but isn't editable
-/// through the surface a mutation used (a system app, a seeded self-hosted app,
-/// or a body whose provenance doesn't match the stored app).
+/// Wire shape for `AppNotEditable` (409) — the app exists but isn't editable /
+/// removable: a system app, or a seeded self-hosted app. (A per-kind path given an
+/// id of another kind is a `404`, not a `409` — the mismatch can't be expressed.)
 #[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct AppNotEditableBody {
     pub(crate) error: &'static str,

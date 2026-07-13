@@ -3,11 +3,11 @@ import { useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { AsyncErrorView, Field, FieldDescription, PageHeader, TextField } from 'react-tundraish'
 
-import { useAppsAdminCreateMutation, useSelfHostedAppCreateMutation } from '../../../queries.ts'
+import { useCloudAppCreateMutation, useSelfHostedAppCreateMutation } from '../../../queries.ts'
 import { CloudAppFields, formatError, type CloudFields } from './-forms.tsx'
 import formStyles from './-forms.module.css'
 
-/** The two creatable provenances (system apps are compiled in, not user-added). */
+/** The two creatable kinds (system apps are seeded, not user-added). */
 type Mode = 'cloud' | 'self-hosted'
 
 const MODE_OPTIONS: readonly { readonly value: Mode; readonly label: string }[] = [
@@ -24,16 +24,16 @@ interface NewAppBodyProps {
 
 /**
  * The create-app page. A full-width tabs picker switches between the **cloud**
- * arm (a URL template + requires-tunnel, via {@link useAppsAdminCreateMutation})
- * and the **self-hosted** arm (a name + subtitle + uploaded `.zip` bundle, via
- * {@link useSelfHostedAppCreateMutation}). Both POST the single merged
- * `multipart/form-data` create route, discriminated on `provenance`, and on
- * success invoke `onCreated`. Presentational + prop-driven (the navigation
- * callback is injected) so it renders in tests without a live router.
+ * arm (a JSON `POST /cloud-apps` — a URL template + requires-tunnel, via
+ * {@link useCloudAppCreateMutation}) and the **self-hosted** arm (a multipart
+ * `POST /self-hosted-apps` — a name + subtitle + uploaded `.zip` bundle, via
+ * {@link useSelfHostedAppCreateMutation}). On success each invokes `onCreated`.
+ * Presentational + prop-driven (the navigation callback is injected) so it
+ * renders in tests without a live router.
  */
 const NewAppBody = ({ onCreated }: NewAppBodyProps): JSX.Element => {
   const [mode, setMode] = useState<Mode>('cloud')
-  const createMutation = useAppsAdminCreateMutation()
+  const createMutation = useCloudAppCreateMutation()
   const selfHostedMutation = useSelfHostedAppCreateMutation()
   const [cloud, setCloud] = useState<CloudFields>(EMPTY_CLOUD)
   const [selfHostedName, setSelfHostedName] = useState('')

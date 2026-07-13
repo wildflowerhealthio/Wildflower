@@ -1,41 +1,42 @@
 //! `apps-rust` — the host-side apps slice.
 //!
-//! A curated app registry with one wire surface. **Table-per-struct** storage:
-//! one standalone table per concrete kind (`cloud_apps`, `self_hosted_apps`),
-//! each carrying every one of its own columns, plus a `home_screen` table owning
-//! the cross-kind ordering + enabled flag. The table a row lives in IS its
-//! provenance; system apps have no table (their metadata + launch URL are
-//! compiled in). The provenance taxonomy (System / Self-Hosted / Cloud) and its
-//! privacy model are canonical in `docs/Apps/Explanation.md`; the mechanical
-//! mapping here:
+//! A curated app registry with one wire surface. **Class-table-inheritance**
+//! storage: one authoritative `app_registry` parent (the global id space, the
+//! shared catalogue facts, and the homescreen placement) with three symmetric
+//! per-kind child payload tables (`system_apps`, `cloud_apps`, `self_hosted_apps`),
+//! real FKs child → parent with `ON DELETE CASCADE`. The `kind` column names which
+//! child holds a registration's payload. The taxonomy (System / Self-Hosted /
+//! Cloud) and its privacy model are canonical in `docs/Apps/Explanation.md`; the
+//! mechanical mapping here:
 //!
-//!  - **System** ([`domain::SystemApp`]) — id / name / subtitle / launch URL from
-//!    the compiled-in [`SYSTEM_APPS`](domain::SYSTEM_APPS) list; only a
-//!    `home_screen` row is stored.
-//!  - **Self-hosted** ([`domain::SelfHostedApp`], the `self_hosted_apps` table) —
-//!    a migration-seeded row (protected) or a runtime upload through `POST /apps`
-//!    (the multipart self-hosted arm; removable).
-//!  - **Cloud** ([`domain::CloudApp`], the `cloud_apps` table) — created /
-//!    replaced / deleted through the cloud-admin surface.
+//!  - **System** ([`domain::SystemApp`], the `system_apps` payload) — an ordinary
+//!    seeded row (its launch URL in `system_apps.url`); never user-editable.
+//!  - **Self-hosted** ([`domain::SelfHostedApp`], the `self_hosted_apps` payload) —
+//!    a migration-seeded row (protected) or a runtime upload through
+//!    `POST /self-hosted-apps` (multipart; removable).
+//!  - **Cloud** ([`domain::CloudApp`], the `cloud_apps` payload) — created /
+//!    replaced / deleted through the `/cloud-apps` resource.
 //!
 //! Layered like `collector-rust`:
 //!
-//!  - [`domain`] — the concrete diesel-mapped records ([`domain::CloudApp`],
-//!    [`domain::SelfHostedApp`]) owning all their fields, the compiled-in
-//!    [`domain::SystemApp`], the thin [`domain::App`] enum at the list/wire seam
-//!    (a record + its `home_screen` placement), [`domain::AppListEntry`] (the
-//!    `provenance`-discriminated wire union, projected from `App`),
-//!    [`domain::AppError`] (the failure vocabulary), and [`domain::AppUrl`] (the
-//!    write-side URL validator).
+//!  - [`domain`] — [`domain::AppRegistration`] (the diesel-mapped `app_registry`
+//!    row AND the uniform `GET /apps` wire item), the per-kind detail types
+//!    ([`domain::CloudApp`] / [`domain::SelfHostedApp`] / [`domain::SystemApp`],
+//!    each a registration + its payload, projecting the per-kind editor wire
+//!    shapes [`domain::CloudAppDetail`] etc.), the thin [`domain::App`] enum at the
+//!    cross-kind seams (launch dispatch, delete), [`domain::AppKind`] (the
+//!    discriminator), [`domain::AppError`] (the failure vocabulary), and
+//!    [`domain::AppUrl`] (the write-side URL validator).
 //!  - [`db`] — the `SQLite` store adapter ([`db::SqliteAppsStore`], the
 //!    implementation of the [`domain::AppsStore`] port) over the app-wide diesel
 //!    r2d2 pool (`persistence_rust::DieselPool`), migrated with embedded diesel
-//!    migrations; cross-kind reads go through the `apps_view` SQL view.
+//!    migrations; the uniform list is a join-free registry read, a detail is the
+//!    registration + one typed child payload read.
 //!  - [`http`] — the slice's routers. `GET /apps` lists the registry in display
-//!    order; `POST /apps/{id}` dispatches the launch on the app's kind; the
-//!    cloud-admin routes create / replace / delete app content (cloud and
-//!    uploaded self-hosted); `PUT /home-screen` atomically reorders / enables any
-//!    app.
+//!    order; `GET`/`POST /apps/{id}` dispatches the launch on the app's kind;
+//!    `DELETE /apps/{id}` removes any kind; the per-kind `/cloud-apps` /
+//!    `/self-hosted-apps` / `/system-apps` resources carry detail / create /
+//!    replace; `PUT /home-screen` atomically reorders / enables any app.
 //!
 //! ## Launch / tunnel seam
 //!
@@ -91,12 +92,12 @@ pub use shared_structures_rust::OnDeviceWebviewHandle;
 /// is the catalogue the host iterates to bind a loopback listener per self-hosted
 /// app at startup (both migration-seeded and previously-uploaded rows).
 pub struct Apps {
-    /// The owner-gated routes: `GET /apps`, `POST /apps`,
-    /// `PUT`/`DELETE /apps/{id}`, `PUT /home-screen`. The host wraps
-    /// this with its bearer gate.
+    /// The owner-gated routes: `GET /apps`, `DELETE /apps/{id}`, `PUT /home-screen`,
+    /// and the per-kind `/cloud-apps` / `/self-hosted-apps` / `/system-apps`
+    /// resources. The host wraps this with its bearer gate.
     pub gated_router: Router,
-    /// The launch route `POST /apps/{id}`, mounted ungated at the router level
-    /// (network-gated by the host; owner-gated in-handler for loopback).
+    /// The launch routes `GET`/`POST /apps/{id}`, mounted ungated at the router
+    /// level (network-gated by the host; owner-gated in-handler for loopback).
     pub launch_router: Router,
     /// Shared handler state (the store, the loopback base URL, the owner-auth
     /// gate, the tunnel, the on-device webview seam).
@@ -149,8 +150,8 @@ pub fn setup_apps(
     self_hosted: Arc<SelfHostedAppsService>,
     launch_cookies: Arc<dyn LaunchCookies>,
 ) -> anyhow::Result<Apps> {
-    // `SqliteAppsStore::new` runs the embedded migrations — building the concrete
-    // tables, the `home_screen` ordering table, and the `apps_view`. The one store
+    // `SqliteAppsStore::new` runs the embedded migrations — building the
+    // `app_registry` parent and its three child payload tables. The one store
     // serves them all.
     let store = SqliteAppsStore::new(pool).context("failed to open apps store")?;
     // Materialize the self-hosted catalogue once for the host to bind listeners

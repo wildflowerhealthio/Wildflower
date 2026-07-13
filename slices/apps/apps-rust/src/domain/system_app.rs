@@ -1,35 +1,33 @@
-//! `SystemApp` — the compiled-in launch source + catalogue metadata for system
-//! apps. A system app has **no stored table**: its id / name / subtitle /
-//! `local_only` / launch URL all come from the [`SYSTEM_APPS`] list below, and a
-//! `home_screen` row referencing its id is its only stored state. The store
-//! folds these compiled-in entries into the catalogue for every `home_screen`
-//! row whose id isn't a cloud or self-hosted row. The store tests pin that every
-//! seeded `home_screen` system id resolves to a [`SYSTEM_APPS`] entry.
+//! [`SystemApp`] — a whole system app: a compiled-shell route (API View, API
+//! Docs) the user can never add, register, or delete. Under class-table-inheritance
+//! it is an ordinary seeded row like any other kind — its [`AppRegistration`]
+//! (id / name / subtitle / `local_only` / placement) plus the `system_apps`
+//! payload (`url`, its `{origin}`-relative launch template). The former compiled-in
+//! `SYSTEM_APPS` const is gone: the DB is authoritative, so shipping a change to a
+//! system app is a migration.
 //!
 //! Every system app is `{origin}`-relative (an on-device target served by this
-//! host), so [`SystemApp::app_url`] always parses to
-//! [`AppUrl::OriginRelative`](super::AppUrl::OriginRelative).
+//! host), so [`SystemApp::url`] parses to
+//! [`AppUrl::OriginRelative`](super::AppUrl::OriginRelative). [`SystemAppDetail`]
+//! is the read-only `GET /system-apps/{id}` wire shape.
 
-use super::{AppRecord, AppUrl};
+use serde::Serialize;
+use utoipa::ToSchema;
 
-/// One compiled-in system-app source. `'static` because the whole catalogue is
-/// a `const` baked into the binary. A system app has no stored table — its
-/// name / subtitle / launch URL live here, and a `home_screen` row referencing
-/// its [`id`](Self::id) is its only stored state.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+use super::app_url::AppUrl;
+use super::{AppKind, AppRecord, AppRegistration};
+
+/// A whole system app — its registration plus the `system_apps` payload (`url`).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SystemApp {
-    /// Stable id — matches the seeded `home_screen` row's `app_id`.
-    pub id: &'static str,
-    pub name: &'static str,
-    pub subtitle: Option<&'static str>,
-    /// The launch URL template. Always `{origin}`-relative, so it parses to
-    /// [`AppUrl::OriginRelative`](super::AppUrl::OriginRelative).
-    pub url: &'static str,
-    pub local_only: bool,
+    /// The shared registration facts + homescreen placement.
+    pub registration: AppRegistration,
+    /// The launch URL template. Always `{origin}`-relative.
+    pub url: AppUrl,
 }
 
 impl AppRecord for SystemApp {
-    /// A system app is never a SMART app — it carries no `client_id`.
+    /// A system app is never a SMART app.
     fn smart(&self) -> bool {
         false
     }
@@ -40,71 +38,82 @@ impl AppRecord for SystemApp {
     }
 }
 
-impl SystemApp {
-    /// Parse this source's `url` template into a validated
-    /// [`AppUrl`]. Every entry is `{origin}`-relative, so this resolves to
-    /// [`AppUrl::OriginRelative`](super::AppUrl::OriginRelative); the
-    /// [`url_parses`](tests) test pins that every entry parses.
-    ///
-    /// # Errors
-    ///
-    /// Returns the [`AppUrlError`](super::AppUrlError) if a (compiled-in) entry's
-    /// `url` doesn't parse — impossible for the shipped list, but surfaced as a
-    /// typed error rather than a panic for the launch handler.
-    pub fn app_url(&self) -> Result<AppUrl, super::AppUrlError> {
-        self.url.parse()
-    }
+/// The read-only `GET /system-apps/{id}` wire shape — the registration fields plus
+/// the display-only `url` template. Flat: `kind` is always `system`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SystemAppDetail {
+    pub id: String,
+    pub kind: AppKind,
+    pub enabled: bool,
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subtitle: Option<String>,
+    pub local_only: bool,
+    pub smart: bool,
+    pub requires_tunnel: bool,
+    /// The stored launch URL template (`{origin}` token), serialized as its
+    /// canonical string. Display-only — a system app is never editable.
+    #[schema(value_type = String)]
+    pub url: AppUrl,
 }
 
-/// The compiled-in system-app catalogue. The seeded `home_screen` system ids
-/// (migration `2026-07-11-000000`) must each resolve to an entry here (the store
-/// tests assert the two agree).
-pub const SYSTEM_APPS: &[SystemApp] = &[
-    SystemApp {
-        id: "api-view",
-        name: "API View",
-        subtitle: Some("View patient records in your browser."),
-        url: "{origin}/fhir-r4/Patient/8c0f46f4-dd7b-4a5f-bd35-f0f41a2f8882",
-        local_only: true,
-    },
-    SystemApp {
-        id: "api-docs",
-        name: "API Docs",
-        subtitle: Some("View API documentation in your browser."),
-        url: "{origin}/docs",
-        local_only: true,
-    },
-];
-
-/// Look up a compiled-in system-app source by id. `None` when no entry matches
-/// — the launch handler turns that into a typed error rather than panicking on
-/// a seeded `system` row with no source.
-#[must_use]
-pub fn find(id: &str) -> Option<&'static SystemApp> {
-    SYSTEM_APPS.iter().find(|app| app.id == id)
+impl From<&SystemApp> for SystemAppDetail {
+    fn from(app: &SystemApp) -> Self {
+        let reg = &app.registration;
+        Self {
+            id: reg.id.clone(),
+            kind: reg.kind,
+            enabled: reg.enabled,
+            name: reg.name.clone(),
+            subtitle: reg.subtitle.clone(),
+            local_only: reg.local_only,
+            smart: reg.smart(),
+            requires_tunnel: reg.requires_tunnel,
+            url: app.url.clone(),
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::AppUrl;
 
-    #[test]
-    fn find_returns_a_known_source_and_none_otherwise() {
-        assert_eq!(find("api-view").map(|s| s.id), Some("api-view"));
-        assert!(find("no-such-system-app").is_none());
+    fn system() -> SystemApp {
+        SystemApp {
+            registration: AppRegistration {
+                id: "api-docs".to_owned(),
+                kind: AppKind::System,
+                position: 2,
+                enabled: true,
+                name: "API Docs".to_owned(),
+                subtitle: Some("View API documentation in your browser.".to_owned()),
+                local_only: true,
+                client_id: None,
+                requires_tunnel: false,
+            },
+            url: AppUrl::OriginRelative("/docs".to_owned()),
+        }
     }
 
-    /// Every shipped entry parses to an origin-relative `AppUrl`.
     #[test]
-    fn url_parses_to_origin_relative_for_every_entry() {
-        for app in SYSTEM_APPS {
-            let url = app.app_url().expect("compiled-in system url parses");
-            assert!(
-                matches!(url, AppUrl::OriginRelative(_)),
-                "{} must be origin-relative, got {url:?}",
-                app.id,
-            );
-        }
+    fn never_smart_never_removable() {
+        let app = system();
+        assert!(!app.smart());
+        assert!(!app.removable());
+    }
+
+    #[test]
+    fn detail_projects_registration_and_url() {
+        let json = serde_json::to_value(SystemAppDetail::from(&system())).unwrap();
+        assert_eq!(json["kind"], "system");
+        assert_eq!(json["name"], "API Docs");
+        assert_eq!(json["localOnly"], true);
+        assert_eq!(json["smart"], false);
+        assert_eq!(json["url"], "{origin}/docs");
+        assert!(
+            json.get("removable").is_none(),
+            "system detail has no removable"
+        );
     }
 }

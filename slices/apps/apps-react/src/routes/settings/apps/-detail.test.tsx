@@ -2,9 +2,9 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
-// `$id.tsx` calls `createFileRoute(...)` at import and its `PageHeader` back link
-// renders a TanStack `<Link>`; stub both so the body renders without a
-// `RouterProvider`. `Link` becomes a plain anchor (PageHeader forwards the rest).
+// The per-kind route files call `createFileRoute(...)` at import and render a
+// TanStack `<Link>` in the shared header; stub both so the screens render without
+// a `RouterProvider`. `Link` becomes a plain anchor.
 vi.mock('@tanstack/react-router', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>()
   return {
@@ -15,71 +15,126 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
   }
 })
 
-// The detail body + its embedded forms read four mutations from `queries.ts`;
-// stub them so the tests assert the exact payloads each control PUTs.
-const { homeScreenStub, deleteStub, replaceStub } = vi.hoisted(() => ({
-  homeScreenStub: {
-    mutate: vi.fn(),
-    reset: vi.fn(),
-    isPending: false,
-    error: null as Error | null,
-  },
-  deleteStub: { mutate: vi.fn(), reset: vi.fn(), isPending: false, error: null as Error | null },
-  replaceStub: { mutate: vi.fn(), reset: vi.fn(), isPending: false, error: null as Error | null },
-}))
+// The shell + its embedded forms + the per-kind detail queries all come from
+// `queries.ts`; stub them so the tests assert the exact payloads each control
+// PUTs. `detailData` / `listData` are set per test.
+const { homeScreenStub, deleteStub, cloudReplaceStub, selfHostedReplaceStub, mocks } = vi.hoisted(
+  () => {
+    const mockState: { detail: unknown; list: readonly unknown[] } = { detail: undefined, list: [] }
+    return {
+      homeScreenStub: {
+        mutate: vi.fn(),
+        reset: vi.fn(),
+        isPending: false,
+        error: null as Error | null,
+      },
+      deleteStub: {
+        mutate: vi.fn(),
+        reset: vi.fn(),
+        isPending: false,
+        error: null as Error | null,
+      },
+      cloudReplaceStub: {
+        mutate: vi.fn(),
+        reset: vi.fn(),
+        isPending: false,
+        error: null as Error | null,
+      },
+      selfHostedReplaceStub: {
+        mutate: vi.fn(),
+        reset: vi.fn(),
+        isPending: false,
+        error: null as Error | null,
+      },
+      mocks: mockState,
+    }
+  }
+)
 
 vi.mock('../../../queries.ts', () => ({
   useReplaceHomeScreenMutation: () => homeScreenStub,
   useAppsAdminDeleteMutation: () => deleteStub,
-  useAppsAdminReplaceMutation: () => replaceStub,
-  // Imported by `$id.tsx` for the route Screen (not exercised here).
-  appsListQueryOptions: vi.fn(),
-  useAppsListQuery: vi.fn(),
+  useCloudAppReplaceMutation: () => cloudReplaceStub,
+  useSelfHostedAppReplaceMutation: () => selfHostedReplaceStub,
+  useAppsListQuery: () => ({ data: mocks.list }),
+  useCloudAppQuery: () => ({ data: mocks.detail }),
+  useSelfHostedAppQuery: () => ({ data: mocks.detail }),
+  useSystemAppQuery: () => ({ data: mocks.detail }),
+  cloudAppQueryOptions: vi.fn(),
+  selfHostedAppQueryOptions: vi.fn(),
+  systemAppQueryOptions: vi.fn(),
 }))
 
-import type { AppEntry } from '../../../queries.ts'
-import { AppDetailBody } from './$id.tsx'
+import { CloudAppDetailScreen } from './cloud/$id.tsx'
+import { SelfHostedAppDetailScreen } from './self-hosted/$id.tsx'
+import { SystemAppDetailScreen } from './system/$id.tsx'
 
-const CLOUD: AppEntry = {
+const CLOUD_DETAIL = {
   id: 'cloud-app',
   name: 'Cloud App',
+  kind: 'cloud',
   enabled: true,
-  provenance: 'cloud',
   localOnly: false,
   smart: false,
   requiresTunnel: false,
-  removable: true,
   url: 'https://example.com/launch',
+  removable: true,
 }
 
-const SELF_HOSTED: AppEntry = {
+const SELF_HOSTED_UPLOADED = {
   id: 'sh-app',
   name: 'Self Hosted App',
+  kind: 'self-hosted',
   enabled: true,
-  provenance: 'self-hosted',
   localOnly: false,
   smart: false,
-  removable: true,
+  requiresTunnel: false,
   launchPath: '/launch.html',
+  seeded: false,
+  removable: true,
 }
 
-const SYSTEM: AppEntry = {
+const SELF_HOSTED_SEEDED = {
+  ...SELF_HOSTED_UPLOADED,
+  id: 'seeded-app',
+  name: 'Seeded App',
+  seeded: true,
+  removable: false,
+  launchPath: undefined,
+}
+
+const SYSTEM_DETAIL = {
   id: 'sys-app',
   name: 'System App',
+  kind: 'system',
   enabled: true,
-  provenance: 'system',
   localOnly: false,
   smart: false,
-  removable: false,
+  requiresTunnel: false,
+  url: '{origin}/docs',
 }
 
-const noop = (): void => {}
+/** A uniform list entry (registration) for the shell's home-screen toggle. */
+const listEntry = (detail: {
+  id: string
+  name: string
+  kind: string
+}): Record<string, unknown> => ({
+  id: detail.id,
+  name: detail.name,
+  kind: detail.kind,
+  enabled: true,
+  localOnly: false,
+  smart: false,
+  requiresTunnel: false,
+})
 
-describe('<AppDetailBody>', () => {
+describe('per-kind app detail screens', () => {
   beforeEach(() => {
     homeScreenStub.mutate.mockClear()
     deleteStub.mutate.mockClear()
-    replaceStub.mutate.mockClear()
+    cloudReplaceStub.mutate.mockClear()
+    selfHostedReplaceStub.mutate.mockClear()
   })
 
   afterEach(() => {
@@ -87,7 +142,9 @@ describe('<AppDetailBody>', () => {
   })
 
   test('the enable switch PUTs the whole home screen with this app flipped', () => {
-    render(<AppDetailBody app={CLOUD} apps={[CLOUD]} onRemoved={noop} />)
+    mocks.detail = CLOUD_DETAIL
+    mocks.list = [listEntry(CLOUD_DETAIL)]
+    render(<CloudAppDetailScreen id="cloud-app" />)
 
     fireEvent.click(screen.getByRole('switch', { name: 'Show on home screen' }))
 
@@ -96,15 +153,16 @@ describe('<AppDetailBody>', () => {
   })
 
   test('a cloud app saves its content through the cloud replace arm', () => {
-    render(<AppDetailBody app={CLOUD} apps={[CLOUD]} onRemoved={noop} />)
+    mocks.detail = CLOUD_DETAIL
+    mocks.list = [listEntry(CLOUD_DETAIL)]
+    render(<CloudAppDetailScreen id="cloud-app" />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
-    expect(replaceStub.mutate).toHaveBeenCalledTimes(1)
-    expect(replaceStub.mutate.mock.calls[0]?.[0]).toEqual({
+    expect(cloudReplaceStub.mutate).toHaveBeenCalledTimes(1)
+    expect(cloudReplaceStub.mutate.mock.calls[0]?.[0]).toEqual({
       id: 'cloud-app',
       payload: {
-        provenance: 'cloud',
         name: 'Cloud App',
         url: 'https://example.com/launch',
         requiresTunnel: false,
@@ -113,19 +171,23 @@ describe('<AppDetailBody>', () => {
   })
 
   test('an uploaded self-hosted app saves its launch path through the self-hosted replace arm', () => {
-    render(<AppDetailBody app={SELF_HOSTED} apps={[SELF_HOSTED]} onRemoved={noop} />)
+    mocks.detail = SELF_HOSTED_UPLOADED
+    mocks.list = [listEntry(SELF_HOSTED_UPLOADED)]
+    render(<SelfHostedAppDetailScreen id="sh-app" />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
-    expect(replaceStub.mutate).toHaveBeenCalledTimes(1)
-    expect(replaceStub.mutate.mock.calls[0]?.[0]).toEqual({
+    expect(selfHostedReplaceStub.mutate).toHaveBeenCalledTimes(1)
+    expect(selfHostedReplaceStub.mutate.mock.calls[0]?.[0]).toEqual({
       id: 'sh-app',
-      payload: { provenance: 'self-hosted', launchPath: '/launch.html' },
+      launchPath: '/launch.html',
     })
   })
 
   test('a removable app can be deleted by id', () => {
-    render(<AppDetailBody app={CLOUD} apps={[CLOUD]} onRemoved={noop} />)
+    mocks.detail = CLOUD_DETAIL
+    mocks.list = [listEntry(CLOUD_DETAIL)]
+    render(<CloudAppDetailScreen id="cloud-app" />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete from my device' }))
 
@@ -134,11 +196,23 @@ describe('<AppDetailBody>', () => {
   })
 
   test('a system app shows a read-only note, no edit form, and no delete', () => {
-    render(<AppDetailBody app={SYSTEM} apps={[SYSTEM]} onRemoved={noop} />)
+    mocks.detail = SYSTEM_DETAIL
+    mocks.list = [listEntry(SYSTEM_DETAIL)]
+    render(<SystemAppDetailScreen id="sys-app" />)
 
-    // Enable/disable still applies to every provenance.
+    // Enable/disable still applies to every kind.
     expect(screen.getByRole('switch', { name: 'Show on home screen' })).toBeDefined()
-    // But the content is not editable and can't be deleted.
+    expect(screen.queryByRole('button', { name: 'Save' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Delete from my device' })).toBeNull()
+    expect(screen.getByText(/settings aren't editable/i)).toBeDefined()
+  })
+
+  test('a seeded self-hosted app shows a read-only note, no edit form, and no delete', () => {
+    mocks.detail = SELF_HOSTED_SEEDED
+    mocks.list = [listEntry(SELF_HOSTED_SEEDED)]
+    render(<SelfHostedAppDetailScreen id="seeded-app" />)
+
+    expect(screen.getByRole('switch', { name: 'Show on home screen' })).toBeDefined()
     expect(screen.queryByRole('button', { name: 'Save' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Delete from my device' })).toBeNull()
     expect(screen.getByText(/settings aren't editable/i)).toBeDefined()

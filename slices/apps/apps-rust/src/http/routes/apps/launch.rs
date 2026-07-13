@@ -188,11 +188,11 @@ impl App {
         provenance: &RequestProvenance,
     ) -> Result<ResolvedLaunch, AppError> {
         match self {
-            App::System { app, .. } => Ok(ResolvedLaunch {
-                target_url: render_system_target(state, app, provenance)?,
+            App::System(app) => Ok(ResolvedLaunch {
+                target_url: render_system_target(state, app, provenance),
                 session_cookie_host: None,
             }),
-            App::SelfHosted { app, .. } => {
+            App::SelfHosted(app) => {
                 let SelfHostedTarget {
                     target_url,
                     session_cookie_host,
@@ -202,7 +202,7 @@ impl App {
                     session_cookie_host,
                 })
             }
-            App::Cloud { app, .. } => Ok(ResolvedLaunch {
+            App::Cloud(app) => Ok(ResolvedLaunch {
                 target_url: render_cloud_target(state, provenance, app).await?,
                 session_cookie_host: None,
             }),
@@ -210,24 +210,21 @@ impl App {
     }
 }
 
-/// Render a system app's launch target from its compiled-in [`SystemApp`] source:
-/// substitute `{origin}` (the served origin) + `{launch}` (a fresh nonce). A
-/// malformed compiled-in url surfaces as a logged 500 rather than a panic (the
-/// shipped `SYSTEM_APPS` all parse).
+/// Render a system app's launch target from its stored [`SystemApp`] payload:
+/// substitute `{origin}` (the served origin) + `{launch}` (a fresh nonce). The
+/// `url` was validated at the store read (the [`AppUrl`](crate::domain::AppUrl)
+/// column decode), so no parse can fail here.
 fn render_system_target(
     state: &AppsState,
     source: &SystemApp,
     provenance: &RequestProvenance,
-) -> Result<String, AppError> {
-    let url = source
-        .app_url()
-        .map_err(|e| AppError::infrastructure("system app url failed to parse", e))?;
+) -> String {
     let origin = served_origin(state, provenance);
     let launch = mint_launch_nonce();
-    Ok(url.to_url_with_params(&LaunchParams {
+    source.url.to_url_with_params(&LaunchParams {
         origin: &origin,
         launch: &launch,
-    }))
+    })
 }
 
 /// A resolved self-hosted launch target: the provenance-aware URL plus, for a
@@ -284,7 +281,7 @@ async fn render_cloud_target(
     provenance: &RequestProvenance,
     app: &CloudApp,
 ) -> Result<String, AppError> {
-    let origin = resolve_origin(state, provenance, app.requires_tunnel).await?;
+    let origin = resolve_origin(state, provenance, app.registration.requires_tunnel).await?;
     let launch = mint_launch_nonce();
     Ok(app.url.to_url_with_params(&LaunchParams {
         origin: &origin,

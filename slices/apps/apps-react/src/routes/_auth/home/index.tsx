@@ -21,7 +21,7 @@ import {
   appsListQueryOptions,
   useAppsListQuery,
   useReplaceHomeScreenMutation,
-  type AppEntry,
+  type AppRegistration,
 } from '../../../queries.ts'
 import type { RouterContext } from '../../../router-context.ts'
 import { launchApp, launchHref } from './-launch.ts'
@@ -48,7 +48,7 @@ const AppsHomeScreen = (): JSX.Element => {
 }
 
 interface AppsHomeBodyProps {
-  readonly apps: readonly AppEntry[]
+  readonly apps: readonly AppRegistration[]
 }
 
 const AppsHomeBody = ({ apps }: AppsHomeBodyProps): JSX.Element => {
@@ -76,7 +76,7 @@ const AppsHomeBody = ({ apps }: AppsHomeBodyProps): JSX.Element => {
   // slots. Re-seed whenever the server list changes (order *or* enabled) — the
   // home-screen PUT invalidates the list query — so an enable/disable made in
   // the editor is reflected here too.
-  const [order, setOrder] = useState<readonly AppEntry[]>(apps)
+  const [order, setOrder] = useState<readonly AppRegistration[]>(apps)
   useEffect(() => {
     setOrder(apps)
     // `apps` is a fresh array each render; key the resync on the stable id +
@@ -96,7 +96,7 @@ const AppsHomeBody = ({ apps }: AppsHomeBodyProps): JSX.Element => {
 
   // Only the Tauri (loopback) arm runs JS on launch — the web arm is the
   // anchor's own navigation (see `launchHref` / `launchApp`).
-  const launch = (app: AppEntry): void => {
+  const launch = (app: AppRegistration): void => {
     void launchApp({ apiBaseUrl, runAuthed }, app)
   }
 
@@ -133,7 +133,7 @@ const AppsHomeBody = ({ apps }: AppsHomeBodyProps): JSX.Element => {
   // mirroring `onDragEnd` — on failure the PUT doesn't invalidate the list, so
   // roll `order` back and surface the error banner. Re-enabling lives in
   // `/settings/apps`.
-  const disable = (app: AppEntry): void => {
+  const disable = (app: AppRegistration): void => {
     // Skip while a home-screen write is already in flight — see `onDragEnd`.
     if (homeScreenMutation.isPending) return
     const previous = order

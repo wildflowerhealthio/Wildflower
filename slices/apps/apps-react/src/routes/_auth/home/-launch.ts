@@ -1,7 +1,7 @@
 import { AppsHttpApiClient } from 'apps-core/clients'
 import { Effect } from 'effect'
 
-import type { AppEntry } from '../../../queries.ts'
+import type { AppRegistration } from '../../../queries.ts'
 import type { RunAuthed } from '../../../router-context.ts'
 
 /**
@@ -58,7 +58,7 @@ const launchHref = (apiBaseUrl: string | undefined, id: string): string | undefi
  *   SPA stays mounted. A typed error (e.g. a `404` for a just-deleted app) is
  *   caught and logged rather than thrown to the click handler.
  */
-const launchApp = async (ctx: LaunchContext, app: AppEntry): Promise<void> => {
+const launchApp = async (ctx: LaunchContext, app: AppRegistration): Promise<void> => {
   if (ctx.apiBaseUrl === undefined) return
   await postLaunch(ctx.runAuthed, app.id)
 }

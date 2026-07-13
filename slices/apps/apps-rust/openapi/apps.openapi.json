@@ -10,7 +10,7 @@
         "tags": [
           "Catalogue"
         ],
-        "summary": "`GET /apps` — the full catalogue in display order. Gating is applied by the\nhost (the slice exposes one router; there is no longer an ungated public\nsurface here).",
+        "summary": "`GET /apps` — the full registry in display order. Owner-gated by the host.",
         "operationId": "handle_list_apps",
         "responses": {
           "200": {
@@ -20,47 +20,8 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/AppListEntry"
+                    "$ref": "#/components/schemas/AppRegistration"
                   }
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "tags": [
-          "Catalogue"
-        ],
-        "summary": "`POST /apps` — create a cloud or self-hosted app. Owner-gated by the host; the\nbody limit is raised for the upload arm (see the router wiring).",
-        "operationId": "handle_create_app",
-        "requestBody": {
-          "content": {
-            "multipart/form-data": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateAppMultipart"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "The created app (the provenance-tagged catalogue entry)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppListEntry"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Empty/unusable name (`InvalidName`), bad url (`InvalidUrl`), or a bad bundle (`InvalidZip`)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InvalidFieldBody"
                 }
               }
             }
@@ -112,76 +73,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/LaunchUnavailableBody"
-                }
-              }
-            }
-          }
-        }
-      },
-      "put": {
-        "tags": [
-          "Catalogue"
-        ],
-        "summary": "`PUT /apps/{id}` — replace an editable app's content. Owner-gated by the host.",
-        "operationId": "handle_replace_app",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "App id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AppContentBody"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "The updated app (the provenance-tagged catalogue entry)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppListEntry"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Empty name (`InvalidName`) or bad url/launch path (`InvalidUrl`)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InvalidFieldBody"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "No app has this id",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppNotFoundBody"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Not editable: a system app, a seeded self-hosted app, or a body whose provenance doesn't match the stored app",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppNotEditableBody"
                 }
               }
             }
@@ -255,15 +146,8 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": "The row was removed",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DeletedBody"
-                }
-              }
-            }
+          "204": {
+            "description": "The app was removed"
           },
           "404": {
             "description": "No app has this id",
@@ -281,6 +165,149 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AppNotEditableBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cloud-apps": {
+      "post": {
+        "tags": [
+          "Cloud apps"
+        ],
+        "summary": "`POST /cloud-apps` — create a cloud app. Owner-gated by the host.",
+        "operationId": "handle_create_cloud_app",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CloudAppBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The created cloud app detail",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloudAppDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Empty name (`InvalidName`) or bad url (`InvalidUrl`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidFieldBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cloud-apps/{id}": {
+      "get": {
+        "tags": [
+          "Cloud apps"
+        ],
+        "summary": "`GET /cloud-apps/{id}` — the cloud editor detail. Owner-gated by the host.",
+        "operationId": "handle_get_cloud_app",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "App id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The cloud app detail",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloudAppDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No cloud app has this id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppNotFoundBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Cloud apps"
+        ],
+        "summary": "`PUT /cloud-apps/{id}` — replace a cloud app's content. Owner-gated by the host.",
+        "operationId": "handle_replace_cloud_app",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "App id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CloudAppBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The updated cloud app detail",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloudAppDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Empty name (`InvalidName`) or bad url (`InvalidUrl`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidFieldBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No cloud app has this id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppNotFoundBody"
                 }
               }
             }
@@ -310,13 +337,13 @@
         },
         "responses": {
           "200": {
-            "description": "The whole catalogue in its new order",
+            "description": "The whole registry in its new order",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/AppListEntry"
+                    "$ref": "#/components/schemas/AppRegistration"
                   }
                 }
               }
@@ -334,228 +361,217 @@
           }
         }
       }
+    },
+    "/self-hosted-apps": {
+      "post": {
+        "tags": [
+          "Self-hosted apps"
+        ],
+        "summary": "`POST /self-hosted-apps` — install a self-hosted app from the uploaded `bundle`.\nOwner-gated by the host; the body limit is raised for this route (see the\nrouter wiring).",
+        "operationId": "handle_create_self_hosted_app",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSelfHostedAppMultipart"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The installed self-hosted app detail",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SelfHostedAppDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Empty/unusable name (`InvalidName`) or a bad bundle (`InvalidZip`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidFieldBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/self-hosted-apps/{id}": {
+      "get": {
+        "tags": [
+          "Self-hosted apps"
+        ],
+        "summary": "`GET /self-hosted-apps/{id}` — the self-hosted editor detail. Owner-gated by\nthe host.",
+        "operationId": "handle_get_self_hosted_app",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "App id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The self-hosted app detail",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SelfHostedAppDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No self-hosted app has this id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppNotFoundBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Self-hosted apps"
+        ],
+        "summary": "`PUT /self-hosted-apps/{id}` — replace a self-hosted app's launch path.\nOwner-gated by the host.",
+        "operationId": "handle_replace_self_hosted_app",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "App id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelfHostedAppBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The updated self-hosted app detail",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SelfHostedAppDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The launch path isn't origin-relative (`InvalidUrl`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidFieldBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No self-hosted app has this id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppNotFoundBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A seeded self-hosted app is edit-protected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppNotEditableBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/system-apps/{id}": {
+      "get": {
+        "tags": [
+          "System apps"
+        ],
+        "summary": "`GET /system-apps/{id}` — the system read-only detail. Owner-gated by the host.",
+        "operationId": "handle_get_system_app",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "App id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The system app detail",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemAppDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No system app has this id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppNotFoundBody"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
-      "AppContentBody": {
-        "oneOf": [
-          {
-            "type": "object",
-            "description": "Full replace of a cloud app's content.",
-            "required": [
-              "name",
-              "url",
-              "requiresTunnel",
-              "provenance"
-            ],
-            "properties": {
-              "name": {
-                "type": "string"
-              },
-              "subtitle": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "url": {
-                "type": "string"
-              },
-              "requiresTunnel": {
-                "type": "boolean"
-              },
-              "provenance": {
-                "type": "string",
-                "enum": [
-                  "cloud"
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "description": "Replace a self-hosted app's launch path (absent / empty → root-served).",
-            "required": [
-              "provenance"
-            ],
-            "properties": {
-              "launchPath": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "provenance": {
-                "type": "string",
-                "enum": [
-                  "self-hosted"
-                ]
-              }
-            }
-          }
-        ],
-        "description": "`PUT /apps/{id}` body — a `provenance`-discriminated union matching the TS\n`AppContentBodySchema`. Only the editable kinds have an arm (system apps are\nnever editable). `url` is read as a raw string so a bad value yields the\nstructured `400 InvalidUrl` rather than a generic deserialize error."
-      },
-      "AppListEntry": {
-        "oneOf": [
-          {
-            "type": "object",
-            "description": "A system app — a compiled-in shell route. No record table, no extra fields.",
-            "required": [
-              "id",
-              "enabled",
-              "name",
-              "localOnly",
-              "smart",
-              "removable",
-              "provenance"
-            ],
-            "properties": {
-              "id": {
-                "type": "string"
-              },
-              "enabled": {
-                "type": "boolean"
-              },
-              "name": {
-                "type": "string"
-              },
-              "subtitle": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "localOnly": {
-                "type": "boolean"
-              },
-              "smart": {
-                "type": "boolean"
-              },
-              "removable": {
-                "type": "boolean"
-              },
-              "provenance": {
-                "type": "string",
-                "enum": [
-                  "system"
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "description": "A cloud app — carries its stored launch `url` template and the\ntunnel-requirement flag from the `cloud_apps` record.",
-            "required": [
-              "id",
-              "enabled",
-              "name",
-              "localOnly",
-              "smart",
-              "removable",
-              "url",
-              "requiresTunnel",
-              "provenance"
-            ],
-            "properties": {
-              "id": {
-                "type": "string"
-              },
-              "enabled": {
-                "type": "boolean"
-              },
-              "name": {
-                "type": "string"
-              },
-              "subtitle": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "localOnly": {
-                "type": "boolean"
-              },
-              "smart": {
-                "type": "boolean"
-              },
-              "removable": {
-                "type": "boolean"
-              },
-              "url": {
-                "type": "string",
-                "description": "The stored launch URL template (`{origin}` / `{launch}` tokens),\nserialized as its canonical string. See [`AppUrl`]."
-              },
-              "requiresTunnel": {
-                "type": "boolean"
-              },
-              "provenance": {
-                "type": "string",
-                "enum": [
-                  "cloud"
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "description": "A self-hosted app — carries its stored `launch_path` (absent for a\nroot-served bundle) from the `self_hosted_apps` record.",
-            "required": [
-              "id",
-              "enabled",
-              "name",
-              "localOnly",
-              "smart",
-              "removable",
-              "provenance"
-            ],
-            "properties": {
-              "id": {
-                "type": "string"
-              },
-              "enabled": {
-                "type": "boolean"
-              },
-              "name": {
-                "type": "string"
-              },
-              "subtitle": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "localOnly": {
-                "type": "boolean"
-              },
-              "smart": {
-                "type": "boolean"
-              },
-              "removable": {
-                "type": "boolean"
-              },
-              "launchPath": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "description": "The stored SMART launch path (origin-relative, with `{origin}` /\n`{launch}` tokens), or absent for a root-served (`index.html`) app."
-              },
-              "provenance": {
-                "type": "string",
-                "enum": [
-                  "self-hosted"
-                ]
-              }
-            }
-          }
-        ],
-        "description": "One app-catalogue entry on the wire, discriminated on `provenance`. Serialized\ninternally-tagged: every variant carries a `\"provenance\"` field (`\"system\"` /\n`\"cloud\"` / `\"self-hosted\"`) alongside its fields, so utoipa renders it as a\n`oneOf` and the TS client decodes it as a discriminated union."
+      "AppKind": {
+        "type": "string",
+        "description": "Which kind an app is — the CTI discriminator. Serialized as its kebab string\n(`\"system\"` / `\"self-hosted\"` / `\"cloud\"`), the same value stored in the\n`CHECK`-constrained `app_registry.kind` column and sent on the wire.",
+        "enum": [
+          "system",
+          "self-hosted",
+          "cloud"
+        ]
       },
       "AppNotEditableBody": {
         "type": "object",
-        "description": "Wire shape for `AppNotEditable` (409) — the app exists but isn't editable\nthrough the surface a mutation used (a system app, a seeded self-hosted app,\nor a body whose provenance doesn't match the stored app).",
+        "description": "Wire shape for `AppNotEditable` (409) — the app exists but isn't editable /\nremovable: a system app, or a seeded self-hosted app. (A per-kind path given an\nid of another kind is a `404`, not a `409` — the mismatch can't be expressed.)",
         "required": [
           "error",
           "id"
@@ -585,18 +601,64 @@
           }
         }
       },
-      "CreateAppMultipart": {
+      "AppRegistration": {
         "type": "object",
-        "description": "Documents the `multipart/form-data` body for OpenAPI. The handler reads the\nparts manually via [`Multipart`], so this is never deserialized directly (the\n`Deserialize` derive only carries the `serde` rename to the generated schema).\nFields cross the wire as text — `requiresTunnel` is `\"true\"` / `\"false\"` — and\n`bundle` is the uploaded file. `provenance` and `name` are always present; the\nrest are kind-specific, so they're optional here and the handler requires the\nright ones per `provenance`. Mirrors the TS `CreateAppBodySchema`.",
+        "description": "A registration row — the parent of one app's CTI record. Diesel maps it to/from\n`app_registry` (the [`AppKindColumn`] mapping on `kind`); serde projects it onto\nthe `GET /apps` wire item (`position` omitted, `client_id` → `smart`).",
         "required": [
-          "provenance",
-          "name"
+          "id",
+          "kind",
+          "enabled",
+          "name",
+          "localOnly",
+          "smart",
+          "requiresTunnel"
         ],
         "properties": {
-          "provenance": {
+          "id": {
             "type": "string",
-            "description": "`\"cloud\"` or `\"self-hosted\"`."
+            "description": "Stable id, globally unique across all kinds (the parent PK)."
           },
+          "kind": {
+            "$ref": "#/components/schemas/AppKind",
+            "description": "The CTI discriminator — which child table holds this id's payload."
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "The homescreen `enabled` flag."
+          },
+          "name": {
+            "type": "string"
+          },
+          "subtitle": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`None` means \"no subtitle\"; the wire omits an absent one."
+          },
+          "localOnly": {
+            "type": "boolean",
+            "description": "The declared no-egress flag (a UI badge this pass)."
+          },
+          "smart": {
+            "type": "boolean",
+            "description": "Soft reference to a gatekeeper `clients.client_id`; `None` for non-SMART\napps. Never leaves the host: the wire carries the derived `smart` boolean."
+          },
+          "requiresTunnel": {
+            "type": "boolean",
+            "description": "Whether a launch must bring the tunnel up first (a launch-readiness pill).\n`false` for system / self-hosted; meaningful only for cloud apps."
+          }
+        }
+      },
+      "CloudAppBody": {
+        "type": "object",
+        "description": "The JSON body shared by `POST /cloud-apps` (create) and `PUT /cloud-apps/{id}`\n(content replace): a cloud app's editable content. `url` is read as a raw string\nso a bad value yields the structured `400 InvalidUrl` rather than a generic\ndeserialize error. Matches the TS `CloudAppBodySchema`.",
+        "required": [
+          "name",
+          "url",
+          "requiresTunnel"
+        ],
+        "properties": {
           "name": {
             "type": "string"
           },
@@ -607,37 +669,87 @@
             ]
           },
           "url": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Cloud only: the launch URL template."
+            "type": "string",
+            "description": "The launch URL template (`{origin}` / `{launch}` tokens), validated to\n`400 InvalidUrl` through the write-side [`AppUrl`](crate::domain::AppUrl)\nfilter."
           },
           "requiresTunnel": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Cloud only: `\"true\"` / `\"false\"`."
-          },
-          "bundle": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "binary",
-            "description": "Self-hosted only: the app's static files as a zip."
+            "type": "boolean"
           }
         }
       },
-      "DeletedBody": {
+      "CloudAppDetail": {
         "type": "object",
+        "description": "The `GET`/`POST`/`PUT /cloud-apps…` wire shape — the registration fields plus\nthe stored `url` template and `removable`. Flat (not a `provenance` union):\n`kind` is always `cloud`.",
         "required": [
-          "deleted"
+          "id",
+          "kind",
+          "enabled",
+          "name",
+          "localOnly",
+          "smart",
+          "requiresTunnel",
+          "url",
+          "removable"
         ],
         "properties": {
-          "deleted": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/AppKind"
+          },
+          "enabled": {
             "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "subtitle": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "localOnly": {
+            "type": "boolean"
+          },
+          "smart": {
+            "type": "boolean"
+          },
+          "requiresTunnel": {
+            "type": "boolean"
+          },
+          "url": {
+            "type": "string",
+            "description": "The stored launch URL template (`{origin}` / `{launch}` tokens), serialized\nas its canonical string."
+          },
+          "removable": {
+            "type": "boolean",
+            "description": "Always `true` for a cloud app; carried for a uniform editor contract."
+          }
+        }
+      },
+      "CreateSelfHostedAppMultipart": {
+        "type": "object",
+        "description": "Documents the `multipart/form-data` body for OpenAPI. The handler reads the\nparts manually via [`Multipart`], so this is never deserialized directly (the\n`Deserialize` derive only carries the `serde` rename to the generated schema).\n`name` is always present; `subtitle` is optional; `bundle` is the uploaded zip.\nMatches the TS `CreateSelfHostedAppBodySchema`.",
+        "required": [
+          "name",
+          "bundle"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "subtitle": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bundle": {
+            "type": "string",
+            "format": "binary",
+            "description": "The app's static files as a zip."
           }
         }
       },
@@ -702,6 +814,124 @@
           },
           "reason": {
             "type": "string"
+          }
+        }
+      },
+      "SelfHostedAppBody": {
+        "type": "object",
+        "description": "The `PUT /self-hosted-apps/{id}` body — the editable launch path. Absent or\nempty clears it back to root-serving. Matches the TS\n`SelfHostedAppBodySchema`.",
+        "properties": {
+          "launchPath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "SelfHostedAppDetail": {
+        "type": "object",
+        "description": "The `GET`/`POST`/`PUT /self-hosted-apps…` wire shape — the registration fields\nplus `launchPath` (absent for a root-served bundle), `seeded`, and `removable`.\nFlat (not a `provenance` union): `kind` is always `self-hosted`. The public\n`subdomain` / loopback `port` / on-disk `content_folder` are host-internal and\nstay off the wire.",
+        "required": [
+          "id",
+          "kind",
+          "enabled",
+          "name",
+          "localOnly",
+          "smart",
+          "requiresTunnel",
+          "seeded",
+          "removable"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/AppKind"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "subtitle": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "localOnly": {
+            "type": "boolean"
+          },
+          "smart": {
+            "type": "boolean"
+          },
+          "requiresTunnel": {
+            "type": "boolean"
+          },
+          "launchPath": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The stored SMART launch path (origin-relative, with `{origin}` / `{launch}`\ntokens), or absent for a root-served (`index.html`) app."
+          },
+          "seeded": {
+            "type": "boolean",
+            "description": "`true` for a migration-seeded app (edit/delete-protected)."
+          },
+          "removable": {
+            "type": "boolean",
+            "description": "Whether the owner can remove this app (`!seeded`)."
+          }
+        }
+      },
+      "SystemAppDetail": {
+        "type": "object",
+        "description": "The read-only `GET /system-apps/{id}` wire shape — the registration fields plus\nthe display-only `url` template. Flat: `kind` is always `system`.",
+        "required": [
+          "id",
+          "kind",
+          "enabled",
+          "name",
+          "localOnly",
+          "smart",
+          "requiresTunnel",
+          "url"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/AppKind"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "subtitle": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "localOnly": {
+            "type": "boolean"
+          },
+          "smart": {
+            "type": "boolean"
+          },
+          "requiresTunnel": {
+            "type": "boolean"
+          },
+          "url": {
+            "type": "string",
+            "description": "The stored launch URL template (`{origin}` token), serialized as its\ncanonical string. Display-only — a system app is never editable."
           }
         }
       }

@@ -30,7 +30,10 @@ describe('apps route tree', () => {
       '/_auth/home/',
       '/settings/apps/',
       '/settings/apps/$id',
+      '/settings/apps/cloud/$id',
       '/settings/apps/new',
+      '/settings/apps/self-hosted/$id',
+      '/settings/apps/system/$id',
     ])
   })
 
@@ -38,6 +41,14 @@ describe('apps route tree', () => {
     const paths = routes()
       .map((route): string => route.fullPath)
       .toSorted()
-    expect(paths).toEqual(['/home/', '/settings/apps/', '/settings/apps/$id', '/settings/apps/new'])
+    expect(paths).toEqual([
+      '/home/',
+      '/settings/apps/',
+      '/settings/apps/$id',
+      '/settings/apps/cloud/$id',
+      '/settings/apps/new',
+      '/settings/apps/self-hosted/$id',
+      '/settings/apps/system/$id',
+    ])
   })
 })

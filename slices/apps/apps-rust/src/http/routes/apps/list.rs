@@ -1,31 +1,29 @@
-//! `GET /apps` — return the catalogue: every registry app projected to
-//! [`AppListEntry`], already ordered by `position` (the store reads the
-//! cross-kind `apps_view` + the `home_screen` ordering). The wire shape omits the
-//! request-resolved launch URL (materialized per-request at launch; see
-//! [`AppListEntry`]).
+//! `GET /apps` — return the catalogue: every app's [`AppRegistration`], already
+//! ordered by `position` (the store reads `app_registry ORDER BY position`,
+//! join-free). It is the registry, not the homescreen, so disabled rows are
+//! included. Uniform (no `provenance` union): everything the homescreen tile
+//! renders is on the registration; per-kind payload (`url`, `launchPath`) is an
+//! editor concern read on a per-kind detail lookup.
 
 use std::sync::Arc;
 
 use axum::extract::State;
 use axum::Json;
 
-use crate::domain::{actions, AppError, AppListEntry};
+use crate::domain::{actions, AppError, AppRegistration};
 use crate::http::state::AppsState;
 
-/// `GET /apps` — the full catalogue in display order. Gating is applied by the
-/// host (the slice exposes one router; there is no longer an ungated public
-/// surface here).
+/// `GET /apps` — the full registry in display order. Owner-gated by the host.
 #[utoipa::path(
     get,
     tag = "Catalogue",
     path = "/apps",
     responses(
-        (status = 200, description = "Every app in the registry, ordered by position", body = [AppListEntry]),
+        (status = 200, description = "Every app in the registry, ordered by position", body = [AppRegistration]),
     ),
 )]
 pub(crate) async fn handle_list_apps(
     State(state): State<Arc<AppsState>>,
-) -> Result<Json<Vec<AppListEntry>>, AppError> {
-    let apps = actions::list_apps(&state.store)?;
-    Ok(Json(apps.iter().map(AppListEntry::from).collect()))
+) -> Result<Json<Vec<AppRegistration>>, AppError> {
+    Ok(Json(actions::list_registrations(&state.store)?))
 }

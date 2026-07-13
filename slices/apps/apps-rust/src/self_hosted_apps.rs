@@ -256,11 +256,17 @@ mod tests {
             }),
         );
         let app = SelfHostedApp {
-            id: "patient-browser".to_owned(),
-            name: "Patient Browser".to_owned(),
-            subtitle: None,
-            local_only: true,
-            client_id: None,
+            registration: crate::domain::AppRegistration {
+                id: "patient-browser".to_owned(),
+                kind: crate::domain::AppKind::SelfHosted,
+                position: 0,
+                enabled: true,
+                name: "Patient Browser".to_owned(),
+                subtitle: None,
+                local_only: true,
+                client_id: None,
+                requires_tunnel: false,
+            },
             port,
             content_folder: "patient-browser".to_owned(),
             subdomain: "patient-browser".to_owned(),

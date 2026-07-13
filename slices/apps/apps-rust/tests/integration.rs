@@ -78,29 +78,18 @@ fn get(uri: &str) -> Request<Body> {
     Request::get(uri).body(Body::empty()).expect("build")
 }
 
-/// A cloud create — `POST /apps` as `multipart/form-data` (`provenance=cloud`).
-/// The merged create route takes a form, not JSON.
+/// A cloud create — `POST /cloud-apps` as JSON.
 fn post_create_cloud(name: &str, url: &str, requires_tunnel: bool) -> Request<Body> {
-    let boundary = "INTBOUNDARY";
-    let field = |key: &str, value: &str| {
-        format!("--{boundary}\r\nContent-Disposition: form-data; name=\"{key}\"\r\n\r\n{value}\r\n")
-    };
-    let body = format!(
-        "{}{}{}{}--{boundary}--\r\n",
-        field("provenance", "cloud"),
-        field("name", name),
-        field("url", url),
-        field(
-            "requiresTunnel",
-            if requires_tunnel { "true" } else { "false" }
-        ),
-    );
-    Request::post("/apps")
-        .header(
-            "content-type",
-            format!("multipart/form-data; boundary={boundary}"),
-        )
-        .body(Body::from(body))
+    post_json(
+        "/cloud-apps",
+        serde_json::json!({ "name": name, "url": url, "requiresTunnel": requires_tunnel }),
+    )
+}
+
+fn post_json(uri: &str, body: serde_json::Value) -> Request<Body> {
+    Request::post(uri)
+        .header("content-type", "application/json")
+        .body(Body::from(body.to_string()))
         .expect("build")
 }
 
@@ -192,7 +181,7 @@ async fn cloud_app_round_trip() {
         .find(|v| v["id"] == serde_json::Value::String(id.clone()))
         .expect("created row visible through the list");
     assert_eq!(found["name"], "Round Trip");
-    assert_eq!(found["provenance"], "cloud");
+    assert_eq!(found["kind"], "cloud");
 
     let launch_res = router
         .clone()
@@ -211,8 +200,7 @@ async fn cloud_app_round_trip() {
         .oneshot(delete(&format!("/apps/{id}")))
         .await
         .expect("oneshot");
-    assert_eq!(delete_res.status(), StatusCode::OK);
-    assert_eq!(body_json(delete_res.into_body()).await["deleted"], true);
+    assert_eq!(delete_res.status(), StatusCode::NO_CONTENT);
 
     let list_res = router.clone().oneshot(get("/apps")).await.expect("oneshot");
     let list = body_json(list_res.into_body()).await;
@@ -225,9 +213,9 @@ async fn cloud_app_round_trip() {
     );
 }
 
-/// A seeded cloud app's content (name / url) is replaceable; the edit persists
-/// into the public list, whose cloud variant now carries the stored `url`
-/// template. (`enabled` is not content — that's `PUT /home-screen`.)
+/// A seeded cloud app's content (name / url) is replaceable through `/cloud-apps`;
+/// the edit persists into the public list. (`enabled` is not content — that's
+/// `PUT /home-screen`.)
 #[tokio::test]
 async fn seeded_cloud_app_is_fully_editable() {
     let apps = spin_up();
@@ -235,9 +223,8 @@ async fn seeded_cloud_app_is_fully_editable() {
     let put_res = router
         .clone()
         .oneshot(put(
-            "/apps/growth-chart",
+            "/cloud-apps/growth-chart",
             serde_json::json!({
-                "provenance": "cloud",
                 "name": "Renamed Chart",
                 "url": "https://example.com/replacement",
                 "requiresTunnel": true,
@@ -248,7 +235,7 @@ async fn seeded_cloud_app_is_fully_editable() {
     assert_eq!(put_res.status(), StatusCode::OK);
     let body = body_json(put_res.into_body()).await;
     assert_eq!(body["name"], "Renamed Chart");
-    assert_eq!(body["provenance"], "cloud");
+    assert_eq!(body["kind"], "cloud");
     assert_eq!(body["url"], "https://example.com/replacement");
 
     let list_res = router.clone().oneshot(get("/apps")).await.expect("oneshot");
@@ -260,16 +247,28 @@ async fn seeded_cloud_app_is_fully_editable() {
         .find(|v| v["id"] == "growth-chart")
         .expect("growth-chart in list");
     assert_eq!(row["name"], "Renamed Chart");
+    assert!(
+        row.get("url").is_none(),
+        "the uniform list carries no payload url"
+    );
+
+    // The replaced url is read back through the cloud detail resource.
+    let detail_res = router
+        .clone()
+        .oneshot(get("/cloud-apps/growth-chart"))
+        .await
+        .expect("oneshot");
+    let detail = body_json(detail_res.into_body()).await;
     assert_eq!(
-        row["url"], "https://example.com/replacement",
-        "the cloud variant carries the replaced url template",
+        detail["url"], "https://example.com/replacement",
+        "the cloud detail carries the replaced url template",
     );
 }
 
-/// A self-hosted app appears in the list (as its own variant, no `url`) but
-/// isn't editable via a cloud body — a provenance mismatch is 409 AppNotEditable.
+/// A self-hosted app appears in the uniform list (kind `self-hosted`, no `url`)
+/// but isn't reachable through the cloud resource — a wrong-kind id is a 404.
 #[tokio::test]
-async fn self_hosted_app_listed_but_not_cloud_editable() {
+async fn self_hosted_app_listed_but_not_a_cloud_resource() {
     let apps = spin_up();
     let router = apps.combined_router();
     let list_res = router.clone().oneshot(get("/apps")).await.expect("oneshot");
@@ -281,15 +280,14 @@ async fn self_hosted_app_listed_but_not_cloud_editable() {
         .find(|v| v["id"] == "patient-browser")
         .expect("patient-browser in list");
     assert_eq!(row["name"], "Patient Browser");
-    assert_eq!(row["provenance"], "self-hosted");
+    assert_eq!(row["kind"], "self-hosted");
     assert!(row.get("url").is_none());
 
     let put_res = router
         .clone()
         .oneshot(put(
-            "/apps/patient-browser",
+            "/cloud-apps/patient-browser",
             serde_json::json!({
-                "provenance": "cloud",
                 "name": "tampered",
                 "url": "https://example.com/x",
                 "requiresTunnel": false,
@@ -297,7 +295,7 @@ async fn self_hosted_app_listed_but_not_cloud_editable() {
         ))
         .await
         .expect("oneshot");
-    assert_eq!(put_res.status(), StatusCode::CONFLICT);
+    assert_eq!(put_res.status(), StatusCode::NOT_FOUND);
 }
 
 /// A loopback launch of a self-hosted app 204s to its fixed loopback origin.
@@ -368,7 +366,7 @@ async fn deleted_seeded_cloud_app_stays_deleted() {
         .oneshot(delete("/apps/growth-chart"))
         .await
         .expect("oneshot");
-    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.status(), StatusCode::NO_CONTENT);
 
     let list_res = router.clone().oneshot(get("/apps")).await.expect("oneshot");
     let list = body_json(list_res.into_body()).await;

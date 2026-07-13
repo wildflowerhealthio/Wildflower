@@ -1,59 +1,132 @@
-//! [`CloudApp`] — a cloud app: assets served from a remote origin, reaching PHI
-//! back through the tunnel. The standalone `cloud_apps` row, carrying every one
-//! of its own columns (the shared catalogue fields `id` / `name` / `subtitle` /
-//! `local_only` / `client_id`, plus the cloud payload `url` + `requires_tunnel`).
-//! The table it lives in IS its provenance — there is no stored `provenance`
-//! column. The home-screen ordering + `enabled` flag live in the separate
-//! `home_screen` table (see [`App`](super::App)).
+//! [`CloudApp`] — a whole cloud app: assets served from a remote origin, reaching
+//! PHI back through the tunnel. Under class-table-inheritance it is its
+//! [`AppRegistration`] (the shared catalogue facts + placement, on `app_registry`)
+//! plus the `cloud_apps` payload (`url`), composed by the detail read
+//! ([`find_app_on`](crate::db)). A plain-data type — the catalogue verdicts
+//! (`smart` / `removable`) are the [`AppRecord`] impl below; `smart` sources from
+//! the registration's soft `client_id`.
 //!
-//! Diesel maps this type straight to/from the `cloud_apps` table: the derives
-//! plus the [`AppUrlColumn`](crate::db::columns::AppUrlColumn) mapping on `url`
-//! (a validated URL stored as TEXT). A plain-data row type — the shared
-//! catalogue verdicts (`smart` / `removable`) are the behavioural
-//! [`AppRecord`](super::AppRecord) impl below.
+//! [`CloudAppDetail`] is the editor wire shape (`GET`/`POST`/`PUT /cloud-apps…`):
+//! the registration fields plus the stored `url` template and `removable` (always
+//! true for a cloud app). The `url` is origin-independent (`{origin}` / `{launch}`
+//! tokens), never a request-resolved redirect target — see `docs/Apps/Explanation.md`.
 
-use diesel::prelude::{Insertable, Queryable, Selectable};
+use serde::Serialize;
+use utoipa::ToSchema;
 
 use super::app_url::AppUrl;
-use super::AppRecord;
-use crate::db::columns::AppUrlColumn;
-use crate::db::schema::cloud_apps;
+use super::{AppKind, AppRecord, AppRegistration};
 
-/// A stored cloud app — the `cloud_apps` row. The `url` is a launch template:
-/// `{origin}` is replaced with the served origin at launch time, `{launch}` with
-/// a fresh per-launch nonce (see [`AppUrl`]).
-#[derive(Debug, Clone, PartialEq, Eq, Queryable, Selectable, Insertable)]
-#[diesel(table_name = cloud_apps)]
-#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+/// A whole cloud app — its registration plus the `cloud_apps` payload. The `url`
+/// is a launch template: `{origin}` is replaced with the served origin at launch
+/// time, `{launch}` with a fresh per-launch nonce (see [`AppUrl`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CloudApp {
-    /// Stable id, globally unique across all kinds.
-    pub id: String,
-    pub name: String,
-    /// `None` means "no subtitle"; the wire serializes it as an absent field.
-    pub subtitle: Option<String>,
-    /// The declared no-egress flag (a UI badge this pass). Cloud apps are not
-    /// local-only, but the column is carried for the uniform catalogue shape.
-    pub local_only: bool,
-    /// Soft reference to a gatekeeper `clients.client_id`; `None` for non-SMART
-    /// apps. Its presence is what [`AppRecord::smart`] reports.
-    pub client_id: Option<String>,
-    /// The launch URL template, mapped to/from the TEXT column via
-    /// [`AppUrlColumn`]. See [`AppUrl`] for the accepted shapes / placeholders.
-    #[diesel(serialize_as = AppUrlColumn, deserialize_as = AppUrlColumn)]
+    /// The shared registration facts + homescreen placement.
+    pub registration: AppRegistration,
+    /// The launch URL template. See [`AppUrl`] for the accepted shapes.
     pub url: AppUrl,
-    /// Whether a launch must bring the tunnel up first (the app needs a public
-    /// FHIR origin to call back into).
-    pub requires_tunnel: bool,
 }
 
 impl AppRecord for CloudApp {
-    /// A cloud app is a SMART app iff it carries a `client_id`.
+    /// A cloud app is a SMART app iff its registration carries a `client_id`.
     fn smart(&self) -> bool {
-        self.client_id.is_some()
+        self.registration.smart()
     }
 
     /// Every cloud app is removable through the admin surface.
     fn removable(&self) -> bool {
         true
+    }
+}
+
+/// The `GET`/`POST`/`PUT /cloud-apps…` wire shape — the registration fields plus
+/// the stored `url` template and `removable`. Flat (not a `provenance` union):
+/// `kind` is always `cloud`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudAppDetail {
+    pub id: String,
+    pub kind: AppKind,
+    pub enabled: bool,
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subtitle: Option<String>,
+    pub local_only: bool,
+    pub smart: bool,
+    pub requires_tunnel: bool,
+    /// The stored launch URL template (`{origin}` / `{launch}` tokens), serialized
+    /// as its canonical string.
+    #[schema(value_type = String)]
+    pub url: AppUrl,
+    /// Always `true` for a cloud app; carried for a uniform editor contract.
+    pub removable: bool,
+}
+
+impl From<&CloudApp> for CloudAppDetail {
+    fn from(app: &CloudApp) -> Self {
+        let reg = &app.registration;
+        Self {
+            id: reg.id.clone(),
+            kind: reg.kind,
+            enabled: reg.enabled,
+            name: reg.name.clone(),
+            subtitle: reg.subtitle.clone(),
+            local_only: reg.local_only,
+            smart: reg.smart(),
+            requires_tunnel: reg.requires_tunnel,
+            url: app.url.clone(),
+            removable: app.removable(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cloud(client_id: Option<&str>, requires_tunnel: bool) -> CloudApp {
+        CloudApp {
+            registration: AppRegistration {
+                id: "app-x".to_owned(),
+                kind: AppKind::Cloud,
+                position: 3,
+                enabled: true,
+                name: "App X".to_owned(),
+                subtitle: Some("A subtitle".to_owned()),
+                local_only: false,
+                client_id: client_id.map(str::to_owned),
+                requires_tunnel,
+            },
+            url: AppUrl::External("https://example.com/launch".to_owned()),
+        }
+    }
+
+    #[test]
+    fn detail_projects_registration_payload_and_removable() {
+        let json =
+            serde_json::to_value(CloudAppDetail::from(&cloud(Some("client"), true))).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "id": "app-x",
+                "kind": "cloud",
+                "enabled": true,
+                "name": "App X",
+                "subtitle": "A subtitle",
+                "localOnly": false,
+                "smart": true,
+                "requiresTunnel": true,
+                "url": "https://example.com/launch",
+                "removable": true,
+            }),
+        );
+    }
+
+    #[test]
+    fn smart_follows_client_id_removable_is_always_true() {
+        assert!(cloud(Some("c"), false).smart());
+        assert!(!cloud(None, false).smart());
+        assert!(cloud(None, false).removable());
     }
 }

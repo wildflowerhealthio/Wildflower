@@ -16,9 +16,9 @@
 pub enum AppError {
     /// 404 — no app has this id.
     NotFound { id: String },
-    /// 409 — the app exists but isn't editable/removable through the surface a
-    /// mutation used (a system app, a seeded self-hosted app, or a body whose
-    /// provenance doesn't match the stored app).
+    /// 409 — the app exists but isn't editable/removable: a system app, or a
+    /// seeded self-hosted app. (A per-kind path given an id of another kind is a
+    /// `404` instead — the kind mismatch can't be expressed.)
     NotEditable { id: String },
     /// 401 — a loopback launch whose caller didn't pass the owner-auth gate.
     Unauthorized,

@@ -1,30 +1,24 @@
-//! `DELETE /apps/{id}` — remove an app. What "removable" means depends on the
-//! kind:
+//! `DELETE /apps/{id}` — remove an app. Unified across kinds: the kind is resolved
+//! from the registration, so tiles and the editor need no kind to delete. What
+//! "removable" means depends on the kind:
 //!
-//!  - **cloud** — delete the row, as ever;
+//!  - **cloud** — delete the registration (the `cloud_apps` payload cascades);
 //!  - **self-hosted** — only an *uploaded* app (`seeded = 0`) is removable: stop
-//!    its listener, delete the rows, and best-effort remove its files; a
-//!    migration-seeded self-hosted app (e.g. patient-browser) stays protected
-//!    with `409 AppNotEditable`;
+//!    its listener, delete the registration (the payload cascades), and
+//!    best-effort remove its files; a migration-seeded self-hosted app stays
+//!    protected with `409 AppNotEditable`;
 //!  - **system** — never removable (`409 AppNotEditable`).
 //!
-//! Unknown ids return `404`.
+//! Unknown ids return `404`. Success is `204 No Content`.
 
 use std::sync::Arc;
 
 use axum::extract::{Path, State};
-use axum::Json;
-use serde::Serialize;
-use utoipa::ToSchema;
+use axum::http::StatusCode;
 
 use crate::domain::{actions, App, AppError, SelfHostedApp};
 use crate::http::errors::{AppNotEditableBody, AppNotFoundBody};
 use crate::http::state::AppsState;
-
-#[derive(Debug, Serialize, ToSchema)]
-pub(crate) struct DeletedBody {
-    deleted: bool,
-}
 
 /// `DELETE /apps/{id}` — remove a cloud app or an uploaded self-hosted app.
 /// Owner-gated by the host.
@@ -34,7 +28,7 @@ pub(crate) struct DeletedBody {
     path = "/apps/{id}",
     params(("id" = String, Path, description = "App id")),
     responses(
-        (status = 200, description = "The row was removed", body = DeletedBody),
+        (status = 204, description = "The app was removed"),
         (status = 404, description = "No app has this id", body = AppNotFoundBody),
         (status = 409, description = "The app exists but is not removable (system / seeded self-hosted apps)", body = AppNotEditableBody),
     ),
@@ -42,31 +36,30 @@ pub(crate) struct DeletedBody {
 pub(crate) async fn handle_delete_app(
     State(state): State<Arc<AppsState>>,
     Path(id): Path<String>,
-) -> Result<Json<DeletedBody>, AppError> {
+) -> Result<StatusCode, AppError> {
     let app = actions::get_app(&state.store, &id)?;
 
     match &app {
-        App::Cloud { .. } => {
+        App::Cloud(_) => {
             actions::delete_app(&state.store, &id)?;
-            Ok(Json(DeletedBody { deleted: true }))
+            Ok(StatusCode::NO_CONTENT)
         }
-        App::SelfHosted { app: child, .. } => delete_self_hosted(&state, &id, child),
+        App::SelfHosted(child) => delete_self_hosted(&state, &id, child),
         // System apps are not user-removable.
-        App::System { .. } => Err(AppError::NotEditable { id }),
+        App::System(_) => Err(AppError::NotEditable { id }),
     }
 }
 
 /// The self-hosted arm: seeded rows are protected, uploaded rows are torn down
-/// (listener stopped, rows deleted, files removed best-effort). The `child` record
-/// came off the already-loaded app — no second lookup.
+/// (listener stopped, registration deleted, files removed best-effort). The
+/// `child` detail came off the already-loaded app — no second lookup.
 fn delete_self_hosted(
     state: &Arc<AppsState>,
     id: &str,
     child: &SelfHostedApp,
-) -> Result<Json<DeletedBody>, AppError> {
+) -> Result<StatusCode, AppError> {
     if child.seeded {
-        // A migration-seeded app (patient-browser) is read-only, same 409 as
-        // before this route learned to delete uploads.
+        // A migration-seeded app (patient-browser) is read-only.
         return Err(AppError::NotEditable { id: id.to_owned() });
     }
 
@@ -87,5 +80,5 @@ fn delete_self_hosted(
         }
     }
 
-    Ok(Json(DeletedBody { deleted: true }))
+    Ok(StatusCode::NO_CONTENT)
 }

@@ -1,17 +1,13 @@
-//! The `/apps` URL-segment routes, one file per operation: `list` (`GET /apps`),
-//! `create` (`POST /apps`), `launch` (`GET` + `POST /apps/{id}`), `update`
-//! (`PUT /apps/{id}`), and `delete` (`DELETE /apps/{id}`). Each exposes a
+//! The `/apps` URL-segment routes, one file per operation: `list` (`GET /apps` —
+//! the uniform registry), `launch` (`GET` + `POST /apps/{id}`), and `delete`
+//! (`DELETE /apps/{id}` — unified across kinds, kind resolved via the
+//! registration). The per-kind detail/create/replace routes live off the root
+//! under [`cloud_apps`](crate::http::routes::cloud_apps) /
+//! [`self_hosted_apps`](crate::http::routes::self_hosted_apps) /
+//! [`system_apps`](crate::http::routes::system_apps). Each file exposes a
 //! `#[utoipa::path]`-annotated handler; the route table in
 //! [`crate::http::routes`] wires them into the gated + launch routers.
-//!
-//! `create` registers cloud apps and installs uploaded self-hosted apps
-//! (multipart, discriminated on `provenance`). `update` and `delete` edit both
-//! cloud apps and uploaded (non-seeded) self-hosted apps, dispatching on the
-//! stored app's kind; system apps and seeded self-hosted apps return
-//! `409 AppNotEditable`.
 
-pub(crate) mod create;
 pub(crate) mod delete;
 pub(crate) mod launch;
 pub(crate) mod list;
-pub(crate) mod update;

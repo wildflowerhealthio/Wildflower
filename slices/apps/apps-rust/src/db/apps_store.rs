@@ -12,7 +12,8 @@ use persistence_rust::{DieselPool, PooledDieselConnection};
 
 use crate::db::{reads, writes};
 use crate::domain::{
-    App, AppError, AppsStore, CloudContent, NewCloudApp, NewSelfHostedUpload, UploadInsertError,
+    App, AppError, AppRegistration, AppsStore, CloudContent, NewCloudApp, NewSelfHostedUpload,
+    UploadInsertError,
 };
 
 /// This slice's migration namespace in the shared database. Applied versions are
@@ -25,9 +26,9 @@ const MIGRATION_NAMESPACE: &str = "apps";
 /// database in [`SqliteAppsStore::new`] via
 /// [`persistence_rust::run_diesel_migrations`] under [`MIGRATION_NAMESPACE`] (see
 /// that runner for why the stock diesel harness can't be used across slices).
-/// Migration `0001` builds the concrete tables, the `home_screen` ordering table,
-/// and the `apps_view`, and seeds the default registry; because each migration
-/// runs only once per database, a user-deleted seed stays deleted across upgrades.
+/// Migration `0001` builds the `app_registry` parent and its three child payload
+/// tables, and seeds the default registry; because each migration runs only once
+/// per database, a user-deleted seed stays deleted across upgrades.
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
 /// The `SQLite` adapter for the [`AppsStore`] port — serves the parent registry
@@ -102,9 +103,9 @@ impl SqliteAppsStore {
 /// [`UploadInsertError`] — leaving the semantic verdicts to
 /// [`crate::domain::actions`].
 impl AppsStore for SqliteAppsStore {
-    fn list_apps(&self) -> Result<Vec<App>, AppError> {
+    fn list_registrations(&self) -> Result<Vec<AppRegistration>, AppError> {
         let mut conn = self.connection()?;
-        reads::list_apps_on(&mut conn)
+        reads::list_registrations_on(&mut conn)
     }
 
     fn find_app(&self, id: &str) -> Result<Option<App>, AppError> {
@@ -151,7 +152,7 @@ impl AppsStore for SqliteAppsStore {
     fn replace_home_screen(
         &self,
         entries: &[(String, bool)],
-    ) -> Result<Option<Vec<App>>, AppError> {
+    ) -> Result<Option<Vec<AppRegistration>>, AppError> {
         writes::replace_home_screen(&mut self.connection()?, entries)
     }
 }
@@ -161,8 +162,7 @@ mod tests {
     use diesel::prelude::*;
 
     use super::*;
-    use crate::db::schema::home_screen;
-    use crate::domain::App;
+    use crate::db::schema::app_registry;
 
     /// Running the migrations twice is a no-op the second time (the namespaced
     /// runner skips the already-applied `0001`), and the seeded default registry
@@ -176,43 +176,46 @@ mod tests {
             .unwrap();
         persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
             .unwrap();
-        let row_count: i64 = home_screen::table
+        let row_count: i64 = app_registry::table
             .count()
             .get_result(&mut conn)
-            .expect("home_screen must exist after migrate");
+            .expect("app_registry must exist after migrate");
         assert_eq!(row_count, 6, "exactly the six seeded default apps");
     }
 
-    /// The `home_screen` primary key gives global id uniqueness across kinds — a
-    /// second `home_screen` row with a seeded id is rejected by the PK, so no two
-    /// apps (of any kind) can share an id.
+    /// The `app_registry` primary key gives global id uniqueness across kinds — a
+    /// second registration with a seeded id is rejected by the PK, so no two apps
+    /// (of any kind) can share an id.
     #[test]
-    fn home_screen_id_is_globally_unique() {
+    fn app_registry_id_is_globally_unique() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
         let mut conn = store.pool().get().unwrap();
-        let dup = diesel::insert_into(home_screen::table)
+        let dup = diesel::insert_into(app_registry::table)
             .values((
-                home_screen::app_id.eq("api-docs"),
-                home_screen::position.eq(99_i64),
-                home_screen::enabled.eq(true),
+                app_registry::id.eq("api-docs"),
+                app_registry::kind.eq("cloud"),
+                app_registry::position.eq(99_i64),
+                app_registry::enabled.eq(true),
+                app_registry::name.eq("Dup"),
+                app_registry::local_only.eq(false),
+                app_registry::requires_tunnel.eq(false),
             ))
             .execute(&mut conn);
         assert!(
             dup.is_err(),
-            "duplicate home_screen app_id must violate the PK"
+            "duplicate app_registry id must violate the PK"
         );
     }
 
-    /// The port hands back whole [`App`]s from a fresh install — the seeded
-    /// registry, in display order.
+    /// The port hands back the seeded registry, in display order.
     #[test]
-    fn list_apps_returns_the_seeded_registry_in_order() {
+    fn list_registrations_returns_the_seeded_registry_in_order() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
         let ids: Vec<String> = store
-            .list_apps()
+            .list_registrations()
             .unwrap()
             .iter()
-            .map(|a: &App| a.id().to_owned())
+            .map(|r| r.id.clone())
             .collect();
         assert_eq!(
             ids,

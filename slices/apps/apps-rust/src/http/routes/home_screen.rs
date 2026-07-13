@@ -1,5 +1,5 @@
 //! `PUT /home-screen` — atomically replace the homescreen ordering **and**
-//! `enabled` flags for the whole registry, every provenance, in one transaction.
+//! `enabled` flags for the whole registry, every kind, in one transaction.
 //!
 //! The body is the full ordered list `[{ id, enabled }]`: an entry's index in
 //! the array *is* its new display `position`. The dense-`0..n` /
@@ -7,8 +7,8 @@
 //! [`AppsStore::replace_home_screen`](crate::domain::AppsStore::replace_home_screen)
 //! port method (the [`replace_home_screen`](crate::domain::actions) action this
 //! handler calls maps its non-permutation `None` onto `400 InvalidHomeScreen`).
-//! The cloud-admin `PATCH /apps/{id}` edits only a cloud app's *content* —
-//! homescreen curation lives here.
+//! The per-kind `PUT /cloud-apps/{id}` etc. edit an app's *content* — homescreen
+//! curation lives here.
 
 use std::sync::Arc;
 
@@ -17,7 +17,7 @@ use axum::Json;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-use crate::domain::{actions, AppError, AppListEntry};
+use crate::domain::{actions, AppError, AppRegistration};
 use crate::http::errors::InvalidHomeScreenBody;
 use crate::http::state::AppsState;
 
@@ -41,14 +41,14 @@ pub(crate) struct HomeScreenEntry {
     path = "/home-screen",
     request_body = [HomeScreenEntry],
     responses(
-        (status = 200, description = "The whole catalogue in its new order", body = [AppListEntry]),
+        (status = 200, description = "The whole registry in its new order", body = [AppRegistration]),
         (status = 400, description = "The body wasn't an exact permutation of the registry", body = InvalidHomeScreenBody),
     ),
 )]
 pub(crate) async fn handle_replace_home_screen(
     State(state): State<Arc<AppsState>>,
     Json(body): Json<Vec<HomeScreenEntry>>,
-) -> Result<Json<Vec<AppListEntry>>, AppError> {
+) -> Result<Json<Vec<AppRegistration>>, AppError> {
     // The home screen *is* the whole registry, reordered — so the body must be an
     // exact permutation of the current ids. The `replace_home_screen` action's
     // store validates that against the live registry **and** renumbers in one
@@ -57,5 +57,5 @@ pub(crate) async fn handle_replace_home_screen(
     // `400 InvalidHomeScreen`.
     let entries: Vec<(String, bool)> = body.into_iter().map(|e| (e.id, e.enabled)).collect();
     let updated = actions::replace_home_screen(&state.store, &entries)?;
-    Ok(Json(updated.iter().map(AppListEntry::from).collect()))
+    Ok(Json(updated))
 }

@@ -36,19 +36,17 @@ vi.mock('../../../queries.ts', () => ({
   useReplaceHomeScreenMutation: () => homeScreenStub,
 }))
 
-import type { AppEntry } from '../../../queries.ts'
+import type { AppRegistration } from '../../../queries.ts'
 import { AppsHomeBody } from './index.tsx'
 
-const cloudApp = (overrides: Partial<AppEntry> = {}): AppEntry => ({
+const cloudApp = (overrides: Partial<AppRegistration> = {}): AppRegistration => ({
   id: 'cloud-app',
   name: 'Cloud App',
   enabled: true,
-  provenance: 'cloud',
+  kind: 'cloud',
   localOnly: false,
   smart: false,
   requiresTunnel: false,
-  removable: true,
-  url: 'https://example.com/launch',
   ...overrides,
 })
 

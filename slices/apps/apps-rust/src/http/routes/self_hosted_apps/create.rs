@@ -1,20 +1,11 @@
-//! `POST /apps` — register a new app, cloud or self-hosted. The body is
-//! `multipart/form-data` discriminated on `provenance` (mirroring the
-//! `PUT /apps/{id}` replace union):
-//!
-//!   * **cloud** — `name`, `url` (parsed through the write-side [`AppUrl`] filter
-//!     so an open redirect never lands in the row), `requiresTunnel` (the text
-//!     `"true"` / `"false"`), optional `subtitle`;
-//!   * **self-hosted** — `name`, optional `subtitle`, and the uploaded `bundle`
-//!     (a zip). Runs the staged install (extract → move → insert → start) — see
-//!     `docs/Apps/Store and Install Explanation.md` §"The self-hosted upload
-//!     pipeline".
-//!
+//! `POST /self-hosted-apps` — install a self-hosted app from an uploaded zip
+//! `bundle`. The body is `multipart/form-data` (`name`, optional `subtitle`, and
+//! the `bundle` file). Runs the staged install (extract → move → insert → start)
+//! so it never leaves a half-installed app behind — see
+//! `docs/Apps/Store and Install Explanation.md` §"The self-hosted upload pipeline".
 //! Form fields cross the wire as text and the file rides its own part, so the
-//! handler reads the [`Multipart`] parts by hand ([`CreateAppMultipart`]
-//! documents the shape for OpenAPI). Both arms return the new catalogue
-//! [`AppListEntry`], read back in-txn, so the editor renders the tile without a
-//! re-list.
+//! handler reads the [`Multipart`] parts by hand. Returns the created
+//! [`SelfHostedAppDetail`], read back in-txn.
 
 use std::sync::Arc;
 
@@ -24,9 +15,7 @@ use axum::Json;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-use crate::domain::{
-    actions, App, AppError, AppListEntry, AppUrl, CloudContent, NewCloudApp, NewSelfHostedUpload,
-};
+use crate::domain::{actions, AppError, NewSelfHostedUpload, SelfHostedAppDetail};
 use crate::http::errors::InvalidFieldBody;
 use crate::http::state::AppsState;
 use crate::id::mint_app_id;
@@ -35,48 +24,38 @@ use crate::install::{self, extract_zip_bundle, infer_launch_path, slugify};
 /// Documents the `multipart/form-data` body for OpenAPI. The handler reads the
 /// parts manually via [`Multipart`], so this is never deserialized directly (the
 /// `Deserialize` derive only carries the `serde` rename to the generated schema).
-/// Fields cross the wire as text — `requiresTunnel` is `"true"` / `"false"` — and
-/// `bundle` is the uploaded file. `provenance` and `name` are always present; the
-/// rest are kind-specific, so they're optional here and the handler requires the
-/// right ones per `provenance`. Mirrors the TS `CreateAppBodySchema`.
+/// `name` is always present; `subtitle` is optional; `bundle` is the uploaded zip.
+/// Matches the TS `CreateSelfHostedAppBodySchema`.
 #[derive(Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 #[allow(dead_code)]
-pub(crate) struct CreateAppMultipart {
-    /// `"cloud"` or `"self-hosted"`.
-    provenance: String,
+pub(crate) struct CreateSelfHostedAppMultipart {
     name: String,
     subtitle: Option<String>,
-    /// Cloud only: the launch URL template.
-    url: Option<String>,
-    /// Cloud only: `"true"` / `"false"`.
-    requires_tunnel: Option<String>,
-    /// Self-hosted only: the app's static files as a zip.
+    /// The app's static files as a zip.
     #[schema(format = Binary)]
-    bundle: Option<String>,
+    bundle: String,
 }
 
-/// `POST /apps` — create a cloud or self-hosted app. Owner-gated by the host; the
-/// body limit is raised for the upload arm (see the router wiring).
+/// `POST /self-hosted-apps` — install a self-hosted app from the uploaded `bundle`.
+/// Owner-gated by the host; the body limit is raised for this route (see the
+/// router wiring).
 #[utoipa::path(
     post,
-    tag = "Catalogue",
-    path = "/apps",
-    request_body(content = CreateAppMultipart, content_type = "multipart/form-data"),
+    tag = "Self-hosted apps",
+    path = "/self-hosted-apps",
+    request_body(content = CreateSelfHostedAppMultipart, content_type = "multipart/form-data"),
     responses(
-        (status = 200, description = "The created app (the provenance-tagged catalogue entry)", body = AppListEntry),
-        (status = 400, description = "Empty/unusable name (`InvalidName`), bad url (`InvalidUrl`), or a bad bundle (`InvalidZip`)", body = InvalidFieldBody),
+        (status = 200, description = "The installed self-hosted app detail", body = SelfHostedAppDetail),
+        (status = 400, description = "Empty/unusable name (`InvalidName`) or a bad bundle (`InvalidZip`)", body = InvalidFieldBody),
     ),
 )]
-pub(crate) async fn handle_create_app(
+pub(crate) async fn handle_create_self_hosted_app(
     State(state): State<Arc<AppsState>>,
     mut multipart: Multipart,
-) -> Result<Json<AppListEntry>, AppError> {
-    let mut provenance: Option<String> = None;
+) -> Result<Json<SelfHostedAppDetail>, AppError> {
     let mut name: Option<String> = None;
     let mut subtitle: Option<String> = None;
-    let mut url: Option<String> = None;
-    let mut requires_tunnel: Option<String> = None;
     let mut bundle: Option<Bytes> = None;
 
     while let Some(field) = multipart
@@ -95,17 +74,14 @@ pub(crate) async fn handle_create_app(
                         .map_err(|e| AppError::infrastructure("failed to read bundle part", e))?,
                 );
             }
-            Some(key @ ("provenance" | "name" | "subtitle" | "url" | "requiresTunnel")) => {
+            Some(key @ ("name" | "subtitle")) => {
                 let value = field
                     .text()
                     .await
                     .map_err(|e| AppError::infrastructure("failed to read multipart field", e))?;
                 match key {
-                    "provenance" => provenance = Some(value),
                     "name" => name = Some(value),
                     "subtitle" => subtitle = Some(value),
-                    "url" => url = Some(value),
-                    "requiresTunnel" => requires_tunnel = Some(value),
                     // The outer pattern already narrowed `key` to this set.
                     _ => unreachable!("field name matched the guarded set"),
                 }
@@ -118,69 +94,20 @@ pub(crate) async fn handle_create_app(
     let name = name.ok_or_else(|| AppError::InvalidName {
         message: "name is required".to_owned(),
     })?;
-    // The typed client always sends a known provenance; a missing/unknown one is a
-    // protocol violation, surfaced as a logged 500 rather than a wire 400.
-    match provenance.as_deref() {
-        Some("cloud") => create_cloud(&state, name, subtitle, url, requires_tunnel),
-        Some("self-hosted") => create_self_hosted(&state, name, subtitle, bundle).await,
-        other => Err(AppError::infrastructure(
-            "create: missing or unknown provenance",
-            format!("{other:?}"),
-        )),
-    }
-    .map(Json)
-}
-
-/// Create a cloud app from the form fields. `url` / `requiresTunnel` are required
-/// for this arm (schema-optional on the shared multipart body); an absent `url` is
-/// a `400 InvalidUrl`, and a missing/malformed `requiresTunnel` is a protocol
-/// violation surfaced as a logged 500 (the typed client always sends it).
-fn create_cloud(
-    state: &AppsState,
-    name: String,
-    subtitle: Option<String>,
-    url: Option<String>,
-    requires_tunnel: Option<String>,
-) -> Result<AppListEntry, AppError> {
-    if name.is_empty() {
-        return Err(AppError::InvalidName {
-            message: "name must not be empty".to_owned(),
-        });
-    }
-    let url = url.ok_or_else(|| AppError::InvalidUrl {
-        message: "url is required for a cloud app".to_owned(),
-    })?;
-    let url = url.parse::<AppUrl>().map_err(|e| AppError::InvalidUrl {
-        message: e.to_string(),
-    })?;
-    let requires_tunnel = parse_bool_field(requires_tunnel.as_deref())?;
-    let new = NewCloudApp {
-        id: mint_app_id(),
-        content: CloudContent {
-            name,
-            // Empty `""` clears the subtitle.
-            subtitle: subtitle.filter(|s| !s.is_empty()),
-            url,
-            requires_tunnel,
-        },
-    };
-    // The action inserts and reads the `App` back in-txn (mapping a server-minted
-    // id collision to a logged 500), so projecting it is exactly the `GET /apps`
-    // shape with no second read.
-    let app = actions::create_cloud_app(&state.store, &new)?;
-    Ok(AppListEntry::from(&app))
+    let app = install_self_hosted(&state, name, subtitle, bundle).await?;
+    Ok(Json(SelfHostedAppDetail::from(&app)))
 }
 
 /// Install a self-hosted app from the uploaded `bundle` via the staged install:
 /// extract off-runtime, move into place before the row is committed, insert
 /// (allocating slug + port), then bring the listener online — cleaning up on any
 /// failure. See `docs/Apps/Store and Install Explanation.md`.
-async fn create_self_hosted(
+async fn install_self_hosted(
     state: &AppsState,
     name: String,
     subtitle: Option<String>,
     bundle: Option<Bytes>,
-) -> Result<AppListEntry, AppError> {
+) -> Result<crate::domain::SelfHostedApp, AppError> {
     let slug = slugify(&name).ok_or_else(|| AppError::InvalidName {
         message: "name must contain at least one letter or digit".to_owned(),
     })?;
@@ -240,8 +167,8 @@ async fn create_self_hosted(
         launch_path,
     };
     // The action inserts (allocating slug + port in-txn) and maps an allocation
-    // failure onto the wire error — a slug clash is `400 InvalidName`, an
-    // exhausted port space a logged 500. Any error unwinds the just-moved files.
+    // failure onto the wire error — a slug clash is `400 InvalidName`, an exhausted
+    // port space a logged 500. Any error unwinds the just-moved files.
     let app = match actions::create_self_hosted_app(&state.store, &upload) {
         Ok(app) => app,
         Err(error) => {
@@ -249,41 +176,23 @@ async fn create_self_hosted(
             return Err(error);
         }
     };
-    // The insert just built this app as self-hosted; anything else is a store bug
-    // surfaced as a logged 500, never a panic.
-    let App::SelfHosted { app: child, .. } = &app else {
-        return Err(AppError::infrastructure(
-            "insert_self_hosted_app returned a non-self-hosted app",
-            app.id().to_owned(),
-        ));
-    };
 
     // Bring it online now. `start` swallows bind failures (the row is committed and
     // files are in place, so it comes up on the next restart); the only error it
     // propagates is a poisoned lock, where reverse-proxy registration did NOT
     // happen and won't self-heal. That's a real fault — surface it.
-    if let Err(error) = state.self_hosted.start(app.id(), child).await {
+    if let Err(error) = state
+        .self_hosted
+        .start(app.registration.id.as_str(), &app)
+        .await
+    {
         return Err(AppError::infrastructure(
             "installed self-hosted app failed to register",
             error,
         ));
     }
 
-    Ok(AppListEntry::from(&app))
-}
-
-/// Parse a `requiresTunnel` multipart field (`"true"` / `"false"`). Absent or
-/// malformed is a protocol violation (the typed client always sends a valid
-/// value), surfaced as a logged 500 rather than an off-contract 400.
-fn parse_bool_field(value: Option<&str>) -> Result<bool, AppError> {
-    match value {
-        Some("true") => Ok(true),
-        Some("false") => Ok(false),
-        other => Err(AppError::infrastructure(
-            "create: missing or malformed requiresTunnel field",
-            format!("{other:?}"),
-        )),
-    }
+    Ok(app)
 }
 
 /// Map an extraction failure to the wire error: a disk-write failure is our fault

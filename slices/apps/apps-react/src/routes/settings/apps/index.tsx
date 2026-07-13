@@ -2,11 +2,11 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import type { JSX } from 'react'
 import { AsyncErrorView, ItemList, PageHeader, type ItemListItem } from 'react-tundraish'
 
-import { appsListQueryOptions, useAppsListQuery, type AppEntry } from '../../../queries.ts'
-import { provenanceLabel } from '../../_auth/home/-tiles.tsx'
+import { appsListQueryOptions, useAppsListQuery, type AppRegistration } from '../../../queries.ts'
+import { kindLabel } from '../../_auth/home/-tiles.tsx'
 
 interface AppsListBodyProps {
-  readonly apps: readonly AppEntry[]
+  readonly apps: readonly AppRegistration[]
 }
 
 /**
@@ -19,11 +19,11 @@ interface AppsListBodyProps {
  */
 /** A catalogue row → its navigation list item (links to the detail page). The
  * enabled/hidden split is carried by the section it lands in, not a per-row tag. */
-const toItem = (app: AppEntry): ItemListItem => ({
+const toItem = (app: AppRegistration): ItemListItem => ({
   id: app.id,
   title: app.name,
   subtitle: app.subtitle,
-  badge: provenanceLabel(app.provenance),
+  badge: kindLabel(app.kind),
   href: `/settings/apps/${app.id}`,
 })
 

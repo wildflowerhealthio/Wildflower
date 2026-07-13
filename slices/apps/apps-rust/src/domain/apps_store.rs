@@ -14,7 +14,8 @@
 //! Mirrors collector's `RemotesStore` port.
 
 use crate::domain::{
-    App, AppError, CloudContent, NewCloudApp, NewSelfHostedUpload, UploadInsertError,
+    App, AppError, AppRegistration, CloudContent, NewCloudApp, NewSelfHostedUpload,
+    UploadInsertError,
 };
 
 /// The persistence port for the apps registry: the primitive CRUD the domain
@@ -33,15 +34,18 @@ use crate::domain::{
 /// same transaction that wrote it*, so a caller's response can't drift from
 /// stored state (see `docs/Apps/Store and Install Explanation.md`).
 pub trait AppsStore {
-    /// The `GET /apps` catalogue: every app, whole, ordered by `position`.
+    /// The `GET /apps` catalogue: every app's registration, ordered by `position`.
+    /// Join-free (the registration carries everything the tile renders); the
+    /// per-kind payload is read only on a detail lookup.
     ///
     /// # Errors
     ///
     /// [`AppError::Infrastructure`] on a checkout / read failure or a corrupt row.
-    fn list_apps(&self) -> Result<Vec<App>, AppError>;
+    fn list_registrations(&self) -> Result<Vec<AppRegistration>, AppError>;
 
-    /// A single whole app by id, or `None` when no app has this id. Backs the
-    /// launch dispatch and the admin existence / editability checks.
+    /// A single whole app by id, or `None` when no app has this id. Reads the
+    /// registration then the one child payload its `kind` names. Backs the launch
+    /// dispatch, the per-kind detail reads, and the admin existence checks.
     ///
     /// # Errors
     ///
@@ -56,20 +60,21 @@ pub trait AppsStore {
     /// [`AppError::Infrastructure`] on a checkout / read failure or a corrupt row.
     fn list_self_hosted_apps(&self) -> Result<Vec<App>, AppError>;
 
-    /// Insert a fresh cloud app (its `cloud_apps` row plus its tail `home_screen`
-    /// row) in one transaction. Returns `None` when the id was already taken (no
-    /// row written) — a conflict rather than a silent overwrite — else the
-    /// inserted whole [`App`] read back in-txn.
+    /// Insert a fresh cloud app (its `app_registry` registration at the tail
+    /// position plus its `cloud_apps` payload) in one transaction. Returns `None`
+    /// when the id was already taken (no row written) — a conflict rather than a
+    /// silent overwrite — else the inserted whole [`App`] read back in-txn.
     ///
     /// # Errors
     ///
     /// [`AppError::Infrastructure`] on a checkout / transaction failure.
     fn insert_cloud_app(&self, new: &NewCloudApp) -> Result<Option<App>, AppError>;
 
-    /// Insert a fresh uploaded self-hosted app (allocating slug, port, and
-    /// position in-transaction) plus its `home_screen` row. Returns
-    /// `Ok(Err(_))` — nothing written — when the slug attempts or the port space
-    /// are exhausted; otherwise the inserted whole [`App`] read back in-txn.
+    /// Insert a fresh uploaded self-hosted app — its `app_registry` registration
+    /// (allocating slug, port, and position in-transaction) plus its
+    /// `self_hosted_apps` payload. Returns `Ok(Err(_))` — nothing written — when
+    /// the slug attempts or the port space are exhausted; otherwise the inserted
+    /// whole [`App`] read back in-txn.
     ///
     /// # Errors
     ///
@@ -105,9 +110,9 @@ pub trait AppsStore {
         launch_path: Option<&str>,
     ) -> Result<Option<App>, AppError>;
 
-    /// Delete an app by id, any kind — its `home_screen` row plus its concrete
-    /// row. Returns `true` when a row was removed, `false` on a miss. The
-    /// removability policy (kind + seeded) is enforced above this.
+    /// Delete an app by id, any kind — one `app_registry` delete; its child
+    /// payload cascades. Returns `true` when a row was removed, `false` on a miss.
+    /// The removability policy (kind + seeded) is enforced above this.
     ///
     /// # Errors
     ///
@@ -115,7 +120,7 @@ pub trait AppsStore {
     fn delete_app(&self, id: &str) -> Result<bool, AppError>;
 
     /// Atomically validate **and** rewrite the whole homescreen (ordering **and**
-    /// `enabled` flags) in one transaction. Returns the resulting catalogue in its
+    /// `enabled` flags) in one transaction. Returns the resulting registry in its
     /// new order (read inside the same transaction), or `None` when `entries`
     /// isn't an exact permutation of the live registry.
     ///
@@ -125,6 +130,8 @@ pub trait AppsStore {
     /// # Errors
     ///
     /// [`AppError::Infrastructure`] on a checkout / transaction failure.
-    fn replace_home_screen(&self, entries: &[(String, bool)])
-        -> Result<Option<Vec<App>>, AppError>;
+    fn replace_home_screen(
+        &self,
+        entries: &[(String, bool)],
+    ) -> Result<Option<Vec<AppRegistration>>, AppError>;
 }

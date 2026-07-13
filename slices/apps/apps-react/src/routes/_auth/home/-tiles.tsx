@@ -4,7 +4,7 @@ import type { CSSProperties, JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { StatusBadge, type StatusTone } from 'react-tundraish'
 
-import type { AppEntry } from '../../../queries.ts'
+import type { AppRegistration } from '../../../queries.ts'
 import tileStyles from '../../../styles/app-tiles.module.css'
 
 /** A registry-flag pill: its label and the {@link StatusTone} it paints. */
@@ -14,11 +14,11 @@ interface Pill {
   readonly tone: StatusTone
 }
 
-/** Provenance → its human label + pill tone. Cloud is the "interesting" one
- * (it's the editable / tunnel-reachable kind), so it gets the `info` tint;
- * system / self-hosted stay neutral. */
-const PROVENANCE_PILL: Record<
-  AppEntry['provenance'],
+/** Kind → its human label + pill tone. Cloud is the "interesting" one (it's the
+ * editable / tunnel-reachable kind), so it gets the `info` tint; system /
+ * self-hosted stay neutral. */
+const KIND_PILL: Record<
+  AppRegistration['kind'],
   { readonly label: string; readonly tone: StatusTone }
 > = {
   system: { label: 'System', tone: 'neutral' },
@@ -27,32 +27,30 @@ const PROVENANCE_PILL: Record<
 }
 
 /**
- * The human label for a provenance — the single source of truth shared with the
- * apps editor, so the home tile and the editor never disagree on casing.
+ * The human label for a kind — the single source of truth shared with the apps
+ * editor, so the home tile and the editor never disagree on casing.
  */
-const provenanceLabel = (provenance: AppEntry['provenance']): string =>
-  PROVENANCE_PILL[provenance].label
+const kindLabel = (kind: AppRegistration['kind']): string => KIND_PILL[kind].label
 
 /**
- * The pills a tile shows for an app's registry flags: always the provenance,
- * plus `SMART` when `smart`, `Local-Only` when `localOnly`, and `Tunnel` when
+ * The pills a tile shows for an app's registry flags: always the kind, plus
+ * `SMART` when `smart`, `Local-Only` when `localOnly`, and `Tunnel` when
  * `requiresTunnel` (so a launch that needs the tunnel up is signalled before the
  * user clicks into a `503`). Pure — derives the list from the row so it can be
- * unit-tested without rendering.
+ * unit-tested without rendering. `requiresTunnel` reads straight off the uniform
+ * registration (no per-kind narrowing).
  */
-const tilePills = (app: AppEntry): readonly Pill[] => {
-  const provenance = PROVENANCE_PILL[app.provenance]
-  const pills: Pill[] = [{ key: 'provenance', label: provenance.label, tone: provenance.tone }]
+const tilePills = (app: AppRegistration): readonly Pill[] => {
+  const kind = KIND_PILL[app.kind]
+  const pills: Pill[] = [{ key: 'kind', label: kind.label, tone: kind.tone }]
   if (app.smart) pills.push({ key: 'smart', label: 'SMART', tone: 'info' })
   if (app.localOnly) pills.push({ key: 'local-only', label: 'Local-Only', tone: 'success' })
-  // `requiresTunnel` lives only on the cloud variant of the union.
-  if (app.provenance === 'cloud' && app.requiresTunnel)
-    pills.push({ key: 'tunnel', label: 'Tunnel', tone: 'warning' })
+  if (app.requiresTunnel) pills.push({ key: 'tunnel', label: 'Tunnel', tone: 'warning' })
   return pills
 }
 
 interface SortableAppTileProps {
-  readonly app: AppEntry
+  readonly app: AppRegistration
   /**
    * Home-screen edit mode. When `false` the tile launches on click and can't be
    * dragged; when `true` dragging is armed, the click no longer launches, and a
@@ -68,13 +66,13 @@ interface SortableAppTileProps {
    * `launchHref` in `-launch.ts`.
    */
   readonly href: string | undefined
-  readonly onLaunch: (app: AppEntry) => void
-  readonly onDisable: (app: AppEntry) => void
+  readonly onLaunch: (app: AppRegistration) => void
+  readonly onDisable: (app: AppRegistration) => void
 }
 
 /** The app's name / subtitle / pills — shared by the launch button (view mode)
  * and the plain display wrapper (edit mode). */
-const TileContent = ({ app }: { readonly app: AppEntry }): JSX.Element => (
+const TileContent = ({ app }: { readonly app: AppRegistration }): JSX.Element => (
   <>
     <span className={tileStyles['app-tile__head']}>
       <span className={cn(tileStyles['app-tile__name'], 'text-body-2')}>{app.name}</span>
@@ -105,9 +103,9 @@ const TileLaunchTarget = ({
   href,
   onLaunch,
 }: {
-  readonly app: AppEntry
+  readonly app: AppRegistration
   readonly href: string | undefined
-  readonly onLaunch: (app: AppEntry) => void
+  readonly onLaunch: (app: AppRegistration) => void
 }): JSX.Element => {
   const className = cn(tileStyles['app-tile__body'], tileStyles['app-tile__launch'])
   // No `onClick` on the anchor: the navigation *is* the launch. `rel` keeps
@@ -204,5 +202,5 @@ const SortableAppTile = ({
   )
 }
 
-export { provenanceLabel, SortableAppTile, tilePills }
+export { kindLabel, SortableAppTile, tilePills }
 export type { Pill, SortableAppTileProps }
