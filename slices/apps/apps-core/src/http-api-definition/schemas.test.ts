@@ -133,10 +133,10 @@ describe('AppRegistrationSchema', () => {
     .record({
       id: fc.string({ minLength: 1 }),
       kind: fc.constantFrom(...KINDS),
-      enabled: fc.boolean(),
+      onHomescreen: fc.boolean(),
       name: fc.string({ minLength: 1 }),
       localOnly: fc.boolean(),
-      smart: fc.boolean(),
+      isSmart: fc.boolean(),
       requiresTunnel: fc.boolean(),
     })
     .chain(withOptionalSubtitle)
@@ -153,16 +153,16 @@ describe('AppRegistrationSchema', () => {
     const base = {
       id: 'x',
       kind: 'cloud',
-      enabled: true,
+      onHomescreen: true,
       name: 'X',
       localOnly: false,
-      smart: true,
+      isSmart: true,
       requiresTunnel: true,
     }
     for (const bad of [
       { ...base, subtitle: '' },
       { ...base, kind: 'external' },
-      { id: 'x', kind: 'cloud', name: 'X', localOnly: false, smart: true, requiresTunnel: true },
+      { id: 'x', kind: 'cloud', name: 'X', localOnly: false, isSmart: true, requiresTunnel: true },
     ]) {
       expectLeftToEqual(
         Schema.decodeUnknownEither(AppRegistrationSchema)(bad),
@@ -176,35 +176,35 @@ describe('per-kind detail schemas', () => {
   const registration = {
     id: 'x',
     kind: 'cloud',
-    enabled: true,
+    onHomescreen: true,
     name: 'X',
     localOnly: false,
-    smart: true,
+    isSmart: true,
     requiresTunnel: true,
   }
 
-  it('CloudAppDetailSchema carries the url template + removable', () => {
+  it('CloudAppDetailSchema carries the url template + isRemovable', () => {
     const detail = {
       ...registration,
       url: 'https://example.com/launch?iss={origin}',
-      removable: true,
+      isRemovable: true,
     }
     expectRightToEqual(Schema.decodeUnknownEither(CloudAppDetailSchema)(detail), detail)
   })
 
-  it('CloudAppDetailSchema rejects a body missing url or removable', () => {
+  it('CloudAppDetailSchema rejects a body missing url or isRemovable', () => {
     expectLeftToEqual(
-      Schema.decodeUnknownEither(CloudAppDetailSchema)({ ...registration, removable: true }),
+      Schema.decodeUnknownEither(CloudAppDetailSchema)({ ...registration, isRemovable: true }),
       expect.objectContaining({ _tag: 'ParseError' })
     )
   })
 
-  it('SelfHostedAppDetailSchema carries launchPath?, seeded, and removable', () => {
+  it('SelfHostedAppDetailSchema carries launchPath?, seeded, and isRemovable', () => {
     const seeded = {
       ...registration,
       kind: 'self-hosted',
       seeded: true,
-      removable: false,
+      isRemovable: false,
     }
     expectRightToEqual(Schema.decodeUnknownEither(SelfHostedAppDetailSchema)(seeded), seeded)
     const withPath = {
@@ -212,12 +212,12 @@ describe('per-kind detail schemas', () => {
       kind: 'self-hosted',
       launchPath: '/launch.html',
       seeded: false,
-      removable: true,
+      isRemovable: true,
     }
     expectRightToEqual(Schema.decodeUnknownEither(SelfHostedAppDetailSchema)(withPath), withPath)
   })
 
-  it('SystemAppDetailSchema carries the url but no removable', () => {
+  it('SystemAppDetailSchema carries the url but no isRemovable', () => {
     const detail = { ...registration, kind: 'system', url: '{origin}/docs' }
     expectRightToEqual(Schema.decodeUnknownEither(SystemAppDetailSchema)(detail), detail)
   })
@@ -258,10 +258,10 @@ describe('InvalidFieldSchema', () => {
 })
 
 describe('HomeScreenSchema', () => {
-  it('decodes an ordered list of { id, enabled } entries', () => {
+  it('decodes an ordered list of { id, onHomescreen } entries', () => {
     const body = [
-      { id: 'patient-browser', enabled: true },
-      { id: 'api-view', enabled: false },
+      { id: 'patient-browser', onHomescreen: true },
+      { id: 'api-view', onHomescreen: false },
     ]
     expectRightToEqual(Schema.decodeUnknownEither(HomeScreenSchema)(body), body)
   })
@@ -270,13 +270,13 @@ describe('HomeScreenSchema', () => {
     expectRightToEqual(Schema.decodeUnknownEither(HomeScreenSchema)([]), [])
   })
 
-  it('rejects an entry missing enabled or with a non-boolean enabled', () => {
+  it('rejects an entry missing onHomescreen or with a non-boolean onHomescreen', () => {
     expectLeftToEqual(
       Schema.decodeUnknownEither(HomeScreenSchema)([{ id: 'x' }]),
       expect.objectContaining({ _tag: 'ParseError' })
     )
     expectLeftToEqual(
-      Schema.decodeUnknownEither(HomeScreenSchema)([{ id: 'x', enabled: 'yes' }]),
+      Schema.decodeUnknownEither(HomeScreenSchema)([{ id: 'x', onHomescreen: 'yes' }]),
       expect.objectContaining({ _tag: 'ParseError' })
     )
   })

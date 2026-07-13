@@ -11,9 +11,9 @@ leave the device when it does**. Two orthogonal axes answer it: **kind** (where
 the app is served from) and a set of **capability flags** (what it may do with
 PHI). Kind fixes how a launch target resolves; the flags carry the privacy
 verdict. The storage layout is **class-table-inheritance**: one authoritative
-`app_registry` parent table (the global id space, the shared catalogue fields,
+`app_registrations` parent table (the global id space, the shared catalogue fields,
 and the homescreen placement) with a `kind` discriminator and three symmetric
-per-kind child payload tables (`system_apps`, `cloud_apps`, `self_hosted_apps`),
+per-kind child payload tables (`system_app_configurations`, `cloud_app_configurations`, `self_hosted_app_configurations`),
 real FKs child→parent. A row is its registration plus the one child its `kind`
 names. (This replaces the earlier table-per-struct layout, and revises the
 class-table-inheritance objection recorded in the persistence docs — the registry
@@ -29,7 +29,7 @@ cloud↔self-hosted re-point, but there is no switch UI yet.
 - **System** — served by the structure of Wildflower itself: a shell route (API
   View, API Docs) or a compiled-in backend. Source-defined only — the user can
   never add, register, or delete one. Always ready to serve. A system app is an
-  ordinary seeded `app_registry` row (`kind = system`) with a `system_apps`
+  ordinary seeded `app_registrations` row (`kind = system`) with a `system_app_configurations`
   payload holding its launch template; shipping a change to a system app is a
   migration (the DB is authoritative — there is no longer a compiled-in
   `SYSTEM_APPS` list).
@@ -67,23 +67,23 @@ app is not automatically safe — the flags decide.
 
 ## Data model
 
-**Class-table-inheritance.** One authoritative **`app_registry`** parent holds
+**Class-table-inheritance.** One authoritative **`app_registrations`** parent holds
 the shared catalogue fields and the homescreen placement for an app of every
 kind: `id` (the global id space, an explicit PK), the `kind` discriminator
 (`CHECK IN ('system','cloud','self-hosted')`), `position` (UNIQUE, for ordering +
-drag-to-reorder), `enabled`, `name`, `subtitle`, `local_only`, the soft
+drag-to-reorder), `on_homescreen`, `name`, `subtitle`, `local_only`, the soft
 `client_id` reference, and `requires_tunnel` (a launch-readiness signal; false
-for system/self-hosted). It is the single writer of ordering + `enabled`
+for system/self-hosted). It is the single writer of ordering + `on_homescreen`
 (`PUT /home-screen`).
 
 Each kind's payload lives in a **child table** keyed `id … REFERENCES
-app_registry(id) ON DELETE CASCADE`, so a payload can't exist without its
+app_registrations(id) ON DELETE CASCADE`, so a payload can't exist without its
 registration and deleting the registration cascades:
 
-- `cloud_apps` — `url` (the launch URL template).
-- `system_apps` — `url` (the `{origin}`-relative launch template; a system app is
+- `cloud_app_configurations` — `url` (the launch URL template).
+- `system_app_configurations` — `url` (the `{origin}`-relative launch template; a system app is
   an ordinary seeded row now, not a compiled-in const).
-- `self_hosted_apps` — the stable dedicated loopback `port` (UNIQUE), the on-disk
+- `self_hosted_app_configurations` — the stable dedicated loopback `port` (UNIQUE), the on-disk
   `content_folder`, the public `subdomain` label (UNIQUE, `<subdomain>.<public_host>`),
   a `seeded` flag, and a nullable `launch_path`. Folder and subdomain are explicit
   columns, not derived from the `id`. `seeded = 1` marks the migration-seeded
@@ -94,7 +94,7 @@ registration and deleting the registration cascades:
   (`index.html`) app. Like the cloud `url` it's an origin-independent template.
 
 **Reads are typed queries against real tables** (no `apps_view`, no NULLable
-union): the uniform catalogue is a join-free `SELECT * FROM app_registry ORDER BY
+union): the uniform catalogue is a join-free `SELECT * FROM app_registrations ORDER BY
 position`; a detail read fetches the registration then the one child its `kind`
 names. The one CTI invariant SQLite can't enforce across tables — a registration
 must have its payload row — is checked at that single detail read as a typed
@@ -104,20 +104,21 @@ must have its payload row — is checked at that single detail read as a typed
 can be deleted — `DELETE /apps/{id}` drops the registration (the child cascades)
 and, for self-hosted, stops the listener and removes the on-disk files. A
 **seeded** Self-Hosted app and System apps are protected: their delete returns
-`409 AppNotEditable`. The per-kind detail shapes surface this as the `removable`
+`409 AppNotEditable`. The per-kind detail shapes surface this as the `isRemovable`
 flag (true for cloud and non-seeded self-hosted), which the editor's Remove
 button follows.
 
 ### The catalogue is a uniform `AppRegistration[]`
 
 `GET /apps` (and `PUT /home-screen`) return a **uniform** `AppRegistration[]` —
-one flat shape per app of every kind, no union to narrow: `id`, `kind`, `enabled`,
-`name`, `subtitle?`, `localOnly`, `smart` (derived from `client_id`), and
-`requiresTunnel`. The array order is the display order (`position` stays on the
-host). Everything the homescreen tile renders is here; the per-kind payload
-(`url`, `launchPath`) is an editor concern, read on a **per-kind detail** lookup
-(`GET /cloud-apps/{id}`, `/self-hosted-apps/{id}`, `/system-apps/{id}`), whose
-shape is the registration fields plus that kind's payload (and `removable`).
+one flat shape per app of every kind, no union to narrow: `id`, `kind`,
+`onHomescreen`, `name`, `subtitle?`, `localOnly`, `isSmart` (derived from
+`client_id`), and `requiresTunnel`. The array order is the display order
+(`position` stays on the host). Everything the homescreen tile renders is here; the
+per-kind payload (`url`, `launchPath`) is an editor concern, read on a **per-kind
+detail** lookup (`GET /cloud-apps/{id}`, `/self-hosted-apps/{id}`,
+`/system-apps/{id}`), whose shape is the registration fields plus that kind's
+payload (and `isRemovable`).
 
 Detail shapes expose the **stored, origin-independent templates** (the cloud `url`
 and the self-hosted `launchPath`, both with `{origin}` / `{launch}` tokens) but
@@ -131,8 +132,8 @@ loopback caller each get the right origin.
 Content edits go through the per-kind resources: `PUT /cloud-apps/{id}` (a JSON
 body replacing `name` / `subtitle` / `url` / `requiresTunnel`) and
 `PUT /self-hosted-apps/{id}` (replacing `launchPath`; empty clears it back to
-root-serving). It is a full **content** replace — `enabled` and display order stay
-owned by `PUT /home-screen`. A per-kind path given an id of another kind is a
+root-serving). It is a full **content** replace — `on_homescreen` and display order
+stay owned by `PUT /home-screen`. A per-kind path given an id of another kind is a
 **404** (the kind mismatch can no longer be expressed as a `409`); a seeded
 self-hosted app is `409 AppNotEditable`; system apps have no edit surface. The
 response is the refreshed per-kind detail shape. Create is likewise per-kind:
@@ -140,12 +141,12 @@ response is the refreshed per-kind detail shape. Create is likewise per-kind:
 
 ### `client_id` is a soft reference
 
-The `app_registry.client_id` column references `clients.client_id` but is
+The `app_registrations.client_id` column references `clients.client_id` but is
 **not** an enforced SQL foreign key. The `clients` table is owned by the
 gatekeeper slice; an enforced cross-slice FK would couple the apps migrations to
 gatekeeper's schema and impose a migration ordering across slice boundaries,
 violating the slice layering. So the column is a plain reference: the apps slice
-derives `smart` from its presence alone and never reads the `clients` table. The
+derives `isSmart` from its presence alone and never reads the `clients` table. The
 invariant — every seeded `client_id` corresponds to a seeded gatekeeper client —
 is held by keeping the two SQL seed migrations in lockstep (the seeded cloud
 apps' `client_id`s in the apps migration, the gatekeeper sample clients in

@@ -41,7 +41,10 @@ use axum::response::{IntoResponse, Response};
 
 use shared_structures_rust::served_origin::{request_provenance, RequestProvenance};
 
-use crate::domain::{actions, App, AppError, CloudApp, LaunchParams, SelfHostedApp, SystemApp};
+use crate::domain::{
+    actions, App, AppRegistration, AppsError, CloudAppConfiguration, LaunchParams,
+    SelfHostedAppConfiguration, SystemAppConfiguration,
+};
 use crate::http::errors::{AppNotFoundBody, LaunchUnavailableBody};
 use crate::http::state::AppsState;
 use crate::id::mint_launch_nonce;
@@ -67,7 +70,7 @@ pub(crate) async fn handle_launch_app(
     State(state): State<Arc<AppsState>>,
     headers: HeaderMap,
     Path(id): Path<String>,
-) -> Result<Response, AppError> {
+) -> Result<Response, AppsError> {
     launch(state, headers, id).await
 }
 
@@ -96,7 +99,7 @@ pub(crate) async fn handle_launch_app_get(
     State(state): State<Arc<AppsState>>,
     headers: HeaderMap,
     Path(id): Path<String>,
-) -> Result<Response, AppError> {
+) -> Result<Response, AppsError> {
     launch(state, headers, id).await
 }
 
@@ -107,12 +110,12 @@ async fn launch(
     state: Arc<AppsState>,
     headers: HeaderMap,
     id: String,
-) -> Result<Response, AppError> {
+) -> Result<Response, AppsError> {
     // Read once (see module docs, step 1): a header that fails validation reads as
     // Loopback; a forwarded host that cleared validation but failed to parse as a
     // URL is an internal inconsistency, so 500 rather than guess.
     let Some(provenance) = request_provenance(&headers) else {
-        return Err(AppError::infrastructure(
+        return Err(AppsError::infrastructure(
             "request_provenance",
             "forwarded header did not indicate a valid base URL",
         ));
@@ -126,7 +129,7 @@ async fn launch(
             .owner_auth
             .is_owner(&headers, &state.loopback_origin())
     {
-        return Err(AppError::Unauthorized);
+        return Err(AppsError::Unauthorized);
     }
 
     // 404 before resolving — an unknown id is never an availability failure.
@@ -180,48 +183,48 @@ impl App {
     ///
     /// Lives beside the launch handler rather than in `domain` on purpose: the
     /// resolution reaches into `AppsState` (the tunnel, the loopback config) and
-    /// yields an http [`AppError`], so keeping it here leaves the domain [`App`]
+    /// yields an http [`AppsError`], so keeping it here leaves the domain [`App`]
     /// free of that http/runtime coupling.
     async fn resolve_launch(
         &self,
         state: &AppsState,
         provenance: &RequestProvenance,
-    ) -> Result<ResolvedLaunch, AppError> {
+    ) -> Result<ResolvedLaunch, AppsError> {
         match self {
-            App::System(app) => Ok(ResolvedLaunch {
-                target_url: render_system_target(state, app, provenance),
+            App::System(_registration, config) => Ok(ResolvedLaunch {
+                target_url: render_system_target(state, config, provenance),
                 session_cookie_host: None,
             }),
-            App::SelfHosted(app) => {
+            App::SelfHosted(_registration, config) => {
                 let SelfHostedTarget {
                     target_url,
                     session_cookie_host,
-                } = render_self_hosted_target(app, state, provenance)?;
+                } = render_self_hosted_target(config, state, provenance)?;
                 Ok(ResolvedLaunch {
                     target_url,
                     session_cookie_host,
                 })
             }
-            App::Cloud(app) => Ok(ResolvedLaunch {
-                target_url: render_cloud_target(state, provenance, app).await?,
+            App::Cloud(registration, config) => Ok(ResolvedLaunch {
+                target_url: render_cloud_target(state, provenance, registration, config).await?,
                 session_cookie_host: None,
             }),
         }
     }
 }
 
-/// Render a system app's launch target from its stored [`SystemApp`] payload:
+/// Render a system app's launch target from its stored [`SystemAppConfiguration`]:
 /// substitute `{origin}` (the served origin) + `{launch}` (a fresh nonce). The
 /// `url` was validated at the store read (the [`AppUrl`](crate::domain::AppUrl)
 /// column decode), so no parse can fail here.
 fn render_system_target(
     state: &AppsState,
-    source: &SystemApp,
+    config: &SystemAppConfiguration,
     provenance: &RequestProvenance,
 ) -> String {
     let origin = served_origin(state, provenance);
     let launch = mint_launch_nonce();
-    source.url.to_url_with_params(&LaunchParams {
+    config.url.to_url_with_params(&LaunchParams {
         origin: &origin,
         launch: &launch,
     })
@@ -242,31 +245,31 @@ struct SelfHostedTarget {
 
 /// Render a self-hosted app's launch target off its own origin — the loopback
 /// `http://{host}:{port}/` for a loopback caller (no cookie host), else the public
-/// subdomain ([`SelfHostedApp::subdomain_url`], paired with the same `public_host`
-/// so the cookie `Domain` can't drift from the redirect target). A forwarded
-/// launch with **no** `public_host` configured has no reachable target, so it
-/// `503 LaunchUnavailable`s rather than handing back loopback. Any `launch_path`
-/// is applied by [`SelfHostedApp::render_launch`].
+/// subdomain ([`SelfHostedAppConfiguration::subdomain_url`], paired with the same
+/// `public_host` so the cookie `Domain` can't drift from the redirect target). A
+/// forwarded launch with **no** `public_host` configured has no reachable target,
+/// so it `503 LaunchUnavailable`s rather than handing back loopback. Any
+/// `launch_path` is applied by [`SelfHostedAppConfiguration::render_launch`].
 fn render_self_hosted_target(
-    child: &SelfHostedApp,
+    config: &SelfHostedAppConfiguration,
     state: &AppsState,
     provenance: &RequestProvenance,
-) -> Result<SelfHostedTarget, AppError> {
+) -> Result<SelfHostedTarget, AppsError> {
     let (app_base, session_cookie_host) = match provenance {
         RequestProvenance::Forwarded { .. } => {
             let Some(public_host) = state.tunnel.current_public_host() else {
-                return Err(AppError::Unavailable {
+                return Err(AppsError::Unavailable {
                     reason: "no public host is configured for this remote launch".to_owned(),
                 });
             };
-            (child.subdomain_url(&public_host), Some(public_host))
+            (config.subdomain_url(&public_host), Some(public_host))
         }
-        RequestProvenance::Loopback => (child.launch_url(&state.loopback_hostname()), None),
+        RequestProvenance::Loopback => (config.launch_url(&state.loopback_hostname()), None),
     };
     let served = served_origin(state, provenance);
     let launch = mint_launch_nonce();
     Ok(SelfHostedTarget {
-        target_url: child.render_launch(&app_base, &served, &launch),
+        target_url: config.render_launch(&app_base, &served, &launch),
         session_cookie_host,
     })
 }
@@ -279,11 +282,12 @@ fn render_self_hosted_target(
 async fn render_cloud_target(
     state: &AppsState,
     provenance: &RequestProvenance,
-    app: &CloudApp,
-) -> Result<String, AppError> {
-    let origin = resolve_origin(state, provenance, app.registration.requires_tunnel).await?;
+    registration: &AppRegistration,
+    config: &CloudAppConfiguration,
+) -> Result<String, AppsError> {
+    let origin = resolve_origin(state, provenance, registration.requires_tunnel).await?;
     let launch = mint_launch_nonce();
-    Ok(app.url.to_url_with_params(&LaunchParams {
+    Ok(config.url.to_url_with_params(&LaunchParams {
         origin: &origin,
         launch: &launch,
     }))
@@ -313,13 +317,13 @@ async fn resolve_origin(
     state: &AppsState,
     provenance: &RequestProvenance,
     requires_tunnel: bool,
-) -> Result<String, AppError> {
+) -> Result<String, AppsError> {
     if !requires_tunnel {
         return Ok(served_origin(state, provenance));
     }
     state.tunnel.try_start().await.map_err(|reason| {
         tracing::warn!(%reason, "requires_tunnel launch failed: tunnel unavailable");
-        AppError::Unavailable { reason }
+        AppsError::Unavailable { reason }
     })
 }
 
@@ -328,7 +332,7 @@ async fn resolve_origin(
 /// `Content-Type` of `text/html; charset=utf-8` matches the TS contract
 /// (`HttpApiSchema.Text`). A failure here means the rendered URL contained a byte
 /// the header codec rejected; surfaces as a logged 500 (never a handler panic).
-fn redirect(location: String, set_cookies: Vec<HeaderValue>) -> Result<Response, AppError> {
+fn redirect(location: String, set_cookies: Vec<HeaderValue>) -> Result<Response, AppsError> {
     let mut builder = Response::builder()
         .status(StatusCode::FOUND)
         .header(LOCATION, &location)
@@ -338,7 +342,7 @@ fn redirect(location: String, set_cookies: Vec<HeaderValue>) -> Result<Response,
     }
     builder
         .body(axum::body::Body::empty())
-        .map_err(|e| AppError::infrastructure("redirect builder failed", e))
+        .map_err(|e| AppsError::infrastructure("redirect builder failed", e))
 }
 
 /// 204 No Content — the response when the host's

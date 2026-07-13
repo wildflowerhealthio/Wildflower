@@ -12,7 +12,8 @@ use persistence_rust::{DieselPool, PooledDieselConnection};
 
 use crate::db::{reads, writes};
 use crate::domain::{
-    App, AppError, AppRegistration, AppsStore, CloudContent, NewCloudApp, NewSelfHostedUpload,
+    App, AppRegistration, AppsError, AppsStore, CloudAppConfiguration, CloudContent,
+    CloudInsertError, NewCloudApp, NewSelfHostedUpload, SelfHostedAppConfiguration,
     UploadInsertError,
 };
 
@@ -26,13 +27,13 @@ const MIGRATION_NAMESPACE: &str = "apps";
 /// database in [`SqliteAppsStore::new`] via
 /// [`persistence_rust::run_diesel_migrations`] under [`MIGRATION_NAMESPACE`] (see
 /// that runner for why the stock diesel harness can't be used across slices).
-/// Migration `0001` builds the `app_registry` parent and its three child payload
-/// tables, and seeds the default registry; because each migration runs only once
-/// per database, a user-deleted seed stays deleted across upgrades.
+/// Migration `0001` builds the `app_registrations` table and its three
+/// configuration tables, and seeds the default registry; because each migration
+/// runs only once per database, a user-deleted seed stays deleted across upgrades.
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
-/// The `SQLite` adapter for the [`AppsStore`] port — serves the parent registry
-/// plus the cloud + self-hosted children. Cheap to clone (the pool is an `Arc`
+/// The `SQLite` adapter for the [`AppsStore`] port — serves the registrations plus
+/// the cloud + self-hosted configurations. Cheap to clone (the pool is an `Arc`
 /// inside), so it drops straight into the axum state.
 #[derive(Clone)]
 pub struct SqliteAppsStore {
@@ -77,14 +78,14 @@ impl SqliteAppsStore {
     }
 
     /// Check a connection out of the pool, mapping an exhausted-pool failure to an
-    /// opaque [`AppError::Infrastructure`]. Each query body in [`crate::db::reads`]
+    /// opaque [`AppsError::Infrastructure`]. Each query body in [`crate::db::reads`]
     /// / [`crate::db::writes`] runs on one of these, checked out per call —
     /// diesel's connection API is `&mut`, so the store hands out a fresh
     /// connection rather than sharing one.
-    fn connection(&self) -> Result<PooledDieselConnection, AppError> {
+    fn connection(&self) -> Result<PooledDieselConnection, AppsError> {
         self.pool
             .get()
-            .map_err(|e| AppError::infrastructure("failed to check out a connection", e))
+            .map_err(|e| AppsError::infrastructure("failed to check out a connection", e))
     }
 
     /// The pool, for tests that tamper with rows via raw SQL.
@@ -99,33 +100,39 @@ impl SqliteAppsStore {
 /// query body in [`crate::db::reads`] / [`crate::db::writes`]. The bodies live
 /// there so this file stays the migration + pool handle, and the query SQL stays
 /// next to the row types it maps. Every method returns the port's PRIMITIVE shape
-/// — absence as `None`, delete outcome as `bool`, an upload allocation failure as
-/// [`UploadInsertError`] — leaving the semantic verdicts to
-/// [`crate::domain::actions`].
+/// — absence as `None`, delete outcome as `bool`, an insert that wrote nothing as a
+/// granular typed error ([`CloudInsertError`] / [`UploadInsertError`]) — leaving the
+/// semantic verdicts to [`crate::domain::actions`].
 impl AppsStore for SqliteAppsStore {
-    fn list_registrations(&self) -> Result<Vec<AppRegistration>, AppError> {
+    fn list_registrations(&self) -> Result<Vec<AppRegistration>, AppsError> {
         let mut conn = self.connection()?;
         reads::list_registrations_on(&mut conn)
     }
 
-    fn find_app(&self, id: &str) -> Result<Option<App>, AppError> {
+    fn find_app(&self, id: &str) -> Result<Option<App>, AppsError> {
         let mut conn = self.connection()?;
         reads::find_app_on(&mut conn, id)
     }
 
-    fn list_self_hosted_apps(&self) -> Result<Vec<App>, AppError> {
+    fn list_self_hosted_apps(
+        &self,
+    ) -> Result<Vec<(AppRegistration, SelfHostedAppConfiguration)>, AppsError> {
         let mut conn = self.connection()?;
         reads::list_self_hosted_apps_on(&mut conn)
     }
 
-    fn insert_cloud_app(&self, new: &NewCloudApp) -> Result<Option<App>, AppError> {
+    fn insert_cloud_app(
+        &self,
+        new: &NewCloudApp,
+    ) -> Result<Result<(AppRegistration, CloudAppConfiguration), CloudInsertError>, AppsError> {
         writes::insert_cloud_app(&mut self.connection()?, new)
     }
 
     fn insert_self_hosted_app(
         &self,
         new: &NewSelfHostedUpload,
-    ) -> Result<Result<App, UploadInsertError>, AppError> {
+    ) -> Result<Result<(AppRegistration, SelfHostedAppConfiguration), UploadInsertError>, AppsError>
+    {
         writes::insert_self_hosted_app(&mut self.connection()?, new)
     }
 
@@ -133,7 +140,7 @@ impl AppsStore for SqliteAppsStore {
         &self,
         id: &str,
         content: &CloudContent,
-    ) -> Result<Option<App>, AppError> {
+    ) -> Result<Option<(AppRegistration, CloudAppConfiguration)>, AppsError> {
         writes::replace_cloud_content(&mut self.connection()?, id, content)
     }
 
@@ -141,19 +148,19 @@ impl AppsStore for SqliteAppsStore {
         &self,
         id: &str,
         launch_path: Option<&str>,
-    ) -> Result<Option<App>, AppError> {
+    ) -> Result<Option<(AppRegistration, SelfHostedAppConfiguration)>, AppsError> {
         writes::replace_self_hosted_launch_path(&mut self.connection()?, id, launch_path)
     }
 
-    fn delete_app(&self, id: &str) -> Result<bool, AppError> {
+    fn delete_app(&self, id: &str) -> Result<bool, AppsError> {
         writes::delete_app(&mut self.connection()?, id)
     }
 
-    fn replace_home_screen(
+    fn replace_placements(
         &self,
         entries: &[(String, bool)],
-    ) -> Result<Option<Vec<AppRegistration>>, AppError> {
-        writes::replace_home_screen(&mut self.connection()?, entries)
+    ) -> Result<Option<Vec<AppRegistration>>, AppsError> {
+        writes::replace_placements(&mut self.connection()?, entries)
     }
 }
 
@@ -162,7 +169,7 @@ mod tests {
     use diesel::prelude::*;
 
     use super::*;
-    use crate::db::schema::app_registry;
+    use crate::db::schema::app_registrations;
 
     /// Running the migrations twice is a no-op the second time (the namespaced
     /// runner skips the already-applied `0001`), and the seeded default registry
@@ -176,34 +183,34 @@ mod tests {
             .unwrap();
         persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
             .unwrap();
-        let row_count: i64 = app_registry::table
+        let row_count: i64 = app_registrations::table
             .count()
             .get_result(&mut conn)
-            .expect("app_registry must exist after migrate");
+            .expect("app_registrations must exist after migrate");
         assert_eq!(row_count, 6, "exactly the six seeded default apps");
     }
 
-    /// The `app_registry` primary key gives global id uniqueness across kinds — a
-    /// second registration with a seeded id is rejected by the PK, so no two apps
-    /// (of any kind) can share an id.
+    /// The `app_registrations` primary key gives global id uniqueness across kinds
+    /// — a second registration with a seeded id is rejected by the PK, so no two
+    /// apps (of any kind) can share an id.
     #[test]
-    fn app_registry_id_is_globally_unique() {
+    fn app_registrations_id_is_globally_unique() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
         let mut conn = store.pool().get().unwrap();
-        let dup = diesel::insert_into(app_registry::table)
+        let dup = diesel::insert_into(app_registrations::table)
             .values((
-                app_registry::id.eq("api-docs"),
-                app_registry::kind.eq("cloud"),
-                app_registry::position.eq(99_i64),
-                app_registry::enabled.eq(true),
-                app_registry::name.eq("Dup"),
-                app_registry::local_only.eq(false),
-                app_registry::requires_tunnel.eq(false),
+                app_registrations::id.eq("api-docs"),
+                app_registrations::kind.eq("cloud"),
+                app_registrations::position.eq(99_i64),
+                app_registrations::on_homescreen.eq(true),
+                app_registrations::name.eq("Dup"),
+                app_registrations::local_only.eq(false),
+                app_registrations::requires_tunnel.eq(false),
             ))
             .execute(&mut conn);
         assert!(
             dup.is_err(),
-            "duplicate app_registry id must violate the PK"
+            "duplicate app_registrations id must violate the PK"
         );
     }
 

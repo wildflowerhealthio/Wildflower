@@ -1,11 +1,11 @@
 //! `PUT /home-screen` — atomically replace the homescreen ordering **and**
-//! `enabled` flags for the whole registry, every kind, in one transaction.
+//! `onHomescreen` flags for the whole registry, every kind, in one transaction.
 //!
-//! The body is the full ordered list `[{ id, enabled }]`: an entry's index in
+//! The body is the full ordered list `[{ id, onHomescreen }]`: an entry's index in
 //! the array *is* its new display `position`. The dense-`0..n` /
 //! single-writer / drag-reorder-bug rationale is canonical on the
-//! [`AppsStore::replace_home_screen`](crate::domain::AppsStore::replace_home_screen)
-//! port method (the [`replace_home_screen`](crate::domain::actions) action this
+//! [`AppsStore::replace_placements`](crate::domain::AppsStore::replace_placements)
+//! port method (the [`replace_placements`](crate::domain::actions) action this
 //! handler calls maps its non-permutation `None` onto `400 InvalidHomeScreen`).
 //! The per-kind `PUT /cloud-apps/{id}` etc. edit an app's *content* — homescreen
 //! curation lives here.
@@ -17,18 +17,18 @@ use axum::Json;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-use crate::domain::{actions, AppError, AppRegistration};
+use crate::domain::{actions, AppRegistration, AppsError};
 use crate::http::errors::InvalidHomeScreenBody;
 use crate::http::state::AppsState;
 
-/// One entry in the `PUT /home-screen` body: an app id and its desired `enabled`
-/// flag. The entry's index in the array is its new display `position`. Matches
-/// the TS `HomeScreenEntrySchema`.
+/// One entry in the `PUT /home-screen` body: an app id and its desired
+/// `onHomescreen` flag. The entry's index in the array is its new display
+/// `position`. Matches the TS `HomeScreenEntrySchema`.
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct HomeScreenEntry {
     id: String,
-    enabled: bool,
+    on_homescreen: bool,
 }
 
 /// `PUT /home-screen` — atomically reorder + enable/disable every app. Owner-gated
@@ -48,14 +48,14 @@ pub(crate) struct HomeScreenEntry {
 pub(crate) async fn handle_replace_home_screen(
     State(state): State<Arc<AppsState>>,
     Json(body): Json<Vec<HomeScreenEntry>>,
-) -> Result<Json<Vec<AppRegistration>>, AppError> {
+) -> Result<Json<Vec<AppRegistration>>, AppsError> {
     // The home screen *is* the whole registry, reordered — so the body must be an
-    // exact permutation of the current ids. The `replace_home_screen` action's
+    // exact permutation of the current ids. The `replace_placements` action's
     // store validates that against the live registry **and** renumbers in one
     // transaction (the dense-`0..n` guarantee can't be split across two lock
     // acquisitions), and the action maps a non-permutation onto
     // `400 InvalidHomeScreen`.
-    let entries: Vec<(String, bool)> = body.into_iter().map(|e| (e.id, e.enabled)).collect();
-    let updated = actions::replace_home_screen(&state.store, &entries)?;
+    let entries: Vec<(String, bool)> = body.into_iter().map(|e| (e.id, e.on_homescreen)).collect();
+    let updated = actions::replace_placements(&state.store, &entries)?;
     Ok(Json(updated))
 }

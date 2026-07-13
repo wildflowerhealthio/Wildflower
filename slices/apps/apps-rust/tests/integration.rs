@@ -322,12 +322,12 @@ async fn home_screen_reorders_and_disables_a_system_app() {
     let router = apps.combined_router();
     // Move api-docs to the front and disable it; keep the rest in order.
     let body = serde_json::json!([
-        { "id": "api-docs", "enabled": false },
-        { "id": "patient-browser", "enabled": true },
-        { "id": "api-view", "enabled": true },
-        { "id": "growth-chart", "enabled": true },
-        { "id": "medication-viewer", "enabled": true },
-        { "id": "precise-hbr", "enabled": true },
+        { "id": "api-docs", "onHomescreen": false },
+        { "id": "patient-browser", "onHomescreen": true },
+        { "id": "api-view", "onHomescreen": true },
+        { "id": "growth-chart", "onHomescreen": true },
+        { "id": "medication-viewer", "onHomescreen": true },
+        { "id": "precise-hbr", "onHomescreen": true },
     ]);
     let res = router
         .clone()
@@ -353,7 +353,7 @@ async fn home_screen_reorders_and_disables_a_system_app() {
         ],
     );
     let api_docs = arr.iter().find(|v| v["id"] == "api-docs").unwrap();
-    assert_eq!(api_docs["enabled"], false);
+    assert_eq!(api_docs["onHomescreen"], false);
 }
 
 /// A deleted seeded cloud app stays deleted (migration runner seeds once).

@@ -1,44 +1,49 @@
-//! The per-kind child payload rows — the diesel-mapped `system_apps` /
-//! `cloud_apps` / `self_hosted_apps` records, each holding exactly its kind's
-//! payload columns (`id` = the FK into `app_registry`). A whole app is a
-//! [`AppRegistration`](crate::domain::AppRegistration) plus the one payload its
-//! `kind` names: [`super::reads::find_app_on`] reads the registration, then the
-//! matching payload here, and composes the domain detail type ([`CloudApp`] etc.).
-//! A registration whose payload row is missing is the CTI invariant breach the
-//! read surfaces as a typed error.
+//! The per-kind configuration rows — the diesel-mapped `system_app_configurations`
+//! / `cloud_app_configurations` / `self_hosted_app_configurations` records, each
+//! holding exactly its kind's payload columns (`id` = the FK into
+//! `app_registrations`). A whole app is an
+//! [`AppRegistration`](crate::domain::AppRegistration) paired with the one
+//! configuration its `kind` names: [`super::reads::find_app_on`] reads the
+//! registration, then the matching configuration row here, and composes the domain
+//! configuration type ([`CloudAppConfiguration`](crate::domain::CloudAppConfiguration)
+//! etc.). A registration whose configuration row is missing is the invariant
+//! breach the read surfaces as a typed error.
 
 use diesel::prelude::{Insertable, Queryable, Selectable};
 
 use super::columns::{AppUrlColumn, PortColumn};
-use super::schema::{cloud_apps, self_hosted_apps, system_apps};
+use super::schema::{
+    cloud_app_configurations, self_hosted_app_configurations, system_app_configurations,
+};
 use crate::domain::AppUrl;
 
-/// The `system_apps` payload — a compiled-shell route's `{origin}`-relative launch
-/// template.
+/// The `system_app_configurations` payload — a compiled-shell route's
+/// `{origin}`-relative launch template.
 #[derive(Debug, Clone, Queryable, Selectable, Insertable)]
-#[diesel(table_name = system_apps)]
+#[diesel(table_name = system_app_configurations)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
-pub(super) struct SystemPayload {
+pub(super) struct SystemConfigurationRow {
     pub(super) id: String,
     #[diesel(serialize_as = AppUrlColumn, deserialize_as = AppUrlColumn)]
     pub(super) url: AppUrl,
 }
 
-/// The `cloud_apps` payload — the remote launch URL template.
+/// The `cloud_app_configurations` payload — the remote launch URL template.
 #[derive(Debug, Clone, Queryable, Selectable, Insertable)]
-#[diesel(table_name = cloud_apps)]
+#[diesel(table_name = cloud_app_configurations)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
-pub(super) struct CloudPayload {
+pub(super) struct CloudConfigurationRow {
     pub(super) id: String,
     #[diesel(serialize_as = AppUrlColumn, deserialize_as = AppUrlColumn)]
     pub(super) url: AppUrl,
 }
 
-/// The `self_hosted_apps` payload — the loopback binding and launch-render inputs.
+/// The `self_hosted_app_configurations` payload — the loopback binding and
+/// launch-render inputs.
 #[derive(Debug, Clone, Queryable, Selectable, Insertable)]
-#[diesel(table_name = self_hosted_apps)]
+#[diesel(table_name = self_hosted_app_configurations)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
-pub(super) struct SelfHostedPayload {
+pub(super) struct SelfHostedConfigurationRow {
     pub(super) id: String,
     #[diesel(serialize_as = PortColumn, deserialize_as = PortColumn)]
     pub(super) port: u16,

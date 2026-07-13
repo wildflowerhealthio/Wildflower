@@ -16,7 +16,7 @@ use std::sync::Arc;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 
-use crate::domain::{actions, App, AppError, SelfHostedApp};
+use crate::domain::{actions, App, AppsError, SelfHostedAppConfiguration};
 use crate::http::errors::{AppNotEditableBody, AppNotFoundBody};
 use crate::http::state::AppsState;
 
@@ -36,31 +36,31 @@ use crate::http::state::AppsState;
 pub(crate) async fn handle_delete_app(
     State(state): State<Arc<AppsState>>,
     Path(id): Path<String>,
-) -> Result<StatusCode, AppError> {
+) -> Result<StatusCode, AppsError> {
     let app = actions::get_app(&state.store, &id)?;
 
     match &app {
-        App::Cloud(_) => {
+        App::Cloud(..) => {
             actions::delete_app(&state.store, &id)?;
             Ok(StatusCode::NO_CONTENT)
         }
-        App::SelfHosted(child) => delete_self_hosted(&state, &id, child),
+        App::SelfHosted(_registration, config) => delete_self_hosted(&state, &id, config),
         // System apps are not user-removable.
-        App::System(_) => Err(AppError::NotEditable { id }),
+        App::System(..) => Err(AppsError::NotEditable { id }),
     }
 }
 
 /// The self-hosted arm: seeded rows are protected, uploaded rows are torn down
 /// (listener stopped, registration deleted, files removed best-effort). The
-/// `child` detail came off the already-loaded app — no second lookup.
+/// `config` came off the already-loaded app — no second lookup.
 fn delete_self_hosted(
     state: &Arc<AppsState>,
     id: &str,
-    child: &SelfHostedApp,
-) -> Result<StatusCode, AppError> {
-    if child.seeded {
+    config: &SelfHostedAppConfiguration,
+) -> Result<StatusCode, AppsError> {
+    if config.seeded {
         // A migration-seeded app (patient-browser) is read-only.
-        return Err(AppError::NotEditable { id: id.to_owned() });
+        return Err(AppsError::NotEditable { id: id.to_owned() });
     }
 
     // Take the listener down first. A lock-poison here is logged and tolerated —
@@ -73,7 +73,7 @@ fn delete_self_hosted(
 
     // Best-effort file removal — the row is already gone, so a leftover folder is
     // harmless (it 404s until a same-slug reinstall overwrites it).
-    let dir = state.self_hosted.apps_dir().join(&child.content_folder);
+    let dir = state.self_hosted.apps_dir().join(&config.content_folder);
     if let Err(error) = std::fs::remove_dir_all(&dir) {
         if error.kind() != std::io::ErrorKind::NotFound {
             tracing::warn!(%error, path = %dir.display(), "failed to remove an uploaded app's files");

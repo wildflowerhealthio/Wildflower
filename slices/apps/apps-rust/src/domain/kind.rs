@@ -1,6 +1,7 @@
-//! [`AppKind`] — the class-table-inheritance discriminator: which per-kind child
-//! table (`system_apps` / `cloud_apps` / `self_hosted_apps`) holds a
-//! registration's payload row. It is the `app_registry.kind` column value, the
+//! [`AppKind`] — the discriminator: which per-kind configuration table
+//! (`system_app_configurations` / `cloud_app_configurations` /
+//! `self_hosted_app_configurations`) holds a registration's payload row. It is the
+//! `app_registrations.kind` column value, the
 //! `GET /apps` wire discriminator, and the in-memory kind [`App`](super::App)
 //! reports via [`App::kind`](super::App::kind) and the launch handler dispatches
 //! on. Replaces the former `Provenance` (renamed slice-wide to free *provenance*
@@ -13,22 +14,27 @@ use std::str::FromStr;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-/// Which kind an app is — the CTI discriminator. Serialized as its kebab string
+/// Which kind an app is — the discriminator. Serialized as its kebab string
 /// (`"system"` / `"self-hosted"` / `"cloud"`), the same value stored in the
-/// `CHECK`-constrained `app_registry.kind` column and sent on the wire.
+/// `CHECK`-constrained `app_registrations.kind` column and sent on the wire.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum AppKind {
-    /// A compiled-shell route ([`SystemApp`](super::SystemApp), `system_apps`).
+    /// A compiled-shell route
+    /// ([`SystemAppConfiguration`](super::SystemAppConfiguration),
+    /// `system_app_configurations`).
     System,
-    /// A locally-served app on a dedicated loopback `port` (`self_hosted_apps`).
+    /// A locally-served app on a dedicated loopback `port`
+    /// (`self_hosted_app_configurations`).
     SelfHosted,
-    /// A remote launch template reaching PHI through the tunnel (`cloud_apps`).
+    /// A remote launch template reaching PHI through the tunnel
+    /// (`cloud_app_configurations`).
     Cloud,
 }
 
 impl AppKind {
-    /// The canonical kebab string — the `app_registry.kind` value the store reads
+    /// The canonical kebab string — the `app_registrations.kind` value the store
+    /// reads
     /// and writes, and the single source of truth for [`fmt::Display`].
     #[must_use]
     pub fn as_str(&self) -> &'static str {

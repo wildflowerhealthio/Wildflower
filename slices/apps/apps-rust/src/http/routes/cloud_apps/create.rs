@@ -11,9 +11,10 @@ use axum::extract::State;
 use axum::Json;
 
 use super::CloudAppBody;
-use crate::domain::{actions, AppError, AppUrl, CloudAppDetail, CloudContent, NewCloudApp};
+use crate::domain::{actions, AppUrl, AppsError, CloudContent, NewCloudApp};
 use crate::http::errors::InvalidFieldBody;
 use crate::http::state::AppsState;
+use crate::http::wire_representations::CloudAppDetail;
 use crate::id::mint_app_id;
 
 /// `POST /cloud-apps` — create a cloud app. Owner-gated by the host.
@@ -30,16 +31,16 @@ use crate::id::mint_app_id;
 pub(crate) async fn handle_create_cloud_app(
     State(state): State<Arc<AppsState>>,
     Json(body): Json<CloudAppBody>,
-) -> Result<Json<CloudAppDetail>, AppError> {
+) -> Result<Json<CloudAppDetail>, AppsError> {
     if body.name.is_empty() {
-        return Err(AppError::InvalidName {
+        return Err(AppsError::InvalidName {
             message: "name must not be empty".to_owned(),
         });
     }
     let url = body
         .url
         .parse::<AppUrl>()
-        .map_err(|e| AppError::InvalidUrl {
+        .map_err(|e| AppsError::InvalidUrl {
             message: e.to_string(),
         })?;
     let new = NewCloudApp {
@@ -55,6 +56,6 @@ pub(crate) async fn handle_create_cloud_app(
     // The action inserts and reads the cloud detail back in-txn (mapping a
     // server-minted id collision to a logged 500), so projecting it is exactly the
     // `GET /cloud-apps/{id}` shape with no second read.
-    let app = actions::create_cloud_app(&state.store, &new)?;
-    Ok(Json(CloudAppDetail::from(&app)))
+    let (registration, config) = actions::create_cloud_app(&state.store, &new)?;
+    Ok(Json(CloudAppDetail::from((&registration, &config))))
 }

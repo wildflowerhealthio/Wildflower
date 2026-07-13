@@ -1,37 +1,42 @@
 //! `apps-rust` — the host-side apps slice.
 //!
-//! A curated app registry with one wire surface. **Class-table-inheritance**
-//! storage: one authoritative `app_registry` parent (the global id space, the
-//! shared catalogue facts, and the homescreen placement) with three symmetric
-//! per-kind child payload tables (`system_apps`, `cloud_apps`, `self_hosted_apps`),
-//! real FKs child → parent with `ON DELETE CASCADE`. The `kind` column names which
-//! child holds a registration's payload. The taxonomy (System / Self-Hosted /
-//! Cloud) and its privacy model are canonical in `docs/Apps/Explanation.md`; the
-//! mechanical mapping here:
+//! A curated app registry with one wire surface. Storage is **one shared
+//! registration + one per-kind configuration**: an authoritative
+//! `app_registrations` table (the global id space, the shared catalogue facts, and
+//! the homescreen placement) plus three per-kind configuration tables
+//! (`system_app_configurations`, `cloud_app_configurations`,
+//! `self_hosted_app_configurations`), real FKs configuration → registration with
+//! `ON DELETE CASCADE`. The `kind` column names which configuration holds a
+//! registration's payload; a whole app is a `(registration, configuration)` pair.
+//! The taxonomy (System / Self-Hosted / Cloud) and its privacy model are canonical
+//! in `docs/Apps/Explanation.md`; the mechanical mapping here:
 //!
-//!  - **System** ([`domain::SystemApp`], the `system_apps` payload) — an ordinary
-//!    seeded row (its launch URL in `system_apps.url`); never user-editable.
-//!  - **Self-hosted** ([`domain::SelfHostedApp`], the `self_hosted_apps` payload) —
-//!    a migration-seeded row (protected) or a runtime upload through
-//!    `POST /self-hosted-apps` (multipart; removable).
-//!  - **Cloud** ([`domain::CloudApp`], the `cloud_apps` payload) — created /
-//!    replaced / deleted through the `/cloud-apps` resource.
+//!  - **System** ([`domain::SystemAppConfiguration`], the
+//!    `system_app_configurations` payload) — an ordinary seeded row (its launch URL
+//!    in `system_app_configurations.url`); never user-editable.
+//!  - **Self-hosted** ([`domain::SelfHostedAppConfiguration`], the
+//!    `self_hosted_app_configurations` payload) — a migration-seeded row (protected)
+//!    or a runtime upload through `POST /self-hosted-apps` (multipart; removable).
+//!  - **Cloud** ([`domain::CloudAppConfiguration`], the `cloud_app_configurations`
+//!    payload) — created / replaced / deleted through the `/cloud-apps` resource.
 //!
 //! Layered like `collector-rust`:
 //!
-//!  - [`domain`] — [`domain::AppRegistration`] (the diesel-mapped `app_registry`
-//!    row AND the uniform `GET /apps` wire item), the per-kind detail types
-//!    ([`domain::CloudApp`] / [`domain::SelfHostedApp`] / [`domain::SystemApp`],
-//!    each a registration + its payload, projecting the per-kind editor wire
-//!    shapes [`domain::CloudAppDetail`] etc.), the thin [`domain::App`] enum at the
-//!    cross-kind seams (launch dispatch, delete), [`domain::AppKind`] (the
-//!    discriminator), [`domain::AppError`] (the failure vocabulary), and
-//!    [`domain::AppUrl`] (the write-side URL validator).
+//!  - [`domain`] — [`domain::AppRegistration`] (the diesel-mapped
+//!    `app_registrations` row AND the uniform `GET /apps` wire item), the per-kind
+//!    configuration types ([`domain::CloudAppConfiguration`] /
+//!    [`domain::SelfHostedAppConfiguration`] / [`domain::SystemAppConfiguration`],
+//!    each its table's payload), the thin [`domain::App`] enum whose variants are
+//!    the `(registration, configuration)` pairs at the cross-kind seams (launch
+//!    dispatch, delete), [`domain::AppKind`] (the discriminator),
+//!    [`domain::AppsError`] (the failure vocabulary), and [`domain::AppUrl`] (the
+//!    write-side URL validator). The per-kind editor wire shapes live in
+//!    `http::wire_representations`, built from the pair.
 //!  - [`db`] — the `SQLite` store adapter ([`db::SqliteAppsStore`], the
 //!    implementation of the [`domain::AppsStore`] port) over the app-wide diesel
 //!    r2d2 pool (`persistence_rust::DieselPool`), migrated with embedded diesel
 //!    migrations; the uniform list is a join-free registry read, a detail is the
-//!    registration + one typed child payload read.
+//!    registration + one typed configuration read.
 //!  - [`http`] — the slice's routers. `GET /apps` lists the registry in display
 //!    order; `GET`/`POST /apps/{id}` dispatches the launch on the app's kind;
 //!    `DELETE /apps/{id}` removes any kind; the per-kind `/cloud-apps` /
@@ -72,7 +77,7 @@ pub use persistence_rust::DieselPool;
 
 pub use config::AppsConfig;
 pub use db::SqliteAppsStore;
-pub use domain::{App, SelfHostedApp};
+pub use domain::App;
 pub use http::{openapi_spec, AppsState, LaunchCookies, NoLaunchCookies, OwnerAuth};
 // Re-exported for the integration test crate; `#[deprecated]` is intentional.
 #[allow(deprecated)]
@@ -151,14 +156,19 @@ pub fn setup_apps(
     launch_cookies: Arc<dyn LaunchCookies>,
 ) -> anyhow::Result<Apps> {
     // `SqliteAppsStore::new` runs the embedded migrations — building the
-    // `app_registry` parent and its three child payload tables. The one store
+    // `app_registrations` table and its three configuration tables. The one store
     // serves them all.
     let store = SqliteAppsStore::new(pool).context("failed to open apps store")?;
     // Materialize the self-hosted catalogue once for the host to bind listeners
     // against — every self-hosted row, migration-seeded or previously uploaded.
+    // The store hands back `(registration, configuration)` pairs; compose each into
+    // the [`App::SelfHosted`] variant the host iterates.
     let self_hosted_apps = store
         .list_self_hosted_apps()
-        .context("failed to list self-hosted apps")?;
+        .context("failed to list self-hosted apps")?
+        .into_iter()
+        .map(|(registration, config)| App::SelfHosted(registration, config))
+        .collect();
     let state = Arc::new(AppsState::new(
         store,
         config.loopback_base_url.clone(),

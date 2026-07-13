@@ -8,7 +8,7 @@ helper in `persistence-rust`; each slice writes the same small pattern by hand,
 and this doc is the single description they share. Its live implementation is
 **gatekeeper grants** and the **apps registry**. (The apps slice briefly used a
 table-per-struct variant — one standalone table per kind, no parent, issue 350 —
-but **returned to this parent+child shape**: its `app_registry` parent is a real
+but **returned to this parent+child shape**: its `app_registrations` parent is a real
 domain object — the global id space, the shared catalogue facts, and the
 homescreen-placement aggregate — not the abstract "app base class" the earlier
 objection was to. Its discriminator is `kind` (`AppKind`), distinct from grants'

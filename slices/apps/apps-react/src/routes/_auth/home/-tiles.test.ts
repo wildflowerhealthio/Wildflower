@@ -9,9 +9,9 @@ interface MakeAppOverrides {
   readonly kind: AppRegistration['kind']
   readonly id?: string
   readonly name?: string
-  readonly enabled?: boolean
+  readonly onHomescreen?: boolean
   readonly localOnly?: boolean
-  readonly smart?: boolean
+  readonly isSmart?: boolean
   readonly requiresTunnel?: boolean
   readonly subtitle?: string
 }
@@ -21,9 +21,9 @@ const makeApp = (overrides: MakeAppOverrides): AppRegistration => {
     kind,
     id = 'app',
     name = 'App',
-    enabled = true,
+    onHomescreen = true,
     localOnly = false,
-    smart = false,
+    isSmart = false,
     requiresTunnel = false,
     subtitle,
   } = overrides
@@ -31,9 +31,9 @@ const makeApp = (overrides: MakeAppOverrides): AppRegistration => {
     id,
     kind,
     name,
-    enabled,
+    onHomescreen,
     localOnly,
-    smart,
+    isSmart,
     requiresTunnel,
     ...(subtitle === undefined ? {} : { subtitle }),
   }
@@ -49,8 +49,8 @@ describe('tilePills', () => {
   })
 
   test('adds SMART only when smart', () => {
-    expect(labels(makeApp({ kind: 'cloud', smart: true }))).toContain('SMART')
-    expect(labels(makeApp({ kind: 'cloud', smart: false }))).not.toContain('SMART')
+    expect(labels(makeApp({ kind: 'cloud', isSmart: true }))).toContain('SMART')
+    expect(labels(makeApp({ kind: 'cloud', isSmart: false }))).not.toContain('SMART')
   })
 
   test('adds Local-Only only when localOnly', () => {
@@ -65,13 +65,13 @@ describe('tilePills', () => {
 
   test('shows all flags together in order (kind, SMART, Local-Only, Tunnel)', () => {
     expect(
-      labels(makeApp({ kind: 'cloud', smart: true, localOnly: true, requiresTunnel: true }))
+      labels(makeApp({ kind: 'cloud', isSmart: true, localOnly: true, requiresTunnel: true }))
     ).toEqual(['Cloud', 'SMART', 'Local-Only', 'Tunnel'])
   })
 
   test('every pill carries a unique key', () => {
     const pills = tilePills(
-      makeApp({ kind: 'cloud', smart: true, localOnly: true, requiresTunnel: true })
+      makeApp({ kind: 'cloud', isSmart: true, localOnly: true, requiresTunnel: true })
     )
     const keys = pills.map((pill) => pill.key)
     expect(new Set(keys).size).toBe(keys.length)

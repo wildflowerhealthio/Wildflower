@@ -44,23 +44,25 @@ const LaunchPathSchema = Schema.String.pipe(
 const KindSchema = Schema.Literal('system', 'self-hosted', 'cloud')
 
 /**
- * The fields every registration carries, from the authoritative `app_registry`
- * row — the uniform shape everything renders. `smart` is derived from the row's
- * soft `client_id`; `position` stays on the host (the `GET /apps` array order is
- * the display order). The per-kind detail shapes below add their payload.
+ * The fields every registration carries, from the authoritative
+ * `app_registrations` row — the uniform shape everything renders. `isSmart` is
+ * derived from the row's soft `client_id`; `position` stays on the host (the
+ * `GET /apps` array order is the display order). The per-kind detail shapes below
+ * add their payload.
  */
 const registrationFields = {
   id: Schema.String,
-  /** The CTI discriminator — which kind of app this is. */
+  /** The discriminator — which kind of app this is. */
   kind: KindSchema,
-  enabled: Schema.Boolean,
+  /** Whether the app's tile shows on the home screen. */
+  onHomescreen: Schema.Boolean,
   name: Schema.String,
   /** Optional descriptive line shown under the app name. */
   subtitle: Schema.optional(Schema.NonEmptyString),
   /** The declared no-egress flag (a homescreen badge). */
   localOnly: Schema.Boolean,
   /** Whether this is a SMART app (the registration carries a `client_id`). */
-  smart: Schema.Boolean,
+  isSmart: Schema.Boolean,
   /**
    * Whether a launch must bring the tunnel up first (the Tunnel pill). `false`
    * for system / self-hosted; meaningful only for cloud apps.
@@ -83,25 +85,25 @@ const AppListSchema = Schema.Array(AppRegistrationSchema)
  * Wire shape for `GET`/`POST`/`PUT /cloud-apps…` (mirrors the Rust
  * `CloudAppDetail`) — the registration fields plus the stored launch `url`
  * **template** (`{origin}` / `{launch}` tokens, resolved only at launch) and
- * `removable` (always `true` for a cloud app).
+ * `isRemovable` (always `true` for a cloud app).
  */
 const CloudAppDetailSchema = Schema.Struct({
   ...registrationFields,
   url: Schema.String,
-  removable: Schema.Boolean,
+  isRemovable: Schema.Boolean,
 })
 
 /**
  * Wire shape for `GET`/`POST`/`PUT /self-hosted-apps…` (mirrors the Rust
  * `SelfHostedAppDetail`) — the registration fields plus its stored `launchPath`
  * (absent for a root-served bundle; see {@link LaunchPathSchema}), the `seeded`
- * flag, and `removable` (`!seeded`).
+ * flag, and `isRemovable` (`!seeded`).
  */
 const SelfHostedAppDetailSchema = Schema.Struct({
   ...registrationFields,
   launchPath: Schema.optional(Schema.String),
   seeded: Schema.Boolean,
-  removable: Schema.Boolean,
+  isRemovable: Schema.Boolean,
 })
 
 /**
@@ -115,21 +117,22 @@ const SystemAppDetailSchema = Schema.Struct({
 })
 
 /**
- * One entry in the `PUT /home-screen` body: an app id and its desired `enabled`
- * flag. The entry's **index in the array is its new display `position`**, so the
- * order is implicit and a swap is well-ordered by construction. Mirrors the Rust
- * `HomeScreenEntry`.
+ * One entry in the `PUT /home-screen` body: an app id and its desired
+ * `onHomescreen` flag. The entry's **index in the array is its new display
+ * `position`**, so the order is implicit and a swap is well-ordered by
+ * construction. Mirrors the Rust `HomeScreenEntry`.
  */
 const HomeScreenEntrySchema = Schema.Struct({
   id: Schema.String,
-  enabled: Schema.Boolean,
+  onHomescreen: Schema.Boolean,
 })
 
 /**
- * Body for `PUT /home-screen` — the full ordered homescreen as `{ id, enabled }`
- * entries. Must list **every** registry app exactly once (array order = display
- * order); the server renumbers `position` to the array index and applies each
- * `enabled` atomically. The single writer of order + enabled, across every kind.
+ * Body for `PUT /home-screen` — the full ordered homescreen as
+ * `{ id, onHomescreen }` entries. Must list **every** registry app exactly once
+ * (array order = display order); the server renumbers `position` to the array
+ * index and applies each `onHomescreen` atomically. The single writer of order +
+ * placement, across every kind.
  */
 const HomeScreenSchema = Schema.Array(HomeScreenEntrySchema)
 

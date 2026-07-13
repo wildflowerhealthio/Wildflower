@@ -7,9 +7,10 @@ use std::sync::Arc;
 use axum::extract::{Path, State};
 use axum::Json;
 
-use crate::domain::{actions, AppError, SelfHostedAppDetail};
+use crate::domain::{actions, AppsError};
 use crate::http::errors::AppNotFoundBody;
 use crate::http::state::AppsState;
+use crate::http::wire_representations::SelfHostedAppDetail;
 
 /// `GET /self-hosted-apps/{id}` — the self-hosted editor detail. Owner-gated by
 /// the host.
@@ -26,7 +27,7 @@ use crate::http::state::AppsState;
 pub(crate) async fn handle_get_self_hosted_app(
     State(state): State<Arc<AppsState>>,
     Path(id): Path<String>,
-) -> Result<Json<SelfHostedAppDetail>, AppError> {
-    let app = actions::get_self_hosted_app(&state.store, &id)?;
-    Ok(Json(SelfHostedAppDetail::from(&app)))
+) -> Result<Json<SelfHostedAppDetail>, AppsError> {
+    let (registration, config) = actions::get_self_hosted_app(&state.store, &id)?;
+    Ok(Json(SelfHostedAppDetail::from((&registration, &config))))
 }

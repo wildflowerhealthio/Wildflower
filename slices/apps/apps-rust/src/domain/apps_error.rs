@@ -1,19 +1,19 @@
-//! [`AppError`] — the apps slice's semantic failure vocabulary, the domain
+//! [`AppsError`] — the apps slice's semantic failure vocabulary, the domain
 //! counterpart of collector's `RemoteError`. The store and actions speak it; the
 //! HTTP layer ([`crate::http::errors`]) renders each variant to a status + wire
 //! body (or a logged opaque 500 for
-//! [`Infrastructure`](AppError::Infrastructure)). Nothing here knows about HTTP,
+//! [`Infrastructure`](AppsError::Infrastructure)). Nothing here knows about HTTP,
 //! and the store produces `Infrastructure` without leaking its diesel error types
 //! up to the routes.
 //!
 //! The first eight variants are **semantic**, client-facing outcomes that are
-//! part of the wire contract; [`Infrastructure`](AppError::Infrastructure) is an
+//! part of the wire contract; [`Infrastructure`](AppsError::Infrastructure) is an
 //! opaque infrastructure failure (a pool checkout / query error) answered as an
 //! empty 500 — the operator sees the detail, the client doesn't.
 
 /// The ways an apps operation can fail.
 #[derive(Debug)]
-pub enum AppError {
+pub enum AppsError {
     /// 404 — no app has this id.
     NotFound { id: String },
     /// 409 — the app exists but isn't editable/removable: a system app, or a
@@ -46,32 +46,32 @@ pub enum AppError {
     },
 }
 
-impl std::fmt::Display for AppError {
+impl std::fmt::Display for AppsError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AppError::NotFound { id } => write!(f, "no app has id {id}"),
-            AppError::NotEditable { id } => write!(f, "app {id} is not editable"),
-            AppError::Unauthorized => f.write_str("unauthorized"),
-            AppError::InvalidUrl { message } => write!(f, "invalid url: {message}"),
-            AppError::InvalidName { message } => write!(f, "invalid name: {message}"),
-            AppError::InvalidZip { message } => write!(f, "invalid zip: {message}"),
-            AppError::Unavailable { reason } => write!(f, "launch unavailable: {reason}"),
-            AppError::InvalidHomeScreen { message } => write!(f, "invalid home screen: {message}"),
-            AppError::Infrastructure { context, source } => write!(f, "{context}: {source}"),
+            AppsError::NotFound { id } => write!(f, "no app has id {id}"),
+            AppsError::NotEditable { id } => write!(f, "app {id} is not editable"),
+            AppsError::Unauthorized => f.write_str("unauthorized"),
+            AppsError::InvalidUrl { message } => write!(f, "invalid url: {message}"),
+            AppsError::InvalidName { message } => write!(f, "invalid name: {message}"),
+            AppsError::InvalidZip { message } => write!(f, "invalid zip: {message}"),
+            AppsError::Unavailable { reason } => write!(f, "launch unavailable: {reason}"),
+            AppsError::InvalidHomeScreen { message } => write!(f, "invalid home screen: {message}"),
+            AppsError::Infrastructure { context, source } => write!(f, "{context}: {source}"),
         }
     }
 }
 
-impl std::error::Error for AppError {}
+impl std::error::Error for AppsError {}
 
-impl AppError {
+impl AppsError {
     /// Wrap an infrastructure failure (a store checkout or query error) as an
-    /// opaque [`Infrastructure`](AppError::Infrastructure), capturing `context`
+    /// opaque [`Infrastructure`](AppsError::Infrastructure), capturing `context`
     /// and the cause's `Display` text. The store calls this so its diesel error
     /// types never reach the HTTP layer.
     #[must_use]
     pub fn infrastructure(context: &'static str, source: impl std::fmt::Display) -> Self {
-        AppError::Infrastructure {
+        AppsError::Infrastructure {
             context,
             source: source.to_string(),
         }
@@ -79,11 +79,11 @@ impl AppError {
 }
 
 /// A diesel error from a store query or transaction becomes an opaque
-/// [`Infrastructure`](AppError::Infrastructure), so store query bodies can `?`
-/// diesel calls (and `conn.transaction` closures can carry `AppError`) without
+/// [`Infrastructure`](AppsError::Infrastructure), so store query bodies can `?`
+/// diesel calls (and `conn.transaction` closures can carry `AppsError`) without
 /// naming diesel at the route seam.
-impl From<diesel::result::Error> for AppError {
+impl From<diesel::result::Error> for AppsError {
     fn from(error: diesel::result::Error) -> Self {
-        AppError::infrastructure("apps store query failed", error)
+        AppsError::infrastructure("apps store query failed", error)
     }
 }

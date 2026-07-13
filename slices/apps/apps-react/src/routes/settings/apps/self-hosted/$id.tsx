@@ -17,12 +17,12 @@ const SelfHostedAppDetailScreen = ({ id }: { readonly id: string }): JSX.Element
   const { data: app } = useSelfHostedAppQuery(id)
   return (
     <AppDetailShell
-      app={{ id: app.id, name: app.name, removable: app.removable }}
+      app={{ id: app.id, name: app.name, removable: app.isRemovable }}
       onRemoved={() => {
         void navigate({ to: '/settings/apps' })
       }}
     >
-      {app.removable ? (
+      {app.isRemovable ? (
         <SelfHostedLaunchPathEditor app={app} />
       ) : (
         <p className="text-body-3">

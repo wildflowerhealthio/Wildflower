@@ -43,7 +43,7 @@ const kindLabel = (kind: AppRegistration['kind']): string => KIND_PILL[kind].lab
 const tilePills = (app: AppRegistration): readonly Pill[] => {
   const kind = KIND_PILL[app.kind]
   const pills: Pill[] = [{ key: 'kind', label: kind.label, tone: kind.tone }]
-  if (app.smart) pills.push({ key: 'smart', label: 'SMART', tone: 'info' })
+  if (app.isSmart) pills.push({ key: 'smart', label: 'SMART', tone: 'info' })
   if (app.localOnly) pills.push({ key: 'local-only', label: 'Local-Only', tone: 'success' })
   if (app.requiresTunnel) pills.push({ key: 'tunnel', label: 'Tunnel', tone: 'warning' })
   return pills

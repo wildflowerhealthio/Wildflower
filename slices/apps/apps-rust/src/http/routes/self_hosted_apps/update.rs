@@ -11,9 +11,10 @@ use axum::Json;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-use crate::domain::{actions, AppError, SelfHostedAppDetail};
+use crate::domain::{actions, AppsError};
 use crate::http::errors::{AppNotEditableBody, AppNotFoundBody, InvalidFieldBody};
 use crate::http::state::AppsState;
+use crate::http::wire_representations::SelfHostedAppDetail;
 
 /// The `PUT /self-hosted-apps/{id}` body — the editable launch path. Absent or
 /// empty clears it back to root-serving. Matches the TS
@@ -44,7 +45,8 @@ pub(crate) async fn handle_replace_self_hosted_app(
     State(state): State<Arc<AppsState>>,
     Path(id): Path<String>,
     Json(body): Json<SelfHostedAppBody>,
-) -> Result<Json<SelfHostedAppDetail>, AppError> {
-    let app = actions::replace_self_hosted_launch_path(&state.store, &id, body.launch_path)?;
-    Ok(Json(SelfHostedAppDetail::from(&app)))
+) -> Result<Json<SelfHostedAppDetail>, AppsError> {
+    let (registration, config) =
+        actions::replace_self_hosted_launch_path(&state.store, &id, body.launch_path)?;
+    Ok(Json(SelfHostedAppDetail::from((&registration, &config))))
 }

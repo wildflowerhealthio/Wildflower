@@ -1,9 +1,9 @@
 //! Error **wire-representations** for the apps routes — the JSON body shapes and
-//! the [`AppError`]→response rendering. The failure *vocabulary* is domain
-//! ([`crate::domain::AppError`]); this file only renders it onto the wire — a
+//! the [`AppsError`]→response rendering. The failure *vocabulary* is domain
+//! ([`crate::domain::AppsError`]); this file only renders it onto the wire — a
 //! semantic status + body, or a logged opaque 500 for an
-//! [`Infrastructure`](AppError::Infrastructure) failure — so a route bails with `?`
-//! and its `Result<_, AppError>` becomes a response with no HTTP glue at the call
+//! [`Infrastructure`](AppsError::Infrastructure) failure — so a route bails with `?`
+//! and its `Result<_, AppsError>` becomes a response with no HTTP glue at the call
 //! site.
 //!
 //! Every semantic shape is part of the wire contract and modeled on both sides:
@@ -19,7 +19,7 @@ use serde::Serialize;
 use shared_structures_rust::http_errors::InternalError;
 use utoipa::ToSchema;
 
-use crate::domain::AppError;
+use crate::domain::AppsError;
 
 /// Wire shape for `AppNotFound`. Matches the TS `AppNotFoundSchema`.
 #[derive(Debug, Serialize, ToSchema)]
@@ -64,15 +64,15 @@ pub(crate) struct InvalidHomeScreenBody {
     pub(crate) message: String,
 }
 
-/// Render each [`AppError`] onto the wire. The semantic variants become their
-/// documented status + JSON body; an [`Infrastructure`](AppError::Infrastructure)
+/// Render each [`AppsError`] onto the wire. The semantic variants become their
+/// documented status + JSON body; an [`Infrastructure`](AppsError::Infrastructure)
 /// failure is logged (via the shared [`InternalError`]) and answered as an opaque,
 /// empty 500. This is the whole of the HTTP layer's error knowledge; the routes
 /// just `?`.
-impl IntoResponse for AppError {
+impl IntoResponse for AppsError {
     fn into_response(self) -> Response {
         match self {
-            AppError::NotFound { id } => (
+            AppsError::NotFound { id } => (
                 StatusCode::NOT_FOUND,
                 Json(AppNotFoundBody {
                     error: "AppNotFound",
@@ -80,7 +80,7 @@ impl IntoResponse for AppError {
                 }),
             )
                 .into_response(),
-            AppError::NotEditable { id } => (
+            AppsError::NotEditable { id } => (
                 StatusCode::CONFLICT,
                 Json(AppNotEditableBody {
                     error: "AppNotEditable",
@@ -88,11 +88,11 @@ impl IntoResponse for AppError {
                 }),
             )
                 .into_response(),
-            AppError::Unauthorized => StatusCode::UNAUTHORIZED.into_response(),
-            AppError::InvalidUrl { message } => invalid_field("InvalidUrl", message),
-            AppError::InvalidName { message } => invalid_field("InvalidName", message),
-            AppError::InvalidZip { message } => invalid_field("InvalidZip", message),
-            AppError::Unavailable { reason } => (
+            AppsError::Unauthorized => StatusCode::UNAUTHORIZED.into_response(),
+            AppsError::InvalidUrl { message } => invalid_field("InvalidUrl", message),
+            AppsError::InvalidName { message } => invalid_field("InvalidName", message),
+            AppsError::InvalidZip { message } => invalid_field("InvalidZip", message),
+            AppsError::Unavailable { reason } => (
                 StatusCode::SERVICE_UNAVAILABLE,
                 Json(LaunchUnavailableBody {
                     error: "LaunchUnavailable",
@@ -100,7 +100,7 @@ impl IntoResponse for AppError {
                 }),
             )
                 .into_response(),
-            AppError::InvalidHomeScreen { message } => (
+            AppsError::InvalidHomeScreen { message } => (
                 StatusCode::BAD_REQUEST,
                 Json(InvalidHomeScreenBody {
                     error: "InvalidHomeScreen",
@@ -108,7 +108,7 @@ impl IntoResponse for AppError {
                 }),
             )
                 .into_response(),
-            AppError::Infrastructure { context, source } => {
+            AppsError::Infrastructure { context, source } => {
                 InternalError::new(context, source).into_response()
             }
         }

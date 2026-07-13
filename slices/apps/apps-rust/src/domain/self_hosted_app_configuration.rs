@@ -1,28 +1,29 @@
-//! [`SelfHostedApp`] — a whole self-hosted app: web assets served from the device
-//! on a dedicated, isolated loopback origin (and remotely at
-//! `<subdomain>.<public_host>`). Under class-table-inheritance it is its
-//! [`AppRegistration`] (shared facts + placement) plus the `self_hosted_apps`
-//! payload (`port`, `content_folder`, `subdomain`, `seeded`, `launch_path`),
-//! composed by the detail read.
+//! [`SelfHostedAppConfiguration`] — the `self_hosted_app_configurations` payload
+//! for a self-hosted app: web assets served from the device on a dedicated,
+//! isolated loopback origin (and remotely at `<subdomain>.<public_host>`). Just the
+//! per-kind data (`port`, `content_folder`, `subdomain`, `seeded`, `launch_path`);
+//! the shared catalogue facts + placement live on the paired
+//! [`AppRegistration`](super::AppRegistration), and a whole self-hosted app is the
+//! `(AppRegistration, SelfHostedAppConfiguration)` pair.
 //!
 //! Rows come from two sources: the migration seed (`seeded = true`, protected from
-//! delete/edit) and runtime uploads (`seeded = false`, removable). The launch URL
-//! is rendered on demand via [`launch_url`](Self::launch_url) /
-//! [`subdomain_url`](Self::subdomain_url) / [`render_launch`](Self::render_launch).
-//! [`SelfHostedAppDetail`] is the editor wire shape (`GET`/`POST`/`PUT
-//! /self-hosted-apps…`): the registration fields plus `launchPath` / `seeded` /
-//! `removable`.
+//! delete/edit) and runtime uploads (`seeded = false`, removable) — the
+//! [`AppBehaviour`] impl. The launch URL is rendered on demand via
+//! [`launch_url`](Self::launch_url) / [`subdomain_url`](Self::subdomain_url) /
+//! [`render_launch`](Self::render_launch). The editor wire shape
+//! ([`SelfHostedAppDetail`](crate::http::wire_representations::SelfHostedAppDetail))
+//! is built from the pair at the HTTP seam.
+//!
+//! This module also owns the self-hosted write-side input specs the
+//! [`AppsStore`](super::AppsStore) speaks — [`NewSelfHostedUpload`] (a create spec)
+//! and [`UploadInsertError`] (the granular reason an upload insert wrote nothing).
 
-use serde::Serialize;
-use utoipa::ToSchema;
+use super::AppBehaviour;
 
-use super::{AppKind, AppRecord, AppRegistration};
-
-/// A whole self-hosted app — its registration plus the `self_hosted_apps` payload.
+/// The `self_hosted_app_configurations` payload — the loopback binding and
+/// launch-render inputs.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SelfHostedApp {
-    /// The shared registration facts + homescreen placement.
-    pub registration: AppRegistration,
+pub struct SelfHostedAppConfiguration {
     /// The loopback TCP port the host binds this app on, combined with the
     /// loopback hostname at read time into the `http://{host}:{port}/` launch
     /// target. The column keeps the port stable across reinstalls — see the
@@ -46,20 +47,15 @@ pub struct SelfHostedApp {
     pub launch_path: Option<String>,
 }
 
-impl AppRecord for SelfHostedApp {
-    /// A self-hosted app is a SMART app iff its registration carries a `client_id`.
-    fn smart(&self) -> bool {
-        self.registration.smart()
-    }
-
+impl AppBehaviour for SelfHostedAppConfiguration {
     /// Only an uploaded (non-seeded) self-hosted app is removable; a
     /// migration-seeded one is protected.
-    fn removable(&self) -> bool {
+    fn is_removable(&self) -> bool {
         !self.seeded
     }
 }
 
-impl SelfHostedApp {
+impl SelfHostedAppConfiguration {
     /// Render the loopback launch target `http://{host}:{port}/`. `host` is the
     /// loopback hostname the host binds on. The path is the bare root: each
     /// self-hosted app gets its own origin and is served from `/` on it.
@@ -101,69 +97,47 @@ impl SelfHostedApp {
     }
 }
 
-/// The `GET`/`POST`/`PUT /self-hosted-apps…` wire shape — the registration fields
-/// plus `launchPath` (absent for a root-served bundle), `seeded`, and `removable`.
-/// Flat (not a `provenance` union): `kind` is always `self-hosted`. The public
-/// `subdomain` / loopback `port` / on-disk `content_folder` are host-internal and
-/// stay off the wire.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct SelfHostedAppDetail {
-    pub id: String,
-    pub kind: AppKind,
-    pub enabled: bool,
+/// Everything `POST /self-hosted-apps` needs to install a self-hosted upload. The
+/// store allocates the final slug (which becomes id / subdomain) and the loopback
+/// port inside its transaction; the display position is appended there too.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewSelfHostedUpload {
     pub name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// `None` means "no subtitle".
     pub subtitle: Option<String>,
-    pub local_only: bool,
-    pub smart: bool,
-    pub requires_tunnel: bool,
-    /// The stored SMART launch path (origin-relative, with `{origin}` / `{launch}`
-    /// tokens), or absent for a root-served (`index.html`) app.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// The slug candidate derived from the name; the store suffixes it
+    /// (`-2`, `-3`, …) until unique, keeping every candidate a valid DNS label.
+    pub base_slug: String,
+    /// The on-disk folder (under the apps root) already holding the extracted
+    /// files — the upload's staging mint id, recorded verbatim. Deliberately NOT
+    /// the slug; see the content-folder section of
+    /// `docs/Apps/Store and Install Explanation.md`.
+    pub content_folder: String,
+    /// Ports the allocation must skip (the host's own loopback API port).
+    pub reserved_ports: Vec<u16>,
+    /// The install-inferred SMART launch path, `None` for a root-served bundle.
     pub launch_path: Option<String>,
-    /// `true` for a migration-seeded app (edit/delete-protected).
-    pub seeded: bool,
-    /// Whether the owner can remove this app (`!seeded`).
-    pub removable: bool,
 }
 
-impl From<&SelfHostedApp> for SelfHostedAppDetail {
-    fn from(app: &SelfHostedApp) -> Self {
-        let reg = &app.registration;
-        Self {
-            id: reg.id.clone(),
-            kind: reg.kind,
-            enabled: reg.enabled,
-            name: reg.name.clone(),
-            subtitle: reg.subtitle.clone(),
-            local_only: reg.local_only,
-            smart: reg.smart(),
-            requires_tunnel: reg.requires_tunnel,
-            launch_path: app.launch_path.clone(),
-            seeded: app.seeded,
-            removable: app.removable(),
-        }
-    }
+/// Why [`insert_self_hosted_app`](super::AppsStore::insert_self_hosted_app)
+/// allocated nothing (the transaction was dropped unwritten). Distinguished so
+/// the [`create_self_hosted_app`](super::actions) action can answer accurately: a
+/// slug clash is a name problem the caller can retry differently, an exhausted port
+/// space is a server resource fault no rename fixes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UploadInsertError {
+    /// No unique slug was found within the suffix-attempt budget.
+    SlugSpaceExhausted,
+    /// Every loopback port in the upload range is taken or reserved.
+    PortSpaceExhausted,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn app(launch_path: Option<&str>, seeded: bool) -> SelfHostedApp {
-        SelfHostedApp {
-            registration: AppRegistration {
-                id: "zip-app".to_owned(),
-                kind: AppKind::SelfHosted,
-                position: 3,
-                enabled: true,
-                name: "Zip App".to_owned(),
-                subtitle: None,
-                local_only: true,
-                client_id: None,
-                requires_tunnel: false,
-            },
+    fn configuration(launch_path: Option<&str>, seeded: bool) -> SelfHostedAppConfiguration {
+        SelfHostedAppConfiguration {
             port: 8082,
             content_folder: "zip-app".to_owned(),
             subdomain: "zip-app".to_owned(),
@@ -176,10 +150,10 @@ mod tests {
     /// ServeDir resolves to `index.html`.
     #[test]
     fn render_launch_without_template_is_the_bare_origin() {
-        let app = app(None, false);
-        let base = app.launch_url("127.0.0.1");
+        let config = configuration(None, false);
+        let base = config.launch_url("127.0.0.1");
         assert_eq!(
-            app.render_launch(&base, "http://127.0.0.1:8080", "NONCE"),
+            config.render_launch(&base, "http://127.0.0.1:8080", "NONCE"),
             "http://127.0.0.1:8082/",
         );
     }
@@ -189,13 +163,13 @@ mod tests {
     /// two different origins — and `{launch}` gets the nonce.
     #[test]
     fn render_launch_loopback_spans_app_and_api_origins() {
-        let app = app(
+        let config = configuration(
             Some("/launch.html?launch={launch}&iss={origin}/fhir-r4"),
             false,
         );
-        let base = app.launch_url("127.0.0.1");
+        let base = config.launch_url("127.0.0.1");
         assert_eq!(
-            app.render_launch(&base, "http://127.0.0.1:8080", "NONCE"),
+            config.render_launch(&base, "http://127.0.0.1:8080", "NONCE"),
             "http://127.0.0.1:8082/launch.html?launch=NONCE&iss=http://127.0.0.1:8080/fhir-r4",
         );
     }
@@ -204,33 +178,27 @@ mod tests {
     /// `{origin}` off the public host.
     #[test]
     fn render_launch_forwarded_uses_subdomain_and_public_host() {
-        let app = app(
+        let config = configuration(
             Some("/launch.html?launch={launch}&iss={origin}/fhir-r4"),
             false,
         );
-        let base = app.subdomain_url("demo.example.com");
+        let base = config.subdomain_url("demo.example.com");
         assert_eq!(
-            app.render_launch(&base, "https://demo.example.com", "N"),
+            config.render_launch(&base, "https://demo.example.com", "N"),
             "https://zip-app.demo.example.com/launch.html?launch=N&iss=https://demo.example.com/fhir-r4",
         );
     }
 
-    /// `smart` follows the registration's `client_id`; `removable` is exactly "not
-    /// seeded". The detail wire shape reflects both.
+    /// `is_removable` is exactly "not seeded".
     #[test]
-    fn capability_verdicts_and_detail_projection() {
-        let mut uploaded = app(None, false);
-        assert!(!uploaded.smart());
-        assert!(uploaded.removable(), "an uploaded app is removable");
-        uploaded.registration.client_id = Some("client".to_owned());
-        assert!(uploaded.smart());
-
-        let seeded = app(Some("/launch.html"), true);
-        assert!(!seeded.removable(), "a seeded app is protected");
-        let json = serde_json::to_value(SelfHostedAppDetail::from(&seeded)).unwrap();
-        assert_eq!(json["kind"], "self-hosted");
-        assert_eq!(json["seeded"], true);
-        assert_eq!(json["removable"], false);
-        assert_eq!(json["launchPath"], "/launch.html");
+    fn removable_is_not_seeded() {
+        assert!(
+            configuration(None, false).is_removable(),
+            "an uploaded app is removable"
+        );
+        assert!(
+            !configuration(Some("/launch.html"), true).is_removable(),
+            "a seeded app is protected"
+        );
     }
 }

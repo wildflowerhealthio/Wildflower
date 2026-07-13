@@ -603,28 +603,28 @@
       },
       "AppRegistration": {
         "type": "object",
-        "description": "A registration row — the parent of one app's CTI record. Diesel maps it to/from\n`app_registry` (the [`AppKindColumn`] mapping on `kind`); serde projects it onto\nthe `GET /apps` wire item (`position` omitted, `client_id` → `smart`).",
+        "description": "A registration row — the shared half of one app's record. Diesel maps it\nto/from `app_registrations` (the [`AppKindColumn`] mapping on `kind`); serde\nprojects it onto the `GET /apps` wire item (`position` omitted, `client_id` →\n`isSmart`).",
         "required": [
           "id",
           "kind",
-          "enabled",
+          "onHomescreen",
           "name",
           "localOnly",
-          "smart",
+          "isSmart",
           "requiresTunnel"
         ],
         "properties": {
           "id": {
             "type": "string",
-            "description": "Stable id, globally unique across all kinds (the parent PK)."
+            "description": "Stable id, globally unique across all kinds (the registration PK)."
           },
           "kind": {
             "$ref": "#/components/schemas/AppKind",
-            "description": "The CTI discriminator — which child table holds this id's payload."
+            "description": "The discriminator — which configuration table holds this id's payload."
           },
-          "enabled": {
+          "onHomescreen": {
             "type": "boolean",
-            "description": "The homescreen `enabled` flag."
+            "description": "Whether the app's tile shows on the home screen. Curated atomically by\n`PUT /home-screen` (see [`replace_placements`](super::AppsStore::replace_placements))."
           },
           "name": {
             "type": "string"
@@ -640,9 +640,9 @@
             "type": "boolean",
             "description": "The declared no-egress flag (a UI badge this pass)."
           },
-          "smart": {
+          "isSmart": {
             "type": "boolean",
-            "description": "Soft reference to a gatekeeper `clients.client_id`; `None` for non-SMART\napps. Never leaves the host: the wire carries the derived `smart` boolean."
+            "description": "Soft reference to a gatekeeper `clients.client_id`; `None` for non-SMART\napps. Never leaves the host: the wire carries the derived `isSmart` boolean."
           },
           "requiresTunnel": {
             "type": "boolean",
@@ -679,17 +679,17 @@
       },
       "CloudAppDetail": {
         "type": "object",
-        "description": "The `GET`/`POST`/`PUT /cloud-apps…` wire shape — the registration fields plus\nthe stored `url` template and `removable`. Flat (not a `provenance` union):\n`kind` is always `cloud`.",
+        "description": "The `GET`/`POST`/`PUT /cloud-apps…` wire shape — the registration fields plus\nthe stored `url` template and `isRemovable`. Built from the cloud\n`(registration, configuration)` pair.",
         "required": [
           "id",
           "kind",
-          "enabled",
+          "onHomescreen",
           "name",
           "localOnly",
-          "smart",
+          "isSmart",
           "requiresTunnel",
           "url",
-          "removable"
+          "isRemovable"
         ],
         "properties": {
           "id": {
@@ -698,7 +698,7 @@
           "kind": {
             "$ref": "#/components/schemas/AppKind"
           },
-          "enabled": {
+          "onHomescreen": {
             "type": "boolean"
           },
           "name": {
@@ -713,7 +713,7 @@
           "localOnly": {
             "type": "boolean"
           },
-          "smart": {
+          "isSmart": {
             "type": "boolean"
           },
           "requiresTunnel": {
@@ -723,7 +723,7 @@
             "type": "string",
             "description": "The stored launch URL template (`{origin}` / `{launch}` tokens), serialized\nas its canonical string."
           },
-          "removable": {
+          "isRemovable": {
             "type": "boolean",
             "description": "Always `true` for a cloud app; carried for a uniform editor contract."
           }
@@ -755,16 +755,16 @@
       },
       "HomeScreenEntry": {
         "type": "object",
-        "description": "One entry in the `PUT /home-screen` body: an app id and its desired `enabled`\nflag. The entry's index in the array is its new display `position`. Matches\nthe TS `HomeScreenEntrySchema`.",
+        "description": "One entry in the `PUT /home-screen` body: an app id and its desired\n`onHomescreen` flag. The entry's index in the array is its new display\n`position`. Matches the TS `HomeScreenEntrySchema`.",
         "required": [
           "id",
-          "enabled"
+          "onHomescreen"
         ],
         "properties": {
           "id": {
             "type": "string"
           },
-          "enabled": {
+          "onHomescreen": {
             "type": "boolean"
           }
         }
@@ -831,17 +831,17 @@
       },
       "SelfHostedAppDetail": {
         "type": "object",
-        "description": "The `GET`/`POST`/`PUT /self-hosted-apps…` wire shape — the registration fields\nplus `launchPath` (absent for a root-served bundle), `seeded`, and `removable`.\nFlat (not a `provenance` union): `kind` is always `self-hosted`. The public\n`subdomain` / loopback `port` / on-disk `content_folder` are host-internal and\nstay off the wire.",
+        "description": "The `GET`/`POST`/`PUT /self-hosted-apps…` wire shape — the registration fields\nplus `launchPath` (absent for a root-served bundle), `seeded`, and\n`isRemovable`. The public `subdomain` / loopback `port` / on-disk\n`content_folder` are host-internal and stay off the wire.",
         "required": [
           "id",
           "kind",
-          "enabled",
+          "onHomescreen",
           "name",
           "localOnly",
-          "smart",
+          "isSmart",
           "requiresTunnel",
           "seeded",
-          "removable"
+          "isRemovable"
         ],
         "properties": {
           "id": {
@@ -850,7 +850,7 @@
           "kind": {
             "$ref": "#/components/schemas/AppKind"
           },
-          "enabled": {
+          "onHomescreen": {
             "type": "boolean"
           },
           "name": {
@@ -865,7 +865,7 @@
           "localOnly": {
             "type": "boolean"
           },
-          "smart": {
+          "isSmart": {
             "type": "boolean"
           },
           "requiresTunnel": {
@@ -882,7 +882,7 @@
             "type": "boolean",
             "description": "`true` for a migration-seeded app (edit/delete-protected)."
           },
-          "removable": {
+          "isRemovable": {
             "type": "boolean",
             "description": "Whether the owner can remove this app (`!seeded`)."
           }
@@ -890,14 +890,14 @@
       },
       "SystemAppDetail": {
         "type": "object",
-        "description": "The read-only `GET /system-apps/{id}` wire shape — the registration fields plus\nthe display-only `url` template. Flat: `kind` is always `system`.",
+        "description": "The read-only `GET /system-apps/{id}` wire shape — the registration fields plus\nthe display-only `url` template. A system app is never editable, so it carries\nno `isRemovable`.",
         "required": [
           "id",
           "kind",
-          "enabled",
+          "onHomescreen",
           "name",
           "localOnly",
-          "smart",
+          "isSmart",
           "requiresTunnel",
           "url"
         ],
@@ -908,7 +908,7 @@
           "kind": {
             "$ref": "#/components/schemas/AppKind"
           },
-          "enabled": {
+          "onHomescreen": {
             "type": "boolean"
           },
           "name": {
@@ -923,7 +923,7 @@
           "localOnly": {
             "type": "boolean"
           },
-          "smart": {
+          "isSmart": {
             "type": "boolean"
           },
           "requiresTunnel": {

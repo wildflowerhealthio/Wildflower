@@ -15,9 +15,12 @@ use axum::Json;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-use crate::domain::{actions, AppError, NewSelfHostedUpload, SelfHostedAppDetail};
+use crate::domain::{
+    actions, AppRegistration, AppsError, NewSelfHostedUpload, SelfHostedAppConfiguration,
+};
 use crate::http::errors::InvalidFieldBody;
 use crate::http::state::AppsState;
+use crate::http::wire_representations::SelfHostedAppDetail;
 use crate::id::mint_app_id;
 use crate::install::{self, extract_zip_bundle, infer_launch_path, slugify};
 
@@ -53,7 +56,7 @@ pub(crate) struct CreateSelfHostedAppMultipart {
 pub(crate) async fn handle_create_self_hosted_app(
     State(state): State<Arc<AppsState>>,
     mut multipart: Multipart,
-) -> Result<Json<SelfHostedAppDetail>, AppError> {
+) -> Result<Json<SelfHostedAppDetail>, AppsError> {
     let mut name: Option<String> = None;
     let mut subtitle: Option<String> = None;
     let mut bundle: Option<Bytes> = None;
@@ -61,7 +64,7 @@ pub(crate) async fn handle_create_self_hosted_app(
     while let Some(field) = multipart
         .next_field()
         .await
-        .map_err(|e| AppError::infrastructure("failed to read multipart body", e))?
+        .map_err(|e| AppsError::infrastructure("failed to read multipart body", e))?
     {
         // `name()` borrows `field`; own it before `text()`/`bytes()` consumes it.
         let field_name = field.name().map(str::to_owned);
@@ -71,14 +74,14 @@ pub(crate) async fn handle_create_self_hosted_app(
                     field
                         .bytes()
                         .await
-                        .map_err(|e| AppError::infrastructure("failed to read bundle part", e))?,
+                        .map_err(|e| AppsError::infrastructure("failed to read bundle part", e))?,
                 );
             }
             Some(key @ ("name" | "subtitle")) => {
                 let value = field
                     .text()
                     .await
-                    .map_err(|e| AppError::infrastructure("failed to read multipart field", e))?;
+                    .map_err(|e| AppsError::infrastructure("failed to read multipart field", e))?;
                 match key {
                     "name" => name = Some(value),
                     "subtitle" => subtitle = Some(value),
@@ -91,11 +94,11 @@ pub(crate) async fn handle_create_self_hosted_app(
         }
     }
 
-    let name = name.ok_or_else(|| AppError::InvalidName {
+    let name = name.ok_or_else(|| AppsError::InvalidName {
         message: "name is required".to_owned(),
     })?;
-    let app = install_self_hosted(&state, name, subtitle, bundle).await?;
-    Ok(Json(SelfHostedAppDetail::from(&app)))
+    let (registration, config) = install_self_hosted(&state, name, subtitle, bundle).await?;
+    Ok(Json(SelfHostedAppDetail::from((&registration, &config))))
 }
 
 /// Install a self-hosted app from the uploaded `bundle` via the staged install:
@@ -107,11 +110,11 @@ async fn install_self_hosted(
     name: String,
     subtitle: Option<String>,
     bundle: Option<Bytes>,
-) -> Result<crate::domain::SelfHostedApp, AppError> {
-    let slug = slugify(&name).ok_or_else(|| AppError::InvalidName {
+) -> Result<(AppRegistration, SelfHostedAppConfiguration), AppsError> {
+    let slug = slugify(&name).ok_or_else(|| AppsError::InvalidName {
         message: "name must contain at least one letter or digit".to_owned(),
     })?;
-    let bundle = bundle.ok_or_else(|| AppError::InvalidZip {
+    let bundle = bundle.ok_or_else(|| AppsError::InvalidZip {
         message: "a self-hosted app requires an uploaded bundle".to_owned(),
     })?;
 
@@ -138,7 +141,7 @@ async fn install_self_hosted(
         }
         Err(join_error) => {
             remove_staging(&staging);
-            return Err(AppError::infrastructure(
+            return Err(AppsError::infrastructure(
                 "zip extraction task failed",
                 join_error,
             ));
@@ -151,7 +154,7 @@ async fn install_self_hosted(
     let dest = apps_dir.join(&folder);
     if let Err(error) = std::fs::rename(&staging, &dest) {
         remove_staging(&staging);
-        return Err(AppError::infrastructure(
+        return Err(AppsError::infrastructure(
             "failed to move the staged app into place",
             error,
         ));
@@ -169,8 +172,8 @@ async fn install_self_hosted(
     // The action inserts (allocating slug + port in-txn) and maps an allocation
     // failure onto the wire error — a slug clash is `400 InvalidName`, an exhausted
     // port space a logged 500. Any error unwinds the just-moved files.
-    let app = match actions::create_self_hosted_app(&state.store, &upload) {
-        Ok(app) => app,
+    let (registration, config) = match actions::create_self_hosted_app(&state.store, &upload) {
+        Ok(pair) => pair,
         Err(error) => {
             remove_staging(&dest);
             return Err(error);
@@ -183,26 +186,26 @@ async fn install_self_hosted(
     // happen and won't self-heal. That's a real fault — surface it.
     if let Err(error) = state
         .self_hosted
-        .start(app.registration.id.as_str(), &app)
+        .start(registration.id.as_str(), &config)
         .await
     {
-        return Err(AppError::infrastructure(
+        return Err(AppsError::infrastructure(
             "installed self-hosted app failed to register",
             error,
         ));
     }
 
-    Ok(app)
+    Ok((registration, config))
 }
 
 /// Map an extraction failure to the wire error: a disk-write failure is our fault
 /// (`500`), every other variant is a bad upload (`400 InvalidZip`).
-fn map_install_error(error: install::InstallError) -> AppError {
+fn map_install_error(error: install::InstallError) -> AppsError {
     match error {
         install::InstallError::Io(io_error) => {
-            AppError::infrastructure("zip extraction io error", io_error)
+            AppsError::infrastructure("zip extraction io error", io_error)
         }
-        other => AppError::InvalidZip {
+        other => AppsError::InvalidZip {
             message: other.to_string(),
         },
     }

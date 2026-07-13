@@ -11,7 +11,7 @@
 //!    `routes/home_screen.rs` for the flat `/home-screen` route). The
 //!    gated/launch router split lives in [`routes`]; the route files stay pure.
 //!  - [`errors`] — the wire bodies + `impl IntoResponse` for
-//!    [`AppError`](crate::domain::AppError).
+//!    [`AppsError`](crate::domain::AppsError).
 //!  - [`ports`] — the host-seam dependency-inversion traits ([`OwnerAuth`],
 //!    [`LaunchCookies`]) the host wires into [`AppsState`].
 //!  - [`state`] — the shared [`AppsState`].
@@ -29,6 +29,7 @@ mod routes;
 mod state;
 #[cfg(test)]
 pub(crate) mod test_support;
+pub(crate) mod wire_representations;
 
 pub use ports::launch_cookies::{LaunchCookies, NoLaunchCookies};
 pub use ports::owner_auth::OwnerAuth;

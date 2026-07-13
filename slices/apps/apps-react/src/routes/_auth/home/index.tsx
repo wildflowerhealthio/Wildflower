@@ -80,12 +80,12 @@ const AppsHomeBody = ({ apps }: AppsHomeBodyProps): JSX.Element => {
   useEffect(() => {
     setOrder(apps)
     // `apps` is a fresh array each render; key the resync on the stable id +
-    // enabled sequence so it runs only when the server list actually changes,
-    // not on every render.
+    // onHomescreen sequence so it runs only when the server list actually
+    // changes, not on every render.
     // oxlint-disable-next-line react-hooks/exhaustive-deps
-  }, [apps.map((app) => `${app.id}:${app.enabled ? 1 : 0}`).join(' ')])
+  }, [apps.map((app) => `${app.id}:${app.onHomescreen ? 1 : 0}`).join(' ')])
 
-  const visible = order.filter((app) => app.enabled)
+  const visible = order.filter((app) => app.onHomescreen)
 
   const sensors = useSensors(
     // A small activation distance lets a plain click reach the tile's launch
@@ -119,7 +119,7 @@ const AppsHomeBody = ({ apps }: AppsHomeBodyProps): JSX.Element => {
     const previous = order
     setOrder(next)
     homeScreenMutation.mutate(
-      next.map((app) => ({ id: app.id, enabled: app.enabled })),
+      next.map((app) => ({ id: app.id, onHomescreen: app.onHomescreen })),
       {
         onError: () => {
           setOrder(previous)
@@ -128,19 +128,21 @@ const AppsHomeBody = ({ apps }: AppsHomeBodyProps): JSX.Element => {
     )
   }
 
-  // Hide an app from the home screen: flip its `enabled` to false and PUT the
-  // whole ordered list (disabled apps keep their slots). Optimistic + rollback,
+  // Hide an app from the home screen: flip its `onHomescreen` to false and PUT
+  // the whole ordered list (hidden apps keep their slots). Optimistic + rollback,
   // mirroring `onDragEnd` — on failure the PUT doesn't invalidate the list, so
-  // roll `order` back and surface the error banner. Re-enabling lives in
+  // roll `order` back and surface the error banner. Re-showing lives in
   // `/settings/apps`.
   const disable = (app: AppRegistration): void => {
     // Skip while a home-screen write is already in flight — see `onDragEnd`.
     if (homeScreenMutation.isPending) return
     const previous = order
-    const next = order.map((entry) => (entry.id === app.id ? { ...entry, enabled: false } : entry))
+    const next = order.map((entry) =>
+      entry.id === app.id ? { ...entry, onHomescreen: false } : entry
+    )
     setOrder(next)
     homeScreenMutation.mutate(
-      next.map((entry) => ({ id: entry.id, enabled: entry.enabled })),
+      next.map((entry) => ({ id: entry.id, onHomescreen: entry.onHomescreen })),
       {
         onError: () => {
           setOrder(previous)

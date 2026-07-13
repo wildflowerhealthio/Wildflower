@@ -17,7 +17,7 @@ const CloudAppDetailScreen = ({ id }: { readonly id: string }): JSX.Element => {
   const { data: app } = useCloudAppQuery(id)
   return (
     <AppDetailShell
-      app={{ id: app.id, name: app.name, removable: app.removable }}
+      app={{ id: app.id, name: app.name, removable: app.isRemovable }}
       onRemoved={() => {
         void navigate({ to: '/settings/apps' })
       }}

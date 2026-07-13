@@ -10,9 +10,10 @@ use axum::extract::{Path, State};
 use axum::Json;
 
 use super::CloudAppBody;
-use crate::domain::{actions, AppError, CloudAppDetail};
+use crate::domain::{actions, AppsError};
 use crate::http::errors::{AppNotFoundBody, InvalidFieldBody};
 use crate::http::state::AppsState;
+use crate::http::wire_representations::CloudAppDetail;
 
 /// `PUT /cloud-apps/{id}` — replace a cloud app's content. Owner-gated by the host.
 #[utoipa::path(
@@ -31,10 +32,10 @@ pub(crate) async fn handle_replace_cloud_app(
     State(state): State<Arc<AppsState>>,
     Path(id): Path<String>,
     Json(body): Json<CloudAppBody>,
-) -> Result<Json<CloudAppDetail>, AppError> {
+) -> Result<Json<CloudAppDetail>, AppsError> {
     // The action resolves the kind (a non-cloud id is a 404) before validating any
     // field, then validates (400) and writes the registration + payload in-txn.
-    let app = actions::replace_cloud_content(
+    let (registration, config) = actions::replace_cloud_content(
         &state.store,
         &id,
         body.name,
@@ -42,5 +43,5 @@ pub(crate) async fn handle_replace_cloud_app(
         body.url,
         body.requires_tunnel,
     )?;
-    Ok(Json(CloudAppDetail::from(&app)))
+    Ok(Json(CloudAppDetail::from((&registration, &config))))
 }

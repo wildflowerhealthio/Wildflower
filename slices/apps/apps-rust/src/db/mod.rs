@@ -1,10 +1,11 @@
 //! `SQLite` persistence for the apps slice — the [`SqliteAppsStore`] adapter (the
 //! `SQLite` implementation of the [`AppsStore`](crate::domain::AppsStore) port: it
 //! holds the app-wide diesel r2d2 pool and applies the apps migrations onto it)
-//! plus the per-concern query bodies it delegates to. Class-table-inheritance: one
-//! authoritative `app_registry` parent (the global id space + shared facts +
-//! placement) with three symmetric child payload tables (`system_apps` /
-//! `cloud_apps` / `self_hosted_apps`), real FKs child → parent.
+//! plus the per-concern query bodies it delegates to. One authoritative
+//! `app_registrations` table (the global id space + shared facts + placement) with
+//! three per-kind configuration tables (`system_app_configurations` /
+//! `cloud_app_configurations` / `self_hosted_app_configurations`), real FKs
+//! configuration → registration.
 //!
 //! [`SqliteAppsStore::new`] applies the embedded migrations once on a pooled
 //! connection via [`persistence_rust::run_diesel_migrations`] under this slice's

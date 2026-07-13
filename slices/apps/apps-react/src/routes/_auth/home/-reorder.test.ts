@@ -4,13 +4,13 @@ import type { AppRegistration } from '../../../queries.ts'
 import { reorderApps } from './-reorder.ts'
 
 // `reorderApps` reads only `id`, so a minimal uniform registration suffices.
-const makeApp = (id: string, enabled = true): AppRegistration => ({
+const makeApp = (id: string, onHomescreen = true): AppRegistration => ({
   id,
   name: id,
-  enabled,
+  onHomescreen,
   kind: 'system',
   localOnly: false,
-  smart: false,
+  isSmart: false,
   requiresTunnel: false,
 })
 

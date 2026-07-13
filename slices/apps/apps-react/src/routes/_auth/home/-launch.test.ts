@@ -7,11 +7,11 @@ import { launchApp, launchHref } from './-launch.ts'
 // A minimal uniform registration — `launchApp` / `launchHref` read only `id`.
 const app: AppRegistration = {
   id: 'pt-browser',
-  enabled: true,
+  onHomescreen: true,
   name: 'Patient Browser',
   kind: 'system',
   localOnly: false,
-  smart: false,
+  isSmart: false,
   requiresTunnel: false,
 }
 

@@ -307,7 +307,7 @@ mod tests {
         let arr = body.as_array().unwrap();
         let growth = arr.iter().find(|v| v["id"] == "growth-chart").unwrap();
         assert_eq!(growth["kind"], "cloud");
-        assert_eq!(growth["smart"], true);
+        assert_eq!(growth["isSmart"], true);
         assert_eq!(growth["requiresTunnel"], true);
         assert_eq!(growth["localOnly"], false);
         assert!(
@@ -315,14 +315,14 @@ mod tests {
             "the list carries no payload url: {growth}"
         );
         assert!(
-            growth.get("removable").is_none(),
+            growth.get("isRemovable").is_none(),
             "removable is an editor concern"
         );
 
         let api_view = arr.iter().find(|v| v["id"] == "api-view").unwrap();
         assert_eq!(api_view["kind"], "system");
         assert_eq!(api_view["localOnly"], true);
-        assert_eq!(api_view["smart"], false);
+        assert_eq!(api_view["isSmart"], false);
         assert_eq!(api_view["requiresTunnel"], false);
     }
 
@@ -444,7 +444,7 @@ mod tests {
         let st = state();
         let mut conn = st.store.pool().get().unwrap();
         diesel::sql_query(
-            "INSERT INTO app_registry (id, kind, position, enabled, name, local_only, requires_tunnel) \
+            "INSERT INTO app_registrations (id, kind, position, on_homescreen, name, local_only, requires_tunnel) \
              VALUES ('ghost-system', 'system', 99, 1, 'Ghost', 1, 0)",
         )
         .execute(&mut conn)
@@ -503,7 +503,8 @@ mod tests {
         );
         st.store
             .insert_cloud_app(&cloud("app-y", AppUrl::OriginRelative("/y".to_owned())))
-            .unwrap();
+            .unwrap()
+            .expect("inserted");
         let res = send_raw(&st, post_forwarded("/apps/app-y")).await;
         assert_eq!(res.status(), StatusCode::FOUND);
         assert!(res.headers().get("set-cookie").is_none());
@@ -586,7 +587,8 @@ mod tests {
         let st = state_with_sink(Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>);
         st.store
             .insert_cloud_app(&cloud("app-y", AppUrl::OriginRelative("/y".to_owned())))
-            .unwrap();
+            .unwrap()
+            .expect("inserted");
         let res = send_raw(&st, post_launch("/apps/app-y")).await;
         assert_eq!(res.status(), StatusCode::NO_CONTENT);
         assert_eq!(
@@ -602,7 +604,8 @@ mod tests {
         let st = state_with_sink(Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>);
         st.store
             .insert_cloud_app(&cloud("app-y", AppUrl::OriginRelative("/y".to_owned())))
-            .unwrap();
+            .unwrap()
+            .expect("inserted");
         let res = send_raw(&st, post_forwarded("/apps/app-y")).await;
         assert_eq!(res.status(), StatusCode::FOUND);
         let location = res.headers().get("location").unwrap().to_str().unwrap();
@@ -618,15 +621,17 @@ mod tests {
         let st = state();
         let mut conn = st.store.pool().get().unwrap();
         diesel::sql_query(
-            "UPDATE cloud_apps SET url = 'http://evil.example.com' WHERE id = 'growth-chart'",
+            "UPDATE cloud_app_configurations SET url = 'http://evil.example.com' WHERE id = 'growth-chart'",
         )
         .execute(&mut conn)
         .unwrap();
         // growth-chart requires the tunnel; drop requires_tunnel (now on the parent)
         // so the launch reaches the url read rather than 503-ing on the down tunnel.
-        diesel::sql_query("UPDATE app_registry SET requires_tunnel = 0 WHERE id = 'growth-chart'")
-            .execute(&mut conn)
-            .unwrap();
+        diesel::sql_query(
+            "UPDATE app_registrations SET requires_tunnel = 0 WHERE id = 'growth-chart'",
+        )
+        .execute(&mut conn)
+        .unwrap();
         drop(conn);
         let res = send_raw(&st, post_launch("/apps/growth-chart")).await;
         assert_eq!(res.status(), StatusCode::INTERNAL_SERVER_ERROR);
@@ -642,8 +647,8 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::OK, "body: {body}");
         assert_eq!(body["kind"], "cloud");
-        assert!(body["enabled"].as_bool().unwrap());
-        assert_eq!(body["removable"], true);
+        assert!(body["onHomescreen"].as_bool().unwrap());
+        assert_eq!(body["isRemovable"], true);
         let id = body["id"].as_str().unwrap().to_string();
         assert!(!id.is_empty());
 
@@ -786,21 +791,21 @@ mod tests {
         let (status, body) = send(&st, get("/cloud-apps/growth-chart")).await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(body["kind"], "cloud");
-        assert_eq!(body["removable"], true);
+        assert_eq!(body["isRemovable"], true);
         assert!(body["url"].as_str().unwrap().contains("{origin}"));
 
         let (status, body) = send(&st, get("/self-hosted-apps/patient-browser")).await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(body["kind"], "self-hosted");
         assert_eq!(body["seeded"], true);
-        assert_eq!(body["removable"], false);
+        assert_eq!(body["isRemovable"], false);
 
         let (status, body) = send(&st, get("/system-apps/api-docs")).await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(body["kind"], "system");
         assert_eq!(body["url"], "{origin}/docs");
         assert!(
-            body.get("removable").is_none(),
+            body.get("isRemovable").is_none(),
             "system detail has no removable"
         );
     }
@@ -842,7 +847,7 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::OK, "body: {body}");
         assert_eq!(body["kind"], "self-hosted");
-        assert_eq!(body["removable"], true);
+        assert_eq!(body["isRemovable"], true);
         assert_eq!(
             body["launchPath"],
             "/launch.html?launch={launch}&iss={origin}/fhir-r4"
@@ -994,12 +999,12 @@ mod tests {
         );
     }
 
-    /// The full seeded set as `{ id, enabled }` entries, in the given id order.
+    /// The full seeded set as `{ id, onHomescreen }` entries, in the given id order.
     fn home_screen_body(ordered: &[(&str, bool)]) -> serde_json::Value {
         serde_json::Value::Array(
             ordered
                 .iter()
-                .map(|(id, enabled)| serde_json::json!({ "id": id, "enabled": enabled }))
+                .map(|(id, enabled)| serde_json::json!({ "id": id, "onHomescreen": enabled }))
                 .collect(),
         )
     }
@@ -1043,7 +1048,7 @@ mod tests {
             .iter()
             .find(|v| v["id"] == "api-docs")
             .unwrap();
-        assert_eq!(api_docs["enabled"], false, "api-docs was disabled");
+        assert_eq!(api_docs["onHomescreen"], false, "api-docs was disabled");
 
         let (_, list) = send(&st, get("/apps")).await;
         let listed: Vec<&str> = list
@@ -1148,7 +1153,7 @@ mod tests {
         assert_eq!(status, StatusCode::OK, "body: {body}");
         assert_eq!(body["id"], "my-app");
         assert_eq!(body["kind"], "self-hosted");
-        assert_eq!(body["removable"], true);
+        assert_eq!(body["isRemovable"], true);
         assert_eq!(body["localOnly"], true);
 
         let folder = content_folder(&st, "my-app");

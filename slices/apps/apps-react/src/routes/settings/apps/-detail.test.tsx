@@ -73,25 +73,25 @@ const CLOUD_DETAIL = {
   id: 'cloud-app',
   name: 'Cloud App',
   kind: 'cloud',
-  enabled: true,
+  onHomescreen: true,
   localOnly: false,
-  smart: false,
+  isSmart: false,
   requiresTunnel: false,
   url: 'https://example.com/launch',
-  removable: true,
+  isRemovable: true,
 }
 
 const SELF_HOSTED_UPLOADED = {
   id: 'sh-app',
   name: 'Self Hosted App',
   kind: 'self-hosted',
-  enabled: true,
+  onHomescreen: true,
   localOnly: false,
-  smart: false,
+  isSmart: false,
   requiresTunnel: false,
   launchPath: '/launch.html',
   seeded: false,
-  removable: true,
+  isRemovable: true,
 }
 
 const SELF_HOSTED_SEEDED = {
@@ -99,7 +99,7 @@ const SELF_HOSTED_SEEDED = {
   id: 'seeded-app',
   name: 'Seeded App',
   seeded: true,
-  removable: false,
+  isRemovable: false,
   launchPath: undefined,
 }
 
@@ -107,9 +107,9 @@ const SYSTEM_DETAIL = {
   id: 'sys-app',
   name: 'System App',
   kind: 'system',
-  enabled: true,
+  onHomescreen: true,
   localOnly: false,
-  smart: false,
+  isSmart: false,
   requiresTunnel: false,
   url: '{origin}/docs',
 }
@@ -123,9 +123,9 @@ const listEntry = (detail: {
   id: detail.id,
   name: detail.name,
   kind: detail.kind,
-  enabled: true,
+  onHomescreen: true,
   localOnly: false,
-  smart: false,
+  isSmart: false,
   requiresTunnel: false,
 })
 
@@ -149,7 +149,9 @@ describe('per-kind app detail screens', () => {
     fireEvent.click(screen.getByRole('switch', { name: 'Show on home screen' }))
 
     expect(homeScreenStub.mutate).toHaveBeenCalledTimes(1)
-    expect(homeScreenStub.mutate.mock.calls[0]?.[0]).toEqual([{ id: 'cloud-app', enabled: false }])
+    expect(homeScreenStub.mutate.mock.calls[0]?.[0]).toEqual([
+      { id: 'cloud-app', onHomescreen: false },
+    ])
   })
 
   test('a cloud app saves its content through the cloud replace arm', () => {
@@ -184,7 +186,7 @@ describe('per-kind app detail screens', () => {
     })
   })
 
-  test('a removable app can be deleted by id', () => {
+  test('an isRemovable app can be deleted by id', () => {
     mocks.detail = CLOUD_DETAIL
     mocks.list = [listEntry(CLOUD_DETAIL)]
     render(<CloudAppDetailScreen id="cloud-app" />)

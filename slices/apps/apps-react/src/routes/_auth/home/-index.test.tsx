@@ -42,10 +42,10 @@ import { AppsHomeBody } from './index.tsx'
 const cloudApp = (overrides: Partial<AppRegistration> = {}): AppRegistration => ({
   id: 'cloud-app',
   name: 'Cloud App',
-  enabled: true,
+  onHomescreen: true,
   kind: 'cloud',
   localOnly: false,
-  smart: false,
+  isSmart: false,
   requiresTunnel: false,
   ...overrides,
 })
@@ -114,16 +114,16 @@ describe('<AppsHomeBody> edit mode', () => {
     render(<AppsHomeBody apps={[APP, other]} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit home screen' }))
-    // Both enabled tiles get a hide badge ("Hide <name>"); the first is the target.
+    // Both on-homescreen tiles get a hide badge ("Hide <name>"); the first is the target.
     const hideButtons = screen.getAllByRole('button', { name: /^Hide/ })
     fireEvent.click(hideButtons[0])
 
-    // The single writer of `enabled` is `PUT /home-screen` with the full ordered
+    // The single writer of `onHomescreen` is `PUT /home-screen` with the full ordered
     // list — the target flips to `false`, the sibling keeps its slot + flag.
     expect(homeScreenStub.mutate).toHaveBeenCalledTimes(1)
     expect(homeScreenStub.mutate.mock.calls[0]?.[0]).toEqual([
-      { id: 'cloud-app', enabled: false },
-      { id: 'other-app', enabled: true },
+      { id: 'cloud-app', onHomescreen: false },
+      { id: 'other-app', onHomescreen: true },
     ])
   })
 })

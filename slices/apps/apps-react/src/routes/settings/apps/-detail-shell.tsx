@@ -39,15 +39,15 @@ const AppDetailShell = ({ app, onRemoved, children }: AppDetailShellProps): JSX.
   const homeScreenMutation = useReplaceHomeScreenMutation()
   const deleteMutation = useAppsAdminDeleteMutation()
 
-  const enabled = apps.find((entry) => entry.id === app.id)?.enabled ?? false
+  const enabled = apps.find((entry) => entry.id === app.id)?.onHomescreen ?? false
 
-  // Persist the enable flag by re-PUTting the whole ordered list with this app's
-  // flag flipped (the single writer of `enabled`).
+  // Persist the placement flag by re-PUTting the whole ordered list with this
+  // app's flag flipped (the single writer of `onHomescreen`).
   const toggleEnabled = (): void => {
     homeScreenMutation.mutate(
       apps.map((entry) => ({
         id: entry.id,
-        enabled: entry.id === app.id ? !entry.enabled : entry.enabled,
+        onHomescreen: entry.id === app.id ? !entry.onHomescreen : entry.onHomescreen,
       }))
     )
   }

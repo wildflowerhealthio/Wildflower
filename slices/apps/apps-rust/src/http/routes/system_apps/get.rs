@@ -7,9 +7,10 @@ use std::sync::Arc;
 use axum::extract::{Path, State};
 use axum::Json;
 
-use crate::domain::{actions, AppError, SystemAppDetail};
+use crate::domain::{actions, AppsError};
 use crate::http::errors::AppNotFoundBody;
 use crate::http::state::AppsState;
+use crate::http::wire_representations::SystemAppDetail;
 
 /// `GET /system-apps/{id}` — the system read-only detail. Owner-gated by the host.
 #[utoipa::path(
@@ -25,7 +26,7 @@ use crate::http::state::AppsState;
 pub(crate) async fn handle_get_system_app(
     State(state): State<Arc<AppsState>>,
     Path(id): Path<String>,
-) -> Result<Json<SystemAppDetail>, AppError> {
-    let app = actions::get_system_app(&state.store, &id)?;
-    Ok(Json(SystemAppDetail::from(&app)))
+) -> Result<Json<SystemAppDetail>, AppsError> {
+    let (registration, config) = actions::get_system_app(&state.store, &id)?;
+    Ok(Json(SystemAppDetail::from((&registration, &config))))
 }

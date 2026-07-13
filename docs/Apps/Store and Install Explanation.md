@@ -11,17 +11,19 @@ The slice follows the same ports-and-adapters shape as `collector-rust` and
 `tunnel-rust`:
 
 - **`AppsStore` (port)** — a domain trait (`domain/apps_store.rs`) speaking
-  _primitive_ persistence over whole `App`s and the write-side specs. Absence,
-  conflict, and allocation failure are **return-type signals** (`Option` /
-  `bool` / `UploadInsertError`), not errors; the only error it raises is the
-  opaque `AppError::Infrastructure`.
+  _primitive_ persistence over concrete registrations, configurations, and
+  `(registration, configuration)` pairs (the whole `App` only where the kind is
+  runtime-resolved) plus the write-side specs. Absence and non-permutation are
+  **return-type signals** (`Option`), a delete miss is `bool`, and an insert that
+  wrote nothing is a granular typed error (`CloudInsertError` / `UploadInsertError`);
+  the only error it raises is the opaque `AppsError::Infrastructure`.
 - **`SqliteAppsStore` (adapter)** — the `SQLite` implementation
   (`db/apps_store.rs`) over the app-wide diesel pool. It checks a connection out
   of the pool per call and delegates to the `pub(super)` query bodies in
   `db/reads.rs` / `db/writes.rs` (each a free function taking
   `&mut PooledDieselConnection`).
 - **`domain/actions.rs`** — the slice's _semantics_: it maps the store's
-  primitive signals onto the semantic `AppError` variants (`NotFound`,
+  primitive signals onto the semantic `AppsError` variants (`NotFound`,
   `NotEditable`, `InvalidHomeScreen`, the id-collision / upload-failure verdicts)
   and holds the write-side field validation. The HTTP handlers call
   `actions::…(&state.store, …)`, never the store directly, and stay a straight
@@ -37,19 +39,21 @@ never collide in diesel's stock `__diesel_schema_migrations`.
 ## The store speaks registrations + per-kind payloads
 
 **Class-table-inheritance** persistence over the app-wide diesel pool
-(`persistence_rust::DieselPool`): one authoritative `app_registry` parent (the
+(`persistence_rust::DieselPool`): one authoritative `app_registrations` parent (the
 global id space, the shared catalogue fields, and the homescreen placement) with
-a `kind` discriminator and three symmetric child payload tables (`system_apps`,
-`cloud_apps`, `self_hosted_apps`), real FKs child→parent with `ON DELETE
+a `kind` discriminator and three symmetric child payload tables (`system_app_configurations`,
+`cloud_app_configurations`, `self_hosted_app_configurations`), real FKs child→parent with `ON DELETE
 CASCADE`. System apps are ordinary seeded rows now — their launch template lives
-in `system_apps.url`, not a compiled-in `SYSTEM_APPS` const.
+in `system_app_configurations.url`, not a compiled-in `SYSTEM_APPS` const.
 
 Reads are **typed diesel queries against real tables** (no `apps_view`, no
 `UNION`-with-NULLs decode): the uniform catalogue is a join-free
-`app_registry ORDER BY position` into `AppRegistration`s; a detail read fetches
-the registration then the one child its `kind` names, composing a whole `App`;
-the host-listener list is a typed inner join `self_hosted_apps ⋈ app_registry`.
-`smart` / `removable` are derived in Rust (the `AppRecord` trait), not stored.
+`app_registrations ORDER BY position` into `AppRegistration`s; a detail read fetches
+the registration then the one configuration its `kind` names, composing a whole
+`App` pair; the host-listener list is a typed inner join
+`self_hosted_app_configurations ⋈ app_registrations`. `is_smart` is derived on the
+registration (from `client_id`) and `is_removable` via the `AppBehaviour` trait,
+not stored.
 
 **A corrupt registry surfaces as a typed read error.** A stored `url` that no
 longer parses (rejected by the `AppUrl`/`AppKind` column decode), or a
@@ -64,16 +68,16 @@ Three invariants let handlers avoid re-reading and re-validating around the
 store:
 
 1. **In-transaction read-back.** Every create / replace re-reads the hydrated
-   `App` _inside the same transaction that wrote it_ and returns it. So a
-   handler's response is exactly the `GET /apps` projection with no second read,
-   and cannot drift from stored state.
+   `(registration, configuration)` pair _inside the same transaction that wrote
+   it_ and returns it. So a handler's response is exactly the per-kind detail
+   projection with no second read, and cannot drift from stored state.
 2. **In-transaction allocation.** Everything the store allocates — the display
    `position` (`MAX(position) + 1`), the self-hosted slug, the loopback port — is
    computed _inside_ the writing transaction, so two overlapping creates can't
    read the same value and collide. `UNIQUE(position)` backstops it regardless.
-3. **Single writer of order + enabled.** `position` and `enabled` are written
-   only by `replace_home_screen` (`PUT /home-screen`); a content replace never
-   touches `enabled`. It validates the body is an exact permutation of the live
+3. **Single writer of order + placement.** `position` and `on_homescreen` are
+   written only by `replace_placements` (`PUT /home-screen`); a content replace
+   never touches `on_homescreen`. It validates the body is an exact permutation of the live
    registry _in the same transaction_ as the renumber (closing the
    check-then-write race), and moves every row to a disjoint negative range
    before renumbering so the per-row updates never transiently violate
@@ -87,7 +91,7 @@ longer be expressed as a `409`), a seeded self-hosted app is `409`, before any
 field is validated. `delete`'s kind dispatch is split across the handler because
 it interleaves filesystem teardown (stop the listener, remove files) around the
 store delete. The store's SQL only guards its own invariants (e.g. a cloud content
-replace updates `cloud_apps` by id, so a non-cloud id matches no row and is a
+replace updates `cloud_app_configurations` by id, so a non-cloud id matches no row and is a
 no-op).
 
 ## The self-hosted upload pipeline
@@ -181,7 +185,7 @@ records the SMART launch path
 nothing and is served from its bare root (where `/` resolves to `index.html`).
 The stored path is one of the same origin-independent templates the cloud `url`
 uses — `{origin}` / `{launch}` are substituted per request by
-`SelfHostedApp::render_launch`, `{origin}` resolving to the served FHIR origin
+`SelfHostedAppConfiguration::render_launch`, `{origin}` resolving to the served FHIR origin
 while the path hangs off the app's own origin. See the [Apps
 Explanation](./Explanation.md) for the template model and the
 [Origins Explanation](../Origins/Explanation.md) for subdomain dispatch.

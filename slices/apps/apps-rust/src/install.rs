@@ -161,7 +161,7 @@ fn extract_zip_bundle_with_cap(
 
 /// The launch path recorded for a bundle that ships a `launch.html` — a SMART
 /// launcher. Carries the same `{origin}` / `{launch}` placeholders the cloud
-/// templates use; [`SelfHostedApp::render_launch`](crate::domain::SelfHostedApp::render_launch)
+/// templates use; [`SelfHostedAppConfiguration::render_launch`](crate::domain::SelfHostedAppConfiguration::render_launch)
 /// substitutes them per request (`{origin}` → the served FHIR origin).
 const LAUNCH_HTML_PATH: &str = "/launch.html?launch={launch}&iss={origin}/fhir-r4";
 

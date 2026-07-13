@@ -28,7 +28,7 @@ use shared_structures_server_rust::{ProxyTable, ServerError, StaticHostJob, Stat
 use tower_http::cors::CorsLayer;
 use url::Url;
 
-use crate::domain::SelfHostedApp;
+use crate::domain::SelfHostedAppConfiguration;
 
 /// Orchestrates the self-hosted apps' loopback listeners and reverse-proxy
 /// registrations. Constructed once by the host (held in scope for the process
@@ -81,8 +81,8 @@ impl SelfHostedAppsService {
         &self.apps_dir
     }
 
-    /// Bring the app `id` online from its self-hosted payload: serve it on its
-    /// loopback port and register it for subdomain reverse-proxy.
+    /// Bring the app `id` online from its self-hosted configuration: serve it on
+    /// its loopback port and register it for subdomain reverse-proxy.
     ///
     /// A bind failure (the port is already taken) is logged and tolerated — the
     /// proxy registration still happens, so a forwarded (relayed) request routes
@@ -92,10 +92,14 @@ impl SelfHostedAppsService {
     /// # Errors
     ///
     /// [`ServerError::LockPoisoned`] if a shared lock was poisoned.
-    pub async fn start(&self, id: &str, app: &SelfHostedApp) -> Result<(), ServerError> {
+    pub async fn start(
+        &self,
+        id: &str,
+        config: &SelfHostedAppConfiguration,
+    ) -> Result<(), ServerError> {
         let service = self_hosted_apps_rust::setup_self_hosted_app(
             id,
-            self.apps_dir.join(&app.content_folder),
+            self.apps_dir.join(&config.content_folder),
             self.template_context.clone(),
         )
         .layer(CorsLayer::very_permissive());
@@ -103,7 +107,7 @@ impl SelfHostedAppsService {
             .static_hosts
             .start(StaticHostJob {
                 id: id.to_owned(),
-                port: app.port,
+                port: config.port,
                 service,
             })
             .await
@@ -121,7 +125,8 @@ impl SelfHostedAppsService {
                 ServerError::LockPoisoned { .. } => return Err(error),
             }
         }
-        self.proxy_table.register(app.subdomain.clone(), app.port)?;
+        self.proxy_table
+            .register(config.subdomain.clone(), config.port)?;
         Ok(())
     }
 
@@ -255,18 +260,7 @@ mod tests {
                 public_host: "demo.example.com".to_owned(),
             }),
         );
-        let app = SelfHostedApp {
-            registration: crate::domain::AppRegistration {
-                id: "patient-browser".to_owned(),
-                kind: crate::domain::AppKind::SelfHosted,
-                position: 0,
-                enabled: true,
-                name: "Patient Browser".to_owned(),
-                subtitle: None,
-                local_only: true,
-                client_id: None,
-                requires_tunnel: false,
-            },
+        let config = SelfHostedAppConfiguration {
             port,
             content_folder: "patient-browser".to_owned(),
             subdomain: "patient-browser".to_owned(),
@@ -274,7 +268,7 @@ mod tests {
             launch_path: None,
         };
 
-        service.start("patient-browser", &app).await.unwrap();
+        service.start("patient-browser", &config).await.unwrap();
 
         // Forwarded subdomain reverse-proxies to the served content — proves the
         // loopback listener is up (the proxy forwards to it) AND the proxy table
@@ -326,16 +320,13 @@ mod tests {
             })
             .unwrap()
             .expect("inserted");
-        let mut app = inserted
-            .as_self_hosted()
-            .expect("self-hosted payload")
-            .clone();
+        let (registration, mut config) = inserted;
         // Bind an OS-assigned free port rather than the store's deterministic
         // 8082 — this test asserts *real serving*, so it must not race any other
         // test (here or in the handler suite) that also binds 8082.
-        app.port = free_port().await;
+        config.port = free_port().await;
         // Files land under `<apps_dir>/<content_folder>/index.html`.
-        let dir = temp_apps_dir(&app.content_folder, "<h1>UPLOADED</h1>");
+        let dir = temp_apps_dir(&config.content_folder, "<h1>UPLOADED</h1>");
 
         let table = ProxyTable::new();
         let service = SelfHostedAppsService::new(
@@ -346,12 +337,12 @@ mod tests {
                 public_host: "demo.example.com".to_owned(),
             }),
         );
-        service.start(inserted.id(), &app).await.unwrap();
+        service.start(&registration.id, &config).await.unwrap();
 
         let res = proxy_router(table.clone())
             .oneshot(forwarded_request(&format!(
                 "{}.demo.example.com",
-                app.subdomain
+                config.subdomain
             )))
             .await
             .unwrap();

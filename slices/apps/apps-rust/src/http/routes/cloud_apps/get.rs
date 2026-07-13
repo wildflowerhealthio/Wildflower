@@ -8,9 +8,10 @@ use std::sync::Arc;
 use axum::extract::{Path, State};
 use axum::Json;
 
-use crate::domain::{actions, AppError, CloudAppDetail};
+use crate::domain::{actions, AppsError};
 use crate::http::errors::AppNotFoundBody;
 use crate::http::state::AppsState;
+use crate::http::wire_representations::CloudAppDetail;
 
 /// `GET /cloud-apps/{id}` — the cloud editor detail. Owner-gated by the host.
 #[utoipa::path(
@@ -26,7 +27,7 @@ use crate::http::state::AppsState;
 pub(crate) async fn handle_get_cloud_app(
     State(state): State<Arc<AppsState>>,
     Path(id): Path<String>,
-) -> Result<Json<CloudAppDetail>, AppError> {
-    let app = actions::get_cloud_app(&state.store, &id)?;
-    Ok(Json(CloudAppDetail::from(&app)))
+) -> Result<Json<CloudAppDetail>, AppsError> {
+    let (registration, config) = actions::get_cloud_app(&state.store, &id)?;
+    Ok(Json(CloudAppDetail::from((&registration, &config))))
 }

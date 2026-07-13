@@ -28,8 +28,8 @@ const toItem = (app: AppRegistration): ItemListItem => ({
 })
 
 const AppsListBody = ({ apps }: AppsListBodyProps): JSX.Element => {
-  const onHomeScreen = apps.filter((app) => app.enabled)
-  const hidden = apps.filter((app) => !app.enabled)
+  const onHomeScreen = apps.filter((app) => app.onHomescreen)
+  const hidden = apps.filter((app) => !app.onHomescreen)
   return (
     <>
       <PageHeader
