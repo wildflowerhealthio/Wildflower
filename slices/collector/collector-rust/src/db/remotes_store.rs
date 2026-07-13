@@ -7,7 +7,7 @@
 
 use anyhow::Context;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
-use persistence_rust::DieselPool;
+use persistence_rust::{DieselPool, PooledDieselConnection};
 
 use crate::db::remotes;
 use crate::domain::{Remote, RemoteError, RemotesStore};
@@ -74,30 +74,35 @@ impl SqliteRemotesStore {
         Self::new(persistence_rust::open_in_memory_pool()?)
     }
 
-    /// The pool the sibling query module checks connections out of.
-    fn pool(&self) -> &DieselPool {
-        &self.pool
+    /// Check a connection out of the pool, mapping a checkout failure to the
+    /// port's infrastructure error. Each query in [`crate::db::remotes`] runs on
+    /// one of these, checked out per call — diesel's connection API is `&mut`,
+    /// so the store hands out a fresh connection rather than sharing one.
+    fn connection(&self) -> Result<PooledDieselConnection, RemoteError> {
+        self.pool
+            .get()
+            .map_err(|e| RemoteError::infrastructure("failed to check out a connection", e))
     }
 }
 
-/// The `SQLite` implementation of the port: each method is a thin delegation to
-/// the matching query body in [`crate::db::remotes`], handing it the pool to
-/// check a connection out of. The bodies live there so this file stays the
-/// migration + pool handle, and the query SQL stays next to the row type it
-/// maps. Every method returns the port's PRIMITIVE shape — absence as `None`,
-/// insert/delete outcome as `bool` — leaving the `NotFound`/`AlreadyExists`
-/// semantics to [`crate::domain::actions`].
+/// The `SQLite` implementation of the port: each method checks a connection out
+/// of the pool (via [`connection`](Self::connection)) and hands it to the
+/// matching query body in [`crate::db::remotes`]. The bodies live there so this
+/// file stays the migration + pool handle, and the query SQL stays next to the
+/// row type it maps. Every method returns the port's PRIMITIVE shape — absence
+/// as `None`, insert/delete outcome as `bool` — leaving the
+/// `NotFound`/`AlreadyExists` semantics to [`crate::domain::actions`].
 impl RemotesStore for SqliteRemotesStore {
     fn list(&self) -> Result<Vec<Remote>, RemoteError> {
-        remotes::list(self.pool())
+        remotes::list(&mut self.connection()?)
     }
 
     fn get(&self, id: &str) -> Result<Option<Remote>, RemoteError> {
-        remotes::get(self.pool(), id)
+        remotes::get(&mut self.connection()?, id)
     }
 
     fn insert(&self, remote: &Remote) -> Result<bool, RemoteError> {
-        remotes::insert(self.pool(), remote)
+        remotes::insert(&mut self.connection()?, remote)
     }
 
     fn update(
@@ -107,11 +112,11 @@ impl RemotesStore for SqliteRemotesStore {
         tag: &str,
         config: &serde_json::Value,
     ) -> Result<Option<Remote>, RemoteError> {
-        remotes::update(self.pool(), id, name, tag, config)
+        remotes::update(&mut self.connection()?, id, name, tag, config)
     }
 
     fn delete(&self, id: &str) -> Result<bool, RemoteError> {
-        remotes::delete(self.pool(), id)
+        remotes::delete(&mut self.connection()?, id)
     }
 }
 
