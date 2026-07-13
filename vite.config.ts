@@ -13,7 +13,7 @@ export default defineConfig({
     '*': 'vp check --fix',
     // Markdown lint (mirrors the lint-markdown workflow).
     '*.md': 'vp run lint:docs',
-    // Rust fmt + clippy, shared with ci-rust.yml / ci-rust-tauri.yml. fmt is
+    // Rust fmt + clippy, shared with ci-rust.yml. fmt is
     // whole-workspace (compile-free); clippy is scoped to the crates changed vs
     // origin/main plus their dependents, so it stays light locally while CI
     // still runs the full --workspace. Self-skips when the toolchain (or the

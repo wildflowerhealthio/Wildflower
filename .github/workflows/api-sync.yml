@@ -50,9 +50,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Set up Rust toolchain
-        # Share the `rust-workspace-excl-tauri` cache with ci-rust.yml: this job
-        # compiles the same workspace set (everything except the tauri crates),
-        # so the same compiled deps warm both.
+        # Dedicated excl-tauri cache: this job compiles everything except the
+        # tauri crates, so it keeps its own key rather than reusing ci-rust.yml's
+        # (which now compiles the full workspace incl. tauri under
+        # `rust-workspace-all`).
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           cache-shared-key: rust-workspace-excl-tauri
@@ -63,8 +64,8 @@ jobs:
         # wildflower-tauri, browser-sniffer-tauri-rust,
         # shared-structures-tauri-rust, and tauri-plugin-native-webview are
         # excluded — all pull in `tauri = "2"` which needs GTK/webkit system
-        # libs to build (see ci-rust-tauri.yml). None owns a documented
-        # OpenAPI surface.
+        # libs to build (ci-rust.yml installs those and compiles them there).
+        # None owns a documented OpenAPI surface.
         run: cargo test --workspace --exclude wildflower-tauri --exclude browser-sniffer-tauri-rust --exclude shared-structures-tauri-rust --exclude tauri-plugin-native-webview --all-features openapi_spec_snapshot_is_up_to_date
 
   ts-drift:
