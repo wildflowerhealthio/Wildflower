@@ -28,7 +28,11 @@ use tokio::sync::watch;
 use tokio::time::{interval, MissedTickBehavior};
 
 pub use config::GatekeeperConfig;
-pub use db::GatekeeperStore;
+pub use db::SqliteGatekeeperStore;
+// The persistence port trait, re-exported so out-of-crate callers (e.g. the
+// integration test) can bring the store methods into scope on the concrete
+// `SqliteGatekeeperStore` adapter.
+pub use domain::GatekeeperStore;
 // Re-exported so the host can name the pool type at the `setup_gatekeeper`
 // call site without a direct diesel dependency; the canonical home is
 // persistence-rust (collector re-exports it the same way).
@@ -265,7 +269,7 @@ pub fn setup_gatekeeper(
 /// it logs and retries next tick; when every receiver has dropped (app
 /// shutdown) it stops.
 fn spawn_owner_token_reminter(
-    store: GatekeeperStore,
+    store: SqliteGatekeeperStore,
     granted_scopes: Vec<String>,
     first_party_client_id: String,
     sender: watch::Sender<Option<String>>,

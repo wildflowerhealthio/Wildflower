@@ -16,10 +16,14 @@ use chrono::{Duration, Utc};
 use persistence_rust::DieselPool;
 use thiserror::Error;
 
-use crate::db::GatekeeperStore;
+use crate::db::SqliteGatekeeperStore;
 use crate::domain::client::{AllowedGrantType, Client, ClientKind};
 use crate::domain::signing_key::SigningKey;
 use crate::domain::token::{mint_access_token, MintError, NewJwtArgs};
+// The persistence port trait — brought into scope so the store's methods
+// (`active_signing_key`, `insert_signing_key`, `upsert_client`, …) resolve on
+// the concrete `SqliteGatekeeperStore` this boot code holds directly.
+use crate::domain::GatekeeperStore as _;
 
 /// Wrap the host-owned connection `pool` in a gatekeeper store (applying
 /// migrations, which includes the SQL seed of the SMART sample-app clients)
@@ -34,8 +38,8 @@ pub fn open_and_seed_store(
     pool: DieselPool,
     granted_scopes: &[String],
     first_party_client_id: &str,
-) -> anyhow::Result<GatekeeperStore> {
-    let store = GatekeeperStore::new(pool).context("failed to open gatekeeper store")?;
+) -> anyhow::Result<SqliteGatekeeperStore> {
+    let store = SqliteGatekeeperStore::new(pool).context("failed to open gatekeeper store")?;
     ensure_some_active_signing_key(&store).context("failed to seed signing key")?;
     ensure_first_party_client(&store, granted_scopes, first_party_client_id)
         .context("failed to seed first-party client")?;
@@ -45,7 +49,7 @@ pub fn open_and_seed_store(
 /// Generate and insert an active signing key if the table is empty;
 /// otherwise leave the existing keys alone. Idempotent — safe to call on
 /// every boot.
-fn ensure_some_active_signing_key(store: &GatekeeperStore) -> anyhow::Result<()> {
+fn ensure_some_active_signing_key(store: &SqliteGatekeeperStore) -> anyhow::Result<()> {
     let existing = store.active_signing_key().context("read signing keys")?;
     if existing.is_some() {
         return Ok(());
@@ -66,7 +70,7 @@ fn ensure_some_active_signing_key(store: &GatekeeperStore) -> anyhow::Result<()>
 /// [`crate::default_first_party_client_id`]), correcting a store seeded by an
 /// older build (registration time and any admin disable are preserved).
 fn ensure_first_party_client(
-    store: &GatekeeperStore,
+    store: &SqliteGatekeeperStore,
     granted_scopes: &[String],
     first_party_client_id: &str,
 ) -> anyhow::Result<()> {
@@ -113,7 +117,7 @@ pub(crate) enum HostTokenError {
 /// (#256). The token carries the `wf_owner` marker (`is_host_owner: true`) so
 /// `require_auth` honours that audience only for it. See `docs/Origins/Explanation.md`.
 pub(crate) fn mint_host_owner_token(
-    store: &GatekeeperStore,
+    store: &SqliteGatekeeperStore,
     iss: &str,
     aud: &str,
     ttl: Duration,

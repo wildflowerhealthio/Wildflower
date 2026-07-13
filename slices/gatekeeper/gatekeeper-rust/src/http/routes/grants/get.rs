@@ -3,7 +3,7 @@ use axum::response::IntoResponse;
 use axum::routing::{get, MethodRouter};
 use axum::Json;
 
-use crate::domain::error::GatekeeperError;
+use crate::domain::actions;
 use crate::http::errors::HandlerError;
 use crate::http::state::AppState;
 
@@ -16,9 +16,6 @@ async fn handle_get_grant(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, HandlerError> {
-    let grant = state
-        .store
-        .grant_by_id(&id)?
-        .ok_or(GatekeeperError::GrantNotFound { id })?;
+    let grant = actions::get_grant(&state.store, &id)?;
     Ok(Json(grant))
 }

@@ -4,6 +4,7 @@ use axum::http::{header, HeaderMap};
 use axum::middleware::Next;
 use axum::response::Response;
 
+use crate::domain::actions;
 use crate::domain::token::{verify_jwt, VerifiedClaims, VerifyError, VerifyOptions};
 use crate::http::errors;
 use crate::http::served_base_url_for;
@@ -127,10 +128,7 @@ pub fn verify_auth_token_claims(
     origin: &str,
     token: &str,
 ) -> Result<VerifiedClaims, VerifyError> {
-    let keys = state
-        .store
-        .all_signing_keys()
-        .map_err(VerifyError::KeyStoreUnavailable)?;
+    let keys = actions::all_signing_keys(&state.store).map_err(VerifyError::KeyStoreUnavailable)?;
     let accepted = vec![
         format!("{origin}/fhir-r4"),
         origin.to_string(),

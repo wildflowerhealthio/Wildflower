@@ -3,14 +3,16 @@
 //! outcomes plus one opaque infrastructure variant. The HTTP layer
 //! ([`crate::http::errors`]) renders each to a status and wire body; nothing
 //! here knows about HTTP, and the store ([`crate::db`]) produces
-//! [`Backend`](GatekeeperError::Backend) without leaking its database error
-//! types up to the routes.
+//! [`Infrastructure`](GatekeeperError::Infrastructure) without leaking its
+//! database error types up to the routes. The semantic `*NotFound` outcomes are
+//! decided one layer up, in [`crate::domain::actions`], so both the `SQLite`
+//! adapter and the in-memory test fake speak only the primitive port contract.
 
 /// The ways a gatekeeper domain operation can fail. The `*NotFound` variants
 /// are semantic, client-facing outcomes that are part of the wire contract
 /// (each renders as a structured JSON 404 keyed by the resource's identifying
-/// field); [`Backend`](GatekeeperError::Backend) is an opaque infrastructure
-/// failure rendered as a logged, empty 500.
+/// field); [`Infrastructure`](GatekeeperError::Infrastructure) is an opaque
+/// infrastructure failure rendered as a logged, empty 500.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GatekeeperError {
     /// No pending, unexpired authorization-code consent has this id — the
@@ -28,16 +30,16 @@ pub enum GatekeeperError {
     /// mapping error) — opaque to clients: the HTTP layer logs `context` +
     /// `source` and answers an empty 500. The cause is captured as text so
     /// this type stays free of the store's database error types.
-    Backend {
+    Infrastructure {
         context: &'static str,
         source: String,
     },
 }
 
 // `Display`/`Error` are hand-written (not `thiserror`-derived) because the
-// `Backend` variant deliberately names its field `source` for symmetry with
-// collector's `RemoteError`, and `thiserror` would treat that `String` as the
-// structured error source (which it cannot be).
+// `Infrastructure` variant deliberately names its field `source` for symmetry
+// with collector's `RemoteError`, and `thiserror` would treat that `String` as
+// the structured error source (which it cannot be).
 impl std::fmt::Display for GatekeeperError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -51,7 +53,9 @@ impl std::fmt::Display for GatekeeperError {
             GatekeeperError::AuthorizationRequestNotFound { id } => {
                 write!(f, "no authorization request with id {id}")
             }
-            GatekeeperError::Backend { context, source } => write!(f, "{context}: {source}"),
+            GatekeeperError::Infrastructure { context, source } => {
+                write!(f, "{context}: {source}")
+            }
         }
     }
 }
@@ -60,12 +64,13 @@ impl std::error::Error for GatekeeperError {}
 
 impl GatekeeperError {
     /// Wrap an infrastructure failure (a store lock, query, or row-mapping
-    /// error) as an opaque [`Backend`](GatekeeperError::Backend), capturing
-    /// `context` and the cause's `Display` text. The store calls this so its
-    /// database error types never reach the HTTP layer.
+    /// error) as an opaque
+    /// [`Infrastructure`](GatekeeperError::Infrastructure), capturing `context`
+    /// and the cause's `Display` text. The store calls this so its database
+    /// error types never reach the HTTP layer.
     #[must_use]
-    pub fn backend(context: &'static str, source: impl std::fmt::Display) -> Self {
-        GatekeeperError::Backend {
+    pub fn infrastructure(context: &'static str, source: impl std::fmt::Display) -> Self {
+        GatekeeperError::Infrastructure {
             context,
             source: source.to_string(),
         }

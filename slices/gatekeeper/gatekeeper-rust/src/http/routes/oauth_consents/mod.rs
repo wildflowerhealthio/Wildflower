@@ -2,7 +2,7 @@
 //! authorization-code flow. One module per route (`get`, `approve`, `deny`),
 //! each exposing a `MethodRouter`; the wire DTOs live in
 //! [`crate::http::wire_representations`] and the pending-request loader in
-//! [`crate::domain::consent`]. `router()` is the only path table.
+//! [`crate::domain::actions`]. `router()` is the only path table.
 
 mod approve;
 mod deny;

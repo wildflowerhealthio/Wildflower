@@ -67,3 +67,24 @@ pub struct RefreshToken {
     /// single live token.
     pub consumed_at: Option<DateTime<Utc>>,
 }
+
+/// Outcome of attempting to consume a refresh token — the primitive shape the
+/// [`GatekeeperStore`](crate::domain::GatekeeperStore) port returns, with the
+/// theft-vs-miss decision left to the caller.
+///
+/// `#[must_use]`: ignoring a `Replayed` outcome would skip the family
+/// revocation that reuse detection depends on, so the result must always be
+/// inspected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[must_use]
+pub enum RefreshTokenConsumeOutcome {
+    /// The token was live and is now consumed. The caller can proceed with
+    /// issuing new credentials and a new refresh token.
+    Consumed,
+    /// The token was already consumed — this is a replay, and the caller must
+    /// reject the request and revoke the whole family.
+    Replayed,
+    /// No such token exists. The caller should treat this as a failed decode
+    /// rather than a replay, so no need to revoke the family.
+    NotFound,
+}

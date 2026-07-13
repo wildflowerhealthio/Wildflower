@@ -16,12 +16,14 @@ use super::token_request::TokenRequest;
 use crate::cookies;
 use crate::crypto_util::pkce::{compute_code_challenge, is_valid_code_verifier_length};
 use crate::crypto_util::random_token::{generate_refresh_token, token_storage_hash};
-use crate::db::RefreshTokenConsumeOutcome;
+use crate::domain::actions;
 use crate::domain::authorization_code::AuthorizationCode;
 use crate::domain::authorization_request::{GrantType, RequestStatus, DEVICE_CODE_POLL_INTERVAL};
 use crate::domain::client::AllowedGrantType;
 use crate::domain::oauth_error_code::OAuthErrorCode;
-use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily, REFRESH_TOKEN_FAMILY_TTL};
+use crate::domain::refresh_token::{
+    RefreshToken, RefreshTokenConsumeOutcome, RefreshTokenFamily, REFRESH_TOKEN_FAMILY_TTL,
+};
 use crate::http::state::AppState;
 use crate::http::wire_representations::{OAuthError, TokenResponse};
 use crate::http::ServedOrigin;
@@ -228,7 +230,7 @@ fn exchange_authorization_code(
     // Atomically read-and-consume the code: a concurrent redemption of the
     // same code can only succeed once, so any racer past this point sees
     // `Ok(None)` and is rejected before a token is minted (RFC 6749 §10.5).
-    let code_record = match state.store.redeem_authorization_code(grant.code)? {
+    let code_record = match actions::redeem_authorization_code(&state.store, grant.code)? {
         Some(record) => record,
         None => {
             // The code is gone — either already redeemed or never issued. If a
@@ -237,12 +239,11 @@ fn exchange_authorization_code(
             // §4.1.2.1): revoke that lineage. A code that never existed, or one
             // whose grant carried no `offline_access`, matches no family and
             // this is a no-op.
-            state
-                .store
-                .expire_refresh_token_families_for_authorization_code(
-                    &token_storage_hash(grant.code),
-                    Utc::now(),
-                )?;
+            actions::expire_refresh_token_families_for_authorization_code(
+                &state.store,
+                &token_storage_hash(grant.code),
+                Utc::now(),
+            )?;
             // Consolidated under the generic `invalid_grant` response (C13);
             // log the specific reason for operator debuggability.
             tracing::warn!(
@@ -325,9 +326,7 @@ fn validate_code_and_issue_token(
     // family can record which grant authorized it (write-only in v1). Token
     // exchange already holds both keys; a missing grant (e.g. revoked between
     // approval and redemption) just leaves `grant_id` NULL.
-    let grant_id = state
-        .store
-        .grant_by_client_and_redirect(client_id, redirect_uri)?
+    let grant_id = actions::grant_by_client_and_redirect(&state.store, client_id, redirect_uri)?
         .map(|grant| grant.id);
     let refresh_token = start_refresh_token_family_if_granted(
         state,
@@ -382,7 +381,7 @@ fn exchange_device_code(
             Some("Client may not use this grant type"),
         ));
     }
-    let request_record = match state.store.authorization_request_by_id(device_code)? {
+    let request_record = match actions::authorization_request_by_id(&state.store, device_code)? {
         Some(record)
             if record.grant_type == GrantType::DeviceCode
                 && record.client_id == presented_credentials.client_id =>
@@ -411,9 +410,7 @@ fn exchange_device_code(
                 return Err(TokenError::bad_request(OAuthErrorCode::SlowDown, None));
             }
         }
-        state
-            .store
-            .record_device_poll(&request_record.id, Utc::now())?;
+        actions::record_device_poll(&state.store, &request_record.id, Utc::now())?;
     }
     ensure_device_request_approved(request_record.status)?;
     // Single-use per RFC 8628 §3.4. The status read above is advisory; this
@@ -421,10 +418,7 @@ fn exchange_device_code(
     // polls of the same approved request can't both mint — the loser sees
     // `Ok(false)` and is rejected before any token (or refresh family) is
     // issued.
-    if !state
-        .store
-        .consume_approved_authorization_request(&request_record.id)?
-    {
+    if !actions::consume_approved_authorization_request(&state.store, &request_record.id)? {
         tracing::warn!(
             client_id = %request_record.client_id,
             "device_code grant rejected: request already redeemed (lost the single-use race)"
@@ -443,10 +437,12 @@ fn exchange_device_code(
         .device_name
         .as_deref()
         .unwrap_or(client.name.as_str());
-    let grant_id = state
-        .store
-        .device_grant_by_client_and_device_name(&request_record.client_id, effective_device_name)?
-        .map(|grant| grant.id);
+    let grant_id = actions::device_grant_by_client_and_device_name(
+        &state.store,
+        &request_record.client_id,
+        effective_device_name,
+    )?
+    .map(|grant| grant.id);
     let refresh_token = start_refresh_token_family_if_granted(
         state,
         &request_record.client_id,
@@ -512,9 +508,7 @@ fn start_refresh_token_family_if_granted(
         issued_at: now,
         consumed_at: None,
     };
-    state
-        .store
-        .insert_refresh_token_family(&family, &first_token)?;
+    actions::insert_refresh_token_family(&state.store, &family, &first_token)?;
     Ok(Some(plaintext))
 }
 
@@ -539,7 +533,7 @@ fn exchange_refresh_token(
         ));
     }
     let hash = token_storage_hash(presented_refresh_token);
-    let Some((_, family)) = state.store.refresh_token_with_family_by_hash(&hash)? else {
+    let Some((_, family)) = actions::refresh_token_with_family_by_hash(&state.store, &hash)? else {
         tracing::warn!("refresh_token grant rejected: token not found");
         return Err(TokenError::bad_request(
             OAuthErrorCode::InvalidGrant,
@@ -597,7 +591,7 @@ fn exchange_refresh_token(
     // Consume the presented token and persist its successor in one
     // transaction, so a crash or error can't burn the presented token while
     // leaving the family with no live successor (a permanent lockout).
-    match state.store.rotate_refresh_token(&hash, &next, now)? {
+    match actions::rotate_refresh_token(&state.store, &hash, &next, now)? {
         RefreshTokenConsumeOutcome::Consumed => {}
         // A consumed token can only reappear if it leaked (or the client is
         // badly broken) — also where a concurrent redeemer of the same
@@ -609,9 +603,7 @@ fn exchange_refresh_token(
                 client_id = %family.client_id,
                 "refresh_token grant rejected: replay of a consumed token — revoking the whole family (possible theft)"
             );
-            state
-                .store
-                .expire_refresh_token_family(&family.family_id, now)?;
+            actions::expire_refresh_token_family(&state.store, &family.family_id, now)?;
             return Err(TokenError::bad_request(
                 OAuthErrorCode::InvalidGrant,
                 Some("Refresh token has been revoked"),

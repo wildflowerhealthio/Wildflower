@@ -6,8 +6,8 @@ use axum::Json;
 use chrono::Utc;
 
 use crate::crypto_util::random_token::generate_authorization_code;
+use crate::domain::actions::{self, load_pending_authorization_code_request, PendingCodeConsent};
 use crate::domain::authorization_code::{AuthorizationCode, AUTHORIZATION_CODE_TTL};
-use crate::domain::consent::{load_pending_authorization_code_request, PendingCodeConsent};
 use crate::domain::error::GatekeeperError;
 use crate::http::errors::HandlerError;
 use crate::http::routes::consent::deny_consent;
@@ -43,9 +43,7 @@ async fn handle_approve_oauth_consent(
         .iter()
         .map(String::as_str)
         .collect();
-    let client = state
-        .store
-        .client_by_id(&request.client_id)?
+    let client = actions::client_by_id(&state.store, &request.client_id)?
         // The request can't be approved against a client that no longer
         // exists — treat it as gone.
         .ok_or_else(|| GatekeeperError::OAuthConsentNotFound { id: id.clone() })?;
@@ -56,7 +54,8 @@ async fn handle_approve_oauth_consent(
         return deny_consent(&state, &id);
     }
 
-    let approved = state.store.approve_authorization_request(
+    let approved = actions::approve_authorization_request(
+        &state.store,
         &id,
         &granted_scopes,
         body.patient.as_deref(),
@@ -85,13 +84,14 @@ async fn handle_approve_oauth_consent(
         issued_at,
         expires_at: issued_at + AUTHORIZATION_CODE_TTL,
     };
-    state.store.issue_authorization_code(&authorization_code)?;
+    actions::issue_authorization_code(&state.store, &authorization_code)?;
 
     // The read-merge-write (scope union with any standing grant) lives in a
     // single store transaction, paired with a UNIQUE index on
     // (client_id, redirect_uri), so two concurrent approvals can't each insert
     // a duplicate grant that would then survive revocation.
-    state.store.upsert_grant(
+    actions::upsert_grant(
+        &state.store,
         &request.client_id,
         &redirect_uri,
         &granted_scopes,

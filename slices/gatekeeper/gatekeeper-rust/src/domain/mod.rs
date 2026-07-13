@@ -1,18 +1,23 @@
 //! The gatekeeper's domain vocabulary — pure types and business rules
 //! shared by every other layer. Nothing in here knows about axum or SQL —
-//! the [`consent`] loaders hold the store *handle* ([`crate::db`] owns the
-//! SQL behind it) and everything fails with the domain's own [`error`]
+//! the [`GatekeeperStore`] port abstracts persistence ([`crate::db`]'s
+//! `SqliteGatekeeperStore` owns the SQL behind it), the [`actions`] over that
+//! port hold the store-touching logic (the consent loaders and the `*NotFound`
+//! semantic mapping), and everything fails with the domain's own [`error`]
 //! vocabulary; persistence mappings live in [`crate::db`], transport in
 //! [`crate::http`].
+
+// The persistence port + the semantic actions over it — the seam the HTTP
+// layer calls instead of touching a concrete store. Mirrors collector's
+// `remotes_store` + `actions`.
+pub mod actions;
+pub mod gatekeeper_store;
 
 pub mod authorization_code;
 pub mod authorization_request;
 pub mod client;
-// The pending-consent loaders — HTTP-pure: they take the store, return domain
-// types, and fail with `GatekeeperError`; no axum or HTTP types.
-pub mod consent;
 // The domain's failure vocabulary (collector's `RemoteError` is the model):
-// semantic client-facing variants plus the opaque `Backend`.
+// semantic client-facing variants plus the opaque `Infrastructure`.
 pub mod error;
 pub mod grant;
 // The closed set of OAuth error codes (RFC 6749 §5.2 + the redirect/device
@@ -26,3 +31,5 @@ pub mod page_paths;
 pub mod refresh_token;
 pub mod signing_key;
 pub mod token;
+
+pub use gatekeeper_store::GatekeeperStore;

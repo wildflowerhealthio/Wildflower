@@ -1,82 +1,82 @@
-//! `clients` queries — lookup and registration/seeding upserts for
-//! [`Client`].
+//! `clients` query bodies — the `pub(super)` free functions the
+//! [`SqliteGatekeeperStore`](super::SqliteGatekeeperStore) port impl delegates
+//! to for [`Client`] lookup and registration/seeding upserts, each running on a
+//! connection the store has already checked out of the pool. They return the
+//! port's primitive shapes and raise only
+//! [`GatekeeperError::Infrastructure`](crate::domain::error::GatekeeperError::Infrastructure)
+//! on a real db failure.
 
 use diesel::prelude::*;
+use persistence_rust::PooledDieselConnection;
 
 use crate::db::schema::clients;
-use crate::db::GatekeeperStore;
 use crate::domain::client::Client;
 use crate::domain::error::GatekeeperError;
 
-impl GatekeeperStore {
-    /// Look up a registered client by its `client_id`.
-    ///
-    /// # Errors
-    ///
-    /// [`GatekeeperError::Backend`] if the select query fails or a returned
-    /// row cannot be mapped to a [`Client`].
-    pub fn client_by_id(&self, client_id: &str) -> Result<Option<Client>, GatekeeperError> {
-        clients::table
-            .find(client_id)
-            .select(Client::as_select())
-            .first(&mut self.conn()?)
-            .optional()
-            .map_err(|e| GatekeeperError::backend("client_by_id failed", e))
-    }
+/// Look up a registered client by its `client_id`, or `None` when absent.
+pub(super) fn client_by_id(
+    conn: &mut PooledDieselConnection,
+    client_id: &str,
+) -> Result<Option<Client>, GatekeeperError> {
+    clients::table
+        .find(client_id)
+        .select(Client::as_select())
+        .first(conn)
+        .optional()
+        .map_err(|e| GatekeeperError::infrastructure("client_by_id failed", e))
+}
 
-    /// Persist a new OAuth client.
-    ///
-    /// # Errors
-    ///
-    /// [`GatekeeperError::Backend`] if the insert fails (for example a
-    /// unique-constraint violation on the `client_id`).
-    pub fn register_client(&self, client: &Client) -> Result<(), GatekeeperError> {
-        diesel::insert_into(clients::table)
-            // `Client`'s JSON list fields use `#[diesel(serialize_as)]`, which
-            // consumes the value — diesel generates no borrowed `Insertable`
-            // impl for the struct, so the insert takes a clone.
-            .values(client.clone())
-            .execute(&mut self.conn()?)
-            .map_err(|e| GatekeeperError::backend("register_client failed", e))?;
-        Ok(())
-    }
+/// Persist a new OAuth client.
+pub(super) fn register_client(
+    conn: &mut PooledDieselConnection,
+    client: &Client,
+) -> Result<(), GatekeeperError> {
+    diesel::insert_into(clients::table)
+        // `Client`'s JSON list fields use `#[diesel(serialize_as)]`, which
+        // consumes the value — diesel generates no borrowed `Insertable`
+        // impl for the struct, so the insert takes a clone.
+        .values(client.clone())
+        .execute(conn)
+        .map_err(|e| GatekeeperError::infrastructure("register_client failed", e))?;
+    Ok(())
+}
 
-    /// Insert a client, or update its policy fields if one with the same
-    /// `client_id` already exists. Used by first-boot seeding so a seeded
-    /// client's definition always matches the code, even on a store created by
-    /// an older build. Uses `ON CONFLICT … DO UPDATE`, so it never deletes the
-    /// row and preserves `registered_at` and `disabled_at` — an upgrade keeps
-    /// the original registration time and any admin disable rather than
-    /// resurrecting the client.
-    ///
-    /// # Errors
-    ///
-    /// [`GatekeeperError::Backend`] if the upsert fails.
-    pub fn upsert_client(&self, client: &Client) -> Result<(), GatekeeperError> {
-        use diesel::upsert::excluded;
-        diesel::insert_into(clients::table)
-            .values(client.clone())
-            .on_conflict(clients::client_id)
-            .do_update()
-            .set((
-                clients::name.eq(excluded(clients::name)),
-                clients::kind.eq(excluded(clients::kind)),
-                clients::redirect_uris.eq(excluded(clients::redirect_uris)),
-                clients::allowed_scopes.eq(excluded(clients::allowed_scopes)),
-                clients::allowed_grant_types.eq(excluded(clients::allowed_grant_types)),
-                clients::secret_hash.eq(excluded(clients::secret_hash)),
-            ))
-            .execute(&mut self.conn()?)
-            .map_err(|e| GatekeeperError::backend("upsert_client failed", e))?;
-        Ok(())
-    }
+/// Insert a client, or update its policy fields if one with the same
+/// `client_id` already exists. Used by first-boot seeding so a seeded
+/// client's definition always matches the code, even on a store created by
+/// an older build. Uses `ON CONFLICT … DO UPDATE`, so it never deletes the
+/// row and preserves `registered_at` and `disabled_at` — an upgrade keeps
+/// the original registration time and any admin disable rather than
+/// resurrecting the client.
+pub(super) fn upsert_client(
+    conn: &mut PooledDieselConnection,
+    client: &Client,
+) -> Result<(), GatekeeperError> {
+    use diesel::upsert::excluded;
+    diesel::insert_into(clients::table)
+        .values(client.clone())
+        .on_conflict(clients::client_id)
+        .do_update()
+        .set((
+            clients::name.eq(excluded(clients::name)),
+            clients::kind.eq(excluded(clients::kind)),
+            clients::redirect_uris.eq(excluded(clients::redirect_uris)),
+            clients::allowed_scopes.eq(excluded(clients::allowed_scopes)),
+            clients::allowed_grant_types.eq(excluded(clients::allowed_grant_types)),
+            clients::secret_hash.eq(excluded(clients::secret_hash)),
+        ))
+        .execute(conn)
+        .map_err(|e| GatekeeperError::infrastructure("upsert_client failed", e))?;
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::db::test_support::{arb_opt_timestamp, arb_timestamp, arb_url};
+    use crate::db::SqliteGatekeeperStore;
     use crate::domain::client::{AllowedGrantType, ClientKind};
+    use crate::domain::GatekeeperStore as _;
     use proptest::prelude::*;
 
     fn arb_client() -> impl Strategy<Value = Client> {
@@ -119,7 +119,7 @@ mod tests {
 
         #[test]
         fn register_and_fetch_round_trip(client in arb_client()) {
-            let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
+            let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
             store.register_client(&client).expect("register");
             let fetched = store
                 .client_by_id(&client.client_id)
@@ -131,7 +131,7 @@ mod tests {
 
     #[test]
     fn upsert_updates_policy_but_preserves_registration_and_disable() {
-        let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
         let registered_at = chrono::DateTime::from_timestamp(1_000, 0).unwrap();
         let disabled_at = chrono::DateTime::from_timestamp(1_500, 0).unwrap();
         let mut client = Client {
@@ -174,7 +174,7 @@ mod tests {
     /// row mapping, not silently).
     #[test]
     fn migration_seeds_the_sample_smart_clients() {
-        let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
         for client_id in [
             "growth_chart",
             "my_web_app",

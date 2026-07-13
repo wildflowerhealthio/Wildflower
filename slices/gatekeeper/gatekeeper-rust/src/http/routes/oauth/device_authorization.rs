@@ -13,6 +13,7 @@ use super::openapi::DeviceAuthorizationRequest;
 use super::token_request::TokenRequest;
 use crate::crypto_util::oauth_user_code::generate_oauth_user_code;
 use crate::crypto_util::random_token::generate_authorization_code;
+use crate::domain::actions;
 use crate::domain::authorization_request::{
     AuthorizationRequest, StartDeviceAuthorizationArgs, DEVICE_CODE_POLL_INTERVAL,
 };
@@ -151,7 +152,7 @@ fn device_authorization(
             .or_else(|| user_agent.and_then(device_name_from_user_agent)),
         ttl: DEVICE_AUTHORIZATION_TTL,
     });
-    state.store.insert_authorization_request(&request)?;
+    actions::insert_authorization_request(&state.store, &request)?;
     // A fresh pending row may have just become the head of the
     // device-consent queue (it always does, unless an older
     // non-expired pending request still leads). Republish so the
@@ -181,9 +182,7 @@ fn generate_unique_user_code(state: &AppState) -> anyhow::Result<String> {
             let mut rng = rand::rng();
             generate_oauth_user_code(&mut rng)
         };
-        if state
-            .store
-            .authorization_request_by_user_code(&candidate)
+        if actions::authorization_request_by_user_code(&state.store, &candidate)
             .context("authorization_request_by_user_code lookup failed")?
             .is_none()
         {

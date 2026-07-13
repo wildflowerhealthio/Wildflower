@@ -11,12 +11,12 @@
 
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
+use persistence_rust::PooledDieselConnection;
 use url::Url;
 use uuid::Uuid;
 
 use crate::db::columns::{JsonStrings, UrlText};
 use crate::db::schema::{authorization_code_grants, device_grants, grants};
-use crate::db::GatekeeperStore;
 use crate::domain::authorization_request::GrantType;
 use crate::domain::error::GatekeeperError;
 use crate::domain::grant::{AuthorizationCodeGrant, CumulativeConsent, DeviceGrant, Grant};
@@ -46,7 +46,10 @@ impl TryFrom<GrantViewRow> for Grant {
         // impossible — guarded anyway so a future view edit degrades to a
         // logged 500, never a panic.
         let missing_payload = || {
-            GatekeeperError::backend("grants view row missing its kind's payload column", &row.id)
+            GatekeeperError::infrastructure(
+                "grants view row missing its kind's payload column",
+                &row.id,
+            )
         };
         match row.grant_type {
             GrantType::AuthorizationCode => {
@@ -77,298 +80,259 @@ impl TryFrom<GrantViewRow> for Grant {
     }
 }
 
-impl GatekeeperStore {
-    /// All grants in `granted_at` order — backs the Owner UI's access index
-    /// (Approved Apps + Authorized Devices). Reads the cross-kind `grants`
-    /// view.
-    ///
-    /// # Errors
-    ///
-    /// [`GatekeeperError::Backend`] if the view read fails or a returned row
-    /// cannot be mapped to a [`Grant`].
-    pub fn all_grants(&self) -> Result<Vec<Grant>, GatekeeperError> {
-        grants::table
-            .order(grants::granted_at)
-            .load::<GrantViewRow>(&mut self.conn()?)
-            .map_err(|e| GatekeeperError::backend("all_grants failed", e))?
-            .into_iter()
-            .map(Grant::try_from)
-            .collect()
-    }
+/// All grants in `granted_at` order — backs the Owner UI's access index
+/// (Approved Apps + Authorized Devices). Reads the cross-kind `grants`
+/// view.
+pub(super) fn all_grants(conn: &mut PooledDieselConnection) -> Result<Vec<Grant>, GatekeeperError> {
+    grants::table
+        .order(grants::granted_at)
+        .load::<GrantViewRow>(conn)
+        .map_err(|e| GatekeeperError::infrastructure("all_grants failed", e))?
+        .into_iter()
+        .map(Grant::try_from)
+        .collect()
+}
 
-    /// Load a single grant by primary id — a cross-kind read off the `grants`
-    /// view (ids are UUIDs, unique across both concrete tables).
-    ///
-    /// # Errors
-    ///
-    /// [`GatekeeperError::Backend`] if the view read fails or the returned row
-    /// cannot be mapped to a [`Grant`].
-    pub fn grant_by_id(&self, id: &str) -> Result<Option<Grant>, GatekeeperError> {
-        grants::table
-            .find(id)
-            .first::<GrantViewRow>(&mut self.conn()?)
-            .optional()
-            .map_err(|e| GatekeeperError::backend("grant_by_id failed", e))?
-            .map(Grant::try_from)
-            .transpose()
-    }
+/// Load a single grant by primary id — a cross-kind read off the `grants`
+/// view (ids are UUIDs, unique across both concrete tables).
+pub(super) fn grant_by_id(
+    conn: &mut PooledDieselConnection,
+    id: &str,
+) -> Result<Option<Grant>, GatekeeperError> {
+    grants::table
+        .find(id)
+        .first::<GrantViewRow>(conn)
+        .optional()
+        .map_err(|e| GatekeeperError::infrastructure("grant_by_id failed", e))?
+        .map(Grant::try_from)
+        .transpose()
+}
 
-    /// Find an existing authorization-code grant for the (`client_id`,
-    /// `redirect_uri`) pair so `/authorize` can decide whether to short-circuit
-    /// the consent prompt. A single-kind lookup, so it hits the concrete table
-    /// and returns the concrete struct — a device grant for the same client
-    /// can never satisfy it.
-    ///
-    /// # Errors
-    ///
-    /// [`GatekeeperError::Backend`] if the select query fails or a returned
-    /// row cannot be mapped to an [`AuthorizationCodeGrant`].
-    pub fn grant_by_client_and_redirect(
-        &self,
-        client_id: &str,
-        redirect_uri: &Url,
-    ) -> Result<Option<AuthorizationCodeGrant>, GatekeeperError> {
-        authorization_code_grants::table
+/// Find an existing authorization-code grant for the (`client_id`,
+/// `redirect_uri`) pair so `/authorize` can decide whether to short-circuit
+/// the consent prompt. A single-kind lookup, so it hits the concrete table
+/// and returns the concrete struct — a device grant for the same client
+/// can never satisfy it.
+pub(super) fn grant_by_client_and_redirect(
+    conn: &mut PooledDieselConnection,
+    client_id: &str,
+    redirect_uri: &Url,
+) -> Result<Option<AuthorizationCodeGrant>, GatekeeperError> {
+    authorization_code_grants::table
+        .filter(authorization_code_grants::client_id.eq(client_id))
+        .filter(authorization_code_grants::redirect_uri.eq(redirect_uri.as_str()))
+        .select(AuthorizationCodeGrant::as_select())
+        .first(conn)
+        .optional()
+        .map_err(|e| GatekeeperError::infrastructure("grant_by_client_and_redirect failed", e))
+}
+
+/// Find an existing device grant for the (`client_id`, `device_name`) pair —
+/// the identity a re-pairing upserts against, and the lookup token exchange
+/// uses to stamp `refresh_token_families.grant_id`. Hits the concrete
+/// table.
+pub(super) fn device_grant_by_client_and_device_name(
+    conn: &mut PooledDieselConnection,
+    client_id: &str,
+    device_name: &str,
+) -> Result<Option<DeviceGrant>, GatekeeperError> {
+    device_grants::table
+        .filter(device_grants::client_id.eq(client_id))
+        .filter(device_grants::device_name.eq(device_name))
+        .select(DeviceGrant::as_select())
+        .first(conn)
+        .optional()
+        .map_err(|e| {
+            GatekeeperError::infrastructure("device_grant_by_client_and_device_name failed", e)
+        })
+}
+
+/// Insert a brand-new grant row into its kind's concrete table — a plain
+/// single-table insert (no parent, no transaction). Chiefly a test/seed
+/// helper; the flows use [`upsert_grant`] / [`upsert_device_grant`].
+pub(super) fn create_grant(
+    conn: &mut PooledDieselConnection,
+    grant: &Grant,
+) -> Result<(), GatekeeperError> {
+    let infrastructure = |e| GatekeeperError::infrastructure("create_grant failed", e);
+    match grant {
+        Grant::AuthorizationCode(grant) => {
+            diesel::insert_into(authorization_code_grants::table)
+                .values(grant.clone())
+                .execute(conn)
+                .map_err(infrastructure)?;
+        }
+        Grant::DeviceCode(grant) => {
+            diesel::insert_into(device_grants::table)
+                .values(grant.clone())
+                .execute(conn)
+                .map_err(infrastructure)?;
+        }
+    }
+    Ok(())
+}
+
+/// Insert or update the standing **authorization-code** grant for
+/// `(client_id, redirect_uri)` in a single transaction on its one table.
+/// Consent is cumulative ([`CumulativeConsent`]): an existing grant absorbs
+/// the re-approval (scope union, refreshed `granted_at`/`patient`). The
+/// read-merge-write under one transaction (paired with the table's
+/// `UNIQUE(client_id, redirect_uri)`) means two concurrent approvals can't
+/// both insert a duplicate grant.
+pub(super) fn upsert_grant(
+    conn: &mut PooledDieselConnection,
+    client_id: &str,
+    redirect_uri: &Url,
+    scopes: &[String],
+    patient: Option<&str>,
+    now: DateTime<Utc>,
+) -> Result<(), GatekeeperError> {
+    conn.transaction(|conn| {
+        let existing: Option<AuthorizationCodeGrant> = authorization_code_grants::table
             .filter(authorization_code_grants::client_id.eq(client_id))
             .filter(authorization_code_grants::redirect_uri.eq(redirect_uri.as_str()))
             .select(AuthorizationCodeGrant::as_select())
-            .first(&mut self.conn()?)
-            .optional()
-            .map_err(|e| GatekeeperError::backend("grant_by_client_and_redirect failed", e))
-    }
-
-    /// Find an existing device grant for the (`client_id`, `device_name`) pair —
-    /// the identity a re-pairing upserts against, and the lookup token exchange
-    /// uses to stamp `refresh_token_families.grant_id`. Hits the concrete
-    /// table.
-    ///
-    /// # Errors
-    ///
-    /// [`GatekeeperError::Backend`] if the select query fails or a returned
-    /// row cannot be mapped to a [`DeviceGrant`].
-    pub fn device_grant_by_client_and_device_name(
-        &self,
-        client_id: &str,
-        device_name: &str,
-    ) -> Result<Option<DeviceGrant>, GatekeeperError> {
-        device_grants::table
-            .filter(device_grants::client_id.eq(client_id))
-            .filter(device_grants::device_name.eq(device_name))
-            .select(DeviceGrant::as_select())
-            .first(&mut self.conn()?)
-            .optional()
-            .map_err(|e| {
-                GatekeeperError::backend("device_grant_by_client_and_device_name failed", e)
-            })
-    }
-
-    /// Insert a brand-new grant row into its kind's concrete table — a plain
-    /// single-table insert (no parent, no transaction). Chiefly a test/seed
-    /// helper; the flows use [`Self::upsert_grant`] /
-    /// [`Self::upsert_device_grant`].
-    ///
-    /// # Errors
-    ///
-    /// [`GatekeeperError::Backend`] if the insert fails (for example a
-    /// unique-constraint violation).
-    pub fn create_grant(&self, grant: &Grant) -> Result<(), GatekeeperError> {
-        let backend = |e| GatekeeperError::backend("create_grant failed", e);
-        let mut conn = self.conn()?;
-        match grant {
-            Grant::AuthorizationCode(grant) => {
-                diesel::insert_into(authorization_code_grants::table)
-                    .values(grant.clone())
-                    .execute(&mut conn)
-                    .map_err(backend)?;
+            .first(conn)
+            .optional()?;
+        match existing {
+            Some(mut grant) => {
+                grant.absorb_reapproval(scopes, patient, now);
+                diesel::update(authorization_code_grants::table.find(&grant.id))
+                    .set((
+                        authorization_code_grants::scopes.eq(JsonStrings(grant.scopes)),
+                        authorization_code_grants::granted_at.eq(grant.granted_at),
+                        authorization_code_grants::patient.eq(grant.patient),
+                    ))
+                    .execute(conn)?;
             }
-            Grant::DeviceCode(grant) => {
-                diesel::insert_into(device_grants::table)
-                    .values(grant.clone())
-                    .execute(&mut conn)
-                    .map_err(backend)?;
+            None => {
+                diesel::insert_into(authorization_code_grants::table)
+                    .values(AuthorizationCodeGrant {
+                        id: Uuid::new_v4().to_string(),
+                        client_id: client_id.to_owned(),
+                        scopes: scopes.to_vec(),
+                        granted_at: now,
+                        last_used_at: None,
+                        patient: patient.map(str::to_owned),
+                        redirect_uri: redirect_uri.clone(),
+                    })
+                    .execute(conn)?;
             }
         }
         Ok(())
-    }
+    })
+    .map_err(|e: diesel::result::Error| GatekeeperError::infrastructure("upsert_grant failed", e))
+}
 
-    /// Insert or update the standing **authorization-code** grant for
-    /// `(client_id, redirect_uri)` in a single transaction on its one table.
-    /// Consent is cumulative ([`CumulativeConsent`]): an existing grant absorbs
-    /// the re-approval (scope union, refreshed `granted_at`/`patient`). The
-    /// read-merge-write under one transaction (paired with the table's
-    /// `UNIQUE(client_id, redirect_uri)`) means two concurrent approvals can't
-    /// both insert a duplicate grant.
-    ///
-    /// # Errors
-    ///
-    /// [`GatekeeperError::Backend`] if the transaction, the read, or the
-    /// insert/update fails.
-    pub fn upsert_grant(
-        &self,
-        client_id: &str,
-        redirect_uri: &Url,
-        scopes: &[String],
-        patient: Option<&str>,
-        now: DateTime<Utc>,
-    ) -> Result<(), GatekeeperError> {
-        let mut conn = self.conn()?;
-        conn.transaction(|conn| {
-            let existing: Option<AuthorizationCodeGrant> = authorization_code_grants::table
-                .filter(authorization_code_grants::client_id.eq(client_id))
-                .filter(authorization_code_grants::redirect_uri.eq(redirect_uri.as_str()))
-                .select(AuthorizationCodeGrant::as_select())
-                .first(conn)
-                .optional()?;
-            match existing {
-                Some(mut grant) => {
-                    grant.absorb_reapproval(scopes, patient, now);
-                    diesel::update(authorization_code_grants::table.find(&grant.id))
-                        .set((
-                            authorization_code_grants::scopes.eq(JsonStrings(grant.scopes)),
-                            authorization_code_grants::granted_at.eq(grant.granted_at),
-                            authorization_code_grants::patient.eq(grant.patient),
-                        ))
-                        .execute(conn)?;
-                }
-                None => {
-                    diesel::insert_into(authorization_code_grants::table)
-                        .values(AuthorizationCodeGrant {
-                            id: Uuid::new_v4().to_string(),
-                            client_id: client_id.to_owned(),
-                            scopes: scopes.to_vec(),
-                            granted_at: now,
-                            last_used_at: None,
-                            patient: patient.map(str::to_owned),
-                            redirect_uri: redirect_uri.clone(),
-                        })
-                        .execute(conn)?;
-                }
+/// Insert or update the standing **device** grant for
+/// `(client_id, device_name)` in a single transaction on its one table,
+/// with the same cumulative-consent semantics as [`upsert_grant`] — this is
+/// what makes a device-code approval leave a durable record. Re-pairing the
+/// same device (same name) absorbs the re-approval onto the existing grant;
+/// the table's `UNIQUE(client_id, device_name)` keeps concurrent approvals
+/// race-safe.
+pub(super) fn upsert_device_grant(
+    conn: &mut PooledDieselConnection,
+    client_id: &str,
+    device_name: &str,
+    scopes: &[String],
+    patient: Option<&str>,
+    now: DateTime<Utc>,
+) -> Result<(), GatekeeperError> {
+    conn.transaction(|conn| {
+        let existing: Option<DeviceGrant> = device_grants::table
+            .filter(device_grants::client_id.eq(client_id))
+            .filter(device_grants::device_name.eq(device_name))
+            .select(DeviceGrant::as_select())
+            .first(conn)
+            .optional()?;
+        match existing {
+            Some(mut grant) => {
+                grant.absorb_reapproval(scopes, patient, now);
+                diesel::update(device_grants::table.find(&grant.id))
+                    .set((
+                        device_grants::scopes.eq(JsonStrings(grant.scopes)),
+                        device_grants::granted_at.eq(grant.granted_at),
+                        device_grants::patient.eq(grant.patient),
+                    ))
+                    .execute(conn)?;
             }
-            Ok(())
-        })
-        .map_err(|e: diesel::result::Error| GatekeeperError::backend("upsert_grant failed", e))
-    }
-
-    /// Insert or update the standing **device** grant for
-    /// `(client_id, device_name)` in a single transaction on its one table,
-    /// with the same cumulative-consent semantics as [`Self::upsert_grant`] —
-    /// this is what makes a device-code approval leave a durable record.
-    /// Re-pairing the same device (same name) absorbs the re-approval onto the
-    /// existing grant; the table's `UNIQUE(client_id, device_name)` keeps
-    /// concurrent approvals race-safe.
-    ///
-    /// # Errors
-    ///
-    /// [`GatekeeperError::Backend`] if the transaction, the read, or the
-    /// insert/update fails.
-    pub fn upsert_device_grant(
-        &self,
-        client_id: &str,
-        device_name: &str,
-        scopes: &[String],
-        patient: Option<&str>,
-        now: DateTime<Utc>,
-    ) -> Result<(), GatekeeperError> {
-        let mut conn = self.conn()?;
-        conn.transaction(|conn| {
-            let existing: Option<DeviceGrant> = device_grants::table
-                .filter(device_grants::client_id.eq(client_id))
-                .filter(device_grants::device_name.eq(device_name))
-                .select(DeviceGrant::as_select())
-                .first(conn)
-                .optional()?;
-            match existing {
-                Some(mut grant) => {
-                    grant.absorb_reapproval(scopes, patient, now);
-                    diesel::update(device_grants::table.find(&grant.id))
-                        .set((
-                            device_grants::scopes.eq(JsonStrings(grant.scopes)),
-                            device_grants::granted_at.eq(grant.granted_at),
-                            device_grants::patient.eq(grant.patient),
-                        ))
-                        .execute(conn)?;
-                }
-                None => {
-                    diesel::insert_into(device_grants::table)
-                        .values(DeviceGrant {
-                            id: Uuid::new_v4().to_string(),
-                            client_id: client_id.to_owned(),
-                            scopes: scopes.to_vec(),
-                            granted_at: now,
-                            last_used_at: None,
-                            patient: patient.map(str::to_owned),
-                            device_name: device_name.to_owned(),
-                        })
-                        .execute(conn)?;
-                }
+            None => {
+                diesel::insert_into(device_grants::table)
+                    .values(DeviceGrant {
+                        id: Uuid::new_v4().to_string(),
+                        client_id: client_id.to_owned(),
+                        scopes: scopes.to_vec(),
+                        granted_at: now,
+                        last_used_at: None,
+                        patient: patient.map(str::to_owned),
+                        device_name: device_name.to_owned(),
+                    })
+                    .execute(conn)?;
             }
-            Ok(())
-        })
-        .map_err(|e: diesel::result::Error| {
-            GatekeeperError::backend("upsert_device_grant failed", e)
-        })
-    }
+        }
+        Ok(())
+    })
+    .map_err(|e: diesel::result::Error| {
+        GatekeeperError::infrastructure("upsert_device_grant failed", e)
+    })
+}
 
-    /// Revoke a grant and expire the refresh-token families of its client in a
-    /// single transaction, returning `true` if the grant existed. Doing both in
-    /// one transaction means a partial failure can't leave the grant deleted
-    /// while `offline_access` refresh tokens stay live (up to 90 days) —
-    /// standing consent and standing credentials die together or not at all.
-    ///
-    /// The delete targets BOTH concrete tables rather than dispatching on the
-    /// kind: grant ids are UUIDs unique across the two tables, so exactly one
-    /// (or neither) delete affects a row, and the caller doesn't have to
-    /// thread the kind through. Families are expired in place (deadline pulled
-    /// to `now`, live tokens stamped consumed), not deleted, so the lineage
-    /// stays auditable.
-    ///
-    /// # Errors
-    ///
-    /// [`GatekeeperError::Backend`] if the transaction or any statement fails.
-    pub fn revoke_grant_and_expire_client_families(
-        &self,
-        grant_id: &str,
-        client_id: &str,
-        now: DateTime<Utc>,
-    ) -> Result<bool, GatekeeperError> {
-        use crate::db::schema::{refresh_token_families, refresh_tokens};
-        let mut conn = self.conn()?;
-        conn.transaction(|conn| {
-            let from_code_grants =
-                diesel::delete(authorization_code_grants::table.find(grant_id)).execute(conn)?;
-            let from_device_grants =
-                diesel::delete(device_grants::table.find(grant_id)).execute(conn)?;
-            diesel::update(
-                refresh_tokens::table
-                    .filter(refresh_tokens::consumed_at.is_null())
-                    .filter(
-                        refresh_tokens::family_id.eq_any(
-                            refresh_token_families::table
-                                .filter(refresh_token_families::client_id.eq(client_id))
-                                .select(refresh_token_families::family_id),
-                        ),
+/// Revoke a grant and expire the refresh-token families of its client in a
+/// single transaction, returning `true` if the grant existed. Doing both in
+/// one transaction means a partial failure can't leave the grant deleted
+/// while `offline_access` refresh tokens stay live (up to 90 days) —
+/// standing consent and standing credentials die together or not at all.
+///
+/// The delete targets BOTH concrete tables rather than dispatching on the
+/// kind: grant ids are UUIDs unique across the two tables, so exactly one
+/// (or neither) delete affects a row, and the caller doesn't have to
+/// thread the kind through. Families are expired in place (deadline pulled
+/// to `now`, live tokens stamped consumed), not deleted, so the lineage
+/// stays auditable.
+pub(super) fn revoke_grant_and_expire_client_families(
+    conn: &mut PooledDieselConnection,
+    grant_id: &str,
+    client_id: &str,
+    now: DateTime<Utc>,
+) -> Result<bool, GatekeeperError> {
+    use crate::db::schema::{refresh_token_families, refresh_tokens};
+    conn.transaction(|conn| {
+        let from_code_grants =
+            diesel::delete(authorization_code_grants::table.find(grant_id)).execute(conn)?;
+        let from_device_grants =
+            diesel::delete(device_grants::table.find(grant_id)).execute(conn)?;
+        diesel::update(
+            refresh_tokens::table
+                .filter(refresh_tokens::consumed_at.is_null())
+                .filter(
+                    refresh_tokens::family_id.eq_any(
+                        refresh_token_families::table
+                            .filter(refresh_token_families::client_id.eq(client_id))
+                            .select(refresh_token_families::family_id),
                     ),
-            )
-            .set(refresh_tokens::consumed_at.eq(now))
-            .execute(conn)?;
-            diesel::update(
-                refresh_token_families::table
-                    .filter(refresh_token_families::client_id.eq(client_id)),
-            )
-            .set(refresh_token_families::expires_at.eq(now))
-            .execute(conn)?;
-            Ok(from_code_grants + from_device_grants > 0)
-        })
-        .map_err(|e: diesel::result::Error| {
-            GatekeeperError::backend("revoke_grant_and_expire_client_families failed", e)
-        })
-    }
+                ),
+        )
+        .set(refresh_tokens::consumed_at.eq(now))
+        .execute(conn)?;
+        diesel::update(
+            refresh_token_families::table.filter(refresh_token_families::client_id.eq(client_id)),
+        )
+        .set(refresh_token_families::expires_at.eq(now))
+        .execute(conn)?;
+        Ok(from_code_grants + from_device_grants > 0)
+    })
+    .map_err(|e: diesel::result::Error| {
+        GatekeeperError::infrastructure("revoke_grant_and_expire_client_families failed", e)
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::db::test_support::{arb_opt_timestamp, arb_timestamp, arb_url};
+    use crate::db::SqliteGatekeeperStore;
+    use crate::domain::GatekeeperStore as _;
     use proptest::prelude::*;
 
     /// The columns both grant kinds share, in field order.
@@ -434,7 +398,7 @@ mod tests {
         /// grant off the `grants` view.
         #[test]
         fn create_and_fetch_round_trip(grant in arb_grant()) {
-            let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
+            let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
             store.create_grant(&grant).expect("create");
             let fetched = store
                 .grant_by_id(grant.id())
@@ -448,7 +412,7 @@ mod tests {
     /// scopes on re-approval (cumulative consent) rather than replacing them.
     #[test]
     fn upsert_grant_inserts_then_unions_scopes() {
-        let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
         let redirect = read("https://example.com/cb");
         let now = Utc::now();
 
@@ -495,7 +459,7 @@ mod tests {
     /// same `(client_id, device_name)` unions scopes onto the same row.
     #[test]
     fn upsert_device_grant_inserts_then_unions_scopes() {
-        let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
         let now = Utc::now();
 
         store
@@ -554,7 +518,7 @@ mod tests {
     /// same client coexist, and each lookup only sees its own kind.
     #[test]
     fn code_and_device_grants_coexist_per_client() {
-        let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
         let redirect = read("https://example.com/cb");
         let now = Utc::now();
         store
@@ -596,7 +560,7 @@ mod tests {
     fn revoke_removes_the_row_and_expires_the_clients_families() {
         use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 
-        let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
         store
             .upsert_device_grant(
                 "client-a",

@@ -10,6 +10,7 @@ use uuid::Uuid;
 
 use super::internal::{build_client_error_redirect_url, build_client_redirect_url};
 use crate::crypto_util::random_token::generate_authorization_code;
+use crate::domain::actions;
 use crate::domain::authorization_code::{AuthorizationCode, AUTHORIZATION_CODE_TTL};
 use crate::domain::authorization_request::{AuthorizationRequest, StartCodeAuthorizationArgs};
 use crate::domain::client::Client;
@@ -89,9 +90,9 @@ impl AuthorizeError {
 }
 
 /// Render a domain failure on the authorization endpoint: any store failure —
-/// expected only the opaque `Backend` variant here — becomes the logged,
+/// expected only the opaque `Infrastructure` variant here — becomes the logged,
 /// opaque 500. Lets the validation helpers `?` a `Result<_, GatekeeperError>`
-/// from the store.
+/// from a domain action.
 impl From<crate::domain::error::GatekeeperError> for AuthorizeError {
     fn from(error: crate::domain::error::GatekeeperError) -> Self {
         AuthorizeError::Internal(InternalError::new(
@@ -229,7 +230,7 @@ pub(super) async fn handle_authorize_request(
         pre_approved_scopes: grant_coverage.pre_approved_scopes,
         ttl: AUTHORIZATION_REQUEST_TTL,
     });
-    state.store.insert_authorization_request(&request)?;
+    actions::insert_authorization_request(&state.store, &request)?;
     // `insert_authorization_request` opportunistically prunes every
     // row past its `expires_at`, including pending device-code rows.
     // Republish the head so the popup doesn't keep advertising a
@@ -262,7 +263,7 @@ pub(super) async fn handle_authorize_request(
 /// every key's private material; the mint path fetches `active_signing_key()`
 /// anyway.
 fn ensure_active_signing_key(state: &AppState) -> Result<(), AuthorizeError> {
-    if state.store.has_active_signing_key()? {
+    if actions::has_active_signing_key(&state.store)? {
         Ok(())
     } else {
         Err(AuthorizeError::ServiceUnavailable)
@@ -276,9 +277,7 @@ fn validate_and_load_client(
     state: &AppState,
     params: &AuthorizeParams,
 ) -> Result<Client, AuthorizeError> {
-    let client = state
-        .store
-        .client_by_id(&params.client_id)?
+    let client = actions::client_by_id(&state.store, &params.client_id)?
         .ok_or(AuthorizeError::LocalPage(OAuthErrorKind::UnknownClient))?;
     if client.disabled_at.is_some() {
         return Err(AuthorizeError::LocalPage(OAuthErrorKind::DisabledClient));
@@ -405,9 +404,8 @@ fn resolve_existing_grant_coverage(
     parsed_redirect: &Url,
     requested_scopes: &[String],
 ) -> Result<ExistingGrantCoverage, AuthorizeError> {
-    let Some(existing_grant) = state
-        .store
-        .grant_by_client_and_redirect(&params.client_id, parsed_redirect)?
+    let Some(existing_grant) =
+        actions::grant_by_client_and_redirect(&state.store, &params.client_id, parsed_redirect)?
     else {
         return Ok(ExistingGrantCoverage::none());
     };
@@ -454,11 +452,14 @@ fn issue_code(
         issued_at,
         expires_at: issued_at + AUTHORIZATION_CODE_TTL,
     };
-    state.store.issue_authorization_code(&authorization_code)?;
-    let approved =
-        state
-            .store
-            .approve_authorization_request(request_id, requested_scopes, patient, None)?;
+    actions::issue_authorization_code(&state.store, &authorization_code)?;
+    let approved = actions::approve_authorization_request(
+        &state.store,
+        request_id,
+        requested_scopes,
+        patient,
+        None,
+    )?;
     if !approved {
         // The request was just inserted as pending in this same handler, so a
         // non-pending row here is an unexpected concurrent transition.

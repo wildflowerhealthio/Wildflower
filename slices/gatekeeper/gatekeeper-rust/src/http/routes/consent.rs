@@ -11,6 +11,7 @@
 
 use axum::Json;
 
+use crate::domain::actions;
 use crate::http::errors::HandlerError;
 use crate::http::state::AppState;
 use crate::http::wire_representations::ConsentResult;
@@ -29,7 +30,7 @@ pub(crate) fn deny_consent(
     state: &AppState,
     request_id: &str,
 ) -> Result<Json<ConsentResult>, HandlerError> {
-    state.store.deny_authorization_request(request_id)?;
+    actions::deny_authorization_request(&state.store, request_id)?;
     state.republish_active_device_user_code();
     Ok(Json(ConsentResult::Denied))
 }

@@ -2,9 +2,10 @@
 //! how failures render onto the wire, and nothing else. The failure
 //! *vocabulary* is domain ([`crate::domain::error::GatekeeperError`]); this
 //! file only renders it — a semantic status + JSON body for the `*NotFound`
-//! variants, a logged opaque 500 for a
-//! [`Backend`](GatekeeperError::Backend) failure — so a route bails with `?`
-//! and its `Result` becomes a response with no HTTP glue at the call site.
+//! variants, a logged opaque 500 for an
+//! [`Infrastructure`](GatekeeperError::Infrastructure) failure — so a route
+//! bails with `?` and its `Result` becomes a response with no HTTP glue at the
+//! call site.
 //!
 //! Also holds the canned response shapes the middleware produces directly
 //! (a logged 500 via [`internal_error`], a plain 401 via [`unauthorized`],
@@ -138,9 +139,9 @@ impl IntoResponse for HandlerError {
 /// Render the domain's failure vocabulary through the route-level
 /// [`HandlerError`]: each semantic `*NotFound` variant becomes its structured
 /// JSON 404 (keyed by the resource's identifying field), and an opaque
-/// [`Backend`](GatekeeperError::Backend) failure becomes the logged, empty
-/// 500. This `From` is what lets a handler `?` a
-/// `Result<_, GatekeeperError>` from the store or a domain loader.
+/// [`Infrastructure`](GatekeeperError::Infrastructure) failure becomes the
+/// logged, empty 500. This `From` is what lets a handler `?` a
+/// `Result<_, GatekeeperError>` from a domain action.
 impl From<GatekeeperError> for HandlerError {
     fn from(error: GatekeeperError) -> Self {
         match error {
@@ -156,7 +157,7 @@ impl From<GatekeeperError> for HandlerError {
             GatekeeperError::AuthorizationRequestNotFound { id } => {
                 HandlerError::not_found("AuthorizationRequestNotFound", "id", &id)
             }
-            GatekeeperError::Backend { context, source } => {
+            GatekeeperError::Infrastructure { context, source } => {
                 HandlerError::Internal(InternalError::new(context, source))
             }
         }
@@ -236,7 +237,7 @@ mod tests {
 
     #[test]
     fn key_store_unavailable_maps_to_500() {
-        let err = VerifyError::KeyStoreUnavailable(GatekeeperError::backend(
+        let err = VerifyError::KeyStoreUnavailable(GatekeeperError::infrastructure(
             "all_signing_keys failed",
             "query returned no rows",
         ));

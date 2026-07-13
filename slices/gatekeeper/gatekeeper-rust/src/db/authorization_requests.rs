@@ -9,10 +9,10 @@
 
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
+use persistence_rust::PooledDieselConnection;
 
 use crate::db::columns::{JsonStrings, UrlText};
 use crate::db::schema::authorization_requests;
-use crate::db::GatekeeperStore;
 use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
 use crate::domain::error::GatekeeperError;
 
@@ -90,257 +90,224 @@ impl From<&AuthorizationRequest> for Row {
     }
 }
 
-impl GatekeeperStore {
-    /// Load an authorization request by its primary id (the `device_code` for
-    /// device-flow, otherwise an internal UUID).
-    ///
-    /// # Errors
-    ///
-    /// [`GatekeeperError::Backend`] if the select query fails or a returned
-    /// row cannot be mapped to an [`AuthorizationRequest`].
-    pub fn authorization_request_by_id(
-        &self,
-        id: &str,
-    ) -> Result<Option<AuthorizationRequest>, GatekeeperError> {
-        authorization_requests::table
-            .find(id)
-            .select(Row::as_select())
-            .first(&mut self.conn()?)
-            .optional()
-            .map_err(|e| GatekeeperError::backend("authorization_request_by_id failed", e))
-            .map(|row| row.map(AuthorizationRequest::from))
-    }
+/// Load an authorization request by its primary id (the `device_code` for
+/// device-flow, otherwise an internal UUID), or `None` when absent.
+pub(super) fn authorization_request_by_id(
+    conn: &mut PooledDieselConnection,
+    id: &str,
+) -> Result<Option<AuthorizationRequest>, GatekeeperError> {
+    authorization_requests::table
+        .find(id)
+        .select(Row::as_select())
+        .first(conn)
+        .optional()
+        .map_err(|e| GatekeeperError::infrastructure("authorization_request_by_id failed", e))
+        .map(|row| row.map(AuthorizationRequest::from))
+}
 
-    /// Load an authorization request by the human-typed `user_code` that the
-    /// device-flow handed to the user.
-    ///
-    /// Returns *any* row with the code regardless of status — callers that need
-    /// to act on a live request (e.g. the consent UI) must use
-    /// [`Self::pending_authorization_request_by_user_code`] instead, since
-    /// `user_code` is not unique across terminal rows and a stale denied/expired
-    /// row could otherwise shadow a fresh pending one.
-    ///
-    /// # Errors
-    ///
-    /// [`GatekeeperError::Backend`] if the select query fails or a returned
-    /// row cannot be mapped to an [`AuthorizationRequest`].
-    pub fn authorization_request_by_user_code(
-        &self,
-        user_code: &str,
-    ) -> Result<Option<AuthorizationRequest>, GatekeeperError> {
-        authorization_requests::table
-            .filter(authorization_requests::user_code.eq(user_code))
-            .select(Row::as_select())
-            .first(&mut self.conn()?)
-            .optional()
-            .map_err(|e| GatekeeperError::backend("authorization_request_by_user_code failed", e))
-            .map(|row| row.map(AuthorizationRequest::from))
-    }
-
-    /// Load the *pending* authorization request for `user_code`. Filtering on
-    /// `status = 'pending'` ensures a stale denied/expired row sharing the same
-    /// `user_code` can't shadow a live request and 404 the consent flow.
-    ///
-    /// # Errors
-    ///
-    /// [`GatekeeperError::Backend`] if the select query fails or a returned
-    /// row cannot be mapped to an [`AuthorizationRequest`].
-    pub fn pending_authorization_request_by_user_code(
-        &self,
-        user_code: &str,
-    ) -> Result<Option<AuthorizationRequest>, GatekeeperError> {
-        authorization_requests::table
-            .filter(authorization_requests::user_code.eq(user_code))
-            .filter(authorization_requests::status.eq(RequestStatus::Pending))
-            .select(Row::as_select())
-            .first(&mut self.conn()?)
-            .optional()
-            .map_err(|e| {
-                GatekeeperError::backend("pending_authorization_request_by_user_code failed", e)
-            })
-            .map(|row| row.map(AuthorizationRequest::from))
-    }
-
-    /// Return the `user_code` of the oldest pending, non-expired device-code
-    /// authorization request — the head the host UI surfaces in its
-    /// non-dismissable consent modal. Returns `None` if no such request
-    /// exists.
-    ///
-    /// The host calls this after every transition that may change the head
-    /// (a fresh `/oauth/device_authorization` insert; `approve`/`deny` of a
-    /// device consent) and pushes the result through a `watch::Sender` to
-    /// the webview bridge. The query is intentionally minimal: only the
-    /// `user_code` rides the bridge — the SPA reuses the existing
-    /// `GET /access/devices/{userCode}` fetch path to hydrate the form,
-    /// so this slice doesn't grow a second DTO for the same row.
-    ///
-    /// The `user_code IS NOT NULL` guard exists because a malformed half-row
-    /// could otherwise float to the head with `user_code = NULL` and crash
-    /// the SPA's `string` decoder.
-    ///
-    /// # Errors
-    ///
-    /// [`GatekeeperError::Backend`] if the select query fails or the column
-    /// can't be decoded as `String`.
-    pub fn oldest_pending_device_user_code(&self) -> Result<Option<String>, GatekeeperError> {
-        authorization_requests::table
-            .filter(authorization_requests::grant_type.eq(GrantType::DeviceCode))
-            .filter(authorization_requests::status.eq(RequestStatus::Pending))
-            .filter(authorization_requests::user_code.is_not_null())
-            .filter(authorization_requests::expires_at.gt(Utc::now()))
-            .order(authorization_requests::requested_at.asc())
-            .select(authorization_requests::user_code)
-            .first::<Option<String>>(&mut self.conn()?)
-            .optional()
-            .map_err(|e| GatekeeperError::backend("oldest_pending_device_user_code failed", e))
-            .map(Option::flatten)
-    }
-
-    /// Persist a freshly-constructed `AuthorizationRequest`.
-    ///
-    /// # Errors
-    ///
-    /// [`GatekeeperError::Backend`] if the prune or insert fails (for example
-    /// a unique-constraint violation on the id).
-    pub fn insert_authorization_request(
-        &self,
-        request: &AuthorizationRequest,
-    ) -> Result<(), GatekeeperError> {
-        let backend = |e| GatekeeperError::backend("insert_authorization_request failed", e);
-        let mut conn = self.conn()?;
-        // Opportunistically prune expired requests before inserting, so a
-        // caller hitting /authorize or /device_authorization can't grow the
-        // table without bound — nothing else transitions abandoned rows out,
-        // and there is no background reaper. Best-effort cleanup keyed on the
-        // 5-minute request TTL; the prune runs first so it also clears a stale
-        // row that would otherwise collide on the pending-user_code index.
-        diesel::delete(
-            authorization_requests::table.filter(authorization_requests::expires_at.lt(Utc::now())),
-        )
-        .execute(&mut conn)
-        .map_err(backend)?;
-        diesel::insert_into(authorization_requests::table)
-            .values(Row::from(request))
-            .execute(&mut conn)
-            .map_err(backend)?;
-        Ok(())
-    }
-
-    /// Mark a *pending* `id` approved with `granted_scopes`, an optional patient
-    /// context, and an optional adjusted `device_name`, returning `true` iff a
-    /// pending row was actually transitioned.
-    ///
-    /// The `status = 'pending'` guard means a request already in a terminal
-    /// state (denied/expired) can't be flipped back to approved, and the
-    /// affected-row check lets the caller detect a no-op (e.g. the request was
-    /// consumed concurrently between its read and this update).
-    ///
-    /// `device_name` keeps COALESCE semantics: `Some` overwrites the stored
-    /// name (the settings approver adjusting it), `None` keeps whatever the
-    /// device supplied — so the auth-code consent path can pass `None` without
-    /// erasing a device name it never had.
-    ///
-    /// # Errors
-    ///
-    /// [`GatekeeperError::Backend`] if the update statement fails.
-    pub fn approve_authorization_request(
-        &self,
-        id: &str,
-        granted_scopes: &[String],
-        patient: Option<&str>,
-        device_name: Option<&str>,
-    ) -> Result<bool, GatekeeperError> {
-        let backend = |e| GatekeeperError::backend("approve_authorization_request failed", e);
-        let target = authorization_requests::table
-            .find(id)
-            .filter(authorization_requests::status.eq(RequestStatus::Pending));
-        let shared = (
-            authorization_requests::status.eq(RequestStatus::Approved),
-            authorization_requests::granted_scopes.eq(JsonStrings(granted_scopes.to_vec())),
-            authorization_requests::patient.eq(patient),
-        );
-        let mut conn = self.conn()?;
-        // COALESCE(:device_name, device_name) as two typed branches: only a
-        // present adjustment touches the stored name.
-        let affected = match device_name {
-            Some(name) => diesel::update(target)
-                .set((shared, authorization_requests::device_name.eq(name)))
-                .execute(&mut conn)
-                .map_err(backend)?,
-            None => diesel::update(target)
-                .set(shared)
-                .execute(&mut conn)
-                .map_err(backend)?,
-        };
-        Ok(affected == 1)
-    }
-
-    /// Mark `id` denied.
-    ///
-    /// # Errors
-    ///
-    /// [`GatekeeperError::Backend`] if the update statement fails.
-    pub fn deny_authorization_request(&self, id: &str) -> Result<(), GatekeeperError> {
-        diesel::update(authorization_requests::table.find(id))
-            .set(authorization_requests::status.eq(RequestStatus::Denied))
-            .execute(&mut self.conn()?)
-            .map_err(|e| GatekeeperError::backend("deny_authorization_request failed", e))?;
-        Ok(())
-    }
-
-    /// Atomically claim an `approved` request for single-use redemption,
-    /// transitioning `approved` → `expired` only if it is still `approved`, and
-    /// return `true` iff this call won the race.
-    ///
-    /// The `status = 'approved'` guard plus the affected-row check are what make
-    /// device-flow redemption single-use (RFC 8628 §3.4) even under concurrent
-    /// polls: `SQLite`'s write lock serialises the two `UPDATE`s, so exactly one
-    /// sees a row to change (`true`) and any racer sees zero rows (`false`) and
-    /// must be rejected before a token is minted.
-    ///
-    /// # Errors
-    ///
-    /// [`GatekeeperError::Backend`] if the update statement fails.
-    pub fn consume_approved_authorization_request(
-        &self,
-        id: &str,
-    ) -> Result<bool, GatekeeperError> {
-        let affected = diesel::update(
-            authorization_requests::table
-                .find(id)
-                .filter(authorization_requests::status.eq(RequestStatus::Approved)),
-        )
-        .set(authorization_requests::status.eq(RequestStatus::Expired))
-        .execute(&mut self.conn()?)
+/// Load an authorization request by the human-typed `user_code` that the
+/// device-flow handed to the user.
+///
+/// Returns *any* row with the code regardless of status — callers that need
+/// to act on a live request (e.g. the consent UI) must use
+/// [`pending_authorization_request_by_user_code`] instead, since `user_code` is
+/// not unique across terminal rows and a stale denied/expired row could
+/// otherwise shadow a fresh pending one.
+pub(super) fn authorization_request_by_user_code(
+    conn: &mut PooledDieselConnection,
+    user_code: &str,
+) -> Result<Option<AuthorizationRequest>, GatekeeperError> {
+    authorization_requests::table
+        .filter(authorization_requests::user_code.eq(user_code))
+        .select(Row::as_select())
+        .first(conn)
+        .optional()
         .map_err(|e| {
-            GatekeeperError::backend("consume_approved_authorization_request failed", e)
-        })?;
-        Ok(affected == 1)
-    }
+            GatekeeperError::infrastructure("authorization_request_by_user_code failed", e)
+        })
+        .map(|row| row.map(AuthorizationRequest::from))
+}
 
-    /// Stamp `last_polled_at` so the next device-flow poll can be slow-down
-    /// rate-limited.
-    ///
-    /// # Errors
-    ///
-    /// [`GatekeeperError::Backend`] if the update statement fails.
-    pub fn record_device_poll(
-        &self,
-        id: &str,
-        polled_at: DateTime<Utc>,
-    ) -> Result<(), GatekeeperError> {
-        diesel::update(authorization_requests::table.find(id))
-            .set(authorization_requests::last_polled_at.eq(polled_at))
-            .execute(&mut self.conn()?)
-            .map_err(|e| GatekeeperError::backend("record_device_poll failed", e))?;
-        Ok(())
-    }
+/// Load the *pending* authorization request for `user_code`. Filtering on
+/// `status = 'pending'` ensures a stale denied/expired row sharing the same
+/// `user_code` can't shadow a live request and 404 the consent flow.
+pub(super) fn pending_authorization_request_by_user_code(
+    conn: &mut PooledDieselConnection,
+    user_code: &str,
+) -> Result<Option<AuthorizationRequest>, GatekeeperError> {
+    authorization_requests::table
+        .filter(authorization_requests::user_code.eq(user_code))
+        .filter(authorization_requests::status.eq(RequestStatus::Pending))
+        .select(Row::as_select())
+        .first(conn)
+        .optional()
+        .map_err(|e| {
+            GatekeeperError::infrastructure("pending_authorization_request_by_user_code failed", e)
+        })
+        .map(|row| row.map(AuthorizationRequest::from))
+}
+
+/// Return the `user_code` of the oldest pending, non-expired device-code
+/// authorization request — the head the host UI surfaces in its
+/// non-dismissable consent modal. Returns `None` if no such request
+/// exists.
+///
+/// The host calls this after every transition that may change the head
+/// (a fresh `/oauth/device_authorization` insert; `approve`/`deny` of a
+/// device consent) and pushes the result through a `watch::Sender` to
+/// the webview bridge. The query is intentionally minimal: only the
+/// `user_code` rides the bridge — the SPA reuses the existing
+/// `GET /access/devices/{userCode}` fetch path to hydrate the form,
+/// so this slice doesn't grow a second DTO for the same row.
+///
+/// The `user_code IS NOT NULL` guard exists because a malformed half-row
+/// could otherwise float to the head with `user_code = NULL` and crash
+/// the SPA's `string` decoder.
+pub(super) fn oldest_pending_device_user_code(
+    conn: &mut PooledDieselConnection,
+) -> Result<Option<String>, GatekeeperError> {
+    authorization_requests::table
+        .filter(authorization_requests::grant_type.eq(GrantType::DeviceCode))
+        .filter(authorization_requests::status.eq(RequestStatus::Pending))
+        .filter(authorization_requests::user_code.is_not_null())
+        .filter(authorization_requests::expires_at.gt(Utc::now()))
+        .order(authorization_requests::requested_at.asc())
+        .select(authorization_requests::user_code)
+        .first::<Option<String>>(conn)
+        .optional()
+        .map_err(|e| GatekeeperError::infrastructure("oldest_pending_device_user_code failed", e))
+        .map(Option::flatten)
+}
+
+/// Persist a freshly-constructed `AuthorizationRequest`.
+pub(super) fn insert_authorization_request(
+    conn: &mut PooledDieselConnection,
+    request: &AuthorizationRequest,
+) -> Result<(), GatekeeperError> {
+    let infrastructure =
+        |e| GatekeeperError::infrastructure("insert_authorization_request failed", e);
+    // Opportunistically prune expired requests before inserting, so a
+    // caller hitting /authorize or /device_authorization can't grow the
+    // table without bound — nothing else transitions abandoned rows out,
+    // and there is no background reaper. Best-effort cleanup keyed on the
+    // 5-minute request TTL; the prune runs first so it also clears a stale
+    // row that would otherwise collide on the pending-user_code index. Both
+    // statements run on the one connection the store checked out.
+    diesel::delete(
+        authorization_requests::table.filter(authorization_requests::expires_at.lt(Utc::now())),
+    )
+    .execute(conn)
+    .map_err(infrastructure)?;
+    diesel::insert_into(authorization_requests::table)
+        .values(Row::from(request))
+        .execute(conn)
+        .map_err(infrastructure)?;
+    Ok(())
+}
+
+/// Mark a *pending* `id` approved with `granted_scopes`, an optional patient
+/// context, and an optional adjusted `device_name`, returning `true` iff a
+/// pending row was actually transitioned.
+///
+/// The `status = 'pending'` guard means a request already in a terminal
+/// state (denied/expired) can't be flipped back to approved, and the
+/// affected-row check lets the caller detect a no-op (e.g. the request was
+/// consumed concurrently between its read and this update).
+///
+/// `device_name` keeps COALESCE semantics: `Some` overwrites the stored
+/// name (the settings approver adjusting it), `None` keeps whatever the
+/// device supplied — so the auth-code consent path can pass `None` without
+/// erasing a device name it never had.
+pub(super) fn approve_authorization_request(
+    conn: &mut PooledDieselConnection,
+    id: &str,
+    granted_scopes: &[String],
+    patient: Option<&str>,
+    device_name: Option<&str>,
+) -> Result<bool, GatekeeperError> {
+    let infrastructure =
+        |e| GatekeeperError::infrastructure("approve_authorization_request failed", e);
+    let target = authorization_requests::table
+        .find(id)
+        .filter(authorization_requests::status.eq(RequestStatus::Pending));
+    let shared = (
+        authorization_requests::status.eq(RequestStatus::Approved),
+        authorization_requests::granted_scopes.eq(JsonStrings(granted_scopes.to_vec())),
+        authorization_requests::patient.eq(patient),
+    );
+    // COALESCE(:device_name, device_name) as two typed branches: only a
+    // present adjustment touches the stored name.
+    let affected = match device_name {
+        Some(name) => diesel::update(target)
+            .set((shared, authorization_requests::device_name.eq(name)))
+            .execute(conn)
+            .map_err(infrastructure)?,
+        None => diesel::update(target)
+            .set(shared)
+            .execute(conn)
+            .map_err(infrastructure)?,
+    };
+    Ok(affected == 1)
+}
+
+/// Mark `id` denied.
+pub(super) fn deny_authorization_request(
+    conn: &mut PooledDieselConnection,
+    id: &str,
+) -> Result<(), GatekeeperError> {
+    diesel::update(authorization_requests::table.find(id))
+        .set(authorization_requests::status.eq(RequestStatus::Denied))
+        .execute(conn)
+        .map_err(|e| GatekeeperError::infrastructure("deny_authorization_request failed", e))?;
+    Ok(())
+}
+
+/// Atomically claim an `approved` request for single-use redemption,
+/// transitioning `approved` → `expired` only if it is still `approved`, and
+/// return `true` iff this call won the race.
+///
+/// The `status = 'approved'` guard plus the affected-row check are what make
+/// device-flow redemption single-use (RFC 8628 §3.4) even under concurrent
+/// polls: `SQLite`'s write lock serialises the two `UPDATE`s, so exactly one
+/// sees a row to change (`true`) and any racer sees zero rows (`false`) and
+/// must be rejected before a token is minted.
+pub(super) fn consume_approved_authorization_request(
+    conn: &mut PooledDieselConnection,
+    id: &str,
+) -> Result<bool, GatekeeperError> {
+    let affected = diesel::update(
+        authorization_requests::table
+            .find(id)
+            .filter(authorization_requests::status.eq(RequestStatus::Approved)),
+    )
+    .set(authorization_requests::status.eq(RequestStatus::Expired))
+    .execute(conn)
+    .map_err(|e| {
+        GatekeeperError::infrastructure("consume_approved_authorization_request failed", e)
+    })?;
+    Ok(affected == 1)
+}
+
+/// Stamp `last_polled_at` so the next device-flow poll can be slow-down
+/// rate-limited.
+pub(super) fn record_device_poll(
+    conn: &mut PooledDieselConnection,
+    id: &str,
+    polled_at: DateTime<Utc>,
+) -> Result<(), GatekeeperError> {
+    diesel::update(authorization_requests::table.find(id))
+        .set(authorization_requests::last_polled_at.eq(polled_at))
+        .execute(conn)
+        .map_err(|e| GatekeeperError::infrastructure("record_device_poll failed", e))?;
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::db::test_support::{arb_opt_timestamp, arb_timestamp, arb_url};
+    use crate::db::SqliteGatekeeperStore;
+    use crate::domain::GatekeeperStore as _;
     use proptest::prelude::*;
 
     fn arb_scopes() -> impl Strategy<Value = Vec<String>> {
@@ -409,7 +376,7 @@ mod tests {
 
         #[test]
         fn insert_and_fetch_round_trip(request in arb_authorization_request()) {
-            let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
+            let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
             store
                 .insert_authorization_request(&request)
                 .expect("insert");
@@ -451,7 +418,7 @@ mod tests {
     // without bound (C16).
     #[test]
     fn insert_prunes_expired_authorization_requests() {
-        let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
         let mut expired = device_request_with_status("expired-1", RequestStatus::Pending);
         expired.expires_at = Utc::now() - chrono::Duration::minutes(1);
         store
@@ -480,7 +447,7 @@ mod tests {
     // atomicity that stops two concurrent polls both minting tokens.
     #[test]
     fn consume_approved_authorization_request_is_single_use() {
-        let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
         store
             .insert_authorization_request(&device_request_with_status(
                 "dev-1",
@@ -530,7 +497,7 @@ mod tests {
     // ignored — proves each filter pulls its weight.
     #[test]
     fn oldest_pending_device_user_code_picks_the_fifo_head() {
-        let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
 
         // Empty → None.
         assert_eq!(
@@ -614,7 +581,7 @@ mod tests {
     // up in that window either.
     #[test]
     fn oldest_pending_device_user_code_skips_expired_rows() {
-        let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
         let mut expired = device_request("dev-expired", "EXP-000", RequestStatus::Pending);
         expired.expires_at = Utc::now() - chrono::Duration::minutes(1);
         store
@@ -636,7 +603,7 @@ mod tests {
     // — the guard transitions only `approved` → `expired`.
     #[test]
     fn consume_approved_authorization_request_ignores_non_approved() {
-        let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
         store
             .insert_authorization_request(&device_request_with_status(
                 "dev-2",

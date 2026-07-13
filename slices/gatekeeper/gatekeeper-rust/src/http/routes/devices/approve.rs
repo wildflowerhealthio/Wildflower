@@ -5,7 +5,7 @@ use axum::routing::{post, MethodRouter};
 use axum::Json;
 use chrono::Utc;
 
-use crate::domain::consent::load_pending_device_request;
+use crate::domain::actions;
 use crate::domain::error::GatekeeperError;
 use crate::http::errors::HandlerError;
 use crate::http::routes::consent::deny_consent;
@@ -24,10 +24,8 @@ async fn handle_approve_device_consent(
     Path(user_code): Path<String>,
     Json(body): Json<ApproveBody>,
 ) -> Result<Json<ConsentResult>, HandlerError> {
-    let device_request = load_pending_device_request(&state.store, &user_code)?;
-    let client = state
-        .store
-        .client_by_id(&device_request.client_id)?
+    let device_request = actions::load_pending_device_request(&state.store, &user_code)?;
+    let client = actions::client_by_id(&state.store, &device_request.client_id)?
         // The request can't be approved against a client that no longer
         // exists — treat it as gone.
         .ok_or_else(|| GatekeeperError::DeviceConsentNotFound {
@@ -53,7 +51,8 @@ async fn handle_approve_device_consent(
         // `deny_consent` republishes the active head itself.
         return deny_consent(&state, &device_request.id);
     }
-    let approved = state.store.approve_authorization_request(
+    let approved = actions::approve_authorization_request(
+        &state.store,
         &device_request.id,
         &granted_scopes,
         body.patient.as_deref(),
@@ -75,7 +74,8 @@ async fn handle_approve_device_consent(
         .as_deref()
         .or(device_request.device_name.as_deref())
         .unwrap_or(client.name.as_str());
-    state.store.upsert_device_grant(
+    actions::upsert_device_grant(
+        &state.store,
         &device_request.client_id,
         effective_device_name,
         &granted_scopes,

@@ -4,35 +4,16 @@
 
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
+use persistence_rust::PooledDieselConnection;
 
 use crate::db::schema::{refresh_token_families, refresh_tokens};
-use crate::db::GatekeeperStore;
 use crate::domain::error::GatekeeperError;
-use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
+use crate::domain::refresh_token::{RefreshToken, RefreshTokenConsumeOutcome, RefreshTokenFamily};
 
-/// Outcome of attempting to consume a refresh token.
-///
-/// `#[must_use]`: ignoring a `Replayed` outcome would skip the family
-/// revocation that reuse detection depends on, so the result must always be
-/// inspected.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[must_use]
-pub enum RefreshTokenConsumeOutcome {
-    /// The token was live and is now consumed. The caller can proceed with
-    /// issuing new credentials and a new refresh token.
-    Consumed,
-    /// The token was already consumed — this is a replay, and the caller must
-    /// reject the request and revoke the whole family.
-    Replayed,
-    /// No such token exists. The caller should treat this as a failed decode
-    /// rather than a replay, so no need to revoke the family.
-    NotFound,
-}
-
-/// Consume-or-probe, shared by [`GatekeeperStore::consume_refresh_token`] and
-/// [`GatekeeperStore::rotate_refresh_token`]: stamp the live row consumed, and
-/// when no live row matched, probe whether the hash exists at all to tell a
-/// replay from a miss. Runs inside the caller's transaction.
+/// Consume-or-probe, shared by [`consume_refresh_token`] and
+/// [`rotate_refresh_token`]: stamp the live row consumed, and when no live row
+/// matched, probe whether the hash exists at all to tell a replay from a miss.
+/// Runs inside the caller's transaction.
 fn consume_within_transaction(
     conn: &mut diesel::sqlite::SqliteConnection,
     token_hash_value: &str,
@@ -59,275 +40,231 @@ fn consume_within_transaction(
     })
 }
 
-impl GatekeeperStore {
-    /// Persist a new refresh-token family alongside its first token — one
-    /// transaction, since a family with no token (or a token with no family)
-    /// is unrepresentable on purpose.
-    ///
-    /// # Errors
-    ///
-    /// [`GatekeeperError::Backend`] if the transaction or either insert fails.
-    pub fn insert_refresh_token_family(
-        &self,
-        family: &RefreshTokenFamily,
-        first_token: &RefreshToken,
-    ) -> Result<(), GatekeeperError> {
-        let mut conn = self.conn()?;
-        conn.transaction(|conn| {
-            diesel::insert_into(refresh_token_families::table)
-                .values(family.clone())
-                .execute(conn)?;
-            diesel::insert_into(refresh_tokens::table)
-                .values(first_token.clone())
-                .execute(conn)?;
-            Ok(())
-        })
-        .map_err(|e: diesel::result::Error| {
-            GatekeeperError::backend("insert_refresh_token_family failed", e)
-        })
-    }
-
-    /// Persist the successor token in an existing family's rotation.
-    ///
-    /// # Errors
-    ///
-    /// [`GatekeeperError::Backend`] if the insert fails (for example a
-    /// unique-constraint violation on the token hash, or a foreign-key
-    /// violation for an unknown family).
-    pub fn insert_refresh_token(&self, token: &RefreshToken) -> Result<(), GatekeeperError> {
+/// Persist a new refresh-token family alongside its first token — one
+/// transaction, since a family with no token (or a token with no family)
+/// is unrepresentable on purpose.
+pub(super) fn insert_refresh_token_family(
+    conn: &mut PooledDieselConnection,
+    family: &RefreshTokenFamily,
+    first_token: &RefreshToken,
+) -> Result<(), GatekeeperError> {
+    conn.transaction(|conn| {
+        diesel::insert_into(refresh_token_families::table)
+            .values(family.clone())
+            .execute(conn)?;
         diesel::insert_into(refresh_tokens::table)
-            .values(token.clone())
-            .execute(&mut self.conn()?)
-            .map_err(|e| GatekeeperError::backend("insert_refresh_token failed", e))?;
+            .values(first_token.clone())
+            .execute(conn)?;
         Ok(())
-    }
+    })
+    .map_err(|e: diesel::result::Error| {
+        GatekeeperError::infrastructure("insert_refresh_token_family failed", e)
+    })
+}
 
-    /// Resolve a presented token hash to its row plus the owning family in
-    /// one JOIN. Consumed tokens resolve too — the caller distinguishes a
-    /// live token from a replayed one via `consumed_at`.
-    ///
-    /// # Errors
-    ///
-    /// [`GatekeeperError::Backend`] if the join query fails or a returned row
-    /// cannot be mapped to a [`RefreshToken`]/[`RefreshTokenFamily`] pair.
-    pub fn refresh_token_with_family_by_hash(
-        &self,
-        token_hash: &str,
-    ) -> Result<Option<(RefreshToken, RefreshTokenFamily)>, GatekeeperError> {
-        refresh_tokens::table
-            .inner_join(refresh_token_families::table)
-            .filter(refresh_tokens::token_hash.eq(token_hash))
-            .select((RefreshToken::as_select(), RefreshTokenFamily::as_select()))
-            .first(&mut self.conn()?)
-            .optional()
-            .map_err(|e| GatekeeperError::backend("refresh_token_with_family_by_hash failed", e))
-    }
+/// Persist the successor token in an existing family's rotation.
+pub(super) fn insert_refresh_token(
+    conn: &mut PooledDieselConnection,
+    token: &RefreshToken,
+) -> Result<(), GatekeeperError> {
+    diesel::insert_into(refresh_tokens::table)
+        .values(token.clone())
+        .execute(conn)
+        .map_err(|e| GatekeeperError::infrastructure("insert_refresh_token failed", e))?;
+    Ok(())
+}
 
-    /// Look up a single token by hash — enough for callers that don't need
-    /// the family facts.
-    ///
-    /// # Errors
-    ///
-    /// [`GatekeeperError::Backend`] if the select query fails or a returned
-    /// row cannot be mapped to a [`RefreshToken`].
-    pub fn refresh_token_by_hash(
-        &self,
-        token_hash: &str,
-    ) -> Result<Option<RefreshToken>, GatekeeperError> {
-        refresh_tokens::table
-            .find(token_hash)
-            .select(RefreshToken::as_select())
-            .first(&mut self.conn()?)
-            .optional()
-            .map_err(|e| GatekeeperError::backend("refresh_token_by_hash failed", e))
-    }
+/// Resolve a presented token hash to its row plus the owning family in
+/// one JOIN. Consumed tokens resolve too — the caller distinguishes a
+/// live token from a replayed one via `consumed_at`.
+pub(super) fn refresh_token_with_family_by_hash(
+    conn: &mut PooledDieselConnection,
+    token_hash: &str,
+) -> Result<Option<(RefreshToken, RefreshTokenFamily)>, GatekeeperError> {
+    refresh_tokens::table
+        .inner_join(refresh_token_families::table)
+        .filter(refresh_tokens::token_hash.eq(token_hash))
+        .select((RefreshToken::as_select(), RefreshTokenFamily::as_select()))
+        .first(conn)
+        .optional()
+        .map_err(|e| GatekeeperError::infrastructure("refresh_token_with_family_by_hash failed", e))
+}
 
-    /// Atomically consume a live refresh token, reporting which
-    /// of the three [`RefreshTokenConsumeOutcome`] states the row was in. The
-    /// UPDATE's `consumed_at IS NULL` guard and the fallback existence probe
-    /// run in one transaction, so a concurrent redeemer of the same token
-    /// sees `Replayed`, never a torn state.
-    ///
-    /// # Errors
-    ///
-    /// [`GatekeeperError::Backend`] if the transaction, the update, or the
-    /// existence probe fails.
-    pub fn consume_refresh_token(
-        &self,
-        token_hash: &str,
-        now: DateTime<Utc>,
-    ) -> Result<RefreshTokenConsumeOutcome, GatekeeperError> {
-        let mut conn = self.conn()?;
-        conn.transaction(|conn| consume_within_transaction(conn, token_hash, now))
-            .map_err(|e: diesel::result::Error| {
-                GatekeeperError::backend("consume_refresh_token failed", e)
-            })
-    }
+/// Look up a single token by hash — enough for callers that don't need
+/// the family facts.
+pub(super) fn refresh_token_by_hash(
+    conn: &mut PooledDieselConnection,
+    token_hash: &str,
+) -> Result<Option<RefreshToken>, GatekeeperError> {
+    refresh_tokens::table
+        .find(token_hash)
+        .select(RefreshToken::as_select())
+        .first(conn)
+        .optional()
+        .map_err(|e| GatekeeperError::infrastructure("refresh_token_by_hash failed", e))
+}
 
-    /// Atomically rotate a refresh token: consume the presented token and, only
-    /// if that succeeded, insert its successor — both in one transaction.
-    /// Doing the consume and the successor-insert together means a crash or
-    /// error can't burn the presented token while leaving the family with no
-    /// live successor (a permanent lockout). The three-state outcome mirrors
-    /// [`Self::consume_refresh_token`]: `Consumed` means the successor is now
-    /// the family's live token; `Replayed`/`NotFound` leave the family
-    /// untouched (no successor inserted) for the caller to handle.
-    ///
-    /// # Errors
-    ///
-    /// [`GatekeeperError::Backend`] if the transaction, the update, the
-    /// existence probe, or the successor insert fails.
-    pub fn rotate_refresh_token(
-        &self,
-        presented_hash: &str,
-        successor: &RefreshToken,
-        now: DateTime<Utc>,
-    ) -> Result<RefreshTokenConsumeOutcome, GatekeeperError> {
-        let mut conn = self.conn()?;
-        conn.transaction(|conn| {
-            let outcome = consume_within_transaction(conn, presented_hash, now)?;
-            if outcome == RefreshTokenConsumeOutcome::Consumed {
-                diesel::insert_into(refresh_tokens::table)
-                    .values(successor.clone())
-                    .execute(conn)?;
-            }
-            Ok(outcome)
-        })
+/// Atomically consume a live refresh token, reporting which
+/// of the three [`RefreshTokenConsumeOutcome`] states the row was in. The
+/// UPDATE's `consumed_at IS NULL` guard and the fallback existence probe
+/// run in one transaction, so a concurrent redeemer of the same token
+/// sees `Replayed`, never a torn state.
+pub(super) fn consume_refresh_token(
+    conn: &mut PooledDieselConnection,
+    token_hash: &str,
+    now: DateTime<Utc>,
+) -> Result<RefreshTokenConsumeOutcome, GatekeeperError> {
+    conn.transaction(|conn| consume_within_transaction(conn, token_hash, now))
         .map_err(|e: diesel::result::Error| {
-            GatekeeperError::backend("rotate_refresh_token failed", e)
+            GatekeeperError::infrastructure("consume_refresh_token failed", e)
         })
-    }
+}
 
-    /// End a token family by pulling its `expires_at` back to `now`, and
-    /// stamp its still-live token consumed at the same instant so no row in
-    /// a dead family looks live. Used by reuse detection. Rows are kept (not
-    /// deleted) so the lineage stays auditable and replayed tokens still
-    /// resolve to their dead family. The `consumed_at IS NULL` guard keeps
-    /// genuine consumption stamps intact.
-    ///
-    /// # Errors
-    ///
-    /// [`GatekeeperError::Backend`] if the transaction or either update fails.
-    pub fn expire_refresh_token_family(
-        &self,
-        family_id: &str,
-        now: DateTime<Utc>,
-    ) -> Result<(), GatekeeperError> {
-        let mut conn = self.conn()?;
-        conn.transaction(|conn| {
-            diesel::update(refresh_token_families::table.find(family_id))
-                .set(refresh_token_families::expires_at.eq(now))
+/// Atomically rotate a refresh token: consume the presented token and, only
+/// if that succeeded, insert its successor — both in one transaction.
+/// Doing the consume and the successor-insert together means a crash or
+/// error can't burn the presented token while leaving the family with no
+/// live successor (a permanent lockout). The three-state outcome mirrors
+/// [`consume_refresh_token`]: `Consumed` means the successor is now the
+/// family's live token; `Replayed`/`NotFound` leave the family untouched (no
+/// successor inserted) for the caller to handle.
+pub(super) fn rotate_refresh_token(
+    conn: &mut PooledDieselConnection,
+    presented_hash: &str,
+    successor: &RefreshToken,
+    now: DateTime<Utc>,
+) -> Result<RefreshTokenConsumeOutcome, GatekeeperError> {
+    conn.transaction(|conn| {
+        let outcome = consume_within_transaction(conn, presented_hash, now)?;
+        if outcome == RefreshTokenConsumeOutcome::Consumed {
+            diesel::insert_into(refresh_tokens::table)
+                .values(successor.clone())
                 .execute(conn)?;
-            diesel::update(
-                refresh_tokens::table
-                    .filter(refresh_tokens::family_id.eq(family_id))
-                    .filter(refresh_tokens::consumed_at.is_null()),
-            )
-            .set(refresh_tokens::consumed_at.eq(now))
-            .execute(conn)?;
-            Ok(())
-        })
-        .map_err(|e: diesel::result::Error| {
-            GatekeeperError::backend("expire_refresh_token_family failed", e)
-        })
-    }
+        }
+        Ok(outcome)
+    })
+    .map_err(|e: diesel::result::Error| {
+        GatekeeperError::infrastructure("rotate_refresh_token failed", e)
+    })
+}
 
-    /// End every refresh-token family issued to a client, with the same
-    /// expire-and-stamp semantics as [`Self::expire_refresh_token_family`] —
-    /// used when the Owner revokes a grant, so standing consent and standing
-    /// credentials die together.
-    ///
-    /// # Errors
-    ///
-    /// [`GatekeeperError::Backend`] if the transaction or either update fails.
-    pub fn expire_refresh_token_families_for_client(
-        &self,
-        client_id: &str,
-        now: DateTime<Utc>,
-    ) -> Result<(), GatekeeperError> {
-        let mut conn = self.conn()?;
-        conn.transaction(|conn| {
-            diesel::update(
-                refresh_tokens::table
-                    .filter(refresh_tokens::consumed_at.is_null())
-                    .filter(
-                        refresh_tokens::family_id.eq_any(
-                            refresh_token_families::table
-                                .filter(refresh_token_families::client_id.eq(client_id))
-                                .select(refresh_token_families::family_id),
-                        ),
-                    ),
-            )
-            .set(refresh_tokens::consumed_at.eq(now))
-            .execute(conn)?;
-            diesel::update(
-                refresh_token_families::table
-                    .filter(refresh_token_families::client_id.eq(client_id)),
-            )
+/// End a token family by pulling its `expires_at` back to `now`, and
+/// stamp its still-live token consumed at the same instant so no row in
+/// a dead family looks live. Used by reuse detection. Rows are kept (not
+/// deleted) so the lineage stays auditable and replayed tokens still
+/// resolve to their dead family. The `consumed_at IS NULL` guard keeps
+/// genuine consumption stamps intact.
+pub(super) fn expire_refresh_token_family(
+    conn: &mut PooledDieselConnection,
+    family_id: &str,
+    now: DateTime<Utc>,
+) -> Result<(), GatekeeperError> {
+    conn.transaction(|conn| {
+        diesel::update(refresh_token_families::table.find(family_id))
             .set(refresh_token_families::expires_at.eq(now))
             .execute(conn)?;
-            Ok(())
-        })
-        .map_err(|e: diesel::result::Error| {
-            GatekeeperError::backend("expire_refresh_token_families_for_client failed", e)
-        })
-    }
+        diesel::update(
+            refresh_tokens::table
+                .filter(refresh_tokens::family_id.eq(family_id))
+                .filter(refresh_tokens::consumed_at.is_null()),
+        )
+        .set(refresh_tokens::consumed_at.eq(now))
+        .execute(conn)?;
+        Ok(())
+    })
+    .map_err(|e: diesel::result::Error| {
+        GatekeeperError::infrastructure("expire_refresh_token_family failed", e)
+    })
+}
 
-    /// End every refresh-token family minted from a given authorization code
-    /// (identified by the code's hash), with the same expire-and-stamp
-    /// semantics as [`Self::expire_refresh_token_family`]. Used by
-    /// authorization-code reuse detection (RFC 6749 §4.1.2): a detectably
-    /// replayed code revokes the refresh lineage its first redemption produced.
-    /// A code that never minted a family (no `offline_access`, or never
-    /// existed) matches no row and the call is a no-op.
-    ///
-    /// # Errors
-    ///
-    /// [`GatekeeperError::Backend`] if the transaction or either update fails.
-    pub fn expire_refresh_token_families_for_authorization_code(
-        &self,
-        authorization_code_hash: &str,
-        now: DateTime<Utc>,
-    ) -> Result<(), GatekeeperError> {
-        let mut conn = self.conn()?;
-        conn.transaction(|conn| {
-            diesel::update(
-                refresh_tokens::table
-                    .filter(refresh_tokens::consumed_at.is_null())
-                    .filter(
-                        refresh_tokens::family_id.eq_any(
-                            refresh_token_families::table
-                                .filter(
-                                    refresh_token_families::authorization_code_hash
-                                        .eq(authorization_code_hash),
-                                )
-                                .select(refresh_token_families::family_id),
-                        ),
+/// End every refresh-token family issued to a client, with the same
+/// expire-and-stamp semantics as [`expire_refresh_token_family`] — used when
+/// the Owner revokes a grant, so standing consent and standing credentials die
+/// together.
+pub(super) fn expire_refresh_token_families_for_client(
+    conn: &mut PooledDieselConnection,
+    client_id: &str,
+    now: DateTime<Utc>,
+) -> Result<(), GatekeeperError> {
+    conn.transaction(|conn| {
+        diesel::update(
+            refresh_tokens::table
+                .filter(refresh_tokens::consumed_at.is_null())
+                .filter(
+                    refresh_tokens::family_id.eq_any(
+                        refresh_token_families::table
+                            .filter(refresh_token_families::client_id.eq(client_id))
+                            .select(refresh_token_families::family_id),
                     ),
-            )
-            .set(refresh_tokens::consumed_at.eq(now))
-            .execute(conn)?;
-            diesel::update(refresh_token_families::table.filter(
+                ),
+        )
+        .set(refresh_tokens::consumed_at.eq(now))
+        .execute(conn)?;
+        diesel::update(
+            refresh_token_families::table.filter(refresh_token_families::client_id.eq(client_id)),
+        )
+        .set(refresh_token_families::expires_at.eq(now))
+        .execute(conn)?;
+        Ok(())
+    })
+    .map_err(|e: diesel::result::Error| {
+        GatekeeperError::infrastructure("expire_refresh_token_families_for_client failed", e)
+    })
+}
+
+/// End every refresh-token family minted from a given authorization code
+/// (identified by the code's hash), with the same expire-and-stamp
+/// semantics as [`expire_refresh_token_family`]. Used by authorization-code
+/// reuse detection (RFC 6749 §4.1.2): a detectably replayed code revokes the
+/// refresh lineage its first redemption produced. A code that never minted a
+/// family (no `offline_access`, or never existed) matches no row and the call
+/// is a no-op.
+pub(super) fn expire_refresh_token_families_for_authorization_code(
+    conn: &mut PooledDieselConnection,
+    authorization_code_hash: &str,
+    now: DateTime<Utc>,
+) -> Result<(), GatekeeperError> {
+    conn.transaction(|conn| {
+        diesel::update(
+            refresh_tokens::table
+                .filter(refresh_tokens::consumed_at.is_null())
+                .filter(
+                    refresh_tokens::family_id.eq_any(
+                        refresh_token_families::table
+                            .filter(
+                                refresh_token_families::authorization_code_hash
+                                    .eq(authorization_code_hash),
+                            )
+                            .select(refresh_token_families::family_id),
+                    ),
+                ),
+        )
+        .set(refresh_tokens::consumed_at.eq(now))
+        .execute(conn)?;
+        diesel::update(
+            refresh_token_families::table.filter(
                 refresh_token_families::authorization_code_hash.eq(authorization_code_hash),
-            ))
-            .set(refresh_token_families::expires_at.eq(now))
-            .execute(conn)?;
-            Ok(())
-        })
-        .map_err(|e: diesel::result::Error| {
-            GatekeeperError::backend(
-                "expire_refresh_token_families_for_authorization_code failed",
-                e,
-            )
-        })
-    }
+            ),
+        )
+        .set(refresh_token_families::expires_at.eq(now))
+        .execute(conn)?;
+        Ok(())
+    })
+    .map_err(|e: diesel::result::Error| {
+        GatekeeperError::infrastructure(
+            "expire_refresh_token_families_for_authorization_code failed",
+            e,
+        )
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::db::test_support::{arb_opt_timestamp, arb_timestamp};
+    use crate::db::SqliteGatekeeperStore;
     use crate::domain::error::GatekeeperError;
+    use crate::domain::GatekeeperStore as _;
     use proptest::prelude::*;
 
     fn arb_family() -> impl Strategy<Value = RefreshTokenFamily> {
@@ -387,7 +324,7 @@ mod tests {
             token in arb_token_in_family("family-under-test"),
         ) {
             let family = RefreshTokenFamily { family_id: "family-under-test".to_string(), ..family };
-            let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
+            let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
             store
                 .insert_refresh_token_family(&family, &token)
                 .expect("insert");
@@ -406,7 +343,7 @@ mod tests {
         ) {
             let family = RefreshTokenFamily { family_id: "family-under-test".to_string(), ..family };
             let live = RefreshToken { consumed_at: None, ..token };
-            let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
+            let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
             store.insert_refresh_token_family(&family, &live).expect("insert");
             let now = Utc::now();
             prop_assert!(matches!(
@@ -422,7 +359,7 @@ mod tests {
 
     #[test]
     fn consume_of_unknown_hash_is_not_found() {
-        let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
         assert!(matches!(
             store
                 .consume_refresh_token("never-issued", Utc::now())
@@ -438,14 +375,14 @@ mod tests {
     // the opaque Backend whose text names the constraint.
     #[test]
     fn insert_refresh_token_rejects_orphan_without_family() {
-        let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
         let err = store
             .insert_refresh_token(&sample_token("orphan", "no-such-family"))
             .expect_err("orphan insert must violate the foreign key");
         assert!(
             matches!(
                 &err,
-                GatekeeperError::Backend { source, .. }
+                GatekeeperError::Infrastructure { source, .. }
                     if source.to_uppercase().contains("FOREIGN KEY")
             ),
             "expected a foreign-key constraint violation, got {err:?}"
@@ -457,7 +394,7 @@ mod tests {
     // further successor.
     #[test]
     fn rotate_consumes_presented_and_inserts_successor_atomically() {
-        let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
         store
             .insert_refresh_token_family(
                 &sample_family("fam", "client"),
@@ -519,7 +456,7 @@ mod tests {
 
     #[test]
     fn expire_family_pulls_deadline_back_and_stamps_the_live_token() {
-        let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
         store
             .insert_refresh_token_family(
                 &sample_family("family-a", "client-1"),
@@ -574,7 +511,7 @@ mod tests {
 
     #[test]
     fn expire_for_client_spares_other_clients() {
-        let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
         store
             .insert_refresh_token_family(
                 &sample_family("family-a", "client-1"),

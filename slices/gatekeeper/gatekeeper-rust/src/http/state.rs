@@ -2,7 +2,7 @@ use tokio::sync::watch;
 
 use token_revocation_rust::RevocationStore;
 
-use crate::db::GatekeeperStore;
+use crate::db::SqliteGatekeeperStore;
 
 /// Shared state threaded through every gatekeeper handler. Opaque to
 /// callers outside the crate — the host receives one from
@@ -11,7 +11,11 @@ use crate::db::GatekeeperStore;
 /// inside.
 #[derive(Clone)]
 pub struct AppState {
-    pub(crate) store: GatekeeperStore,
+    /// The **concrete** `SQLite` adapter (not `Arc<dyn GatekeeperStore>` or a
+    /// generic): the port abstraction lives in the [`crate::domain::actions`]
+    /// the handlers call, so the HTTP state and axum wiring stay monomorphic —
+    /// per the collector/tunnel pattern.
+    pub(crate) store: SqliteGatekeeperStore,
     /// The shared token-revocation store. The auth gate
     /// ([`verify_auth_token_claims`](crate::http::middleware::require_auth::verify_auth_token_claims))
     /// runs the full `is_revoked` check (denylist + subject epoch) through it,
@@ -78,7 +82,9 @@ impl AppState {
     pub(crate) fn republish_active_device_user_code(&self) {
         self.active_device_user_code_sender
             .send_if_modified(|current| {
-                let next = match self.store.oldest_pending_device_user_code() {
+                let next = match crate::domain::actions::oldest_pending_device_user_code(
+                    &self.store,
+                ) {
                     Ok(next) => next,
                     Err(error) => {
                         tracing::warn!(

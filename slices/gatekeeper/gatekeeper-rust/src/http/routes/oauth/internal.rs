@@ -8,10 +8,11 @@ use super::client_auth::{
     BASIC_AUTH_CHALLENGE,
 };
 use crate::crypto_util::client_secret::verify_client_secret;
-use crate::db::GatekeeperStore;
+use crate::domain::actions;
 use crate::domain::client::{Client, ClientKind};
 use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::domain::token::{mint_access_token, NewJwtArgs, ACCESS_TOKEN_TTL};
+use crate::domain::GatekeeperStore;
 use crate::http::errors::InternalError;
 use crate::http::wire_representations::{CacheSuppressed, OAuthError, TokenResponse};
 
@@ -101,10 +102,11 @@ impl TokenError {
 }
 
 /// Render a domain failure on the token surface: any store failure — expected
-/// only the opaque [`Backend`](crate::domain::error::GatekeeperError::Backend)
+/// only the opaque
+/// [`Infrastructure`](crate::domain::error::GatekeeperError::Infrastructure)
 /// variant here — becomes the logged, cache-suppressed opaque 500. This `From`
 /// is what lets the exchange helpers `?` a `Result<_, GatekeeperError>` from
-/// the store.
+/// a domain action.
 impl From<crate::domain::error::GatekeeperError> for TokenError {
     fn from(error: crate::domain::error::GatekeeperError) -> Self {
         TokenError::Internal(InternalError::new(
@@ -213,7 +215,7 @@ impl IntoResponse for ValidateClientError {
 /// stored argon2id PHC string (constant-time internally). Returns the loaded
 /// `Client` if both checks pass.
 pub fn require_valid_client_for_token(
-    store: &GatekeeperStore,
+    store: &impl GatekeeperStore,
     presented_credentials: &ClientCredentials,
 ) -> Result<Client, ValidateClientError> {
     // Every authentication failure records how the client authenticated, so
@@ -223,12 +225,10 @@ pub fn require_valid_client_for_token(
         error: OAuthError::new(OAuthErrorCode::InvalidClient, Some(description)),
         attempted_via: presented_credentials.presented_via,
     };
-    let client = store
-        .client_by_id(&presented_credentials.client_id)
-        .map_err(|e| {
-            tracing::error!(error = %e, "client_by_id lookup failed");
-            ValidateClientError::Internal(OAuthError::new(OAuthErrorCode::ServerError, None))
-        })?;
+    let client = actions::client_by_id(store, &presented_credentials.client_id).map_err(|e| {
+        tracing::error!(error = %e, "client_by_id lookup failed");
+        ValidateClientError::Internal(OAuthError::new(OAuthErrorCode::ServerError, None))
+    })?;
     let client = client.ok_or_else(|| unauthorized("Unknown client_id"))?;
     if client.disabled_at.is_some() {
         return Err(unauthorized("Client is disabled"));
@@ -272,11 +272,10 @@ pub struct IssueTokenInput<'a> {
 /// `OAuthError("server_error", ...)` if no signing key is available or the
 /// JWS encode fails.
 pub fn issue_token_response(
-    store: &GatekeeperStore,
+    store: &impl GatekeeperStore,
     input: &IssueTokenInput<'_>,
 ) -> Result<TokenResponse, OAuthError> {
-    let signing_key = store
-        .active_signing_key()
+    let signing_key = actions::active_signing_key(store)
         .map_err(|e| {
             tracing::error!(error = %e, "active_signing_key lookup failed");
             OAuthError::new(

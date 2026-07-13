@@ -21,7 +21,7 @@ use gatekeeper_rust::domain::authorization_request::{
 use gatekeeper_rust::domain::client::{AllowedGrantType, Client, ClientKind};
 use gatekeeper_rust::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 use gatekeeper_rust::domain::token::{mint_access_token, NewJwtArgs};
-use gatekeeper_rust::GatekeeperStore;
+use gatekeeper_rust::{GatekeeperStore, SqliteGatekeeperStore};
 use persistence_rust::{Connection, DieselPool};
 use serde_json::Value;
 use tower::ServiceExt;
@@ -29,7 +29,7 @@ use url::Url;
 
 /// The two database handles the running router uses, kept so tests can open
 /// second store handles onto the SAME databases: the diesel pool behind the
-/// `GatekeeperStore` and the rusqlite connection behind the shared
+/// `SqliteGatekeeperStore` and the rusqlite connection behind the shared
 /// `RevocationStore` (which stays rusqlite-backed — it is a separate crate).
 struct TestDb {
     pool: DieselPool,
@@ -78,13 +78,13 @@ fn spin_up() -> (Gatekeeper, String, TestDb) {
     )
 }
 
-/// A second `GatekeeperStore` handle on the *same* shared pool the running
+/// A second `SqliteGatekeeperStore` handle on the *same* shared pool the running
 /// router uses. Tests reach through this to seed clients and to plant rows
 /// (e.g. an already-expired authorization request) that the public HTTP
 /// surface can't construct directly — preferred over real-time sleeps so the
 /// expiry paths stay deterministic.
-fn store_handle(db: &TestDb) -> GatekeeperStore {
-    GatekeeperStore::new(db.pool.clone()).expect("store handle")
+fn store_handle(db: &TestDb) -> SqliteGatekeeperStore {
+    SqliteGatekeeperStore::new(db.pool.clone()).expect("store handle")
 }
 
 /// Register an OAuth client with an allowlisted `redirect_uri` through a
@@ -729,7 +729,7 @@ async fn post_form(
 /// (shared by both rows) lets a caller force an already-expired code without
 /// sleeping. The challenge is the real S256 digest of [`CODE_VERIFIER`].
 fn plant_authorization_code(
-    store: &GatekeeperStore,
+    store: &SqliteGatekeeperStore,
     client_id: &str,
     redirect_uri: &Url,
     scopes: &[&str],
@@ -780,7 +780,7 @@ fn plant_authorization_code(
 /// and `expires_at` are caller-controlled so the device state-machine tests can
 /// stand up Approved/expired rows the public surface can't mint on demand.
 fn plant_device_request(
-    store: &GatekeeperStore,
+    store: &SqliteGatekeeperStore,
     client_id: &str,
     device_code: &str,
     scopes: &[&str],
@@ -2133,7 +2133,7 @@ async fn offline_access_issues_rotating_refresh_token() {
 /// Plant a refresh-token family with one live token directly in the store,
 /// with a caller-controlled family deadline so expiry tests don't sleep.
 fn plant_refresh_token(
-    store: &GatekeeperStore,
+    store: &SqliteGatekeeperStore,
     plaintext: &str,
     client_id: &str,
     family_expires_at: chrono::DateTime<Utc>,

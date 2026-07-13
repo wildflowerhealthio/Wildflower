@@ -2,7 +2,7 @@ use axum::extract::{Path, State};
 use axum::routing::{post, MethodRouter};
 use axum::Json;
 
-use crate::domain::consent::load_pending_authorization_code_request;
+use crate::domain::actions::load_pending_authorization_code_request;
 use crate::http::errors::HandlerError;
 use crate::http::routes::consent::deny_consent;
 use crate::http::state::AppState;

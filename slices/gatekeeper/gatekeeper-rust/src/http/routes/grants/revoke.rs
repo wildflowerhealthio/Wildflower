@@ -3,7 +3,7 @@ use axum::http::StatusCode;
 use axum::routing::{delete, MethodRouter};
 use chrono::Utc;
 
-use crate::domain::error::GatekeeperError;
+use crate::domain::actions;
 use crate::http::errors::HandlerError;
 use crate::http::state::AppState;
 
@@ -22,10 +22,7 @@ async fn handle_revoke_grant(
     // Load before deleting so the client_id is still known afterwards —
     // revoking consent must also kill the standing credentials minted under
     // it, or `offline_access` clients would outlive their revocation.
-    let grant = state
-        .store
-        .grant_by_id(&id)?
-        .ok_or_else(|| GatekeeperError::GrantNotFound { id: id.clone() })?;
+    let grant = actions::get_grant(&state.store, &id)?;
     // Bulk-revoke the client's *live access tokens* by bumping its revocation
     // epoch, done BEFORE the grant delete so the security-critical step lands
     // first: if the delete then fails the caller retries (idempotent) with the
@@ -46,12 +43,6 @@ async fn handle_revoke_grant(
     // than the single grant (a revoked client re-earns credentials by
     // re-running the auth flow). Families are expired in place, not deleted, so
     // the lineage stays auditable.
-    let revoked =
-        state
-            .store
-            .revoke_grant_and_expire_client_families(&id, grant.client_id(), Utc::now())?;
-    if !revoked {
-        return Err(GatekeeperError::GrantNotFound { id }.into());
-    }
+    actions::revoke_grant(&state.store, &id, grant.client_id(), Utc::now())?;
     Ok(StatusCode::NO_CONTENT)
 }
