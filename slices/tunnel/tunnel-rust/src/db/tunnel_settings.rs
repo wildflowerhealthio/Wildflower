@@ -47,7 +47,7 @@ fn as_none_if_empty(value: Option<String>) -> Option<String> {
 /// relay is unconfigured. Configuration is all-or-nothing: every field must be
 /// present and non-empty. A *partial* set (some present, some blank) is a
 /// corrupt/legacy shape the API can't produce — logged and treated as
-/// unconfigured rather than surfaced, matching the pre-diesel row mapping.
+/// unconfigured rather than surfaced.
 fn relay_from_columns(
     remote_addr: Option<String>,
     token: Option<String>,
@@ -125,8 +125,7 @@ pub(super) fn get_settings(
 ///
 /// The domain [`actions`](crate::domain::actions) picks this over
 /// [`update_all_settings`] from the `SettingsUpdate`; the store never branches on
-/// the relay's presence. A column the UPDATE never names keeps its stored value
-/// — the per-column "keep" diesel's typed `.set()` can't express as a COALESCE.
+/// the relay's presence.
 ///
 /// # Errors
 ///

@@ -275,19 +275,15 @@ async fn run_server(
         emr_rust::UNAUTHENTICATED_FHIR_PATHS,
     );
 
-    // The app-wide diesel r2d2 pool onto the same shared database file `db`
-    // serves the other slices from — additional openers on the same file. Built
-    // once here and shared (cheap `Arc` clone) across every diesel-backed slice:
-    // the collector `/collector/remotes` surface and the tunnel `/tunnel`
-    // surface both run over it rather than each opening their own pool.
-    //
-    // ACCEPTED TRADEOFF: the pool's connections are NOT synchronized with the
-    // `Arc<Mutex<rusqlite::Connection>>` every other slice writes through, so a
-    // diesel write can contend with a rusqlite write at the SQLite file-lock
-    // level (WAL is off → single writer) — "no cross-connection write
-    // contention" no longer holds. Both sides set `busy_timeout = 5000`, ample
-    // for a single-user desktop app with short writes; a pathological stalled
-    // write elsewhere can surface here as a ≤5 s stall → `SQLITE_BUSY` → 500.
+    // The app-wide diesel r2d2 pool, built once here on the same database file
+    // `db` serves the other slices from and shared (cheap `Arc` clone) across
+    // every diesel-backed slice — the collector `/collector/remotes` and tunnel
+    // `/tunnel` surfaces both run over it rather than each opening their own. Its
+    // connections are NOT synchronized with the `Arc<Mutex<rusqlite::Connection>>`
+    // the other slices write through: an accepted single-writer file-lock
+    // contention trade-off, ridden out by a shared `busy_timeout`. This is where
+    // that trade-off is accepted — see
+    // docs/Persistence/Shared Diesel Pool Explanation.md.
     let diesel_pool =
         persistence_rust::open_pool(&db_path).context("failed to open diesel db pool")?;
 

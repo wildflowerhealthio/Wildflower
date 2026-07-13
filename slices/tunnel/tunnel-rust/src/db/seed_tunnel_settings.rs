@@ -24,10 +24,9 @@ use crate::SettingsSeed;
 ///
 /// Runs once at startup before the slice serves, so in practice there's no
 /// concurrent writer to race; the whole read-decide-write is still wrapped in a
-/// single transaction so it stays atomic regardless. Each field seeds through
-/// its own targeted `UPDATE`, so a `None` bind can never overwrite a stored
-/// value with NULL (the pre-diesel single `COALESCE` statement kept the stored
-/// value on a `None` bind; the split, guarded updates achieve the same).
+/// single transaction so it stays atomic regardless. Each field seeds through its
+/// own `UPDATE`, run only where the stored value is unconfigured — a configured
+/// value is never overwritten.
 ///
 /// # Errors
 ///

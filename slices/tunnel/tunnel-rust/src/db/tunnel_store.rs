@@ -22,37 +22,28 @@ const MIGRATION_NAMESPACE: &str = "tunnel";
 
 /// The tunnel migrations, embedded from the crate's `migrations/` tree at
 /// compile time (diesel layout: `<version>_<name>/up.sql` + `down.sql`).
-/// Applied once per database in [`SqliteTunnelStore::new`] through
-/// [`persistence_rust::run_diesel_migrations`], which records applied versions
-/// per-namespace in `diesel_slice_migrations` — NOT diesel's stock,
-/// un-namespaced `__diesel_schema_migrations` (which would let another diesel
-/// slice's `0001` mask tunnel's). Migration `0001` still uses idempotent DDL so
-/// it's a no-op on a database whose `tunnel_settings` table predates this diesel
-/// migration (see the migration's `up.sql`).
+/// Applied once per database in [`SqliteTunnelStore::new`] via
+/// [`persistence_rust::run_diesel_migrations`] under [`MIGRATION_NAMESPACE`]
+/// (see that runner for why the stock diesel harness can't be used). Migration
+/// `0001` uses idempotent DDL so it's a no-op on a database whose
+/// `tunnel_settings` table predates this diesel migration (see its `up.sql`).
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
 /// The `SQLite` adapter for the [`TunnelStore`] port. Cheap to clone (the pool
 /// is an `Arc` inside), so it drops straight into the axum state.
 #[derive(Clone)]
 pub struct SqliteTunnelStore {
-    // The app-wide r2d2 pool onto the shared database file, built and owned by
-    // the host (`persistence_rust::open_pool`). Diesel's connection API is
-    // `&mut`, so each query checks a connection out of the pool rather than
-    // sharing one behind a mutex; the pool (an `Arc` inside) makes the store
-    // cheap to clone into the axum state. These are additional openers onto the
-    // same file the host's rusqlite `persistence-rust::Connection` serves the
-    // other slices from — SQLite permits multiple connections per file; the
-    // pool's `busy_timeout` pragma rides out the brief write locks any
-    // connection takes (see `persistence_rust::open_pool`).
+    // The host-owned app-wide r2d2 pool (`persistence_rust::open_pool`) onto the
+    // shared database file. Each query checks a connection out (diesel's API is
+    // `&mut`); the pool is an `Arc` inside, so the store is cheap to clone into
+    // the axum state. See docs/Persistence/Shared Diesel Pool Explanation.md for
+    // how this pool coexists with the rusqlite connection on one file.
     pool: DieselPool,
 }
 
 impl SqliteTunnelStore {
     /// Wrap the host-owned connection `pool` and apply pending tunnel migrations
-    /// once, on a single checked-out connection. The host builds the app-wide
-    /// pool (via `persistence_rust::open_pool`) on the same file its rusqlite
-    /// connection opens for the other slices; both coexist (see the `pool`
-    /// field).
+    /// once, on a single checked-out connection.
     ///
     /// # Errors
     ///
