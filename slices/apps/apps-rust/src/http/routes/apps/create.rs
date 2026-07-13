@@ -24,8 +24,9 @@ use axum::Json;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-use crate::db::{CloudContent, NewCloudApp, NewSelfHostedUpload, UploadInsertError};
-use crate::domain::{App, AppError, AppListEntry, AppUrl};
+use crate::domain::{
+    actions, App, AppError, AppListEntry, AppUrl, CloudContent, NewCloudApp, NewSelfHostedUpload,
+};
 use crate::http::errors::InvalidFieldBody;
 use crate::http::state::AppsState;
 use crate::id::mint_app_id;
@@ -81,7 +82,7 @@ pub(crate) async fn handle_create_app(
     while let Some(field) = multipart
         .next_field()
         .await
-        .map_err(|e| AppError::backend("failed to read multipart body", e))?
+        .map_err(|e| AppError::infrastructure("failed to read multipart body", e))?
     {
         // `name()` borrows `field`; own it before `text()`/`bytes()` consumes it.
         let field_name = field.name().map(str::to_owned);
@@ -91,14 +92,14 @@ pub(crate) async fn handle_create_app(
                     field
                         .bytes()
                         .await
-                        .map_err(|e| AppError::backend("failed to read bundle part", e))?,
+                        .map_err(|e| AppError::infrastructure("failed to read bundle part", e))?,
                 );
             }
             Some(key @ ("provenance" | "name" | "subtitle" | "url" | "requiresTunnel")) => {
                 let value = field
                     .text()
                     .await
-                    .map_err(|e| AppError::backend("failed to read multipart field", e))?;
+                    .map_err(|e| AppError::infrastructure("failed to read multipart field", e))?;
                 match key {
                     "provenance" => provenance = Some(value),
                     "name" => name = Some(value),
@@ -122,7 +123,7 @@ pub(crate) async fn handle_create_app(
     match provenance.as_deref() {
         Some("cloud") => create_cloud(&state, name, subtitle, url, requires_tunnel),
         Some("self-hosted") => create_self_hosted(&state, name, subtitle, bundle).await,
-        other => Err(AppError::backend(
+        other => Err(AppError::infrastructure(
             "create: missing or unknown provenance",
             format!("{other:?}"),
         )),
@@ -163,14 +164,10 @@ fn create_cloud(
             requires_tunnel,
         },
     };
-    // The returned `App` was read back in-txn, so projecting it is exactly the
-    // `GET /apps` shape with no second read.
-    let app = state.store.insert_cloud_app(&new)?.ok_or_else(|| {
-        // 21-char random id collided — vanishingly unlikely, but surface it as a
-        // logged 500 rather than silently returning the existing row.
-        tracing::error!("app id collision on {}", new.id);
-        AppError::backend("insert_cloud_app id collision", "id already exists")
-    })?;
+    // The action inserts and reads the `App` back in-txn (mapping a server-minted
+    // id collision to a logged 500), so projecting it is exactly the `GET /apps`
+    // shape with no second read.
+    let app = actions::create_cloud_app(&state.store, &new)?;
     Ok(AppListEntry::from(&app))
 }
 
@@ -214,7 +211,10 @@ async fn create_self_hosted(
         }
         Err(join_error) => {
             remove_staging(&staging);
-            return Err(AppError::backend("zip extraction task failed", join_error));
+            return Err(AppError::infrastructure(
+                "zip extraction task failed",
+                join_error,
+            ));
         }
     };
 
@@ -224,7 +224,7 @@ async fn create_self_hosted(
     let dest = apps_dir.join(&folder);
     if let Err(error) = std::fs::rename(&staging, &dest) {
         remove_staging(&staging);
-        return Err(AppError::backend(
+        return Err(AppError::infrastructure(
             "failed to move the staged app into place",
             error,
         ));
@@ -239,23 +239,11 @@ async fn create_self_hosted(
         reserved_ports: state.loopback_base_url.port().into_iter().collect(),
         launch_path,
     };
-    let app = match state.store.insert_self_hosted_app(&upload) {
-        Ok(Ok(app)) => app,
-        Ok(Err(UploadInsertError::SlugSpaceExhausted)) => {
-            remove_staging(&dest);
-            return Err(AppError::InvalidName {
-                message: "could not allocate a unique id for this name".to_owned(),
-            });
-        }
-        Ok(Err(UploadInsertError::PortSpaceExhausted)) => {
-            remove_staging(&dest);
-            // A server resource fault, not a name problem — retrying with a
-            // different name can't help, so it must not read as a 400.
-            return Err(AppError::backend(
-                "no free loopback port for a new self-hosted app",
-                "port space exhausted",
-            ));
-        }
+    // The action inserts (allocating slug + port in-txn) and maps an allocation
+    // failure onto the wire error — a slug clash is `400 InvalidName`, an
+    // exhausted port space a logged 500. Any error unwinds the just-moved files.
+    let app = match actions::create_self_hosted_app(&state.store, &upload) {
+        Ok(app) => app,
         Err(error) => {
             remove_staging(&dest);
             return Err(error);
@@ -264,7 +252,7 @@ async fn create_self_hosted(
     // The insert just built this app as self-hosted; anything else is a store bug
     // surfaced as a logged 500, never a panic.
     let App::SelfHosted { app: child, .. } = &app else {
-        return Err(AppError::backend(
+        return Err(AppError::infrastructure(
             "insert_self_hosted_app returned a non-self-hosted app",
             app.id().to_owned(),
         ));
@@ -275,7 +263,7 @@ async fn create_self_hosted(
     // propagates is a poisoned lock, where reverse-proxy registration did NOT
     // happen and won't self-heal. That's a real fault — surface it.
     if let Err(error) = state.self_hosted.start(app.id(), child).await {
-        return Err(AppError::backend(
+        return Err(AppError::infrastructure(
             "installed self-hosted app failed to register",
             error,
         ));
@@ -291,7 +279,7 @@ fn parse_bool_field(value: Option<&str>) -> Result<bool, AppError> {
     match value {
         Some("true") => Ok(true),
         Some("false") => Ok(false),
-        other => Err(AppError::backend(
+        other => Err(AppError::infrastructure(
             "create: missing or malformed requiresTunnel field",
             format!("{other:?}"),
         )),
@@ -303,7 +291,7 @@ fn parse_bool_field(value: Option<&str>) -> Result<bool, AppError> {
 fn map_install_error(error: install::InstallError) -> AppError {
     match error {
         install::InstallError::Io(io_error) => {
-            AppError::backend("zip extraction io error", io_error)
+            AppError::infrastructure("zip extraction io error", io_error)
         }
         other => AppError::InvalidZip {
             message: other.to_string(),

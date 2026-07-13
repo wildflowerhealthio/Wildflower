@@ -83,8 +83,9 @@ mod tests {
     use shared_structures_rust::OnDeviceWebviewHandle;
     use tower::ServiceExt;
 
-    use crate::db::{CloudContent, NewCloudApp, NewSelfHostedUpload};
-    use crate::domain::AppUrl;
+    // The port trait is in scope so the concrete store's `insert_cloud_app` /
+    // `insert_self_hosted_app` / `find_app` methods resolve in the fixtures.
+    use crate::domain::{AppUrl, AppsStore, CloudContent, NewCloudApp, NewSelfHostedUpload};
     use crate::http::state::AppsState;
     use crate::http::test_support::{
         state, state_owner_denied, state_owner_denied_with_sink, state_with_launch_cookies,

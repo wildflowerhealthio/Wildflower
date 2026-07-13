@@ -1,14 +1,15 @@
 //! [`AppError`] — the apps slice's semantic failure vocabulary, the domain
-//! counterpart of collector's `RemoteError`. The store and handlers speak it; the
+//! counterpart of collector's `RemoteError`. The store and actions speak it; the
 //! HTTP layer ([`crate::http::errors`]) renders each variant to a status + wire
-//! body (or a logged opaque 500 for [`Backend`](AppError::Backend)). Nothing here
-//! knows about HTTP, and the store produces `Backend` without leaking its diesel
-//! error types up to the routes.
+//! body (or a logged opaque 500 for
+//! [`Infrastructure`](AppError::Infrastructure)). Nothing here knows about HTTP,
+//! and the store produces `Infrastructure` without leaking its diesel error types
+//! up to the routes.
 //!
 //! The first eight variants are **semantic**, client-facing outcomes that are
-//! part of the wire contract; [`Backend`](AppError::Backend) is an opaque
-//! infrastructure failure (a pool checkout / query error) answered as an empty
-//! 500 — the operator sees the detail, the client doesn't.
+//! part of the wire contract; [`Infrastructure`](AppError::Infrastructure) is an
+//! opaque infrastructure failure (a pool checkout / query error) answered as an
+//! empty 500 — the operator sees the detail, the client doesn't.
 
 /// The ways an apps operation can fail.
 #[derive(Debug)]
@@ -39,7 +40,7 @@ pub enum AppError {
     /// error) — opaque to clients: the HTTP layer logs `context` + `source` and
     /// answers an empty 500. The cause is captured as text so this type stays
     /// free of the store's diesel/`anyhow` error types.
-    Backend {
+    Infrastructure {
         context: &'static str,
         source: String,
     },
@@ -56,7 +57,7 @@ impl std::fmt::Display for AppError {
             AppError::InvalidZip { message } => write!(f, "invalid zip: {message}"),
             AppError::Unavailable { reason } => write!(f, "launch unavailable: {reason}"),
             AppError::InvalidHomeScreen { message } => write!(f, "invalid home screen: {message}"),
-            AppError::Backend { context, source } => write!(f, "{context}: {source}"),
+            AppError::Infrastructure { context, source } => write!(f, "{context}: {source}"),
         }
     }
 }
@@ -65,12 +66,12 @@ impl std::error::Error for AppError {}
 
 impl AppError {
     /// Wrap an infrastructure failure (a store checkout or query error) as an
-    /// opaque [`Backend`](AppError::Backend), capturing `context` and the cause's
-    /// `Display` text. The store calls this so its diesel error types never reach
-    /// the HTTP layer.
+    /// opaque [`Infrastructure`](AppError::Infrastructure), capturing `context`
+    /// and the cause's `Display` text. The store calls this so its diesel error
+    /// types never reach the HTTP layer.
     #[must_use]
-    pub fn backend(context: &'static str, source: impl std::fmt::Display) -> Self {
-        AppError::Backend {
+    pub fn infrastructure(context: &'static str, source: impl std::fmt::Display) -> Self {
+        AppError::Infrastructure {
             context,
             source: source.to_string(),
         }
@@ -78,11 +79,11 @@ impl AppError {
 }
 
 /// A diesel error from a store query or transaction becomes an opaque
-/// [`Backend`](AppError::Backend), so store methods can `?` diesel calls (and
-/// `conn.transaction` closures can carry `AppError`) without naming diesel at the
-/// route seam.
+/// [`Infrastructure`](AppError::Infrastructure), so store query bodies can `?`
+/// diesel calls (and `conn.transaction` closures can carry `AppError`) without
+/// naming diesel at the route seam.
 impl From<diesel::result::Error> for AppError {
     fn from(error: diesel::result::Error) -> Self {
-        AppError::backend("apps store query failed", error)
+        AppError::infrastructure("apps store query failed", error)
     }
 }

@@ -303,11 +303,14 @@ mod tests {
     /// drives the DB-allocated slug/port rather than a hand-built app.
     #[tokio::test]
     async fn uploaded_app_serves_after_insert_and_start() {
-        use crate::db::AppsStore;
+        use crate::db::SqliteAppsStore;
+        // The port trait is in scope so the adapter's `insert_self_hosted_app`
+        // method resolves.
+        use crate::domain::AppsStore;
 
-        let store = AppsStore::open_in_memory().unwrap();
+        let store = SqliteAppsStore::open_in_memory().unwrap();
         let inserted = store
-            .insert_self_hosted_app(&crate::db::NewSelfHostedUpload {
+            .insert_self_hosted_app(&crate::domain::NewSelfHostedUpload {
                 name: "Uploaded App".to_owned(),
                 subtitle: None,
                 base_slug: "uploaded-app".to_owned(),

@@ -5,13 +5,42 @@ doc explains the app taxonomy and privacy model; this one explains how the
 `apps-rust` store persists apps and how the self-hosted upload endpoint installs
 them — the invariants the code leans on so the HTTP handlers stay thin.
 
+## Ports and adapters
+
+The slice follows the same ports-and-adapters shape as `collector-rust` and
+`tunnel-rust`:
+
+- **`AppsStore` (port)** — a domain trait (`domain/apps_store.rs`) speaking
+  _primitive_ persistence over whole `App`s and the write-side specs. Absence,
+  conflict, and allocation failure are **return-type signals** (`Option` /
+  `bool` / `UploadInsertError`), not errors; the only error it raises is the
+  opaque `AppError::Infrastructure`.
+- **`SqliteAppsStore` (adapter)** — the `SQLite` implementation
+  (`db/apps_store.rs`) over the app-wide diesel pool. It checks a connection out
+  of the pool per call and delegates to the `pub(super)` query bodies in
+  `db/reads.rs` / `db/writes.rs` (each a free function taking
+  `&mut PooledDieselConnection`).
+- **`domain/actions.rs`** — the slice's _semantics_: it maps the store's
+  primitive signals onto the semantic `AppError` variants (`NotFound`,
+  `NotEditable`, `InvalidHomeScreen`, the id-collision / upload-failure verdicts)
+  and holds the write-side field validation. The HTTP handlers call
+  `actions::…(&state.store, …)`, never the store directly, and stay a straight
+  `?`. The actions are unit-tested against an in-memory `FakeAppsStore` — no db,
+  no HTTP.
+
+Migrations are embedded diesel migrations (`apps-rust/migrations/`) applied once
+in `SqliteAppsStore::new` under this slice's **namespace** (`"apps"`) via
+`persistence_rust::run_diesel_migrations`, so the apps slice's `0001` and another
+diesel slice's `0001` are tracked as distinct `(namespace, version)` rows and
+never collide in diesel's stock `__diesel_schema_migrations`.
+
 ## The store speaks whole apps
 
 **Table-per-struct** persistence over the app-wide diesel pool
-(`persistence_rust::DieselPool`), fronted by a single `AppsStore`: one standalone
-table per concrete kind (`cloud_apps`, `self_hosted_apps`) carrying all of its
-own columns, plus a `home_screen` table for the cross-kind ordering + `enabled`
-flag. System apps have no table (their metadata + launch URL are compiled in).
+(`persistence_rust::DieselPool`): one standalone table per concrete kind
+(`cloud_apps`, `self_hosted_apps`) carrying all of its own columns, plus a
+`home_screen` table for the cross-kind ordering + `enabled` flag. System apps
+have no table (their metadata + launch URL are compiled in).
 
 Every cross-kind read goes through the **`apps_view`** SQL view — a `UNION ALL`
 of the concrete tables joined to `home_screen` — decoded (`db::reads`) into a
@@ -50,9 +79,13 @@ store:
    `UNIQUE(position)` (SQLite's UNIQUE is immediate, not deferrable).
 
 Kind- and seeded-_policy_ gating (which kinds or rows an HTTP surface may edit)
-stays in the handlers, which already hold the whole `App`. The SQL only guards
-its own invariants (e.g. a cloud content replace updates `cloud_apps` by id, so a
-non-cloud id matches no row and is a no-op).
+lives in `domain/actions.rs` — `replace_app_content` resolves existence (404) and
+editability/kind-match (409) off the whole `App` a read hands back, before any
+field is validated; `delete`'s kind dispatch is split across the handler because
+it interleaves filesystem teardown (stop the listener, remove files) around the
+store delete. The store's SQL only guards its own invariants (e.g. a cloud content
+replace updates `cloud_apps` by id, so a non-cloud id matches no row and is a
+no-op).
 
 ## The self-hosted upload pipeline
 

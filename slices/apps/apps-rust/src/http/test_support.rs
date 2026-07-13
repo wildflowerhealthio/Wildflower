@@ -18,7 +18,7 @@ use shared_structures_rust::tunnel_service::{
 use shared_structures_server_rust::ProxyTable;
 use url::Url;
 
-use crate::db::AppsStore;
+use crate::db::SqliteAppsStore;
 use crate::http::ports::launch_cookies::{LaunchCookies, NoLaunchCookies};
 use crate::http::ports::owner_auth::{OwnerAuth, StubOwnerAuth};
 use crate::http::state::AppsState;
@@ -141,7 +141,7 @@ pub(crate) fn state_full(
     webview_handle: Arc<dyn OnDeviceWebviewHandle>,
     launch_cookies: Arc<dyn LaunchCookies>,
 ) -> Arc<AppsState> {
-    let store = AppsStore::open_in_memory().expect("store");
+    let store = SqliteAppsStore::open_in_memory().expect("store");
     let self_hosted = self_hosted_service(Arc::clone(&tunnel));
     Arc::new(AppsState::new(
         store,

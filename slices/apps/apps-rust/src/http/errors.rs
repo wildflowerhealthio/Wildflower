@@ -1,15 +1,16 @@
 //! Error **wire-representations** for the apps routes — the JSON body shapes and
 //! the [`AppError`]→response rendering. The failure *vocabulary* is domain
 //! ([`crate::domain::AppError`]); this file only renders it onto the wire — a
-//! semantic status + body, or a logged opaque 500 for a
-//! [`Backend`](AppError::Backend) failure — so a route bails with `?` and its
-//! `Result<_, AppError>` becomes a response with no HTTP glue at the call site.
+//! semantic status + body, or a logged opaque 500 for an
+//! [`Infrastructure`](AppError::Infrastructure) failure — so a route bails with `?`
+//! and its `Result<_, AppError>` becomes a response with no HTTP glue at the call
+//! site.
 //!
 //! Every semantic shape is part of the wire contract and modeled on both sides:
 //! each `derive(ToSchema)` body is declared in the routes' `#[utoipa::path]`
 //! `responses`, matching the errors the TS `apps` groups add (`apps.ts` /
-//! `apps-admin.ts`) so the spec-drift gate stays green. `Backend` is deliberately
-//! **not** modeled — an opaque 500 carries no body a client decodes.
+//! `apps-admin.ts`) so the spec-drift gate stays green. `Infrastructure` is
+//! deliberately **not** modeled — an opaque 500 carries no body a client decodes.
 
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
@@ -64,10 +65,10 @@ pub(crate) struct InvalidHomeScreenBody {
 }
 
 /// Render each [`AppError`] onto the wire. The semantic variants become their
-/// documented status + JSON body; a [`Backend`](AppError::Backend) failure is
-/// logged (via the shared [`InternalError`]) and answered as an opaque, empty
-/// 500. This is the whole of the HTTP layer's error knowledge; the routes just
-/// `?`.
+/// documented status + JSON body; an [`Infrastructure`](AppError::Infrastructure)
+/// failure is logged (via the shared [`InternalError`]) and answered as an opaque,
+/// empty 500. This is the whole of the HTTP layer's error knowledge; the routes
+/// just `?`.
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         match self {
@@ -107,7 +108,7 @@ impl IntoResponse for AppError {
                 }),
             )
                 .into_response(),
-            AppError::Backend { context, source } => {
+            AppError::Infrastructure { context, source } => {
                 InternalError::new(context, source).into_response()
             }
         }

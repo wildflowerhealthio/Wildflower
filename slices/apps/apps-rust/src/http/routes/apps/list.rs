@@ -9,7 +9,7 @@ use std::sync::Arc;
 use axum::extract::State;
 use axum::Json;
 
-use crate::domain::{AppError, AppListEntry};
+use crate::domain::{actions, AppError, AppListEntry};
 use crate::http::state::AppsState;
 
 /// `GET /apps` — the full catalogue in display order. Gating is applied by the
@@ -26,6 +26,6 @@ use crate::http::state::AppsState;
 pub(crate) async fn handle_list_apps(
     State(state): State<Arc<AppsState>>,
 ) -> Result<Json<Vec<AppListEntry>>, AppError> {
-    let apps = state.store.list_apps()?;
+    let apps = actions::list_apps(&state.store)?;
     Ok(Json(apps.iter().map(AppListEntry::from).collect()))
 }

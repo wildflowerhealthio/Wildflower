@@ -1,11 +1,12 @@
-//! Write-side input specs — what each create / replace store operation needs,
-//! as one struct per operation instead of loose scalar arguments. They live in
-//! the `db` layer beside [`writes`](super::writes), the store methods that
-//! consume them; a handler builds one and hands it in. Deliberately *not* the
-//! domain [`App`](crate::domain::App): a spec carries only the caller-owned
-//! fields; everything the store allocates (position, slug, port) or that
-//! another surface owns (`enabled`, curated by `PUT /home-screen`) is absent by
-//! construction.
+//! Write-side input specs — what each create / replace persistence operation
+//! needs, as one struct per operation instead of loose scalar arguments. They're
+//! domain value objects the [`AppsStore`](crate::domain::AppsStore) port speaks
+//! (the `SQLite` adapter's query bodies in [`crate::db`] consume them); a handler
+//! builds one and hands it to an [`action`](crate::domain::actions). Deliberately
+//! *not* the domain [`App`](crate::domain::App): a spec carries only the
+//! caller-owned fields; everything the store allocates (position, slug, port) or
+//! that another surface owns (`enabled`, curated by `PUT /home-screen`) is absent
+//! by construction.
 
 use crate::domain::AppUrl;
 
@@ -53,9 +54,10 @@ pub struct NewSelfHostedUpload {
     pub launch_path: Option<String>,
 }
 
-/// Why [`insert_self_hosted_app`](crate::db::AppsStore::insert_self_hosted_app)
+/// Why [`insert_self_hosted_app`](crate::domain::AppsStore::insert_self_hosted_app)
 /// allocated nothing (the transaction was dropped unwritten). Distinguished so
-/// the handler can answer accurately: a slug clash is a name problem the
+/// the [`create_self_hosted_app`](crate::domain::actions) action can answer
+/// accurately: a slug clash is a name problem the
 /// caller can retry differently, an exhausted port space is a server resource
 /// fault no rename fixes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

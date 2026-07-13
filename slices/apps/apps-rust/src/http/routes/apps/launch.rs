@@ -41,7 +41,7 @@ use axum::response::{IntoResponse, Response};
 
 use shared_structures_rust::served_origin::{request_provenance, RequestProvenance};
 
-use crate::domain::{App, AppError, CloudApp, LaunchParams, SelfHostedApp, SystemApp};
+use crate::domain::{actions, App, AppError, CloudApp, LaunchParams, SelfHostedApp, SystemApp};
 use crate::http::errors::{AppNotFoundBody, LaunchUnavailableBody};
 use crate::http::state::AppsState;
 use crate::id::mint_launch_nonce;
@@ -112,7 +112,7 @@ async fn launch(
     // Loopback; a forwarded host that cleared validation but failed to parse as a
     // URL is an internal inconsistency, so 500 rather than guess.
     let Some(provenance) = request_provenance(&headers) else {
-        return Err(AppError::backend(
+        return Err(AppError::infrastructure(
             "request_provenance",
             "forwarded header did not indicate a valid base URL",
         ));
@@ -130,10 +130,7 @@ async fn launch(
     }
 
     // 404 before resolving — an unknown id is never an availability failure.
-    let app = state
-        .store
-        .find_app(&id)?
-        .ok_or_else(|| AppError::NotFound { id: id.clone() })?;
+    let app = actions::get_app(&state.store, &id)?;
 
     // Resolve before dispatching: an unreachable target bails here with
     // `503 LaunchUnavailable` rather than opening a doomed popup / dead redirect.
@@ -224,7 +221,7 @@ fn render_system_target(
 ) -> Result<String, AppError> {
     let url = source
         .app_url()
-        .map_err(|e| AppError::backend("system app url failed to parse", e))?;
+        .map_err(|e| AppError::infrastructure("system app url failed to parse", e))?;
     let origin = served_origin(state, provenance);
     let launch = mint_launch_nonce();
     Ok(url.to_url_with_params(&LaunchParams {
@@ -344,7 +341,7 @@ fn redirect(location: String, set_cookies: Vec<HeaderValue>) -> Result<Response,
     }
     builder
         .body(axum::body::Body::empty())
-        .map_err(|e| AppError::backend("redirect builder failed", e))
+        .map_err(|e| AppError::infrastructure("redirect builder failed", e))
 }
 
 /// 204 No Content — the response when the host's

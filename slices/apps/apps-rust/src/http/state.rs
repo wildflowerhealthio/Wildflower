@@ -8,18 +8,21 @@ use std::sync::Arc;
 use shared_structures_rust::tunnel_service::TunnelService;
 use url::Url;
 
-use crate::db::AppsStore;
+use crate::db::SqliteAppsStore;
 use crate::http::ports::launch_cookies::LaunchCookies;
 use crate::http::ports::owner_auth::OwnerAuth;
 use crate::self_hosted_apps::SelfHostedAppsService;
 use crate::OnDeviceWebviewHandle;
 
-/// Shared state threaded through the apps handlers. Held in an `Arc` and
-/// extracted via `State<Arc<AppsState>>` per the tunnel-rust pattern.
+/// Shared state threaded through the apps handlers. Holds the **concrete**
+/// [`SqliteAppsStore`] adapter (not `Arc<dyn AppsStore>` or a generic): the port
+/// abstraction lives in the domain `actions` the handlers call, so the HTTP state
+/// and axum wiring stay monomorphic. Held in an `Arc` and extracted via
+/// `State<Arc<AppsState>>` per the tunnel-rust pattern.
 pub struct AppsState {
     /// The apps store — serves the parent registry plus the cloud + self-hosted
     /// children.
-    pub(crate) store: AppsStore,
+    pub(crate) store: SqliteAppsStore,
     /// The base URL clients reach when the tunnel is down. The non-tunnel launch
     /// origin ([`Self::loopback_origin`]) and the self-hosted listeners' hostname
     /// ([`Self::loopback_hostname`]) both derive from it, so they can't drift. A
@@ -51,7 +54,7 @@ pub struct AppsState {
 impl AppsState {
     #[must_use]
     pub fn new(
-        store: AppsStore,
+        store: SqliteAppsStore,
         loopback_base_url: Url,
         owner_auth: Arc<dyn OwnerAuth>,
         tunnel: Arc<dyn TunnelService>,

@@ -17,7 +17,7 @@ use axum::Json;
 use serde::Serialize;
 use utoipa::ToSchema;
 
-use crate::domain::{App, AppError, SelfHostedApp};
+use crate::domain::{actions, App, AppError, SelfHostedApp};
 use crate::http::errors::{AppNotEditableBody, AppNotFoundBody};
 use crate::http::state::AppsState;
 
@@ -43,34 +43,17 @@ pub(crate) async fn handle_delete_app(
     State(state): State<Arc<AppsState>>,
     Path(id): Path<String>,
 ) -> Result<Json<DeletedBody>, AppError> {
-    let app = state
-        .store
-        .find_app(&id)?
-        .ok_or_else(|| AppError::NotFound { id: id.clone() })?;
+    let app = actions::get_app(&state.store, &id)?;
 
     match &app {
         App::Cloud { .. } => {
-            delete_row(&state, &id)?;
+            actions::delete_app(&state.store, &id)?;
             Ok(Json(DeletedBody { deleted: true }))
         }
         App::SelfHosted { app: child, .. } => delete_self_hosted(&state, &id, child),
         // System apps are not user-removable.
         App::System { .. } => Err(AppError::NotEditable { id }),
     }
-}
-
-/// Delete the app's rows (`home_screen` + the concrete row), mapping "nothing
-/// deleted" to a logged 500 — the row was just read under the same store, so it
-/// can't have vanished; never a misleading 404.
-fn delete_row(state: &AppsState, id: &str) -> Result<(), AppError> {
-    let deleted = state.store.delete_app(id)?;
-    if !deleted {
-        return Err(AppError::backend(
-            "row vanished between find_app and delete_app",
-            format!("id={id}"),
-        ));
-    }
-    Ok(())
 }
 
 /// The self-hosted arm: seeded rows are protected, uploaded rows are torn down
@@ -93,7 +76,7 @@ fn delete_self_hosted(
         tracing::warn!(%error, app = %id, "failed to stop an uploaded self-hosted app before delete");
     }
 
-    delete_row(state, id)?;
+    actions::delete_app(&state.store, id)?;
 
     // Best-effort file removal — the row is already gone, so a leftover folder is
     // harmless (it 404s until a same-slug reinstall overwrites it).

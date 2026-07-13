@@ -27,9 +27,10 @@
 //!    `provenance`-discriminated wire union, projected from `App`),
 //!    [`domain::AppError`] (the failure vocabulary), and [`domain::AppUrl`] (the
 //!    write-side URL validator).
-//!  - [`db`] — the store ([`db::AppsStore`]) over the app-wide diesel r2d2 pool
-//!    (`persistence_rust::DieselPool`), migrated with embedded diesel migrations;
-//!    cross-kind reads go through the `apps_view` SQL view.
+//!  - [`db`] — the `SQLite` store adapter ([`db::SqliteAppsStore`], the
+//!    implementation of the [`domain::AppsStore`] port) over the app-wide diesel
+//!    r2d2 pool (`persistence_rust::DieselPool`), migrated with embedded diesel
+//!    migrations; cross-kind reads go through the `apps_view` SQL view.
 //!  - [`http`] — the slice's routers. `GET /apps` lists the registry in display
 //!    order; `POST /apps/{id}` dispatches the launch on the app's kind; the
 //!    cloud-admin routes create / replace / delete app content (cloud and
@@ -60,12 +61,16 @@ use anyhow::Context;
 use axum::Router;
 use shared_structures_rust::tunnel_service::TunnelService;
 
+// The `AppsStore` port trait — in scope so `setup_apps` can call the store's
+// `list_self_hosted_apps` read on the concrete adapter.
+use crate::domain::AppsStore as _;
+
 // Re-exported so the host can name the pool type at the `setup_apps` call site
 // without a direct diesel dependency; the canonical home is persistence-rust.
 pub use persistence_rust::DieselPool;
 
 pub use config::AppsConfig;
-pub use db::AppsStore;
+pub use db::SqliteAppsStore;
 pub use domain::{App, SelfHostedApp};
 pub use http::{openapi_spec, AppsState, LaunchCookies, NoLaunchCookies, OwnerAuth};
 // Re-exported for the integration test crate; `#[deprecated]` is intentional.
@@ -144,10 +149,10 @@ pub fn setup_apps(
     self_hosted: Arc<SelfHostedAppsService>,
     launch_cookies: Arc<dyn LaunchCookies>,
 ) -> anyhow::Result<Apps> {
-    // `AppsStore::new` runs the embedded migrations — building the concrete tables,
-    // the `home_screen` ordering table, and the `apps_view`. The one store serves
-    // them all.
-    let store = AppsStore::new(pool).context("failed to open apps store")?;
+    // `SqliteAppsStore::new` runs the embedded migrations — building the concrete
+    // tables, the `home_screen` ordering table, and the `apps_view`. The one store
+    // serves them all.
+    let store = SqliteAppsStore::new(pool).context("failed to open apps store")?;
     // Materialize the self-hosted catalogue once for the host to bind listeners
     // against — every self-hosted row, migration-seeded or previously uploaded.
     let self_hosted_apps = store
