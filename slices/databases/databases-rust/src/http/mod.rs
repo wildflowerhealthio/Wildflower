@@ -6,10 +6,9 @@
 //! handlers that serve traffic also produce the committed OpenAPI snapshot
 //! (`openapi/databases.openapi.json`) that the TS spec-drift test reads.
 
-mod handlers;
-mod response_templates;
+mod errors;
+mod routes;
 mod state;
-mod temp_file_stream;
 
 pub use state::DatabasesState;
 
@@ -26,7 +25,7 @@ struct ApiDoc;
 /// The `/databases` surface as an `OpenApiRouter`, so the spec is collected from
 /// the same routes that serve traffic (mirrors `apps-rust` / `tunnel-rust`).
 fn documented_router() -> OpenApiRouter<Arc<DatabasesState>> {
-    OpenApiRouter::with_openapi(ApiDoc::openapi()).merge(handlers::openapi_router())
+    OpenApiRouter::with_openapi(ApiDoc::openapi()).merge(routes::openapi_router())
 }
 
 /// Build the databases `/databases` router over a [`DatabasesState`]. The module

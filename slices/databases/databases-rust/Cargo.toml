@@ -14,14 +14,13 @@ publish.workspace = true
 # `tunnel-rust`: pure `catalog`/`metadata`/`files` helpers behind the `http`
 # surface, gated by the consumer (the gatekeeper Owner check).
 [dependencies]
-anyhow.workspace = true
 axum.workspace = true
 serde = { workspace = true }
 serde_json.workspace = true
 utoipa.workspace = true
 utoipa-axum.workspace = true
 rusqlite.workspace = true
-# The shared opaque-500 `InternalError` template (see `response_templates`).
+# The shared opaque-500 `InternalError` template (see `http::errors`).
 shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = ["http-errors"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 tracing = "0.1"

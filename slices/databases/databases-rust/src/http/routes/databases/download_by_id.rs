@@ -1,17 +1,23 @@
 //! `GET /databases/{id}` — download a database as a consistent SQLite snapshot.
 
+use std::path::PathBuf;
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 
-use axum::body::Body;
+use axum::body::{Body, Bytes};
 use axum::extract::{Path, State};
 use axum::http::header::{CONTENT_DISPOSITION, CONTENT_TYPE};
 use axum::http::HeaderValue;
 use axum::response::{IntoResponse, Response};
+use futures_core::Stream;
+use tokio::fs::File;
+use tokio_util::io::ReaderStream;
 
+use crate::domain::DatabaseError;
 use crate::files::snapshot_to_temp;
-use crate::http::response_templates::HandlerError;
+use crate::http::errors::DatabaseNotFoundBody;
 use crate::http::state::DatabasesState;
-use crate::http::temp_file_stream::TempFileStream;
 
 /// `GET /databases/{id}` — stream the database file as `application/vnd.sqlite3`
 /// (a `VACUUM INTO` snapshot, so it's internally consistent even while the
@@ -36,27 +42,26 @@ use crate::http::temp_file_stream::TempFileStream;
     ),
     responses(
         (status = 200, description = "The database as a consistent SQLite snapshot", content_type = "application/vnd.sqlite3"),
-        (status = 404, description = "No database has this id, or it doesn't exist yet", body = crate::http::response_templates::DatabaseNotFoundBody),
+        (status = 404, description = "No database has this id, or it doesn't exist yet", body = DatabaseNotFoundBody),
     ),
 )]
 pub(crate) async fn handle_download_database(
     State(state): State<Arc<DatabasesState>>,
     Path(id): Path<String>,
-) -> Result<Response, HandlerError> {
-    let Some((descriptor, path)) = state.existing(&id) else {
-        return Err(HandlerError::NotFound { id });
-    };
+) -> Result<Response, DatabaseError> {
+    let (descriptor, path) = state
+        .existing(&id)
+        .ok_or_else(|| DatabaseError::NotFound { id: id.clone() })?;
     // Own the filename before the await (the descriptor borrows `state`).
     let filename = descriptor.id.clone();
 
     let temp_path = tokio::task::spawn_blocking(move || snapshot_to_temp(&path))
         .await
-        .map_err(|error| HandlerError::internal("snapshot task panicked", error))?
-        .map_err(|error| HandlerError::internal("snapshot_database failed", error))?;
+        .map_err(|error| DatabaseError::infrastructure("snapshot task panicked", error))??;
 
-    let file = tokio::fs::File::open(&temp_path)
+    let file = File::open(&temp_path)
         .await
-        .map_err(|error| HandlerError::internal("open snapshot failed", error))?;
+        .map_err(|error| DatabaseError::infrastructure("open snapshot", error))?;
     let body = Body::from_stream(TempFileStream::new(file, temp_path));
 
     // The filename is a fixed catalogue id (a bare `*.sqlite` filename), so it's
@@ -71,4 +76,44 @@ pub(crate) async fn handle_download_database(
         (CONTENT_DISPOSITION, disposition),
     ];
     Ok((headers, body).into_response())
+}
+
+/// A response-body stream over the temporary snapshot file that unlinks it once
+/// the stream is dropped — after the body drains, or when the client disconnects
+/// mid-download. Lives here because [`handle_download_database`] is its only
+/// consumer.
+struct TempFileStream {
+    inner: Option<ReaderStream<File>>,
+    temp_path: PathBuf,
+}
+
+impl TempFileStream {
+    fn new(file: File, temp_path: PathBuf) -> Self {
+        Self {
+            inner: Some(ReaderStream::new(file)),
+            temp_path,
+        }
+    }
+}
+
+impl Stream for TempFileStream {
+    type Item = std::io::Result<Bytes>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        // `Self` is `Unpin` (every field is), so `get_mut` is sound.
+        let this = self.get_mut();
+        match this.inner.as_mut() {
+            Some(inner) => Pin::new(inner).poll_next(cx),
+            None => Poll::Ready(None),
+        }
+    }
+}
+
+impl Drop for TempFileStream {
+    fn drop(&mut self) {
+        // Drop the reader (closing the OS file handle) before unlinking — required
+        // on Windows, harmless on Unix.
+        self.inner = None;
+        let _ = std::fs::remove_file(&self.temp_path);
+    }
 }

@@ -16,6 +16,9 @@
 //! Layered like `apps-rust` / `tunnel-rust`:
 //!
 //!  - [`config`] — the host-supplied [`DatabaseDescriptor`] catalogue.
+//!  - [`domain`] — core types: [`domain::DatabaseError`], the semantic failure
+//!    vocabulary the HTTP layer renders (this slice owns no store, so there is
+//!    no row/wire domain type — the wire metadata shape lives in [`metadata`]).
 //!  - [`metadata`] — the wire [`metadata::DatabaseMetadata`] (size, table
 //!    count, modified time) the settings screen renders.
 //!  - [`files`] — the file-level operations: a consistent export snapshot
@@ -38,6 +41,7 @@
 //! surface is Owner-gated, mirroring the apps admin surface.
 
 pub mod config;
+pub mod domain;
 
 mod files;
 mod http;

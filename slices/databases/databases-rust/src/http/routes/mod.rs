@@ -1,12 +1,11 @@
-//! `/databases` routes — the host-side surface for listing, exporting, and
-//! deleting databases. One module per route handler (`list`, `download`,
-//! `delete`), each a `#[utoipa::path]`-annotated handler. `GET /databases/{id}`
-//! (download) and `DELETE /databases/{id}` share a path, so `routes!` merges
-//! them, collecting the OpenAPI spec from the very handlers that serve traffic.
+//! HTTP routes for the databases slice — the three `/databases` endpoints as one
+//! [`openapi_router`]. The folder tree mirrors the URL tree (`databases/` for the
+//! `/databases` segment, one file per operation); the served routes and the
+//! OpenAPI spec come from the same `#[utoipa::path]`-annotated handlers.
+//! `GET /databases/{id}` (download) and `DELETE /databases/{id}` share a path, so
+//! `routes!` merges them into one path-item entry.
 
-mod delete;
-mod download;
-mod list;
+mod databases;
 
 use std::sync::Arc;
 
@@ -15,12 +14,15 @@ use utoipa_axum::routes;
 
 use crate::http::state::DatabasesState;
 
+/// The whole databases surface as an `OpenApiRouter` — the spec-bearing inner of
+/// [`super::router`]. Every route is Owner-only; the host wraps the built router
+/// with its auth gate.
 pub(crate) fn openapi_router() -> OpenApiRouter<Arc<DatabasesState>> {
     OpenApiRouter::new()
-        .routes(routes!(list::handle_list_databases))
+        .routes(routes!(databases::list_all::handle_list_databases))
         .routes(routes!(
-            download::handle_download_database,
-            delete::handle_delete_database
+            databases::download_by_id::handle_download_database,
+            databases::delete_by_id::handle_delete_database
         ))
 }
 
