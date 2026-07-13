@@ -7,7 +7,7 @@
 //! `collector-rust`'s `RemotesStore`.
 
 use anyhow::Context;
-use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
+use diesel_migrations::{embed_migrations, EmbeddedMigrations};
 use persistence_rust::{DieselPool, PooledDieselConnection};
 
 use crate::db::{seed_tunnel_settings, tunnel_settings};
@@ -15,15 +15,20 @@ use crate::domain::{
     RelaySettings, SettingsSeed, SettingsUpdateOutcome, TunnelError, TunnelSettings, TunnelStore,
 };
 
+/// This slice's migration namespace in the shared database. Applied versions are
+/// bookkept per-namespace by [`persistence_rust::run_diesel_migrations`], so
+/// tunnel's `0001` and another diesel slice's `0001` never collide.
+const MIGRATION_NAMESPACE: &str = "tunnel";
+
 /// The tunnel migrations, embedded from the crate's `migrations/` tree at
 /// compile time (diesel layout: `<version>_<name>/up.sql` + `down.sql`).
-/// Applied once per database in [`SqliteTunnelStore::new`]; diesel records
-/// applied versions in its own `__diesel_schema_migrations` table, disjoint from
-/// the namespaced `schema_migrations` the other (rusqlite) slices use, so the
-/// two bookkeepers coexist in the shared database with no collision. Migration
-/// `0001` uses idempotent DDL so it's a no-op on a database whose
-/// `tunnel_settings` table predates this diesel migration (see the migration's
-/// `up.sql`).
+/// Applied once per database in [`SqliteTunnelStore::new`] through
+/// [`persistence_rust::run_diesel_migrations`], which records applied versions
+/// per-namespace in `diesel_slice_migrations` — NOT diesel's stock,
+/// un-namespaced `__diesel_schema_migrations` (which would let another diesel
+/// slice's `0001` mask tunnel's). Migration `0001` still uses idempotent DDL so
+/// it's a no-op on a database whose `tunnel_settings` table predates this diesel
+/// migration (see the migration's `up.sql`).
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
 /// The `SQLite` adapter for the [`TunnelStore`] port. Cheap to clone (the pool
@@ -57,8 +62,8 @@ impl SqliteTunnelStore {
         let mut conn = pool
             .get()
             .context("failed to check out a connection to run tunnel migrations")?;
-        conn.run_pending_migrations(MIGRATIONS)
-            .map_err(|e| anyhow::anyhow!("failed to apply tunnel migrations: {e}"))?;
+        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
+            .context("failed to apply tunnel migrations")?;
         drop(conn);
         Ok(Self { pool })
     }
@@ -137,16 +142,18 @@ mod tests {
     use super::*;
     use crate::db::schema::tunnel_settings;
 
-    /// Running the migrations twice is a no-op the second time (diesel skips
-    /// already-applied versions), the table exists, and its singleton row is
-    /// seeded exactly once — so opening an existing database never re-seeds or
-    /// errors.
+    /// Running the migrations twice is a no-op the second time (the namespaced
+    /// runner skips already-applied versions), the table exists, and its
+    /// singleton row is seeded exactly once — so opening an existing database
+    /// never re-seeds or errors.
     #[test]
     fn migrations_are_idempotent_and_seed_the_singleton_row_once() {
         let pool = persistence_rust::open_in_memory_pool().unwrap();
         let mut conn = pool.get().unwrap();
-        conn.run_pending_migrations(MIGRATIONS).unwrap();
-        conn.run_pending_migrations(MIGRATIONS).unwrap();
+        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
+            .unwrap();
+        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
+            .unwrap();
         let row_count: i64 = tunnel_settings::table
             .count()
             .get_result(&mut conn)
@@ -176,7 +183,8 @@ mod tests {
             .execute(&mut conn)
             .unwrap();
 
-        conn.run_pending_migrations(MIGRATIONS).unwrap();
+        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
+            .unwrap();
 
         let row_count: i64 = tunnel_settings::table
             .count()

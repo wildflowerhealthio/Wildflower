@@ -5355,6 +5355,7 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "diesel",
+ "diesel_migrations",
  "parking_lot",
  "rusqlite",
  "serde",

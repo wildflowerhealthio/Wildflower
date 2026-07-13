@@ -6,21 +6,26 @@
 //! bodies in [`crate::db::remotes`]. Mirrors `tunnel-rust`'s `SqliteTunnelStore`.
 
 use anyhow::Context;
-use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
+use diesel_migrations::{embed_migrations, EmbeddedMigrations};
 use persistence_rust::{DieselPool, PooledDieselConnection};
 
 use crate::db::remotes;
 use crate::domain::{Remote, RemoteError, RemotesStore};
 
+/// This slice's migration namespace in the shared database. Applied versions are
+/// bookkept per-namespace by [`persistence_rust::run_diesel_migrations`], so
+/// collector's `0001` and another diesel slice's `0001` never collide.
+const MIGRATION_NAMESPACE: &str = "collector";
+
 /// The collector migrations, embedded from the crate's `migrations/` tree at
 /// compile time (diesel layout: `<version>_<name>/up.sql` + `down.sql`).
-/// Applied once per database in [`SqliteRemotesStore::new`]; diesel records
-/// applied versions in its own `__diesel_schema_migrations` table, which is
-/// disjoint from persistence-rust's namespaced `schema_migrations`, so the two
-/// migration bookkeepers coexist in the shared database with no collision.
-/// Migration `0002` seeds the demo FHIR remote the retired api_stubs stub used
-/// to hardcode; because each migration runs only once per database, a
-/// user-deleted seed stays deleted across upgrades.
+/// Applied once per database in [`SqliteRemotesStore::new`] through
+/// [`persistence_rust::run_diesel_migrations`], which records applied versions
+/// per-namespace in `diesel_slice_migrations` — NOT diesel's stock,
+/// un-namespaced `__diesel_schema_migrations` (which would let another diesel
+/// slice's `0001` mask collector's). Migration `0002` seeds the demo FHIR remote
+/// the retired api_stubs stub used to hardcode; because each migration runs only
+/// once per database, a user-deleted seed stays deleted across upgrades.
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
 /// The `SQLite` adapter for the [`RemotesStore`] port. Cheap to clone (the pool
@@ -54,8 +59,8 @@ impl SqliteRemotesStore {
         let mut conn = pool
             .get()
             .context("failed to check out a connection to run collector migrations")?;
-        conn.run_pending_migrations(MIGRATIONS)
-            .map_err(|e| anyhow::anyhow!("failed to apply collector migrations: {e}"))?;
+        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
+            .context("failed to apply collector migrations")?;
         drop(conn);
         Ok(Self { pool })
     }
@@ -138,14 +143,17 @@ mod tests {
         }
     }
 
-    /// Running the migrations twice is a no-op the second time (diesel skips
-    /// already-applied versions), the table exists, and the seed applied
-    /// exactly once — so opening an existing database never re-seeds or errors.
+    /// Running the migrations twice is a no-op the second time (the namespaced
+    /// runner skips already-applied versions), the table exists, and the seed
+    /// applied exactly once — so opening an existing database never re-seeds or
+    /// errors.
     #[test]
     fn migrations_are_idempotent_and_seed_once() {
         let mut conn = SqliteConnection::establish(":memory:").unwrap();
-        conn.run_pending_migrations(MIGRATIONS).unwrap();
-        conn.run_pending_migrations(MIGRATIONS).unwrap();
+        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
+            .unwrap();
+        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
+            .unwrap();
         let seed_count: i64 = collector_remotes::table
             .count()
             .get_result(&mut conn)

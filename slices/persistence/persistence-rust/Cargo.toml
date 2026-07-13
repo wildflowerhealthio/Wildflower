@@ -31,3 +31,8 @@ workspace = true
 # Real on-disk databases for the diesel pool's cross-connection round-trip test
 # (an in-memory `:memory:` pool would give each connection its own empty db).
 tempfile = "3"
+# Test-only: `embed_migrations!` for the fixture migration trees under
+# `tests/fixtures/` that exercise `run_diesel_migrations`. The runtime runner
+# takes any `MigrationSource<Sqlite>` (a `diesel` core trait), so no non-test
+# dependency on `diesel_migrations` is added.
+diesel_migrations = { workspace = true }

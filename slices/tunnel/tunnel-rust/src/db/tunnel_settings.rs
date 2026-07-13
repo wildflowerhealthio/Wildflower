@@ -111,7 +111,8 @@ impl From<TunnelSettingsRow> for TunnelSettings {
 pub(super) fn get_settings(
     conn: &mut PooledDieselConnection,
 ) -> Result<TunnelSettings, TunnelError> {
-    read_settings(conn)
+    read_settings_row(conn)
+        .map_err(|e| TunnelError::infrastructure("read tunnel settings failed", e))
 }
 
 /// Compare-and-swap the visible settings (`public_host`, `requested_running`)
@@ -135,20 +136,25 @@ pub(super) fn update_basic_settings(
     public_host: Option<&str>,
     requested_running: bool,
 ) -> Result<SettingsUpdateOutcome, TunnelError> {
-    let affected = diesel::update(
-        tunnel_settings::table
-            .find(TUNNEL_SETTINGS_ID)
-            .filter(tunnel_settings::revision.eq(expected_revision)),
-    )
-    .set((
-        tunnel_settings::public_host.eq(public_host),
-        tunnel_settings::requested_running.eq(requested_running),
-        tunnel_settings::revision.eq(tunnel_settings::revision + 1),
-    ))
-    .execute(conn)
-    .map_err(|e| TunnelError::infrastructure("update_basic_settings failed", e))?;
-
-    outcome_after_cas(conn, affected)
+    // The UPDATE and its read-back run in one transaction so the returned
+    // snapshot is exactly the state this compare-and-swap produced — a
+    // concurrent writer on another pooled connection can't commit between the
+    // write and the read-back and have `Applied` carry a foreign revision.
+    conn.transaction::<_, diesel::result::Error, _>(|conn| {
+        let affected = diesel::update(
+            tunnel_settings::table
+                .find(TUNNEL_SETTINGS_ID)
+                .filter(tunnel_settings::revision.eq(expected_revision)),
+        )
+        .set((
+            tunnel_settings::public_host.eq(public_host),
+            tunnel_settings::requested_running.eq(requested_running),
+            tunnel_settings::revision.eq(tunnel_settings::revision + 1),
+        ))
+        .execute(conn)?;
+        classify_cas(conn, affected)
+    })
+    .map_err(|e| TunnelError::infrastructure("update_basic_settings failed", e))
 }
 
 /// Compare-and-swap the visible settings **and all four relay columns** under
@@ -168,36 +174,39 @@ pub(super) fn update_all_settings(
     requested_running: bool,
     relay: &RelaySettings,
 ) -> Result<SettingsUpdateOutcome, TunnelError> {
-    let affected = diesel::update(
-        tunnel_settings::table
-            .find(TUNNEL_SETTINGS_ID)
-            .filter(tunnel_settings::revision.eq(expected_revision)),
-    )
-    .set((
-        tunnel_settings::public_host.eq(public_host),
-        tunnel_settings::requested_running.eq(requested_running),
-        tunnel_settings::relay_remote_addr.eq(Some(relay.remote_addr.as_str())),
-        tunnel_settings::relay_token.eq(Some(relay.token.as_str())),
-        tunnel_settings::relay_public_key.eq(Some(relay.public_key.as_str())),
-        tunnel_settings::service_name.eq(Some(relay.service_name.as_str())),
-        tunnel_settings::revision.eq(tunnel_settings::revision + 1),
-    ))
-    .execute(conn)
-    .map_err(|e| TunnelError::infrastructure("update_all_settings failed", e))?;
-
-    outcome_after_cas(conn, affected)
+    conn.transaction::<_, diesel::result::Error, _>(|conn| {
+        let affected = diesel::update(
+            tunnel_settings::table
+                .find(TUNNEL_SETTINGS_ID)
+                .filter(tunnel_settings::revision.eq(expected_revision)),
+        )
+        .set((
+            tunnel_settings::public_host.eq(public_host),
+            tunnel_settings::requested_running.eq(requested_running),
+            tunnel_settings::relay_remote_addr.eq(Some(relay.remote_addr.as_str())),
+            tunnel_settings::relay_token.eq(Some(relay.token.as_str())),
+            tunnel_settings::relay_public_key.eq(Some(relay.public_key.as_str())),
+            tunnel_settings::service_name.eq(Some(relay.service_name.as_str())),
+            tunnel_settings::revision.eq(tunnel_settings::revision + 1),
+        ))
+        .execute(conn)?;
+        classify_cas(conn, affected)
+    })
+    .map_err(|e| TunnelError::infrastructure("update_all_settings failed", e))
 }
 
 /// Read the current row back over `conn` and fold the CAS's affected-row count
 /// into the outcome: exactly one row means the revision matched
 /// ([`SettingsUpdateOutcome::Applied`]), zero means it had moved on
-/// ([`SettingsUpdateOutcome::Conflict`]). Shared by the two single-purpose
-/// writes above so the read-back-and-classify step lives in one place.
-fn outcome_after_cas(
+/// ([`SettingsUpdateOutcome::Conflict`]). Called inside the write's transaction
+/// (via [`update_basic_settings`] / [`update_all_settings`]), so it raises the
+/// raw diesel error to abort that transaction; the caller maps it to
+/// [`TunnelError`].
+fn classify_cas(
     conn: &mut SqliteConnection,
     affected: usize,
-) -> Result<SettingsUpdateOutcome, TunnelError> {
-    let current = read_settings(conn)?;
+) -> Result<SettingsUpdateOutcome, diesel::result::Error> {
+    let current = read_settings_row(conn)?;
     Ok(if affected == 1 {
         SettingsUpdateOutcome::Applied(current)
     } else {
@@ -205,18 +214,20 @@ fn outcome_after_cas(
     })
 }
 
-/// Load the singleton row and fold it into the domain [`TunnelSettings`]. Shared
-/// by [`get_settings`], the [`update_basic_settings`] / [`update_all_settings`]
-/// read-back (via [`outcome_after_cas`]), and the seed path. The row always
-/// exists (the migration seeds it), so a missing row is a genuine infrastructure
-/// error, not an expected empty result.
-pub(super) fn read_settings(conn: &mut SqliteConnection) -> Result<TunnelSettings, TunnelError> {
+/// Load the singleton row and fold it into the domain [`TunnelSettings`], raising
+/// the raw diesel error so it can either abort an enclosing transaction (the CAS
+/// read-back) or be mapped to [`TunnelError`] at a boundary ([`get_settings`],
+/// the seed path). Shared by all three read sites. The row always exists (the
+/// migration seeds it), so a missing row is a genuine infrastructure error, not
+/// an expected empty result.
+pub(super) fn read_settings_row(
+    conn: &mut SqliteConnection,
+) -> Result<TunnelSettings, diesel::result::Error> {
     tunnel_settings::table
         .find(TUNNEL_SETTINGS_ID)
         .select(TunnelSettingsRow::as_select())
         .first(conn)
         .map(TunnelSettings::from)
-        .map_err(|e| TunnelError::infrastructure("read tunnel settings failed", e))
 }
 
 #[cfg(test)]
