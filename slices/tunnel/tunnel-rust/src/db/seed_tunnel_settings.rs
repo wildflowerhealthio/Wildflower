@@ -13,7 +13,7 @@ use persistence_rust::PooledDieselConnection;
 
 use super::tunnel_settings::{read_settings_row, TUNNEL_SETTINGS_ID};
 use crate::db::schema::tunnel_settings;
-use crate::domain::TunnelError;
+use crate::domain::{TunnelError, TunnelSettings};
 use crate::SettingsSeed;
 
 /// Fill `public_host` and/or the relay block from build-time defaults, but only
@@ -39,7 +39,7 @@ pub(super) fn seed_if_absent(
     conn.transaction::<_, diesel::result::Error, _>(|conn| {
         // The migration always inserts the singleton row and every store migrates
         // before seeding, so the read always finds it.
-        let current = read_settings_row(conn)?;
+        let current = TunnelSettings::from(read_settings_row(conn)?);
 
         // Seed a field only where the stored value is unconfigured; the relay is
         // all-or-nothing, gated on the whole block being unset.
