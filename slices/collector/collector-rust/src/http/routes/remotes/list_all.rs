@@ -5,7 +5,7 @@ use std::sync::Arc;
 use axum::extract::State;
 use axum::Json;
 
-use crate::domain::{Remote, RemoteError};
+use crate::domain::{actions, Remote, RemoteError};
 use crate::http::state::CollectorState;
 
 /// `GET /collector/remotes` — list every remote. Owner-gated by the host.
@@ -19,6 +19,6 @@ use crate::http::state::CollectorState;
 pub(crate) async fn handle_list_remotes(
     State(state): State<Arc<CollectorState>>,
 ) -> Result<Json<Vec<Remote>>, RemoteError> {
-    let remotes = state.store.list_remotes()?;
+    let remotes = actions::list_remotes(&state.store)?;
     Ok(Json(remotes))
 }

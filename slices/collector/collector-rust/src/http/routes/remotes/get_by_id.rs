@@ -5,7 +5,7 @@ use std::sync::Arc;
 use axum::extract::{Path, State};
 use axum::Json;
 
-use crate::domain::{Remote, RemoteError};
+use crate::domain::{actions, Remote, RemoteError};
 use crate::http::errors::RemoteNotFoundBody;
 use crate::http::state::CollectorState;
 
@@ -23,5 +23,5 @@ pub(crate) async fn handle_get_remote(
     State(state): State<Arc<CollectorState>>,
     Path(id): Path<String>,
 ) -> Result<Json<Remote>, RemoteError> {
-    Ok(Json(state.store.get_remote(&id)?))
+    Ok(Json(actions::get_remote(&state.store, &id)?))
 }

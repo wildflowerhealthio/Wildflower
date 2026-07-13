@@ -8,7 +8,7 @@ use axum::Json;
 use serde::Serialize;
 use utoipa::ToSchema;
 
-use crate::domain::RemoteError;
+use crate::domain::{actions, RemoteError};
 use crate::http::errors::RemoteNotFoundBody;
 use crate::http::state::CollectorState;
 
@@ -33,6 +33,6 @@ pub(crate) async fn handle_delete_remote(
     State(state): State<Arc<CollectorState>>,
     Path(id): Path<String>,
 ) -> Result<Json<DeletedBody>, RemoteError> {
-    state.store.delete_remote(&id)?;
+    actions::delete_remote(&state.store, &id)?;
     Ok(Json(DeletedBody { deleted: true }))
 }

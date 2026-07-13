@@ -31,7 +31,7 @@ mod sql_builder;
 mod uri_column;
 
 pub use connection::{Connection, DbResult};
-pub use diesel_pool::{open_in_memory_pool, open_pool, DieselPool};
+pub use diesel_pool::{open_in_memory_pool, open_pool, DieselPool, PooledDieselConnection};
 pub use json_column::JsonColumn;
 pub use migrations::run_migrations;
 pub use sql_builder::build_insert_sql;

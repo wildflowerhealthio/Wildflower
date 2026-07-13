@@ -20,8 +20,8 @@
 //!
 //!  - [`domain`] — core types: [`domain::Remote`] (the diesel-mapped row
 //!    **and** wire shape) and the [`domain::config_tag`] discriminant reader.
-//!  - [`db`] — the SQLite store ([`db::RemotesStore`]) built on Diesel over the
-//!    app-wide r2d2 connection pool (`persistence_rust::DieselPool`) onto the
+//!  - [`db`] — the SQLite store ([`db::SqliteRemotesStore`]) built on Diesel over
+//!    the app-wide r2d2 connection pool (`persistence_rust::DieselPool`) onto the
 //!    shared database file, migrated with embedded diesel migrations.
 //!  - [`http`] — the slice's router; the wire contract is pinned from both
 //!    sides by the committed OpenAPI snapshot (see [`http`]).
@@ -39,7 +39,7 @@ use axum::Router;
 // persistence-rust.
 pub use persistence_rust::DieselPool;
 
-pub use db::RemotesStore;
+pub use db::SqliteRemotesStore;
 pub use http::CollectorState;
 
 /// Build the collector router over the host-owned connection `pool`, mirroring
@@ -63,6 +63,6 @@ pub use http::CollectorState;
 /// Returns an error if the store can't run its migrations on a pooled
 /// connection.
 pub fn setup_collector(pool: DieselPool) -> anyhow::Result<Router> {
-    let store = RemotesStore::new(pool).context("failed to open remotes store")?;
+    let store = SqliteRemotesStore::new(pool).context("failed to open remotes store")?;
     Ok(http::router(Arc::new(CollectorState::new(store))))
 }

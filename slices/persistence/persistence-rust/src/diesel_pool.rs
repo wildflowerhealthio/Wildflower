@@ -21,6 +21,11 @@ use diesel::sqlite::SqliteConnection;
 /// `Arc`), so it's cheap to hand into each slice's state.
 pub type DieselPool = Pool<ConnectionManager<SqliteConnection>>;
 
+/// A connection checked out of a [`DieselPool`]. Diesel's connection API is
+/// `&mut`, so a slice's query bodies each take one of these (checked out by the
+/// store) rather than sharing a single connection behind a mutex.
+pub type PooledDieselConnection = r2d2::PooledConnection<ConnectionManager<SqliteConnection>>;
+
 /// A deliberately small pool cap. This is a single-user desktop app, and WAL is
 /// deliberately OFF repo-wide (see [`Connection`](crate::Connection)), so SQLite
 /// permits only ONE writer at a time across ALL connections to the file — the
