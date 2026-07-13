@@ -10,7 +10,7 @@
 
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
-use persistence_rust::DieselPool;
+use persistence_rust::PooledDieselConnection;
 
 use crate::db::schema::tunnel_settings;
 use crate::domain::{RelaySettings, SettingsUpdateOutcome, TunnelError, TunnelSettings};
@@ -108,11 +108,10 @@ impl From<TunnelSettingsRow> for TunnelSettings {
 /// # Errors
 ///
 /// [`TunnelError::Infrastructure`] on a checkout / read failure.
-pub(super) fn get_settings(pool: &DieselPool) -> Result<TunnelSettings, TunnelError> {
-    let mut conn = pool
-        .get()
-        .map_err(|e| TunnelError::infrastructure("failed to check out a connection", e))?;
-    read_settings(&mut conn)
+pub(super) fn get_settings(
+    conn: &mut PooledDieselConnection,
+) -> Result<TunnelSettings, TunnelError> {
+    read_settings(conn)
 }
 
 /// Compare-and-swap the visible settings (`public_host`, `requested_running`)
@@ -131,15 +130,11 @@ pub(super) fn get_settings(pool: &DieselPool) -> Result<TunnelSettings, TunnelEr
 ///
 /// [`TunnelError::Infrastructure`] on a checkout / update / read-back failure.
 pub(super) fn update_basic_settings(
-    pool: &DieselPool,
+    conn: &mut PooledDieselConnection,
     expected_revision: i64,
     public_host: Option<&str>,
     requested_running: bool,
 ) -> Result<SettingsUpdateOutcome, TunnelError> {
-    let mut conn = pool
-        .get()
-        .map_err(|e| TunnelError::infrastructure("failed to check out a connection", e))?;
-
     let affected = diesel::update(
         tunnel_settings::table
             .find(TUNNEL_SETTINGS_ID)
@@ -150,10 +145,10 @@ pub(super) fn update_basic_settings(
         tunnel_settings::requested_running.eq(requested_running),
         tunnel_settings::revision.eq(tunnel_settings::revision + 1),
     ))
-    .execute(&mut conn)
+    .execute(conn)
     .map_err(|e| TunnelError::infrastructure("update_basic_settings failed", e))?;
 
-    outcome_after_cas(&mut conn, affected)
+    outcome_after_cas(conn, affected)
 }
 
 /// Compare-and-swap the visible settings **and all four relay columns** under
@@ -167,16 +162,12 @@ pub(super) fn update_basic_settings(
 ///
 /// [`TunnelError::Infrastructure`] on a checkout / update / read-back failure.
 pub(super) fn update_all_settings(
-    pool: &DieselPool,
+    conn: &mut PooledDieselConnection,
     expected_revision: i64,
     public_host: Option<&str>,
     requested_running: bool,
     relay: &RelaySettings,
 ) -> Result<SettingsUpdateOutcome, TunnelError> {
-    let mut conn = pool
-        .get()
-        .map_err(|e| TunnelError::infrastructure("failed to check out a connection", e))?;
-
     let affected = diesel::update(
         tunnel_settings::table
             .find(TUNNEL_SETTINGS_ID)
@@ -191,10 +182,10 @@ pub(super) fn update_all_settings(
         tunnel_settings::service_name.eq(Some(relay.service_name.as_str())),
         tunnel_settings::revision.eq(tunnel_settings::revision + 1),
     ))
-    .execute(&mut conn)
+    .execute(conn)
     .map_err(|e| TunnelError::infrastructure("update_all_settings failed", e))?;
 
-    outcome_after_cas(&mut conn, affected)
+    outcome_after_cas(conn, affected)
 }
 
 /// Read the current row back over `conn` and fold the CAS's affected-row count

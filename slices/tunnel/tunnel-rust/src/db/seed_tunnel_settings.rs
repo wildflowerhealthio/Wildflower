@@ -9,11 +9,12 @@
 //! a pure domain type ([`crate::domain::SettingsSeed`]).
 
 use diesel::prelude::*;
-use persistence_rust::DieselPool;
+use persistence_rust::PooledDieselConnection;
 
 use super::tunnel_settings::{read_settings, TUNNEL_SETTINGS_ID};
 use crate::db::schema::tunnel_settings;
-use crate::domain::{SettingsSeed, TunnelError};
+use crate::domain::TunnelError;
+use crate::SettingsSeed;
 
 /// Fill `public_host` and/or the relay block from build-time defaults, but only
 /// where the stored value is currently unconfigured — an in-app edit is never
@@ -30,14 +31,13 @@ use crate::domain::{SettingsSeed, TunnelError};
 /// # Errors
 ///
 /// [`TunnelError::Infrastructure`] on a checkout / read-back / update failure.
-pub(super) fn seed_if_absent(pool: &DieselPool, seed: &SettingsSeed) -> Result<(), TunnelError> {
-    let mut conn = pool
-        .get()
-        .map_err(|e| TunnelError::infrastructure("failed to check out a connection", e))?;
-
+pub(super) fn seed_if_absent(
+    conn: &mut PooledDieselConnection,
+    seed: &SettingsSeed,
+) -> Result<(), TunnelError> {
     // The migration always inserts the singleton row and every store migrates
     // before seeding, so the read always finds it.
-    let current = read_settings(&mut conn)?;
+    let current = read_settings(conn)?;
 
     // Seed a field only where the stored value is unconfigured; the relay is
     // all-or-nothing, gated on the whole block being unset.
@@ -57,7 +57,7 @@ pub(super) fn seed_if_absent(pool: &DieselPool, seed: &SettingsSeed) -> Result<(
     if let Some(host) = host_to_seed {
         diesel::update(tunnel_settings::table.find(TUNNEL_SETTINGS_ID))
             .set(tunnel_settings::public_host.eq(Some(host)))
-            .execute(&mut conn)
+            .execute(conn)
             .map_err(|e| TunnelError::infrastructure("seed public_host failed", e))?;
     }
     if let Some(relay) = relay_to_seed {
@@ -68,7 +68,7 @@ pub(super) fn seed_if_absent(pool: &DieselPool, seed: &SettingsSeed) -> Result<(
                 tunnel_settings::relay_public_key.eq(Some(relay.public_key.as_str())),
                 tunnel_settings::service_name.eq(Some(relay.service_name.as_str())),
             ))
-            .execute(&mut conn)
+            .execute(conn)
             .map_err(|e| TunnelError::infrastructure("seed relay failed", e))?;
     }
     Ok(())
@@ -79,6 +79,7 @@ mod tests {
     use super::*;
     use crate::db::SqliteTunnelStore;
     use crate::domain::{RelaySettings, TunnelStore};
+    use crate::SettingsSeed;
 
     fn store() -> SqliteTunnelStore {
         SqliteTunnelStore::open_in_memory().expect("open in-memory store")

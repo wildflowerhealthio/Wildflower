@@ -8,7 +8,7 @@
 
 use anyhow::Context;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
-use persistence_rust::DieselPool;
+use persistence_rust::{DieselPool, PooledDieselConnection};
 
 use crate::db::{seed_tunnel_settings, tunnel_settings};
 use crate::domain::{
@@ -77,9 +77,11 @@ impl SqliteTunnelStore {
         Self::new(persistence_rust::open_in_memory_pool()?)
     }
 
-    /// The pool the sibling query modules check connections out of.
-    fn pool(&self) -> &DieselPool {
-        &self.pool
+    /// Check out a connection from the pool.
+    fn connection(&self) -> Result<PooledDieselConnection, TunnelError> {
+        self.pool
+            .get()
+            .map_err(|e| TunnelError::infrastructure("failed to check out a connection", e))
     }
 }
 
@@ -90,7 +92,7 @@ impl SqliteTunnelStore {
 /// row types it maps.
 impl TunnelStore for SqliteTunnelStore {
     fn get_settings(&self) -> Result<TunnelSettings, TunnelError> {
-        tunnel_settings::get_settings(self.pool())
+        tunnel_settings::get_settings(&mut self.connection()?)
     }
 
     fn update_basic_settings(
@@ -100,7 +102,7 @@ impl TunnelStore for SqliteTunnelStore {
         requested_running: bool,
     ) -> Result<SettingsUpdateOutcome, TunnelError> {
         tunnel_settings::update_basic_settings(
-            self.pool(),
+            &mut self.connection()?,
             expected_revision,
             public_host,
             requested_running,
@@ -115,7 +117,7 @@ impl TunnelStore for SqliteTunnelStore {
         relay: &RelaySettings,
     ) -> Result<SettingsUpdateOutcome, TunnelError> {
         tunnel_settings::update_all_settings(
-            self.pool(),
+            &mut self.connection()?,
             expected_revision,
             public_host,
             requested_running,
@@ -124,7 +126,7 @@ impl TunnelStore for SqliteTunnelStore {
     }
 
     fn seed_if_absent(&self, seed: &SettingsSeed) -> Result<(), TunnelError> {
-        seed_tunnel_settings::seed_if_absent(self.pool(), seed)
+        seed_tunnel_settings::seed_if_absent(&mut self.connection()?, seed)
     }
 }
 
