@@ -77,7 +77,9 @@ pub use persistence_rust::DieselPool;
 
 pub use config::AppsConfig;
 pub use db::SqliteAppsStore;
-pub use domain::App;
+// Re-exported so the host can name the self-hosted catalogue pair at the
+// `setup_apps` call site.
+pub use domain::{AppRegistration, SelfHostedAppConfiguration};
 pub use http::{openapi_spec, AppsState, LaunchCookies, NoLaunchCookies, OwnerAuth};
 // Re-exported for the integration test crate; `#[deprecated]` is intentional.
 #[allow(deprecated)]
@@ -107,9 +109,9 @@ pub struct Apps {
     /// Shared handler state (the store, the loopback base URL, the owner-auth
     /// gate, the tunnel, the on-device webview seam).
     pub state: Arc<AppsState>,
-    /// The self-hosted catalogue the host binds loopback listeners for — whole
-    /// [`App`]s of the [`App::SelfHosted`] variant.
-    pub self_hosted_apps_at_start: Vec<App>,
+    /// The self-hosted catalogue the host binds loopback listeners for — each app's
+    /// `(registration, configuration)` pair.
+    pub self_hosted_apps_at_start: Vec<(AppRegistration, SelfHostedAppConfiguration)>,
 }
 
 impl Apps {
@@ -160,15 +162,11 @@ pub fn setup_apps(
     // serves them all.
     let store = SqliteAppsStore::new(pool).context("failed to open apps store")?;
     // Materialize the self-hosted catalogue once for the host to bind listeners
-    // against — every self-hosted row, migration-seeded or previously uploaded.
-    // The store hands back `(registration, configuration)` pairs; compose each into
-    // the [`App::SelfHosted`] variant the host iterates.
+    // against — every self-hosted row, migration-seeded or previously uploaded, as
+    // its `(registration, configuration)` pair.
     let self_hosted_apps = store
         .list_self_hosted_apps()
-        .context("failed to list self-hosted apps")?
-        .into_iter()
-        .map(|(registration, config)| App::SelfHosted(registration, config))
-        .collect();
+        .context("failed to list self-hosted apps")?;
     let state = Arc::new(AppsState::new(
         store,
         config.loopback_base_url.clone(),

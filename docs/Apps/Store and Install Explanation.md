@@ -12,8 +12,11 @@ The slice follows the same ports-and-adapters shape as `collector-rust` and
 
 - **`AppsStore` (port)** — a domain trait (`domain/apps_store.rs`) speaking
   _primitive_ persistence over concrete registrations, configurations, and
-  `(registration, configuration)` pairs (the whole `App` only where the kind is
-  runtime-resolved) plus the write-side specs. Absence and non-permutation are
+  `(registration, configuration)` pairs — no "combined app" input, and the only
+  union it returns is `AppConfiguration` on `find_app` (where the kind is
+  runtime-resolved). The insert/replace methods take a caller-built
+  `(registration, configuration)`; a self-hosted upload keeps its allocation spec
+  (the slug/port are store-allocated). Absence and non-permutation are
   **return-type signals** (`Option`), a delete miss is `bool`, and an insert that
   wrote nothing is a granular typed error (`CloudInsertError` / `UploadInsertError`);
   the only error it raises is the opaque `AppsError::Infrastructure`.
@@ -49,11 +52,13 @@ in `system_app_configurations.url`, not a compiled-in `SYSTEM_APPS` const.
 Reads are **typed diesel queries against real tables** (no `apps_view`, no
 `UNION`-with-NULLs decode): the uniform catalogue is a join-free
 `app_registrations ORDER BY position` into `AppRegistration`s; a detail read fetches
-the registration then the one configuration its `kind` names, composing a whole
-`App` pair; the host-listener list is a typed inner join
-`self_hosted_app_configurations ⋈ app_registrations`. `is_smart` is derived on the
-registration (from `client_id`) and `is_removable` via the `AppBehaviour` trait,
-not stored.
+the registration then the one configuration its `kind` names, returning the
+`(registration, configuration)` pair (the configuration as the `AppConfiguration`
+union when the kind is runtime-resolved); the host-listener list is a typed inner
+join `self_hosted_app_configurations ⋈ app_registrations`. `is_smart` is derived on
+the registration (from `client_id`) and `is_removable` via the `CommonAppConfig`
+trait, not stored. The combined `App` (launch/delete behaviour) lives in the HTTP
+layer; the store never speaks it.
 
 **A corrupt registry surfaces as a typed read error.** A stored `url` that no
 longer parses (rejected by the `AppUrl`/`AppKind` column decode), or a
@@ -84,11 +89,12 @@ store:
    `UNIQUE(position)` (SQLite's UNIQUE is immediate, not deferrable).
 
 Kind- and seeded-_policy_ gating (which kinds or rows an HTTP surface may edit)
-lives in `domain/actions.rs` — the per-kind `replace_cloud_content` /
-`replace_self_hosted_launch_path` resolve the kind first off the whole `App` a
-read hands back: a wrong-kind (or unknown) id is a **404** (the mismatch can no
-longer be expressed as a `409`), a seeded self-hosted app is `409`, before any
-field is validated. `delete`'s kind dispatch is split across the handler because
+lives in `domain/actions.rs` — the per-kind `replace_cloud_app` /
+`replace_self_hosted_app` resolve the kind first off the `(registration,
+configuration)` pair a read hands back, then synthesize the edited pair the store
+persists: a wrong-kind (or unknown) id is a **404** (the mismatch can no longer be
+expressed as a `409`), a seeded self-hosted app is `409`, before any field is
+validated. `delete`'s kind dispatch is split across the handler because
 it interleaves filesystem teardown (stop the listener, remove files) around the
 store delete. The store's SQL only guards its own invariants (e.g. a cloud content
 replace updates `cloud_app_configurations` by id, so a non-cloud id matches no row and is a

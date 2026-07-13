@@ -13,7 +13,7 @@
 //! is built from the pair at the HTTP seam.
 
 use super::app_url::AppUrl;
-use super::AppBehaviour;
+use super::{AppKind, CommonAppConfig};
 
 /// The `system_app_configurations` payload — the `{origin}`-relative launch
 /// template.
@@ -23,7 +23,9 @@ pub struct SystemAppConfiguration {
     pub url: AppUrl,
 }
 
-impl AppBehaviour for SystemAppConfiguration {
+impl CommonAppConfig for SystemAppConfiguration {
+    const KIND: AppKind = AppKind::System;
+
     /// A system app is source-defined and never user-removable.
     fn is_removable(&self) -> bool {
         false

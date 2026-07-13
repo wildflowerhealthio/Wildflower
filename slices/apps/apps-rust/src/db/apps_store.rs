@@ -12,9 +12,8 @@ use persistence_rust::{DieselPool, PooledDieselConnection};
 
 use crate::db::{reads, writes};
 use crate::domain::{
-    App, AppRegistration, AppsError, AppsStore, CloudAppConfiguration, CloudContent,
-    CloudInsertError, NewCloudApp, NewSelfHostedUpload, SelfHostedAppConfiguration,
-    UploadInsertError,
+    AppConfiguration, AppRegistration, AppsError, AppsStore, CloudAppConfiguration,
+    CloudInsertError, NewSelfHostedUpload, SelfHostedAppConfiguration, UploadInsertError,
 };
 
 /// This slice's migration namespace in the shared database. Applied versions are
@@ -109,7 +108,7 @@ impl AppsStore for SqliteAppsStore {
         reads::list_registrations_on(&mut conn)
     }
 
-    fn find_app(&self, id: &str) -> Result<Option<App>, AppsError> {
+    fn find_app(&self, id: &str) -> Result<Option<(AppRegistration, AppConfiguration)>, AppsError> {
         let mut conn = self.connection()?;
         reads::find_app_on(&mut conn, id)
     }
@@ -123,9 +122,10 @@ impl AppsStore for SqliteAppsStore {
 
     fn insert_cloud_app(
         &self,
-        new: &NewCloudApp,
+        registration: &AppRegistration,
+        config: &CloudAppConfiguration,
     ) -> Result<Result<(AppRegistration, CloudAppConfiguration), CloudInsertError>, AppsError> {
-        writes::insert_cloud_app(&mut self.connection()?, new)
+        writes::insert_cloud_app(&mut self.connection()?, registration, config)
     }
 
     fn insert_self_hosted_app(
@@ -136,20 +136,20 @@ impl AppsStore for SqliteAppsStore {
         writes::insert_self_hosted_app(&mut self.connection()?, new)
     }
 
-    fn replace_cloud_content(
+    fn replace_cloud_app(
         &self,
-        id: &str,
-        content: &CloudContent,
+        registration: &AppRegistration,
+        config: &CloudAppConfiguration,
     ) -> Result<Option<(AppRegistration, CloudAppConfiguration)>, AppsError> {
-        writes::replace_cloud_content(&mut self.connection()?, id, content)
+        writes::replace_cloud_app(&mut self.connection()?, registration, config)
     }
 
-    fn replace_self_hosted_launch_path(
+    fn replace_self_hosted_app(
         &self,
-        id: &str,
-        launch_path: Option<&str>,
+        registration: &AppRegistration,
+        config: &SelfHostedAppConfiguration,
     ) -> Result<Option<(AppRegistration, SelfHostedAppConfiguration)>, AppsError> {
-        writes::replace_self_hosted_launch_path(&mut self.connection()?, id, launch_path)
+        writes::replace_self_hosted_app(&mut self.connection()?, registration, config)
     }
 
     fn delete_app(&self, id: &str) -> Result<bool, AppsError> {

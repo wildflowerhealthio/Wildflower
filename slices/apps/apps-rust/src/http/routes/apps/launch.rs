@@ -42,9 +42,10 @@ use axum::response::{IntoResponse, Response};
 use shared_structures_rust::served_origin::{request_provenance, RequestProvenance};
 
 use crate::domain::{
-    actions, App, AppRegistration, AppsError, CloudAppConfiguration, LaunchParams,
+    actions, AppConfiguration, AppRegistration, AppsError, CloudAppConfiguration, LaunchParams,
     SelfHostedAppConfiguration, SystemAppConfiguration,
 };
+use crate::http::app::App;
 use crate::http::errors::{AppNotFoundBody, LaunchUnavailableBody};
 use crate::http::state::AppsState;
 use crate::id::mint_launch_nonce;
@@ -132,8 +133,13 @@ async fn launch(
         return Err(AppsError::Unauthorized);
     }
 
-    // 404 before resolving — an unknown id is never an availability failure.
-    let app = actions::get_app(&state.store, &id)?;
+    // 404 before resolving — an unknown id is never an availability failure. The
+    // store hands back the registration + configuration; compose the combined `App`.
+    let (registration, configuration) = actions::get_app(&state.store, &id)?;
+    let app = App {
+        registration,
+        configuration,
+    };
 
     // Resolve before dispatching: an unreachable target bails here with
     // `503 LaunchUnavailable` rather than opening a doomed popup / dead redirect.
@@ -174,28 +180,28 @@ struct ResolvedLaunch {
 }
 
 impl App {
-    /// Resolve this app to a [`ResolvedLaunch`], dispatching on its variant — the
-    /// whole app came out of one store read, so the kind-specific launch data is
-    /// already in hand (an `App::System` always carries a valid compiled-in
-    /// source; a corrupt registry row fails inside the store read as a typed
-    /// error, never here). `session_cookie_host` is `Some` only for a forwarded
-    /// self-hosted launch. `503` if the matched app has no reachable target.
+    /// Resolve this app to a [`ResolvedLaunch`], dispatching on its configuration —
+    /// the whole app came out of one store read, so the kind-specific launch data is
+    /// already in hand (a system app always carries a valid compiled-in source; a
+    /// corrupt registry row fails inside the store read as a typed error, never
+    /// here). `session_cookie_host` is `Some` only for a forwarded self-hosted
+    /// launch. `503` if the matched app has no reachable target.
     ///
     /// Lives beside the launch handler rather than in `domain` on purpose: the
     /// resolution reaches into `AppsState` (the tunnel, the loopback config) and
-    /// yields an http [`AppsError`], so keeping it here leaves the domain [`App`]
-    /// free of that http/runtime coupling.
+    /// yields an http [`AppsError`], so keeping it (and the combined `App`) in the
+    /// HTTP layer leaves the domain free of that http/runtime coupling.
     async fn resolve_launch(
         &self,
         state: &AppsState,
         provenance: &RequestProvenance,
     ) -> Result<ResolvedLaunch, AppsError> {
-        match self {
-            App::System(_registration, config) => Ok(ResolvedLaunch {
+        match &self.configuration {
+            AppConfiguration::System(config) => Ok(ResolvedLaunch {
                 target_url: render_system_target(state, config, provenance),
                 session_cookie_host: None,
             }),
-            App::SelfHosted(_registration, config) => {
+            AppConfiguration::SelfHosted(config) => {
                 let SelfHostedTarget {
                     target_url,
                     session_cookie_host,
@@ -205,8 +211,9 @@ impl App {
                     session_cookie_host,
                 })
             }
-            App::Cloud(registration, config) => Ok(ResolvedLaunch {
-                target_url: render_cloud_target(state, provenance, registration, config).await?,
+            AppConfiguration::Cloud(config) => Ok(ResolvedLaunch {
+                target_url: render_cloud_target(state, provenance, &self.registration, config)
+                    .await?,
                 session_cookie_host: None,
             }),
         }

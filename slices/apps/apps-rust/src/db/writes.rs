@@ -5,11 +5,12 @@
 //! edit updates the tables that own the touched fields (a cloud edit: the
 //! registration's `name`/`subtitle`/`requires_tunnel` + the
 //! `cloud_app_configurations` `url`); a delete is one registration delete (the
-//! configuration cascades). Each takes a domain spec and — for create / replace —
-//! returns the hydrated `(registration, configuration)` pair re-read *inside the
-//! same transaction* (via [`find_app_on`](super::reads::find_app_on)). The
-//! transaction discipline is explained in
-//! `docs/Apps/Store and Install Explanation.md`.
+//! configuration cascades). Insert/replace take a caller-built
+//! `(registration, configuration)` (a self-hosted upload keeps its allocation spec,
+//! since slug/port are store-allocated) and — for create / replace — return the
+//! hydrated pair re-read *inside the same transaction* (via
+//! [`find_app_on`](super::reads::find_app_on)). The transaction discipline is
+//! explained in `docs/Apps/Store and Install Explanation.md`.
 
 use std::collections::HashSet;
 
@@ -20,9 +21,8 @@ use super::payloads::{CloudConfigurationRow, SelfHostedConfigurationRow};
 use super::reads::{delete_app_row, find_app_on, id_taken, list_registrations_on, next_position};
 use super::schema::{app_registrations, cloud_app_configurations, self_hosted_app_configurations};
 use crate::domain::{
-    App, AppKind, AppRegistration, AppsError, CloudAppConfiguration, CloudContent,
-    CloudInsertError, NewCloudApp, NewSelfHostedUpload, SelfHostedAppConfiguration,
-    UploadInsertError,
+    AppConfiguration, AppKind, AppRegistration, AppsError, CloudAppConfiguration, CloudInsertError,
+    NewSelfHostedUpload, SelfHostedAppConfiguration, UploadInsertError,
 };
 
 /// The smallest loopback port an uploaded app is allocated — one above the seeded
@@ -34,9 +34,11 @@ const MIN_UPLOAD_PORT: i64 = 8082;
 /// [`UploadInsertError::SlugSpaceExhausted`].
 const MAX_SLUG_ATTEMPTS: u32 = 50;
 
-/// Insert a fresh cloud app: the `app_registrations` registration (kind `cloud`,
-/// not local-only, no `client_id`, at the tail position, on the home screen) AND
-/// its `cloud_app_configurations` payload (`url`), in one transaction.
+/// Insert a fresh cloud app from a caller-built `registration` + `config`. The
+/// store owns the display `position` (assigned at the tail, overriding whatever the
+/// caller passed); every other registration field is used as given, and the
+/// `cloud_app_configurations` payload is the `config`'s `url` — all in one
+/// transaction.
 ///
 /// Returns `Ok(Err(CloudInsertError::IdTaken))` when the id is already taken (no row
 /// is written), else the inserted `(registration, configuration)` pair read back
@@ -47,34 +49,29 @@ const MAX_SLUG_ATTEMPTS: u32 = 50;
 /// [`AppsError::Infrastructure`] on a checkout / transaction failure.
 pub(super) fn insert_cloud_app(
     conn: &mut PooledDieselConnection,
-    new: &NewCloudApp,
+    registration: &AppRegistration,
+    config: &CloudAppConfiguration,
 ) -> Result<Result<(AppRegistration, CloudAppConfiguration), CloudInsertError>, AppsError> {
     conn.transaction(|conn| {
-        if id_taken(conn, &new.id)? {
+        if id_taken(conn, &registration.id)? {
             return Ok(Err(CloudInsertError::IdTaken));
         }
-        let position = next_position(conn)?;
-        let registration = AppRegistration {
-            id: new.id.clone(),
-            kind: AppKind::Cloud,
-            position,
-            on_homescreen: true,
-            name: new.content.name.clone(),
-            subtitle: new.content.subtitle.clone(),
-            local_only: false,
-            client_id: None,
-            requires_tunnel: new.content.requires_tunnel,
+        // The store owns `position` (tail append); everything else on the
+        // registration is the caller's.
+        let to_insert = AppRegistration {
+            position: next_position(conn)?,
+            ..registration.clone()
         };
         diesel::insert_into(app_registrations::table)
-            .values(registration)
+            .values(to_insert)
             .execute(conn)?;
         diesel::insert_into(cloud_app_configurations::table)
             .values(CloudConfigurationRow {
-                id: new.id.clone(),
-                url: new.content.url.clone(),
+                id: registration.id.clone(),
+                url: config.url.clone(),
             })
             .execute(conn)?;
-        Ok(Ok(read_back_cloud(conn, &new.id)?))
+        Ok(Ok(read_back_cloud(conn, &registration.id)?))
     })
 }
 
@@ -144,9 +141,11 @@ pub(super) fn insert_self_hosted_app(
     })
 }
 
-/// Replace a cloud app's *content*: `name` / `subtitle` / `requires_tunnel` on the
-/// registration AND `url` on the `cloud_app_configurations` payload. **Never
-/// touches `on_homescreen` / position** — those are `PUT /home-screen`'s.
+/// Replace a cloud app's editable fields from a caller-built `registration` +
+/// `config`, located by `registration.id`: the registration's `name` / `subtitle` /
+/// `requires_tunnel` and the `cloud_app_configurations` `url`. **Never touches
+/// `on_homescreen` / position** (the placement single-writer) or the other
+/// registration columns.
 ///
 /// Returns `Ok(None)` when no cloud app has this id (the `cloud_app_configurations`
 /// update affects no row), else the updated `(registration, configuration)` pair
@@ -155,52 +154,69 @@ pub(super) fn insert_self_hosted_app(
 /// # Errors
 ///
 /// [`AppsError::Infrastructure`] on a checkout / transaction failure.
-pub(super) fn replace_cloud_content(
+pub(super) fn replace_cloud_app(
     conn: &mut PooledDieselConnection,
-    id: &str,
-    content: &CloudContent,
+    registration: &AppRegistration,
+    config: &CloudAppConfiguration,
 ) -> Result<Option<(AppRegistration, CloudAppConfiguration)>, AppsError> {
+    let id = registration.id.as_str();
     conn.transaction(|conn| {
         // The payload update decides existence: a non-cloud or unknown id matches
         // no `cloud_app_configurations` row, so nothing (including the
         // registration) is touched.
         let affected = diesel::update(cloud_app_configurations::table.find(id))
-            .set(cloud_app_configurations::url.eq(content.url.to_string()))
+            .set(cloud_app_configurations::url.eq(config.url.to_string()))
             .execute(conn)?;
         if affected != 1 {
             return Ok(None);
         }
+        // Only the editable registration subset — never placement / kind / client_id
+        // / local_only.
         diesel::update(app_registrations::table.find(id))
             .set((
-                app_registrations::name.eq(&content.name),
-                app_registrations::subtitle.eq(&content.subtitle),
-                app_registrations::requires_tunnel.eq(content.requires_tunnel),
+                app_registrations::name.eq(&registration.name),
+                app_registrations::subtitle.eq(&registration.subtitle),
+                app_registrations::requires_tunnel.eq(registration.requires_tunnel),
             ))
             .execute(conn)?;
         Ok(Some(read_back_cloud(conn, id)?))
     })
 }
 
-/// Replace a self-hosted app's `launch_path`; `None` clears it back to
-/// root-serving. Returns `Ok(None)` when no self-hosted app has this id, else the
-/// updated `(registration, configuration)` pair read back in-txn. The action layer
-/// enforces "not seeded" before calling this.
+/// Replace a self-hosted app's editable fields from a caller-built `registration` +
+/// `config`, located by `registration.id`: the registration's `name` / `subtitle`
+/// and the configuration's `launch_path` (`None` clears it back to root-serving).
+/// **Never touches placement or the immutable `port` / `subdomain` / `seeded` /
+/// `content_folder`.** Returns `Ok(None)` when no self-hosted app has this id, else
+/// the updated pair read back in-txn. The action layer enforces "not seeded" before
+/// calling this.
 ///
 /// # Errors
 ///
 /// [`AppsError::Infrastructure`] on a checkout / transaction failure.
-pub(super) fn replace_self_hosted_launch_path(
+pub(super) fn replace_self_hosted_app(
     conn: &mut PooledDieselConnection,
-    id: &str,
-    launch_path: Option<&str>,
+    registration: &AppRegistration,
+    config: &SelfHostedAppConfiguration,
 ) -> Result<Option<(AppRegistration, SelfHostedAppConfiguration)>, AppsError> {
+    let id = registration.id.as_str();
     conn.transaction(|conn| {
+        // The `launch_path` update decides existence: a non-self-hosted or unknown
+        // id matches no row.
         let affected = diesel::update(self_hosted_app_configurations::table.find(id))
-            .set(self_hosted_app_configurations::launch_path.eq(launch_path))
+            .set(self_hosted_app_configurations::launch_path.eq(config.launch_path.as_deref()))
             .execute(conn)?;
         if affected != 1 {
             return Ok(None);
         }
+        // Only the editable registration subset — never placement or the immutable
+        // self-hosted columns.
+        diesel::update(app_registrations::table.find(id))
+            .set((
+                app_registrations::name.eq(&registration.name),
+                app_registrations::subtitle.eq(&registration.subtitle),
+            ))
+            .execute(conn)?;
         Ok(Some(read_back_self_hosted(conn, id)?))
     })
 }
@@ -281,7 +297,7 @@ fn read_back_cloud(
     id: &str,
 ) -> Result<(AppRegistration, CloudAppConfiguration), AppsError> {
     match find_app_on(conn, id)? {
-        Some(App::Cloud(registration, config)) => Ok((registration, config)),
+        Some((registration, AppConfiguration::Cloud(config))) => Ok((registration, config)),
         _ => Err(AppsError::infrastructure(
             "read_back_cloud",
             format!("cloud row {id} vanished or changed kind after write"),
@@ -297,7 +313,7 @@ fn read_back_self_hosted(
     id: &str,
 ) -> Result<(AppRegistration, SelfHostedAppConfiguration), AppsError> {
     match find_app_on(conn, id)? {
-        Some(App::SelfHosted(registration, config)) => Ok((registration, config)),
+        Some((registration, AppConfiguration::SelfHosted(config))) => Ok((registration, config)),
         _ => Err(AppsError::infrastructure(
             "read_back_self_hosted",
             format!("self-hosted row {id} vanished or changed kind after write"),
@@ -361,24 +377,29 @@ mod tests {
     use crate::db::SqliteAppsStore;
     // The port trait is in scope so the concrete adapter's mutator methods resolve.
     use crate::domain::{
-        App, AppKind, AppUrl, AppsStore, CloudContent, CloudInsertError, NewCloudApp,
-        NewSelfHostedUpload, SelfHostedAppConfiguration, UploadInsertError,
+        AppConfiguration, AppKind, AppRegistration, AppUrl, AppsStore, CloudAppConfiguration,
+        CloudInsertError, NewSelfHostedUpload, SelfHostedAppConfiguration, UploadInsertError,
     };
 
-    fn cloud_content(name: &str, url: AppUrl) -> CloudContent {
-        CloudContent {
-            name: name.to_owned(),
+    /// A caller-built cloud registration (the shape the HTTP layer hands the store):
+    /// kind `cloud`, on the home screen, `position` a placeholder the store
+    /// overrides. `name` defaults to the id.
+    fn cloud_registration(id: &str) -> AppRegistration {
+        AppRegistration {
+            id: id.to_owned(),
+            kind: AppKind::Cloud,
+            position: 0,
+            on_homescreen: true,
+            name: id.to_owned(),
             subtitle: None,
-            url,
+            local_only: false,
+            client_id: None,
             requires_tunnel: false,
         }
     }
 
-    fn new_cloud(id: &str, url: AppUrl) -> NewCloudApp {
-        NewCloudApp {
-            id: id.to_owned(),
-            content: cloud_content(id, url),
-        }
+    fn cloud_config(url: AppUrl) -> CloudAppConfiguration {
+        CloudAppConfiguration { url }
     }
 
     fn new_upload(name: &str, base_slug: &str) -> NewSelfHostedUpload {
@@ -407,15 +428,24 @@ mod tests {
     fn insert_cloud_app_returns_the_whole_app_and_round_trips() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
         let (registration, config) = store
-            .insert_cloud_app(&new_cloud("app-x", external("https://example.com/launch")))
+            .insert_cloud_app(
+                &cloud_registration("app-x"),
+                &cloud_config(external("https://example.com/launch")),
+            )
             .unwrap()
             .expect("inserted");
         assert_eq!(
             store.find_app("app-x").unwrap(),
-            Some(App::Cloud(registration.clone(), config.clone())),
+            Some((
+                registration.clone(),
+                AppConfiguration::Cloud(config.clone())
+            )),
         );
         assert_eq!(registration.kind, AppKind::Cloud);
-        assert_eq!(registration.position, 6);
+        assert_eq!(
+            registration.position, 6,
+            "the store assigns the tail position"
+        );
         assert!(registration.on_homescreen);
         assert!(!registration.local_only);
         assert!(
@@ -429,14 +459,19 @@ mod tests {
     #[test]
     fn insert_cloud_app_reports_id_taken_on_duplicate_id() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
-        let new = new_cloud("app-x", external("https://example.com/x"));
-        assert!(store.insert_cloud_app(&new).unwrap().is_ok());
+        let registration = cloud_registration("app-x");
+        let config = cloud_config(external("https://example.com/x"));
+        assert!(store
+            .insert_cloud_app(&registration, &config)
+            .unwrap()
+            .is_ok());
         assert_eq!(
-            store.insert_cloud_app(&new).unwrap(),
+            store.insert_cloud_app(&registration, &config).unwrap(),
             Err(CloudInsertError::IdTaken),
             "second insert with the same id is a no-op",
         );
-        assert_eq!(store.find_app("app-x").unwrap().unwrap().position(), 6);
+        let (fetched, _) = store.find_app("app-x").unwrap().unwrap();
+        assert_eq!(fetched.position, 6);
     }
 
     /// A seeded app's id can't be re-created — `app_registrations` already holds it,
@@ -444,13 +479,17 @@ mod tests {
     #[test]
     fn insert_cloud_app_rejects_a_seeded_id() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
-        let new = new_cloud("growth-chart", external("https://example.com/x"));
         assert_eq!(
-            store.insert_cloud_app(&new).unwrap(),
+            store
+                .insert_cloud_app(
+                    &cloud_registration("growth-chart"),
+                    &cloud_config(external("https://example.com/x")),
+                )
+                .unwrap(),
             Err(CloudInsertError::IdTaken),
         );
-        let fetched = store.find_app("growth-chart").unwrap().unwrap();
-        assert!(fetched
+        let (_, configuration) = store.find_app("growth-chart").unwrap().unwrap();
+        assert!(configuration
             .as_cloud()
             .expect("cloud configuration")
             .url
@@ -459,22 +498,24 @@ mod tests {
     }
 
     #[test]
-    fn replace_cloud_content_writes_registration_and_payload() {
+    fn replace_cloud_app_writes_registration_and_payload() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
         store
-            .insert_cloud_app(&new_cloud("app-x", external("https://example.com/x")))
+            .insert_cloud_app(
+                &cloud_registration("app-x"),
+                &cloud_config(external("https://example.com/x")),
+            )
             .unwrap()
             .expect("inserted");
 
+        let mut edited = cloud_registration("app-x");
+        edited.name = "Renamed".to_owned();
+        edited.subtitle = Some("the new subtitle".to_owned());
+        edited.requires_tunnel = true;
         let (registration, config) = store
-            .replace_cloud_content(
-                "app-x",
-                &CloudContent {
-                    name: "Renamed".to_owned(),
-                    subtitle: Some("the new subtitle".to_owned()),
-                    url: AppUrl::OriginRelative("/path".to_owned()),
-                    requires_tunnel: true,
-                },
+            .replace_cloud_app(
+                &edited,
+                &cloud_config(AppUrl::OriginRelative("/path".to_owned())),
             )
             .unwrap()
             .expect("replaced");
@@ -484,17 +525,21 @@ mod tests {
         assert_eq!(config.url, AppUrl::OriginRelative("/path".to_owned()));
         assert_eq!(
             store.find_app("app-x").unwrap(),
-            Some(App::Cloud(registration, config)),
+            Some((registration, AppConfiguration::Cloud(config))),
         );
     }
 
     /// A content replace must not touch `on_homescreen` — `PUT /home-screen` is that
-    /// flag's single writer.
+    /// flag's single writer — even though the caller-built registration carries the
+    /// `on_homescreen = true` default.
     #[test]
-    fn replace_cloud_content_leaves_on_homescreen_alone() {
+    fn replace_cloud_app_leaves_on_homescreen_alone() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
         store
-            .insert_cloud_app(&new_cloud("app-x", external("https://example.com/x")))
+            .insert_cloud_app(
+                &cloud_registration("app-x"),
+                &cloud_config(external("https://example.com/x")),
+            )
             .unwrap()
             .expect("inserted");
 
@@ -508,13 +553,13 @@ mod tests {
             .replace_placements(&entries)
             .unwrap()
             .expect("permutation");
-        assert!(!store.find_app("app-x").unwrap().unwrap().on_homescreen());
+        let (hidden, _) = store.find_app("app-x").unwrap().unwrap();
+        assert!(!hidden.on_homescreen);
 
+        let mut edited = cloud_registration("app-x");
+        edited.name = "Renamed".to_owned();
         let (registration, _config) = store
-            .replace_cloud_content(
-                "app-x",
-                &cloud_content("Renamed", external("https://example.com/y")),
-            )
+            .replace_cloud_app(&edited, &cloud_config(external("https://example.com/y")))
             .unwrap()
             .expect("replaced");
         assert!(
@@ -523,31 +568,31 @@ mod tests {
         );
     }
 
-    /// `replace_cloud_content` only touches cloud apps — a self-hosted / system id
+    /// `replace_cloud_app` only touches cloud apps — a self-hosted / system id
     /// is a no-op `None`, and mutates nothing.
     #[test]
-    fn replace_cloud_content_ignores_non_cloud_ids() {
+    fn replace_cloud_app_ignores_non_cloud_ids() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
         for id in ["patient-browser", "api-docs"] {
             let replaced = store
-                .replace_cloud_content(
-                    id,
-                    &cloud_content(id, external("https://example.com/tampered")),
+                .replace_cloud_app(
+                    &cloud_registration(id),
+                    &cloud_config(external("https://example.com/tampered")),
                 )
                 .unwrap();
             assert!(replaced.is_none(), "{id} is not a cloud app");
-            let row = store.find_app(id).unwrap().unwrap();
-            assert_ne!(row.name(), id, "{id} row must be untouched");
+            let (registration, _) = store.find_app(id).unwrap().unwrap();
+            assert_ne!(registration.name, id, "{id} row must be untouched");
         }
     }
 
     #[test]
-    fn replace_cloud_content_returns_none_for_unknown_id() {
+    fn replace_cloud_app_returns_none_for_unknown_id() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
         assert!(store
-            .replace_cloud_content(
-                "ghost",
-                &cloud_content("ghost", external("https://x.example"))
+            .replace_cloud_app(
+                &cloud_registration("ghost"),
+                &cloud_config(external("https://x.example"))
             )
             .unwrap()
             .is_none());
@@ -598,9 +643,13 @@ mod tests {
             .expect("inserted");
         assert_eq!(launch_path(&inserted).as_deref(), Some(template));
 
-        let found = store.find_app("launcher").unwrap().expect("found");
+        let (_, configuration) = store.find_app("launcher").unwrap().expect("found");
         assert_eq!(
-            found.as_self_hosted().unwrap().launch_path.as_deref(),
+            configuration
+                .as_self_hosted()
+                .unwrap()
+                .launch_path
+                .as_deref(),
             Some(template),
         );
 
@@ -611,31 +660,45 @@ mod tests {
         assert_eq!(launch_path(&rootless), None);
     }
 
-    /// `replace_self_hosted_launch_path` sets, replaces, and clears the column;
-    /// an unknown id matches nothing.
+    /// `replace_self_hosted_app` sets, replaces, and clears the launch path; an
+    /// unknown id matches nothing.
     #[test]
-    fn replace_launch_path_sets_replaces_and_clears() {
+    fn replace_self_hosted_app_sets_replaces_and_clears() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
-        store
+        let (registration, config) = store
             .insert_self_hosted_app(&new_upload("App", "app"))
             .unwrap()
             .expect("inserted");
 
+        let with_path = SelfHostedAppConfiguration {
+            launch_path: Some("/launch.html".to_owned()),
+            ..config.clone()
+        };
         let set = store
-            .replace_self_hosted_launch_path("app", Some("/launch.html"))
+            .replace_self_hosted_app(&registration, &with_path)
             .unwrap()
             .expect("updated");
         assert_eq!(launch_path(&set).as_deref(), Some("/launch.html"));
 
         let cleared = store
-            .replace_self_hosted_launch_path("app", None)
+            .replace_self_hosted_app(
+                &registration,
+                &SelfHostedAppConfiguration {
+                    launch_path: None,
+                    ..config.clone()
+                },
+            )
             .unwrap()
             .expect("updated");
         assert_eq!(launch_path(&cleared), None);
 
+        let ghost = AppRegistration {
+            id: "ghost".to_owned(),
+            ..registration.clone()
+        };
         assert!(
             store
-                .replace_self_hosted_launch_path("ghost", Some("/x"))
+                .replace_self_hosted_app(&ghost, &with_path)
                 .unwrap()
                 .is_none(),
             "an unknown id matches no row",
@@ -815,7 +878,7 @@ mod tests {
             .insert_self_hosted_app(&new_upload("My App", "my-app"))
             .unwrap()
             .expect("inserted");
-        let by_id = |id: &str| store.find_app(id).unwrap().expect("row");
+        let by_id = |id: &str| store.find_app(id).unwrap().expect("row").1;
         assert!(
             by_id("my-app").is_removable(),
             "an uploaded app is removable"
@@ -858,14 +921,15 @@ mod tests {
         assert_eq!(returned_ids, expected);
 
         for (position, (id, _)) in entries.iter().enumerate() {
-            let app = store.find_app(id).unwrap().unwrap();
+            let (registration, _) = store.find_app(id).unwrap().unwrap();
             assert_eq!(
-                app.position(),
+                registration.position,
                 i64::try_from(position).unwrap(),
                 "{id} position"
             );
         }
-        assert!(!store.find_app("api-docs").unwrap().unwrap().on_homescreen());
+        let (api_docs, _) = store.find_app("api-docs").unwrap().unwrap();
+        assert!(!api_docs.on_homescreen);
         let ids: Vec<String> = store
             .list_registrations()
             .unwrap()

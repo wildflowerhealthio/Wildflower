@@ -35,7 +35,7 @@ pub(crate) async fn handle_replace_cloud_app(
 ) -> Result<Json<CloudAppDetail>, AppsError> {
     // The action resolves the kind (a non-cloud id is a 404) before validating any
     // field, then validates (400) and writes the registration + payload in-txn.
-    let (registration, config) = actions::replace_cloud_content(
+    let (registration, config) = actions::replace_cloud_app(
         &state.store,
         &id,
         body.name,

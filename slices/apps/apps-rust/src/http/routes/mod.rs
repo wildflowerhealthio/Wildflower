@@ -100,7 +100,9 @@ mod tests {
 
     // The port trait is in scope so the concrete store's `insert_cloud_app` /
     // `insert_self_hosted_app` / `find_app` methods resolve in the fixtures.
-    use crate::domain::{AppUrl, AppsStore, CloudContent, NewCloudApp, NewSelfHostedUpload};
+    use crate::domain::{
+        AppKind, AppRegistration, AppUrl, AppsStore, CloudAppConfiguration, NewSelfHostedUpload,
+    };
     use crate::http::state::AppsState;
     use crate::http::test_support::{
         state, state_owner_denied, state_owner_denied_with_sink, state_with_launch_cookies,
@@ -250,16 +252,24 @@ mod tests {
         )
     }
 
-    fn cloud(id: &str, url: AppUrl) -> NewCloudApp {
-        NewCloudApp {
+    /// Seed a cloud app directly through the store (the fixture shortcut a test uses
+    /// instead of driving `POST /cloud-apps`).
+    fn seed_cloud(store: &crate::db::SqliteAppsStore, id: &str, url: AppUrl) {
+        let registration = AppRegistration {
             id: id.to_owned(),
-            content: CloudContent {
-                name: id.to_owned(),
-                subtitle: None,
-                url,
-                requires_tunnel: false,
-            },
-        }
+            kind: AppKind::Cloud,
+            position: 0,
+            on_homescreen: true,
+            name: id.to_owned(),
+            subtitle: None,
+            local_only: false,
+            client_id: None,
+            requires_tunnel: false,
+        };
+        store
+            .insert_cloud_app(&registration, &CloudAppConfiguration { url })
+            .unwrap()
+            .expect("inserted");
     }
 
     fn upload(name: &str, base_slug: &str, launch_path: Option<&str>) -> NewSelfHostedUpload {
@@ -501,10 +511,7 @@ mod tests {
             tunnel_with_public_host("demo.example.com"),
             Arc::clone(&recorder) as Arc<dyn LaunchCookies>,
         );
-        st.store
-            .insert_cloud_app(&cloud("app-y", AppUrl::OriginRelative("/y".to_owned())))
-            .unwrap()
-            .expect("inserted");
+        seed_cloud(&st.store, "app-y", AppUrl::OriginRelative("/y".to_owned()));
         let res = send_raw(&st, post_forwarded("/apps/app-y")).await;
         assert_eq!(res.status(), StatusCode::FOUND);
         assert!(res.headers().get("set-cookie").is_none());
@@ -585,10 +592,7 @@ mod tests {
     async fn launch_cloud_origin_relative_resolves_against_loopback() {
         let handle = Arc::new(RecordingStubWebviewHandle::default());
         let st = state_with_sink(Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>);
-        st.store
-            .insert_cloud_app(&cloud("app-y", AppUrl::OriginRelative("/y".to_owned())))
-            .unwrap()
-            .expect("inserted");
+        seed_cloud(&st.store, "app-y", AppUrl::OriginRelative("/y".to_owned()));
         let res = send_raw(&st, post_launch("/apps/app-y")).await;
         assert_eq!(res.status(), StatusCode::NO_CONTENT);
         assert_eq!(
@@ -602,10 +606,7 @@ mod tests {
     async fn launch_cloud_forwarded_uses_served_origin_and_302s() {
         let handle = Arc::new(RecordingStubWebviewHandle::default());
         let st = state_with_sink(Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>);
-        st.store
-            .insert_cloud_app(&cloud("app-y", AppUrl::OriginRelative("/y".to_owned())))
-            .unwrap()
-            .expect("inserted");
+        seed_cloud(&st.store, "app-y", AppUrl::OriginRelative("/y".to_owned()));
         let res = send_raw(&st, post_forwarded("/apps/app-y")).await;
         assert_eq!(res.status(), StatusCode::FOUND);
         let location = res.headers().get("location").unwrap().to_str().unwrap();
@@ -1137,6 +1138,7 @@ mod tests {
             .find_app(id)
             .unwrap()
             .expect("installed app row")
+            .1
             .as_self_hosted()
             .expect("self-hosted payload")
             .content_folder

@@ -47,6 +47,6 @@ pub(crate) async fn handle_replace_self_hosted_app(
     Json(body): Json<SelfHostedAppBody>,
 ) -> Result<Json<SelfHostedAppDetail>, AppsError> {
     let (registration, config) =
-        actions::replace_self_hosted_launch_path(&state.store, &id, body.launch_path)?;
+        actions::replace_self_hosted_app(&state.store, &id, body.launch_path)?;
     Ok(Json(SelfHostedAppDetail::from((&registration, &config))))
 }

@@ -15,8 +15,8 @@ use super::schema::{
     system_app_configurations,
 };
 use crate::domain::{
-    App, AppKind, AppRegistration, AppsError, CloudAppConfiguration, SelfHostedAppConfiguration,
-    SystemAppConfiguration,
+    AppConfiguration, AppKind, AppRegistration, AppsError, CloudAppConfiguration,
+    SelfHostedAppConfiguration, SystemAppConfiguration,
 };
 
 /// The uniform catalogue read against an arbitrary connection — shared by the
@@ -36,7 +36,7 @@ pub(super) fn list_registrations_on(
 /// The registration ⇒ configuration invariant SQLite can't enforce across tables: a
 /// registration says `kind` but the named configuration table has no row for its
 /// id. A corrupt registry — surfaces as a typed [`AppsError::Infrastructure`] (a
-/// logged 500), never a partial [`App`].
+/// logged 500), never a partial pair.
 fn missing_configuration(id: &str, kind: AppKind) -> AppsError {
     AppsError::infrastructure(
         "app_registrations row has no matching configuration",
@@ -45,12 +45,16 @@ fn missing_configuration(id: &str, kind: AppKind) -> AppsError {
 }
 
 /// The single-app detail read against an arbitrary connection — the registration
-/// plus the one configuration its `kind` names, composed into an [`App`] pair. What
-/// every store mutator calls **on its own open transaction** to return the hydrated
-/// pair it just wrote, and what the per-kind detail routes read. `Ok(None)` when no
-/// registration has this id; a registration whose configuration row is missing is a
-/// corrupt registry → [`missing_configuration`].
-pub(super) fn find_app_on(conn: &mut SqliteConnection, id: &str) -> Result<Option<App>, AppsError> {
+/// plus the one configuration its `kind` names, as a `(registration, configuration)`
+/// pair (the configuration as the [`AppConfiguration`] union). What every store
+/// mutator calls **on its own open transaction** to return the hydrated pair it just
+/// wrote, and what the launch / delete seams read. `Ok(None)` when no registration
+/// has this id; a registration whose configuration row is missing is a corrupt
+/// registry → [`missing_configuration`].
+pub(super) fn find_app_on(
+    conn: &mut SqliteConnection,
+    id: &str,
+) -> Result<Option<(AppRegistration, AppConfiguration)>, AppsError> {
     let Some(registration): Option<AppRegistration> = app_registrations::table
         .find(id)
         .select(AppRegistration::as_select())
@@ -60,7 +64,7 @@ pub(super) fn find_app_on(conn: &mut SqliteConnection, id: &str) -> Result<Optio
         return Ok(None);
     };
 
-    let app = match registration.kind {
+    let configuration = match registration.kind {
         AppKind::System => {
             let row: SystemConfigurationRow = system_app_configurations::table
                 .find(id)
@@ -68,7 +72,7 @@ pub(super) fn find_app_on(conn: &mut SqliteConnection, id: &str) -> Result<Optio
                 .first(conn)
                 .optional()?
                 .ok_or_else(|| missing_configuration(id, AppKind::System))?;
-            App::System(registration, SystemAppConfiguration { url: row.url })
+            AppConfiguration::System(SystemAppConfiguration { url: row.url })
         }
         AppKind::Cloud => {
             let row: CloudConfigurationRow = cloud_app_configurations::table
@@ -77,7 +81,7 @@ pub(super) fn find_app_on(conn: &mut SqliteConnection, id: &str) -> Result<Optio
                 .first(conn)
                 .optional()?
                 .ok_or_else(|| missing_configuration(id, AppKind::Cloud))?;
-            App::Cloud(registration, CloudAppConfiguration { url: row.url })
+            AppConfiguration::Cloud(CloudAppConfiguration { url: row.url })
         }
         AppKind::SelfHosted => {
             let row: SelfHostedConfigurationRow = self_hosted_app_configurations::table
@@ -86,10 +90,10 @@ pub(super) fn find_app_on(conn: &mut SqliteConnection, id: &str) -> Result<Optio
                 .first(conn)
                 .optional()?
                 .ok_or_else(|| missing_configuration(id, AppKind::SelfHosted))?;
-            App::SelfHosted(registration, self_hosted_config_from_row(row))
+            AppConfiguration::SelfHosted(self_hosted_config_from_row(row))
         }
     };
-    Ok(Some(app))
+    Ok(Some((registration, configuration)))
 }
 
 /// Every self-hosted app, as `(registration, configuration)` pairs, in display
@@ -160,7 +164,7 @@ mod tests {
 
     use crate::db::SqliteAppsStore;
     // The port trait is in scope so the concrete adapter's read methods resolve.
-    use crate::domain::{App, AppKind, AppsStore};
+    use crate::domain::{AppKind, AppsStore};
 
     /// The migration seeds the full default set: 6 registrations in display order
     /// with the right kind.
@@ -235,21 +239,23 @@ mod tests {
     }
 
     /// `find_app` hydrates the whole app: the registration plus the kind
-    /// configuration from its table.
+    /// configuration from its table, as a `(registration, configuration)` pair.
     #[test]
     fn find_app_reads_the_whole_app_per_kind() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
 
-        let cloud = store.find_app("growth-chart").unwrap().expect("seeded");
-        assert_eq!(cloud.name(), "Growth Chart");
-        assert_eq!(cloud.kind(), AppKind::Cloud);
-        assert!(cloud.is_smart());
-        assert!(cloud.registration().requires_tunnel);
-        let config = cloud.as_cloud().expect("cloud configuration");
+        let (registration, configuration) =
+            store.find_app("growth-chart").unwrap().expect("seeded");
+        assert_eq!(registration.name, "Growth Chart");
+        assert_eq!(configuration.kind(), AppKind::Cloud);
+        assert!(registration.is_smart());
+        assert!(registration.requires_tunnel);
+        let config = configuration.as_cloud().expect("cloud configuration");
         assert!(config.url.to_string().contains("growth-chart-app"));
 
-        let self_hosted = store.find_app("patient-browser").unwrap().expect("seeded");
-        let config = self_hosted
+        let (_registration, configuration) =
+            store.find_app("patient-browser").unwrap().expect("seeded");
+        let config = configuration
             .as_self_hosted()
             .expect("self-hosted configuration");
         assert_eq!(config.port, 8081);
@@ -257,11 +263,11 @@ mod tests {
         assert_eq!(config.subdomain, "patient-browser");
         assert!(config.seeded);
 
-        let system = store.find_app("api-docs").unwrap().expect("seeded");
-        assert_eq!(system.kind(), AppKind::System);
-        assert_eq!(system.name(), "API Docs");
+        let (registration, configuration) = store.find_app("api-docs").unwrap().expect("seeded");
+        assert_eq!(configuration.kind(), AppKind::System);
+        assert_eq!(registration.name, "API Docs");
         assert_eq!(
-            system.as_system_url(),
+            configuration.as_system().map(|c| c.url.to_string()),
             Some("{origin}/docs".to_owned()),
             "the system configuration carries the compiled-shell launch template",
         );
@@ -301,14 +307,6 @@ mod tests {
         .unwrap();
         drop(conn);
         assert!(store.find_app("growth-chart").is_err());
-    }
-
-    impl App {
-        /// Test helper — the system configuration url as a string, `None` for other
-        /// kinds.
-        fn as_system_url(&self) -> Option<String> {
-            self.as_system().map(|config| config.url.to_string())
-        }
     }
 
     fn error_text(error: &crate::domain::AppsError) -> String {

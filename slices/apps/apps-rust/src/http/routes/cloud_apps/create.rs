@@ -11,7 +11,7 @@ use axum::extract::State;
 use axum::Json;
 
 use super::CloudAppBody;
-use crate::domain::{actions, AppUrl, AppsError, CloudContent, NewCloudApp};
+use crate::domain::{actions, AppsError};
 use crate::http::errors::InvalidFieldBody;
 use crate::http::state::AppsState;
 use crate::http::wire_representations::CloudAppDetail;
@@ -32,30 +32,17 @@ pub(crate) async fn handle_create_cloud_app(
     State(state): State<Arc<AppsState>>,
     Json(body): Json<CloudAppBody>,
 ) -> Result<Json<CloudAppDetail>, AppsError> {
-    if body.name.is_empty() {
-        return Err(AppsError::InvalidName {
-            message: "name must not be empty".to_owned(),
-        });
-    }
-    let url = body
-        .url
-        .parse::<AppUrl>()
-        .map_err(|e| AppsError::InvalidUrl {
-            message: e.to_string(),
-        })?;
-    let new = NewCloudApp {
-        id: mint_app_id(),
-        content: CloudContent {
-            name: body.name,
-            // Empty `""` clears the subtitle.
-            subtitle: body.subtitle.filter(|s| !s.is_empty()),
-            url,
-            requires_tunnel: body.requires_tunnel,
-        },
-    };
-    // The action inserts and reads the cloud detail back in-txn (mapping a
-    // server-minted id collision to a logged 500), so projecting it is exactly the
+    // The handler transforms: it mints the id; the action validates the fields,
+    // synthesizes the registration + configuration, inserts (mapping a server-minted
+    // id collision to a logged 500), and reads the pair back in-txn — exactly the
     // `GET /cloud-apps/{id}` shape with no second read.
-    let (registration, config) = actions::create_cloud_app(&state.store, &new)?;
+    let (registration, config) = actions::create_cloud_app(
+        &state.store,
+        mint_app_id(),
+        body.name,
+        body.subtitle,
+        body.url,
+        body.requires_tunnel,
+    )?;
     Ok(Json(CloudAppDetail::from((&registration, &config))))
 }

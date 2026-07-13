@@ -19,7 +19,7 @@ use serde::Serialize;
 use utoipa::ToSchema;
 
 use crate::domain::{
-    AppBehaviour, AppKind, AppRegistration, AppUrl, CloudAppConfiguration,
+    AppKind, AppRegistration, AppUrl, CloudAppConfiguration, CommonAppConfig,
     SelfHostedAppConfiguration, SystemAppConfiguration,
 };
 

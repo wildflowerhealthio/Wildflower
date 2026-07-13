@@ -16,7 +16,7 @@ use std::sync::Arc;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 
-use crate::domain::{actions, App, AppsError, SelfHostedAppConfiguration};
+use crate::domain::{actions, AppConfiguration, AppsError, SelfHostedAppConfiguration};
 use crate::http::errors::{AppNotEditableBody, AppNotFoundBody};
 use crate::http::state::AppsState;
 
@@ -37,16 +37,16 @@ pub(crate) async fn handle_delete_app(
     State(state): State<Arc<AppsState>>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppsError> {
-    let app = actions::get_app(&state.store, &id)?;
+    let (_registration, configuration) = actions::get_app(&state.store, &id)?;
 
-    match &app {
-        App::Cloud(..) => {
+    match &configuration {
+        AppConfiguration::Cloud(_) => {
             actions::delete_app(&state.store, &id)?;
             Ok(StatusCode::NO_CONTENT)
         }
-        App::SelfHosted(_registration, config) => delete_self_hosted(&state, &id, config),
+        AppConfiguration::SelfHosted(config) => delete_self_hosted(&state, &id, config),
         // System apps are not user-removable.
-        App::System(..) => Err(AppsError::NotEditable { id }),
+        AppConfiguration::System(_) => Err(AppsError::NotEditable { id }),
     }
 }
 

@@ -8,7 +8,7 @@
 //!
 //! Rows come from two sources: the migration seed (`seeded = true`, protected from
 //! delete/edit) and runtime uploads (`seeded = false`, removable) — the
-//! [`AppBehaviour`] impl. The launch URL is rendered on demand via
+//! [`CommonAppConfig`] impl. The launch URL is rendered on demand via
 //! [`launch_url`](Self::launch_url) / [`subdomain_url`](Self::subdomain_url) /
 //! [`render_launch`](Self::render_launch). The editor wire shape
 //! ([`SelfHostedAppDetail`](crate::http::wire_representations::SelfHostedAppDetail))
@@ -18,7 +18,7 @@
 //! [`AppsStore`](super::AppsStore) speaks — [`NewSelfHostedUpload`] (a create spec)
 //! and [`UploadInsertError`] (the granular reason an upload insert wrote nothing).
 
-use super::AppBehaviour;
+use super::{AppKind, CommonAppConfig};
 
 /// The `self_hosted_app_configurations` payload — the loopback binding and
 /// launch-render inputs.
@@ -47,7 +47,9 @@ pub struct SelfHostedAppConfiguration {
     pub launch_path: Option<String>,
 }
 
-impl AppBehaviour for SelfHostedAppConfiguration {
+impl CommonAppConfig for SelfHostedAppConfiguration {
+    const KIND: AppKind = AppKind::SelfHosted;
+
     /// Only an uploaded (non-seeded) self-hosted app is removable; a
     /// migration-seeded one is protected.
     fn is_removable(&self) -> bool {

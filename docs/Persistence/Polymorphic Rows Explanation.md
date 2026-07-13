@@ -92,9 +92,9 @@ impl GrantKind { pub fn grant_type(&self) -> GrantType { /* variant → column v
 ```
 
 Mirror in `gatekeeper-rust/src/domain/grant.rs`. (apps applies the same
-"discriminator is the variant" idea in its `App` enum, whose variants wrap the
-per-kind detail types — the variant _is_ the `kind`, and its `AppRegistration`
-carries the `kind` column value.)
+"discriminator is the variant" idea in its `AppConfiguration` union, whose variants
+wrap the per-kind configuration types — the variant _is_ the `kind`, matching the
+`kind` column value on the `AppRegistration` it's paired with.)
 
 ## The wire
 

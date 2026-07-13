@@ -562,7 +562,7 @@
     "schemas": {
       "AppKind": {
         "type": "string",
-        "description": "Which kind an app is — the CTI discriminator. Serialized as its kebab string\n(`\"system\"` / `\"self-hosted\"` / `\"cloud\"`), the same value stored in the\n`CHECK`-constrained `app_registry.kind` column and sent on the wire.",
+        "description": "Which kind an app is — the discriminator. Serialized as its kebab string\n(`\"system\"` / `\"self-hosted\"` / `\"cloud\"`), the same value stored in the\n`CHECK`-constrained `app_registrations.kind` column and sent on the wire.",
         "enum": [
           "system",
           "self-hosted",

@@ -144,12 +144,12 @@ async fn fresh_install_lists_the_default_set() {
 #[tokio::test]
 async fn self_hosted_apps_catalogue_is_materialized() {
     let apps = spin_up();
-    let pb = apps
+    let (_registration, config) = apps
         .self_hosted_apps_at_start
         .iter()
-        .find(|a| a.id() == "patient-browser")
+        .find(|(reg, _)| reg.id == "patient-browser")
         .expect("patient-browser is self-hosted");
-    assert_eq!(pb.as_self_hosted().expect("self-hosted payload").port, 8081,);
+    assert_eq!(config.port, 8081);
 }
 
 /// A cloud app created through the admin surface shows up immediately in the
