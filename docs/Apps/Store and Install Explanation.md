@@ -34,28 +34,29 @@ in `SqliteAppsStore::new` under this slice's **namespace** (`"apps"`) via
 diesel slice's `0001` are tracked as distinct `(namespace, version)` rows and
 never collide in diesel's stock `__diesel_schema_migrations`.
 
-## The store speaks whole apps
+## The store speaks registrations + per-kind payloads
 
-**Table-per-struct** persistence over the app-wide diesel pool
-(`persistence_rust::DieselPool`): one standalone table per concrete kind
-(`cloud_apps`, `self_hosted_apps`) carrying all of its own columns, plus a
-`home_screen` table for the cross-kind ordering + `enabled` flag. System apps
-have no table (their metadata + launch URL are compiled in).
+**Class-table-inheritance** persistence over the app-wide diesel pool
+(`persistence_rust::DieselPool`): one authoritative `app_registry` parent (the
+global id space, the shared catalogue fields, and the homescreen placement) with
+a `kind` discriminator and three symmetric child payload tables (`system_apps`,
+`cloud_apps`, `self_hosted_apps`), real FKs child→parent with `ON DELETE
+CASCADE`. System apps are ordinary seeded rows now — their launch template lives
+in `system_apps.url`, not a compiled-in `SYSTEM_APPS` const.
 
-Every cross-kind read goes through the **`apps_view`** SQL view — a `UNION ALL`
-of the concrete tables joined to `home_screen` — decoded (`db::reads`) into a
-whole `App` (the concrete record + its `home_screen` placement), then folded
-together with the compiled-in system apps by `home_screen` position. So the
-catalogue, a single-row lookup, and the host listener list can't drift on columns
-or decoding. `smart` / `removable` are derived in Rust (the `AppRecord` trait),
-not stored as computed columns.
+Reads are **typed diesel queries against real tables** (no `apps_view`, no
+`UNION`-with-NULLs decode): the uniform catalogue is a join-free
+`app_registry ORDER BY position` into `AppRegistration`s; a detail read fetches
+the registration then the one child its `kind` names, composing a whole `App`;
+the host-listener list is a typed inner join `self_hosted_apps ⋈ app_registry`.
+`smart` / `removable` are derived in Rust (the `AppRecord` trait), not stored.
 
 **A corrupt registry surfaces as a typed read error.** A stored `url` that no
-longer parses, a NULL where a payload column is required, or a `home_screen` row
-whose id is neither a concrete row nor a compiled-in system id — each surfaces as
-a _typed read error_ (a logged 500 at the handler seam), never a partial `App`.
-The view decoder is the single enforcement point; handlers don't re-check it per
-call site.
+longer parses (rejected by the `AppUrl`/`AppKind` column decode), or a
+registration whose child payload row is missing (the one CTI invariant SQLite
+can't enforce across tables) — each surfaces as a _typed read error_ (a logged
+500 at the handler seam), never a partial `App`. The single-detail-read decoder
+is the enforcement point; handlers don't re-check it per call site.
 
 ## Transaction discipline
 
@@ -79,9 +80,11 @@ store:
    `UNIQUE(position)` (SQLite's UNIQUE is immediate, not deferrable).
 
 Kind- and seeded-_policy_ gating (which kinds or rows an HTTP surface may edit)
-lives in `domain/actions.rs` — `replace_app_content` resolves existence (404) and
-editability/kind-match (409) off the whole `App` a read hands back, before any
-field is validated; `delete`'s kind dispatch is split across the handler because
+lives in `domain/actions.rs` — the per-kind `replace_cloud_content` /
+`replace_self_hosted_launch_path` resolve the kind first off the whole `App` a
+read hands back: a wrong-kind (or unknown) id is a **404** (the mismatch can no
+longer be expressed as a `409`), a seeded self-hosted app is `409`, before any
+field is validated. `delete`'s kind dispatch is split across the handler because
 it interleaves filesystem teardown (stop the listener, remove files) around the
 store delete. The store's SQL only guards its own invariants (e.g. a cloud content
 replace updates `cloud_apps` by id, so a non-cloud id matches no row and is a
@@ -89,7 +92,7 @@ no-op).
 
 ## The self-hosted upload pipeline
 
-`POST /apps` with `provenance = self-hosted` carries an uploaded zip `bundle`.
+`POST /self-hosted-apps` carries an uploaded zip `bundle` (multipart).
 The handler runs a staged install ordered so it never leaves a half-installed
 app behind:
 
