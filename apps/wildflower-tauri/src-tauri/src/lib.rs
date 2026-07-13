@@ -275,37 +275,38 @@ async fn run_server(
         emr_rust::UNAUTHENTICATED_FHIR_PATHS,
     );
 
+    // The app-wide diesel r2d2 pool, built once here on the same database file
+    // `db` serves the other slices from and shared (cheap `Arc` clone) across
+    // every diesel-backed slice — the collector `/collector/remotes` and tunnel
+    // `/tunnel` surfaces both run over it rather than each opening their own. Its
+    // connections are NOT synchronized with the `Arc<Mutex<rusqlite::Connection>>`
+    // the other slices write through: an accepted single-writer file-lock
+    // contention trade-off, ridden out by a shared `busy_timeout`. This is where
+    // that trade-off is accepted — see
+    // docs/Persistence/Shared Diesel Pool Explanation.md.
+    let diesel_pool =
+        persistence_rust::open_pool(&db_path).context("failed to open diesel db pool")?;
+
     // The real `/collector/remotes` surface (replacing the former api_stubs
     // stub — the demo FHIR remote it hardcoded is now seeded by migration).
-    // The collector runs over the app-wide diesel r2d2 pool onto the same shared
-    // database file `db` serves the other slices from — additional openers on
-    // the same file. This is the shared diesel pool future diesel-backed slices
-    // should reuse rather than each opening their own. User-created remotes
-    // persist there; a remote's config JSON may carry pharmacy credentials, so
-    // the whole surface is Owner-gated like the rest of the admin API.
-    //
-    // ACCEPTED TRADEOFF: the pool's connections are NOT synchronized with the
-    // `Arc<Mutex<rusqlite::Connection>>` every other slice writes through, so a
-    // collector write can now contend with a rusqlite write at the SQLite
-    // file-lock level (WAL is off → single writer) — "no cross-connection write
-    // contention" no longer holds. Both sides set `busy_timeout = 5000`, ample
-    // for a single-user desktop app with short writes; a pathological stalled
-    // write elsewhere can surface here as a ≤5 s stall → `SQLITE_BUSY` → 500.
-    let collector_pool =
-        persistence_rust::open_pool(&db_path).context("failed to open diesel db pool")?;
+    // User-created remotes persist in the shared database; a remote's config
+    // JSON may carry pharmacy credentials, so the whole surface is Owner-gated
+    // like the rest of the admin API.
     let gated_collector = layer_router_with_gatekeeper_auth_gating(
-        collector_rust::setup_collector(collector_pool).context("failed to set up collector")?,
+        collector_rust::setup_collector(diesel_pool.clone())
+            .context("failed to set up collector")?,
         gatekeeper.state.clone(),
         &[],
     );
 
     // The real `/tunnel` surface (replacing the former api_stubs stub). It's
     // Owner-gated like the rest of the admin API. Settings (incl. the relay
-    // connection) are persisted in SQLite and controlled through the API; there
-    // is no UI and no env seeding yet, so on a fresh install the relay is
-    // unconfigured and toggling the tunnel on just reports that.
+    // connection) are persisted in the shared database over the same diesel pool
+    // and controlled through the API; there is no UI and no env seeding yet, so
+    // on a fresh install the relay is unconfigured and toggling the tunnel on
+    // just reports that.
     // Build-time tunnel connection defaults, baked into the binary so a
-    // reinstall re-seeds them (see `tunnel_rust::TunnelStore::seed_if_absent`,
+    // reinstall re-seeds them (see `tunnel_rust::SqliteTunnelStore::seed_if_absent`,
     // which only fills unconfigured fields). The relay is seeded only when all
     // four fields are present at build time.
     //
@@ -351,7 +352,7 @@ async fn run_server(
     // through the reqwest adapter to verify reachability.
     let health_probe: Arc<dyn tunnel_rust::HealthProbe> =
         Arc::new(tunnel_adapters::ReqwestHealthProbe::new());
-    let tunnel = tunnel_rust::setup_tunnel(db.clone(), &tunnel_config, health_probe)
+    let tunnel = tunnel_rust::setup_tunnel(diesel_pool, &tunnel_config, health_probe)
         .context("failed to set up tunnel")?;
     let gated_tunnel =
         layer_router_with_gatekeeper_auth_gating(tunnel.router, gatekeeper.state.clone(), &[]);

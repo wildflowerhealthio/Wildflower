@@ -6,10 +6,8 @@ use axum::Json;
 use serde::{Deserialize, Deserializer};
 use utoipa::ToSchema;
 
-use super::tunnel_state_response::TunnelStateResponse;
-use crate::db::{SettingsUpdate, SettingsUpdateOutcome};
-use crate::domain::RelaySettings;
-use crate::http::response_templates::HandlerError;
+use super::wire_representations::TunnelStateResponse;
+use crate::domain::{RelaySettings, SettingsUpdate, SettingsUpdateOutcome, TunnelError};
 use crate::http::state::TunnelState;
 
 /// `PUT /tunnel` — full-replace of the visible settings under the caller's
@@ -32,19 +30,17 @@ use crate::http::state::TunnelState;
         (status = 409, description = "Stale revision; no write happened — the current snapshot is returned", body = TunnelStateResponse)
     )
 )]
-pub(super) async fn handle_put_tunnel(
+pub(super) async fn handle_replace_tunnel(
     State(state): State<Arc<TunnelState>>,
     Json(body): Json<ReplaceTunnelRequestBody>,
-) -> Result<(StatusCode, Json<TunnelStateResponse>), HandlerError> {
+) -> Result<(StatusCode, Json<TunnelStateResponse>), TunnelError> {
     let update = SettingsUpdate {
         public_host: body.public_host.0,
         requested_running: body.requested_running,
         relay_settings: body.relay.map(RelaySettings::from),
     };
-    let settings_update_outcome = state
-        .store
-        .replace_settings(body.settings_revision, update)
-        .map_err(|e| HandlerError::internal("replace_settings failed", e))?;
+    let settings_update_outcome =
+        crate::domain::actions::replace_settings(&state.store, body.settings_revision, update)?;
 
     match settings_update_outcome {
         SettingsUpdateOutcome::Applied(settings) => {

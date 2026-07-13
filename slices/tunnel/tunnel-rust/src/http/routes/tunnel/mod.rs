@@ -1,13 +1,13 @@
 //! `/tunnel` routes — the host-side surface for reading and replacing tunnel
-//! settings. One module per route handler (`get`, `put`), each a
-//! `#[utoipa::path]`-annotated handler; shared wire types live in
-//! [`tunnel_state_response`]. [`openapi_router`] is the only path table — the
-//! two methods on `/tunnel` (GET + PUT) share the path and `routes!` merges
-//! them, collecting the `OpenAPI` spec from the very handlers that serve traffic.
+//! settings. One module per operation (`get`, `replace`), each a
+//! `#[utoipa::path]`-annotated handler; the shared GET+PUT wire shape lives in
+//! [`wire_representations`]. [`openapi_router`] is the only path table — the two
+//! methods on `/tunnel` (GET + PUT) share the path and `routes!` merges them,
+//! collecting the `OpenAPI` spec from the very handlers that serve traffic.
 
 mod get;
-mod put;
-mod tunnel_state_response;
+mod replace;
+mod wire_representations;
 
 use std::sync::Arc;
 
@@ -17,7 +17,10 @@ use utoipa_axum::routes;
 use crate::http::state::TunnelState;
 
 pub(crate) fn openapi_router() -> OpenApiRouter<Arc<TunnelState>> {
-    OpenApiRouter::new().routes(routes!(get::handle_get_tunnel, put::handle_put_tunnel))
+    OpenApiRouter::new().routes(routes!(
+        get::handle_get_tunnel,
+        replace::handle_replace_tunnel
+    ))
 }
 
 #[cfg(test)]
@@ -30,7 +33,7 @@ mod tests {
     use tower::ServiceExt;
 
     use super::*;
-    use crate::db::TunnelStore;
+    use crate::db::SqliteTunnelStore;
     use crate::domain::{RelayClient, RelaySettings};
     use crate::health::HealthProbe;
     use crate::test_support::StubProbe;
@@ -99,7 +102,7 @@ mod tests {
     ) -> (Arc<TunnelState>, mpsc::UnboundedReceiver<()>) {
         let (started, rx) = mpsc::unbounded_channel();
         let client = Arc::new(FakeClient { behavior, started });
-        let store = TunnelStore::open_in_memory().expect("store");
+        let store = SqliteTunnelStore::open_in_memory().expect("store");
         let state = Arc::new(TunnelState {
             store,
             daemon: TunnelDaemon::new_test(client, probe, "http://127.0.0.1:8080", 8080),

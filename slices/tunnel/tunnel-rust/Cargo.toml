@@ -4,11 +4,17 @@ version = "0.0.0"
 edition.workspace = true
 publish.workspace = true
 
-# The Tauri-side tunnel slice: SQLite-backed settings (via persistence-rust),
-# the `/tunnel` HTTP surface the tunnel-react UI speaks, and an embedded
-# `rathole` client (noise transport, no TLS/openssl) that dials the self-hosted
-# wildflower-relay and forwards the loopback server through it. Layered like
-# gatekeeper-rust: pure `domain`, `db`, and `http`.
+# The Tauri-side tunnel slice: SQLite-backed settings (via Diesel over the
+# app-wide connection pool), the `/tunnel` HTTP surface the tunnel-react UI
+# speaks, and an embedded `rathole` client (noise transport, no TLS/openssl)
+# that dials the self-hosted wildflower-relay and forwards the loopback server
+# through it. Layered like collector-rust: pure `domain`, `db`, and `http`.
+#
+# Persistence is Diesel over the host-owned `persistence_rust::DieselPool` (see
+# docs/Persistence/Shared Diesel Pool Explanation.md); this crate depends on
+# `persistence-rust` ONLY for the pool type — it does not touch `rusqlite`
+# directly. Cargo unifies diesel's `libsqlite3-sys` with rusqlite's
+# already-bundled one, so both connections drive the same bundled SQLite build.
 [dependencies]
 anyhow.workspace = true
 axum.workspace = true
@@ -16,10 +22,13 @@ serde = { workspace = true }
 serde_json.workspace = true
 utoipa.workspace = true
 utoipa-axum.workspace = true
-rusqlite.workspace = true
+diesel = { workspace = true }
+diesel_migrations.workspace = true
 # The loopback origin flows in as a typed `Url` (from `ServerRuntimeConfig`); the
 # daemon takes its bare origin string at construction.
 url = { version = "2" }
+# The app-wide diesel connection pool (`DieselPool` / `open_pool`) shared across
+# diesel-backed slices; this crate names the pool type but not rusqlite.
 persistence-rust = { path = "../../persistence/persistence-rust" }
 # The tunnel service contract this slice implements (TunnelService + state
 # types), plus the shared opaque-500 `InternalError` the handlers 500 with.
