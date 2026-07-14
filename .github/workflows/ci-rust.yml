@@ -6,69 +6,156 @@ on:
     # PR runs are gated to Rust-touching changes at the trigger level, so an
     # unrelated PR never starts this workflow (no change-detection job needed).
     # This workflow no longer runs on pushes to main — CI is a pre-merge gate
-    # only. The Tauri crate lives under these paths too (its *.rs / Cargo.toml
-    # match), so a Tauri-only change also runs the dependency check here, while
-    # ci-rust-tauri.yml handles its compile.
+    # only. It compiles, lints, and tests the ENTIRE Cargo workspace in one job,
+    # including the crates that pull in `tauri = "2"` (wildflower-tauri,
+    # browser-sniffer-tauri-rust, shared-structures-tauri-rust,
+    # tauri-plugin-native-webview). Those need GTK/webkit system libs, so the
+    # job installs them and stubs the generated web bundles the Tauri crates
+    # `include_str!`. (This used to be a separate ci-rust-tauri.yml; the split
+    # saved little because most Rust PRs touch a Tauri crate anyway.)
+    #
+    # The full-workspace test pass also runs each slice's
+    # `openapi_spec_snapshot_is_up_to_date` test — the Rust half of the OpenAPI
+    # drift gate (previously api-sync.yml's rust-snapshot job). So a snapshot-only
+    # regen with no *.rs change is matched via the committed JSON path below;
+    # api-sync.yml keeps only the TS drift half.
     paths:
       - '**/*.rs'
       - '**/Cargo.toml'
       - 'Cargo.lock'
       - 'rust-toolchain.toml'
       - 'deny.toml'
+      # Committed OpenAPI snapshots. `openapi_spec_snapshot_is_up_to_date` (run
+      # as part of the workspace test suite) verifies each still matches what
+      # utoipa emits from the live axum routes; a snapshot-only regen (no *.rs
+      # change) must still trigger that check, so match the generated JSON.
+      - 'slices/**/*-rust/openapi/*.openapi.json'
+      # Tauri bootstrap inputs (not *.rs): browser-sniffer-tauri-rust
+      # `include_str!`s a JS bundle generated from this TS package, and the
+      # lockfiles affect that bootstrap build — a change to either can break the
+      # Tauri crates' compile/tests, so run the workspace here too.
+      - 'slices/browser-sniffer/browser-sniffer-tauri/**'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
       - '.github/workflows/ci-rust.yml'
 
 permissions:
   contents: read
+  # dorny/paths-filter (the in-job bootstrap detector below) reads the PR's
+  # changed-file list from the GitHub API.
+  pull-requests: read
 
 concurrency:
   group: rust-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  # One job for fmt + clippy + nextest + doctests: a single toolchain setup and
-  # a single compiled-artifact cache mean the workspace is compiled ONCE, then
-  # clippy and the tests reuse those artifacts — instead of the previous two
-  # jobs (lint and nextest) each warming the cache and compiling from it
-  # separately. wildflower-tauri, browser-sniffer-tauri-rust,
-  # shared-structures-tauri-rust, and tauri-plugin-native-webview are
-  # excluded: all pull in `tauri = "2"` and need GTK/webkit system libs, so
-  # ci-rust-tauri.yml compiles, lints, and tests them on its own.
+  # One job for fmt + clippy + nextest + doctests across the WHOLE workspace: a
+  # single checkout, toolchain setup, nextest install, GTK/webkit apt install,
+  # and one compiled-artifact cache mean the workspace is compiled ONCE, then
+  # clippy and the tests reuse those artifacts. Previously the Tauri crates were
+  # split into their own workflow to avoid the GTK install on non-Tauri PRs, but
+  # that isolation rarely paid off, so it's folded back in here.
   rust:
     name: Lint + Test
     if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+
+      # Detect whether the sniffer bootstrap source (or a lockfile) actually
+      # changed. If so we regenerate the real IIFE below; otherwise we stub it,
+      # since a full pnpm install just to compile Rust against an untouched
+      # bootstrap is ~30s of wasted work. This is a single step, not a separate
+      # billed job.
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            bootstrap:
+              - 'slices/browser-sniffer/browser-sniffer-tauri/**'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+
+      - name: Stub the embedded SPA bundle
+        # `spa.rs` `include_str!`s the single-file web bundle
+        # (`dist-single-web/index-single-web.html`), produced by the
+        # `build:single-web` step and gitignored — so it's absent in a fresh
+        # checkout and wildflower-tauri won't compile. CI only builds the Rust,
+        # not the served HTML, so a placeholder satisfies the `include_str!`.
+        run: |
+          mkdir -p apps/wildflower-react/dist-single-web
+          echo '<!doctype html><title>stub</title>' \
+            > apps/wildflower-react/dist-single-web/index-single-web.html
+
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev libxdo-dev
+
+      # browser-sniffer-tauri-rust `include_str!`s a JS bundle generated from
+      # the browser-sniffer-tauri TS package. Regenerate it via pnpm when the
+      # bootstrap source changed; otherwise drop a non-empty stub long enough to
+      # satisfy the crate's `bootstrap_is_non_empty` test. Only the desktop
+      # bundle (`tauri-bootstrap.js`) is needed: `native-bootstrap.js` is
+      # `include_str!`ed under a `cfg(ios|android)` gate, compiled out on this
+      # ubuntu (desktop) target.
+      - name: Setup Node
+        if: steps.filter.outputs.bootstrap == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: '26'
+      - name: Build Sniffer bootstrap
+        if: steps.filter.outputs.bootstrap == 'true'
+        run: |
+          set -euo pipefail
+          corepack enable
+          pnpm install --frozen-lockfile --filter browser-sniffer-tauri...
+          pnpm --filter browser-sniffer-tauri run generate-tauri-bootstrap
+      - name: Stub Sniffer bootstrap
+        if: steps.filter.outputs.bootstrap != 'true'
+        run: |
+          set -euo pipefail
+          BOOTSTRAP_DIST=slices/browser-sniffer/browser-sniffer-tauri/dist/tauri-bootstrap.js
+          mkdir -p "$(dirname "$BOOTSTRAP_DIST")"
+          {
+            echo '// CI stub: this PR does not touch the sniffer bootstrap source.'
+            echo '// The real IIFE is regenerated by pnpm install when bootstrap-affecting'
+            echo '// changes are present. Long enough to satisfy bootstrap_is_non_empty.'
+            for _ in $(seq 1 40); do echo '// xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'; done
+          } > "$BOOTSTRAP_DIST"
+
       - name: Set up Rust toolchain
         # Reads rust-toolchain.toml (channel + rustfmt/clippy), caches build
         # artifacts, and registers clippy/rustfmt problem matchers for inline
-        # annotations. `cache-shared-key` shares the compiled-workspace cache
-        # with the api-sync rust-snapshot job, which compiles the same set.
+        # annotations. Its own cache key (`rust-workspace-all`): this job
+        # compiles the full workspace incl. the Tauri dep tree, so it doesn't
+        # share the excl-tauri cache the pre-merge Rust checks used before the
+        # Tauri crates were folded in here.
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          cache-shared-key: rust-workspace-excl-tauri
+          cache-shared-key: rust-workspace-all
       - name: Install cargo-nextest
         uses: taiki-e/install-action@v2
         with:
           tool: nextest
       # fmt / clippy / nextest go through scripts/checks/rust.sh — the single
       # source of truth shared with the git hooks (.vite-hooks + the `staged`
-      # block in vite.config.ts), so the exclude lists and the --no-tests=warn
-      # flag (nextest 0.9.85+ fails on zero tests by default; switch to
-      # --no-tests=fail once Rust tests exist) can't drift between CI and local.
-      # cargo + nextest are installed above, so none of the script's local-only
-      # skip paths trigger here.
+      # block in vite.config.ts). clippy-all / test-all run the full --workspace
+      # (no Tauri exclusions); the GTK/webkit libs installed above let those
+      # crates build, so none of the script's local-only skip paths trigger here.
       - name: rustfmt
         run: ./scripts/checks/rust.sh fmt
       - name: clippy (deny warnings)
-        run: ./scripts/checks/rust.sh clippy
+        run: ./scripts/checks/rust.sh clippy-all
       - name: Run tests (nextest)
-        run: ./scripts/checks/rust.sh test
+        run: ./scripts/checks/rust.sh test-all
 
   # Supply-chain gate. Kept as its own job because cargo-deny doesn't reuse the
   # compiled-workspace artifacts above, so merging it in would only serialize
-  # unrelated work. A Tauri-only change matches this workflow's paths, so its
-  # dependency tree is covered here too.
+  # unrelated work.
   deny:
     name: Dependency Check
     if: github.event.pull_request.draft != true

@@ -2,9 +2,9 @@
 # Single source of truth for the workspace's Rust lint/format/test invocations.
 #
 # Both the git hooks (.vite-hooks/* + the `staged` block in vite.config.ts) and
-# the CI workflows (.github/workflows/ci-rust.yml, ci-rust-tauri.yml) call this,
-# so the `--exclude`/`-p` crate lists and the nextest flags live in exactly one
-# place and can't drift between local checks and CI.
+# the CI workflow (.github/workflows/ci-rust.yml) call this, so the
+# `--exclude`/`-p` crate lists and the nextest flags live in exactly one place
+# and can't drift between local checks and CI.
 #
 # The hook entrypoints degrade gracefully so they never block a contributor who
 # legitimately can't run a step locally — CI still gates all of it on PRs:
@@ -16,13 +16,16 @@
 # real.
 #
 # Subcommands:
-#   fmt | clippy | test            non-Tauri workspace (ci-rust.yml)
-#   tauri-clippy | tauri-test      the GTK/webkit Tauri crates (ci-rust-tauri.yml)
+#   fmt | clippy | test            non-Tauri workspace partition
+#   tauri-clippy | tauri-test      the GTK/webkit Tauri crates partition
+#   clippy-all | test-all          the FULL workspace incl. Tauri, in one pass
+#                                  (the merged ci-rust.yml job, where the
+#                                  GTK/webkit libs are installed)
 #   pre-commit                     fmt + clippy + tauri-clippy   (lint/format)
 #   pre-push                       test + tauri-test             (tests)
 set -euo pipefail
 
-step="${1:?usage: rust.sh <fmt|clippy|test|tauri-clippy|tauri-test|pre-commit|pre-push>}"
+step="${1:?usage: rust.sh <fmt|clippy|test|tauri-clippy|tauri-test|clippy-all|test-all|pre-commit|pre-push>}"
 
 have() { command -v "$1" >/dev/null 2>&1; }
 
@@ -31,8 +34,11 @@ if ! have cargo; then
   exit 0
 fi
 
-# The crates ci-rust.yml builds (everything except the GTK/webkit-dependent Tauri
-# crates) vs. the Tauri crates that ci-rust-tauri.yml owns.
+# The workspace partitions: everything except the GTK/webkit-dependent Tauri
+# crates vs. the Tauri crates themselves. ci-rust.yml now compiles the FULL
+# workspace in one job (clippy-all / test-all), so these partitions are used by
+# the changed-crate hooks (pre-commit / pre-push) and the local Tauri degrade
+# path — not to split CI into two jobs.
 non_tauri=(--workspace
   --exclude wildflower-tauri
   --exclude browser-sniffer-tauri-rust
@@ -96,6 +102,27 @@ do_tauri_clippy() {
 do_tauri_test() {
   tauri_capable || return 0
   run_tests "${tauri[@]}"
+}
+
+# Full-workspace clippy/test — no exclusions, so the Tauri crates compile in the
+# same pass as everything else. Used by the merged ci-rust.yml job, which
+# installs the GTK/webkit libs so `--workspace` builds end to end. Locally it
+# degrades to the non-Tauri partition when those libs are absent (same escape
+# hatch as do_tauri_*), so a frontend-only contributor running it isn't blocked;
+# CI still gates the full set on PRs.
+do_clippy_all() {
+  if tauri_capable; then
+    cargo clippy --workspace --all-targets --all-features -- -D warnings
+  else
+    do_clippy
+  fi
+}
+do_test_all() {
+  if tauri_capable; then
+    run_tests --workspace
+  else
+    do_test
+  fi
 }
 
 # Lightweight "changed crates vs origin/main" scoping, used only by the hook
@@ -166,6 +193,8 @@ case "$step" in
   test) do_test ;;
   tauri-clippy) do_tauri_clippy ;;
   tauri-test) do_tauri_test ;;
+  clippy-all) do_clippy_all ;;
+  test-all) do_test_all ;;
   pre-commit)
     # fmt is compile-free and fast, so keep it whole-workspace; scope the
     # compile-heavy clippy to the crates changed vs origin/main (+ dependents).
