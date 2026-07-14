@@ -64,4 +64,4 @@ tokio = { workspace = true, features = ["rt", "macros", "sync", "time"] }
 futures-util = "0.3"
 # A real WebSocket client to drive the end-to-end upgrade-proxy test through the
 # proxy. Already in the lock (transitive via axum's `ws`).
-tokio-tungstenite = "0.29"
+tokio-tungstenite = "0.30"
