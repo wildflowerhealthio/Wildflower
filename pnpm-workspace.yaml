@@ -71,7 +71,7 @@ catalog:
   react-dom: 19.2.7
   tundra-css: ^0.14.0
 
-  typescript: 5.9.3
+  typescript: 7.0.2
   vite: npm:@voidzero-dev/vite-plus-core@^0.2.2
   vite-plus: ^0.2.2
   # vite-plus 0.2.x depends on real vitest (the @voidzero-dev/vite-plus-test
