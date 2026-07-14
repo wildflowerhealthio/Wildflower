@@ -2140,25 +2140,25 @@ fn plant_refresh_token(
 ) {
     let now = Utc::now();
     store
-        .insert_refresh_token_family(
-            &RefreshTokenFamily {
-                family_id: format!("family-{plaintext}"),
-                client_id: client_id.to_string(),
-                scopes: vec!["read".to_string(), "offline_access".to_string()],
-                patient: None,
-                issued_at: now,
-                expires_at: family_expires_at,
-                authorization_code_hash: None,
-                grant_id: None,
-            },
-            &RefreshToken {
-                token_hash: token_storage_hash(plaintext),
-                family_id: format!("family-{plaintext}"),
-                issued_at: now,
-                consumed_at: None,
-            },
-        )
-        .expect("insert refresh token family");
+        .insert_refresh_token_family_row(&RefreshTokenFamily {
+            family_id: format!("family-{plaintext}"),
+            client_id: client_id.to_string(),
+            scopes: vec!["read".to_string(), "offline_access".to_string()],
+            patient: None,
+            issued_at: now,
+            expires_at: family_expires_at,
+            authorization_code_hash: None,
+            grant_id: None,
+        })
+        .expect("insert refresh token family row");
+    store
+        .insert_refresh_token(&RefreshToken {
+            token_hash: token_storage_hash(plaintext),
+            family_id: format!("family-{plaintext}"),
+            issued_at: now,
+            consumed_at: None,
+        })
+        .expect("insert first refresh token");
 }
 
 /// A refresh token past its family's absolute deadline is `invalid_grant`.

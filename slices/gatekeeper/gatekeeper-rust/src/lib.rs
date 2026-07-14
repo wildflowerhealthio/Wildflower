@@ -15,6 +15,10 @@ pub mod crypto_util;
 pub mod db;
 pub mod domain;
 pub mod http;
+// Host/HTTP-seam dependency-inversion traits the domain actions call out through
+// (device-consent republish, session-token revoke, session-cookie clear); the
+// concrete impls are wired onto `AppState` in `http::state`. Mirrors apps-rust.
+pub(crate) mod ports;
 pub(crate) mod seeding;
 
 use anyhow::Context;

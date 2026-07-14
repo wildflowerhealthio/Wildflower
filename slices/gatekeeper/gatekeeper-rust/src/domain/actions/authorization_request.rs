@@ -4,9 +4,9 @@
 
 use chrono::{DateTime, Utc};
 
+use crate::domain::authorization_code::PendingCodeConsent;
 use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
 use crate::domain::error::GatekeeperError;
-use crate::domain::pending_code_consent::PendingCodeConsent;
 use crate::domain::GatekeeperStore;
 
 /// Load an authorization request by its primary id — a thin relay for callers
@@ -151,7 +151,7 @@ pub(crate) fn load_pending_authorization_code_request(
     store: &impl GatekeeperStore,
     id: &str,
 ) -> Result<PendingCodeConsent, GatekeeperError> {
-    let consent_not_found = || GatekeeperError::OAuthConsentNotFound { id: id.to_owned() };
+    let make_consent_not_found = || GatekeeperError::OAuthConsentNotFound { id: id.to_owned() };
     match store.authorization_request_by_id(id)? {
         Some(r)
             if r.status == RequestStatus::Pending
@@ -167,10 +167,10 @@ pub(crate) fn load_pending_authorization_code_request(
                     redirect_uri,
                     code_challenge,
                 }),
-                _ => Err(consent_not_found()),
+                _ => Err(make_consent_not_found()),
             }
         }
-        _ => Err(consent_not_found()),
+        _ => Err(make_consent_not_found()),
     }
 }
 

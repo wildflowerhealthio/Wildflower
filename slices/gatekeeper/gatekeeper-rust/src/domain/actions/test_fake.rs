@@ -14,7 +14,7 @@ use url::Url;
 
 use crate::domain::authorization_code::AuthorizationCode;
 use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
-use crate::domain::client::Client;
+use crate::domain::client::{AllowedGrantType, Client, ClientKind};
 use crate::domain::error::GatekeeperError;
 use crate::domain::grant::{AuthorizationCodeGrant, DeviceGrant, Grant};
 use crate::domain::refresh_token::{RefreshToken, RefreshTokenConsumeOutcome, RefreshTokenFamily};
@@ -210,17 +210,13 @@ impl GatekeeperStore for FakeGatekeeperStore {
         Ok(())
     }
 
-    fn insert_refresh_token_family(
+    fn insert_refresh_token_family_row(
         &self,
         family: &RefreshTokenFamily,
-        first_token: &RefreshToken,
     ) -> Result<(), GatekeeperError> {
         self.families
             .borrow_mut()
             .insert(family.family_id.clone(), family.clone());
-        self.tokens
-            .borrow_mut()
-            .insert(first_token.token_hash.clone(), first_token.clone());
         Ok(())
     }
 
@@ -266,19 +262,6 @@ impl GatekeeperStore for FakeGatekeeperStore {
         }
         token.consumed_at = Some(now);
         Ok(RefreshTokenConsumeOutcome::Consumed)
-    }
-
-    fn rotate_refresh_token(
-        &self,
-        presented_hash: &str,
-        successor: &RefreshToken,
-        now: DateTime<Utc>,
-    ) -> Result<RefreshTokenConsumeOutcome, GatekeeperError> {
-        let outcome = self.consume_refresh_token(presented_hash, now)?;
-        if outcome == RefreshTokenConsumeOutcome::Consumed {
-            self.insert_refresh_token(successor)?;
-        }
-        Ok(outcome)
     }
 
     fn expire_refresh_token_family(
@@ -527,6 +510,22 @@ pub(crate) fn code_request(
         granted_scopes: None,
         patient: None,
         device_name: None,
+    }
+}
+
+/// A public-client fixture with a caller-chosen `allowed_scopes` set and the
+/// `https://example.com/cb` redirect the request fixtures use.
+pub(crate) fn client(client_id: &str, allowed_scopes: &[&str]) -> Client {
+    Client {
+        client_id: client_id.to_owned(),
+        name: format!("{client_id} display name"),
+        kind: ClientKind::Public,
+        redirect_uris: vec![Url::parse("https://example.com/cb").unwrap()],
+        allowed_scopes: allowed_scopes.iter().map(|s| (*s).to_owned()).collect(),
+        allowed_grant_types: AllowedGrantType::ALL.to_vec(),
+        secret_hash: None,
+        registered_at: Utc::now(),
+        disabled_at: None,
     }
 }
 

@@ -77,38 +77,6 @@ impl OAuthError {
     }
 }
 
-/// Body returned to the Owner UI when it loads an authorization-code consent
-/// prompt — describes the client, scopes, and any pre-approved subset.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct OAuthConsent {
-    pub(crate) id: String,
-    pub(crate) client_id: String,
-    /// The client's registered display name, so the consent UI can name the
-    /// app instead of showing a raw `client_id`. Falls back to the
-    /// `client_id` when the registration lookup misses.
-    pub(crate) client_name: String,
-    pub(crate) scopes: Vec<String>,
-    pub(crate) redirect_uri: url::Url,
-    pub(crate) pre_approved_scopes: Vec<String>,
-    pub(crate) patient: Option<String>,
-}
-
-/// Body returned to the Owner UI when it loads a pending device-code consent
-/// prompt — describes the requesting client, the device's chosen name, its
-/// requested scopes, and the client's full allowed-scope set (the *expansion
-/// envelope* the approver may grant up to, since device consent is expandable).
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct DeviceConsent {
-    pub(crate) user_code: String,
-    pub(crate) client_id: String,
-    pub(crate) client_name: String,
-    pub(crate) device_name: Option<String>,
-    pub(crate) requested_scopes: Vec<String>,
-    pub(crate) allowed_scopes: Vec<String>,
-}
-
 /// Body posted by the Owner UI to approve a consent prompt: the scopes the
 /// Owner ticked, plus an optional patient context to bind to the grant. The
 /// device flow sends no `patient` today, so it deserializes to `None`; the
@@ -142,4 +110,18 @@ pub(crate) enum ConsentResult {
         redirect: Option<String>,
     },
     Denied,
+}
+
+/// Render the domain consent action's [`ConsentOutcome`](crate::domain::actions::ConsentOutcome)
+/// onto the Owner-UI wire result, so an approve/deny handler is
+/// `Ok(Json(outcome.into()))`.
+impl From<crate::domain::actions::ConsentOutcome> for ConsentResult {
+    fn from(outcome: crate::domain::actions::ConsentOutcome) -> Self {
+        match outcome {
+            crate::domain::actions::ConsentOutcome::Approved { redirect } => {
+                ConsentResult::Approved { redirect }
+            }
+            crate::domain::actions::ConsentOutcome::Denied => ConsentResult::Denied,
+        }
+    }
 }

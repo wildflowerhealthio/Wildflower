@@ -1,8 +1,10 @@
+use chrono::{DateTime, Utc};
 use tokio::sync::watch;
 
 use token_revocation_rust::RevocationStore;
 
 use crate::db::SqliteGatekeeperStore;
+use crate::ports::{DeviceUserCodePublisher, SessionCookies, SessionRevoker};
 
 /// Shared state threaded through every gatekeeper handler. Opaque to
 /// callers outside the crate — the host receives one from
@@ -100,5 +102,29 @@ impl AppState {
                     true
                 }
             });
+    }
+}
+
+/// The device-consent republish seam ([`crate::ports`]) the device-flow consent
+/// actions call after a store write — delegates to the inherent recompute-and-publish.
+impl DeviceUserCodePublisher for AppState {
+    fn republish_active(&self) {
+        self.republish_active_device_user_code();
+    }
+}
+
+/// The session-cookie clear seam — delegates to the crate-level cookie builder so
+/// the `wf_auth` format stays in [`crate::cookies`].
+impl SessionCookies for AppState {
+    fn append_clear_session(&self, headers: &mut axum::http::HeaderMap, secure: bool) {
+        crate::cookies::append_clear_session_cookies(headers, secure);
+    }
+}
+
+/// The session-token revoke seam — delegates to the shared [`RevocationStore`],
+/// stringifying its error so the port stays free of the store's concrete type.
+impl SessionRevoker for RevocationStore {
+    fn revoke_jti(&self, jti: &str, expires_at: DateTime<Utc>, reason: &str) -> Result<(), String> {
+        RevocationStore::revoke_jti(self, jti, expires_at, reason).map_err(|e| e.to_string())
     }
 }

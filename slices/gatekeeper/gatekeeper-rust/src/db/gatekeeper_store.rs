@@ -259,12 +259,11 @@ impl GatekeeperStore for SqliteGatekeeperStore {
 
     // ----- refresh-token families ----------------------------------------
 
-    fn insert_refresh_token_family(
+    fn insert_refresh_token_family_row(
         &self,
         family: &RefreshTokenFamily,
-        first_token: &RefreshToken,
     ) -> Result<(), GatekeeperError> {
-        refresh_tokens::insert_refresh_token_family(&mut self.connection()?, family, first_token)
+        refresh_tokens::insert_refresh_token_family_row(&mut self.connection()?, family)
     }
 
     fn insert_refresh_token(&self, token: &RefreshToken) -> Result<(), GatekeeperError> {
@@ -291,20 +290,6 @@ impl GatekeeperStore for SqliteGatekeeperStore {
         now: DateTime<Utc>,
     ) -> Result<RefreshTokenConsumeOutcome, GatekeeperError> {
         refresh_tokens::consume_refresh_token(&mut self.connection()?, token_hash, now)
-    }
-
-    fn rotate_refresh_token(
-        &self,
-        presented_hash: &str,
-        successor: &RefreshToken,
-        now: DateTime<Utc>,
-    ) -> Result<RefreshTokenConsumeOutcome, GatekeeperError> {
-        refresh_tokens::rotate_refresh_token(
-            &mut self.connection()?,
-            presented_hash,
-            successor,
-            now,
-        )
     }
 
     fn expire_refresh_token_family(

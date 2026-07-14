@@ -4,6 +4,7 @@ use url::Url;
 
 use crate::db::authorization_codes::authorization_codes;
 use crate::db::shared::{JsonStrings, UrlText};
+use crate::domain::authorization_request::AuthorizationRequest;
 
 /// Lifetime of an `authorization_code`, from issuance (the `/authorize`
 /// fast path or an Owner's consent approval) to the client redeeming it at
@@ -39,4 +40,21 @@ pub struct AuthorizationCode {
     pub issued_at: DateTime<Utc>,
     /// Instant after which `/token` redemption is rejected as expired.
     pub expires_at: DateTime<Utc>,
+}
+
+/// A pending authorization-code consent request that has already passed the
+/// loader's validation: it's `Pending`, an `AuthorizationCode` grant flow,
+/// unexpired, and carries both a `redirect_uri` and a PKCE `code_challenge`.
+/// Those two are unwrapped once at load time so callers never re-prove them
+/// (parse-don't-validate).
+///
+/// Built only by
+/// [`actions::load_pending_authorization_code_request`](crate::domain::actions::load_pending_authorization_code_request)
+/// — the sibling of the [`AuthorizationCode`] it exists to mint, so it lives
+/// beside it rather than in a file of its own.
+#[derive(Debug, PartialEq)]
+pub struct PendingCodeConsent {
+    pub request: AuthorizationRequest,
+    pub redirect_uri: Url,
+    pub code_challenge: String,
 }

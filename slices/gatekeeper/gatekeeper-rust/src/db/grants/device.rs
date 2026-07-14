@@ -62,12 +62,14 @@ pub(crate) fn device_grant_by_client_and_device_name(
 }
 
 /// Insert or update the standing **device** grant for
-/// `(client_id, device_name)` in a single transaction on its one table,
-/// with the same cumulative-consent semantics as
-/// [`upsert_grant`](super::authorization_code::upsert_grant) — this is what makes a
-/// device-code approval leave a durable record. Re-pairing the same device (same
-/// name) absorbs the re-approval onto the existing grant; the table's
-/// `UNIQUE(client_id, device_name)` keeps concurrent approvals race-safe.
+/// `(client_id, device_name)` in a single **immediate** transaction on its one
+/// table, with the same cumulative-consent semantics as
+/// [`upsert_authorization_code_grant`](super::authorization_code::upsert_authorization_code_grant)
+/// — this is what makes a device-code approval leave a durable record. Re-pairing
+/// the same device (same name) absorbs the re-approval onto the existing grant.
+/// `BEGIN IMMEDIATE` takes the write lock before the read so two concurrent
+/// approvals serialise at the read and neither loses its scope union; the table's
+/// `UNIQUE(client_id, device_name)` is the backstop against a duplicate insert.
 pub(crate) fn upsert_device_grant(
     conn: &mut PooledDieselConnection,
     client_id: &str,
@@ -76,7 +78,7 @@ pub(crate) fn upsert_device_grant(
     patient: Option<&str>,
     now: DateTime<Utc>,
 ) -> Result<(), GatekeeperError> {
-    conn.transaction(|conn| {
+    conn.immediate_transaction(|conn| {
         let existing: Option<DeviceGrant> = device_grants::table
             .filter(device_grants::client_id.eq(client_id))
             .filter(device_grants::device_name.eq(device_name))

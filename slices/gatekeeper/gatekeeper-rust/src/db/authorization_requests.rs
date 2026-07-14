@@ -231,7 +231,7 @@ pub(super) fn insert_authorization_request(
 }
 
 /// Mark a *pending* `id` approved with `granted_scopes`, an optional patient
-/// context, and an optional adjusted `device_name`, returning `true` iff a
+/// context, and the request's resolved `device_name`, returning `true` iff a
 /// pending row was actually transitioned.
 ///
 /// The `status = 'pending'` guard means a request already in a terminal
@@ -239,10 +239,11 @@ pub(super) fn insert_authorization_request(
 /// affected-row check lets the caller detect a no-op (e.g. the request was
 /// consumed concurrently between its read and this update).
 ///
-/// `device_name` keeps COALESCE semantics: `Some` overwrites the stored
-/// name (the settings approver adjusting it), `None` keeps whatever the
-/// device supplied — so the auth-code consent path can pass `None` without
-/// erasing a device name it never had.
+/// `device_name` is written **verbatim** — the "keep the device's own name when
+/// the approver didn't adjust it" resolution is the consent action's job (it
+/// already holds the loaded request), so the store no longer branches on
+/// present-vs-absent. The code-flow path passes `None` (its column is and stays
+/// NULL); the device path passes the effective name it resolved.
 pub(super) fn approve_authorization_request(
     conn: &mut PooledDieselConnection,
     id: &str,
@@ -250,28 +251,19 @@ pub(super) fn approve_authorization_request(
     patient: Option<&str>,
     device_name: Option<&str>,
 ) -> Result<bool, GatekeeperError> {
-    let as_infrastructure_error =
-        |e| GatekeeperError::infrastructure("approve_authorization_request failed", e);
-    let target = authorization_requests::table
-        .find(id)
-        .filter(authorization_requests::status.eq(RequestStatus::Pending));
-    let shared = (
+    let affected = diesel::update(
+        authorization_requests::table
+            .find(id)
+            .filter(authorization_requests::status.eq(RequestStatus::Pending)),
+    )
+    .set((
         authorization_requests::status.eq(RequestStatus::Approved),
         authorization_requests::granted_scopes.eq(JsonStrings(granted_scopes.to_vec())),
         authorization_requests::patient.eq(patient),
-    );
-    // COALESCE(:device_name, device_name) as two typed branches: only a
-    // present adjustment touches the stored name.
-    let affected = match device_name {
-        Some(name) => diesel::update(target)
-            .set((shared, authorization_requests::device_name.eq(name)))
-            .execute(conn)
-            .map_err(as_infrastructure_error)?,
-        None => diesel::update(target)
-            .set(shared)
-            .execute(conn)
-            .map_err(as_infrastructure_error)?,
-    };
+        authorization_requests::device_name.eq(device_name),
+    ))
+    .execute(conn)
+    .map_err(|e| GatekeeperError::infrastructure("approve_authorization_request failed", e))?;
     Ok(affected == 1)
 }
 

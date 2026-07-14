@@ -244,18 +244,18 @@ pub trait GatekeeperStore {
 
     // ----- refresh-token families ----------------------------------------
 
-    /// Persist a new refresh-token family alongside its first token in one
-    /// transaction (a family with no token, or a token with no family, is
-    /// unrepresentable on purpose).
+    /// Persist a new refresh-token family **row only** — a single-table insert.
+    /// Pairing it with its first token (so a family never persists tokenless) is
+    /// the [`insert_refresh_token_family`](crate::domain::actions::insert_refresh_token_family)
+    /// action's job, sequencing this then [`Self::insert_refresh_token`]; the
+    /// store stays a primitive.
     ///
     /// # Errors
     ///
-    /// [`GatekeeperError::Infrastructure`] if the transaction or either insert
-    /// fails.
-    fn insert_refresh_token_family(
+    /// [`GatekeeperError::Infrastructure`] if the insert fails.
+    fn insert_refresh_token_family_row(
         &self,
         family: &RefreshTokenFamily,
-        first_token: &RefreshToken,
     ) -> Result<(), GatekeeperError>;
 
     /// Persist the successor token in an existing family's rotation.
@@ -302,21 +302,6 @@ pub trait GatekeeperStore {
     fn consume_refresh_token(
         &self,
         token_hash: &str,
-        now: DateTime<Utc>,
-    ) -> Result<RefreshTokenConsumeOutcome, GatekeeperError>;
-
-    /// Atomically rotate a refresh token: consume the presented token and, only
-    /// if that succeeded, insert its successor — both in one transaction. The
-    /// three-state outcome mirrors [`Self::consume_refresh_token`].
-    ///
-    /// # Errors
-    ///
-    /// [`GatekeeperError::Infrastructure`] if the transaction, the update, the
-    /// existence probe, or the successor insert fails.
-    fn rotate_refresh_token(
-        &self,
-        presented_hash: &str,
-        successor: &RefreshToken,
         now: DateTime<Utc>,
     ) -> Result<RefreshTokenConsumeOutcome, GatekeeperError>;
 

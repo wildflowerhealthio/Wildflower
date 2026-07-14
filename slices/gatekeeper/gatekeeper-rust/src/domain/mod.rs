@@ -16,6 +16,10 @@ pub mod gatekeeper_store;
 pub mod authorization_code;
 pub mod authorization_request;
 pub mod client;
+// Pure builders for the OAuth client-callback URLs (`redirect_uri` + `code`/`error`
+// + `state`) — no axum/store coupling, so the `/oauth` surface and the Owner
+// consent action can return the same URL. Lifted out of `http::routes::oauth`.
+pub mod client_redirect;
 // The domain's failure vocabulary (collector's `RemoteError` is the model):
 // semantic client-facing variants plus the opaque `Infrastructure`.
 pub mod error;
@@ -24,9 +28,6 @@ pub mod grant;
 // codes) — a pure domain vocabulary lifted out of the OAuth route tree so the
 // error model can name it without reaching into `http`.
 pub mod oauth_error_code;
-// A validated, ready-to-act authorization-code consent request — built only by
-// `actions::load_pending_authorization_code_request` (parse-don't-validate).
-pub mod pending_code_consent;
 // URL/path builders for the gatekeeper's user-facing `/gatekeeper/*` webview
 // pages — pure string builders (no axum/state), duplicated TS ⇄ Rust and
 // drift-tested against `gatekeeper-core/src/page-paths.ts`.
@@ -35,5 +36,5 @@ pub mod refresh_token;
 pub mod signing_key;
 pub mod token;
 
+pub use authorization_code::PendingCodeConsent;
 pub use gatekeeper_store::GatekeeperStore;
-pub use pending_code_consent::PendingCodeConsent;

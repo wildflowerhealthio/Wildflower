@@ -1,7 +1,6 @@
 use axum::http::{header, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
-use url::Url;
 
 use super::client_auth::{
     ClientAuthenticationMethod, ClientCredentials, ResolveClientCredentialsError,
@@ -137,32 +136,6 @@ impl IntoResponse for TokenError {
             TokenError::Internal(error) => CacheSuppressed(error).into_response(),
         }
     }
-}
-
-/// Build the URL that closes the authorization-code flow by redirecting the
-/// user-agent back to the client's already-parsed `redirect_uri` with `code`
-/// and `state` appended.
-pub fn build_client_redirect_url(redirect_uri: &Url, code: &str, client_state: &str) -> String {
-    let mut url = redirect_uri.clone();
-    url.query_pairs_mut()
-        .append_pair("code", code)
-        .append_pair("state", client_state);
-    url.to_string()
-}
-
-/// Build the URL that closes the authorization-code flow with a failure by
-/// redirecting the user-agent back to the client's already-parsed
-/// `redirect_uri` with `error` and `state` appended (RFC 6749 §4.1.2.1).
-pub fn build_client_error_redirect_url(
-    redirect_uri: &Url,
-    error: OAuthErrorCode,
-    client_state: &str,
-) -> String {
-    let mut url = redirect_uri.clone();
-    url.query_pairs_mut()
-        .append_pair("error", error.as_ref())
-        .append_pair("state", client_state);
-    url.to_string()
 }
 
 /// Reasons that client authentication at the token endpoint can fail.

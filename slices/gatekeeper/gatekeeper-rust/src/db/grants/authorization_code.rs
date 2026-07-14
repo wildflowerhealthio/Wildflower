@@ -63,12 +63,15 @@ pub(crate) fn grant_by_client_and_redirect(
 }
 
 /// Insert or update the standing **authorization-code** grant for
-/// `(client_id, redirect_uri)` in a single transaction on its one table.
-/// Consent is cumulative ([`CumulativeConsent`]): an existing grant absorbs
-/// the re-approval (scope union, refreshed `granted_at`/`patient`). The
-/// read-merge-write under one transaction (paired with the table's
-/// `UNIQUE(client_id, redirect_uri)`) means two concurrent approvals can't
-/// both insert a duplicate grant.
+/// `(client_id, redirect_uri)` in a single **immediate** transaction on its one
+/// table. Consent is cumulative ([`CumulativeConsent`]): an existing grant
+/// absorbs the re-approval (scope union, refreshed `granted_at`/`patient`).
+/// `BEGIN IMMEDIATE` takes the write lock up front — before the read — so two
+/// concurrent approvals serialise at the read rather than racing to the write
+/// and one losing its scope union (a deferred transaction only takes the lock at
+/// the first write, after both have already read the pre-merge row). The table's
+/// `UNIQUE(client_id, redirect_uri)` is the backstop that still forbids a
+/// duplicate insert.
 pub(crate) fn upsert_authorization_code_grant(
     conn: &mut PooledDieselConnection,
     client_id: &str,
@@ -77,7 +80,7 @@ pub(crate) fn upsert_authorization_code_grant(
     patient: Option<&str>,
     now: DateTime<Utc>,
 ) -> Result<(), GatekeeperError> {
-    conn.transaction(|conn| {
+    conn.immediate_transaction(|conn| {
         let existing: Option<AuthorizationCodeGrant> = authorization_code_grants::table
             .filter(authorization_code_grants::client_id.eq(client_id))
             .filter(authorization_code_grants::redirect_uri.eq(redirect_uri.as_str()))

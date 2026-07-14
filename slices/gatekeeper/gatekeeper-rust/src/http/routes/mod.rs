@@ -4,7 +4,6 @@
 //! are a folder carrying its own `mod.rs` route table (`oauth`,
 //! `oauth_consents`, `devices`, `grants`).
 
-mod consent; // private; shared consent machinery for oauth_consents + devices, not a router
 pub mod devices;
 pub mod grants;
 pub mod logout;

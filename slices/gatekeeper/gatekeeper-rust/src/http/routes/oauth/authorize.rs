@@ -8,12 +8,12 @@ use url::Url;
 use utoipa::IntoParams;
 use uuid::Uuid;
 
-use super::internal::{build_client_error_redirect_url, build_client_redirect_url};
 use crate::crypto_util::random_token::generate_authorization_code;
 use crate::domain::actions;
 use crate::domain::authorization_code::{AuthorizationCode, AUTHORIZATION_CODE_TTL};
 use crate::domain::authorization_request::{AuthorizationRequest, StartCodeAuthorizationArgs};
 use crate::domain::client::Client;
+use crate::domain::client_redirect::{build_client_error_redirect_url, build_client_redirect_url};
 use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::domain::page_paths;
 use crate::http::errors::InternalError;

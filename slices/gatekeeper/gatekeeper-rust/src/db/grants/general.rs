@@ -59,7 +59,7 @@ impl TryFrom<GrantViewRow> for Grant {
         // own table, so a NULL payload for the row's own kind is structurally
         // impossible — guarded anyway so a future view edit degrades to a
         // logged 500, never a panic.
-        let missing_payload = || {
+        let make_missing_payload_error = || {
             GatekeeperError::infrastructure(
                 "grants view row missing its kind's payload column",
                 &row.id,
@@ -67,7 +67,7 @@ impl TryFrom<GrantViewRow> for Grant {
         };
         match row.grant_type {
             GrantType::AuthorizationCode => {
-                let redirect_uri = row.redirect_uri.ok_or_else(missing_payload)?.0;
+                let redirect_uri = row.redirect_uri.ok_or_else(make_missing_payload_error)?.0;
                 Ok(Grant::AuthorizationCode(AuthorizationCodeGrant {
                     id: row.id,
                     client_id: row.client_id,
@@ -79,7 +79,7 @@ impl TryFrom<GrantViewRow> for Grant {
                 }))
             }
             GrantType::DeviceCode => {
-                let device_name = row.device_name.ok_or_else(missing_payload)?;
+                let device_name = row.device_name.ok_or_else(make_missing_payload_error)?;
                 Ok(Grant::DeviceCode(DeviceGrant {
                     id: row.id,
                     client_id: row.client_id,
@@ -141,9 +141,9 @@ pub(crate) fn revoke_grant_and_expire_client_families(
     now: DateTime<Utc>,
 ) -> Result<bool, GatekeeperError> {
     conn.transaction(|conn| {
-        let from_code_grants =
+        let deleted_code_grant_count =
             diesel::delete(authorization_code_grants::table.find(grant_id)).execute(conn)?;
-        let from_device_grants =
+        let deleted_device_grant_count =
             diesel::delete(device_grants::table.find(grant_id)).execute(conn)?;
         diesel::update(
             refresh_tokens::table
@@ -163,7 +163,7 @@ pub(crate) fn revoke_grant_and_expire_client_families(
         )
         .set(refresh_token_families::expires_at.eq(now))
         .execute(conn)?;
-        Ok(from_code_grants + from_device_grants > 0)
+        Ok(deleted_code_grant_count + deleted_device_grant_count > 0)
     })
     .map_err(|e: diesel::result::Error| {
         GatekeeperError::infrastructure("revoke_grant_and_expire_client_families failed", e)
@@ -336,8 +336,11 @@ mod tests {
             consumed_at: None,
         };
         store
-            .insert_refresh_token_family(&family, &live)
+            .insert_refresh_token_family_row(&family)
             .expect("insert family");
+        store
+            .insert_refresh_token(&live)
+            .expect("insert live token");
 
         let revoked_at = Utc::now();
         assert!(store

@@ -22,12 +22,13 @@ use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::post;
 use axum::Router;
 
-use crate::cookies;
+use crate::domain::actions;
 use crate::http::middleware::require_auth::{
     try_access_token_from_request, verify_auth_token_claims,
 };
 use crate::http::state::AppState;
 use crate::http::ServedOrigin;
+use crate::ports::SessionCookies;
 
 pub fn router() -> Router<AppState> {
     Router::new().route("/logout", post(handle_logout))
@@ -50,8 +51,9 @@ async fn handle_logout(
     let mut headers = HeaderMap::new();
     // Match the set form's `Secure` (HTTPS served origins only) so the clearing
     // `Set-Cookie` isn't dropped by Safari over http loopback — otherwise logout
-    // wouldn't actually clear the session there. See `cookies`.
-    cookies::append_clear_session_cookies(&mut headers, origin.starts_with("https://"));
+    // wouldn't actually clear the session there. Cleared through the
+    // `SessionCookies` port so the `wf_auth` format stays behind one seam.
+    state.append_clear_session(&mut headers, origin.starts_with("https://"));
     // Attach the clearing `Set-Cookie`s to a `303 See Other` → `/`: the browser
     // drops the session cookies and navigates home in one hop, and `303`
     // downgrades a `POST` logout to a `GET` of the home page. `Redirect::to`
@@ -81,7 +83,6 @@ fn revoke_presented_token(state: &AppState, origin: &str, request_headers: &Head
     let (Some(jti), Some(expires_at)) = (claims.jti.as_deref(), claims.expires_at) else {
         return;
     };
-    if let Err(e) = state.revocation_store.revoke_jti(jti, expires_at, "logout") {
-        tracing::warn!(error = %e, "logout: failed to revoke presented token jti");
-    }
+    // Best-effort denylist — the testable decision lives in the domain action.
+    actions::revoke_session_token(&state.revocation_store, jti, expires_at);
 }

@@ -12,17 +12,25 @@
 //!  - [`authorization_request`] — the request lifecycle relays plus the two
 //!    semantic consent loaders (the `*ConsentNotFound` mapping + parse-don't-validate
 //!    unwrap into [`PendingCodeConsent`](crate::domain::PendingCodeConsent));
-//!  - [`grant`] — the grant reads/upserts plus the semantic `get_grant` / `revoke_grant`.
+//!  - [`grant`] — the grant reads/upserts plus the semantic `get_grant` / `revoke_grant`;
+//!  - [`consent`] — the coarse Owner consent flows (`approve_oauth_consent` /
+//!    `approve_device_consent` / the two `deny_*`), each owning a whole
+//!    load → scope-decision → transition → grant transaction script so the
+//!    approve/deny handlers stay thin adapters.
 //!
 //! Semantic actions carry the logic the unit tests exercise (against
-//! [`test_fake`]); pure crypto/HTTP logic (PKCE, token minting, JWK, cookies) stays
-//! in `crate::http` — only the store-touching step lives here.
+//! [`test_fake`]); pure crypto is injected (a code generator) and pure HTTP
+//! rendering (cookies, the axum response) stays in `crate::http` — the
+//! store-touching flow and the port-mediated side-effects (the device-consent
+//! republish) live here.
 
 mod authorization_code;
 mod authorization_request;
 mod client;
+mod consent;
 mod grant;
 mod refresh_token;
+mod session;
 mod signing_key;
 
 #[cfg(test)]
@@ -39,6 +47,10 @@ pub(crate) use authorization_request::{
     oldest_pending_device_user_code, record_device_poll,
 };
 pub(crate) use client::client_by_id;
+pub(crate) use consent::{
+    approve_device_consent, approve_oauth_consent, deny_device_consent, deny_oauth_consent,
+    ApproveDeviceConsentInput, ApproveOAuthConsentInput, ConsentOutcome,
+};
 pub(crate) use grant::{
     all_grants, device_grant_by_client_and_device_name, get_grant, grant_by_client_and_redirect,
     revoke_grant, upsert_authorization_code_grant, upsert_device_grant,
@@ -47,4 +59,5 @@ pub(crate) use refresh_token::{
     expire_refresh_token_families_for_authorization_code, expire_refresh_token_family,
     insert_refresh_token_family, refresh_token_with_family_by_hash, rotate_refresh_token,
 };
+pub(crate) use session::revoke_session_token;
 pub(crate) use signing_key::{active_signing_key, all_signing_keys, has_active_signing_key};

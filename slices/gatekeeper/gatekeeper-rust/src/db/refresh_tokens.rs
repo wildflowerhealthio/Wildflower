@@ -34,10 +34,9 @@ diesel::table! {
 diesel::joinable!(refresh_tokens -> refresh_token_families (family_id));
 diesel::allow_tables_to_appear_in_same_query!(refresh_tokens, refresh_token_families);
 
-/// Consume-or-probe, shared by [`consume_refresh_token`] and
-/// [`rotate_refresh_token`]: stamp the live row consumed, and when no live row
-/// matched, probe whether the hash exists at all to tell a replay from a miss.
-/// Runs inside the caller's transaction.
+/// Consume-or-probe behind [`consume_refresh_token`]: stamp the live row
+/// consumed, and when no live row matched, probe whether the hash exists at all
+/// to tell a replay from a miss. Runs inside the caller's transaction.
 fn consume_within_transaction(
     conn: &mut diesel::sqlite::SqliteConnection,
     token_hash_value: &str,
@@ -64,26 +63,21 @@ fn consume_within_transaction(
     })
 }
 
-/// Persist a new refresh-token family alongside its first token — one
-/// transaction, since a family with no token (or a token with no family)
-/// is unrepresentable on purpose.
-pub(super) fn insert_refresh_token_family(
+/// Persist a new refresh-token family **row only** — a single-table insert. The
+/// [`insert_refresh_token_family`](crate::domain::actions::insert_refresh_token_family)
+/// action sequences this then [`insert_refresh_token`] so a family never persists
+/// tokenless; the store stays a primitive with no transaction.
+pub(super) fn insert_refresh_token_family_row(
     conn: &mut PooledDieselConnection,
     family: &RefreshTokenFamily,
-    first_token: &RefreshToken,
 ) -> Result<(), GatekeeperError> {
-    conn.transaction(|conn| {
-        diesel::insert_into(refresh_token_families::table)
-            .values(family.clone())
-            .execute(conn)?;
-        diesel::insert_into(refresh_tokens::table)
-            .values(first_token.clone())
-            .execute(conn)?;
-        Ok(())
-    })
-    .map_err(|e: diesel::result::Error| {
-        GatekeeperError::infrastructure("insert_refresh_token_family failed", e)
-    })
+    diesel::insert_into(refresh_token_families::table)
+        .values(family.clone())
+        .execute(conn)
+        .map_err(|e| {
+            GatekeeperError::infrastructure("insert_refresh_token_family_row failed", e)
+        })?;
+    Ok(())
 }
 
 /// Persist the successor token in an existing family's rotation.
@@ -142,34 +136,6 @@ pub(super) fn consume_refresh_token(
         .map_err(|e: diesel::result::Error| {
             GatekeeperError::infrastructure("consume_refresh_token failed", e)
         })
-}
-
-/// Atomically rotate a refresh token: consume the presented token and, only
-/// if that succeeded, insert its successor — both in one transaction.
-/// Doing the consume and the successor-insert together means a crash or
-/// error can't burn the presented token while leaving the family with no
-/// live successor (a permanent lockout). The three-state outcome mirrors
-/// [`consume_refresh_token`]: `Consumed` means the successor is now the
-/// family's live token; `Replayed`/`NotFound` leave the family untouched (no
-/// successor inserted) for the caller to handle.
-pub(super) fn rotate_refresh_token(
-    conn: &mut PooledDieselConnection,
-    presented_hash: &str,
-    successor: &RefreshToken,
-    now: DateTime<Utc>,
-) -> Result<RefreshTokenConsumeOutcome, GatekeeperError> {
-    conn.transaction(|conn| {
-        let outcome = consume_within_transaction(conn, presented_hash, now)?;
-        if outcome == RefreshTokenConsumeOutcome::Consumed {
-            diesel::insert_into(refresh_tokens::table)
-                .values(successor.clone())
-                .execute(conn)?;
-        }
-        Ok(outcome)
-    })
-    .map_err(|e: diesel::result::Error| {
-        GatekeeperError::infrastructure("rotate_refresh_token failed", e)
-    })
 }
 
 /// End a token family by pulling its `expires_at` back to `now`, and
@@ -349,9 +315,7 @@ mod tests {
         ) {
             let family = RefreshTokenFamily { family_id: "family-under-test".to_string(), ..family };
             let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
-            store
-                .insert_refresh_token_family(&family, &token)
-                .expect("insert");
+            seed_family_with_token(&store, &family, &token);
             let (fetched_token, fetched_family) = store
                 .refresh_token_with_family_by_hash(&token.token_hash)
                 .expect("query")
@@ -368,7 +332,7 @@ mod tests {
             let family = RefreshTokenFamily { family_id: "family-under-test".to_string(), ..family };
             let live = RefreshToken { consumed_at: None, ..token };
             let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
-            store.insert_refresh_token_family(&family, &live).expect("insert");
+            seed_family_with_token(&store, &family, &live);
             let now = Utc::now();
             prop_assert!(matches!(
                 store.consume_refresh_token(&live.token_hash, now).expect("first consume"),
@@ -413,47 +377,22 @@ mod tests {
         );
     }
 
-    // Rotation consumes the presented token and inserts its successor in one
-    // transaction; a replay of the presented token is detected and inserts no
-    // further successor.
-    #[test]
-    fn rotate_consumes_presented_and_inserts_successor_atomically() {
-        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+    /// Seed a family and its first token — the two store primitives the
+    /// `insert_refresh_token_family` action sequences. Expressed as the
+    /// primitives here so these store-level tests don't reach up into the domain
+    /// layer for setup. (Rotation's own consume-then-insert orchestration is
+    /// tested against the action, in `domain::actions::refresh_token`.)
+    fn seed_family_with_token(
+        store: &SqliteGatekeeperStore,
+        family: &RefreshTokenFamily,
+        token: &RefreshToken,
+    ) {
         store
-            .insert_refresh_token_family(
-                &sample_family("fam", "client"),
-                &sample_token("live", "fam"),
-            )
-            .expect("insert family");
-        let now = Utc::now();
-
-        assert!(matches!(
-            store
-                .rotate_refresh_token("live", &sample_token("successor", "fam"), now)
-                .expect("rotate"),
-            RefreshTokenConsumeOutcome::Consumed
-        ));
-        let presented = store
-            .refresh_token_by_hash("live")
-            .expect("q")
-            .expect("row");
-        assert_eq!(presented.consumed_at, Some(now));
-        let successor = store
-            .refresh_token_by_hash("successor")
-            .expect("q")
-            .expect("row");
-        assert_eq!(successor.consumed_at, None);
-
-        assert!(matches!(
-            store
-                .rotate_refresh_token("live", &sample_token("successor2", "fam"), now)
-                .expect("rotate replay"),
-            RefreshTokenConsumeOutcome::Replayed
-        ));
-        assert!(store
-            .refresh_token_by_hash("successor2")
-            .expect("q")
-            .is_none());
+            .insert_refresh_token_family_row(family)
+            .expect("insert family row");
+        store
+            .insert_refresh_token(token)
+            .expect("insert first token");
     }
 
     fn sample_family(family_id: &str, client_id: &str) -> RefreshTokenFamily {
@@ -481,19 +420,16 @@ mod tests {
     #[test]
     fn expire_family_pulls_deadline_back_and_stamps_the_live_token() {
         let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
-        store
-            .insert_refresh_token_family(
-                &sample_family("family-a", "client-1"),
-                &sample_token("token-1", "family-a"),
-            )
-            .expect("insert family-a");
+        seed_family_with_token(
+            &store,
+            &sample_family("family-a", "client-1"),
+            &sample_token("token-1", "family-a"),
+        );
         store
             .insert_refresh_token(&sample_token("token-2", "family-a"))
             .expect("insert token-2");
         let untouched = sample_family("family-b", "client-1");
-        store
-            .insert_refresh_token_family(&untouched, &sample_token("other", "family-b"))
-            .expect("insert family-b");
+        seed_family_with_token(&store, &untouched, &sample_token("other", "family-b"));
         // token-1 was genuinely redeemed before the revocation — its stamp
         // must survive the family kill untouched.
         let redeemed_at = Utc::now();
@@ -536,16 +472,13 @@ mod tests {
     #[test]
     fn expire_for_client_spares_other_clients() {
         let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
-        store
-            .insert_refresh_token_family(
-                &sample_family("family-a", "client-1"),
-                &sample_token("token-1", "family-a"),
-            )
-            .expect("insert client-1 family");
+        seed_family_with_token(
+            &store,
+            &sample_family("family-a", "client-1"),
+            &sample_token("token-1", "family-a"),
+        );
         let untouched = sample_family("family-b", "client-2");
-        store
-            .insert_refresh_token_family(&untouched, &sample_token("other", "family-b"))
-            .expect("insert client-2 family");
+        seed_family_with_token(&store, &untouched, &sample_token("other", "family-b"));
 
         let revoked_at = Utc::now();
         store
