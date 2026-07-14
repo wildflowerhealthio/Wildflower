@@ -9,7 +9,7 @@
 
 use std::cell::RefCell;
 
-use super::cloud_apps::{create_cloud_app, CloudAppContent};
+use super::cloud_apps::{create_cloud_app, CloudAppPayload};
 use crate::domain::{
     AppConfiguration, AppKind, AppRegistration, AppUrl, AppsError, AppsStore,
     CloudAppConfiguration, CloudInsertError, SelfHostedAppConfiguration, SystemAppConfiguration,
@@ -219,7 +219,7 @@ pub(super) fn create_cloud(
     create_cloud_app(
         store,
         id.to_owned(),
-        CloudAppContent {
+        CloudAppPayload {
             name: id.to_owned(),
             subtitle: None,
             url: "https://example.com/launch".to_owned(),

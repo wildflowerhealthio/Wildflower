@@ -15,7 +15,7 @@ use crate::domain::{
 /// onto this before calling in; the action validates the fields and synthesizes the
 /// `(registration, configuration)` it persists (the placement — `position` /
 /// `on_homescreen` — is never part of content; `PUT /home-screen` owns it).
-pub(crate) struct CloudAppContent {
+pub(crate) struct CloudAppPayload {
     pub name: String,
     /// `None` means "no subtitle"; an empty string clears it.
     pub subtitle: Option<String>,
@@ -54,7 +54,7 @@ pub(crate) fn get_cloud_app(
 pub(crate) fn create_cloud_app(
     store: &impl AppsStore,
     id: String,
-    content: CloudAppContent,
+    content: CloudAppPayload,
 ) -> Result<(AppRegistration, CloudAppConfiguration), AppsError> {
     let (name, subtitle, url) = validate_cloud_fields(content.name, content.subtitle, content.url)?;
     let registration = AppRegistration {
@@ -96,7 +96,7 @@ pub(crate) fn create_cloud_app(
 pub(crate) fn replace_cloud_app(
     store: &impl AppsStore,
     id: &str,
-    content: CloudAppContent,
+    content: CloudAppPayload,
 ) -> Result<(AppRegistration, CloudAppConfiguration), AppsError> {
     // A non-cloud (or unknown) id is a 404 for this per-kind path, resolved before
     // any field is validated (a bad url on a non-cloud id is still a 404).
@@ -147,8 +147,8 @@ mod tests {
     use super::super::test_fake::{create_cloud, system, FakeAppsStore};
     use super::*;
 
-    fn content(name: &str, url: &str) -> CloudAppContent {
-        CloudAppContent {
+    fn content(name: &str, url: &str) -> CloudAppPayload {
+        CloudAppPayload {
             name: name.to_owned(),
             subtitle: None,
             url: url.to_owned(),

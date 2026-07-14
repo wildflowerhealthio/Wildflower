@@ -54,7 +54,7 @@ impl fmt::Display for AppKind {
 }
 
 /// The error returned when a string isn't a known [`AppKind`] kebab value. The DB
-/// column mapping ([`AppKindColumn`](crate::db::columns::AppKindColumn)) wraps it
+/// column mapping ([`AppKindColumn`](crate::db::app_registration::AppKindColumn)) wraps it
 /// so a tampered `kind` surfaces as a typed read error rather than a panic.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppKindParseError(pub String);

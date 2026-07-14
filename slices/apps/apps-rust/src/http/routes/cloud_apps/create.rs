@@ -40,7 +40,7 @@ pub(crate) async fn handle_create_cloud_app(
     let (registration, config) = actions::create_cloud_app(
         &state.store,
         mint_app_id(),
-        actions::CloudAppContent {
+        actions::CloudAppPayload {
             name: body.name,
             subtitle: body.subtitle,
             url: body.url,

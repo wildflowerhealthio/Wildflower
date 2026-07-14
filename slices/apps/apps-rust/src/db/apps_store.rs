@@ -2,15 +2,16 @@
 //! [`AppsStore`](crate::domain::AppsStore) port. Holds the app-wide r2d2 pool of
 //! Diesel `SqliteConnection`s (`persistence_rust::DieselPool`) onto the shared
 //! database file, applies the embedded apps migrations once on construction, and
-//! implements the port by delegating to the per-concern query bodies in
-//! [`crate::db::reads`] / [`crate::db::writes`]. Mirrors `collector-rust`'s
-//! `SqliteRemotesStore`.
+//! implements the port by delegating to the per-kind query bodies in
+//! [`crate::db::app_registration`] / [`crate::db::cloud_apps`] /
+//! [`crate::db::self_hosted_apps`] / [`crate::db::all_kinds_apps`]. Mirrors
+//! `collector-rust`'s `SqliteRemotesStore`.
 
 use anyhow::Context;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations};
 use persistence_rust::{DieselPool, PooledDieselConnection};
 
-use crate::db::{reads, writes};
+use crate::db::{all_kinds_apps, app_registration, cloud_apps, self_hosted_apps};
 use crate::domain::{
     AppConfiguration, AppRegistration, AppsError, AppsStore, CloudAppConfiguration,
     CloudInsertError, SelfHostedAppConfiguration,
@@ -78,10 +79,9 @@ impl SqliteAppsStore {
     }
 
     /// Check a connection out of the pool, mapping an exhausted-pool failure to an
-    /// opaque [`AppsError::Infrastructure`]. Each query body in [`crate::db::reads`]
-    /// / [`crate::db::writes`] runs on one of these, checked out per call —
-    /// diesel's connection API is `&mut`, so the store hands out a fresh
-    /// connection rather than sharing one.
+    /// opaque [`AppsError::Infrastructure`]. Each per-kind query body runs on one of
+    /// these, checked out per call — diesel's connection API is `&mut`, so the store
+    /// hands out a fresh connection rather than sharing one.
     fn connection(&self) -> Result<PooledDieselConnection, AppsError> {
         self.pool
             .get()
@@ -97,9 +97,10 @@ impl SqliteAppsStore {
 
 /// The `SQLite` implementation of the port: each method checks a connection out
 /// of the pool (via [`connection`](Self::connection)) and hands it to the matching
-/// query body in [`crate::db::reads`] / [`crate::db::writes`]. The bodies live
+/// per-kind query body ([`crate::db::app_registration`] / [`crate::db::cloud_apps`] /
+/// [`crate::db::self_hosted_apps`] / [`crate::db::all_kinds_apps`]). The bodies live
 /// there so this file stays the migration + pool handle, and the query SQL stays
-/// next to the row types it maps. Every method returns the port's PRIMITIVE shape
+/// next to the `table!` + row types it maps. Every method returns the port's PRIMITIVE shape
 /// — absence as `None`, delete outcome as `bool`, a cloud insert that wrote nothing
 /// as the granular typed [`CloudInsertError`] — leaving the semantic verdicts to
 /// [`crate::domain::actions`]. (The self-hosted insert is the exception: it maps its
@@ -107,19 +108,19 @@ impl SqliteAppsStore {
 impl AppsStore for SqliteAppsStore {
     fn list_registrations(&self) -> Result<Vec<AppRegistration>, AppsError> {
         let mut conn = self.connection()?;
-        reads::list_registrations_on(&mut conn)
+        app_registration::list_registrations_on(&mut conn)
     }
 
     fn find_app(&self, id: &str) -> Result<Option<(AppRegistration, AppConfiguration)>, AppsError> {
         let mut conn = self.connection()?;
-        reads::find_app_on(&mut conn, id)
+        all_kinds_apps::find_app_on(&mut conn, id)
     }
 
     fn list_self_hosted_apps(
         &self,
     ) -> Result<Vec<(AppRegistration, SelfHostedAppConfiguration)>, AppsError> {
         let mut conn = self.connection()?;
-        reads::list_self_hosted_apps_on(&mut conn)
+        self_hosted_apps::list_self_hosted_apps_on(&mut conn)
     }
 
     fn insert_cloud_app(
@@ -127,7 +128,7 @@ impl AppsStore for SqliteAppsStore {
         registration: &AppRegistration,
         config: &CloudAppConfiguration,
     ) -> Result<Result<(AppRegistration, CloudAppConfiguration), CloudInsertError>, AppsError> {
-        writes::insert_cloud_app(&mut self.connection()?, registration, config)
+        cloud_apps::insert_cloud_app(&mut self.connection()?, registration, config)
     }
 
     fn insert_self_hosted_app(
@@ -136,7 +137,7 @@ impl AppsStore for SqliteAppsStore {
         config: &SelfHostedAppConfiguration,
         reserved_ports: &[u16],
     ) -> Result<(AppRegistration, SelfHostedAppConfiguration), AppsError> {
-        writes::insert_self_hosted_app(
+        self_hosted_apps::insert_self_hosted_app(
             &mut self.connection()?,
             registration,
             config,
@@ -149,7 +150,7 @@ impl AppsStore for SqliteAppsStore {
         registration: &AppRegistration,
         config: &CloudAppConfiguration,
     ) -> Result<Option<(AppRegistration, CloudAppConfiguration)>, AppsError> {
-        writes::replace_cloud_app(&mut self.connection()?, registration, config)
+        cloud_apps::replace_cloud_app(&mut self.connection()?, registration, config)
     }
 
     fn replace_self_hosted_app(
@@ -157,18 +158,18 @@ impl AppsStore for SqliteAppsStore {
         registration: &AppRegistration,
         config: &SelfHostedAppConfiguration,
     ) -> Result<Option<(AppRegistration, SelfHostedAppConfiguration)>, AppsError> {
-        writes::replace_self_hosted_app(&mut self.connection()?, registration, config)
+        self_hosted_apps::replace_self_hosted_app(&mut self.connection()?, registration, config)
     }
 
     fn delete_app(&self, id: &str) -> Result<bool, AppsError> {
-        writes::delete_app(&mut self.connection()?, id)
+        all_kinds_apps::delete_app(&mut self.connection()?, id)
     }
 
     fn replace_placements(
         &self,
         entries: &[(String, bool)],
     ) -> Result<Option<Vec<AppRegistration>>, AppsError> {
-        writes::replace_placements(&mut self.connection()?, entries)
+        app_registration::replace_placements(&mut self.connection()?, entries)
     }
 }
 
@@ -177,7 +178,7 @@ mod tests {
     use diesel::prelude::*;
 
     use super::*;
-    use crate::db::schema::app_registrations;
+    use crate::db::app_registration::app_registrations;
 
     /// Running the migrations twice is a no-op the second time (the namespaced
     /// runner skips the already-applied `0001`), and the seeded default registry

@@ -26,9 +26,15 @@ The slice follows the same ports-and-adapters shape as `collector-rust` and
   `500`.
 - **`SqliteAppsStore` (adapter)** — the `SQLite` implementation
   (`db/apps_store.rs`) over the app-wide diesel pool. It checks a connection out
-  of the pool per call and delegates to the `pub(super)` query bodies in
-  `db/reads.rs` / `db/writes.rs` (each a free function taking
-  `&mut PooledDieselConnection`).
+  of the pool per call and delegates to the `pub(super)` query bodies, which are
+  split **by kind/context** (mirroring `domain/actions/`): `db/cloud_apps.rs` /
+  `db/self_hosted_apps.rs` / `db/system_apps.rs` each own their `table!`, row
+  struct, and mutators; `db/app_registration.rs` owns the shared `app_registrations`
+  table + `AppKindColumn` + the registration-wide queries and placement rewrite;
+  `db/all_kinds_apps.rs` holds `find_app_on` / `delete` (importing the per-kind
+  tables); `db/shared.rs` holds the one `AppUrlColumn` two kinds share. Each is a
+  free function taking `&mut PooledDieselConnection` (or `&mut SqliteConnection` for
+  the read helpers a mutator calls in-txn).
 - **`domain/actions/`** — the slice's _semantics_: it maps the store's
   primitive signals onto the semantic `AppsError` variants (`NotFound`,
   `NotEditable`, `InvalidHomeScreen`, the cloud id-collision verdict; the

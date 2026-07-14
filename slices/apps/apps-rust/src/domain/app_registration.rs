@@ -21,8 +21,7 @@ use serde::{Serialize, Serializer};
 use utoipa::ToSchema;
 
 use super::AppKind;
-use crate::db::columns::AppKindColumn;
-use crate::db::schema::app_registrations;
+use crate::db::app_registration::{app_registrations, AppKindColumn};
 
 /// A registration row — the shared half of one app's record. Diesel maps it
 /// to/from `app_registrations` (the [`AppKindColumn`] mapping on `kind`); serde
