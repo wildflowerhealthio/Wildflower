@@ -7,9 +7,10 @@
 //! (and may bring the tunnel up) is intentional — a launch is a navigation, like
 //! an OAuth `authorize`. See `docs/Apps/Explanation.md`.
 //!
-//! Two orthogonal axes meet here: the app's kind (its [`App`] variant) fixes how
-//! the launch URL is *resolved*, while the *request's* [`RequestProvenance`]
-//! (loopback vs. forwarded) fixes how it's *dispatched*. The flow:
+//! Two orthogonal axes meet here: the app's kind (its [`AppConfiguration`] variant)
+//! fixes how the launch URL is *resolved*, while the *request's*
+//! [`RequestProvenance`] (loopback vs. forwarded) fixes how it's *dispatched*. The
+//! flow:
 //!
 //!   1. Read the request's [`RequestProvenance`] *once*, so an empty/spoofed
 //!      `Forwarded` host can't make the gate-vs-resolve and which-origin
@@ -45,7 +46,6 @@ use crate::domain::{
     actions, AppConfiguration, AppRegistration, AppsError, CloudAppConfiguration, LaunchParams,
     SelfHostedAppConfiguration, SystemAppConfiguration,
 };
-use crate::http::app::App;
 use crate::http::errors::{AppNotFoundBody, LaunchUnavailableBody};
 use crate::http::state::AppsState;
 use crate::id::mint_launch_nonce;
@@ -134,16 +134,13 @@ async fn launch(
     }
 
     // 404 before resolving — an unknown id is never an availability failure. The
-    // store hands back the registration + configuration; compose the combined `App`.
+    // store hands back the `(registration, configuration)` pair; both halves feed
+    // the kind-dispatched resolve below (no "combined app" — the tuple is the app).
     let (registration, configuration) = actions::get_app(&state.store, &id)?;
-    let app = App {
-        registration,
-        configuration,
-    };
 
     // Resolve before dispatching: an unreachable target bails here with
     // `503 LaunchUnavailable` rather than opening a doomed popup / dead redirect.
-    let resolved = app.resolve_launch(&state, &provenance).await?;
+    let resolved = resolve_launch(&registration, &configuration, &state, &provenance).await?;
 
     match &provenance {
         // The loopback caller was owner-checked above; hand the URL to the host
@@ -151,7 +148,7 @@ async fn launch(
         RequestProvenance::Loopback => {
             state
                 .on_device_webview_handle
-                .open(app.name().to_owned(), resolved.target_url);
+                .open(registration.name.clone(), resolved.target_url);
             Ok(no_content())
         }
         // A forwarded self-hosted launch re-scopes the caller's session onto its
@@ -179,44 +176,43 @@ struct ResolvedLaunch {
     session_cookie_host: Option<String>,
 }
 
-impl App {
-    /// Resolve this app to a [`ResolvedLaunch`], dispatching on its configuration —
-    /// the whole app came out of one store read, so the kind-specific launch data is
-    /// already in hand (a system app always carries a valid compiled-in source; a
-    /// corrupt registry row fails inside the store read as a typed error, never
-    /// here). `session_cookie_host` is `Some` only for a forwarded self-hosted
-    /// launch. `503` if the matched app has no reachable target.
-    ///
-    /// Lives beside the launch handler rather than in `domain` on purpose: the
-    /// resolution reaches into `AppsState` (the tunnel, the loopback config) and
-    /// yields an http [`AppsError`], so keeping it (and the combined `App`) in the
-    /// HTTP layer leaves the domain free of that http/runtime coupling.
-    async fn resolve_launch(
-        &self,
-        state: &AppsState,
-        provenance: &RequestProvenance,
-    ) -> Result<ResolvedLaunch, AppsError> {
-        match &self.configuration {
-            AppConfiguration::System(config) => Ok(ResolvedLaunch {
-                target_url: render_system_target(state, config, provenance),
-                session_cookie_host: None,
-            }),
-            AppConfiguration::SelfHosted(config) => {
-                let SelfHostedTarget {
-                    target_url,
-                    session_cookie_host,
-                } = render_self_hosted_target(config, state, provenance)?;
-                Ok(ResolvedLaunch {
-                    target_url,
-                    session_cookie_host,
-                })
-            }
-            AppConfiguration::Cloud(config) => Ok(ResolvedLaunch {
-                target_url: render_cloud_target(state, provenance, &self.registration, config)
-                    .await?,
-                session_cookie_host: None,
-            }),
+/// Resolve an app (its `(registration, configuration)` pair) to a
+/// [`ResolvedLaunch`], dispatching on the `configuration` kind — the whole app came
+/// out of one store read, so the kind-specific launch data is already in hand (a
+/// system app always carries a valid compiled-in source; a corrupt registry row
+/// fails inside the store read as a typed error, never here). `session_cookie_host`
+/// is `Some` only for a forwarded self-hosted launch. `503` if the matched app has
+/// no reachable target.
+///
+/// Lives beside the launch handler rather than in `domain` on purpose: the
+/// resolution reaches into `AppsState` (the tunnel, the loopback config) and yields
+/// an http [`AppsError`], so keeping it in the HTTP layer leaves the domain free of
+/// that http/runtime coupling.
+async fn resolve_launch(
+    registration: &AppRegistration,
+    configuration: &AppConfiguration,
+    state: &AppsState,
+    provenance: &RequestProvenance,
+) -> Result<ResolvedLaunch, AppsError> {
+    match configuration {
+        AppConfiguration::System(config) => Ok(ResolvedLaunch {
+            target_url: render_system_target(state, config, provenance),
+            session_cookie_host: None,
+        }),
+        AppConfiguration::SelfHosted(config) => {
+            let SelfHostedTarget {
+                target_url,
+                session_cookie_host,
+            } = render_self_hosted_target(config, state, provenance)?;
+            Ok(ResolvedLaunch {
+                target_url,
+                session_cookie_host,
+            })
         }
+        AppConfiguration::Cloud(config) => Ok(ResolvedLaunch {
+            target_url: render_cloud_target(state, provenance, registration, config).await?,
+            session_cookie_host: None,
+        }),
     }
 }
 

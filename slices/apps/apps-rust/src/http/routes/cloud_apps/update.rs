@@ -38,10 +38,12 @@ pub(crate) async fn handle_replace_cloud_app(
     let (registration, config) = actions::replace_cloud_app(
         &state.store,
         &id,
-        body.name,
-        body.subtitle,
-        body.url,
-        body.requires_tunnel,
+        actions::CloudAppContent {
+            name: body.name,
+            subtitle: body.subtitle,
+            url: body.url,
+            requires_tunnel: body.requires_tunnel,
+        },
     )?;
     Ok(Json(CloudAppDetail::from((&registration, &config))))
 }

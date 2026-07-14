@@ -25,19 +25,26 @@ The slice follows the same ports-and-adapters shape as `collector-rust` and
   of the pool per call and delegates to the `pub(super)` query bodies in
   `db/reads.rs` / `db/writes.rs` (each a free function taking
   `&mut PooledDieselConnection`).
-- **`domain/actions.rs`** — the slice's _semantics_: it maps the store's
+- **`domain/actions/`** — the slice's _semantics_: it maps the store's
   primitive signals onto the semantic `AppsError` variants (`NotFound`,
-  `NotEditable`, `InvalidHomeScreen`, the id-collision / upload-failure verdicts)
-  and holds the write-side field validation. The HTTP handlers call
-  `actions::…(&state.store, …)`, never the store directly, and stay a straight
-  `?`. The actions are unit-tested against an in-memory `FakeAppsStore` — no db,
-  no HTTP.
+  `NotEditable`, `InvalidHomeScreen`, the id-collision / upload-failure verdicts),
+  holds the write-side field validation, and gates the delete removability policy.
+  It is a folder split one file per kind (`cloud_apps.rs` / `self_hosted_apps.rs` /
+  `system_apps.rs`, the cross-kind `all_kinds_apps.rs`, and the registration-wide
+  `app_registration.rs`) so each kind's input struct (e.g. `CloudAppContent`) and
+  validation live together. The HTTP handlers build the action's input struct and
+  call `actions::…(&state.store, …)`, never the store directly, and stay a straight
+  `?`. The actions are unit-tested against an in-memory `FakeAppsStore`
+  (`actions/test_fake.rs`) — no db, no HTTP.
 
 Migrations are embedded diesel migrations (`apps-rust/migrations/`) applied once
 in `SqliteAppsStore::new` under this slice's **namespace** (`"apps"`) via
 `persistence_rust::run_diesel_migrations`, so the apps slice's `0001` and another
 diesel slice's `0001` are tracked as distinct `(namespace, version)` rows and
-never collide in diesel's stock `__diesel_schema_migrations`.
+never collide in diesel's stock `__diesel_schema_migrations`. The schema
+(`0001_app_registrations`) and the default-registry seed (`0002_seed_default_apps`)
+are separate migrations, so the shipped default set versions independently of the
+table definitions.
 
 ## The store speaks registrations + per-kind payloads
 
@@ -57,14 +64,14 @@ the registration then the one configuration its `kind` names, returning the
 union when the kind is runtime-resolved); the host-listener list is a typed inner
 join `self_hosted_app_configurations ⋈ app_registrations`. `is_smart` is derived on
 the registration (from `client_id`) and `is_removable` via the `CommonAppConfig`
-trait, not stored. The combined `App` (launch/delete behaviour) lives in the HTTP
-layer; the store never speaks it.
+trait, not stored. There is no combined "app" type — the launch/delete seams in the
+HTTP layer operate on the `(registration, configuration)` pair directly.
 
 **A corrupt registry surfaces as a typed read error.** A stored `url` that no
 longer parses (rejected by the `AppUrl`/`AppKind` column decode), or a
 registration whose child payload row is missing (the one CTI invariant SQLite
 can't enforce across tables) — each surfaces as a _typed read error_ (a logged
-500 at the handler seam), never a partial `App`. The single-detail-read decoder
+500 at the handler seam), never a partial pair. The single-detail-read decoder
 is the enforcement point; handlers don't re-check it per call site.
 
 ## Transaction discipline
@@ -80,6 +87,10 @@ store:
    `position` (`MAX(position) + 1`), the self-hosted slug, the loopback port — is
    computed _inside_ the writing transaction, so two overlapping creates can't
    read the same value and collide. `UNIQUE(position)` backstops it regardless.
+   The allocation _logic_ is pure and lives in the domain (`choose_self_hosted_slug`
+   / `lowest_free_port`), fed the taken id/subdomain/port sets the store reads in
+   that same transaction — database-free and unit-tested, while the reads-then-write
+   stays atomic in the store.
 3. **Single writer of order + placement.** `position` and `on_homescreen` are
    written only by `replace_placements` (`PUT /home-screen`); a content replace
    never touches `on_homescreen`. It validates the body is an exact permutation of the live
@@ -89,7 +100,7 @@ store:
    `UNIQUE(position)` (SQLite's UNIQUE is immediate, not deferrable).
 
 Kind- and seeded-_policy_ gating (which kinds or rows an HTTP surface may edit)
-lives in `domain/actions.rs` — the per-kind `replace_cloud_app` /
+lives in the `domain/actions/` folder — the per-kind `replace_cloud_app` /
 `replace_self_hosted_app` resolve the kind first off the `(registration,
 configuration)` pair a read hands back, then synthesize the edited pair the store
 persists: a wrong-kind (or unknown) id is a **404** (the mismatch can no longer be

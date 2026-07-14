@@ -1,12 +1,13 @@
 //! `DELETE /apps/{id}` — remove an app. Unified across kinds: the kind is resolved
-//! from the registration, so tiles and the editor need no kind to delete. What
-//! "removable" means depends on the kind:
+//! from the registration, so tiles and the editor need no kind to delete. The
+//! **removability policy lives in the domain action** ([`actions::delete_app`]):
 //!
-//!  - **cloud** — delete the registration (the `cloud_apps` payload cascades);
-//!  - **self-hosted** — only an *uploaded* app (`seeded = 0`) is removable: stop
-//!    its listener, delete the registration (the payload cascades), and
-//!    best-effort remove its files; a migration-seeded self-hosted app stays
-//!    protected with `409 AppNotEditable`;
+//!  - **cloud** — removable; the action deletes the registration (the payload
+//!    cascades);
+//!  - **self-hosted** — only an *uploaded* app (`seeded = 0`) is removable; a
+//!    migration-seeded one stays protected with `409 AppNotEditable`. After the
+//!    action deletes the row, this handler runs the host-side teardown (stop the
+//!    listener, best-effort remove the files) the domain can't reach;
 //!  - **system** — never removable (`409 AppNotEditable`).
 //!
 //! Unknown ids return `404`. Success is `204 No Content`.
@@ -37,39 +38,27 @@ pub(crate) async fn handle_delete_app(
     State(state): State<Arc<AppsState>>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppsError> {
-    let (_registration, configuration) = actions::get_app(&state.store, &id)?;
+    // The action owns the removability verdict (404 unknown / 409 protected) and the
+    // store delete, handing back the removed pair so this handler can run the
+    // kind-specific host-side teardown the domain can't reach.
+    let (_registration, configuration) = actions::delete_app(&state.store, &id)?;
 
-    match &configuration {
-        AppConfiguration::Cloud(_) => {
-            actions::delete_app(&state.store, &id)?;
-            Ok(StatusCode::NO_CONTENT)
-        }
-        AppConfiguration::SelfHosted(config) => delete_self_hosted(&state, &id, config),
-        // System apps are not user-removable.
-        AppConfiguration::System(_) => Err(AppsError::NotEditable { id }),
+    if let AppConfiguration::SelfHosted(config) = &configuration {
+        teardown_self_hosted(&state, &id, config);
     }
+
+    Ok(StatusCode::NO_CONTENT)
 }
 
-/// The self-hosted arm: seeded rows are protected, uploaded rows are torn down
-/// (listener stopped, registration deleted, files removed best-effort). The
-/// `config` came off the already-loaded app — no second lookup.
-fn delete_self_hosted(
-    state: &Arc<AppsState>,
-    id: &str,
-    config: &SelfHostedAppConfiguration,
-) -> Result<StatusCode, AppsError> {
-    if config.seeded {
-        // A migration-seeded app (patient-browser) is read-only.
-        return Err(AppsError::NotEditable { id: id.to_owned() });
-    }
-
-    // Take the listener down first. A lock-poison here is logged and tolerated —
-    // the user's intent is removal, and leaving the row would be worse.
+/// Host-side teardown for a just-deleted uploaded self-hosted app: stop its listener
+/// and best-effort remove its files. The row is already gone (the action deleted a
+/// removable app), so this is pure cleanup — every failure is logged and tolerated.
+fn teardown_self_hosted(state: &Arc<AppsState>, id: &str, config: &SelfHostedAppConfiguration) {
+    // A lock-poison here is logged and tolerated — the row is already removed, and
+    // leaving a stale listener is better than failing an accepted delete.
     if let Err(error) = state.self_hosted.stop(id) {
-        tracing::warn!(%error, app = %id, "failed to stop an uploaded self-hosted app before delete");
+        tracing::warn!(%error, app = %id, "failed to stop an uploaded self-hosted app after delete");
     }
-
-    actions::delete_app(&state.store, id)?;
 
     // Best-effort file removal — the row is already gone, so a leftover folder is
     // harmless (it 404s until a same-slug reinstall overwrites it).
@@ -79,6 +68,4 @@ fn delete_self_hosted(
             tracing::warn!(%error, path = %dir.display(), "failed to remove an uploaded app's files");
         }
     }
-
-    Ok(StatusCode::NO_CONTENT)
 }

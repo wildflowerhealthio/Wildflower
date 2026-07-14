@@ -2,21 +2,23 @@
 //! configuration tables. The uniform catalogue read is a join-free
 //! `SELECT * FROM app_registrations ORDER BY position` decoded into
 //! [`AppRegistration`]s; a detail read reads the registration then the one
-//! configuration its `kind` names and composes the whole [`App`] pair. Every read
+//! configuration its `kind` names and composes the whole `(registration,
+//! configuration)` pair. Every read
 //! is a typed query against real tables, and the one invariant SQLite can't enforce
 //! (registration ⇒ its configuration row exists) is checked at the single detail
 //! read as a typed error.
 
 use diesel::prelude::*;
 
-use super::payloads::{CloudConfigurationRow, SelfHostedConfigurationRow, SystemConfigurationRow};
+use super::row_structs::{
+    CloudConfigurationRow, SelfHostedConfigurationRow, SystemConfigurationRow,
+};
 use super::schema::{
     app_registrations, cloud_app_configurations, self_hosted_app_configurations,
     system_app_configurations,
 };
 use crate::domain::{
-    AppConfiguration, AppKind, AppRegistration, AppsError, CloudAppConfiguration,
-    SelfHostedAppConfiguration, SystemAppConfiguration,
+    AppConfiguration, AppKind, AppRegistration, AppsError, SelfHostedAppConfiguration,
 };
 
 /// The uniform catalogue read against an arbitrary connection — shared by the
@@ -72,7 +74,7 @@ pub(super) fn find_app_on(
                 .first(conn)
                 .optional()?
                 .ok_or_else(|| missing_configuration(id, AppKind::System))?;
-            AppConfiguration::System(SystemAppConfiguration { url: row.url })
+            AppConfiguration::System(row.into())
         }
         AppKind::Cloud => {
             let row: CloudConfigurationRow = cloud_app_configurations::table
@@ -81,7 +83,7 @@ pub(super) fn find_app_on(
                 .first(conn)
                 .optional()?
                 .ok_or_else(|| missing_configuration(id, AppKind::Cloud))?;
-            AppConfiguration::Cloud(CloudAppConfiguration { url: row.url })
+            AppConfiguration::Cloud(row.into())
         }
         AppKind::SelfHosted => {
             let row: SelfHostedConfigurationRow = self_hosted_app_configurations::table
@@ -90,7 +92,7 @@ pub(super) fn find_app_on(
                 .first(conn)
                 .optional()?
                 .ok_or_else(|| missing_configuration(id, AppKind::SelfHosted))?;
-            AppConfiguration::SelfHosted(self_hosted_config_from_row(row))
+            AppConfiguration::SelfHosted(row.into())
         }
     };
     Ok(Some((registration, configuration)))
@@ -114,22 +116,8 @@ pub(super) fn list_self_hosted_apps_on(
             .load(conn)?;
     Ok(rows
         .into_iter()
-        .map(|(row, registration)| (registration, self_hosted_config_from_row(row)))
+        .map(|(row, registration)| (registration, row.into()))
         .collect())
-}
-
-/// Map a [`SelfHostedConfigurationRow`] onto the domain
-/// [`SelfHostedAppConfiguration`] — the one place the self-hosted configuration
-/// columns map onto the domain type, shared by the detail read and the
-/// host-listener list.
-fn self_hosted_config_from_row(row: SelfHostedConfigurationRow) -> SelfHostedAppConfiguration {
-    SelfHostedAppConfiguration {
-        port: row.port,
-        content_folder: row.content_folder,
-        subdomain: row.subdomain,
-        seeded: row.seeded,
-        launch_path: row.launch_path,
-    }
 }
 
 /// Whether any app already holds this id — checked against `app_registrations`, the

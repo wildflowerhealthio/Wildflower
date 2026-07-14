@@ -17,18 +17,19 @@ use std::collections::HashSet;
 use diesel::prelude::*;
 use persistence_rust::PooledDieselConnection;
 
-use super::payloads::{CloudConfigurationRow, SelfHostedConfigurationRow};
 use super::reads::{delete_app_row, find_app_on, id_taken, list_registrations_on, next_position};
+use super::row_structs::{CloudConfigurationRow, SelfHostedConfigurationRow};
 use super::schema::{app_registrations, cloud_app_configurations, self_hosted_app_configurations};
 use crate::domain::{
-    AppConfiguration, AppKind, AppRegistration, AppsError, CloudAppConfiguration, CloudInsertError,
+    choose_self_hosted_slug, is_exact_registry_permutation, lowest_free_port, AppConfiguration,
+    AppKind, AppRegistration, AppsError, CloudAppConfiguration, CloudInsertError,
     NewSelfHostedUpload, SelfHostedAppConfiguration, UploadInsertError,
 };
 
 /// The smallest loopback port an uploaded app is allocated — one above the seeded
 /// patient-browser at 8081. See the port-allocation section of
 /// `docs/Apps/Store and Install Explanation.md`.
-const MIN_UPLOAD_PORT: i64 = 8082;
+const MIN_UPLOAD_PORT: u16 = 8082;
 
 /// Attempts at suffixing a base slug (`-2`, `-3`, …) before reporting
 /// [`UploadInsertError::SlugSpaceExhausted`].
@@ -96,20 +97,25 @@ pub(super) fn insert_self_hosted_app(
     new: &NewSelfHostedUpload,
 ) -> Result<Result<(AppRegistration, SelfHostedAppConfiguration), UploadInsertError>, AppsError> {
     conn.transaction(|conn| {
-        // Find a slug free of both the global id space and the subdomain space.
-        let mut chosen_slug = None;
-        for attempt in 1..=MAX_SLUG_ATTEMPTS {
-            let candidate = slug_candidate(&new.base_slug, attempt);
-            if !id_taken(conn, &candidate)? && !subdomain_taken(conn, &candidate)? {
-                chosen_slug = Some(candidate);
-                break;
-            }
-        }
-        let Some(slug) = chosen_slug else {
+        // Read the live allocation state under the transaction, then let the pure
+        // domain allocators pick the slug and port. Reading inside the transaction
+        // keeps the choice from racing a concurrent insert; the suffixing and
+        // lowest-free logic stay database-free (and unit-tested) in the domain.
+        let taken_ids = all_registration_ids(conn)?;
+        let taken_subdomains = all_subdomains(conn)?;
+        let Some(slug) = choose_self_hosted_slug(
+            &new.base_slug,
+            &taken_ids,
+            &taken_subdomains,
+            MAX_SLUG_ATTEMPTS,
+        ) else {
             return Ok(Err(UploadInsertError::SlugSpaceExhausted));
         };
 
-        let Some(port) = next_free_port(conn, &new.reserved_ports, u16::MAX)? else {
+        let taken_ports = all_self_hosted_ports(conn)?;
+        let Some(port) =
+            lowest_free_port(&taken_ports, &new.reserved_ports, MIN_UPLOAD_PORT, u16::MAX)
+        else {
             return Ok(Err(UploadInsertError::PortSpaceExhausted));
         };
         let position = next_position(conn)?;
@@ -252,19 +258,11 @@ pub(super) fn replace_placements(
 ) -> Result<Option<Vec<AppRegistration>>, AppsError> {
     conn.transaction(|conn| {
         // Validate against the live registry under the same transaction as the
-        // renumber: the body must be an exact permutation of the current ids.
-        let current_ids: HashSet<String> = app_registrations::table
-            .select(app_registrations::id)
-            .load::<String>(conn)?
-            .into_iter()
-            .collect();
-        let body_ids: HashSet<&str> = entries.iter().map(|(id, _)| id.as_str()).collect();
-        let id_set_changed_since_submission = entries.len() != current_ids.len()
-            || body_ids.len() != entries.len()
-            || body_ids
-                .iter()
-                .any(|body_id| !current_ids.contains(*body_id));
-        if id_set_changed_since_submission {
+        // renumber: the body must be an exact permutation of the current ids. The
+        // set logic is a pure domain function; here we only supply the two id sets.
+        let current_ids = all_registration_ids(conn)?;
+        let body_ids: Vec<&str> = entries.iter().map(|(id, _)| id.as_str()).collect();
+        if !is_exact_registry_permutation(&current_ids, &body_ids) {
             return Ok(None);
         }
 
@@ -272,8 +270,11 @@ pub(super) fn replace_placements(
         // renumber below never transiently violates `UNIQUE(position)`
         // (SQLite's UNIQUE is immediate, not deferrable).
         diesel::sql_query("UPDATE app_registrations SET position = -1 - position").execute(conn)?;
-        for (position, (id, on_homescreen)) in entries.iter().enumerate() {
-            let position = i64::try_from(position).expect("home-screen length fits i64");
+        for (index, (id, on_homescreen)) in entries.iter().enumerate() {
+            // A registry with more than i64::MAX apps can't exist, but map rather
+            // than panic so any conversion failure rolls the transaction back.
+            let position = i64::try_from(index)
+                .map_err(|e| AppsError::infrastructure("home-screen index exceeds i64", e))?;
             diesel::update(app_registrations::table.find(id))
                 .set((
                     app_registrations::position.eq(position),
@@ -321,53 +322,36 @@ fn read_back_self_hosted(
     }
 }
 
-/// Whether any self-hosted app already uses this subdomain label.
-fn subdomain_taken(conn: &mut SqliteConnection, subdomain: &str) -> Result<bool, AppsError> {
-    let taken = diesel::select(diesel::dsl::exists(
-        self_hosted_app_configurations::table
-            .filter(self_hosted_app_configurations::subdomain.eq(subdomain)),
-    ))
-    .get_result::<bool>(conn)?;
-    Ok(taken)
+/// Every registration id (the global app-id space) as a set — the slug allocator's
+/// id-collision input, read inside the insert transaction.
+fn all_registration_ids(conn: &mut SqliteConnection) -> Result<HashSet<String>, AppsError> {
+    Ok(app_registrations::table
+        .select(app_registrations::id)
+        .load::<String>(conn)?
+        .into_iter()
+        .collect())
 }
 
-/// The attempt-`N` slug candidate: the base itself first, then `{base}-{attempt}`,
-/// kept a valid DNS label (≤ 63 chars, no trailing `-`) — the suffix is budgeted
-/// first and the base truncated to fit. The base is `slugify` output (ASCII), so
-/// char truncation is byte truncation.
-fn slug_candidate(base: &str, attempt: u32) -> String {
-    if attempt == 1 {
-        return base.to_owned();
-    }
-    let suffix = format!("-{attempt}");
-    let budget = 63 - suffix.len();
-    let mut head: String = base.chars().take(budget).collect();
-    while head.ends_with('-') {
-        head.pop();
-    }
-    format!("{head}{suffix}")
+/// Every self-hosted subdomain label as a set — the slug allocator's subdomain
+/// input.
+fn all_subdomains(conn: &mut SqliteConnection) -> Result<HashSet<String>, AppsError> {
+    Ok(self_hosted_app_configurations::table
+        .select(self_hosted_app_configurations::subdomain)
+        .load::<String>(conn)?
+        .into_iter()
+        .collect())
 }
 
-/// The **lowest** unallocated loopback port in `MIN_UPLOAD_PORT..=max_port`,
-/// skipping ports already handed to other rows and `reserved_ports`. Lowest-free
-/// (not `MAX+1`) reuses released ports to keep origins stable across reinstall.
-/// `None` when the range is exhausted (`max_port` is parameterized only so tests
-/// can reach that). Runs on the open transaction so it can't race a concurrent
-/// insert.
-fn next_free_port(
-    conn: &mut SqliteConnection,
-    reserved_ports: &[u16],
-    max_port: u16,
-) -> Result<Option<u16>, AppsError> {
-    let taken: HashSet<u16> = self_hosted_app_configurations::table
+/// Every loopback port already handed to a self-hosted app as a set — the port
+/// allocator's taken input. A stored port outside `u16` can't occur (the column is
+/// `CHECK (port BETWEEN 1 AND 65535)`), so an out-of-range value is dropped.
+fn all_self_hosted_ports(conn: &mut SqliteConnection) -> Result<HashSet<u16>, AppsError> {
+    Ok(self_hosted_app_configurations::table
         .select(self_hosted_app_configurations::port)
         .load::<i32>(conn)?
         .into_iter()
         .filter_map(|p| u16::try_from(p).ok())
-        .collect();
-    let floor = u16::try_from(MIN_UPLOAD_PORT).expect("MIN_UPLOAD_PORT fits u16");
-    Ok((floor..=max_port)
-        .find(|candidate| !taken.contains(candidate) && !reserved_ports.contains(candidate)))
+        .collect())
 }
 
 #[cfg(test)]
@@ -791,28 +775,6 @@ mod tests {
         assert_eq!(
             config3.port, 8082,
             "the freed port must be reused, not MAX+1",
-        );
-    }
-
-    /// `next_free_port` returns `None` only when every port in range is taken or
-    /// reserved — exercised with a tiny ceiling.
-    #[test]
-    fn next_free_port_reports_exhaustion() {
-        let store = SqliteAppsStore::open_in_memory().unwrap();
-        store
-            .insert_self_hosted_app(&new_upload("Taken", "taken"))
-            .unwrap()
-            .expect("inserted"); // occupies 8082
-        let mut conn = store.pool().get().unwrap();
-        assert_eq!(
-            super::next_free_port(&mut conn, &[8083], 8083).unwrap(),
-            None,
-            "8082 taken + 8083 reserved exhausts a ceiling of 8083",
-        );
-        assert_eq!(
-            super::next_free_port(&mut conn, &[8083], 8084).unwrap(),
-            Some(8084),
-            "one more port in range frees the allocation",
         );
     }
 

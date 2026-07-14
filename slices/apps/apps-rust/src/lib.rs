@@ -26,9 +26,10 @@
 //!    `app_registrations` row AND the uniform `GET /apps` wire item), the per-kind
 //!    configuration types ([`domain::CloudAppConfiguration`] /
 //!    [`domain::SelfHostedAppConfiguration`] / [`domain::SystemAppConfiguration`],
-//!    each its table's payload), the thin [`domain::App`] enum whose variants are
-//!    the `(registration, configuration)` pairs at the cross-kind seams (launch
-//!    dispatch, delete), [`domain::AppKind`] (the discriminator),
+//!    each its table's payload), the [`domain::AppConfiguration`] union a `find_app`
+//!    read returns beside its registration (the cross-kind seams — launch dispatch,
+//!    delete — operate on the `(registration, configuration)` pair directly, with no
+//!    combined "app" type), [`domain::AppKind`] (the discriminator),
 //!    [`domain::AppsError`] (the failure vocabulary), and [`domain::AppUrl`] (the
 //!    write-side URL validator). The per-kind editor wire shapes live in
 //!    `http::wire_representations`, built from the pair.

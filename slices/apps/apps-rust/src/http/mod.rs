@@ -23,7 +23,6 @@
 //! through [`ports::owner_auth::OwnerAuth`] while a forwarded launch rides the
 //! front trust boundary.
 
-pub(crate) mod app;
 mod errors;
 pub mod ports;
 mod routes;

@@ -27,8 +27,9 @@ const MIGRATION_NAMESPACE: &str = "apps";
 /// [`persistence_rust::run_diesel_migrations`] under [`MIGRATION_NAMESPACE`] (see
 /// that runner for why the stock diesel harness can't be used across slices).
 /// Migration `0001` builds the `app_registrations` table and its three
-/// configuration tables, and seeds the default registry; because each migration
-/// runs only once per database, a user-deleted seed stays deleted across upgrades.
+/// configuration tables; `0002` seeds the default registry (kept separate so the
+/// schema and the shipped data version independently). Because each migration runs
+/// only once per database, a user-deleted seed stays deleted across upgrades.
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
 /// The `SQLite` adapter for the [`AppsStore`] port — serves the registrations plus

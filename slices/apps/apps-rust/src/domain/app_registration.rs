@@ -14,6 +14,8 @@
 //! ([`CloudAppConfiguration`](super::CloudAppConfiguration) etc.) carry only their
 //! payload; a whole app is a `(AppRegistration, …Configuration)` pair.
 
+use std::collections::HashSet;
+
 use diesel::prelude::{Insertable, Queryable, Selectable};
 use serde::{Serialize, Serializer};
 use utoipa::ToSchema;
@@ -66,6 +68,20 @@ impl AppRegistration {
     pub fn is_smart(&self) -> bool {
         self.client_id.is_some()
     }
+}
+
+/// Whether `submitted` (the `PUT /home-screen` body's app ids, in submission order)
+/// is an exact permutation of `current` (the live registry's ids): the same length,
+/// no duplicates, and identical membership. `replace_placements` requires this
+/// before it renumbers, so a stale or malformed body (a missing / duplicated /
+/// unknown id) is rejected wholesale rather than partially applied. Pure set logic,
+/// lifted out of the store so the DB implementation only supplies the two id sets.
+#[must_use]
+pub(crate) fn is_exact_registry_permutation(current: &HashSet<String>, submitted: &[&str]) -> bool {
+    let submitted_set: HashSet<&str> = submitted.iter().copied().collect();
+    submitted.len() == current.len()
+        && submitted_set.len() == submitted.len()
+        && submitted_set.iter().all(|id| current.contains(*id))
 }
 
 /// Serialize the soft `client_id` reference as the derived `isSmart` boolean — its
@@ -124,5 +140,32 @@ mod tests {
     fn is_smart_follows_client_id() {
         assert!(registration(AppKind::Cloud, Some("c")).is_smart());
         assert!(!registration(AppKind::System, None).is_smart());
+    }
+
+    fn id_set(ids: &[&str]) -> HashSet<String> {
+        ids.iter().map(|id| (*id).to_owned()).collect()
+    }
+
+    #[test]
+    fn exact_permutation_accepts_a_reordering_of_the_same_ids() {
+        let current = id_set(&["a", "b", "c"]);
+        assert!(is_exact_registry_permutation(&current, &["c", "a", "b"]));
+    }
+
+    #[test]
+    fn exact_permutation_rejects_subset_superset_and_duplicates() {
+        let current = id_set(&["a", "b", "c"]);
+        assert!(
+            !is_exact_registry_permutation(&current, &["a", "b"]),
+            "a subset is not a permutation",
+        );
+        assert!(
+            !is_exact_registry_permutation(&current, &["a", "b", "c", "d"]),
+            "an unknown extra id is not a permutation",
+        );
+        assert!(
+            !is_exact_registry_permutation(&current, &["a", "b", "b"]),
+            "a duplicate (with a missing id) is not a permutation",
+        );
     }
 }

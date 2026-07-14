@@ -15,7 +15,9 @@ use super::columns::{AppUrlColumn, PortColumn};
 use super::schema::{
     cloud_app_configurations, self_hosted_app_configurations, system_app_configurations,
 };
-use crate::domain::AppUrl;
+use crate::domain::{
+    AppUrl, CloudAppConfiguration, SelfHostedAppConfiguration, SystemAppConfiguration,
+};
 
 /// The `system_app_configurations` payload — a compiled-shell route's
 /// `{origin}`-relative launch template.
@@ -51,4 +53,32 @@ pub(super) struct SelfHostedConfigurationRow {
     pub(super) subdomain: String,
     pub(super) seeded: bool,
     pub(super) launch_path: Option<String>,
+}
+
+// Each row → its domain configuration: drop the `id` (that's the paired
+// registration's key, not part of the payload) and hand back the payload columns.
+// The reads compose these onto the `AppConfiguration` union beside the registration.
+
+impl From<SystemConfigurationRow> for SystemAppConfiguration {
+    fn from(row: SystemConfigurationRow) -> Self {
+        SystemAppConfiguration { url: row.url }
+    }
+}
+
+impl From<CloudConfigurationRow> for CloudAppConfiguration {
+    fn from(row: CloudConfigurationRow) -> Self {
+        CloudAppConfiguration { url: row.url }
+    }
+}
+
+impl From<SelfHostedConfigurationRow> for SelfHostedAppConfiguration {
+    fn from(row: SelfHostedConfigurationRow) -> Self {
+        SelfHostedAppConfiguration {
+            port: row.port,
+            content_folder: row.content_folder,
+            subdomain: row.subdomain,
+            seeded: row.seeded,
+            launch_path: row.launch_path,
+        }
+    }
 }

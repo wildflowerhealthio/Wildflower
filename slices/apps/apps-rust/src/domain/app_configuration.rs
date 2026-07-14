@@ -3,8 +3,8 @@
 //! knowing its kind up front (`find_app`). One variant per kind, each wrapping the
 //! concrete configuration. The shared half is the [`AppRegistration`] the store
 //! hands back alongside it, so a whole app is the `(AppRegistration,
-//! AppConfiguration)` pair `find_app` returns — the combined `App` that composes the
-//! two (with its launch / delete behaviour) lives in the HTTP layer, not here.
+//! AppConfiguration)` pair `find_app` returns — there is no combined "app" type; the
+//! launch / delete seams operate on the pair directly in the HTTP layer.
 //!
 //! Its `kind` is the variant (one source of truth per kind), `is_removable`
 //! delegates to the variant's [`CommonAppConfig`] impl, and the `as_*` accessors

@@ -17,10 +17,11 @@
 //!  - [`schema`] — the diesel `table!` definitions;
 //!  - [`columns`] — the diesel column newtypes for `AppKind` (TEXT), `AppUrl`
 //!    (TEXT) and `port` (INTEGER → `u16`);
-//!  - [`payloads`] — the per-kind child payload row structs;
+//!  - [`row_structs`] — the per-kind configuration row structs (and their
+//!    `From` impls onto the domain configuration types);
 //!  - [`reads`] — the uniform registry read ([`AppRegistration`](crate::domain::AppRegistration)),
-//!    the per-kind detail read composing a whole [`App`](crate::domain::App)
-//!    (`find_app_on`), and `list_self_hosted_apps_on`;
+//!    the per-kind detail read composing a whole `(registration, configuration)`
+//!    pair (`find_app_on`), and `list_self_hosted_apps_on`;
 //!  - [`writes`] — the mutators (registration + payload in one transaction),
 //!    returning the hydrated app re-read.
 //!
@@ -28,8 +29,8 @@
 
 mod apps_store;
 pub(crate) mod columns;
-mod payloads;
 mod reads;
+mod row_structs;
 pub(crate) mod schema;
 mod writes;
 

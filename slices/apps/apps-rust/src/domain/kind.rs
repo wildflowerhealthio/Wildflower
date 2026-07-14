@@ -2,9 +2,10 @@
 //! (`system_app_configurations` / `cloud_app_configurations` /
 //! `self_hosted_app_configurations`) holds a registration's payload row. It is the
 //! `app_registrations.kind` column value, the
-//! `GET /apps` wire discriminator, and the in-memory kind [`App`](super::App)
-//! reports via [`App::kind`](super::App::kind) and the launch handler dispatches
-//! on. Replaces the former `Provenance` (renamed slice-wide to free *provenance*
+//! `GET /apps` wire discriminator, and the kind an [`AppConfiguration`](super::AppConfiguration)
+//! reports via [`AppConfiguration::kind`](super::AppConfiguration::kind) and the
+//! launch / delete seams dispatch on. Replaces the former `Provenance` (renamed
+//! slice-wide to free *provenance*
 //! for the launch path's unrelated `RequestProvenance`). The taxonomy and privacy
 //! model are canonical in `docs/Apps/Explanation.md`.
 

@@ -32,17 +32,20 @@ pub(crate) async fn handle_create_cloud_app(
     State(state): State<Arc<AppsState>>,
     Json(body): Json<CloudAppBody>,
 ) -> Result<Json<CloudAppDetail>, AppsError> {
-    // The handler transforms: it mints the id; the action validates the fields,
-    // synthesizes the registration + configuration, inserts (mapping a server-minted
-    // id collision to a logged 500), and reads the pair back in-txn — exactly the
+    // The handler transforms: it mints the id and maps its `CloudAppBody` onto the
+    // action's `CloudAppContent`; the action validates the fields, synthesizes the
+    // registration + configuration, inserts (mapping a server-minted id collision to
+    // a logged 500), and reads the pair back in-txn — exactly the
     // `GET /cloud-apps/{id}` shape with no second read.
     let (registration, config) = actions::create_cloud_app(
         &state.store,
         mint_app_id(),
-        body.name,
-        body.subtitle,
-        body.url,
-        body.requires_tunnel,
+        actions::CloudAppContent {
+            name: body.name,
+            subtitle: body.subtitle,
+            url: body.url,
+            requires_tunnel: body.requires_tunnel,
+        },
     )?;
     Ok(Json(CloudAppDetail::from((&registration, &config))))
 }
