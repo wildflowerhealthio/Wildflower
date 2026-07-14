@@ -16,8 +16,8 @@ catalogs:
       specifier: ^3.2.2
       version: 3.2.2
     '@effect/language-service':
-      specifier: ^0.86.4
-      version: 0.86.4
+      specifier: ^0.87.0
+      version: 0.87.0
     '@fontsource-variable/atkinson-hyperlegible-mono':
       specifier: ^5.2.5
       version: 5.2.5
@@ -46,26 +46,26 @@ catalogs:
       specifier: ^2.9.0
       version: 2.9.0
     '@opentelemetry/semantic-conventions':
-      specifier: ^1.42.0
-      version: 1.42.0
+      specifier: ^1.43.0
+      version: 1.43.0
     '@sentry/node':
-      specifier: 10.63.0
-      version: 10.63.0
+      specifier: 10.65.0
+      version: 10.65.0
     '@sentry/opentelemetry':
-      specifier: 10.63.0
-      version: 10.63.0
+      specifier: 10.65.0
+      version: 10.65.0
     '@sentry/react':
-      specifier: 10.63.0
-      version: 10.63.0
+      specifier: 10.65.0
+      version: 10.65.0
     '@tanstack/react-query':
       specifier: ^5.101.2
       version: 5.101.2
     '@tanstack/react-router':
-      specifier: ^1.170.17
-      version: 1.170.17
+      specifier: ^1.170.18
+      version: 1.170.18
     '@tanstack/router-plugin':
-      specifier: ^1.168.19
-      version: 1.168.19
+      specifier: ^1.168.20
+      version: 1.168.20
     '@tanstack/virtual-file-routes':
       specifier: ^1.162.0
       version: 1.162.0
@@ -91,8 +91,8 @@ catalogs:
       specifier: 19.2.3
       version: 19.2.3
     '@typescript/native-preview':
-      specifier: 7.0.0-dev.20260429.1
-      version: 7.0.0-dev.20260429.1
+      specifier: 7.0.0-dev.20260707.2
+      version: 7.0.0-dev.20260707.2
     '@vitejs/plugin-react':
       specifier: ^6.0.3
       version: 6.0.3
@@ -158,16 +158,16 @@ importers:
     devDependencies:
       '@effect/language-service':
         specifier: 'catalog:'
-        version: 0.86.4
+        version: 0.87.0
       '@tanstack/router-plugin':
         specifier: 'catalog:'
-        version: 1.168.19(@tanstack/react-router@1.170.17(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@voidzero-dev/vite-plus-core@0.2.2(@types/node@26.1.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))
+        version: 1.168.20(@tanstack/react-router@1.170.18(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@voidzero-dev/vite-plus-core@0.2.2(@types/node@26.1.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))
       '@tanstack/virtual-file-routes':
         specifier: 'catalog:'
         version: 1.162.0
       '@typescript/native-preview':
         specifier: 'catalog:'
-        version: 7.0.0-dev.20260429.1
+        version: 7.0.0-dev.20260707.2
       effect:
         specifier: 3.21.4
         version: 3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
@@ -285,7 +285,7 @@ importers:
         version: 5.101.2(react@19.2.7)
       '@tanstack/react-router':
         specifier: 'catalog:'
-        version: 1.170.17(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        version: 1.170.18(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       apps-core:
         specifier: workspace:*
         version: link:../../slices/apps/apps-core
@@ -370,7 +370,7 @@ importers:
     devDependencies:
       '@tanstack/router-plugin':
         specifier: 'catalog:'
-        version: 1.168.19(@tanstack/react-router@1.170.17(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@voidzero-dev/vite-plus-core@0.2.2(@types/node@26.1.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))
+        version: 1.168.20(@tanstack/react-router@1.170.18(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@voidzero-dev/vite-plus-core@0.2.2(@types/node@26.1.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))
       '@tanstack/virtual-file-routes':
         specifier: 'catalog:'
         version: 1.162.0
@@ -476,7 +476,7 @@ importers:
         version: 26.1.0
       '@typescript/native-preview':
         specifier: 'catalog:'
-        version: 7.0.0-dev.20260429.1
+        version: 7.0.0-dev.20260707.2
       effect:
         specifier: 3.21.4
         version: 3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
@@ -509,7 +509,7 @@ importers:
         version: 19.2.3(@types/react@19.2.17)
       '@typescript/native-preview':
         specifier: 'catalog:'
-        version: 7.0.0-dev.20260429.1
+        version: 7.0.0-dev.20260707.2
       effect:
         specifier: 3.21.4
         version: 3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
@@ -548,7 +548,7 @@ importers:
         version: 2.11.0
       '@typescript/native-preview':
         specifier: 'catalog:'
-        version: 7.0.0-dev.20260429.1
+        version: 7.0.0-dev.20260707.2
       effect:
         specifier: 3.21.4
         version: 3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
@@ -636,7 +636,7 @@ importers:
     devDependencies:
       '@tanstack/react-router':
         specifier: 'catalog:'
-        version: 1.170.17(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        version: 1.170.18(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@testing-library/dom':
         specifier: ^10.4.0
         version: 10.4.1
@@ -690,7 +690,7 @@ importers:
         version: 26.1.0
       '@typescript/native-preview':
         specifier: 'catalog:'
-        version: 7.0.0-dev.20260429.1
+        version: 7.0.0-dev.20260707.2
       effect:
         specifier: 3.21.4
         version: 3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
@@ -732,10 +732,10 @@ importers:
         version: 5.101.2(react@19.2.7)
       '@tanstack/react-router':
         specifier: 'catalog:'
-        version: 1.170.17(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        version: 1.170.18(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@tanstack/router-plugin':
         specifier: 'catalog:'
-        version: 1.168.19(@tanstack/react-router@1.170.17(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@voidzero-dev/vite-plus-core@0.2.2(@types/node@26.1.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))
+        version: 1.168.20(@tanstack/react-router@1.170.18(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@voidzero-dev/vite-plus-core@0.2.2(@types/node@26.1.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))
       '@testing-library/dom':
         specifier: ^10.4.0
         version: 10.4.1
@@ -807,7 +807,7 @@ importers:
         version: 26.1.0
       '@typescript/native-preview':
         specifier: 'catalog:'
-        version: 7.0.0-dev.20260429.1
+        version: 7.0.0-dev.20260707.2
       effect:
         specifier: 3.21.4
         version: 3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
@@ -837,7 +837,7 @@ importers:
         version: 26.1.0
       '@typescript/native-preview':
         specifier: 'catalog:'
-        version: 7.0.0-dev.20260429.1
+        version: 7.0.0-dev.20260707.2
       browser-sniffer-core:
         specifier: workspace:*
         version: link:../browser-sniffer-core
@@ -873,7 +873,7 @@ importers:
         version: 26.1.0
       '@typescript/native-preview':
         specifier: 'catalog:'
-        version: 7.0.0-dev.20260429.1
+        version: 7.0.0-dev.20260707.2
       browser-sniffer-core:
         specifier: workspace:*
         version: link:../../browser-sniffer/browser-sniffer-core
@@ -912,7 +912,7 @@ importers:
         version: 26.1.0
       '@typescript/native-preview':
         specifier: 'catalog:'
-        version: 7.0.0-dev.20260429.1
+        version: 7.0.0-dev.20260707.2
       browser-sniffer-core:
         specifier: workspace:*
         version: link:../../browser-sniffer/browser-sniffer-core
@@ -945,10 +945,10 @@ importers:
         version: 5.101.2(react@19.2.7)
       '@tanstack/react-router':
         specifier: 'catalog:'
-        version: 1.170.17(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        version: 1.170.18(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@tanstack/router-plugin':
         specifier: 'catalog:'
-        version: 1.168.19(@tanstack/react-router@1.170.17(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@voidzero-dev/vite-plus-core@0.2.2(@types/node@26.1.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))
+        version: 1.168.20(@tanstack/react-router@1.170.18(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@voidzero-dev/vite-plus-core@0.2.2(@types/node@26.1.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))
       '@testing-library/dom':
         specifier: ^10.4.0
         version: 10.4.1
@@ -963,7 +963,7 @@ importers:
         version: 19.2.3(@types/react@19.2.17)
       '@typescript/native-preview':
         specifier: 'catalog:'
-        version: 7.0.0-dev.20260429.1
+        version: 7.0.0-dev.20260707.2
       collector-core:
         specifier: workspace:*
         version: link:../collector-core
@@ -1029,7 +1029,7 @@ importers:
         version: 26.1.0
       '@typescript/native-preview':
         specifier: 'catalog:'
-        version: 7.0.0-dev.20260429.1
+        version: 7.0.0-dev.20260707.2
       browser-sniffer-core:
         specifier: workspace:*
         version: link:../../browser-sniffer/browser-sniffer-core
@@ -1068,7 +1068,7 @@ importers:
         version: 26.1.0
       '@typescript/native-preview':
         specifier: 'catalog:'
-        version: 7.0.0-dev.20260429.1
+        version: 7.0.0-dev.20260707.2
       effect:
         specifier: 3.21.4
         version: 3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
@@ -1095,10 +1095,10 @@ importers:
         version: 5.101.2(react@19.2.7)
       '@tanstack/react-router':
         specifier: 'catalog:'
-        version: 1.170.17(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        version: 1.170.18(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@tanstack/router-plugin':
         specifier: 'catalog:'
-        version: 1.168.19(@tanstack/react-router@1.170.17(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@voidzero-dev/vite-plus-core@0.2.2(@types/node@26.1.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))
+        version: 1.168.20(@tanstack/react-router@1.170.18(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@voidzero-dev/vite-plus-core@0.2.2(@types/node@26.1.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))
       '@testing-library/dom':
         specifier: ^10.4.0
         version: 10.4.1
@@ -1167,7 +1167,7 @@ importers:
         version: 26.1.0
       '@typescript/native-preview':
         specifier: 'catalog:'
-        version: 7.0.0-dev.20260429.1
+        version: 7.0.0-dev.20260707.2
       bumpp:
         specifier: ^11.0.1
         version: 11.1.0
@@ -1203,7 +1203,7 @@ importers:
         version: 5.101.2(react@19.2.7)
       '@tanstack/react-router':
         specifier: 'catalog:'
-        version: 1.170.17(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        version: 1.170.18(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@testing-library/dom':
         specifier: ^10.4.0
         version: 10.4.1
@@ -1254,7 +1254,7 @@ importers:
         version: 26.1.0
       '@typescript/native-preview':
         specifier: 'catalog:'
-        version: 7.0.0-dev.20260429.1
+        version: 7.0.0-dev.20260707.2
       bumpp:
         specifier: ^11.0.1
         version: 11.1.0
@@ -1280,11 +1280,11 @@ importers:
         specifier: ^0.9.3
         version: 0.9.3(openapi-types@12.1.3)
       prettier:
-        specifier: ^3.9.4
-        version: 3.9.4
+        specifier: ^3.9.5
+        version: 3.9.5
       prettier-plugin-jsdoc:
         specifier: ^1.3.0
-        version: 1.8.1(prettier@3.9.4)
+        version: 1.8.1(prettier@3.9.5)
       shared-structures-core:
         specifier: workspace:*
         version: link:../../shared-structures/shared-structures-core
@@ -1308,10 +1308,10 @@ importers:
         version: 5.101.2(react@19.2.7)
       '@tanstack/react-router':
         specifier: 'catalog:'
-        version: 1.170.17(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        version: 1.170.18(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@tanstack/router-plugin':
         specifier: 'catalog:'
-        version: 1.168.19(@tanstack/react-router@1.170.17(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@voidzero-dev/vite-plus-core@0.2.2(@types/node@26.1.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))
+        version: 1.168.20(@tanstack/react-router@1.170.18(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@voidzero-dev/vite-plus-core@0.2.2(@types/node@26.1.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))
       '@testing-library/dom':
         specifier: ^10.4.0
         version: 10.4.1
@@ -1395,7 +1395,7 @@ importers:
         version: 26.1.0
       '@typescript/native-preview':
         specifier: 'catalog:'
-        version: 7.0.0-dev.20260429.1
+        version: 7.0.0-dev.20260707.2
       effect:
         specifier: 3.21.4
         version: 3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
@@ -1419,7 +1419,7 @@ importers:
     devDependencies:
       '@tanstack/react-router':
         specifier: 'catalog:'
-        version: 1.170.17(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        version: 1.170.18(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@testing-library/dom':
         specifier: ^10.4.0
         version: 10.4.1
@@ -1434,7 +1434,7 @@ importers:
         version: 19.2.3(@types/react@19.2.17)
       '@typescript/native-preview':
         specifier: 'catalog:'
-        version: 7.0.0-dev.20260429.1
+        version: 7.0.0-dev.20260707.2
       effect:
         specifier: 3.21.4
         version: 3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
@@ -1477,7 +1477,7 @@ importers:
     devDependencies:
       '@typescript/native-preview':
         specifier: 'catalog:'
-        version: 7.0.0-dev.20260429.1
+        version: 7.0.0-dev.20260707.2
       fast-check:
         specifier: 'catalog:'
         version: 3.23.1
@@ -1539,8 +1539,8 @@ importers:
   slices/shared-structures/shared-structures-core:
     devDependencies:
       '@apidevtools/json-schema-ref-parser':
-        specifier: ^15.4.0
-        version: 15.4.0(@types/json-schema@7.0.15)
+        specifier: ^15.5.0
+        version: 15.5.0(@types/json-schema@7.0.15)
       '@effect/platform':
         specifier: 0.96.1
         version: 0.96.1(effect@3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
@@ -1549,7 +1549,7 @@ importers:
         version: 26.1.0
       '@typescript/native-preview':
         specifier: 'catalog:'
-        version: 7.0.0-dev.20260429.1
+        version: 7.0.0-dev.20260707.2
       effect:
         specifier: 3.21.4
         version: 3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
@@ -1576,7 +1576,7 @@ importers:
         version: 0.96.1(effect@3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
       '@tanstack/react-router':
         specifier: 'catalog:'
-        version: 1.170.17(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        version: 1.170.18(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@testing-library/dom':
         specifier: ^10.4.0
         version: 10.4.1
@@ -1630,7 +1630,7 @@ importers:
     devDependencies:
       '@effect/opentelemetry':
         specifier: 0.63.0
-        version: 0.63.0(@effect/platform@0.96.1(effect@3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@opentelemetry/api@1.9.0)(@opentelemetry/resources@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-logs@0.220.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.42.0)(effect@3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+        version: 0.63.0(@effect/platform@0.96.1(effect@3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@opentelemetry/api@1.9.0)(@opentelemetry/resources@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-logs@0.220.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.43.0)(effect@3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
       '@opentelemetry/api':
         specifier: 1.9.0
         version: 1.9.0
@@ -1645,13 +1645,13 @@ importers:
         version: 2.9.0(@opentelemetry/api@1.9.0)
       '@sentry/opentelemetry':
         specifier: 'catalog:'
-        version: 10.63.0(@opentelemetry/api@1.9.0)(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.0))
+        version: 10.65.0(@opentelemetry/api@1.9.0)(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.0))
       '@types/node':
         specifier: ^26
         version: 26.1.0
       '@typescript/native-preview':
         specifier: 'catalog:'
-        version: 7.0.0-dev.20260429.1
+        version: 7.0.0-dev.20260707.2
       bumpp:
         specifier: ^11.0.1
         version: 11.1.0
@@ -1675,7 +1675,7 @@ importers:
     devDependencies:
       '@effect/opentelemetry':
         specifier: 0.63.0
-        version: 0.63.0(@effect/platform@0.96.1(effect@3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@opentelemetry/api@1.9.0)(@opentelemetry/resources@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-logs@0.220.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.42.0)(effect@3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+        version: 0.63.0(@effect/platform@0.96.1(effect@3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@opentelemetry/api@1.9.0)(@opentelemetry/resources@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-logs@0.220.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.43.0)(effect@3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
       '@opentelemetry/api':
         specifier: 1.9.0
         version: 1.9.0
@@ -1693,19 +1693,19 @@ importers:
         version: 2.9.0(@opentelemetry/api@1.9.0)
       '@opentelemetry/semantic-conventions':
         specifier: 'catalog:'
-        version: 1.42.0
+        version: 1.43.0
       '@sentry/node':
         specifier: 'catalog:'
-        version: 10.63.0(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/exporter-trace-otlp-http@0.220.0(@opentelemetry/api@1.9.0))
+        version: 10.65.0(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/exporter-trace-otlp-http@0.220.0(@opentelemetry/api@1.9.0))
       '@sentry/opentelemetry':
         specifier: 'catalog:'
-        version: 10.63.0(@opentelemetry/api@1.9.0)(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.0))
+        version: 10.65.0(@opentelemetry/api@1.9.0)(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.0))
       '@types/node':
         specifier: ^26
         version: 26.1.0
       '@typescript/native-preview':
         specifier: 'catalog:'
-        version: 7.0.0-dev.20260429.1
+        version: 7.0.0-dev.20260707.2
       bumpp:
         specifier: ^11.0.1
         version: 11.1.0
@@ -1729,7 +1729,7 @@ importers:
         version: 0.96.1(effect@3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
       '@typescript/native-preview':
         specifier: 'catalog:'
-        version: 7.0.0-dev.20260429.1
+        version: 7.0.0-dev.20260707.2
       effect:
         specifier: 3.21.4
         version: 3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
@@ -1747,22 +1747,22 @@ importers:
     devDependencies:
       '@effect/opentelemetry':
         specifier: 0.63.0
-        version: 0.63.0(@effect/platform@0.96.1(effect@3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@opentelemetry/api@1.9.0)(@opentelemetry/resources@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-logs@0.220.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.42.0)(effect@3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+        version: 0.63.0(@effect/platform@0.96.1(effect@3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@opentelemetry/api@1.9.0)(@opentelemetry/resources@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-logs@0.220.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.43.0)(effect@3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
       '@opentelemetry/api':
         specifier: 1.9.0
         version: 1.9.0
       '@sentry/opentelemetry':
         specifier: 'catalog:'
-        version: 10.63.0(@opentelemetry/api@1.9.0)(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.0))
+        version: 10.65.0(@opentelemetry/api@1.9.0)(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.0))
       '@sentry/react':
         specifier: 'catalog:'
-        version: 10.63.0(react@19.2.7)
+        version: 10.65.0(react@19.2.7)
       '@types/node':
         specifier: ^26
         version: 26.1.0
       '@typescript/native-preview':
         specifier: 'catalog:'
-        version: 7.0.0-dev.20260429.1
+        version: 7.0.0-dev.20260707.2
       bumpp:
         specifier: ^11.0.1
         version: 11.1.0
@@ -1789,7 +1789,7 @@ importers:
         version: 26.1.0
       '@typescript/native-preview':
         specifier: 'catalog:'
-        version: 7.0.0-dev.20260429.1
+        version: 7.0.0-dev.20260707.2
       effect:
         specifier: 3.21.4
         version: 3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
@@ -1819,10 +1819,10 @@ importers:
         version: 5.101.2(react@19.2.7)
       '@tanstack/react-router':
         specifier: 'catalog:'
-        version: 1.170.17(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        version: 1.170.18(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@tanstack/router-plugin':
         specifier: 'catalog:'
-        version: 1.168.19(@tanstack/react-router@1.170.17(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@voidzero-dev/vite-plus-core@0.2.2(@types/node@26.1.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))
+        version: 1.168.20(@tanstack/react-router@1.170.18(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@voidzero-dev/vite-plus-core@0.2.2(@types/node@26.1.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))
       '@testing-library/dom':
         specifier: ^10.4.0
         version: 10.4.1
@@ -1880,8 +1880,8 @@ importers:
 
 packages:
 
-  '@apidevtools/json-schema-ref-parser@15.4.0':
-    resolution: {integrity: sha512-QbMJJlMZd27fZmi7Q+twCqwABlfaO4Qdc1YvbbwkqN2lILfELnfWfw9xFFl6CeF5jAeGQpokUVhvCkhz+rvEGg==}
+  '@apidevtools/json-schema-ref-parser@15.5.0':
+    resolution: {integrity: sha512-Ps4w0FwrDoeVK6hfYxWkVbkmxm+zN+6xoXF2ZfEhfiox0ZNbcSAiUWO6iAIvP5bc3DB270r+EaKcoT1IUyzfxw==}
     engines: {node: '>=20'}
     peerDependencies:
       '@types/json-schema': ^7.0.15
@@ -2069,8 +2069,8 @@ packages:
     peerDependencies:
       react: '>=16.8.0'
 
-  '@effect/language-service@0.86.4':
-    resolution: {integrity: sha512-XzAPsbwCdm0gRh0E8wJu3wXECb00QraE3LnbObA4RgHn8u2TEbwAjmBadRnwSgOIElfzZjbsRqNR706/V54hDg==}
+  '@effect/language-service@0.87.0':
+    resolution: {integrity: sha512-GwZtEwBaOMyKea6YAtN0T0OGBtzJ8/y0KUIfyg29u3hnMRiXKlR2BRDqJmi+SbgaODJNNB3YOd6KuRB/vsxnWw==}
     hasBin: true
 
   '@effect/opentelemetry@0.63.0':
@@ -2413,10 +2413,6 @@ packages:
     resolution: {integrity: sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg==}
     engines: {node: '>= 8'}
 
-  '@opentelemetry/api-logs@0.214.0':
-    resolution: {integrity: sha512-40lSJeqYO8Uz2Yj7u94/SJWE/wONa7rmMKjI1ZcIjgf3MHNHv1OZUCrCETGuaRF62d5pQD1wKIW+L4lmSMTzZA==}
-    engines: {node: '>=8.0.0'}
-
   '@opentelemetry/api-logs@0.220.0':
     resolution: {integrity: sha512-CmVa4ImJ+ynfrPMNaAXHET6Bhb44SwzmfyVJFq9ni2jgXJR/l7C6gfVFddNmHP+ZOkP9cf4f9DBe68qVLTHc9w==}
     engines: {node: '>=8.0.0'}
@@ -2449,8 +2445,8 @@ packages:
     peerDependencies:
       '@opentelemetry/api': 1.9.0
 
-  '@opentelemetry/instrumentation@0.214.0':
-    resolution: {integrity: sha512-MHqEX5Dk59cqVah5LiARMACku7jXSVk9iVDWOea4x3cr7VfdByeDCURK6o1lntT1JS/Tsovw01UJrBhN3/uC5w==}
+  '@opentelemetry/instrumentation@0.220.0':
+    resolution: {integrity: sha512-xQx3E2WxP1mDvKzxLxX+CTCtNLa560YJZ3087qYHerl2YmiKpv7AH+dAy7vmx+eVrZ5BwhfWUAVoKOoxCNHcpw==}
     engines: {node: ^18.19.0 || >=20.6.0}
     peerDependencies:
       '@opentelemetry/api': 1.9.0
@@ -2511,6 +2507,10 @@ packages:
 
   '@opentelemetry/semantic-conventions@1.42.0':
     resolution: {integrity: sha512-icc5xCzndZfhuJMy5oqk5AvloWquR7jtae74qzpkKkhGp8BivK+oCcEXgGnjCdTfp8hA44l+w8gE8yYJbocJJw==}
+    engines: {node: '>=14'}
+
+  '@opentelemetry/semantic-conventions@1.43.0':
+    resolution: {integrity: sha512-eSYWTm620tTk45EKSedaUL8MFYI8hW164hIXsgIHyxu3VobUB3fFCu5t0hQby6OoWRPsG1KkKUG2M5UadiLiVg==}
     engines: {node: '>=14'}
 
   '@oxc-project/runtime@0.138.0':
@@ -3145,28 +3145,28 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@sentry/browser-utils@10.63.0':
-    resolution: {integrity: sha512-DhUGNN+CH8fzAs6qAsueKPU70qShyTX3NxLhIP+l5DbGXDSXpYXBT6s8ubZus0/LhxpLvI0iSyNIDvZRD/gZaA==}
+  '@sentry/browser-utils@10.65.0':
+    resolution: {integrity: sha512-4J0mkfNJAGUOkpg1ZggizyftFTn9N20b+Jl87UnWsDUkNG0Ic1l/FIzMPTVxXrAnhBGu0ULO0TFWMoQ5s3QtZw==}
     engines: {node: '>=18'}
 
-  '@sentry/browser@10.63.0':
-    resolution: {integrity: sha512-0mi56YOkwgyjdLOcN5cB1//EcYzEOt3NZ2GLygE92B3zAAwVM1WgbmibZCXToKFClH7z1uH3VWVfBffmkwIMYw==}
+  '@sentry/browser@10.65.0':
+    resolution: {integrity: sha512-XUDDsx0qxzeIlcOu1fDEqTcDl0eiOqghsgV+ReuuNP4jYjZ9kUQxE3rXWM5mlT1pBi4VaQ4FHqvQZZrRXy+oDw==}
     engines: {node: '>=18'}
 
-  '@sentry/conventions@0.12.0':
-    resolution: {integrity: sha512-z1JQrl/1SLY+8wpzvork6vl+fpsg/oCCxM7HWWhUnI/R+OGNyoIzieQuggX3uUMY7NBtp8UWCQx6FeFazzOF9g==}
+  '@sentry/conventions@0.15.1':
+    resolution: {integrity: sha512-ZLP8bRdMON3prWE2tJyImuYscCxdcJeIPIhrOs/rgyFm3C1nCh1B6gdvPj3AZ5zW08oSFFCsq7T+tYEW3h8MNA==}
     engines: {node: '>=14'}
 
-  '@sentry/core@10.63.0':
-    resolution: {integrity: sha512-OtUbsrnbEHffOF2S2+M5zXa3HIM0U2b4CDVLKMY1dgS0J3ivRF8XvkjvyIcEG/y8JXnwXbnprLyjhG+AqMdUZQ==}
+  '@sentry/core@10.65.0':
+    resolution: {integrity: sha512-3aqtmM5NgNGo45BNaaBzi0LPQZAw//NEL4HKS5fXm12pJMa4KEkze8DEKnkTEIrGnWaOJKamecHKlnNg/Mqf/Q==}
     engines: {node: '>=18'}
 
-  '@sentry/feedback@10.63.0':
-    resolution: {integrity: sha512-If/+72xFg9ylz4twUo3U9gUpZ+Ys+T/3Y09WH7r2gGhWEOF9bp+ta94+Pg7Lb0M2nVD7waz4OxIvB49GEvtLDA==}
+  '@sentry/feedback@10.65.0':
+    resolution: {integrity: sha512-ck8h7wgd3F3bYNk0v1OgohmyLBeXcKxqlfBJRtQq4k6KZUq+pXimOG7ckNguVMYjCo3PEfuG+ckKc21yqotKug==}
     engines: {node: '>=18'}
 
-  '@sentry/node-core@10.63.0':
-    resolution: {integrity: sha512-TaNtkGDRNxH3SjOea2PDtaebkNjMbAH8ZFsEcwlqmadpS7nqSR7z6slZy/iu7y1nLiUdbmcM5JmXwxksy52WRQ==}
+  '@sentry/node-core@10.65.0':
+    resolution: {integrity: sha512-U01X9mPT+jZnsLPmPWfBU67Ka+t/Sdd9RGAuvGoKdrI6N47a/9PDkM9oCW+kj0fmZwogZHTgSnzJU5oi3pImgA==}
     engines: {node: '>=18'}
     peerDependencies:
       '@opentelemetry/api': 1.9.0
@@ -3186,34 +3186,34 @@ packages:
       '@opentelemetry/sdk-trace-base':
         optional: true
 
-  '@sentry/node@10.63.0':
-    resolution: {integrity: sha512-E+JfDTdUDGQPRsAfCTR2YgmQgxYdoxk4ks6niHN+ByW8alEZL+nXlcN9vI57qj1LsS4v2jjfLxJf1/cMMt84YA==}
+  '@sentry/node@10.65.0':
+    resolution: {integrity: sha512-t35dcdyksysVch/m/XdLgGJqGKJhr9eMD30Ctn3TeQ8yMB0wNXySfjPR5Yg93fpjmfaHtzc6iYIXRAvgNVfrvA==}
     engines: {node: '>=18'}
 
-  '@sentry/opentelemetry@10.63.0':
-    resolution: {integrity: sha512-8yqi8+Ej/anmMn82blXA0BNMeAMs4av6nx0DzhxDrFya28ZaYOn19PChd3erMidfU0HnLLFNqWiFlYxBKq+/KA==}
+  '@sentry/opentelemetry@10.65.0':
+    resolution: {integrity: sha512-8C6FPvm3XBvUrkM52dX3Gz0p2H0Ij8t4sahUA+GTiCz0WM0fnyPeQPGC/b6I4jamV9UXyCZRnE1UEEGCoD+c7A==}
     engines: {node: '>=18'}
     peerDependencies:
       '@opentelemetry/api': 1.9.0
       '@opentelemetry/core': ^1.30.1 || ^2.1.0
       '@opentelemetry/sdk-trace-base': ^1.30.1 || ^2.1.0
 
-  '@sentry/react@10.63.0':
-    resolution: {integrity: sha512-+/Y0dd4EMqyqYBJ1D3bAYYuG+ccIx5+IFcbTZ9p+XWnW6nNIVjy5zttVftYo6xOmtTQbzRuPT/vO4dqDHKKmfw==}
+  '@sentry/react@10.65.0':
+    resolution: {integrity: sha512-fvHxpuvid0wt9/1N3itcKDyKOjqmYHw3MBSt5Pki3Iz4CL2CmgQp9ZFv/CA7UhMnEvn2Gd+Qc2UKxujZWd8FLg==}
     engines: {node: '>=18'}
     peerDependencies:
       react: ^16.14.0 || 17.x || 18.x || 19.x
 
-  '@sentry/replay-canvas@10.63.0':
-    resolution: {integrity: sha512-1Dg6yo+KDNZcE9M6V2EP4DGgTDJMcUgg5ui69w/E96ZZPWErS/bibK2bGj20H3qwpJXlnEwXB5YAJ2fZ620T1A==}
+  '@sentry/replay-canvas@10.65.0':
+    resolution: {integrity: sha512-A7X3RVk1Gk+knK8Ip/2EjejckNCLgCfRZo6eGlsy6qyz904KBpYmys1a0o7QkzFRjhIndjHAfcVxwt6jSLJlrQ==}
     engines: {node: '>=18'}
 
-  '@sentry/replay@10.63.0':
-    resolution: {integrity: sha512-u4fDaLbd4QmJbU0qGzV5g2B2hjw5utdeZzpTrmq565AS5o6mfaZdCz30zF9R2Unkn0g9SJr90piTN2RMwvDrkw==}
+  '@sentry/replay@10.65.0':
+    resolution: {integrity: sha512-aW988CcQBNArbOMzOFOziipHz6uQyXSa4i5CPWsu+nhVPTJHafosi5Lv9n6NM/icDX5e23VdnX6mZd8SyJuo8A==}
     engines: {node: '>=18'}
 
-  '@sentry/server-utils@10.63.0':
-    resolution: {integrity: sha512-7NN//DG9Yak8t2+6WiEcNmN269iHRVdtZtZIwucEd0OXyZ3FEBBDaBF+bT9V6H/kPtUvVMkHQ72Bn2Xs5JYGxg==}
+  '@sentry/server-utils@10.65.0':
+    resolution: {integrity: sha512-80toEFD6s+0Le7jrYB6pHWLF703WSg0WyavAWqrBGWG8JkREHgedAxzFYgoY5GlMI756qk6Ea7UzhJTHd2zAXA==}
     engines: {node: '>=18'}
 
   '@sindresorhus/merge-streams@4.0.0':
@@ -3235,8 +3235,8 @@ packages:
     peerDependencies:
       react: ^18 || ^19
 
-  '@tanstack/react-router@1.170.17':
-    resolution: {integrity: sha512-ppLkjCfSMaeug9rmFRYzOd4TIqWV+yTE7tzIny7alJsSnM7w4lzEZm6eqCehG0SPetpZ0R3K+UnanSmBgOAVcQ==}
+  '@tanstack/react-router@1.170.18':
+    resolution: {integrity: sha512-wpbGYZEp/fmz1q4bn7BD8VZ+/VZ7GBqSJv5V969pU+chP8y7dquWDmKTFMohvUegb9lg12m1uPVvD6kB2wORvQ==}
     engines: {node: '>=20.19'}
     peerDependencies:
       react: '>=18.0.0 || >=19.0.0'
@@ -3248,20 +3248,20 @@ packages:
       react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
       react-dom: 19.2.7
 
-  '@tanstack/router-core@1.171.14':
-    resolution: {integrity: sha512-Mo3hwx0qB0cJsVYGDjG0+Ouf7VV74h/vsoDMGztdlyzDanp4gBA2s7IVvm6hFrmQM6GpD9F0Z7SqD7OldfLE7g==}
+  '@tanstack/router-core@1.171.15':
+    resolution: {integrity: sha512-IILCDcLaItMZQ2jEmCABHY1Nhjjn5XUvwpQp3e4Nmu+vfg0BgYFuu/QASz2SwE2ZNbVMrvt8X/wxa+Gg5aErxA==}
     engines: {node: '>=20.19'}
 
-  '@tanstack/router-generator@1.167.18':
-    resolution: {integrity: sha512-kFvM4caRds9Q3EXg64bZubJ6rbDxyV0YDSBSGvOGzmKspQPdz5Xrh0uj5T1Ov8avUUg+c761u04VQAaEzSBXRw==}
+  '@tanstack/router-generator@1.167.19':
+    resolution: {integrity: sha512-db3AQGLinf8ZQ8AKMyxLVWwHIFZxtx+zLktvPXv/nFH/B793/Z7lKLl4dUWM3JpAluynDSVVKaTWQVTAgTYmVA==}
     engines: {node: '>=20.19'}
 
-  '@tanstack/router-plugin@1.168.19':
-    resolution: {integrity: sha512-aFglwLc+bbPTgZlkXn3PvOwpjJAfgUyPGSuql4MP3XrqTTh6WkBiy2RYb6oaG5h0s7EKwivEuq85K3Y4V0Mt1g==}
+  '@tanstack/router-plugin@1.168.20':
+    resolution: {integrity: sha512-G5S63xDr2AxADtWP+0tQtJsduijT/Mk85hDh3Od4ct8UV0PHr2f/H1CGl72lYWLgcWRMn6bKJoQhz27QFIgLRQ==}
     engines: {node: '>=20.19'}
     peerDependencies:
       '@rsbuild/core': '>=1.0.2 || ^2.0.0'
-      '@tanstack/react-router': ^1.170.17
+      '@tanstack/react-router': ^1.170.18
       vite: '>=5.0.0 || >=6.0.0 || >=7.0.0 || >=8.0.0'
       vite-plugin-solid: ^2.11.10 || ^3.0.0-0
       webpack: '>=5.92.0'
@@ -3572,50 +3572,50 @@ packages:
     resolution: {integrity: sha512-f1UQF7ggd42YiwI5wGrRaPsa+P0CINBlrkLPmGfpq/u/I/oVtecoEIfFR9ag/oa1sLOsRNZ6xehf6qMZhQGBDg==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
 
-  '@typescript/native-preview-darwin-arm64@7.0.0-dev.20260429.1':
-    resolution: {integrity: sha512-+Rl8iPf+vYKq0fnb8euEOJxxvE/abEOWmhdllQIe+Shd8xhS7UVi+2WunsP1GyH2Ofc+N8rGYz0/dMnhrRYEZA==}
+  '@typescript/native-preview-darwin-arm64@7.0.0-dev.20260707.2':
+    resolution: {integrity: sha512-wny2pgKjGbiZtnOIHVa3tXC1UfDqxNEFzyPGmiqybedG8hipG2Nfp0l5UxbaKCjkLacUpH/W5bP2hBOMVhCOzg==}
     engines: {node: '>=16.20.0'}
     cpu: [arm64]
     os: [darwin]
 
-  '@typescript/native-preview-darwin-x64@7.0.0-dev.20260429.1':
-    resolution: {integrity: sha512-be6Y7VVJz+usdI1ifCHy5mcldpxf8KXGYoyIp8w5Rd54zUtvtkYEJJWKzV5/bJt4bsQLLcp1i0vD4KJSr06Tmg==}
+  '@typescript/native-preview-darwin-x64@7.0.0-dev.20260707.2':
+    resolution: {integrity: sha512-Afc7M5zOwo+GpfcYwz5Z8HMB2tPVsui7nNIqEuuFB73MPdVqNn/Wmpe4tP4MRri0AtJnJknoHBaTJ/VDAp/Jhw==}
     engines: {node: '>=16.20.0'}
     cpu: [x64]
     os: [darwin]
 
-  '@typescript/native-preview-linux-arm64@7.0.0-dev.20260429.1':
-    resolution: {integrity: sha512-44amAEH/VxG6K/hrAmhiyOTnwoTzm7bj0ja7d8sV8Iuocv37oUiSB/8OgJLytLqfIh+Q6kipfTwY6Do3jh6THQ==}
+  '@typescript/native-preview-linux-arm64@7.0.0-dev.20260707.2':
+    resolution: {integrity: sha512-iITBa2WjjTI5N9t5l7Z4KoOSI+2zBlhbvFzsD/f8qX8QoKjz/Y4DPyBDgezYi8nkqjjksbgSOJ3/ykzhwrB9cg==}
     engines: {node: '>=16.20.0'}
     cpu: [arm64]
     os: [linux]
 
-  '@typescript/native-preview-linux-arm@7.0.0-dev.20260429.1':
-    resolution: {integrity: sha512-ngN6+qt5bPdp2zzasShoT4UONGXr+tvzHdz4NjuitwhiAF/d70CseXunb4syaudl1a+lJyTHro/ALTC0hRf6vA==}
+  '@typescript/native-preview-linux-arm@7.0.0-dev.20260707.2':
+    resolution: {integrity: sha512-hJm/UOqZTr9FHmR7uNm8VGX4oKtfWk0Jem0zPeJFNC8ckGUfSBueyiEYMZB+XmRc1aG4x1E46y3CplP4CLHvGQ==}
     engines: {node: '>=16.20.0'}
     cpu: [arm]
     os: [linux]
 
-  '@typescript/native-preview-linux-x64@7.0.0-dev.20260429.1':
-    resolution: {integrity: sha512-haAOqc0fJCZkt4RDi0/ZQGBdDfpDzr2N+mEcR+FbiYQD3Y00kOK34hXSrjZafO2kq56ZDWunvCaUTCev0fJDbA==}
+  '@typescript/native-preview-linux-x64@7.0.0-dev.20260707.2':
+    resolution: {integrity: sha512-du0dzi6y97Po5vDNdPJTyyijHCpaS22JLRnKZEJXBDaO9gCIymOv/5QQokFRuOlQm0bWl3i9PF4OVdGP6uAOQA==}
     engines: {node: '>=16.20.0'}
     cpu: [x64]
     os: [linux]
 
-  '@typescript/native-preview-win32-arm64@7.0.0-dev.20260429.1':
-    resolution: {integrity: sha512-J5O0tGVGqOZHbqm9ijRnZ5ADfPqYTjFIwZtYKpQL1yj1dZnUzMszO8P3bnOSfYD//DJhZINQyJzpPJxu29uiwQ==}
+  '@typescript/native-preview-win32-arm64@7.0.0-dev.20260707.2':
+    resolution: {integrity: sha512-SsAwfhyHJ1akgBc+99z4+hwdbHsdWaKB8EwCNIMA6JfSLMeUjffrYvxu+vfMyxVtOVOz7RrRXRoiDiu4a2sCtg==}
     engines: {node: '>=16.20.0'}
     cpu: [arm64]
     os: [win32]
 
-  '@typescript/native-preview-win32-x64@7.0.0-dev.20260429.1':
-    resolution: {integrity: sha512-/OZ99Hi/32huvZQ5fdqTwqLvZtKC3QrCXmLuKfMyVuBisV/TSd6LhlFQLolvIpr7/E530mnFZ4sXjgDEzVFqAw==}
+  '@typescript/native-preview-win32-x64@7.0.0-dev.20260707.2':
+    resolution: {integrity: sha512-DL4u27stv0fo71sVhOzHSwE+YMZsbBijVI+kg5dLDLilSH79WFTJ8RSQ46vJrCMt+Gjlv/JOZP1PuLJDfioYeQ==}
     engines: {node: '>=16.20.0'}
     cpu: [x64]
     os: [win32]
 
-  '@typescript/native-preview@7.0.0-dev.20260429.1':
-    resolution: {integrity: sha512-SGKnvs5EA+V1spnraYJqum/lEajE0IQ2bVVPC72hFfWjoCfQ6N7iVYxLUGreiE3VFyQWWQBPgXZrRUFnawVvpQ==}
+  '@typescript/native-preview@7.0.0-dev.20260707.2':
+    resolution: {integrity: sha512-oUGp+Rep/hqMhPunyinsALUwSlzHINSxitifPiSaeqoKOKD2OlR9NE3TaPqwsl4NlGslsOSUXI1JotWQzpYCPg==}
     engines: {node: '>=16.20.0'}
     hasBin: true
 
@@ -4731,8 +4731,8 @@ packages:
     peerDependencies:
       prettier: ^3.0.0
 
-  prettier@3.9.4:
-    resolution: {integrity: sha512-yWG/o/4oJfo036EKAfK6ACAoDOfHeRHx4tuxkfBZiauURiaSmYwlpOr5LQqKtIkRD2z1PLteme2WoxEnj4tHTg==}
+  prettier@3.9.5:
+    resolution: {integrity: sha512-/FVl766LpUfB5vXgCYOYa0MeV/441Ia99AeICQIQFTY/Nw0roZwULcXpku5i1/m5kt/baz+s4Zogspd839HSMg==}
     engines: {node: '>=14'}
     hasBin: true
 
@@ -5288,7 +5288,7 @@ packages:
 
 snapshots:
 
-  '@apidevtools/json-schema-ref-parser@15.4.0(@types/json-schema@7.0.15)':
+  '@apidevtools/json-schema-ref-parser@15.5.0(@types/json-schema@7.0.15)':
     dependencies:
       '@types/json-schema': 7.0.15
       js-yaml: 4.3.0
@@ -5516,9 +5516,9 @@ snapshots:
       react: 19.2.7
       tslib: 2.8.1
 
-  '@effect/language-service@0.86.4': {}
+  '@effect/language-service@0.87.0': {}
 
-  '@effect/opentelemetry@0.63.0(@effect/platform@0.96.1(effect@3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@opentelemetry/api@1.9.0)(@opentelemetry/resources@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-logs@0.220.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.42.0)(effect@3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))':
+  '@effect/opentelemetry@0.63.0(@effect/platform@0.96.1(effect@3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@opentelemetry/api@1.9.0)(@opentelemetry/resources@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-logs@0.220.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.43.0)(effect@3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))':
     dependencies:
       '@effect/platform': 0.96.1(effect@3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
       '@opentelemetry/api': 1.9.0
@@ -5528,7 +5528,7 @@ snapshots:
       '@opentelemetry/sdk-trace-base': 2.9.0(@opentelemetry/api@1.9.0)
       '@opentelemetry/sdk-trace-node': 2.9.0(@opentelemetry/api@1.9.0)
       '@opentelemetry/sdk-trace-web': 2.9.0(@opentelemetry/api@1.9.0)
-      '@opentelemetry/semantic-conventions': 1.42.0
+      '@opentelemetry/semantic-conventions': 1.43.0
       effect: 3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
 
   '@effect/platform@0.96.1(effect@3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))':
@@ -5784,10 +5784,6 @@ snapshots:
       '@nodelib/fs.scandir': 2.1.5
       fastq: 1.20.1
 
-  '@opentelemetry/api-logs@0.214.0':
-    dependencies:
-      '@opentelemetry/api': 1.9.0
-
   '@opentelemetry/api-logs@0.220.0':
     dependencies:
       '@opentelemetry/api': 1.9.0
@@ -5801,7 +5797,7 @@ snapshots:
   '@opentelemetry/core@2.2.0(@opentelemetry/api@1.9.0)':
     dependencies:
       '@opentelemetry/api': 1.9.0
-      '@opentelemetry/semantic-conventions': 1.42.0
+      '@opentelemetry/semantic-conventions': 1.43.0
 
   '@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.0)':
     dependencies:
@@ -5817,10 +5813,10 @@ snapshots:
       '@opentelemetry/resources': 2.2.0(@opentelemetry/api@1.9.0)
       '@opentelemetry/sdk-trace': 2.9.0(@opentelemetry/api@1.9.0)
 
-  '@opentelemetry/instrumentation@0.214.0(@opentelemetry/api@1.9.0)':
+  '@opentelemetry/instrumentation@0.220.0(@opentelemetry/api@1.9.0)':
     dependencies:
       '@opentelemetry/api': 1.9.0
-      '@opentelemetry/api-logs': 0.214.0
+      '@opentelemetry/api-logs': 0.220.0
       import-in-the-middle: 3.2.0
       require-in-the-middle: 8.0.1
     transitivePeerDependencies:
@@ -5846,7 +5842,7 @@ snapshots:
     dependencies:
       '@opentelemetry/api': 1.9.0
       '@opentelemetry/core': 2.2.0(@opentelemetry/api@1.9.0)
-      '@opentelemetry/semantic-conventions': 1.42.0
+      '@opentelemetry/semantic-conventions': 1.43.0
 
   '@opentelemetry/sdk-logs@0.220.0(@opentelemetry/api@1.9.0)':
     dependencies:
@@ -5891,6 +5887,8 @@ snapshots:
       '@opentelemetry/semantic-conventions': 1.42.0
 
   '@opentelemetry/semantic-conventions@1.42.0': {}
+
+  '@opentelemetry/semantic-conventions@1.43.0': {}
 
   '@oxc-project/runtime@0.138.0': {}
 
@@ -6220,87 +6218,91 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.62.2':
     optional: true
 
-  '@sentry/browser-utils@10.63.0':
+  '@sentry/browser-utils@10.65.0':
     dependencies:
-      '@sentry/core': 10.63.0
+      '@sentry/conventions': 0.15.1
+      '@sentry/core': 10.65.0
 
-  '@sentry/browser@10.63.0':
+  '@sentry/browser@10.65.0':
     dependencies:
-      '@sentry/browser-utils': 10.63.0
-      '@sentry/core': 10.63.0
-      '@sentry/feedback': 10.63.0
-      '@sentry/replay': 10.63.0
-      '@sentry/replay-canvas': 10.63.0
+      '@sentry/browser-utils': 10.65.0
+      '@sentry/conventions': 0.15.1
+      '@sentry/core': 10.65.0
+      '@sentry/feedback': 10.65.0
+      '@sentry/replay': 10.65.0
+      '@sentry/replay-canvas': 10.65.0
 
-  '@sentry/conventions@0.12.0': {}
+  '@sentry/conventions@0.15.1': {}
 
-  '@sentry/core@10.63.0': {}
-
-  '@sentry/feedback@10.63.0':
+  '@sentry/core@10.65.0':
     dependencies:
-      '@sentry/core': 10.63.0
+      '@sentry/conventions': 0.15.1
 
-  '@sentry/node-core@10.63.0(@opentelemetry/api@1.9.0)(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/exporter-trace-otlp-http@0.220.0(@opentelemetry/api@1.9.0))(@opentelemetry/instrumentation@0.214.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.0))':
+  '@sentry/feedback@10.65.0':
     dependencies:
-      '@sentry/conventions': 0.12.0
-      '@sentry/core': 10.63.0
-      '@sentry/opentelemetry': 10.63.0(@opentelemetry/api@1.9.0)(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.0))
+      '@sentry/core': 10.65.0
+
+  '@sentry/node-core@10.65.0(@opentelemetry/api@1.9.0)(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/exporter-trace-otlp-http@0.220.0(@opentelemetry/api@1.9.0))(@opentelemetry/instrumentation@0.220.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.0))':
+    dependencies:
+      '@sentry/conventions': 0.15.1
+      '@sentry/core': 10.65.0
+      '@sentry/opentelemetry': 10.65.0(@opentelemetry/api@1.9.0)(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.0))
       import-in-the-middle: 3.2.0
     optionalDependencies:
       '@opentelemetry/api': 1.9.0
       '@opentelemetry/core': 2.9.0(@opentelemetry/api@1.9.0)
       '@opentelemetry/exporter-trace-otlp-http': 0.220.0(@opentelemetry/api@1.9.0)
-      '@opentelemetry/instrumentation': 0.214.0(@opentelemetry/api@1.9.0)
+      '@opentelemetry/instrumentation': 0.220.0(@opentelemetry/api@1.9.0)
       '@opentelemetry/sdk-trace-base': 2.9.0(@opentelemetry/api@1.9.0)
 
-  '@sentry/node@10.63.0(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/exporter-trace-otlp-http@0.220.0(@opentelemetry/api@1.9.0))':
+  '@sentry/node@10.65.0(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/exporter-trace-otlp-http@0.220.0(@opentelemetry/api@1.9.0))':
     dependencies:
       '@opentelemetry/api': 1.9.0
-      '@opentelemetry/instrumentation': 0.214.0(@opentelemetry/api@1.9.0)
+      '@opentelemetry/instrumentation': 0.220.0(@opentelemetry/api@1.9.0)
       '@opentelemetry/sdk-trace-base': 2.9.0(@opentelemetry/api@1.9.0)
-      '@opentelemetry/semantic-conventions': 1.42.0
-      '@sentry/conventions': 0.12.0
-      '@sentry/core': 10.63.0
-      '@sentry/node-core': 10.63.0(@opentelemetry/api@1.9.0)(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/exporter-trace-otlp-http@0.220.0(@opentelemetry/api@1.9.0))(@opentelemetry/instrumentation@0.214.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.0))
-      '@sentry/opentelemetry': 10.63.0(@opentelemetry/api@1.9.0)(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.0))
-      '@sentry/server-utils': 10.63.0
+      '@sentry/conventions': 0.15.1
+      '@sentry/core': 10.65.0
+      '@sentry/node-core': 10.65.0(@opentelemetry/api@1.9.0)(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/exporter-trace-otlp-http@0.220.0(@opentelemetry/api@1.9.0))(@opentelemetry/instrumentation@0.220.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.0))
+      '@sentry/opentelemetry': 10.65.0(@opentelemetry/api@1.9.0)(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.0))
+      '@sentry/server-utils': 10.65.0
       import-in-the-middle: 3.2.0
     transitivePeerDependencies:
       - '@opentelemetry/core'
       - '@opentelemetry/exporter-trace-otlp-http'
       - supports-color
 
-  '@sentry/opentelemetry@10.63.0(@opentelemetry/api@1.9.0)(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.0))':
+  '@sentry/opentelemetry@10.65.0(@opentelemetry/api@1.9.0)(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.0))':
     dependencies:
       '@opentelemetry/api': 1.9.0
       '@opentelemetry/core': 2.9.0(@opentelemetry/api@1.9.0)
       '@opentelemetry/sdk-trace-base': 2.9.0(@opentelemetry/api@1.9.0)
-      '@sentry/conventions': 0.12.0
-      '@sentry/core': 10.63.0
+      '@sentry/conventions': 0.15.1
+      '@sentry/core': 10.65.0
 
-  '@sentry/react@10.63.0(react@19.2.7)':
+  '@sentry/react@10.65.0(react@19.2.7)':
     dependencies:
-      '@sentry/browser': 10.63.0
-      '@sentry/core': 10.63.0
+      '@sentry/browser': 10.65.0
+      '@sentry/conventions': 0.15.1
+      '@sentry/core': 10.65.0
       react: 19.2.7
 
-  '@sentry/replay-canvas@10.63.0':
+  '@sentry/replay-canvas@10.65.0':
     dependencies:
-      '@sentry/core': 10.63.0
-      '@sentry/replay': 10.63.0
+      '@sentry/core': 10.65.0
+      '@sentry/replay': 10.65.0
 
-  '@sentry/replay@10.63.0':
+  '@sentry/replay@10.65.0':
     dependencies:
-      '@sentry/browser-utils': 10.63.0
-      '@sentry/core': 10.63.0
+      '@sentry/browser-utils': 10.65.0
+      '@sentry/core': 10.65.0
 
-  '@sentry/server-utils@10.63.0':
+  '@sentry/server-utils@10.65.0':
     dependencies:
       '@apm-js-collab/code-transformer': 0.15.0
       '@apm-js-collab/code-transformer-bundler-plugins': 0.5.0
       '@apm-js-collab/tracing-hooks': 0.10.1
-      '@sentry/conventions': 0.12.0
-      '@sentry/core': 10.63.0
+      '@sentry/conventions': 0.15.1
+      '@sentry/core': 10.65.0
       magic-string: 0.30.21
     transitivePeerDependencies:
       - supports-color
@@ -6318,11 +6320,11 @@ snapshots:
       '@tanstack/query-core': 5.101.2
       react: 19.2.7
 
-  '@tanstack/react-router@1.170.17(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
+  '@tanstack/react-router@1.170.18(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
     dependencies:
       '@tanstack/history': 1.162.0
       '@tanstack/react-store': 0.9.3(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
-      '@tanstack/router-core': 1.171.14
+      '@tanstack/router-core': 1.171.15
       isbot: 5.1.40
       react: 19.2.7
       react-dom: 19.2.7(react@19.2.7)
@@ -6334,39 +6336,39 @@ snapshots:
       react-dom: 19.2.7(react@19.2.7)
       use-sync-external-store: 1.6.0(react@19.2.7)
 
-  '@tanstack/router-core@1.171.14':
+  '@tanstack/router-core@1.171.15':
     dependencies:
       '@tanstack/history': 1.162.0
       cookie-es: 3.1.1
       seroval: 1.5.4
       seroval-plugins: 1.5.4(seroval@1.5.4)
 
-  '@tanstack/router-generator@1.167.18':
+  '@tanstack/router-generator@1.167.19':
     dependencies:
       '@babel/types': 7.29.0
-      '@tanstack/router-core': 1.171.14
+      '@tanstack/router-core': 1.171.15
       '@tanstack/router-utils': 1.162.2
       '@tanstack/virtual-file-routes': 1.162.0
       jiti: 2.7.0
       magic-string: 0.30.21
-      prettier: 3.9.4
+      prettier: 3.9.5
       zod: 4.4.3
     transitivePeerDependencies:
       - supports-color
 
-  '@tanstack/router-plugin@1.168.19(@tanstack/react-router@1.170.17(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@voidzero-dev/vite-plus-core@0.2.2(@types/node@26.1.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))':
+  '@tanstack/router-plugin@1.168.20(@tanstack/react-router@1.170.18(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@voidzero-dev/vite-plus-core@0.2.2(@types/node@26.1.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))':
     dependencies:
       '@babel/core': 7.29.0
       '@babel/template': 7.28.6
       '@babel/types': 7.29.0
-      '@tanstack/router-core': 1.171.14
-      '@tanstack/router-generator': 1.167.18
+      '@tanstack/router-core': 1.171.15
+      '@tanstack/router-generator': 1.167.19
       '@tanstack/router-utils': 1.162.2
       chokidar: 5.0.0
       unplugin: 3.0.0
       zod: 4.4.3
     optionalDependencies:
-      '@tanstack/react-router': 1.170.17(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@tanstack/react-router': 1.170.18(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       vite: '@voidzero-dev/vite-plus-core@0.2.2(@types/node@26.1.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0)'
     transitivePeerDependencies:
       - supports-color
@@ -6475,7 +6477,7 @@ snapshots:
       lightningcss: 1.32.0
       postcss-load-config: 6.0.1(jiti@2.7.0)(postcss@8.5.16)(yaml@2.9.0)
       rolldown: 1.1.4
-      tsdown: 0.22.3(@tsdown/css@0.22.3)(@typescript/native-preview@7.0.0-dev.20260429.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))
+      tsdown: 0.22.3(@tsdown/css@0.22.3)(@typescript/native-preview@7.0.0-dev.20260707.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))
     optionalDependencies:
       postcss: 8.5.16
     transitivePeerDependencies:
@@ -6677,36 +6679,36 @@ snapshots:
       '@typescript-eslint/types': 8.59.3
       eslint-visitor-keys: 5.0.1
 
-  '@typescript/native-preview-darwin-arm64@7.0.0-dev.20260429.1':
+  '@typescript/native-preview-darwin-arm64@7.0.0-dev.20260707.2':
     optional: true
 
-  '@typescript/native-preview-darwin-x64@7.0.0-dev.20260429.1':
+  '@typescript/native-preview-darwin-x64@7.0.0-dev.20260707.2':
     optional: true
 
-  '@typescript/native-preview-linux-arm64@7.0.0-dev.20260429.1':
+  '@typescript/native-preview-linux-arm64@7.0.0-dev.20260707.2':
     optional: true
 
-  '@typescript/native-preview-linux-arm@7.0.0-dev.20260429.1':
+  '@typescript/native-preview-linux-arm@7.0.0-dev.20260707.2':
     optional: true
 
-  '@typescript/native-preview-linux-x64@7.0.0-dev.20260429.1':
+  '@typescript/native-preview-linux-x64@7.0.0-dev.20260707.2':
     optional: true
 
-  '@typescript/native-preview-win32-arm64@7.0.0-dev.20260429.1':
+  '@typescript/native-preview-win32-arm64@7.0.0-dev.20260707.2':
     optional: true
 
-  '@typescript/native-preview-win32-x64@7.0.0-dev.20260429.1':
+  '@typescript/native-preview-win32-x64@7.0.0-dev.20260707.2':
     optional: true
 
-  '@typescript/native-preview@7.0.0-dev.20260429.1':
+  '@typescript/native-preview@7.0.0-dev.20260707.2':
     optionalDependencies:
-      '@typescript/native-preview-darwin-arm64': 7.0.0-dev.20260429.1
-      '@typescript/native-preview-darwin-x64': 7.0.0-dev.20260429.1
-      '@typescript/native-preview-linux-arm': 7.0.0-dev.20260429.1
-      '@typescript/native-preview-linux-arm64': 7.0.0-dev.20260429.1
-      '@typescript/native-preview-linux-x64': 7.0.0-dev.20260429.1
-      '@typescript/native-preview-win32-arm64': 7.0.0-dev.20260429.1
-      '@typescript/native-preview-win32-x64': 7.0.0-dev.20260429.1
+      '@typescript/native-preview-darwin-arm64': 7.0.0-dev.20260707.2
+      '@typescript/native-preview-darwin-x64': 7.0.0-dev.20260707.2
+      '@typescript/native-preview-linux-arm': 7.0.0-dev.20260707.2
+      '@typescript/native-preview-linux-arm64': 7.0.0-dev.20260707.2
+      '@typescript/native-preview-linux-x64': 7.0.0-dev.20260707.2
+      '@typescript/native-preview-win32-arm64': 7.0.0-dev.20260707.2
+      '@typescript/native-preview-win32-x64': 7.0.0-dev.20260707.2
 
   '@vitejs/plugin-react@6.0.3(@voidzero-dev/vite-plus-core@0.2.2(@types/node@26.1.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))':
     dependencies:
@@ -7776,8 +7778,8 @@ snapshots:
       effect: 3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
       immutable-json-patch: 6.0.2
       openapi-types: 12.1.3
-      prettier: 3.9.4
-      prettier-plugin-jsdoc: 1.8.1(prettier@3.9.4)
+      prettier: 3.9.5
+      prettier-plugin-jsdoc: 1.8.1(prettier@3.9.5)
       ts-dedent: 2.3.0
     transitivePeerDependencies:
       - supports-color
@@ -7964,16 +7966,16 @@ snapshots:
 
   prelude-ls@1.2.1: {}
 
-  prettier-plugin-jsdoc@1.8.1(prettier@3.9.4):
+  prettier-plugin-jsdoc@1.8.1(prettier@3.9.5):
     dependencies:
       binary-searching: 2.0.5
       comment-parser: 1.4.7
       mdast-util-from-markdown: 2.0.3
-      prettier: 3.9.4
+      prettier: 3.9.5
     transitivePeerDependencies:
       - supports-color
 
-  prettier@3.9.4: {}
+  prettier@3.9.5: {}
 
   pretty-format@27.5.1:
     dependencies:
@@ -8022,7 +8024,7 @@ snapshots:
 
   reusify@1.1.0: {}
 
-  rolldown-plugin-dts@0.26.0(@typescript/native-preview@7.0.0-dev.20260429.1)(rolldown@1.1.4)(typescript@5.9.3):
+  rolldown-plugin-dts@0.26.0(@typescript/native-preview@7.0.0-dev.20260707.2)(rolldown@1.1.4)(typescript@5.9.3):
     dependencies:
       '@babel/generator': 8.0.0
       '@babel/helper-validator-identifier': 8.0.2
@@ -8034,7 +8036,7 @@ snapshots:
       obug: 2.1.3
       rolldown: 1.1.4
     optionalDependencies:
-      '@typescript/native-preview': 7.0.0-dev.20260429.1
+      '@typescript/native-preview': 7.0.0-dev.20260707.2
       typescript: 5.9.3
     transitivePeerDependencies:
       - oxc-resolver
@@ -8254,7 +8256,7 @@ snapshots:
 
   ts-dedent@2.3.0: {}
 
-  tsdown@0.22.3(@tsdown/css@0.22.3)(@typescript/native-preview@7.0.0-dev.20260429.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12)):
+  tsdown@0.22.3(@tsdown/css@0.22.3)(@typescript/native-preview@7.0.0-dev.20260707.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12)):
     dependencies:
       ansis: 4.3.1
       cac: 7.0.0
@@ -8265,7 +8267,7 @@ snapshots:
       obug: 2.1.3
       picomatch: 4.0.5
       rolldown: 1.1.4
-      rolldown-plugin-dts: 0.26.0(@typescript/native-preview@7.0.0-dev.20260429.1)(rolldown@1.1.4)(typescript@5.9.3)
+      rolldown-plugin-dts: 0.26.0(@typescript/native-preview@7.0.0-dev.20260707.2)(rolldown@1.1.4)(typescript@5.9.3)
       semver: 7.8.5
       tinyexec: 1.2.4
       tinyglobby: 0.2.17

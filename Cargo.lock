@@ -968,18 +968,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72f5acc6cb2ba439de613abc23857ec3d78374d8ed5ac84e9d11336e87da8649"
 
 [[package]]
-name = "byte-unit"
-version = "5.2.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4a813de7f2bbedb7dce265b64f1cf5908ebe4d56281ece8d847e98113788b9b0"
-dependencies = [
- "rust_decimal",
- "schemars 1.2.1",
- "serde",
- "utf8-width",
-]
-
-[[package]]
 name = "bytecheck"
 version = "0.6.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3107,9 +3095,9 @@ dependencies = [
 
 [[package]]
 name = "handlebars"
-version = "6.4.2"
+version = "6.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f26569a2763497b7bd3fbd19374b774ea6038c5293678771259cd534d49740ff"
+checksum = "4633d16a2350341713c379d6d06a4b9e1845329386026a49ce4fd09c2f3b16f6"
 dependencies = [
  "derive_builder",
  "log",
@@ -3336,9 +3324,9 @@ dependencies = [
 
 [[package]]
 name = "helios-rest"
-version = "0.2.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "41f0c257d63dc3b58c7a4471ff014292f9c15848cca1fcc969b1c80bace08425"
+checksum = "8d907af5fcb9c2c2de1d96a596af420506d0bf71aa6bb2bd8ecce42ae31ac471"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3544,9 +3532,9 @@ dependencies = [
 
 [[package]]
 name = "http-body-util"
-version = "0.1.3"
+version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b021d93e26becf5dc7e1b75b1bed1fd93124b374ceb73f43d4d4eafec896a64a"
+checksum = "e9f41fd6a08e4d4ec69df65976da761afd5ad5e58a9d4acb46bd1c953a9e3ff2"
 dependencies = [
  "bytes",
  "futures-core",
@@ -4356,9 +4344,6 @@ name = "log"
 version = "0.4.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad"
-dependencies = [
- "value-bag",
-]
 
 [[package]]
 name = "lru"
@@ -7677,12 +7662,11 @@ dependencies = [
 
 [[package]]
 name = "tauri-plugin-log"
-version = "2.8.0"
+version = "2.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7545bd67f070a4500432c826e2e0682146a1d6712aee22a2786490156b574d93"
+checksum = "6792296e6f389268016c77db21ebae1fc0568f2fccf88b1ec7e2ea71330afb4c"
 dependencies = [
  "android_logger",
- "byte-unit",
  "fern",
  "log",
  "objc2",
@@ -8607,12 +8591,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "utf8-width"
-version = "0.1.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "159a7cadce548703edd50d24069bc294c5415ecab0a480e0cd1ca06d112dc94a"
-
-[[package]]
 name = "utf8_iter"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8674,9 +8652,9 @@ dependencies = [
 
 [[package]]
 name = "uuid"
-version = "1.23.4"
+version = "1.23.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf80a72845275afea99e7f2b434723d3bc7e38470fcd1c7ed39a599c73319a53"
+checksum = "ea5fab0d6c3c01ae70085a09cb03d4c7a1d6314e2b3e075392783396d724ca0a"
 dependencies = [
  "getrandom 0.4.3",
  "js-sys",
@@ -8690,12 +8668,6 @@ name = "valuable"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65"
-
-[[package]]
-name = "value-bag"
-version = "1.12.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7ba6f5989077681266825251a52748b8c1d8a4ad098cc37e440103d0ea717fc0"
 
 [[package]]
 name = "vcpkg"
