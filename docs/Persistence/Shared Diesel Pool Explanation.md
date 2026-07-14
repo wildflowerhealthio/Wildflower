@@ -1,8 +1,8 @@
 # Shared Diesel Pool Explanation
 
 How the diesel-backed slices (today collector and tunnel) persist to the app's
-one SQLite database. Like [polymorphic rows](./Polymorphic%20Rows%20Explanation.md),
-this is a **convention, not a library**: the host builds a single connection pool
+one SQLite database. Like apps' [polymorphic rows](../Apps/Polymorphic%20Rows%20Explanation.md)
+storage shape, this is a **convention, not a library**: the host builds a single connection pool
 and hands it to each slice's store, and each store follows the same small shape by
 hand. The pool primitive itself lives in `persistence-rust`
 (`open_pool` / `DieselPool` in `persistence-rust/src/diesel_pool.rs`); this doc is
@@ -67,8 +67,9 @@ fresh one. A genuinely new table keeps plain `CREATE TABLE`.
   the pragmas, and the pool-cap rationale.
 - `persistence-rust/src/namespaced_migrations.rs` — `run_diesel_migrations` and
   why the stock diesel harness collides.
-- [Polymorphic Rows Explanation](./Polymorphic%20Rows%20Explanation.md) — the row
-  shape _within_ these tables, for records whose columns vary by kind.
+- [Polymorphic Rows Explanation](../Apps/Polymorphic%20Rows%20Explanation.md) —
+  apps' row shape for records whose columns vary by kind (one approach, contrasted
+  there with gatekeeper grants' table-per-kind).
 - The implementations: collector's `SqliteRemotesStore`
   (`collector-rust/src/db/remotes_store.rs`) and tunnel's `SqliteTunnelStore`
   (`tunnel-rust/src/db/tunnel_store.rs`).
