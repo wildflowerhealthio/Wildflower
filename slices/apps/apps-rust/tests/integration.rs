@@ -6,7 +6,10 @@
 
 use std::sync::Arc;
 
-use apps_rust::{setup_apps, Apps, AppsConfig, NoLaunchCookies, OwnerAuth, SelfHostedAppsService};
+use apps_rust::{
+    ports::{NoLaunchCookies, OwnerAuth, StubOwnerAuth},
+    setup_apps, Apps, AppsConfig, SelfHostedAppsService,
+};
 use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
 use serde_json::Value;
@@ -35,7 +38,7 @@ fn spin_up_with_handle() -> (Apps, Arc<RecordingStubWebviewHandle>) {
     // wiring; this allow-all owner is the sanctioned test use, so scope the
     // silence to exactly this construction rather than the whole crate.
     #[allow(deprecated)]
-    let owner_auth: Arc<dyn OwnerAuth> = Arc::new(apps_rust::StubOwnerAuth::always_allowed());
+    let owner_auth: Arc<dyn OwnerAuth> = Arc::new(StubOwnerAuth::always_allowed());
     let tunnel = Arc::new(OfflineTunnel::new("http://127.0.0.1:8080"));
     // A throwaway apps dir + fresh proxy table back the self-hosted service the
     // slice now takes; the integration tests here don't exercise upload/serve, so

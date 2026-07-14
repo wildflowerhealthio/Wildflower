@@ -15,7 +15,7 @@ use crate::domain::{actions, AppsError};
 use crate::http::errors::InvalidFieldBody;
 use crate::http::state::AppsState;
 use crate::http::wire_representations::CloudAppDetail;
-use crate::id::mint_app_id;
+use crate::id_utils::mint_app_id;
 
 /// `POST /cloud-apps` — create a cloud app. Owner-gated by the host.
 #[utoipa::path(

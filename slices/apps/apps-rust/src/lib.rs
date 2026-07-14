@@ -57,10 +57,10 @@ pub mod config;
 pub mod db;
 pub mod domain;
 pub mod http;
-mod id;
+mod id_utils;
 mod install;
 mod seed;
-mod self_hosted_apps;
+mod self_hosted_apps_service;
 
 use std::sync::Arc;
 
@@ -81,13 +81,15 @@ pub use db::SqliteAppsStore;
 // Re-exported so the host can name the self-hosted catalogue pair at the
 // `setup_apps` call site.
 pub use domain::{AppRegistration, SelfHostedAppConfiguration};
-pub use http::{openapi_spec, AppsState, LaunchCookies, NoLaunchCookies, OwnerAuth};
-// Re-exported for the integration test crate; `#[deprecated]` is intentional.
-#[allow(deprecated)]
-pub use http::StubOwnerAuth;
+pub use http::{openapi_spec, AppsState};
+
 pub use seed::sync_vendored_self_hosted_apps;
-pub use self_hosted_apps::SelfHostedAppsService;
+pub use self_hosted_apps_service::SelfHostedAppsService;
 pub use shared_structures_rust::OnDeviceWebviewHandle;
+
+pub mod ports;
+
+use ports::{LaunchCookies, OwnerAuth};
 
 /// Result of [`setup_apps`]: the two routers a host mounts (gated + launch),
 /// plus the shared state and the self-hosted catalogue.

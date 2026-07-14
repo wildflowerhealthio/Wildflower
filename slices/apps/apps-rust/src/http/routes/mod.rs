@@ -110,7 +110,7 @@ mod tests {
         state_with_sink, state_with_tunnel, state_with_tunnel_and_handle, tunnel_at,
         tunnel_unavailable, tunnel_with_public_host, RecordingLaunchCookies, SENTINEL_SET_COOKIE,
     };
-    use crate::http::LaunchCookies;
+    use crate::ports::LaunchCookies;
 
     /// The served router (state applied per-call). Spec half of
     /// `split_for_parts` is irrelevant in the handler tests.

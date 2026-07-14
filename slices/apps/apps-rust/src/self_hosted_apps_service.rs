@@ -31,8 +31,8 @@ use tower_http::cors::CorsLayer;
 use url::Url;
 
 use crate::domain::{AppsError, SelfHostedAppConfiguration, SelfHostedInstaller, StagedBundle};
-use crate::id::mint_app_id;
 use crate::install::{self, extract_zip_bundle, infer_launch_path};
+use crates::mint_app_id;
 
 /// Orchestrates the self-hosted apps' loopback listeners and reverse-proxy
 /// registrations. Constructed once by the host (held in scope for the process

@@ -22,7 +22,7 @@ import formStyles from './-forms.module.css'
  * not the per-kind detail. Presentational + prop-driven so it renders in tests
  * without a live router.
  */
-interface AppDetailShellProps {
+interface BaseAppDetailPageProps {
   readonly app: {
     readonly id: string
     readonly name: string
@@ -34,7 +34,7 @@ interface AppDetailShellProps {
   readonly children: ReactNode
 }
 
-const AppDetailShell = ({ app, onRemoved, children }: AppDetailShellProps): JSX.Element => {
+const BaseAppDetailPage = ({ app, onRemoved, children }: BaseAppDetailPageProps): JSX.Element => {
   const { data: apps } = useAppsListQuery()
   const homeScreenMutation = useReplaceHomeScreenMutation()
   const deleteMutation = useAppsAdminDeleteMutation()
@@ -108,4 +108,4 @@ const AppDetailShell = ({ app, onRemoved, children }: AppDetailShellProps): JSX.
   )
 }
 
-export { AppDetailShell }
+export { BaseAppDetailPage }

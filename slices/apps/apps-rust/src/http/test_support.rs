@@ -19,10 +19,9 @@ use shared_structures_server_rust::ProxyTable;
 use url::Url;
 
 use crate::db::SqliteAppsStore;
-use crate::http::ports::launch_cookies::{LaunchCookies, NoLaunchCookies};
-use crate::http::ports::owner_auth::{OwnerAuth, StubOwnerAuth};
 use crate::http::state::AppsState;
-use crate::self_hosted_apps::SelfHostedAppsService;
+use crate::ports::{LaunchCookies, NoLaunchCookies, OwnerAuth, StubOwnerAuth};
+use crate::self_hosted_apps_service::SelfHostedAppsService;
 use crate::OnDeviceWebviewHandle;
 
 /// The loopback base URL clients reach when the tunnel is down. Its origin

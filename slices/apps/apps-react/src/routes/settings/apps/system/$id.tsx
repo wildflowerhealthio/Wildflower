@@ -2,20 +2,20 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import type { JSX } from 'react'
 import { AsyncErrorView } from 'react-tundraish'
 
-import { AppDetailShell } from '../-detail-shell.tsx'
+import { BaseAppDetailPage } from '../-base-app-detail-page.tsx'
 import { systemAppQueryOptions, useSystemAppQuery } from '../../../../queries.ts'
 
 /**
  * `/settings/apps/system/$id` — the read-only system app detail page. Reads the
  * system detail (`GET /system-apps/:id`) and renders the shared
- * {@link AppDetailShell} (a system app is never removable, so no delete) around a
+ * {@link BaseAppDetailPage} (a system app is never removable, so no delete) around a
  * short read-only note.
  */
 const SystemAppDetailScreen = ({ id }: { readonly id: string }): JSX.Element => {
   const navigate = useNavigate()
   const { data: app } = useSystemAppQuery(id)
   return (
-    <AppDetailShell
+    <BaseAppDetailPage
       app={{ id: app.id, name: app.name, removable: false }}
       onRemoved={() => {
         void navigate({ to: '/settings/apps' })
@@ -24,7 +24,7 @@ const SystemAppDetailScreen = ({ id }: { readonly id: string }): JSX.Element => 
       <p className="text-body-3">
         {app.name} is a System app built into Wildflower. Its settings aren't editable.
       </p>
-    </AppDetailShell>
+    </BaseAppDetailPage>
   )
 }
 

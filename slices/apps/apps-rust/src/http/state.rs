@@ -9,9 +9,8 @@ use shared_structures_rust::tunnel_service::TunnelService;
 use url::Url;
 
 use crate::db::SqliteAppsStore;
-use crate::http::ports::launch_cookies::LaunchCookies;
-use crate::http::ports::owner_auth::OwnerAuth;
-use crate::self_hosted_apps::SelfHostedAppsService;
+use crate::ports::{LaunchCookies, OwnerAuth};
+use crate::self_hosted_apps_service::SelfHostedAppsService;
 use crate::OnDeviceWebviewHandle;
 
 /// Shared state threaded through the apps handlers. Holds the **concrete**

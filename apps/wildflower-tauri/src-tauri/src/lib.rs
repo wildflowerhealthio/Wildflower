@@ -4,7 +4,10 @@ mod spa;
 mod tunnel_adapters;
 
 use anyhow::Context;
-use apps_rust::{setup_apps, AppsConfig, LaunchCookies, OwnerAuth, SelfHostedAppsService};
+use apps_rust::{
+    ports::{LaunchCookies, OwnerAuth},
+    setup_apps, AppsConfig, SelfHostedAppsService,
+};
 use axum::Router;
 use emr_rust::{setup_fhir_r4, EmrConfig};
 use gatekeeper_rust::{

@@ -2,21 +2,21 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import type { JSX } from 'react'
 import { AsyncErrorView } from 'react-tundraish'
 
-import { AppDetailShell } from '../-detail-shell.tsx'
+import { BaseAppDetailPage } from '../-base-app-detail-page.tsx'
 import { SelfHostedLaunchPathEditor } from '../-forms.tsx'
 import { selfHostedAppQueryOptions, useSelfHostedAppQuery } from '../../../../queries.ts'
 
 /**
  * `/settings/apps/self-hosted/$id` — the self-hosted app detail page. Reads the
  * self-hosted detail (`GET /self-hosted-apps/:id`), and renders the shared
- * {@link AppDetailShell} around either the {@link SelfHostedLaunchPathEditor}
+ * {@link BaseAppDetailPage} around either the {@link SelfHostedLaunchPathEditor}
  * (uploaded, `removable`) or a short read-only note (a seeded, protected app).
  */
 const SelfHostedAppDetailScreen = ({ id }: { readonly id: string }): JSX.Element => {
   const navigate = useNavigate()
   const { data: app } = useSelfHostedAppQuery(id)
   return (
-    <AppDetailShell
+    <BaseAppDetailPage
       app={{ id: app.id, name: app.name, removable: app.isRemovable }}
       onRemoved={() => {
         void navigate({ to: '/settings/apps' })
@@ -29,7 +29,7 @@ const SelfHostedAppDetailScreen = ({ id }: { readonly id: string }): JSX.Element
           {app.name} is a built-in Self-Hosted app. Its settings aren't editable.
         </p>
       )}
-    </AppDetailShell>
+    </BaseAppDetailPage>
   )
 }
 
