@@ -42,7 +42,7 @@ The slice follows the same ports-and-adapters shape as `collector-rust` and
   holds the write-side field validation, and gates the delete removability policy.
   It is a folder split one file per kind (`cloud_apps.rs` / `self_hosted_apps.rs` /
   `system_apps.rs`, the cross-kind `all_kinds_apps.rs`, and the registration-wide
-  `app_registration.rs`) so each kind's input struct (e.g. `CloudAppContent`) and
+  `app_registration.rs`) so each kind's input struct (e.g. `CloudAppPayload`) and
   validation live together. The HTTP handlers build the action's input struct and
   call `actions::…(&state.store, …)`, never the store directly, and stay a straight
   `?`. The actions are unit-tested against an in-memory `FakeAppsStore`
@@ -69,11 +69,13 @@ in `system_app_configurations.url`, not a compiled-in `SYSTEM_APPS` const.
 
 Reads are **typed diesel queries against real tables** (no `apps_view`, no
 `UNION`-with-NULLs decode): the uniform catalogue is a join-free
-`app_registrations ORDER BY position` into `AppRegistration`s; a detail read fetches
-the registration then the one configuration its `kind` names, returning the
-`(registration, configuration)` pair (the configuration as the `AppConfiguration`
-union when the kind is runtime-resolved); the host-listener list is a typed inner
-join `self_hosted_app_configurations ⋈ app_registrations`. `is_smart` is derived on
+`app_registrations ORDER BY position` into `AppRegistration`s; a detail read is a
+**single atomic left join** across the three configuration tables (`find_app_on`),
+returning the `(registration, configuration)` pair (the configuration as the
+`AppConfiguration` union when the kind is runtime-resolved) from one snapshot — so a
+concurrent delete can't land between a registration read and a separate configuration
+read and turn a benign 404 into a false corrupt-registry 500; the host-listener list
+is a typed inner join `self_hosted_app_configurations ⋈ app_registrations`. `is_smart` is derived on
 the registration (from `client_id`) and `is_removable` via the `CommonAppConfig`
 trait, not stored. There is no combined "app" type — the launch/delete seams in the
 HTTP layer operate on the `(registration, configuration)` pair directly.
@@ -90,24 +92,33 @@ is the enforcement point; handlers don't re-check it per call site.
 Three invariants let handlers avoid re-reading and re-validating around the
 store:
 
-1. **In-transaction read-back.** Every create / replace re-reads the hydrated
-   `(registration, configuration)` pair _inside the same transaction that wrote
-   it_ and returns it. So a handler's response is exactly the per-kind detail
-   projection with no second read, and cannot drift from stored state.
-2. **In-transaction allocation.** Everything the store allocates — the display
-   `position` (`MAX(position) + 1`), the loopback port — is computed _inside_ the
-   writing transaction, so two overlapping creates can't read the same value and
-   collide. `UNIQUE(position)` backstops it regardless. The self-hosted id /
-   subdomain are _not_ allocated: they are the caller-built `registration.id` used
-   verbatim, and a clash is rejected `400 InvalidName` (checked in the same
-   transaction). The
-   port-allocation _logic_ is pure and lives in the domain (`lowest_free_port`), fed
-   the taken port set the store reads in that same transaction — database-free and
-   unit-tested, while the read-then-write stays atomic in the store.
+1. **`RETURNING` on the writing statements.** Every create / replace hands back the
+   hydrated `(registration, configuration)` pair via `RETURNING` on the two statements
+   that wrote it (the registration + the payload), assembled in code — no separate
+   read-back. So a handler's response is exactly the per-kind detail projection with no
+   second read, cannot drift from stored state, and still re-decodes the stored `url` /
+   `port` through the same column codecs (a value that no longer round-trips surfaces
+   as a typed error).
+2. **`IMMEDIATE` in-transaction allocation.** Everything the store allocates — the
+   display `position` (`MAX(position) + 1`), the loopback port — is computed _inside_
+   the writing transaction. A mutator whose first act is an allocation _read_
+   (`insert_cloud_app`, `insert_self_hosted_app`, `replace_placements`) runs under
+   `BEGIN IMMEDIATE` so the write lock is taken up front: a concurrent create then
+   waits on `busy_timeout` and re-reads a fresh value rather than reading the same
+   `MAX`/lowest-free and racing to a `SQLITE_BUSY` or `UNIQUE` violation (SQLite denies
+   a lock _upgrade_ immediately, without honoring `busy_timeout`). A content replace
+   whose first act is a write stays on the default `DEFERRED` — its write lock is
+   already taken before anything it reads. `UNIQUE(position)` / `UNIQUE(port)` backstop
+   regardless. The self-hosted id / subdomain are _not_ allocated: they are the
+   caller-built `registration.id` used verbatim, and a clash is rejected `400
+   InvalidName` (checked in the same transaction). The port-allocation _logic_ is pure
+   and lives in the domain (`lowest_free_port`), fed the taken port set the store reads
+   in that same transaction — database-free and unit-tested, while the read-then-write
+   stays atomic in the store.
 3. **Single writer of order + placement.** `position` and `on_homescreen` are
    written only by `replace_placements` (`PUT /home-screen`); a content replace
    never touches `on_homescreen`. It validates the body is an exact permutation of the live
-   registry _in the same transaction_ as the renumber (closing the
+   registry _in the same `IMMEDIATE` transaction_ as the renumber (closing the
    check-then-write race), and moves every row to a disjoint negative range
    before renumbering so the per-row updates never transiently violate
    `UNIQUE(position)` (SQLite's UNIQUE is immediate, not deferrable).
@@ -118,11 +129,12 @@ lives in the `domain/actions/` folder — the per-kind `replace_cloud_app` /
 configuration)` pair a read hands back, then synthesize the edited pair the store
 persists: a wrong-kind (or unknown) id is a **404** (the mismatch can no longer be
 expressed as a `409`), a seeded self-hosted app is `409`, before any field is
-validated. `delete`'s kind dispatch is split across the handler because
-it interleaves filesystem teardown (stop the listener, remove files) around the
-store delete. The store's SQL only guards its own invariants (e.g. a cloud content
-replace updates `cloud_app_configurations` by id, so a non-cloud id matches no row and is a
-no-op).
+validated. `delete_app` owns the whole removal — the gate _and_ the self-hosted
+filesystem teardown, which it brackets around the store delete over the
+`SelfHostedInstaller` port (stop the listener before the row's id is freed, discard the
+serving folder after) — so its HTTP handler is a straight `?`. The store's SQL only
+guards its own invariants (e.g. a cloud content replace updates
+`cloud_app_configurations` by id, so a non-cloud id matches no row and is a no-op).
 
 ## The self-hosted upload pipeline
 

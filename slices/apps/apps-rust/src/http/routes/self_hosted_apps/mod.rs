@@ -3,7 +3,7 @@
 //! (`GET /self-hosted-apps/{id}`), `create` (`POST /self-hosted-apps`, the
 //! multipart upload/install pipeline), `update` (`PUT /self-hosted-apps/{id}`, the
 //! `launchPath`), all returning the
-//! [`SelfHostedAppDetail`](crate::domain::SelfHostedAppDetail) shape. A path given
+//! [`SelfHostedAppDetail`](crate::http::wire_representations::SelfHostedAppDetail) shape. A path given
 //! an id that isn't a self-hosted app is a `404`; a seeded app's edit is a `409`.
 
 pub(crate) mod create;

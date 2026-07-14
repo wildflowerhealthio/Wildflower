@@ -17,11 +17,10 @@ diesel::table! {
     }
 }
 
-// This configuration's PK is a FK into `app_registrations`, so a system payload row
-// can be joined to its registration; the pair is allowed in one query so this file's
-// reads can reference both tables.
+// This configuration's PK is a FK into `app_registrations`, so it joins to its
+// registration on `id` — the cross-kind `find_app_on` left-joins it there. The
+// four-way `allow_tables_to_appear_in_same_query!` lives in `all_kinds_apps`.
 diesel::joinable!(system_app_configurations -> app_registrations (id));
-diesel::allow_tables_to_appear_in_same_query!(app_registrations, system_app_configurations);
 
 /// The `system_app_configurations` payload — a compiled-shell route's
 /// `{origin}`-relative launch template. `id` is the FK into `app_registrations`;

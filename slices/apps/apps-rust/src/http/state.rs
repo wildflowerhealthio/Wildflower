@@ -39,10 +39,10 @@ pub struct AppsState {
     /// popup supplies a no-op handle (only forwarded callers reach such a host,
     /// so it's never invoked).
     pub(crate) on_device_webview_handle: Arc<dyn OnDeviceWebviewHandle>,
-    /// The self-hosted lifecycle orchestrator, shared with the host (it holds
-    /// the same `Arc`). The upload handler stages bundles under its
-    /// [`apps_dir`](SelfHostedAppsService::apps_dir) and `start`s a freshly
-    /// installed app; the delete handler `stop`s a removed one.
+    /// The self-hosted lifecycle orchestrator, shared with the host (it holds the same
+    /// `Arc`). It is the native [`SelfHostedInstaller`](crate::domain::SelfHostedInstaller)
+    /// the install and delete actions drive: stage + start on an upload, stop + discard
+    /// on a delete.
     pub(crate) self_hosted: Arc<SelfHostedAppsService>,
     /// Re-scopes the caller's owner session onto a **forwarded self-hosted** app's
     /// public host (see [`LaunchCookies`]). The host wires the gatekeeper cookie

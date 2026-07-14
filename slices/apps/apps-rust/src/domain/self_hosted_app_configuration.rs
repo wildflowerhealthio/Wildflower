@@ -9,10 +9,17 @@
 //! Rows come from two sources: the migration seed (`seeded = true`, protected from
 //! delete/edit) and runtime uploads (`seeded = false`, removable) — the
 //! [`CommonAppConfig`] impl. The launch URL is rendered on demand via
-//! [`launch_url`](Self::launch_url) / [`subdomain_url`](Self::subdomain_url) /
-//! [`render_launch`](Self::render_launch). The editor wire shape
+//! [`local_launch_url`](SelfHostedAppConfiguration::local_launch_url) /
+//! [`subdomain_url`](SelfHostedAppConfiguration::subdomain_url) /
+//! [`render_launch`](SelfHostedAppConfiguration::render_launch).
+//! The editor wire shape
 //! ([`SelfHostedAppDetail`](crate::http::wire_representations::SelfHostedAppDetail))
 //! is built from the pair at the HTTP seam.
+//!
+//! A create supplies only the caller-known config fields as a
+//! [`CreateSelfHostedAppConfigurationPayload`]; the store allocates the loopback
+//! `port` and always writes `seeded = false`, then hands back the full
+//! configuration.
 //!
 //! The self-hosted insert maps its own failures onto [`AppsError`](super::AppsError)
 //! directly — a taken id is a `400 InvalidName`, an exhausted port space a `500` —
@@ -79,11 +86,13 @@ impl CommonAppConfig for SelfHostedAppConfiguration {
 }
 
 impl SelfHostedAppConfiguration {
-    /// Render the loopback launch target `http://{host}:{port}/`. `host` is the
-    /// loopback hostname the host binds on. The path is the bare root: each
-    /// self-hosted app gets its own origin and is served from `/` on it.
+    /// Render the loopback launch target `http://{host}:{port}/` — the local
+    /// (device) origin, distinct from the `https://…` forwarded
+    /// [`subdomain_url`](Self::subdomain_url). `host` is the loopback hostname the
+    /// host binds on. The path is the bare root: each self-hosted app gets its own
+    /// origin and is served from `/` on it.
     #[must_use]
-    pub fn launch_url(&self, host: &str) -> String {
+    pub fn local_launch_url(&self, host: &str) -> String {
         format!("http://{host}:{port}/", host = host, port = self.port)
     }
 
@@ -101,7 +110,7 @@ impl SelfHostedAppConfiguration {
     /// Render the concrete launch target for a request.
     ///
     /// `app_base` is this app's own launch origin *with* trailing slash (the
-    /// loopback [`Self::launch_url`] or the [`Self::subdomain_url`] the handler
+    /// loopback [`Self::local_launch_url`] or the [`Self::subdomain_url`] the handler
     /// resolves from the request). `served_origin` substitutes `{origin}` — the
     /// FHIR `iss` target, a *different* origin from `app_base` — and `launch_nonce`
     /// substitutes `{launch}`. With no [`Self::launch_path`] the target is the bare
@@ -118,6 +127,32 @@ impl SelfHostedAppConfiguration {
             .replace("{origin}", served_origin)
             .replace("{launch}", launch_nonce)
     }
+}
+
+/// The caller-supplied half of a self-hosted write — the
+/// `self_hosted_app_configurations` fields an insert / content replace provides, minus
+/// what the store owns (the loopback `port`, allocated in-txn; `seeded`, always
+/// `false` for an upload; `position`, on the paired registration). Paired with an
+/// [`AppRegistration`](super::AppRegistration) it is the registration + payload split
+/// the store's [`insert_self_hosted_app`](super::AppsStore::insert_self_hosted_app)
+/// and [`replace_self_hosted_app`](super::AppsStore::replace_self_hosted_app) both
+/// speak, rather than a full configuration carrying store-owned placeholders.
+///
+/// **Insert** uses every field (id verbatim, `port` / `position` allocated, `seeded =
+/// false`). **Replace** writes only [`launch_path`](Self::launch_path) — the
+/// `content_folder` / `subdomain` are fixed at install and ignored on a replace, so a
+/// caller fills them from the current configuration.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SelfHostedAppConfigurationPayload {
+    /// The on-disk subdirectory the staged bundle was moved into (under the host's
+    /// `self-hosted-apps/` dir). Set at install; ignored on a replace.
+    pub content_folder: String,
+    /// The public subdomain label this app is reachable at remotely — the app's
+    /// slug, equal to its id. Set at install; ignored on a replace.
+    pub subdomain: String,
+    /// The inferred origin-relative SMART launch path, or `None` for a root-served
+    /// (`index.html`) bundle. The one field a content replace edits.
+    pub launch_path: Option<String>,
 }
 
 #[cfg(test)]
@@ -139,7 +174,7 @@ mod tests {
     #[test]
     fn render_launch_without_template_is_the_bare_origin() {
         let config = configuration(None, false);
-        let base = config.launch_url("127.0.0.1");
+        let base = config.local_launch_url("127.0.0.1");
         assert_eq!(
             config.render_launch(&base, "http://127.0.0.1:8080", "NONCE"),
             "http://127.0.0.1:8082/",
@@ -155,7 +190,7 @@ mod tests {
             Some("/launch.html?launch={launch}&iss={origin}/fhir-r4"),
             false,
         );
-        let base = config.launch_url("127.0.0.1");
+        let base = config.local_launch_url("127.0.0.1");
         assert_eq!(
             config.render_launch(&base, "http://127.0.0.1:8080", "NONCE"),
             "http://127.0.0.1:8082/launch.html?launch=NONCE&iss=http://127.0.0.1:8080/fhir-r4",

@@ -11,8 +11,9 @@ use std::cell::RefCell;
 
 use super::cloud_apps::{create_cloud_app, CloudAppPayload};
 use crate::domain::{
-    AppConfiguration, AppKind, AppRegistration, AppUrl, AppsError, AppsStore,
-    CloudAppConfiguration, CloudInsertError, SelfHostedAppConfiguration, SystemAppConfiguration,
+    is_exact_registry_permutation, AppConfiguration, AppKind, AppRegistration, AppUrl, AppsError,
+    AppsStore, CloudAppConfiguration, CloudInsertError, SelfHostedAppConfiguration,
+    SelfHostedAppConfigurationPayload, SelfHostedInstaller, StagedBundle, SystemAppConfiguration,
 };
 
 #[derive(Default)]
@@ -89,7 +90,7 @@ impl AppsStore for FakeAppsStore {
     fn insert_self_hosted_app(
         &self,
         registration: &AppRegistration,
-        config: &SelfHostedAppConfiguration,
+        payload: &SelfHostedAppConfigurationPayload,
         reserved_ports: &[u16],
     ) -> Result<(AppRegistration, SelfHostedAppConfiguration), AppsError> {
         // The id is used verbatim; a clash is a client-fixable `400 InvalidName` —
@@ -100,7 +101,7 @@ impl AppsStore for FakeAppsStore {
             });
         }
         // The store owns `position` (tail) and `port` (lowest-free, skipping the
-        // reserved set); every other field on the caller's pair is used as given.
+        // reserved set) and writes `seeded = false`; the payload supplies the rest.
         let mut port = 8082 + u16::try_from(self.apps.borrow().len()).unwrap_or(0);
         while reserved_ports.contains(&port) {
             port += 1;
@@ -111,7 +112,10 @@ impl AppsStore for FakeAppsStore {
         };
         let stored_config = SelfHostedAppConfiguration {
             port,
-            ..config.clone()
+            content_folder: payload.content_folder.clone(),
+            subdomain: payload.subdomain.clone(),
+            seeded: false,
+            launch_path: payload.launch_path.clone(),
         };
         self.seed(
             stored_reg.clone(),
@@ -145,7 +149,7 @@ impl AppsStore for FakeAppsStore {
     fn replace_self_hosted_app(
         &self,
         registration: &AppRegistration,
-        config: &SelfHostedAppConfiguration,
+        payload: &SelfHostedAppConfigurationPayload,
     ) -> Result<Option<(AppRegistration, SelfHostedAppConfiguration)>, AppsError> {
         let mut apps = self.apps.borrow_mut();
         let Some((stored_reg, configuration)) =
@@ -156,9 +160,11 @@ impl AppsStore for FakeAppsStore {
         let AppConfiguration::SelfHosted(stored_config) = configuration else {
             return Ok(None);
         };
+        // Only `launch_path` is written; the payload's immutable `content_folder` /
+        // `subdomain` are ignored, mirroring the real store.
         stored_reg.name = registration.name.clone();
         stored_reg.subtitle = registration.subtitle.clone();
-        stored_config.launch_path = config.launch_path.clone();
+        stored_config.launch_path = payload.launch_path.clone();
         Ok(Some((stored_reg.clone(), stored_config.clone())))
     }
 
@@ -174,14 +180,12 @@ impl AppsStore for FakeAppsStore {
         entries: &[(String, bool)],
     ) -> Result<Option<Vec<AppRegistration>>, AppsError> {
         let mut apps = self.apps.borrow_mut();
+        // Reuse the real permutation rule (rather than re-deriving it) so this oracle
+        // can't drift from the production check.
         let current: std::collections::HashSet<String> =
             apps.iter().map(|(reg, _)| reg.id.clone()).collect();
-        let body: std::collections::HashSet<&str> =
-            entries.iter().map(|(id, _)| id.as_str()).collect();
-        let is_permutation = entries.len() == current.len()
-            && body.len() == entries.len()
-            && body.iter().all(|id| current.contains(*id));
-        if !is_permutation {
+        let body: Vec<&str> = entries.iter().map(|(id, _)| id.as_str()).collect();
+        if !is_exact_registry_permutation(&current, &body) {
             return Ok(None);
         }
         for (position, (id, on_homescreen)) in entries.iter().enumerate() {
@@ -252,4 +256,53 @@ pub(super) fn system(store: &FakeAppsStore, id: &str) {
             url: AppUrl::OriginRelative("/docs".to_owned()),
         }),
     );
+}
+
+/// The in-memory [`SelfHostedInstaller`] fake shared by the install and delete action
+/// tests. It stages a canned bundle and records the `discard` / `start_listener` /
+/// `stop_listener` calls it's driven with, so a test can assert both *which* platform
+/// work an action drove and (via the recorded order) that a delete stopped before it
+/// discarded.
+pub(super) struct FakeInstaller {
+    staged: StagedBundle,
+    pub(super) discarded: RefCell<Vec<String>>,
+    pub(super) started: RefCell<Vec<String>>,
+    pub(super) stopped: RefCell<Vec<String>>,
+}
+
+impl FakeInstaller {
+    pub(super) fn new(content_folder: &str) -> Self {
+        Self {
+            staged: StagedBundle {
+                content_folder: content_folder.to_owned(),
+                launch_path: Some("/launch.html".to_owned()),
+            },
+            discarded: RefCell::new(Vec::new()),
+            started: RefCell::new(Vec::new()),
+            stopped: RefCell::new(Vec::new()),
+        }
+    }
+}
+
+impl SelfHostedInstaller for FakeInstaller {
+    async fn stage(&self, _bundle: bytes::Bytes) -> Result<StagedBundle, AppsError> {
+        Ok(self.staged.clone())
+    }
+
+    fn discard(&self, content_folder: &str) {
+        self.discarded.borrow_mut().push(content_folder.to_owned());
+    }
+
+    async fn start_listener(
+        &self,
+        id: &str,
+        _config: &SelfHostedAppConfiguration,
+    ) -> Result<(), AppsError> {
+        self.started.borrow_mut().push(id.to_owned());
+        Ok(())
+    }
+
+    fn stop_listener(&self, id: &str) {
+        self.stopped.borrow_mut().push(id.to_owned());
+    }
 }

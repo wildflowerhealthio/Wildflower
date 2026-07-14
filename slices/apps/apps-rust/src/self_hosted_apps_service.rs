@@ -223,6 +223,14 @@ impl SelfHostedInstaller for SelfHostedAppsService {
             AppsError::infrastructure("installed self-hosted app failed to register", error)
         })
     }
+
+    fn stop_listener(&self, id: &str) {
+        // Best-effort: the row is about to be (or has just been) deleted, so a leftover
+        // listener is better tolerated-and-logged than allowed to fail the delete.
+        if let Err(error) = self.stop(id) {
+            tracing::warn!(%error, app = %id, "failed to stop an uploaded self-hosted app before delete");
+        }
+    }
 }
 
 /// Map an extraction failure to the wire error: a disk-write failure is our fault
@@ -412,7 +420,7 @@ mod tests {
     #[tokio::test]
     async fn uploaded_app_serves_after_insert_and_start() {
         use crate::db::SqliteAppsStore;
-        use crate::domain::{AppKind, AppRegistration, SelfHostedAppConfiguration};
+        use crate::domain::{AppKind, AppRegistration, SelfHostedAppConfigurationPayload};
         // The port trait is in scope so the adapter's `insert_self_hosted_app`
         // method resolves.
         use crate::domain::AppsStore;
@@ -429,15 +437,13 @@ mod tests {
             client_id: None,
             requires_tunnel: false,
         };
-        let config = SelfHostedAppConfiguration {
-            port: 0,
+        let create = SelfHostedAppConfigurationPayload {
             content_folder: "uploaded-app-folder".to_owned(),
             subdomain: "uploaded-app".to_owned(),
-            seeded: false,
             launch_path: None,
         };
         let inserted = store
-            .insert_self_hosted_app(&registration, &config, &[])
+            .insert_self_hosted_app(&registration, &create, &[])
             .expect("inserted");
         let (registration, mut config) = inserted;
         // Bind an OS-assigned free port rather than the store's deterministic

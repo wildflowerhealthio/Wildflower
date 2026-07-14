@@ -121,7 +121,10 @@ pub(super) fn replace_placements(
     conn: &mut PooledDieselConnection,
     entries: &[(String, bool)],
 ) -> Result<Option<Vec<AppRegistration>>, AppsError> {
-    conn.transaction(|conn| {
+    // IMMEDIATE so the permutation read and the renumber can't be split by a concurrent
+    // add/remove — see the transaction-discipline section of
+    // `docs/Apps/Store and Install Explanation.md`.
+    conn.immediate_transaction(|conn| {
         // Validate against the live registry under the same transaction as the
         // renumber: the body must be an exact permutation of the current ids. The
         // set logic is a pure domain function; here we only supply the two id sets.

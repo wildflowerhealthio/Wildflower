@@ -5,14 +5,17 @@
 //! wraps the zip extractor and the `SelfHostedAppsService`; a test fake records the
 //! calls.
 //!
-//! The action drives it in order: [`stage`](SelfHostedInstaller::stage) the uploaded
-//! bundle onto disk (extract + move into place) so a committed row always points at
-//! present files, then — after the store insert —
+//! The install action drives it in order: [`stage`](SelfHostedInstaller::stage) the
+//! uploaded bundle onto disk (extract + move into place) so a committed row always
+//! points at present files, then — after the store insert —
 //! [`start_listener`](SelfHostedInstaller::start_listener) brings the loopback
 //! listener online; if the insert fails after staging,
-//! [`discard`](SelfHostedInstaller::discard) unwinds the staged folder. The bundle
-//! rides in as a [`stage`](SelfHostedInstaller::stage) argument (not baked into the
-//! installer), so one installer instance serves every upload.
+//! [`discard`](SelfHostedInstaller::discard) unwinds the staged folder. The delete
+//! action drives the reverse: [`stop_listener`](SelfHostedInstaller::stop_listener)
+//! takes the app offline *before* the row is removed, then `discard` removes its
+//! serving folder *after*. The bundle rides in as a [`stage`](SelfHostedInstaller::stage)
+//! argument (not baked into the installer), so one installer instance serves every
+//! upload.
 
 use std::future::Future;
 
@@ -40,8 +43,9 @@ pub(crate) trait SelfHostedInstaller {
     /// points at present files. On failure nothing is left staged.
     fn stage(&self, bundle: Bytes) -> impl Future<Output = Result<StagedBundle, AppsError>>;
 
-    /// Best-effort removal of an already-staged serving folder — unwinds the files
-    /// when the row insert fails after staging.
+    /// Best-effort removal of a serving folder by `content_folder` — unwinds the files
+    /// when an install's row insert fails after staging, and removes a deleted app's
+    /// files after its row is gone.
     fn discard(&self, content_folder: &str);
 
     /// Bring the installed app's loopback listener online after the row commits.
@@ -50,4 +54,10 @@ pub(crate) trait SelfHostedInstaller {
         id: &str,
         config: &SelfHostedAppConfiguration,
     ) -> impl Future<Output = Result<(), AppsError>>;
+
+    /// Take the app's loopback listener + subdomain proxy offline — best-effort
+    /// teardown run *before* its row is deleted, so the freed id can't be reinstalled
+    /// onto a still-live listener. A failure (a poisoned lock) is the adapter's to log
+    /// and tolerate: leaving a stale listener is better than failing an accepted delete.
+    fn stop_listener(&self, id: &str);
 }

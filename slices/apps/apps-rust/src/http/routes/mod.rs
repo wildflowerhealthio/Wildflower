@@ -102,7 +102,7 @@ mod tests {
     // `insert_self_hosted_app` / `find_app` methods resolve in the fixtures.
     use crate::domain::{
         AppKind, AppRegistration, AppUrl, AppsStore, CloudAppConfiguration,
-        SelfHostedAppConfiguration,
+        SelfHostedAppConfigurationPayload,
     };
     use crate::http::state::AppsState;
     use crate::http::test_support::{
@@ -292,15 +292,13 @@ mod tests {
             client_id: None,
             requires_tunnel: false,
         };
-        let config = SelfHostedAppConfiguration {
-            port: 0,
+        let create = SelfHostedAppConfigurationPayload {
             content_folder: format!("{slug}-folder"),
             subdomain: slug.to_owned(),
-            seeded: false,
             launch_path: launch_path.map(str::to_owned),
         };
         store
-            .insert_self_hosted_app(&registration, &config, &[])
+            .insert_self_hosted_app(&registration, &create, &[])
             .expect("inserted");
     }
 

@@ -1,11 +1,14 @@
 //! The query bodies that resolve an app of **any** kind — the ones that import from
 //! the three per-kind files rather than owning a single kind. [`find_app_on`] reads a
-//! registration then the one configuration its `kind` names (composing the
-//! `(registration, configuration)` pair the launch / delete seams and every mutator's
-//! in-txn read-back use); [`delete_app`] removes a registration (its configuration
-//! cascades). `find_app_on` reads each configuration table by id (no join), so this
-//! file needs no `allow_tables_to_appear_in_same_query!` of its own — each kind file
-//! declares its config ⋈ registrations pair.
+//! registration and its one configuration in a **single atomic left join** across the
+//! three configuration tables (composing the `(registration, configuration)` pair the
+//! launch / delete seams use); [`delete_app`] removes a registration (its configuration
+//! cascades).
+//!
+//! Because that left join names all four tables in one query, this file owns the
+//! four-way `allow_tables_to_appear_in_same_query!` (the per-kind files keep only their
+//! `joinable!`) — one declaration, so the pairwise permissions exist without the
+//! duplicate impls three separate two-way declarations would produce.
 
 use diesel::prelude::*;
 use persistence_rust::PooledDieselConnection;
@@ -15,6 +18,13 @@ use super::cloud_apps::{cloud_app_configurations, CloudConfigurationRow};
 use super::self_hosted_apps::{self_hosted_app_configurations, SelfHostedConfigurationRow};
 use super::system_apps::{system_app_configurations, SystemConfigurationRow};
 use crate::domain::{AppConfiguration, AppKind, AppRegistration, AppsError};
+
+diesel::allow_tables_to_appear_in_same_query!(
+    app_registrations,
+    cloud_app_configurations,
+    self_hosted_app_configurations,
+    system_app_configurations,
+);
 
 /// The registration ⇒ configuration invariant SQLite can't enforce across tables: a
 /// registration says `kind` but the named configuration table has no row for its
@@ -27,54 +37,66 @@ fn missing_configuration(id: &str, kind: AppKind) -> AppsError {
     )
 }
 
+/// One row of the `find_app_on` left join: the registration plus the nullable
+/// configuration row of each kind — exactly one is `Some` for a consistent registry.
+type JoinedAppRow = (
+    AppRegistration,
+    Option<CloudConfigurationRow>,
+    Option<SelfHostedConfigurationRow>,
+    Option<SystemConfigurationRow>,
+);
+
 /// The single-app detail read against an arbitrary connection — the registration
 /// plus the one configuration its `kind` names, as a `(registration, configuration)`
-/// pair (the configuration as the [`AppConfiguration`] union). What every store
-/// mutator calls **on its own open transaction** to return the hydrated pair it just
-/// wrote, and what the launch / delete seams read. `Ok(None)` when no registration
-/// has this id; a registration whose configuration row is missing is a corrupt
-/// registry → [`missing_configuration`].
+/// pair (the configuration as the [`AppConfiguration`] union). What the launch /
+/// delete seams read. `Ok(None)` when no registration has this id; a registration
+/// whose configuration row is missing is a corrupt registry → [`missing_configuration`].
+///
+/// One statement: a left join to all three configuration tables. So a concurrent
+/// delete can't commit between a registration read and a separate configuration read
+/// and turn a benign 404 into a false corrupt-registry 500 — the whole pair comes
+/// from one atomic snapshot.
 pub(super) fn find_app_on(
     conn: &mut SqliteConnection,
     id: &str,
 ) -> Result<Option<(AppRegistration, AppConfiguration)>, AppsError> {
-    let Some(registration): Option<AppRegistration> = app_registrations::table
-        .find(id)
-        .select(AppRegistration::as_select())
-        .first(conn)
-        .optional()?
+    let Some((registration, cloud, self_hosted, system)): Option<JoinedAppRow> =
+        app_registrations::table
+            .left_join(cloud_app_configurations::table)
+            .left_join(self_hosted_app_configurations::table)
+            .left_join(system_app_configurations::table)
+            .filter(app_registrations::id.eq(id))
+            .select((
+                AppRegistration::as_select(),
+                Option::<CloudConfigurationRow>::as_select(),
+                Option::<SelfHostedConfigurationRow>::as_select(),
+                Option::<SystemConfigurationRow>::as_select(),
+            ))
+            .first(conn)
+            .optional()?
     else {
         return Ok(None);
     };
 
+    // Exactly one configuration is `Some` for a consistent registry — the one the
+    // registration's `kind` names. A missing match is the cross-table invariant SQLite
+    // can't enforce.
     let configuration = match registration.kind {
-        AppKind::System => {
-            let row: SystemConfigurationRow = system_app_configurations::table
-                .find(id)
-                .select(SystemConfigurationRow::as_select())
-                .first(conn)
-                .optional()?
-                .ok_or_else(|| missing_configuration(id, AppKind::System))?;
-            AppConfiguration::System(row.into())
-        }
-        AppKind::Cloud => {
-            let row: CloudConfigurationRow = cloud_app_configurations::table
-                .find(id)
-                .select(CloudConfigurationRow::as_select())
-                .first(conn)
-                .optional()?
-                .ok_or_else(|| missing_configuration(id, AppKind::Cloud))?;
-            AppConfiguration::Cloud(row.into())
-        }
-        AppKind::SelfHosted => {
-            let row: SelfHostedConfigurationRow = self_hosted_app_configurations::table
-                .find(id)
-                .select(SelfHostedConfigurationRow::as_select())
-                .first(conn)
-                .optional()?
-                .ok_or_else(|| missing_configuration(id, AppKind::SelfHosted))?;
-            AppConfiguration::SelfHosted(row.into())
-        }
+        AppKind::System => AppConfiguration::System(
+            system
+                .ok_or_else(|| missing_configuration(id, AppKind::System))?
+                .into(),
+        ),
+        AppKind::Cloud => AppConfiguration::Cloud(
+            cloud
+                .ok_or_else(|| missing_configuration(id, AppKind::Cloud))?
+                .into(),
+        ),
+        AppKind::SelfHosted => AppConfiguration::SelfHosted(
+            self_hosted
+                .ok_or_else(|| missing_configuration(id, AppKind::SelfHosted))?
+                .into(),
+        ),
     };
     Ok(Some((registration, configuration)))
 }

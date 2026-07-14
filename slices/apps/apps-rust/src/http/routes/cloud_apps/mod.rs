@@ -2,7 +2,7 @@
 //! `/apps` (which keeps only the uniform list + the unified launch/delete). One
 //! file per operation: `get` (`GET /cloud-apps/{id}`), `create`
 //! (`POST /cloud-apps`), `update` (`PUT /cloud-apps/{id}`), all returning the
-//! [`CloudAppDetail`](crate::domain::CloudAppDetail) shape. A JSON create body —
+//! [`CloudAppDetail`](crate::http::wire_representations::CloudAppDetail) shape. A JSON create body —
 //! no multipart, no `requiresTunnel`-as-text hack. A path given an id that isn't a
 //! cloud app is a `404` (the kind mismatch can't be expressed).
 

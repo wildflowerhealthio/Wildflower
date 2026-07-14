@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
 // `AppsHomeBody` reads its home-screen mutation from `queries.ts` and two
@@ -125,6 +125,61 @@ describe('<AppsHomeBody> edit mode', () => {
       { id: 'cloud-app', onHomescreen: false },
       { id: 'other-app', onHomescreen: true },
     ])
+  })
+})
+
+describe('<AppsHomeBody> live content', () => {
+  beforeEach(() => {
+    homeScreenStub.isError = false
+    homeScreenStub.error = null
+    homeScreenStub.mutate.mockClear()
+  })
+
+  afterEach(() => {
+    cleanup()
+  })
+
+  test('a background refetch that changes only content (same id/onHomescreen) updates the tile', () => {
+    // The resync key is id + onHomescreen, so a content-only refetch doesn't
+    // re-seed `order` — the bug was that tiles rendered off `order` and so
+    // stayed stale. Tile content now reads live from `apps`, so a same-instance
+    // rerender with an edited name/subtitle/pill must show through immediately.
+    const { rerender } = render(<AppsHomeBody apps={[cloudApp()]} />)
+    expect(screen.getByText('Cloud App')).toBeDefined()
+
+    rerender(
+      <AppsHomeBody
+        apps={[cloudApp({ name: 'Renamed App', subtitle: 'Fresh subtitle', requiresTunnel: true })]}
+      />
+    )
+
+    // Same id + onHomescreen ⇒ the resync effect stays put, yet the live name,
+    // subtitle, and the newly-required Tunnel pill all render.
+    expect(screen.queryByText('Cloud App')).toBeNull()
+    expect(screen.getByText('Renamed App')).toBeDefined()
+    expect(screen.getByText('Fresh subtitle')).toBeDefined()
+    expect(screen.getByText('Tunnel')).toBeDefined()
+  })
+
+  test('a content-only refetch preserves an optimistic reorder (order stays local, content stays live)', () => {
+    // A hide is optimistic on `order`; a content-only refetch must not clobber
+    // it. Hide the first tile, then rerender with an edited name for the second:
+    // the hidden tile stays gone (optimistic `order` survives) and the surviving
+    // tile shows its fresh name (content still comes from `apps`).
+    const first = cloudApp({ id: 'first-app', name: 'First App' })
+    const second = cloudApp({ id: 'second-app', name: 'Second App' })
+    const { rerender } = render(<AppsHomeBody apps={[first, second]} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit home screen' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Hide First App' }))
+
+    rerender(
+      <AppsHomeBody apps={[first, cloudApp({ id: 'second-app', name: 'Second Renamed' })]} />
+    )
+
+    const list = screen.getByRole('list')
+    expect(within(list).queryByText('First App')).toBeNull()
+    expect(within(list).getByText('Second Renamed')).toBeDefined()
   })
 })
 

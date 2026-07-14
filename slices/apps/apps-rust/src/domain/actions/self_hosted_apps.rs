@@ -3,19 +3,20 @@
 //!
 //! [`install_self_hosted_app`] owns the whole install: it derives the slug (the id /
 //! subdomain) from the name, drives the [`SelfHostedInstaller`] port to stage the
-//! uploaded bundle onto disk, synthesizes the `(registration, config)` pair (with the
-//! fixed self-hosted defaults), hands it to the store — which uses the id verbatim,
-//! allocates the `port` / `position`, and maps a taken id to `400 InvalidName` — and
-//! then starts the listener, unwinding the staged files if the insert fails. The HTTP
-//! handler only shapes the multipart body into a [`SelfHostedAppPayload`] + a native
-//! installer; all the sequencing / validation / synthesis lives here.
+//! uploaded bundle onto disk, synthesizes the registration + create payload (with the
+//! fixed self-hosted defaults), hands them to the store — which uses the id verbatim,
+//! allocates the `port` / `position`, writes `seeded = false`, and maps a taken id to
+//! `400 InvalidName` — and then starts the listener, unwinding the staged files if the
+//! insert fails. The HTTP handler only shapes the multipart body into a
+//! [`SelfHostedAppPayload`] + a native installer; all the sequencing / validation /
+//! synthesis lives here.
 
 use bytes::Bytes;
 
 use super::all_kinds_apps::get_app;
 use crate::domain::{
     AppConfiguration, AppKind, AppRegistration, AppsError, AppsStore, SelfHostedAppConfiguration,
-    SelfHostedInstaller,
+    SelfHostedAppConfigurationPayload, SelfHostedInstaller,
 };
 
 /// The raw data `POST /self-hosted-apps` hands the install action — the multipart
@@ -50,10 +51,10 @@ pub(crate) fn get_self_hosted_app(
 
 /// Install an uploaded self-hosted app end-to-end: derive the slug (id / subdomain)
 /// from the name, stage the bundle via the `installer` (extract → move into place),
-/// synthesize the `(registration, config)` pair with the fixed self-hosted defaults
-/// (`kind` / `on_homescreen` / `local_only` / non-seeded; `port` / `position` are
-/// placeholders the store allocates), insert it, and bring the listener online. A
-/// failed insert unwinds the staged files ([`discard`](SelfHostedInstaller::discard)).
+/// synthesize the registration + create payload with the fixed self-hosted defaults
+/// (`kind` / `on_homescreen` / `local_only`; `position` a placeholder, `port` and
+/// `seeded = false` the store's), insert it, and bring the listener online. A failed
+/// insert unwinds the staged files ([`discard`](SelfHostedInstaller::discard)).
 /// The store uses the id verbatim and maps a clash to [`InvalidName`](AppsError::InvalidName)
 /// (a name the caller can change), an exhausted port space to a logged
 /// [`Infrastructure`](AppsError::Infrastructure) `500`.
@@ -78,9 +79,9 @@ pub(crate) async fn install_self_hosted_app(
     // points at present files.
     let staged = installer.stage(payload.bundle).await?;
 
-    // Synthesize the pair the store persists — the slug is the id and subdomain,
-    // `position` / `port` are placeholders the store overrides, an upload is never
-    // seeded, and an empty subtitle clears to `None`.
+    // Synthesize the registration + create payload the store persists — the slug is the
+    // id and subdomain, `position` is a placeholder the store overrides, and an empty
+    // subtitle clears to `None`. The store owns `port` and writes `seeded = false`.
     let registration = AppRegistration {
         id: slug.clone(),
         kind: AppKind::SelfHosted,
@@ -92,20 +93,18 @@ pub(crate) async fn install_self_hosted_app(
         client_id: None,
         requires_tunnel: false,
     };
-    let config = SelfHostedAppConfiguration {
-        port: 0,
+    let create = SelfHostedAppConfigurationPayload {
         content_folder: staged.content_folder,
         subdomain: slug,
-        seeded: false,
         launch_path: staged.launch_path,
     };
 
     // Insert; unwind the just-staged files if the row can't be written.
     let (registration, config) =
-        match store.insert_self_hosted_app(&registration, &config, &payload.reserved_ports) {
+        match store.insert_self_hosted_app(&registration, &create, &payload.reserved_ports) {
             Ok(pair) => pair,
             Err(error) => {
-                installer.discard(&config.content_folder);
+                installer.discard(&create.content_folder);
                 return Err(error);
             }
         };
@@ -169,12 +168,15 @@ pub(crate) fn replace_self_hosted_app(
         _ => return Err(AppsError::NotFound { id: id.to_owned() }),
     };
     let launch_path = validate_launch_path(launch_path)?;
-    let edited = SelfHostedAppConfiguration {
+    // The store writes only `launch_path`; carry the immutable `content_folder` /
+    // `subdomain` from the current config to fill the shared payload.
+    let payload = SelfHostedAppConfigurationPayload {
+        content_folder: current_config.content_folder,
+        subdomain: current_config.subdomain,
         launch_path,
-        ..current_config
     };
     store
-        .replace_self_hosted_app(&current_registration, &edited)?
+        .replace_self_hosted_app(&current_registration, &payload)?
         .ok_or_else(|| {
             AppsError::infrastructure(
                 "self-hosted app vanished between find and replace",
@@ -199,59 +201,8 @@ fn validate_launch_path(value: Option<String>) -> Result<Option<String>, AppsErr
 
 #[cfg(test)]
 mod tests {
-    use std::cell::RefCell;
-
-    use super::super::test_fake::{create_cloud, seeded_self_hosted, FakeAppsStore};
+    use super::super::test_fake::{create_cloud, seeded_self_hosted, FakeAppsStore, FakeInstaller};
     use super::*;
-    use crate::domain::StagedBundle;
-
-    /// A test [`SelfHostedInstaller`] that stages a canned bundle (or fails on
-    /// demand) and records the `discard` / `start` calls.
-    struct FakeInstaller {
-        staged: StagedBundle,
-        stage_fails: bool,
-        discarded: RefCell<Vec<String>>,
-        started: RefCell<Vec<String>>,
-    }
-
-    impl FakeInstaller {
-        fn new(content_folder: &str) -> Self {
-            Self {
-                staged: StagedBundle {
-                    content_folder: content_folder.to_owned(),
-                    launch_path: Some("/launch.html".to_owned()),
-                },
-                stage_fails: false,
-                discarded: RefCell::new(Vec::new()),
-                started: RefCell::new(Vec::new()),
-            }
-        }
-    }
-
-    impl SelfHostedInstaller for FakeInstaller {
-        async fn stage(&self, _bundle: bytes::Bytes) -> Result<StagedBundle, AppsError> {
-            if self.stage_fails {
-                Err(AppsError::InvalidZip {
-                    message: "bad bundle".to_owned(),
-                })
-            } else {
-                Ok(self.staged.clone())
-            }
-        }
-
-        fn discard(&self, content_folder: &str) {
-            self.discarded.borrow_mut().push(content_folder.to_owned());
-        }
-
-        async fn start_listener(
-            &self,
-            id: &str,
-            _config: &SelfHostedAppConfiguration,
-        ) -> Result<(), AppsError> {
-            self.started.borrow_mut().push(id.to_owned());
-            Ok(())
-        }
-    }
 
     fn payload(name: &str) -> SelfHostedAppPayload {
         SelfHostedAppPayload {

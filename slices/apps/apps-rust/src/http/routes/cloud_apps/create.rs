@@ -2,7 +2,7 @@
 //! (`{name, subtitle?, url, requiresTunnel}`). The server mints the id (a 21-char
 //! nanoid). `url` is parsed through the write-side [`AppUrl`] filter so an open
 //! redirect never lands in the row; an empty name is `400 InvalidName`, a bad url
-//! `400 InvalidUrl`. Returns the created [`CloudAppDetail`], read back in-txn, so
+//! `400 InvalidUrl`. Returns the created [`CloudAppDetail`], hydrated via `RETURNING`, so
 //! the editor renders the tile without a re-list.
 
 use std::sync::Arc;
@@ -33,7 +33,7 @@ pub(crate) async fn handle_create_cloud_app(
     Json(body): Json<CloudAppBody>,
 ) -> Result<Json<CloudAppDetail>, AppsError> {
     // The handler transforms: it mints the id and maps its `CloudAppBody` onto the
-    // action's `CloudAppContent`; the action validates the fields, synthesizes the
+    // action's `CloudAppPayload`; the action validates the fields, synthesizes the
     // registration + configuration, inserts (mapping a server-minted id collision to
     // a logged 500), and reads the pair back in-txn — exactly the
     // `GET /cloud-apps/{id}` shape with no second read.

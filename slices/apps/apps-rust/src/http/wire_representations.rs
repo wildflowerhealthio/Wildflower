@@ -23,12 +23,14 @@ use crate::domain::{
     SelfHostedAppConfiguration, SystemAppConfiguration,
 };
 
-/// The `GET`/`POST`/`PUT /cloud-apps…` wire shape — the registration fields plus
-/// the stored `url` template and `isRemovable`. Built from the cloud
-/// `(registration, configuration)` pair.
+/// The registration fields every per-kind detail carries, `#[serde(flatten)]`ed into
+/// each wire shape so the eight shared fields — and their `From<&AppRegistration>`
+/// projection — are declared once rather than copied across the three detail structs.
+/// `isSmart` is derived from the host-only `client_id`; `position` never leaves the
+/// host.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct CloudAppDetail {
+pub(crate) struct RegistrationWire {
     pub id: String,
     pub kind: AppKind,
     pub on_homescreen: bool,
@@ -38,6 +40,31 @@ pub(crate) struct CloudAppDetail {
     pub local_only: bool,
     pub is_smart: bool,
     pub requires_tunnel: bool,
+}
+
+impl From<&AppRegistration> for RegistrationWire {
+    fn from(registration: &AppRegistration) -> Self {
+        Self {
+            id: registration.id.clone(),
+            kind: registration.kind,
+            on_homescreen: registration.on_homescreen,
+            name: registration.name.clone(),
+            subtitle: registration.subtitle.clone(),
+            local_only: registration.local_only,
+            is_smart: registration.is_smart(),
+            requires_tunnel: registration.requires_tunnel,
+        }
+    }
+}
+
+/// The `GET`/`POST`/`PUT /cloud-apps…` wire shape — the shared registration fields
+/// plus the stored `url` template and `isRemovable`. Built from the cloud
+/// `(registration, configuration)` pair.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CloudAppDetail {
+    #[serde(flatten)]
+    pub registration: RegistrationWire,
     /// The stored launch URL template (`{origin}` / `{launch}` tokens), serialized
     /// as its canonical string.
     #[schema(value_type = String)]
@@ -49,14 +76,7 @@ pub(crate) struct CloudAppDetail {
 impl From<(&AppRegistration, &CloudAppConfiguration)> for CloudAppDetail {
     fn from((registration, config): (&AppRegistration, &CloudAppConfiguration)) -> Self {
         Self {
-            id: registration.id.clone(),
-            kind: registration.kind,
-            on_homescreen: registration.on_homescreen,
-            name: registration.name.clone(),
-            subtitle: registration.subtitle.clone(),
-            local_only: registration.local_only,
-            is_smart: registration.is_smart(),
-            requires_tunnel: registration.requires_tunnel,
+            registration: registration.into(),
             url: config.url.clone(),
             is_removable: config.is_removable(),
         }
@@ -70,15 +90,8 @@ impl From<(&AppRegistration, &CloudAppConfiguration)> for CloudAppDetail {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SelfHostedAppDetail {
-    pub id: String,
-    pub kind: AppKind,
-    pub on_homescreen: bool,
-    pub name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub subtitle: Option<String>,
-    pub local_only: bool,
-    pub is_smart: bool,
-    pub requires_tunnel: bool,
+    #[serde(flatten)]
+    pub registration: RegistrationWire,
     /// The stored SMART launch path (origin-relative, with `{origin}` / `{launch}`
     /// tokens), or absent for a root-served (`index.html`) app.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -92,14 +105,7 @@ pub(crate) struct SelfHostedAppDetail {
 impl From<(&AppRegistration, &SelfHostedAppConfiguration)> for SelfHostedAppDetail {
     fn from((registration, config): (&AppRegistration, &SelfHostedAppConfiguration)) -> Self {
         Self {
-            id: registration.id.clone(),
-            kind: registration.kind,
-            on_homescreen: registration.on_homescreen,
-            name: registration.name.clone(),
-            subtitle: registration.subtitle.clone(),
-            local_only: registration.local_only,
-            is_smart: registration.is_smart(),
-            requires_tunnel: registration.requires_tunnel,
+            registration: registration.into(),
             launch_path: config.launch_path.clone(),
             seeded: config.seeded,
             is_removable: config.is_removable(),
@@ -113,15 +119,8 @@ impl From<(&AppRegistration, &SelfHostedAppConfiguration)> for SelfHostedAppDeta
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SystemAppDetail {
-    pub id: String,
-    pub kind: AppKind,
-    pub on_homescreen: bool,
-    pub name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub subtitle: Option<String>,
-    pub local_only: bool,
-    pub is_smart: bool,
-    pub requires_tunnel: bool,
+    #[serde(flatten)]
+    pub registration: RegistrationWire,
     /// The stored launch URL template (`{origin}` token), serialized as its
     /// canonical string. Display-only — a system app is never editable.
     #[schema(value_type = String)]
@@ -131,14 +130,7 @@ pub(crate) struct SystemAppDetail {
 impl From<(&AppRegistration, &SystemAppConfiguration)> for SystemAppDetail {
     fn from((registration, config): (&AppRegistration, &SystemAppConfiguration)) -> Self {
         Self {
-            id: registration.id.clone(),
-            kind: registration.kind,
-            on_homescreen: registration.on_homescreen,
-            name: registration.name.clone(),
-            subtitle: registration.subtitle.clone(),
-            local_only: registration.local_only,
-            is_smart: registration.is_smart(),
-            requires_tunnel: registration.requires_tunnel,
+            registration: registration.into(),
             url: config.url.clone(),
         }
     }

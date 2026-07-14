@@ -2,7 +2,7 @@
 //! absent / empty value clears it back to root-serving. An id that isn't a
 //! self-hosted app is `404`; a seeded self-hosted app is `409 AppNotEditable`; a
 //! non-origin-relative path is `400`. The response is the refreshed
-//! [`SelfHostedAppDetail`], read back in-txn.
+//! [`SelfHostedAppDetail`], hydrated via `RETURNING`.
 
 use std::sync::Arc;
 

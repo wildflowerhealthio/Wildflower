@@ -267,7 +267,7 @@ fn render_self_hosted_target(
             };
             (config.subdomain_url(&public_host), Some(public_host))
         }
-        RequestProvenance::Loopback => (config.launch_url(&state.loopback_hostname()), None),
+        RequestProvenance::Loopback => (config.local_launch_url(&state.loopback_hostname()), None),
     };
     let served = served_origin(state, provenance);
     let launch = mint_launch_nonce();

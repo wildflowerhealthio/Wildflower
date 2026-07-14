@@ -1,5 +1,5 @@
 //! Cloud-app actions — the `/cloud-apps` detail read, create, and content replace,
-//! plus the [`CloudAppContent`] input the HTTP layer builds from its `CloudAppBody`
+//! plus the [`CloudAppPayload`] input the HTTP layer builds from its `CloudAppBody`
 //! before calling in. The create/replace both validate the same editable content
 //! ([`validate_cloud_fields`]) and synthesize the `(registration, configuration)`
 //! the store persists.
@@ -40,7 +40,7 @@ pub(crate) fn get_cloud_app(
     }
 }
 
-/// Create a cloud app from the server-minted `id` and the raw [`CloudAppContent`].
+/// Create a cloud app from the server-minted `id` and the raw [`CloudAppPayload`].
 /// Validates the content, synthesizes the `(registration, configuration)`, and
 /// persists it. A [`CloudInsertError::IdTaken`] means the (server-minted) id was
 /// already taken — a vanishingly-unlikely 21-char-random collision, so it surfaces
@@ -81,7 +81,7 @@ pub(crate) fn create_cloud_app(
         })
 }
 
-/// Replace a cloud app's *content* (the [`CloudAppContent`] fields) — the
+/// Replace a cloud app's *content* (the [`CloudAppPayload`] fields) — the
 /// `PUT /cloud-apps/{id}` body. Resolves the kind before validating any field: an id
 /// that isn't a cloud app (unknown, or another kind) is [`NotFound`](AppsError::NotFound);
 /// only then is the field validated (`400` on a bad name / url). Overlays the edited

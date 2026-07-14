@@ -6,7 +6,7 @@
 use super::SqliteAppsStore;
 use crate::domain::{
     AppKind, AppRegistration, AppUrl, AppsError, AppsStore, CloudAppConfiguration,
-    SelfHostedAppConfiguration,
+    SelfHostedAppConfiguration, SelfHostedAppConfigurationPayload,
 };
 
 /// A caller-built cloud registration (the shape the HTTP layer hands the store):
@@ -34,10 +34,14 @@ pub(super) fn external(url: &str) -> AppUrl {
     AppUrl::External(url.to_owned())
 }
 
-/// A caller-built self-hosted upload pair (the shape the HTTP layer hands the store):
-/// id = subdomain = `slug`, non-seeded, `position` / `port` placeholders the store
-/// overrides. `content_folder` defaults to `<slug>-folder`.
-pub(super) fn new_upload(name: &str, slug: &str) -> (AppRegistration, SelfHostedAppConfiguration) {
+/// A caller-built self-hosted upload (the shape the HTTP layer hands the store): the
+/// registration with id = `slug` and a placeholder `position` the store overrides,
+/// plus the create payload with subdomain = `slug` and `content_folder` defaulting to
+/// `<slug>-folder` (the store allocates `port` and writes `seeded = false`).
+pub(super) fn new_upload(
+    name: &str,
+    slug: &str,
+) -> (AppRegistration, SelfHostedAppConfigurationPayload) {
     (
         AppRegistration {
             id: slug.to_owned(),
@@ -50,11 +54,9 @@ pub(super) fn new_upload(name: &str, slug: &str) -> (AppRegistration, SelfHosted
             client_id: None,
             requires_tunnel: false,
         },
-        SelfHostedAppConfiguration {
-            port: 0,
+        SelfHostedAppConfigurationPayload {
             content_folder: format!("{slug}-folder"),
             subdomain: slug.to_owned(),
-            seeded: false,
             launch_path: None,
         },
     )
@@ -71,6 +73,16 @@ pub(super) fn insert_upload(
     store
         .insert_self_hosted_app(&registration, &config, &[])
         .expect("inserted")
+}
+
+/// A self-hosted content-replace payload. Only `launch_path` is written on a replace,
+/// so the immutable `content_folder` / `subdomain` are ignored placeholders here.
+pub(super) fn replace_payload(launch_path: Option<&str>) -> SelfHostedAppConfigurationPayload {
+    SelfHostedAppConfigurationPayload {
+        content_folder: "ignored".to_owned(),
+        subdomain: "ignored".to_owned(),
+        launch_path: launch_path.map(str::to_owned),
+    }
 }
 
 /// The `launch_path` of a self-hosted `(registration, configuration)` pair.

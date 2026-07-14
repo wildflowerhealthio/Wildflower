@@ -4,6 +4,11 @@
 //! `204` routes to the on-device webview handle — fails the test rather than
 //! relying on unit-level handler coverage.
 
+// `StubOwnerAuth` is `#[deprecated]` to keep the no-op stub out of production
+// wiring; this end-to-end test is exactly the sanctioned test use, so silence it
+// (matching the `#![allow(deprecated)]` in `http/test_support.rs`).
+#![allow(deprecated)]
+
 use std::sync::Arc;
 
 use apps_rust::{

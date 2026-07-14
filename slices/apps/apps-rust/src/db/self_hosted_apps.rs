@@ -2,11 +2,13 @@
 //! `port` column mapping and row struct, and the self-hosted mutators + reads. A
 //! self-hosted app is an [`AppRegistration`](crate::domain::AppRegistration) paired
 //! with a [`SelfHostedAppConfiguration`](crate::domain::SelfHostedAppConfiguration)
-//! (the loopback binding + launch-render inputs). Insert uses the caller's id
-//! verbatim and allocates the lowest-free port + tail position in-txn (mapping a
-//! taken id / exhausted port space onto `AppsError` itself); a content replace
-//! touches only the editable subset. The host materializes every self-hosted app once
-//! at setup via [`list_self_hosted_apps_on`].
+//! (the loopback binding + launch-render inputs). Insert takes a registration + a
+//! [`SelfHostedAppConfigurationPayload`](crate::domain::SelfHostedAppConfigurationPayload):
+//! it uses the caller's id verbatim and allocates the lowest-free port + tail position
+//! in-txn, writing `seeded = false` (mapping a taken id / exhausted port space onto
+//! `AppsError` itself); a content replace touches only the editable subset. Both hand
+//! back the pair via `RETURNING`. The host materializes every self-hosted app once at
+//! setup via [`list_self_hosted_apps_on`].
 
 use std::collections::HashSet;
 
@@ -18,10 +20,10 @@ use diesel::sql_types::Integer;
 use diesel::sqlite::{Sqlite, SqliteValue};
 use persistence_rust::PooledDieselConnection;
 
-use super::all_kinds_apps::find_app_on;
 use super::app_registration::{app_registrations, id_taken, next_position};
 use crate::domain::{
-    lowest_free_port, AppConfiguration, AppRegistration, AppsError, SelfHostedAppConfiguration,
+    lowest_free_port, AppRegistration, AppsError, SelfHostedAppConfiguration,
+    SelfHostedAppConfigurationPayload,
 };
 
 /// The smallest loopback port an uploaded app is allocated — one above the seeded
@@ -40,11 +42,11 @@ diesel::table! {
     }
 }
 
-// This configuration's PK is a FK into `app_registrations`, so a self-hosted payload
-// row can be joined to its registration; the pair is allowed in one query so
-// `list_self_hosted_apps_on`'s inner join can select from both tables.
+// This configuration's PK is a FK into `app_registrations`, so it joins to its
+// registration on `id` — `list_self_hosted_apps_on`'s inner join and the cross-kind
+// `find_app_on`'s left join both rely on this. The four-way
+// `allow_tables_to_appear_in_same_query!` lives in `all_kinds_apps`.
 diesel::joinable!(self_hosted_app_configurations -> app_registrations (id));
-diesel::allow_tables_to_appear_in_same_query!(app_registrations, self_hosted_app_configurations);
 
 /// A `u16` port bound to / read from an `INTEGER` column. `SQLite` integers are
 /// `i64`; diesel reads them as `i32`, so the read narrows to `u16` and rejects an
@@ -108,17 +110,16 @@ impl From<SelfHostedConfigurationRow> for SelfHostedAppConfiguration {
     }
 }
 
-/// Insert a fresh uploaded self-hosted app from a caller-built `registration` +
-/// `config`, mirroring [`insert_cloud_app`](super::cloud_apps::insert_cloud_app): the
+/// Insert a fresh uploaded self-hosted app from a caller-built `registration` + create
+/// `payload`, mirroring [`insert_cloud_app`](super::cloud_apps::insert_cloud_app): the
 /// `app_registrations` registration AND its `self_hosted_app_configurations` payload,
-/// in one transaction. The `registration.id` becomes the row's `id` and the
-/// `config.subdomain` its `subdomain`, both verbatim — a clash with the global id
+/// in one transaction. The `registration.id` becomes the row's `id` and
+/// `payload.subdomain` its `subdomain`, both verbatim — a clash with the global id
 /// space is rejected rather than suffixed. The store owns the display `position`
 /// (tail append) and the loopback `port` (lowest free from [`lowest_free_port`] over
-/// `reserved_ports` + the taken set), overriding whatever those two fields carry;
-/// every other field on the pair is used as given. Position and port are allocated
-/// **inside** the transaction. On success the inserted `(registration, configuration)`
-/// pair is read back in-txn.
+/// `reserved_ports` + the taken set), both allocated **inside** the transaction, and
+/// writes `seeded = false` (an upload is never seeded). On success the inserted
+/// `(registration, configuration)` pair is hydrated from the two inserts' `RETURNING`.
 ///
 /// # Errors
 ///
@@ -128,10 +129,12 @@ impl From<SelfHostedConfigurationRow> for SelfHostedAppConfiguration {
 pub(super) fn insert_self_hosted_app(
     conn: &mut PooledDieselConnection,
     registration: &AppRegistration,
-    config: &SelfHostedAppConfiguration,
+    payload: &SelfHostedAppConfigurationPayload,
     reserved_ports: &[u16],
 ) -> Result<(AppRegistration, SelfHostedAppConfiguration), AppsError> {
-    conn.transaction(|conn| {
+    // IMMEDIATE so the port / position reads + inserts can't race a concurrent create —
+    // see the transaction-discipline section of `docs/Apps/Store and Install Explanation.md`.
+    conn.immediate_transaction(|conn| {
         // The id is the caller's, used verbatim. Reject a clash rather than
         // discovering a free variant — the check runs inside the transaction so it
         // can't race a concurrent insert. A name-derived id clash is a client-fixable
@@ -144,9 +147,8 @@ pub(super) fn insert_self_hosted_app(
             });
         }
 
-        // The store owns `port` (lowest-free) and `position` (tail); every other
-        // field on the caller's pair is used as given. An exhausted port space is a
-        // server resource fault, not a name problem — a logged 500.
+        // The store owns `port` (lowest-free) and `position` (tail). An exhausted port
+        // space is a server resource fault, not a name problem — a logged 500.
         let taken_ports = all_self_hosted_ports(conn)?;
         let Some(port) = lowest_free_port(&taken_ports, reserved_ports, MIN_UPLOAD_PORT, u16::MAX)
         else {
@@ -157,33 +159,37 @@ pub(super) fn insert_self_hosted_app(
         };
         let position = next_position(conn)?;
 
-        diesel::insert_into(app_registrations::table)
+        let stored_registration: AppRegistration = diesel::insert_into(app_registrations::table)
             .values(AppRegistration {
                 position,
                 ..registration.clone()
             })
-            .execute(conn)?;
-        diesel::insert_into(self_hosted_app_configurations::table)
-            .values(SelfHostedConfigurationRow {
-                id: registration.id.clone(),
-                port,
-                content_folder: config.content_folder.clone(),
-                subdomain: config.subdomain.clone(),
-                seeded: config.seeded,
-                launch_path: config.launch_path.clone(),
-            })
-            .execute(conn)?;
-        read_back_self_hosted(conn, &registration.id)
+            .returning(AppRegistration::as_returning())
+            .get_result(conn)?;
+        let stored_config: SelfHostedConfigurationRow =
+            diesel::insert_into(self_hosted_app_configurations::table)
+                .values(SelfHostedConfigurationRow {
+                    id: registration.id.clone(),
+                    port,
+                    content_folder: payload.content_folder.clone(),
+                    subdomain: payload.subdomain.clone(),
+                    seeded: false,
+                    launch_path: payload.launch_path.clone(),
+                })
+                .returning(SelfHostedConfigurationRow::as_returning())
+                .get_result(conn)?;
+        Ok((stored_registration, stored_config.into()))
     })
 }
 
 /// Replace a self-hosted app's editable fields from a caller-built `registration` +
-/// `config`, located by `registration.id`: the registration's `name` / `subtitle`
-/// and the configuration's `launch_path` (`None` clears it back to root-serving).
+/// `payload`, located by `registration.id`: the registration's `name` / `subtitle`
+/// and the payload's `launch_path` (`None` clears it back to root-serving).
 /// **Never touches placement or the immutable `port` / `subdomain` / `seeded` /
-/// `content_folder`.** Returns `Ok(None)` when no self-hosted app has this id, else
-/// the updated pair read back in-txn. The action layer enforces "not seeded" before
-/// calling this.
+/// `content_folder`** — the payload's `content_folder` / `subdomain` are create-only
+/// and ignored here. Returns `Ok(None)` when no self-hosted app has this id, else the
+/// updated pair hydrated from the two updates' `RETURNING`. The action layer enforces
+/// "not seeded" before calling this.
 ///
 /// # Errors
 ///
@@ -191,27 +197,35 @@ pub(super) fn insert_self_hosted_app(
 pub(super) fn replace_self_hosted_app(
     conn: &mut PooledDieselConnection,
     registration: &AppRegistration,
-    config: &SelfHostedAppConfiguration,
+    payload: &SelfHostedAppConfigurationPayload,
 ) -> Result<Option<(AppRegistration, SelfHostedAppConfiguration)>, AppsError> {
     let id = registration.id.as_str();
+    // DEFERRED is safe: the first statement is a write (not an allocation read), so its
+    // lock is taken before anything it reads — see transaction-discipline in
+    // `docs/Apps/Store and Install Explanation.md`.
     conn.transaction(|conn| {
-        // The `launch_path` update decides existence: a non-self-hosted or unknown
-        // id matches no row.
-        let affected = diesel::update(self_hosted_app_configurations::table.find(id))
-            .set(self_hosted_app_configurations::launch_path.eq(config.launch_path.as_deref()))
-            .execute(conn)?;
-        if affected != 1 {
+        // The `launch_path` update decides existence: a non-self-hosted or unknown id
+        // matches no row.
+        let updated_config: Option<SelfHostedConfigurationRow> =
+            diesel::update(self_hosted_app_configurations::table.find(id))
+                .set(self_hosted_app_configurations::launch_path.eq(payload.launch_path.as_deref()))
+                .returning(SelfHostedConfigurationRow::as_returning())
+                .get_result(conn)
+                .optional()?;
+        let Some(config_row) = updated_config else {
             return Ok(None);
-        }
+        };
         // Only the editable registration subset — never placement or the immutable
         // self-hosted columns.
-        diesel::update(app_registrations::table.find(id))
-            .set((
-                app_registrations::name.eq(&registration.name),
-                app_registrations::subtitle.eq(&registration.subtitle),
-            ))
-            .execute(conn)?;
-        Ok(Some(read_back_self_hosted(conn, id)?))
+        let stored_registration: AppRegistration =
+            diesel::update(app_registrations::table.find(id))
+                .set((
+                    app_registrations::name.eq(&registration.name),
+                    app_registrations::subtitle.eq(&registration.subtitle),
+                ))
+                .returning(AppRegistration::as_returning())
+                .get_result(conn)?;
+        Ok(Some((stored_registration, config_row.into())))
     })
 }
 
@@ -237,22 +251,6 @@ pub(super) fn list_self_hosted_apps_on(
         .collect())
 }
 
-/// Re-read a just-written self-hosted app as its `(registration, configuration)`
-/// pair, inside the writing transaction. A miss / wrong kind can't happen — it's a
-/// corrupt registry, surfaced as a logged 500.
-fn read_back_self_hosted(
-    conn: &mut SqliteConnection,
-    id: &str,
-) -> Result<(AppRegistration, SelfHostedAppConfiguration), AppsError> {
-    match find_app_on(conn, id)? {
-        Some((registration, AppConfiguration::SelfHosted(config))) => Ok((registration, config)),
-        _ => Err(AppsError::infrastructure(
-            "read_back_self_hosted",
-            format!("self-hosted row {id} vanished or changed kind after write"),
-        )),
-    }
-}
-
 /// Every loopback port already handed to a self-hosted app as a set — the port
 /// allocator's taken input. A stored port outside `u16` can't occur (the column is
 /// `CHECK (port BETWEEN 1 AND 65535)`), so an out-of-range value is dropped.
@@ -267,9 +265,9 @@ fn all_self_hosted_ports(conn: &mut SqliteConnection) -> Result<HashSet<u16>, Ap
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_support::{insert_upload, launch_path, new_upload};
+    use super::super::test_support::{insert_upload, launch_path, new_upload, replace_payload};
     use crate::db::SqliteAppsStore;
-    use crate::domain::{AppKind, AppsError, AppsStore, SelfHostedAppConfiguration};
+    use crate::domain::{AppKind, AppsError, AppsStore};
 
     /// An inserted upload lands one port above the seed (8081 → 8082), appends at
     /// the next position (after the six seeded rows → 6), and is non-seeded.
@@ -328,26 +326,16 @@ mod tests {
     #[test]
     fn replace_self_hosted_app_sets_replaces_and_clears() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
-        let (registration, config) = insert_upload(&store, "App", "app");
+        let (registration, _config) = insert_upload(&store, "App", "app");
 
-        let with_path = SelfHostedAppConfiguration {
-            launch_path: Some("/launch.html".to_owned()),
-            ..config.clone()
-        };
         let set = store
-            .replace_self_hosted_app(&registration, &with_path)
+            .replace_self_hosted_app(&registration, &replace_payload(Some("/launch.html")))
             .unwrap()
             .expect("updated");
         assert_eq!(launch_path(&set).as_deref(), Some("/launch.html"));
 
         let cleared = store
-            .replace_self_hosted_app(
-                &registration,
-                &SelfHostedAppConfiguration {
-                    launch_path: None,
-                    ..config.clone()
-                },
-            )
+            .replace_self_hosted_app(&registration, &replace_payload(None))
             .unwrap()
             .expect("updated");
         assert_eq!(launch_path(&cleared), None);
@@ -358,7 +346,7 @@ mod tests {
         };
         assert!(
             store
-                .replace_self_hosted_app(&ghost, &with_path)
+                .replace_self_hosted_app(&ghost, &replace_payload(Some("/launch.html")))
                 .unwrap()
                 .is_none(),
             "an unknown id matches no row",

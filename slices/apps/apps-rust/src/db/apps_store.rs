@@ -14,7 +14,7 @@ use persistence_rust::{DieselPool, PooledDieselConnection};
 use crate::db::{all_kinds_apps, app_registration, cloud_apps, self_hosted_apps};
 use crate::domain::{
     AppConfiguration, AppRegistration, AppsError, AppsStore, CloudAppConfiguration,
-    CloudInsertError, SelfHostedAppConfiguration,
+    CloudInsertError, SelfHostedAppConfiguration, SelfHostedAppConfigurationPayload,
 };
 
 /// This slice's migration namespace in the shared database. Applied versions are
@@ -134,13 +134,13 @@ impl AppsStore for SqliteAppsStore {
     fn insert_self_hosted_app(
         &self,
         registration: &AppRegistration,
-        config: &SelfHostedAppConfiguration,
+        payload: &SelfHostedAppConfigurationPayload,
         reserved_ports: &[u16],
     ) -> Result<(AppRegistration, SelfHostedAppConfiguration), AppsError> {
         self_hosted_apps::insert_self_hosted_app(
             &mut self.connection()?,
             registration,
-            config,
+            payload,
             reserved_ports,
         )
     }
@@ -156,9 +156,9 @@ impl AppsStore for SqliteAppsStore {
     fn replace_self_hosted_app(
         &self,
         registration: &AppRegistration,
-        config: &SelfHostedAppConfiguration,
+        payload: &SelfHostedAppConfigurationPayload,
     ) -> Result<Option<(AppRegistration, SelfHostedAppConfiguration)>, AppsError> {
-        self_hosted_apps::replace_self_hosted_app(&mut self.connection()?, registration, config)
+        self_hosted_apps::replace_self_hosted_app(&mut self.connection()?, registration, payload)
     }
 
     fn delete_app(&self, id: &str) -> Result<bool, AppsError> {

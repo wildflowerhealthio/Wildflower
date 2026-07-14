@@ -2,7 +2,7 @@
 //! `url` / `requiresTunnel`); the `url` is re-parsed through the write-side filter.
 //! An id that isn't a cloud app is `404`; a bad name / url is `400`. `enabled` is
 //! **not** content — `PUT /home-screen` owns it. The response is the refreshed
-//! [`CloudAppDetail`], read back in-txn.
+//! [`CloudAppDetail`], hydrated via `RETURNING`.
 
 use std::sync::Arc;
 

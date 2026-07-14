@@ -20,7 +20,7 @@
 
 use crate::domain::{
     AppConfiguration, AppRegistration, AppsError, CloudAppConfiguration, CloudInsertError,
-    SelfHostedAppConfiguration,
+    SelfHostedAppConfiguration, SelfHostedAppConfigurationPayload,
 };
 
 /// The persistence port for the apps registry: the primitive CRUD the domain
@@ -39,9 +39,9 @@ use crate::domain::{
 /// (`crate::db::SqliteAppsStore`) implements it; unit tests swap in the in-memory
 /// `FakeAppsStore`.
 ///
-/// Every create / replace re-reads and returns the hydrated pair *inside the same
-/// transaction that wrote it*, so a caller's response can't drift from stored
-/// state (see `docs/Apps/Store and Install Explanation.md`).
+/// Every create / replace returns the hydrated pair via `RETURNING`, *from the same
+/// statement / transaction that wrote it*, so a caller's response can't drift from
+/// stored state (see `docs/Apps/Store and Install Explanation.md`).
 pub trait AppsStore {
     /// The `GET /apps` catalogue: every app's registration, ordered by `position`.
     /// Join-free (the registration carries everything the tile renders); the
@@ -53,8 +53,8 @@ pub trait AppsStore {
     fn list_registrations(&self) -> Result<Vec<AppRegistration>, AppsError>;
 
     /// A single whole app by id, or `None` when no app has this id. Reads the
-    /// registration then the one configuration its `kind` names, returning the
-    /// `(registration, configuration)` pair (the configuration as the
+    /// registration and the one configuration its `kind` names in one atomic query,
+    /// returning the `(registration, configuration)` pair (the configuration as the
     /// [`AppConfiguration`] union, since the kind isn't known at the call site) —
     /// it backs the launch dispatch and the delete removability check.
     ///
@@ -79,7 +79,7 @@ pub trait AppsStore {
     /// the caller passed); everything else on the registration is used as given.
     /// Returns [`CloudInsertError::IdTaken`] — nothing written — when the id was
     /// already taken (a conflict rather than a silent overwrite), else the inserted
-    /// `(registration, configuration)` pair read back in-txn.
+    /// `(registration, configuration)` pair returned via `RETURNING`.
     ///
     /// # Errors
     ///
@@ -91,12 +91,13 @@ pub trait AppsStore {
     ) -> Result<Result<(AppRegistration, CloudAppConfiguration), CloudInsertError>, AppsError>;
 
     /// Insert a fresh uploaded self-hosted app from a caller-built `registration` +
-    /// `config`, mirroring [`insert_cloud_app`](Self::insert_cloud_app). The
-    /// `registration.id` is used verbatim as the id / subdomain; the store owns the
-    /// display `position` (tail append) and the loopback `port` (lowest-free over
-    /// `reserved_ports` + the taken set), overriding whatever those two fields carry
-    /// — every other field on the pair is used as given (`config.seeded` must be
-    /// `false` for an upload). On success the inserted pair is read back in-txn.
+    /// create `payload`, mirroring [`insert_cloud_app`](Self::insert_cloud_app). The
+    /// `registration.id` is used verbatim as the id, `payload.subdomain` as the
+    /// subdomain; the store owns the display `position` (tail append) and the loopback
+    /// `port` (lowest-free over `reserved_ports` + the taken set), and always writes
+    /// `seeded = false` — the payload carries none of those, so there are no
+    /// placeholders to override. On success the inserted pair is returned via
+    /// `RETURNING`, hydrated to the full [`SelfHostedAppConfiguration`].
     ///
     /// Unlike the cloud insert, this maps its two non-infrastructure outcomes onto
     /// the wire vocabulary directly (there's no granular typed signal to distinguish):
@@ -111,7 +112,7 @@ pub trait AppsStore {
     fn insert_self_hosted_app(
         &self,
         registration: &AppRegistration,
-        config: &SelfHostedAppConfiguration,
+        payload: &SelfHostedAppConfigurationPayload,
         reserved_ports: &[u16],
     ) -> Result<(AppRegistration, SelfHostedAppConfiguration), AppsError>;
 
@@ -120,7 +121,7 @@ pub trait AppsStore {
     /// `subtitle` / `requires_tunnel` and the `cloud_app_configurations` `url`.
     /// Never touches `position` / `on_homescreen` (the placement single-writer) or
     /// the other registration columns. Returns `None` when no cloud app has this id,
-    /// else the updated pair read back in-txn.
+    /// else the updated pair returned via `RETURNING`.
     ///
     /// # Errors
     ///
@@ -131,12 +132,13 @@ pub trait AppsStore {
         config: &CloudAppConfiguration,
     ) -> Result<Option<(AppRegistration, CloudAppConfiguration)>, AppsError>;
 
-    /// Replace a self-hosted app's editable fields from a caller-built
-    /// `registration` + `config`, located by `registration.id`: the registration's
-    /// `name` / `subtitle` and the configuration's `launch_path`. Never touches
-    /// placement or the immutable `port` / `subdomain` / `seeded` / `content_folder`.
-    /// Returns `None` when no self-hosted app has this id, else the updated pair read
-    /// back in-txn.
+    /// Replace a self-hosted app's editable fields from a caller-built `registration`
+    /// and `payload`, located by `registration.id`: the registration's `name` /
+    /// `subtitle` and the payload's `launch_path`. Never touches placement or the
+    /// immutable `port` / `subdomain` / `seeded` / `content_folder` — the payload's
+    /// `content_folder` / `subdomain` are ignored here (they're create-only). Returns
+    /// `None` when no self-hosted app has this id, else the updated pair returned via
+    /// `RETURNING`.
     ///
     /// # Errors
     ///
@@ -144,7 +146,7 @@ pub trait AppsStore {
     fn replace_self_hosted_app(
         &self,
         registration: &AppRegistration,
-        config: &SelfHostedAppConfiguration,
+        payload: &SelfHostedAppConfigurationPayload,
     ) -> Result<Option<(AppRegistration, SelfHostedAppConfiguration)>, AppsError>;
 
     /// Delete an app by id, any kind — one `app_registrations` delete; its

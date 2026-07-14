@@ -678,56 +678,29 @@
         }
       },
       "CloudAppDetail": {
-        "type": "object",
-        "description": "The `GET`/`POST`/`PUT /cloud-apps…` wire shape — the registration fields plus\nthe stored `url` template and `isRemovable`. Built from the cloud\n`(registration, configuration)` pair.",
-        "required": [
-          "id",
-          "kind",
-          "onHomescreen",
-          "name",
-          "localOnly",
-          "isSmart",
-          "requiresTunnel",
-          "url",
-          "isRemovable"
-        ],
-        "properties": {
-          "id": {
-            "type": "string"
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/RegistrationWire"
           },
-          "kind": {
-            "$ref": "#/components/schemas/AppKind"
-          },
-          "onHomescreen": {
-            "type": "boolean"
-          },
-          "name": {
-            "type": "string"
-          },
-          "subtitle": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "localOnly": {
-            "type": "boolean"
-          },
-          "isSmart": {
-            "type": "boolean"
-          },
-          "requiresTunnel": {
-            "type": "boolean"
-          },
-          "url": {
-            "type": "string",
-            "description": "The stored launch URL template (`{origin}` / `{launch}` tokens), serialized\nas its canonical string."
-          },
-          "isRemovable": {
-            "type": "boolean",
-            "description": "Always `true` for a cloud app; carried for a uniform editor contract."
+          {
+            "type": "object",
+            "required": [
+              "url",
+              "isRemovable"
+            ],
+            "properties": {
+              "url": {
+                "type": "string",
+                "description": "The stored launch URL template (`{origin}` / `{launch}` tokens), serialized\nas its canonical string."
+              },
+              "isRemovable": {
+                "type": "boolean",
+                "description": "Always `true` for a cloud app; carried for a uniform editor contract."
+              }
+            }
           }
-        }
+        ],
+        "description": "The `GET`/`POST`/`PUT /cloud-apps…` wire shape — the shared registration fields\nplus the stored `url` template and `isRemovable`. Built from the cloud\n`(registration, configuration)` pair."
       },
       "CreateSelfHostedAppMultipart": {
         "type": "object",
@@ -817,6 +790,48 @@
           }
         }
       },
+      "RegistrationWire": {
+        "type": "object",
+        "description": "The registration fields every per-kind detail carries, `#[serde(flatten)]`ed into\neach wire shape so the eight shared fields — and their `From<&AppRegistration>`\nprojection — are declared once rather than copied across the three detail structs.\n`isSmart` is derived from the host-only `client_id`; `position` never leaves the\nhost.",
+        "required": [
+          "id",
+          "kind",
+          "onHomescreen",
+          "name",
+          "localOnly",
+          "isSmart",
+          "requiresTunnel"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/AppKind"
+          },
+          "onHomescreen": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "subtitle": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "localOnly": {
+            "type": "boolean"
+          },
+          "isSmart": {
+            "type": "boolean"
+          },
+          "requiresTunnel": {
+            "type": "boolean"
+          }
+        }
+      },
       "SelfHostedAppBody": {
         "type": "object",
         "description": "The `PUT /self-hosted-apps/{id}` body — the editable launch path. Absent or\nempty clears it back to root-serving. Matches the TS\n`SelfHostedAppBodySchema`.",
@@ -830,110 +845,56 @@
         }
       },
       "SelfHostedAppDetail": {
-        "type": "object",
-        "description": "The `GET`/`POST`/`PUT /self-hosted-apps…` wire shape — the registration fields\nplus `launchPath` (absent for a root-served bundle), `seeded`, and\n`isRemovable`. The public `subdomain` / loopback `port` / on-disk\n`content_folder` are host-internal and stay off the wire.",
-        "required": [
-          "id",
-          "kind",
-          "onHomescreen",
-          "name",
-          "localOnly",
-          "isSmart",
-          "requiresTunnel",
-          "seeded",
-          "isRemovable"
-        ],
-        "properties": {
-          "id": {
-            "type": "string"
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/RegistrationWire"
           },
-          "kind": {
-            "$ref": "#/components/schemas/AppKind"
-          },
-          "onHomescreen": {
-            "type": "boolean"
-          },
-          "name": {
-            "type": "string"
-          },
-          "subtitle": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "localOnly": {
-            "type": "boolean"
-          },
-          "isSmart": {
-            "type": "boolean"
-          },
-          "requiresTunnel": {
-            "type": "boolean"
-          },
-          "launchPath": {
-            "type": [
-              "string",
-              "null"
+          {
+            "type": "object",
+            "required": [
+              "seeded",
+              "isRemovable"
             ],
-            "description": "The stored SMART launch path (origin-relative, with `{origin}` / `{launch}`\ntokens), or absent for a root-served (`index.html`) app."
-          },
-          "seeded": {
-            "type": "boolean",
-            "description": "`true` for a migration-seeded app (edit/delete-protected)."
-          },
-          "isRemovable": {
-            "type": "boolean",
-            "description": "Whether the owner can remove this app (`!seeded`)."
+            "properties": {
+              "launchPath": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The stored SMART launch path (origin-relative, with `{origin}` / `{launch}`\ntokens), or absent for a root-served (`index.html`) app."
+              },
+              "seeded": {
+                "type": "boolean",
+                "description": "`true` for a migration-seeded app (edit/delete-protected)."
+              },
+              "isRemovable": {
+                "type": "boolean",
+                "description": "Whether the owner can remove this app (`!seeded`)."
+              }
+            }
           }
-        }
+        ],
+        "description": "The `GET`/`POST`/`PUT /self-hosted-apps…` wire shape — the registration fields\nplus `launchPath` (absent for a root-served bundle), `seeded`, and\n`isRemovable`. The public `subdomain` / loopback `port` / on-disk\n`content_folder` are host-internal and stay off the wire."
       },
       "SystemAppDetail": {
-        "type": "object",
-        "description": "The read-only `GET /system-apps/{id}` wire shape — the registration fields plus\nthe display-only `url` template. A system app is never editable, so it carries\nno `isRemovable`.",
-        "required": [
-          "id",
-          "kind",
-          "onHomescreen",
-          "name",
-          "localOnly",
-          "isSmart",
-          "requiresTunnel",
-          "url"
-        ],
-        "properties": {
-          "id": {
-            "type": "string"
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/RegistrationWire"
           },
-          "kind": {
-            "$ref": "#/components/schemas/AppKind"
-          },
-          "onHomescreen": {
-            "type": "boolean"
-          },
-          "name": {
-            "type": "string"
-          },
-          "subtitle": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "localOnly": {
-            "type": "boolean"
-          },
-          "isSmart": {
-            "type": "boolean"
-          },
-          "requiresTunnel": {
-            "type": "boolean"
-          },
-          "url": {
-            "type": "string",
-            "description": "The stored launch URL template (`{origin}` token), serialized as its\ncanonical string. Display-only — a system app is never editable."
+          {
+            "type": "object",
+            "required": [
+              "url"
+            ],
+            "properties": {
+              "url": {
+                "type": "string",
+                "description": "The stored launch URL template (`{origin}` token), serialized as its\ncanonical string. Display-only — a system app is never editable."
+              }
+            }
           }
-        }
+        ],
+        "description": "The read-only `GET /system-apps/{id}` wire shape — the registration fields plus\nthe display-only `url` template. A system app is never editable, so it carries\nno `isRemovable`."
       }
     }
   }

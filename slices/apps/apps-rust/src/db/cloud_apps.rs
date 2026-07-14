@@ -4,18 +4,16 @@
 //! [`CloudAppConfiguration`](crate::domain::CloudAppConfiguration) (a remote launch
 //! URL template). Insert writes the registration + payload in one transaction and
 //! reports a colliding id as [`CloudInsertError::IdTaken`]; a content replace touches
-//! only the editable subset. Both return the hydrated pair re-read in-txn (via the
-//! cross-kind [`find_app_on`](super::all_kinds_apps::find_app_on)).
+//! only the editable subset. Both hand back the hydrated pair via `RETURNING` on the
+//! writing statements — no separate read-back — which also re-decodes the stored
+//! `url`, so a value that no longer round-trips surfaces as a typed error.
 
 use diesel::prelude::*;
 use persistence_rust::PooledDieselConnection;
 
-use super::all_kinds_apps::find_app_on;
 use super::app_registration::{app_registrations, id_taken, next_position};
 use super::shared::AppUrlColumn;
-use crate::domain::{
-    AppConfiguration, AppRegistration, AppUrl, AppsError, CloudAppConfiguration, CloudInsertError,
-};
+use crate::domain::{AppRegistration, AppUrl, AppsError, CloudAppConfiguration, CloudInsertError};
 
 diesel::table! {
     cloud_app_configurations (id) {
@@ -24,11 +22,10 @@ diesel::table! {
     }
 }
 
-// This configuration's PK is a FK into `app_registrations`, so a cloud payload row
-// can be joined to its registration; the pair is allowed in one query so this file's
-// reads can reference both tables.
+// This configuration's PK is a FK into `app_registrations`, so it joins to its
+// registration on `id`; the cross-kind `find_app_on` left-joins it there. The
+// four-way `allow_tables_to_appear_in_same_query!` lives in `all_kinds_apps`.
 diesel::joinable!(cloud_app_configurations -> app_registrations (id));
-diesel::allow_tables_to_appear_in_same_query!(app_registrations, cloud_app_configurations);
 
 /// The `cloud_app_configurations` payload — the remote launch URL template. `id` is
 /// the FK into `app_registrations`; [`From`] drops it and hands back the payload.
@@ -54,8 +51,8 @@ impl From<CloudConfigurationRow> for CloudAppConfiguration {
 /// transaction.
 ///
 /// Returns `Ok(Err(CloudInsertError::IdTaken))` when the id is already taken (no row
-/// is written), else the inserted `(registration, configuration)` pair read back
-/// in-txn.
+/// is written), else the inserted `(registration, configuration)` pair, hydrated from
+/// the two inserts' `RETURNING`.
 ///
 /// # Errors
 ///
@@ -65,26 +62,30 @@ pub(super) fn insert_cloud_app(
     registration: &AppRegistration,
     config: &CloudAppConfiguration,
 ) -> Result<Result<(AppRegistration, CloudAppConfiguration), CloudInsertError>, AppsError> {
-    conn.transaction(|conn| {
+    // IMMEDIATE so the `next_position` read + inserts can't race a concurrent create —
+    // see the transaction-discipline section of `docs/Apps/Store and Install Explanation.md`.
+    conn.immediate_transaction(|conn| {
         if id_taken(conn, &registration.id)? {
             return Ok(Err(CloudInsertError::IdTaken));
         }
         // The store owns `position` (tail append); everything else on the
         // registration is the caller's.
-        let to_insert = AppRegistration {
-            position: next_position(conn)?,
-            ..registration.clone()
-        };
-        diesel::insert_into(app_registrations::table)
-            .values(to_insert)
-            .execute(conn)?;
-        diesel::insert_into(cloud_app_configurations::table)
-            .values(CloudConfigurationRow {
-                id: registration.id.clone(),
-                url: config.url.clone(),
+        let stored_registration: AppRegistration = diesel::insert_into(app_registrations::table)
+            .values(AppRegistration {
+                position: next_position(conn)?,
+                ..registration.clone()
             })
-            .execute(conn)?;
-        Ok(Ok(read_back_cloud(conn, &registration.id)?))
+            .returning(AppRegistration::as_returning())
+            .get_result(conn)?;
+        let stored_config: CloudConfigurationRow =
+            diesel::insert_into(cloud_app_configurations::table)
+                .values(CloudConfigurationRow {
+                    id: registration.id.clone(),
+                    url: config.url.clone(),
+                })
+                .returning(CloudConfigurationRow::as_returning())
+                .get_result(conn)?;
+        Ok(Ok((stored_registration, stored_config.into())))
     })
 }
 
@@ -95,8 +96,8 @@ pub(super) fn insert_cloud_app(
 /// registration columns.
 ///
 /// Returns `Ok(None)` when no cloud app has this id (the `cloud_app_configurations`
-/// update affects no row), else the updated `(registration, configuration)` pair
-/// read back in-txn.
+/// update affects no row), else the updated `(registration, configuration)` pair,
+/// hydrated from the two updates' `RETURNING`.
 ///
 /// # Errors
 ///
@@ -107,43 +108,35 @@ pub(super) fn replace_cloud_app(
     config: &CloudAppConfiguration,
 ) -> Result<Option<(AppRegistration, CloudAppConfiguration)>, AppsError> {
     let id = registration.id.as_str();
+    // DEFERRED is safe: the first statement is a write (not an allocation read), so its
+    // lock is taken before anything it reads — see transaction-discipline in
+    // `docs/Apps/Store and Install Explanation.md`.
     conn.transaction(|conn| {
-        // The payload update decides existence: a non-cloud or unknown id matches
-        // no `cloud_app_configurations` row, so nothing (including the
-        // registration) is touched.
-        let affected = diesel::update(cloud_app_configurations::table.find(id))
-            .set(cloud_app_configurations::url.eq(config.url.to_string()))
-            .execute(conn)?;
-        if affected != 1 {
+        // The payload update decides existence: a non-cloud or unknown id matches no
+        // `cloud_app_configurations` row, so nothing (including the registration) is
+        // touched. `RETURNING` re-decodes the stored `url`.
+        let updated_config: Option<CloudConfigurationRow> =
+            diesel::update(cloud_app_configurations::table.find(id))
+                .set(cloud_app_configurations::url.eq(config.url.to_string()))
+                .returning(CloudConfigurationRow::as_returning())
+                .get_result(conn)
+                .optional()?;
+        let Some(config_row) = updated_config else {
             return Ok(None);
-        }
+        };
         // Only the editable registration subset — never placement / kind / client_id
         // / local_only.
-        diesel::update(app_registrations::table.find(id))
-            .set((
-                app_registrations::name.eq(&registration.name),
-                app_registrations::subtitle.eq(&registration.subtitle),
-                app_registrations::requires_tunnel.eq(registration.requires_tunnel),
-            ))
-            .execute(conn)?;
-        Ok(Some(read_back_cloud(conn, id)?))
+        let stored_registration: AppRegistration =
+            diesel::update(app_registrations::table.find(id))
+                .set((
+                    app_registrations::name.eq(&registration.name),
+                    app_registrations::subtitle.eq(&registration.subtitle),
+                    app_registrations::requires_tunnel.eq(registration.requires_tunnel),
+                ))
+                .returning(AppRegistration::as_returning())
+                .get_result(conn)?;
+        Ok(Some((stored_registration, config_row.into())))
     })
-}
-
-/// Re-read a just-written cloud app as its `(registration, configuration)` pair,
-/// inside the writing transaction. A miss / wrong kind can't happen (the caller
-/// just wrote a cloud row) — it's a corrupt registry, surfaced as a logged 500.
-fn read_back_cloud(
-    conn: &mut SqliteConnection,
-    id: &str,
-) -> Result<(AppRegistration, CloudAppConfiguration), AppsError> {
-    match find_app_on(conn, id)? {
-        Some((registration, AppConfiguration::Cloud(config))) => Ok((registration, config)),
-        _ => Err(AppsError::infrastructure(
-            "read_back_cloud",
-            format!("cloud row {id} vanished or changed kind after write"),
-        )),
-    }
 }
 
 #[cfg(test)]
