@@ -1,7 +1,8 @@
 //! `/devices/{userCode}` routes — the Owner-facing consent prompt for the
 //! device-code flow (RFC 8628). One module per route (`get`, `approve`,
-//! `deny`), each exposing a `MethodRouter`; the wire DTO lives in
-//! [`crate::http::wire_representations`] and the pending-request loader in
+//! `deny`), each exposing a `MethodRouter`; the DTOs shared with the code flow
+//! (`ApproveBody`, `ConsentResult`) live in [`crate::http::wire_representations`],
+//! the `get` response shape beside its route, and the consent logic in
 //! [`crate::domain::actions`]. `router()` is the only path table.
 
 mod approve;

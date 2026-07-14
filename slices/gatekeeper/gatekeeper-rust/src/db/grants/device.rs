@@ -62,14 +62,13 @@ pub(crate) fn device_grant_by_client_and_device_name(
 }
 
 /// Insert or update the standing **device** grant for
-/// `(client_id, device_name)` in a single **immediate** transaction on its one
-/// table, with the same cumulative-consent semantics as
-/// [`upsert_authorization_code_grant`](super::authorization_code::upsert_authorization_code_grant)
-/// — this is what makes a device-code approval leave a durable record. Re-pairing
-/// the same device (same name) absorbs the re-approval onto the existing grant.
-/// `BEGIN IMMEDIATE` takes the write lock before the read so two concurrent
-/// approvals serialise at the read and neither loses its scope union; the table's
-/// `UNIQUE(client_id, device_name)` is the backstop against a duplicate insert.
+/// `(client_id, device_name)` — the same cumulative-consent + `BEGIN IMMEDIATE`
+/// (lock-at-read) semantics as
+/// [`upsert_authorization_code_grant`](super::authorization_code::upsert_authorization_code_grant),
+/// which documents the concurrency rationale; keyed on `device_name` instead, and
+/// backstopped by `UNIQUE(client_id, device_name)`. This is what makes a
+/// device-code approval leave a durable record: re-pairing the same device (same
+/// name) absorbs the re-approval onto the existing grant.
 pub(crate) fn upsert_device_grant(
     conn: &mut PooledDieselConnection,
     client_id: &str,

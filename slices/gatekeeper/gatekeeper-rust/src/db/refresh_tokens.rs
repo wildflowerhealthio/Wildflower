@@ -80,7 +80,10 @@ pub(super) fn insert_refresh_token_family_row(
     Ok(())
 }
 
-/// Persist the successor token in an existing family's rotation.
+/// Persist a single refresh-token row into an existing family — a rotation
+/// successor, or the family's first token (sequenced after the family row by the
+/// [`insert_refresh_token_family`](crate::domain::actions::insert_refresh_token_family)
+/// action).
 pub(super) fn insert_refresh_token(
     conn: &mut PooledDieselConnection,
     token: &RefreshToken,
