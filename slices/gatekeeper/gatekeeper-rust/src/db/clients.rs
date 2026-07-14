@@ -8,10 +8,41 @@
 
 use diesel::prelude::*;
 use persistence_rust::PooledDieselConnection;
+use url::Url;
 
-use crate::db::schema::clients;
-use crate::domain::client::Client;
+use crate::db::shared::{json_text_column, text_enum_column};
+use crate::domain::client::{AllowedGrantType, Client, ClientKind};
 use crate::domain::error::GatekeeperError;
+
+diesel::table! {
+    clients (client_id) {
+        client_id -> Text,
+        name -> Text,
+        kind -> Text,
+        redirect_uris -> Text,
+        allowed_scopes -> Text,
+        allowed_grant_types -> Text,
+        secret_hash -> Nullable<Text>,
+        registered_at -> TimestamptzSqlite,
+        disabled_at -> Nullable<TimestamptzSqlite>,
+    }
+}
+
+json_text_column!(
+    /// A client's `redirect_uris` allowlist as a JSON TEXT column.
+    JsonUrls,
+    Vec<Url>
+);
+json_text_column!(
+    /// A client's `allowed_grant_types` as a JSON TEXT column (the wire
+    /// `grant_type` strings, per [`AllowedGrantType`]'s serde renames).
+    JsonAllowedGrantTypes,
+    Vec<AllowedGrantType>
+);
+
+// The client `kind` discriminant, stored as its strum wire string. Only the
+// client binds it, so its mapping lives here rather than in `db::shared`.
+text_enum_column!(ClientKind);
 
 /// Look up a registered client by its `client_id`, or `None` when absent.
 pub(super) fn client_by_id(
@@ -221,5 +252,39 @@ mod tests {
 
         // The old `medication_viewer` id is gone — replaced by `my_web_app`.
         assert!(store.client_by_id("medication_viewer").unwrap().is_none());
+    }
+
+    /// Each of the client row's custom column mappings rejects an out-of-domain
+    /// stored value on read as a typed diesel error, never a panic: the JSON TEXT
+    /// newtypes ([`JsonUrls`](super::JsonUrls) / [`JsonStrings`](crate::db::shared::JsonStrings)
+    /// / [`JsonAllowedGrantTypes`](super::JsonAllowedGrantTypes)) on malformed JSON
+    /// or an unknown enum member, and the [`ClientKind`] text-enum mapping on an
+    /// unknown discriminant. A row tampered via raw SQL surfaces at the
+    /// `client_by_id` read boundary as `Err`, so a corrupt row can never silently
+    /// decode to a wrong-but-valid client.
+    #[test]
+    fn stored_columns_reject_corrupt_values() {
+        // `column = bad_value` tampered onto the migration-seeded `growth_chart`
+        // row, each asserted to fail the read.
+        for (column, bad_value) in [
+            ("redirect_uris", "not json"),        // JsonUrls: malformed JSON
+            ("redirect_uris", "[\"not a url\"]"), // JsonUrls: valid JSON, invalid URL
+            ("allowed_scopes", "not json"),       // JsonStrings: malformed JSON
+            ("allowed_grant_types", "[\"totally_unknown\"]"), // JsonAllowedGrantTypes: unknown member
+            ("kind", "bogus_kind"),                           // ClientKind: unknown discriminant
+        ] {
+            let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+            let mut conn = store.pool().get().expect("check out a connection");
+            diesel::sql_query(format!(
+                "UPDATE clients SET {column} = '{bad_value}' WHERE client_id = 'growth_chart'"
+            ))
+            .execute(&mut conn)
+            .expect("tamper the stored row");
+            drop(conn);
+            assert!(
+                store.client_by_id("growth_chart").is_err(),
+                "a corrupt `{column}` must surface as a typed read error",
+            );
+        }
     }
 }

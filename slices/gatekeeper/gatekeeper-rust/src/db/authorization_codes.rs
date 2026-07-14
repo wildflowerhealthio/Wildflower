@@ -8,9 +8,22 @@
 use diesel::prelude::*;
 use persistence_rust::PooledDieselConnection;
 
-use crate::db::schema::authorization_codes;
 use crate::domain::authorization_code::AuthorizationCode;
 use crate::domain::error::GatekeeperError;
+
+diesel::table! {
+    authorization_codes (code) {
+        code -> Text,
+        request_id -> Text,
+        client_id -> Text,
+        redirect_uri -> Text,
+        code_challenge -> Text,
+        granted_scopes -> Text,
+        patient -> Nullable<Text>,
+        issued_at -> TimestamptzSqlite,
+        expires_at -> TimestamptzSqlite,
+    }
+}
 
 /// Atomically read-and-delete the authorization code so a `/token`
 /// redemption either gets the row exactly once or sees `None`. Wins the
@@ -143,6 +156,38 @@ mod tests {
                 .expect("redeem again")
                 .is_none(),
             "second redemption must lose",
+        );
+    }
+
+    /// The [`UrlText`](crate::db::shared::UrlText) mapping on `redirect_uri` rejects
+    /// a stored value that no longer parses as a URL as a typed read error, never a
+    /// panic — a tampered redirect target can't decode to a valid-looking `Url`.
+    #[test]
+    fn corrupt_redirect_uri_is_a_typed_read_error() {
+        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+        let now = chrono::Utc::now();
+        let code = AuthorizationCode {
+            code: "the-code".to_string(),
+            request_id: "req-1".to_string(),
+            client_id: "client-a".to_string(),
+            redirect_uri: url::Url::parse("https://example.com/cb").expect("url"),
+            code_challenge: "c".repeat(43),
+            granted_scopes: vec!["read".to_string()],
+            patient: None,
+            issued_at: now,
+            expires_at: now + chrono::Duration::seconds(60),
+        };
+        store.issue_authorization_code(&code).expect("issue");
+        let mut conn = store.pool().get().expect("check out a connection");
+        diesel::sql_query(
+            "UPDATE authorization_codes SET redirect_uri = 'not a url' WHERE code = 'the-code'",
+        )
+        .execute(&mut conn)
+        .expect("tamper the stored row");
+        drop(conn);
+        assert!(
+            store.authorization_code_by_request_id("req-1").is_err(),
+            "a corrupt redirect_uri must surface as a typed read error",
         );
     }
 }

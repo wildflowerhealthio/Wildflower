@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 use strum::{AsRefStr, Display, EnumString};
 use url::Url;
 
-use crate::db::columns::{JsonAllowedGrantTypes, JsonStrings, JsonUrls};
-use crate::db::schema::clients;
+use crate::db::clients::{clients, JsonAllowedGrantTypes, JsonUrls};
+use crate::db::shared::JsonStrings;
 
 /// OAuth client authentication category — `public` clients can't keep a secret (e.g. SPAs, native), `confidential` ones can.
 ///
@@ -64,7 +64,8 @@ impl AllowedGrantType {
 
 /// A registered OAuth client — the identity and policy bundle that `/authorize` and `/token` look up by `client_id`.
 /// Diesel-mapped 1:1 to the `clients` table; the JSON list columns convert
-/// through [`crate::db::columns`]' newtypes at the bind/read boundary.
+/// through the column newtypes in [`crate::db::clients`] and
+/// [`crate::db::shared`] at the bind/read boundary.
 #[derive(Debug, Clone, PartialEq, Eq, Queryable, Selectable, Insertable)]
 #[diesel(table_name = clients)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]

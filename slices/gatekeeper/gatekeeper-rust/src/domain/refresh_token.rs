@@ -1,8 +1,8 @@
 use chrono::{DateTime, Duration, Utc};
 use diesel::prelude::{Insertable, Queryable, Selectable};
 
-use crate::db::columns::JsonStrings;
-use crate::db::schema::{refresh_token_families, refresh_tokens};
+use crate::db::refresh_tokens::{refresh_token_families, refresh_tokens};
+use crate::db::shared::JsonStrings;
 
 /// Absolute lifetime of a refresh-token family, measured from the original
 /// authorization. Rotation swaps generations but never extends this

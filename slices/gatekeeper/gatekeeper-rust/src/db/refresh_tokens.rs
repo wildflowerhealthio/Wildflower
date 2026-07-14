@@ -6,9 +6,33 @@ use chrono::{DateTime, Utc};
 use diesel::prelude::*;
 use persistence_rust::PooledDieselConnection;
 
-use crate::db::schema::{refresh_token_families, refresh_tokens};
 use crate::domain::error::GatekeeperError;
 use crate::domain::refresh_token::{RefreshToken, RefreshTokenConsumeOutcome, RefreshTokenFamily};
+
+diesel::table! {
+    refresh_token_families (family_id) {
+        family_id -> Text,
+        client_id -> Text,
+        scopes -> Text,
+        patient -> Nullable<Text>,
+        issued_at -> TimestamptzSqlite,
+        expires_at -> TimestamptzSqlite,
+        authorization_code_hash -> Nullable<Text>,
+        grant_id -> Nullable<Text>,
+    }
+}
+
+diesel::table! {
+    refresh_tokens (token_hash) {
+        token_hash -> Text,
+        family_id -> Text,
+        issued_at -> TimestamptzSqlite,
+        consumed_at -> Nullable<TimestamptzSqlite>,
+    }
+}
+
+diesel::joinable!(refresh_tokens -> refresh_token_families (family_id));
+diesel::allow_tables_to_appear_in_same_query!(refresh_tokens, refresh_token_families);
 
 /// Consume-or-probe, shared by [`consume_refresh_token`] and
 /// [`rotate_refresh_token`]: stamp the live row consumed, and when no live row

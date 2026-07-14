@@ -2,8 +2,8 @@ use chrono::{DateTime, Duration, Utc};
 use diesel::prelude::{Insertable, Queryable, Selectable};
 use url::Url;
 
-use crate::db::columns::{JsonStrings, UrlText};
-use crate::db::schema::authorization_codes;
+use crate::db::authorization_codes::authorization_codes;
+use crate::db::shared::{JsonStrings, UrlText};
 
 /// Lifetime of an `authorization_code`, from issuance (the `/authorize`
 /// fast path or an Owner's consent approval) to the client redeeming it at

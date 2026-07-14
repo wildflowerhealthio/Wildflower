@@ -58,7 +58,7 @@ impl std::fmt::Debug for SigningKeyValues {
     diesel::prelude::Selectable,
     diesel::prelude::Insertable,
 )]
-#[diesel(table_name = crate::db::schema::signing_keys)]
+#[diesel(table_name = crate::db::signing_keys::signing_keys)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 pub struct SigningKey {
     /// Unique key identifier emitted in the JWS `kid` header so verifiers can pick the right key.
@@ -70,8 +70,8 @@ pub struct SigningKey {
     /// RSA key components: public (`n`, `e`) and private (`d`, `p`, `q`).
     #[diesel(
         column_name = values_json,
-        serialize_as = crate::db::columns::JsonSigningKeyValues,
-        deserialize_as = crate::db::columns::JsonSigningKeyValues
+        serialize_as = crate::db::signing_keys::JsonSigningKeyValues,
+        deserialize_as = crate::db::signing_keys::JsonSigningKeyValues
     )]
     pub values: SigningKeyValues,
     /// Whether this key currently signs new tokens; retired keys stay published in the JWKS during rotation.

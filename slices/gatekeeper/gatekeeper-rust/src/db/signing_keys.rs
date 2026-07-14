@@ -7,9 +7,25 @@
 use diesel::prelude::*;
 use persistence_rust::PooledDieselConnection;
 
-use crate::db::schema::signing_keys;
+use crate::db::shared::json_text_column;
 use crate::domain::error::GatekeeperError;
-use crate::domain::signing_key::SigningKey;
+use crate::domain::signing_key::{SigningKey, SigningKeyValues};
+
+diesel::table! {
+    signing_keys (kid) {
+        kid -> Text,
+        kty -> Text,
+        alg -> Text,
+        values_json -> Text,
+        is_active -> Bool,
+    }
+}
+
+json_text_column!(
+    /// A signing key's RSA components (`values_json` column) as JSON TEXT.
+    JsonSigningKeyValues,
+    SigningKeyValues
+);
 
 /// Load every signing key, active keys first then by `kid`.
 pub(super) fn all_signing_keys(
@@ -100,5 +116,36 @@ mod tests {
             let expected_active = if key.is_active { Some(key) } else { None };
             prop_assert_eq!(active, expected_active);
         }
+    }
+
+    /// The [`JsonSigningKeyValues`](super::JsonSigningKeyValues) JSON TEXT mapping
+    /// rejects a `values_json` that no longer parses as a typed read error, never a
+    /// panic — a corrupt key can't silently decode to garbage RSA material.
+    #[test]
+    fn corrupt_values_json_is_a_typed_read_error() {
+        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+        let key = SigningKey {
+            kid: "k1".to_string(),
+            kty: "RSA".to_string(),
+            alg: "RS256".to_string(),
+            values: SigningKeyValues {
+                n: "n".to_string(),
+                d: "d".to_string(),
+                e: "e".to_string(),
+                p: "p".to_string(),
+                q: "q".to_string(),
+            },
+            is_active: true,
+        };
+        store.insert_signing_key(&key).expect("insert");
+        let mut conn = store.pool().get().expect("check out a connection");
+        diesel::sql_query("UPDATE signing_keys SET values_json = 'not json' WHERE kid = 'k1'")
+            .execute(&mut conn)
+            .expect("tamper the stored row");
+        drop(conn);
+        assert!(
+            store.all_signing_keys().is_err(),
+            "a corrupt values_json must surface as a typed read error",
+        );
     }
 }

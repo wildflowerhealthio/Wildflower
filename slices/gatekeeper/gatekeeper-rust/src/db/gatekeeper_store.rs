@@ -107,6 +107,14 @@ impl SqliteGatekeeperStore {
             .get()
             .map_err(|e| GatekeeperError::infrastructure("failed to check out a connection", e))
     }
+
+    /// The pool, for tests that tamper with stored rows via raw SQL to prove the
+    /// column mappings reject an out-of-domain stored value as a typed read error
+    /// (rather than a panic) at the read boundary.
+    #[cfg(test)]
+    pub(crate) fn pool(&self) -> &DieselPool {
+        &self.pool
+    }
 }
 
 /// The `SQLite` implementation of the port: each method checks a connection out

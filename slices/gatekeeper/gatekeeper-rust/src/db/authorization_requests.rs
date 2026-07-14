@@ -11,10 +11,35 @@ use chrono::{DateTime, Utc};
 use diesel::prelude::*;
 use persistence_rust::PooledDieselConnection;
 
-use crate::db::columns::{JsonStrings, UrlText};
-use crate::db::schema::authorization_requests;
+use crate::db::shared::{text_enum_column, JsonStrings, UrlText};
 use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
 use crate::domain::error::GatekeeperError;
+
+diesel::table! {
+    authorization_requests (id) {
+        id -> Text,
+        grant_type -> Text,
+        client_id -> Text,
+        requested_scopes -> Text,
+        code_challenge -> Nullable<Text>,
+        code_challenge_method -> Nullable<Text>,
+        redirect_uri -> Nullable<Text>,
+        client_state -> Nullable<Text>,
+        user_code -> Nullable<Text>,
+        pre_approved_scopes -> Text,
+        requested_at -> TimestamptzSqlite,
+        expires_at -> TimestamptzSqlite,
+        last_polled_at -> Nullable<TimestamptzSqlite>,
+        status -> Text,
+        granted_scopes -> Nullable<Text>,
+        patient -> Nullable<Text>,
+        device_name -> Nullable<Text>,
+    }
+}
+
+// The request `status` discriminant, stored as its strum wire string. Only the
+// authorization request binds it, so its mapping lives here.
+text_enum_column!(RequestStatus);
 
 /// The diesel-facing mirror of [`AuthorizationRequest`] — same columns, with
 /// the JSON/URL fields as their wrapper types so the nullable ones map
@@ -184,7 +209,7 @@ pub(super) fn insert_authorization_request(
     conn: &mut PooledDieselConnection,
     request: &AuthorizationRequest,
 ) -> Result<(), GatekeeperError> {
-    let infrastructure =
+    let as_infrastructure_error =
         |e| GatekeeperError::infrastructure("insert_authorization_request failed", e);
     // Opportunistically prune expired requests before inserting, so a
     // caller hitting /authorize or /device_authorization can't grow the
@@ -197,11 +222,11 @@ pub(super) fn insert_authorization_request(
         authorization_requests::table.filter(authorization_requests::expires_at.lt(Utc::now())),
     )
     .execute(conn)
-    .map_err(infrastructure)?;
+    .map_err(as_infrastructure_error)?;
     diesel::insert_into(authorization_requests::table)
         .values(Row::from(request))
         .execute(conn)
-        .map_err(infrastructure)?;
+        .map_err(as_infrastructure_error)?;
     Ok(())
 }
 
@@ -225,7 +250,7 @@ pub(super) fn approve_authorization_request(
     patient: Option<&str>,
     device_name: Option<&str>,
 ) -> Result<bool, GatekeeperError> {
-    let infrastructure =
+    let as_infrastructure_error =
         |e| GatekeeperError::infrastructure("approve_authorization_request failed", e);
     let target = authorization_requests::table
         .find(id)
@@ -241,11 +266,11 @@ pub(super) fn approve_authorization_request(
         Some(name) => diesel::update(target)
             .set((shared, authorization_requests::device_name.eq(name)))
             .execute(conn)
-            .map_err(infrastructure)?,
+            .map_err(as_infrastructure_error)?,
         None => diesel::update(target)
             .set(shared)
             .execute(conn)
-            .map_err(infrastructure)?,
+            .map_err(as_infrastructure_error)?,
     };
     Ok(affected == 1)
 }
@@ -620,5 +645,32 @@ mod tests {
             .expect("query")
             .expect("row present");
         assert_eq!(after.status, RequestStatus::Pending);
+    }
+
+    /// The [`RequestStatus`] and [`GrantType`] text-enum mappings reject an unknown
+    /// stored discriminant on read as a typed error, never a panic — a tampered
+    /// `status`/`grant_type` can't decode to a wrong-but-valid enum member.
+    #[test]
+    fn corrupt_enum_columns_are_typed_read_errors() {
+        for column in ["status", "grant_type"] {
+            let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+            store
+                .insert_authorization_request(&device_request_with_status(
+                    "dev-1",
+                    RequestStatus::Pending,
+                ))
+                .expect("insert");
+            let mut conn = store.pool().get().expect("check out a connection");
+            diesel::sql_query(format!(
+                "UPDATE authorization_requests SET {column} = 'bogus' WHERE id = 'dev-1'"
+            ))
+            .execute(&mut conn)
+            .expect("tamper the stored row");
+            drop(conn);
+            assert!(
+                store.authorization_request_by_id("dev-1").is_err(),
+                "a corrupt `{column}` must surface as a typed read error",
+            );
+        }
     }
 }

@@ -22,8 +22,9 @@ use diesel::prelude::{Insertable, Queryable, Selectable};
 use serde::Serialize;
 use url::Url;
 
-use crate::db::columns::{JsonStrings, UrlText};
-use crate::db::schema::{authorization_code_grants, device_grants};
+use crate::db::grants::authorization_code::authorization_code_grants;
+use crate::db::grants::device::device_grants;
+use crate::db::shared::{JsonStrings, UrlText};
 
 /// A standing authorization-code consent: "OAuth client X may ask for scopes Y
 /// at redirect URI Z without re-prompting the Owner." Diesel-mapped 1:1 to the
