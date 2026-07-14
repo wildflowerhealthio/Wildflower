@@ -50,7 +50,7 @@ catalog:
   '@tanstack/virtual-file-routes': ^1.162.0
   '@tauri-apps/api': ^2
   '@tauri-apps/plugin-fs': ~2.5.1
-  '@tauri-apps/plugin-log': ~2.8.0
+  '@tauri-apps/plugin-log': ~2.9.0
   '@tauri-apps/plugin-opener': ^2
   '@tsdown/css': ^0.22.3
   '@types/fhir': ^0.0.44
