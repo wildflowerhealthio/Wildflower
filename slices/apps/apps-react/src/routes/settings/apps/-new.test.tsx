@@ -28,17 +28,16 @@ const { createStub, selfHostedStub } = vi.hoisted(() => ({
   },
 }))
 
-vi.mock('../../../queries.ts', () => ({
-  useAppsAdminCreateMutation: () => createStub,
-  useSelfHostedAppCreateMutation: () => selfHostedStub,
-  // Imported transitively by `-forms.tsx` (CloudAppFields) but unused here.
-  useAppsAdminReplaceMutation: () => ({
-    mutate: vi.fn(),
-    reset: vi.fn(),
-    isPending: false,
-    error: null,
-  }),
-}))
+vi.mock('../../../queries.ts', () => {
+  const unused = { mutate: vi.fn(), reset: vi.fn(), isPending: false, error: null }
+  return {
+    useCloudAppCreateMutation: () => createStub,
+    useSelfHostedAppCreateMutation: () => selfHostedStub,
+    // Imported transitively by `-forms.tsx` (CloudAppFields) but unused here.
+    useCloudAppReplaceMutation: () => unused,
+    useSelfHostedAppReplaceMutation: () => unused,
+  }
+})
 
 import { NewAppBody } from './new.tsx'
 

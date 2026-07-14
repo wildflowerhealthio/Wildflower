@@ -4,7 +4,10 @@ mod spa;
 mod tunnel_adapters;
 
 use anyhow::Context;
-use apps_rust::{setup_apps, AppsConfig, LaunchCookies, OwnerAuth, SelfHostedAppsService};
+use apps_rust::{
+    ports::{LaunchCookies, OwnerAuth},
+    setup_apps, AppsConfig, SelfHostedAppsService,
+};
 use axum::Router;
 use emr_rust::{setup_fhir_r4, EmrConfig};
 use gatekeeper_rust::{
@@ -352,7 +355,7 @@ async fn run_server(
     // through the reqwest adapter to verify reachability.
     let health_probe: Arc<dyn tunnel_rust::HealthProbe> =
         Arc::new(tunnel_adapters::ReqwestHealthProbe::new());
-    let tunnel = tunnel_rust::setup_tunnel(diesel_pool, &tunnel_config, health_probe)
+    let tunnel = tunnel_rust::setup_tunnel(diesel_pool.clone(), &tunnel_config, health_probe)
         .context("failed to set up tunnel")?;
     let gated_tunnel =
         layer_router_with_gatekeeper_auth_gating(tunnel.router, gatekeeper.state.clone(), &[]);
@@ -449,7 +452,7 @@ async fn run_server(
     // The forwarded self-hosted launch cookie seam (see `GatekeeperLaunchCookies`).
     let launch_cookies: Arc<dyn LaunchCookies> = Arc::new(GatekeeperLaunchCookies);
     let apps = setup_apps(
-        db,
+        diesel_pool,
         &apps_config,
         Arc::clone(&tunnel_service),
         webview_handle,
@@ -604,13 +607,12 @@ async fn run_server(
     // API origin + tunnel feed the per-request template rendering (`apiOrigin`)
     // in each app's router — loopback callers get the loopback origin, forwarded
     // callers `https://<public_host>`.
-    for app in &apps.self_hosted_apps_at_start {
-        // The catalogue is self-hosted-only by construction; the `if let` just
-        // avoids a panic path on a store bug.
-        if let Some(self_hosted_app) = app.as_self_hosted() {
-            if let Err(error) = self_hosted.start(&app.id, self_hosted_app).await {
-                tauri_plugin_log::log::warn!("failed to start self-hosted app {}: {error}", app.id);
-            }
+    for (registration, config) in &apps.self_hosted_apps_at_start {
+        if let Err(error) = self_hosted.start(&registration.id, config).await {
+            tauri_plugin_log::log::warn!(
+                "failed to start self-hosted app {}: {error}",
+                registration.id
+            );
         }
     }
     // Hold the orchestrator for the process lifetime — dropping it would drop the

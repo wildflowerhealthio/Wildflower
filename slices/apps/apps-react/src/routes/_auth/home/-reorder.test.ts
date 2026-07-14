@@ -1,22 +1,21 @@
 import { describe, expect, test } from 'vite-plus/test'
 
-import type { AppEntry } from '../../../queries.ts'
+import type { AppRegistration } from '../../../queries.ts'
 import { reorderApps } from './-reorder.ts'
 
-// `reorderApps` reads only `id`, so a system entry (the variant with no
-// typed-child fields) is the lightest valid member of the union.
-const makeApp = (id: string, enabled = true): AppEntry => ({
+// `reorderApps` reads only `id`, so a minimal uniform registration suffices.
+const makeApp = (id: string, onHomescreen = true): AppRegistration => ({
   id,
   name: id,
-  enabled,
-  provenance: 'system',
+  onHomescreen,
+  kind: 'system',
   localOnly: false,
-  smart: false,
-  removable: true,
+  isSmart: false,
+  requiresTunnel: false,
 })
 
-const apps: readonly AppEntry[] = ['a', 'b', 'c', 'd'].map((id) => makeApp(id))
-const ids = (list: readonly AppEntry[] | null): readonly string[] | null =>
+const apps: readonly AppRegistration[] = ['a', 'b', 'c', 'd'].map((id) => makeApp(id))
+const ids = (list: readonly AppRegistration[] | null): readonly string[] | null =>
   list === null ? null : list.map((app) => app.id)
 
 describe('reorderApps', () => {
@@ -42,7 +41,7 @@ describe('reorderApps', () => {
     // The list the homescreen reorders is the *full* registry (a disabled `b`
     // included), so the result carries every id — the caller PUTs the whole
     // thing and the server renumbers `position` densely.
-    const full: readonly AppEntry[] = [makeApp('a'), makeApp('b', false), makeApp('c')]
+    const full: readonly AppRegistration[] = [makeApp('a'), makeApp('b', false), makeApp('c')]
     expect(ids(reorderApps(full, 'a', 'c'))).toEqual(['b', 'c', 'a'])
   })
 })

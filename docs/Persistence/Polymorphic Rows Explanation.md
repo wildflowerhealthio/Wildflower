@@ -5,8 +5,16 @@ system / cloud / self-hosted, a grant that is an authorization-code consent or a
 device pairing — and how that one storage shape reaches the wire as a
 discriminated union. This is a **convention, not a library**: there is no shared
 helper in `persistence-rust`; each slice writes the same small pattern by hand,
-and this doc is the single description they share. Its two implementations are
-[apps](../Apps/Explanation.md) (the reference) and gatekeeper grants.
+and this doc is the single description they share. Its live implementation is
+**gatekeeper grants** and the **apps registry**. (The apps slice briefly used a
+table-per-struct variant — one standalone table per kind, no parent, issue 350 —
+but **returned to this parent+child shape**: its `app_registrations` parent is a real
+domain object — the global id space, the shared catalogue facts, and the
+homescreen-placement aggregate — not the abstract "app base class" the earlier
+objection was to. Its discriminator is `kind` (`AppKind`), distinct from grants'
+`grantType`. See [Apps Explanation](../Apps/Explanation.md) §"Data
+model". The two slices differ on the wire — grants a tagged union, apps a uniform
+list + per-kind detail — see §"The wire".)
 
 ## The problem
 
@@ -44,18 +52,13 @@ CREATE TABLE device_grants (
 );
 ```
 
-The apps schema is the same shape with three kinds
-(`apps` + `cloud_apps` / `self_hosted_apps`, one kind carrying no child at all);
-see `apps-rust/src/migrations/004_apps_registry.sql`.
-
 ### Why child tables, not nullable columns
 
 Each variant's columns stay `NOT NULL` in their own table — the invariant lives
-in the schema, not in prose. Per-variant `UNIQUE` indexes (the grant upsert keys,
-apps' `subdomain`) can't be expressed across a parent+child JOIN, so they live on
-the child; that's why **`client_id` is denormalized onto the children** even
-though the parent already has it. `ON DELETE CASCADE` makes deleting the parent
-delete the payload.
+in the schema, not in prose. Per-variant `UNIQUE` indexes (the grant upsert keys)
+can't be expressed across a parent+child JOIN, so they live on the child; that's
+why **`client_id` is denormalized onto the children** even though the parent
+already has it. `ON DELETE CASCADE` makes deleting the parent delete the payload.
 
 ## The invariants and how they're held
 
@@ -67,13 +70,12 @@ carry it:
   child, then commit — never a parent without its child. `client_id` is written
   identically to both in that transaction, so `child.client_id == parent.client_id`
   holds by construction. See `upsert_grant` / `upsert_device_grant` / `create_grant`
-  in `gatekeeper-rust/src/db/grants.rs` and apps' `db/writes.rs`.
+  in `gatekeeper-rust/src/db/grants.rs`.
 - **Reads fail typed on a missing child.** One `SELECT` with a `LEFT JOIN` per
   child decodes the whole row; the decoder dispatches on the discriminator and
   reads the child columns its kind needs through a helper that maps a `NULL`
   (LEFT JOIN found no child) to a typed error naming the column — never a partial
-  value. See `grant_from_row` / `get_child` in `db/grants.rs` and `app_from_row`
-  in `apps-rust/src/db/reads.rs`.
+  value. See `grant_from_row` / `get_child` in `db/grants.rs`.
 
 **The discriminator is the variant, not a separate field.** The Rust domain is a
 struct of shared fields plus a payload-carrying enum; a `grant_type()` /
@@ -89,29 +91,35 @@ pub enum GrantKind {
 impl GrantKind { pub fn grant_type(&self) -> GrantType { /* variant → column value */ } }
 ```
 
-Mirror in `gatekeeper-rust/src/domain/grant.rs` and `apps-rust/src/domain/app.rs`
-(`AppKind`).
+Mirror in `gatekeeper-rust/src/domain/grant.rs`. (apps applies the same
+"discriminator is the variant" idea in its `AppConfiguration` union, whose variants
+wrap the per-kind configuration types — the variant _is_ the `kind`, matching the
+`kind` column value on the `AppRegistration` it's paired with.)
 
-## The wire: one discriminated union
+## The wire
 
-The same storage shape reaches the wire as an **internally-tagged union** — the
-tag plus the matching variant's fields alongside the shared fields — so a client
-decodes one union and narrows on the tag. Two mirrored halves, pinned by hand
-(the `/access/*` surface is undocumented, so no OpenAPI drift test guards it here;
-apps' catalogue _is_ under the drift check):
+How a polymorphic row reaches the wire is a per-slice choice, not fixed by the
+storage shape:
 
-- **Rust** — serialize the union with an internally-tagged serde enum. gatekeeper
-  tags the domain `Grant` directly (`#[serde(flatten)]` a
-  `#[serde(tag = "grantType")]` `GrantKind`), matching the slice's existing
-  domain-is-wire convention for grants; apps projects a separate wire type
-  (`AppListEntry`, `#[serde(tag = "provenance")]`) from the domain via a `From`
-  impl. Either is fine — projecting keeps the domain serde-free, tagging is less
-  code. Add per-variant serde tests (there's no drift test to catch a slip).
-- **TypeScript** — a `Schema.Union` of one `Schema.Struct` per variant, each
-  pinning its tag with `Schema.Literal` and adding its own fields. Consumers
-  narrow with `Extract<T, { tag: 'x' }>` (types) or effect `Match.value` on the
-  tag (rendering). See `gatekeeper-core/.../access-management.ts` (`GrantSchema`)
-  and `apps-core/.../schemas.ts` (`AppListEntrySchema`).
+- **gatekeeper grants — one internally-tagged union.** The stored parent+child
+  reaches the wire as a single tagged union: the tag (`grantType`) plus the
+  matching variant's fields alongside the shared fields, so a client decodes one
+  union and narrows on the tag. Rust tags the domain `Grant` directly
+  (`#[serde(flatten)]` a `#[serde(tag = "grantType")]` `GrantKind`); TypeScript is
+  a `Schema.Union` of one `Schema.Struct` per variant, each pinning its tag with
+  `Schema.Literal`, narrowed with `Extract<T, { tag: 'x' }>` / effect
+  `Match.value`. The `/access/*` surface is undocumented, so add per-variant serde
+  tests (no drift test guards it). See
+  `gatekeeper-core/.../access-management.ts` (`GrantSchema`).
+- **apps registry — a uniform list + per-kind detail (no union).** The apps
+  catalogue is _not_ a tagged union: `GET /apps` returns a **uniform**
+  `AppRegistration[]` (the shared registration fields plus a `kind` tag, nothing
+  to narrow), and the per-kind payload is read on a **per-kind detail** endpoint
+  (`/cloud-apps/{id}` etc.) whose shape is flat (registration fields + that kind's
+  payload). Projecting the catalogue to a flat, non-narrowing shape — and moving
+  the payload off the list onto per-kind resources — is what the drift-checked
+  `apps-core/.../schemas.ts` (`AppRegistrationSchema`, `CloudAppDetailSchema`, …)
+  pins. Either shaping is fine; pick by whether consumers must narrow.
 
 ## Migrating a flat table into this shape
 
@@ -124,8 +132,8 @@ its child, then drop the old table. See
 
 ## See also
 
-- [Apps Explanation](../Apps/Explanation.md) — the reference implementation (the
-  `provenance` taxonomy this pattern stores).
+- [Apps Explanation](../Apps/Explanation.md) — the `kind` taxonomy this pattern
+  stores, and its uniform-list + per-kind-detail wire shaping.
 - [OpenAPI Spec Drift How-To](../Effect/OpenAPI%20Spec%20Drift%20How-To.md) — for
   a union on a _documented_ surface, how the Rust ⇄ TS halves are drift-checked.
 - gatekeeper's grant storage: `gatekeeper-rust/src/db/grants.rs`,

@@ -35,97 +35,104 @@ const LaunchPathSchema = Schema.String.pipe(
 )
 
 /**
- * How an app's launch target resolves (mirrors the Rust `Provenance`):
- * `system` (a shell route / compiled-in backend), `self-hosted` (served from
- * the device on a dedicated isolated origin), or `cloud` (a remote origin
- * reached through the tunnel). On the wire it's the lowercase-kebab string.
+ * Which kind an app is — the class-table-inheritance discriminator (mirrors the
+ * Rust `AppKind`): `system` (a shell route), `self-hosted` (served from the
+ * device on a dedicated isolated origin), or `cloud` (a remote origin reached
+ * through the tunnel). On the wire it's the lowercase-kebab string. Replaces the
+ * former `provenance`.
  */
-const ProvenanceSchema = Schema.Literal('system', 'self-hosted', 'cloud')
+const KindSchema = Schema.Literal('system', 'self-hosted', 'cloud')
 
 /**
- * The fields every catalogue entry shares, from the parent `apps` registry row.
- * The per-provenance variants below add their typed-child-table fields.
+ * The fields every registration carries, from the authoritative
+ * `app_registrations` row — the uniform shape everything renders. `isSmart` is
+ * derived from the row's soft `client_id`; `position` stays on the host (the
+ * `GET /apps` array order is the display order). The per-kind detail shapes below
+ * add their payload.
  */
-const sharedAppFields = {
+const registrationFields = {
   id: Schema.String,
+  /** The discriminator — which kind of app this is. */
+  kind: KindSchema,
+  /** Whether the app's tile shows on the home screen. */
+  onHomescreen: Schema.Boolean,
   name: Schema.String,
   /** Optional descriptive line shown under the app name. */
   subtitle: Schema.optional(Schema.NonEmptyString),
-  enabled: Schema.Boolean,
   /** The declared no-egress flag (a homescreen badge). */
   localOnly: Schema.Boolean,
-  /** Whether this is a SMART app (the registry row carries a `client_id`). */
-  smart: Schema.Boolean,
+  /** Whether this is a SMART app (the registration carries a `client_id`). */
+  isSmart: Schema.Boolean,
   /**
-   * Whether the owner can remove this app through the admin surface (`true` for
-   * cloud + uploaded self-hosted, `false` for system + seeded). The editor's
-   * Remove control keys off this. See `docs/Apps/Explanation.md` §"Removability".
+   * Whether a launch must bring the tunnel up first (the Tunnel pill). `false`
+   * for system / self-hosted; meaningful only for cloud apps.
    */
-  removable: Schema.Boolean,
+  requiresTunnel: Schema.Boolean,
 } as const
 
-/** A system app catalogue entry — no typed child table, no extra fields. */
-const SystemAppListEntrySchema = Schema.Struct({
-  ...sharedAppFields,
-  provenance: Schema.Literal('system'),
-})
+/**
+ * Wire shape for `GET /apps` and `PUT /home-screen` — one uniform
+ * `AppRegistration` per app of every kind (mirrors the Rust `AppRegistration`),
+ * no `provenance` union to narrow. Everything the homescreen tile renders is
+ * here; the per-kind payload (`url`, `launchPath`) is an editor concern read on a
+ * per-kind detail lookup.
+ */
+const AppRegistrationSchema = Schema.Struct(registrationFields)
+
+const AppListSchema = Schema.Array(AppRegistrationSchema)
 
 /**
- * A cloud app catalogue entry — carries its stored launch `url` **template**
- * (`{origin}` / `{launch}` tokens, resolved only at launch) and `requiresTunnel`
- * from the `cloud_apps` child. The template is a stored, origin-independent
- * config value, so it's safe on a read shape (it's never a concrete redirect).
+ * Wire shape for `GET`/`POST`/`PUT /cloud-apps…` (mirrors the Rust
+ * `CloudAppDetail`) — the registration fields plus the stored launch `url`
+ * **template** (`{origin}` / `{launch}` tokens, resolved only at launch) and
+ * `isRemovable` (always `true` for a cloud app).
  */
-const CloudAppListEntrySchema = Schema.Struct({
-  ...sharedAppFields,
-  provenance: Schema.Literal('cloud'),
+const CloudAppDetailSchema = Schema.Struct({
+  ...registrationFields,
   url: Schema.String,
-  requiresTunnel: Schema.Boolean,
+  isRemovable: Schema.Boolean,
 })
 
 /**
- * A self-hosted app catalogue entry — carries its stored `launchPath` (absent
- * for a root-served bundle) from the `self_hosted_apps` child; see
- * {@link LaunchPathSchema}.
+ * Wire shape for `GET`/`POST`/`PUT /self-hosted-apps…` (mirrors the Rust
+ * `SelfHostedAppDetail`) — the registration fields plus its stored `launchPath`
+ * (absent for a root-served bundle; see {@link LaunchPathSchema}), the `seeded`
+ * flag, and `isRemovable` (`!seeded`).
  */
-const SelfHostedAppListEntrySchema = Schema.Struct({
-  ...sharedAppFields,
-  provenance: Schema.Literal('self-hosted'),
+const SelfHostedAppDetailSchema = Schema.Struct({
+  ...registrationFields,
   launchPath: Schema.optional(Schema.String),
+  seeded: Schema.Boolean,
+  isRemovable: Schema.Boolean,
 })
 
 /**
- * Wire shape for `GET /apps` (and the create / replace responses): a
- * **discriminated union on `provenance`**, mirroring the Rust `AppListEntry`.
- * The shared fields come from the `apps` parent row; each variant adds its typed
- * child-table fields. A consumer narrows on `provenance` to read
- * `url` / `requiresTunnel` (cloud) or `launchPath` (self-hosted).
+ * Wire shape for `GET /system-apps/{id}` (mirrors the Rust `SystemAppDetail`) —
+ * the registration fields plus the display-only launch `url` template. A system
+ * app is never editable, so there is no create / replace shape and no `removable`.
  */
-const AppListEntrySchema = Schema.Union(
-  SystemAppListEntrySchema,
-  CloudAppListEntrySchema,
-  SelfHostedAppListEntrySchema
-)
-
-const AppListSchema = Schema.Array(AppListEntrySchema)
+const SystemAppDetailSchema = Schema.Struct({
+  ...registrationFields,
+  url: Schema.String,
+})
 
 /**
- * One entry in the `PUT /home-screen` body: an app id and its desired `enabled`
- * flag. The entry's **index in the array is its new display `position`**, so the
- * order is implicit and a swap is well-ordered by construction. Mirrors the Rust
- * `HomeScreenEntry`.
+ * One entry in the `PUT /home-screen` body: an app id and its desired
+ * `onHomescreen` flag. The entry's **index in the array is its new display
+ * `position`**, so the order is implicit and a swap is well-ordered by
+ * construction. Mirrors the Rust `HomeScreenEntry`.
  */
 const HomeScreenEntrySchema = Schema.Struct({
   id: Schema.String,
-  enabled: Schema.Boolean,
+  onHomescreen: Schema.Boolean,
 })
 
 /**
- * Body for `PUT /home-screen` — the full ordered homescreen as `{ id, enabled }`
- * entries. Must list **every** registry app exactly once (array order = display
- * order); the server renumbers `position` to the array index and applies each
- * `enabled` atomically. The single writer of order + enabled, across every
- * provenance.
+ * Body for `PUT /home-screen` — the full ordered homescreen as
+ * `{ id, onHomescreen }` entries. Must list **every** registry app exactly once
+ * (array order = display order); the server renumbers `position` to the array
+ * index and applies each `onHomescreen` atomically. The single writer of order +
+ * placement, across every kind.
  */
 const HomeScreenSchema = Schema.Array(HomeScreenEntrySchema)
 
@@ -138,8 +145,9 @@ const AppNotFoundSchema = Schema.Struct({
 
 /**
  * Body for `AppNotEditable` (409) — the app exists but can't be edited/removed:
- * a system app, a seeded self-hosted app, or (on replace) a body whose
- * `provenance` doesn't match the stored app. Mirrors the Rust `AppNotEditableBody`.
+ * a system app, or a seeded self-hosted app. (A per-kind path given an id of
+ * another kind is a `404`, not a `409` — the kind mismatch can't be expressed.)
+ * Mirrors the Rust `AppNotEditableBody`.
  */
 const AppNotEditableSchema = Schema.Struct({
   error: Schema.Literal('AppNotEditable'),
@@ -159,50 +167,13 @@ const InvalidFieldSchema = Schema.Struct({
 })
 
 /**
- * The `requiresTunnel` multipart field. `multipart/form-data` fields cross the
- * wire as text, so it arrives as `"true"` / `"false"` and decodes to a boolean.
+ * Body shared by `POST /cloud-apps` (create) and `PUT /cloud-apps/:id` (content
+ * replace) — a cloud app's editable content as **JSON** (mirrors the Rust
+ * `CloudAppBody`; the former multipart + `requiresTunnel`-as-text hack is gone).
+ * `name` is non-empty and `url` is well-formed ({@link AppUrlSchema}); empty
+ * `subtitle` (`""`) or an omitted one clears it.
  */
-const RequiresTunnelFieldSchema = Schema.transform(
-  Schema.Literal('true', 'false'),
-  Schema.Boolean,
-  {
-    strict: true,
-    decode: (text) => text === 'true',
-    encode: (flag): 'true' | 'false' => (flag ? 'true' : 'false'),
-  }
-)
-
-/**
- * Body for `CreateApp` (`POST /apps`) — a **`multipart/form-data`** form so the
- * single create route carries both a cloud app's fields and a self-hosted app's
- * uploaded bundle, discriminated on `provenance` (cloud: `name` + `url` through
- * {@link AppUrlSchema} + `requiresTunnel` + optional `subtitle`; self-hosted:
- * `name` + optional `subtitle` + the `bundle` zip). The kind-specific fields are
- * schema-optional because a multipart client payload is an opaque `FormData`, not
- * a schema-shaped object; the server requires the right fields per `provenance`.
- * This schema shapes the wire + OpenAPI contract, not a client-constructed object.
- */
-const CreateAppBodySchema = HttpApiSchema.Multipart(
-  Schema.Struct({
-    provenance: Schema.Literal('cloud', 'self-hosted'),
-    name: Schema.NonEmptyString,
-    // Looser than the read schemas (non-empty): empty `""` clears the subtitle.
-    subtitle: Schema.optional(Schema.String),
-    // Cloud-only.
-    url: Schema.optional(AppUrlSchema),
-    requiresTunnel: Schema.optional(RequiresTunnelFieldSchema),
-    // Self-hosted-only: the uploaded zip bundle.
-    bundle: Schema.optional(Multipart.FileSchema),
-  })
-)
-
-/**
- * Full-replace content for a **cloud** app (`PUT /apps/:id`). `name` / `url`
- * carry the same non-empty / well-formed constraints as create; empty `subtitle`
- * (`""`) or an omitted one clears it.
- */
-const CloudAppContentSchema = Schema.Struct({
-  provenance: Schema.Literal('cloud'),
+const CloudAppBodySchema = Schema.Struct({
   name: Schema.NonEmptyString,
   subtitle: Schema.optional(Schema.String),
   url: AppUrlSchema,
@@ -210,22 +181,29 @@ const CloudAppContentSchema = Schema.Struct({
 })
 
 /**
- * Replace content for a **self-hosted** app (`PUT /apps/:id`): just the
- * `launchPath` (see {@link LaunchPathSchema}); empty / omitted clears it back to
- * root-serving.
+ * Body for `CreateSelfHostedApp` (`POST /self-hosted-apps`) — a
+ * **`multipart/form-data`** form carrying the app `name`, an optional `subtitle`,
+ * and the uploaded `bundle` zip (mirrors the Rust `CreateSelfHostedAppMultipart`).
+ * A multipart client payload is an opaque `FormData`; this schema shapes the wire
+ * + OpenAPI contract.
  */
-const SelfHostedAppContentSchema = Schema.Struct({
-  provenance: Schema.Literal('self-hosted'),
-  launchPath: Schema.optional(LaunchPathSchema),
-})
+const CreateSelfHostedAppBodySchema = HttpApiSchema.Multipart(
+  Schema.Struct({
+    name: Schema.NonEmptyString,
+    // Looser than the read schemas (non-empty): empty `""` clears the subtitle.
+    subtitle: Schema.optional(Schema.String),
+    bundle: Multipart.FileSchema,
+  })
+)
 
 /**
- * Body for `ReplaceApp` (`PUT /apps/:id`) — a **discriminated union on
- * `provenance`**, matching the Rust `AppContentBody`. Only the editable kinds
- * have an arm (system apps are never editable); the server rejects a body whose
- * arm doesn't match the stored app's provenance (`409`).
+ * Body for `ReplaceSelfHostedApp` (`PUT /self-hosted-apps/:id`): just the
+ * `launchPath` (see {@link LaunchPathSchema}); empty / omitted clears it back to
+ * root-serving. Mirrors the Rust `SelfHostedAppBody`.
  */
-const AppContentBodySchema = Schema.Union(CloudAppContentSchema, SelfHostedAppContentSchema)
+const SelfHostedAppBodySchema = Schema.Struct({
+  launchPath: Schema.optional(LaunchPathSchema),
+})
 
 /**
  * Body for `InvalidHomeScreen` (400) — the `PUT /home-screen` payload wasn't an
@@ -239,21 +217,22 @@ const InvalidHomeScreenSchema = Schema.Struct({
 })
 
 export {
-  AppContentBodySchema,
   AppIdPathSchema,
-  AppListEntrySchema,
   AppListSchema,
   AppNotEditableSchema,
   AppNotFoundSchema,
+  AppRegistrationSchema,
   AppUrlSchema,
-  CloudAppListEntrySchema,
-  CreateAppBodySchema,
+  CloudAppBodySchema,
+  CloudAppDetailSchema,
+  CreateSelfHostedAppBodySchema,
   HomeScreenEntrySchema,
   HomeScreenSchema,
   InvalidFieldSchema,
   InvalidHomeScreenSchema,
+  KindSchema,
   LaunchPathSchema,
-  ProvenanceSchema,
-  SelfHostedAppListEntrySchema,
-  SystemAppListEntrySchema,
+  SelfHostedAppBodySchema,
+  SelfHostedAppDetailSchema,
+  SystemAppDetailSchema,
 }

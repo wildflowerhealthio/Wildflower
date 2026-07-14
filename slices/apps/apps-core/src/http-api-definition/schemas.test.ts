@@ -4,73 +4,75 @@ import { utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import {
-  AppContentBodySchema,
-  AppListEntrySchema,
   AppNotEditableSchema,
   AppNotFoundSchema,
+  AppRegistrationSchema,
   AppUrlSchema,
-  CreateAppBodySchema,
+  CloudAppBodySchema,
+  CloudAppDetailSchema,
   HomeScreenSchema,
   InvalidFieldSchema,
   InvalidHomeScreenSchema,
-  ProvenanceSchema,
+  KindSchema,
+  SelfHostedAppBodySchema,
+  SelfHostedAppDetailSchema,
+  SystemAppDetailSchema,
 } from './schemas.ts'
 
-const PROVENANCES = ['system', 'self-hosted', 'cloud'] as const
+const KINDS = ['system', 'self-hosted', 'cloud'] as const
 
 const { expectLeftToEqual, expectRightToEqual } = utilityExpectations(expect)
 
-describe('AppContentBodySchema', () => {
-  it('accepts a cloud content body', () => {
+describe('CloudAppBodySchema', () => {
+  it('accepts a well-formed cloud body', () => {
+    const body = { name: 'My App', url: 'https://example.com/launch', requiresTunnel: false }
+    expectRightToEqual(Schema.decodeUnknownEither(CloudAppBodySchema)(body), body)
+  })
+
+  // The write side accepts `""` (which the read schema rejects); the server
+  // normalizes it to "no subtitle" so it never round-trips back as `""`.
+  it('accepts an empty-string subtitle (server clears it)', () => {
     const body = {
-      provenance: 'cloud',
-      name: 'My App',
-      url: 'https://example.com/launch',
+      name: 'X',
+      url: 'https://example.com',
       requiresTunnel: false,
+      subtitle: '',
     }
-    expectRightToEqual(Schema.decodeUnknownEither(AppContentBodySchema)(body), body)
+    expectRightToEqual(Schema.decodeUnknownEither(CloudAppBodySchema)(body), body)
   })
 
-  it('accepts a self-hosted body with and without a launch path', () => {
-    const bare = { provenance: 'self-hosted' }
-    expectRightToEqual(Schema.decodeUnknownEither(AppContentBodySchema)(bare), bare)
-    const withPath = { provenance: 'self-hosted', launchPath: '/launch.html?iss={origin}/fhir-r4' }
-    expectRightToEqual(Schema.decodeUnknownEither(AppContentBodySchema)(withPath), withPath)
-    // An empty launch path clears it back to root-serving.
-    const cleared = { provenance: 'self-hosted', launchPath: '' }
-    expectRightToEqual(Schema.decodeUnknownEither(AppContentBodySchema)(cleared), cleared)
+  it('rejects an empty name, a bad url, or a missing url', () => {
+    for (const bad of [
+      { name: '', url: 'https://example.com', requiresTunnel: false },
+      { name: 'X', url: 'javascript:alert(1)', requiresTunnel: false },
+      { name: 'X', requiresTunnel: false },
+    ]) {
+      expectLeftToEqual(
+        Schema.decodeUnknownEither(CloudAppBodySchema)(bad),
+        expect.objectContaining({ _tag: 'ParseError' })
+      )
+    }
+  })
+})
+
+describe('SelfHostedAppBodySchema', () => {
+  it('accepts a bare body, a launch path, and an empty (cleared) launch path', () => {
+    for (const body of [
+      {},
+      { launchPath: '/launch.html?iss={origin}/fhir-r4' },
+      { launchPath: '' },
+    ]) {
+      expectRightToEqual(Schema.decodeUnknownEither(SelfHostedAppBodySchema)(body), body)
+    }
   })
 
-  it('rejects a self-hosted body with a non-origin-relative launch path', () => {
+  it('rejects a non-origin-relative launch path', () => {
     expectLeftToEqual(
-      Schema.decodeUnknownEither(AppContentBodySchema)({
-        provenance: 'self-hosted',
+      Schema.decodeUnknownEither(SelfHostedAppBodySchema)({
         launchPath: 'https://evil.example/launch',
       }),
       expect.objectContaining({ _tag: 'ParseError' })
     )
-  })
-
-  it('rejects a cloud body with an empty name or bad url', () => {
-    for (const bad of [
-      { provenance: 'cloud', name: '', url: 'https://example.com', requiresTunnel: false },
-      { provenance: 'cloud', name: 'X', url: 'javascript:alert(1)', requiresTunnel: false },
-      { provenance: 'cloud', name: 'X', requiresTunnel: false },
-    ]) {
-      expectLeftToEqual(
-        Schema.decodeUnknownEither(AppContentBodySchema)(bad),
-        expect.objectContaining({ _tag: 'ParseError' })
-      )
-    }
-  })
-
-  it('rejects a body with no (or an unknown) provenance arm', () => {
-    for (const bad of [{ name: 'X' }, { provenance: 'system' }]) {
-      expectLeftToEqual(
-        Schema.decodeUnknownEither(AppContentBodySchema)(bad),
-        expect.objectContaining({ _tag: 'ParseError' })
-      )
-    }
   })
 })
 
@@ -102,96 +104,122 @@ describe('AppUrlSchema', () => {
   })
 })
 
-describe('CreateAppBodySchema', () => {
-  // A `multipart/form-data` body: fields cross the wire as text (so
-  // `requiresTunnel` is `"true"` / `"false"`), and `provenance` discriminates.
-  // The kind-specific fields are schema-optional — the server enforces which are
-  // required per kind — so these tests exercise the field-level constraints, not
-  // per-kind presence.
-  it('accepts a well-formed cloud body (requiresTunnel decodes from text)', () => {
-    expectRightToEqual(
-      Schema.decodeUnknownEither(CreateAppBodySchema)({
-        provenance: 'cloud',
-        name: 'My App',
-        url: 'https://example.com',
-        requiresTunnel: 'false',
-      }),
-      { provenance: 'cloud', name: 'My App', url: 'https://example.com', requiresTunnel: false }
+describe('KindSchema', () => {
+  it('accepts the three kebab values', () => {
+    for (const k of KINDS) {
+      expectRightToEqual(Schema.decodeUnknownEither(KindSchema)(k), k)
+    }
+  })
+
+  it('rejects any non-kind string', () => {
+    fc.assert(
+      fc.property(
+        fc.string().filter((s) => !(KINDS as readonly string[]).includes(s)),
+        (s) => {
+          expect(Schema.decodeUnknownEither(KindSchema)(s)._tag).toBe('Left')
+        }
+      )
+    )
+  })
+})
+
+describe('AppRegistrationSchema', () => {
+  const withOptionalSubtitle = <T extends object>(base: T): fc.Arbitrary<T> =>
+    fc
+      .option(fc.string({ minLength: 1 }), { nil: undefined })
+      .map((subtitle) => (subtitle === undefined ? base : { ...base, subtitle }))
+
+  const registrationArb = fc
+    .record({
+      id: fc.string({ minLength: 1 }),
+      kind: fc.constantFrom(...KINDS),
+      onHomescreen: fc.boolean(),
+      name: fc.string({ minLength: 1 }),
+      localOnly: fc.boolean(),
+      isSmart: fc.boolean(),
+      requiresTunnel: fc.boolean(),
+    })
+    .chain(withOptionalSubtitle)
+
+  it('decodes any well-formed uniform registration to itself', () => {
+    fc.assert(
+      fc.property(registrationArb, (entry) => {
+        expectRightToEqual(Schema.decodeUnknownEither(AppRegistrationSchema)(entry), entry)
+      })
     )
   })
 
-  it('accepts a self-hosted body without a bundle (server enforces its presence)', () => {
-    expectRightToEqual(
-      Schema.decodeUnknownEither(CreateAppBodySchema)({
-        provenance: 'self-hosted',
-        name: 'Uploaded App',
-      }),
-      { provenance: 'self-hosted', name: 'Uploaded App' }
-    )
+  it('rejects an empty-string subtitle, a bad kind, and a missing shared field', () => {
+    const base = {
+      id: 'x',
+      kind: 'cloud',
+      onHomescreen: true,
+      name: 'X',
+      localOnly: false,
+      isSmart: true,
+      requiresTunnel: true,
+    }
+    for (const bad of [
+      { ...base, subtitle: '' },
+      { ...base, kind: 'external' },
+      { id: 'x', kind: 'cloud', name: 'X', localOnly: false, isSmart: true, requiresTunnel: true },
+    ]) {
+      expectLeftToEqual(
+        Schema.decodeUnknownEither(AppRegistrationSchema)(bad),
+        expect.objectContaining({ _tag: 'ParseError' })
+      )
+    }
+  })
+})
+
+describe('per-kind detail schemas', () => {
+  const registration = {
+    id: 'x',
+    kind: 'cloud',
+    onHomescreen: true,
+    name: 'X',
+    localOnly: false,
+    isSmart: true,
+    requiresTunnel: true,
+  }
+
+  it('CloudAppDetailSchema carries the url template + isRemovable', () => {
+    const detail = {
+      ...registration,
+      url: 'https://example.com/launch?iss={origin}',
+      isRemovable: true,
+    }
+    expectRightToEqual(Schema.decodeUnknownEither(CloudAppDetailSchema)(detail), detail)
   })
 
-  it('rejects an unknown provenance', () => {
+  it('CloudAppDetailSchema rejects a body missing url or isRemovable', () => {
     expectLeftToEqual(
-      Schema.decodeUnknownEither(CreateAppBodySchema)({ provenance: 'system', name: 'X' }),
+      Schema.decodeUnknownEither(CloudAppDetailSchema)({ ...registration, isRemovable: true }),
       expect.objectContaining({ _tag: 'ParseError' })
     )
   })
 
-  it('rejects an empty name', () => {
-    expectLeftToEqual(
-      Schema.decodeUnknownEither(CreateAppBodySchema)({
-        provenance: 'cloud',
-        name: '',
-        url: 'https://example.com',
-        requiresTunnel: 'false',
-      }),
-      expect.objectContaining({ _tag: 'ParseError' })
-    )
+  it('SelfHostedAppDetailSchema carries launchPath?, seeded, and isRemovable', () => {
+    const seeded = {
+      ...registration,
+      kind: 'self-hosted',
+      seeded: true,
+      isRemovable: false,
+    }
+    expectRightToEqual(Schema.decodeUnknownEither(SelfHostedAppDetailSchema)(seeded), seeded)
+    const withPath = {
+      ...registration,
+      kind: 'self-hosted',
+      launchPath: '/launch.html',
+      seeded: false,
+      isRemovable: true,
+    }
+    expectRightToEqual(Schema.decodeUnknownEither(SelfHostedAppDetailSchema)(withPath), withPath)
   })
 
-  it('rejects a non-boolean requiresTunnel text', () => {
-    expectLeftToEqual(
-      Schema.decodeUnknownEither(CreateAppBodySchema)({
-        provenance: 'cloud',
-        name: 'X',
-        url: 'https://example.com',
-        requiresTunnel: 'yes',
-      }),
-      expect.objectContaining({ _tag: 'ParseError' })
-    )
-  })
-
-  it('rejects a malformed url', () => {
-    expectLeftToEqual(
-      Schema.decodeUnknownEither(CreateAppBodySchema)({
-        provenance: 'cloud',
-        name: 'X',
-        url: 'javascript:alert(1)',
-        requiresTunnel: 'false',
-      }),
-      expect.objectContaining({ _tag: 'ParseError' })
-    )
-  })
-
-  // The write side accepts `""` (which the read schema rejects); the server
-  // normalizes it to "no subtitle" so it never round-trips back as `""`.
-  it('accepts an empty-string subtitle (server clears it)', () => {
-    expectRightToEqual(
-      Schema.decodeUnknownEither(CreateAppBodySchema)({
-        provenance: 'cloud',
-        name: 'X',
-        url: 'https://example.com',
-        requiresTunnel: 'false',
-        subtitle: '',
-      }),
-      {
-        provenance: 'cloud',
-        name: 'X',
-        url: 'https://example.com',
-        requiresTunnel: false,
-        subtitle: '',
-      }
-    )
+  it('SystemAppDetailSchema carries the url but no isRemovable', () => {
+    const detail = { ...registration, kind: 'system', url: '{origin}/docs' }
+    expectRightToEqual(Schema.decodeUnknownEither(SystemAppDetailSchema)(detail), detail)
   })
 })
 
@@ -229,138 +257,11 @@ describe('InvalidFieldSchema', () => {
   })
 })
 
-describe('ProvenanceSchema', () => {
-  it('accepts the three kebab values', () => {
-    for (const p of PROVENANCES) {
-      expectRightToEqual(Schema.decodeUnknownEither(ProvenanceSchema)(p), p)
-    }
-  })
-
-  it('rejects any non-provenance string', () => {
-    fc.assert(
-      fc.property(
-        fc.string().filter((s) => !(PROVENANCES as readonly string[]).includes(s)),
-        (s) => {
-          expect(Schema.decodeUnknownEither(ProvenanceSchema)(s)._tag).toBe('Left')
-        }
-      )
-    )
-  })
-})
-
-describe('AppListEntrySchema', () => {
-  // The shared parent fields every variant carries.
-  const sharedFields = {
-    id: fc.string({ minLength: 1 }),
-    name: fc.string({ minLength: 1 }),
-    enabled: fc.boolean(),
-    localOnly: fc.boolean(),
-    smart: fc.boolean(),
-    removable: fc.boolean(),
-  }
-  const withOptionalSubtitle = <T extends object>(base: T): fc.Arbitrary<T> =>
-    fc
-      .option(fc.string({ minLength: 1 }), { nil: undefined })
-      .map((subtitle) => (subtitle === undefined ? base : { ...base, subtitle }))
-  // A valid member of each provenance variant, with its typed-child fields.
-  const appListEntryArb = fc
-    .oneof(
-      fc.record({ ...sharedFields, provenance: fc.constant('system') }),
-      fc.record({
-        ...sharedFields,
-        provenance: fc.constant('cloud'),
-        url: fc.webUrl(),
-        requiresTunnel: fc.boolean(),
-      }),
-      fc.record({ ...sharedFields, provenance: fc.constant('self-hosted') })
-    )
-    .chain(withOptionalSubtitle)
-
-  it('decodes any well-formed variant to itself', () => {
-    fc.assert(
-      fc.property(appListEntryArb, (entry) => {
-        expectRightToEqual(Schema.decodeUnknownEither(AppListEntrySchema)(entry), entry)
-      })
-    )
-  })
-
-  it('carries the cloud url template and self-hosted launch path on their variants', () => {
-    const cloud = {
-      id: 'c',
-      name: 'C',
-      enabled: true,
-      localOnly: false,
-      smart: true,
-      removable: true,
-      provenance: 'cloud',
-      url: 'https://example.com/launch?iss={origin}/fhir-r4',
-      requiresTunnel: true,
-    }
-    expectRightToEqual(Schema.decodeUnknownEither(AppListEntrySchema)(cloud), cloud)
-    const selfHosted = {
-      id: 's',
-      name: 'S',
-      enabled: true,
-      localOnly: true,
-      smart: false,
-      removable: true,
-      provenance: 'self-hosted',
-      launchPath: '/launch.html?iss={origin}/fhir-r4',
-    }
-    expectRightToEqual(Schema.decodeUnknownEither(AppListEntrySchema)(selfHosted), selfHosted)
-  })
-
-  it('rejects an empty-string subtitle, a bad provenance, and a cloud row missing url/removable', () => {
-    // Empty subtitle on an otherwise-valid cloud variant.
-    expectLeftToEqual(
-      Schema.decodeUnknownEither(AppListEntrySchema)({
-        id: 'x',
-        name: 'X',
-        subtitle: '',
-        provenance: 'cloud',
-        localOnly: false,
-        smart: true,
-        removable: true,
-        url: 'https://example.com',
-        requiresTunnel: true,
-        enabled: true,
-      }),
-      expect.objectContaining({ _tag: 'ParseError' })
-    )
-    // A provenance with no matching variant.
-    expectLeftToEqual(
-      Schema.decodeUnknownEither(AppListEntrySchema)({
-        id: 'x',
-        name: 'X',
-        provenance: 'external',
-        localOnly: false,
-        smart: false,
-        enabled: true,
-        removable: false,
-      }),
-      expect.objectContaining({ _tag: 'ParseError' })
-    )
-    // A cloud row missing its `url` (variant-required) and `removable` (shared).
-    expectLeftToEqual(
-      Schema.decodeUnknownEither(AppListEntrySchema)({
-        id: 'x',
-        name: 'X',
-        provenance: 'cloud',
-        localOnly: false,
-        smart: false,
-        requiresTunnel: false,
-        enabled: true,
-      }),
-      expect.objectContaining({ _tag: 'ParseError' })
-    )
-  })
-})
-
 describe('HomeScreenSchema', () => {
-  it('decodes an ordered list of { id, enabled } entries', () => {
+  it('decodes an ordered list of { id, onHomescreen } entries', () => {
     const body = [
-      { id: 'patient-browser', enabled: true },
-      { id: 'api-view', enabled: false },
+      { id: 'patient-browser', onHomescreen: true },
+      { id: 'api-view', onHomescreen: false },
     ]
     expectRightToEqual(Schema.decodeUnknownEither(HomeScreenSchema)(body), body)
   })
@@ -369,13 +270,13 @@ describe('HomeScreenSchema', () => {
     expectRightToEqual(Schema.decodeUnknownEither(HomeScreenSchema)([]), [])
   })
 
-  it('rejects an entry missing enabled or with a non-boolean enabled', () => {
+  it('rejects an entry missing onHomescreen or with a non-boolean onHomescreen', () => {
     expectLeftToEqual(
       Schema.decodeUnknownEither(HomeScreenSchema)([{ id: 'x' }]),
       expect.objectContaining({ _tag: 'ParseError' })
     )
     expectLeftToEqual(
-      Schema.decodeUnknownEither(HomeScreenSchema)([{ id: 'x', enabled: 'yes' }]),
+      Schema.decodeUnknownEither(HomeScreenSchema)([{ id: 'x', onHomescreen: 'yes' }]),
       expect.objectContaining({ _tag: 'ParseError' })
     )
   })

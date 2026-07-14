@@ -5,50 +5,140 @@ doc explains the app taxonomy and privacy model; this one explains how the
 `apps-rust` store persists apps and how the self-hosted upload endpoint installs
 them — the invariants the code leans on so the HTTP handlers stay thin.
 
-## The store speaks whole apps
+## Ports and adapters
 
-One parent `apps` registry row plus a per-kind child table (`cloud_apps`,
-`self_hosted_apps`), fronted by a single `AppsStore`. Every read goes through
-**one JOIN projection** (`db::reads`) that decodes a whole `App` — the parent row
-plus its `AppKind` payload — so the catalogue, a single-row lookup, and the host
-listener list can't drift on columns or decoding. `smart` / `removable` are
-derived in Rust, not stored as computed columns.
+The slice follows the same ports-and-adapters shape as `collector-rust` and
+`tunnel-rust`:
 
-**Parent-implies-child is enforced in one place.** A `cloud` / `self-hosted`
-parent whose child row is missing — or whose stored `url` no longer parses —
-surfaces as a _typed read error_ (a logged 500 at the handler seam), never a
-partial `App`. `app_from_row` is the single enforcement point; handlers don't
-re-check it per call site.
+- **`AppsStore` (port)** — a domain trait (`domain/apps_store.rs`) speaking
+  _primitive_ persistence over concrete registrations, configurations, and
+  `(registration, configuration)` pairs — no "combined app" input, and the only
+  union it returns is `AppConfiguration` on `find_app` (where the kind is
+  runtime-resolved). The insert/replace methods take a caller-built
+  `(registration, configuration)`; for a self-hosted upload the store allocates the
+  port and position, and uses the caller's `registration.id` verbatim as id /
+  subdomain. Absence and non-permutation are **return-type signals** (`Option`), a
+  delete miss is `bool`, and a cloud insert that wrote nothing is the granular typed
+  `CloudInsertError`; the only error it raises is the opaque
+  `AppsError::Infrastructure`. The self-hosted insert is the exception: with no
+  granular signal to distinguish its two non-infra outcomes, it maps them onto
+  `AppsError` itself — a taken slug to `400 InvalidName`, an exhausted port space to
+  `500`.
+- **`SqliteAppsStore` (adapter)** — the `SQLite` implementation
+  (`db/apps_store.rs`) over the app-wide diesel pool. It checks a connection out
+  of the pool per call and delegates to the `pub(super)` query bodies, which are
+  split **by kind/context** (mirroring `domain/actions/`): `db/cloud_apps.rs` /
+  `db/self_hosted_apps.rs` / `db/system_apps.rs` each own their `table!`, row
+  struct, and mutators; `db/app_registration.rs` owns the shared `app_registrations`
+  table + `AppKindColumn` + the registration-wide queries and placement rewrite;
+  `db/all_kinds_apps.rs` holds `find_app_on` / `delete` (importing the per-kind
+  tables); `db/shared.rs` holds the one `AppUrlColumn` two kinds share. Each is a
+  free function taking `&mut PooledDieselConnection` (or `&mut SqliteConnection` for
+  the read helpers a mutator calls in-txn).
+- **`domain/actions/`** — the slice's _semantics_: it maps the store's
+  primitive signals onto the semantic `AppsError` variants (`NotFound`,
+  `NotEditable`, `InvalidHomeScreen`, the cloud id-collision verdict; the
+  self-hosted create is a thin pass-through since its store maps its own outcomes),
+  holds the write-side field validation, and gates the delete removability policy.
+  It is a folder split one file per kind (`cloud_apps.rs` / `self_hosted_apps.rs` /
+  `system_apps.rs`, the cross-kind `all_kinds_apps.rs`, and the registration-wide
+  `app_registration.rs`) so each kind's input struct (e.g. `CloudAppPayload`) and
+  validation live together. The HTTP handlers build the action's input struct and
+  call `actions::…(&state.store, …)`, never the store directly, and stay a straight
+  `?`. The actions are unit-tested against an in-memory `FakeAppsStore`
+  (`actions/test_fake.rs`) — no db, no HTTP.
+
+Migrations are embedded diesel migrations (`apps-rust/migrations/`) applied once
+in `SqliteAppsStore::new` under this slice's **namespace** (`"apps"`) via
+`persistence_rust::run_diesel_migrations`, so the apps slice's `0001` and another
+diesel slice's `0001` are tracked as distinct `(namespace, version)` rows and
+never collide in diesel's stock `__diesel_schema_migrations`. The schema
+(`0001_app_registrations`) and the default-registry seed (`0002_seed_default_apps`)
+are separate migrations, so the shipped default set versions independently of the
+table definitions.
+
+## The store speaks registrations + per-kind payloads
+
+**Class-table-inheritance** persistence over the app-wide diesel pool
+(`persistence_rust::DieselPool`): one authoritative `app_registrations` parent (the
+global id space, the shared catalogue fields, and the homescreen placement) with
+a `kind` discriminator and three symmetric child payload tables (`system_app_configurations`,
+`cloud_app_configurations`, `self_hosted_app_configurations`), real FKs child→parent with `ON DELETE
+CASCADE`. System apps are ordinary seeded rows now — their launch template lives
+in `system_app_configurations.url`, not a compiled-in `SYSTEM_APPS` const.
+
+Reads are **typed diesel queries against real tables** (no `apps_view`, no
+`UNION`-with-NULLs decode): the uniform catalogue is a join-free
+`app_registrations ORDER BY position` into `AppRegistration`s; a detail read is a
+**single atomic left join** across the three configuration tables (`find_app_on`),
+returning the `(registration, configuration)` pair (the configuration as the
+`AppConfiguration` union when the kind is runtime-resolved) from one snapshot — so a
+concurrent delete can't land between a registration read and a separate configuration
+read and turn a benign 404 into a false corrupt-registry 500; the host-listener list
+is a typed inner join `self_hosted_app_configurations ⋈ app_registrations`. `is_smart` is derived on
+the registration (from `client_id`) and `is_removable` via the `CommonAppConfig`
+trait, not stored. There is no combined "app" type — the launch/delete seams in the
+HTTP layer operate on the `(registration, configuration)` pair directly.
+
+**A corrupt registry surfaces as a typed read error.** A stored `url` that no
+longer parses (rejected by the `AppUrl`/`AppKind` column decode), or a
+registration whose child payload row is missing (the one CTI invariant SQLite
+can't enforce across tables) — each surfaces as a _typed read error_ (a logged
+500 at the handler seam), never a partial pair. The single-detail-read decoder
+is the enforcement point; handlers don't re-check it per call site.
 
 ## Transaction discipline
 
 Three invariants let handlers avoid re-reading and re-validating around the
 store:
 
-1. **In-transaction read-back.** Every create / replace re-reads the hydrated
-   `App` _inside the same transaction that wrote it_ and returns it. So a
-   handler's response is exactly the `GET /apps` projection with no second read,
-   and cannot drift from stored state.
-2. **In-transaction allocation.** Everything the store allocates — the display
-   `position` (`MAX(position) + 1`), the self-hosted slug, the loopback port — is
-   computed _inside_ the writing transaction, so two overlapping creates can't
-   read the same value and collide. `UNIQUE(position)` backstops it regardless.
-3. **Single writer of order + enabled.** `position` and `enabled` are written
-   only by `replace_home_screen` (`PUT /home-screen`); a content replace never
-   touches `enabled`. It validates the body is an exact permutation of the live
-   registry _in the same transaction_ as the renumber (closing the
+1. **`RETURNING` on the writing statements.** Every create / replace hands back the
+   hydrated `(registration, configuration)` pair via `RETURNING` on the two statements
+   that wrote it (the registration + the payload), assembled in code — no separate
+   read-back. So a handler's response is exactly the per-kind detail projection with no
+   second read, cannot drift from stored state, and still re-decodes the stored `url` /
+   `port` through the same column codecs (a value that no longer round-trips surfaces
+   as a typed error).
+2. **`IMMEDIATE` in-transaction allocation.** Everything the store allocates — the
+   display `position` (`MAX(position) + 1`), the loopback port — is computed _inside_
+   the writing transaction. A mutator whose first act is an allocation _read_
+   (`insert_cloud_app`, `insert_self_hosted_app`, `replace_placements`) runs under
+   `BEGIN IMMEDIATE` so the write lock is taken up front: a concurrent create then
+   waits on `busy_timeout` and re-reads a fresh value rather than reading the same
+   `MAX`/lowest-free and racing to a `SQLITE_BUSY` or `UNIQUE` violation (SQLite denies
+   a lock _upgrade_ immediately, without honoring `busy_timeout`). A content replace
+   whose first act is a write stays on the default `DEFERRED` — its write lock is
+   already taken before anything it reads. `UNIQUE(position)` / `UNIQUE(port)` backstop
+   regardless. The self-hosted id / subdomain are _not_ allocated: they are the
+   caller-built `registration.id` used verbatim, and a clash is rejected
+   `400 InvalidName` (checked in the same transaction). The port-allocation _logic_ is
+   pure and lives in the domain (`lowest_free_port`), fed the taken port set the store
+   reads in that same transaction — database-free and unit-tested, while the
+   read-then-write stays atomic in the store.
+3. **Single writer of order + placement.** `position` and `on_homescreen` are
+   written only by `replace_placements` (`PUT /home-screen`); a content replace
+   never touches `on_homescreen`. It validates the body is an exact permutation of the live
+   registry _in the same `IMMEDIATE` transaction_ as the renumber (closing the
    check-then-write race), and moves every row to a disjoint negative range
    before renumbering so the per-row updates never transiently violate
    `UNIQUE(position)` (SQLite's UNIQUE is immediate, not deferrable).
 
 Kind- and seeded-_policy_ gating (which kinds or rows an HTTP surface may edit)
-stays in the handlers, which already hold the whole `App`. The SQL only guards
-its own invariants (e.g. a cloud content replace matches `provenance = 'cloud'`,
-so a mis-targeted id is a no-op).
+lives in the `domain/actions/` folder — the per-kind `replace_cloud_app` /
+`replace_self_hosted_app` resolve the kind first off the `(registration,
+configuration)` pair a read hands back, then synthesize the edited pair the store
+persists: a wrong-kind (or unknown) id is a **404** (the mismatch can no longer be
+expressed as a `409`), a seeded self-hosted app is `409`, before any field is
+validated. `delete_app` owns the whole removal — the gate _and_ the self-hosted
+filesystem teardown, which it brackets around the store delete over the
+`SelfHostedInstaller` port (stop the listener before the row's id is freed, discard the
+serving folder after) — so its HTTP handler is a straight `?`. The store's SQL only
+guards its own invariants (e.g. a cloud content replace updates
+`cloud_app_configurations` by id, so a non-cloud id matches no row and is a no-op).
 
 ## The self-hosted upload pipeline
 
-`POST /apps` with `provenance = self-hosted` carries an uploaded zip `bundle`.
+`POST /self-hosted-apps` carries an uploaded zip `bundle` (multipart).
 The handler runs a staged install ordered so it never leaves a half-installed
 app behind:
 
@@ -58,7 +148,8 @@ app behind:
    result.
 3. **Move into place** — rename `staging` → `<apps>/<mint>` _before_ the DB
    insert.
-4. **Insert** the row, allocating the final slug + port in-transaction.
+4. **Insert** the row (the slug as id / subdomain, allocating the port
+   in-transaction); a slug already in use is rejected `400 InvalidName`.
 5. **Start** the app's loopback listener.
 
 Any failure removes the staged (or already-moved) directory. Because the files
@@ -75,16 +166,20 @@ behind, and the files can move into place before the row is committed. The slug
 is the app's _identity and subdomain_; the content folder is _where its files
 live_ — deliberately independent.
 
-### Slug allocation → a valid DNS label
+### Slug → a valid DNS label, unique or rejected
 
 The slug becomes the app's `id` **and** its public `subdomain`, stored verbatim,
-so every candidate is kept a valid DNS label: lowercased, each run of
-non-alphanumerics collapsed to a single `-`, trimmed, and capped at **63 chars**
-(the DNS label limit). Uniqueness is by suffixing `-2`, `-3`, … against both the
-id and subdomain spaces, with the suffix budgeted first so the base is truncated
-to fit. An over-long label would silently break `<subdomain>.<public_host>`
-routing and TLS. Exhausting the suffix budget is `SlugSpaceExhausted` — a name
-problem the caller can retry differently.
+so it is kept a valid DNS label: lowercased, each run of non-alphanumerics
+collapsed to a single `-`, trimmed, and capped at **63 chars** (the DNS label
+limit) — an over-long label would silently break `<subdomain>.<public_host>`
+routing and TLS. The slug is used as-is, **not** suffixed to dodge a collision: a
+slug already in the global id space is rejected `400 InvalidName` ("an app with
+this name already exists"), which the caller resolves by renaming — the store
+raises that directly from its in-transaction id check (there's no granular typed
+insert error for self-hosted, unlike cloud's `CloudInsertError`). Every
+self-hosted row's subdomain equals its id, so the id
+check subsumes the subdomain space; the `UNIQUE(subdomain)` column stays a
+backstop.
 
 ### Port allocation → lowest free, reused
 
@@ -137,7 +232,7 @@ records the SMART launch path
 nothing and is served from its bare root (where `/` resolves to `index.html`).
 The stored path is one of the same origin-independent templates the cloud `url`
 uses — `{origin}` / `{launch}` are substituted per request by
-`SelfHostedApp::render_launch`, `{origin}` resolving to the served FHIR origin
+`SelfHostedAppConfiguration::render_launch`, `{origin}` resolving to the served FHIR origin
 while the path hangs off the app's own origin. See the [Apps
 Explanation](./Explanation.md) for the template model and the
 [Origins Explanation](../Origins/Explanation.md) for subdomain dispatch.

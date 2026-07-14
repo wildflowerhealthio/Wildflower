@@ -99,8 +99,8 @@ self-hosted app"** section (name + `.zip` picker), which `POST`s the raw
 endpoint. The host extracts the zip (zip-slip guarded, capped at 512 MiB
 uncompressed / 20k entries, macOS Finder litter — `__MACOSX/` / `.DS_Store` /
 AppleDouble `._*` — dropped, then a single top folder hoisted so the app serves
-at the root), allocates a slug
-(auto-suffixed on clash, e.g. `my-app-2`) and a loopback port, inserts the
+at the root), derives a slug from the name (used verbatim — a clash is rejected
+`400 InvalidName`, not suffixed) and allocates a loopback port, inserts the
 `apps` + `self_hosted_apps` rows in one transaction, atomically renames the
 extraction into `<app-data>/self-hosted-apps/<slug>/`, and starts the listener
 restartlessly — the tile appears without a restart.

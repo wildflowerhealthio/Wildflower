@@ -2,24 +2,23 @@ import { useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { FieldDescription, TextField, ToggleSwitch } from 'react-tundraish'
 
-import { useAppsAdminReplaceMutation, type AppEntry } from '../../../queries.ts'
+import {
+  useCloudAppReplaceMutation,
+  useSelfHostedAppReplaceMutation,
+  type CloudAppDetail,
+  type SelfHostedAppDetail,
+} from '../../../queries.ts'
 import formStyles from './-forms.module.css'
 
 /**
  * Shared form pieces for the apps settings pages. The `-` prefix keeps this
  * module out of the route tree the TanStack plugin generates from this
- * directory (siblings `index.tsx` / `new.tsx` / `$id.tsx` are the real routes).
+ * directory (the `index.tsx` / `new.tsx` / `$id.tsx` / per-kind `$id` files are
+ * the real routes).
  */
 
 const formatError = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
-
-/** The self-hosted variant of the catalogue union — the only kind with an
- * editable launch path. */
-type SelfHostedEntry = Extract<AppEntry, { provenance: 'self-hosted' }>
-
-/** The cloud variant of the catalogue union — carries the editable content. */
-type CloudEntry = Extract<AppEntry, { provenance: 'cloud' }>
 
 /** Controlled state for the cloud app fields, shared by create + edit. */
 interface CloudFields {
@@ -93,14 +92,12 @@ const CloudAppFields = ({ fields, onChange, disabled }: CloudAppFieldsProps): JS
 
 /**
  * Full-replace editor for a cloud app's content — name / subtitle / launch URL /
- * requires-tunnel, prefilled from the stored row. Saving `PUT`s the whole
- * content via {@link useAppsAdminReplaceMutation} (`CloudAppContentSchema`); an
- * empty subtitle clears it. The `{ provenance: 'cloud', … }` object is passed as
- * an arm-shaped literal so it stays assignable to the discriminated request type
- * without a cast (see the mutation hook's narrowing comment).
+ * requires-tunnel, prefilled from the {@link CloudAppDetail}. Saving `PUT`s the
+ * whole content to `/cloud-apps/:id` via {@link useCloudAppReplaceMutation}; an
+ * empty subtitle clears it.
  */
-const CloudEditForm = ({ app }: { readonly app: CloudEntry }): JSX.Element => {
-  const replaceMutation = useAppsAdminReplaceMutation()
+const CloudEditForm = ({ app }: { readonly app: CloudAppDetail }): JSX.Element => {
+  const replaceMutation = useCloudAppReplaceMutation()
   const [fields, setFields] = useState<CloudFields>({
     name: app.name,
     subtitle: app.subtitle ?? '',
@@ -116,7 +113,6 @@ const CloudEditForm = ({ app }: { readonly app: CloudEntry }): JSX.Element => {
     replaceMutation.mutate({
       id: app.id,
       payload: {
-        provenance: 'cloud',
         name,
         url,
         requiresTunnel: fields.requiresTunnel,
@@ -157,14 +153,17 @@ const CloudEditForm = ({ app }: { readonly app: CloudEntry }): JSX.Element => {
 
 /**
  * Inline launch-path editor for an uploaded self-hosted app. Prefilled from the
- * stored `launchPath` (a SMART launcher path with `{origin}` / `{launch}`
- * tokens); saving `PUT`s it via {@link useAppsAdminReplaceMutation}, and an empty
- * value clears it back to root-serving (`index.html`). Lifted verbatim from the
- * former apps-editor modal — the only behavioral difference is the page-level
- * (rather than modal-row) layout.
+ * {@link SelfHostedAppDetail}'s `launchPath` (a SMART launcher path with
+ * `{origin}` / `{launch}` tokens); saving `PUT`s it to `/self-hosted-apps/:id`
+ * via {@link useSelfHostedAppReplaceMutation}, and an empty value clears it back
+ * to root-serving (`index.html`).
  */
-const SelfHostedLaunchPathEditor = ({ app }: { readonly app: SelfHostedEntry }): JSX.Element => {
-  const replaceMutation = useAppsAdminReplaceMutation()
+const SelfHostedLaunchPathEditor = ({
+  app,
+}: {
+  readonly app: SelfHostedAppDetail
+}): JSX.Element => {
+  const replaceMutation = useSelfHostedAppReplaceMutation()
   const [launchPath, setLaunchPath] = useState(app.launchPath ?? '')
 
   return (
@@ -172,10 +171,7 @@ const SelfHostedLaunchPathEditor = ({ app }: { readonly app: SelfHostedEntry }):
       className={formStyles['form']}
       onSubmit={(event) => {
         event.preventDefault()
-        replaceMutation.mutate({
-          id: app.id,
-          payload: { provenance: 'self-hosted', launchPath: launchPath.trim() },
-        })
+        replaceMutation.mutate({ id: app.id, launchPath: launchPath.trim() })
       }}
     >
       {replaceMutation.error !== null ? (
@@ -205,4 +201,4 @@ const SelfHostedLaunchPathEditor = ({ app }: { readonly app: SelfHostedEntry }):
 }
 
 export { CloudAppFields, CloudEditForm, SelfHostedLaunchPathEditor, formatError }
-export type { CloudEntry, CloudFields, SelfHostedEntry }
+export type { CloudFields }

@@ -21,7 +21,7 @@ import {
   appsListQueryOptions,
   useAppsListQuery,
   useReplaceHomeScreenMutation,
-  type AppEntry,
+  type AppRegistration,
 } from '../../../queries.ts'
 import type { RouterContext } from '../../../router-context.ts'
 import { launchApp, launchHref } from './-launch.ts'
@@ -48,7 +48,7 @@ const AppsHomeScreen = (): JSX.Element => {
 }
 
 interface AppsHomeBodyProps {
-  readonly apps: readonly AppEntry[]
+  readonly apps: readonly AppRegistration[]
 }
 
 const AppsHomeBody = ({ apps }: AppsHomeBodyProps): JSX.Element => {
@@ -73,19 +73,37 @@ const AppsHomeBody = ({ apps }: AppsHomeBodyProps): JSX.Element => {
   // Hold the **full** registry order in state; the home screen renders only the
   // enabled subset (`visible`, below). A drag moves a tile within the full list
   // and PUTs the whole thing to `/home-screen`, so disabled apps keep their
-  // slots. Re-seed whenever the server list changes (order *or* enabled) — the
+  // slots. `order` is purely the local UI state a server refetch can't own: the
+  // drag *sequence* and the optimistic `onHomescreen` flags (a reorder/hide that
+  // hasn't round-tripped yet). Tile *content* — name / subtitle / pills — is
+  // never read off `order`; it's looked up live from `apps` at render (see
+  // `visible`), so a background refetch that changes only a tile's name/subtitle/
+  // flags shows through even though the resync key below hasn't changed.
+  // Re-seed whenever the server list changes (order *or* enabled) — the
   // home-screen PUT invalidates the list query — so an enable/disable made in
   // the editor is reflected here too.
-  const [order, setOrder] = useState<readonly AppEntry[]>(apps)
+  const [order, setOrder] = useState<readonly AppRegistration[]>(apps)
   useEffect(() => {
     setOrder(apps)
     // `apps` is a fresh array each render; key the resync on the stable id +
-    // enabled sequence so it runs only when the server list actually changes,
-    // not on every render.
+    // onHomescreen sequence so it runs only when the server list actually
+    // changes, not on every render. Content-only changes (name/subtitle/pills)
+    // deliberately don't re-seed — they'd clobber an in-flight optimistic
+    // reorder/hide — and don't need to: `visible` reads content from `apps`.
     // oxlint-disable-next-line react-hooks/exhaustive-deps
-  }, [apps.map((app) => `${app.id}:${app.enabled ? 1 : 0}`).join(' ')])
+  }, [apps.map((app) => `${app.id}:${app.onHomescreen ? 1 : 0}`).join(' ')])
 
-  const visible = order.filter((app) => app.enabled)
+  // The enabled subset to render, in `order`'s sequence but with each tile's
+  // content taken from the live `apps` row so a background refetch's name/
+  // subtitle/pill edits show without waiting on a resync. `order` still owns the
+  // optimistic `onHomescreen` flag (a just-hidden tile must drop out before the
+  // PUT lands), so filter on the order entry and only the *content* comes from
+  // `apps`; fall back to the order entry if an id isn't in `apps` yet (it always
+  // should be — `order` is only ever seeded/reordered from `apps`).
+  const appsById = new Map(apps.map((app) => [app.id, app]))
+  const visible = order
+    .filter((entry) => entry.onHomescreen)
+    .map((entry) => appsById.get(entry.id) ?? entry)
 
   const sensors = useSensors(
     // A small activation distance lets a plain click reach the tile's launch
@@ -96,7 +114,7 @@ const AppsHomeBody = ({ apps }: AppsHomeBodyProps): JSX.Element => {
 
   // Only the Tauri (loopback) arm runs JS on launch — the web arm is the
   // anchor's own navigation (see `launchHref` / `launchApp`).
-  const launch = (app: AppEntry): void => {
+  const launch = (app: AppRegistration): void => {
     void launchApp({ apiBaseUrl, runAuthed }, app)
   }
 
@@ -119,7 +137,7 @@ const AppsHomeBody = ({ apps }: AppsHomeBodyProps): JSX.Element => {
     const previous = order
     setOrder(next)
     homeScreenMutation.mutate(
-      next.map((app) => ({ id: app.id, enabled: app.enabled })),
+      next.map((app) => ({ id: app.id, onHomescreen: app.onHomescreen })),
       {
         onError: () => {
           setOrder(previous)
@@ -128,19 +146,21 @@ const AppsHomeBody = ({ apps }: AppsHomeBodyProps): JSX.Element => {
     )
   }
 
-  // Hide an app from the home screen: flip its `enabled` to false and PUT the
-  // whole ordered list (disabled apps keep their slots). Optimistic + rollback,
+  // Hide an app from the home screen: flip its `onHomescreen` to false and PUT
+  // the whole ordered list (hidden apps keep their slots). Optimistic + rollback,
   // mirroring `onDragEnd` — on failure the PUT doesn't invalidate the list, so
-  // roll `order` back and surface the error banner. Re-enabling lives in
+  // roll `order` back and surface the error banner. Re-showing lives in
   // `/settings/apps`.
-  const disable = (app: AppEntry): void => {
+  const disable = (app: AppRegistration): void => {
     // Skip while a home-screen write is already in flight — see `onDragEnd`.
     if (homeScreenMutation.isPending) return
     const previous = order
-    const next = order.map((entry) => (entry.id === app.id ? { ...entry, enabled: false } : entry))
+    const next = order.map((entry) =>
+      entry.id === app.id ? { ...entry, onHomescreen: false } : entry
+    )
     setOrder(next)
     homeScreenMutation.mutate(
-      next.map((entry) => ({ id: entry.id, enabled: entry.enabled })),
+      next.map((entry) => ({ id: entry.id, onHomescreen: entry.onHomescreen })),
       {
         onError: () => {
           setOrder(previous)

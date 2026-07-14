@@ -1,64 +1,103 @@
-import { HttpApiEndpoint, HttpApiGroup } from '@effect/platform'
-import { Schema } from 'effect'
+import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from '@effect/platform'
 import {
-  AppContentBodySchema,
   AppIdPathSchema,
-  AppListEntrySchema,
   AppListSchema,
   AppNotEditableSchema,
   AppNotFoundSchema,
-  CreateAppBodySchema,
+  CloudAppBodySchema,
+  CloudAppDetailSchema,
+  CreateSelfHostedAppBodySchema,
   HomeScreenSchema,
   InvalidFieldSchema,
   InvalidHomeScreenSchema,
+  SelfHostedAppBodySchema,
+  SelfHostedAppDetailSchema,
+  SystemAppDetailSchema,
 } from './schemas.ts'
 
 /**
- * Owner-only mutations on the apps catalogue. The group itself carries no
- * middleware — `wildflower-server` (or any other composing app) applies
- * `RequireAuthMiddleware` when adding `AppsAdminApi` to its root `HttpApi`, so
- * slice cores stay free of auth dependencies.
+ * Owner-only mutations + per-kind detail reads on the apps catalogue. The group
+ * itself carries no middleware — `wildflower-server` (or any other composing app)
+ * applies `RequireAuthMiddleware` when adding `AppsAdminApi` to its root
+ * `HttpApi`, so slice cores stay free of auth dependencies.
  *
- * `POST /apps` creates (cloud or self-hosted, keyed on the multipart body's
- * `provenance`), `PUT /apps/:id` replaces an editable app's content, and
- * `DELETE /apps/:id` removes it — each returning the discriminated
- * {@link AppListEntrySchema}; `PUT /home-screen` atomically reorders / enables
- * every provenance. See `docs/Apps/Explanation.md` and the per-endpoint schemas.
+ * Per-kind detail/create/replace live on their own root resources (`/cloud-apps`,
+ * `/self-hosted-apps`, `/system-apps`), each returning the flat per-kind detail
+ * shape; `DELETE /apps/:id` removes any kind (204); `PUT /home-screen` atomically
+ * reorders / enables every kind. A per-kind path given an id of another kind is a
+ * `404`. See `docs/Apps/Explanation.md` and the per-endpoint schemas.
  */
 const httpApiGroup = HttpApiGroup.make('apps-admin', { topLevel: false })
+  // --- Cloud apps ---------------------------------------------------------
   .add(
-    // Create a cloud or self-hosted app. The body is `multipart/form-data`
-    // ({@link CreateAppBodySchema}) discriminated on `provenance`: cloud carries
-    // name/url/requiresTunnel, self-hosted carries name + the uploaded `bundle`.
-    // A multipart endpoint's typed client payload is a `FormData` instance.
-    HttpApiEndpoint.post('CreateApp', '/apps')
-      .setPayload(CreateAppBodySchema)
-      .addSuccess(AppListEntrySchema)
+    // Create a cloud app from a JSON body ({@link CloudAppBodySchema}).
+    HttpApiEndpoint.post('CreateCloudApp', '/cloud-apps')
+      .setPayload(CloudAppBodySchema)
+      .addSuccess(CloudAppDetailSchema)
       .addError(InvalidFieldSchema, { status: 400 })
   )
   .add(
-    // Replace an editable app's content. The body is a provenance-discriminated
-    // union ({@link AppContentBodySchema}) whose arm must match the stored app's
-    // kind; the response is the refreshed catalogue entry. A system app, a
-    // seeded self-hosted app, or a provenance mismatch is `409 AppNotEditable`.
-    HttpApiEndpoint.put('ReplaceApp', '/apps/:id')
+    HttpApiEndpoint.get('GetCloudApp', '/cloud-apps/:id')
       .setPath(AppIdPathSchema)
-      .setPayload(AppContentBodySchema)
-      .addSuccess(AppListEntrySchema)
+      .addSuccess(CloudAppDetailSchema)
+      .addError(AppNotFoundSchema, { status: 404 })
+  )
+  .add(
+    // Full-replace a cloud app's content; a non-cloud id is `404`.
+    HttpApiEndpoint.put('ReplaceCloudApp', '/cloud-apps/:id')
+      .setPath(AppIdPathSchema)
+      .setPayload(CloudAppBodySchema)
+      .addSuccess(CloudAppDetailSchema)
+      .addError(InvalidFieldSchema, { status: 400 })
+      .addError(AppNotFoundSchema, { status: 404 })
+  )
+  // --- Self-hosted apps ---------------------------------------------------
+  .add(
+    // Install a self-hosted app from an uploaded zip — `multipart/form-data`
+    // ({@link CreateSelfHostedAppBodySchema}). A multipart endpoint's typed client
+    // payload is a `FormData` instance.
+    HttpApiEndpoint.post('CreateSelfHostedApp', '/self-hosted-apps')
+      .setPayload(CreateSelfHostedAppBodySchema)
+      .addSuccess(SelfHostedAppDetailSchema)
+      .addError(InvalidFieldSchema, { status: 400 })
+  )
+  .add(
+    HttpApiEndpoint.get('GetSelfHostedApp', '/self-hosted-apps/:id')
+      .setPath(AppIdPathSchema)
+      .addSuccess(SelfHostedAppDetailSchema)
+      .addError(AppNotFoundSchema, { status: 404 })
+  )
+  .add(
+    // Replace a self-hosted app's launch path; a non-self-hosted id is `404`, a
+    // seeded app is `409`.
+    HttpApiEndpoint.put('ReplaceSelfHostedApp', '/self-hosted-apps/:id')
+      .setPath(AppIdPathSchema)
+      .setPayload(SelfHostedAppBodySchema)
+      .addSuccess(SelfHostedAppDetailSchema)
       .addError(InvalidFieldSchema, { status: 400 })
       .addError(AppNotFoundSchema, { status: 404 })
       .addError(AppNotEditableSchema, { status: 409 })
   )
+  // --- System apps (read-only) -------------------------------------------
   .add(
+    HttpApiEndpoint.get('GetSystemApp', '/system-apps/:id')
+      .setPath(AppIdPathSchema)
+      .addSuccess(SystemAppDetailSchema)
+      .addError(AppNotFoundSchema, { status: 404 })
+  )
+  // --- Unified delete + homescreen ---------------------------------------
+  .add(
+    // Delete any app (kind resolved via the registration). `204` on success; a
+    // system / seeded self-hosted app is `409`.
     HttpApiEndpoint.del('DeleteApp', '/apps/:id')
       .setPath(AppIdPathSchema)
-      .addSuccess(Schema.Struct({ deleted: Schema.Boolean }))
+      .addSuccess(HttpApiSchema.NoContent)
       .addError(AppNotFoundSchema, { status: 404 })
       .addError(AppNotEditableSchema, { status: 409 })
   )
   .add(
-    // The full ordered homescreen (all provenances), distinct from the cloud-only
-    // content edit above — see {@link HomeScreenSchema}.
+    // The full ordered homescreen (all kinds), distinct from the per-kind content
+    // edits above — see {@link HomeScreenSchema}.
     HttpApiEndpoint.put('ReplaceHomeScreen', '/home-screen')
       .setPayload(HomeScreenSchema)
       .addSuccess(AppListSchema)

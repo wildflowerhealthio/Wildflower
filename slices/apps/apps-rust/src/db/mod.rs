@@ -1,89 +1,42 @@
-//! `SQLite` persistence for the apps slice: a parent `apps` registry plus
-//! per-kind child tables (`cloud_apps`, `self_hosted_apps`), served by **one
-//! store** speaking whole [`App`](crate::domain::App)s.
+//! `SQLite` persistence for the apps slice — the [`SqliteAppsStore`] adapter (the
+//! `SQLite` implementation of the [`AppsStore`](crate::domain::AppsStore) port: it
+//! holds the app-wide diesel r2d2 pool and applies the apps migrations onto it)
+//! plus the query bodies it delegates to. One authoritative `app_registrations` table
+//! (the global id space + shared facts + placement) with three per-kind configuration
+//! tables (`system_app_configurations` / `cloud_app_configurations` /
+//! `self_hosted_app_configurations`), real FKs configuration → registration.
 //!
-//! [`AppsStore`] wraps the shared connection and runs the [`migrations`] on
-//! construction (so constructing it migrates every table). The modules split by
-//! concern:
+//! [`SqliteAppsStore::new`] applies the embedded migrations once on a pooled
+//! connection via [`persistence_rust::run_diesel_migrations`] under this slice's
+//! namespace (`"apps"`), so its `0001` and another diesel slice's `0001` never
+//! collide in diesel's stock (un-namespaced) `__diesel_schema_migrations` — the
+//! two diesel slices coexist in the shared database.
 //!
-//!  - this module — the handle itself;
-//!  - [`columns`] — the rusqlite `ToSql`/`FromSql` glue for the two column
-//!    newtypes ([`Provenance`](crate::domain::Provenance) and
-//!    [`AppUrl`](crate::domain::AppUrl));
-//!  - [`migrations`] — the ordered migration list and the namespaced runner;
-//!  - [`reads`] — the single JOIN projection decoding an [`App`](crate::domain::App)
-//!    (parent row + kind payload) and every read over it (`list_apps`,
-//!    `find_app`, `list_self_hosted_apps`);
-//!  - [`writes`] — the spec-typed mutators, each one transaction over parent +
-//!    child, returning the hydrated app re-read in-txn.
+//! Beyond the adapter, the query bodies split **by kind / context** (mirroring
+//! `domain::actions`), so each kind's `table!`, row struct, column mappings, and
+//! queries live together:
 //!
-//! For the provenance taxonomy these tables encode, see
-//! `docs/Apps/Explanation.md`.
+//!  - [`apps_store`] — the adapter (pool handle + migrations + the port `impl`);
+//!  - [`app_registration`] — the shared `app_registrations` `table!`, its
+//!    `AppKindColumn`, and the registration-wide queries (uniform list, id / position
+//!    allocators, the placement rewrite);
+//!  - [`cloud_apps`] / [`self_hosted_apps`] / [`system_apps`] — each kind's
+//!    configuration `table!` + row struct + its mutators (system is read-only);
+//!  - [`all_kinds_apps`] — the reads/deletes that resolve any kind by id
+//!    (`find_app_on`, `delete_app`), importing the per-kind tables;
+//!  - [`shared`] — the one column mapping (`AppUrlColumn`) two kinds share.
+//!
+//! For the app taxonomy these tables encode, see `docs/Apps/Explanation.md`.
 
-mod columns;
-mod migrations;
-mod reads;
-mod write_inputs;
-mod writes;
-
-pub use write_inputs::{CloudContent, NewCloudApp, NewSelfHostedUpload, UploadInsertError};
-
-use anyhow::Context;
-use persistence_rust::Connection;
-
-use self::migrations::migrate;
-
-/// The apps-slice store handle — wraps the shared SQLite connection and applies
-/// the per-namespace migrations onto it.
-#[derive(Clone)]
-pub struct AppsStore {
-    conn: Connection,
-}
-
-impl AppsStore {
-    /// Wrap the shared `conn` and apply pending apps migrations onto it.
-    /// The connection is opened once by the host and shared across slices;
-    /// migrations are namespaced so they don't collide with another slice's.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if applying the apps migrations fails.
-    pub fn new(conn: Connection) -> anyhow::Result<Self> {
-        {
-            let mut guard = conn.lock();
-            migrate(&mut guard).context("failed to apply apps migrations")?;
-        }
-        Ok(Self { conn })
-    }
-
-    /// Open a private in-memory shared connection and wrap it — for tests.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the in-memory connection can't be opened or migrated.
-    pub fn open_in_memory() -> anyhow::Result<Self> {
-        Self::new(Connection::open_in_memory().context("failed to open in-memory sqlite")?)
-    }
-
-    pub(crate) fn conn(&self) -> &Connection {
-        &self.conn
-    }
-}
+mod all_kinds_apps;
+pub(crate) mod app_registration;
+mod apps_store;
+mod cloud_apps;
+mod self_hosted_apps;
+mod shared;
+mod system_apps;
 
 #[cfg(test)]
-mod tests {
-    use super::*;
+mod test_support;
 
-    /// The parent primary key gives global id uniqueness across kinds — a second
-    /// parent row with a seeded id is rejected by the PK.
-    #[test]
-    fn parent_id_is_globally_unique() {
-        let store = AppsStore::open_in_memory().unwrap();
-        let dup = store.conn().lock().execute(
-            "INSERT INTO apps (id, name, enabled, position, provenance, local_only) \
-             VALUES ('api-docs', 'dup', 1, 99, 'cloud', 0)",
-            [],
-        );
-        assert!(dup.is_err(), "duplicate parent id must violate the PK");
-    }
-}
+pub use apps_store::SqliteAppsStore;

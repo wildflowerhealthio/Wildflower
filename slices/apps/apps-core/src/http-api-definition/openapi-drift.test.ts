@@ -61,23 +61,29 @@ defineSpecDriftTest({
   name: 'apps catalogue (admin)',
   serverSpec,
   clientApi: AppsAdminApi,
-  /** Endpoints compared — `(path, lowercase method)`. */
+  /** Endpoints compared — `(path, lowercase method)`. Per-kind detail/create/
+   * replace on their own root resources, the unified delete, and home-screen. */
   scope: [
-    ['/apps', 'post'],
-    ['/apps/{id}', 'put'],
+    ['/cloud-apps', 'post'],
+    ['/cloud-apps/{id}', 'get'],
+    ['/cloud-apps/{id}', 'put'],
+    ['/self-hosted-apps', 'post'],
+    ['/self-hosted-apps/{id}', 'get'],
+    ['/self-hosted-apps/{id}', 'put'],
+    ['/system-apps/{id}', 'get'],
     ['/apps/{id}', 'delete'],
     ['/home-screen', 'put'],
   ],
 })
 
-describe('CreateApp request body', () => {
-  // `POST /apps` is the merged create route: a `multipart/form-data` form
-  // discriminated on `provenance`, carrying the self-hosted `bundle` as a file
-  // part. Pin the client-side wire contract so a future edit can't silently
-  // swap it back to JSON (which would break the upload) or drop the file part.
+describe('CreateSelfHostedApp request body', () => {
+  // `POST /self-hosted-apps` is the upload route: a `multipart/form-data` form
+  // carrying the self-hosted `bundle` as a file part. Pin the client-side wire
+  // contract so a future edit can't silently swap it back to JSON (which would
+  // break the upload) or drop the file part.
   test('is a multipart/form-data body with a binary bundle field', () => {
     const spec = OpenApi.fromApi(AppsAdminApi)
-    const content = spec.paths['/apps']?.post?.requestBody?.content ?? {}
+    const content = spec.paths['/self-hosted-apps']?.post?.requestBody?.content ?? {}
     expect(Object.keys(content)).toEqual(['multipart/form-data'])
     // `bundle` is the uploaded file part — Effect renders it as a `$ref` to the
     // `PersistedFile` component (which dereferences to a binary string).

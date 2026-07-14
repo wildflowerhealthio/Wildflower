@@ -1,19 +1,18 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
-import type { AppEntry } from '../../../queries.ts'
+import type { AppRegistration } from '../../../queries.ts'
 import type { RunAuthed } from '../../../router-context.ts'
 import { launchApp, launchHref } from './-launch.ts'
 
-// A minimal `AppEntry` — `launchApp` / `launchHref` read only `id`, so a system
-// entry (the variant with no typed-child fields) is the lightest valid member.
-const app: AppEntry = {
+// A minimal uniform registration — `launchApp` / `launchHref` read only `id`.
+const app: AppRegistration = {
   id: 'pt-browser',
-  enabled: true,
+  onHomescreen: true,
   name: 'Patient Browser',
-  provenance: 'system',
+  kind: 'system',
   localOnly: false,
-  smart: false,
-  removable: true,
+  isSmart: false,
+  requiresTunnel: false,
 }
 
 // The loopback arm runs an Effect through `runAuthed`; the helper only cares
