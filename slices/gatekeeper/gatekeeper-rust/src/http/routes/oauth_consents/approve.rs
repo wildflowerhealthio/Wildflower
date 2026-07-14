@@ -6,9 +6,10 @@ use axum::Json;
 use chrono::Utc;
 
 use crate::crypto_util::random_token::generate_authorization_code;
-use crate::domain::actions::{self, load_pending_authorization_code_request, PendingCodeConsent};
+use crate::domain::actions::{self, load_pending_authorization_code_request};
 use crate::domain::authorization_code::{AuthorizationCode, AUTHORIZATION_CODE_TTL};
 use crate::domain::error::GatekeeperError;
+use crate::domain::PendingCodeConsent;
 use crate::http::errors::HandlerError;
 use crate::http::routes::consent::deny_consent;
 use crate::http::routes::oauth::build_client_redirect_url;

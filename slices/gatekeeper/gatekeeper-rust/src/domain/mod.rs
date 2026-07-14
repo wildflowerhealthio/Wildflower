@@ -24,6 +24,9 @@ pub mod grant;
 // codes) — a pure domain vocabulary lifted out of the OAuth route tree so the
 // error model can name it without reaching into `http`.
 pub mod oauth_error_code;
+// A validated, ready-to-act authorization-code consent request — built only by
+// `actions::load_pending_authorization_code_request` (parse-don't-validate).
+pub mod pending_code_consent;
 // URL/path builders for the gatekeeper's user-facing `/gatekeeper/*` webview
 // pages — pure string builders (no axum/state), duplicated TS ⇄ Rust and
 // drift-tested against `gatekeeper-core/src/page-paths.ts`.
@@ -33,3 +36,4 @@ pub mod signing_key;
 pub mod token;
 
 pub use gatekeeper_store::GatekeeperStore;
+pub use pending_code_consent::PendingCodeConsent;
