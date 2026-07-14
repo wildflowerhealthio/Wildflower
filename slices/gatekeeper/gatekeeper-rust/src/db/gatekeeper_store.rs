@@ -40,9 +40,11 @@ const MIGRATION_NAMESPACE: &str = "gatekeeper";
 /// [`persistence_rust::run_diesel_migrations`] under [`MIGRATION_NAMESPACE`]
 /// (see that runner for why the stock diesel harness can't be shared across
 /// slices). Migration `0001` deliberately DROPs the tables the retired rusqlite
-/// migrations managed (destructive rebaseline — see its header) and `0002` seeds
-/// the SMART sample-app clients; because each migration runs only once per
-/// database, an upgrade neither re-drops nor re-seeds.
+/// migrations managed (destructive rebaseline — see its header), `0002` creates
+/// the cross-kind `grants` VIEW over the two concrete grant tables (its own
+/// migration so it can be up/down'd independently), and `0003` seeds the SMART
+/// sample-app clients; because each migration runs only once per database, an
+/// upgrade neither re-drops nor re-seeds.
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
 /// The `SQLite` adapter for the [`GatekeeperStore`] port. Cheap to clone (the

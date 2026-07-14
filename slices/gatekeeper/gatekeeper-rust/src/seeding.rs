@@ -7,7 +7,7 @@
 //!
 //! The bundled SMART sample-app clients (growth-chart, medication-viewer →
 //! `my_web_app`, PRECISE-HBR) are seeded in SQL instead — migration
-//! `0002_seed_sample_clients` — since they're static definitions a migration
+//! `0003_seed_sample_clients` — since they're static definitions a migration
 //! can express. Only the runtime-derived seeds (the first-party client's scopes,
 //! the generated signing key) stay here.
 

@@ -142,23 +142,10 @@ CREATE TABLE device_grants (
     UNIQUE (client_id, device_name)
 ) STRICT;
 
--- Cross-kind reads (the Owner UI's access index, lookups by bare grant id) go
--- through this UNION ALL view: the shared columns, a kind tag, and each
--- kind's payload column NULL for the other kind. Grant ids are UUIDs minted
--- at upsert time, so they are unique across both tables and a by-id read
--- through the view returns at most one row.
-CREATE VIEW grants AS
-    SELECT id, client_id, scopes, granted_at, last_used_at, patient,
-           'authorization_code' AS grant_type,
-           redirect_uri,
-           NULL AS device_name
-    FROM authorization_code_grants
-    UNION ALL
-    SELECT id, client_id, scopes, granted_at, last_used_at, patient,
-           'device_code' AS grant_type,
-           NULL AS redirect_uri,
-           device_name
-    FROM device_grants;
+-- The cross-kind `grants` VIEW over these two tables is created by its own
+-- migration (0002_grants_view), so it can be dropped and recreated
+-- independently of this schema — the shape a UNION-ALL view is edited far more
+-- often than the tables it reads.
 
 -- Rotating refresh tokens (RFC 6749 §6, OAuth 2.1 rotation semantics).
 -- Family-level facts live exactly once on refresh_token_families;

@@ -3,7 +3,6 @@
 -- rusqlite schema is not restored — the up migration was destructive.
 DROP TABLE IF EXISTS refresh_tokens;
 DROP TABLE IF EXISTS refresh_token_families;
-DROP VIEW IF EXISTS grants;
 DROP TABLE IF EXISTS device_grants;
 DROP TABLE IF EXISTS authorization_code_grants;
 DROP TABLE IF EXISTS authorization_codes;

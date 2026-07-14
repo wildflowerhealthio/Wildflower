@@ -197,7 +197,7 @@ mod tests {
         assert_eq!(fetched.disabled_at, Some(disabled_at));
     }
 
-    /// The SMART sample-app clients are seeded by migration `0002` (not Rust),
+    /// The SMART sample-app clients are seeded by migration `0003` (not Rust),
     /// so a freshly-migrated store has them — and every hand-written row
     /// decodes back to a valid `Client`. This is the guard that the SQL seed's
     /// JSON columns and `registered_at` text stay in the exact shape the
@@ -214,7 +214,7 @@ mod tests {
             let client = store
                 .client_by_id(client_id)
                 .expect("query (a decode failure surfaces here)")
-                .unwrap_or_else(|| panic!("{client_id} is seeded by migration 0002"));
+                .unwrap_or_else(|| panic!("{client_id} is seeded by migration 0003"));
             assert_eq!(client.client_id, client_id);
             assert_eq!(client.kind, ClientKind::Public);
             assert!(
