@@ -52,7 +52,7 @@ catalog:
   '@tauri-apps/plugin-fs': ~2.5.1
   '@tauri-apps/plugin-log': ~2.9.0
   '@tauri-apps/plugin-opener': ^2
-  '@tsdown/css': ^0.22.3
+  '@tsdown/css': ^0.22.7
   '@types/fhir': ^0.0.44
   '@types/node': ^26
   '@types/react': 19.2.17
@@ -73,7 +73,7 @@ catalog:
 
   typescript: 7.0.2
   vite: npm:@voidzero-dev/vite-plus-core@^0.2.2
-  vite-plus: ^0.2.2
+  vite-plus: ^0.2.4
   # vite-plus 0.2.x depends on real vitest (the @voidzero-dev/vite-plus-test
   # alias line ended at 0.1.24); pin to the version `vp --version` bundles.
   vitest: 4.1.10
