@@ -65,7 +65,7 @@ catalog:
   fast-check: 3.23.1
   jose: ^6.2.2
   jsdom: ^29.1.1
-  nanoid: ^5.1.11
+  nanoid: ^6.0.0
   qrcode-generator: 2.0.4
   react: 19.2.7
   react-dom: 19.2.7
