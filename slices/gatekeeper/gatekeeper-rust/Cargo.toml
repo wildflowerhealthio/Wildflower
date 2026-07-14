@@ -46,7 +46,7 @@ zeroize = { version = "1.8", features = ["derive"] }
 # Derive the enum ↔ wire-string conversions (`EnumString`/`AsRefStr`/`Display`)
 # for the stored-as-text enums, replacing the hand-rolled `as_str`/`FromStr`
 # match arms so the variant set and its wire spellings can't drift apart.
-strum = { version = "0.27", features = ["derive"] }
+strum = { version = "0.28", features = ["derive"] }
 rand = "0.10"
 uuid = { version = "1", features = ["v4"] }
 base64 = "0.22"
