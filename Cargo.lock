@@ -187,6 +187,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "axum",
+ "bytes",
  "diesel",
  "diesel_migrations",
  "http",

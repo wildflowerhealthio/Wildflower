@@ -39,7 +39,7 @@ pub(crate) async fn handle_create_cloud_app(
     // `GET /cloud-apps/{id}` shape with no second read.
     let (registration, config) = actions::create_cloud_app(
         &state.store,
-        mint_app_id(),
+        mint_app_id,
         actions::CloudAppPayload {
             name: body.name,
             subtitle: body.subtitle,

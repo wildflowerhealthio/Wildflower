@@ -53,9 +53,10 @@ pub(crate) fn get_cloud_app(
 /// [`AppsError::Infrastructure`] on a store write failure or an id collision.
 pub(crate) fn create_cloud_app(
     store: &impl AppsStore,
-    id: String,
+    id_generator: impl Fn() -> String,
     content: CloudAppPayload,
 ) -> Result<(AppRegistration, CloudAppConfiguration), AppsError> {
+    let id = id_generator();
     let (name, subtitle, url) = validate_cloud_fields(content.name, content.subtitle, content.url)?;
     let registration = AppRegistration {
         id,
@@ -186,13 +187,17 @@ mod tests {
     fn create_cloud_app_validates_its_fields() {
         let store = FakeAppsStore::default();
         assert!(matches!(
-            create_cloud_app(&store, "app-x".to_owned(), content("", "https://x.example")),
+            create_cloud_app(
+                &store,
+                || "app-x".to_owned(),
+                content("", "https://x.example")
+            ),
             Err(AppsError::InvalidName { .. })
         ));
         assert!(matches!(
             create_cloud_app(
                 &store,
-                "app-x".to_owned(),
+                || "app-x".to_owned(),
                 content("Name", "javascript:alert(1)"),
             ),
             Err(AppsError::InvalidUrl { .. })

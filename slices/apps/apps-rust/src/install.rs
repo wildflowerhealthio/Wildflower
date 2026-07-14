@@ -1,8 +1,9 @@
 //! Pure helpers for the self-hosted upload surface: [`extract_zip_bundle`] stages
-//! an uploaded `.zip` and [`slugify`] turns an app name into a DNS-label
-//! id/subdomain. No network or DB — the create handler drives extraction on a
-//! blocking pool. The extraction invariants and the slug/DNS-label rules are
-//! explained in `docs/Apps/Store and Install Explanation.md`.
+//! an uploaded `.zip` and [`infer_launch_path`] probes the extracted tree for a
+//! SMART `launch.html`. No network or DB — the installer drives extraction on a
+//! blocking pool. The extraction invariants are explained in
+//! `docs/Apps/Store and Install Explanation.md`. (The name → DNS-label slug now
+//! lives with the install action, `domain::actions::self_hosted_apps`.)
 
 use std::fmt;
 use std::fs;
@@ -239,39 +240,6 @@ fn drain_into(holding: &Path, staging: &Path) -> Result<(), InstallError> {
     }
     fs::remove_dir(holding).map_err(InstallError::Io)?;
     Ok(())
-}
-
-/// Slug a human app name into a DNS label usable as both the app id and its
-/// public subdomain: lowercase, every run of non-`[a-z0-9]` collapsed to a
-/// single `-`, leading/trailing `-` trimmed, and capped at 63 chars (the DNS
-/// label limit). `None` when nothing survives (e.g. an all-punctuation name),
-/// which the handler maps to `400 InvalidName`.
-pub(crate) fn slugify(name: &str) -> Option<String> {
-    let mut slug = String::new();
-    let mut pending_dash = false;
-    for ch in name.chars() {
-        let lower = ch.to_ascii_lowercase();
-        if lower.is_ascii_alphanumeric() {
-            slug.push(lower);
-            pending_dash = false;
-        } else if !pending_dash {
-            slug.push('-');
-            pending_dash = true;
-        }
-    }
-
-    // Trim leading/trailing separators, then cap at the DNS label length. A cut
-    // at the 63-char boundary can land on a `-`, so strip a trailing one again.
-    let trimmed = slug.trim_matches('-');
-    let mut result: String = trimmed.chars().take(63).collect();
-    while result.ends_with('-') {
-        result.pop();
-    }
-    if result.is_empty() {
-        None
-    } else {
-        Some(result)
-    }
 }
 
 #[cfg(test)]
@@ -600,39 +568,5 @@ mod tests {
             extract_zip_bundle(&bytes, staging.path()),
             Err(InstallError::TooManyEntries { .. }),
         ));
-    }
-
-    #[test]
-    fn slugify_lowercases_and_collapses_separators() {
-        assert_eq!(slugify("My Cool App!!"), Some("my-cool-app".to_owned()));
-        assert_eq!(slugify("  Trim  Me  "), Some("trim-me".to_owned()));
-        assert_eq!(
-            slugify("under_score/slash"),
-            Some("under-score-slash".to_owned())
-        );
-        assert_eq!(
-            slugify("Already-Slugged"),
-            Some("already-slugged".to_owned())
-        );
-    }
-
-    #[test]
-    fn slugify_returns_none_when_nothing_survives() {
-        assert_eq!(slugify(""), None);
-        assert_eq!(slugify("   "), None);
-        assert_eq!(slugify("!!!"), None);
-    }
-
-    #[test]
-    fn slugify_caps_at_dns_label_length_without_trailing_dash() {
-        let long = "a".repeat(100);
-        let slug = slugify(&long).unwrap();
-        assert_eq!(slug.len(), 63);
-        // A name that would cut on a separator at the boundary doesn't leave a
-        // trailing dash.
-        let boundary = format!("{}-tail", "b".repeat(62));
-        let slug = slugify(&boundary).unwrap();
-        assert!(slug.len() <= 63);
-        assert!(!slug.ends_with('-'));
     }
 }

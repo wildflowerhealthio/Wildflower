@@ -1,20 +1,36 @@
 //! Self-hosted-app actions — the `/self-hosted-apps` detail read, upload install,
 //! and launch-path replace.
 //!
-//! Like cloud, a self-hosted create takes a caller-built `(registration, config)`
-//! pair; the store owns only the display `position` and the loopback `port`
-//! (lowest-free, over the caller's `reserved_ports`), overriding those two
-//! placeholders while using the `registration.id` verbatim as id / subdomain. Unlike
-//! cloud, the store maps its own failure onto the wire vocabulary — a taken id is a
-//! `400 InvalidName`, an exhausted port space a `500` — so this create is a thin
-//! pass-through. The pure port-allocation *logic* lives in the domain
-//! ([`lowest_free_port`](crate::domain)), fed the taken set the store reads in the
-//! same transaction.
+//! [`install_self_hosted_app`] owns the whole install: it derives the slug (the id /
+//! subdomain) from the name, drives the [`SelfHostedInstaller`] port to stage the
+//! uploaded bundle onto disk, synthesizes the `(registration, config)` pair (with the
+//! fixed self-hosted defaults), hands it to the store — which uses the id verbatim,
+//! allocates the `port` / `position`, and maps a taken id to `400 InvalidName` — and
+//! then starts the listener, unwinding the staged files if the insert fails. The HTTP
+//! handler only shapes the multipart body into a [`SelfHostedAppPayload`] + a native
+//! installer; all the sequencing / validation / synthesis lives here.
+
+use bytes::Bytes;
 
 use super::all_kinds_apps::get_app;
 use crate::domain::{
-    AppConfiguration, AppRegistration, AppsError, AppsStore, SelfHostedAppConfiguration,
+    AppConfiguration, AppKind, AppRegistration, AppsError, AppsStore, SelfHostedAppConfiguration,
+    SelfHostedInstaller,
 };
+
+/// The raw data `POST /self-hosted-apps` hands the install action — the multipart
+/// fields plus the ports the allocation must skip, with no defaults or derived values
+/// (the action slugifies the name, stages the bundle, synthesizes the pair, and
+/// normalizes the subtitle).
+pub(crate) struct SelfHostedAppPayload {
+    pub name: String,
+    /// `None` (or empty) means "no subtitle".
+    pub subtitle: Option<String>,
+    /// The uploaded zip, handed to the installer's `stage` verbatim.
+    pub bundle: Bytes,
+    /// Ports the port allocation must skip (the host's own loopback API port).
+    pub reserved_ports: Vec<u16>,
+}
 
 /// The self-hosted pair for `GET`/`PUT /self-hosted-apps/{id}` —
 /// [`AppsError::NotFound`] when no *self-hosted* app has this id.
@@ -32,26 +48,98 @@ pub(crate) fn get_self_hosted_app(
     }
 }
 
-/// Install an uploaded self-hosted app from the caller-built (handler-synthesized)
-/// pair: the store overrides `position` / `port`, uses the id verbatim, and maps its
-/// own failures onto the wire vocabulary — a taken slug is a name clash the caller
-/// can resolve by renaming ([`InvalidName`](AppsError::InvalidName), a `400`), an
-/// exhausted port space a logged [`Infrastructure`](AppsError::Infrastructure) `500`.
-/// The filesystem staging (extract → move → start the listener) stays in the handler;
-/// this action is only the store insert.
+/// Install an uploaded self-hosted app end-to-end: derive the slug (id / subdomain)
+/// from the name, stage the bundle via the `installer` (extract → move into place),
+/// synthesize the `(registration, config)` pair with the fixed self-hosted defaults
+/// (`kind` / `on_homescreen` / `local_only` / non-seeded; `port` / `position` are
+/// placeholders the store allocates), insert it, and bring the listener online. A
+/// failed insert unwinds the staged files ([`discard`](SelfHostedInstaller::discard)).
+/// The store uses the id verbatim and maps a clash to [`InvalidName`](AppsError::InvalidName)
+/// (a name the caller can change), an exhausted port space to a logged
+/// [`Infrastructure`](AppsError::Infrastructure) `500`.
 ///
 /// # Errors
 ///
-/// [`AppsError::InvalidName`] when the slug is already taken;
-/// [`AppsError::Infrastructure`] on a store write failure or an exhausted port
-/// space.
-pub(crate) fn create_self_hosted_app(
+/// [`AppsError::InvalidName`] when the name slugs to nothing or the slug is already
+/// taken; [`AppsError::InvalidZip`] on a bad bundle; [`AppsError::Infrastructure`] on
+/// a staging / listener / store failure.
+pub(crate) async fn install_self_hosted_app(
     store: &impl AppsStore,
-    registration: &AppRegistration,
-    config: &SelfHostedAppConfiguration,
-    reserved_ports: &[u16],
+    installer: &impl SelfHostedInstaller,
+    payload: SelfHostedAppPayload,
 ) -> Result<(AppRegistration, SelfHostedAppConfiguration), AppsError> {
-    store.insert_self_hosted_app(registration, config, reserved_ports)
+    // The slug is the name reduced to a DNS label; a name that slugs to nothing is a
+    // `400 InvalidName` before anything is staged.
+    let slug = slugify(&payload.name).ok_or_else(|| AppsError::InvalidName {
+        message: "name must contain at least one letter or digit".to_owned(),
+    })?;
+
+    // Stage the bundle onto disk (extract + move into place) so a committed row always
+    // points at present files.
+    let staged = installer.stage(payload.bundle).await?;
+
+    // Synthesize the pair the store persists — the slug is the id and subdomain,
+    // `position` / `port` are placeholders the store overrides, an upload is never
+    // seeded, and an empty subtitle clears to `None`.
+    let registration = AppRegistration {
+        id: slug.clone(),
+        kind: AppKind::SelfHosted,
+        position: 0,
+        on_homescreen: true,
+        name: payload.name,
+        subtitle: payload.subtitle.filter(|s| !s.is_empty()),
+        local_only: true,
+        client_id: None,
+        requires_tunnel: false,
+    };
+    let config = SelfHostedAppConfiguration {
+        port: 0,
+        content_folder: staged.content_folder,
+        subdomain: slug,
+        seeded: false,
+        launch_path: staged.launch_path,
+    };
+
+    // Insert; unwind the just-staged files if the row can't be written.
+    let (registration, config) =
+        match store.insert_self_hosted_app(&registration, &config, &payload.reserved_ports) {
+            Ok(pair) => pair,
+            Err(error) => {
+                installer.discard(&config.content_folder);
+                return Err(error);
+            }
+        };
+
+    // The row is committed and the files are in place — bring the listener online.
+    installer.start_listener(&registration.id, &config).await?;
+    Ok((registration, config))
+}
+
+/// Reduce an app name to a DNS label: lowercase, each run of non-alphanumerics
+/// collapsed to a single `-`, trimmed, and capped at the 63-char label limit (a cut
+/// at the boundary can land on a `-`, so a trailing one is stripped again). `None`
+/// when nothing survives — the name has no usable slug. The label becomes the app's
+/// id **and** its public subdomain, so it must be a valid DNS label.
+fn slugify(name: &str) -> Option<String> {
+    let mut slug = String::new();
+    let mut pending_dash = false;
+    for ch in name.chars() {
+        let lower = ch.to_ascii_lowercase();
+        if lower.is_ascii_alphanumeric() {
+            slug.push(lower);
+            pending_dash = false;
+        } else if !pending_dash {
+            slug.push('-');
+            pending_dash = true;
+        }
+    }
+
+    let trimmed = slug.trim_matches('-');
+    let mut result: String = trimmed.chars().take(63).collect();
+    while result.ends_with('-') {
+        result.pop();
+    }
+    (!result.is_empty()).then_some(result)
 }
 
 /// Replace a self-hosted app's `launch_path` (`None` / empty → root-served) — the
@@ -111,30 +199,173 @@ fn validate_launch_path(value: Option<String>) -> Result<Option<String>, AppsErr
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_fake::{create_cloud, new_upload, seeded_self_hosted, FakeAppsStore};
-    use super::*;
+    use std::cell::RefCell;
 
-    #[test]
-    fn create_self_hosted_app_returns_the_installed_app() {
-        let store = FakeAppsStore::default();
-        let (registration, config) = new_upload("my-app");
-        let (registration, _config) =
-            create_self_hosted_app(&store, &registration, &config, &[]).expect("insert");
-        assert_eq!(registration.id, "my-app");
+    use super::super::test_fake::{create_cloud, seeded_self_hosted, FakeAppsStore};
+    use super::*;
+    use crate::domain::StagedBundle;
+
+    /// A test [`SelfHostedInstaller`] that stages a canned bundle (or fails on
+    /// demand) and records the `discard` / `start` calls.
+    struct FakeInstaller {
+        staged: StagedBundle,
+        stage_fails: bool,
+        discarded: RefCell<Vec<String>>,
+        started: RefCell<Vec<String>>,
     }
 
-    /// A second create with an already-taken slug is a client-fixable
-    /// `400 InvalidName` (the taken-id → wire mapping the store now owns; the
-    /// `Infrastructure` port-exhaustion path is covered by the store's own tests).
-    #[test]
-    fn create_self_hosted_on_a_taken_slug_is_invalid_name() {
+    impl FakeInstaller {
+        fn new(content_folder: &str) -> Self {
+            Self {
+                staged: StagedBundle {
+                    content_folder: content_folder.to_owned(),
+                    launch_path: Some("/launch.html".to_owned()),
+                },
+                stage_fails: false,
+                discarded: RefCell::new(Vec::new()),
+                started: RefCell::new(Vec::new()),
+            }
+        }
+    }
+
+    impl SelfHostedInstaller for FakeInstaller {
+        async fn stage(&self, _bundle: bytes::Bytes) -> Result<StagedBundle, AppsError> {
+            if self.stage_fails {
+                Err(AppsError::InvalidZip {
+                    message: "bad bundle".to_owned(),
+                })
+            } else {
+                Ok(self.staged.clone())
+            }
+        }
+
+        fn discard(&self, content_folder: &str) {
+            self.discarded.borrow_mut().push(content_folder.to_owned());
+        }
+
+        async fn start_listener(
+            &self,
+            id: &str,
+            _config: &SelfHostedAppConfiguration,
+        ) -> Result<(), AppsError> {
+            self.started.borrow_mut().push(id.to_owned());
+            Ok(())
+        }
+    }
+
+    fn payload(name: &str) -> SelfHostedAppPayload {
+        SelfHostedAppPayload {
+            name: name.to_owned(),
+            subtitle: None,
+            bundle: bytes::Bytes::new(),
+            reserved_ports: Vec::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn install_self_hosted_app_stages_synthesizes_inserts_and_starts() {
         let store = FakeAppsStore::default();
-        let (registration, config) = new_upload("my-app");
-        create_self_hosted_app(&store, &registration, &config, &[]).expect("insert");
-        assert!(matches!(
-            create_self_hosted_app(&store, &registration, &config, &[]),
-            Err(AppsError::InvalidName { .. })
-        ));
+        let installer = FakeInstaller::new("mint-abc");
+        let (registration, config) = install_self_hosted_app(
+            &store,
+            &installer,
+            SelfHostedAppPayload {
+                subtitle: Some(String::new()),
+                ..payload("My App")
+            },
+        )
+        .await
+        .expect("installed");
+
+        assert_eq!(registration.id, "my-app", "the id is the slugified name");
+        assert_eq!(registration.kind, AppKind::SelfHosted);
+        assert!(registration.local_only);
+        assert!(registration.on_homescreen);
+        assert_eq!(
+            registration.subtitle, None,
+            "an empty subtitle normalizes to None"
+        );
+        assert_eq!(config.subdomain, "my-app");
+        assert_eq!(
+            config.content_folder, "mint-abc",
+            "the staged folder, recorded verbatim"
+        );
+        assert_eq!(config.launch_path.as_deref(), Some("/launch.html"));
+        assert!(!config.seeded);
+        assert_eq!(
+            installer.started.borrow().as_slice(),
+            ["my-app"],
+            "the listener is started for the installed id",
+        );
+        assert!(
+            installer.discarded.borrow().is_empty(),
+            "nothing is discarded on success",
+        );
+    }
+
+    #[tokio::test]
+    async fn install_self_hosted_app_rejects_a_nameless_slug_before_staging() {
+        let store = FakeAppsStore::default();
+        let installer = FakeInstaller::new("mint");
+        let result = install_self_hosted_app(&store, &installer, payload("!!!")).await;
+        assert!(matches!(result, Err(AppsError::InvalidName { .. })));
+        assert!(
+            installer.started.borrow().is_empty() && installer.discarded.borrow().is_empty(),
+            "a name that slugs to nothing never stages or starts",
+        );
+    }
+
+    #[tokio::test]
+    async fn install_self_hosted_app_discards_the_bundle_when_the_insert_fails() {
+        let store = FakeAppsStore::default();
+        // A pre-existing app owns the slug, so the store insert reports a taken id.
+        seeded_self_hosted(&store, "my-app", false);
+        let installer = FakeInstaller::new("mint-xyz");
+        let result = install_self_hosted_app(&store, &installer, payload("My App")).await;
+        assert!(matches!(result, Err(AppsError::InvalidName { .. })));
+        assert_eq!(
+            installer.discarded.borrow().as_slice(),
+            ["mint-xyz"],
+            "the staged folder is unwound when the row can't be written",
+        );
+        assert!(
+            installer.started.borrow().is_empty(),
+            "a failed insert never starts the listener",
+        );
+    }
+
+    #[test]
+    fn slugify_lowercases_and_collapses_separators() {
+        assert_eq!(slugify("My Cool App!!"), Some("my-cool-app".to_owned()));
+        assert_eq!(slugify("  Trim  Me  "), Some("trim-me".to_owned()));
+        assert_eq!(
+            slugify("under_score/slash"),
+            Some("under-score-slash".to_owned())
+        );
+        assert_eq!(
+            slugify("Already-Slugged"),
+            Some("already-slugged".to_owned())
+        );
+    }
+
+    #[test]
+    fn slugify_returns_none_when_nothing_survives() {
+        assert_eq!(slugify(""), None);
+        assert_eq!(slugify("   "), None);
+        assert_eq!(slugify("!!!"), None);
+    }
+
+    #[test]
+    fn slugify_caps_at_dns_label_length_without_trailing_dash() {
+        let long = "a".repeat(100);
+        let slug = slugify(&long).unwrap();
+        assert_eq!(slug.len(), 63);
+        // A name that would cut on a separator at the boundary doesn't leave a
+        // trailing dash.
+        let boundary = format!("{}-tail", "b".repeat(62));
+        let slug = slugify(&boundary).unwrap();
+        assert!(slug.len() <= 63);
+        assert!(!slug.ends_with('-'));
     }
 
     #[test]

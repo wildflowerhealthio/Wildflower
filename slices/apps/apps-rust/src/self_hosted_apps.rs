@@ -20,15 +20,19 @@
 //! upload handler stages extracted bundles under and the delete handler removes
 //! an uploaded app's folder from.
 
-use std::path::PathBuf;
+use std::future::Future;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use axum::body::Bytes;
 use shared_structures_rust::tunnel_service::TunnelService;
 use shared_structures_server_rust::{ProxyTable, ServerError, StaticHostJob, StaticHostsService};
 use tower_http::cors::CorsLayer;
 use url::Url;
 
-use crate::domain::SelfHostedAppConfiguration;
+use crate::domain::{AppsError, SelfHostedAppConfiguration, SelfHostedInstaller, StagedBundle};
+use crate::id::mint_app_id;
+use crate::install::{self, extract_zip_bundle, infer_launch_path};
 
 /// Orchestrates the self-hosted apps' loopback listeners and reverse-proxy
 /// registrations. Constructed once by the host (held in scope for the process
@@ -139,6 +143,109 @@ impl SelfHostedAppsService {
         self.static_hosts.stop(id)?;
         self.proxy_table.unregister(id)?;
         Ok(())
+    }
+}
+
+// The service *is* the native [`SelfHostedInstaller`] — one instance serves every
+// upload; the bundle rides in as a `stage` argument rather than being baked into a
+// per-request installer. The action drives this to do the filesystem + listener work
+// it can't (extract → move into place, unwind on a failed insert, bring the listener
+// online), mapping the extractor's / service's errors onto the domain `AppsError`.
+impl SelfHostedInstaller for SelfHostedAppsService {
+    fn stage(&self, bundle: Bytes) -> impl Future<Output = Result<StagedBundle, AppsError>> {
+        // Own the inputs so the returned future is `'static` (the extraction rides a
+        // `spawn_blocking` hop that requires it). `Bytes` is passed by value from the
+        // caller; `apps_dir` is cloned off `&self`.
+        let apps_dir = self.apps_dir.clone();
+        async move {
+            // A fresh mint per upload names both the staging dir and the final serving
+            // folder (the row's `content_folder`).
+            let folder = mint_app_id();
+            let staging = apps_dir.join(".staging").join(&folder);
+
+            // Extract off the async runtime — zip inflate + disk writes are blocking.
+            // The same blocking task infers the launch path from the extracted (and
+            // hoisted) tree, so the `launch.html` probe rides the same off-runtime hop.
+            let staging_for_extract = staging.clone();
+            let extract = tokio::task::spawn_blocking(move || {
+                extract_zip_bundle(&bundle, &staging_for_extract)
+                    .map(|()| infer_launch_path(&staging_for_extract))
+            })
+            .await;
+            let launch_path = match extract {
+                Ok(Ok(path)) => path,
+                Ok(Err(error)) => {
+                    remove_staging(&staging);
+                    return Err(map_install_error(error));
+                }
+                Err(join_error) => {
+                    remove_staging(&staging);
+                    return Err(AppsError::infrastructure(
+                        "zip extraction task failed",
+                        join_error,
+                    ));
+                }
+            };
+
+            // Move the extracted files into their serving location BEFORE the row
+            // commits, so a committed row always points at present files (a crash
+            // after this leaks only an unreferenced folder — no row, never served).
+            let dest = apps_dir.join(&folder);
+            if let Err(error) = std::fs::rename(&staging, &dest) {
+                remove_staging(&staging);
+                return Err(AppsError::infrastructure(
+                    "failed to move the staged app into place",
+                    error,
+                ));
+            }
+
+            Ok(StagedBundle {
+                content_folder: folder,
+                launch_path,
+            })
+        }
+    }
+
+    fn discard(&self, content_folder: &str) {
+        remove_staging(&self.apps_dir.join(content_folder));
+    }
+
+    async fn start_listener(
+        &self,
+        id: &str,
+        config: &SelfHostedAppConfiguration,
+    ) -> Result<(), AppsError> {
+        // The inherent `start` swallows bind failures (the row is committed and files
+        // are in place, so it comes up on the next restart); the only error it
+        // propagates is a poisoned lock, where reverse-proxy registration did NOT
+        // happen and won't self-heal. That's a real fault — surface it.
+        self.start(id, config).await.map_err(|error| {
+            AppsError::infrastructure("installed self-hosted app failed to register", error)
+        })
+    }
+}
+
+/// Map an extraction failure to the wire error: a disk-write failure is our fault
+/// (`500`), every other variant is a bad upload (`400 InvalidZip`).
+fn map_install_error(error: install::InstallError) -> AppsError {
+    match error {
+        install::InstallError::Io(io_error) => {
+            AppsError::infrastructure("zip extraction io error", io_error)
+        }
+        other => AppsError::InvalidZip {
+            message: other.to_string(),
+        },
+    }
+}
+
+/// Best-effort removal of a failed install's directory (the staging dir, or the
+/// already-moved serving folder when the DB insert is what failed). A cleanup failure
+/// is logged, not surfaced — the request already has its real error.
+fn remove_staging(dir: &Path) {
+    if let Err(error) = std::fs::remove_dir_all(dir) {
+        if error.kind() != std::io::ErrorKind::NotFound {
+            tracing::warn!(%error, path = %dir.display(), "failed to clean up a failed install's directory");
+        }
     }
 }
 

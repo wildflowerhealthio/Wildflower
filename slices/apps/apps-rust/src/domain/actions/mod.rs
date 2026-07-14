@@ -38,6 +38,6 @@ pub(crate) use all_kinds_apps::{delete_app, get_app};
 pub(crate) use app_registration::{list_registrations, replace_placements};
 pub(crate) use cloud_apps::{create_cloud_app, get_cloud_app, replace_cloud_app, CloudAppPayload};
 pub(crate) use self_hosted_apps::{
-    create_self_hosted_app, get_self_hosted_app, replace_self_hosted_app,
+    get_self_hosted_app, install_self_hosted_app, replace_self_hosted_app, SelfHostedAppPayload,
 };
 pub(crate) use system_apps::get_system_app;

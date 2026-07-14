@@ -24,6 +24,7 @@ mod cloud_app_configuration;
 mod common_app_config;
 mod kind;
 mod self_hosted_app_configuration;
+mod self_hosted_installer;
 mod system_app_configuration;
 
 pub use app_configuration::AppConfiguration;
@@ -37,4 +38,5 @@ pub use common_app_config::CommonAppConfig;
 pub use kind::{AppKind, AppKindParseError};
 pub(crate) use self_hosted_app_configuration::lowest_free_port;
 pub use self_hosted_app_configuration::SelfHostedAppConfiguration;
+pub(crate) use self_hosted_installer::{SelfHostedInstaller, StagedBundle};
 pub use system_app_configuration::SystemAppConfiguration;

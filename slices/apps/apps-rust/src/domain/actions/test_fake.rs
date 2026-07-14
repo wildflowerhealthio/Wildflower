@@ -218,28 +218,12 @@ pub(super) fn create_cloud(
 ) -> Result<(AppRegistration, CloudAppConfiguration), AppsError> {
     create_cloud_app(
         store,
-        id.to_owned(),
+        || id.to_owned(),
         CloudAppPayload {
             name: id.to_owned(),
             subtitle: None,
             url: "https://example.com/launch".to_owned(),
             requires_tunnel: false,
-        },
-    )
-}
-
-/// A caller-built self-hosted upload pair (id = subdomain = `slug`, non-seeded,
-/// `position` / `port` placeholders the store overrides) — the shape the HTTP layer
-/// hands the store.
-pub(super) fn new_upload(slug: &str) -> (AppRegistration, SelfHostedAppConfiguration) {
-    (
-        registration(slug, AppKind::SelfHosted),
-        SelfHostedAppConfiguration {
-            port: 0,
-            content_folder: format!("{slug}-folder"),
-            subdomain: slug.to_owned(),
-            seeded: false,
-            launch_path: None,
         },
     )
 }
