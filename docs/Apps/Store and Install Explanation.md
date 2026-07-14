@@ -110,11 +110,11 @@ store:
    whose first act is a write stays on the default `DEFERRED` — its write lock is
    already taken before anything it reads. `UNIQUE(position)` / `UNIQUE(port)` backstop
    regardless. The self-hosted id / subdomain are _not_ allocated: they are the
-   caller-built `registration.id` used verbatim, and a clash is rejected `400
-   InvalidName` (checked in the same transaction). The port-allocation _logic_ is pure
-   and lives in the domain (`lowest_free_port`), fed the taken port set the store reads
-   in that same transaction — database-free and unit-tested, while the read-then-write
-   stays atomic in the store.
+   caller-built `registration.id` used verbatim, and a clash is rejected
+   `400 InvalidName` (checked in the same transaction). The port-allocation _logic_ is
+   pure and lives in the domain (`lowest_free_port`), fed the taken port set the store
+   reads in that same transaction — database-free and unit-tested, while the
+   read-then-write stays atomic in the store.
 3. **Single writer of order + placement.** `position` and `on_homescreen` are
    written only by `replace_placements` (`PUT /home-screen`); a content replace
    never touches `on_homescreen`. It validates the body is an exact permutation of the live
