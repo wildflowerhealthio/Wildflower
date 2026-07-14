@@ -49,7 +49,7 @@ tower-http.workspace = true
 # uses (`deflate`/`deflate64` for zips, `bzip2` for the occasional legacy tool).
 # The resolved version (2.4.2) is already in `Cargo.lock` transitively, so
 # cargo-deny has pre-vetted it and its codec deps.
-zip = { version = "2", default-features = false, features = [
+zip = { version = "8", default-features = false, features = [
   "deflate",
   "deflate64",
   "bzip2",
