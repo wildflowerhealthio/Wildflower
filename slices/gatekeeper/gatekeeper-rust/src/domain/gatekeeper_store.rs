@@ -411,14 +411,27 @@ pub trait GatekeeperStore {
         device_name: &str,
     ) -> Result<Option<DeviceGrant>, GatekeeperError>;
 
-    /// Insert a brand-new grant row into its kind's concrete table (a plain
-    /// single-table insert). Chiefly a test/seed helper; the flows use
-    /// [`Self::upsert_grant`] / [`Self::upsert_device_grant`].
+    /// Insert a brand-new **authorization-code** grant row (a plain single-table
+    /// insert). Chiefly a test/seed helper; the flows use
+    /// [`Self::upsert_authorization_code_grant`]. The store takes the concrete
+    /// grant, so which table a write lands in is decided in the domain, not by the
+    /// store re-inspecting a polymorphic value.
     ///
     /// # Errors
     ///
     /// [`GatekeeperError::Infrastructure`] if the insert fails.
-    fn create_grant(&self, grant: &Grant) -> Result<(), GatekeeperError>;
+    fn create_authorization_code_grant(
+        &self,
+        grant: &AuthorizationCodeGrant,
+    ) -> Result<(), GatekeeperError>;
+
+    /// Insert a brand-new **device** grant row (a plain single-table insert).
+    /// Chiefly a test/seed helper; the flows use [`Self::upsert_device_grant`].
+    ///
+    /// # Errors
+    ///
+    /// [`GatekeeperError::Infrastructure`] if the insert fails.
+    fn create_device_grant(&self, grant: &DeviceGrant) -> Result<(), GatekeeperError>;
 
     /// Insert or cumulatively update the standing **authorization-code** grant
     /// for `(client_id, redirect_uri)` in one transaction (scope union on
@@ -428,7 +441,7 @@ pub trait GatekeeperStore {
     ///
     /// [`GatekeeperError::Infrastructure`] if the transaction, the read, or the
     /// insert/update fails.
-    fn upsert_grant(
+    fn upsert_authorization_code_grant(
         &self,
         client_id: &str,
         redirect_uri: &Url,
@@ -439,7 +452,7 @@ pub trait GatekeeperStore {
 
     /// Insert or cumulatively update the standing **device** grant for
     /// `(client_id, device_name)` in one transaction, with the same
-    /// cumulative-consent semantics as [`Self::upsert_grant`].
+    /// cumulative-consent semantics as [`Self::upsert_authorization_code_grant`].
     ///
     /// # Errors
     ///

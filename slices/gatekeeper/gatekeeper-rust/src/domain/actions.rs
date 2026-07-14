@@ -449,7 +449,7 @@ pub(crate) fn device_grant_by_client_and_device_name(
 /// # Errors
 ///
 /// [`GatekeeperError::Infrastructure`] if the store write fails.
-pub(crate) fn upsert_grant(
+pub(crate) fn upsert_authorization_code_grant(
     store: &impl GatekeeperStore,
     client_id: &str,
     redirect_uri: &Url,
@@ -457,7 +457,7 @@ pub(crate) fn upsert_grant(
     patient: Option<&str>,
     now: DateTime<Utc>,
 ) -> Result<(), GatekeeperError> {
-    store.upsert_grant(client_id, redirect_uri, scopes, patient, now)
+    store.upsert_authorization_code_grant(client_id, redirect_uri, scopes, patient, now)
 }
 
 /// Insert or cumulatively update the standing device grant.
@@ -889,23 +889,24 @@ mod tests {
                 .cloned())
         }
 
-        fn create_grant(&self, grant: &Grant) -> Result<(), GatekeeperError> {
-            match grant {
-                Grant::AuthorizationCode(g) => {
-                    self.code_grants
-                        .borrow_mut()
-                        .insert(g.id.clone(), g.clone());
-                }
-                Grant::DeviceCode(g) => {
-                    self.device_grants
-                        .borrow_mut()
-                        .insert(g.id.clone(), g.clone());
-                }
-            }
+        fn create_authorization_code_grant(
+            &self,
+            grant: &AuthorizationCodeGrant,
+        ) -> Result<(), GatekeeperError> {
+            self.code_grants
+                .borrow_mut()
+                .insert(grant.id.clone(), grant.clone());
             Ok(())
         }
 
-        fn upsert_grant(
+        fn create_device_grant(&self, grant: &DeviceGrant) -> Result<(), GatekeeperError> {
+            self.device_grants
+                .borrow_mut()
+                .insert(grant.id.clone(), grant.clone());
+            Ok(())
+        }
+
+        fn upsert_authorization_code_grant(
             &self,
             client_id: &str,
             redirect_uri: &Url,
@@ -1021,8 +1022,8 @@ mod tests {
         }
     }
 
-    fn code_grant(id: &str, client_id: &str) -> Grant {
-        Grant::AuthorizationCode(AuthorizationCodeGrant {
+    fn code_grant(id: &str, client_id: &str) -> AuthorizationCodeGrant {
+        AuthorizationCodeGrant {
             id: id.to_owned(),
             client_id: client_id.to_owned(),
             scopes: vec!["read".to_owned()],
@@ -1030,13 +1031,15 @@ mod tests {
             last_used_at: None,
             patient: None,
             redirect_uri: Url::parse("https://example.com/cb").unwrap(),
-        })
+        }
     }
 
     #[test]
     fn get_grant_returns_the_row_or_grant_not_found() {
         let store = FakeGatekeeperStore::default();
-        store.create_grant(&code_grant("g1", "client")).unwrap();
+        store
+            .create_authorization_code_grant(&code_grant("g1", "client"))
+            .unwrap();
         assert_eq!(get_grant(&store, "g1").unwrap().id(), "g1");
         assert_eq!(
             get_grant(&store, "ghost"),
@@ -1049,7 +1052,9 @@ mod tests {
     #[test]
     fn revoke_grant_maps_the_miss_to_grant_not_found() {
         let store = FakeGatekeeperStore::default();
-        store.create_grant(&code_grant("g1", "client")).unwrap();
+        store
+            .create_authorization_code_grant(&code_grant("g1", "client"))
+            .unwrap();
         // First revoke removes the row and succeeds.
         assert_eq!(revoke_grant(&store, "g1", "client", Utc::now()), Ok(()));
         // Second revoke is a miss → GrantNotFound (the store returned `false`).

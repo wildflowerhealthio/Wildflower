@@ -26,6 +26,21 @@ diesel::table! {
     }
 }
 
+/// Insert a brand-new device grant row — a plain single-table insert (no
+/// transaction). Chiefly a test/seed helper; the flow uses
+/// [`upsert_device_grant`]. The caller hands the concrete grant, so the store
+/// never inspects a polymorphic value to choose the table.
+pub(crate) fn create_device_grant(
+    conn: &mut PooledDieselConnection,
+    grant: &DeviceGrant,
+) -> Result<(), GatekeeperError> {
+    diesel::insert_into(device_grants::table)
+        .values(grant.clone())
+        .execute(conn)
+        .map_err(|e| GatekeeperError::infrastructure("create_device_grant failed", e))?;
+    Ok(())
+}
+
 /// Find an existing device grant for the (`client_id`, `device_name`) pair —
 /// the identity a re-pairing upserts against, and the lookup token exchange
 /// uses to stamp `refresh_token_families.grant_id`. Hits the concrete

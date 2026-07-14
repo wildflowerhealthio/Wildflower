@@ -11,15 +11,18 @@
 //!  - [`device`] — the `device_grants` `table!` + its keyed lookup and upsert (the
 //!    durable device-code pairing per `device_name`);
 //!  - [`general`] — the cross-kind pieces: the `grants` VIEW + its `Grant` decoder,
-//!    the two Owner-UI reads, the polymorphic `create_grant` seed helper, and the
-//!    revoke that spans both tables + the client's refresh families.
+//!    the two Owner-UI reads, and the revoke that spans both tables + the client's
+//!    refresh families. Concrete-typed inserts live with their kind (the store
+//!    never inspects a polymorphic value to pick a table).
 
 pub(crate) mod authorization_code;
 pub(crate) mod device;
 mod general;
 
-pub(super) use authorization_code::{grant_by_client_and_redirect, upsert_grant};
-pub(super) use device::{device_grant_by_client_and_device_name, upsert_device_grant};
-pub(super) use general::{
-    all_grants, create_grant, grant_by_id, revoke_grant_and_expire_client_families,
+pub(super) use authorization_code::{
+    create_authorization_code_grant, grant_by_client_and_redirect, upsert_authorization_code_grant,
 };
+pub(super) use device::{
+    create_device_grant, device_grant_by_client_and_device_name, upsert_device_grant,
+};
+pub(super) use general::{all_grants, grant_by_id, revoke_grant_and_expire_client_families};

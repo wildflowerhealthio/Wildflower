@@ -122,33 +122,6 @@ pub(crate) fn grant_by_id(
         .transpose()
 }
 
-/// Insert a brand-new grant row into its kind's concrete table — a plain
-/// single-table insert (no parent, no transaction). Chiefly a test/seed
-/// helper; the flows use
-/// [`upsert_grant`](super::authorization_code::upsert_grant) /
-/// [`upsert_device_grant`](super::device::upsert_device_grant).
-pub(crate) fn create_grant(
-    conn: &mut PooledDieselConnection,
-    grant: &Grant,
-) -> Result<(), GatekeeperError> {
-    let as_infrastructure_error = |e| GatekeeperError::infrastructure("create_grant failed", e);
-    match grant {
-        Grant::AuthorizationCode(grant) => {
-            diesel::insert_into(authorization_code_grants::table)
-                .values(grant.clone())
-                .execute(conn)
-                .map_err(as_infrastructure_error)?;
-        }
-        Grant::DeviceCode(grant) => {
-            diesel::insert_into(device_grants::table)
-                .values(grant.clone())
-                .execute(conn)
-                .map_err(as_infrastructure_error)?;
-        }
-    }
-    Ok(())
-}
-
 /// Revoke a grant and expire the refresh-token families of its client in a
 /// single transaction, returning `true` if the grant existed. Doing both in
 /// one transaction means a partial failure can't leave the grant deleted
@@ -266,13 +239,20 @@ mod tests {
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(48))]
 
-        /// Both kinds round-trip through the view decoder: `create_grant`
-        /// writes the concrete table, and `grant_by_id` reconstructs the whole
-        /// grant off the `grants` view.
+        /// Both kinds round-trip through the view decoder: the concrete
+        /// `create_*_grant` write lands in its table, and `grant_by_id`
+        /// reconstructs the whole grant off the `grants` view.
         #[test]
         fn create_and_fetch_round_trip(grant in arb_grant()) {
             let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
-            store.create_grant(&grant).expect("create");
+            match &grant {
+                Grant::AuthorizationCode(g) => {
+                    store.create_authorization_code_grant(g).expect("create code grant");
+                }
+                Grant::DeviceCode(g) => {
+                    store.create_device_grant(g).expect("create device grant");
+                }
+            }
             let fetched = store
                 .grant_by_id(grant.id())
                 .expect("query")
@@ -289,7 +269,7 @@ mod tests {
         let redirect = read("https://example.com/cb");
         let now = Utc::now();
         store
-            .upsert_grant("client-a", &redirect, &["read".to_owned()], None, now)
+            .upsert_authorization_code_grant("client-a", &redirect, &["read".to_owned()], None, now)
             .expect("code grant");
         store
             .upsert_device_grant(

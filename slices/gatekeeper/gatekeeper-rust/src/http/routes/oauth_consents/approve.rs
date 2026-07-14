@@ -90,7 +90,7 @@ async fn handle_approve_oauth_consent(
     // single store transaction, paired with a UNIQUE index on
     // (client_id, redirect_uri), so two concurrent approvals can't each insert
     // a duplicate grant that would then survive revocation.
-    actions::upsert_grant(
+    actions::upsert_authorization_code_grant(
         &state.store,
         &request.client_id,
         &redirect_uri,

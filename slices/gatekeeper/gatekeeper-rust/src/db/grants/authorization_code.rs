@@ -26,6 +26,23 @@ diesel::table! {
     }
 }
 
+/// Insert a brand-new authorization-code grant row — a plain single-table
+/// insert (no transaction). Chiefly a test/seed helper; the flow uses
+/// [`upsert_authorization_code_grant`]. The caller hands the concrete grant, so
+/// the store never inspects a polymorphic value to choose the table.
+pub(crate) fn create_authorization_code_grant(
+    conn: &mut PooledDieselConnection,
+    grant: &AuthorizationCodeGrant,
+) -> Result<(), GatekeeperError> {
+    diesel::insert_into(authorization_code_grants::table)
+        .values(grant.clone())
+        .execute(conn)
+        .map_err(|e| {
+            GatekeeperError::infrastructure("create_authorization_code_grant failed", e)
+        })?;
+    Ok(())
+}
+
 /// Find an existing authorization-code grant for the (`client_id`,
 /// `redirect_uri`) pair so `/authorize` can decide whether to short-circuit
 /// the consent prompt. A single-kind lookup, so it hits the concrete table
@@ -52,7 +69,7 @@ pub(crate) fn grant_by_client_and_redirect(
 /// read-merge-write under one transaction (paired with the table's
 /// `UNIQUE(client_id, redirect_uri)`) means two concurrent approvals can't
 /// both insert a duplicate grant.
-pub(crate) fn upsert_grant(
+pub(crate) fn upsert_authorization_code_grant(
     conn: &mut PooledDieselConnection,
     client_id: &str,
     redirect_uri: &Url,
@@ -94,7 +111,9 @@ pub(crate) fn upsert_grant(
         }
         Ok(())
     })
-    .map_err(|e: diesel::result::Error| GatekeeperError::infrastructure("upsert_grant failed", e))
+    .map_err(|e: diesel::result::Error| {
+        GatekeeperError::infrastructure("upsert_authorization_code_grant failed", e)
+    })
 }
 
 #[cfg(test)]
@@ -112,13 +131,13 @@ mod tests {
     /// A code-flow upsert inserts a fresh authorization-code grant, then unions
     /// scopes on re-approval (cumulative consent) rather than replacing them.
     #[test]
-    fn upsert_grant_inserts_then_unions_scopes() {
+    fn upsert_authorization_code_grant_inserts_then_unions_scopes() {
         let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
         let redirect = read("https://example.com/cb");
         let now = Utc::now();
 
         store
-            .upsert_grant(
+            .upsert_authorization_code_grant(
                 "client-a",
                 &redirect,
                 &["read".to_owned()],
@@ -135,7 +154,7 @@ mod tests {
 
         // Re-approve with an overlapping + a new scope: union, not replace.
         store
-            .upsert_grant(
+            .upsert_authorization_code_grant(
                 "client-a",
                 &redirect,
                 &["read".to_owned(), "write".to_owned()],

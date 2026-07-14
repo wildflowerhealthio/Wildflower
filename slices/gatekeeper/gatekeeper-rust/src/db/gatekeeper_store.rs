@@ -369,11 +369,18 @@ impl GatekeeperStore for SqliteGatekeeperStore {
         )
     }
 
-    fn create_grant(&self, grant: &Grant) -> Result<(), GatekeeperError> {
-        grants::create_grant(&mut self.connection()?, grant)
+    fn create_authorization_code_grant(
+        &self,
+        grant: &AuthorizationCodeGrant,
+    ) -> Result<(), GatekeeperError> {
+        grants::create_authorization_code_grant(&mut self.connection()?, grant)
     }
 
-    fn upsert_grant(
+    fn create_device_grant(&self, grant: &DeviceGrant) -> Result<(), GatekeeperError> {
+        grants::create_device_grant(&mut self.connection()?, grant)
+    }
+
+    fn upsert_authorization_code_grant(
         &self,
         client_id: &str,
         redirect_uri: &Url,
@@ -381,7 +388,7 @@ impl GatekeeperStore for SqliteGatekeeperStore {
         patient: Option<&str>,
         now: DateTime<Utc>,
     ) -> Result<(), GatekeeperError> {
-        grants::upsert_grant(
+        grants::upsert_authorization_code_grant(
             &mut self.connection()?,
             client_id,
             redirect_uri,
