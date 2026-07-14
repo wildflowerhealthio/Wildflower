@@ -14,65 +14,23 @@
 //! ([`SelfHostedAppDetail`](crate::http::wire_representations::SelfHostedAppDetail))
 //! is built from the pair at the HTTP seam.
 //!
-//! This module also owns the self-hosted write-side input specs the
-//! [`AppsStore`](super::AppsStore) speaks — [`NewSelfHostedUpload`] (a create spec)
-//! and [`UploadInsertError`] (the granular reason an upload insert wrote nothing).
+//! The self-hosted insert maps its own failures onto [`AppsError`](super::AppsError)
+//! directly — a taken id is a `400 InvalidName`, an exhausted port space a `500` —
+//! so there's no granular typed insert-error here (unlike cloud's `CloudInsertError`).
 
 use std::collections::HashSet;
 
 use super::{AppKind, CommonAppConfig};
 
-/// The DNS label length cap a self-hosted slug (its id and subdomain) must stay
-/// within — RFC 1035's 63-octet label limit.
-const MAX_SLUG_LEN: usize = 63;
-
-/// The attempt-`N` slug candidate: the base itself first (`attempt == 1`), then
-/// `{base}-{attempt}`, kept a valid DNS label (≤ [`MAX_SLUG_LEN`] chars, no trailing
-/// `-`) — the suffix is budgeted first and the base truncated to fit. The base is
-/// `slugify` output (ASCII), so char truncation is byte truncation.
-fn slug_candidate(base: &str, attempt: u32) -> String {
-    if attempt == 1 {
-        return base.to_owned();
-    }
-    let suffix = format!("-{attempt}");
-    let budget = MAX_SLUG_LEN - suffix.len();
-    let mut head: String = base.chars().take(budget).collect();
-    while head.ends_with('-') {
-        head.pop();
-    }
-    format!("{head}{suffix}")
-}
-
-/// Pick the first slug candidate (`base`, then `base-2`, `base-3`, … up to
-/// `max_attempts`) that collides with neither `taken_ids` (the global app-id space)
-/// nor `taken_subdomains`. `None` when the whole budget is exhausted — the caller
-/// maps that to [`UploadInsertError::SlugSpaceExhausted`].
-///
-/// Pure: the store implementation reads the taken sets **inside the insert
-/// transaction** and hands them here, so the choice can't race a concurrent insert
-/// while the suffixing logic itself is a plain, database-free function.
-#[must_use]
-pub(crate) fn choose_self_hosted_slug(
-    base: &str,
-    taken_ids: &HashSet<String>,
-    taken_subdomains: &HashSet<String>,
-    max_attempts: u32,
-) -> Option<String> {
-    (1..=max_attempts)
-        .map(|attempt| slug_candidate(base, attempt))
-        .find(|candidate| {
-            !taken_ids.contains(candidate.as_str())
-                && !taken_subdomains.contains(candidate.as_str())
-        })
-}
-
 /// The **lowest** loopback port in `min..=max` that is neither already `taken` nor
 /// in `reserved` (the host's own loopback port). Lowest-free (not `max + 1`) reuses
 /// released ports to keep origins stable across reinstall. `None` when the range is
-/// exhausted — the caller maps that to [`UploadInsertError::PortSpaceExhausted`].
+/// exhausted — the store maps that to a logged
+/// [`AppsError::Infrastructure`](super::AppsError::Infrastructure).
 ///
-/// Pure, for the same reason as [`choose_self_hosted_slug`]: the store reads the
-/// live port set in-transaction and passes it in.
+/// Pure: the store reads the live port set **inside the insert transaction** and
+/// passes it in, so the choice can't race a concurrent insert while the lowest-free
+/// logic itself stays a plain, database-free (unit-tested) function.
 #[must_use]
 pub(crate) fn lowest_free_port(
     taken: &HashSet<u16>,
@@ -162,41 +120,6 @@ impl SelfHostedAppConfiguration {
     }
 }
 
-/// Everything `POST /self-hosted-apps` needs to install a self-hosted upload. The
-/// store allocates the final slug (which becomes id / subdomain) and the loopback
-/// port inside its transaction; the display position is appended there too.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NewSelfHostedUpload {
-    pub name: String,
-    /// `None` means "no subtitle".
-    pub subtitle: Option<String>,
-    /// The slug candidate derived from the name; the store suffixes it
-    /// (`-2`, `-3`, …) until unique, keeping every candidate a valid DNS label.
-    pub base_slug: String,
-    /// The on-disk folder (under the apps root) already holding the extracted
-    /// files — the upload's staging mint id, recorded verbatim. Deliberately NOT
-    /// the slug; see the content-folder section of
-    /// `docs/Apps/Store and Install Explanation.md`.
-    pub content_folder: String,
-    /// Ports the allocation must skip (the host's own loopback API port).
-    pub reserved_ports: Vec<u16>,
-    /// The install-inferred SMART launch path, `None` for a root-served bundle.
-    pub launch_path: Option<String>,
-}
-
-/// Why [`insert_self_hosted_app`](super::AppsStore::insert_self_hosted_app)
-/// allocated nothing (the transaction was dropped unwritten). Distinguished so
-/// the [`create_self_hosted_app`](super::actions) action can answer accurately: a
-/// slug clash is a name problem the caller can retry differently, an exhausted port
-/// space is a server resource fault no rename fixes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum UploadInsertError {
-    /// No unique slug was found within the suffix-attempt budget.
-    SlugSpaceExhausted,
-    /// Every loopback port in the upload range is taken or reserved.
-    PortSpaceExhausted,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -265,56 +188,6 @@ mod tests {
             !configuration(Some("/launch.html"), true).is_removable(),
             "a seeded app is protected"
         );
-    }
-
-    fn slug_set(slugs: &[&str]) -> HashSet<String> {
-        slugs.iter().map(|s| (*s).to_owned()).collect()
-    }
-
-    /// The base slug is used verbatim when free; a collision (in ids or subdomains)
-    /// bumps to the next `-N` suffix.
-    #[test]
-    fn choose_slug_uses_base_then_suffixes_on_collision() {
-        let empty = HashSet::new();
-        assert_eq!(
-            choose_self_hosted_slug("my-app", &empty, &empty, 50).as_deref(),
-            Some("my-app"),
-        );
-        assert_eq!(
-            choose_self_hosted_slug("my-app", &slug_set(&["my-app"]), &empty, 50).as_deref(),
-            Some("my-app-2"),
-            "an id collision suffixes",
-        );
-        assert_eq!(
-            choose_self_hosted_slug("my-app", &empty, &slug_set(&["my-app", "my-app-2"]), 50)
-                .as_deref(),
-            Some("my-app-3"),
-            "a subdomain collision suffixes too",
-        );
-    }
-
-    /// A suffixed candidate stays within the DNS label limit — the base is truncated
-    /// to make room for `-N`.
-    #[test]
-    fn choose_slug_keeps_a_suffixed_candidate_a_valid_dns_label() {
-        let base = "a".repeat(MAX_SLUG_LEN);
-        let taken = slug_set(&[&base]);
-        let empty = HashSet::new();
-        let chosen = choose_self_hosted_slug(&base, &taken, &empty, 50).expect("a free slug");
-        assert!(
-            chosen.len() <= MAX_SLUG_LEN,
-            "{chosen} ({} chars)",
-            chosen.len()
-        );
-        assert!(chosen.ends_with("-2"));
-    }
-
-    /// Exhausting the attempt budget yields `None`.
-    #[test]
-    fn choose_slug_reports_exhaustion() {
-        let taken = slug_set(&["x", "x-2", "x-3"]);
-        let empty = HashSet::new();
-        assert_eq!(choose_self_hosted_slug("x", &taken, &empty, 3), None);
     }
 
     /// The lowest free port is chosen, taken and reserved ports are skipped, and an

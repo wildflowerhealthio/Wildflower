@@ -12,14 +12,12 @@ use std::cell::RefCell;
 use super::cloud_apps::{create_cloud_app, CloudAppContent};
 use crate::domain::{
     AppConfiguration, AppKind, AppRegistration, AppUrl, AppsError, AppsStore,
-    CloudAppConfiguration, CloudInsertError, NewSelfHostedUpload, SelfHostedAppConfiguration,
-    SystemAppConfiguration, UploadInsertError,
+    CloudAppConfiguration, CloudInsertError, SelfHostedAppConfiguration, SystemAppConfiguration,
 };
 
 #[derive(Default)]
 pub(super) struct FakeAppsStore {
     pub(super) apps: RefCell<Vec<(AppRegistration, AppConfiguration)>>,
-    pub(super) upload_failure: Option<UploadInsertError>,
 }
 
 impl FakeAppsStore {
@@ -90,47 +88,36 @@ impl AppsStore for FakeAppsStore {
 
     fn insert_self_hosted_app(
         &self,
-        new: &NewSelfHostedUpload,
-    ) -> Result<Result<(AppRegistration, SelfHostedAppConfiguration), UploadInsertError>, AppsError>
-    {
-        if let Some(failure) = self.upload_failure {
-            return Ok(Err(failure));
+        registration: &AppRegistration,
+        config: &SelfHostedAppConfiguration,
+        reserved_ports: &[u16],
+    ) -> Result<(AppRegistration, SelfHostedAppConfiguration), AppsError> {
+        // The id is used verbatim; a clash is a client-fixable `400 InvalidName` —
+        // mirrors the real store.
+        if self.id_taken(&registration.id) {
+            return Err(AppsError::InvalidName {
+                message: "an app with this name already exists".to_owned(),
+            });
         }
-        // A minimal slug allocator: the base, then `-2`, `-3`, … until free.
-        let slug = (1..)
-            .map(|n| {
-                if n == 1 {
-                    new.base_slug.clone()
-                } else {
-                    format!("{}-{n}", new.base_slug)
-                }
-            })
-            .find(|candidate| !self.id_taken(candidate))
-            .expect("an unbounded suffix range always yields a free slug");
-        let port = 8082 + u16::try_from(self.apps.borrow().len()).unwrap_or(0);
-        let registration = AppRegistration {
-            id: slug.clone(),
-            kind: AppKind::SelfHosted,
+        // The store owns `position` (tail) and `port` (lowest-free, skipping the
+        // reserved set); every other field on the caller's pair is used as given.
+        let mut port = 8082 + u16::try_from(self.apps.borrow().len()).unwrap_or(0);
+        while reserved_ports.contains(&port) {
+            port += 1;
+        }
+        let stored_reg = AppRegistration {
             position: self.next_position(),
-            on_homescreen: true,
-            name: new.name.clone(),
-            subtitle: new.subtitle.clone(),
-            local_only: true,
-            client_id: None,
-            requires_tunnel: false,
+            ..registration.clone()
         };
-        let config = SelfHostedAppConfiguration {
+        let stored_config = SelfHostedAppConfiguration {
             port,
-            content_folder: new.content_folder.clone(),
-            subdomain: slug,
-            seeded: false,
-            launch_path: new.launch_path.clone(),
+            ..config.clone()
         };
         self.seed(
-            registration.clone(),
-            AppConfiguration::SelfHosted(config.clone()),
+            stored_reg.clone(),
+            AppConfiguration::SelfHosted(stored_config.clone()),
         );
-        Ok(Ok((registration, config)))
+        Ok((stored_reg, stored_config))
     }
 
     fn replace_cloud_app(
@@ -241,15 +228,20 @@ pub(super) fn create_cloud(
     )
 }
 
-pub(super) fn new_upload(base_slug: &str) -> NewSelfHostedUpload {
-    NewSelfHostedUpload {
-        name: "My App".to_owned(),
-        subtitle: None,
-        base_slug: base_slug.to_owned(),
-        content_folder: format!("{base_slug}-folder"),
-        reserved_ports: Vec::new(),
-        launch_path: None,
-    }
+/// A caller-built self-hosted upload pair (id = subdomain = `slug`, non-seeded,
+/// `position` / `port` placeholders the store overrides) — the shape the HTTP layer
+/// hands the store.
+pub(super) fn new_upload(slug: &str) -> (AppRegistration, SelfHostedAppConfiguration) {
+    (
+        registration(slug, AppKind::SelfHosted),
+        SelfHostedAppConfiguration {
+            port: 0,
+            content_folder: format!("{slug}-folder"),
+            subdomain: slug.to_owned(),
+            seeded: false,
+            launch_path: None,
+        },
+    )
 }
 
 pub(super) fn seeded_self_hosted(store: &FakeAppsStore, id: &str, seeded: bool) {

@@ -35,8 +35,6 @@ pub use apps_store::AppsStore;
 pub use cloud_app_configuration::{CloudAppConfiguration, CloudInsertError};
 pub use common_app_config::CommonAppConfig;
 pub use kind::{AppKind, AppKindParseError};
-pub(crate) use self_hosted_app_configuration::{choose_self_hosted_slug, lowest_free_port};
-pub use self_hosted_app_configuration::{
-    NewSelfHostedUpload, SelfHostedAppConfiguration, UploadInsertError,
-};
+pub(crate) use self_hosted_app_configuration::lowest_free_port;
+pub use self_hosted_app_configuration::SelfHostedAppConfiguration;
 pub use system_app_configuration::SystemAppConfiguration;

@@ -7,7 +7,8 @@
 //! `cloud_app_configurations` `url`); a delete is one registration delete (the
 //! configuration cascades). Insert/replace take a caller-built
 //! `(registration, configuration)` (a self-hosted upload keeps its allocation spec,
-//! since slug/port are store-allocated) and — for create / replace — return the
+//! since the port and position are store-allocated) and — for create / replace —
+//! return the
 //! hydrated pair re-read *inside the same transaction* (via
 //! [`find_app_on`](super::reads::find_app_on)). The transaction discipline is
 //! explained in `docs/Apps/Store and Install Explanation.md`.
@@ -21,19 +22,14 @@ use super::reads::{delete_app_row, find_app_on, id_taken, list_registrations_on,
 use super::row_structs::{CloudConfigurationRow, SelfHostedConfigurationRow};
 use super::schema::{app_registrations, cloud_app_configurations, self_hosted_app_configurations};
 use crate::domain::{
-    choose_self_hosted_slug, is_exact_registry_permutation, lowest_free_port, AppConfiguration,
-    AppKind, AppRegistration, AppsError, CloudAppConfiguration, CloudInsertError,
-    NewSelfHostedUpload, SelfHostedAppConfiguration, UploadInsertError,
+    is_exact_registry_permutation, lowest_free_port, AppConfiguration, AppRegistration, AppsError,
+    CloudAppConfiguration, CloudInsertError, SelfHostedAppConfiguration,
 };
 
 /// The smallest loopback port an uploaded app is allocated — one above the seeded
 /// patient-browser at 8081. See the port-allocation section of
 /// `docs/Apps/Store and Install Explanation.md`.
 const MIN_UPLOAD_PORT: u16 = 8082;
-
-/// Attempts at suffixing a base slug (`-2`, `-3`, …) before reporting
-/// [`UploadInsertError::SlugSpaceExhausted`].
-const MAX_SLUG_ATTEMPTS: u32 = 50;
 
 /// Insert a fresh cloud app from a caller-built `registration` + `config`. The
 /// store owns the display `position` (assigned at the tail, overriding whatever the
@@ -76,74 +72,72 @@ pub(super) fn insert_cloud_app(
     })
 }
 
-/// Insert a fresh uploaded self-hosted app: the `app_registrations` registration
-/// (kind `self-hosted`, `local_only = 1`) AND its `self_hosted_app_configurations`
-/// payload (`seeded = 0`), in one transaction. The final slug (unique against the
-/// global id space and the subdomain space, kept a valid DNS label — see
-/// [`slug_candidate`]) becomes the row's `id` and `subdomain`; the
-/// [`content_folder`](NewSelfHostedUpload::content_folder) is recorded verbatim.
-/// The port is the lowest free one from [`next_free_port`]. Slug, port, and
-/// position are all allocated **inside** the transaction.
-///
-/// Returns `Ok(Err(_))` — nothing written — when the slug attempts or the port
-/// space are exhausted; otherwise the inserted `(registration, configuration)` pair
-/// read back in-txn.
+/// Insert a fresh uploaded self-hosted app from a caller-built `registration` +
+/// `config`, mirroring [`insert_cloud_app`]: the `app_registrations` registration
+/// AND its `self_hosted_app_configurations` payload, in one transaction. The
+/// `registration.id` becomes the row's `id` and the `config.subdomain` its
+/// `subdomain`, both verbatim — a clash with the global id space is rejected rather
+/// than suffixed. The store owns the display `position` (tail append) and the
+/// loopback `port` (lowest free from [`lowest_free_port`] over `reserved_ports` +
+/// the taken set), overriding whatever those two fields carry; every other field on
+/// the pair is used as given. Position and port are allocated **inside** the
+/// transaction. On success the inserted `(registration, configuration)` pair is read
+/// back in-txn.
 ///
 /// # Errors
 ///
-/// [`AppsError::Infrastructure`] on a checkout / transaction failure.
+/// [`AppsError::InvalidName`] when the id is already taken (nothing written);
+/// [`AppsError::Infrastructure`] when the port space is exhausted, or on a checkout /
+/// transaction failure.
 pub(super) fn insert_self_hosted_app(
     conn: &mut PooledDieselConnection,
-    new: &NewSelfHostedUpload,
-) -> Result<Result<(AppRegistration, SelfHostedAppConfiguration), UploadInsertError>, AppsError> {
+    registration: &AppRegistration,
+    config: &SelfHostedAppConfiguration,
+    reserved_ports: &[u16],
+) -> Result<(AppRegistration, SelfHostedAppConfiguration), AppsError> {
     conn.transaction(|conn| {
-        // Read the live allocation state under the transaction, then let the pure
-        // domain allocators pick the slug and port. Reading inside the transaction
-        // keeps the choice from racing a concurrent insert; the suffixing and
-        // lowest-free logic stay database-free (and unit-tested) in the domain.
-        let taken_ids = all_registration_ids(conn)?;
-        let taken_subdomains = all_subdomains(conn)?;
-        let Some(slug) = choose_self_hosted_slug(
-            &new.base_slug,
-            &taken_ids,
-            &taken_subdomains,
-            MAX_SLUG_ATTEMPTS,
-        ) else {
-            return Ok(Err(UploadInsertError::SlugSpaceExhausted));
-        };
+        // The id is the caller's, used verbatim. Reject a clash rather than
+        // discovering a free variant — the check runs inside the transaction so it
+        // can't race a concurrent insert. A name-derived id clash is a client-fixable
+        // `400 InvalidName`. (Every self-hosted row's subdomain equals its id, so the
+        // global id space subsumes the subdomain space; the `UNIQUE(subdomain)`
+        // column stays a backstop.)
+        if id_taken(conn, &registration.id)? {
+            return Err(AppsError::InvalidName {
+                message: "an app with this name already exists".to_owned(),
+            });
+        }
 
+        // The store owns `port` (lowest-free) and `position` (tail); every other
+        // field on the caller's pair is used as given. An exhausted port space is a
+        // server resource fault, not a name problem — a logged 500.
         let taken_ports = all_self_hosted_ports(conn)?;
-        let Some(port) =
-            lowest_free_port(&taken_ports, &new.reserved_ports, MIN_UPLOAD_PORT, u16::MAX)
+        let Some(port) = lowest_free_port(&taken_ports, reserved_ports, MIN_UPLOAD_PORT, u16::MAX)
         else {
-            return Ok(Err(UploadInsertError::PortSpaceExhausted));
+            return Err(AppsError::infrastructure(
+                "no free loopback port for a new self-hosted app",
+                "port space exhausted",
+            ));
         };
         let position = next_position(conn)?;
 
         diesel::insert_into(app_registrations::table)
             .values(AppRegistration {
-                id: slug.clone(),
-                kind: AppKind::SelfHosted,
                 position,
-                on_homescreen: true,
-                name: new.name.clone(),
-                subtitle: new.subtitle.clone(),
-                local_only: true,
-                client_id: None,
-                requires_tunnel: false,
+                ..registration.clone()
             })
             .execute(conn)?;
         diesel::insert_into(self_hosted_app_configurations::table)
             .values(SelfHostedConfigurationRow {
-                id: slug.clone(),
+                id: registration.id.clone(),
                 port,
-                content_folder: new.content_folder.clone(),
-                subdomain: slug.clone(),
-                seeded: false,
-                launch_path: new.launch_path.clone(),
+                content_folder: config.content_folder.clone(),
+                subdomain: config.subdomain.clone(),
+                seeded: config.seeded,
+                launch_path: config.launch_path.clone(),
             })
             .execute(conn)?;
-        Ok(Ok(read_back_self_hosted(conn, &slug)?))
+        read_back_self_hosted(conn, &registration.id)
     })
 }
 
@@ -322,21 +316,11 @@ fn read_back_self_hosted(
     }
 }
 
-/// Every registration id (the global app-id space) as a set — the slug allocator's
-/// id-collision input, read inside the insert transaction.
+/// Every registration id (the global app-id space) as a set — the home-screen
+/// permutation check's live-registry input, read inside the placement transaction.
 fn all_registration_ids(conn: &mut SqliteConnection) -> Result<HashSet<String>, AppsError> {
     Ok(app_registrations::table
         .select(app_registrations::id)
-        .load::<String>(conn)?
-        .into_iter()
-        .collect())
-}
-
-/// Every self-hosted subdomain label as a set — the slug allocator's subdomain
-/// input.
-fn all_subdomains(conn: &mut SqliteConnection) -> Result<HashSet<String>, AppsError> {
-    Ok(self_hosted_app_configurations::table
-        .select(self_hosted_app_configurations::subdomain)
         .load::<String>(conn)?
         .into_iter()
         .collect())
@@ -361,8 +345,8 @@ mod tests {
     use crate::db::SqliteAppsStore;
     // The port trait is in scope so the concrete adapter's mutator methods resolve.
     use crate::domain::{
-        AppConfiguration, AppKind, AppRegistration, AppUrl, AppsStore, CloudAppConfiguration,
-        CloudInsertError, NewSelfHostedUpload, SelfHostedAppConfiguration, UploadInsertError,
+        AppConfiguration, AppKind, AppRegistration, AppUrl, AppsError, AppsStore,
+        CloudAppConfiguration, CloudInsertError, SelfHostedAppConfiguration,
     };
 
     /// A caller-built cloud registration (the shape the HTTP layer hands the store):
@@ -386,15 +370,43 @@ mod tests {
         CloudAppConfiguration { url }
     }
 
-    fn new_upload(name: &str, base_slug: &str) -> NewSelfHostedUpload {
-        NewSelfHostedUpload {
-            name: name.to_owned(),
-            subtitle: None,
-            base_slug: base_slug.to_owned(),
-            content_folder: format!("{base_slug}-folder"),
-            reserved_ports: Vec::new(),
-            launch_path: None,
-        }
+    /// A caller-built self-hosted upload pair (the shape the HTTP layer hands the
+    /// store): id = subdomain = `slug`, non-seeded, `position` / `port` placeholders
+    /// the store overrides. `content_folder` defaults to `<slug>-folder`.
+    fn new_upload(name: &str, slug: &str) -> (AppRegistration, SelfHostedAppConfiguration) {
+        (
+            AppRegistration {
+                id: slug.to_owned(),
+                kind: AppKind::SelfHosted,
+                position: 0,
+                on_homescreen: true,
+                name: name.to_owned(),
+                subtitle: None,
+                local_only: true,
+                client_id: None,
+                requires_tunnel: false,
+            },
+            SelfHostedAppConfiguration {
+                port: 0,
+                content_folder: format!("{slug}-folder"),
+                subdomain: slug.to_owned(),
+                seeded: false,
+                launch_path: None,
+            },
+        )
+    }
+
+    /// Insert an upload pair with no reserved ports — the common no-customization
+    /// path — returning the stored pair.
+    fn insert_upload(
+        store: &SqliteAppsStore,
+        name: &str,
+        slug: &str,
+    ) -> (AppRegistration, SelfHostedAppConfiguration) {
+        let (registration, config) = new_upload(name, slug);
+        store
+            .insert_self_hosted_app(&registration, &config, &[])
+            .expect("inserted")
     }
 
     fn external(url: &str) -> AppUrl {
@@ -587,10 +599,7 @@ mod tests {
     #[test]
     fn insert_self_hosted_allocates_the_next_port_and_position() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
-        let (registration, config) = store
-            .insert_self_hosted_app(&new_upload("My App", "my-app"))
-            .unwrap()
-            .expect("inserted");
+        let (registration, config) = insert_upload(&store, "My App", "my-app");
         assert_eq!(registration.id, "my-app");
         assert_eq!(registration.name, "My App");
         assert_eq!(registration.position, 6);
@@ -605,10 +614,7 @@ mod tests {
         assert_eq!(config.subdomain, "my-app");
         assert!(!config.seeded);
 
-        let (registration2, config2) = store
-            .insert_self_hosted_app(&new_upload("Other", "other"))
-            .unwrap()
-            .expect("inserted");
+        let (registration2, config2) = insert_upload(&store, "Other", "other");
         assert_eq!(config2.port, 8083);
         assert_eq!(registration2.position, 7);
     }
@@ -619,11 +625,10 @@ mod tests {
     fn insert_self_hosted_persists_and_reads_back_the_launch_path() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
         let template = "/launch.html?launch={launch}&iss={origin}/fhir-r4";
-        let mut upload = new_upload("Launcher", "launcher");
-        upload.launch_path = Some(template.to_owned());
+        let (registration, mut config) = new_upload("Launcher", "launcher");
+        config.launch_path = Some(template.to_owned());
         let inserted = store
-            .insert_self_hosted_app(&upload)
-            .unwrap()
+            .insert_self_hosted_app(&registration, &config, &[])
             .expect("inserted");
         assert_eq!(launch_path(&inserted).as_deref(), Some(template));
 
@@ -637,10 +642,7 @@ mod tests {
             Some(template),
         );
 
-        let rootless = store
-            .insert_self_hosted_app(&new_upload("Rootless", "rootless"))
-            .unwrap()
-            .expect("inserted");
+        let rootless = insert_upload(&store, "Rootless", "rootless");
         assert_eq!(launch_path(&rootless), None);
     }
 
@@ -649,10 +651,7 @@ mod tests {
     #[test]
     fn replace_self_hosted_app_sets_replaces_and_clears() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
-        let (registration, config) = store
-            .insert_self_hosted_app(&new_upload("App", "app"))
-            .unwrap()
-            .expect("inserted");
+        let (registration, config) = insert_upload(&store, "App", "app");
 
         let with_path = SelfHostedAppConfiguration {
             launch_path: Some("/launch.html".to_owned()),
@@ -693,112 +692,66 @@ mod tests {
     #[test]
     fn insert_self_hosted_skips_reserved_ports() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
-        let mut upload = new_upload("My App", "my-app");
-        upload.reserved_ports = vec![8082];
+        let (registration, config) = new_upload("My App", "my-app");
         let (_registration, config) = store
-            .insert_self_hosted_app(&upload)
-            .unwrap()
+            .insert_self_hosted_app(&registration, &config, &[8082])
             .expect("inserted");
         assert_eq!(config.port, 8083);
     }
 
-    /// The suffixed candidate is capped at the 63-char DNS label limit.
+    /// A second upload with an already-taken slug is rejected `InvalidName` — nothing
+    /// is written and the original row is untouched.
     #[test]
-    fn suffixed_slug_stays_a_valid_dns_label() {
+    fn insert_self_hosted_reports_invalid_name_on_duplicate_slug() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
-        let base = "a".repeat(63);
-        let (first, _c1) = store
-            .insert_self_hosted_app(&new_upload("Long", &base))
-            .unwrap()
-            .expect("inserted");
-        assert_eq!(first.id.len(), 63);
+        insert_upload(&store, "My App", "my-app");
 
-        let (second, config2) = store
-            .insert_self_hosted_app(&new_upload("Long", &base))
-            .unwrap()
-            .expect("inserted");
+        let (registration, mut config) = new_upload("My App", "my-app");
+        config.content_folder = "my-app-folder-2".to_owned();
         assert!(
-            second.id.len() <= 63,
-            "the suffixed slug must stay within the DNS label limit: {} ({} chars)",
-            second.id,
-            second.id.len(),
+            matches!(
+                store.insert_self_hosted_app(&registration, &config, &[]),
+                Err(AppsError::InvalidName { .. }),
+            ),
+            "a taken id is a no-op InvalidName, not a suffixed variant",
         );
-        assert!(second.id.ends_with("-2"), "id: {}", second.id);
-        assert_ne!(first.id, second.id);
-        assert_eq!(
-            config2.subdomain, second.id,
-            "the capped slug is the subdomain",
-        );
-    }
-
-    /// Exhausting the suffix-attempt budget is reported as `SlugSpaceExhausted`.
-    #[test]
-    fn slug_space_exhaustion_is_reported_distinctly() {
-        let store = SqliteAppsStore::open_in_memory().unwrap();
-        let upload_n = |n: u32| {
-            let mut upload = new_upload("Crowded", "crowded");
-            upload.content_folder = format!("crowded-folder-{n}");
-            upload
-        };
-        for n in 0..50 {
-            store
-                .insert_self_hosted_app(&upload_n(n))
-                .unwrap()
-                .expect("inserted");
-        }
-        assert_eq!(
-            store.insert_self_hosted_app(&upload_n(50)).unwrap(),
-            Err(UploadInsertError::SlugSpaceExhausted),
-        );
+        // The original row's port is still the sole 8082 allocation.
+        let (_, configuration) = store.find_app("my-app").unwrap().unwrap();
+        assert_eq!(configuration.as_self_hosted().unwrap().port, 8082);
     }
 
     /// A freed port is reused (lowest-free allocation).
     #[test]
     fn freed_ports_are_reused_lowest_first() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
-        let (_first, config1) = store
-            .insert_self_hosted_app(&new_upload("First", "first"))
-            .unwrap()
-            .expect("inserted");
-        let (_second, config2) = store
-            .insert_self_hosted_app(&new_upload("Second", "second"))
-            .unwrap()
-            .expect("inserted");
+        let (_first, config1) = insert_upload(&store, "First", "first");
+        let (_second, config2) = insert_upload(&store, "Second", "second");
         assert_eq!(config1.port, 8082);
         assert_eq!(config2.port, 8083);
 
         assert!(store.delete_app("first").unwrap());
-        let (_third, config3) = store
-            .insert_self_hosted_app(&new_upload("Third", "third"))
-            .unwrap()
-            .expect("inserted");
+        let (_third, config3) = insert_upload(&store, "Third", "third");
         assert_eq!(
             config3.port, 8082,
             "the freed port must be reused, not MAX+1",
         );
     }
 
-    /// A base slug colliding with the seeded `patient-browser` is suffixed `-2`.
+    /// A slug colliding with the seeded `patient-browser` is rejected `InvalidName`
+    /// — the seed occupies the id space and is never overwritten.
     #[test]
-    fn insert_self_hosted_suffixes_a_colliding_slug() {
+    fn insert_self_hosted_rejects_a_slug_colliding_with_a_seed() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
-        let upload = new_upload("Patient Browser", "patient-browser");
-        let (registration, config) = store
-            .insert_self_hosted_app(&upload)
-            .unwrap()
-            .expect("inserted");
-        assert_eq!(registration.id, "patient-browser-2");
-        assert_eq!(config.subdomain, "patient-browser-2");
-        assert_eq!(
-            config.content_folder, "patient-browser-folder",
-            "the slug suffix must not leak into the caller-owned content_folder",
-        );
-
-        let (registration3, _c3) = store
-            .insert_self_hosted_app(&upload)
-            .unwrap()
-            .expect("inserted");
-        assert_eq!(registration3.id, "patient-browser-3");
+        let (registration, config) = new_upload("Patient Browser", "patient-browser");
+        assert!(matches!(
+            store.insert_self_hosted_app(&registration, &config, &[]),
+            Err(AppsError::InvalidName { .. }),
+        ));
+        // The seeded row is untouched (still port 8081, still seeded).
+        let (_, configuration) = store.find_app("patient-browser").unwrap().unwrap();
+        let config = configuration.as_self_hosted().unwrap();
+        assert_eq!(config.port, 8081);
+        assert!(config.seeded);
     }
 
     /// Delete removes the registration and cascades the configuration, for either
@@ -807,10 +760,7 @@ mod tests {
     fn delete_app_removes_registration_and_cascades_configuration() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
 
-        let (registration, _config) = store
-            .insert_self_hosted_app(&new_upload("My App", "my-app"))
-            .unwrap()
-            .expect("inserted");
+        let (registration, _config) = insert_upload(&store, "My App", "my-app");
         assert!(store.delete_app(&registration.id).unwrap());
         assert!(store.find_app("my-app").unwrap().is_none());
         assert!(
@@ -836,10 +786,7 @@ mod tests {
     #[test]
     fn removable_per_kind_and_seeded_on_live_rows() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
-        store
-            .insert_self_hosted_app(&new_upload("My App", "my-app"))
-            .unwrap()
-            .expect("inserted");
+        insert_upload(&store, "My App", "my-app");
         let by_id = |id: &str| store.find_app(id).unwrap().expect("row").1;
         assert!(
             by_id("my-app").is_removable(),

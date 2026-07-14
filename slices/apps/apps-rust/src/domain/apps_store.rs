@@ -4,14 +4,15 @@
 //! there is no "combined app" input, and the only union it returns is
 //! [`AppConfiguration`] on [`find_app`](AppsStore::find_app), where the kind isn't
 //! known at the call site. It signals absence / non-permutation through `Option`, a
-//! delete miss through `bool`, and an insert that wrote nothing through a granular
-//! typed error ([`CloudInsertError`] / [`UploadInsertError`]) rather than a bare
-//! `None`, raising only the opaque [`Infrastructure`](AppsError::Infrastructure)
-//! failure. The semantic outcomes (`NotFound`, `NotEditable`, `InvalidHomeScreen`,
-//! the id-collision and upload-failure mappings) — and the synthesis of the
-//! registration + configuration a create/replace persists — are decided one layer
-//! up, in [`crate::domain::actions`], so both the `SQLite` adapter and an in-memory
-//! test fake implement the same primitive contract.
+//! delete miss through `bool`, and a cloud insert that wrote nothing through the
+//! granular typed [`CloudInsertError`] rather than a bare `None`, raising the opaque
+//! [`Infrastructure`](AppsError::Infrastructure) failure — plus, on the self-hosted
+//! insert, an [`InvalidName`](AppsError::InvalidName) for a taken slug (that one
+//! outcome is a client-fixable 400 the store maps itself). The semantic outcomes
+//! (`NotFound`, `NotEditable`, `InvalidHomeScreen`, the cloud id-collision mapping) —
+//! and the synthesis of the registration + configuration a create/replace persists —
+//! are decided one layer up, in [`crate::domain::actions`], so both the `SQLite`
+//! adapter and an in-memory test fake implement the same contract.
 //!
 //! The `SQLite` adapter lives in [`crate::db`] as `SqliteAppsStore`; tests
 //! substitute the in-memory `FakeAppsStore` in [`crate::domain::actions`].
@@ -19,21 +20,22 @@
 
 use crate::domain::{
     AppConfiguration, AppRegistration, AppsError, CloudAppConfiguration, CloudInsertError,
-    NewSelfHostedUpload, SelfHostedAppConfiguration, UploadInsertError,
+    SelfHostedAppConfiguration,
 };
 
 /// The persistence port for the apps registry: the primitive CRUD the domain
 /// needs, over concrete registrations / configurations / pairs (and the
-/// [`AppConfiguration`] union only where the kind is runtime-resolved), raising only
-/// the opaque [`AppsError::Infrastructure`]. Absence is a return-type signal
+/// [`AppConfiguration`] union only where the kind is runtime-resolved), raising the
+/// opaque [`AppsError::Infrastructure`]. Absence is a return-type signal
 /// (`find_app` returns `None`; `replace_*` return `None` when they affect no row;
-/// `delete_app` returns `false` on a miss); an insert that wrote nothing is a
-/// granular typed error (a cloud id-collision [`CloudInsertError`]; a self-hosted
-/// upload's slug / port exhaustion [`UploadInsertError`]); a non-permutation
-/// placement body is `None` — NOT semantic errors. [`crate::domain::actions`] maps
-/// those signals onto `NotFound` / `NotEditable` / `InvalidHomeScreen` and the
-/// id-collision / upload-failure verdicts, and synthesizes the registration +
-/// configuration each write persists. The `SQLite` adapter
+/// `delete_app` returns `false` on a miss); a cloud insert that wrote nothing is the
+/// granular typed [`CloudInsertError`]; a non-permutation placement body is `None` —
+/// NOT semantic errors. [`crate::domain::actions`] maps those signals onto
+/// `NotFound` / `NotEditable` / `InvalidHomeScreen` and the cloud id-collision
+/// verdict, and synthesizes the registration + configuration each write persists. The
+/// self-hosted insert is the exception: it maps its own taken-slug outcome to
+/// [`InvalidName`](AppsError::InvalidName) and port exhaustion to `Infrastructure`
+/// directly (there's no granular signal to distinguish). The `SQLite` adapter
 /// (`crate::db::SqliteAppsStore`) implements it; unit tests swap in the in-memory
 /// `FakeAppsStore`.
 ///
@@ -88,20 +90,30 @@ pub trait AppsStore {
         config: &CloudAppConfiguration,
     ) -> Result<Result<(AppRegistration, CloudAppConfiguration), CloudInsertError>, AppsError>;
 
-    /// Insert a fresh uploaded self-hosted app — its `app_registrations`
-    /// registration (allocating slug, port, and position in-transaction) plus its
-    /// `self_hosted_app_configurations` payload. The slug/port genuinely can't be
-    /// caller-supplied, so this keeps its allocation spec. Returns `Ok(Err(_))` —
-    /// nothing written — when the slug attempts or the port space are exhausted;
-    /// otherwise the inserted pair read back in-txn.
+    /// Insert a fresh uploaded self-hosted app from a caller-built `registration` +
+    /// `config`, mirroring [`insert_cloud_app`](Self::insert_cloud_app). The
+    /// `registration.id` is used verbatim as the id / subdomain; the store owns the
+    /// display `position` (tail append) and the loopback `port` (lowest-free over
+    /// `reserved_ports` + the taken set), overriding whatever those two fields carry
+    /// — every other field on the pair is used as given (`config.seeded` must be
+    /// `false` for an upload). On success the inserted pair is read back in-txn.
+    ///
+    /// Unlike the cloud insert, this maps its two non-infrastructure outcomes onto
+    /// the wire vocabulary directly (there's no granular typed signal to distinguish):
+    /// a name-derived id is client-fixable, so a clash is a `400`, while an exhausted
+    /// port space is a server fault.
     ///
     /// # Errors
     ///
-    /// [`AppsError::Infrastructure`] on a checkout / transaction failure.
+    /// [`AppsError::InvalidName`] when the id is already taken (nothing written);
+    /// [`AppsError::Infrastructure`] when the port space is exhausted, or on a
+    /// checkout / transaction failure.
     fn insert_self_hosted_app(
         &self,
-        new: &NewSelfHostedUpload,
-    ) -> Result<Result<(AppRegistration, SelfHostedAppConfiguration), UploadInsertError>, AppsError>;
+        registration: &AppRegistration,
+        config: &SelfHostedAppConfiguration,
+        reserved_ports: &[u16],
+    ) -> Result<(AppRegistration, SelfHostedAppConfiguration), AppsError>;
 
     /// Replace a cloud app's editable fields from a caller-built `registration` +
     /// `config`, located by `registration.id`: the registration's `name` /

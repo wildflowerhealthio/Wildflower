@@ -1,18 +1,19 @@
 //! Self-hosted-app actions — the `/self-hosted-apps` detail read, upload install,
 //! and launch-path replace.
 //!
-//! Unlike cloud, a self-hosted create's id (its slug), subdomain, and loopback port
-//! are **store-allocated in-transaction** (uniqueness-suffixed slug, lowest-free
-//! port), so the action keeps a dedicated [`NewSelfHostedUpload`] create spec rather
-//! than a caller-built registration whose id/position/subdomain the store would only
-//! overwrite. The pure allocation *logic* is lifted to the domain
-//! ([`choose_self_hosted_slug`](crate::domain) / `lowest_free_port`), fed the taken
-//! sets the store reads in the same transaction.
+//! Like cloud, a self-hosted create takes a caller-built `(registration, config)`
+//! pair; the store owns only the display `position` and the loopback `port`
+//! (lowest-free, over the caller's `reserved_ports`), overriding those two
+//! placeholders while using the `registration.id` verbatim as id / subdomain. Unlike
+//! cloud, the store maps its own failure onto the wire vocabulary — a taken id is a
+//! `400 InvalidName`, an exhausted port space a `500` — so this create is a thin
+//! pass-through. The pure port-allocation *logic* lives in the domain
+//! ([`lowest_free_port`](crate::domain)), fed the taken set the store reads in the
+//! same transaction.
 
 use super::all_kinds_apps::get_app;
 use crate::domain::{
-    AppConfiguration, AppRegistration, AppsError, AppsStore, NewSelfHostedUpload,
-    SelfHostedAppConfiguration, UploadInsertError,
+    AppConfiguration, AppRegistration, AppsError, AppsStore, SelfHostedAppConfiguration,
 };
 
 /// The self-hosted pair for `GET`/`PUT /self-hosted-apps/{id}` —
@@ -31,37 +32,26 @@ pub(crate) fn get_self_hosted_app(
     }
 }
 
-/// Install an uploaded self-hosted app. Returns the inserted self-hosted pair read
-/// back in-txn, or maps the store's allocation-failure signal onto the wire
-/// vocabulary: a slug clash is a name problem the caller can retry differently
-/// ([`InvalidName`](AppsError::InvalidName)), an exhausted port space is a server
-/// resource fault no rename fixes (a logged
-/// [`Infrastructure`](AppsError::Infrastructure) 500 — it must not read as a `400`).
-///
-/// The slug/port are store-allocated, so this keeps its [`NewSelfHostedUpload`]
-/// spec. The filesystem staging (extract → move → start the listener) stays in the
-/// handler; this action is only the store insert + its semantic mapping.
+/// Install an uploaded self-hosted app from the caller-built (handler-synthesized)
+/// pair: the store overrides `position` / `port`, uses the id verbatim, and maps its
+/// own failures onto the wire vocabulary — a taken slug is a name clash the caller
+/// can resolve by renaming ([`InvalidName`](AppsError::InvalidName), a `400`), an
+/// exhausted port space a logged [`Infrastructure`](AppsError::Infrastructure) `500`.
+/// The filesystem staging (extract → move → start the listener) stays in the handler;
+/// this action is only the store insert.
 ///
 /// # Errors
 ///
-/// [`AppsError::InvalidName`] when no unique slug was found;
+/// [`AppsError::InvalidName`] when the slug is already taken;
 /// [`AppsError::Infrastructure`] on a store write failure or an exhausted port
 /// space.
 pub(crate) fn create_self_hosted_app(
     store: &impl AppsStore,
-    upload: &NewSelfHostedUpload,
+    registration: &AppRegistration,
+    config: &SelfHostedAppConfiguration,
+    reserved_ports: &[u16],
 ) -> Result<(AppRegistration, SelfHostedAppConfiguration), AppsError> {
-    store
-        .insert_self_hosted_app(upload)?
-        .map_err(|error| match error {
-            UploadInsertError::SlugSpaceExhausted => AppsError::InvalidName {
-                message: "could not allocate a unique id for this name".to_owned(),
-            },
-            UploadInsertError::PortSpaceExhausted => AppsError::infrastructure(
-                "no free loopback port for a new self-hosted app",
-                "port space exhausted",
-            ),
-        })
+    store.insert_self_hosted_app(registration, config, reserved_ports)
 }
 
 /// Replace a self-hosted app's `launch_path` (`None` / empty → root-served) — the
@@ -123,38 +113,27 @@ fn validate_launch_path(value: Option<String>) -> Result<Option<String>, AppsErr
 mod tests {
     use super::super::test_fake::{create_cloud, new_upload, seeded_self_hosted, FakeAppsStore};
     use super::*;
-    use crate::domain::UploadInsertError;
 
     #[test]
     fn create_self_hosted_app_returns_the_installed_app() {
         let store = FakeAppsStore::default();
+        let (registration, config) = new_upload("my-app");
         let (registration, _config) =
-            create_self_hosted_app(&store, &new_upload("my-app")).expect("insert");
+            create_self_hosted_app(&store, &registration, &config, &[]).expect("insert");
         assert_eq!(registration.id, "my-app");
     }
 
+    /// A second create with an already-taken slug is a client-fixable
+    /// `400 InvalidName` (the taken-id → wire mapping the store now owns; the
+    /// `Infrastructure` port-exhaustion path is covered by the store's own tests).
     #[test]
-    fn create_self_hosted_maps_slug_exhaustion_to_invalid_name() {
-        let store = FakeAppsStore {
-            upload_failure: Some(UploadInsertError::SlugSpaceExhausted),
-            ..FakeAppsStore::default()
-        };
+    fn create_self_hosted_on_a_taken_slug_is_invalid_name() {
+        let store = FakeAppsStore::default();
+        let (registration, config) = new_upload("my-app");
+        create_self_hosted_app(&store, &registration, &config, &[]).expect("insert");
         assert!(matches!(
-            create_self_hosted_app(&store, &new_upload("my-app")),
+            create_self_hosted_app(&store, &registration, &config, &[]),
             Err(AppsError::InvalidName { .. })
-        ));
-    }
-
-    #[test]
-    fn create_self_hosted_maps_port_exhaustion_to_infrastructure() {
-        let store = FakeAppsStore {
-            upload_failure: Some(UploadInsertError::PortSpaceExhausted),
-            ..FakeAppsStore::default()
-        };
-        // A server resource fault, not a name problem — must not read as a 400.
-        assert!(matches!(
-            create_self_hosted_app(&store, &new_upload("my-app")),
-            Err(AppsError::Infrastructure { .. })
         ));
     }
 

@@ -101,7 +101,8 @@ mod tests {
     // The port trait is in scope so the concrete store's `insert_cloud_app` /
     // `insert_self_hosted_app` / `find_app` methods resolve in the fixtures.
     use crate::domain::{
-        AppKind, AppRegistration, AppUrl, AppsStore, CloudAppConfiguration, NewSelfHostedUpload,
+        AppKind, AppRegistration, AppUrl, AppsStore, CloudAppConfiguration,
+        SelfHostedAppConfiguration,
     };
     use crate::http::state::AppsState;
     use crate::http::test_support::{
@@ -272,15 +273,35 @@ mod tests {
             .expect("inserted");
     }
 
-    fn upload(name: &str, base_slug: &str, launch_path: Option<&str>) -> NewSelfHostedUpload {
-        NewSelfHostedUpload {
+    /// Seed a self-hosted app directly through the store (the fixture shortcut a test
+    /// uses instead of driving `POST /self-hosted-apps`).
+    fn seed_self_hosted(
+        store: &crate::db::SqliteAppsStore,
+        name: &str,
+        slug: &str,
+        launch_path: Option<&str>,
+    ) {
+        let registration = AppRegistration {
+            id: slug.to_owned(),
+            kind: AppKind::SelfHosted,
+            position: 0,
+            on_homescreen: true,
             name: name.to_owned(),
             subtitle: None,
-            base_slug: base_slug.to_owned(),
-            content_folder: format!("{base_slug}-folder"),
-            reserved_ports: Vec::new(),
+            local_only: true,
+            client_id: None,
+            requires_tunnel: false,
+        };
+        let config = SelfHostedAppConfiguration {
+            port: 0,
+            content_folder: format!("{slug}-folder"),
+            subdomain: slug.to_owned(),
+            seeded: false,
             launch_path: launch_path.map(str::to_owned),
-        }
+        };
+        store
+            .insert_self_hosted_app(&registration, &config, &[])
+            .expect("inserted");
     }
 
     #[tokio::test]
@@ -833,10 +854,7 @@ mod tests {
     async fn replace_self_hosted_launch_path_edits_and_launches() {
         let handle = Arc::new(RecordingStubWebviewHandle::default());
         let st = state_with_sink(Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>);
-        st.store
-            .insert_self_hosted_app(&upload("My App", "my-app", None))
-            .unwrap()
-            .expect("inserted");
+        seed_self_hosted(&st.store, "My App", "my-app", None);
 
         let (status, body) = send(
             &st,
@@ -873,14 +891,12 @@ mod tests {
     async fn replace_self_hosted_clear_launch_path_reverts_to_root() {
         let handle = Arc::new(RecordingStubWebviewHandle::default());
         let st = state_with_sink(Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>);
-        st.store
-            .insert_self_hosted_app(&upload(
-                "My App",
-                "my-app",
-                Some("/launch.html?launch={launch}&iss={origin}/fhir-r4"),
-            ))
-            .unwrap()
-            .expect("inserted");
+        seed_self_hosted(
+            &st.store,
+            "My App",
+            "my-app",
+            Some("/launch.html?launch={launch}&iss={origin}/fhir-r4"),
+        );
 
         let (status, body) = send(
             &st,
@@ -909,10 +925,7 @@ mod tests {
     #[tokio::test]
     async fn replace_self_hosted_rejects_a_non_relative_launch_path() {
         let st = state();
-        st.store
-            .insert_self_hosted_app(&upload("My App", "my-app", None))
-            .unwrap()
-            .expect("inserted");
+        seed_self_hosted(&st.store, "My App", "my-app", None);
         let (status, body) = send(
             &st,
             put_json(
@@ -1217,14 +1230,27 @@ mod tests {
         );
     }
 
-    /// A duplicate name is auto-suffixed (`my-app` → `my-app-2`).
+    /// A duplicate name (same slug) is rejected `400 InvalidName`; the first app
+    /// stays untouched.
     #[tokio::test]
-    async fn upload_auto_suffixes_a_duplicate_name() {
+    async fn upload_rejects_a_duplicate_name() {
         let st = state();
-        let (_s1, first) = send(&st, post_zip("My App", zip_bytes(&[("index.html", b"a")]))).await;
+        let (s1, first) = send(&st, post_zip("My App", zip_bytes(&[("index.html", b"a")]))).await;
+        assert_eq!(s1, StatusCode::OK);
         assert_eq!(first["id"], "my-app");
-        let (_s2, second) = send(&st, post_zip("My App", zip_bytes(&[("index.html", b"b")]))).await;
-        assert_eq!(second["id"], "my-app-2");
+
+        let (s2, body) = send(&st, post_zip("My App", zip_bytes(&[("index.html", b"b")]))).await;
+        assert_eq!(s2, StatusCode::BAD_REQUEST);
+        assert_eq!(body["error"], "InvalidName");
+        // The original app is still the only `my-app`, its files intact.
+        let (_s, list) = send(&st, get("/apps")).await;
+        let my_apps = list
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|v| v["id"] == "my-app")
+            .count();
+        assert_eq!(my_apps, 1, "the duplicate upload created no second row");
     }
 
     /// Garbage bytes are rejected `400 InvalidZip`, with no row created.

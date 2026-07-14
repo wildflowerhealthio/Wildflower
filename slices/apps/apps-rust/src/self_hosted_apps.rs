@@ -300,25 +300,37 @@ mod tests {
     /// `insert_self_hosted_app`, its files on disk, and `start` bring the app up
     /// so a forwarded `<slug>.<public_host>` request reverse-proxies to the
     /// uploaded `index.html`. Mirrors `start_then_stop_swaps_both_paths` but
-    /// drives the DB-allocated slug/port rather than a hand-built app.
+    /// drives the real `insert_self_hosted_app` (DB-allocated port) rather than a
+    /// hand-built app.
     #[tokio::test]
     async fn uploaded_app_serves_after_insert_and_start() {
         use crate::db::SqliteAppsStore;
+        use crate::domain::{AppKind, AppRegistration, SelfHostedAppConfiguration};
         // The port trait is in scope so the adapter's `insert_self_hosted_app`
         // method resolves.
         use crate::domain::AppsStore;
 
         let store = SqliteAppsStore::open_in_memory().unwrap();
+        let registration = AppRegistration {
+            id: "uploaded-app".to_owned(),
+            kind: AppKind::SelfHosted,
+            position: 0,
+            on_homescreen: true,
+            name: "Uploaded App".to_owned(),
+            subtitle: None,
+            local_only: true,
+            client_id: None,
+            requires_tunnel: false,
+        };
+        let config = SelfHostedAppConfiguration {
+            port: 0,
+            content_folder: "uploaded-app-folder".to_owned(),
+            subdomain: "uploaded-app".to_owned(),
+            seeded: false,
+            launch_path: None,
+        };
         let inserted = store
-            .insert_self_hosted_app(&crate::domain::NewSelfHostedUpload {
-                name: "Uploaded App".to_owned(),
-                subtitle: None,
-                base_slug: "uploaded-app".to_owned(),
-                content_folder: "uploaded-app-folder".to_owned(),
-                reserved_ports: Vec::new(),
-                launch_path: None,
-            })
-            .unwrap()
+            .insert_self_hosted_app(&registration, &config, &[])
             .expect("inserted");
         let (registration, mut config) = inserted;
         // Bind an OS-assigned free port rather than the store's deterministic

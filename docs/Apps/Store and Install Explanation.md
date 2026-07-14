@@ -15,11 +15,15 @@ The slice follows the same ports-and-adapters shape as `collector-rust` and
   `(registration, configuration)` pairs — no "combined app" input, and the only
   union it returns is `AppConfiguration` on `find_app` (where the kind is
   runtime-resolved). The insert/replace methods take a caller-built
-  `(registration, configuration)`; a self-hosted upload keeps its allocation spec
-  (the slug/port are store-allocated). Absence and non-permutation are
-  **return-type signals** (`Option`), a delete miss is `bool`, and an insert that
-  wrote nothing is a granular typed error (`CloudInsertError` / `UploadInsertError`);
-  the only error it raises is the opaque `AppsError::Infrastructure`.
+  `(registration, configuration)`; for a self-hosted upload the store allocates the
+  port and position, and uses the caller's `registration.id` verbatim as id /
+  subdomain. Absence and non-permutation are **return-type signals** (`Option`), a
+  delete miss is `bool`, and a cloud insert that wrote nothing is the granular typed
+  `CloudInsertError`; the only error it raises is the opaque
+  `AppsError::Infrastructure`. The self-hosted insert is the exception: with no
+  granular signal to distinguish its two non-infra outcomes, it maps them onto
+  `AppsError` itself — a taken slug to `400 InvalidName`, an exhausted port space to
+  `500`.
 - **`SqliteAppsStore` (adapter)** — the `SQLite` implementation
   (`db/apps_store.rs`) over the app-wide diesel pool. It checks a connection out
   of the pool per call and delegates to the `pub(super)` query bodies in
@@ -27,7 +31,8 @@ The slice follows the same ports-and-adapters shape as `collector-rust` and
   `&mut PooledDieselConnection`).
 - **`domain/actions/`** — the slice's _semantics_: it maps the store's
   primitive signals onto the semantic `AppsError` variants (`NotFound`,
-  `NotEditable`, `InvalidHomeScreen`, the id-collision / upload-failure verdicts),
+  `NotEditable`, `InvalidHomeScreen`, the cloud id-collision verdict; the
+  self-hosted create is a thin pass-through since its store maps its own outcomes),
   holds the write-side field validation, and gates the delete removability policy.
   It is a folder split one file per kind (`cloud_apps.rs` / `self_hosted_apps.rs` /
   `system_apps.rs`, the cross-kind `all_kinds_apps.rs`, and the registration-wide
@@ -84,13 +89,15 @@ store:
    it_ and returns it. So a handler's response is exactly the per-kind detail
    projection with no second read, and cannot drift from stored state.
 2. **In-transaction allocation.** Everything the store allocates — the display
-   `position` (`MAX(position) + 1`), the self-hosted slug, the loopback port — is
-   computed _inside_ the writing transaction, so two overlapping creates can't
-   read the same value and collide. `UNIQUE(position)` backstops it regardless.
-   The allocation _logic_ is pure and lives in the domain (`choose_self_hosted_slug`
-   / `lowest_free_port`), fed the taken id/subdomain/port sets the store reads in
-   that same transaction — database-free and unit-tested, while the reads-then-write
-   stays atomic in the store.
+   `position` (`MAX(position) + 1`), the loopback port — is computed _inside_ the
+   writing transaction, so two overlapping creates can't read the same value and
+   collide. `UNIQUE(position)` backstops it regardless. The self-hosted id /
+   subdomain are _not_ allocated: they are the caller-built `registration.id` used
+   verbatim, and a clash is rejected `400 InvalidName` (checked in the same
+   transaction). The
+   port-allocation _logic_ is pure and lives in the domain (`lowest_free_port`), fed
+   the taken port set the store reads in that same transaction — database-free and
+   unit-tested, while the read-then-write stays atomic in the store.
 3. **Single writer of order + placement.** `position` and `on_homescreen` are
    written only by `replace_placements` (`PUT /home-screen`); a content replace
    never touches `on_homescreen`. It validates the body is an exact permutation of the live
@@ -123,7 +130,8 @@ app behind:
    result.
 3. **Move into place** — rename `staging` → `<apps>/<mint>` _before_ the DB
    insert.
-4. **Insert** the row, allocating the final slug + port in-transaction.
+4. **Insert** the row (the slug as id / subdomain, allocating the port
+   in-transaction); a slug already in use is rejected `400 InvalidName`.
 5. **Start** the app's loopback listener.
 
 Any failure removes the staged (or already-moved) directory. Because the files
@@ -140,16 +148,20 @@ behind, and the files can move into place before the row is committed. The slug
 is the app's _identity and subdomain_; the content folder is _where its files
 live_ — deliberately independent.
 
-### Slug allocation → a valid DNS label
+### Slug → a valid DNS label, unique or rejected
 
 The slug becomes the app's `id` **and** its public `subdomain`, stored verbatim,
-so every candidate is kept a valid DNS label: lowercased, each run of
-non-alphanumerics collapsed to a single `-`, trimmed, and capped at **63 chars**
-(the DNS label limit). Uniqueness is by suffixing `-2`, `-3`, … against both the
-id and subdomain spaces, with the suffix budgeted first so the base is truncated
-to fit. An over-long label would silently break `<subdomain>.<public_host>`
-routing and TLS. Exhausting the suffix budget is `SlugSpaceExhausted` — a name
-problem the caller can retry differently.
+so it is kept a valid DNS label: lowercased, each run of non-alphanumerics
+collapsed to a single `-`, trimmed, and capped at **63 chars** (the DNS label
+limit) — an over-long label would silently break `<subdomain>.<public_host>`
+routing and TLS. The slug is used as-is, **not** suffixed to dodge a collision: a
+slug already in the global id space is rejected `400 InvalidName` ("an app with
+this name already exists"), which the caller resolves by renaming — the store
+raises that directly from its in-transaction id check (there's no granular typed
+insert error for self-hosted, unlike cloud's `CloudInsertError`). Every
+self-hosted row's subdomain equals its id, so the id
+check subsumes the subdomain space; the `UNIQUE(subdomain)` column stays a
+backstop.
 
 ### Port allocation → lowest free, reused
 

@@ -13,7 +13,7 @@ use persistence_rust::{DieselPool, PooledDieselConnection};
 use crate::db::{reads, writes};
 use crate::domain::{
     AppConfiguration, AppRegistration, AppsError, AppsStore, CloudAppConfiguration,
-    CloudInsertError, NewSelfHostedUpload, SelfHostedAppConfiguration, UploadInsertError,
+    CloudInsertError, SelfHostedAppConfiguration,
 };
 
 /// This slice's migration namespace in the shared database. Applied versions are
@@ -100,9 +100,10 @@ impl SqliteAppsStore {
 /// query body in [`crate::db::reads`] / [`crate::db::writes`]. The bodies live
 /// there so this file stays the migration + pool handle, and the query SQL stays
 /// next to the row types it maps. Every method returns the port's PRIMITIVE shape
-/// — absence as `None`, delete outcome as `bool`, an insert that wrote nothing as a
-/// granular typed error ([`CloudInsertError`] / [`UploadInsertError`]) — leaving the
-/// semantic verdicts to [`crate::domain::actions`].
+/// — absence as `None`, delete outcome as `bool`, a cloud insert that wrote nothing
+/// as the granular typed [`CloudInsertError`] — leaving the semantic verdicts to
+/// [`crate::domain::actions`]. (The self-hosted insert is the exception: it maps its
+/// taken-slug / port-exhaustion outcomes onto `AppsError` directly.)
 impl AppsStore for SqliteAppsStore {
     fn list_registrations(&self) -> Result<Vec<AppRegistration>, AppsError> {
         let mut conn = self.connection()?;
@@ -131,10 +132,16 @@ impl AppsStore for SqliteAppsStore {
 
     fn insert_self_hosted_app(
         &self,
-        new: &NewSelfHostedUpload,
-    ) -> Result<Result<(AppRegistration, SelfHostedAppConfiguration), UploadInsertError>, AppsError>
-    {
-        writes::insert_self_hosted_app(&mut self.connection()?, new)
+        registration: &AppRegistration,
+        config: &SelfHostedAppConfiguration,
+        reserved_ports: &[u16],
+    ) -> Result<(AppRegistration, SelfHostedAppConfiguration), AppsError> {
+        writes::insert_self_hosted_app(
+            &mut self.connection()?,
+            registration,
+            config,
+            reserved_ports,
+        )
     }
 
     fn replace_cloud_app(

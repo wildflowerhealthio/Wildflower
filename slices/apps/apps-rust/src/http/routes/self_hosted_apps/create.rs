@@ -15,9 +15,7 @@ use axum::Json;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-use crate::domain::{
-    actions, AppRegistration, AppsError, NewSelfHostedUpload, SelfHostedAppConfiguration,
-};
+use crate::domain::{actions, AppKind, AppRegistration, AppsError, SelfHostedAppConfiguration};
 use crate::http::errors::InvalidFieldBody;
 use crate::http::state::AppsState;
 use crate::http::wire_representations::SelfHostedAppDetail;
@@ -50,7 +48,7 @@ pub(crate) struct CreateSelfHostedAppMultipart {
     request_body(content = CreateSelfHostedAppMultipart, content_type = "multipart/form-data"),
     responses(
         (status = 200, description = "The installed self-hosted app detail", body = SelfHostedAppDetail),
-        (status = 400, description = "Empty/unusable name (`InvalidName`) or a bad bundle (`InvalidZip`)", body = InvalidFieldBody),
+        (status = 400, description = "Empty/unusable or already-taken name (`InvalidName`) or a bad bundle (`InvalidZip`)", body = InvalidFieldBody),
     ),
 )]
 pub(crate) async fn handle_create_self_hosted_app(
@@ -102,9 +100,9 @@ pub(crate) async fn handle_create_self_hosted_app(
 }
 
 /// Install a self-hosted app from the uploaded `bundle` via the staged install:
-/// extract off-runtime, move into place before the row is committed, insert
-/// (allocating slug + port), then bring the listener online — cleaning up on any
-/// failure. See `docs/Apps/Store and Install Explanation.md`.
+/// extract off-runtime, move into place before the row is committed, insert (the
+/// name-derived slug as id, allocating the port), then bring the listener online —
+/// cleaning up on any failure. See `docs/Apps/Store and Install Explanation.md`.
 async fn install_self_hosted(
     state: &AppsState,
     name: String,
@@ -160,19 +158,38 @@ async fn install_self_hosted(
         ));
     }
 
-    // The host's own loopback port is reserved so an upload never binds over it.
-    let upload = NewSelfHostedUpload {
+    // Synthesize the caller-built pair the store persists: the slug is the id and
+    // subdomain, `position` / `port` are placeholders the store overrides, and an
+    // upload is never seeded.
+    let registration = AppRegistration {
+        id: slug.clone(),
+        kind: AppKind::SelfHosted,
+        position: 0,
+        on_homescreen: true,
         name,
         subtitle: subtitle.filter(|s| !s.is_empty()),
-        base_slug: slug,
+        local_only: true,
+        client_id: None,
+        requires_tunnel: false,
+    };
+    let config = SelfHostedAppConfiguration {
+        port: 0,
         content_folder: folder,
-        reserved_ports: state.loopback_base_url.port().into_iter().collect(),
+        subdomain: slug,
+        seeded: false,
         launch_path,
     };
-    // The action inserts (allocating slug + port in-txn) and maps an allocation
-    // failure onto the wire error — a slug clash is `400 InvalidName`, an exhausted
-    // port space a logged 500. Any error unwinds the just-moved files.
-    let (registration, config) = match actions::create_self_hosted_app(&state.store, &upload) {
+    // The host's own loopback port is reserved so an upload never binds over it.
+    let reserved_ports: Vec<u16> = state.loopback_base_url.port().into_iter().collect();
+    // The action inserts (the slug as id, allocating the port in-txn) and maps an
+    // insert failure onto the wire error — a taken slug is `400 InvalidName`, an
+    // exhausted port space a logged 500. Any error unwinds the just-moved files.
+    let (registration, config) = match actions::create_self_hosted_app(
+        &state.store,
+        &registration,
+        &config,
+        &reserved_ports,
+    ) {
         Ok(pair) => pair,
         Err(error) => {
             remove_staging(&dest);

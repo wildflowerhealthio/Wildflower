@@ -391,7 +391,7 @@
             }
           },
           "400": {
-            "description": "Empty/unusable name (`InvalidName`) or a bad bundle (`InvalidZip`)",
+            "description": "Empty/unusable or already-taken name (`InvalidName`) or a bad bundle (`InvalidZip`)",
             "content": {
               "application/json": {
                 "schema": {
