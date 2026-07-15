@@ -71,7 +71,7 @@ const WILDFLOWER_DB: &str = "wildflower.sqlite";
 /// for the front-trusted remote path.
 #[derive(Clone)]
 struct GatekeeperOwnerAuth {
-    state: gatekeeper_rust::AppState,
+    state: std::sync::Arc<gatekeeper_rust::GatekeeperState>,
 }
 
 impl OwnerAuth for GatekeeperOwnerAuth {

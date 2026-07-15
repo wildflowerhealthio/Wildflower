@@ -1,12 +1,14 @@
+use std::sync::Arc;
+
 use axum::extract::{Path, State};
 use axum::routing::{get, MethodRouter};
 use axum::Json;
 use serde::Serialize;
 
 use crate::domain::actions::{self, load_pending_authorization_code_request};
+use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::PendingCodeConsent;
-use crate::http::errors::HandlerError;
-use crate::http::state::AppState;
+use crate::http::state::GatekeeperState;
 
 /// Body returned to the Owner UI when it loads an authorization-code consent
 /// prompt — describes the client, scopes, and any pre-approved subset. Local to
@@ -29,14 +31,14 @@ pub(crate) struct OAuthConsent {
 
 /// `GET /oauth-consents/{id}` — load a pending authorization-code consent
 /// prompt for the Owner UI to render.
-pub(super) fn route() -> MethodRouter<AppState> {
+pub(super) fn route() -> MethodRouter<Arc<GatekeeperState>> {
     get(handle_get_oauth_consent)
 }
 
 async fn handle_get_oauth_consent(
-    State(state): State<AppState>,
+    State(state): State<Arc<GatekeeperState>>,
     Path(id): Path<String>,
-) -> Result<Json<OAuthConsent>, HandlerError> {
+) -> Result<Json<OAuthConsent>, GatekeeperError> {
     let PendingCodeConsent {
         request,
         redirect_uri,

@@ -17,9 +17,12 @@ pub mod domain;
 pub mod http;
 // Host/HTTP-seam dependency-inversion traits the domain actions call out through
 // (device-consent republish, session-token revoke, session-cookie clear); the
-// concrete impls are wired onto `AppState` in `http::state`. Mirrors apps-rust.
+// concrete impls are wired onto `Arc<GatekeeperState>` in `http::state`. Mirrors
+// apps-rust.
 pub(crate) mod ports;
 pub(crate) mod seeding;
+
+use std::sync::Arc;
 
 use anyhow::Context;
 use chrono::{Duration, Utc};
@@ -49,7 +52,7 @@ pub use persistence_rust::DieselPool;
 pub use cookies::{owner_session_cookies, rescope_owner_session_set_cookies};
 pub use http::{
     ensure_bearer_header, is_pre_auth_public_path, layer_router_with_gatekeeper_auth_gating,
-    layer_router_with_loopback_peer_gating, openapi_spec, verify_owner_bearer, AppState,
+    layer_router_with_loopback_peer_gating, openapi_spec, verify_owner_bearer, GatekeeperState,
 };
 
 /// `client_id` of the host application's first-party OAuth client. The host
@@ -152,11 +155,11 @@ const REVOCATION_PURGE_INTERVAL: std::time::Duration = std::time::Duration::from
 const DEVICE_CONSENT_REAPER_INTERVAL: std::time::Duration = std::time::Duration::from_secs(15);
 
 /// Result of `setup_gatekeeper`: the public router that should be merged
-/// into the app's root router and the shared `AppState` needed to gate
-/// emr-rust traffic.
+/// into the app's root router and the shared `Arc<GatekeeperState>` needed to
+/// gate emr-rust traffic.
 pub struct Gatekeeper {
     pub router: axum::Router,
-    pub state: AppState,
+    pub state: Arc<GatekeeperState>,
 }
 
 /// Build the gatekeeper-rust HTTP surface over the host-owned diesel
@@ -177,7 +180,7 @@ pub struct Gatekeeper {
 ///  - returns a `Router` whose routes are at `/.well-known/jwks.json`,
 ///    `/oauth/*`, and `/access/*` (Owner-only via bearer JWT) — the
 ///    slice owns its mount paths so the caller just `.merge()`s;
-///  - returns the `AppState` the caller passes to
+///  - returns the `Arc<GatekeeperState>` the caller passes to
 ///    [`layer_router_with_gatekeeper_auth_gating`] to wrap emr-rust.
 ///
 /// Token claims follow the canonical model — `iss` is the fixed
@@ -241,13 +244,13 @@ pub fn setup_gatekeeper(
     local_owner_token_tx
         .send(Some(host_owner_token))
         .context("token channel receiver dropped before host owner token issuance")?;
-    let state = AppState {
+    let state = Arc::new(GatekeeperState {
         store: store.clone(),
         revocation_store: revocation_store.clone(),
         loopback_base_url: config.loopback_base_url.clone(),
         first_party_client_id: config.first_party_client_id.clone().into(),
         active_device_user_code_sender: active_device_user_code_tx,
-    };
+    });
     // Seed the popup head from SQLite so a request that was pending
     // across an app restart still drives the modal on first webview
     // load — the `watch` value itself doesn't survive the process, but
@@ -346,7 +349,7 @@ fn spawn_revocation_purge(revocation_store: RevocationStore) {
 /// within `DEVICE_CONSENT_REAPER_INTERVAL`, and `send_if_modified`
 /// suppresses ticks that leave the head unchanged so an idle queue
 /// produces no bridge traffic.
-fn spawn_device_consent_reaper(state: AppState) {
+fn spawn_device_consent_reaper(state: Arc<GatekeeperState>) {
     tokio::spawn(async move {
         let mut ticks = interval(DEVICE_CONSENT_REAPER_INTERVAL);
         // A long pause (suspend/resume, debugger break) must not cause a

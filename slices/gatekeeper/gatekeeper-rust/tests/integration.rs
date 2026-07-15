@@ -94,7 +94,7 @@ fn store_handle(db: &TestDb) -> SqliteGatekeeperStore {
 fn seed_client_with_redirect(db: &TestDb, client_id: &str, redirect_uri: &str, scopes: &[&str]) {
     let store = store_handle(db);
     store
-        .register_client(&Client {
+        .upsert_client(&Client {
             client_id: client_id.to_string(),
             name: "Integration Test Client".to_string(),
             kind: ClientKind::Public,
@@ -1925,7 +1925,7 @@ async fn device_approval_mints_durable_grant_and_links_refresh_family() {
 async fn token_endpoint_rejects_grant_outside_client_allow_list() {
     let (g, _host_owner_token, db) = spin_up();
     store_handle(&db)
-        .register_client(&Client {
+        .upsert_client(&Client {
             client_id: "code-only".to_string(),
             name: "Code-only client".to_string(),
             kind: ClientKind::Public,
@@ -2194,8 +2194,8 @@ async fn expired_refresh_token_family_is_rejected() {
             "error_description": "Refresh token has expired",
         })
     );
-    let row = store
-        .refresh_token_by_hash(&token_storage_hash("stale-token"))
+    let (row, _family) = store
+        .refresh_token_with_family_by_hash(&token_storage_hash("stale-token"))
         .expect("query")
         .expect("row kept");
     assert_eq!(row.consumed_at, None);
@@ -2232,8 +2232,8 @@ async fn refresh_token_is_bound_to_issuing_client() {
         })
     );
     // The rightful owner's token is untouched — still live.
-    let row = store
-        .refresh_token_by_hash(&token_storage_hash("owned-token"))
+    let (row, _family) = store
+        .refresh_token_with_family_by_hash(&token_storage_hash("owned-token"))
         .expect("query")
         .expect("row present");
     assert_eq!(row.consumed_at, None);
@@ -2334,7 +2334,7 @@ fn seed_confidential_client(
 ) {
     let store = store_handle(db);
     store
-        .register_client(&Client {
+        .upsert_client(&Client {
             client_id: client_id.to_string(),
             name: "Integration Test Confidential Client".to_string(),
             kind: ClientKind::Confidential,

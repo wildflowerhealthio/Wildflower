@@ -6,7 +6,7 @@
 /// A device-flow approve or deny may resolve (or advance) the head the host
 /// webview surfaces in its non-dismissable popup, so the action calls this after
 /// the store write to close/advance the modal. The real implementation
-/// ([`AppState`](crate::http::AppState)) recomputes the head from the store and
+/// ([`GatekeeperState`](crate::http::GatekeeperState)) recomputes the head from the store and
 /// publishes it through the bridge watch channel; a test fake just records that
 /// it was asked to.
 pub(crate) trait DeviceUserCodePublisher {

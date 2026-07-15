@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Response};
@@ -18,7 +20,7 @@ use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::domain::page_paths;
 use crate::http::errors::InternalError;
 use crate::http::errors::{oauth_error_html, OAuthErrorKind};
-use crate::http::state::AppState;
+use crate::http::state::GatekeeperState;
 use crate::http::ServedOrigin;
 
 /// A `code_challenge` for the S256 method is the base64url SHA-256 digest:
@@ -50,8 +52,9 @@ fn found_redirect(location: &str) -> Response {
 /// renders one of the endpoint's three distinct failure shapes through
 /// `IntoResponse`, so a fallible step bails with `?` instead of a `match` +
 /// `return` at every call site — the authorization-endpoint analogue of
-/// [`HandlerError`](crate::http::errors::HandlerError) and
-/// [`TokenError`](super::internal::TokenError). Kept small (no embedded
+/// [`TokenError`](super::internal::TokenError) (and, on the Owner `/access`
+/// surface, [`GatekeeperError`](crate::domain::gatekeeper_error::GatekeeperError)).
+/// Kept small (no embedded
 /// `Response`) so `Result<_, AuthorizeError>` doesn't trip
 /// `clippy::result_large_err`.
 pub(super) enum AuthorizeError {
@@ -93,8 +96,8 @@ impl AuthorizeError {
 /// expected only the opaque `Infrastructure` variant here — becomes the logged,
 /// opaque 500. Lets the validation helpers `?` a `Result<_, GatekeeperError>`
 /// from a domain action.
-impl From<crate::domain::error::GatekeeperError> for AuthorizeError {
-    fn from(error: crate::domain::error::GatekeeperError) -> Self {
+impl From<crate::domain::gatekeeper_error::GatekeeperError> for AuthorizeError {
+    fn from(error: crate::domain::gatekeeper_error::GatekeeperError) -> Self {
         AuthorizeError::Internal(InternalError::new(
             "store operation failed at /oauth/authorize",
             error,
@@ -185,7 +188,7 @@ pub struct AuthorizeParams {
     )
 )]
 pub(super) async fn handle_authorize_request(
-    State(state): State<AppState>,
+    State(state): State<Arc<GatekeeperState>>,
     origin: ServedOrigin,
     Query(params): Query<AuthorizeParams>,
 ) -> Result<Response, AuthorizeError> {
@@ -262,7 +265,7 @@ pub(super) async fn handle_authorize_request(
 /// request it can never complete. Probes presence directly rather than loading
 /// every key's private material; the mint path fetches `active_signing_key()`
 /// anyway.
-fn ensure_active_signing_key(state: &AppState) -> Result<(), AuthorizeError> {
+fn ensure_active_signing_key(state: &GatekeeperState) -> Result<(), AuthorizeError> {
     if actions::has_active_signing_key(&state.store)? {
         Ok(())
     } else {
@@ -274,7 +277,7 @@ fn ensure_active_signing_key(state: &AppState) -> Result<(), AuthorizeError> {
 /// An unknown or disabled client can't be trusted as a redirect target, so the
 /// failure renders a local HTML page rather than a redirect.
 fn validate_and_load_client(
-    state: &AppState,
+    state: &GatekeeperState,
     params: &AuthorizeParams,
 ) -> Result<Client, AuthorizeError> {
     let client = actions::client_by_id(&state.store, &params.client_id)?
@@ -399,7 +402,7 @@ impl ExistingGrantCoverage {
 /// Look up an existing grant for this (client, `redirect_uri`) pair and compute
 /// which requested scopes it already covers.
 fn resolve_existing_grant_coverage(
-    state: &AppState,
+    state: &GatekeeperState,
     params: &AuthorizeParams,
     parsed_redirect: &Url,
     requested_scopes: &[String],
@@ -432,7 +435,7 @@ fn resolve_existing_grant_coverage(
 /// permits skipping consent on a prior decision). Returns the issued `code`,
 /// or an error `Response` if either store write fails.
 fn issue_code(
-    state: &AppState,
+    state: &GatekeeperState,
     request_id: &str,
     params: &AuthorizeParams,
     parsed_redirect: &Url,

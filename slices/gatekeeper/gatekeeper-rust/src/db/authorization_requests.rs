@@ -13,7 +13,7 @@ use diesel::sqlite::SqliteConnection;
 
 use crate::db::shared::{text_enum_column, JsonStrings, UrlText};
 use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
-use crate::domain::error::GatekeeperError;
+use crate::domain::gatekeeper_error::GatekeeperError;
 
 diesel::table! {
     authorization_requests (id) {

@@ -1,6 +1,6 @@
 //! Error **wire-representations** for the gatekeeper's routes and middleware —
 //! how failures render onto the wire, and nothing else. The failure
-//! *vocabulary* is domain ([`crate::domain::error::GatekeeperError`]); this
+//! *vocabulary* is domain ([`crate::domain::gatekeeper_error::GatekeeperError`]); this
 //! file only renders it — a semantic status + JSON body for the `*NotFound`
 //! variants, a logged opaque 500 for an
 //! [`Infrastructure`](GatekeeperError::Infrastructure) failure — so a route
@@ -9,19 +9,25 @@
 //!
 //! Also holds the canned response shapes the middleware produces directly
 //! (a logged 500 via [`internal_error`], a plain 401 via [`unauthorized`],
-//! the [`verify_error_response`] status mapping for token verification), the
-//! route-level [`HandlerError`], and the local HTML error pages the
-//! `/oauth/authorize` endpoint renders for failures that may NOT be
-//! redirected back to the client (RFC 6749 §4.1.2.1 restricts those to
-//! `redirect_uri`/`client_id` validation failures — every other spec'd error
-//! is delivered by redirecting to the already-validated `redirect_uri`).
+//! the [`verify_error_response`] status mapping for token verification), and the
+//! local HTML error pages the `/oauth/authorize` endpoint renders for failures
+//! that may NOT be redirected back to the client (RFC 6749 §4.1.2.1 restricts
+//! those to `redirect_uri`/`client_id` validation failures — every other spec'd
+//! error is delivered by redirecting to the already-validated `redirect_uri`).
+//!
+//! Each semantic `*NotFound` outcome is rendered by [`IntoResponse for
+//! GatekeeperError`](GatekeeperError) onto a typed JSON 404 body (keyed by the
+//! resource's identifying field), so a handler returning
+//! `Result<_, GatekeeperError>` bails with `?` and its error becomes a response
+//! with no HTTP glue at the call site.
 
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
-use serde_json::json;
+use serde::Serialize;
+use utoipa::ToSchema;
 
-use crate::domain::error::GatekeeperError;
+use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::token::VerifyError;
 
 /// Map a token-[`VerifyError`] to its HTTP response, shared by the auth
@@ -48,11 +54,14 @@ pub(crate) fn internal_error(context: &str, err: impl std::fmt::Display) -> Resp
     StatusCode::INTERNAL_SERVER_ERROR.into_response()
 }
 
-/// The "a server-side step failed" payload shared by every surface's error enum
-/// (`HandlerError` here, plus the OAuth `TokenError` and `AuthorizeError`): an
-/// operator-facing `context` and the `source` detail, logged + returned as an
-/// opaque 500. This is the shared type from `shared-structures-rust` — the same
-/// one the other `-rust` slices hold in their `Internal` variant — re-exported
+/// The "a server-side step failed" payload shared by the OAuth surfaces'
+/// error enums (`TokenError` and `AuthorizeError`): an operator-facing `context`
+/// and the `source` detail, logged + returned as an opaque 500. (The `/access`
+/// surface renders the same opaque 500 through
+/// [`GatekeeperError::Infrastructure`](crate::domain::gatekeeper_error::GatekeeperError::Infrastructure),
+/// which builds an `InternalError` at render time rather than holding one.) This
+/// is the shared type from `shared-structures-rust` — the same one the other
+/// `-rust` slices hold in their `Internal` variant — re-exported
 /// here so the OAuth surfaces keep importing it from `errors`. Each
 /// enum holds it in its `Internal` variant instead of re-declaring the same
 /// fields, constructor, and render call. (`TokenError` additionally
@@ -65,100 +74,82 @@ pub(crate) fn unauthorized() -> Response {
     (StatusCode::UNAUTHORIZED, "unauthorized").into_response()
 }
 
-/// JSON 404 of the shape `{ "error": <error>, "<field>": <value> }`. The
-/// identifying field name varies by resource (`id` for grants/consents,
-/// `userCode` for device prompts), so callers pass it explicitly.
-pub(crate) fn not_found(error: &'static str, field: &'static str, value: &str) -> Response {
-    (
-        StatusCode::NOT_FOUND,
-        Json(json!({ "error": error, field: value })),
-    )
-        .into_response()
+/// Wire shape for `GrantNotFound` (404) — no standing grant has this id.
+#[derive(Debug, Serialize, ToSchema)]
+pub(crate) struct GrantNotFoundBody {
+    pub(crate) error: &'static str,
+    pub(crate) id: String,
 }
 
-/// Error half of a `Result`-returning handler. Each variant renders one of
-/// the canned shapes above through `IntoResponse`, so a fallible step bails
-/// with `?` instead of a `match` + `return` at every call site.
-#[derive(Debug)]
-pub(crate) enum HandlerError {
-    /// Logged, opaque 500 — see [`InternalError`].
-    Internal(InternalError),
-    /// JSON 404 — rendered by [`not_found`].
-    NotFound {
-        error: &'static str,
-        field: &'static str,
-        value: String,
-    },
-    /// JSON 400 of the shape `{ "error": <error>, "detail": <detail> }` — a
-    /// malformed request the client can fix (e.g. an ambiguous revocation body).
-    BadRequest { error: &'static str, detail: String },
+/// Wire shape for `OAuthConsentNotFound` (404) — no pending authorization-code
+/// consent has this id.
+#[derive(Debug, Serialize, ToSchema)]
+pub(crate) struct OAuthConsentNotFoundBody {
+    pub(crate) error: &'static str,
+    pub(crate) id: String,
 }
 
-impl HandlerError {
-    /// A server-side failure (e.g. a store read): logs and 500s opaquely.
-    pub(crate) fn internal(context: &'static str, source: impl std::fmt::Display) -> Self {
-        HandlerError::Internal(InternalError::new(context, source))
-    }
-
-    /// A missing resource: JSON 404 keyed by the resource's identifying field.
-    pub(crate) fn not_found(error: &'static str, field: &'static str, value: &str) -> Self {
-        HandlerError::NotFound {
-            error,
-            field,
-            value: value.to_string(),
-        }
-    }
-
-    /// A client-fixable malformed request: JSON 400 with an explanatory detail.
-    pub(crate) fn bad_request(error: &'static str, detail: impl Into<String>) -> Self {
-        HandlerError::BadRequest {
-            error,
-            detail: detail.into(),
-        }
-    }
+/// Wire shape for `DeviceConsentNotFound` (404) — no pending device-code consent
+/// has this user code. Keyed by `userCode`, unlike the id-keyed siblings.
+#[derive(Debug, Serialize, ToSchema)]
+pub(crate) struct DeviceConsentNotFoundBody {
+    pub(crate) error: &'static str,
+    #[serde(rename = "userCode")]
+    pub(crate) user_code: String,
 }
 
-impl IntoResponse for HandlerError {
+/// Wire shape for `AuthorizationRequestNotFound` (404) — no authorization request
+/// has this id.
+#[derive(Debug, Serialize, ToSchema)]
+pub(crate) struct AuthorizationRequestNotFoundBody {
+    pub(crate) error: &'static str,
+    pub(crate) id: String,
+}
+
+/// Render the domain's failure vocabulary onto the wire: each semantic
+/// `*NotFound` variant becomes its typed structured JSON 404 (keyed by the
+/// resource's identifying field), and an opaque
+/// [`Infrastructure`](GatekeeperError::Infrastructure) failure is logged (via the
+/// shared [`InternalError`]) and answered as an opaque, empty 500. This is the
+/// whole of the HTTP layer's error knowledge for the `/access` surface; the
+/// handlers just `?` a `Result<_, GatekeeperError>` from a domain action.
+impl IntoResponse for GatekeeperError {
     fn into_response(self) -> Response {
         match self {
-            HandlerError::Internal(error) => error.into_response(),
-            HandlerError::NotFound {
-                error,
-                field,
-                value,
-            } => not_found(error, field, &value),
-            HandlerError::BadRequest { error, detail } => (
-                StatusCode::BAD_REQUEST,
-                Json(json!({ "error": error, "detail": detail })),
+            GatekeeperError::OAuthConsentNotFound { id } => (
+                StatusCode::NOT_FOUND,
+                Json(OAuthConsentNotFoundBody {
+                    error: "OAuthConsentNotFound",
+                    id,
+                }),
             )
                 .into_response(),
-        }
-    }
-}
-
-/// Render the domain's failure vocabulary through the route-level
-/// [`HandlerError`]: each semantic `*NotFound` variant becomes its structured
-/// JSON 404 (keyed by the resource's identifying field), and an opaque
-/// [`Infrastructure`](GatekeeperError::Infrastructure) failure becomes the
-/// logged, empty 500. This `From` is what lets a handler `?` a
-/// `Result<_, GatekeeperError>` from a domain action.
-impl From<GatekeeperError> for HandlerError {
-    fn from(error: GatekeeperError) -> Self {
-        match error {
-            GatekeeperError::OAuthConsentNotFound { id } => {
-                HandlerError::not_found("OAuthConsentNotFound", "id", &id)
-            }
-            GatekeeperError::DeviceConsentNotFound { user_code } => {
-                HandlerError::not_found("DeviceConsentNotFound", "userCode", &user_code)
-            }
-            GatekeeperError::GrantNotFound { id } => {
-                HandlerError::not_found("GrantNotFound", "id", &id)
-            }
-            GatekeeperError::AuthorizationRequestNotFound { id } => {
-                HandlerError::not_found("AuthorizationRequestNotFound", "id", &id)
-            }
+            GatekeeperError::DeviceConsentNotFound { user_code } => (
+                StatusCode::NOT_FOUND,
+                Json(DeviceConsentNotFoundBody {
+                    error: "DeviceConsentNotFound",
+                    user_code,
+                }),
+            )
+                .into_response(),
+            GatekeeperError::GrantNotFound { id } => (
+                StatusCode::NOT_FOUND,
+                Json(GrantNotFoundBody {
+                    error: "GrantNotFound",
+                    id,
+                }),
+            )
+                .into_response(),
+            GatekeeperError::AuthorizationRequestNotFound { id } => (
+                StatusCode::NOT_FOUND,
+                Json(AuthorizationRequestNotFoundBody {
+                    error: "AuthorizationRequestNotFound",
+                    id,
+                }),
+            )
+                .into_response(),
             GatekeeperError::Infrastructure { context, source } => {
-                HandlerError::Internal(InternalError::new(context, source))
+                InternalError::new(context, source).into_response()
             }
         }
     }

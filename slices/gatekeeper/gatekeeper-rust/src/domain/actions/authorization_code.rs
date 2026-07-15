@@ -1,7 +1,7 @@
 //! Authorization-code actions over the [`GatekeeperStore`] port.
 
 use crate::domain::authorization_code::AuthorizationCode;
-use crate::domain::error::GatekeeperError;
+use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::GatekeeperStore;
 
 /// Atomically read-and-consume an authorization code (single-use).

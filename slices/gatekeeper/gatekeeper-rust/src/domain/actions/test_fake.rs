@@ -22,7 +22,7 @@ use url::Url;
 use crate::domain::authorization_code::AuthorizationCode;
 use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
 use crate::domain::client::{AllowedGrantType, Client, ClientKind};
-use crate::domain::error::GatekeeperError;
+use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::grant::{AuthorizationCodeGrant, DeviceGrant, Grant};
 use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 use crate::domain::signing_key::SigningKey;
@@ -127,16 +127,12 @@ impl GatekeeperTx for FakeGatekeeperTx<'_> {
         Ok(self.store.clients.borrow().get(client_id).cloned())
     }
 
-    fn register_client(&mut self, client: &Client) -> Result<(), GatekeeperError> {
+    fn upsert_client(&mut self, client: &Client) -> Result<(), GatekeeperError> {
         self.store
             .clients
             .borrow_mut()
             .insert(client.client_id.clone(), client.clone());
         Ok(())
-    }
-
-    fn upsert_client(&mut self, client: &Client) -> Result<(), GatekeeperError> {
-        self.register_client(client)
     }
 
     fn all_signing_keys(&mut self) -> Result<Vec<SigningKey>, GatekeeperError> {
@@ -341,13 +337,6 @@ impl GatekeeperTx for FakeGatekeeperTx<'_> {
         Ok(families
             .get(&token.family_id)
             .map(|family| (token.clone(), family.clone())))
-    }
-
-    fn refresh_token_by_hash(
-        &mut self,
-        token_hash: &str,
-    ) -> Result<Option<RefreshToken>, GatekeeperError> {
-        Ok(self.store.tokens.borrow().get(token_hash).cloned())
     }
 
     fn stamp_refresh_token_consumed_if_live(

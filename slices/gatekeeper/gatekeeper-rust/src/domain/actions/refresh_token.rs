@@ -2,7 +2,7 @@
 
 use chrono::{DateTime, Utc};
 
-use crate::domain::error::GatekeeperError;
+use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::refresh_token::{RefreshToken, RefreshTokenConsumeOutcome, RefreshTokenFamily};
 use crate::domain::{GatekeeperStore, GatekeeperTx};
 
@@ -171,13 +171,17 @@ mod tests {
         );
         assert_eq!(
             store
-                .refresh_token_by_hash("live")
+                .refresh_token_with_family_by_hash("live")
                 .unwrap()
                 .unwrap()
+                .0
                 .consumed_at,
             Some(now)
         );
-        assert!(store.refresh_token_by_hash("successor").unwrap().is_some());
+        assert!(store
+            .refresh_token_with_family_by_hash("successor")
+            .unwrap()
+            .is_some());
 
         // A replay of the already-consumed token installs no further successor.
         assert_eq!(
@@ -185,7 +189,7 @@ mod tests {
             RefreshTokenConsumeOutcome::Replayed,
         );
         assert!(store
-            .refresh_token_by_hash("successor-2")
+            .refresh_token_with_family_by_hash("successor-2")
             .unwrap()
             .is_none());
     }

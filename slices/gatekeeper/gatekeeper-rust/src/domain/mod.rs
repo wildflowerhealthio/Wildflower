@@ -5,9 +5,9 @@
 //! this layer: the [`GatekeeperStore`] port abstracts persistence ([`crate::db`]'s
 //! `SqliteGatekeeperStore` owns the SQL behind it), the [`actions`] over that
 //! port hold the store-touching logic (the consent loaders and the `*NotFound`
-//! semantic mapping), and everything fails with the domain's own [`error`]
-//! vocabulary; persistence mappings live in [`crate::db`], transport in
-//! [`crate::http`].
+//! semantic mapping), and everything fails with the domain's own
+//! [`gatekeeper_error`] vocabulary; persistence mappings live in [`crate::db`],
+//! transport in [`crate::http`].
 
 // The persistence port + the semantic actions over it — the seam the HTTP
 // layer calls instead of touching a concrete store. Mirrors collector's
@@ -24,7 +24,7 @@ pub mod client;
 pub mod client_redirect;
 // The domain's failure vocabulary (collector's `RemoteError` is the model):
 // semantic client-facing variants plus the opaque `Infrastructure`.
-pub mod error;
+pub mod gatekeeper_error;
 pub mod grant;
 // The closed set of OAuth error codes (RFC 6749 §5.2 + the redirect/device
 // codes) — a pure domain vocabulary lifted out of the OAuth route tree so the

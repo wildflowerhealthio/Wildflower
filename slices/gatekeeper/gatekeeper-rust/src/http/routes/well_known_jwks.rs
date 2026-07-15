@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use axum::extract::State;
 use axum::Json;
 use serde::Serialize;
@@ -5,8 +7,8 @@ use utoipa::ToSchema;
 
 use crate::crypto_util::public_jwk::PublicJwk;
 use crate::domain::actions;
-use crate::http::errors::HandlerError;
-use crate::http::state::AppState;
+use crate::domain::gatekeeper_error::GatekeeperError;
+use crate::http::state::GatekeeperState;
 
 /// RFC 7517 JSON Web Key Set body served at `/.well-known/jwks.json`.
 #[derive(Debug, Serialize, ToSchema)]
@@ -22,8 +24,8 @@ pub struct Jwks {
     responses((status = 200, description = "RFC 7517 JSON Web Key Set", body = Jwks))
 )]
 pub(crate) async fn handle_jwks_request(
-    State(state): State<AppState>,
-) -> Result<Json<Jwks>, HandlerError> {
+    State(state): State<Arc<GatekeeperState>>,
+) -> Result<Json<Jwks>, GatekeeperError> {
     let keys = actions::all_signing_keys(&state.store)?;
     Ok(Json(Jwks {
         keys: keys.iter().map(PublicJwk::from).collect(),

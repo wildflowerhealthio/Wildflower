@@ -8,19 +8,19 @@ use axum::response::Response;
 
 use crate::http::errors;
 use crate::http::served_base_url_for;
-use crate::http::state::AppState;
+use crate::http::state::GatekeeperState;
 
 use crate::http::middleware::require_auth::{
     try_access_token_from_request, try_bearer_token_from_headers, verify_auth_token_claims,
     AccessTokenSource,
 };
 
-/// State for [`require_valid_bearer_token`]: the gatekeeper [`AppState`] plus the
-/// full request paths that skip the token check entirely. Built by
+/// State for [`require_valid_bearer_token`]: the gatekeeper [`GatekeeperState`]
+/// plus the full request paths that skip the token check entirely. Built by
 /// [`layer_router_with_gatekeeper_auth_gating`](crate::http::layer_router_with_gatekeeper_auth_gating).
 #[derive(Clone)]
 pub struct BearerGate {
-    pub state: AppState,
+    pub state: Arc<GatekeeperState>,
     pub exempt: Arc<[String]>,
 }
 

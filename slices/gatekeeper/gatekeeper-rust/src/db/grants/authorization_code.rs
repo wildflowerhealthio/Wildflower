@@ -9,7 +9,7 @@ use diesel::sqlite::SqliteConnection;
 use url::Url;
 
 use crate::db::shared::JsonStrings;
-use crate::domain::error::GatekeeperError;
+use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::grant::AuthorizationCodeGrant;
 
 diesel::table! {

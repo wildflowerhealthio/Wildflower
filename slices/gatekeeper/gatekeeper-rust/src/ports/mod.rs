@@ -3,7 +3,7 @@
 //! [`actions`](crate::domain::actions) can still trigger the runtime side-effects
 //! a consent or logout flow needs without the domain learning axum, the bridge,
 //! or the revocation store's concrete type. The HTTP layer's
-//! [`AppState`](crate::http::AppState) wires the real implementations (see
+//! [`GatekeeperState`](crate::http::GatekeeperState) wires the real implementations (see
 //! `http::state`); tests wire in-memory fakes. Mirrors `apps-rust`'s `ports/`.
 //!
 //!  - [`DeviceUserCodePublisher`] — republish the active device-code consent head

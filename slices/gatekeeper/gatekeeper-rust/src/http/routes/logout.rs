@@ -16,6 +16,8 @@
 //! store, closing the leaked-cookie window a copy of the token could otherwise
 //! ride until `exp`. See #218 / #269.
 
+use std::sync::Arc;
+
 use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Redirect, Response};
@@ -26,16 +28,16 @@ use crate::domain::actions;
 use crate::http::middleware::require_auth::{
     try_access_token_from_request, verify_auth_token_claims,
 };
-use crate::http::state::AppState;
+use crate::http::state::GatekeeperState;
 use crate::http::ServedOrigin;
 use crate::ports::SessionCookies;
 
-pub fn router() -> Router<AppState> {
+pub fn router() -> Router<Arc<GatekeeperState>> {
     Router::new().route("/logout", post(handle_logout))
 }
 
 async fn handle_logout(
-    State(state): State<AppState>,
+    State(state): State<Arc<GatekeeperState>>,
     origin: ServedOrigin,
     request_headers: HeaderMap,
 ) -> Response {
@@ -64,7 +66,7 @@ async fn handle_logout(
 /// Denylist the `jti` of the token this request presents, so the same token
 /// can't be replayed from a leaked cookie after logout. Best-effort — see the
 /// call site.
-fn revoke_presented_token(state: &AppState, origin: &str, request_headers: &HeaderMap) {
+fn revoke_presented_token(state: &GatekeeperState, origin: &str, request_headers: &HeaderMap) {
     let Some((token, _source)) = try_access_token_from_request(request_headers) else {
         return;
     };

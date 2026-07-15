@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use axum::body::Body;
 use axum::extract::{Request, State};
 use axum::http::{header, HeaderMap};
@@ -8,12 +10,12 @@ use crate::domain::actions;
 use crate::domain::token::{verify_jwt, VerifiedClaims, VerifyError, VerifyOptions};
 use crate::http::errors;
 use crate::http::served_base_url_for;
-use crate::http::state::AppState;
+use crate::http::state::GatekeeperState;
 use crate::WILDFLOWER_WIDEST_SCOPES;
 use scopes_rust::Scope;
 
 pub async fn require_owner_auth(
-    State(state): State<AppState>,
+    State(state): State<Arc<GatekeeperState>>,
     headers: HeaderMap,
     req: Request<Body>,
     next: Next,
@@ -87,7 +89,7 @@ pub fn try_bearer_token_from_headers(headers: &HeaderMap) -> Option<&str> {
 }
 
 pub fn verify_owner_token(
-    state: &AppState,
+    state: &GatekeeperState,
     origin: &str,
     token: &str,
 ) -> Result<VerifiedClaims, VerifyError> {
@@ -124,7 +126,7 @@ pub fn verify_owner_token(
 /// only for the `wf_owner`-marked host owner token, which is presented at every
 /// served origin (#256). See `docs/Origins/Explanation.md`.
 pub fn verify_auth_token_claims(
-    state: &AppState,
+    state: &GatekeeperState,
     origin: &str,
     token: &str,
 ) -> Result<VerifiedClaims, VerifyError> {

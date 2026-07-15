@@ -129,7 +129,7 @@
           "OAuth 2.0"
         ],
         "summary": "Return the current status of the pending authorization request, including\nthe final redirect URL once approved.",
-        "description": "The error side is `axum::response::ErrorResponse` because two error shapes\nshare the handler: the Owner-surface [`HandlerError`] (404/logged 500) and\nthe OAuth-shaped [`OAuthErrorResponse`] `server_error` — `?` converts\neither through its `IntoResponse`.",
+        "description": "The error side is `axum::response::ErrorResponse` because two error shapes\nshare the handler: the Owner-surface `GatekeeperError` (its\n`AuthorizationRequestNotFound` 404 / logged 500) and the OAuth-shaped\n`OAuthErrorResponse` `server_error` — `?` converts either through its\n`IntoResponse`.",
         "operationId": "handle_authorization_status_request",
         "parameters": [
           {

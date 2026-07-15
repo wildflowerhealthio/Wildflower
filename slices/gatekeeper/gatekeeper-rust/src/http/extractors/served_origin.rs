@@ -1,9 +1,11 @@
 //! Gatekeeper's served-origin axum extractor — wraps the shared
 //! [`served_base_url_for`] resolver (the single source of truth in
 //! `shared-structures-rust`; see `docs/Origins/Explanation.md`). The extractor
-//! stays here because it reaches into gatekeeper's [`AppState`] for the
+//! stays here because it reaches into gatekeeper's [`GatekeeperState`] for the
 //! `loopback_base_url` fallback, so it can't move to a state-agnostic crate
 //! without parameterizing.
+
+use std::sync::Arc;
 
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
@@ -12,7 +14,7 @@ use axum::response::Response;
 use shared_structures_rust::served_origin::served_base_url_for;
 
 use crate::http::errors;
-use crate::http::state::AppState;
+use crate::http::state::GatekeeperState;
 
 /// [`served_base_url_for`] as an axum extractor: resolves the request's served
 /// base URL from its forwarding headers and the configured loopback base URL,
@@ -33,12 +35,12 @@ impl std::ops::Deref for ServedOrigin {
     }
 }
 
-impl FromRequestParts<AppState> for ServedOrigin {
+impl FromRequestParts<Arc<GatekeeperState>> for ServedOrigin {
     type Rejection = Response;
 
     async fn from_request_parts(
         parts: &mut Parts,
-        state: &AppState,
+        state: &Arc<GatekeeperState>,
     ) -> Result<Self, Self::Rejection> {
         let base_url =
             served_base_url_for(&parts.headers, &state.loopback_base_url).ok_or_else(|| {

@@ -6,7 +6,7 @@ use chrono::{DateTime, Utc};
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 
-use crate::domain::error::GatekeeperError;
+use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 
 diesel::table! {
@@ -80,20 +80,6 @@ pub(super) fn refresh_token_with_family_by_hash(
         .first(conn)
         .optional()
         .map_err(|e| GatekeeperError::infrastructure("refresh_token_with_family_by_hash failed", e))
-}
-
-/// Look up a single token by hash — enough for callers that don't need
-/// the family facts.
-pub(super) fn refresh_token_by_hash(
-    conn: &mut SqliteConnection,
-    token_hash: &str,
-) -> Result<Option<RefreshToken>, GatekeeperError> {
-    refresh_tokens::table
-        .find(token_hash)
-        .select(RefreshToken::as_select())
-        .first(conn)
-        .optional()
-        .map_err(|e| GatekeeperError::infrastructure("refresh_token_by_hash failed", e))
 }
 
 /// Stamp the live token `token_hash` consumed at `now`, returning `true` iff a
@@ -249,7 +235,7 @@ mod tests {
     use super::*;
     use crate::db::test_support::{arb_opt_timestamp, arb_timestamp};
     use crate::db::SqliteGatekeeperStore;
-    use crate::domain::error::GatekeeperError;
+    use crate::domain::gatekeeper_error::GatekeeperError;
     use crate::domain::{GatekeeperStore as _, GatekeeperTx as _};
     use proptest::prelude::*;
 

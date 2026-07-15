@@ -22,7 +22,7 @@ use super::{
 };
 use crate::domain::authorization_code::{AuthorizationCode, AUTHORIZATION_CODE_TTL};
 use crate::domain::client_redirect::build_client_redirect_url;
-use crate::domain::error::GatekeeperError;
+use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::GatekeeperStore;
 use crate::domain::PendingCodeConsent;
 use crate::ports::DeviceUserCodePublisher;
@@ -306,7 +306,7 @@ mod tests {
 
     fn live_code_store() -> (FakeGatekeeperStore, RecordingPublisher) {
         let store = FakeGatekeeperStore::default();
-        store.register_client(&client("client", &["read"])).unwrap();
+        store.upsert_client(&client("client", &["read"])).unwrap();
         store
             .insert_authorization_request(&code_request(
                 "req-1",
@@ -410,7 +410,7 @@ mod tests {
         let store = FakeGatekeeperStore::default();
         let publisher = RecordingPublisher::default();
         store
-            .register_client(&client("client", &["openid", "read"]))
+            .upsert_client(&client("client", &["openid", "read"]))
             .unwrap();
         // The device requested only "openid"; the approver may grant "read" too.
         store
@@ -443,9 +443,7 @@ mod tests {
     fn approve_device_consent_with_nothing_granted_is_a_deny() {
         let store = FakeGatekeeperStore::default();
         let publisher = RecordingPublisher::default();
-        store
-            .register_client(&client("client", &["openid"]))
-            .unwrap();
+        store.upsert_client(&client("client", &["openid"])).unwrap();
         store
             .insert_authorization_request(&device_request("dev-1", "UC-1", RequestStatus::Pending))
             .unwrap();

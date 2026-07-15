@@ -1,3 +1,15 @@
+//! Shared HTTP state — the gatekeeper store handle (serving all six persistence
+//! concerns), the shared token-revocation store both auth gates funnel through,
+//! the loopback base URL each request's served origin falls back to, the
+//! first-party `client_id` the token endpoint recognises, and the watch sender
+//! that publishes the active device-code consent head to the host popup. Held in
+//! an `Arc` and extracted via `State<Arc<GatekeeperState>>` per the
+//! tunnel-rust/apps-rust pattern; the host-seam port impls
+//! ([`DeviceUserCodePublisher`], [`SessionCookies`]) live on `Arc<GatekeeperState>`
+//! so a cheaply-cloned handle satisfies the domain actions' seams.
+
+use std::sync::Arc;
+
 use chrono::{DateTime, Utc};
 use tokio::sync::watch;
 
@@ -7,12 +19,11 @@ use crate::db::SqliteGatekeeperStore;
 use crate::ports::{DeviceUserCodePublisher, SessionCookies, SessionRevoker};
 
 /// Shared state threaded through every gatekeeper handler. Opaque to
-/// callers outside the crate — the host receives one from
+/// callers outside the crate — the host receives one (inside an [`Arc`]) from
 /// [`crate::setup_gatekeeper`] and passes it back into
 /// [`crate::layer_router_with_gatekeeper_auth_gating`] without looking
 /// inside.
-#[derive(Clone)]
-pub struct AppState {
+pub struct GatekeeperState {
     /// The **concrete** `SQLite` adapter (not `Arc<dyn GatekeeperStore>` or a
     /// generic): the port abstraction lives in the [`crate::domain::actions`]
     /// the handlers call, so the HTTP state and axum wiring stay monomorphic —
@@ -40,9 +51,10 @@ pub struct AppState {
     /// [`crate::setup_gatekeeper`] — the same id [`crate::seeding`] seeds the
     /// first-party client row under (both sourced from `tauri-shared-config.json`
     /// on the live app). `/token` matches a request's presented `client_id`
-    /// against it to grant first-party treatment. An `Arc<str>` so the
-    /// frequently-cloned `AppState` doesn't reallocate the string.
-    pub(crate) first_party_client_id: std::sync::Arc<str>,
+    /// against it to grant first-party treatment. An `Arc<str>` so the string is
+    /// shared rather than reallocated when the state is cloned before the `Arc`
+    /// wrap.
+    pub(crate) first_party_client_id: Arc<str>,
     /// Watch sender that publishes the `user_code` of the
     /// currently-active pending device-code consent request — the head
     /// the host webview surfaces in its non-dismissable popup. Handlers
@@ -54,7 +66,7 @@ pub struct AppState {
     pub(crate) active_device_user_code_sender: watch::Sender<Option<String>>,
 }
 
-impl AppState {
+impl GatekeeperState {
     /// Recompute the head of the pending device-code consent queue from
     /// the store and publish it through the bridge's watch sender. Call
     /// after every transition that may change the head (`/oauth/device_authorization`
@@ -106,16 +118,21 @@ impl AppState {
 }
 
 /// The device-consent republish seam ([`crate::ports`]) the device-flow consent
-/// actions call after a store write — delegates to the inherent recompute-and-publish.
-impl DeviceUserCodePublisher for AppState {
+/// actions call after a store write — delegates to the inherent
+/// recompute-and-publish. Implemented on `Arc<GatekeeperState>` (not the bare
+/// state) because the axum handlers hold and hand the actions an
+/// `Arc<GatekeeperState>`; the inherent method is reached through the `Arc`'s
+/// `Deref`.
+impl DeviceUserCodePublisher for Arc<GatekeeperState> {
     fn republish_active(&self) {
         self.republish_active_device_user_code();
     }
 }
 
 /// The session-cookie clear seam — delegates to the crate-level cookie builder so
-/// the `wf_auth` format stays in [`crate::cookies`].
-impl SessionCookies for AppState {
+/// the `wf_auth` format stays in [`crate::cookies`]. On `Arc<GatekeeperState>` for
+/// the same reason as [`DeviceUserCodePublisher`].
+impl SessionCookies for Arc<GatekeeperState> {
     fn append_clear_session(&self, headers: &mut axum::http::HeaderMap, secure: bool) {
         crate::cookies::append_clear_session_cookies(headers, secure);
     }
