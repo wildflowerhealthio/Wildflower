@@ -84,5 +84,18 @@ const make = <TResources>(plan: ScrapingPlan<TResources>): ScrapingPlan<TResourc
     stepDelay: plan.stepDelay,
   })
 
-export { make }
+/**
+ * The `advanceWhen` condition of the step at `index`, or `undefined` for
+ * the out-of-range "index" that stands for the terminal `SniffingComplete`
+ * (never URL-gated) and for steps that don't declare one.
+ */
+const advanceConditionByIndex = <TResources>(
+  scrapingPlan: ScrapingPlan<TResources>,
+  index: number
+): Link.Advance | undefined =>
+  index < scrapingPlan.linkSequence.length
+    ? scrapingPlan.linkSequence[index].advanceWhen
+    : undefined
+
+export { make, advanceConditionByIndex }
 export type { ScrapingPlan }

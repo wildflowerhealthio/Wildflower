@@ -1,0 +1,331 @@
+// oxlint-disable typescript-eslint/no-unsafe-assignment -- vitest matchers and `vi.fn()` call args are typed as `any`; the unsafe-assignment / unsafe-destructure lint fires on idiomatic `mock.calls[0]` access here
+
+import { Duration, Effect, TestClock, TestContext } from 'effect'
+import { LoggingLayerTest } from 'kitchen-sink/test'
+import { describe, expect, it, vi } from 'vite-plus/test'
+
+import { type Link, ScrapingPlan, UrlMatch } from 'collector-fundamentals/model'
+import { make, type StepMachine, type StepOutboundMessage } from './step-machine/index.ts'
+
+/**
+ * Build a step machine directly (not via `CollectorBridgeMessageHandler`),
+ * so this suite exercises the step machine in isolation; the composition
+ * with the response tracker is covered by
+ * `collector-bridge-message-handler.test.ts`. The step machine ignores
+ * `entityDefinitions`, so the plan carries an empty list.
+ */
+const makeMachine = (options: {
+  readonly sendMessage: (message: StepOutboundMessage) => Effect.Effect<void, never, never>
+  readonly linkSequence?: readonly Link.Any[]
+  readonly stepDelay?: Duration.Duration
+}): StepMachine =>
+  Effect.runSync(
+    make({
+      scrapingPlan: ScrapingPlan.make({
+        name: 'TestPlan',
+        entityDefinitions: [],
+        firstPage: { _tag: 'Uri', uri: 'https://example.com/' },
+        linkSequence: options.linkSequence ?? [],
+        stepDelay: options.stepDelay ?? Duration.seconds(5),
+      }),
+      sendMessage: options.sendMessage,
+    })
+  )
+
+type SendMessage = (message: StepOutboundMessage) => Effect.Effect<void, never, never>
+
+/** The decoded `PageLoaded` bridge message the machine's handler accepts. */
+const pageLoaded = (
+  url = 'https://example.com/'
+): { readonly _tag: 'PageLoaded'; readonly url: string; readonly pageContentId: string } => ({
+  _tag: 'PageLoaded',
+  url,
+  pageContentId: 'page-1',
+})
+
+describe('step-machine.make: step machine', () => {
+  describe('PageLoaded', () => {
+    const linkA: Link.Any = {
+      _tag: 'Open',
+      source: { _tag: 'Uri', uri: 'https://example.com/a' },
+    }
+    const linkB: Link.Any = {
+      _tag: 'Open',
+      source: { _tag: 'Uri', uri: 'https://example.com/b' },
+    }
+    const fillLink: Link.Any = {
+      _tag: 'Fill',
+      querySelector: '#username',
+      value: 'alice',
+    }
+    // A step gated on landing at `…/dashboard`, timing out after 30s.
+    const dashboardPattern = UrlMatch.make({ segments: [UrlMatch.literal('dashboard')] })
+    const urlMatchLink: Link.Any = {
+      _tag: 'Open',
+      source: { _tag: 'Uri', uri: 'https://example.com/next' },
+      advanceWhen: { _tag: 'UrlMatch', pattern: dashboardPattern, timeout: Duration.seconds(30) },
+    }
+
+    it('dispatches SniffingComplete after stepDelay when linkSequence is empty', () =>
+      Effect.runPromise(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({ sendMessage, linkSequence: [] })
+
+          yield* machine.PageLoaded(pageLoaded())
+          expect(sendMessage).not.toHaveBeenCalled()
+
+          yield* TestClock.adjust(Duration.seconds(5))
+          yield* Effect.yieldNow()
+          expect(sendMessage).toHaveBeenCalledOnce()
+          expect(sendMessage.mock.calls[0][0]).toEqual({ _tag: 'SniffingComplete' })
+        }).pipe(Effect.provide(TestContext.TestContext))
+      ))
+
+    it('dispatches each link in order, separated by stepDelay, then SniffingComplete', () =>
+      Effect.runPromise(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({ sendMessage, linkSequence: [linkA, linkB] })
+
+          yield* machine.PageLoaded(pageLoaded('https://example.com/'))
+          yield* TestClock.adjust(Duration.seconds(5))
+          yield* Effect.yieldNow()
+          expect(sendMessage).toHaveBeenCalledTimes(1)
+          expect(sendMessage.mock.calls[0][0]).toEqual({ _tag: 'Open', source: linkA.source })
+
+          yield* machine.PageLoaded(pageLoaded('https://example.com/a'))
+          yield* TestClock.adjust(Duration.seconds(5))
+          yield* Effect.yieldNow()
+          expect(sendMessage).toHaveBeenCalledTimes(2)
+          expect(sendMessage.mock.calls[1][0]).toEqual({ _tag: 'Open', source: linkB.source })
+
+          yield* machine.PageLoaded(pageLoaded('https://example.com/b'))
+          yield* TestClock.adjust(Duration.seconds(5))
+          yield* Effect.yieldNow()
+          expect(sendMessage).toHaveBeenCalledTimes(3)
+          expect(sendMessage.mock.calls[2][0]).toEqual({ _tag: 'SniffingComplete' })
+        }).pipe(Effect.provide(TestContext.TestContext))
+      ))
+
+    it('a second PageLoaded during the wait interrupts the pending timer and re-arms for the same index', () =>
+      Effect.runPromise(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({ sendMessage, linkSequence: [linkA, linkB] })
+
+          yield* machine.PageLoaded(pageLoaded('https://example.com/'))
+          yield* TestClock.adjust(Duration.seconds(3))
+          yield* Effect.yieldNow()
+          expect(sendMessage).not.toHaveBeenCalled()
+
+          yield* machine.PageLoaded(pageLoaded('https://example.com/'))
+          yield* TestClock.adjust(Duration.seconds(3))
+          yield* Effect.yieldNow()
+          expect(sendMessage).not.toHaveBeenCalled()
+
+          yield* TestClock.adjust(Duration.seconds(2))
+          yield* Effect.yieldNow()
+          expect(sendMessage).toHaveBeenCalledTimes(1)
+          expect(sendMessage.mock.calls[0][0]).toEqual({ _tag: 'Open', source: linkA.source })
+        }).pipe(Effect.provide(TestContext.TestContext))
+      ))
+
+    it('warns and no-ops on PageLoaded after SniffingComplete has fired', () =>
+      Effect.runPromise(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({ sendMessage, linkSequence: [] })
+
+          yield* machine.PageLoaded(pageLoaded())
+          yield* TestClock.adjust(Duration.seconds(5))
+          yield* Effect.yieldNow()
+          expect(sendMessage).toHaveBeenCalledOnce()
+
+          yield* machine.PageLoaded(pageLoaded('https://example.com/next')).pipe(
+            LoggingLayerTest.expectToLog((logs) => {
+              expect(logs).toEqual([
+                expect.objectContaining({
+                  level: 'WARN',
+                  message: expect.stringContaining(
+                    'CollectorBridgeMessageHandler.PageLoaded: handler is done'
+                  ),
+                }),
+              ])
+            }),
+            Effect.scoped
+          )
+
+          yield* TestClock.adjust(Duration.seconds(5))
+          yield* Effect.yieldNow()
+          expect(sendMessage).toHaveBeenCalledOnce()
+        }).pipe(Effect.provide(TestContext.TestContext))
+      ))
+
+    it('clear() interrupts the pending step timer', () =>
+      Effect.runPromise(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({ sendMessage, linkSequence: [linkA] })
+
+          yield* machine.PageLoaded(pageLoaded())
+          yield* machine.clear()
+          yield* TestClock.adjust(Duration.seconds(5))
+          yield* Effect.yieldNow()
+          expect(sendMessage).not.toHaveBeenCalled()
+        }).pipe(Effect.provide(TestContext.TestContext))
+      ))
+
+    it('cancelAllInFlight interrupts the pending step timer', () =>
+      Effect.runPromise(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({ sendMessage, linkSequence: [linkA] })
+
+          yield* machine.PageLoaded(pageLoaded())
+          yield* machine.cancelAllInFlight()
+          yield* TestClock.adjust(Duration.seconds(5))
+          yield* Effect.yieldNow()
+          expect(sendMessage).not.toHaveBeenCalled()
+        }).pipe(Effect.provide(TestContext.TestContext))
+      ))
+
+    it('clear() resets the index so subsequent PageLoadeds restart from linkSequence[0]', () =>
+      Effect.runPromise(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({ sendMessage, linkSequence: [linkA, linkB] })
+
+          yield* machine.PageLoaded(pageLoaded())
+          yield* TestClock.adjust(Duration.seconds(5))
+          yield* Effect.yieldNow()
+          expect(sendMessage).toHaveBeenCalledTimes(1)
+
+          yield* machine.clear()
+
+          yield* machine.PageLoaded(pageLoaded())
+          yield* TestClock.adjust(Duration.seconds(5))
+          yield* Effect.yieldNow()
+          expect(sendMessage).toHaveBeenCalledTimes(2)
+          expect(sendMessage.mock.calls[1][0]).toEqual({ _tag: 'Open', source: linkA.source })
+        }).pipe(Effect.provide(TestContext.TestContext))
+      ))
+
+    it('dispatches a Fill step verbatim (minus advanceWhen) after stepDelay', () =>
+      Effect.runPromise(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({ sendMessage, linkSequence: [fillLink] })
+
+          yield* machine.PageLoaded(pageLoaded())
+          yield* TestClock.adjust(Duration.seconds(5))
+          yield* Effect.yieldNow()
+
+          expect(sendMessage).toHaveBeenCalledTimes(1)
+          expect(sendMessage.mock.calls[0][0]).toEqual({
+            _tag: 'Fill',
+            querySelector: '#username',
+            value: 'alice',
+          })
+        }).pipe(Effect.provide(TestContext.TestContext))
+      ))
+
+    describe('advanceWhen: UrlMatch', () => {
+      it('holds the step until a matching PageLoaded, then dispatches after stepDelay', () =>
+        Effect.runPromise(
+          Effect.gen(function* () {
+            const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+            const machine = makeMachine({ sendMessage, linkSequence: [urlMatchLink] })
+
+            yield* machine.PageLoaded(pageLoaded('https://example.com/login'))
+            yield* TestClock.adjust(Duration.seconds(5))
+            yield* Effect.yieldNow()
+            expect(sendMessage).not.toHaveBeenCalled()
+
+            yield* machine.PageLoaded(pageLoaded('https://example.com/dashboard'))
+            yield* TestClock.adjust(Duration.seconds(5))
+            yield* Effect.yieldNow()
+            expect(sendMessage).toHaveBeenCalledTimes(1)
+            expect(sendMessage.mock.calls[0][0]).toEqual({
+              _tag: 'Open',
+              source: urlMatchLink.source,
+            })
+          }).pipe(Effect.provide(TestContext.TestContext))
+        ))
+
+      it('aborts via SniffingComplete when no matching PageLoaded arrives within the timeout', () =>
+        Effect.runPromise(
+          Effect.gen(function* () {
+            const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+            const machine = makeMachine({ sendMessage, linkSequence: [urlMatchLink] })
+
+            yield* machine.PageLoaded(pageLoaded('https://example.com/login'))
+            yield* TestClock.adjust(Duration.seconds(29))
+            yield* Effect.yieldNow()
+            expect(sendMessage).not.toHaveBeenCalled()
+
+            yield* TestClock.adjust(Duration.seconds(1))
+            yield* Effect.yieldNow()
+            expect(sendMessage).toHaveBeenCalledTimes(1)
+            expect(sendMessage.mock.calls[0][0]).toEqual({ _tag: 'SniffingComplete' })
+
+            yield* machine.PageLoaded(pageLoaded('https://example.com/dashboard')).pipe(
+              LoggingLayerTest.expectToLog((logs) => {
+                expect(logs).toEqual([
+                  expect.objectContaining({
+                    level: 'WARN',
+                    message: expect.stringContaining(
+                      'CollectorBridgeMessageHandler.PageLoaded: handler is done'
+                    ),
+                  }),
+                ])
+              }),
+              Effect.scoped
+            )
+            yield* TestClock.adjust(Duration.seconds(5))
+            yield* Effect.yieldNow()
+            expect(sendMessage).toHaveBeenCalledTimes(1)
+          }).pipe(Effect.provide(TestContext.TestContext))
+        ))
+
+      it('a matching PageLoaded before the timeout cancels the abort', () =>
+        Effect.runPromise(
+          Effect.gen(function* () {
+            const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+            const machine = makeMachine({ sendMessage, linkSequence: [urlMatchLink] })
+
+            yield* machine.PageLoaded(pageLoaded('https://example.com/login'))
+            yield* TestClock.adjust(Duration.seconds(10))
+            yield* Effect.yieldNow()
+
+            yield* machine.PageLoaded(pageLoaded('https://example.com/dashboard'))
+            yield* TestClock.adjust(Duration.seconds(5))
+            yield* Effect.yieldNow()
+            expect(sendMessage).toHaveBeenCalledTimes(1)
+            expect(sendMessage.mock.calls[0][0]).toEqual({
+              _tag: 'Open',
+              source: urlMatchLink.source,
+            })
+
+            yield* TestClock.adjust(Duration.seconds(60))
+            yield* Effect.yieldNow()
+            expect(sendMessage).toHaveBeenCalledTimes(1)
+          }).pipe(Effect.provide(TestContext.TestContext))
+        ))
+
+      it('clear() interrupts a pending URL-match timeout', () =>
+        Effect.runPromise(
+          Effect.gen(function* () {
+            const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+            const machine = makeMachine({ sendMessage, linkSequence: [urlMatchLink] })
+
+            yield* machine.PageLoaded(pageLoaded('https://example.com/login'))
+            yield* machine.clear()
+            yield* TestClock.adjust(Duration.seconds(30))
+            yield* Effect.yieldNow()
+            expect(sendMessage).not.toHaveBeenCalled()
+          }).pipe(Effect.provide(TestContext.TestContext))
+        ))
+    })
+  })
+})
