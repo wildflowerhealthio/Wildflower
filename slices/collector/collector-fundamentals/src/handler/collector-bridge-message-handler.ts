@@ -21,7 +21,7 @@ type Service = MessageHandler.HandlersFor<CollectorBridge['HostToWeb']>
  * drive the scripted navigation and `SniffingComplete` is the terminal
  * hand-off when the link sequence is exhausted (step machine). The
  * `Open` / `PageAction` payloads *are* the step's `action` — the handler
- * forwards `scrapingPlan.linkSequence[i].action` to `sendMessage` without
+ * forwards `scrapingPlan.stepSequence[i].action` to `sendMessage` without
  * translation (the plan-only `advanceWhen` rides the step wrapper, never
  * the action).
  */

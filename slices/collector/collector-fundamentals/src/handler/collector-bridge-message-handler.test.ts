@@ -1,7 +1,7 @@
 import { Duration, Effect, Layer, MutableHashMap, TestClock, TestContext } from 'effect'
 import { describe, expect, it, vi } from 'vite-plus/test'
 
-import { type Link } from 'collector-fundamentals/model'
+import { type Step } from 'collector-fundamentals/model'
 import {
   adapterLayer,
   makeSimpleHandler,
@@ -19,7 +19,7 @@ import {
  * one call reaches *both* halves.
  */
 describe('CollectorBridgeMessageHandler.make: composition', () => {
-  const linkA: Link.Step = {
+  const linkA: Step.Step = {
     action: { _tag: 'Open', source: { _tag: 'Uri', uri: 'https://example.com/a' } },
   }
 
@@ -27,7 +27,7 @@ describe('CollectorBridgeMessageHandler.make: composition', () => {
     Effect.runPromise(
       Effect.gen(function* () {
         const sendMessage = vi.fn<SimpleHandlerArgs['sendMessage']>(() => Effect.void)
-        const handler = makeSimpleHandler({ sendMessage, linkSequence: [linkA] })
+        const handler = makeSimpleHandler({ sendMessage, stepSequence: [linkA] })
 
         // Response tracker: two tracked in-flight responses.
         yield* handler.ResponseStart(
@@ -57,7 +57,7 @@ describe('CollectorBridgeMessageHandler.make: composition', () => {
       Effect.gen(function* () {
         const sendMessage = vi.fn<SimpleHandlerArgs['sendMessage']>(() => Effect.void)
         const cancelSend = vi.fn<SimpleHandlerArgs['sendMessage']>(() => Effect.void)
-        const handler = makeSimpleHandler({ sendMessage, linkSequence: [linkA] })
+        const handler = makeSimpleHandler({ sendMessage, stepSequence: [linkA] })
 
         yield* handler.ResponseStart(
           responseStart({ id: 'r1', url: 'https://example.com/people/1' })

@@ -71,7 +71,7 @@ const make = <TResources>({
     const runEffect = (effect: SideEffectMessage): Effect.Effect<void, never, never> =>
       Match.value(effect).pipe(
         Match.withReturnType<Effect.Effect<void, never, never>>(),
-        Match.tag('DispatchLink', (m) => sideEffectHandlers.DispatchLink(m, ctx)),
+        Match.tag('DispatchStep', (m) => sideEffectHandlers.DispatchStep(m, ctx)),
         Match.tag('DispatchSniffingComplete', (m) =>
           sideEffectHandlers.DispatchSniffingComplete(m, ctx)
         ),

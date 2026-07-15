@@ -64,7 +64,7 @@ const scheduleTimerDaemon = <TResources>(
   })
 
 const sideEffectHandlers = {
-  DispatchLink: <TResources>(
+  DispatchStep: <TResources>(
     msg: { readonly dispatchIndex: number },
     ctx: HandlerContext<TResources>
   ): Effect.Effect<void, never, never> => {
@@ -72,7 +72,7 @@ const sideEffectHandlers = {
     // message body — forward it straight to the sniffer. The plan-only
     // `advanceWhen` lives on the wrapper, never on the action, so it cannot
     // leak onto the wire (no destructure-and-strip needed).
-    const { action } = ctx.scrapingPlan.linkSequence[msg.dispatchIndex]
+    const { action } = ctx.scrapingPlan.stepSequence[msg.dispatchIndex]
     // Low-cardinality telemetry: the action tag, plus the inner `kind` for a
     // `PageAction` (`PageAction:Click` / `PageAction:Fill`).
     const linkKind =

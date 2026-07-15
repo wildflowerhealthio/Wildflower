@@ -1,7 +1,7 @@
 import type { Duration } from 'effect'
 import { deepFreeze } from 'kitchen-sink'
 import type * as EntityDefinition from './entity-definition.ts'
-import type * as Link from './link.ts'
+import type * as Step from './step.ts'
 import type * as WebViewSource from './web-view-source.ts'
 
 /**
@@ -20,8 +20,8 @@ import type * as WebViewSource from './web-view-source.ts'
  *   - Consults `entityDefinitions` for each `ResponseStart` to decide
  *     whether to track the in-flight response (first `isFoundAt` match
  *     wins; non-matching responses are cancelled via `sendMessage`).
- *   - Drives the sniffer through `linkSequence` step-by-step,
- *     dispatching each `Link.Step`'s `action` `stepDelay` after each
+ *   - Drives the sniffer through `stepSequence` step-by-step,
+ *     dispatching each `Step.Step`'s `action` `stepDelay` after each
  *     `PageLoaded` event. A step may instead carry `advanceWhen: { _tag: 'UrlMatch',
  *     … }`, in which case the handler holds it until a `PageLoaded`
  *     whose `url` matches the pattern (then still waits `stepDelay`),
@@ -36,7 +36,7 @@ import type * as WebViewSource from './web-view-source.ts'
  *
  * Replaces the previous `RemoteKind<T>` shape (`name + entityDefinitions`),
  * absorbing the slice's `firstPage(config)` factory and adding the new
- * `linkSequence` / `stepDelay` fields. Splitting "what to recognize"
+ * `stepSequence` / `stepDelay` fields. Splitting "what to recognize"
  * from "how to navigate" was attempted and reverted: every consumer
  * needed both, and a single per-config function is easier to reason
  * about.
@@ -47,7 +47,7 @@ import type * as WebViewSource from './web-view-source.ts'
  *   response URL; the first match wins.
  * - `firstPage`: the initial `WebViewSource` (inline HTML or absolute
  *   `https://` URI) to mount the sniffer webview with.
- * - `linkSequence`: ordered list of navigation steps. Each step's `action`
+ * - `stepSequence`: ordered list of navigation steps. Each step's `action`
  *   is forwarded to the sniffer verbatim: an `Open` action becomes an `Open`
  *   web→host message (host-navigation); a `PageAction` action becomes a
  *   `PageAction` message the sniffer demuxes by its inner `kind`
@@ -65,16 +65,16 @@ interface ScrapingPlan<TResources> {
   readonly name: string
   readonly entityDefinitions: readonly EntityDefinition.EntityDefinition<TResources>[]
   readonly firstPage: WebViewSource.Any
-  readonly linkSequence: readonly Link.Step[]
+  readonly stepSequence: readonly Step.Step[]
   readonly stepDelay: Duration.Duration
 }
 
 /**
  * Shallow-clone + deep-freeze the supplied plan. Freezing matters
  * because the handler pins the matched entity per in-flight request
- * at `ResponseStart` and consumes `linkSequence` step-by-step;
+ * at `ResponseStart` and consumes `stepSequence` step-by-step;
  * freezing also keeps the type-level `readonly` honest at runtime so
- * a caller can't push into `entityDefinitions` or `linkSequence`
+ * a caller can't push into `entityDefinitions` or `stepSequence`
  * after construction.
  */
 const make = <TResources>(plan: ScrapingPlan<TResources>): ScrapingPlan<TResources> =>
@@ -82,7 +82,7 @@ const make = <TResources>(plan: ScrapingPlan<TResources>): ScrapingPlan<TResourc
     name: plan.name,
     entityDefinitions: plan.entityDefinitions,
     firstPage: plan.firstPage,
-    linkSequence: plan.linkSequence,
+    stepSequence: plan.stepSequence,
     stepDelay: plan.stepDelay,
   })
 
@@ -94,9 +94,9 @@ const make = <TResources>(plan: ScrapingPlan<TResources>): ScrapingPlan<TResourc
 const advanceConditionByIndex = <TResources>(
   scrapingPlan: ScrapingPlan<TResources>,
   index: number
-): Link.Advance | undefined =>
-  index < scrapingPlan.linkSequence.length
-    ? scrapingPlan.linkSequence[index].advanceWhen
+): Step.Advance | undefined =>
+  index < scrapingPlan.stepSequence.length
+    ? scrapingPlan.stepSequence[index].advanceWhen
     : undefined
 
 export { make, advanceConditionByIndex }

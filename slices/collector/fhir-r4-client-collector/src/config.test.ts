@@ -135,7 +135,7 @@ describe('scrapingPlan', () => {
 
   it('navigates to the Observation endpoint as a single Open step via a direct Uri', () => {
     const plan = scrapingPlan(defaultConfig)
-    expect(plan.linkSequence).toEqual([
+    expect(plan.stepSequence).toEqual([
       {
         action: {
           _tag: 'Open',

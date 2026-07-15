@@ -98,7 +98,7 @@ type AnyResource =
  * native JSON viewer wraps the response in `<pre>{json}</pre>`), streams
  * it through the standard `ResponseStart`/`Data`/`Finished` triple keyed
  * on the FHIR URL, and `PatientEntity.parse` extracts the JSON via
- * `extractJson`. Once the Patient page is settled, `linkSequence[0]`
+ * `extractJson`. Once the Patient page is settled, `stepSequence[0]`
  * navigates the WebView to `/Observation?subject:Patient=…&_count=250`;
  * the same snapshot-and-extract flow yields the Observation Bundle
  * entries.
@@ -132,7 +132,7 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<AnyReso
       ObservationListEntity,
     ] as readonly EntityDefinition.EntityDefinition<AnyResource>[],
     firstPage,
-    linkSequence: [
+    stepSequence: [
       {
         action: {
           _tag: 'Open',

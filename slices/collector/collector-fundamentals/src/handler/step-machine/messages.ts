@@ -62,7 +62,7 @@ type InputMessage =
  * *names* these, which the interpreter in `./make.ts` discharges through
  * the handlers in `./side-effect-handlers.ts`.
  *
- * - `DispatchLink` / `DispatchSniffingComplete` — send a scripted step (or
+ * - `DispatchStep` / `DispatchSniffingComplete` — send a scripted step (or
  *   the terminal `SniffingComplete`) to the sniffer, span-wrapped.
  * - `ScheduleSettleTimer` / `ScheduleUrlMatchTimeout` — fork a daemon that
  *   sleeps then re-injects the matching `*Fired` input under `generation`.
@@ -75,7 +75,7 @@ type InputMessage =
  * handlers re-inflate via `Duration.millis`.
  */
 type SideEffectMessage =
-  | { readonly _tag: 'DispatchLink'; readonly dispatchIndex: number }
+  | { readonly _tag: 'DispatchStep'; readonly dispatchIndex: number }
   | { readonly _tag: 'DispatchSniffingComplete'; readonly dispatchIndex: number }
   | {
       readonly _tag: 'ScheduleSettleTimer'
@@ -97,8 +97,8 @@ type SideEffectMessage =
   | { readonly _tag: 'WarnDroppedPageLoaded'; readonly url: string }
 
 // Terse constructors so the transition table reads as data, not object literals.
-const dispatchLink = (dispatchIndex: number): SideEffectMessage => ({
-  _tag: 'DispatchLink',
+const dispatchStep = (dispatchIndex: number): SideEffectMessage => ({
+  _tag: 'DispatchStep',
   dispatchIndex,
 })
 const dispatchSniffingComplete = (dispatchIndex: number): SideEffectMessage => ({
@@ -129,7 +129,7 @@ const warnDroppedPageLoaded = (url: string): SideEffectMessage => ({
 export type { InputMessage, SideEffectMessage, StepOutboundMessage }
 export {
   cancelTimer,
-  dispatchLink,
+  dispatchStep,
   dispatchSniffingComplete,
   scheduleSettleTimer,
   scheduleUrlMatchTimeout,

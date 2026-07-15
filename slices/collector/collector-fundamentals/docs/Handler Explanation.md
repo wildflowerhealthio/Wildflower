@@ -18,7 +18,7 @@ bridge dispatches inbound messages to:
   `ResponseFinished` / `RequestError` / `Cancelled`) and the
   `inProgressResponses` map.
 - The **step machine** ([step-machine/](../src/handler/step-machine/)) owns
-  `PageLoaded` and drives the scripted `linkSequence` through settle-timer
+  `PageLoaded` and drives the scripted `stepSequence` through settle-timer
   and URL-match-timeout daemons.
 
 They share **no state**. Their only channel to each other is the supplied

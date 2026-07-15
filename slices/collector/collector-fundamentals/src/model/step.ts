@@ -40,7 +40,7 @@ type Advance = UrlMatchAdvance
  *
  * - `Open` (the collector bridge's `OpenMessage`): host-navigation. Carries
  *   the same `WebViewSource` shape the host uses for the initial `firstPage`,
- *   so a slice's `linkSequence` can mix inline-HTML bootstraps and absolute
+ *   so a slice's `stepSequence` can mix inline-HTML bootstraps and absolute
  *   `https://` URIs without a translation layer. It is its own tag because
  *   the Tauri host *decodes* it to navigate the sniffer `WebviewWindow`.
  * - `PageAction` (`browser-sniffer-core`'s `PageActionMessage`): an in-page

@@ -4,7 +4,7 @@ import { Duration, Effect, TestClock, TestContext } from 'effect'
 import { LoggingLayerTest } from 'kitchen-sink/test'
 import { describe, expect, it, vi } from 'vite-plus/test'
 
-import { type Link, ScrapingPlan, UrlMatch } from 'collector-fundamentals/model'
+import { type Step, ScrapingPlan, UrlMatch } from 'collector-fundamentals/model'
 import { make, type StepMachine, type StepOutboundMessage } from './step-machine/index.ts'
 
 /**
@@ -16,7 +16,7 @@ import { make, type StepMachine, type StepOutboundMessage } from './step-machine
  */
 const makeMachine = (options: {
   readonly sendMessage: (message: StepOutboundMessage) => Effect.Effect<void, never, never>
-  readonly linkSequence?: readonly Link.Step[]
+  readonly stepSequence?: readonly Step.Step[]
   readonly stepDelay?: Duration.Duration
 }): StepMachine =>
   Effect.runSync(
@@ -25,7 +25,7 @@ const makeMachine = (options: {
         name: 'TestPlan',
         entityDefinitions: [],
         firstPage: { _tag: 'Uri', uri: 'https://example.com/' },
-        linkSequence: options.linkSequence ?? [],
+        stepSequence: options.stepSequence ?? [],
         stepDelay: options.stepDelay ?? Duration.seconds(5),
       }),
       sendMessage: options.sendMessage,
@@ -45,13 +45,13 @@ const pageLoaded = (
 
 describe('step-machine.make: step machine', () => {
   describe('PageLoaded', () => {
-    const linkA: Link.Step = {
+    const linkA: Step.Step = {
       action: { _tag: 'Open', source: { _tag: 'Uri', uri: 'https://example.com/a' } },
     }
-    const linkB: Link.Step = {
+    const linkB: Step.Step = {
       action: { _tag: 'Open', source: { _tag: 'Uri', uri: 'https://example.com/b' } },
     }
-    const fillLink: Link.Step = {
+    const fillLink: Step.Step = {
       action: {
         _tag: 'PageAction',
         action: { kind: 'Fill', querySelector: '#username', value: 'alice' },
@@ -59,16 +59,16 @@ describe('step-machine.make: step machine', () => {
     }
     // A step gated on landing at `…/dashboard`, timing out after 30s.
     const dashboardPattern = UrlMatch.make({ segments: [UrlMatch.literal('dashboard')] })
-    const urlMatchLink: Link.Step = {
+    const urlMatchLink: Step.Step = {
       action: { _tag: 'Open', source: { _tag: 'Uri', uri: 'https://example.com/next' } },
       advanceWhen: { _tag: 'UrlMatch', pattern: dashboardPattern, timeout: Duration.seconds(30) },
     }
 
-    it('dispatches SniffingComplete after stepDelay when linkSequence is empty', () =>
+    it('dispatches SniffingComplete after stepDelay when stepSequence is empty', () =>
       Effect.runPromise(
         Effect.gen(function* () {
           const sendMessage = vi.fn<SendMessage>(() => Effect.void)
-          const machine = makeMachine({ sendMessage, linkSequence: [] })
+          const machine = makeMachine({ sendMessage, stepSequence: [] })
 
           yield* machine.PageLoaded(pageLoaded())
           expect(sendMessage).not.toHaveBeenCalled()
@@ -84,7 +84,7 @@ describe('step-machine.make: step machine', () => {
       Effect.runPromise(
         Effect.gen(function* () {
           const sendMessage = vi.fn<SendMessage>(() => Effect.void)
-          const machine = makeMachine({ sendMessage, linkSequence: [linkA, linkB] })
+          const machine = makeMachine({ sendMessage, stepSequence: [linkA, linkB] })
 
           yield* machine.PageLoaded(pageLoaded('https://example.com/'))
           yield* TestClock.adjust(Duration.seconds(5))
@@ -110,7 +110,7 @@ describe('step-machine.make: step machine', () => {
       Effect.runPromise(
         Effect.gen(function* () {
           const sendMessage = vi.fn<SendMessage>(() => Effect.void)
-          const machine = makeMachine({ sendMessage, linkSequence: [linkA, linkB] })
+          const machine = makeMachine({ sendMessage, stepSequence: [linkA, linkB] })
 
           yield* machine.PageLoaded(pageLoaded('https://example.com/'))
           yield* TestClock.adjust(Duration.seconds(3))
@@ -133,7 +133,7 @@ describe('step-machine.make: step machine', () => {
       Effect.runPromise(
         Effect.gen(function* () {
           const sendMessage = vi.fn<SendMessage>(() => Effect.void)
-          const machine = makeMachine({ sendMessage, linkSequence: [] })
+          const machine = makeMachine({ sendMessage, stepSequence: [] })
 
           yield* machine.PageLoaded(pageLoaded())
           yield* TestClock.adjust(Duration.seconds(5))
@@ -164,7 +164,7 @@ describe('step-machine.make: step machine', () => {
       Effect.runPromise(
         Effect.gen(function* () {
           const sendMessage = vi.fn<SendMessage>(() => Effect.void)
-          const machine = makeMachine({ sendMessage, linkSequence: [linkA] })
+          const machine = makeMachine({ sendMessage, stepSequence: [linkA] })
 
           yield* machine.PageLoaded(pageLoaded())
           yield* machine.clear()
@@ -178,7 +178,7 @@ describe('step-machine.make: step machine', () => {
       Effect.runPromise(
         Effect.gen(function* () {
           const sendMessage = vi.fn<SendMessage>(() => Effect.void)
-          const machine = makeMachine({ sendMessage, linkSequence: [linkA] })
+          const machine = makeMachine({ sendMessage, stepSequence: [linkA] })
 
           yield* machine.PageLoaded(pageLoaded())
           yield* machine.cancelAllInFlight()
@@ -188,11 +188,11 @@ describe('step-machine.make: step machine', () => {
         }).pipe(Effect.provide(TestContext.TestContext))
       ))
 
-    it('clear() resets the index so subsequent PageLoadeds restart from linkSequence[0]', () =>
+    it('clear() resets the index so subsequent PageLoadeds restart from stepSequence[0]', () =>
       Effect.runPromise(
         Effect.gen(function* () {
           const sendMessage = vi.fn<SendMessage>(() => Effect.void)
-          const machine = makeMachine({ sendMessage, linkSequence: [linkA, linkB] })
+          const machine = makeMachine({ sendMessage, stepSequence: [linkA, linkB] })
 
           yield* machine.PageLoaded(pageLoaded())
           yield* TestClock.adjust(Duration.seconds(5))
@@ -213,7 +213,7 @@ describe('step-machine.make: step machine', () => {
       Effect.runPromise(
         Effect.gen(function* () {
           const sendMessage = vi.fn<SendMessage>(() => Effect.void)
-          const machine = makeMachine({ sendMessage, linkSequence: [fillLink] })
+          const machine = makeMachine({ sendMessage, stepSequence: [fillLink] })
 
           yield* machine.PageLoaded(pageLoaded())
           yield* TestClock.adjust(Duration.seconds(5))
@@ -233,7 +233,7 @@ describe('step-machine.make: step machine', () => {
       Effect.runPromise(
         Effect.gen(function* () {
           const sendMessage = vi.fn<SendMessage>(() => Effect.void)
-          const gatedClick: Link.Step = {
+          const gatedClick: Step.Step = {
             action: { _tag: 'PageAction', action: { kind: 'Click', querySelector: '#login' } },
             advanceWhen: {
               _tag: 'UrlMatch',
@@ -241,7 +241,7 @@ describe('step-machine.make: step machine', () => {
               timeout: Duration.seconds(30),
             },
           }
-          const machine = makeMachine({ sendMessage, linkSequence: [gatedClick] })
+          const machine = makeMachine({ sendMessage, stepSequence: [gatedClick] })
 
           yield* machine.PageLoaded(pageLoaded('https://example.com/dashboard'))
           yield* TestClock.adjust(Duration.seconds(5))
@@ -263,7 +263,7 @@ describe('step-machine.make: step machine', () => {
         Effect.runPromise(
           Effect.gen(function* () {
             const sendMessage = vi.fn<SendMessage>(() => Effect.void)
-            const machine = makeMachine({ sendMessage, linkSequence: [urlMatchLink] })
+            const machine = makeMachine({ sendMessage, stepSequence: [urlMatchLink] })
 
             yield* machine.PageLoaded(pageLoaded('https://example.com/login'))
             yield* TestClock.adjust(Duration.seconds(5))
@@ -282,7 +282,7 @@ describe('step-machine.make: step machine', () => {
         Effect.runPromise(
           Effect.gen(function* () {
             const sendMessage = vi.fn<SendMessage>(() => Effect.void)
-            const machine = makeMachine({ sendMessage, linkSequence: [urlMatchLink] })
+            const machine = makeMachine({ sendMessage, stepSequence: [urlMatchLink] })
 
             yield* machine.PageLoaded(pageLoaded('https://example.com/login'))
             yield* TestClock.adjust(Duration.seconds(29))
@@ -317,7 +317,7 @@ describe('step-machine.make: step machine', () => {
         Effect.runPromise(
           Effect.gen(function* () {
             const sendMessage = vi.fn<SendMessage>(() => Effect.void)
-            const machine = makeMachine({ sendMessage, linkSequence: [urlMatchLink] })
+            const machine = makeMachine({ sendMessage, stepSequence: [urlMatchLink] })
 
             yield* machine.PageLoaded(pageLoaded('https://example.com/login'))
             yield* TestClock.adjust(Duration.seconds(10))
@@ -339,7 +339,7 @@ describe('step-machine.make: step machine', () => {
         Effect.runPromise(
           Effect.gen(function* () {
             const sendMessage = vi.fn<SendMessage>(() => Effect.void)
-            const machine = makeMachine({ sendMessage, linkSequence: [urlMatchLink] })
+            const machine = makeMachine({ sendMessage, stepSequence: [urlMatchLink] })
 
             yield* machine.PageLoaded(pageLoaded('https://example.com/login'))
             yield* machine.clear()

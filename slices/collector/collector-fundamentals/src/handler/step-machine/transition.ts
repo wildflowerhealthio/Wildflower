@@ -3,7 +3,7 @@ import { Duration, Match } from 'effect'
 import { ScrapingPlan } from '../../model/index.ts'
 import {
   cancelTimer,
-  dispatchLink,
+  dispatchStep,
   dispatchSniffingComplete,
   type InputMessage,
   scheduleSettleTimer,
@@ -125,10 +125,10 @@ const onSettleTimerFired = <TResources>(
   if (state._tag !== 'TimerPending' || state.generation !== generation) {
     return [state, []]
   }
-  if (state.dispatchIndex < scrapingPlan.linkSequence.length) {
+  if (state.dispatchIndex < scrapingPlan.stepSequence.length) {
     return [
       awaitingPageLoaded(state.dispatchIndex + 1, state.generation),
-      [dispatchLink(state.dispatchIndex)],
+      [dispatchStep(state.dispatchIndex)],
     ]
   }
   return [done(state.generation), [dispatchSniffingComplete(state.dispatchIndex)]]

@@ -2,7 +2,7 @@ import { Duration, Effect, Encoding } from 'effect'
 import { type TransportAdapter } from 'effect-messaging-core'
 import * as TestPlatformAdapterLayer from 'effect-messaging-core/test'
 
-import { type Link, ScrapingPlan } from 'collector-fundamentals/model'
+import { type Step, ScrapingPlan } from 'collector-fundamentals/model'
 import { SimpleEntity } from 'collector-fundamentals/test-helpers'
 import * as CollectorBridgeMessageHandler from './collector-bridge-message-handler.ts'
 
@@ -36,20 +36,20 @@ const noopSendMessage: SimpleHandlerArgs['sendMessage'] = () => Effect.void
  */
 const makeSimpleHandler = (
   overrides: Partial<SimpleHandlerArgs> & {
-    readonly linkSequence?: readonly Link.Step[]
+    readonly stepSequence?: readonly Step.Step[]
     readonly stepDelay?: Duration.Duration
   } = {}
 ): Effect.Effect.Success<
   ReturnType<typeof CollectorBridgeMessageHandler.make<SimpleResources>>
 > => {
-  const { linkSequence, stepDelay, ...rest } = overrides
+  const { stepSequence, stepDelay, ...rest } = overrides
   return Effect.runSync(
     CollectorBridgeMessageHandler.make({
       scrapingPlan: ScrapingPlan.make<SimpleResources>({
         name: 'TestPlan',
         entityDefinitions: [SimpleEntity],
         firstPage: { _tag: 'Uri', uri: 'https://example.com/' },
-        linkSequence: linkSequence ?? [],
+        stepSequence: stepSequence ?? [],
         stepDelay: stepDelay ?? Duration.seconds(5),
       }),
       sendMessage: noopSendMessage,
