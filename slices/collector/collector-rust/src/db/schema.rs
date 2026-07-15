@@ -2,7 +2,7 @@
 //! created by migration `0001_initial_schema`. `config` is declared `Text`
 //! because that is what the STRICT column stores: JSON TEXT, opaque to Rust
 //! (see [`crate::domain::Remote::config`]). The
-//! [`super::json_text::JsonText`] newtype converts it to/from
+//! [`shared_structures_rust::json_text::JsonText`] newtype converts it to/from
 //! `serde_json::Value` at the diesel bind/read boundary.
 
 diesel::table! {

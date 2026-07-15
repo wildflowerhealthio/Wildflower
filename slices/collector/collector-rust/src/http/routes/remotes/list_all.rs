@@ -11,6 +11,7 @@ use crate::http::state::CollectorState;
 /// `GET /collector/remotes` — list every remote. Owner-gated by the host.
 #[utoipa::path(
     get,
+    tag = "Remotes",
     path = "/collector/remotes",
     responses(
         (status = 200, description = "Every stored remote, oldest first", body = [Remote]),

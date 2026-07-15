@@ -28,6 +28,7 @@ pub(crate) struct CreateRemoteBody {
 /// `POST /collector/remotes` — create a remote. Owner-gated by the host.
 #[utoipa::path(
     post,
+    tag = "Remotes",
     path = "/collector/remotes",
     request_body = CreateRemoteBody,
     responses(

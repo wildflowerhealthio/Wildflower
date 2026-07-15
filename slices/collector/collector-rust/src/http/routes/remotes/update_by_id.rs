@@ -27,6 +27,7 @@ pub(crate) struct UpdateRemoteBody {
 /// Owner-gated by the host.
 #[utoipa::path(
     put,
+    tag = "Remotes",
     path = "/collector/remotes/{id}",
     params(("id" = String, Path, description = "Remote id")),
     request_body = UpdateRemoteBody,
