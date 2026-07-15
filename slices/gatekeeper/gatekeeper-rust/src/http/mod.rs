@@ -4,23 +4,17 @@
 //! and middleware files are private implementation detail behind the route
 //! table.
 
-mod cookies;
-mod error_pages;
-mod handlers;
+mod errors;
+mod extractors;
 mod middleware;
-mod origin;
-mod page_paths;
-mod response_templates;
+mod routes;
 mod state;
+mod wire_representations;
 
-pub(crate) use origin::ServedOrigin;
+pub(crate) use extractors::served_origin::ServedOrigin;
 // Re-export so call sites read `crate::http::served_base_url_for` without the
 // `shared_structures_rust::` prefix. See `docs/Origins/Explanation.md`.
 pub(crate) use shared_structures_rust::served_origin::served_base_url_for;
-// The owner-session cookie builders, exported so the popup seed (#256) and the
-// forwarded-launch re-scope can't drift from the web path's `Set-Cookie`
-// attributes. See `docs/Apps/Explanation.md`.
-pub use cookies::{owner_session_cookies, rescope_owner_session_set_cookies};
 // The shared "insert an `Authorization: Bearer` only when absent" helper — the
 // FHIR bearer gate and the Tauri loopback-owner-trust middleware both use it.
 pub use middleware::ensure_bearer_header;
@@ -41,8 +35,8 @@ struct ApiDoc;
 /// the `/access/*` admin surface is intentionally not documented.
 fn documented_router() -> OpenApiRouter<AppState> {
     OpenApiRouter::with_openapi(ApiDoc::openapi())
-        .routes(routes!(handlers::jwks::handle_jwks_request))
-        .nest("/oauth", handlers::oauth::openapi_router())
+        .routes(routes!(routes::well_known_jwks::handle_jwks_request))
+        .nest("/oauth", routes::oauth::openapi_router())
 }
 
 /// Build the gatekeeper's public HTTP surface. Routes live at
@@ -56,11 +50,11 @@ fn documented_router() -> OpenApiRouter<AppState> {
 pub fn router(state: AppState) -> Router {
     let (documented, _spec) = documented_router().split_for_parts();
     let access = Router::new()
-        .merge(handlers::grants::router())
-        .merge(handlers::oauth_consents::router())
-        .merge(handlers::devices::router())
-        .merge(handlers::logout::router())
-        .merge(handlers::revocations::router())
+        .merge(routes::grants::router())
+        .merge(routes::oauth_consents::router())
+        .merge(routes::devices::router())
+        .merge(routes::logout::router())
+        .merge(routes::revocations::router())
         .layer(axum_middleware::from_fn_with_state(
             state.clone(),
             middleware::require_owner_auth,

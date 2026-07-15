@@ -1,297 +1,330 @@
+//! `authorization_requests` queries — the in-flight OAuth authorizations for
+//! both flows, loaded/stored as [`AuthorizationRequest`].
+//!
+//! The domain struct is not diesel-mapped directly: its `Option<Url>` and
+//! `Option<Vec<String>>` fields would need `From` impls between two foreign
+//! `Option` types, which coherence forbids — so a private [`Row`] mirrors the
+//! table with the wrapper types ([`UrlText`], [`JsonStrings`]) as field types
+//! and converts at the query boundary.
+
 use chrono::{DateTime, Utc};
-use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, ValueRef};
-use rusqlite::{params, OptionalExtension, ToSql};
+use diesel::prelude::*;
+use diesel::sqlite::SqliteConnection;
 
-use crate::db::GatekeeperStore;
+use crate::db::shared::{text_enum_column, JsonStrings, UrlText};
 use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
-use persistence_rust::build_insert_sql;
-use persistence_rust::JsonColumn;
-use persistence_rust::{sql_row, DbResult};
+use crate::domain::error::GatekeeperError;
 
-impl ToSql for GrantType {
-    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
-        let wire: &str = self.as_ref();
-        Ok(ToSqlOutput::Borrowed(ValueRef::Text(wire.as_bytes())))
+diesel::table! {
+    authorization_requests (id) {
+        id -> Text,
+        grant_type -> Text,
+        client_id -> Text,
+        requested_scopes -> Text,
+        code_challenge -> Nullable<Text>,
+        code_challenge_method -> Nullable<Text>,
+        redirect_uri -> Nullable<Text>,
+        client_state -> Nullable<Text>,
+        user_code -> Nullable<Text>,
+        pre_approved_scopes -> Text,
+        requested_at -> TimestamptzSqlite,
+        expires_at -> TimestamptzSqlite,
+        last_polled_at -> Nullable<TimestamptzSqlite>,
+        status -> Text,
+        granted_scopes -> Nullable<Text>,
+        patient -> Nullable<Text>,
+        device_name -> Nullable<Text>,
     }
 }
 
-impl FromSql for GrantType {
-    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
-        let s = value.as_str()?;
-        s.parse::<GrantType>()
-            .map_err(|e| FromSqlError::Other(Box::new(e)))
+// The request `status` discriminant, stored as its strum wire string. Only the
+// authorization request binds it, so its mapping lives here.
+text_enum_column!(RequestStatus);
+
+/// The diesel-facing mirror of [`AuthorizationRequest`] — same columns, with
+/// the JSON/URL fields as their wrapper types so the nullable ones map
+/// without orphan-rule violations.
+#[derive(Queryable, Selectable, Insertable)]
+#[diesel(table_name = authorization_requests)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+struct Row {
+    id: String,
+    grant_type: GrantType,
+    client_id: String,
+    requested_scopes: JsonStrings,
+    code_challenge: Option<String>,
+    code_challenge_method: Option<String>,
+    redirect_uri: Option<UrlText>,
+    client_state: Option<String>,
+    user_code: Option<String>,
+    pre_approved_scopes: JsonStrings,
+    requested_at: DateTime<Utc>,
+    expires_at: DateTime<Utc>,
+    last_polled_at: Option<DateTime<Utc>>,
+    status: RequestStatus,
+    granted_scopes: Option<JsonStrings>,
+    patient: Option<String>,
+    device_name: Option<String>,
+}
+
+impl From<Row> for AuthorizationRequest {
+    fn from(row: Row) -> Self {
+        AuthorizationRequest {
+            id: row.id,
+            grant_type: row.grant_type,
+            client_id: row.client_id,
+            requested_scopes: row.requested_scopes.0,
+            code_challenge: row.code_challenge,
+            code_challenge_method: row.code_challenge_method,
+            redirect_uri: row.redirect_uri.map(|u| u.0),
+            client_state: row.client_state,
+            user_code: row.user_code,
+            pre_approved_scopes: row.pre_approved_scopes.0,
+            requested_at: row.requested_at,
+            expires_at: row.expires_at,
+            last_polled_at: row.last_polled_at,
+            status: row.status,
+            granted_scopes: row.granted_scopes.map(|s| s.0),
+            patient: row.patient,
+            device_name: row.device_name,
+        }
     }
 }
 
-impl ToSql for RequestStatus {
-    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
-        let wire: &str = self.as_ref();
-        Ok(ToSqlOutput::Borrowed(ValueRef::Text(wire.as_bytes())))
+impl From<&AuthorizationRequest> for Row {
+    fn from(request: &AuthorizationRequest) -> Self {
+        Row {
+            id: request.id.clone(),
+            grant_type: request.grant_type,
+            client_id: request.client_id.clone(),
+            requested_scopes: JsonStrings(request.requested_scopes.clone()),
+            code_challenge: request.code_challenge.clone(),
+            code_challenge_method: request.code_challenge_method.clone(),
+            redirect_uri: request.redirect_uri.clone().map(UrlText),
+            client_state: request.client_state.clone(),
+            user_code: request.user_code.clone(),
+            pre_approved_scopes: JsonStrings(request.pre_approved_scopes.clone()),
+            requested_at: request.requested_at,
+            expires_at: request.expires_at,
+            last_polled_at: request.last_polled_at,
+            status: request.status,
+            granted_scopes: request.granted_scopes.clone().map(JsonStrings),
+            patient: request.patient.clone(),
+            device_name: request.device_name.clone(),
+        }
     }
 }
 
-impl FromSql for RequestStatus {
-    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
-        let s = value.as_str()?;
-        s.parse::<RequestStatus>()
-            .map_err(|e| FromSqlError::Other(Box::new(e)))
-    }
+/// Load an authorization request by its primary id (the `device_code` for
+/// device-flow, otherwise an internal UUID), or `None` when absent.
+pub(super) fn authorization_request_by_id(
+    conn: &mut SqliteConnection,
+    id: &str,
+) -> Result<Option<AuthorizationRequest>, GatekeeperError> {
+    authorization_requests::table
+        .find(id)
+        .select(Row::as_select())
+        .first(conn)
+        .optional()
+        .map_err(|e| GatekeeperError::infrastructure("authorization_request_by_id failed", e))
+        .map(|row| row.map(AuthorizationRequest::from))
 }
 
-sql_row!(AuthorizationRequest {
-    id,
-    grant_type,
-    client_id,
-    requested_scopes,
-    code_challenge,
-    code_challenge_method,
-    redirect_uri,
-    client_state,
-    user_code,
-    pre_approved_scopes,
-    requested_at,
-    expires_at,
-    last_polled_at,
-    status,
-    granted_scopes,
-    patient,
-    device_name,
-});
+/// Load an authorization request by the human-typed `user_code` that the
+/// device-flow handed to the user.
+///
+/// Returns *any* row with the code regardless of status — callers that need
+/// to act on a live request (e.g. the consent UI) must use
+/// [`pending_authorization_request_by_user_code`] instead, since `user_code` is
+/// not unique across terminal rows and a stale denied/expired row could
+/// otherwise shadow a fresh pending one.
+pub(super) fn authorization_request_by_user_code(
+    conn: &mut SqliteConnection,
+    user_code: &str,
+) -> Result<Option<AuthorizationRequest>, GatekeeperError> {
+    authorization_requests::table
+        .filter(authorization_requests::user_code.eq(user_code))
+        .select(Row::as_select())
+        .first(conn)
+        .optional()
+        .map_err(|e| {
+            GatekeeperError::infrastructure("authorization_request_by_user_code failed", e)
+        })
+        .map(|row| row.map(AuthorizationRequest::from))
+}
 
-impl GatekeeperStore {
-    /// Load an authorization request by its primary id (the `device_code` for
-    /// device-flow, otherwise an internal UUID).
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the select query fails or a returned row cannot be
-    /// mapped to an [`AuthorizationRequest`].
-    pub fn authorization_request_by_id(&self, id: &str) -> DbResult<Option<AuthorizationRequest>> {
-        self.conn()
-            .lock()
-            .query_row(
-                &format!("SELECT {ALL_COLS} FROM authorization_requests WHERE id = ?1"),
-                params![id],
-                |row| AuthorizationRequest::try_from(row),
-            )
-            .optional()
-    }
+/// Load the *pending* authorization request for `user_code`. Filtering on
+/// `status = 'pending'` ensures a stale denied/expired row sharing the same
+/// `user_code` can't shadow a live request and 404 the consent flow.
+pub(super) fn pending_authorization_request_by_user_code(
+    conn: &mut SqliteConnection,
+    user_code: &str,
+) -> Result<Option<AuthorizationRequest>, GatekeeperError> {
+    authorization_requests::table
+        .filter(authorization_requests::user_code.eq(user_code))
+        .filter(authorization_requests::status.eq(RequestStatus::Pending))
+        .select(Row::as_select())
+        .first(conn)
+        .optional()
+        .map_err(|e| {
+            GatekeeperError::infrastructure("pending_authorization_request_by_user_code failed", e)
+        })
+        .map(|row| row.map(AuthorizationRequest::from))
+}
 
-    /// Load an authorization request by the human-typed `user_code` that the
-    /// device-flow handed to the user.
-    ///
-    /// Returns *any* row with the code regardless of status — callers that need
-    /// to act on a live request (e.g. the consent UI) must use
-    /// [`Self::pending_authorization_request_by_user_code`] instead, since
-    /// `user_code` is not unique across terminal rows and a stale denied/expired
-    /// row could otherwise shadow a fresh pending one.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the select query fails or a returned row cannot be
-    /// mapped to an [`AuthorizationRequest`].
-    pub fn authorization_request_by_user_code(
-        &self,
-        user_code: &str,
-    ) -> DbResult<Option<AuthorizationRequest>> {
-        self.conn()
-            .lock()
-            .query_row(
-                &format!("SELECT {ALL_COLS} FROM authorization_requests WHERE user_code = ?1"),
-                params![user_code],
-                |row| AuthorizationRequest::try_from(row),
-            )
-            .optional()
-    }
+/// Return the `user_code` of the oldest pending, non-expired device-code
+/// authorization request — the head the host UI surfaces in its
+/// non-dismissable consent modal. Returns `None` if no such request
+/// exists.
+///
+/// The host calls this after every transition that may change the head
+/// (a fresh `/oauth/device_authorization` insert; `approve`/`deny` of a
+/// device consent) and pushes the result through a `watch::Sender` to
+/// the webview bridge. The query is intentionally minimal: only the
+/// `user_code` rides the bridge — the SPA reuses the existing
+/// `GET /access/devices/{userCode}` fetch path to hydrate the form,
+/// so this slice doesn't grow a second DTO for the same row.
+///
+/// The `user_code IS NOT NULL` guard exists because a malformed half-row
+/// could otherwise float to the head with `user_code = NULL` and crash
+/// the SPA's `string` decoder.
+pub(super) fn oldest_pending_device_user_code(
+    conn: &mut SqliteConnection,
+) -> Result<Option<String>, GatekeeperError> {
+    authorization_requests::table
+        .filter(authorization_requests::grant_type.eq(GrantType::DeviceCode))
+        .filter(authorization_requests::status.eq(RequestStatus::Pending))
+        .filter(authorization_requests::user_code.is_not_null())
+        .filter(authorization_requests::expires_at.gt(Utc::now()))
+        .order(authorization_requests::requested_at.asc())
+        .select(authorization_requests::user_code)
+        .first::<Option<String>>(conn)
+        .optional()
+        .map_err(|e| GatekeeperError::infrastructure("oldest_pending_device_user_code failed", e))
+        .map(Option::flatten)
+}
 
-    /// Load the *pending* authorization request for `user_code`. Filtering on
-    /// `status = 'pending'` ensures a stale denied/expired row sharing the same
-    /// `user_code` can't shadow a live request and 404 the consent flow.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the select query fails or a returned row cannot be
-    /// mapped to an [`AuthorizationRequest`].
-    pub fn pending_authorization_request_by_user_code(
-        &self,
-        user_code: &str,
-    ) -> DbResult<Option<AuthorizationRequest>> {
-        self.conn()
-            .lock()
-            .query_row(
-                &format!(
-                    "SELECT {ALL_COLS} FROM authorization_requests \
-                     WHERE user_code = ?1 AND status = 'pending'"
-                ),
-                params![user_code],
-                |row| AuthorizationRequest::try_from(row),
-            )
-            .optional()
-    }
+/// Persist a freshly-constructed `AuthorizationRequest`.
+pub(super) fn insert_authorization_request(
+    conn: &mut SqliteConnection,
+    request: &AuthorizationRequest,
+) -> Result<(), GatekeeperError> {
+    let as_infrastructure_error =
+        |e| GatekeeperError::infrastructure("insert_authorization_request failed", e);
+    // Opportunistically prune expired requests before inserting, so a
+    // caller hitting /authorize or /device_authorization can't grow the
+    // table without bound — nothing else transitions abandoned rows out,
+    // and there is no background reaper. Best-effort cleanup keyed on the
+    // 5-minute request TTL; the prune runs first so it also clears a stale
+    // row that would otherwise collide on the pending-user_code index. Both
+    // statements run on the one connection the store checked out.
+    diesel::delete(
+        authorization_requests::table.filter(authorization_requests::expires_at.lt(Utc::now())),
+    )
+    .execute(conn)
+    .map_err(as_infrastructure_error)?;
+    diesel::insert_into(authorization_requests::table)
+        .values(Row::from(request))
+        .execute(conn)
+        .map_err(as_infrastructure_error)?;
+    Ok(())
+}
 
-    /// Return the `user_code` of the oldest pending, non-expired device-code
-    /// authorization request — the head the host UI surfaces in its
-    /// non-dismissable consent modal. Returns `None` if no such request
-    /// exists.
-    ///
-    /// The host calls this after every transition that may change the head
-    /// (a fresh `/oauth/device_authorization` insert; `approve`/`deny` of a
-    /// device consent) and pushes the result through a `watch::Sender` to
-    /// the webview bridge. The query is intentionally minimal: only the
-    /// `user_code` rides the bridge — the SPA reuses the existing
-    /// `GET /access/devices/{userCode}` fetch path to hydrate the form,
-    /// so this slice doesn't grow a second DTO for the same row.
-    ///
-    /// `NULLS LAST` isn't needed because the `user_code IS NOT NULL`
-    /// filter rules them out; that guard exists at all because a malformed
-    /// half-row could otherwise float to the head with `user_code = NULL`
-    /// and crash the SPA's `string` decoder.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the select query fails or the column can't be
-    /// decoded as `String`.
-    pub fn oldest_pending_device_user_code(&self) -> DbResult<Option<String>> {
-        let now = Utc::now();
-        self.conn()
-            .lock()
-            .query_row(
-                "SELECT user_code FROM authorization_requests \
-                 WHERE grant_type = 'device_code' \
-                   AND status = 'pending' \
-                   AND user_code IS NOT NULL \
-                   AND expires_at > ?1 \
-                 ORDER BY requested_at ASC \
-                 LIMIT 1",
-                params![now],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()
-    }
+/// Mark a *pending* `id` approved with `granted_scopes`, an optional patient
+/// context, and the request's resolved `device_name`, returning `true` iff a
+/// pending row was actually transitioned.
+///
+/// The `status = 'pending'` guard means a request already in a terminal
+/// state (denied/expired) can't be flipped back to approved, and the
+/// affected-row check lets the caller detect a no-op (e.g. the request was
+/// consumed concurrently between its read and this update).
+///
+/// `device_name` is written **verbatim** — the "keep the device's own name when
+/// the approver didn't adjust it" resolution is the consent action's job (it
+/// already holds the loaded request), so the store no longer branches on
+/// present-vs-absent. The code-flow path passes `None` (its column is and stays
+/// NULL); the device path passes the effective name it resolved.
+pub(super) fn approve_authorization_request(
+    conn: &mut SqliteConnection,
+    id: &str,
+    granted_scopes: &[String],
+    patient: Option<&str>,
+    device_name: Option<&str>,
+) -> Result<bool, GatekeeperError> {
+    let affected = diesel::update(
+        authorization_requests::table
+            .find(id)
+            .filter(authorization_requests::status.eq(RequestStatus::Pending)),
+    )
+    .set((
+        authorization_requests::status.eq(RequestStatus::Approved),
+        authorization_requests::granted_scopes.eq(JsonStrings(granted_scopes.to_vec())),
+        authorization_requests::patient.eq(patient),
+        authorization_requests::device_name.eq(device_name),
+    ))
+    .execute(conn)
+    .map_err(|e| GatekeeperError::infrastructure("approve_authorization_request failed", e))?;
+    Ok(affected == 1)
+}
 
-    /// Persist a freshly-constructed `AuthorizationRequest`.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the insert fails (for example a unique-constraint
-    /// violation on the id).
-    pub fn insert_authorization_request(&self, request: &AuthorizationRequest) -> DbResult<()> {
-        let guard = self.conn().lock();
-        // Opportunistically prune expired requests before inserting, so a
-        // caller hitting /authorize or /device_authorization can't grow the
-        // table without bound — nothing else transitions abandoned rows out,
-        // and there is no background reaper. Best-effort cleanup keyed on the
-        // 5-minute request TTL; the prune runs first so it also clears a stale
-        // row that would otherwise collide on the pending-user_code index.
-        guard.execute(
-            "DELETE FROM authorization_requests WHERE expires_at < ?1",
-            params![Utc::now()],
-        )?;
-        let params = make_named_sql_params(request);
-        guard.execute(
-            &build_insert_sql("authorization_requests", &params),
-            &params,
-        )?;
-        Ok(())
-    }
+/// Mark `id` denied.
+pub(super) fn deny_authorization_request(
+    conn: &mut SqliteConnection,
+    id: &str,
+) -> Result<(), GatekeeperError> {
+    diesel::update(authorization_requests::table.find(id))
+        .set(authorization_requests::status.eq(RequestStatus::Denied))
+        .execute(conn)
+        .map_err(|e| GatekeeperError::infrastructure("deny_authorization_request failed", e))?;
+    Ok(())
+}
 
-    /// Mark a *pending* `id` approved with `granted_scopes`, an optional patient
-    /// context, and an optional adjusted `device_name`, returning `true` iff a
-    /// pending row was actually transitioned.
-    ///
-    /// The `status = 'pending'` guard means a request already in a terminal
-    /// state (denied/expired) can't be flipped back to approved, and the
-    /// affected-row check lets the caller detect a no-op (e.g. the request was
-    /// consumed concurrently between its read and this update).
-    ///
-    /// `device_name` is `COALESCE`d: `Some` overwrites the stored name (the
-    /// settings approver adjusting it), `None` keeps whatever the device
-    /// supplied — so the auth-code consent path can pass `None` without erasing
-    /// a device name it never had.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the update statement fails.
-    pub fn approve_authorization_request(
-        &self,
-        id: &str,
-        granted_scopes: &[String],
-        patient: Option<&str>,
-        device_name: Option<&str>,
-    ) -> DbResult<bool> {
-        let granted = JsonColumn(granted_scopes.to_vec());
-        let affected = self.conn().lock().execute(
-            "UPDATE authorization_requests
-             SET status = 'approved', granted_scopes = :granted_scopes, patient = :patient,
-                 device_name = COALESCE(:device_name, device_name)
-             WHERE id = :id AND status = 'pending'",
-            rusqlite::named_params! {
-                ":id": id,
-                ":granted_scopes": granted,
-                ":patient": patient,
-                ":device_name": device_name,
-            },
-        )?;
-        Ok(affected == 1)
-    }
+/// Atomically claim an `approved` request for single-use redemption,
+/// transitioning `approved` → `expired` only if it is still `approved`, and
+/// return `true` iff this call won the race.
+///
+/// The `status = 'approved'` guard plus the affected-row check are what make
+/// device-flow redemption single-use (RFC 8628 §3.4) even under concurrent
+/// polls: `SQLite`'s write lock serialises the two `UPDATE`s, so exactly one
+/// sees a row to change (`true`) and any racer sees zero rows (`false`) and
+/// must be rejected before a token is minted.
+pub(super) fn consume_approved_authorization_request(
+    conn: &mut SqliteConnection,
+    id: &str,
+) -> Result<bool, GatekeeperError> {
+    let affected = diesel::update(
+        authorization_requests::table
+            .find(id)
+            .filter(authorization_requests::status.eq(RequestStatus::Approved)),
+    )
+    .set(authorization_requests::status.eq(RequestStatus::Expired))
+    .execute(conn)
+    .map_err(|e| {
+        GatekeeperError::infrastructure("consume_approved_authorization_request failed", e)
+    })?;
+    Ok(affected == 1)
+}
 
-    /// Mark `id` denied.
-    ///
-    /// # Errors
-    ///
-    /// Returns a `rusqlite::Error` if the update statement fails.
-    pub fn deny_authorization_request(&self, id: &str) -> DbResult<()> {
-        self.conn().lock().execute(
-            "UPDATE authorization_requests SET status = 'denied' WHERE id = ?1",
-            params![id],
-        )?;
-        Ok(())
-    }
-
-    /// Atomically claim an `approved` request for single-use redemption,
-    /// transitioning `approved` → `expired` only if it is still `approved`, and
-    /// return `true` iff this call won the race.
-    ///
-    /// The `status = 'approved'` guard plus the affected-row check are what make
-    /// device-flow redemption single-use (RFC 8628 §3.4) even under concurrent
-    /// polls: `SQLite`'s write lock serialises the two `UPDATE`s, so exactly one
-    /// sees a row to change (`true`) and any racer sees zero rows (`false`) and
-    /// must be rejected before a token is minted. A plain unguarded `UPDATE …
-    /// SET status='expired'` (the previous implementation) could not detect that
-    /// another poll had already redeemed the request.
-    ///
-    /// # Errors
-    ///
-    /// Returns a `rusqlite::Error` if the update statement fails.
-    pub fn consume_approved_authorization_request(&self, id: &str) -> DbResult<bool> {
-        let affected = self.conn().lock().execute(
-            "UPDATE authorization_requests SET status = 'expired' \
-             WHERE id = ?1 AND status = 'approved'",
-            params![id],
-        )?;
-        Ok(affected == 1)
-    }
-
-    /// Stamp `last_polled_at` so the next device-flow poll can be slow-down
-    /// rate-limited.
-    ///
-    /// # Errors
-    ///
-    /// Returns a `rusqlite::Error` if the update statement fails.
-    pub fn record_device_poll(&self, id: &str, polled_at: DateTime<Utc>) -> DbResult<()> {
-        self.conn().lock().execute(
-            "UPDATE authorization_requests SET last_polled_at = ?2 WHERE id = ?1",
-            params![id, polled_at],
-        )?;
-        Ok(())
-    }
+/// Stamp `last_polled_at` so the next device-flow poll can be slow-down
+/// rate-limited.
+pub(super) fn record_device_poll(
+    conn: &mut SqliteConnection,
+    id: &str,
+    polled_at: DateTime<Utc>,
+) -> Result<(), GatekeeperError> {
+    diesel::update(authorization_requests::table.find(id))
+        .set(authorization_requests::last_polled_at.eq(polled_at))
+        .execute(conn)
+        .map_err(|e| GatekeeperError::infrastructure("record_device_poll failed", e))?;
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::db::test_support::{arb_opt_timestamp, arb_timestamp, arb_url};
-    use persistence_rust::{JsonColumn, UriColumn};
+    use crate::db::SqliteGatekeeperStore;
+    use crate::domain::GatekeeperStore as _;
     use proptest::prelude::*;
 
     fn arb_scopes() -> impl Strategy<Value = Vec<String>> {
@@ -309,7 +342,7 @@ mod tests {
 
     // Each nullable field is generated independently so every property run
     // mixes present and absent values regardless of `grant_type`, covering the
-    // "optional fields both present and absent" case the reviewer asked for.
+    // "optional fields both present and absent" case.
     prop_compose! {
         fn arb_authorization_request()(
             id in "[a-zA-Z0-9_-]{1,40}",
@@ -337,18 +370,18 @@ mod tests {
                 id,
                 grant_type,
                 client_id,
-                requested_scopes: JsonColumn(requested_scopes),
+                requested_scopes,
                 code_challenge,
                 code_challenge_method,
-                redirect_uri: redirect_uri.map(UriColumn),
+                redirect_uri,
                 client_state,
                 user_code,
-                pre_approved_scopes: JsonColumn(pre_approved_scopes),
+                pre_approved_scopes,
                 requested_at,
                 expires_at,
                 last_polled_at,
                 status,
-                granted_scopes: granted_scopes.map(JsonColumn),
+                granted_scopes,
                 patient,
                 device_name,
             }
@@ -360,7 +393,7 @@ mod tests {
 
         #[test]
         fn insert_and_fetch_round_trip(request in arb_authorization_request()) {
-            let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
+            let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
             store
                 .insert_authorization_request(&request)
                 .expect("insert");
@@ -378,7 +411,7 @@ mod tests {
             id: id.to_string(),
             grant_type: GrantType::DeviceCode,
             client_id: "device-client".to_string(),
-            requested_scopes: JsonColumn(vec!["openid".to_string()]),
+            requested_scopes: vec!["openid".to_string()],
             code_challenge: None,
             code_challenge_method: None,
             redirect_uri: None,
@@ -386,12 +419,12 @@ mod tests {
             // Distinct per id so two pending rows don't collide on the
             // pending-user_code partial unique index in multi-row tests.
             user_code: Some(format!("UC-{id}")),
-            pre_approved_scopes: JsonColumn(vec![]),
+            pre_approved_scopes: vec![],
             requested_at: now,
             expires_at: now + chrono::Duration::minutes(5),
             last_polled_at: None,
             status,
-            granted_scopes: Some(JsonColumn(vec!["openid".to_string()])),
+            granted_scopes: Some(vec!["openid".to_string()]),
             patient: None,
             device_name: None,
         }
@@ -402,7 +435,7 @@ mod tests {
     // without bound (C16).
     #[test]
     fn insert_prunes_expired_authorization_requests() {
-        let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
         let mut expired = device_request_with_status("expired-1", RequestStatus::Pending);
         expired.expires_at = Utc::now() - chrono::Duration::minutes(1);
         store
@@ -431,7 +464,7 @@ mod tests {
     // atomicity that stops two concurrent polls both minting tokens.
     #[test]
     fn consume_approved_authorization_request_is_single_use() {
-        let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
         store
             .insert_authorization_request(&device_request_with_status(
                 "dev-1",
@@ -459,13 +492,13 @@ mod tests {
             id: id.to_string(),
             grant_type: GrantType::DeviceCode,
             client_id: "device-client".to_string(),
-            requested_scopes: JsonColumn(vec!["openid".to_string()]),
+            requested_scopes: vec!["openid".to_string()],
             code_challenge: None,
             code_challenge_method: None,
             redirect_uri: None,
             client_state: None,
             user_code: Some(user_code.to_string()),
-            pre_approved_scopes: JsonColumn(vec![]),
+            pre_approved_scopes: vec![],
             requested_at: now,
             expires_at: now + chrono::Duration::minutes(5),
             last_polled_at: None,
@@ -481,7 +514,7 @@ mod tests {
     // ignored — proves each filter pulls its weight.
     #[test]
     fn oldest_pending_device_user_code_picks_the_fifo_head() {
-        let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
 
         // Empty → None.
         assert_eq!(
@@ -565,7 +598,7 @@ mod tests {
     // up in that window either.
     #[test]
     fn oldest_pending_device_user_code_skips_expired_rows() {
-        let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
         let mut expired = device_request("dev-expired", "EXP-000", RequestStatus::Pending);
         expired.expires_at = Utc::now() - chrono::Duration::minutes(1);
         store
@@ -587,7 +620,7 @@ mod tests {
     // — the guard transitions only `approved` → `expired`.
     #[test]
     fn consume_approved_authorization_request_ignores_non_approved() {
-        let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
         store
             .insert_authorization_request(&device_request_with_status(
                 "dev-2",
@@ -604,5 +637,32 @@ mod tests {
             .expect("query")
             .expect("row present");
         assert_eq!(after.status, RequestStatus::Pending);
+    }
+
+    /// The [`RequestStatus`] and [`GrantType`] text-enum mappings reject an unknown
+    /// stored discriminant on read as a typed error, never a panic — a tampered
+    /// `status`/`grant_type` can't decode to a wrong-but-valid enum member.
+    #[test]
+    fn corrupt_enum_columns_are_typed_read_errors() {
+        for column in ["status", "grant_type"] {
+            let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+            store
+                .insert_authorization_request(&device_request_with_status(
+                    "dev-1",
+                    RequestStatus::Pending,
+                ))
+                .expect("insert");
+            let mut conn = store.pool().get().expect("check out a connection");
+            diesel::sql_query(format!(
+                "UPDATE authorization_requests SET {column} = 'bogus' WHERE id = 'dev-1'"
+            ))
+            .execute(&mut conn)
+            .expect("tamper the stored row");
+            drop(conn);
+            assert!(
+                store.authorization_request_by_id("dev-1").is_err(),
+                "a corrupt `{column}` must surface as a typed read error",
+            );
+        }
     }
 }

@@ -1,12 +1,21 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
+use diesel::prelude::{Insertable, Queryable, Selectable};
 
-use persistence_rust::JsonColumn;
+use crate::db::refresh_tokens::{refresh_token_families, refresh_tokens};
+use crate::db::shared::JsonStrings;
+
+/// Absolute lifetime of a refresh-token family, measured from the original
+/// authorization. Rotation swaps generations but never extends this
+/// deadline — past it the client re-runs the authorization flow.
+pub const REFRESH_TOKEN_FAMILY_TTL: Duration = Duration::days(90);
 
 /// One authorization's refresh-token lineage (RFC 6749 §6). The family owns
 /// every fact shared by all the tokens rotated under it — client, scopes,
 /// patient context, and the absolute deadline — so those are stated exactly
 /// once. Tokens ([`RefreshToken`]) reference it by `family_id`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Queryable, Selectable, Insertable)]
+#[diesel(table_name = refresh_token_families)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 pub struct RefreshTokenFamily {
     /// Primary key — lineage id shared by every token descended from one
     /// authorization.
@@ -14,7 +23,8 @@ pub struct RefreshTokenFamily {
     /// Client the family was issued to; redemption is rejected for any other.
     pub client_id: String,
     /// Scopes carried forward to every access token minted from this family.
-    pub scopes: JsonColumn<Vec<String>>,
+    #[diesel(serialize_as = JsonStrings, deserialize_as = JsonStrings)]
+    pub scopes: Vec<String>,
     /// SMART-on-FHIR patient context recorded at authorization, if any.
     pub patient: Option<String>,
     /// When the family was created (the original authorization).
@@ -42,7 +52,9 @@ pub struct RefreshTokenFamily {
 /// token's successor; the presented token is marked consumed. Replaying a
 /// consumed token is treated as theft and revokes the whole
 /// [`RefreshTokenFamily`] (OAuth 2.1 rotation semantics).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Queryable, Selectable, Insertable)]
+#[diesel(table_name = refresh_tokens)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 pub struct RefreshToken {
     /// Primary key — SHA-256 base64url digest of the plaintext token. The
     /// plaintext is returned to the client once and never stored.
@@ -54,4 +66,25 @@ pub struct RefreshToken {
     /// Set when this token is redeemed. `None` means this is the family's
     /// single live token.
     pub consumed_at: Option<DateTime<Utc>>,
+}
+
+/// Outcome of attempting to consume a refresh token — the primitive shape the
+/// [`GatekeeperStore`](crate::domain::GatekeeperStore) port returns, with the
+/// theft-vs-miss decision left to the caller.
+///
+/// `#[must_use]`: ignoring a `Replayed` outcome would skip the family
+/// revocation that reuse detection depends on, so the result must always be
+/// inspected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[must_use]
+pub enum RefreshTokenConsumeOutcome {
+    /// The token was live and is now consumed. The caller can proceed with
+    /// issuing new credentials and a new refresh token.
+    Consumed,
+    /// The token was already consumed — this is a replay, and the caller must
+    /// reject the request and revoke the whole family.
+    Replayed,
+    /// No such token exists. The caller should treat this as a failed decode
+    /// rather than a replay, so no need to revoke the family.
+    NotFound,
 }

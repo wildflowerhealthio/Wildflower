@@ -21,17 +21,27 @@ use gatekeeper_rust::domain::authorization_request::{
 use gatekeeper_rust::domain::client::{AllowedGrantType, Client, ClientKind};
 use gatekeeper_rust::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 use gatekeeper_rust::domain::token::{mint_access_token, NewJwtArgs};
-use gatekeeper_rust::GatekeeperStore;
-use persistence_rust::{Connection, JsonColumn, UriColumn};
+use gatekeeper_rust::{GatekeeperStore, SqliteGatekeeperStore};
+use persistence_rust::{Connection, DieselPool};
 use serde_json::Value;
 use tower::ServiceExt;
 use url::Url;
 
-fn spin_up() -> (Gatekeeper, String, Connection) {
-    // One shared in-memory database, opened once and handed to the slice —
-    // mirrors how the host wires a single DB into each slice. `db` is that
-    // shared handle; `store_handle` clones it to reach the same database.
-    let db = Connection::open_in_memory().expect("open shared db");
+/// The two database handles the running router uses, kept so tests can open
+/// second store handles onto the SAME databases: the diesel pool behind the
+/// `SqliteGatekeeperStore` and the rusqlite connection behind the shared
+/// `RevocationStore` (which stays rusqlite-backed — it is a separate crate).
+struct TestDb {
+    pool: DieselPool,
+    revocation_conn: Connection,
+}
+
+fn spin_up() -> (Gatekeeper, String, TestDb) {
+    // One shared in-memory diesel pool, built once and handed to the slice —
+    // mirrors how the host wires the app-wide `persistence_rust::open_pool`
+    // pool into each diesel-backed slice. `db.pool` is that shared handle;
+    // `store_handle` clones it to reach the same database.
+    let pool = persistence_rust::open_in_memory_pool().expect("open in-memory pool");
     let config = GatekeeperConfig {
         loopback_base_url: Url::parse(LOOPBACK_ORIGIN).expect("LOOPBACK_ORIGIN is a valid URL"),
         granted_scopes: gatekeeper_rust::default_local_granted_scopes(),
@@ -39,13 +49,15 @@ fn spin_up() -> (Gatekeeper, String, Connection) {
     };
     let (token_tx, token_rx) = watch::channel::<Option<String>>(None);
     let (active_device_tx, _active_device_rx) = watch::channel::<Option<String>>(None);
-    // The shared revocation store lives on the same connection the host wires
-    // into both gatekeeper and the FHIR server (#269). A second handle on the
-    // same `db` (see `revocation_store_handle`) lets tests plant/observe rows.
-    let revocation_store =
-        token_revocation_rust::RevocationStore::new(db.clone()).expect("revocation store");
+    // The shared revocation store lives on the rusqlite connection the host
+    // wires into both gatekeeper and the FHIR server (#269). A second handle on
+    // the same connection (see `revocation_store_handle`) lets tests
+    // plant/observe rows.
+    let revocation_conn = Connection::open_in_memory().expect("open revocation db");
+    let revocation_store = token_revocation_rust::RevocationStore::new(revocation_conn.clone())
+        .expect("revocation store");
     let g = setup_gatekeeper(
-        db.clone(),
+        pool.clone(),
         revocation_store,
         &config,
         &token_tx,
@@ -56,37 +68,39 @@ fn spin_up() -> (Gatekeeper, String, Connection) {
         .borrow()
         .clone()
         .expect("setup_gatekeeper publishes the host owner token");
-    (g, host_owner_token, db)
+    (
+        g,
+        host_owner_token,
+        TestDb {
+            pool,
+            revocation_conn,
+        },
+    )
 }
 
-/// A second `GatekeeperStore` handle on the *same* shared connection the running
+/// A second `SqliteGatekeeperStore` handle on the *same* shared pool the running
 /// router uses. Tests reach through this to seed clients and to plant rows
 /// (e.g. an already-expired authorization request) that the public HTTP
 /// surface can't construct directly — preferred over real-time sleeps so the
 /// expiry paths stay deterministic.
-fn store_handle(db: &Connection) -> GatekeeperStore {
-    GatekeeperStore::new(db.clone()).expect("store handle")
+fn store_handle(db: &TestDb) -> SqliteGatekeeperStore {
+    SqliteGatekeeperStore::new(db.pool.clone()).expect("store handle")
 }
 
 /// Register an OAuth client with an allowlisted `redirect_uri` through a
 /// second store handle on the same shared connection. The redirect-back error
 /// tests (RFC 6749 §4.1.2.1) need a client whose `redirect_uri` validates,
 /// which the seeded first-party client (empty allowlist) cannot provide.
-fn seed_client_with_redirect(
-    db: &Connection,
-    client_id: &str,
-    redirect_uri: &str,
-    scopes: &[&str],
-) {
+fn seed_client_with_redirect(db: &TestDb, client_id: &str, redirect_uri: &str, scopes: &[&str]) {
     let store = store_handle(db);
     store
         .register_client(&Client {
             client_id: client_id.to_string(),
             name: "Integration Test Client".to_string(),
             kind: ClientKind::Public,
-            redirect_uris: JsonColumn(vec![Url::parse(redirect_uri).expect("redirect url")]),
-            allowed_scopes: JsonColumn(scopes.iter().map(ToString::to_string).collect()),
-            allowed_grant_types: JsonColumn(AllowedGrantType::ALL.to_vec()),
+            redirect_uris: vec![Url::parse(redirect_uri).expect("redirect url")],
+            allowed_scopes: scopes.iter().map(ToString::to_string).collect(),
+            allowed_grant_types: AllowedGrantType::ALL.to_vec(),
             secret_hash: None,
             registered_at: Utc::now(),
             disabled_at: None,
@@ -715,7 +729,7 @@ async fn post_form(
 /// (shared by both rows) lets a caller force an already-expired code without
 /// sleeping. The challenge is the real S256 digest of [`CODE_VERIFIER`].
 fn plant_authorization_code(
-    store: &GatekeeperStore,
+    store: &SqliteGatekeeperStore,
     client_id: &str,
     redirect_uri: &Url,
     scopes: &[&str],
@@ -731,18 +745,18 @@ fn plant_authorization_code(
             id: request_id.clone(),
             grant_type: GrantType::AuthorizationCode,
             client_id: client_id.to_string(),
-            requested_scopes: JsonColumn(scope_vec.clone()),
+            requested_scopes: scope_vec.clone(),
             code_challenge: Some(challenge.clone()),
             code_challenge_method: Some("S256".to_string()),
-            redirect_uri: Some(UriColumn(redirect_uri.clone())),
+            redirect_uri: Some(redirect_uri.clone()),
             client_state: Some("state".to_string()),
             user_code: None,
-            pre_approved_scopes: JsonColumn(Vec::new()),
+            pre_approved_scopes: Vec::new(),
             requested_at: now,
             expires_at,
             last_polled_at: None,
             status: RequestStatus::Approved,
-            granted_scopes: Some(JsonColumn(scope_vec.clone())),
+            granted_scopes: Some(scope_vec.clone()),
             patient: None,
             device_name: None,
         })
@@ -752,9 +766,9 @@ fn plant_authorization_code(
             code: code.to_string(),
             request_id,
             client_id: client_id.to_string(),
-            redirect_uri: UriColumn(redirect_uri.clone()),
+            redirect_uri: redirect_uri.clone(),
             code_challenge: challenge,
-            granted_scopes: JsonColumn(scope_vec),
+            granted_scopes: scope_vec,
             patient: None,
             issued_at: now,
             expires_at,
@@ -766,7 +780,7 @@ fn plant_authorization_code(
 /// and `expires_at` are caller-controlled so the device state-machine tests can
 /// stand up Approved/expired rows the public surface can't mint on demand.
 fn plant_device_request(
-    store: &GatekeeperStore,
+    store: &SqliteGatekeeperStore,
     client_id: &str,
     device_code: &str,
     scopes: &[&str],
@@ -774,19 +788,19 @@ fn plant_device_request(
     expires_at: chrono::DateTime<Utc>,
 ) {
     let scope_vec: Vec<String> = scopes.iter().map(ToString::to_string).collect();
-    let granted = matches!(status, RequestStatus::Approved).then(|| JsonColumn(scope_vec.clone()));
+    let granted = matches!(status, RequestStatus::Approved).then(|| scope_vec.clone());
     store
         .insert_authorization_request(&AuthorizationRequest {
             id: device_code.to_string(),
             grant_type: GrantType::DeviceCode,
             client_id: client_id.to_string(),
-            requested_scopes: JsonColumn(scope_vec),
+            requested_scopes: scope_vec,
             code_challenge: None,
             code_challenge_method: None,
             redirect_uri: None,
             client_state: None,
             user_code: Some("WILD-FLWR".to_string()),
-            pre_approved_scopes: JsonColumn(Vec::new()),
+            pre_approved_scopes: Vec::new(),
             requested_at: Utc::now(),
             expires_at,
             last_polled_at: None,
@@ -1676,7 +1690,7 @@ async fn device_consent_allows_expansion_beyond_requested() {
         .authorization_request_by_id("dev-expand")
         .expect("query request")
         .expect("request present");
-    let granted = request.granted_scopes.expect("granted scopes").into_inner();
+    let granted = request.granted_scopes.expect("granted scopes");
     assert!(granted.contains(&"read".to_string()));
     assert!(granted.contains(&"write".to_string()));
 }
@@ -1915,9 +1929,9 @@ async fn token_endpoint_rejects_grant_outside_client_allow_list() {
             client_id: "code-only".to_string(),
             name: "Code-only client".to_string(),
             kind: ClientKind::Public,
-            redirect_uris: JsonColumn(vec![Url::parse("https://app.example/cb").unwrap()]),
-            allowed_scopes: JsonColumn(vec!["read".to_string(), "offline_access".to_string()]),
-            allowed_grant_types: JsonColumn(vec![AllowedGrantType::AuthorizationCode]),
+            redirect_uris: vec![Url::parse("https://app.example/cb").unwrap()],
+            allowed_scopes: vec!["read".to_string(), "offline_access".to_string()],
+            allowed_grant_types: vec![AllowedGrantType::AuthorizationCode],
             secret_hash: None,
             registered_at: Utc::now(),
             disabled_at: None,
@@ -2119,32 +2133,32 @@ async fn offline_access_issues_rotating_refresh_token() {
 /// Plant a refresh-token family with one live token directly in the store,
 /// with a caller-controlled family deadline so expiry tests don't sleep.
 fn plant_refresh_token(
-    store: &GatekeeperStore,
+    store: &SqliteGatekeeperStore,
     plaintext: &str,
     client_id: &str,
     family_expires_at: chrono::DateTime<Utc>,
 ) {
     let now = Utc::now();
     store
-        .insert_refresh_token_family(
-            &RefreshTokenFamily {
-                family_id: format!("family-{plaintext}"),
-                client_id: client_id.to_string(),
-                scopes: JsonColumn(vec!["read".to_string(), "offline_access".to_string()]),
-                patient: None,
-                issued_at: now,
-                expires_at: family_expires_at,
-                authorization_code_hash: None,
-                grant_id: None,
-            },
-            &RefreshToken {
-                token_hash: token_storage_hash(plaintext),
-                family_id: format!("family-{plaintext}"),
-                issued_at: now,
-                consumed_at: None,
-            },
-        )
-        .expect("insert refresh token family");
+        .insert_refresh_token_family_row(&RefreshTokenFamily {
+            family_id: format!("family-{plaintext}"),
+            client_id: client_id.to_string(),
+            scopes: vec!["read".to_string(), "offline_access".to_string()],
+            patient: None,
+            issued_at: now,
+            expires_at: family_expires_at,
+            authorization_code_hash: None,
+            grant_id: None,
+        })
+        .expect("insert refresh token family row");
+    store
+        .insert_refresh_token(&RefreshToken {
+            token_hash: token_storage_hash(plaintext),
+            family_id: format!("family-{plaintext}"),
+            issued_at: now,
+            consumed_at: None,
+        })
+        .expect("insert first refresh token");
 }
 
 /// A refresh token past its family's absolute deadline is `invalid_grant`.
@@ -2313,7 +2327,7 @@ async fn revoking_grant_revokes_refresh_tokens() {
 /// `client_secret_plaintext`, through a second store handle — mirrors
 /// `seed_client_with_redirect`, which can only seed public clients.
 fn seed_confidential_client(
-    db: &Connection,
+    db: &TestDb,
     client_id: &str,
     client_secret_plaintext: &str,
     scopes: &[&str],
@@ -2324,9 +2338,9 @@ fn seed_confidential_client(
             client_id: client_id.to_string(),
             name: "Integration Test Confidential Client".to_string(),
             kind: ClientKind::Confidential,
-            redirect_uris: JsonColumn(vec![]),
-            allowed_scopes: JsonColumn(scopes.iter().map(ToString::to_string).collect()),
-            allowed_grant_types: JsonColumn(AllowedGrantType::ALL.to_vec()),
+            redirect_uris: vec![],
+            allowed_scopes: scopes.iter().map(ToString::to_string).collect(),
+            allowed_grant_types: AllowedGrantType::ALL.to_vec(),
             secret_hash: Some(hash_client_secret(client_secret_plaintext).expect("hash secret")),
             registered_at: Utc::now(),
             disabled_at: None,
@@ -2366,7 +2380,7 @@ const CONFIDENTIAL_CLIENT_SECRET: &str = "shhh-integration-secret";
 
 /// Spin up a gatekeeper with a seeded confidential client and a live planted
 /// refresh token — the cheapest real grant to exercise client auth against.
-fn spin_up_with_confidential_client() -> (Gatekeeper, Connection) {
+fn spin_up_with_confidential_client() -> (Gatekeeper, TestDb) {
     let (g, _host_owner_token, db) = spin_up();
     seed_confidential_client(
         &db,
@@ -2906,8 +2920,9 @@ async fn logout_clears_session_cookies() {
 /// A second `RevocationStore` handle on the running router's shared connection,
 /// so a test can plant/observe revocations the way `store_handle` does for the
 /// gatekeeper store.
-fn revocation_store_handle(db: &Connection) -> token_revocation_rust::RevocationStore {
-    token_revocation_rust::RevocationStore::new(db.clone()).expect("revocation store handle")
+fn revocation_store_handle(db: &TestDb) -> token_revocation_rust::RevocationStore {
+    token_revocation_rust::RevocationStore::new(db.revocation_conn.clone())
+        .expect("revocation store handle")
 }
 
 /// Pull the `jti` out of a minted token's payload (the base64url middle
@@ -3155,16 +3170,14 @@ async fn revoking_a_grant_bumps_the_client_revocation_epoch() {
     seed_client_with_redirect(&db, "granted-client", "https://app.example/cb", &["read"]);
     let store = store_handle(&db);
     store
-        .create_grant(&gatekeeper_rust::domain::grant::Grant {
+        .create_authorization_code_grant(&gatekeeper_rust::domain::grant::AuthorizationCodeGrant {
             id: "grant-1".to_string(),
             client_id: "granted-client".to_string(),
-            scopes: JsonColumn(vec!["read".to_string()]),
+            scopes: vec!["read".to_string()],
             granted_at: Utc::now(),
             last_used_at: None,
             patient: None,
-            kind: gatekeeper_rust::domain::grant::GrantKind::AuthorizationCode {
-                redirect_uri: UriColumn(Url::parse("https://app.example/cb").expect("url")),
-            },
+            redirect_uri: Url::parse("https://app.example/cb").expect("url"),
         })
         .expect("create grant");
     // Revoke it.
@@ -3208,16 +3221,14 @@ async fn revoking_a_device_grant_bumps_the_client_revocation_epoch() {
     seed_client_with_redirect(&db, "device-client", "https://app.example/cb", &["read"]);
     let store = store_handle(&db);
     store
-        .create_grant(&gatekeeper_rust::domain::grant::Grant {
+        .create_device_grant(&gatekeeper_rust::domain::grant::DeviceGrant {
             id: "device-grant-1".to_string(),
             client_id: "device-client".to_string(),
-            scopes: JsonColumn(vec!["read".to_string()]),
+            scopes: vec!["read".to_string()],
             granted_at: Utc::now(),
             last_used_at: None,
             patient: None,
-            kind: gatekeeper_rust::domain::grant::GrantKind::DeviceCode {
-                device_name: "Ada's laptop".to_string(),
-            },
+            device_name: "Ada's laptop".to_string(),
         })
         .expect("create device grant");
     let res = g

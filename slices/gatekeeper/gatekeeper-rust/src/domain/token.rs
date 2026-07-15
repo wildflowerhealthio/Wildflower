@@ -5,6 +5,11 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::domain::signing_key::{KeyMaterialError, SigningKey};
 
+/// Lifetime of access tokens minted by the gatekeeper. The consent UI's
+/// `offline_access` copy ("Access your data after 15 minutes") states this
+/// value — keep the two in step.
+pub const ACCESS_TOKEN_TTL: Duration = Duration::minutes(15);
+
 /// Normalize the `aud` claim — RFC 7519 lets it be a string or an array of
 /// strings — into a single canonical `Vec<String>` so downstream code has one
 /// shape to consume.
@@ -185,8 +190,10 @@ pub enum VerifyError {
     NoSigningKeysConfigured,
     /// The signing-key store could not be read (e.g. the database query
     /// failed) — distinct from a key whose material is corrupt. Surface as 500.
+    /// Wraps the domain [`GatekeeperError`](crate::domain::error::GatekeeperError)
+    /// the store surfaced, so no database error type appears here.
     #[error("signing-key store unavailable")]
-    KeyStoreUnavailable(#[source] rusqlite::Error),
+    KeyStoreUnavailable(#[source] crate::domain::error::GatekeeperError),
     /// A configured signing key's material could not be turned into a
     /// `DecodingKey`.
     #[error("signing key material could not be loaded")]

@@ -47,7 +47,19 @@ impl std::fmt::Debug for SigningKeyValues {
 }
 
 /// An RSA signing key used to mint and verify access tokens; `is_active` distinguishes the current minter from rotated-out verify-only keys.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Diesel-mapped 1:1 to the `signing_keys` table; `values` maps to the
+/// `values_json` JSON TEXT column.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    diesel::prelude::Queryable,
+    diesel::prelude::Selectable,
+    diesel::prelude::Insertable,
+)]
+#[diesel(table_name = crate::db::signing_keys::signing_keys)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 pub struct SigningKey {
     /// Unique key identifier emitted in the JWS `kid` header so verifiers can pick the right key.
     pub kid: String,
@@ -56,6 +68,11 @@ pub struct SigningKey {
     /// JWS signing algorithm — always `"RS256"` for keys produced here.
     pub alg: String,
     /// RSA key components: public (`n`, `e`) and private (`d`, `p`, `q`).
+    #[diesel(
+        column_name = values_json,
+        serialize_as = crate::db::signing_keys::JsonSigningKeyValues,
+        deserialize_as = crate::db::signing_keys::JsonSigningKeyValues
+    )]
     pub values: SigningKeyValues,
     /// Whether this key currently signs new tokens; retired keys stay published in the JWKS during rotation.
     pub is_active: bool,

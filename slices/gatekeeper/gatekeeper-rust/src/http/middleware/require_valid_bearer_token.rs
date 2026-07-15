@@ -6,7 +6,7 @@ use axum::http::{header, HeaderMap, HeaderValue};
 use axum::middleware::Next;
 use axum::response::Response;
 
-use crate::http::response_templates;
+use crate::http::errors;
 use crate::http::served_base_url_for;
 use crate::http::state::AppState;
 
@@ -37,17 +37,17 @@ pub async fn require_valid_bearer_token(
         return next.run(req).await;
     }
     let Some((token, source)) = try_access_token_from_request(&headers) else {
-        return response_templates::unauthorized();
+        return errors::unauthorized();
     };
     let Some(base_url) = served_base_url_for(&headers, &gate.state.loopback_base_url) else {
-        return response_templates::internal_error(
+        return errors::internal_error(
             "served base url",
             "forwarded header did not indicate a valid base URL",
         );
     };
     let origin = shared_structures_rust::origin_string(&base_url);
     if let Err(e) = verify_auth_token_claims(&gate.state, &origin, token) {
-        return response_templates::verify_error_response("verify_auth_token_claims failed", e);
+        return errors::verify_error_response("verify_auth_token_claims failed", e);
     }
     // Normalize a cookie-sourced token into an `Authorization: Bearer` header so
     // a downstream service that reads *only* that header still authenticates —

@@ -1,111 +1,84 @@
-use rusqlite::{params, OptionalExtension, Row, ToSql};
+//! `signing_keys` query bodies — the RSA keys backing JWS signatures and the
+//! JWKS endpoint, loaded/stored as [`SigningKey`]. The `pub(super)` free
+//! functions the [`SqliteGatekeeperStore`](super::SqliteGatekeeperStore) port
+//! impl delegates to, each running on a connection the store has already checked
+//! out of the pool.
 
-use crate::db::GatekeeperStore;
+use diesel::prelude::*;
+use diesel::sqlite::SqliteConnection;
+
+use crate::db::shared::json_text_column;
+use crate::domain::error::GatekeeperError;
 use crate::domain::signing_key::{SigningKey, SigningKeyValues};
-use persistence_rust::build_insert_sql;
-use persistence_rust::DbResult;
-use persistence_rust::JsonColumn;
 
-impl TryFrom<&Row<'_>> for SigningKey {
-    type Error = rusqlite::Error;
-    fn try_from(row: &Row<'_>) -> rusqlite::Result<Self> {
-        Ok(SigningKey {
-            kid: row.get("kid")?,
-            kty: row.get("kty")?,
-            alg: row.get("alg")?,
-            values: row
-                .get::<_, JsonColumn<SigningKeyValues>>("values_json")?
-                .into_inner(),
-            is_active: row.get("is_active")?,
-        })
+diesel::table! {
+    signing_keys (kid) {
+        kid -> Text,
+        kty -> Text,
+        alg -> Text,
+        values_json -> Text,
+        is_active -> Bool,
     }
 }
 
-/// `values` isn't stored as a `JsonColumn` field on `SigningKey`, so the JSON
-/// wrapper is a temporary the caller must own — hence the `values_json`
-/// parameter binds to a `&JsonColumn` local in `insert_signing_key`.
-fn make_named_sql_params<'a>(
-    key: &'a SigningKey,
-    values_json: &'a JsonColumn<&'a SigningKeyValues>,
-) -> [(&'a str, &'a dyn ToSql); 5] {
-    [
-        (":kid", &key.kid),
-        (":kty", &key.kty),
-        (":alg", &key.alg),
-        (":values_json", values_json),
-        (":is_active", &key.is_active),
-    ]
+json_text_column!(
+    /// A signing key's RSA components (`values_json` column) as JSON TEXT.
+    JsonSigningKeyValues,
+    SigningKeyValues
+);
+
+/// Load every signing key, active keys first then by `kid`.
+pub(super) fn all_signing_keys(
+    conn: &mut SqliteConnection,
+) -> Result<Vec<SigningKey>, GatekeeperError> {
+    signing_keys::table
+        .order((signing_keys::is_active.desc(), signing_keys::kid))
+        .select(SigningKey::as_select())
+        .load(conn)
+        .map_err(|e| GatekeeperError::infrastructure("all_signing_keys failed", e))
 }
 
-impl GatekeeperStore {
-    /// Load every signing key, active keys first then by `kid`.
-    ///
-    /// # Errors
-    ///
-    /// Returns a `rusqlite::Error` if preparing or running the select query
-    /// fails or any returned row cannot be mapped to a [`SigningKey`].
-    pub fn all_signing_keys(&self) -> DbResult<Vec<SigningKey>> {
-        let conn = self.conn().lock();
-        let mut stmt = conn.prepare(
-            "SELECT kid, kty, alg, values_json, is_active FROM signing_keys ORDER BY is_active DESC, kid",
-        )?;
-        let rows: rusqlite::Result<Vec<_>> = stmt
-            .query_map([], |row| SigningKey::try_from(row))?
-            .collect();
-        rows
-    }
+/// Load the active signing key, or `None` when none is active.
+pub(super) fn active_signing_key(
+    conn: &mut SqliteConnection,
+) -> Result<Option<SigningKey>, GatekeeperError> {
+    signing_keys::table
+        .filter(signing_keys::is_active.eq(true))
+        .select(SigningKey::as_select())
+        .first(conn)
+        .optional()
+        .map_err(|e| GatekeeperError::infrastructure("active_signing_key failed", e))
+}
 
-    /// Load the active signing key, if one exists.
-    ///
-    /// # Errors
-    ///
-    /// Returns a `rusqlite::Error` if the select query fails or a returned row
-    /// cannot be mapped to a [`SigningKey`].
-    pub fn active_signing_key(&self) -> DbResult<Option<SigningKey>> {
-        self.conn()
-            .lock()
-            .query_row(
-                "SELECT kid, kty, alg, values_json, is_active FROM signing_keys WHERE is_active = 1 LIMIT 1",
-                params![],
-                |row| SigningKey::try_from(row),
-            )
-            .optional()
-    }
+/// Whether an active signing key exists, without loading its (private) key
+/// material — a cheap presence probe for callers that only need to know a
+/// token *can* be minted (the mint path loads the key itself).
+pub(super) fn has_active_signing_key(conn: &mut SqliteConnection) -> Result<bool, GatekeeperError> {
+    diesel::select(diesel::dsl::exists(
+        signing_keys::table.filter(signing_keys::is_active.eq(true)),
+    ))
+    .get_result(conn)
+    .map_err(|e| GatekeeperError::infrastructure("has_active_signing_key failed", e))
+}
 
-    /// Whether an active signing key exists, without loading its (private) key
-    /// material — a cheap presence probe for callers that only need to know a
-    /// token *can* be minted (the mint path loads the key itself).
-    ///
-    /// # Errors
-    ///
-    /// Returns a `rusqlite::Error` if the query fails.
-    pub fn has_active_signing_key(&self) -> DbResult<bool> {
-        self.conn().lock().query_row(
-            "SELECT EXISTS(SELECT 1 FROM signing_keys WHERE is_active = 1)",
-            params![],
-            |row| row.get(0),
-        )
-    }
-
-    /// Persist a signing key.
-    ///
-    /// # Errors
-    ///
-    /// Returns a `rusqlite::Error` if the insert fails (for example a
-    /// unique-constraint violation on the `kid`).
-    pub fn insert_signing_key(&self, key: &SigningKey) -> DbResult<()> {
-        let values_json = JsonColumn(&key.values);
-        let params = make_named_sql_params(key, &values_json);
-        self.conn()
-            .lock()
-            .execute(&build_insert_sql("signing_keys", &params), &params)?;
-        Ok(())
-    }
+/// Persist a signing key.
+pub(super) fn insert_signing_key(
+    conn: &mut SqliteConnection,
+    key: &SigningKey,
+) -> Result<(), GatekeeperError> {
+    diesel::insert_into(signing_keys::table)
+        .values(key.clone())
+        .execute(conn)
+        .map_err(|e| GatekeeperError::infrastructure("insert_signing_key failed", e))?;
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::SqliteGatekeeperStore;
+    use crate::domain::signing_key::SigningKeyValues;
+    use crate::domain::GatekeeperStore as _;
     use proptest::prelude::*;
 
     /// The db layer treats `SigningKeyValues` as opaque JSON, so the
@@ -129,7 +102,7 @@ mod tests {
 
         #[test]
         fn insert_and_fetch_round_trip(key in arb_signing_key()) {
-            let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
+            let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
             store.insert_signing_key(&key).expect("insert");
 
             // A freshly-opened store holds exactly this one key.
@@ -141,5 +114,36 @@ mod tests {
             let expected_active = if key.is_active { Some(key) } else { None };
             prop_assert_eq!(active, expected_active);
         }
+    }
+
+    /// The [`JsonSigningKeyValues`](super::JsonSigningKeyValues) JSON TEXT mapping
+    /// rejects a `values_json` that no longer parses as a typed read error, never a
+    /// panic — a corrupt key can't silently decode to garbage RSA material.
+    #[test]
+    fn corrupt_values_json_is_a_typed_read_error() {
+        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+        let key = SigningKey {
+            kid: "k1".to_string(),
+            kty: "RSA".to_string(),
+            alg: "RS256".to_string(),
+            values: SigningKeyValues {
+                n: "n".to_string(),
+                d: "d".to_string(),
+                e: "e".to_string(),
+                p: "p".to_string(),
+                q: "q".to_string(),
+            },
+            is_active: true,
+        };
+        store.insert_signing_key(&key).expect("insert");
+        let mut conn = store.pool().get().expect("check out a connection");
+        diesel::sql_query("UPDATE signing_keys SET values_json = 'not json' WHERE kid = 'k1'")
+            .execute(&mut conn)
+            .expect("tamper the stored row");
+        drop(conn);
+        assert!(
+            store.all_signing_keys().is_err(),
+            "a corrupt values_json must surface as a typed read error",
+        );
     }
 }

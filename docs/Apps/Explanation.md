@@ -16,9 +16,9 @@ and the homescreen placement) with a `kind` discriminator and three symmetric
 per-kind child payload tables (`system_app_configurations`, `cloud_app_configurations`, `self_hosted_app_configurations`),
 real FKs child→parent. A row is its registration plus the one child its `kind`
 names. (This replaces the earlier table-per-struct layout, and revises the
-class-table-inheritance objection recorded in the persistence docs — the registry
-is a real domain object, not an abstract base class; see
-[Persistence Polymorphic Rows](../Persistence/Polymorphic%20Rows%20Explanation.md).)
+class-table-inheritance objection — the registry is a real domain object, not an
+abstract base class; see [Polymorphic Rows](./Polymorphic%20Rows%20Explanation.md),
+which lays out this shape as one option and contrasts it with gatekeeper grants'.)
 
 ## Group A — Kind (one per app, fixed identity)
 

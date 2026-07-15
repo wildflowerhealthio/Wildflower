@@ -6,10 +6,19 @@ pub mod config;
 // `pub(crate)` while a `pub` module's doc links into it fails
 // `cargo doc -D warnings` (rustdoc's `private_intra_doc_links`). `seeding` has no
 // inbound doc links, so it is the one narrowed to `pub(crate)`.
+// The web Owner-session cookie builders — a package-level capability lifted out
+// of `http`: the desktop host seeds these cookies into the native-webview popup
+// (#256) and the forwarded self-hosted launch re-scopes them, neither of which
+// is an HTTP-handler concern. See `docs/Apps/Explanation.md`.
+pub mod cookies;
 pub mod crypto_util;
 pub mod db;
 pub mod domain;
 pub mod http;
+// Host/HTTP-seam dependency-inversion traits the domain actions call out through
+// (device-consent republish, session-token revoke, session-cookie clear); the
+// concrete impls are wired onto `AppState` in `http::state`. Mirrors apps-rust.
+pub(crate) mod ports;
 pub(crate) mod seeding;
 
 use anyhow::Context;
@@ -23,11 +32,24 @@ use tokio::sync::watch;
 use tokio::time::{interval, MissedTickBehavior};
 
 pub use config::GatekeeperConfig;
-pub use db::GatekeeperStore;
+pub use db::SqliteGatekeeperStore;
+// The persistence port traits, re-exported so out-of-crate callers (e.g. the
+// integration test) can bring the store methods into scope on the concrete
+// `SqliteGatekeeperStore` adapter. `GatekeeperStore` is the transaction seam
+// (and carries the standalone-convenience default methods); `GatekeeperTx` is
+// the primitive contract a composed transaction hands out.
+pub use domain::{GatekeeperStore, GatekeeperTx};
+// Re-exported so the host can name the pool type at the `setup_gatekeeper`
+// call site without a direct diesel dependency; the canonical home is
+// persistence-rust (collector re-exports it the same way).
+pub use persistence_rust::DieselPool;
+// The owner-session cookie builders keep their top-level path
+// (`gatekeeper_rust::owner_session_cookies`) after the lift out of `http`, so
+// the desktop host's call sites don't move.
+pub use cookies::{owner_session_cookies, rescope_owner_session_set_cookies};
 pub use http::{
     ensure_bearer_header, is_pre_auth_public_path, layer_router_with_gatekeeper_auth_gating,
-    layer_router_with_loopback_peer_gating, openapi_spec, owner_session_cookies,
-    rescope_owner_session_set_cookies, verify_owner_bearer, AppState,
+    layer_router_with_loopback_peer_gating, openapi_spec, verify_owner_bearer, AppState,
 };
 
 /// `client_id` of the host application's first-party OAuth client. The host
@@ -137,7 +159,9 @@ pub struct Gatekeeper {
     pub state: AppState,
 }
 
-/// Build the gatekeeper-rust HTTP surface. Runs idempotent bootstrap
+/// Build the gatekeeper-rust HTTP surface over the host-owned diesel
+/// connection `pool` (the same app-wide `persistence_rust::open_pool` pool the
+/// collector rides). Runs idempotent bootstrap
 /// (schema migrations, signing-key seed, first-party client seed), mints
 /// the boot-time host owner token against `config.loopback_base_url`, and:
 ///
@@ -175,7 +199,7 @@ pub struct Gatekeeper {
 /// host owner token fails, or the `local_owner_token_tx` receiver has already
 /// been dropped when publishing the token.
 pub fn setup_gatekeeper(
-    conn: persistence_rust::Connection,
+    pool: DieselPool,
     revocation_store: RevocationStore,
     config: &GatekeeperConfig,
     local_owner_token_tx: &watch::Sender<Option<String>>,
@@ -201,7 +225,7 @@ pub fn setup_gatekeeper(
         config.granted_scopes
     );
     let store =
-        seeding::open_and_seed_store(conn, &config.granted_scopes, &config.first_party_client_id)?;
+        seeding::open_and_seed_store(pool, &config.granted_scopes, &config.first_party_client_id)?;
     // `iss` and `aud` are both the canonical issuer: the one token is presented
     // over loopback and at the tunnel origin (#256), so a served-origin `aud`
     // couldn't cover both. See `docs/Origins/Explanation.md`.
@@ -251,7 +275,7 @@ pub fn setup_gatekeeper(
 /// it logs and retries next tick; when every receiver has dropped (app
 /// shutdown) it stops.
 fn spawn_owner_token_reminter(
-    store: GatekeeperStore,
+    store: SqliteGatekeeperStore,
     granted_scopes: Vec<String>,
     first_party_client_id: String,
     sender: watch::Sender<Option<String>>,

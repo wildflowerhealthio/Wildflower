@@ -1,12 +1,42 @@
 //! The gatekeeper's domain vocabulary — pure types and business rules
-//! shared by every other layer. Nothing in here knows about axum or SQL;
-//! persistence mappings live in [`crate::db`], transport in
+//! shared by every other layer. No axum or SQL logic runs here — the domain
+//! types carry diesel derives that name their [`crate::db`] `table!` for the
+//! bind/read mapping, but no query, transaction, or transport code lives in
+//! this layer: the [`GatekeeperStore`] port abstracts persistence ([`crate::db`]'s
+//! `SqliteGatekeeperStore` owns the SQL behind it), the [`actions`] over that
+//! port hold the store-touching logic (the consent loaders and the `*NotFound`
+//! semantic mapping), and everything fails with the domain's own [`error`]
+//! vocabulary; persistence mappings live in [`crate::db`], transport in
 //! [`crate::http`].
+
+// The persistence port + the semantic actions over it — the seam the HTTP
+// layer calls instead of touching a concrete store. Mirrors collector's
+// `remotes_store` + `actions`.
+pub mod actions;
+pub mod gatekeeper_store;
 
 pub mod authorization_code;
 pub mod authorization_request;
 pub mod client;
+// Pure builders for the OAuth client-callback URLs (`redirect_uri` + `code`/`error`
+// + `state`) — no axum/store coupling, so the `/oauth` surface and the Owner
+// consent action can return the same URL. Lifted out of `http::routes::oauth`.
+pub mod client_redirect;
+// The domain's failure vocabulary (collector's `RemoteError` is the model):
+// semantic client-facing variants plus the opaque `Infrastructure`.
+pub mod error;
 pub mod grant;
+// The closed set of OAuth error codes (RFC 6749 §5.2 + the redirect/device
+// codes) — a pure domain vocabulary lifted out of the OAuth route tree so the
+// error model can name it without reaching into `http`.
+pub mod oauth_error_code;
+// URL/path builders for the gatekeeper's user-facing `/gatekeeper/*` webview
+// pages — pure string builders (no axum/state), duplicated TS ⇄ Rust and
+// drift-tested against `gatekeeper-core/src/page-paths.ts`.
+pub mod page_paths;
 pub mod refresh_token;
 pub mod signing_key;
 pub mod token;
+
+pub use authorization_code::PendingCodeConsent;
+pub use gatekeeper_store::{GatekeeperStore, GatekeeperTx};

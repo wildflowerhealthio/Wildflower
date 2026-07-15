@@ -4,8 +4,9 @@ use axum::http::{header, HeaderMap};
 use axum::middleware::Next;
 use axum::response::Response;
 
+use crate::domain::actions;
 use crate::domain::token::{verify_jwt, VerifiedClaims, VerifyError, VerifyOptions};
-use crate::http::response_templates;
+use crate::http::errors;
 use crate::http::served_base_url_for;
 use crate::http::state::AppState;
 use crate::WILDFLOWER_WIDEST_SCOPES;
@@ -18,20 +19,20 @@ pub async fn require_owner_auth(
     next: Next,
 ) -> Response {
     let Some((token, _source)) = try_access_token_from_request(&headers) else {
-        return response_templates::unauthorized();
+        return errors::unauthorized();
     };
     // Verify against the request's served origin (loopback for a direct hit,
     // the forwarded public origin via the tunnel) so the token's `iss`/`aud`
     // match the surface it was minted for. See `docs/Origins/Explanation.md`.
     let Some(base_url) = served_base_url_for(&headers, &state.loopback_base_url) else {
-        return response_templates::internal_error(
+        return errors::internal_error(
             "served base url",
             "forwarded header did not indicate a valid base URL",
         );
     };
     let origin = shared_structures_rust::origin_string(&base_url);
     if let Err(e) = verify_owner_token(&state, &origin, token) {
-        return response_templates::verify_error_response("verify_owner_token failed", e);
+        return errors::verify_error_response("verify_owner_token failed", e);
     }
     next.run(req).await
 }
@@ -49,7 +50,7 @@ pub enum AccessTokenSource {
 }
 
 /// Extract the access token from a request, preferring the `Authorization:
-/// Bearer` header and falling back to the [`wf_auth`](crate::http::cookies)
+/// Bearer` header and falling back to the [`wf_auth`](crate::cookies)
 /// cookie when no bearer header is present. Returns the token alongside its
 /// [`AccessTokenSource`].
 ///
@@ -65,9 +66,8 @@ pub fn try_access_token_from_request(headers: &HeaderMap) -> Option<(&str, Acces
     if let Some(bearer) = try_bearer_token_from_headers(headers) {
         return Some((bearer, AccessTokenSource::Bearer));
     }
-    let cookie =
-        crate::http::cookies::cookie_value(headers, crate::http::cookies::AUTH_COOKIE_NAME)
-            .filter(|token| !token.is_empty())?;
+    let cookie = crate::cookies::cookie_value(headers, crate::cookies::AUTH_COOKIE_NAME)
+        .filter(|token| !token.is_empty())?;
     Some((cookie, AccessTokenSource::Cookie))
 }
 
@@ -128,10 +128,7 @@ pub fn verify_auth_token_claims(
     origin: &str,
     token: &str,
 ) -> Result<VerifiedClaims, VerifyError> {
-    let keys = state
-        .store
-        .all_signing_keys()
-        .map_err(VerifyError::KeyStoreUnavailable)?;
+    let keys = actions::all_signing_keys(&state.store).map_err(VerifyError::KeyStoreUnavailable)?;
     let accepted = vec![
         format!("{origin}/fhir-r4"),
         origin.to_string(),
