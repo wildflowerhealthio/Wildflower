@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { defaultConfig } from 'fhir-r4-client-collector'
+import { descriptors, descriptorForConfig } from 'collector-registry/registry'
 import { unknownErrorToString } from 'kitchen-sink'
 import { useState, type JSX } from 'react'
 import { cn, unwrapCause } from 'react-kitchen-sink'
@@ -70,9 +70,6 @@ function AccountListBody({ remotes }: AccountListBodyProps): JSX.Element {
   }
 
   const importNow = (remote: Remote): void => {
-    const rootUrl = typeof remote.config['rootUrl'] === 'string' ? remote.config['rootUrl'] : ''
-    if (rootUrl === '') return
-
     setImportError(null)
     startImport(remote)
   }
@@ -91,15 +88,15 @@ function AccountListBody({ remotes }: AccountListBodyProps): JSX.Element {
         <ItemList
           title="Accounts"
           items={remotes.map((remote) => {
-            const rootUrl =
-              typeof remote.config['rootUrl'] === 'string' ? remote.config['rootUrl'] : ''
+            const subtitle =
+              descriptorForConfig(remote.config)?.display.listSubtitle(remote.config) ?? ''
             return {
               id: remote.id,
               title: remote.name,
               badge: remote.config._tag.toUpperCase(),
               subtitle: (
                 <span className={accountList['account-list-item__subtitles']}>
-                  <span>{rootUrl}</span>
+                  <span>{subtitle}</span>
                   <span>Added {formatInstant(remote.addedAt)}</span>
                 </span>
               ),
@@ -148,21 +145,19 @@ function AccountListBody({ remotes }: AccountListBodyProps): JSX.Element {
       <ItemList
         title="Connect Accounts From"
         items={[
-          {
-            id: 'demo-fhir',
-            title: 'Demo FHIR Server',
-            subtitle: defaultConfig.rootUrl,
-            onClick: () => {
+          ...descriptors.map((descriptor) => ({
+            id: descriptor.tag,
+            title: descriptor.display.title,
+            subtitle: descriptor.display.description,
+            onClick: (): void => {
               void navigate({
                 to: '/collector/account/new',
-                search: {
-                  prefillName: 'Demo FHIR Server',
-                  prefillRootUrl: defaultConfig.rootUrl,
-                  prefillPatientId: defaultConfig.patientId,
-                },
+                search: { tag: descriptor.tag, prefill: {} },
               })
             },
-          },
+          })),
+          // Hardcoded placeholder until #339 registers the Rexall collector,
+          // at which point it becomes one of the mapped `descriptors` rows above.
           {
             id: 'rexall-pharmacy',
             title: 'Rexall Pharmacy',
