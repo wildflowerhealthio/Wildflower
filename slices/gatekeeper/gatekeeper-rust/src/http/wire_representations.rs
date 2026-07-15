@@ -88,8 +88,10 @@ pub(crate) struct ApproveBody {
     pub(crate) patient: Option<String>,
     /// An optional adjusted device name (device flow only — the settings approver
     /// renaming the device before approving). `None` on the code-flow path and
-    /// when the approver didn't change it; `COALESCE`d server-side so the stored
-    /// name is preserved.
+    /// when the approver didn't change it; the effective name is resolved in
+    /// `approve_device_consent` (the approver's adjustment, else the device's own
+    /// name), so a `None` here keeps the device's stored name rather than erasing
+    /// it.
     #[serde(default)]
     pub(crate) device_name: Option<String>,
 }

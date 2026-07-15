@@ -1,6 +1,8 @@
 //! The gatekeeper's domain vocabulary — pure types and business rules
-//! shared by every other layer. Nothing in here knows about axum or SQL —
-//! the [`GatekeeperStore`] port abstracts persistence ([`crate::db`]'s
+//! shared by every other layer. No axum or SQL logic runs here — the domain
+//! types carry diesel derives that name their [`crate::db`] `table!` for the
+//! bind/read mapping, but no query, transaction, or transport code lives in
+//! this layer: the [`GatekeeperStore`] port abstracts persistence ([`crate::db`]'s
 //! `SqliteGatekeeperStore` owns the SQL behind it), the [`actions`] over that
 //! port hold the store-touching logic (the consent loaders and the `*NotFound`
 //! semantic mapping), and everything fails with the domain's own [`error`]

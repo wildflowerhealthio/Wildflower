@@ -588,9 +588,13 @@ fn exchange_refresh_token(
         issued_at: now,
         consumed_at: None,
     };
-    // Consume the presented token and persist its successor in one
-    // transaction, so a crash or error can't burn the presented token while
-    // leaving the family with no live successor (a permanent lockout).
+    // Consume the presented token, and only if that consume won insert its
+    // successor. The consume is atomic on its own; the successor insert is a
+    // separate step, ordered after it — so a failure of the insert leaves the
+    // presented token spent with no successor (a failed rotation the client
+    // recovers from by re-authorizing), never a usable extra token. See
+    // `actions::rotate_refresh_token` for the ordered-consume-then-insert
+    // rationale.
     match actions::rotate_refresh_token(&state.store, &hash, &next, now)? {
         RefreshTokenConsumeOutcome::Consumed => {}
         // A consumed token can only reappear if it leaked (or the client is
