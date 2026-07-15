@@ -782,7 +782,7 @@ describe('CancelSnifferRequest (host→web bridge message)', () => {
   test('should register a single multiplexed Tauri listener on install', () => {
     installSnifferForTest()
     // One unlisten for the single `BRIDGE_EVENT` channel; inbound tags
-    // (`Click`, `CancelSnifferRequest`) demux by the payload's `_tag`.
+    // (`Click`, `Fill`, `CancelSnifferRequest`) demux by the payload's `_tag`.
     expect(getState()?.unlistens).toHaveLength(1)
     expect(listeners.has(BRIDGE_EVENT)).toBe(true)
   })
@@ -901,6 +901,112 @@ describe('Click (host→web bridge message)', () => {
 
     fireInbound(BRIDGE_EVENT, { _tag: 'Click', querySelector: '' })
     expect(clicked).not.toHaveBeenCalled()
+  })
+})
+
+describe('Fill (host→web bridge message)', () => {
+  const initialBodyHtml = document.body.innerHTML
+
+  beforeEach(() => {
+    resetShims()
+    XMLHttpRequest.prototype.open = vi.fn() as XMLHttpRequest['open']
+    XMLHttpRequest.prototype.send = vi.fn() as XMLHttpRequest['send']
+    document.body.innerHTML = initialBodyHtml
+    setupEnv()
+  })
+
+  afterEach(resetShims)
+
+  test('sets the value and dispatches bubbling input/change events', () => {
+    const input = document.createElement('input')
+    input.id = 'username'
+    const onInput = vi.fn()
+    const onChange = vi.fn()
+    input.addEventListener('input', onInput)
+    input.addEventListener('change', onChange)
+    document.body.replaceChildren(input)
+    installSnifferForTest()
+
+    fireInbound(BRIDGE_EVENT, { _tag: 'Fill', querySelector: '#username', value: 'alice' })
+
+    expect(input.value).toBe('alice')
+    expect(onInput).toHaveBeenCalledTimes(1)
+    expect(onChange).toHaveBeenCalledTimes(1)
+    // Events bubble so a delegated framework listener on an ancestor sees them.
+    expect(onInput.mock.calls[0]?.[0]?.bubbles).toBe(true)
+  })
+
+  test('writes through the prototype setter, bypassing an instance-level override (controlled-input trick)', () => {
+    const input = document.createElement('input')
+    input.id = 'password'
+    // Simulate a framework (Angular/React) that shadows the value setter on
+    // the element instance: a plain `el.value = …` would hit this no-op.
+    let instanceSetterCalls = 0
+    Object.defineProperty(input, 'value', {
+      configurable: true,
+      get: () =>
+        // Read back what the prototype setter stored.
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.get?.call(input),
+      set: () => {
+        instanceSetterCalls += 1
+      },
+    })
+    document.body.replaceChildren(input)
+    installSnifferForTest()
+
+    fireInbound(BRIDGE_EVENT, { _tag: 'Fill', querySelector: '#password', value: 's3cret' })
+
+    // The instance override was bypassed; the prototype setter ran.
+    expect(instanceSetterCalls).toBe(0)
+    expect(input.value).toBe('s3cret')
+  })
+
+  test('allows an empty-string value (clearing a field)', () => {
+    const input = document.createElement('input')
+    input.id = 'clearme'
+    input.value = 'preset'
+    document.body.replaceChildren(input)
+    installSnifferForTest()
+
+    fireInbound(BRIDGE_EVENT, { _tag: 'Fill', querySelector: '#clearme', value: '' })
+    expect(input.value).toBe('')
+  })
+
+  test('silently no-ops when the selector matches no element', () => {
+    installSnifferForTest()
+    expect(() =>
+      fireInbound(BRIDGE_EVENT, { _tag: 'Fill', querySelector: '#missing', value: 'x' })
+    ).not.toThrow()
+  })
+
+  test('rejects an empty querySelector', () => {
+    const input = document.createElement('input')
+    const onInput = vi.fn()
+    input.addEventListener('input', onInput)
+    document.body.replaceChildren(input)
+    installSnifferForTest()
+
+    fireInbound(BRIDGE_EVENT, { _tag: 'Fill', querySelector: '', value: 'x' })
+    expect(onInput).not.toHaveBeenCalled()
+  })
+
+  test('rejects a non-string value', () => {
+    const input = document.createElement('input')
+    input.id = 'novalue'
+    input.value = 'unchanged'
+    const onInput = vi.fn()
+    input.addEventListener('input', onInput)
+    document.body.replaceChildren(input)
+    installSnifferForTest()
+
+    // A malformed payload (value not a string) is dropped defensively.
+    fireInbound(BRIDGE_EVENT, {
+      _tag: 'Fill',
+      querySelector: '#novalue',
+      value: 42 as unknown as string,
+    })
+    expect(input.value).toBe('unchanged')
+    expect(onInput).not.toHaveBeenCalled()
   })
 })
 

@@ -113,11 +113,11 @@ describe('tauriSnifferBootstrapScript', () => {
   })
 
   it('inbound tag set matches BrowserSnifferBridge.hostToWeb (drift guard)', () => {
-    // Adding a third hostToWeb tag to BrowserSnifferBridge without
-    // teaching `installSniffer` to listen for it would silently drop
-    // those messages on the floor.
+    // Adding a hostToWeb tag to BrowserSnifferBridge without teaching
+    // `installSniffer` to listen for it would silently drop those
+    // messages on the floor.
     const declared = Object.keys(BrowserSnifferBridge.HostToWeb).toSorted()
-    expect(declared).toEqual(['CancelSnifferRequest', 'Click'])
+    expect(declared).toEqual(['CancelSnifferRequest', 'Click', 'Fill'])
   })
 
   it('installs the sniffer when window.__TAURI__ event + core.invoke are present', () => {

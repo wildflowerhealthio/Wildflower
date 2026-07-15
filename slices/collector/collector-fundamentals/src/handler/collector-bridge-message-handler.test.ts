@@ -7,7 +7,7 @@ import * as TestPlatformAdapterLayer from 'effect-messaging-core/test'
 import { LoggingLayerTest, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it, vi } from 'vite-plus/test'
 
-import { EntityDefinition, type Link, ScrapingPlan } from 'collector-fundamentals/model'
+import { EntityDefinition, type Link, ScrapingPlan, UrlMatch } from 'collector-fundamentals/model'
 import { AnotherEntity, SimpleEntity } from 'collector-fundamentals/test-helpers'
 import * as CollectorBridgeMessageHandler from './collector-bridge-message-handler.ts'
 
@@ -499,6 +499,18 @@ describe('CollectorBridgeMessageHandler.make', () => {
       _tag: 'Open',
       source: { _tag: 'Uri', uri: 'https://example.com/b' },
     }
+    const fillLink: Link.Any = {
+      _tag: 'Fill',
+      querySelector: '#username',
+      value: 'alice',
+    }
+    // A step gated on landing at `…/dashboard`, timing out after 30s.
+    const dashboardPattern = UrlMatch.make({ segments: [UrlMatch.literal('dashboard')] })
+    const urlMatchLink: Link.Any = {
+      _tag: 'Open',
+      source: { _tag: 'Uri', uri: 'https://example.com/next' },
+      advanceWhen: { _tag: 'UrlMatch', pattern: dashboardPattern, timeout: Duration.seconds(30) },
+    }
 
     it('dispatches SniffingComplete after stepDelay when linkSequence is empty', () =>
       Effect.runPromise(
@@ -685,5 +697,134 @@ describe('CollectorBridgeMessageHandler.make', () => {
           })
         }).pipe(Effect.provide(Layer.mergeAll(TestContext.TestContext, adapterLayer)))
       ))
+
+    it('dispatches a Fill step verbatim (minus advanceWhen) after stepDelay', () =>
+      Effect.runPromise(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SimpleHandlerArgs['sendMessage']>(() => Effect.void)
+          const handler = makeSimpleHandler({ sendMessage, linkSequence: [fillLink] })
+
+          yield* handler.PageLoaded(pageLoaded())
+          yield* TestClock.adjust(Duration.seconds(5))
+          yield* Effect.yieldNow()
+
+          expect(sendMessage).toHaveBeenCalledTimes(1)
+          // The wire message is the Fill payload with no plan-only `advanceWhen`.
+          expect(sendMessage.mock.calls[0][0]).toEqual({
+            _tag: 'Fill',
+            querySelector: '#username',
+            value: 'alice',
+          })
+        }).pipe(Effect.provide(Layer.mergeAll(TestContext.TestContext, adapterLayer)))
+      ))
+
+    describe('advanceWhen: UrlMatch', () => {
+      it('holds the step until a matching PageLoaded, then dispatches after stepDelay', () =>
+        Effect.runPromise(
+          Effect.gen(function* () {
+            const sendMessage = vi.fn<SimpleHandlerArgs['sendMessage']>(() => Effect.void)
+            const handler = makeSimpleHandler({ sendMessage, linkSequence: [urlMatchLink] })
+
+            // A non-matching PageLoaded parks the step; the settle timer never
+            // even starts, so advancing past stepDelay dispatches nothing.
+            yield* handler.PageLoaded(pageLoaded({ url: 'https://example.com/login' }))
+            yield* TestClock.adjust(Duration.seconds(5))
+            yield* Effect.yieldNow()
+            expect(sendMessage).not.toHaveBeenCalled()
+
+            // A matching PageLoaded starts the settle timer; after stepDelay the
+            // step dispatches (advanceWhen is stripped from the wire message).
+            yield* handler.PageLoaded(pageLoaded({ url: 'https://example.com/dashboard' }))
+            yield* TestClock.adjust(Duration.seconds(5))
+            yield* Effect.yieldNow()
+            expect(sendMessage).toHaveBeenCalledTimes(1)
+            expect(sendMessage.mock.calls[0][0]).toEqual({
+              _tag: 'Open',
+              source: urlMatchLink.source,
+            })
+          }).pipe(Effect.provide(Layer.mergeAll(TestContext.TestContext, adapterLayer)))
+        ))
+
+      it('aborts via SniffingComplete when no matching PageLoaded arrives within the timeout', () =>
+        Effect.runPromise(
+          Effect.gen(function* () {
+            const sendMessage = vi.fn<SimpleHandlerArgs['sendMessage']>(() => Effect.void)
+            const handler = makeSimpleHandler({ sendMessage, linkSequence: [urlMatchLink] })
+
+            yield* handler.PageLoaded(pageLoaded({ url: 'https://example.com/login' }))
+            // Before the 30s timeout, nothing has been dispatched.
+            yield* TestClock.adjust(Duration.seconds(29))
+            yield* Effect.yieldNow()
+            expect(sendMessage).not.toHaveBeenCalled()
+
+            // The timeout fires → SniffingComplete, and the machine is Done.
+            yield* TestClock.adjust(Duration.seconds(1))
+            yield* Effect.yieldNow()
+            expect(sendMessage).toHaveBeenCalledTimes(1)
+            expect(sendMessage.mock.calls[0][0]).toEqual({ _tag: 'SniffingComplete' })
+
+            // A later PageLoaded is warned + dropped (Done is terminal).
+            yield* handler.PageLoaded(pageLoaded({ url: 'https://example.com/dashboard' })).pipe(
+              LoggingLayerTest.expectToLog((logs) => {
+                expect(logs).toEqual([
+                  expect.objectContaining({
+                    level: 'WARN',
+                    message: expect.stringContaining(
+                      'CollectorBridgeMessageHandler.PageLoaded: handler is done'
+                    ),
+                  }),
+                ])
+              }),
+              Effect.scoped
+            )
+            yield* TestClock.adjust(Duration.seconds(5))
+            yield* Effect.yieldNow()
+            expect(sendMessage).toHaveBeenCalledTimes(1)
+          }).pipe(Effect.provide(Layer.mergeAll(TestContext.TestContext, adapterLayer)))
+        ))
+
+      it('a matching PageLoaded before the timeout cancels the abort', () =>
+        Effect.runPromise(
+          Effect.gen(function* () {
+            const sendMessage = vi.fn<SimpleHandlerArgs['sendMessage']>(() => Effect.void)
+            const handler = makeSimpleHandler({ sendMessage, linkSequence: [urlMatchLink] })
+
+            yield* handler.PageLoaded(pageLoaded({ url: 'https://example.com/login' }))
+            yield* TestClock.adjust(Duration.seconds(10))
+            yield* Effect.yieldNow()
+
+            // Match arrives → timeout fiber interrupted, settle timer scheduled.
+            yield* handler.PageLoaded(pageLoaded({ url: 'https://example.com/dashboard' }))
+            yield* TestClock.adjust(Duration.seconds(5))
+            yield* Effect.yieldNow()
+            expect(sendMessage).toHaveBeenCalledTimes(1)
+            expect(sendMessage.mock.calls[0][0]).toEqual({
+              _tag: 'Open',
+              source: urlMatchLink.source,
+            })
+
+            // Advancing well past the original 30s deadline fires nothing more:
+            // the timeout that would have aborted the run was cancelled.
+            yield* TestClock.adjust(Duration.seconds(60))
+            yield* Effect.yieldNow()
+            expect(sendMessage).toHaveBeenCalledTimes(1)
+          }).pipe(Effect.provide(Layer.mergeAll(TestContext.TestContext, adapterLayer)))
+        ))
+
+      it('clear() interrupts a pending URL-match timeout', () =>
+        Effect.runPromise(
+          Effect.gen(function* () {
+            const sendMessage = vi.fn<SimpleHandlerArgs['sendMessage']>(() => Effect.void)
+            const handler = makeSimpleHandler({ sendMessage, linkSequence: [urlMatchLink] })
+
+            yield* handler.PageLoaded(pageLoaded({ url: 'https://example.com/login' }))
+            yield* handler.clear()
+            yield* TestClock.adjust(Duration.seconds(30))
+            yield* Effect.yieldNow()
+            // No SniffingComplete abort — the timeout fiber was interrupted.
+            expect(sendMessage).not.toHaveBeenCalled()
+          }).pipe(Effect.provide(Layer.mergeAll(TestContext.TestContext, adapterLayer)))
+        ))
+    })
   })
 })

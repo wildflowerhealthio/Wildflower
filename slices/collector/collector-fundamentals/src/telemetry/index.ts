@@ -20,12 +20,24 @@ const Sniffing = {
     StepIndex: 'collector.sniffing.step.index',
     /** Configured delay before the step dispatches, in milliseconds. */
     StepDelayMs: 'collector.sniffing.step.delay_ms',
-    /** `_tag` of the dispatched link (`Open` / `Click` / `SniffingComplete`). */
+    /** `_tag` of the dispatched link (`Open` / `Click` / `Fill` / `SniffingComplete`). */
     LinkKind: 'collector.sniffing.link.kind',
+    /** Configured URL-match wait cap for the step, in milliseconds. */
+    UrlMatchTimeoutMs: 'collector.sniffing.step.url_match_timeout_ms',
   },
   /** Waiting out the inter-step delay before dispatching the next link. */
   Wait: {
     Span: { Name: 'collector.sniffing.wait' },
+  },
+  /**
+   * Holding a step until a `PageLoaded` whose `url` matches the step's
+   * `advanceWhen` pattern. The span closes when the wait cap
+   * (`timeout`) elapses; a match interrupts the fiber before the span
+   * closes, so a closed span means the step timed out and the run
+   * aborted via `SniffingComplete`.
+   */
+  UrlMatchWait: {
+    Span: { Name: 'collector.sniffing.url_match_wait' },
   },
   /** Dispatching a link (or the terminal `SniffingComplete`) to the sniffer. */
   Dispatch: {

@@ -4,6 +4,7 @@ import type {
   CancelSnifferRequestMessageBody,
   CancelledMessageBody,
   ClickMessageBody,
+  FillMessageBody,
   PageLoadedMessageBody,
   RequestErrorMessageBody,
   ResponseDataMessageBody,
@@ -32,9 +33,10 @@ import type { JsonValue } from 'kitchen-sink/schema'
  *     them to keep the ~64KB `ResponseData` chunks FIFO (see
  *     `filter-tauri-internal.ts`).
  *   - Listens for Host→Web messages on the same channel, demuxing by
- *     `_tag` (`CancelSnifferRequest` / `Click`). No `message`-event
- *     indirection or `source === null` guard: only Tauri IPC can invoke a
- *     Tauri listener, so page scripts can't spoof inbound messages.
+ *     `_tag` (`CancelSnifferRequest` / `Click` / `Fill`). No
+ *     `message`-event indirection or `source === null` guard: only Tauri
+ *     IPC can invoke a Tauri listener, so page scripts can't spoof
+ *     inbound messages.
  *
  * Idempotent: a `Symbol.for('browser-sniffer:state')` slot on `window`
  * holds the captured natives, tracker state, and pending unlistens;
@@ -57,6 +59,7 @@ type SnifferOutboundMessage =
 type SnifferInboundMessage =
   | Schema.Schema.Encoded<typeof CancelSnifferRequestMessageBody>
   | Schema.Schema.Encoded<typeof ClickMessageBody>
+  | Schema.Schema.Encoded<typeof FillMessageBody>
 
 interface SnifferState {
   readonly nativeFetch: typeof globalThis.fetch
@@ -668,7 +671,42 @@ const installSniffer = function (eventBus: TauriEventApi): void {
   // `CancelSnifferRequest` emits a terminal `Cancelled` so the host can
   // release per-id state without a `ResponseFinished` that won't come.
   // `Click` is best-effort `querySelector(...)?.click()` — no feedback on
-  // a miss (the host retries after the next `PageLoaded`).
+  // a miss (the host retries after the next `PageLoaded`). `Fill` is the
+  // same best-effort contract for a form input.
+
+  /**
+   * Framework-aware value write. Frameworks like Angular and React track
+   * a controlled input's value by overriding the `value` property on the
+   * element *instance*, so a plain `el.value = …` is swallowed and the
+   * framework's model never updates. Writing through the setter defined
+   * on the element's own *prototype* (`HTMLInputElement.prototype`, …)
+   * bypasses the instance override, and dispatching bubbling
+   * `input`/`change` events then drives the framework's value accessor —
+   * the standard controlled-input trick. Best-effort: a target without a
+   * usable value setter is left untouched.
+   */
+  const fillInput = (target: Element, value: string): void => {
+    const prototype: unknown = Object.getPrototypeOf(target)
+    const descriptor =
+      prototype === null || prototype === undefined
+        ? undefined
+        : Object.getOwnPropertyDescriptor(prototype, 'value')
+    // Always invoked via `.call(target, …)` below, so the lost-`this`
+    // concern the rule guards against doesn't apply (same as the XHR
+    // native-method captures above).
+    // oxlint-disable-next-line typescript-eslint/unbound-method
+    const nativeSetter = descriptor?.set
+    if (typeof nativeSetter === 'function') {
+      nativeSetter.call(target, value)
+    } else if ('value' in target) {
+      target.value = value
+    } else {
+      return
+    }
+    target.dispatchEvent(new Event('input', { bubbles: true }))
+    target.dispatchEvent(new Event('change', { bubbles: true }))
+  }
+
   const unlistens: Array<(() => void) | Promise<() => void>> = []
   unlistens.push(
     eventBus.listen(BRIDGE_EVENT, ({ payload }) => {
@@ -688,6 +726,15 @@ const installSniffer = function (eventBus: TauriEventApi): void {
         const target = document.querySelector(msg.querySelector)
         if (target !== null && 'click' in target && typeof target.click === 'function') {
           target.click()
+        }
+        return
+      }
+      if (msg._tag === 'Fill') {
+        if (typeof msg.querySelector !== 'string' || msg.querySelector.length === 0) return
+        if (typeof msg.value !== 'string') return
+        const target = document.querySelector(msg.querySelector)
+        if (target !== null) {
+          fillInput(target, msg.value)
         }
         return
       }

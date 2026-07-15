@@ -9,6 +9,7 @@ import {
   CancelSnifferRequestMessage,
   CancelledMessage,
   ClickMessage,
+  FillMessage,
   PageLoadedMessage,
   RequestErrorMessage,
   ResponseDataMessage,
@@ -27,6 +28,7 @@ type WebToHostMessage =
 type HostToWebMessage =
   | Schema.Schema.Type<typeof CancelSnifferRequestMessage>
   | Schema.Schema.Type<typeof ClickMessage>
+  | Schema.Schema.Type<typeof FillMessage>
 
 // Arbitrary instances of each decoded payload, derived from the schemas
 // themselves so the test stays in lockstep with the bridge wire format —
@@ -43,7 +45,8 @@ const webToHostArb: fc.Arbitrary<WebToHostMessage> = fc.oneof(
 
 const hostToWebArb: fc.Arbitrary<HostToWebMessage> = fc.oneof(
   Arbitrary.make(Schema.typeSchema(CancelSnifferRequestMessage)),
-  Arbitrary.make(Schema.typeSchema(ClickMessage))
+  Arbitrary.make(Schema.typeSchema(ClickMessage)),
+  Arbitrary.make(Schema.typeSchema(FillMessage))
 )
 
 const encodeWebToHost = (m: WebToHostMessage): string => {
@@ -141,7 +144,7 @@ const runHost = async (
 }
 
 describe('BrowserSnifferBridge — shape', () => {
-  test('declares the six sniffer events on Web→Host and the two control messages on Host→Web', () => {
+  test('declares the six sniffer events on Web→Host and the three control messages on Host→Web', () => {
     expect(Object.keys(BrowserSnifferBridge.WebToHost).toSorted()).toEqual([
       'Cancelled',
       'PageLoaded',
@@ -153,6 +156,7 @@ describe('BrowserSnifferBridge — shape', () => {
     expect(Object.keys(BrowserSnifferBridge.HostToWeb).toSorted()).toEqual([
       'CancelSnifferRequest',
       'Click',
+      'Fill',
     ])
   })
 })
@@ -193,13 +197,24 @@ describe('BrowserSnifferBridge — Host→Web round-trip', () => {
           {
             CancelSnifferRequest: push,
             Click: push,
+            Fill: push,
           }
 
-        const inputs = messages.map((m) =>
-          m._tag === 'CancelSnifferRequest'
-            ? Schema.encodeSync(CancelSnifferRequestMessage)(m)
-            : Schema.encodeSync(ClickMessage)(m)
-        )
+        const encodeHostToWeb = (m: HostToWebMessage): string => {
+          switch (m._tag) {
+            case 'CancelSnifferRequest':
+              return Schema.encodeSync(CancelSnifferRequestMessage)(m)
+            case 'Click':
+              return Schema.encodeSync(ClickMessage)(m)
+            case 'Fill':
+              return Schema.encodeSync(FillMessage)(m)
+            default: {
+              const exhaustive: never = m
+              throw new Error(`unreachable encodeHostToWeb: ${JSON.stringify(exhaustive)}`)
+            }
+          }
+        }
+        const inputs = messages.map(encodeHostToWeb)
         const { layer: adapterLayer } = TestPlatformAdapterLayer.make({
           initialMessages: [...inputs, drainToWebEncoded],
         })
