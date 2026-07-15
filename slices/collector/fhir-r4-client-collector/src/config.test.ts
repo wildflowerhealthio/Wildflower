@@ -3,7 +3,7 @@ import * as fc from 'fast-check'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { InstanceConfig, defaultConfig, scrapingPlan } from './config.ts'
+import { FhirR4CollectorDescriptor, InstanceConfig, defaultConfig, scrapingPlan } from './config.ts'
 
 const { expectRightToEqual, expectLeftToEqual } = utilityExpectations(expect)
 
@@ -78,6 +78,44 @@ describe('defaultConfig', () => {
       rootUrl: 'https://r4.smarthealthit.org',
       patientId: '8c0f46f4-dd7b-4a5f-bd35-f0f41a2f8882',
     })
+  })
+})
+
+describe('FhirR4CollectorDescriptor', () => {
+  it('bundles the fhir-r4 schema, default, and plan factory', () => {
+    expect(FhirR4CollectorDescriptor.tag).toBe('fhir-r4')
+    expect(FhirR4CollectorDescriptor.configSchema).toBe(InstanceConfig)
+    expect(FhirR4CollectorDescriptor.defaultConfig).toEqual(defaultConfig)
+    // The plan factory is the module's `scrapingPlan` — structural
+    // equality on a produced plan stands in for identity.
+    expect(FhirR4CollectorDescriptor.makeScrapingPlan(defaultConfig)).toEqual(
+      scrapingPlan(defaultConfig)
+    )
+  })
+
+  it('exposes kind-level display strings (not the route demo label)', () => {
+    expect(FhirR4CollectorDescriptor.display.title).toBe('FHIR R4')
+    expect(FhirR4CollectorDescriptor.display.description).toBe(
+      'Health records from a FHIR R4 server'
+    )
+  })
+
+  it('derives the list subtitle from the configured rootUrl', () => {
+    fc.assert(
+      fc.property(Arbitrary.make(InstanceConfig), (config) => {
+        expect(FhirR4CollectorDescriptor.display.listSubtitle(config)).toBe(config.rootUrl)
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('matches its own configs and rejects foreign ones via scrapingPlanIfMatches', () => {
+    expect(FhirR4CollectorDescriptor.scrapingPlanIfMatches(defaultConfig)).toEqual(
+      scrapingPlan(defaultConfig)
+    )
+    expect(
+      FhirR4CollectorDescriptor.scrapingPlanIfMatches({ _tag: 'not-fhir', rootUrl: 'x' })
+    ).toBeUndefined()
   })
 })
 
