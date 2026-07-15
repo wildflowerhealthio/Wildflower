@@ -255,6 +255,34 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn install_self_hosted_app_allocates_the_lowest_free_port() {
+        let store = FakeAppsStore::default();
+        // The seeded app sits at 8081, below the upload range.
+        seeded_self_hosted(&store, "patient-browser", true);
+
+        let installer = FakeInstaller::new("first-abc");
+        let (_, first) = install_self_hosted_app(&store, &installer, payload("First"))
+            .await
+            .expect("installed");
+        assert_eq!(first.port, 8082, "the first upload takes the range floor");
+
+        let installer = FakeInstaller::new("second-abc");
+        let (_, second) = install_self_hosted_app(&store, &installer, payload("Second"))
+            .await
+            .expect("installed");
+        assert_eq!(second.port, 8083);
+
+        // Deleting the first upload frees its port; the next install reuses it
+        // (lowest-free, not tail-append) so origins stay stable across reinstall.
+        store.delete_app("first").expect("deleted");
+        let installer = FakeInstaller::new("third-abc");
+        let (_, third) = install_self_hosted_app(&store, &installer, payload("Third"))
+            .await
+            .expect("installed");
+        assert_eq!(third.port, 8082, "a freed port is reused lowest-first");
+    }
+
+    #[tokio::test]
     async fn install_self_hosted_app_rejects_a_nameless_slug_before_staging() {
         let store = FakeAppsStore::default();
         let installer = FakeInstaller::new("mint");

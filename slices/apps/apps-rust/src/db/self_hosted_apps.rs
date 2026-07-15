@@ -23,13 +23,8 @@ use persistence_rust::PooledDieselConnection;
 use super::app_registration::{app_registrations, id_taken, next_position};
 use crate::domain::{
     lowest_free_port, AppRegistration, AppsError, SelfHostedAppConfiguration,
-    SelfHostedAppConfigurationPayload,
+    SelfHostedAppConfigurationPayload, MIN_UPLOAD_PORT,
 };
-
-/// The smallest loopback port an uploaded app is allocated — one above the seeded
-/// patient-browser at 8081. See the port-allocation section of
-/// `docs/Apps/Store and Install Explanation.md`.
-const MIN_UPLOAD_PORT: u16 = 8082;
 
 diesel::table! {
     self_hosted_app_configurations (id) {
