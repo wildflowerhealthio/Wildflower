@@ -259,7 +259,7 @@
           "Cloud apps"
         ],
         "summary": "`PUT /cloud-apps/{id}` — replace a cloud app's content. Owner-gated by the host.",
-        "operationId": "handle_replace_cloud_app",
+        "operationId": "handle_update_cloud_app",
         "parameters": [
           {
             "name": "id",
@@ -449,7 +449,7 @@
           "Self-hosted apps"
         ],
         "summary": "`PUT /self-hosted-apps/{id}` — replace a self-hosted app's launch path.\nOwner-gated by the host.",
-        "operationId": "handle_replace_self_hosted_app",
+        "operationId": "handle_update_self_hosted_app",
         "parameters": [
           {
             "name": "id",

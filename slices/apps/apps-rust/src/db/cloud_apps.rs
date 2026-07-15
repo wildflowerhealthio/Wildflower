@@ -76,7 +76,8 @@ pub(super) fn insert_cloud_app(
                 ..registration.clone()
             })
             .returning(AppRegistration::as_returning())
-            .get_result(conn)?;
+            .get_result(conn)
+            .map_err(|e| AppsError::infrastructure("cloud registration insert failed", e))?;
         let stored_config: CloudConfigurationRow =
             diesel::insert_into(cloud_app_configurations::table)
                 .values(CloudConfigurationRow {
@@ -84,7 +85,8 @@ pub(super) fn insert_cloud_app(
                     url: config.url.clone(),
                 })
                 .returning(CloudConfigurationRow::as_returning())
-                .get_result(conn)?;
+                .get_result(conn)
+                .map_err(|e| AppsError::infrastructure("cloud configuration insert failed", e))?;
         Ok(Ok((stored_registration, stored_config.into())))
     })
 }
@@ -120,7 +122,8 @@ pub(super) fn replace_cloud_app(
                 .set(cloud_app_configurations::url.eq(config.url.to_string()))
                 .returning(CloudConfigurationRow::as_returning())
                 .get_result(conn)
-                .optional()?;
+                .optional()
+                .map_err(|e| AppsError::infrastructure("cloud configuration update failed", e))?;
         let Some(config_row) = updated_config else {
             return Ok(None);
         };
@@ -134,7 +137,8 @@ pub(super) fn replace_cloud_app(
                     app_registrations::requires_tunnel.eq(registration.requires_tunnel),
                 ))
                 .returning(AppRegistration::as_returning())
-                .get_result(conn)?;
+                .get_result(conn)
+                .map_err(|e| AppsError::infrastructure("cloud registration update failed", e))?;
         Ok(Some((stored_registration, config_row.into())))
     })
 }

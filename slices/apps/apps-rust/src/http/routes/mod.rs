@@ -49,19 +49,19 @@ pub(crate) fn gated_openapi_router() -> OpenApiRouter<Arc<AppsState>> {
         .layer(DefaultBodyLimit::max(UPLOAD_BODY_LIMIT_BYTES));
 
     OpenApiRouter::new()
-        .routes(routes!(apps::list::handle_list_apps))
-        .routes(routes!(apps::delete::handle_delete_app))
+        .routes(routes!(apps::list_all::handle_list_apps))
+        .routes(routes!(apps::delete_by_id::handle_delete_app))
         .routes(routes!(home_screen::handle_replace_home_screen))
         .routes(routes!(cloud_apps::create::handle_create_cloud_app))
         .routes(routes!(
-            cloud_apps::get::handle_get_cloud_app,
-            cloud_apps::update::handle_replace_cloud_app
+            cloud_apps::get_by_id::handle_get_cloud_app,
+            cloud_apps::update_by_id::handle_update_cloud_app
         ))
         .routes(routes!(
-            self_hosted_apps::get::handle_get_self_hosted_app,
-            self_hosted_apps::update::handle_replace_self_hosted_app
+            self_hosted_apps::get_by_id::handle_get_self_hosted_app,
+            self_hosted_apps::update_by_id::handle_update_self_hosted_app
         ))
-        .routes(routes!(system_apps::get::handle_get_system_app))
+        .routes(routes!(system_apps::get_by_id::handle_get_system_app))
         .merge(upload_router)
 }
 

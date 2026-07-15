@@ -12,14 +12,10 @@
 
 use std::collections::HashSet;
 
-use diesel::deserialize::{self, FromSql, FromSqlRow};
-use diesel::expression::AsExpression;
 use diesel::prelude::*;
-use diesel::serialize::{self, IsNull, Output, ToSql};
-use diesel::sql_types::Text;
-use diesel::sqlite::{Sqlite, SqliteValue};
 use persistence_rust::PooledDieselConnection;
 
+use super::shared::text_column;
 use crate::domain::{is_exact_registry_permutation, AppKind, AppRegistration, AppsError};
 
 diesel::table! {
@@ -36,38 +32,13 @@ diesel::table! {
     }
 }
 
-/// An [`AppKind`] bound to / read from the `kind` TEXT column as its kebab string. A
-/// stored value that isn't a known kind surfaces as a diesel deserialization error,
-/// never a panic — matching the table's `CHECK (kind IN (…))` on the write side.
-#[derive(Debug, AsExpression, FromSqlRow)]
-#[diesel(sql_type = Text)]
-pub struct AppKindColumn(AppKind);
-
-impl From<AppKind> for AppKindColumn {
-    fn from(kind: AppKind) -> Self {
-        Self(kind)
-    }
-}
-
-impl From<AppKindColumn> for AppKind {
-    fn from(column: AppKindColumn) -> Self {
-        column.0
-    }
-}
-
-impl FromSql<Text, Sqlite> for AppKindColumn {
-    fn from_sql(value: SqliteValue<'_, '_, '_>) -> deserialize::Result<Self> {
-        let text = <String as FromSql<Text, Sqlite>>::from_sql(value)?;
-        Ok(Self(text.parse::<AppKind>()?))
-    }
-}
-
-impl ToSql<Text, Sqlite> for AppKindColumn {
-    fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Sqlite>) -> serialize::Result {
-        out.set_value(self.0.as_str());
-        Ok(IsNull::No)
-    }
-}
+text_column!(
+    /// An [`AppKind`] bound to / read from the `kind` TEXT column as its kebab string. A
+    /// stored value that isn't a known kind surfaces as a diesel deserialization error,
+    /// never a panic — matching the table's `CHECK (kind IN (…))` on the write side.
+    pub AppKindColumn(AppKind),
+    serialize: |kind| kind.as_str(),
+);
 
 /// The uniform catalogue read against an arbitrary connection — shared by the
 /// [`SqliteAppsStore`](super::SqliteAppsStore) `list_registrations` delegation and
@@ -77,21 +48,22 @@ impl ToSql<Text, Sqlite> for AppKindColumn {
 pub(super) fn list_registrations_on(
     conn: &mut SqliteConnection,
 ) -> Result<Vec<AppRegistration>, AppsError> {
-    Ok(app_registrations::table
+    app_registrations::table
         .order(app_registrations::position)
         .select(AppRegistration::as_select())
-        .load(conn)?)
+        .load(conn)
+        .map_err(|e| AppsError::infrastructure("list registrations failed", e))
 }
 
 /// Whether any app already holds this id — checked against `app_registrations`, the
 /// registration PK and so the global id space across every kind. The per-kind inserts
 /// call it to reject a colliding id.
 pub(super) fn id_taken(conn: &mut SqliteConnection, id: &str) -> Result<bool, AppsError> {
-    let taken = diesel::select(diesel::dsl::exists(
+    diesel::select(diesel::dsl::exists(
         app_registrations::table.filter(app_registrations::id.eq(id)),
     ))
-    .get_result::<bool>(conn)?;
-    Ok(taken)
+    .get_result::<bool>(conn)
+    .map_err(|e| AppsError::infrastructure("id-taken check failed", e))
 }
 
 /// The next display position: `MAX(position) + 1` (0 for an empty registry). The
@@ -99,7 +71,8 @@ pub(super) fn id_taken(conn: &mut SqliteConnection, id: &str) -> Result<bool, Ap
 pub(super) fn next_position(conn: &mut SqliteConnection) -> Result<i64, AppsError> {
     let max: Option<i64> = app_registrations::table
         .select(diesel::dsl::max(app_registrations::position))
-        .first(conn)?;
+        .first(conn)
+        .map_err(|e| AppsError::infrastructure("next-position read failed", e))?;
     Ok(max.map_or(0, |m| m + 1))
 }
 
@@ -137,7 +110,9 @@ pub(super) fn replace_placements(
         // Move every row to a disjoint negative range first so the per-row
         // renumber below never transiently violates `UNIQUE(position)`
         // (SQLite's UNIQUE is immediate, not deferrable).
-        diesel::sql_query("UPDATE app_registrations SET position = -1 - position").execute(conn)?;
+        diesel::sql_query("UPDATE app_registrations SET position = -1 - position")
+            .execute(conn)
+            .map_err(|e| AppsError::infrastructure("placement renumber staging failed", e))?;
         for (index, (id, on_homescreen)) in entries.iter().enumerate() {
             // A registry with more than i64::MAX apps can't exist, but map rather
             // than panic so any conversion failure rolls the transaction back.
@@ -148,7 +123,8 @@ pub(super) fn replace_placements(
                     app_registrations::position.eq(position),
                     app_registrations::on_homescreen.eq(on_homescreen),
                 ))
-                .execute(conn)?;
+                .execute(conn)
+                .map_err(|e| AppsError::infrastructure("placement renumber failed", e))?;
         }
 
         // Read the new registry inside the transaction so the response can't
@@ -163,7 +139,8 @@ pub(super) fn replace_placements(
 fn all_registration_ids(conn: &mut SqliteConnection) -> Result<HashSet<String>, AppsError> {
     Ok(app_registrations::table
         .select(app_registrations::id)
-        .load::<String>(conn)?
+        .load::<String>(conn)
+        .map_err(|e| AppsError::infrastructure("registration-ids read failed", e))?
         .into_iter()
         .collect())
 }

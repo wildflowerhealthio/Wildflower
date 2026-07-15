@@ -28,7 +28,7 @@ use crate::http::wire_representations::CloudAppDetail;
         (status = 404, description = "No cloud app has this id", body = AppNotFoundBody),
     ),
 )]
-pub(crate) async fn handle_replace_cloud_app(
+pub(crate) async fn handle_update_cloud_app(
     State(state): State<Arc<AppsState>>,
     Path(id): Path<String>,
     Json(body): Json<CloudAppBody>,
