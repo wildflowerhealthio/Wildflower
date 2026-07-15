@@ -2,8 +2,8 @@
  * The framework-free core of the collector sync runner: the mailbox
  * drive loop, quiescence / idle-timeout logic, and per-resource write
  * retries. Extracted from `use-sync-runner.ts` so it is unit-testable
- * with `TestClock` (no React Testing Library) and so the persistence-seam
- * work (3B of epic #382) is a focused edit on this file.
+ * with `TestClock` (no React Testing Library) and so the persistence sink
+ * (3B of epic #382) is a focused injection into this file.
  *
  * This module has **no React imports** — the hook (`use-sync-runner.ts`)
  * owns the mutation wiring, the `AbortController`, and the `RunnerState`
@@ -12,19 +12,21 @@
  * type-only import of `useCollectorRegister` (erased at runtime) so the
  * injected `collectorRegister` stays exactly typed.
  *
- * Slice-layering note: this core still hard-couples to the FHIR R4 EMR
- * slice — the write switch below POSTs to `FhirR4ResourcesHttpApiClient`
- * directly. Abstracting that seam behind the descriptor is 3B (epic
- * #382); until then the coupling is a deliberate slice-layering exception
- * documented in `collector-react/package.json`. It lives in
- * `collector-react` rather than `collector-fundamentals` because it
- * imports the registry lookup and the FHIR client; 3B revisits after the
- * persist sink makes it generic.
+ * The runner is **fully generic** over a collector's resource type
+ * (`Resources`) and its write requirement (`R`): where it used to
+ * `switch (resource.resourceType)` over FHIR endpoints, it now calls the
+ * injected `persistResource` sink and labels telemetry / failures through
+ * `describeResource`. Both come from the owning `CollectorDescriptor` via
+ * the registry's existential `runIngredients` bundle, so this file no
+ * longer names any collector's resource union (retiring
+ * `AnyCollectorResource`) and no longer imports the FHIR client. The
+ * runner still owns everything *around* a write — batching,
+ * `WRITE_CONCURRENCY`, the retry/backoff schedule, spans, and failure
+ * accounting.
  */
 import { CollectorBridgeMessageHandler } from 'collector-fundamentals/handler'
-import type { ScrapingPlan } from 'collector-fundamentals/model'
+import type { CollectorDescriptor, ScrapingPlan } from 'collector-fundamentals/model'
 import * as Telemetry from 'collector-fundamentals/telemetry'
-import { type AnyCollectorResource } from 'collector-registry/registry'
 import {
   Duration,
   Effect,
@@ -36,7 +38,6 @@ import {
   Ref,
   Schedule,
 } from 'effect'
-import { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
 
 import { captureLinkedSpan } from './capture-linked-span.ts'
 import type { CollectorSender } from './collector-sender-context.ts'
@@ -45,10 +46,12 @@ import type { useCollectorRegister } from './use-collector-register.ts'
 /**
  * Identifier of an upsert that failed after all retries (or a response
  * that failed to parse). Surfaced via the `partial` runner state so the
- * UI can render "N of M synced".
+ * UI can render "N of M synced". `kind` / `id` are the descriptor's
+ * {@link CollectorDescriptor.ResourceDescription} — the runner never
+ * inspects a resource's fields itself.
  */
 interface FailedResource {
-  readonly resourceType: string
+  readonly kind: string
   readonly id: string
 }
 
@@ -71,8 +74,8 @@ interface ImportSummary {
  * inline (see {@link buildImportEffect}), so the loop needs no write
  * bookkeeping.
  */
-type ImportEvent =
-  | { readonly _tag: 'parsed'; readonly resources: ReadonlyArray<AnyCollectorResource> }
+type ImportEvent<Resources> =
+  | { readonly _tag: 'parsed'; readonly resources: ReadonlyArray<Resources> }
   | { readonly _tag: 'failure'; readonly error: unknown; readonly url: string }
   | { readonly _tag: 'sniffDone' }
 
@@ -110,9 +113,9 @@ const WRITE_CONCURRENCY = 1
  * awaits each batch inline, so a processed event leaves its writes
  * already settled.
  */
-interface RunStateMachine {
+interface RunStateMachine<Resources> {
   /** Push a decoded response's resources (sync; called from `onResult`). */
-  readonly offerParsed: (resources: ReadonlyArray<AnyCollectorResource>) => void
+  readonly offerParsed: (resources: ReadonlyArray<Resources>) => void
   /** Push a parse/transport failure (sync; called from `onResult`). */
   readonly offerFailure: (error: unknown, url: string) => void
   /** Mark sniffing finished and wake the loop (the sender wrap calls this). */
@@ -120,7 +123,7 @@ interface RunStateMachine {
   /** Next event, or `None` once `window` elapses with nothing queued. */
   readonly tryTakeEvent: (
     window: Duration.DurationInput
-  ) => Effect.Effect<Option.Option<ImportEvent>>
+  ) => Effect.Effect<Option.Option<ImportEvent<Resources>>>
   /** Record a failed item: drives `partial` state and fires `onError` once. */
   readonly handleFailure: (failed: FailedResource, error: unknown) => Effect.Effect<void>
   /** Sniffing finished, no response mid-stream, no event queued. */
@@ -131,16 +134,16 @@ interface RunStateMachine {
   readonly summary: Effect.Effect<ImportSummary>
 }
 
-const makeRunStateMachine = (
+const makeRunStateMachine = <Resources>(
   setFailed: (failed: ReadonlyArray<FailedResource>) => void,
   onError: (error: unknown) => void
-): Effect.Effect<RunStateMachine> =>
+): Effect.Effect<RunStateMachine<Resources>> =>
   Effect.gen(function* () {
-    const events = yield* Mailbox.make<ImportEvent>()
+    const events = yield* Mailbox.make<ImportEvent<Resources>>()
     const sniffComplete = yield* Ref.make(false)
     const failures = yield* Ref.make<ReadonlyArray<FailedResource>>([])
 
-    const handleFailure: RunStateMachine['handleFailure'] = (failed, error) =>
+    const handleFailure: RunStateMachine<Resources>['handleFailure'] = (failed, error) =>
       Ref.updateAndGet(failures, (arr) => [...arr, failed]).pipe(
         Effect.flatMap((arr) =>
           Effect.sync(() => {
@@ -150,7 +153,7 @@ const makeRunStateMachine = (
         )
       )
 
-    const isSettled: RunStateMachine['isSettled'] = (inProgressResponses) =>
+    const isSettled: RunStateMachine<Resources>['isSettled'] = (inProgressResponses) =>
       Effect.gen(function* () {
         if (!(yield* Ref.get(sniffComplete))) return false
         if (MutableHashMap.size(inProgressResponses) > 0) return false
@@ -192,8 +195,9 @@ const makeRunStateMachine = (
  *     {@link RunStateMachine} mailbox. The drive loop pulls each event and, for
  *     `parsed`, upserts the batch *inline* (`Effect.forEach`, awaited): the
  *     batch is settled by the time the event finishes, so there's no
- *     outstanding-write bookkeeping. The write requirement bubbles up to
- *     this Effect's `R`, which the broadened collector `runAuthed` satisfies.
+ *     outstanding-write bookkeeping. The write requirement (`R`, the
+ *     descriptor's `persistResource` environment) bubbles up to this
+ *     Effect's `R`, which the broadened collector `runAuthed` satisfies.
  *   - Completion is {@link RunStateMachine.isSettled} — sniffing dispatched
  *     its terminal step, no response is mid-stream, the mailbox is empty —
  *     re-confirmed across {@link SHORT_CONFIRM_WINDOW}. The handler keeps a
@@ -203,93 +207,75 @@ const makeRunStateMachine = (
  *     escape hatch for a silent host.
  *   - `release` (natural completion, idle settle, or explicit cancel via
  *     the run's `AbortSignal`): `cancelAllInFlight` → `clear` → `unregister`.
+ *
+ * `persistResource` (where a write goes) and `describeResource` (its
+ * telemetry / failure label) are injected — the runner is generic over the
+ * collector's `Resources` and its write requirement `R`.
  */
-const buildImportEffect = ({
+const buildImportEffect = <Resources, R>({
   scrapingPlan,
+  persistResource,
+  describeResource,
   sendCollectorMessage,
   collectorRegister,
   onError,
   setFailed,
   idleTimeout,
 }: {
-  readonly scrapingPlan: ScrapingPlan.ScrapingPlan<AnyCollectorResource>
+  readonly scrapingPlan: ScrapingPlan.ScrapingPlan<Resources>
+  readonly persistResource: (resource: Resources) => Effect.Effect<void, unknown, R>
+  readonly describeResource: (resource: Resources) => CollectorDescriptor.ResourceDescription
   readonly sendCollectorMessage: CollectorSender
   readonly collectorRegister: ReturnType<typeof useCollectorRegister>
   readonly onError: (error: unknown) => void
   readonly setFailed: (failed: ReadonlyArray<FailedResource>) => void
   readonly idleTimeout: Duration.DurationInput
-}): Effect.Effect<ImportSummary, never, FhirR4ResourcesHttpApiClient> =>
+}): Effect.Effect<ImportSummary, never, R> =>
   Effect.scoped(
     Effect.gen(function* () {
-      const stateMachine = yield* makeRunStateMachine(setFailed, onError)
+      const stateMachine = yield* makeRunStateMachine<Resources>(setFailed, onError)
 
-      // One resource's PUT, retried with bounded exponential backoff (3
-      // retries, 250ms → 1s). Each attempt is its own `PUT` span, so the
-      // retry count reads straight off the trace — no counter needed.
+      // One resource's write, retried with bounded exponential backoff (3
+      // retries, 250ms → 1s). Each attempt is its own span, so the retry
+      // count reads straight off the trace — no counter needed.
       // `Schedule.intersect` enforces both "stop after N" AND "exponential";
-      // `either` would stop on whichever fired first.
-      const writeResourceWithRetries = (
-        resource: AnyCollectorResource,
-        id: string
-      ): Effect.Effect<void, never, FhirR4ResourcesHttpApiClient> =>
-        Effect.gen(function* () {
-          const client = yield* FhirR4ResourcesHttpApiClient
-          const path = { id }
-          switch (resource.resourceType) {
-            case 'Patient':
-              return yield* client.Patient.Update({ path, payload: { ...resource, id } })
-            case 'Observation':
-              return yield* client.Observation.Update({ path, payload: { ...resource, id } })
-            case 'Binary':
-              return yield* client.Binary.Update({ path, payload: { ...resource, id } })
-            case 'MedicationRequest':
-              return yield* client.MedicationRequest.Update({ path, payload: { ...resource, id } })
-            case 'MedicationDispense':
-              return yield* client.MedicationDispense.Update({ path, payload: { ...resource, id } })
-            default: {
-              const unreachable: never = resource
-              return yield* Effect.dieMessage(
-                `useSyncRunner: unknown resourceType ${String(unreachable)}`
-              )
-            }
-          }
-        }).pipe(
+      // `either` would stop on whichever fired first. "Which write goes
+      // where" is the injected `persistResource`; the runner owns the
+      // schedule, the span, and the failure recording around it.
+      const writeResourceWithRetries = (resource: Resources): Effect.Effect<void, never, R> => {
+        const { kind, id } = describeResource(resource)
+        return persistResource(resource).pipe(
           Effect.tapError((err) =>
-            Effect.logError(`useSyncRunner: upsert failed for ${resource.resourceType}/${id}`, err)
+            Effect.logError(`sync-run: upsert failed for ${kind}/${id}`, err)
           ),
           Effect.retry(
             Schedule.exponential('250 millis').pipe(Schedule.intersect(Schedule.recurs(3)))
           ),
           Effect.withSpan(Telemetry.Importing.Update.Span.Name, {
-            attributes: { [Telemetry.FhirResource.Attributes.Type]: resource.resourceType },
+            attributes: { [Telemetry.Importing.Update.Span.Attributes.Kind]: kind },
           }),
           Effect.asVoid,
           // Retries exhausted: record + notify, but don't fail the run.
-          Effect.catchAll((err) =>
-            stateMachine.handleFailure({ resourceType: resource.resourceType, id }, err)
-          )
+          Effect.catchAll((err) => stateMachine.handleFailure({ kind, id }, err))
         )
+      }
 
       // Upsert a decoded response's resources — concurrent within the
       // batch, awaited as a whole so the drive loop blocks until they
       // settle. `discard` because failures are recorded inside
-      // `writeResourceWithRetries`; nothing flows back.
-      const writeBatch = (
-        resources: ReadonlyArray<AnyCollectorResource>
-      ): Effect.Effect<void, never, FhirR4ResourcesHttpApiClient> =>
+      // `writeResourceWithRetries`; nothing flows back. Null-id handling
+      // lives in the descriptor's `persistResource` (a skipped resource
+      // resolves cleanly), so the runner stays resource-agnostic.
+      const writeBatch = (resources: ReadonlyArray<Resources>): Effect.Effect<void, never, R> =>
         Effect.forEach(
           resources,
-          // Entities filter null-id resources before emitting; narrow
-          // defensively for the typed `path`.
-          (resource) =>
-            resource.id === null
-              ? Effect.logWarning(`useSyncRunner: skipping resource with null id`)
-              : Effect.andThen(
-                  Effect.logDebug(
-                    `useSyncRunner: upserting ${resource.resourceType}/${resource.id}`
-                  ),
-                  writeResourceWithRetries(resource, resource.id)
-                ),
+          (resource) => {
+            const { kind, id } = describeResource(resource)
+            return Effect.andThen(
+              Effect.logDebug(`sync-run: upserting ${kind}/${id}`),
+              writeResourceWithRetries(resource)
+            )
+          },
           { concurrency: WRITE_CONCURRENCY, discard: true }
         ).pipe(
           Effect.withSpan(Telemetry.Importing.Span.Name, {
@@ -297,13 +283,11 @@ const buildImportEffect = ({
           })
         )
 
-      const processStateEvent = (
-        event: ImportEvent
-      ): Effect.Effect<void, never, FhirR4ResourcesHttpApiClient> =>
+      const processStateEvent = (event: ImportEvent<Resources>): Effect.Effect<void, never, R> =>
         Match.value(event).pipe(
           Match.tag('parsed', ({ resources }) => writeBatch(resources)),
           Match.tag('failure', ({ error, url }) =>
-            stateMachine.handleFailure({ resourceType: 'response', id: url }, error)
+            stateMachine.handleFailure({ kind: 'response', id: url }, error)
           ),
           // Wake-only: `signalSniffComplete` already flipped the flag.
           Match.tag('sniffDone', () => Effect.void),
@@ -330,7 +314,7 @@ const buildImportEffect = ({
             clear: clearMessageHandler,
             cancelAllInFlight,
             ...pipeThroughHandlers
-          } = yield* CollectorBridgeMessageHandler.make<AnyCollectorResource>({
+          } = yield* CollectorBridgeMessageHandler.make<Resources>({
             scrapingPlan,
             sendMessage: observingSend,
             onResult: ({ response, result }) =>
@@ -393,7 +377,7 @@ const buildImportEffect = ({
           MutableHashMap.values(inProgressBridgeResponses),
           ({ response }) =>
             stateMachine.handleFailure(
-              { resourceType: 'response', id: response.url },
+              { kind: 'response', id: response.url },
               new Error(
                 `useSyncRunner: response for ${response.url} still in-flight at idle timeout; abandoning`
               )
@@ -412,7 +396,7 @@ const buildImportEffect = ({
             event,
             settledBeforeListening: currentlySettled,
           }).pipe(
-            Match.withReturnType<Effect.Effect<boolean, never, FhirR4ResourcesHttpApiClient>>(),
+            Match.withReturnType<Effect.Effect<boolean, never, R>>(),
             Match.when({ event: Option.isSome }, ({ event: { value: takenEvent } }) =>
               processStateEvent(takenEvent).pipe(Effect.as(false))
             ),

@@ -1,4 +1,4 @@
-import type { CollectorDescriptor, ScrapingPlan } from 'collector-fundamentals/model'
+import type { CollectorDescriptor } from 'collector-fundamentals/model'
 import { Schema } from 'effect'
 import { FhirR4CollectorDescriptor } from 'fhir-r4-client-collector'
 
@@ -8,8 +8,8 @@ import { FhirR4CollectorDescriptor } from 'fhir-r4-client-collector'
  * This is the single edit point for registering a collector: add its
  * `*-client-collector` package as a dependency and append its
  * `CollectorDescriptor` here. Everything below — the {@link CollectorConfig}
- * union, the {@link CollectorTag} literal, {@link AnyCollectorResource},
- * and the {@link makeScrapingPlanForConfig} dispatch — is *derived* from
+ * union, the {@link CollectorTag} literal, {@link CollectorRequirements},
+ * and the {@link runIngredientsForConfig} dispatch — is *derived* from
  * this tuple, so there is no parallel switch/union to keep in sync (the
  * four parallel edits this file used to require; see issue #387). There
  * is intentionally no runtime registry.
@@ -21,7 +21,7 @@ type AnyCollectorDescriptor = (typeof descriptors)[number]
 /**
  * Closed discriminated union of every collector's per-instance config,
  * derived from {@link descriptors}. The `CollectorApi.{Create,Update}Remote`
- * payloads and the host-side {@link makeScrapingPlanForConfig} dispatch
+ * payloads and the host-side {@link runIngredientsForConfig} dispatch
  * both flow from this single union.
  *
  * The runtime schema is the `Schema.Union` of each descriptor's
@@ -52,35 +52,40 @@ const CollectorTag: Schema.Schema<CollectorTag> = Schema.Literal(
 )
 
 /**
- * Every resource shape any collector might produce, derived from the
- * descriptors' plan factories. Used as the generic argument of the
- * per-config `ScrapingPlan` returned by {@link makeScrapingPlanForConfig}
- * — callers downstream of the dispatcher accept the union and narrow as
- * needed. (Retired by stage 3B.)
+ * The union of every collector's write requirement (`R`), derived from
+ * the descriptors' `persistResource` sinks. This is the environment the
+ * authed runner must provide for {@link runIngredientsForConfig}'s bundle
+ * — today just `FhirR4ResourcesHttpApiClient`. Surfacing the union here
+ * (rather than naming any resource type) is what lets `AnyCollectorResource`
+ * disappear: consumers depend on *what the writes need*, not on *which
+ * resources exist*.
  */
-type AnyCollectorResource = CollectorDescriptor.ResourcesOf<AnyCollectorDescriptor>
+type CollectorRequirements = CollectorDescriptor.RequirementsOf<AnyCollectorDescriptor>
 
 /**
- * Build the concrete `ScrapingPlan` for a stored `CollectorConfig` by
- * dispatching to the owning descriptor. Drives the wire-level dispatch
- * in `CollectorBridgeMessageHandler` (which consumes the returned
- * plan's `entityDefinitions`, `linkSequence`, and `stepDelay`).
+ * Build the run ingredients (plan + `persistResource` + `describeResource`)
+ * for a stored `CollectorConfig` by dispatching to the owning descriptor,
+ * with the resource union held **existential** (see
+ * {@link CollectorDescriptor.RunIngredients}). Drives the sync runner: it
+ * consumes the returned bundle through the `provide` continuation, so it
+ * never names a collector's resource type.
  *
- * Each descriptor's `scrapingPlanIfMatches` structurally validates the
- * config against *its own* schema and returns its plan (or `undefined`);
- * the first match wins. Registering a descriptor bundles its plan
- * factory, so there is no separate dispatch arm to forget — the parallel
- * switch this used to be is gone. The `throw` is unreachable for a
- * well-typed `CollectorConfig` (some descriptor always owns its `_tag`)
- * and guards only against a config smuggled in through an untyped path.
+ * Each descriptor's `runIngredientsIfMatches` structurally validates the
+ * config against *its own* schema and returns its bundle (or `undefined`);
+ * the first match wins. Registering a descriptor bundles its plan factory
+ * and its persist sink, so there is no separate dispatch arm to forget —
+ * the parallel switch this used to be (plus the FHIR write-switch in the
+ * runner) is gone. The `throw` is unreachable for a well-typed
+ * `CollectorConfig` (some descriptor always owns its `_tag`) and guards
+ * only against a config smuggled in through an untyped path.
  */
-const makeScrapingPlanForConfig = (
+const runIngredientsForConfig = (
   config: CollectorConfig
-): ScrapingPlan.ScrapingPlan<AnyCollectorResource> => {
+): CollectorDescriptor.RunIngredients<CollectorRequirements> => {
   for (const descriptor of descriptors) {
-    const plan = descriptor.scrapingPlanIfMatches(config)
-    if (plan !== undefined) {
-      return plan
+    const ingredients = descriptor.runIngredientsIfMatches(config)
+    if (ingredients !== undefined) {
+      return ingredients
     }
   }
   throw new Error(`unknown collector config tag: ${config._tag}`)
@@ -105,8 +110,8 @@ export {
   descriptors,
   CollectorConfig,
   CollectorTag,
-  makeScrapingPlanForConfig,
+  runIngredientsForConfig,
   descriptorForTag,
   descriptorForConfig,
 }
-export type { AnyCollectorResource, AnyCollectorDescriptor }
+export type { CollectorRequirements, AnyCollectorDescriptor }

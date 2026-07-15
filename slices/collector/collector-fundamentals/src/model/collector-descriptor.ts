@@ -1,4 +1,4 @@
-import { Schema } from 'effect'
+import { type Effect, Schema } from 'effect'
 import { deepFreeze } from 'kitchen-sink'
 import type * as ScrapingPlan from './scraping-plan.ts'
 
@@ -22,6 +22,43 @@ interface CollectorDisplay<Config> {
   readonly title: string
   readonly description: string
   readonly listSubtitle: (config: Config) => string
+}
+
+/**
+ * How the runner labels one resource in telemetry and in the `partial`
+ * failure summary, without the runner ever naming a collector's resource
+ * union. `kind` is a human/telemetry label (for FHIR, the `resourceType`);
+ * `id` is the logical id the write targets. Produced by the descriptor's
+ * {@link CollectorDescriptor.describeResource}.
+ */
+interface ResourceDescription {
+  readonly kind: string
+  readonly id: string
+}
+
+/**
+ * The runner's per-config write ingredients, with the resource union
+ * held **existential**. A collector's plan, its `persistResource`, and
+ * its `describeResource` all range over the *same* concrete `Resources`,
+ * but no consumer of the registry should have to name that union (the
+ * whole point of retiring `AnyCollectorResource`). This CPS / rank-N
+ * encoding hands the three, still tied to one hidden `Resources`, to a
+ * generic continuation: the runner instantiates its own generic body
+ * with the hidden type and returns a value that never mentions it (an
+ * `Effect<ImportSummary, …, R>`), so the encoding is sound with no cast.
+ *
+ * `R` is the descriptor's write requirement (for fhir-r4,
+ * `FhirR4ResourcesHttpApiClient`); the registry's lookup surfaces the
+ * union of every descriptor's `R`, which the authed runner provides.
+ */
+interface RunIngredients<R> {
+  readonly provide: <A>(
+    run: <Resources>(bundle: {
+      readonly scrapingPlan: ScrapingPlan.ScrapingPlan<Resources>
+      readonly persistResource: (resource: Resources) => Effect.Effect<void, unknown, R>
+      readonly describeResource: (resource: Resources) => ResourceDescription
+    }) => A
+  ) => A
 }
 
 /**
@@ -54,6 +91,13 @@ interface CollectorDisplay<Config> {
  * - `makeScrapingPlan`: the per-config plan factory (today's
  *   `scrapingPlan(config)`).
  * - `display`: the {@link CollectorDisplay} strings.
+ * - `persistResource`: writes one parsed resource back to wherever this
+ *   collector targets (for fhir-r4, the typed FHIR client). "Which write
+ *   goes where" only — the runner owns batching, `WRITE_CONCURRENCY`, the
+ *   retry/backoff schedule, spans, and failure accounting.
+ * - `describeResource`: the {@link ResourceDescription} for a resource,
+ *   so the runner can label spans and report failures without naming the
+ *   resource union.
  * - `scrapingPlanIfMatches`: a derived guard built by {@link make} —
  *   returns this collector's plan when `config` is one of *its* configs
  *   (validated via `configSchema`), else `undefined`. It exists so the
@@ -62,29 +106,37 @@ interface CollectorDisplay<Config> {
  *   where the concrete type is still in scope, rather than in a loop
  *   over the union-typed list (where TS collapses each element to the
  *   union and the schema's invariance defeats a plain guard).
+ * - `runIngredientsIfMatches`: the same structural guard, returning the
+ *   existential {@link RunIngredients} bundle (plan + persist + describe)
+ *   so the runner can drive a matched config without naming `Resources`.
  */
-interface CollectorDescriptor<Config extends { readonly _tag: string }, Resources> {
+interface CollectorDescriptor<Config extends { readonly _tag: string }, Resources, R> {
   readonly tag: Config['_tag']
   readonly configSchema: Schema.Schema<Config>
   readonly defaultConfig: Config
   readonly makeScrapingPlan: (config: Config) => ScrapingPlan.ScrapingPlan<Resources>
   readonly display: CollectorDisplay<Config>
+  readonly persistResource: (resource: Resources) => Effect.Effect<void, unknown, R>
+  readonly describeResource: (resource: Resources) => ResourceDescription
   readonly scrapingPlanIfMatches: (
     config: unknown
   ) => ScrapingPlan.ScrapingPlan<Resources> | undefined
+  readonly runIngredientsIfMatches: (config: unknown) => RunIngredients<R> | undefined
 }
 
 /**
- * The author-supplied half of a descriptor: the five fields a
+ * The author-supplied half of a descriptor: the fields a
  * `*-client-collector` package writes. {@link make} adds the derived
- * `scrapingPlanIfMatches` guard.
+ * `scrapingPlanIfMatches` / `runIngredientsIfMatches` guards.
  */
-interface CollectorDescriptorSpec<Config extends { readonly _tag: string }, Resources> {
+interface CollectorDescriptorSpec<Config extends { readonly _tag: string }, Resources, R> {
   readonly tag: Config['_tag']
   readonly configSchema: Schema.Schema<Config>
   readonly defaultConfig: Config
   readonly makeScrapingPlan: (config: Config) => ScrapingPlan.ScrapingPlan<Resources>
   readonly display: CollectorDisplay<Config>
+  readonly persistResource: (resource: Resources) => Effect.Effect<void, unknown, R>
+  readonly describeResource: (resource: Resources) => ResourceDescription
 }
 
 /**
@@ -92,14 +144,17 @@ interface CollectorDescriptorSpec<Config extends { readonly _tag: string }, Reso
  * `CollectorConfig` from the descriptor list via
  * `ConfigOf<(typeof descriptors)[number]>`.
  */
-type ConfigOf<D> = D extends CollectorDescriptor<infer Config, infer _Resources> ? Config : never
+type ConfigOf<D> =
+  D extends CollectorDescriptor<infer Config, infer _Resources, infer _R> ? Config : never
 
 /**
- * The `Resources` a descriptor's plan produces. Used by the registry
- * to derive `AnyCollectorResource` from the descriptor list.
+ * The write requirement (`R`) a descriptor's `persistResource` needs.
+ * Used by the registry to derive `CollectorRequirements` — the union of
+ * every descriptor's `R`, which the authed runner must provide — via
+ * `RequirementsOf<(typeof descriptors)[number]>`.
  */
-type ResourcesOf<D> =
-  D extends CollectorDescriptor<infer _Config, infer Resources> ? Resources : never
+type RequirementsOf<D> =
+  D extends CollectorDescriptor<infer _Config, infer _Resources, infer R> ? R : never
 
 /**
  * Build a frozen {@link CollectorDescriptor} from its authored spec,
@@ -114,18 +169,31 @@ type ResourcesOf<D> =
  * would mutate that module-level export for every other importer.
  * (Functions are opaque to `deepFreeze` anyway.)
  *
- * `scrapingPlanIfMatches` is derived here: `Schema.is(spec.configSchema)`
- * compiles the guard once, closing over the concrete `Config` so the
- * `spec.makeScrapingPlan(config)` call type-checks with no cast.
+ * `scrapingPlanIfMatches` and `runIngredientsIfMatches` are derived
+ * here: `Schema.is(spec.configSchema)` compiles the guard once, closing
+ * over the concrete `Config` / `Resources` / `R` so the
+ * `spec.makeScrapingPlan(config)` call and the existential
+ * {@link RunIngredients} bundle type-check with no cast.
  */
-const make = <Config extends { readonly _tag: string }, Resources>(
-  spec: CollectorDescriptorSpec<Config, Resources>
-): CollectorDescriptor<Config, Resources> => {
+const make = <Config extends { readonly _tag: string }, Resources, R>(
+  spec: CollectorDescriptorSpec<Config, Resources, R>
+): CollectorDescriptor<Config, Resources, R> => {
   const isConfig = Schema.is(spec.configSchema)
   const scrapingPlanIfMatches = (
     config: unknown
   ): ScrapingPlan.ScrapingPlan<Resources> | undefined =>
     isConfig(config) ? spec.makeScrapingPlan(config) : undefined
+  const runIngredientsIfMatches = (config: unknown): RunIngredients<R> | undefined =>
+    isConfig(config)
+      ? {
+          provide: (run) =>
+            run({
+              scrapingPlan: spec.makeScrapingPlan(config),
+              persistResource: spec.persistResource,
+              describeResource: spec.describeResource,
+            }),
+        }
+      : undefined
   // Freeze the descriptor's own data in place for its runtime-immutable
   // guarantee, but keep the precisely-typed references rather than
   // `deepFreeze`'s `DeepReadonly<Config>` return — for a generic
@@ -139,7 +207,10 @@ const make = <Config extends { readonly _tag: string }, Resources>(
     defaultConfig: spec.defaultConfig,
     makeScrapingPlan: spec.makeScrapingPlan,
     display: spec.display,
+    persistResource: spec.persistResource,
+    describeResource: spec.describeResource,
     scrapingPlanIfMatches,
+    runIngredientsIfMatches,
   })
 }
 
@@ -149,5 +220,7 @@ export type {
   CollectorDescriptorSpec,
   CollectorDisplay,
   ConfigOf,
-  ResourcesOf,
+  RequirementsOf,
+  ResourceDescription,
+  RunIngredients,
 }

@@ -135,16 +135,16 @@ describe('makeRunStateMachine', () => {
       const summary = await runTest(
         Effect.gen(function* () {
           const sm = yield* makeRunStateMachine(sink.setFailed, sink.onError)
-          yield* sm.handleFailure({ resourceType: 'Patient', id: '1' }, new Error('a'))
-          yield* sm.handleFailure({ resourceType: 'Observation', id: '2' }, new Error('b'))
+          yield* sm.handleFailure({ kind: 'Patient', id: '1' }, new Error('a'))
+          yield* sm.handleFailure({ kind: 'Observation', id: '2' }, new Error('b'))
           return yield* sm.summary
         })
       )
       expect(summary).toEqual({
         cancelled: false,
         failed: [
-          { resourceType: 'Patient', id: '1' },
-          { resourceType: 'Observation', id: '2' },
+          { kind: 'Patient', id: '1' },
+          { kind: 'Observation', id: '2' },
         ],
       })
       // setFailed receives the cumulative list each time (last call is complete).
@@ -155,7 +155,7 @@ describe('makeRunStateMachine', () => {
     it('summary.failed always mirrors every handled failure, in order (property)', async () => {
       await fc.assert(
         fc.asyncProperty(
-          fc.array(fc.record({ resourceType: fc.string(), id: fc.string() })),
+          fc.array(fc.record({ kind: fc.string(), id: fc.string() })),
           async (failures) => {
             const sink = recordingSink()
             const summary = await runTest(

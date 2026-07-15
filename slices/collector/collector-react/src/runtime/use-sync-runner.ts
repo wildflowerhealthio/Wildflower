@@ -1,24 +1,23 @@
 /**
- * Slice-layering note: `collector-react` currently hard-couples to the
- * FHIR R4 EMR slice (`fhir-r4`, `fhir-r4-react`, `fhir-r4-client-collector`).
- * The sync runner POSTs parsed entities to `FhirR4ResourcesHttpApiClient`
- * directly — it doesn't know about other EMR targets. Adding a second
- * target (e.g. FHIR R5) means abstracting the resource-routing seam
- * below: most likely a runner-builder injected via a new context,
- * similar to how `<CollectorSenderForwarder>` wires the sender. The
- * coupling is documented as a deliberate slice-layering exception in
- * the `collector-react/package.json` description (per `slices/AGENTS.md`).
+ * The thin React shell around the framework-free sync-run core
+ * ({@link ./sync-run.ts}): the `useMutation` wiring, the per-run
+ * `AbortController`, and the `RunnerState` mapping. It injects the two
+ * React-facing callbacks (`setFailed` / `onError`) into the core as plain
+ * functions.
  *
- * The framework-free drive loop, quiescence/idle-timeout logic, and write
- * retries live in {@link ./sync-run.ts}; this file is the thin React shell
- * around it — the `useMutation` wiring, the per-run `AbortController`, and
- * the `RunnerState` mapping. It injects the two React-facing callbacks
- * (`setFailed` / `onError`) into the core as plain functions.
+ * Where a collector's parsed resources are written is no longer decided
+ * here: the registry's `runIngredientsForConfig` hands back the config's
+ * plan plus its `persistResource` / `describeResource` (from the owning
+ * `CollectorDescriptor`), which this hook feeds to the generic runner. The
+ * runner's requirement `R` is the union of every collector's write
+ * requirement (today `FhirR4ResourcesHttpApiClient`); the router context's
+ * authed runner provides it. That residual coupling to the FHIR R4 EMR
+ * slice is documented as a deliberate slice-layering exception in the
+ * `collector-react/package.json` description (per `slices/AGENTS.md`).
  */
 import { useMutation } from '@tanstack/react-query'
-import type { ScrapingPlan } from 'collector-fundamentals/model'
 import type { Remotes } from 'collector-registry/http-api-definition'
-import { makeScrapingPlanForConfig, type AnyCollectorResource } from 'collector-registry/registry'
+import { runIngredientsForConfig } from 'collector-registry/registry'
 import { type Duration, Match } from 'effect'
 import { useCallback, useRef, useState } from 'react'
 
@@ -98,16 +97,21 @@ const useSyncRunner = ({
     mutationFn: (remote) => {
       const controller = new AbortController()
       abortRef.current = controller
-      const scrapingPlan: ScrapingPlan.ScrapingPlan<AnyCollectorResource> =
-        makeScrapingPlanForConfig(remote.config)
-      const importEffect = buildImportEffect({
-        scrapingPlan,
-        sendCollectorMessage,
-        collectorRegister,
-        onError: (error) => onErrorRef.current?.(error),
-        setFailed,
-        idleTimeout,
-      })
+      // The registry hands back the plan + persist sink + describe fn with
+      // the resource union held existential; `provide` runs the generic
+      // runner body over the hidden `Resources` (see `runIngredientsForConfig`).
+      const importEffect = runIngredientsForConfig(remote.config).provide((bundle) =>
+        buildImportEffect({
+          scrapingPlan: bundle.scrapingPlan,
+          persistResource: bundle.persistResource,
+          describeResource: bundle.describeResource,
+          sendCollectorMessage,
+          collectorRegister,
+          onError: (error) => onErrorRef.current?.(error),
+          setFailed,
+          idleTimeout,
+        })
+      )
       return runAuthed(importEffect, { signal: controller.signal }).catch((error: unknown) => {
         // An explicit cancel surfaces as an interruption rejection;
         // resolve cleanly so the mutation lands on `idle`, not `error`.

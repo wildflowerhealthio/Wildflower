@@ -17,6 +17,7 @@ import type {
 import { ObservationEntity } from './entities/observation-entity.ts'
 import { ObservationListEntity } from './entities/observation-list-entity.ts'
 import { PatientEntity } from './entities/patient-entity.ts'
+import { describeResource, persistResource } from './persist.ts'
 
 /**
  * `rootUrl` must be an absolute `http(s)://` URL with at least a host
@@ -166,6 +167,8 @@ const FhirR4CollectorDescriptor = CollectorDescriptor.make({
     description: 'Health records from a FHIR R4 server',
     listSubtitle: (config) => config.rootUrl,
   },
+  persistResource,
+  describeResource,
 })
 
 export { InstanceConfig, defaultConfig, scrapingPlan, FhirR4CollectorDescriptor }

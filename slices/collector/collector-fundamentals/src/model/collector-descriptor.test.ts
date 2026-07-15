@@ -1,4 +1,4 @@
-import { Duration, Schema } from 'effect'
+import { Duration, Effect, Schema } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as CollectorDescriptor from './collector-descriptor.ts'
@@ -32,6 +32,10 @@ const descriptor = CollectorDescriptor.make({
     description: 'A sample collector',
     listSubtitle: (config) => config.host,
   },
+  // The sample plan emits `never`, so these are never actually invoked;
+  // they exist to satisfy the descriptor shape.
+  persistResource: () => Effect.void,
+  describeResource: () => ({ kind: 'sample', id: 'sample' }),
 })
 
 describe('CollectorDescriptor.make', () => {
@@ -76,5 +80,26 @@ describe('CollectorDescriptor scrapingPlanIfMatches', () => {
     // Right tag, but `host` violates the schema pattern — the guard is
     // structural (via `Schema.is`), not tag-only.
     expect(descriptor.scrapingPlanIfMatches({ _tag: 'sample', host: 'NOT-lower' })).toBeUndefined()
+  })
+})
+
+describe('CollectorDescriptor runIngredientsIfMatches', () => {
+  it('delivers the plan (and persist/describe) for one of its configs', () => {
+    const ingredients = descriptor.runIngredientsIfMatches(defaultConfig)
+    expect(ingredients).toBeDefined()
+    // The bundle holds `Resources` existential — consumers reach it only
+    // through the `provide` continuation, never by naming the union.
+    const plan = ingredients?.provide((bundle) => bundle.scrapingPlan)
+    expect(plan).toEqual(makeScrapingPlan(defaultConfig))
+  })
+
+  it('returns undefined for a config with a different tag', () => {
+    expect(descriptor.runIngredientsIfMatches({ _tag: 'other', host: 'example' })).toBeUndefined()
+  })
+
+  it('returns undefined for a structurally invalid config', () => {
+    expect(
+      descriptor.runIngredientsIfMatches({ _tag: 'sample', host: 'NOT-lower' })
+    ).toBeUndefined()
   })
 })
