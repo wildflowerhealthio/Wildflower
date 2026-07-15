@@ -1,0 +1,45 @@
+{
+  "name": "fhir-stu3",
+  "version": "0.0.1",
+  "description": "Just-enough FHIR STU3 (Rexall/carebook dialect) wire schemas and a STU3 → R4 transform",
+  "license": "UNLICENSED",
+  "author": "Ruth Marks",
+  "type": "module",
+  "exports": {
+    "./schemas": {
+      "source": "./src/schemas/index.ts",
+      "default": "./dist/schemas/index.js"
+    },
+    "./transform": {
+      "source": "./src/transform/index.ts",
+      "default": "./dist/transform/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "prepublishOnly": "vp run build",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@types/fhir": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "effect": "catalog:",
+    "fast-check": "catalog:",
+    "fhir-r4": "workspace:*",
+    "kitchen-sink": "workspace:*",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "effect": "catalog:",
+    "fhir-r4": "workspace:*",
+    "kitchen-sink": "workspace:*"
+  }
+}

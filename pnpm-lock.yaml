@@ -1244,6 +1244,36 @@ importers:
         specifier: 'catalog:'
         version: 0.2.2(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(esbuild@0.28.1)(jiti@2.7.0)(jsdom@29.1.1)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.1.3(@types/node@26.1.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
 
+  slices/emr/fhir-stu3:
+    devDependencies:
+      '@types/fhir':
+        specifier: 'catalog:'
+        version: 0.0.44
+      '@types/node':
+        specifier: ^26
+        version: 26.1.0
+      '@typescript/native-preview':
+        specifier: 'catalog:'
+        version: 7.0.0-dev.20260707.2
+      effect:
+        specifier: 3.21.4
+        version: 3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
+      fast-check:
+        specifier: 'catalog:'
+        version: 3.23.1
+      fhir-r4:
+        specifier: workspace:*
+        version: link:../fhir-r4
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../global/kitchen-sink
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vite-plus:
+        specifier: 'catalog:'
+        version: 0.2.2(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(esbuild@0.28.1)(jiti@2.7.0)(jsdom@29.1.1)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.1.3(@types/node@26.1.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+
   slices/gatekeeper/gatekeeper-core:
     devDependencies:
       '@effect/platform':

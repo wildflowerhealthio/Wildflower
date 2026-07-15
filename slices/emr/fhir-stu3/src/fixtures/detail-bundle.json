@@ -1,0 +1,112 @@
+{
+  "resourceType": "Bundle",
+  "type": "searchset",
+  "total": 2,
+  "link": [
+    {
+      "relation": "self",
+      "url": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/MedicationRequest/mr-0001/$everything"
+    }
+  ],
+  "entry": [
+    {
+      "fullUrl": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/MedicationRequest/mr-0001",
+      "search": { "mode": "match" },
+      "resource": {
+        "resourceType": "MedicationRequest",
+        "id": "mr-0001",
+        "extension": [
+          { "url": "http://schemas.carebook.com/v1/fhir/request-type", "valueString": "order" },
+          {
+            "url": "http://schemas.carebook.com/v1/fhir/medicationrecord-processor",
+            "valueString": "carebook"
+          }
+        ],
+        "identifier": [
+          {
+            "system": "http://schema.carebook.com/v1/fhir/identifier/medicationrequest-external-id",
+            "value": "EX-0001"
+          }
+        ],
+        "status": "active",
+        "intent": "order",
+        "contained": [
+          {
+            "resourceType": "Medication",
+            "id": "med-0001",
+            "code": {
+              "coding": [
+                {
+                  "system": "http://schema.carebook.com/v1/fhir/CodeSystem/din",
+                  "code": "02241497",
+                  "display": "Atorvastatin 20 mg tablet"
+                }
+              ]
+            },
+            "form": {
+              "coding": [{ "code": "TAB", "display": "Tablet" }]
+            }
+          }
+        ],
+        "medicationReference": { "reference": "#med-0001" },
+        "subject": { "reference": "Patient/local-patient-1" },
+        "requester": {
+          "agent": { "reference": "Practitioner/dr-smith", "display": "Dr. Jane Smith" }
+        }
+      }
+    },
+    {
+      "fullUrl": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/MedicationDispense/md-0001",
+      "search": { "mode": "include" },
+      "resource": {
+        "resourceType": "MedicationDispense",
+        "id": "md-0001",
+        "carebookLegacyId": "legacy-777",
+        "extension": [
+          {
+            "url": "http://schemas.carebook.com/v1/fhir/estimated-pick-up",
+            "valueDateTime": "2026-06-02T17:00:00Z"
+          },
+          {
+            "url": "http://schemas.carebook.com/v1/fhir/external-store-id",
+            "valueString": "store-4821"
+          },
+          { "url": "http://example.org/another-unknown-extension", "valueBoolean": false }
+        ],
+        "identifier": [
+          {
+            "system": "http://schema.carebook.com/v1/fhir/identifier/medicationrequest-external-id",
+            "value": "DISP-0001"
+          }
+        ],
+        "status": "completed",
+        "medicationCodeableConcept": {
+          "coding": [
+            {
+              "system": "http://schema.carebook.com/v1/fhir/CodeSystem/din",
+              "code": "02241497",
+              "display": "Atorvastatin 20 mg tablet"
+            }
+          ]
+        },
+        "subject": { "reference": "Patient/local-patient-1" },
+        "context": { "reference": "Encounter/enc-0001" },
+        "authorizingPrescription": [{ "reference": "MedicationRequest/mr-0001" }],
+        "quantity": {
+          "value": 30,
+          "unit": "tablet",
+          "system": "http://unitsofmeasure.org",
+          "code": "{tbl}"
+        },
+        "daysSupply": {
+          "value": 30,
+          "unit": "days",
+          "system": "http://unitsofmeasure.org",
+          "code": "d"
+        },
+        "whenPrepared": "2026-06-01T14:00:00Z",
+        "whenHandedOver": "2026-06-02T16:30:00Z"
+      }
+    }
+  ]
+}
