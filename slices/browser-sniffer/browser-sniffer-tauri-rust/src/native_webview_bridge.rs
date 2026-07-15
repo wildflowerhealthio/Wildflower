@@ -254,6 +254,7 @@ fn dispatch_body(app: &AppHandle, body: &InvokeResponseBody) {
 /// `window.__nativeWebviewReceive(...)` call. Mobile-only, invoked from the
 /// bridge listener in `lib.rs` for the native-webview-bound tags
 /// ([`events::CLICK`](crate::events::CLICK) /
+/// [`events::FILL`](crate::events::FILL) /
 /// [`events::CANCEL_SNIFFER_REQUEST`](crate::events::CANCEL_SNIFFER_REQUEST));
 /// desktop's content webview receives `app.emit('bridge', …)` natively.
 ///

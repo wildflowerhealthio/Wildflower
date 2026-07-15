@@ -2,6 +2,7 @@ import {
   CancelSnifferRequestMessage,
   CancelledMessage,
   ClickMessage,
+  FillMessage,
   PageLoadedMessage,
   RequestErrorMessage,
   ResponseDataMessage,
@@ -78,6 +79,7 @@ type CollectorBridge = Bridge.Bridge<
     SniffingComplete: typeof SniffingComplete
     Open: typeof OpenMessage
     Click: typeof ClickMessage
+    Fill: typeof FillMessage
   }
 >
 
@@ -85,13 +87,14 @@ type CollectorBridge = Bridge.Bridge<
  * Slice-level bridge between the embedded collector SPA and the Tauri
  * host. Web→Host carries control signals (`RequestSniffableWebView`,
  * `CancelSnifferRequest`, `SniffingComplete`) and script-driven
- * navigation steps (`Open`, `Click`); Host→Web carries the
+ * navigation steps (`Open`, `Click`, `Fill`); Host→Web carries the
  * sniffer-event subset collector parses plus the `PageLoaded`
  * notification that drives the step timer.
  *
- * `Click` is the same `ClickMessage` schema `BrowserSnifferBridge`
- * declares for its Host→Web side, so the Tauri host forwards the
- * decoded payload through both bridges without re-encoding. The six
+ * `Click` / `Fill` are the same `ClickMessage` / `FillMessage` schemas
+ * `BrowserSnifferBridge` declares for its Host→Web side, so the Tauri
+ * host forwards the decoded payload through both bridges without
+ * re-encoding. The six
  * sniffer events imported from `browser-sniffer-core` keep wire
  * schemas in lockstep with `BrowserSnifferBridge` for the same reason.
  * `Cancelled` is the terminal acknowledgement for a mid-stream
@@ -115,6 +118,7 @@ const CollectorBridge: CollectorBridge = Bridge.make({
     ['SniffingComplete', SniffingComplete],
     ['Open', OpenMessage],
     ['Click', ClickMessage],
+    ['Fill', FillMessage],
   ] as const,
 })
 
