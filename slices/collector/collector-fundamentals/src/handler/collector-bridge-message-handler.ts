@@ -14,7 +14,7 @@ import type {
 import type { Response, ScrapingPlan } from '../model/index.ts'
 import * as ResponseTracker from './response-tracker.ts'
 import { type InProgressResponse, SnifferCancelled } from './response-tracker.ts'
-import * as StepMachine from './step-machine.ts'
+import * as StepMachine from './step-machine/index.ts'
 
 type Service = MessageHandler.HandlersFor<CollectorBridge['HostToWeb']>
 
@@ -74,7 +74,9 @@ interface CollectorBridgeMessageHandler<TResources> extends Service {
  * function threads the shared inputs into both and folds their
  * `clear` / `cancelAllInFlight` contributions together (step machine
  * first — interrupt its fibers — then the response tracker), preserving
- * the pre-split ordering.
+ * the pre-split ordering. See the
+ * [Handler Explanation](../../docs/Handler%20Explanation.md) for the
+ * composition rationale and the two machines' invariants.
  */
 const make = <TResources>({
   scrapingPlan,

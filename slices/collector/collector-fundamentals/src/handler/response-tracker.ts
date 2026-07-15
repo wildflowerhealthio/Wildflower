@@ -82,6 +82,52 @@ const make = <TResources>({
   Effect.sync(() => {
     const inProgressResponses = MutableHashMap.empty<string, InProgressResponse<TResources>>()
 
+    /**
+     * Run `body` with the tracked entry for `id`, or WARN-and-no-op when
+     * the id isn't tracked. Shared by every id-addressed handler
+     * (`ResponseData` / `ResponseFinished` / `RequestError` / `Cancelled`):
+     * a message for an untracked id is always benign — a late or duplicate
+     * event for an entry that already reached its terminal, or an
+     * unsolicited `Cancelled` ack — so it is logged and dropped, never an
+     * error. `handlerName` names the caller in the log line.
+     */
+    const withTracked = (
+      handlerName: string,
+      id: string,
+      body: (entry: InProgressResponse<TResources>) => Effect.Effect<void, never, never>
+    ): Effect.Effect<void, never, never> =>
+      Effect.gen(function* () {
+        const maybe = MutableHashMap.get(id)(inProgressResponses)
+        if (Option.isNone(maybe)) {
+          yield* Effect.logWarning(
+            `CollectorBridgeMessageHandler.${handlerName}: no tracked response for id ${id}; ignoring`
+          )
+          return
+        }
+        yield* body(maybe.value)
+      })
+
+    /**
+     * Offer the terminal `onResult` for `id`, then drop the tracked entry —
+     * in that order. This "offer-then-drop" ordering is the invariant every
+     * terminal path (finish, error, cancel, decode-failure) shares; see the
+     * [Handler Explanation](../../docs/Handler%20Explanation.md) for why
+     * removing the id first would let a consumer's quiescence check observe
+     * a momentary "settled" state and end the run mid-write.
+     */
+    const settleAndRemove = (
+      id: string,
+      response: Response.RemoteResponse,
+      result: Either.Either<
+        readonly TResources[],
+        ParseResult.ParseError | UnknownException | SnifferCancelled
+      >
+    ): Effect.Effect<void, never, never> =>
+      Effect.sync(() => {
+        handleResult({ response, result })
+        MutableHashMap.remove(inProgressResponses, id)
+      })
+
     const ResponseStart: Service['ResponseStart'] = (event) => {
       const entity = scrapingPlan.entityDefinitions.find((e) => e.isFoundAt(event.url))
       if (entity === undefined) {
@@ -103,128 +149,77 @@ const make = <TResources>({
     }
 
     const ResponseData: Service['ResponseData'] = (event) =>
-      Effect.gen(function* () {
-        const maybe = MutableHashMap.get(event.id)(inProgressResponses)
-        if (Option.isNone(maybe)) {
-          yield* Effect.logWarning(
-            `CollectorBridgeMessageHandler.ResponseData: no tracked response for id ${event.id}; ignoring`
-          )
-          return
-        }
-        const { response } = maybe.value
-        const decoded = Encoding.decodeBase64(event.data)
-        if (Either.isLeft(decoded)) {
-          // Decode failure on a *tracked* response: route through the
-          // error channel of `onResult` (mirrors the `RequestError`
-          // shape) and drop the entry. The host gets one terminal
-          // observation per id; no chunk is appended. Offer the event
-          // before dropping the id — same ordering invariant as
-          // `ResponseFinished`.
-          handleResult({
-            response,
-            result: Either.left(
-              new UnknownException(decoded.left, `Failed to decode base64 response data`)
-            ),
-          })
-          MutableHashMap.remove(inProgressResponses, event.id)
-          return
-        }
-        yield* Effect.sync(() => response.appendChunk(decoded.right))
-      })
+      withTracked('ResponseData', event.id, ({ response }) =>
+        Effect.gen(function* () {
+          const decoded = Encoding.decodeBase64(event.data)
+          if (Either.isLeft(decoded)) {
+            // Decode failure on a tracked response routes through the error
+            // channel (mirrors `RequestError`) and drops the entry — one
+            // terminal observation per id, no chunk appended.
+            yield* settleAndRemove(
+              event.id,
+              response,
+              Either.left(
+                new UnknownException(decoded.left, `Failed to decode base64 response data`)
+              )
+            )
+            return
+          }
+          yield* Effect.sync(() => response.appendChunk(decoded.right))
+        })
+      )
 
     const ResponseFinished: Service['ResponseFinished'] = (event) =>
-      Effect.gen(function* () {
-        const maybe = MutableHashMap.get(event.id)(inProgressResponses)
-        if (Option.isNone(maybe)) {
-          yield* Effect.logWarning(
-            `CollectorBridgeMessageHandler.ResponseFinished: no tracked response for id ${event.id}; ignoring`
+      withTracked('ResponseFinished', event.id, ({ response, entity }) =>
+        Effect.gen(function* () {
+          // `url.path` is a path-only OTel semconv key: strip scheme/host/query
+          // from the captured full URL, falling back to the raw string if it
+          // doesn't parse as an absolute URL.
+          const urlPath = Either.getOrElse(
+            Either.try(() => new URL(response.url).pathname),
+            () => response.url
           )
-          return
-        }
-        const { response, entity } = maybe.value
-        // `url.path` is a path-only OTel semconv key: strip scheme/host/query
-        // from the captured full URL, falling back to the raw string if it
-        // doesn't parse as an absolute URL.
-        const urlPath = Either.getOrElse(
-          Either.try(() => new URL(response.url).pathname),
-          () => response.url
-        )
-        const result = yield* Effect.either(entity.parse(response)).pipe(
-          // `Effect.either` always succeeds, so the span closes OK; record the
-          // OTel-standard `error.type` (the ParseError tag) only on the Left
-          // branch so failures stay queryable without flipping span status.
-          Effect.tap((either) =>
-            Either.isLeft(either)
-              ? Effect.annotateCurrentSpan(
-                  Telemetry.Importing.Parse.Span.Attributes.ErrorType,
-                  either.left._tag
-                )
-              : Effect.void
-          ),
-          Effect.withSpan(Telemetry.Importing.Parse.Span.Name, {
-            attributes: {
-              [Telemetry.Entity.Attributes.Name]: entity.name,
-              [Telemetry.Entity.Attributes.Size]: response.byteLength,
-              [Telemetry.Entity.Chunk.Attributes.ChunkCount]: response.chunkCount,
-              [Telemetry.Entity.Attributes.UrlPath]: urlPath,
-            },
-          })
-        )
-        handleResult({ response, result })
-        // Drop the tracked id only *after* `handleResult` has offered the
-        // terminal event. The parse above is span-wrapped and latency-bearing;
-        // removing the id before it would let a consumer's quiescence check
-        // (sniffing done + empty mailbox + no tracked responses) observe a
-        // momentary "settled" state mid parse→offer and terminate the run while
-        // this write is still pending. Removing after the offer guarantees the
-        // consumer always sees either the tracked id or the queued event.
-        MutableHashMap.remove(inProgressResponses, event.id)
-      })
+          const result = yield* Effect.either(entity.parse(response)).pipe(
+            // `Effect.either` always succeeds, so the span closes OK; record the
+            // OTel-standard `error.type` (the ParseError tag) only on the Left
+            // branch so failures stay queryable without flipping span status.
+            Effect.tap((either) =>
+              Either.isLeft(either)
+                ? Effect.annotateCurrentSpan(
+                    Telemetry.Importing.Parse.Span.Attributes.ErrorType,
+                    either.left._tag
+                  )
+                : Effect.void
+            ),
+            Effect.withSpan(Telemetry.Importing.Parse.Span.Name, {
+              attributes: {
+                [Telemetry.Entity.Attributes.Name]: entity.name,
+                [Telemetry.Entity.Attributes.Size]: response.byteLength,
+                [Telemetry.Entity.Chunk.Attributes.ChunkCount]: response.chunkCount,
+                [Telemetry.Entity.Attributes.UrlPath]: urlPath,
+              },
+            })
+          )
+          // The parse is span-wrapped and latency-bearing, so the offer-then-drop
+          // ordering matters most here (see `settleAndRemove`).
+          yield* settleAndRemove(event.id, response, result)
+        })
+      )
 
     const RequestError: Service['RequestError'] = (event) =>
-      Effect.gen(function* () {
-        const maybe = MutableHashMap.get(event.id)(inProgressResponses)
-        if (Option.isNone(maybe)) {
-          yield* Effect.logWarning(
-            `CollectorBridgeMessageHandler.RequestError: no tracked response for id ${event.id}; ignoring`
-          )
-          return
-        }
-        // `event.url` is intentionally ignored — the URL captured at
-        // `ResponseStart` is the source of truth for routing, and the
-        // entity has already been pinned at Start. If the sniffer ever
-        // reports a redirected URL in `event.url` the divergence is not
-        // load-bearing for parsing (we never re-route here); the start
-        // URL stays on `response.url` for the consumer's inspection.
-        const { response } = maybe.value
-        // Offer the terminal event first, then drop the tracked id — same
-        // ordering invariant as `ResponseFinished`: a consumer must never see
-        // the id gone before its event is queued.
-        handleResult({ response, result: Either.left(new UnknownException(event.message)) })
-        MutableHashMap.remove(inProgressResponses, event.id)
-      })
+      // `event.url` is intentionally ignored — the URL captured at
+      // `ResponseStart` is the routing source of truth and the entity is
+      // already pinned there, so a redirected `event.url` is not
+      // load-bearing (the start URL stays on `response.url` for the
+      // consumer). See the [Handler Explanation](../../docs/Handler%20Explanation.md).
+      withTracked('RequestError', event.id, ({ response }) =>
+        settleAndRemove(event.id, response, Either.left(new UnknownException(event.message)))
+      )
 
     const Cancelled: Service['Cancelled'] = (event) =>
-      Effect.gen(function* () {
-        const maybe = MutableHashMap.get(event.id)(inProgressResponses)
-        if (Option.isNone(maybe)) {
-          // `Cancelled` is sent by the page in response to a
-          // `CancelSnifferRequest` the host issued; an unsolicited
-          // `Cancelled` (or one for an id already finished) is harmless.
-          yield* Effect.logWarning(
-            `CollectorBridgeMessageHandler.Cancelled: no tracked response for id ${event.id}; ignoring`
-          )
-          return
-        }
-        const { response } = maybe.value
-        // Offer the terminal event first, then drop the tracked id — same
-        // ordering invariant as `ResponseFinished`.
-        handleResult({
-          response,
-          result: Either.left(new SnifferCancelled({ id: event.id })),
-        })
-        MutableHashMap.remove(inProgressResponses, event.id)
-      })
+      withTracked('Cancelled', event.id, ({ response }) =>
+        settleAndRemove(event.id, response, Either.left(new SnifferCancelled({ id: event.id })))
+      )
 
     const clear = (): Effect.Effect<void, never, never> =>
       Effect.sync(() => MutableHashMap.clear(inProgressResponses))
