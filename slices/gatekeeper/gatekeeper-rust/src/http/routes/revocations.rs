@@ -1,6 +1,7 @@
-//! `POST /access/revocations` — the owner-gated token-revocation control
-//! surface. Owner-gated by the `/access` mount (`require_owner_auth`), so only
-//! an authenticated owner can revoke.
+//! `POST /access/revocations` — the token-revocation control surface. Acquired
+//! through the [`TokenRevoker`](crate::http::scoped::facades::TokenRevoker)
+//! facade (scope `wildflower/Token.d`): a caller must cover the `Token` delete
+//! scope — which an owner's `wildflower/*.cruds` does — to revoke, else a `403`.
 //!
 //! Two modes, exactly one per request:
 //!
@@ -21,7 +22,6 @@
 
 use std::sync::Arc;
 
-use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
@@ -31,6 +31,8 @@ use serde::Deserialize;
 use serde_json::json;
 
 use crate::domain::gatekeeper_error::GatekeeperError;
+use crate::http::scoped::facades::TokenRevoker;
+use crate::http::scoped::Scoped;
 use crate::http::state::GatekeeperState;
 
 pub fn router() -> Router<Arc<GatekeeperState>> {
@@ -142,7 +144,7 @@ impl RevocationRequest {
 }
 
 async fn handle_create_revocation(
-    State(state): State<Arc<GatekeeperState>>,
+    tokens: Scoped<TokenRevoker>,
     Json(request): Json<RevocationRequest>,
 ) -> Result<StatusCode, RevocationError> {
     match request.into_revocation()? {
@@ -159,15 +161,9 @@ async fn handle_create_revocation(
                     "`expiresAt` is in the past; the token has already expired",
                 ));
             }
-            state
-                .revocation_store
-                .revoke_jti(&jti, expires_at, "admin")
-                .map_err(|e| GatekeeperError::infrastructure("revoke_jti failed", e))?;
+            tokens.revoke_jti(&jti, expires_at)?;
         }
-        Revocation::Subject { subject } => state
-            .revocation_store
-            .revoke_subject_as_of_now(&subject)
-            .map_err(|e| GatekeeperError::infrastructure("revoke_subject_as_of_now failed", e))?,
+        Revocation::Subject { subject } => tokens.revoke_subject(&subject)?,
     }
     Ok(StatusCode::NO_CONTENT)
 }

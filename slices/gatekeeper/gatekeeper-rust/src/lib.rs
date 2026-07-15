@@ -50,6 +50,11 @@ pub use persistence_rust::DieselPool;
 // (`gatekeeper_rust::owner_session_cookies`) after the lift out of `http`, so
 // the desktop host's call sites don't move.
 pub use cookies::{owner_session_cookies, rescope_owner_session_set_cookies};
+/// The admin scopes the `/access` surface enforces — the registry that couples
+/// *enforced* (the scope-gated extractors) with *grantable* (the vocabulary the
+/// consent surfaces offer). Re-exported for the host and the resource-authz
+/// epic's consent UI to read; see [`http::scoped`].
+pub use http::scoped::facades::grantable_admin_scopes;
 pub use http::{
     ensure_bearer_header, is_pre_auth_public_path, layer_router_with_gatekeeper_auth_gating,
     layer_router_with_loopback_peer_gating, openapi_spec, verify_owner_bearer, GatekeeperState,
@@ -69,9 +74,11 @@ pub const FIRST_PARTY_CLIENT_ID: &str = "wildflower-host";
 
 /// The maximal-access scopes that mark an Owner: full system FHIR access
 /// (`system/*.cruds`) **and** full Wildflower-resource access
-/// (`wildflower/*.cruds`). `require_owner_auth` treats a token as Owner iff it
-/// covers *every* one of these, gating the `/access/*` admin surface. (Replaced
-/// the bespoke `wildflower/admin` scope.)
+/// (`wildflower/*.cruds`). An Owner token covers *every* one of these, so it
+/// covers every per-resource `/access/*` scope the scope-gated extractors
+/// require — the fail-closed owner default. `verify_owner_token` still uses this
+/// set for the in-handler owner check (`verify_owner_bearer`). (Replaced the
+/// bespoke `wildflower/admin` scope.)
 pub const WILDFLOWER_WIDEST_SCOPES: &[Scope] = &[
     Scope::FhirResource(FhirResourceScope {
         context: ContextLevel::System,

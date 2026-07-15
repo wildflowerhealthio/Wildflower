@@ -13,7 +13,7 @@
 use std::collections::HashSet;
 
 use chrono::{DateTime, Utc};
-use scopes_rust::grantable_scopes;
+use scopes_rust::{grantable_scopes, with_alternate_canonical_forms, Grant, Scope};
 
 use super::{
     approve_authorization_request, client_by_id, deny_authorization_request,
@@ -74,11 +74,17 @@ pub(crate) struct ApproveDeviceConsentInput {
 /// [`GatekeeperError::OAuthConsentNotFound`] when no pending, unexpired,
 /// well-formed code-flow request has this id (or its client is gone, or it was
 /// concurrently consumed); [`GatekeeperError::Infrastructure`] on a store failure.
+///
+/// `approver` is the granted scopes of the Owner making the decision: the
+/// approval is additionally clamped so it can't delegate a **resource** scope the
+/// approver doesn't themselves hold (see [`clamp_grant_to_approver`]) — a
+/// [`GatekeeperError::InsufficientApproverScope`] (403) otherwise.
 pub(crate) fn approve_oauth_consent(
     store: &impl GatekeeperStore,
     publisher: &impl DeviceUserCodePublisher,
     id: &str,
     input: ApproveOAuthConsentInput,
+    approver: &Grant,
     generate_code: impl FnOnce() -> String,
     now: DateTime<Utc>,
 ) -> Result<ConsentOutcome, GatekeeperError> {
@@ -106,6 +112,10 @@ pub(crate) fn approve_oauth_consent(
         // No requested-and-allowed scopes were approved — apply as a deny.
         return deny_consent(store, publisher, id).map(|()| ConsentOutcome::Denied);
     }
+    // The approver can't delegate a resource scope they don't hold — a 403 that
+    // stops privilege escalation through consent. Runs after the narrowing so it
+    // clamps what would actually be granted.
+    clamp_grant_to_approver(&granted_scopes, approver)?;
 
     let approved =
         approve_authorization_request(store, id, &granted_scopes, input.patient.as_deref(), None)?;
@@ -165,11 +175,16 @@ pub(crate) fn approve_oauth_consent(
 /// [`GatekeeperError::DeviceConsentNotFound`] when no pending, unexpired
 /// device-flow request has this user code (or its client is gone, or it was
 /// concurrently consumed); [`GatekeeperError::Infrastructure`] on a store failure.
+///
+/// `approver` is the deciding Owner's granted scopes; as with the code flow the
+/// approval can't delegate a **resource** scope the approver doesn't hold
+/// (see [`clamp_grant_to_approver`]).
 pub(crate) fn approve_device_consent(
     store: &impl GatekeeperStore,
     publisher: &impl DeviceUserCodePublisher,
     user_code: &str,
     input: ApproveDeviceConsentInput,
+    approver: &Grant,
     now: DateTime<Utc>,
 ) -> Result<ConsentOutcome, GatekeeperError> {
     let make_consent_not_found = || GatekeeperError::DeviceConsentNotFound {
@@ -190,6 +205,10 @@ pub(crate) fn approve_device_consent(
         // No allowed scopes were approved — apply as a deny.
         return deny_consent(store, publisher, &device_request.id).map(|()| ConsentOutcome::Denied);
     }
+    // The approver can't delegate a resource scope they don't hold (see the code
+    // flow) — even though device consent is expandable up to the client's policy,
+    // it is still bounded by the approver's own authority.
+    clamp_grant_to_approver(&granted_scopes, approver)?;
 
     // Resolve the name written onto the *request*: the approver's adjustment,
     // else the device's own name (the store writes this verbatim — it no longer
@@ -282,6 +301,55 @@ fn deny_consent(
     Ok(())
 }
 
+/// Reject any **resource** scope in `granted_scopes` the `approver`'s own grant
+/// doesn't authorize — "an approver can't delegate more permission than they
+/// hold".
+///
+/// Only FHIR/Wildflower *resource* scopes are clamped. Non-resource scopes
+/// (`openid`, `offline_access`, `launch`, …) are identity/session markers rather
+/// than data-access permissions, and the host owner grant
+/// ([`WILDFLOWER_LOCAL_GRANTED_SCOPES`](crate::WILDFLOWER_LOCAL_GRANTED_SCOPES))
+/// carries only the two resource wildcards — clamping the markers would block a
+/// legitimate owner from approving an `openid`/`offline_access` client.
+///
+/// Authority is checked across **both** the SMART v1-word and v2-letter
+/// spellings: [`Grant::covers`] is deliberately grammar-strict (a client
+/// registered in one grammar authorizes only that grammar), but an *approver*
+/// holding `system/*.cruds` genuinely has the authority to delegate a v1
+/// `patient/Observation.read` (and vice versa). So both the approver's grant and
+/// each granted scope are widened with their alternate canonical form before the
+/// coverage check — the same twinning the token minter applies — which never
+/// widens the underlying interactions, only bridges the spelling.
+fn clamp_grant_to_approver(
+    granted_scopes: &[String],
+    approver: &Grant,
+) -> Result<(), GatekeeperError> {
+    let approver_forms: Vec<Scope> = with_alternate_canonical_forms(&approver.render())
+        .iter()
+        .map(|rendered| Scope::from(rendered.as_str()))
+        .collect();
+    let authorizes = |granted: &str| {
+        with_alternate_canonical_forms(&[granted.to_owned()])
+            .iter()
+            .map(|rendered| Scope::from(rendered.as_str()))
+            .any(|granted_form| approver_forms.iter().any(|held| held.covers(&granted_form)))
+    };
+    let missing_scopes: Vec<String> = granted_scopes
+        .iter()
+        .filter(|rendered| {
+            let scope = Scope::from(rendered.as_str());
+            matches!(scope, Scope::FhirResource(_) | Scope::WildflowerResource(_))
+                && !authorizes(rendered)
+        })
+        .cloned()
+        .collect();
+    if missing_scopes.is_empty() {
+        Ok(())
+    } else {
+        Err(GatekeeperError::InsufficientApproverScope { missing_scopes })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::cell::Cell;
@@ -302,6 +370,14 @@ mod tests {
         fn republish_active(&self) {
             self.republishes.set(self.republishes.get() + 1);
         }
+    }
+
+    /// An owner-equivalent approver grant — the two universal resource wildcards,
+    /// so it covers every resource scope the delegation clamp checks. The
+    /// existing approve tests use non-resource scopes (unaffected by the clamp);
+    /// this keeps them explicit about who is approving.
+    fn owner_grant() -> Grant {
+        Grant::parse(["wildflower/*.cruds", "system/*.cruds"])
     }
 
     fn live_code_store() -> (FakeGatekeeperStore, RecordingPublisher) {
@@ -328,6 +404,7 @@ mod tests {
                 approved_scopes: vec!["read".to_owned()],
                 patient: None,
             },
+            &owner_grant(),
             || "the-code".to_owned(),
             Utc::now(),
         )
@@ -366,6 +443,7 @@ mod tests {
                 approved_scopes: vec!["write".to_owned()],
                 patient: None,
             },
+            &owner_grant(),
             || panic!("must not mint a code on a deny"),
             Utc::now(),
         )
@@ -396,6 +474,7 @@ mod tests {
                     approved_scopes: vec!["read".to_owned()],
                     patient: None,
                 },
+                &owner_grant(),
                 || "unused".to_owned(),
                 Utc::now(),
             ),
@@ -425,6 +504,7 @@ mod tests {
                 patient: None,
                 device_name: Some("My Phone".to_owned()),
             },
+            &owner_grant(),
             Utc::now(),
         )
         .unwrap();
@@ -457,6 +537,7 @@ mod tests {
                 patient: None,
                 device_name: None,
             },
+            &owner_grant(),
             Utc::now(),
         )
         .unwrap();
@@ -496,5 +577,82 @@ mod tests {
                 user_code: "UNKNOWN".to_owned()
             }),
         );
+    }
+
+    /// A well-formed code request that requests one resource scope, plus a client
+    /// that allows it — the fixture used by the delegation-clamp tests.
+    fn resource_scope_code_store(scope: &str) -> (FakeGatekeeperStore, RecordingPublisher) {
+        let store = FakeGatekeeperStore::default();
+        store.upsert_client(&client("client", &[scope])).unwrap();
+        let mut request = code_request(
+            "req-1",
+            RequestStatus::Pending,
+            Utc::now() + Duration::minutes(5),
+        );
+        request.requested_scopes = vec![scope.to_owned()];
+        store.insert_authorization_request(&request).unwrap();
+        (store, RecordingPublisher::default())
+    }
+
+    #[test]
+    fn approve_oauth_consent_rejects_a_resource_scope_the_approver_cannot_delegate() {
+        let (store, publisher) = resource_scope_code_store("system/Patient.r");
+        // The approver holds a *different* resource scope, so cannot delegate
+        // `system/Patient.r`.
+        let approver = Grant::parse(["system/Observation.r"]);
+        let result = approve_oauth_consent(
+            &store,
+            &publisher,
+            "req-1",
+            ApproveOAuthConsentInput {
+                approved_scopes: vec!["system/Patient.r".to_owned()],
+                patient: None,
+            },
+            &approver,
+            || panic!("must not mint a code when the approver lacks authority"),
+            Utc::now(),
+        );
+        assert_eq!(
+            result,
+            Err(GatekeeperError::InsufficientApproverScope {
+                missing_scopes: vec!["system/Patient.r".to_owned()],
+            }),
+        );
+        // Neither approved nor denied — the request stays pending for a
+        // sufficiently-scoped approver (or step-up) to decide.
+        assert_eq!(
+            store
+                .authorization_request_by_id("req-1")
+                .unwrap()
+                .unwrap()
+                .status,
+            RequestStatus::Pending,
+        );
+        assert_eq!(publisher.republishes.get(), 0);
+    }
+
+    #[test]
+    fn approve_oauth_consent_allows_a_resource_scope_the_approver_holds() {
+        let (store, publisher) = resource_scope_code_store("system/Patient.r");
+        // The approver's `system/*.cruds` covers the requested `system/Patient.r`.
+        let approver = Grant::parse(["system/*.cruds"]);
+        let outcome = approve_oauth_consent(
+            &store,
+            &publisher,
+            "req-1",
+            ApproveOAuthConsentInput {
+                approved_scopes: vec!["system/Patient.r".to_owned()],
+                patient: None,
+            },
+            &approver,
+            || "the-code".to_owned(),
+            Utc::now(),
+        )
+        .unwrap();
+        assert!(matches!(outcome, ConsentOutcome::Approved { .. }));
+        assert!(store
+            .authorization_code_by_request_id("req-1")
+            .unwrap()
+            .is_some());
     }
 }

@@ -5,3 +5,4 @@
 //! calling a resolver by hand.
 
 pub(crate) mod served_origin;
+pub(crate) mod session;

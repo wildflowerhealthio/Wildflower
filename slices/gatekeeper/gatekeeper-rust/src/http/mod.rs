@@ -10,10 +10,12 @@ mod errors;
 mod extractors;
 mod middleware;
 mod routes;
+pub(crate) mod scoped;
 mod state;
 mod wire_representations;
 
 pub(crate) use extractors::served_origin::ServedOrigin;
+pub(crate) use extractors::session::CallerSession;
 // Re-export so call sites read `crate::http::served_base_url_for` without the
 // `shared_structures_rust::` prefix. See `docs/Origins/Explanation.md`.
 pub(crate) use shared_structures_rust::served_origin::served_base_url_for;
@@ -59,7 +61,7 @@ pub fn router(state: Arc<GatekeeperState>) -> Router {
         .merge(routes::revocations::router())
         .layer(axum_middleware::from_fn_with_state(
             state.clone(),
-            middleware::require_owner_auth,
+            middleware::require_valid_session,
         ));
 
     Router::new()
@@ -124,9 +126,12 @@ pub fn is_pre_auth_public_path(path: &str) -> bool {
 }
 
 /// Whether `headers` carry a valid **Owner** bearer for `served_origin` — the
-/// non-middleware form of the
-/// [`require_owner_auth`](middleware::require_owner_auth) gate, for a slice that
-/// owner-gates a single in-handler action rather than wrapping a whole router.
+/// non-middleware form of the owner check
+/// ([`verify_owner_token`](middleware::require_auth::verify_owner_token)), for a
+/// slice that owner-gates a single in-handler action rather than wrapping a whole
+/// router. The `/access` router itself no longer owner-gates as a blanket layer:
+/// it authenticates via [`require_valid_session`](middleware::require_valid_session)
+/// and authorizes per-route through the scope-gated [`scoped`] extractors.
 /// The apps slice wires this through `apps_rust::OwnerAuth` to gate the loopback
 /// launch popup. Returns `false` for a missing, invalid, or non-owner token.
 #[must_use]

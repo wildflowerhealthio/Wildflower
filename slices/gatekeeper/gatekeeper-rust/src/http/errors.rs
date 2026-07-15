@@ -74,6 +74,35 @@ pub(crate) fn unauthorized() -> Response {
     (StatusCode::UNAUTHORIZED, "unauthorized").into_response()
 }
 
+/// Wire shape for a 403 — the caller authenticated, but their token doesn't
+/// cover the scope(s) an operation requires. `missingScopes` names the scopes
+/// the caller must additionally hold; the authentication mirror is
+/// [`unauthorized`] (401).
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct InsufficientScopeBody {
+    pub(crate) error: &'static str,
+    pub(crate) missing_scopes: Vec<String>,
+}
+
+/// A `403 Forbidden` carrying the rendered scopes the caller lacks. Two callers
+/// share it: the scope-gated service extractors ([`crate::http::scoped`]) reject
+/// with it when a token doesn't cover a service's required scope, and the
+/// consent approver clamp uses it when an approver tries to delegate scopes
+/// beyond their own grant. This is the authorization (not authentication)
+/// failure path the resource-scope epic introduces — the first 403 the
+/// gatekeeper's `/access` surface can return.
+pub(crate) fn insufficient_scope(missing_scopes: Vec<String>) -> Response {
+    (
+        StatusCode::FORBIDDEN,
+        Json(InsufficientScopeBody {
+            error: "InsufficientScope",
+            missing_scopes,
+        }),
+    )
+        .into_response()
+}
+
 /// Wire shape for `GrantNotFound` (404) — no standing grant has this id.
 #[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct GrantNotFoundBody {
@@ -148,6 +177,9 @@ impl IntoResponse for GatekeeperError {
                 }),
             )
                 .into_response(),
+            GatekeeperError::InsufficientApproverScope { missing_scopes } => {
+                insufficient_scope(missing_scopes)
+            }
             GatekeeperError::Infrastructure { context, source } => {
                 InternalError::new(context, source).into_response()
             }

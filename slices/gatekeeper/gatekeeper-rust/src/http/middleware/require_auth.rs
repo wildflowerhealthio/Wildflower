@@ -14,10 +14,22 @@ use crate::http::state::GatekeeperState;
 use crate::WILDFLOWER_WIDEST_SCOPES;
 use scopes_rust::Scope;
 
-pub async fn require_owner_auth(
+/// The `/access` authN gate: verify the request carries a **valid, non-revoked**
+/// bearer (or `wf_auth` cookie) token and stash the resulting [`VerifiedClaims`]
+/// in the request's extensions for the scope-gated service extractors
+/// ([`crate::http::scoped`]) to read — a missing/invalid token is a `401`.
+///
+/// This replaces the old blanket owner gate: authorization is no longer
+/// all-or-nothing here. This layer only proves *who* the caller is (authN);
+/// *what* they may do (authZ) is decided per-route by the `Scoped<…>` extractor,
+/// which reads these claims and checks the covering scope, returning a `403`
+/// with the missing scopes on failure. An owner token (covering
+/// [`WILDFLOWER_WIDEST_SCOPES`](crate::WILDFLOWER_WIDEST_SCOPES)) still covers
+/// every per-resource scope, so it passes every gate exactly as before.
+pub async fn require_valid_session(
     State(state): State<Arc<GatekeeperState>>,
     headers: HeaderMap,
-    req: Request<Body>,
+    mut req: Request<Body>,
     next: Next,
 ) -> Response {
     let Some((token, _source)) = try_access_token_from_request(&headers) else {
@@ -33,9 +45,14 @@ pub async fn require_owner_auth(
         );
     };
     let origin = shared_structures_rust::origin_string(&base_url);
-    if let Err(e) = verify_owner_token(&state, &origin, token) {
-        return errors::verify_error_response("verify_owner_token failed", e);
-    }
+    let claims = match verify_auth_token_claims(&state, &origin, token) {
+        Ok(claims) => claims,
+        Err(e) => return errors::verify_error_response("require_valid_session failed", e),
+    };
+    // Hand the verified claims (incl. the `scope` claim) to the handler layer.
+    // The scope-gated extractors read them from here rather than re-verifying —
+    // authN runs exactly once, at this layer.
+    req.extensions_mut().insert(claims);
     next.run(req).await
 }
 

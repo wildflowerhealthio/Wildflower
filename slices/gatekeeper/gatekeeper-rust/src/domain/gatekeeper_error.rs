@@ -26,6 +26,12 @@ pub enum GatekeeperError {
     /// No authorization request has this id — the `/oauth/authorize/{id}`
     /// polling endpoint's 404.
     AuthorizationRequestNotFound { id: String },
+    /// An approver tried to grant a client more than they themselves hold —
+    /// the consent approve surfaces' **403**. `missing_scopes` are the rendered
+    /// scopes the approval would grant that the approver's own token does not
+    /// cover ("you can't delegate more permission than you have"). Semantic and
+    /// client-facing: the approver must step up (or narrow their approval).
+    InsufficientApproverScope { missing_scopes: Vec<String> },
     /// An infrastructure failure in the backing store (a lock, query, or
     /// mapping error) — opaque to clients: the HTTP layer logs `context` +
     /// `source` and answers an empty 500. The cause is captured as text so
@@ -52,6 +58,13 @@ impl std::fmt::Display for GatekeeperError {
             GatekeeperError::GrantNotFound { id } => write!(f, "no grant with id {id}"),
             GatekeeperError::AuthorizationRequestNotFound { id } => {
                 write!(f, "no authorization request with id {id}")
+            }
+            GatekeeperError::InsufficientApproverScope { missing_scopes } => {
+                write!(
+                    f,
+                    "approver cannot delegate scopes they do not hold: {}",
+                    missing_scopes.join(" ")
+                )
             }
             GatekeeperError::Infrastructure { context, source } => {
                 write!(f, "{context}: {source}")
