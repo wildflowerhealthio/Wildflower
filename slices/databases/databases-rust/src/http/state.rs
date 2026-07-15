@@ -16,7 +16,27 @@ pub struct DatabasesState {
 
 impl DatabasesState {
     /// Build the state over the host's data directory and database catalogue.
-    pub(crate) fn new(data_dir: PathBuf, databases: Vec<DatabaseDescriptor>) -> Self {
+    ///
+    /// # Panics
+    ///
+    /// Panics if any catalogue id is not header-safe (see
+    /// [`DatabaseDescriptor::has_header_safe_id`]). The id is used verbatim both
+    /// as an on-disk filename and in the download handler's
+    /// `Content-Disposition` header, so a malformed id is a host misconfiguration
+    /// that must fail loudly at startup rather than surface as a corrupt header
+    /// or a path escape. The catalogue is host-owned and build-time constant, so
+    /// this fires only on a broken build, never on client input.
+    #[must_use]
+    pub fn new(data_dir: PathBuf, databases: Vec<DatabaseDescriptor>) -> Self {
+        for descriptor in &databases {
+            assert!(
+                descriptor.has_header_safe_id(),
+                "database catalogue id {:?} is not header-safe: ids must be non-empty and \
+                 ASCII alphanumeric plus '.', '-', '_' (used verbatim as a filename and in the \
+                 download Content-Disposition header)",
+                descriptor.id,
+            );
+        }
         Self {
             data_dir,
             databases,
@@ -49,5 +69,23 @@ impl DatabasesState {
         let descriptor = self.descriptor(id)?;
         let path = self.path_for(descriptor);
         path.exists().then_some((descriptor, path))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A catalogue id that isn't header-safe is a host misconfiguration and must
+    /// panic at construction, before it can reach a header or the filesystem.
+    #[test]
+    #[should_panic(expected = "is not header-safe")]
+    fn new_rejects_a_non_header_safe_id() {
+        let bad = DatabaseDescriptor {
+            id: "evil\".sqlite".to_owned(),
+            label: "Evil".to_owned(),
+            description: "Quote in the id.".to_owned(),
+        };
+        let _ = DatabasesState::new(PathBuf::from("/data"), vec![bad]);
     }
 }

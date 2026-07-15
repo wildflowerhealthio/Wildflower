@@ -10,7 +10,8 @@
         "tags": [
           "Management"
         ],
-        "summary": "`GET /databases` — list every catalogued database with its on-disk metadata\n(existence, size, table count, last-modified). Infallible: a missing or\nunreadable file reports `exists: false` rather than failing the listing.",
+        "summary": "`GET /databases` — list every catalogued database with its on-disk metadata\n(existence, size, table count, last-modified). The per-database reads are\n**best-effort**: a missing or unreadable file reports `exists: false` rather\nthan failing the listing.",
+        "description": "Each read does blocking fs stat plus a throwaway rusqlite `count(*)`, so the\nwhole loop runs on a blocking thread (`spawn_blocking`) rather than stalling\nthe async runtime — matching the download handler's sibling. Only a\n`spawn_blocking` join failure (a worker panic) can surface an error here.",
         "operationId": "handle_list_databases",
         "responses": {
           "200": {
