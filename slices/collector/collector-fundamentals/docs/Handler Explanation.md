@@ -27,9 +27,12 @@ reads the other's internals. The composition function threads the shared
 inputs (`scrapingPlan`, `sendMessage`, `onResult`) into both and folds
 their `clear` / `cancelAllInFlight` contributions together, **step machine
 first** (interrupt its timer fibers) then the response tracker (drop /
-cancel tracked responses). That ordering is deliberate: cancelling a timer
-before releasing tracked responses avoids a just-fired step dispatching
-into a half-torn-down tracker.
+cancel tracked responses). This order is **not** load-bearing: the two
+machines share no state and the step machine's only side effect is
+`sendMessage` (it never touches `inProgressResponses`), so a step firing
+mid-teardown cannot reach a half-torn-down tracker. The sequence is
+preserved from the pre-split handler purely so the externally visible
+order of outbound messages is byte-for-byte unchanged.
 
 Keeping them separate is a deliberate shape choice: the response tracker is
 a keyed collection of independent per-id accumulators, not an automaton, so

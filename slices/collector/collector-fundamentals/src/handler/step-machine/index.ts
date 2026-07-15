@@ -16,7 +16,6 @@
  * `uninterruptible`.
  */
 
-export { InputMessages, SideEffectMessages } from './messages.ts'
 export type { InputMessage, SideEffectMessage, StepOutboundMessage } from './messages.ts'
 export { make } from './make.ts'
 export type { StepMachine } from './make.ts'

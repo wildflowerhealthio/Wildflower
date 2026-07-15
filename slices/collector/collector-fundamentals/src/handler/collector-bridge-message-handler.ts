@@ -68,10 +68,11 @@ interface CollectorBridgeMessageHandler<TResources> extends Service {
  * owns its handlers and its share of `clear` / `cancelAllInFlight`; this
  * function threads the shared inputs into both and folds their
  * `clear` / `cancelAllInFlight` contributions together (step machine
- * first — interrupt its fibers — then the response tracker), preserving
- * the pre-split ordering. See the
- * [Handler Explanation](../../docs/Handler%20Explanation.md) for the
- * composition rationale and the two machines' invariants.
+ * first — interrupt its fibers — then the response tracker). That order
+ * is preserved from the pre-split handler but is not load-bearing: the
+ * machines share no state, so neither can observe the other mid-teardown.
+ * See the [Handler Explanation](../../docs/Handler%20Explanation.md) for
+ * the composition rationale and the two machines' invariants.
  */
 const make = <TResources>({
   scrapingPlan,
