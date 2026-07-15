@@ -1,6 +1,8 @@
 //! The shared request extractor for the token-style endpoints (`/oauth/token`
 //! and `/oauth/device_authorization`).
 
+use std::sync::Arc;
+
 use axum::extract::{FromRequest, Request};
 use axum::http::header::{AUTHORIZATION, CONTENT_TYPE};
 use axum::http::HeaderMap;
@@ -9,7 +11,7 @@ use serde::de::DeserializeOwned;
 use super::client_auth::{resolve_client_credentials, ClientCredentials};
 use super::internal::TokenError;
 use crate::domain::oauth_error_code::OAuthErrorCode;
-use crate::http::state::AppState;
+use crate::http::state::GatekeeperState;
 
 /// The media type RFC 6749 §3.2 (and §4 device-flow extensions) require on a
 /// token-endpoint request body.
@@ -36,13 +38,16 @@ pub(crate) struct TokenRequest<P> {
     pub credentials: ClientCredentials,
 }
 
-impl<P> FromRequest<AppState> for TokenRequest<P>
+impl<P> FromRequest<Arc<GatekeeperState>> for TokenRequest<P>
 where
     P: DeserializeOwned,
 {
     type Rejection = TokenError;
 
-    async fn from_request(req: Request, state: &AppState) -> Result<Self, Self::Rejection> {
+    async fn from_request(
+        req: Request,
+        state: &Arc<GatekeeperState>,
+    ) -> Result<Self, Self::Rejection> {
         require_form_urlencoded_content_type(req.headers())?;
         // `resolve_client_credentials` needs only the `Authorization` header
         // value; capture it (owned) before the body read consumes the request.

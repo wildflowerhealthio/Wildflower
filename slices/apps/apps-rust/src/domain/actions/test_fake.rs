@@ -11,9 +11,10 @@ use std::cell::RefCell;
 
 use super::cloud_apps::{create_cloud_app, CloudAppPayload};
 use crate::domain::{
-    is_exact_registry_permutation, AppConfiguration, AppKind, AppRegistration, AppUrl, AppsError,
-    AppsStore, CloudAppConfiguration, CloudInsertError, SelfHostedAppConfiguration,
-    SelfHostedAppConfigurationPayload, SelfHostedInstaller, StagedBundle, SystemAppConfiguration,
+    is_exact_registry_permutation, lowest_free_port, AppConfiguration, AppKind, AppRegistration,
+    AppUrl, AppsError, AppsStore, CloudAppConfiguration, CloudInsertError,
+    SelfHostedAppConfiguration, SelfHostedAppConfigurationPayload, SelfHostedInstaller,
+    StagedBundle, SystemAppConfiguration, MIN_UPLOAD_PORT,
 };
 
 #[derive(Default)]
@@ -102,10 +103,24 @@ impl AppsStore for FakeAppsStore {
         }
         // The store owns `position` (tail) and `port` (lowest-free, skipping the
         // reserved set) and writes `seeded = false`; the payload supplies the rest.
-        let mut port = 8082 + u16::try_from(self.apps.borrow().len()).unwrap_or(0);
-        while reserved_ports.contains(&port) {
-            port += 1;
-        }
+        // Reuse the real allocator over the real taken set (rather than re-deriving
+        // it) so this oracle can't drift from the production allocation.
+        let taken_ports: std::collections::HashSet<u16> = self
+            .apps
+            .borrow()
+            .iter()
+            .filter_map(|(_, configuration)| match configuration {
+                AppConfiguration::SelfHosted(config) => Some(config.port),
+                _ => None,
+            })
+            .collect();
+        let Some(port) = lowest_free_port(&taken_ports, reserved_ports, MIN_UPLOAD_PORT, u16::MAX)
+        else {
+            return Err(AppsError::infrastructure(
+                "no free loopback port for a new self-hosted app",
+                "port space exhausted",
+            ));
+        };
         let stored_reg = AppRegistration {
             position: self.next_position(),
             ..registration.clone()

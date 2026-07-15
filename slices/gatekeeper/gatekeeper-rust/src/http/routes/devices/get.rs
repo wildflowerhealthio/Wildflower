@@ -1,11 +1,13 @@
+use std::sync::Arc;
+
 use axum::extract::{Path, State};
 use axum::routing::{get, MethodRouter};
 use axum::Json;
 use serde::Serialize;
 
 use crate::domain::actions;
-use crate::http::errors::HandlerError;
-use crate::http::state::AppState;
+use crate::domain::gatekeeper_error::GatekeeperError;
+use crate::http::state::GatekeeperState;
 
 /// Body returned to the Owner UI when it loads a pending device-code consent
 /// prompt — describes the requesting client, the device's chosen name, its
@@ -25,14 +27,14 @@ pub(crate) struct DeviceConsent {
 
 /// `GET /devices/{userCode}` — load a pending device-code consent prompt for
 /// the Owner UI to render.
-pub(super) fn route() -> MethodRouter<AppState> {
+pub(super) fn route() -> MethodRouter<Arc<GatekeeperState>> {
     get(handle_get_device_consent)
 }
 
 async fn handle_get_device_consent(
-    State(state): State<AppState>,
+    State(state): State<Arc<GatekeeperState>>,
     Path(user_code): Path<String>,
-) -> Result<Json<DeviceConsent>, HandlerError> {
+) -> Result<Json<DeviceConsent>, GatekeeperError> {
     let device_request = actions::load_pending_device_request(&state.store, &user_code)?;
     let (client_name, allowed_scopes) =
         match actions::client_by_id(&state.store, &device_request.client_id) {

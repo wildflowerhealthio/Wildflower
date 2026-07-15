@@ -1,7 +1,7 @@
 //! Client actions over the [`GatekeeperStore`] port.
 
 use crate::domain::client::Client;
-use crate::domain::error::GatekeeperError;
+use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::GatekeeperStore;
 
 /// Look up a registered client by id — a thin relay; the callers decide how a

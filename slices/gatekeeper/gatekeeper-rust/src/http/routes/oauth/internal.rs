@@ -33,7 +33,7 @@ impl OAuthErrorResponse {
 
     /// A `server_error` 500 carrying the RFC 6749 §5.2 body — the shape every
     /// "the server failed mid-flow" OAuth response shares. Shared so a surface
-    /// like the Owner-UI polling page (which mixes `HandlerError` with a
+    /// like the Owner-UI polling page (which mixes `GatekeeperError` with a
     /// non-cache-suppressed `OAuthErrorResponse`, so it can't use `TokenError`)
     /// doesn't hand-roll the status + code each time.
     pub fn server_error(description: &str) -> Self {
@@ -52,8 +52,8 @@ impl IntoResponse for OAuthErrorResponse {
 }
 
 /// Error half of the token / device-authorization endpoints' `Result`-returning
-/// handlers (the OAuth-surface analogue of
-/// [`HandlerError`](crate::http::errors::HandlerError)). Every
+/// handlers (the OAuth-surface analogue of the Owner `/access` surface's
+/// [`GatekeeperError`](crate::domain::gatekeeper_error::GatekeeperError)). Every
 /// variant renders the matching RFC 6749 §5.2 response, cache-suppressed per
 /// §5.1, through `IntoResponse` — so a fallible step bails with `?` instead of
 /// a `match` + `return` at each call site. Kept small (no embedded `Response`)
@@ -102,12 +102,12 @@ impl TokenError {
 
 /// Render a domain failure on the token surface: any store failure — expected
 /// only the opaque
-/// [`Infrastructure`](crate::domain::error::GatekeeperError::Infrastructure)
+/// [`Infrastructure`](crate::domain::gatekeeper_error::GatekeeperError::Infrastructure)
 /// variant here — becomes the logged, cache-suppressed opaque 500. This `From`
 /// is what lets the exchange helpers `?` a `Result<_, GatekeeperError>` from
 /// a domain action.
-impl From<crate::domain::error::GatekeeperError> for TokenError {
-    fn from(error: crate::domain::error::GatekeeperError) -> Self {
+impl From<crate::domain::gatekeeper_error::GatekeeperError> for TokenError {
+    fn from(error: crate::domain::gatekeeper_error::GatekeeperError) -> Self {
         TokenError::Internal(InternalError::new(
             "store operation failed on the token surface",
             error,

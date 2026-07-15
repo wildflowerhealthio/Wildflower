@@ -1,14 +1,14 @@
 //! The `/cloud-apps` root resource — cloud apps as their own REST resource, off
 //! `/apps` (which keeps only the uniform list + the unified launch/delete). One
-//! file per operation: `get` (`GET /cloud-apps/{id}`), `create`
-//! (`POST /cloud-apps`), `update` (`PUT /cloud-apps/{id}`), all returning the
+//! file per operation: `get_by_id` (`GET /cloud-apps/{id}`), `create`
+//! (`POST /cloud-apps`), `update_by_id` (`PUT /cloud-apps/{id}`), all returning the
 //! [`CloudAppDetail`](crate::http::wire_representations::CloudAppDetail) shape. A JSON create body —
 //! no multipart, no `requiresTunnel`-as-text hack. A path given an id that isn't a
 //! cloud app is a `404` (the kind mismatch can't be expressed).
 
 pub(crate) mod create;
-pub(crate) mod get;
-pub(crate) mod update;
+pub(crate) mod get_by_id;
+pub(crate) mod update_by_id;
 
 use serde::Deserialize;
 use utoipa::ToSchema;

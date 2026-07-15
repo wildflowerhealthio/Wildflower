@@ -41,7 +41,7 @@ pub(crate) struct SelfHostedAppBody {
         (status = 409, description = "A seeded self-hosted app is edit-protected", body = AppNotEditableBody),
     ),
 )]
-pub(crate) async fn handle_replace_self_hosted_app(
+pub(crate) async fn handle_update_self_hosted_app(
     State(state): State<Arc<AppsState>>,
     Path(id): Path<String>,
     Json(body): Json<SelfHostedAppBody>,

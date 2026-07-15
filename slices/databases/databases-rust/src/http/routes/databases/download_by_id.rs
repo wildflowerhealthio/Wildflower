@@ -64,10 +64,11 @@ pub(crate) async fn handle_download_database(
         .map_err(|error| DatabaseError::infrastructure("open snapshot", error))?;
     let body = Body::from_stream(TempFileStream::new(file, temp_path));
 
-    // The filename is a fixed catalogue id (a bare `*.sqlite` filename), so it's
-    // always header-safe; `expect` documents that invariant.
+    // The filename is a catalogue id, enforced header-safe (ASCII alphanumeric
+    // plus `.-_`, non-empty) at `DatabasesState::new`, so it never needs quote
+    // escaping and this `expect` documents that now-enforced invariant.
     let disposition = HeaderValue::from_str(&format!("attachment; filename=\"{filename}\""))
-        .expect("catalogue id is a valid header value");
+        .expect("catalogue id is header-safe (enforced in DatabasesState::new)");
     let headers = [
         (
             CONTENT_TYPE,

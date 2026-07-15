@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
@@ -11,8 +13,7 @@ use crate::domain::actions;
 use crate::domain::authorization_request::RequestStatus;
 use crate::domain::client_redirect::{build_client_error_redirect_url, build_client_redirect_url};
 use crate::domain::oauth_error_code::OAuthErrorCode;
-use crate::http::errors::HandlerError;
-use crate::http::state::AppState;
+use crate::http::state::GatekeeperState;
 use crate::http::wire_representations::OAuthError;
 
 /// Polling response for the Owner UI watching an authorization request as it
@@ -47,9 +48,10 @@ impl IntoResponse for AuthorizationStatus {
 /// the final redirect URL once approved.
 ///
 /// The error side is `axum::response::ErrorResponse` because two error shapes
-/// share the handler: the Owner-surface [`HandlerError`] (404/logged 500) and
-/// the OAuth-shaped [`OAuthErrorResponse`] `server_error` — `?` converts
-/// either through its `IntoResponse`.
+/// share the handler: the Owner-surface `GatekeeperError` (its
+/// `AuthorizationRequestNotFound` 404 / logged 500) and the OAuth-shaped
+/// `OAuthErrorResponse` `server_error` — `?` converts either through its
+/// `IntoResponse`.
 #[utoipa::path(
     get,
     tag = "OAuth 2.0",
@@ -62,11 +64,10 @@ impl IntoResponse for AuthorizationStatus {
     )
 )]
 pub(super) async fn handle_authorization_status_request(
-    State(state): State<AppState>,
+    State(state): State<Arc<GatekeeperState>>,
     Path(id): Path<String>,
 ) -> axum::response::Result<AuthorizationStatus> {
-    let request =
-        actions::authorization_request_for_status(&state.store, &id).map_err(HandlerError::from)?;
+    let request = actions::authorization_request_for_status(&state.store, &id)?;
     // Nothing actively transitions code-flow requests from Pending to Expired,
     // so a Pending request past its TTL must be reported as expired here rather
     // than left polling forever.
@@ -104,8 +105,7 @@ pub(super) async fn handle_authorization_status_request(
                 )
                 .into());
             };
-            let code = actions::authorization_code_by_request_id(&state.store, &id)
-                .map_err(HandlerError::from)?
+            let code = actions::authorization_code_by_request_id(&state.store, &id)?
                 .ok_or_else(|| OAuthErrorResponse::server_error("Authorization code missing"))?;
             AuthorizationStatus::Approved {
                 redirect: build_client_redirect_url(&redirect_uri, &code.code, &client_state),

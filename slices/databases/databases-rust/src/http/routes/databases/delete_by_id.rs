@@ -43,9 +43,16 @@ pub(crate) async fn handle_delete_database(
     State(state): State<Arc<DatabasesState>>,
     Path(id): Path<String>,
 ) -> Result<Json<DeletedBody>, DatabaseError> {
-    let (_descriptor, path) = state
-        .existing(&id)
-        .ok_or_else(|| DatabaseError::NotFound { id: id.clone() })?;
-    schedule_deletion(&path)?;
+    // `existing` stats the file and `schedule_deletion` writes the marker, both
+    // blocking, so the whole check-then-write runs on a blocking thread rather
+    // than stalling the async runtime — matching the download handler's sibling.
+    tokio::task::spawn_blocking(move || {
+        let (_descriptor, path) = state
+            .existing(&id)
+            .ok_or_else(|| DatabaseError::NotFound { id: id.clone() })?;
+        schedule_deletion(&path)
+    })
+    .await
+    .map_err(|error| DatabaseError::infrastructure("delete task panicked", error))??;
     Ok(Json(DeletedBody { deleted: true }))
 }

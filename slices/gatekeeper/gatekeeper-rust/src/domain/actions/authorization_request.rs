@@ -6,7 +6,7 @@ use chrono::{DateTime, Utc};
 
 use crate::domain::authorization_code::PendingCodeConsent;
 use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
-use crate::domain::error::GatekeeperError;
+use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::GatekeeperStore;
 
 /// Load an authorization request by its primary id — a thin relay for callers

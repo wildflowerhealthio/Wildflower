@@ -11,7 +11,7 @@
 //! [`Infrastructure`](TunnelError::Infrastructure) failure — logged via the
 //! shared [`InternalError`], answered as an empty body a client doesn't decode.
 //! `Infrastructure` is therefore deliberately **not** modeled in the routes'
-//! `#[utoipa::path]` responses (mirroring collector's `RemoteError::Backend`).
+//! `#[utoipa::path]` responses (mirroring collector's `RemoteError::Infrastructure`).
 //!
 //! [`TunnelStateResponse`]: super::routes::tunnel::wire_representations::TunnelStateResponse
 

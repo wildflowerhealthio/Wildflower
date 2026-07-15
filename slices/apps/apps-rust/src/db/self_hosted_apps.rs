@@ -23,13 +23,8 @@ use persistence_rust::PooledDieselConnection;
 use super::app_registration::{app_registrations, id_taken, next_position};
 use crate::domain::{
     lowest_free_port, AppRegistration, AppsError, SelfHostedAppConfiguration,
-    SelfHostedAppConfigurationPayload,
+    SelfHostedAppConfigurationPayload, MIN_UPLOAD_PORT,
 };
-
-/// The smallest loopback port an uploaded app is allocated — one above the seeded
-/// patient-browser at 8081. See the port-allocation section of
-/// `docs/Apps/Store and Install Explanation.md`.
-const MIN_UPLOAD_PORT: u16 = 8082;
 
 diesel::table! {
     self_hosted_app_configurations (id) {
@@ -165,7 +160,8 @@ pub(super) fn insert_self_hosted_app(
                 ..registration.clone()
             })
             .returning(AppRegistration::as_returning())
-            .get_result(conn)?;
+            .get_result(conn)
+            .map_err(|e| AppsError::infrastructure("self-hosted registration insert failed", e))?;
         let stored_config: SelfHostedConfigurationRow =
             diesel::insert_into(self_hosted_app_configurations::table)
                 .values(SelfHostedConfigurationRow {
@@ -177,7 +173,10 @@ pub(super) fn insert_self_hosted_app(
                     launch_path: payload.launch_path.clone(),
                 })
                 .returning(SelfHostedConfigurationRow::as_returning())
-                .get_result(conn)?;
+                .get_result(conn)
+                .map_err(|e| {
+                    AppsError::infrastructure("self-hosted configuration insert failed", e)
+                })?;
         Ok((stored_registration, stored_config.into()))
     })
 }
@@ -211,7 +210,10 @@ pub(super) fn replace_self_hosted_app(
                 .set(self_hosted_app_configurations::launch_path.eq(payload.launch_path.as_deref()))
                 .returning(SelfHostedConfigurationRow::as_returning())
                 .get_result(conn)
-                .optional()?;
+                .optional()
+                .map_err(|e| {
+                    AppsError::infrastructure("self-hosted configuration update failed", e)
+                })?;
         let Some(config_row) = updated_config else {
             return Ok(None);
         };
@@ -224,7 +226,10 @@ pub(super) fn replace_self_hosted_app(
                     app_registrations::subtitle.eq(&registration.subtitle),
                 ))
                 .returning(AppRegistration::as_returning())
-                .get_result(conn)?;
+                .get_result(conn)
+                .map_err(|e| {
+                    AppsError::infrastructure("self-hosted registration update failed", e)
+                })?;
         Ok(Some((stored_registration, config_row.into())))
     })
 }
@@ -244,7 +249,8 @@ pub(super) fn list_self_hosted_apps_on(
                 SelfHostedConfigurationRow::as_select(),
                 AppRegistration::as_select(),
             ))
-            .load(conn)?;
+            .load(conn)
+            .map_err(|e| AppsError::infrastructure("self-hosted list failed", e))?;
     Ok(rows
         .into_iter()
         .map(|(row, registration)| (registration, row.into()))
@@ -257,7 +263,8 @@ pub(super) fn list_self_hosted_apps_on(
 fn all_self_hosted_ports(conn: &mut SqliteConnection) -> Result<HashSet<u16>, AppsError> {
     Ok(self_hosted_app_configurations::table
         .select(self_hosted_app_configurations::port)
-        .load::<i32>(conn)?
+        .load::<i32>(conn)
+        .map_err(|e| AppsError::infrastructure("self-hosted ports read failed", e))?
         .into_iter()
         .filter_map(|p| u16::try_from(p).ok())
         .collect())

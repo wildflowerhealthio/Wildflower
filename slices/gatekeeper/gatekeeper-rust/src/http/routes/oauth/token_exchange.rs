@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use axum::extract::State;
 use axum::response::{IntoResponse, Response};
 use chrono::Utc;
@@ -24,7 +26,7 @@ use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::domain::refresh_token::{
     RefreshToken, RefreshTokenConsumeOutcome, RefreshTokenFamily, REFRESH_TOKEN_FAMILY_TTL,
 };
-use crate::http::state::AppState;
+use crate::http::state::GatekeeperState;
 use crate::http::wire_representations::{OAuthError, TokenResponse};
 use crate::http::ServedOrigin;
 use scopes_rust::KnownScope;
@@ -70,7 +72,7 @@ pub enum TokenPayload {
     )
 )]
 pub(super) async fn handle_token_request(
-    State(state): State<AppState>,
+    State(state): State<Arc<GatekeeperState>>,
     origin: ServedOrigin,
     request: TokenRequest<TokenPayload>,
 ) -> Response {
@@ -131,7 +133,7 @@ struct DispatchedToken {
 /// with whether the resolved grant plants the owner session cookie
 /// ([`DispatchedToken::plants_session_cookie`]).
 fn dispatch_token_request(
-    state: &AppState,
+    state: &GatekeeperState,
     origin: &ServedOrigin,
     request: TokenRequest<TokenPayload>,
 ) -> Result<DispatchedToken, TokenError> {
@@ -197,7 +199,7 @@ struct AuthorizationCodeGrant<'a> {
 }
 
 fn exchange_authorization_code(
-    state: &AppState,
+    state: &GatekeeperState,
     origin: &str,
     presented_credentials: &ClientCredentials,
     grant: &AuthorizationCodeGrant<'_>,
@@ -266,7 +268,7 @@ fn exchange_authorization_code(
 }
 
 fn validate_code_and_issue_token(
-    state: &AppState,
+    state: &GatekeeperState,
     origin: &str,
     code_record: &AuthorizationCode,
     client_id: &str,
@@ -366,7 +368,7 @@ fn ensure_device_request_approved(status: RequestStatus) -> Result<(), TokenErro
 }
 
 fn exchange_device_code(
-    state: &AppState,
+    state: &GatekeeperState,
     origin: &str,
     presented_credentials: &ClientCredentials,
     device_code: &str,
@@ -474,7 +476,7 @@ fn exchange_device_code(
 /// that authorized it (both flows) — write-only plumbing for a future
 /// per-device revoke; `None` when no matching grant was resolved.
 fn start_refresh_token_family_if_granted(
-    state: &AppState,
+    state: &GatekeeperState,
     client_id: &str,
     granted_scopes: &[String],
     patient: Option<&str>,
@@ -517,7 +519,7 @@ fn start_refresh_token_family_if_granted(
 /// already-consumed token is treated as theft — the whole family is revoked
 /// (OAuth 2.1 refresh-token rotation).
 fn exchange_refresh_token(
-    state: &AppState,
+    state: &GatekeeperState,
     origin: &str,
     presented_credentials: &ClientCredentials,
     presented_refresh_token: &str,
@@ -633,7 +635,7 @@ fn exchange_refresh_token(
 /// Mint a token for `input` and attach `refresh_token` (if the grant earned
 /// one). A signing failure surfaces as a cache-suppressed 500 [`TokenError`].
 fn issue_token(
-    state: &AppState,
+    state: &GatekeeperState,
     input: &IssueTokenInput<'_>,
     refresh_token: Option<String>,
 ) -> Result<TokenResponse, TokenError> {

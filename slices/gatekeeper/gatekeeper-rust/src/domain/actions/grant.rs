@@ -6,7 +6,7 @@ use chrono::{DateTime, Utc};
 use url::Url;
 use uuid::Uuid;
 
-use crate::domain::error::GatekeeperError;
+use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::grant::{AuthorizationCodeGrant, CumulativeConsent, DeviceGrant, Grant};
 use crate::domain::{GatekeeperStore, GatekeeperTx};
 

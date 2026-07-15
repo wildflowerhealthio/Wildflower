@@ -7,6 +7,9 @@
   "paths": {
     "/collector/remotes": {
       "get": {
+        "tags": [
+          "Remotes"
+        ],
         "summary": "`GET /collector/remotes` — list every remote. Owner-gated by the host.",
         "operationId": "handle_list_remotes",
         "responses": {
@@ -26,6 +29,9 @@
         }
       },
       "post": {
+        "tags": [
+          "Remotes"
+        ],
         "summary": "`POST /collector/remotes` — create a remote. Owner-gated by the host.",
         "operationId": "handle_create_remote",
         "requestBody": {
@@ -74,6 +80,9 @@
     },
     "/collector/remotes/{id}": {
       "get": {
+        "tags": [
+          "Remotes"
+        ],
         "summary": "`GET /collector/remotes/{id}` — fetch one remote. Owner-gated by the host.",
         "operationId": "handle_get_remote",
         "parameters": [
@@ -111,6 +120,9 @@
         }
       },
       "put": {
+        "tags": [
+          "Remotes"
+        ],
         "summary": "`PUT /collector/remotes/{id}` — replace a remote's name + config.\nOwner-gated by the host.",
         "operationId": "handle_update_remote",
         "parameters": [
@@ -168,6 +180,9 @@
         }
       },
       "delete": {
+        "tags": [
+          "Remotes"
+        ],
         "summary": "`DELETE /collector/remotes/{id}` — remove a remote. Owner-gated by the host.",
         "operationId": "handle_delete_remote",
         "parameters": [

@@ -1,6 +1,6 @@
 //! Signing-key actions over the [`GatekeeperStore`] port.
 
-use crate::domain::error::GatekeeperError;
+use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::signing_key::SigningKey;
 use crate::domain::GatekeeperStore;
 

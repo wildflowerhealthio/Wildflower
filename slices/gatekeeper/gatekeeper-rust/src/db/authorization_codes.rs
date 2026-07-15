@@ -9,7 +9,7 @@ use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 
 use crate::domain::authorization_code::AuthorizationCode;
-use crate::domain::error::GatekeeperError;
+use crate::domain::gatekeeper_error::GatekeeperError;
 
 diesel::table! {
     authorization_codes (code) {

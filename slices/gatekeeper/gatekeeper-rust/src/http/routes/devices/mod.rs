@@ -9,11 +9,13 @@ mod approve;
 mod deny;
 mod get;
 
+use std::sync::Arc;
+
 use axum::Router;
 
-use crate::http::state::AppState;
+use crate::http::state::GatekeeperState;
 
-pub fn router() -> Router<AppState> {
+pub fn router() -> Router<Arc<GatekeeperState>> {
     Router::new()
         .route("/devices/{userCode}", get::route())
         .route("/devices/{userCode}/approve", approve::route())

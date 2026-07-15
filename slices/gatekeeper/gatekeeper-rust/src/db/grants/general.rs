@@ -16,7 +16,7 @@ use super::authorization_code::authorization_code_grants;
 use super::device::device_grants;
 use crate::db::shared::{JsonStrings, UrlText};
 use crate::domain::authorization_request::GrantType;
-use crate::domain::error::GatekeeperError;
+use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::grant::{AuthorizationCodeGrant, DeviceGrant, Grant};
 
 diesel::table! {
@@ -161,7 +161,7 @@ mod tests {
     use crate::db::test_support::{arb_opt_timestamp, arb_timestamp, arb_url};
     use crate::db::SqliteGatekeeperStore;
     use crate::domain::actions;
-    use crate::domain::error::GatekeeperError;
+    use crate::domain::gatekeeper_error::GatekeeperError;
     use crate::domain::grant::{AuthorizationCodeGrant, DeviceGrant, Grant};
     use crate::domain::GatekeeperStore as _;
 

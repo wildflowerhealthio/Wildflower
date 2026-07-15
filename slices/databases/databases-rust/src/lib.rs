@@ -44,7 +44,7 @@ pub mod config;
 pub mod domain;
 
 mod files;
-mod http;
+pub mod http;
 mod metadata;
 
 use std::sync::Arc;

@@ -29,6 +29,11 @@ use std::collections::HashSet;
 
 use super::{AppKind, CommonAppConfig};
 
+/// The smallest loopback port an uploaded app is allocated — one above the seeded
+/// patient-browser at 8081. See the port-allocation section of
+/// `docs/Apps/Store and Install Explanation.md`.
+pub(crate) const MIN_UPLOAD_PORT: u16 = 8082;
+
 /// The **lowest** loopback port in `min..=max` that is neither already `taken` nor
 /// in `reserved` (the host's own loopback port). Lowest-free (not `max + 1`) reuses
 /// released ports to keep origins stable across reinstall. `None` when the range is

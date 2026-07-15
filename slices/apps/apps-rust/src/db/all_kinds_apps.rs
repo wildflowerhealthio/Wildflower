@@ -73,7 +73,8 @@ pub(super) fn find_app_on(
                 Option::<SystemConfigurationRow>::as_select(),
             ))
             .first(conn)
-            .optional()?
+            .optional()
+            .map_err(|e| AppsError::infrastructure("find app failed", e))?
     else {
         return Ok(None);
     };
@@ -116,7 +117,9 @@ pub(super) fn delete_app(conn: &mut PooledDieselConnection, id: &str) -> Result<
 /// (`ON DELETE CASCADE`). Returns whether a registration row was removed (i.e. the
 /// app existed).
 fn delete_app_row(conn: &mut SqliteConnection, id: &str) -> Result<bool, AppsError> {
-    let removed = diesel::delete(app_registrations::table.find(id)).execute(conn)?;
+    let removed = diesel::delete(app_registrations::table.find(id))
+        .execute(conn)
+        .map_err(|e| AppsError::infrastructure("delete app failed", e))?;
     Ok(removed == 1)
 }
 

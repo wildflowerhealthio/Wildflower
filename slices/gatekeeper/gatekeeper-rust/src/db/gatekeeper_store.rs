@@ -22,7 +22,7 @@ use crate::db::{
 use crate::domain::authorization_code::AuthorizationCode;
 use crate::domain::authorization_request::AuthorizationRequest;
 use crate::domain::client::Client;
-use crate::domain::error::GatekeeperError;
+use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::grant::{AuthorizationCodeGrant, DeviceGrant, Grant};
 use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 use crate::domain::signing_key::SigningKey;
@@ -145,10 +145,6 @@ impl GatekeeperTx for SqliteGatekeeperTx<'_> {
 
     fn client_by_id(&mut self, client_id: &str) -> Result<Option<Client>, GatekeeperError> {
         clients::client_by_id(self.conn, client_id)
-    }
-
-    fn register_client(&mut self, client: &Client) -> Result<(), GatekeeperError> {
-        clients::register_client(self.conn, client)
     }
 
     fn upsert_client(&mut self, client: &Client) -> Result<(), GatekeeperError> {
@@ -283,13 +279,6 @@ impl GatekeeperTx for SqliteGatekeeperTx<'_> {
         token_hash: &str,
     ) -> Result<Option<(RefreshToken, RefreshTokenFamily)>, GatekeeperError> {
         refresh_tokens::refresh_token_with_family_by_hash(self.conn, token_hash)
-    }
-
-    fn refresh_token_by_hash(
-        &mut self,
-        token_hash: &str,
-    ) -> Result<Option<RefreshToken>, GatekeeperError> {
-        refresh_tokens::refresh_token_by_hash(self.conn, token_hash)
     }
 
     fn stamp_refresh_token_consumed_if_live(
@@ -445,7 +434,7 @@ impl GatekeeperStore for SqliteGatekeeperStore {
 // `GatekeeperError` as the diesel transaction error type: diesel requires
 // `E: From<diesel::result::Error>` even though `f`'s body maps its own query
 // errors, because a `BEGIN` / `COMMIT` / `ROLLBACK` failure surfaces as a raw
-// diesel error. Kept in the `db` layer so `domain::error` stays diesel-free.
+// diesel error. Kept in the `db` layer so `domain::gatekeeper_error` stays diesel-free.
 impl From<diesel::result::Error> for GatekeeperError {
     fn from(error: diesel::result::Error) -> Self {
         GatekeeperError::infrastructure("gatekeeper store transaction failed", error)

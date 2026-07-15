@@ -40,7 +40,7 @@ use axum::Router;
 pub use persistence_rust::DieselPool;
 
 pub use db::SqliteRemotesStore;
-pub use http::CollectorState;
+pub use http::{openapi_spec, CollectorState};
 
 /// Build the collector router over the host-owned connection `pool`, mirroring
 /// `tunnel-rust`'s `setup_tunnel` and `apps-rust`'s `setup_apps`. The host opens

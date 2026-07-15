@@ -41,7 +41,7 @@ use url::Url;
 use crate::domain::authorization_code::AuthorizationCode;
 use crate::domain::authorization_request::AuthorizationRequest;
 use crate::domain::client::Client;
-use crate::domain::error::GatekeeperError;
+use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::grant::{AuthorizationCodeGrant, DeviceGrant, Grant};
 use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 use crate::domain::signing_key::SigningKey;
@@ -68,14 +68,6 @@ pub trait GatekeeperTx {
     /// [`GatekeeperError::Infrastructure`] if the read fails or a returned row
     /// cannot be mapped to a [`Client`].
     fn client_by_id(&mut self, client_id: &str) -> Result<Option<Client>, GatekeeperError>;
-
-    /// Persist a new OAuth client.
-    ///
-    /// # Errors
-    ///
-    /// [`GatekeeperError::Infrastructure`] if the insert fails (for example a
-    /// unique-constraint violation on the `client_id`).
-    fn register_client(&mut self, client: &Client) -> Result<(), GatekeeperError>;
 
     /// Insert a client, or update its policy fields if one with the same
     /// `client_id` already exists (`ON CONFLICT … DO UPDATE`) — used by
@@ -300,18 +292,6 @@ pub trait GatekeeperTx {
         &mut self,
         token_hash: &str,
     ) -> Result<Option<(RefreshToken, RefreshTokenFamily)>, GatekeeperError>;
-
-    /// Look up a single token by hash, or `None` when absent — enough for
-    /// callers that don't need the family facts.
-    ///
-    /// # Errors
-    ///
-    /// [`GatekeeperError::Infrastructure`] if the read fails or a returned row
-    /// cannot be mapped to a [`RefreshToken`].
-    fn refresh_token_by_hash(
-        &mut self,
-        token_hash: &str,
-    ) -> Result<Option<RefreshToken>, GatekeeperError>;
 
     /// Stamp the live token `token_hash` consumed at `now`, returning `true` iff
     /// a live (un-consumed) row was actually transitioned — the guarded half of
@@ -581,15 +561,6 @@ pub trait GatekeeperStore {
         self.with_connection(|tx| tx.client_by_id(client_id))
     }
 
-    /// See [`GatekeeperTx::register_client`].
-    ///
-    /// # Errors
-    ///
-    /// Propagates [`GatekeeperTx::register_client`]'s error.
-    fn register_client(&self, client: &Client) -> Result<(), GatekeeperError> {
-        self.with_connection(|tx| tx.register_client(client))
-    }
-
     /// See [`GatekeeperTx::upsert_client`].
     ///
     /// # Errors
@@ -806,18 +777,6 @@ pub trait GatekeeperStore {
         token_hash: &str,
     ) -> Result<Option<(RefreshToken, RefreshTokenFamily)>, GatekeeperError> {
         self.with_connection(|tx| tx.refresh_token_with_family_by_hash(token_hash))
-    }
-
-    /// See [`GatekeeperTx::refresh_token_by_hash`].
-    ///
-    /// # Errors
-    ///
-    /// Propagates [`GatekeeperTx::refresh_token_by_hash`]'s error.
-    fn refresh_token_by_hash(
-        &self,
-        token_hash: &str,
-    ) -> Result<Option<RefreshToken>, GatekeeperError> {
-        self.with_connection(|tx| tx.refresh_token_by_hash(token_hash))
     }
 
     /// See [`GatekeeperTx::expire_refresh_token_family`].

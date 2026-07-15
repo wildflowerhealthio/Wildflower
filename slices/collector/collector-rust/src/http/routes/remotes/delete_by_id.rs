@@ -22,6 +22,7 @@ pub(crate) struct DeletedBody {
 /// `DELETE /collector/remotes/{id}` — remove a remote. Owner-gated by the host.
 #[utoipa::path(
     delete,
+    tag = "Remotes",
     path = "/collector/remotes/{id}",
     params(("id" = String, Path, description = "Remote id")),
     responses(

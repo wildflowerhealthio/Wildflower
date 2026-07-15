@@ -3,7 +3,7 @@
 //! to for [`Client`] lookup and registration/seeding upserts, each running on a
 //! connection the store has already checked out of the pool. They return the
 //! port's primitive shapes and raise only
-//! [`GatekeeperError::Infrastructure`](crate::domain::error::GatekeeperError::Infrastructure)
+//! [`GatekeeperError::Infrastructure`](crate::domain::gatekeeper_error::GatekeeperError::Infrastructure)
 //! on a real db failure.
 
 use diesel::prelude::*;
@@ -12,7 +12,7 @@ use url::Url;
 
 use crate::db::shared::{json_text_column, text_enum_column};
 use crate::domain::client::{AllowedGrantType, Client, ClientKind};
-use crate::domain::error::GatekeeperError;
+use crate::domain::gatekeeper_error::GatekeeperError;
 
 diesel::table! {
     clients (client_id) {
@@ -55,21 +55,6 @@ pub(super) fn client_by_id(
         .first(conn)
         .optional()
         .map_err(|e| GatekeeperError::infrastructure("client_by_id failed", e))
-}
-
-/// Persist a new OAuth client.
-pub(super) fn register_client(
-    conn: &mut SqliteConnection,
-    client: &Client,
-) -> Result<(), GatekeeperError> {
-    diesel::insert_into(clients::table)
-        // `Client`'s JSON list fields use `#[diesel(serialize_as)]`, which
-        // consumes the value — diesel generates no borrowed `Insertable`
-        // impl for the struct, so the insert takes a clone.
-        .values(client.clone())
-        .execute(conn)
-        .map_err(|e| GatekeeperError::infrastructure("register_client failed", e))?;
-    Ok(())
 }
 
 /// Insert a client, or update its policy fields if one with the same
@@ -149,9 +134,9 @@ mod tests {
         #![proptest_config(ProptestConfig::with_cases(48))]
 
         #[test]
-        fn register_and_fetch_round_trip(client in arb_client()) {
+        fn upsert_and_fetch_round_trip(client in arb_client()) {
             let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
-            store.register_client(&client).expect("register");
+            store.upsert_client(&client).expect("upsert");
             let fetched = store
                 .client_by_id(&client.client_id)
                 .expect("query")

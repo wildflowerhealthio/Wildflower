@@ -12,6 +12,7 @@ use crate::http::state::CollectorState;
 /// `GET /collector/remotes/{id}` — fetch one remote. Owner-gated by the host.
 #[utoipa::path(
     get,
+    tag = "Remotes",
     path = "/collector/remotes/{id}",
     params(("id" = String, Path, description = "Remote id")),
     responses(

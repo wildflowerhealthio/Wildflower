@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use anyhow::{anyhow, Context};
 use axum::extract::State;
 use axum::http::{header, HeaderMap};
@@ -19,7 +21,7 @@ use crate::domain::authorization_request::{
 };
 use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::domain::page_paths;
-use crate::http::state::AppState;
+use crate::http::state::GatekeeperState;
 use crate::http::wire_representations::{CacheSuppressed, OAuthError};
 use crate::http::ServedOrigin;
 
@@ -77,7 +79,7 @@ impl IntoResponse for DeviceAuthorizationResponse {
     )
 )]
 pub(super) async fn handle_device_authorization_request(
-    State(state): State<AppState>,
+    State(state): State<Arc<GatekeeperState>>,
     origin: ServedOrigin,
     headers: HeaderMap,
     request: TokenRequest<DeviceAuthorizationPayload>,
@@ -93,7 +95,7 @@ pub(super) async fn handle_device_authorization_request(
 /// Validate the request, authenticate the client, and mint a
 /// `(device_code, user_code)` pair, surfacing every failure as a [`TokenError`].
 fn device_authorization(
-    state: &AppState,
+    state: &GatekeeperState,
     origin: &ServedOrigin,
     user_agent: Option<&str>,
     request: TokenRequest<DeviceAuthorizationPayload>,
@@ -176,7 +178,7 @@ fn device_authorization(
 /// `user_code` already attached to a denied/expired row lets that stale row
 /// shadow the new pending request at the consent-side lookup (`user_code` is
 /// not unique once reused), so we regenerate instead.
-fn generate_unique_user_code(state: &AppState) -> anyhow::Result<String> {
+fn generate_unique_user_code(state: &GatekeeperState) -> anyhow::Result<String> {
     for _ in 0..MAX_USER_CODE_GENERATION_ATTEMPTS {
         let candidate = {
             let mut rng = rand::rng();

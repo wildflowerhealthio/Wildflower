@@ -1,26 +1,28 @@
+use std::sync::Arc;
+
 use axum::extract::{Path, State};
 use axum::routing::{post, MethodRouter};
 use axum::Json;
 use chrono::Utc;
 
 use crate::domain::actions;
-use crate::http::errors::HandlerError;
-use crate::http::state::AppState;
+use crate::domain::gatekeeper_error::GatekeeperError;
+use crate::http::state::GatekeeperState;
 use crate::http::wire_representations::{ApproveBody, ConsentResult};
 
 /// `POST /devices/{userCode}/approve` — the Owner approves a device-code
 /// consent prompt, granting the (expanded) scope set and leaving a standing
 /// device grant. All of that lives in [`actions::approve_device_consent`]; the
 /// handler just adapts HTTP ⇄ domain.
-pub(super) fn route() -> MethodRouter<AppState> {
+pub(super) fn route() -> MethodRouter<Arc<GatekeeperState>> {
     post(handle_approve_device_consent)
 }
 
 async fn handle_approve_device_consent(
-    State(state): State<AppState>,
+    State(state): State<Arc<GatekeeperState>>,
     Path(user_code): Path<String>,
     Json(body): Json<ApproveBody>,
-) -> Result<Json<ConsentResult>, HandlerError> {
+) -> Result<Json<ConsentResult>, GatekeeperError> {
     let outcome = actions::approve_device_consent(
         &state.store,
         &state,

@@ -190,10 +190,10 @@ pub enum VerifyError {
     NoSigningKeysConfigured,
     /// The signing-key store could not be read (e.g. the database query
     /// failed) — distinct from a key whose material is corrupt. Surface as 500.
-    /// Wraps the domain [`GatekeeperError`](crate::domain::error::GatekeeperError)
+    /// Wraps the domain [`GatekeeperError`](crate::domain::gatekeeper_error::GatekeeperError)
     /// the store surfaced, so no database error type appears here.
     #[error("signing-key store unavailable")]
-    KeyStoreUnavailable(#[source] crate::domain::error::GatekeeperError),
+    KeyStoreUnavailable(#[source] crate::domain::gatekeeper_error::GatekeeperError),
     /// A configured signing key's material could not be turned into a
     /// `DecodingKey`.
     #[error("signing key material could not be loaded")]

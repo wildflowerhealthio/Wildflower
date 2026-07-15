@@ -19,18 +19,68 @@
 //! thin wrapper over the same `subject` mode once a device/session handle is
 //! minted into tokens.
 
+use std::sync::Arc;
+
 use axum::extract::State;
 use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use axum::{Json, Router};
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
+use serde_json::json;
 
-use crate::http::errors::HandlerError;
-use crate::http::state::AppState;
+use crate::domain::gatekeeper_error::GatekeeperError;
+use crate::http::state::GatekeeperState;
 
-pub fn router() -> Router<AppState> {
+pub fn router() -> Router<Arc<GatekeeperState>> {
     Router::new().route("/revocations", post(handle_create_revocation))
+}
+
+/// Error half of the revocations handler. The request-body validation failures
+/// ([`BadRequest`](RevocationError::BadRequest)) are HTTP-layer-only — they
+/// describe a malformed `POST /access/revocations` body, not a domain outcome —
+/// so they can't live on [`GatekeeperError`]; the backing-store failures delegate
+/// to `GatekeeperError`'s opaque, logged-500 rendering. This is the one residual
+/// error mechanism left after the `/access` surface converged on
+/// `impl IntoResponse for GatekeeperError` (the rest of the surface returns
+/// `Result<_, GatekeeperError>` directly).
+enum RevocationError {
+    /// A client-fixable malformed request: JSON 400 of the shape
+    /// `{ "error": <error>, "detail": <detail> }`.
+    BadRequest { error: &'static str, detail: String },
+    /// A backing-store failure — rendered through `GatekeeperError` as the shared
+    /// opaque, logged 500.
+    Store(GatekeeperError),
+}
+
+impl RevocationError {
+    /// A client-fixable malformed request: JSON 400 with an explanatory detail.
+    fn bad_request(error: &'static str, detail: impl Into<String>) -> Self {
+        RevocationError::BadRequest {
+            error,
+            detail: detail.into(),
+        }
+    }
+}
+
+impl From<GatekeeperError> for RevocationError {
+    fn from(error: GatekeeperError) -> Self {
+        RevocationError::Store(error)
+    }
+}
+
+impl IntoResponse for RevocationError {
+    fn into_response(self) -> Response {
+        match self {
+            RevocationError::BadRequest { error, detail } => (
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "error": error, "detail": detail })),
+            )
+                .into_response(),
+            RevocationError::Store(error) => error.into_response(),
+        }
+    }
 }
 
 /// Wire body of `POST /access/revocations`. Purely the deserialization shape:
@@ -67,11 +117,11 @@ enum Revocation {
 impl RevocationRequest {
     /// Collapse the optional wire fields into exactly one [`Revocation`] mode,
     /// or a 400 for a body that names neither, both, or an incomplete mode.
-    fn into_revocation(self) -> Result<Revocation, HandlerError> {
+    fn into_revocation(self) -> Result<Revocation, RevocationError> {
         match (self.jti, self.subject) {
             (Some(jti), None) => {
                 let expires_at = self.expires_at.ok_or_else(|| {
-                    HandlerError::bad_request(
+                    RevocationError::bad_request(
                         "MissingExpiresAt",
                         "revoking by `jti` requires `expiresAt` (the token's own expiry)",
                     )
@@ -79,11 +129,11 @@ impl RevocationRequest {
                 Ok(Revocation::Token { jti, expires_at })
             }
             (None, Some(subject)) => Ok(Revocation::Subject { subject }),
-            (Some(_), Some(_)) => Err(HandlerError::bad_request(
+            (Some(_), Some(_)) => Err(RevocationError::bad_request(
                 "AmbiguousRevocation",
                 "provide exactly one of `jti` or `subject`, not both",
             )),
-            (None, None) => Err(HandlerError::bad_request(
+            (None, None) => Err(RevocationError::bad_request(
                 "EmptyRevocation",
                 "provide either `jti` (with `expiresAt`) or `subject`",
             )),
@@ -92,9 +142,9 @@ impl RevocationRequest {
 }
 
 async fn handle_create_revocation(
-    State(state): State<AppState>,
+    State(state): State<Arc<GatekeeperState>>,
     Json(request): Json<RevocationRequest>,
-) -> Result<StatusCode, HandlerError> {
+) -> Result<StatusCode, RevocationError> {
     match request.into_revocation()? {
         Revocation::Token { jti, expires_at } => {
             // Reject an `expiresAt` already in the past: the token is expired
@@ -104,7 +154,7 @@ async fn handle_create_revocation(
             // prematurely un-revoke a live token — the store's `purge_expired`
             // retention floor guards that.)
             if expires_at <= Utc::now() {
-                return Err(HandlerError::bad_request(
+                return Err(RevocationError::bad_request(
                     "ExpiresAtInPast",
                     "`expiresAt` is in the past; the token has already expired",
                 ));
@@ -112,12 +162,12 @@ async fn handle_create_revocation(
             state
                 .revocation_store
                 .revoke_jti(&jti, expires_at, "admin")
-                .map_err(|e| HandlerError::internal("revoke_jti failed", e))?;
+                .map_err(|e| GatekeeperError::infrastructure("revoke_jti failed", e))?;
         }
         Revocation::Subject { subject } => state
             .revocation_store
             .revoke_subject_as_of_now(&subject)
-            .map_err(|e| HandlerError::internal("revoke_subject_as_of_now failed", e))?,
+            .map_err(|e| GatekeeperError::infrastructure("revoke_subject_as_of_now failed", e))?,
     }
     Ok(StatusCode::NO_CONTENT)
 }

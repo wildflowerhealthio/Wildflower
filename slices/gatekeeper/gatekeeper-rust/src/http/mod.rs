@@ -1,8 +1,10 @@
 //! The gatekeeper's HTTP layer — everything axum-shaped lives under this
 //! module. The only crate-facing surface is [`router`],
-//! [`layer_router_with_gatekeeper_auth_gating`], and [`AppState`]; the handler
-//! and middleware files are private implementation detail behind the route
-//! table.
+//! [`layer_router_with_gatekeeper_auth_gating`], and [`GatekeeperState`]; the
+//! handler and middleware files are private implementation detail behind the
+//! route table.
+
+use std::sync::Arc;
 
 mod errors;
 mod extractors;
@@ -18,7 +20,7 @@ pub(crate) use shared_structures_rust::served_origin::served_base_url_for;
 // The shared "insert an `Authorization: Bearer` only when absent" helper — the
 // FHIR bearer gate and the Tauri loopback-owner-trust middleware both use it.
 pub use middleware::ensure_bearer_header;
-pub use state::AppState;
+pub use state::GatekeeperState;
 
 use axum::middleware as axum_middleware;
 use axum::Router;
@@ -33,7 +35,7 @@ struct ApiDoc;
 /// The documented surface — jwks + the OAuth group — as an `OpenApiRouter`, so
 /// the spec is collected from the very routes that serve traffic. Trial scope:
 /// the `/access/*` admin surface is intentionally not documented.
-fn documented_router() -> OpenApiRouter<AppState> {
+fn documented_router() -> OpenApiRouter<Arc<GatekeeperState>> {
     OpenApiRouter::with_openapi(ApiDoc::openapi())
         .routes(routes!(routes::well_known_jwks::handle_jwks_request))
         .nest("/oauth", routes::oauth::openapi_router())
@@ -47,7 +49,7 @@ fn documented_router() -> OpenApiRouter<AppState> {
 /// [`layer_router_with_loopback_peer_gating`]. Mounting `router()` directly
 /// without that wrapper leaves `/oauth/*` and `/access/*` reachable from
 /// non-loopback peers.
-pub fn router(state: AppState) -> Router {
+pub fn router(state: Arc<GatekeeperState>) -> Router {
     let (documented, _spec) = documented_router().split_for_parts();
     let access = Router::new()
         .merge(routes::grants::router())
@@ -76,7 +78,7 @@ pub fn router(state: AppState) -> Router {
 /// gate every path.
 pub fn layer_router_with_gatekeeper_auth_gating(
     router: Router,
-    state: AppState,
+    state: Arc<GatekeeperState>,
     exempt_paths: &[&str],
 ) -> Router {
     let gate = middleware::BearerGate {
@@ -129,7 +131,7 @@ pub fn is_pre_auth_public_path(path: &str) -> bool {
 /// launch popup. Returns `false` for a missing, invalid, or non-owner token.
 #[must_use]
 pub fn verify_owner_bearer(
-    state: &AppState,
+    state: &GatekeeperState,
     headers: &axum::http::HeaderMap,
     served_origin: &str,
 ) -> bool {
