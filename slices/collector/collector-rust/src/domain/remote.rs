@@ -12,7 +12,7 @@ use shared_structures_rust::json_text::JsonText;
 
 /// A stored remote — the wire shape the `/collector/remotes` endpoints serve
 /// (the TS `RemoteSchema` in
-/// `collector-core/src/http-api-definition/remotes.ts`) AND the
+/// `collector-registry/src/http-api-definition/remotes.ts`) AND the
 /// `collector_remotes` row: the diesel derives map this type straight to/from
 /// the table, with [`JsonText`] converting `config` between `Value` and the
 /// JSON TEXT column at the bind/read boundary. serde's camelCase rename
@@ -33,7 +33,7 @@ pub struct Remote {
     /// through.
     pub tag: String,
     /// The full tagged `CollectorConfig` JSON, **opaque to Rust**: the
-    /// per-collector config union is TS-owned (`collector-core`'s registry),
+    /// per-collector config union is TS-owned (`collector-registry`'s registry),
     /// so this crate stores and serves it verbatim rather than modeling it —
     /// adding a TS collector never requires a Rust change. The column keeps
     /// it as JSON TEXT; [`JsonText`] round-trips it through `serde_json`.

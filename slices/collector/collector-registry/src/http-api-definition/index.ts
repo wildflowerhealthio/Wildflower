@@ -10,7 +10,7 @@ import * as Remotes from './remotes.ts'
  * `RequireAuthMiddleware` at the composition site.** The slice does
  * not annotate the group with `.middleware(RequireAuthMiddleware)`
  * directly because `gatekeeper-core` isn't an intrinsic dep of
- * `collector-core` — adding it here would cross the slice-layering
+ * `collector-registry` — adding it here would cross the slice-layering
  * boundary in `slices/AGENTS.md`. The wildflower-server composition
  * applies the middleware via
  * `.addHttpApi(CollectorApi.middleware(RequireAuthMiddleware))`; a

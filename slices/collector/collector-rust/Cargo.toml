@@ -6,7 +6,7 @@ publish.workspace = true
 
 # The collector slice, host-side: SQLite-backed CRUD for user-created remotes
 # (the `/collector/remotes` surface the React shell's remotes screens speak).
-# The per-collector config union is TS-owned (`collector-core`'s registry);
+# The per-collector config union is TS-owned (`collector-registry`'s registry);
 # this crate stores and serves each remote's tagged `CollectorConfig` JSON
 # verbatim, so adding a TS collector never requires a Rust change. Layered like
 # `tunnel-rust` / `apps-rust`: pure `domain`, `db`, and `http`.

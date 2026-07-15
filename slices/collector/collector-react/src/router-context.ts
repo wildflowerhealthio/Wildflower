@@ -1,4 +1,4 @@
-import { type CollectorHttpApiClient } from 'collector-core/clients'
+import { type CollectorHttpApiClient } from 'collector-registry/clients'
 import { type Layer } from 'effect'
 import { type FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
 import { type BaseRouterContext } from 'shared-structures-react'

@@ -10,11 +10,11 @@
  * the `collector-react/package.json` description (per `slices/AGENTS.md`).
  */
 import { useMutation } from '@tanstack/react-query'
-import type { Remotes } from 'collector-core/http-api-definition'
-import { makeScrapingPlanForConfig, type AnyCollectorResource } from 'collector-core/registry'
 import { CollectorBridgeMessageHandler } from 'collector-fundamentals/handler'
 import type { ScrapingPlan } from 'collector-fundamentals/model'
 import * as Telemetry from 'collector-fundamentals/telemetry'
+import type { Remotes } from 'collector-registry/http-api-definition'
+import { makeScrapingPlanForConfig, type AnyCollectorResource } from 'collector-registry/registry'
 import {
   Duration,
   Effect,

@@ -1,11 +1,11 @@
 //! `collector-rust` — the host-side collector slice: SQLite-backed CRUD for
 //! user-created remotes, serving the `/collector/remotes` HTTP surface defined
-//! TS-side in `collector-core/src/http-api-definition/remotes.ts` (List / Get /
+//! TS-side in `collector-registry/src/http-api-definition/remotes.ts` (List / Get /
 //! Create / Update / Delete, the `RemoteNotFound` 404 shape) and consumed by
 //! `collector-react`'s remotes screens. A migration seeds the demo FHIR
 //! remote, so a fresh install has a working remote out of the box.
 //!
-//! The per-collector config union is **TS-owned** (`collector-core`'s
+//! The per-collector config union is **TS-owned** (`collector-registry`'s
 //! registry): each remote's tagged `CollectorConfig` JSON is stored and served
 //! verbatim, so adding a TS collector never requires a Rust change. The only
 //! field Rust reads is `config._tag`, denormalized into the `tag` column at

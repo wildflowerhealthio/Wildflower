@@ -9,7 +9,7 @@ import {
 /**
  * Closed discriminated union of every collector's per-instance config.
  *
- * `collector-core` statically imports each concrete client package
+ * `collector-registry` statically imports each concrete client package
  * (`fhir-r4-client-collector`, …) and assembles them here. Adding a
  * new collector is an edit to this file plus a new `package.json` dep
  * — there is intentionally no runtime registry. The

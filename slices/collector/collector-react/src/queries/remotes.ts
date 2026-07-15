@@ -7,8 +7,8 @@ import {
   type UseSuspenseQueryOptions,
   type UseSuspenseQueryResult,
 } from '@tanstack/react-query'
-import { CollectorHttpApiClient } from 'collector-core/clients'
-import type { Remotes } from 'collector-core/http-api-definition'
+import { CollectorHttpApiClient } from 'collector-registry/clients'
+import type { Remotes } from 'collector-registry/http-api-definition'
 import { Effect, type Schema } from 'effect'
 
 import type { RunAuthed } from '../router-context.ts'
