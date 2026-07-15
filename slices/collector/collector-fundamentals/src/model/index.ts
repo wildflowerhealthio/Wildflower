@@ -1,3 +1,4 @@
+export * as CollectorDescriptor from './collector-descriptor.ts'
 export * as EntityDefinition from './entity-definition.ts'
 export * as Link from './link.ts'
 export * as Response from './response.ts'

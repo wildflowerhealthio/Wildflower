@@ -1,4 +1,5 @@
 import {
+  CollectorDescriptor,
   type EntityDefinition,
   ScrapingPlan,
   type WebViewSource,
@@ -143,5 +144,27 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<AnyReso
   })
 }
 
-export { InstanceConfig, defaultConfig, scrapingPlan }
+/**
+ * The FHIR R4 collector as one first-class value: the config schema,
+ * its default, the plan factory, and the user-facing strings, bundled
+ * for `collector-registry` to assemble into the closed descriptor list
+ * (issue #387). The display strings are the honest kind-level values —
+ * the "Demo FHIR Server" label previously hardcoded in `collector-react`
+ * names a *route's demo entry*, not the collector, so it stays there;
+ * this descriptor's `title` is the collector kind ("FHIR R4") and its
+ * `listSubtitle` surfaces a remote's configured `rootUrl`.
+ */
+const FhirR4CollectorDescriptor = CollectorDescriptor.make({
+  tag: 'fhir-r4',
+  configSchema: InstanceConfig,
+  defaultConfig,
+  makeScrapingPlan: scrapingPlan,
+  display: {
+    title: 'FHIR R4',
+    description: 'Health records from a FHIR R4 server',
+    listSubtitle: (config) => config.rootUrl,
+  },
+})
+
+export { InstanceConfig, defaultConfig, scrapingPlan, FhirR4CollectorDescriptor }
 export type { AnyResource }

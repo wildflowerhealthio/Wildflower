@@ -1,13 +1,21 @@
 import { Arbitrary, Schema } from 'effect'
 import * as fc from 'fast-check'
 import {
+  FhirR4CollectorDescriptor,
   InstanceConfig as FhirR4InstanceConfig,
   scrapingPlan as fhirR4ScrapingPlan,
 } from 'fhir-r4-client-collector'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { CollectorConfig, CollectorTag, makeScrapingPlanForConfig } from './registry.ts'
+import {
+  CollectorConfig,
+  CollectorTag,
+  descriptorForConfig,
+  descriptorForTag,
+  descriptors,
+  makeScrapingPlanForConfig,
+} from './registry.ts'
 
 const { expectLeftToEqual, expectRightToEqual } = utilityExpectations(expect)
 
@@ -69,5 +77,46 @@ describe('makeScrapingPlanForConfig', () => {
     // for identity. Same `name` + same `linkSequence` + a `firstPage`
     // pointed at the configured patientUrl pin the dispatch.
     expect(makeScrapingPlanForConfig(config)).toEqual(fhirR4ScrapingPlan(config))
+  })
+
+  it('dispatches every schema-conformant config to its descriptor plan', () => {
+    // The dispatch must route by the config's own tag for any collector
+    // in the list, not just the hardcoded fhir-r4 example above.
+    fc.assert(
+      fc.property(Arbitrary.make(CollectorConfig), (config) => {
+        const descriptor = descriptorForConfig(config)
+        expect(descriptor).toBeDefined()
+        expect(makeScrapingPlanForConfig(config)).toEqual(descriptor?.makeScrapingPlan(config))
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+})
+
+describe('descriptors', () => {
+  it('assigns each collector a distinct tag', () => {
+    // A tag collision would make the derived union / dispatch ambiguous;
+    // pin uniqueness so adding a colliding descriptor fails here.
+    const tags = descriptors.map((descriptor) => descriptor.tag)
+    expect(new Set(tags).size).toBe(tags.length)
+  })
+
+  it('includes the fhir-r4 descriptor', () => {
+    expect(descriptors).toContain(FhirR4CollectorDescriptor)
+  })
+})
+
+describe('descriptorForTag / descriptorForConfig', () => {
+  it('resolves the fhir-r4 tag to its descriptor', () => {
+    expect(descriptorForTag('fhir-r4')).toBe(FhirR4CollectorDescriptor)
+  })
+
+  it('resolves a stored config to its descriptor by _tag', () => {
+    const config = Schema.decodeSync(CollectorConfig)({
+      _tag: 'fhir-r4',
+      rootUrl: 'https://example.com',
+      patientId: '12345',
+    })
+    expect(descriptorForConfig(config)).toBe(FhirR4CollectorDescriptor)
   })
 })
