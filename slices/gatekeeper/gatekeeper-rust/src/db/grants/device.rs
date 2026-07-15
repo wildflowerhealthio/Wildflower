@@ -5,14 +5,12 @@
 //! Single-kind operations hit this concrete table; the cross-kind reads live in
 //! [`super::general`].
 
-use chrono::{DateTime, Utc};
 use diesel::prelude::*;
-use persistence_rust::PooledDieselConnection;
-use uuid::Uuid;
+use diesel::sqlite::SqliteConnection;
 
 use crate::db::shared::JsonStrings;
 use crate::domain::error::GatekeeperError;
-use crate::domain::grant::{CumulativeConsent, DeviceGrant};
+use crate::domain::grant::DeviceGrant;
 
 diesel::table! {
     device_grants (id) {
@@ -26,12 +24,15 @@ diesel::table! {
     }
 }
 
-/// Insert a brand-new device grant row — a plain single-table insert (no
-/// transaction). Chiefly a test/seed helper; the flow uses
-/// [`upsert_device_grant`]. The caller hands the concrete grant, so the store
-/// never inspects a polymorphic value to choose the table.
+/// Insert a brand-new device grant row — a plain single-table insert. The
+/// insert branch of a first-time pairing, and a test/seed helper; the
+/// scope-union re-pairing flow is
+/// [`upsert_device_grant`](crate::domain::actions::upsert_device_grant), which
+/// reads then chooses this or [`update_device_grant`]. The caller hands the
+/// concrete grant, so the store never inspects a polymorphic value to choose the
+/// table.
 pub(crate) fn create_device_grant(
-    conn: &mut PooledDieselConnection,
+    conn: &mut SqliteConnection,
     grant: &DeviceGrant,
 ) -> Result<(), GatekeeperError> {
     diesel::insert_into(device_grants::table)
@@ -46,7 +47,7 @@ pub(crate) fn create_device_grant(
 /// uses to stamp `refresh_token_families.grant_id`. Hits the concrete
 /// table.
 pub(crate) fn device_grant_by_client_and_device_name(
-    conn: &mut PooledDieselConnection,
+    conn: &mut SqliteConnection,
     client_id: &str,
     device_name: &str,
 ) -> Result<Option<DeviceGrant>, GatekeeperError> {
@@ -61,59 +62,28 @@ pub(crate) fn device_grant_by_client_and_device_name(
         })
 }
 
-/// Insert or update the standing **device** grant for
-/// `(client_id, device_name)` — the same cumulative-consent + `BEGIN IMMEDIATE`
-/// (lock-at-read) semantics as
-/// [`upsert_authorization_code_grant`](super::authorization_code::upsert_authorization_code_grant),
-/// which documents the concurrency rationale; keyed on `device_name` instead, and
-/// backstopped by `UNIQUE(client_id, device_name)`. This is what makes a
-/// device-code approval leave a durable record: re-pairing the same device (same
-/// name) absorbs the re-approval onto the existing grant.
-pub(crate) fn upsert_device_grant(
-    conn: &mut PooledDieselConnection,
-    client_id: &str,
-    device_name: &str,
-    scopes: &[String],
-    patient: Option<&str>,
-    now: DateTime<Utc>,
+/// Overwrite the mutable fields (`scopes`, `granted_at`, `patient`) of the
+/// device grant identified by `grant.id` — the write half of a device
+/// re-pairing, after
+/// [`upsert_device_grant`](crate::domain::actions::upsert_device_grant) has read
+/// the standing grant and folded the re-approval into it via
+/// [`absorb_reapproval`](crate::domain::grant::CumulativeConsent). The action
+/// runs the read + this write inside one `BEGIN IMMEDIATE` transaction (the
+/// concurrency rationale it shares with the authorization-code upsert); this
+/// body is just the `UPDATE`.
+pub(crate) fn update_device_grant(
+    conn: &mut SqliteConnection,
+    grant: &DeviceGrant,
 ) -> Result<(), GatekeeperError> {
-    conn.immediate_transaction(|conn| {
-        let existing: Option<DeviceGrant> = device_grants::table
-            .filter(device_grants::client_id.eq(client_id))
-            .filter(device_grants::device_name.eq(device_name))
-            .select(DeviceGrant::as_select())
-            .first(conn)
-            .optional()?;
-        match existing {
-            Some(mut grant) => {
-                grant.absorb_reapproval(scopes, patient, now);
-                diesel::update(device_grants::table.find(&grant.id))
-                    .set((
-                        device_grants::scopes.eq(JsonStrings(grant.scopes)),
-                        device_grants::granted_at.eq(grant.granted_at),
-                        device_grants::patient.eq(grant.patient),
-                    ))
-                    .execute(conn)?;
-            }
-            None => {
-                diesel::insert_into(device_grants::table)
-                    .values(DeviceGrant {
-                        id: Uuid::new_v4().to_string(),
-                        client_id: client_id.to_owned(),
-                        scopes: scopes.to_vec(),
-                        granted_at: now,
-                        last_used_at: None,
-                        patient: patient.map(str::to_owned),
-                        device_name: device_name.to_owned(),
-                    })
-                    .execute(conn)?;
-            }
-        }
-        Ok(())
-    })
-    .map_err(|e: diesel::result::Error| {
-        GatekeeperError::infrastructure("upsert_device_grant failed", e)
-    })
+    diesel::update(device_grants::table.find(&grant.id))
+        .set((
+            device_grants::scopes.eq(JsonStrings(grant.scopes.clone())),
+            device_grants::granted_at.eq(grant.granted_at),
+            device_grants::patient.eq(grant.patient.clone()),
+        ))
+        .execute(conn)
+        .map_err(|e| GatekeeperError::infrastructure("update_device_grant failed", e))?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -121,24 +91,28 @@ mod tests {
     use chrono::Utc;
 
     use crate::db::SqliteGatekeeperStore;
+    use crate::domain::actions;
     use crate::domain::GatekeeperStore as _;
 
-    /// A device upsert mints a durable device grant, and re-pairing under the
-    /// same `(client_id, device_name)` unions scopes onto the same row.
+    /// The `upsert_device_grant` action over the real `SQLite` adapter: a first
+    /// pairing mints a durable device grant (via `create_device_grant`), and
+    /// re-pairing under the same `(client_id, device_name)` reads then unions
+    /// scopes onto the same row through `update_device_grant` — all inside the
+    /// action's `BEGIN IMMEDIATE`. A different device name is a distinct grant.
     #[test]
-    fn upsert_device_grant_inserts_then_unions_scopes() {
+    fn upsert_action_inserts_then_unions_scopes_over_sqlite() {
         let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
         let now = Utc::now();
 
-        store
-            .upsert_device_grant(
-                "client-a",
-                "Ada's laptop",
-                &["openid".to_owned()],
-                None,
-                now,
-            )
-            .expect("insert");
+        actions::upsert_device_grant(
+            &store,
+            "client-a",
+            "Ada's laptop",
+            &["openid".to_owned()],
+            None,
+            now,
+        )
+        .expect("insert");
         let grant = store
             .device_grant_by_client_and_device_name("client-a", "Ada's laptop")
             .expect("query")
@@ -146,15 +120,15 @@ mod tests {
         assert_eq!(grant.scopes, vec!["openid".to_owned()]);
         assert_eq!(grant.device_name, "Ada's laptop");
 
-        store
-            .upsert_device_grant(
-                "client-a",
-                "Ada's laptop",
-                &["openid".to_owned(), "offline_access".to_owned()],
-                None,
-                Utc::now(),
-            )
-            .expect("update");
+        actions::upsert_device_grant(
+            &store,
+            "client-a",
+            "Ada's laptop",
+            &["openid".to_owned(), "offline_access".to_owned()],
+            None,
+            Utc::now(),
+        )
+        .expect("update");
         let updated = store
             .device_grant_by_client_and_device_name("client-a", "Ada's laptop")
             .expect("query")
@@ -170,15 +144,15 @@ mod tests {
         assert_eq!(store.all_grants().expect("list").len(), 1);
 
         // A different device name for the same client is a distinct grant.
-        store
-            .upsert_device_grant(
-                "client-a",
-                "Ada's phone",
-                &["openid".to_owned()],
-                None,
-                Utc::now(),
-            )
-            .expect("insert second device");
+        actions::upsert_device_grant(
+            &store,
+            "client-a",
+            "Ada's phone",
+            &["openid".to_owned()],
+            None,
+            Utc::now(),
+        )
+        .expect("insert second device");
         assert_eq!(store.all_grants().expect("list").len(), 2);
     }
 }

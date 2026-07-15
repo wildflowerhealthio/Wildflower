@@ -10,6 +10,8 @@
 
 use anyhow::Context;
 use chrono::{DateTime, Utc};
+use diesel::connection::Connection;
+use diesel::sqlite::SqliteConnection;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations};
 use persistence_rust::{DieselPool, PooledDieselConnection};
 use url::Url;
@@ -22,9 +24,9 @@ use crate::domain::authorization_request::AuthorizationRequest;
 use crate::domain::client::Client;
 use crate::domain::error::GatekeeperError;
 use crate::domain::grant::{AuthorizationCodeGrant, DeviceGrant, Grant};
-use crate::domain::refresh_token::{RefreshToken, RefreshTokenConsumeOutcome, RefreshTokenFamily};
+use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 use crate::domain::signing_key::SigningKey;
-use crate::domain::GatekeeperStore;
+use crate::domain::{GatekeeperStore, GatekeeperTx};
 
 /// This slice's migration namespace in the shared database. Applied versions are
 /// bookkept per-namespace by [`persistence_rust::run_diesel_migrations`], so
@@ -119,101 +121,101 @@ impl SqliteGatekeeperStore {
     }
 }
 
-/// The `SQLite` implementation of the port: each method checks a connection out
-/// of the pool (via [`connection`](SqliteGatekeeperStore::connection)) and hands
-/// it to the matching query body in the sibling `db/*` modules. The bodies live
-/// there so this file stays the migration + pool handle, and the query SQL stays
-/// next to the row type it maps. Every method returns the port's PRIMITIVE shape
-/// — absence as `None`, affected-row outcome as `bool`, the three-state consume
-/// as [`RefreshTokenConsumeOutcome`] — leaving the `*NotFound` semantics to
-/// [`crate::domain::actions`].
+/// A [`GatekeeperTx`] over one checked-out diesel connection — the `SQLite`
+/// primitive handle [`SqliteGatekeeperStore`] hands to a closure. Each method
+/// delegates to the matching query body in the sibling `db/*` modules, passing
+/// the wrapped `&mut SqliteConnection`; the bodies live there so the query SQL
+/// stays next to the row type it maps and this file stays the migration + pool
+/// handle plus the transaction runners. When the closure runs inside
+/// [`GatekeeperStore::transaction`] / [`immediate_transaction`] the connection is
+/// already in a transaction, so the self-contained `expire_*` bodies open
+/// savepoints rather than nested `BEGIN`s.
 ///
-/// Multi-statement operations (the prune-then-insert of
-/// `insert_authorization_request`, and every transaction body) run all their
-/// statements on the ONE connection checked out here, so the atomicity the query
-/// bodies rely on holds.
-impl GatekeeperStore for SqliteGatekeeperStore {
+/// `pub` only because it is the `SQLite` adapter's [`GatekeeperStore::Tx`]
+/// associated type (a public trait's associated type is part of the public
+/// interface); the field and every method are crate-internal, so out-of-crate
+/// callers can name the type but do nothing with it except through
+/// [`GatekeeperTx`].
+pub struct SqliteGatekeeperTx<'a> {
+    conn: &'a mut SqliteConnection,
+}
+
+impl GatekeeperTx for SqliteGatekeeperTx<'_> {
     // ----- clients -------------------------------------------------------
 
-    fn client_by_id(&self, client_id: &str) -> Result<Option<Client>, GatekeeperError> {
-        clients::client_by_id(&mut self.connection()?, client_id)
+    fn client_by_id(&mut self, client_id: &str) -> Result<Option<Client>, GatekeeperError> {
+        clients::client_by_id(self.conn, client_id)
     }
 
-    fn register_client(&self, client: &Client) -> Result<(), GatekeeperError> {
-        clients::register_client(&mut self.connection()?, client)
+    fn register_client(&mut self, client: &Client) -> Result<(), GatekeeperError> {
+        clients::register_client(self.conn, client)
     }
 
-    fn upsert_client(&self, client: &Client) -> Result<(), GatekeeperError> {
-        clients::upsert_client(&mut self.connection()?, client)
+    fn upsert_client(&mut self, client: &Client) -> Result<(), GatekeeperError> {
+        clients::upsert_client(self.conn, client)
     }
 
     // ----- signing keys --------------------------------------------------
 
-    fn all_signing_keys(&self) -> Result<Vec<SigningKey>, GatekeeperError> {
-        signing_keys::all_signing_keys(&mut self.connection()?)
+    fn all_signing_keys(&mut self) -> Result<Vec<SigningKey>, GatekeeperError> {
+        signing_keys::all_signing_keys(self.conn)
     }
 
-    fn active_signing_key(&self) -> Result<Option<SigningKey>, GatekeeperError> {
-        signing_keys::active_signing_key(&mut self.connection()?)
+    fn active_signing_key(&mut self) -> Result<Option<SigningKey>, GatekeeperError> {
+        signing_keys::active_signing_key(self.conn)
     }
 
-    fn has_active_signing_key(&self) -> Result<bool, GatekeeperError> {
-        signing_keys::has_active_signing_key(&mut self.connection()?)
+    fn has_active_signing_key(&mut self) -> Result<bool, GatekeeperError> {
+        signing_keys::has_active_signing_key(self.conn)
     }
 
-    fn insert_signing_key(&self, key: &SigningKey) -> Result<(), GatekeeperError> {
-        signing_keys::insert_signing_key(&mut self.connection()?, key)
+    fn insert_signing_key(&mut self, key: &SigningKey) -> Result<(), GatekeeperError> {
+        signing_keys::insert_signing_key(self.conn, key)
     }
 
     // ----- authorization requests ----------------------------------------
 
     fn authorization_request_by_id(
-        &self,
+        &mut self,
         id: &str,
     ) -> Result<Option<AuthorizationRequest>, GatekeeperError> {
-        authorization_requests::authorization_request_by_id(&mut self.connection()?, id)
+        authorization_requests::authorization_request_by_id(self.conn, id)
     }
 
     fn authorization_request_by_user_code(
-        &self,
+        &mut self,
         user_code: &str,
     ) -> Result<Option<AuthorizationRequest>, GatekeeperError> {
-        authorization_requests::authorization_request_by_user_code(
-            &mut self.connection()?,
-            user_code,
-        )
+        authorization_requests::authorization_request_by_user_code(self.conn, user_code)
     }
 
     fn pending_authorization_request_by_user_code(
-        &self,
+        &mut self,
         user_code: &str,
     ) -> Result<Option<AuthorizationRequest>, GatekeeperError> {
-        authorization_requests::pending_authorization_request_by_user_code(
-            &mut self.connection()?,
-            user_code,
-        )
+        authorization_requests::pending_authorization_request_by_user_code(self.conn, user_code)
     }
 
-    fn oldest_pending_device_user_code(&self) -> Result<Option<String>, GatekeeperError> {
-        authorization_requests::oldest_pending_device_user_code(&mut self.connection()?)
+    fn oldest_pending_device_user_code(&mut self) -> Result<Option<String>, GatekeeperError> {
+        authorization_requests::oldest_pending_device_user_code(self.conn)
     }
 
     fn insert_authorization_request(
-        &self,
+        &mut self,
         request: &AuthorizationRequest,
     ) -> Result<(), GatekeeperError> {
-        authorization_requests::insert_authorization_request(&mut self.connection()?, request)
+        authorization_requests::insert_authorization_request(self.conn, request)
     }
 
     fn approve_authorization_request(
-        &self,
+        &mut self,
         id: &str,
         granted_scopes: &[String],
         patient: Option<&str>,
         device_name: Option<&str>,
     ) -> Result<bool, GatekeeperError> {
         authorization_requests::approve_authorization_request(
-            &mut self.connection()?,
+            self.conn,
             id,
             granted_scopes,
             patient,
@@ -221,104 +223,110 @@ impl GatekeeperStore for SqliteGatekeeperStore {
         )
     }
 
-    fn deny_authorization_request(&self, id: &str) -> Result<(), GatekeeperError> {
-        authorization_requests::deny_authorization_request(&mut self.connection()?, id)
+    fn deny_authorization_request(&mut self, id: &str) -> Result<(), GatekeeperError> {
+        authorization_requests::deny_authorization_request(self.conn, id)
     }
 
-    fn consume_approved_authorization_request(&self, id: &str) -> Result<bool, GatekeeperError> {
-        authorization_requests::consume_approved_authorization_request(&mut self.connection()?, id)
+    fn consume_approved_authorization_request(
+        &mut self,
+        id: &str,
+    ) -> Result<bool, GatekeeperError> {
+        authorization_requests::consume_approved_authorization_request(self.conn, id)
     }
 
     fn record_device_poll(
-        &self,
+        &mut self,
         id: &str,
         polled_at: DateTime<Utc>,
     ) -> Result<(), GatekeeperError> {
-        authorization_requests::record_device_poll(&mut self.connection()?, id, polled_at)
+        authorization_requests::record_device_poll(self.conn, id, polled_at)
     }
 
     // ----- authorization codes -------------------------------------------
 
     fn redeem_authorization_code(
-        &self,
+        &mut self,
         code: &str,
     ) -> Result<Option<AuthorizationCode>, GatekeeperError> {
-        authorization_codes::redeem_authorization_code(&mut self.connection()?, code)
+        authorization_codes::redeem_authorization_code(self.conn, code)
     }
 
     fn authorization_code_by_request_id(
-        &self,
+        &mut self,
         request_id: &str,
     ) -> Result<Option<AuthorizationCode>, GatekeeperError> {
-        authorization_codes::authorization_code_by_request_id(&mut self.connection()?, request_id)
+        authorization_codes::authorization_code_by_request_id(self.conn, request_id)
     }
 
-    fn issue_authorization_code(&self, code: &AuthorizationCode) -> Result<(), GatekeeperError> {
-        authorization_codes::issue_authorization_code(&mut self.connection()?, code)
+    fn issue_authorization_code(
+        &mut self,
+        code: &AuthorizationCode,
+    ) -> Result<(), GatekeeperError> {
+        authorization_codes::issue_authorization_code(self.conn, code)
     }
 
     // ----- refresh-token families ----------------------------------------
 
     fn insert_refresh_token_family_row(
-        &self,
+        &mut self,
         family: &RefreshTokenFamily,
     ) -> Result<(), GatekeeperError> {
-        refresh_tokens::insert_refresh_token_family_row(&mut self.connection()?, family)
+        refresh_tokens::insert_refresh_token_family_row(self.conn, family)
     }
 
-    fn insert_refresh_token(&self, token: &RefreshToken) -> Result<(), GatekeeperError> {
-        refresh_tokens::insert_refresh_token(&mut self.connection()?, token)
+    fn insert_refresh_token(&mut self, token: &RefreshToken) -> Result<(), GatekeeperError> {
+        refresh_tokens::insert_refresh_token(self.conn, token)
     }
 
     fn refresh_token_with_family_by_hash(
-        &self,
+        &mut self,
         token_hash: &str,
     ) -> Result<Option<(RefreshToken, RefreshTokenFamily)>, GatekeeperError> {
-        refresh_tokens::refresh_token_with_family_by_hash(&mut self.connection()?, token_hash)
+        refresh_tokens::refresh_token_with_family_by_hash(self.conn, token_hash)
     }
 
     fn refresh_token_by_hash(
-        &self,
+        &mut self,
         token_hash: &str,
     ) -> Result<Option<RefreshToken>, GatekeeperError> {
-        refresh_tokens::refresh_token_by_hash(&mut self.connection()?, token_hash)
+        refresh_tokens::refresh_token_by_hash(self.conn, token_hash)
     }
 
-    fn consume_refresh_token(
-        &self,
+    fn stamp_refresh_token_consumed_if_live(
+        &mut self,
         token_hash: &str,
         now: DateTime<Utc>,
-    ) -> Result<RefreshTokenConsumeOutcome, GatekeeperError> {
-        refresh_tokens::consume_refresh_token(&mut self.connection()?, token_hash, now)
+    ) -> Result<bool, GatekeeperError> {
+        refresh_tokens::stamp_refresh_token_consumed_if_live(self.conn, token_hash, now)
+    }
+
+    fn refresh_token_exists(&mut self, token_hash: &str) -> Result<bool, GatekeeperError> {
+        refresh_tokens::refresh_token_exists(self.conn, token_hash)
     }
 
     fn expire_refresh_token_family(
-        &self,
+        &mut self,
         family_id: &str,
         now: DateTime<Utc>,
     ) -> Result<(), GatekeeperError> {
-        refresh_tokens::expire_refresh_token_family(&mut self.connection()?, family_id, now)
+        refresh_tokens::expire_refresh_token_family(self.conn, family_id, now)
     }
 
     fn expire_refresh_token_families_for_client(
-        &self,
+        &mut self,
         client_id: &str,
         now: DateTime<Utc>,
     ) -> Result<(), GatekeeperError> {
-        refresh_tokens::expire_refresh_token_families_for_client(
-            &mut self.connection()?,
-            client_id,
-            now,
-        )
+        refresh_tokens::expire_refresh_token_families_for_client(self.conn, client_id, now)
     }
 
     fn expire_refresh_token_families_for_authorization_code(
-        &self,
+        &mut self,
         authorization_code_hash: &str,
         now: DateTime<Utc>,
     ) -> Result<(), GatekeeperError> {
         refresh_tokens::expire_refresh_token_families_for_authorization_code(
-            &mut self.connection()?,
+            self.conn,
             authorization_code_hash,
             now,
         )
@@ -326,93 +334,121 @@ impl GatekeeperStore for SqliteGatekeeperStore {
 
     // ----- grants --------------------------------------------------------
 
-    fn all_grants(&self) -> Result<Vec<Grant>, GatekeeperError> {
-        grants::all_grants(&mut self.connection()?)
+    fn all_grants(&mut self) -> Result<Vec<Grant>, GatekeeperError> {
+        grants::all_grants(self.conn)
     }
 
-    fn grant_by_id(&self, id: &str) -> Result<Option<Grant>, GatekeeperError> {
-        grants::grant_by_id(&mut self.connection()?, id)
+    fn grant_by_id(&mut self, id: &str) -> Result<Option<Grant>, GatekeeperError> {
+        grants::grant_by_id(self.conn, id)
     }
 
     fn grant_by_client_and_redirect(
-        &self,
+        &mut self,
         client_id: &str,
         redirect_uri: &Url,
     ) -> Result<Option<AuthorizationCodeGrant>, GatekeeperError> {
-        grants::grant_by_client_and_redirect(&mut self.connection()?, client_id, redirect_uri)
+        grants::grant_by_client_and_redirect(self.conn, client_id, redirect_uri)
     }
 
     fn device_grant_by_client_and_device_name(
-        &self,
+        &mut self,
         client_id: &str,
         device_name: &str,
     ) -> Result<Option<DeviceGrant>, GatekeeperError> {
-        grants::device_grant_by_client_and_device_name(
-            &mut self.connection()?,
-            client_id,
-            device_name,
-        )
+        grants::device_grant_by_client_and_device_name(self.conn, client_id, device_name)
     }
 
     fn create_authorization_code_grant(
-        &self,
+        &mut self,
         grant: &AuthorizationCodeGrant,
     ) -> Result<(), GatekeeperError> {
-        grants::create_authorization_code_grant(&mut self.connection()?, grant)
+        grants::create_authorization_code_grant(self.conn, grant)
     }
 
-    fn create_device_grant(&self, grant: &DeviceGrant) -> Result<(), GatekeeperError> {
-        grants::create_device_grant(&mut self.connection()?, grant)
+    fn create_device_grant(&mut self, grant: &DeviceGrant) -> Result<(), GatekeeperError> {
+        grants::create_device_grant(self.conn, grant)
     }
 
-    fn upsert_authorization_code_grant(
-        &self,
-        client_id: &str,
-        redirect_uri: &Url,
-        scopes: &[String],
-        patient: Option<&str>,
-        now: DateTime<Utc>,
+    fn update_authorization_code_grant(
+        &mut self,
+        grant: &AuthorizationCodeGrant,
     ) -> Result<(), GatekeeperError> {
-        grants::upsert_authorization_code_grant(
-            &mut self.connection()?,
-            client_id,
-            redirect_uri,
-            scopes,
-            patient,
-            now,
-        )
+        grants::update_authorization_code_grant(self.conn, grant)
     }
 
-    fn upsert_device_grant(
-        &self,
-        client_id: &str,
-        device_name: &str,
-        scopes: &[String],
-        patient: Option<&str>,
-        now: DateTime<Utc>,
-    ) -> Result<(), GatekeeperError> {
-        grants::upsert_device_grant(
-            &mut self.connection()?,
-            client_id,
-            device_name,
-            scopes,
-            patient,
-            now,
-        )
+    fn update_device_grant(&mut self, grant: &DeviceGrant) -> Result<(), GatekeeperError> {
+        grants::update_device_grant(self.conn, grant)
     }
 
-    fn revoke_grant_and_expire_client_families(
+    fn delete_authorization_code_grant(&mut self, id: &str) -> Result<bool, GatekeeperError> {
+        grants::delete_authorization_code_grant(self.conn, id)
+    }
+
+    fn delete_device_grant(&mut self, id: &str) -> Result<bool, GatekeeperError> {
+        grants::delete_device_grant(self.conn, id)
+    }
+}
+
+/// The `SQLite` implementation of the transaction seam. [`with_connection`] hands
+/// a [`SqliteGatekeeperTx`] over a checked-out connection in autocommit;
+/// [`transaction`] / [`immediate_transaction`] wrap that same handle in a diesel
+/// `BEGIN` / `BEGIN IMMEDIATE`, committing on `Ok` and rolling back on `Err`. The
+/// standalone-convenience default methods (inherited from [`GatekeeperStore`])
+/// all route through [`with_connection`], so a lone read never takes a write lock;
+/// the composed domain actions pick [`transaction`] or [`immediate_transaction`]
+/// per their atomicity needs.
+///
+/// [`with_connection`]: GatekeeperStore::with_connection
+/// [`transaction`]: GatekeeperStore::transaction
+/// [`immediate_transaction`]: GatekeeperStore::immediate_transaction
+impl GatekeeperStore for SqliteGatekeeperStore {
+    type Tx<'a> = SqliteGatekeeperTx<'a>;
+
+    fn with_connection<T>(
         &self,
-        grant_id: &str,
-        client_id: &str,
-        now: DateTime<Utc>,
-    ) -> Result<bool, GatekeeperError> {
-        grants::revoke_grant_and_expire_client_families(
-            &mut self.connection()?,
-            grant_id,
-            client_id,
-            now,
-        )
+        f: impl FnOnce(&mut Self::Tx<'_>) -> Result<T, GatekeeperError>,
+    ) -> Result<T, GatekeeperError> {
+        let mut conn = self.connection()?;
+        let mut tx = SqliteGatekeeperTx { conn: &mut conn };
+        f(&mut tx)
+    }
+
+    fn transaction<T>(
+        &self,
+        f: impl FnOnce(&mut Self::Tx<'_>) -> Result<T, GatekeeperError>,
+    ) -> Result<T, GatekeeperError> {
+        let mut conn = self.connection()?;
+        // Deref to the concrete `SqliteConnection` up front so both this and
+        // `immediate_transaction` hand `f` the same `&mut SqliteConnection` the
+        // `db/*` query bodies expect.
+        let sqlite: &mut SqliteConnection = &mut conn;
+        sqlite.transaction(|conn| {
+            let mut tx = SqliteGatekeeperTx { conn };
+            f(&mut tx)
+        })
+    }
+
+    fn immediate_transaction<T>(
+        &self,
+        f: impl FnOnce(&mut Self::Tx<'_>) -> Result<T, GatekeeperError>,
+    ) -> Result<T, GatekeeperError> {
+        let mut conn = self.connection()?;
+        let sqlite: &mut SqliteConnection = &mut conn;
+        sqlite.immediate_transaction(|conn| {
+            let mut tx = SqliteGatekeeperTx { conn };
+            f(&mut tx)
+        })
+    }
+}
+
+// Lets [`GatekeeperStore::transaction`] / [`immediate_transaction`] use
+// `GatekeeperError` as the diesel transaction error type: diesel requires
+// `E: From<diesel::result::Error>` even though `f`'s body maps its own query
+// errors, because a `BEGIN` / `COMMIT` / `ROLLBACK` failure surfaces as a raw
+// diesel error. Kept in the `db` layer so `domain::error` stays diesel-free.
+impl From<diesel::result::Error> for GatekeeperError {
+    fn from(error: diesel::result::Error) -> Self {
+        GatekeeperError::infrastructure("gatekeeper store transaction failed", error)
     }
 }
 

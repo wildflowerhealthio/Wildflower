@@ -1,10 +1,17 @@
 //! The in-memory [`FakeGatekeeperStore`] and the request/grant fixtures the
 //! per-entity action tests share. Modelling the primitive port semantics with no
 //! diesel and no database is enough to exercise the actions' semantic mapping (the
-//! `*NotFound` decisions and the consent-loader validation); the `SQLite` adapter's
-//! own SQL-level coverage lives in `crate::db`, so the store operations the semantic
-//! tests never reach are simple in-memory stand-ins rather than faithful SQL
-//! replicas.
+//! `*NotFound` decisions, the consent-loader validation, and now the composed
+//! transaction scripts — grant upserts, the three-state consume, revoke). The
+//! primitives live on [`FakeGatekeeperTx`] (the fake's [`GatekeeperTx`]); the
+//! [`GatekeeperStore`] seam hands one out and, for
+//! [`transaction`](GatekeeperStore::transaction) /
+//! [`immediate_transaction`](GatekeeperStore::immediate_transaction), snapshots
+//! the maps up front and restores them if the closure returns `Err`, so a failed
+//! composed action rolls back exactly as diesel would. The `SQLite` adapter's own
+//! SQL-level coverage (and its real lock semantics) live in `crate::db`, so the
+//! operations the semantic tests never reach are simple in-memory stand-ins
+//! rather than faithful SQL replicas.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -17,12 +24,13 @@ use crate::domain::authorization_request::{AuthorizationRequest, GrantType, Requ
 use crate::domain::client::{AllowedGrantType, Client, ClientKind};
 use crate::domain::error::GatekeeperError;
 use crate::domain::grant::{AuthorizationCodeGrant, DeviceGrant, Grant};
-use crate::domain::refresh_token::{RefreshToken, RefreshTokenConsumeOutcome, RefreshTokenFamily};
+use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 use crate::domain::signing_key::SigningKey;
-use crate::domain::GatekeeperStore;
+use crate::domain::{GatekeeperStore, GatekeeperTx};
 
 /// An in-memory [`GatekeeperStore`] modelling the primitive port semantics with
-/// no diesel and no database — enough to exercise the actions' semantic mapping.
+/// no diesel and no database — enough to exercise the actions' semantic mapping
+/// and their composed transaction scripts.
 #[derive(Default)]
 pub(crate) struct FakeGatekeeperStore {
     clients: RefCell<HashMap<String, Client>>,
@@ -35,28 +43,109 @@ pub(crate) struct FakeGatekeeperStore {
     device_grants: RefCell<HashMap<String, DeviceGrant>>,
 }
 
-impl GatekeeperStore for FakeGatekeeperStore {
-    fn client_by_id(&self, client_id: &str) -> Result<Option<Client>, GatekeeperError> {
-        Ok(self.clients.borrow().get(client_id).cloned())
+/// A clone of every map, taken before a transaction runs so it can be restored
+/// on rollback.
+struct Snapshot {
+    clients: HashMap<String, Client>,
+    signing_keys: Vec<SigningKey>,
+    authorization_requests: HashMap<String, AuthorizationRequest>,
+    authorization_codes: HashMap<String, AuthorizationCode>,
+    families: HashMap<String, RefreshTokenFamily>,
+    tokens: HashMap<String, RefreshToken>,
+    code_grants: HashMap<String, AuthorizationCodeGrant>,
+    device_grants: HashMap<String, DeviceGrant>,
+}
+
+impl FakeGatekeeperStore {
+    fn snapshot(&self) -> Snapshot {
+        Snapshot {
+            clients: self.clients.borrow().clone(),
+            signing_keys: self.signing_keys.borrow().clone(),
+            authorization_requests: self.authorization_requests.borrow().clone(),
+            authorization_codes: self.authorization_codes.borrow().clone(),
+            families: self.families.borrow().clone(),
+            tokens: self.tokens.borrow().clone(),
+            code_grants: self.code_grants.borrow().clone(),
+            device_grants: self.device_grants.borrow().clone(),
+        }
     }
 
-    fn register_client(&self, client: &Client) -> Result<(), GatekeeperError> {
-        self.clients
+    fn restore(&self, snapshot: Snapshot) {
+        *self.clients.borrow_mut() = snapshot.clients;
+        *self.signing_keys.borrow_mut() = snapshot.signing_keys;
+        *self.authorization_requests.borrow_mut() = snapshot.authorization_requests;
+        *self.authorization_codes.borrow_mut() = snapshot.authorization_codes;
+        *self.families.borrow_mut() = snapshot.families;
+        *self.tokens.borrow_mut() = snapshot.tokens;
+        *self.code_grants.borrow_mut() = snapshot.code_grants;
+        *self.device_grants.borrow_mut() = snapshot.device_grants;
+    }
+}
+
+impl GatekeeperStore for FakeGatekeeperStore {
+    type Tx<'a> = FakeGatekeeperTx<'a>;
+
+    fn with_connection<T>(
+        &self,
+        f: impl FnOnce(&mut Self::Tx<'_>) -> Result<T, GatekeeperError>,
+    ) -> Result<T, GatekeeperError> {
+        f(&mut FakeGatekeeperTx { store: self })
+    }
+
+    fn transaction<T>(
+        &self,
+        f: impl FnOnce(&mut Self::Tx<'_>) -> Result<T, GatekeeperError>,
+    ) -> Result<T, GatekeeperError> {
+        // No real locking (the fake is single-threaded); the snapshot models the
+        // one property the composed actions rely on — rollback on error — so a
+        // partially-applied transaction never leaks into a later assertion.
+        let snapshot = self.snapshot();
+        let result = f(&mut FakeGatekeeperTx { store: self });
+        if result.is_err() {
+            self.restore(snapshot);
+        }
+        result
+    }
+
+    fn immediate_transaction<T>(
+        &self,
+        f: impl FnOnce(&mut Self::Tx<'_>) -> Result<T, GatekeeperError>,
+    ) -> Result<T, GatekeeperError> {
+        self.transaction(f)
+    }
+}
+
+/// The fake's [`GatekeeperTx`] — a borrow of the store's maps. Interior
+/// mutability (`RefCell`) does the real work; `&mut self` is only the trait's
+/// shape.
+pub(crate) struct FakeGatekeeperTx<'a> {
+    store: &'a FakeGatekeeperStore,
+}
+
+impl GatekeeperTx for FakeGatekeeperTx<'_> {
+    fn client_by_id(&mut self, client_id: &str) -> Result<Option<Client>, GatekeeperError> {
+        Ok(self.store.clients.borrow().get(client_id).cloned())
+    }
+
+    fn register_client(&mut self, client: &Client) -> Result<(), GatekeeperError> {
+        self.store
+            .clients
             .borrow_mut()
             .insert(client.client_id.clone(), client.clone());
         Ok(())
     }
 
-    fn upsert_client(&self, client: &Client) -> Result<(), GatekeeperError> {
+    fn upsert_client(&mut self, client: &Client) -> Result<(), GatekeeperError> {
         self.register_client(client)
     }
 
-    fn all_signing_keys(&self) -> Result<Vec<SigningKey>, GatekeeperError> {
-        Ok(self.signing_keys.borrow().clone())
+    fn all_signing_keys(&mut self) -> Result<Vec<SigningKey>, GatekeeperError> {
+        Ok(self.store.signing_keys.borrow().clone())
     }
 
-    fn active_signing_key(&self) -> Result<Option<SigningKey>, GatekeeperError> {
+    fn active_signing_key(&mut self) -> Result<Option<SigningKey>, GatekeeperError> {
         Ok(self
+            .store
             .signing_keys
             .borrow()
             .iter()
@@ -64,27 +153,28 @@ impl GatekeeperStore for FakeGatekeeperStore {
             .cloned())
     }
 
-    fn has_active_signing_key(&self) -> Result<bool, GatekeeperError> {
-        Ok(self.signing_keys.borrow().iter().any(|k| k.is_active))
+    fn has_active_signing_key(&mut self) -> Result<bool, GatekeeperError> {
+        Ok(self.store.signing_keys.borrow().iter().any(|k| k.is_active))
     }
 
-    fn insert_signing_key(&self, key: &SigningKey) -> Result<(), GatekeeperError> {
-        self.signing_keys.borrow_mut().push(key.clone());
+    fn insert_signing_key(&mut self, key: &SigningKey) -> Result<(), GatekeeperError> {
+        self.store.signing_keys.borrow_mut().push(key.clone());
         Ok(())
     }
 
     fn authorization_request_by_id(
-        &self,
+        &mut self,
         id: &str,
     ) -> Result<Option<AuthorizationRequest>, GatekeeperError> {
-        Ok(self.authorization_requests.borrow().get(id).cloned())
+        Ok(self.store.authorization_requests.borrow().get(id).cloned())
     }
 
     fn authorization_request_by_user_code(
-        &self,
+        &mut self,
         user_code: &str,
     ) -> Result<Option<AuthorizationRequest>, GatekeeperError> {
         Ok(self
+            .store
             .authorization_requests
             .borrow()
             .values()
@@ -93,10 +183,11 @@ impl GatekeeperStore for FakeGatekeeperStore {
     }
 
     fn pending_authorization_request_by_user_code(
-        &self,
+        &mut self,
         user_code: &str,
     ) -> Result<Option<AuthorizationRequest>, GatekeeperError> {
         Ok(self
+            .store
             .authorization_requests
             .borrow()
             .values()
@@ -106,8 +197,8 @@ impl GatekeeperStore for FakeGatekeeperStore {
             .cloned())
     }
 
-    fn oldest_pending_device_user_code(&self) -> Result<Option<String>, GatekeeperError> {
-        let requests = self.authorization_requests.borrow();
+    fn oldest_pending_device_user_code(&mut self) -> Result<Option<String>, GatekeeperError> {
+        let requests = self.store.authorization_requests.borrow();
         let mut pending: Vec<&AuthorizationRequest> = requests
             .values()
             .filter(|r| {
@@ -122,23 +213,24 @@ impl GatekeeperStore for FakeGatekeeperStore {
     }
 
     fn insert_authorization_request(
-        &self,
+        &mut self,
         request: &AuthorizationRequest,
     ) -> Result<(), GatekeeperError> {
-        self.authorization_requests
+        self.store
+            .authorization_requests
             .borrow_mut()
             .insert(request.id.clone(), request.clone());
         Ok(())
     }
 
     fn approve_authorization_request(
-        &self,
+        &mut self,
         id: &str,
         granted_scopes: &[String],
         patient: Option<&str>,
         device_name: Option<&str>,
     ) -> Result<bool, GatekeeperError> {
-        let mut requests = self.authorization_requests.borrow_mut();
+        let mut requests = self.store.authorization_requests.borrow_mut();
         let Some(request) = requests.get_mut(id) else {
             return Ok(false);
         };
@@ -154,15 +246,18 @@ impl GatekeeperStore for FakeGatekeeperStore {
         Ok(true)
     }
 
-    fn deny_authorization_request(&self, id: &str) -> Result<(), GatekeeperError> {
-        if let Some(request) = self.authorization_requests.borrow_mut().get_mut(id) {
+    fn deny_authorization_request(&mut self, id: &str) -> Result<(), GatekeeperError> {
+        if let Some(request) = self.store.authorization_requests.borrow_mut().get_mut(id) {
             request.status = RequestStatus::Denied;
         }
         Ok(())
     }
 
-    fn consume_approved_authorization_request(&self, id: &str) -> Result<bool, GatekeeperError> {
-        let mut requests = self.authorization_requests.borrow_mut();
+    fn consume_approved_authorization_request(
+        &mut self,
+        id: &str,
+    ) -> Result<bool, GatekeeperError> {
+        let mut requests = self.store.authorization_requests.borrow_mut();
         let Some(request) = requests.get_mut(id) else {
             return Ok(false);
         };
@@ -174,28 +269,29 @@ impl GatekeeperStore for FakeGatekeeperStore {
     }
 
     fn record_device_poll(
-        &self,
+        &mut self,
         id: &str,
         polled_at: DateTime<Utc>,
     ) -> Result<(), GatekeeperError> {
-        if let Some(request) = self.authorization_requests.borrow_mut().get_mut(id) {
+        if let Some(request) = self.store.authorization_requests.borrow_mut().get_mut(id) {
             request.last_polled_at = Some(polled_at);
         }
         Ok(())
     }
 
     fn redeem_authorization_code(
-        &self,
+        &mut self,
         code: &str,
     ) -> Result<Option<AuthorizationCode>, GatekeeperError> {
-        Ok(self.authorization_codes.borrow_mut().remove(code))
+        Ok(self.store.authorization_codes.borrow_mut().remove(code))
     }
 
     fn authorization_code_by_request_id(
-        &self,
+        &mut self,
         request_id: &str,
     ) -> Result<Option<AuthorizationCode>, GatekeeperError> {
         Ok(self
+            .store
             .authorization_codes
             .borrow()
             .values()
@@ -203,76 +299,85 @@ impl GatekeeperStore for FakeGatekeeperStore {
             .cloned())
     }
 
-    fn issue_authorization_code(&self, code: &AuthorizationCode) -> Result<(), GatekeeperError> {
-        self.authorization_codes
+    fn issue_authorization_code(
+        &mut self,
+        code: &AuthorizationCode,
+    ) -> Result<(), GatekeeperError> {
+        self.store
+            .authorization_codes
             .borrow_mut()
             .insert(code.code.clone(), code.clone());
         Ok(())
     }
 
     fn insert_refresh_token_family_row(
-        &self,
+        &mut self,
         family: &RefreshTokenFamily,
     ) -> Result<(), GatekeeperError> {
-        self.families
+        self.store
+            .families
             .borrow_mut()
             .insert(family.family_id.clone(), family.clone());
         Ok(())
     }
 
-    fn insert_refresh_token(&self, token: &RefreshToken) -> Result<(), GatekeeperError> {
-        self.tokens
+    fn insert_refresh_token(&mut self, token: &RefreshToken) -> Result<(), GatekeeperError> {
+        self.store
+            .tokens
             .borrow_mut()
             .insert(token.token_hash.clone(), token.clone());
         Ok(())
     }
 
     fn refresh_token_with_family_by_hash(
-        &self,
+        &mut self,
         token_hash: &str,
     ) -> Result<Option<(RefreshToken, RefreshTokenFamily)>, GatekeeperError> {
-        let tokens = self.tokens.borrow();
+        let tokens = self.store.tokens.borrow();
         let Some(token) = tokens.get(token_hash) else {
             return Ok(None);
         };
-        let families = self.families.borrow();
+        let families = self.store.families.borrow();
         Ok(families
             .get(&token.family_id)
             .map(|family| (token.clone(), family.clone())))
     }
 
     fn refresh_token_by_hash(
-        &self,
+        &mut self,
         token_hash: &str,
     ) -> Result<Option<RefreshToken>, GatekeeperError> {
-        Ok(self.tokens.borrow().get(token_hash).cloned())
+        Ok(self.store.tokens.borrow().get(token_hash).cloned())
     }
 
-    fn consume_refresh_token(
-        &self,
+    fn stamp_refresh_token_consumed_if_live(
+        &mut self,
         token_hash: &str,
         now: DateTime<Utc>,
-    ) -> Result<RefreshTokenConsumeOutcome, GatekeeperError> {
-        let mut tokens = self.tokens.borrow_mut();
-        let Some(token) = tokens.get_mut(token_hash) else {
-            return Ok(RefreshTokenConsumeOutcome::NotFound);
-        };
-        if token.consumed_at.is_some() {
-            return Ok(RefreshTokenConsumeOutcome::Replayed);
+    ) -> Result<bool, GatekeeperError> {
+        let mut tokens = self.store.tokens.borrow_mut();
+        match tokens.get_mut(token_hash) {
+            Some(token) if token.consumed_at.is_none() => {
+                token.consumed_at = Some(now);
+                Ok(true)
+            }
+            _ => Ok(false),
         }
-        token.consumed_at = Some(now);
-        Ok(RefreshTokenConsumeOutcome::Consumed)
+    }
+
+    fn refresh_token_exists(&mut self, token_hash: &str) -> Result<bool, GatekeeperError> {
+        Ok(self.store.tokens.borrow().contains_key(token_hash))
     }
 
     fn expire_refresh_token_family(
-        &self,
+        &mut self,
         family_id: &str,
         now: DateTime<Utc>,
     ) -> Result<(), GatekeeperError> {
-        if let Some(family) = self.families.borrow_mut().get_mut(family_id) {
+        if let Some(family) = self.store.families.borrow_mut().get_mut(family_id) {
             family.expires_at = now;
         }
-        for token in self.tokens.borrow_mut().values_mut() {
+        for token in self.store.tokens.borrow_mut().values_mut() {
             if token.family_id == family_id && token.consumed_at.is_none() {
                 token.consumed_at = Some(now);
             }
@@ -281,11 +386,12 @@ impl GatekeeperStore for FakeGatekeeperStore {
     }
 
     fn expire_refresh_token_families_for_client(
-        &self,
+        &mut self,
         client_id: &str,
         now: DateTime<Utc>,
     ) -> Result<(), GatekeeperError> {
         let family_ids: Vec<String> = self
+            .store
             .families
             .borrow()
             .values()
@@ -299,11 +405,12 @@ impl GatekeeperStore for FakeGatekeeperStore {
     }
 
     fn expire_refresh_token_families_for_authorization_code(
-        &self,
+        &mut self,
         authorization_code_hash: &str,
         now: DateTime<Utc>,
     ) -> Result<(), GatekeeperError> {
         let family_ids: Vec<String> = self
+            .store
             .families
             .borrow()
             .values()
@@ -316,15 +423,17 @@ impl GatekeeperStore for FakeGatekeeperStore {
         Ok(())
     }
 
-    fn all_grants(&self) -> Result<Vec<Grant>, GatekeeperError> {
+    fn all_grants(&mut self) -> Result<Vec<Grant>, GatekeeperError> {
         let mut grants: Vec<Grant> = self
+            .store
             .code_grants
             .borrow()
             .values()
             .cloned()
             .map(Grant::AuthorizationCode)
             .chain(
-                self.device_grants
+                self.store
+                    .device_grants
                     .borrow()
                     .values()
                     .cloned()
@@ -335,11 +444,12 @@ impl GatekeeperStore for FakeGatekeeperStore {
         Ok(grants)
     }
 
-    fn grant_by_id(&self, id: &str) -> Result<Option<Grant>, GatekeeperError> {
-        if let Some(grant) = self.code_grants.borrow().get(id) {
+    fn grant_by_id(&mut self, id: &str) -> Result<Option<Grant>, GatekeeperError> {
+        if let Some(grant) = self.store.code_grants.borrow().get(id) {
             return Ok(Some(Grant::AuthorizationCode(grant.clone())));
         }
         Ok(self
+            .store
             .device_grants
             .borrow()
             .get(id)
@@ -348,11 +458,12 @@ impl GatekeeperStore for FakeGatekeeperStore {
     }
 
     fn grant_by_client_and_redirect(
-        &self,
+        &mut self,
         client_id: &str,
         redirect_uri: &Url,
     ) -> Result<Option<AuthorizationCodeGrant>, GatekeeperError> {
         Ok(self
+            .store
             .code_grants
             .borrow()
             .values()
@@ -361,11 +472,12 @@ impl GatekeeperStore for FakeGatekeeperStore {
     }
 
     fn device_grant_by_client_and_device_name(
-        &self,
+        &mut self,
         client_id: &str,
         device_name: &str,
     ) -> Result<Option<DeviceGrant>, GatekeeperError> {
         Ok(self
+            .store
             .device_grants
             .borrow()
             .values()
@@ -374,86 +486,49 @@ impl GatekeeperStore for FakeGatekeeperStore {
     }
 
     fn create_authorization_code_grant(
-        &self,
+        &mut self,
         grant: &AuthorizationCodeGrant,
     ) -> Result<(), GatekeeperError> {
-        self.code_grants
-            .borrow_mut()
-            .insert(grant.id.clone(), grant.clone());
-        Ok(())
-    }
-
-    fn create_device_grant(&self, grant: &DeviceGrant) -> Result<(), GatekeeperError> {
-        self.device_grants
-            .borrow_mut()
-            .insert(grant.id.clone(), grant.clone());
-        Ok(())
-    }
-
-    fn upsert_authorization_code_grant(
-        &self,
-        client_id: &str,
-        redirect_uri: &Url,
-        scopes: &[String],
-        patient: Option<&str>,
-        now: DateTime<Utc>,
-    ) -> Result<(), GatekeeperError> {
-        let existing_id = self
+        self.store
             .code_grants
-            .borrow()
-            .values()
-            .find(|g| g.client_id == client_id && &g.redirect_uri == redirect_uri)
-            .map(|g| g.id.clone());
-        let id = existing_id.unwrap_or_else(|| format!("code-grant-{client_id}"));
-        self.code_grants.borrow_mut().insert(
-            id.clone(),
-            AuthorizationCodeGrant {
-                id,
-                client_id: client_id.to_owned(),
-                scopes: scopes.to_vec(),
-                granted_at: now,
-                last_used_at: None,
-                patient: patient.map(str::to_owned),
-                redirect_uri: redirect_uri.clone(),
-            },
-        );
+            .borrow_mut()
+            .insert(grant.id.clone(), grant.clone());
         Ok(())
     }
 
-    fn upsert_device_grant(
-        &self,
-        client_id: &str,
-        device_name: &str,
-        scopes: &[String],
-        patient: Option<&str>,
-        now: DateTime<Utc>,
+    fn create_device_grant(&mut self, grant: &DeviceGrant) -> Result<(), GatekeeperError> {
+        self.store
+            .device_grants
+            .borrow_mut()
+            .insert(grant.id.clone(), grant.clone());
+        Ok(())
+    }
+
+    fn update_authorization_code_grant(
+        &mut self,
+        grant: &AuthorizationCodeGrant,
     ) -> Result<(), GatekeeperError> {
-        let id = format!("device-grant-{client_id}-{device_name}");
-        self.device_grants.borrow_mut().insert(
-            id.clone(),
-            DeviceGrant {
-                id,
-                client_id: client_id.to_owned(),
-                scopes: scopes.to_vec(),
-                granted_at: now,
-                last_used_at: None,
-                patient: patient.map(str::to_owned),
-                device_name: device_name.to_owned(),
-            },
-        );
+        self.store
+            .code_grants
+            .borrow_mut()
+            .insert(grant.id.clone(), grant.clone());
         Ok(())
     }
 
-    fn revoke_grant_and_expire_client_families(
-        &self,
-        grant_id: &str,
-        client_id: &str,
-        now: DateTime<Utc>,
-    ) -> Result<bool, GatekeeperError> {
-        let removed = self.code_grants.borrow_mut().remove(grant_id).is_some()
-            || self.device_grants.borrow_mut().remove(grant_id).is_some();
-        self.expire_refresh_token_families_for_client(client_id, now)?;
-        Ok(removed)
+    fn update_device_grant(&mut self, grant: &DeviceGrant) -> Result<(), GatekeeperError> {
+        self.store
+            .device_grants
+            .borrow_mut()
+            .insert(grant.id.clone(), grant.clone());
+        Ok(())
+    }
+
+    fn delete_authorization_code_grant(&mut self, id: &str) -> Result<bool, GatekeeperError> {
+        Ok(self.store.code_grants.borrow_mut().remove(id).is_some())
+    }
+
+    fn delete_device_grant(&mut self, id: &str) -> Result<bool, GatekeeperError> {
+        Ok(self.store.device_grants.borrow_mut().remove(id).is_some())
     }
 }
 

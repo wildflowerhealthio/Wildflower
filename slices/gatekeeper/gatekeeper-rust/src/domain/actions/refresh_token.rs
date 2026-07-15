@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 
 use crate::domain::error::GatekeeperError;
 use crate::domain::refresh_token::{RefreshToken, RefreshTokenConsumeOutcome, RefreshTokenFamily};
-use crate::domain::GatekeeperStore;
+use crate::domain::{GatekeeperStore, GatekeeperTx};
 
 /// Persist a new refresh-token family plus its first token, sequencing the two
 /// primitive inserts so a family never persists tokenless: the family row first,
@@ -36,15 +36,44 @@ pub(crate) fn refresh_token_with_family_by_hash(
     store.refresh_token_with_family_by_hash(token_hash)
 }
 
+/// Atomically consume a live refresh token, reporting which of the three
+/// [`RefreshTokenConsumeOutcome`] states the presented token was in. The guarded
+/// stamp and the existence probe run in **one** transaction, so a concurrent
+/// redeemer of the same token reads a single snapshot: exactly one caller stamps
+/// the live row (`Consumed`), and a loser sees the row still present but no
+/// longer live (`Replayed`) rather than a torn state; an unknown hash is
+/// `NotFound`. This is the three-state consume the store used to own as a
+/// dedicated method, now assembled from two primitives in the pure domain.
+///
+/// # Errors
+///
+/// [`GatekeeperError::Infrastructure`] if the transaction, the stamp, or the
+/// existence probe fails.
+pub(crate) fn consume_refresh_token(
+    store: &impl GatekeeperStore,
+    token_hash: &str,
+    now: DateTime<Utc>,
+) -> Result<RefreshTokenConsumeOutcome, GatekeeperError> {
+    store.transaction(|tx| {
+        if tx.stamp_refresh_token_consumed_if_live(token_hash, now)? {
+            Ok(RefreshTokenConsumeOutcome::Consumed)
+        } else if tx.refresh_token_exists(token_hash)? {
+            Ok(RefreshTokenConsumeOutcome::Replayed)
+        } else {
+            Ok(RefreshTokenConsumeOutcome::NotFound)
+        }
+    })
+}
+
 /// Rotate a refresh token: consume the presented token, and **only** if that
 /// consume won (transitioned a live row) insert its successor. The consume is
-/// itself atomic (its `consumed_at IS NULL` guard + existence probe run in the
-/// store's own transaction), so exactly one concurrent redeemer sees `Consumed`
-/// and inserts a successor; a `Replayed`/`NotFound` redeemer inserts nothing and
-/// the family is untouched. No wrapping transaction is needed — the ordering
-/// (consume before insert) means a failure of the second step leaves the
-/// presented token spent but no successor, which the caller treats as a failed
-/// rotation, never a usable extra token.
+/// itself atomic (see [`consume_refresh_token`]), so exactly one concurrent
+/// redeemer sees `Consumed` and inserts a successor; a `Replayed`/`NotFound`
+/// redeemer inserts nothing and the family is untouched. No wrapping transaction
+/// spans the consume and the insert — the ordering (consume before insert) means
+/// a failure of the second step leaves the presented token spent but no
+/// successor, which the caller treats as a failed rotation, never a usable extra
+/// token.
 ///
 /// # Errors
 ///
@@ -55,7 +84,7 @@ pub(crate) fn rotate_refresh_token(
     successor: &RefreshToken,
     now: DateTime<Utc>,
 ) -> Result<RefreshTokenConsumeOutcome, GatekeeperError> {
-    let outcome = store.consume_refresh_token(presented_hash, now)?;
+    let outcome = consume_refresh_token(store, presented_hash, now)?;
     if outcome == RefreshTokenConsumeOutcome::Consumed {
         store.insert_refresh_token(successor)?;
     }
@@ -159,5 +188,28 @@ mod tests {
             .refresh_token_by_hash("successor-2")
             .unwrap()
             .is_none());
+    }
+
+    /// The three-state consume assembled in the domain: a live token is
+    /// `Consumed`, a second consume of it is `Replayed` (the row still exists but
+    /// the guard failed), and an unknown hash is `NotFound`.
+    #[test]
+    fn consume_reports_consumed_then_replayed_then_not_found() {
+        let store = FakeGatekeeperStore::default();
+        insert_refresh_token_family(&store, &family("fam"), &token("live", "fam")).unwrap();
+        let now = Utc::now();
+
+        assert_eq!(
+            consume_refresh_token(&store, "live", now).unwrap(),
+            RefreshTokenConsumeOutcome::Consumed,
+        );
+        assert_eq!(
+            consume_refresh_token(&store, "live", now).unwrap(),
+            RefreshTokenConsumeOutcome::Replayed,
+        );
+        assert_eq!(
+            consume_refresh_token(&store, "never-issued", now).unwrap(),
+            RefreshTokenConsumeOutcome::NotFound,
+        );
     }
 }

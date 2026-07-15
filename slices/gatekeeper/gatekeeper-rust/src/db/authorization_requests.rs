@@ -9,7 +9,7 @@
 
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
-use persistence_rust::PooledDieselConnection;
+use diesel::sqlite::SqliteConnection;
 
 use crate::db::shared::{text_enum_column, JsonStrings, UrlText};
 use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
@@ -118,7 +118,7 @@ impl From<&AuthorizationRequest> for Row {
 /// Load an authorization request by its primary id (the `device_code` for
 /// device-flow, otherwise an internal UUID), or `None` when absent.
 pub(super) fn authorization_request_by_id(
-    conn: &mut PooledDieselConnection,
+    conn: &mut SqliteConnection,
     id: &str,
 ) -> Result<Option<AuthorizationRequest>, GatekeeperError> {
     authorization_requests::table
@@ -139,7 +139,7 @@ pub(super) fn authorization_request_by_id(
 /// not unique across terminal rows and a stale denied/expired row could
 /// otherwise shadow a fresh pending one.
 pub(super) fn authorization_request_by_user_code(
-    conn: &mut PooledDieselConnection,
+    conn: &mut SqliteConnection,
     user_code: &str,
 ) -> Result<Option<AuthorizationRequest>, GatekeeperError> {
     authorization_requests::table
@@ -157,7 +157,7 @@ pub(super) fn authorization_request_by_user_code(
 /// `status = 'pending'` ensures a stale denied/expired row sharing the same
 /// `user_code` can't shadow a live request and 404 the consent flow.
 pub(super) fn pending_authorization_request_by_user_code(
-    conn: &mut PooledDieselConnection,
+    conn: &mut SqliteConnection,
     user_code: &str,
 ) -> Result<Option<AuthorizationRequest>, GatekeeperError> {
     authorization_requests::table
@@ -189,7 +189,7 @@ pub(super) fn pending_authorization_request_by_user_code(
 /// could otherwise float to the head with `user_code = NULL` and crash
 /// the SPA's `string` decoder.
 pub(super) fn oldest_pending_device_user_code(
-    conn: &mut PooledDieselConnection,
+    conn: &mut SqliteConnection,
 ) -> Result<Option<String>, GatekeeperError> {
     authorization_requests::table
         .filter(authorization_requests::grant_type.eq(GrantType::DeviceCode))
@@ -206,7 +206,7 @@ pub(super) fn oldest_pending_device_user_code(
 
 /// Persist a freshly-constructed `AuthorizationRequest`.
 pub(super) fn insert_authorization_request(
-    conn: &mut PooledDieselConnection,
+    conn: &mut SqliteConnection,
     request: &AuthorizationRequest,
 ) -> Result<(), GatekeeperError> {
     let as_infrastructure_error =
@@ -245,7 +245,7 @@ pub(super) fn insert_authorization_request(
 /// present-vs-absent. The code-flow path passes `None` (its column is and stays
 /// NULL); the device path passes the effective name it resolved.
 pub(super) fn approve_authorization_request(
-    conn: &mut PooledDieselConnection,
+    conn: &mut SqliteConnection,
     id: &str,
     granted_scopes: &[String],
     patient: Option<&str>,
@@ -269,7 +269,7 @@ pub(super) fn approve_authorization_request(
 
 /// Mark `id` denied.
 pub(super) fn deny_authorization_request(
-    conn: &mut PooledDieselConnection,
+    conn: &mut SqliteConnection,
     id: &str,
 ) -> Result<(), GatekeeperError> {
     diesel::update(authorization_requests::table.find(id))
@@ -289,7 +289,7 @@ pub(super) fn deny_authorization_request(
 /// sees a row to change (`true`) and any racer sees zero rows (`false`) and
 /// must be rejected before a token is minted.
 pub(super) fn consume_approved_authorization_request(
-    conn: &mut PooledDieselConnection,
+    conn: &mut SqliteConnection,
     id: &str,
 ) -> Result<bool, GatekeeperError> {
     let affected = diesel::update(
@@ -308,7 +308,7 @@ pub(super) fn consume_approved_authorization_request(
 /// Stamp `last_polled_at` so the next device-flow poll can be slow-down
 /// rate-limited.
 pub(super) fn record_device_poll(
-    conn: &mut PooledDieselConnection,
+    conn: &mut SqliteConnection,
     id: &str,
     polled_at: DateTime<Utc>,
 ) -> Result<(), GatekeeperError> {

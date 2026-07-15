@@ -33,10 +33,12 @@ use tokio::time::{interval, MissedTickBehavior};
 
 pub use config::GatekeeperConfig;
 pub use db::SqliteGatekeeperStore;
-// The persistence port trait, re-exported so out-of-crate callers (e.g. the
+// The persistence port traits, re-exported so out-of-crate callers (e.g. the
 // integration test) can bring the store methods into scope on the concrete
-// `SqliteGatekeeperStore` adapter.
-pub use domain::GatekeeperStore;
+// `SqliteGatekeeperStore` adapter. `GatekeeperStore` is the transaction seam
+// (and carries the standalone-convenience default methods); `GatekeeperTx` is
+// the primitive contract a composed transaction hands out.
+pub use domain::{GatekeeperStore, GatekeeperTx};
 // Re-exported so the host can name the pool type at the `setup_gatekeeper`
 // call site without a direct diesel dependency; the canonical home is
 // persistence-rust (collector re-exports it the same way).

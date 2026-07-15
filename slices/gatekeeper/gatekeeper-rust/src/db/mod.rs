@@ -5,9 +5,11 @@
 //! gatekeeper migrations onto it under a per-slice namespace, mirroring
 //! collector's `SqliteRemotesStore` and tunnel's `SqliteTunnelStore`) plus one
 //! file per concern holding that concern's `table!` definition, row/column
-//! mappings, and `pub(super)` query-body free functions (taking a checked-out
-//! `persistence_rust::PooledDieselConnection`) for its [`crate::domain`] type —
-//! mirroring the apps slice's distributed layout. [`shared`] holds the two
+//! mappings, and single-statement query-body free functions (taking a
+//! `&mut SqliteConnection` — the adapter's `SqliteGatekeeperTx` unwraps it from a
+//! pooled connection or a transaction and threads it through) for its
+//! [`crate::domain`] type — mirroring the apps slice's distributed layout.
+//! [`shared`] holds the two
 //! column-mapping macros plus the column types more than one concern binds
 //! (`JsonStrings`, `UrlText`, the `GrantType` enum mapping); every other `table!`
 //! and column mapping lives in its concern file. [`grants`] is a folder split by

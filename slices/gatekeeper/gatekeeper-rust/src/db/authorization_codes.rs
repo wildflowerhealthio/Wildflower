@@ -6,7 +6,7 @@
 //! pool.
 
 use diesel::prelude::*;
-use persistence_rust::PooledDieselConnection;
+use diesel::sqlite::SqliteConnection;
 
 use crate::domain::authorization_code::AuthorizationCode;
 use crate::domain::error::GatekeeperError;
@@ -31,7 +31,7 @@ diesel::table! {
 /// same code — `DELETE … RETURNING` runs under `SQLite`'s write lock, so
 /// only one caller's `Ok(Some)` lands and any racer sees `Ok(None)`.
 pub(super) fn redeem_authorization_code(
-    conn: &mut PooledDieselConnection,
+    conn: &mut SqliteConnection,
     code: &str,
 ) -> Result<Option<AuthorizationCode>, GatekeeperError> {
     diesel::delete(authorization_codes::table.find(code))
@@ -44,7 +44,7 @@ pub(super) fn redeem_authorization_code(
 /// Look up the code that was issued for a given `request_id`, used by the
 /// Owner UI's polling endpoint to build the final redirect URL.
 pub(super) fn authorization_code_by_request_id(
-    conn: &mut PooledDieselConnection,
+    conn: &mut SqliteConnection,
     request_id: &str,
 ) -> Result<Option<AuthorizationCode>, GatekeeperError> {
     authorization_codes::table
@@ -57,7 +57,7 @@ pub(super) fn authorization_code_by_request_id(
 
 /// Persist a freshly-minted authorization code.
 pub(super) fn issue_authorization_code(
-    conn: &mut PooledDieselConnection,
+    conn: &mut SqliteConnection,
     code: &AuthorizationCode,
 ) -> Result<(), GatekeeperError> {
     diesel::insert_into(authorization_codes::table)

@@ -4,10 +4,10 @@
 
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
-use persistence_rust::PooledDieselConnection;
+use diesel::sqlite::SqliteConnection;
 
 use crate::domain::error::GatekeeperError;
-use crate::domain::refresh_token::{RefreshToken, RefreshTokenConsumeOutcome, RefreshTokenFamily};
+use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 
 diesel::table! {
     refresh_token_families (family_id) {
@@ -34,41 +34,12 @@ diesel::table! {
 diesel::joinable!(refresh_tokens -> refresh_token_families (family_id));
 diesel::allow_tables_to_appear_in_same_query!(refresh_tokens, refresh_token_families);
 
-/// Consume-or-probe behind [`consume_refresh_token`]: stamp the live row
-/// consumed, and when no live row matched, probe whether the hash exists at all
-/// to tell a replay from a miss. Runs inside the caller's transaction.
-fn consume_within_transaction(
-    conn: &mut diesel::sqlite::SqliteConnection,
-    token_hash_value: &str,
-    now: DateTime<Utc>,
-) -> Result<RefreshTokenConsumeOutcome, diesel::result::Error> {
-    let affected = diesel::update(
-        refresh_tokens::table
-            .find(token_hash_value)
-            .filter(refresh_tokens::consumed_at.is_null()),
-    )
-    .set(refresh_tokens::consumed_at.eq(now))
-    .execute(conn)?;
-    if affected == 1 {
-        return Ok(RefreshTokenConsumeOutcome::Consumed);
-    }
-    let exists: bool = diesel::select(diesel::dsl::exists(
-        refresh_tokens::table.find(token_hash_value),
-    ))
-    .get_result(conn)?;
-    Ok(if exists {
-        RefreshTokenConsumeOutcome::Replayed
-    } else {
-        RefreshTokenConsumeOutcome::NotFound
-    })
-}
-
 /// Persist a new refresh-token family **row only** — a single-table insert. The
 /// [`insert_refresh_token_family`](crate::domain::actions::insert_refresh_token_family)
 /// action sequences this then [`insert_refresh_token`] so a family never persists
 /// tokenless; the store stays a primitive with no transaction.
 pub(super) fn insert_refresh_token_family_row(
-    conn: &mut PooledDieselConnection,
+    conn: &mut SqliteConnection,
     family: &RefreshTokenFamily,
 ) -> Result<(), GatekeeperError> {
     diesel::insert_into(refresh_token_families::table)
@@ -85,7 +56,7 @@ pub(super) fn insert_refresh_token_family_row(
 /// [`insert_refresh_token_family`](crate::domain::actions::insert_refresh_token_family)
 /// action).
 pub(super) fn insert_refresh_token(
-    conn: &mut PooledDieselConnection,
+    conn: &mut SqliteConnection,
     token: &RefreshToken,
 ) -> Result<(), GatekeeperError> {
     diesel::insert_into(refresh_tokens::table)
@@ -99,7 +70,7 @@ pub(super) fn insert_refresh_token(
 /// one JOIN. Consumed tokens resolve too — the caller distinguishes a
 /// live token from a replayed one via `consumed_at`.
 pub(super) fn refresh_token_with_family_by_hash(
-    conn: &mut PooledDieselConnection,
+    conn: &mut SqliteConnection,
     token_hash: &str,
 ) -> Result<Option<(RefreshToken, RefreshTokenFamily)>, GatekeeperError> {
     refresh_tokens::table
@@ -114,7 +85,7 @@ pub(super) fn refresh_token_with_family_by_hash(
 /// Look up a single token by hash — enough for callers that don't need
 /// the family facts.
 pub(super) fn refresh_token_by_hash(
-    conn: &mut PooledDieselConnection,
+    conn: &mut SqliteConnection,
     token_hash: &str,
 ) -> Result<Option<RefreshToken>, GatekeeperError> {
     refresh_tokens::table
@@ -125,20 +96,42 @@ pub(super) fn refresh_token_by_hash(
         .map_err(|e| GatekeeperError::infrastructure("refresh_token_by_hash failed", e))
 }
 
-/// Atomically consume a live refresh token, reporting which
-/// of the three [`RefreshTokenConsumeOutcome`] states the row was in. The
-/// UPDATE's `consumed_at IS NULL` guard and the fallback existence probe
-/// run in one transaction, so a concurrent redeemer of the same token
-/// sees `Replayed`, never a torn state.
-pub(super) fn consume_refresh_token(
-    conn: &mut PooledDieselConnection,
+/// Stamp the live token `token_hash` consumed at `now`, returning `true` iff a
+/// live (un-consumed) row was actually transitioned. The `consumed_at IS NULL`
+/// guard is the whole atomicity of the consume: a concurrent redeemer of the
+/// same live token loses the affected-row count and gets `false`. The
+/// three-state consume decision (`Consumed` / `Replayed` / `NotFound`) is
+/// assembled from this plus [`refresh_token_exists`] in
+/// [`rotate_refresh_token`](crate::domain::actions::rotate_refresh_token), which
+/// runs both inside one domain transaction so the pair reads a single snapshot.
+pub(super) fn stamp_refresh_token_consumed_if_live(
+    conn: &mut SqliteConnection,
     token_hash: &str,
     now: DateTime<Utc>,
-) -> Result<RefreshTokenConsumeOutcome, GatekeeperError> {
-    conn.transaction(|conn| consume_within_transaction(conn, token_hash, now))
-        .map_err(|e: diesel::result::Error| {
-            GatekeeperError::infrastructure("consume_refresh_token failed", e)
-        })
+) -> Result<bool, GatekeeperError> {
+    let affected = diesel::update(
+        refresh_tokens::table
+            .find(token_hash)
+            .filter(refresh_tokens::consumed_at.is_null()),
+    )
+    .set(refresh_tokens::consumed_at.eq(now))
+    .execute(conn)
+    .map_err(|e| {
+        GatekeeperError::infrastructure("stamp_refresh_token_consumed_if_live failed", e)
+    })?;
+    Ok(affected == 1)
+}
+
+/// Whether any token row (live or consumed) bears `token_hash` — the existence
+/// probe that tells a replay from a miss after
+/// [`stamp_refresh_token_consumed_if_live`] reported no live row.
+pub(super) fn refresh_token_exists(
+    conn: &mut SqliteConnection,
+    token_hash: &str,
+) -> Result<bool, GatekeeperError> {
+    diesel::select(diesel::dsl::exists(refresh_tokens::table.find(token_hash)))
+        .get_result(conn)
+        .map_err(|e| GatekeeperError::infrastructure("refresh_token_exists failed", e))
 }
 
 /// End a token family by pulling its `expires_at` back to `now`, and
@@ -148,7 +141,7 @@ pub(super) fn consume_refresh_token(
 /// resolve to their dead family. The `consumed_at IS NULL` guard keeps
 /// genuine consumption stamps intact.
 pub(super) fn expire_refresh_token_family(
-    conn: &mut PooledDieselConnection,
+    conn: &mut SqliteConnection,
     family_id: &str,
     now: DateTime<Utc>,
 ) -> Result<(), GatekeeperError> {
@@ -175,7 +168,7 @@ pub(super) fn expire_refresh_token_family(
 /// the Owner revokes a grant, so standing consent and standing credentials die
 /// together.
 pub(super) fn expire_refresh_token_families_for_client(
-    conn: &mut PooledDieselConnection,
+    conn: &mut SqliteConnection,
     client_id: &str,
     now: DateTime<Utc>,
 ) -> Result<(), GatekeeperError> {
@@ -213,7 +206,7 @@ pub(super) fn expire_refresh_token_families_for_client(
 /// family (no `offline_access`, or never existed) matches no row and the call
 /// is a no-op.
 pub(super) fn expire_refresh_token_families_for_authorization_code(
-    conn: &mut PooledDieselConnection,
+    conn: &mut SqliteConnection,
     authorization_code_hash: &str,
     now: DateTime<Utc>,
 ) -> Result<(), GatekeeperError> {
@@ -257,7 +250,7 @@ mod tests {
     use crate::db::test_support::{arb_opt_timestamp, arb_timestamp};
     use crate::db::SqliteGatekeeperStore;
     use crate::domain::error::GatekeeperError;
-    use crate::domain::GatekeeperStore as _;
+    use crate::domain::{GatekeeperStore as _, GatekeeperTx as _};
     use proptest::prelude::*;
 
     fn arb_family() -> impl Strategy<Value = RefreshTokenFamily> {
@@ -327,8 +320,14 @@ mod tests {
             prop_assert_eq!(fetched_family, family);
         }
 
+        /// The guarded-update primitive is the whole atomicity of a consume:
+        /// the first stamp of a live token wins (`true`), a second stamp of the
+        /// now-consumed token loses the `consumed_at IS NULL` guard (`false`)
+        /// while the row still exists — the SQL facts the domain assembles into
+        /// `Consumed` then `Replayed`. (The three-state decision itself is
+        /// tested against the action in `domain::actions::refresh_token`.)
         #[test]
-        fn consume_transitions_live_to_replayed(
+        fn stamp_consumes_live_then_loses_the_guard_on_replay(
             family in arb_family(),
             token in arb_token_in_family("family-under-test"),
         ) {
@@ -337,26 +336,29 @@ mod tests {
             let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
             seed_family_with_token(&store, &family, &live);
             let now = Utc::now();
-            prop_assert!(matches!(
-                store.consume_refresh_token(&live.token_hash, now).expect("first consume"),
-                RefreshTokenConsumeOutcome::Consumed
-            ));
-            prop_assert!(matches!(
-                store.consume_refresh_token(&live.token_hash, now).expect("second consume"),
-                RefreshTokenConsumeOutcome::Replayed
-            ));
+            prop_assert!(store
+                .with_connection(|tx| tx.stamp_refresh_token_consumed_if_live(&live.token_hash, now))
+                .expect("first stamp"));
+            prop_assert!(!store
+                .with_connection(|tx| tx.stamp_refresh_token_consumed_if_live(&live.token_hash, now))
+                .expect("second stamp"));
+            prop_assert!(store
+                .with_connection(|tx| tx.refresh_token_exists(&live.token_hash))
+                .expect("exists probe"));
         }
     }
 
     #[test]
-    fn consume_of_unknown_hash_is_not_found() {
+    fn unknown_hash_neither_stamps_nor_exists() {
         let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
-        assert!(matches!(
-            store
-                .consume_refresh_token("never-issued", Utc::now())
-                .expect("consume"),
-            RefreshTokenConsumeOutcome::NotFound
-        ));
+        assert!(!store
+            .with_connection(
+                |tx| tx.stamp_refresh_token_consumed_if_live("never-issued", Utc::now())
+            )
+            .expect("stamp"));
+        assert!(!store
+            .with_connection(|tx| tx.refresh_token_exists("never-issued"))
+            .expect("exists probe"));
     }
 
     // Foreign-key enforcement (`PRAGMA foreign_keys = ON`): a refresh token
@@ -436,12 +438,9 @@ mod tests {
         // token-1 was genuinely redeemed before the revocation — its stamp
         // must survive the family kill untouched.
         let redeemed_at = Utc::now();
-        assert!(matches!(
-            store
-                .consume_refresh_token("token-1", redeemed_at)
-                .expect("consume"),
-            RefreshTokenConsumeOutcome::Consumed
-        ));
+        assert!(store
+            .with_connection(|tx| tx.stamp_refresh_token_consumed_if_live("token-1", redeemed_at))
+            .expect("consume"));
 
         let revoked_at = Utc::now();
         store
@@ -485,7 +484,9 @@ mod tests {
 
         let revoked_at = Utc::now();
         store
-            .expire_refresh_token_families_for_client("client-1", revoked_at)
+            .with_connection(|tx| {
+                tx.expire_refresh_token_families_for_client("client-1", revoked_at)
+            })
             .expect("expire");
 
         let (token, family) = store

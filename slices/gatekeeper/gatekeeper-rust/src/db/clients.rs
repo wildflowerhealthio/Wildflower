@@ -7,7 +7,7 @@
 //! on a real db failure.
 
 use diesel::prelude::*;
-use persistence_rust::PooledDieselConnection;
+use diesel::sqlite::SqliteConnection;
 use url::Url;
 
 use crate::db::shared::{json_text_column, text_enum_column};
@@ -46,7 +46,7 @@ text_enum_column!(ClientKind);
 
 /// Look up a registered client by its `client_id`, or `None` when absent.
 pub(super) fn client_by_id(
-    conn: &mut PooledDieselConnection,
+    conn: &mut SqliteConnection,
     client_id: &str,
 ) -> Result<Option<Client>, GatekeeperError> {
     clients::table
@@ -59,7 +59,7 @@ pub(super) fn client_by_id(
 
 /// Persist a new OAuth client.
 pub(super) fn register_client(
-    conn: &mut PooledDieselConnection,
+    conn: &mut SqliteConnection,
     client: &Client,
 ) -> Result<(), GatekeeperError> {
     diesel::insert_into(clients::table)
@@ -80,7 +80,7 @@ pub(super) fn register_client(
 /// the original registration time and any admin disable rather than
 /// resurrecting the client.
 pub(super) fn upsert_client(
-    conn: &mut PooledDieselConnection,
+    conn: &mut SqliteConnection,
     client: &Client,
 ) -> Result<(), GatekeeperError> {
     use diesel::upsert::excluded;

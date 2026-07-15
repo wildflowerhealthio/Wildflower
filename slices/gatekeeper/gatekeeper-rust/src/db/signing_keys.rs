@@ -5,7 +5,7 @@
 //! out of the pool.
 
 use diesel::prelude::*;
-use persistence_rust::PooledDieselConnection;
+use diesel::sqlite::SqliteConnection;
 
 use crate::db::shared::json_text_column;
 use crate::domain::error::GatekeeperError;
@@ -29,7 +29,7 @@ json_text_column!(
 
 /// Load every signing key, active keys first then by `kid`.
 pub(super) fn all_signing_keys(
-    conn: &mut PooledDieselConnection,
+    conn: &mut SqliteConnection,
 ) -> Result<Vec<SigningKey>, GatekeeperError> {
     signing_keys::table
         .order((signing_keys::is_active.desc(), signing_keys::kid))
@@ -40,7 +40,7 @@ pub(super) fn all_signing_keys(
 
 /// Load the active signing key, or `None` when none is active.
 pub(super) fn active_signing_key(
-    conn: &mut PooledDieselConnection,
+    conn: &mut SqliteConnection,
 ) -> Result<Option<SigningKey>, GatekeeperError> {
     signing_keys::table
         .filter(signing_keys::is_active.eq(true))
@@ -53,9 +53,7 @@ pub(super) fn active_signing_key(
 /// Whether an active signing key exists, without loading its (private) key
 /// material — a cheap presence probe for callers that only need to know a
 /// token *can* be minted (the mint path loads the key itself).
-pub(super) fn has_active_signing_key(
-    conn: &mut PooledDieselConnection,
-) -> Result<bool, GatekeeperError> {
+pub(super) fn has_active_signing_key(conn: &mut SqliteConnection) -> Result<bool, GatekeeperError> {
     diesel::select(diesel::dsl::exists(
         signing_keys::table.filter(signing_keys::is_active.eq(true)),
     ))
@@ -65,7 +63,7 @@ pub(super) fn has_active_signing_key(
 
 /// Persist a signing key.
 pub(super) fn insert_signing_key(
-    conn: &mut PooledDieselConnection,
+    conn: &mut SqliteConnection,
     key: &SigningKey,
 ) -> Result<(), GatekeeperError> {
     diesel::insert_into(signing_keys::table)

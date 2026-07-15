@@ -37,4 +37,4 @@ pub mod signing_key;
 pub mod token;
 
 pub use authorization_code::PendingCodeConsent;
-pub use gatekeeper_store::GatekeeperStore;
+pub use gatekeeper_store::{GatekeeperStore, GatekeeperTx};
