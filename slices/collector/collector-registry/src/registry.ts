@@ -52,6 +52,18 @@ const CollectorTag: Schema.Schema<CollectorTag> = Schema.Literal(
 )
 
 /**
+ * The concrete config for a single {@link CollectorTag} — the member of the
+ * {@link CollectorConfig} union whose `_tag` is `T`. Lets consumers stay generic
+ * over a tag without erasing to the whole union (e.g. `collector-react`'s
+ * `tag → form` registry keys each form to `ConfigForTag<its tag>`).
+ *
+ * `Extract` distributes over unions, so `ConfigForTag<CollectorTag>` collapses
+ * back to `CollectorConfig` — a runtime-dispatch call site that only knows the
+ * widened `CollectorTag` still typechecks against the full union.
+ */
+type ConfigForTag<T extends CollectorTag> = Extract<CollectorConfig, { readonly _tag: T }>
+
+/**
  * Every resource shape any collector might produce, derived from the
  * descriptors' plan factories. Used as the generic argument of the
  * per-config `ScrapingPlan` returned by {@link makeScrapingPlanForConfig}
@@ -109,4 +121,4 @@ export {
   descriptorForTag,
   descriptorForConfig,
 }
-export type { AnyCollectorResource, AnyCollectorDescriptor }
+export type { AnyCollectorResource, AnyCollectorDescriptor, ConfigForTag }

@@ -1,4 +1,5 @@
 export * from './config.ts'
+export * from './fhir-r4-config-form.tsx'
 export * from './entities/observation-entity.ts'
 export * from './entities/observation-list-entity.ts'
 export * from './entities/patient-entity.ts'

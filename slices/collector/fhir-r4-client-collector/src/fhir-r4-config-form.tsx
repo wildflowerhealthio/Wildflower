@@ -1,20 +1,20 @@
+import type { ConfigFormProps } from 'collector-fundamentals/config-form'
 import { Either, ParseResult, Schema } from 'effect'
-import { defaultConfig, InstanceConfig } from 'fhir-r4-client-collector'
 import { useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { pageLayoutStyles } from 'react-tundraish'
 
-import type { ConfigFormProps } from './config-form.tsx'
-import fields from './account-form.module.css'
+import { defaultConfig, InstanceConfig } from './config.ts'
+import fields from './fhir-r4-config-form.module.css'
 
 /** The decoded FHIR R4 per-instance config (`{ _tag, rootUrl, patientId }`). */
 type FhirConfig = typeof InstanceConfig.Type
 
 /**
  * The FHIR R4 config fields (`rootUrl` / `patientId`) as a
- * {@link ConfigFormProps} form, registered against the `fhir-r4` tag in
- * {@link file://./config-form.tsx}. Fields seed `initial → prefill →
- * {@link defaultConfig}` (so a fresh form still comes up on the demo server),
+ * {@link ConfigFormProps} form. `collector-react` registers it against the
+ * `fhir-r4` tag in its `tag → form` registry. Fields seed `initial` →` prefill`
+ *  → `{@link defaultConfig}` (so a fresh form still comes up on the demo server),
  * and Save decodes them through {@link InstanceConfig}, rendering any
  * `ParseError` inline instead of round-tripping bad input to the server.
  */

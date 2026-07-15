@@ -1,8 +1,4 @@
-import {
-  descriptorForTag,
-  type CollectorConfig,
-  type CollectorTag,
-} from 'collector-registry/registry'
+import { descriptorForTag, type CollectorTag, type ConfigForTag } from 'collector-registry/registry'
 import { useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { PageHeader, pageLayoutStyles } from 'react-tundraish'
@@ -10,13 +6,13 @@ import { PageHeader, pageLayoutStyles } from 'react-tundraish'
 import { configFormForTag } from './config-form.tsx'
 import styles from './account-form.module.css'
 
-interface AccountFormScreenProps {
+interface AccountFormScreenProps<T extends CollectorTag> {
   /** Header title — "Add Account" / "Edit Account". */
   readonly title: string
   /** The collector being configured; selects the config form + display strings. */
-  readonly tag: CollectorTag
+  readonly tag: T
   /** Existing stored config to seed from (edit), or `undefined` (create). */
-  readonly initial: CollectorConfig | undefined
+  readonly initial: ConfigForTag<T> | undefined
   /** Loose seed bag from the create-screen search; `undefined` on edit. */
   readonly prefill: Record<string, string> | undefined
   /** Initial account-name value (a stored name, or a `prefill['name']`). */
@@ -26,7 +22,7 @@ interface AccountFormScreenProps {
   /** Mutation error to surface in the banner, or `null`. */
   readonly error: string | null
   /** Called with the resolved name + decoded config once the fields validate. */
-  readonly onSubmit: (name: string, config: CollectorConfig) => void
+  readonly onSubmit: (name: string, config: ConfigForTag<T>) => void
   readonly onCancel: () => void
 }
 
@@ -44,7 +40,7 @@ interface AccountFormScreenProps {
  * (which mutation, `initial`, `prefill`) is the only difference and lives in
  * those thin route components.
  */
-function AccountFormScreen({
+function AccountFormScreen<T extends CollectorTag>({
   title,
   tag,
   initial,
@@ -54,12 +50,12 @@ function AccountFormScreen({
   error,
   onSubmit,
   onCancel,
-}: AccountFormScreenProps): JSX.Element {
+}: AccountFormScreenProps<T>): JSX.Element {
   const descriptor = descriptorForTag(tag)
   const ConfigForm = configFormForTag(tag)
   const [name, setName] = useState(initialName)
 
-  const handleSubmit = (config: CollectorConfig): void => {
+  const handleSubmit = (config: ConfigForTag<T>): void => {
     const remoteName =
       name === ''
         ? `${descriptor?.display.title ?? ''} ${new Date().toLocaleDateString()}`.trim()

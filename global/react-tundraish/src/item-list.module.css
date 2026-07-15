@@ -56,9 +56,6 @@ section > .item-list:not(:last-child) .item-list__rows {
   background: var(--card-color-background);
   border: 1px solid var(--card-color-border);
   border-radius: var(--radius-4);
-  /* Clip row fills (e.g. a danger-tone tint on the first/last row) against
-   * the rounded corners so no tint bleeds past the card edge. */
-  overflow: hidden;
   /* Guarantee a minimum tap target even if a future change shrinks
    * the title or removes the chip. */
   min-height: var(--space-12);

@@ -2,7 +2,7 @@
   "name": "collector-registry",
   "version": "0.0.0",
   "private": true,
-  "description": "Assembly/registry layer for the collector slice — the most-downstream TS package: it statically imports each concrete `*-client-collector` and assembles their configs into a closed, compile-time discriminated union, alongside the CollectorBridge wire contract, CollectorBridgeMessageHandler dispatcher, and the HTTP API definition for the remotes endpoints. Pure-logic model primitives live in `collector-fundamentals`; concrete clients (e.g. `fhir-r4-client-collector`) depend on `collector-fundamentals` only.",
+  "description": "Assembly/registry layer for the collector slice — the most-downstream TS package: it statically imports each concrete `*-client-collector` and assembles their configs into a closed, compile-time discriminated union, alongside the CollectorBridge wire contract, CollectorBridgeMessageHandler dispatcher, and the HTTP API definition for the remotes endpoints. Shared model primitives (and the `./config-form` view contract) live in `collector-fundamentals`; concrete clients (e.g. `fhir-r4-client-collector`) depend on `collector-fundamentals` only — including for their config-form UI — never on the `collector-react` adapter.",
   "license": "MIT",
   "repository": {
     "type": "git",
