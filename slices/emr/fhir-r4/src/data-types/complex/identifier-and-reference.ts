@@ -62,4 +62,20 @@ const IdentifierSchema: Schema.Schema<IdentifierType, FhirR4.Identifier, never> 
 registerDatatypeSchema('Identifier', IdentifierSchema)
 registerDatatypeSchema('Reference', ReferenceSchema)
 
-export { ReferenceSchema, IdentifierSchema, type ReferenceType, type IdentifierType }
+/** An all-empty `Reference`; a placeholder for required-reference slots. */
+const emptyReference: ReferenceType = {
+  id: null,
+  extension: [],
+  display: null,
+  identifier: null,
+  reference: null,
+  type: null,
+}
+
+export {
+  ReferenceSchema,
+  IdentifierSchema,
+  emptyReference,
+  type ReferenceType,
+  type IdentifierType,
+}

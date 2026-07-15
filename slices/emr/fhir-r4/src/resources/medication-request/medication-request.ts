@@ -315,10 +315,62 @@ const MedicationRequestStruct = Schema.extend(
   )
 ).annotations({ jsonSchema: medicationRequestJsonSchema })
 
+/**
+ * All-empty R4 `MedicationRequest`: every field carries its "absent" value.
+ * Spread it to build a request that overwrites only the slots a source
+ * populates. `status` / `intent` / `subject` are required, so their
+ * placeholders here are only observed if a caller forgets to overwrite them.
+ */
+const empty: typeof MedicationRequestStruct.Type = {
+  resourceType: 'MedicationRequest',
+  id: null,
+  implicitRules: null,
+  language: null,
+  meta: null,
+  contained: [],
+  extension: [],
+  modifierExtension: [],
+  text: null,
+  identifier: [],
+  status: 'unknown',
+  statusReason: null,
+  intent: 'order',
+  category: [],
+  priority: null,
+  doNotPerform: null,
+  reportedBoolean: null,
+  reportedReference: null,
+  medicationCodeableConcept: null,
+  medicationReference: null,
+  subject: IdentifierAndReference.emptyReference,
+  encounter: null,
+  supportingInformation: [],
+  authoredOn: null,
+  requester: null,
+  performer: null,
+  performerType: null,
+  recorder: null,
+  reasonCode: [],
+  reasonReference: [],
+  instantiatesCanonical: [],
+  instantiatesUri: [],
+  basedOn: [],
+  groupIdentifier: null,
+  courseOfTherapyType: null,
+  insurance: [],
+  note: [],
+  dosageInstruction: [],
+  dispenseRequest: null,
+  substitution: null,
+  priorPrescription: null,
+  detectedIssue: [],
+  eventHistory: [],
+}
+
 const MedicationRequestSchema: Schema.Schema<
   typeof MedicationRequestStruct.Type,
   FhirR4.MedicationRequest,
   never
 > = MedicationRequestStruct
 
-export { MedicationRequestSchema as Schema, StatusSchema, IntentSchema, PrioritySchema }
+export { MedicationRequestSchema as Schema, StatusSchema, IntentSchema, PrioritySchema, empty }
