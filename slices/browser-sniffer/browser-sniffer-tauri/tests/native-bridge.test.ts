@@ -98,10 +98,10 @@ describe('makeNativeBridgeEventBus — inbound (listen)', () => {
     const handler = vi.fn()
     void bus.listen('bridge', handler)
 
-    fireReceive(JSON.stringify({ event: 'bridge', payload: { _tag: 'Click', x: 1, y: 2 } }))
+    fireReceive(JSON.stringify({ event: 'bridge', payload: { _tag: 'PageAction', x: 1, y: 2 } }))
 
     expect(handler).toHaveBeenCalledTimes(1)
-    expect(handler).toHaveBeenCalledWith({ payload: { _tag: 'Click', x: 1, y: 2 } })
+    expect(handler).toHaveBeenCalledWith({ payload: { _tag: 'PageAction', x: 1, y: 2 } })
   })
 
   test('does not deliver envelopes for a different event name', () => {

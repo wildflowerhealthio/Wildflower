@@ -1,5 +1,7 @@
+import type { PageActionMessage } from 'browser-sniffer-core'
 import type { Duration } from 'effect'
-import type * as WebViewSource from './web-view-source.ts'
+
+import type { OpenMessage } from '../bridge.ts'
 
 /**
  * When the step machine should dispatch a step, relative to the
@@ -25,67 +27,46 @@ interface UrlMatchAdvance {
 }
 
 /**
- * The advance condition attached to a {@link Any} step. A union so more
+ * The advance condition attached to a {@link Step}. A union so more
  * trigger kinds (element-present, response-seen, …) can be added later
- * without touching the step variants; today the only non-default kind is
- * {@link UrlMatchAdvance}.
+ * without touching the {@link Step} shape; today the only non-default kind
+ * is {@link UrlMatchAdvance}.
  */
 type Advance = UrlMatchAdvance
 
 /**
- * A scripted navigation step. `Open` carries the same `WebViewSource`
- * shape the host uses for the initial `firstPage` so a slice's
- * `linkSequence` can mix inline HTML bootstraps and absolute `https://`
- * URIs without an extra translation layer. The Tauri host
- * (`browser-sniffer-tauri-rust`) maps `Link.Open` to an `OpenLink`
- * web→host message and navigates the existing sniffer `WebviewWindow`
- * to the new source.
+ * What a step tells the sniffer to do, typed *against the bridge message
+ * bodies themselves* so a step can never carry a field the wire doesn't:
  *
- * `advanceWhen` (optional, shared by every variant) gates *when* the
- * step machine dispatches this step — see {@link Advance}. It is a
- * plan-only field: the handler strips it before forwarding the step to
- * the sniffer, so it never reaches the wire.
+ * - `Open` (the collector bridge's `OpenMessage`): host-navigation. Carries
+ *   the same `WebViewSource` shape the host uses for the initial `firstPage`,
+ *   so a slice's `linkSequence` can mix inline-HTML bootstraps and absolute
+ *   `https://` URIs without a translation layer. It is its own tag because
+ *   the Tauri host *decodes* it to navigate the sniffer `WebviewWindow`.
+ * - `PageAction` (`browser-sniffer-core`'s `PageActionMessage`): an in-page
+ *   interaction (`Click` / `Fill`, discriminated by the inner `kind`). New
+ *   interaction kinds are added as `action` union variants, not new tags.
+ *
+ * Because {@link Step} is just `{ action; advanceWhen? }`, the plan-only
+ * `advanceWhen` lives on the wrapper, not the action — the step machine
+ * forwards `step.action` untouched and it can never leak onto the wire.
  */
-interface Open {
-  readonly _tag: 'Open'
-  readonly source: WebViewSource.Any
-  readonly advanceWhen?: Advance
-}
+type StepAction = typeof OpenMessage.Type | typeof PageActionMessage.Type
 
 /**
- * A synthetic click. The Tauri host forwards this as a `ClickLink`
- * web→host message; the collector then re-emits it as a `Click`
- * host→web message on `BrowserSnifferBridge` so the injected sniffer
- * can run `document.querySelector(querySelector)?.click()` inside the
- * sniffed page. No "no match" feedback path — clicks are best-effort.
- */
-interface Click {
-  readonly _tag: 'Click'
-  readonly querySelector: string
-  readonly advanceWhen?: Advance
-}
-
-/**
- * A synthetic form fill. Forwarded verbatim (minus `advanceWhen`) as a
- * `Fill` host→web message on `BrowserSnifferBridge`; the injected
- * sniffer resolves `document.querySelector(querySelector)` and sets its
- * `value` through the framework-aware native value-setter +
- * `input`/`change` dispatch (so SPA frameworks like Angular pick up the
- * change). Best-effort like `Click` — a missing element silently
- * no-ops.
+ * A scripted navigation step: an {@link StepAction} to dispatch plus an
+ * optional {@link Advance} gating *when* the step machine dispatches it.
  *
- * `value` is provided by the plan, interpolated from the remote's config
- * (e.g. a username / password) when the collector builds its
- * `ScrapingPlan`. Because a credential can therefore ride this payload,
- * see the secrets note on `browser-sniffer-core`'s `FillMessageBody`.
+ * `advanceWhen` is a plan-only field — the step machine reads it to schedule
+ * the dispatch but forwards only `action` to the sniffer, so it never reaches
+ * the wire. A `Fill` action's `value` is interpolated from the remote's
+ * config (e.g. a username / password) when the collector builds its
+ * `ScrapingPlan`; because a credential can therefore ride that payload, see
+ * the secrets note on `browser-sniffer-core`'s `FillAction`.
  */
-interface Fill {
-  readonly _tag: 'Fill'
-  readonly querySelector: string
-  readonly value: string
+interface Step {
+  readonly action: StepAction
   readonly advanceWhen?: Advance
 }
 
-type Any = Open | Click | Fill
-
-export type { Open, Click, Fill, Any, Advance, UrlMatchAdvance }
+export type { Step, StepAction, Advance, UrlMatchAdvance }

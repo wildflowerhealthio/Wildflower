@@ -27,8 +27,11 @@ pub const LOG: &str = "Log";
 /// mobile. On desktop these are picked up by the content webview's own Tauri
 /// event-bus listener (it holds an `allow-listen` grant) — no Rust forwarding
 /// needed — so the cfg(mobile) handlers in `lib.rs` are the only callers.
-pub const CLICK: &str = "Click";
-pub const FILL: &str = "Fill";
+///
+/// `PageAction` is the single scripted-interaction tag (the sniffer demuxes
+/// its inner `action.kind` into a `Click` / `Fill`); the host never decodes
+/// the payload, only forwards it verbatim by `_tag`.
+pub const PAGE_ACTION: &str = "PageAction";
 pub const CANCEL_SNIFFER_REQUEST: &str = "CancelSnifferRequest";
 
 /// Window label assigned to the main React SPA webview by

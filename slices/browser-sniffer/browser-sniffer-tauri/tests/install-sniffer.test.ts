@@ -782,7 +782,7 @@ describe('CancelSnifferRequest (host→web bridge message)', () => {
   test('should register a single multiplexed Tauri listener on install', () => {
     installSnifferForTest()
     // One unlisten for the single `BRIDGE_EVENT` channel; inbound tags
-    // (`Click`, `Fill`, `CancelSnifferRequest`) demux by the payload's `_tag`.
+    // (`PageAction`, `CancelSnifferRequest`) demux by the payload's `_tag`.
     expect(getState()?.unlistens).toHaveLength(1)
     expect(listeners.has(BRIDGE_EVENT)).toBe(true)
   })
@@ -858,7 +858,7 @@ describe('CancelSnifferRequest (host→web bridge message)', () => {
   })
 })
 
-describe('Click (host→web bridge message)', () => {
+describe('PageAction: Click (host→web bridge message)', () => {
   // Remember the initial body so each test can scribble on it and the next
   // one starts from a clean slate.
   const initialBodyHtml = document.body.innerHTML
@@ -873,7 +873,7 @@ describe('Click (host→web bridge message)', () => {
 
   afterEach(resetShims)
 
-  test('clicks the element matched by querySelector', () => {
+  test('clicks the element matched by the Click action querySelector', () => {
     const button = document.createElement('button')
     button.id = 'go'
     const clicked = vi.fn()
@@ -881,14 +881,20 @@ describe('Click (host→web bridge message)', () => {
     document.body.replaceChildren(button)
     installSnifferForTest()
 
-    fireInbound(BRIDGE_EVENT, { _tag: 'Click', querySelector: '#go' })
+    fireInbound(BRIDGE_EVENT, {
+      _tag: 'PageAction',
+      action: { kind: 'Click', querySelector: '#go' },
+    })
     expect(clicked).toHaveBeenCalledTimes(1)
   })
 
   test('silently no-ops when the selector matches no element', () => {
     installSnifferForTest()
     expect(() =>
-      fireInbound(BRIDGE_EVENT, { _tag: 'Click', querySelector: '#missing' })
+      fireInbound(BRIDGE_EVENT, {
+        _tag: 'PageAction',
+        action: { kind: 'Click', querySelector: '#missing' },
+      })
     ).not.toThrow()
   })
 
@@ -899,12 +905,12 @@ describe('Click (host→web bridge message)', () => {
     document.body.replaceChildren(button)
     installSnifferForTest()
 
-    fireInbound(BRIDGE_EVENT, { _tag: 'Click', querySelector: '' })
+    fireInbound(BRIDGE_EVENT, { _tag: 'PageAction', action: { kind: 'Click', querySelector: '' } })
     expect(clicked).not.toHaveBeenCalled()
   })
 })
 
-describe('Fill (host→web bridge message)', () => {
+describe('PageAction: Fill (host→web bridge message)', () => {
   const initialBodyHtml = document.body.innerHTML
 
   beforeEach(() => {
@@ -927,7 +933,10 @@ describe('Fill (host→web bridge message)', () => {
     document.body.replaceChildren(input)
     installSnifferForTest()
 
-    fireInbound(BRIDGE_EVENT, { _tag: 'Fill', querySelector: '#username', value: 'alice' })
+    fireInbound(BRIDGE_EVENT, {
+      _tag: 'PageAction',
+      action: { kind: 'Fill', querySelector: '#username', value: 'alice' },
+    })
 
     expect(input.value).toBe('alice')
     expect(onInput).toHaveBeenCalledTimes(1)
@@ -954,7 +963,10 @@ describe('Fill (host→web bridge message)', () => {
     document.body.replaceChildren(input)
     installSnifferForTest()
 
-    fireInbound(BRIDGE_EVENT, { _tag: 'Fill', querySelector: '#password', value: 's3cret' })
+    fireInbound(BRIDGE_EVENT, {
+      _tag: 'PageAction',
+      action: { kind: 'Fill', querySelector: '#password', value: 's3cret' },
+    })
 
     // The instance override was bypassed; the prototype setter ran.
     expect(instanceSetterCalls).toBe(0)
@@ -968,14 +980,20 @@ describe('Fill (host→web bridge message)', () => {
     document.body.replaceChildren(input)
     installSnifferForTest()
 
-    fireInbound(BRIDGE_EVENT, { _tag: 'Fill', querySelector: '#clearme', value: '' })
+    fireInbound(BRIDGE_EVENT, {
+      _tag: 'PageAction',
+      action: { kind: 'Fill', querySelector: '#clearme', value: '' },
+    })
     expect(input.value).toBe('')
   })
 
   test('silently no-ops when the selector matches no element', () => {
     installSnifferForTest()
     expect(() =>
-      fireInbound(BRIDGE_EVENT, { _tag: 'Fill', querySelector: '#missing', value: 'x' })
+      fireInbound(BRIDGE_EVENT, {
+        _tag: 'PageAction',
+        action: { kind: 'Fill', querySelector: '#missing', value: 'x' },
+      })
     ).not.toThrow()
   })
 
@@ -986,7 +1004,10 @@ describe('Fill (host→web bridge message)', () => {
     document.body.replaceChildren(input)
     installSnifferForTest()
 
-    fireInbound(BRIDGE_EVENT, { _tag: 'Fill', querySelector: '', value: 'x' })
+    fireInbound(BRIDGE_EVENT, {
+      _tag: 'PageAction',
+      action: { kind: 'Fill', querySelector: '', value: 'x' },
+    })
     expect(onInput).not.toHaveBeenCalled()
   })
 
@@ -1001,9 +1022,56 @@ describe('Fill (host→web bridge message)', () => {
 
     // A malformed payload (value not a string) is dropped defensively.
     fireInbound(BRIDGE_EVENT, {
-      _tag: 'Fill',
-      querySelector: '#novalue',
-      value: 42 as unknown as string,
+      _tag: 'PageAction',
+      action: { kind: 'Fill', querySelector: '#novalue', value: 42 as unknown as string },
+    })
+    expect(input.value).toBe('unchanged')
+    expect(onInput).not.toHaveBeenCalled()
+  })
+})
+
+describe('PageAction: malformed envelope (host→web bridge message)', () => {
+  const initialBodyHtml = document.body.innerHTML
+
+  beforeEach(() => {
+    resetShims()
+    XMLHttpRequest.prototype.open = vi.fn() as XMLHttpRequest['open']
+    XMLHttpRequest.prototype.send = vi.fn() as XMLHttpRequest['send']
+    document.body.innerHTML = initialBodyHtml
+    setupEnv()
+  })
+
+  afterEach(resetShims)
+
+  test('drops a PageAction with a missing or non-object action', () => {
+    const button = document.createElement('button')
+    button.id = 'go'
+    const clicked = vi.fn()
+    button.addEventListener('click', clicked)
+    document.body.replaceChildren(button)
+    installSnifferForTest()
+
+    // No `action` field, and a non-object `action` — both dropped without throwing.
+    expect(() => fireInbound(BRIDGE_EVENT, { _tag: 'PageAction' })).not.toThrow()
+    expect(() =>
+      fireInbound(BRIDGE_EVENT, { _tag: 'PageAction', action: 'not-an-object' })
+    ).not.toThrow()
+    expect(clicked).not.toHaveBeenCalled()
+  })
+
+  test('drops a PageAction whose action has an unknown kind', () => {
+    const input = document.createElement('input')
+    input.id = 'field'
+    input.value = 'unchanged'
+    const onInput = vi.fn()
+    input.addEventListener('input', onInput)
+    document.body.replaceChildren(input)
+    installSnifferForTest()
+
+    // A future kind not yet taught to this build falls through to a no-op.
+    fireInbound(BRIDGE_EVENT, {
+      _tag: 'PageAction',
+      action: { kind: 'Scroll', querySelector: '#field' },
     })
     expect(input.value).toBe('unchanged')
     expect(onInput).not.toHaveBeenCalled()

@@ -1,8 +1,4 @@
-import {
-  type CancelSnifferRequestMessage,
-  type ClickMessage,
-  type FillMessage,
-} from 'browser-sniffer-core'
+import { type CancelSnifferRequestMessage, type PageActionMessage } from 'browser-sniffer-core'
 import { Effect, type Either, type MutableHashMap, type ParseResult } from 'effect'
 import type { MessageHandler } from 'effect-messaging-core'
 import type { UnknownException } from 'effect/Cause'
@@ -21,19 +17,18 @@ type Service = MessageHandler.HandlersFor<CollectorBridge['HostToWeb']>
 /**
  * The union of every message the handler can ask the host to send via
  * the supplied `sendMessage`. `CancelSnifferRequest` short-circuits an
- * unmatched response stream (response tracker); `Open` / `Click` / `Fill`
+ * unmatched response stream (response tracker); `Open` / `PageAction`
  * drive the scripted navigation and `SniffingComplete` is the terminal
  * hand-off when the link sequence is exhausted (step machine). The
- * `Open` / `Click` / `Fill` payload shape matches `Link.Open` /
- * `Link.Click` / `Link.Fill` exactly — the handler forwards
- * `scrapingPlan.linkSequence[i]` to `sendMessage` (minus the plan-only
- * `advanceWhen` field) without translation.
+ * `Open` / `PageAction` payloads *are* the step's `action` — the handler
+ * forwards `scrapingPlan.linkSequence[i].action` to `sendMessage` without
+ * translation (the plan-only `advanceWhen` rides the step wrapper, never
+ * the action).
  */
 type OutboundMessage =
   | typeof CancelSnifferRequestMessage.Type
   | typeof OpenMessage.Type
-  | typeof ClickMessage.Type
-  | typeof FillMessage.Type
+  | typeof PageActionMessage.Type
   | typeof SniffingCompleteMessage.Type
 
 interface CollectorBridgeMessageHandler<TResources> extends Service {

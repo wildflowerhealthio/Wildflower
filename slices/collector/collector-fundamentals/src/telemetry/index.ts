@@ -20,7 +20,12 @@ const Sniffing = {
     StepIndex: 'collector.sniffing.step.index',
     /** Configured delay before the step dispatches, in milliseconds. */
     StepDelayMs: 'collector.sniffing.step.delay_ms',
-    /** `_tag` of the dispatched link (`Open` / `Click` / `Fill` / `SniffingComplete`). */
+    /**
+     * Kind of the dispatched step: the action tag, with a `PageAction`'s
+     * inner `kind` appended (`Open` / `PageAction:Click` / `PageAction:Fill`),
+     * or `SniffingComplete` for the terminal dispatch. Cardinality is kept
+     * low — the discriminator only, never per-selector detail.
+     */
     LinkKind: 'collector.sniffing.link.kind',
     /** Configured URL-match wait cap for the step, in milliseconds. */
     UrlMatchTimeoutMs: 'collector.sniffing.step.url_match_timeout_ms',

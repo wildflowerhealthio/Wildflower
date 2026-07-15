@@ -21,7 +21,7 @@ When `installSniffer(eventBus)` runs in a page, it:
 2. Reports `RequestError { id, url, message }` on network failure (fetch reject, XHR `error` event).
 3. Posts `PageLoaded { url, pageContentId }` once the window `load` event fires, then streams the DOM body through the standard `ResponseStart` / `ResponseData` / `ResponseFinished` triple correlated by `pageContentId`.
 4. Posts ad-hoc `Log { log }` entries when shims install (single-shot diagnostics).
-5. Accepts host→web `Click` and `CancelSnifferRequest` messages via a single `eventBus.listen(BRIDGE_EVENT, …)` registration that demuxes by the payload's `_tag`. No `window.message` indirection — Tauri's IPC is the only thing that can invoke this listener, so page scripts can't spoof inbound messages.
+5. Accepts host→web `PageAction` and `CancelSnifferRequest` messages via a single `eventBus.listen(BRIDGE_EVENT, …)` registration that demuxes by the payload's `_tag`. `PageAction` is the single scripted-interaction tag — its inner `action.kind` (`Click` / `Fill`) selects the in-page effect, so a new interaction kind is a union variant rather than a whole new tag. No `window.message` indirection — Tauri's IPC is the only thing that can invoke this listener, so page scripts can't spoof inbound messages.
 
 Idempotent: re-injecting on the same page short-circuits each shim on its `window.native*` shadow. On re-injection the previous run's listener unlistens are drained from the symbol-keyed state slot before the early-return, so the Rust-side listener registry doesn't accumulate stale IDs.
 
@@ -65,7 +65,7 @@ The sniffer is half of a two-bridge sync. The other half — `CollectorBridge` �
     │ writes resources via same-origin PUT /fhir-r4/*
 ```
 
-The Rust host is a pure router: it listens for the four lifecycle tags (`RequestSniffableWebView`, `Open`, `SniffingComplete`, plus `Click` rerouting if a slice uses it), opens/navigates/closes the sniffer `WebviewWindow`, and lets the data-plane events fan out through Tauri's event bus unmodified. No parsing logic in the host.
+The Rust host is a pure router: it listens for the four lifecycle tags (`RequestSniffableWebView`, `Open`, `SniffingComplete`, plus `PageAction` rerouting if a slice scripts an interaction), opens/navigates/closes the sniffer `WebviewWindow`, and lets the data-plane events fan out through Tauri's event bus unmodified. No parsing logic in the host — `PageAction` is forwarded by `_tag` without decoding its payload.
 
 ## Why a build-time bundle
 

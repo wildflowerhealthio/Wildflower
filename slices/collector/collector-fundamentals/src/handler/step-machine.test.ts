@@ -16,7 +16,7 @@ import { make, type StepMachine, type StepOutboundMessage } from './step-machine
  */
 const makeMachine = (options: {
   readonly sendMessage: (message: StepOutboundMessage) => Effect.Effect<void, never, never>
-  readonly linkSequence?: readonly Link.Any[]
+  readonly linkSequence?: readonly Link.Step[]
   readonly stepDelay?: Duration.Duration
 }): StepMachine =>
   Effect.runSync(
@@ -45,24 +45,22 @@ const pageLoaded = (
 
 describe('step-machine.make: step machine', () => {
   describe('PageLoaded', () => {
-    const linkA: Link.Any = {
-      _tag: 'Open',
-      source: { _tag: 'Uri', uri: 'https://example.com/a' },
+    const linkA: Link.Step = {
+      action: { _tag: 'Open', source: { _tag: 'Uri', uri: 'https://example.com/a' } },
     }
-    const linkB: Link.Any = {
-      _tag: 'Open',
-      source: { _tag: 'Uri', uri: 'https://example.com/b' },
+    const linkB: Link.Step = {
+      action: { _tag: 'Open', source: { _tag: 'Uri', uri: 'https://example.com/b' } },
     }
-    const fillLink: Link.Any = {
-      _tag: 'Fill',
-      querySelector: '#username',
-      value: 'alice',
+    const fillLink: Link.Step = {
+      action: {
+        _tag: 'PageAction',
+        action: { kind: 'Fill', querySelector: '#username', value: 'alice' },
+      },
     }
     // A step gated on landing at `…/dashboard`, timing out after 30s.
     const dashboardPattern = UrlMatch.make({ segments: [UrlMatch.literal('dashboard')] })
-    const urlMatchLink: Link.Any = {
-      _tag: 'Open',
-      source: { _tag: 'Uri', uri: 'https://example.com/next' },
+    const urlMatchLink: Link.Step = {
+      action: { _tag: 'Open', source: { _tag: 'Uri', uri: 'https://example.com/next' } },
       advanceWhen: { _tag: 'UrlMatch', pattern: dashboardPattern, timeout: Duration.seconds(30) },
     }
 
@@ -92,13 +90,13 @@ describe('step-machine.make: step machine', () => {
           yield* TestClock.adjust(Duration.seconds(5))
           yield* Effect.yieldNow()
           expect(sendMessage).toHaveBeenCalledTimes(1)
-          expect(sendMessage.mock.calls[0][0]).toEqual({ _tag: 'Open', source: linkA.source })
+          expect(sendMessage.mock.calls[0][0]).toEqual(linkA.action)
 
           yield* machine.PageLoaded(pageLoaded('https://example.com/a'))
           yield* TestClock.adjust(Duration.seconds(5))
           yield* Effect.yieldNow()
           expect(sendMessage).toHaveBeenCalledTimes(2)
-          expect(sendMessage.mock.calls[1][0]).toEqual({ _tag: 'Open', source: linkB.source })
+          expect(sendMessage.mock.calls[1][0]).toEqual(linkB.action)
 
           yield* machine.PageLoaded(pageLoaded('https://example.com/b'))
           yield* TestClock.adjust(Duration.seconds(5))
@@ -127,7 +125,7 @@ describe('step-machine.make: step machine', () => {
           yield* TestClock.adjust(Duration.seconds(2))
           yield* Effect.yieldNow()
           expect(sendMessage).toHaveBeenCalledTimes(1)
-          expect(sendMessage.mock.calls[0][0]).toEqual({ _tag: 'Open', source: linkA.source })
+          expect(sendMessage.mock.calls[0][0]).toEqual(linkA.action)
         }).pipe(Effect.provide(TestContext.TestContext))
       ))
 
@@ -207,11 +205,11 @@ describe('step-machine.make: step machine', () => {
           yield* TestClock.adjust(Duration.seconds(5))
           yield* Effect.yieldNow()
           expect(sendMessage).toHaveBeenCalledTimes(2)
-          expect(sendMessage.mock.calls[1][0]).toEqual({ _tag: 'Open', source: linkA.source })
+          expect(sendMessage.mock.calls[1][0]).toEqual(linkA.action)
         }).pipe(Effect.provide(TestContext.TestContext))
       ))
 
-    it('dispatches a Fill step verbatim (minus advanceWhen) after stepDelay', () =>
+    it('dispatches a PageAction:Fill step verbatim (minus advanceWhen) after stepDelay', () =>
       Effect.runPromise(
         Effect.gen(function* () {
           const sendMessage = vi.fn<SendMessage>(() => Effect.void)
@@ -222,11 +220,41 @@ describe('step-machine.make: step machine', () => {
           yield* Effect.yieldNow()
 
           expect(sendMessage).toHaveBeenCalledTimes(1)
+          // The step's `action` is forwarded untouched; `advanceWhen` (absent
+          // here) would ride the wrapper, never this payload.
           expect(sendMessage.mock.calls[0][0]).toEqual({
-            _tag: 'Fill',
-            querySelector: '#username',
-            value: 'alice',
+            _tag: 'PageAction',
+            action: { kind: 'Fill', querySelector: '#username', value: 'alice' },
           })
+        }).pipe(Effect.provide(TestContext.TestContext))
+      ))
+
+    it('never forwards the plan-only advanceWhen on the dispatched action', () =>
+      Effect.runPromise(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const gatedClick: Link.Step = {
+            action: { _tag: 'PageAction', action: { kind: 'Click', querySelector: '#login' } },
+            advanceWhen: {
+              _tag: 'UrlMatch',
+              pattern: dashboardPattern,
+              timeout: Duration.seconds(30),
+            },
+          }
+          const machine = makeMachine({ sendMessage, linkSequence: [gatedClick] })
+
+          yield* machine.PageLoaded(pageLoaded('https://example.com/dashboard'))
+          yield* TestClock.adjust(Duration.seconds(5))
+          yield* Effect.yieldNow()
+
+          expect(sendMessage).toHaveBeenCalledTimes(1)
+          const sent = sendMessage.mock.calls[0][0]
+          expect(sent).toEqual({
+            _tag: 'PageAction',
+            action: { kind: 'Click', querySelector: '#login' },
+          })
+          // The gate lives on the step wrapper; the wire payload never carries it.
+          expect(sent).not.toHaveProperty('advanceWhen')
         }).pipe(Effect.provide(TestContext.TestContext))
       ))
 
@@ -246,10 +274,7 @@ describe('step-machine.make: step machine', () => {
             yield* TestClock.adjust(Duration.seconds(5))
             yield* Effect.yieldNow()
             expect(sendMessage).toHaveBeenCalledTimes(1)
-            expect(sendMessage.mock.calls[0][0]).toEqual({
-              _tag: 'Open',
-              source: urlMatchLink.source,
-            })
+            expect(sendMessage.mock.calls[0][0]).toEqual(urlMatchLink.action)
           }).pipe(Effect.provide(TestContext.TestContext))
         ))
 
@@ -302,10 +327,7 @@ describe('step-machine.make: step machine', () => {
             yield* TestClock.adjust(Duration.seconds(5))
             yield* Effect.yieldNow()
             expect(sendMessage).toHaveBeenCalledTimes(1)
-            expect(sendMessage.mock.calls[0][0]).toEqual({
-              _tag: 'Open',
-              source: urlMatchLink.source,
-            })
+            expect(sendMessage.mock.calls[0][0]).toEqual(urlMatchLink.action)
 
             yield* TestClock.adjust(Duration.seconds(60))
             yield* Effect.yieldNow()
