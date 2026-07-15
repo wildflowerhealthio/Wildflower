@@ -235,10 +235,54 @@ const MedicationDispenseStruct = Schema.extend(
   )
 ).annotations({ jsonSchema: medicationDispenseJsonSchema })
 
+/**
+ * All-empty R4 `MedicationDispense`: every field carries its "absent" value.
+ * Spread it to build a dispense that overwrites only the slots a source
+ * populates. `status` is required, so its placeholder here is only observed if
+ * a caller forgets to overwrite it.
+ */
+const empty: typeof MedicationDispenseStruct.Type = {
+  resourceType: 'MedicationDispense',
+  id: null,
+  implicitRules: null,
+  language: null,
+  meta: null,
+  contained: [],
+  extension: [],
+  modifierExtension: [],
+  text: null,
+  identifier: [],
+  partOf: [],
+  status: 'unknown',
+  statusReasonCodeableConcept: null,
+  statusReasonReference: null,
+  category: null,
+  medicationCodeableConcept: null,
+  medicationReference: null,
+  subject: null,
+  context: null,
+  supportingInformation: [],
+  performer: [],
+  location: null,
+  authorizingPrescription: [],
+  type: null,
+  quantity: null,
+  daysSupply: null,
+  whenPrepared: null,
+  whenHandedOver: null,
+  destination: null,
+  receiver: [],
+  note: [],
+  dosageInstruction: [],
+  substitution: null,
+  detectedIssue: [],
+  eventHistory: [],
+}
+
 const MedicationDispenseSchema: Schema.Schema<
   typeof MedicationDispenseStruct.Type,
   FhirR4.MedicationDispense,
   never
 > = MedicationDispenseStruct
 
-export { MedicationDispenseSchema as Schema, StatusSchema }
+export { MedicationDispenseSchema as Schema, StatusSchema, empty }

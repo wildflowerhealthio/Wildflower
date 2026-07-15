@@ -7,6 +7,9 @@ import type * as FhirR4 from 'fhir/r4.d.ts'
 import { Code } from '../base/code.ts'
 import { registerDatatypeSchema } from '../base/datatype-registry.ts'
 import * as Element from '../base/element.ts'
+// Type-only: SimpleQuantity and Quantity don't import each other at runtime, so
+// this keeps the widening helper here without introducing a module cycle.
+import type * as SimpleQuantity from './simple-quantity.ts'
 
 const QuantityStruct = mutableEncoded(
   StructNoContext({
@@ -31,4 +34,21 @@ const QuantitySchema: Schema.Schema<typeof QuantityStruct.Type, FhirR4.Quantity,
 
 registerDatatypeSchema('Quantity', QuantitySchema)
 
-export { QuantitySchema as Schema }
+/**
+ * Widen a {@link SimpleQuantity} (no `comparator`, unbranded `code`) to a full
+ * `Quantity`: brand `code` as a FHIR `code` primitive and add the absent
+ * `comparator` slot. Every other field is shared and passes through unchanged.
+ */
+const fromSimpleQuantity = (
+  simple: typeof SimpleQuantity.Schema.Type
+): typeof QuantityStruct.Type => ({
+  id: simple.id,
+  extension: simple.extension,
+  code: simple.code === null ? null : Code.make(simple.code),
+  comparator: null,
+  system: simple.system,
+  unit: simple.unit,
+  value: simple.value,
+})
+
+export { QuantitySchema as Schema, fromSimpleQuantity }

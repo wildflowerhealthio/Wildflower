@@ -1,7 +1,7 @@
 {
-  "name": "fhir-stu3",
+  "name": "fhir-stu3-as-r4",
   "version": "0.0.1",
-  "description": "Just-enough FHIR STU3 (Rexall/carebook dialect) wire schemas and a STU3 → R4 transform",
+  "description": "Just-enough FHIR STU3 wire schemas that decode straight to fhir-r4 resource types via Effect schema transforms",
   "license": "UNLICENSED",
   "author": "Ruth Marks",
   "type": "module",
@@ -9,10 +9,6 @@
     "./schemas": {
       "source": "./src/schemas/index.ts",
       "default": "./dist/schemas/index.js"
-    },
-    "./transform": {
-      "source": "./src/transform/index.ts",
-      "default": "./dist/transform/index.js"
     },
     "./package.json": "./package.json"
   },

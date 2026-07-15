@@ -18,6 +18,20 @@ FHIR also marks `MedicationRequest.medication[x]` and `MedicationDispense.medica
 
 We accept the loosening for now because we don't have a place to perform the cross-field refinement cheaply with `Schema.transformOrFail` without changing the Type. To enforce, add a `Schema.filter` on the relevant container struct that asserts at most one variant is set.
 
+## Medication resource (just-enough, added for the STU3 → R4 bridge)
+
+`Medication` is modeled with its standard R4 fields (`code`, `status`,
+`manufacturer`, `form`, `amount`, `ingredient[]`, `batch`) plus the
+`DomainResource` extension array, primarily to give `fhir-stu3-as-r4`'s
+STU3→R4 transforms a real R4 target. As with every resource here,
+`Medication.ingredient.item[x]` (CodeableConcept | Reference) is two independent
+optional fields, not an enforced XOR. A `Medication.empty` all-absent default is
+exported (alongside `.empty` on `MedicationRequest` / `MedicationDispense` /
+`MedicationRequestDispenseRequest` and `IdentifierAndReference.emptyReference`)
+for transforms that overlay populated fields onto it. `Quantity.fromSimpleQuantity`
+widens a `SimpleQuantity` to a full `Quantity` (brands `code`, adds a null
+`comparator`) for the same transforms.
+
 ## Reference target-type enforcement (none)
 
 Per FHIR R4 § Reference, every `Reference` element is constrained to specific target types — e.g. `Patient.managingOrganization → Reference(Organization)`, `Observation.subject → Reference(Patient|Group|Device|Location)`. We currently use a single shared `ReferenceSchema` for every reference field, so a payload putting `"reference": "Practitioner/123"` into `Patient.managingOrganization` validates.

@@ -42,10 +42,24 @@ const MedicationRequestDispenseRequestStruct = mutableEncoded(
   })
 )
 
+/** An all-empty R4 `MedicationRequest.dispenseRequest` backbone. */
+const empty: typeof MedicationRequestDispenseRequestStruct.Type = {
+  id: null,
+  extension: [],
+  modifierExtension: [],
+  initialFill: null,
+  dispenseInterval: null,
+  validityPeriod: null,
+  numberOfRepeatsAllowed: null,
+  quantity: null,
+  expectedSupplyDuration: null,
+  performer: null,
+}
+
 const MedicationRequestDispenseRequestSchema: Schema.Schema<
   typeof MedicationRequestDispenseRequestStruct.Type,
   FhirR4.MedicationRequestDispenseRequest,
   never
 > = MedicationRequestDispenseRequestStruct
 
-export { MedicationRequestDispenseRequestSchema as Schema, InitialFillSchema }
+export { MedicationRequestDispenseRequestSchema as Schema, InitialFillSchema, empty }

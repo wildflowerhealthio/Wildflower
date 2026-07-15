@@ -44,9 +44,10 @@ export * as Narrative from './special-purpose/narrative.ts'
 export * as Bundle from './resources/bundle.ts'
 
 // Named decoded interfaces, re-exported at the top level so downstream packages
-// that build schemas from these datatypes (e.g. `fhir-stu3`) can name them in
+// that build schemas from these datatypes (e.g. `fhir-stu3-as-r4`) can name them in
 // generated declarations. Without a top-level export path, `tsgo`'s `.d.ts`
 // emit can't reference these interfaces from an inferred type and fails with
 // TS2883 ("cannot be named without a reference to '<Name>'").
 export type { Type as ExtensionType } from './special-purpose/extension.ts'
 export type { ReferenceType, IdentifierType } from './complex/identifier-and-reference.ts'
+export type { BundleValue } from './resources/bundle.ts'

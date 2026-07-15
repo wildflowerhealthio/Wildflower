@@ -5,20 +5,12 @@ import base from '../../../vite.config.base.ts'
 
 export default defineConfig({
   ...base,
-  pack: [
-    {
-      dts: { tsgo: true },
-      exports: false,
-      platform: 'neutral',
-      entry: { 'schemas/index': 'src/schemas/index.ts' },
-    },
-    {
-      dts: { tsgo: true },
-      exports: false,
-      platform: 'neutral',
-      entry: { 'transform/index': 'src/transform/index.ts' },
-    },
-  ],
+  pack: {
+    dts: { tsgo: true },
+    exports: false,
+    platform: 'neutral',
+    entry: { 'schemas/index': 'src/schemas/index.ts' },
+  },
   test: {
     setupFiles: [
       path.join(path.dirname(fileURLToPath(import.meta.url)), '/vitest.setupSchemaEqual.ts'),
