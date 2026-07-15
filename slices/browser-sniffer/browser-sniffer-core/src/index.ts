@@ -7,6 +7,8 @@ export {
   CancelledMessageBody,
   ClickMessage,
   ClickMessageBody,
+  FillMessage,
+  FillMessageBody,
   HeadersWire,
   PageLoadedMessage,
   PageLoadedMessageBody,

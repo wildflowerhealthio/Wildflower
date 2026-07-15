@@ -1,4 +1,8 @@
-import { type CancelSnifferRequestMessage, type ClickMessage } from 'browser-sniffer-core'
+import {
+  type CancelSnifferRequestMessage,
+  type ClickMessage,
+  type FillMessage,
+} from 'browser-sniffer-core'
 import {
   Data,
   Duration,
@@ -22,6 +26,7 @@ import type {
 } from '../bridge.ts'
 import type * as EntityDefinition from '../model/entity-definition.ts'
 import { Response, type ScrapingPlan } from '../model/index.ts'
+import type * as Link from '../model/link.ts'
 import * as Telemetry from '../telemetry/index.ts'
 
 type Service = MessageHandler.HandlersFor<CollectorBridge['HostToWeb']>
@@ -50,16 +55,18 @@ class SnifferCancelled extends Data.TaggedError('SnifferCancelled')<{
 /**
  * The union of every message the handler can ask the host to send via
  * the supplied `sendMessage`. `CancelSnifferRequest` short-circuits an
- * unmatched response stream; `Open` / `Click` drive the scripted
- * navigation; `SniffingComplete` is the terminal hand-off when the
- * link sequence is exhausted. The `Open` / `Click` payload shape
- * matches `Link.Open` / `Link.Click` exactly — the handler forwards
- * `scrapingPlan.linkSequence[i]` to `sendMessage` without translation.
+ * unmatched response stream; `Open` / `Click` / `Fill` drive the
+ * scripted navigation; `SniffingComplete` is the terminal hand-off when
+ * the link sequence is exhausted. The `Open` / `Click` / `Fill` payload
+ * shape matches `Link.Open` / `Link.Click` / `Link.Fill` exactly — the
+ * handler forwards `scrapingPlan.linkSequence[i]` to `sendMessage`
+ * (minus the plan-only `advanceWhen` field) without translation.
  */
 type OutboundMessage =
   | typeof CancelSnifferRequestMessage.Type
   | typeof OpenMessage.Type
   | typeof ClickMessage.Type
+  | typeof FillMessage.Type
   | typeof SniffingCompleteMessage.Type
 
 /**
@@ -67,8 +74,19 @@ type OutboundMessage =
  * data needed for that state — no shared optional fields, no
  * sentinels for "running but no timer yet".
  *
+ * `AwaitingUrlMatch` exists only for a step whose `advanceWhen` is a
+ * `UrlMatch`: the machine parks there after a `PageLoaded` whose `url`
+ * did *not* match, holding the step until a matching `PageLoaded`
+ * arrives (→ `TimerPending`, i.e. the normal `stepDelay` settle) or the
+ * per-step `timeout` fiber fires (→ `Done`, having dispatched
+ * `SniffingComplete` to abort the run rather than hang).
+ *
  * Transitions:
- *   AwaitingPageLoaded(n)   ─PageLoaded→ TimerPending(n, fiber)
+ *   AwaitingPageLoaded(n)   ─PageLoaded, step n has no/ satisfied UrlMatch→ TimerPending(n, fiber)
+ *   AwaitingPageLoaded(n)   ─PageLoaded, step n UrlMatch unmet→ AwaitingUrlMatch(n, timeoutFiber)
+ *   AwaitingUrlMatch(d, tf) ─PageLoaded, url matches→ TimerPending(d, fiber)   (tf interrupted)
+ *   AwaitingUrlMatch(d, tf) ─PageLoaded, url still unmatched→ AwaitingUrlMatch(d, tf)  (no-op)
+ *   AwaitingUrlMatch(d, _)  ─timeout fires→ Done   (dispatches SniffingComplete)
  *   TimerPending(d, f)      ─PageLoaded→ TimerPending(d, fiber')   (f interrupted; fresh fiber)
  *   TimerPending(d, _)      ─timer fires, `d < N` → AwaitingPageLoaded(d + 1)
  *   TimerPending(N, _)      ─timer fires, `d ≡ N` → Done
@@ -78,11 +96,12 @@ type OutboundMessage =
  *
  * All transitions go through `SynchronizedRef.update*Effect`, which
  * serializes reads and writes through a semaphore — no interleaving
- * is possible. The timer fiber additionally checks the cell's
- * `TimerPending.fiber` against the fiber it scheduled itself as; if
- * another transition (`PageLoaded` re-arm, `clear`,
- * `cancelAllInFlight`) has swapped a different record in, the
- * commit no-ops and the replacement state survives.
+ * is possible. Both the settle-timer and the URL-match timeout fibers
+ * additionally check the cell against the fiber they scheduled
+ * themselves as (`TimerPending.fiber` / `AwaitingUrlMatch.timeoutFiber`);
+ * if another transition (`PageLoaded` re-arm, `clear`,
+ * `cancelAllInFlight`) has swapped a different record in, the commit
+ * no-ops and the replacement state survives.
  */
 type StepState =
   | { readonly _tag: 'AwaitingPageLoaded'; readonly nextIndex: number }
@@ -90,6 +109,11 @@ type StepState =
       readonly _tag: 'TimerPending'
       readonly dispatchIndex: number
       readonly fiber: Fiber.RuntimeFiber<void, never>
+    }
+  | {
+      readonly _tag: 'AwaitingUrlMatch'
+      readonly dispatchIndex: number
+      readonly timeoutFiber: Fiber.RuntimeFiber<void, never>
     }
   | { readonly _tag: 'Done' }
 
@@ -151,6 +175,17 @@ const make = <TResources>({
     })
 
     /**
+     * The `advanceWhen` condition of the step at `index`, or `undefined`
+     * for the out-of-range "index" that stands for the terminal
+     * `SniffingComplete` (which is never URL-gated) and for steps that
+     * don't declare one.
+     */
+    const advanceWhenForIndex = (index: number): Link.Advance | undefined =>
+      index < scrapingPlan.linkSequence.length
+        ? scrapingPlan.linkSequence[index].advanceWhen
+        : undefined
+
+    /**
      * Schedule a fresh timer for `dispatchIndex` and return the
      * `TimerPending` record naming it. The forked daemon:
      *   1. Sleeps for `stepDelay` (interruptible).
@@ -197,11 +232,14 @@ const make = <TResources>({
                     return stepState
                   }
                   if (dispatchIndex < scrapingPlan.linkSequence.length) {
-                    // `Link.Open` / `Link.Click` are structurally identical
-                    // to the `Open` / `Click` bridge messages — forward
-                    // verbatim.
+                    // `Link.Open` / `Link.Click` / `Link.Fill` are
+                    // structurally identical to the `Open` / `Click` /
+                    // `Fill` bridge messages once the plan-only
+                    // `advanceWhen` field is dropped — strip it and
+                    // forward the rest verbatim.
                     const link = scrapingPlan.linkSequence[dispatchIndex]
-                    yield* sendMessage(link).pipe(
+                    const { advanceWhen: _advanceWhen, ...message } = link
+                    yield* sendMessage(message).pipe(
                       Effect.withSpan(Telemetry.Sniffing.Dispatch.Span.Name, {
                         attributes: {
                           [Telemetry.Sniffing.Attributes.StepIndex]: dispatchIndex,
@@ -235,6 +273,90 @@ const make = <TResources>({
           fiber,
         } as const
       })
+
+    /**
+     * Schedule the URL-match wait cap for a step whose `advanceWhen` is
+     * `UrlMatch` and whose target url has not been seen yet, returning
+     * the `AwaitingUrlMatch` record naming its timeout fiber. The forked
+     * daemon sleeps `timeout`, then — if the cell still holds *this*
+     * record (same `_tag`, `dispatchIndex`, and `timeoutFiber`) —
+     * aborts the run by dispatching `SniffingComplete` and transitioning
+     * to `Done`. A matching `PageLoaded` interrupts the fiber first
+     * (`PageLoaded`'s `AwaitingUrlMatch` arm), so a fired timeout means
+     * the target url genuinely never arrived.
+     *
+     * Same fiber-identity discipline as {@link scheduleTimer}: an
+     * interleaved `clear` / `cancelAllInFlight` / re-arm swaps a
+     * different record in and this commit no-ops.
+     */
+    const scheduleTimeout = (
+      dispatchIndex: number,
+      timeout: Duration.Duration
+    ): Effect.Effect<StepState, never, never> =>
+      Effect.gen(function* () {
+        const timeoutFiber: RuntimeFiber<void, never> = yield* Effect.forkDaemon(
+          Effect.gen(function* () {
+            yield* Effect.sleep(timeout).pipe(
+              Effect.withSpan(Telemetry.Sniffing.UrlMatchWait.Span.Name, {
+                attributes: {
+                  [Telemetry.Sniffing.Attributes.StepIndex]: dispatchIndex,
+                  [Telemetry.Sniffing.Attributes.UrlMatchTimeoutMs]: Duration.toMillis(timeout),
+                },
+              })
+            )
+            yield* Effect.uninterruptible(
+              SynchronizedRef.getAndUpdateEffect(stepStateRef, (stepState) =>
+                Effect.gen(function* () {
+                  if (
+                    stepState._tag !== 'AwaitingUrlMatch' ||
+                    stepState.dispatchIndex !== dispatchIndex ||
+                    stepState.timeoutFiber !== timeoutFiber
+                  ) {
+                    return stepState
+                  }
+                  yield* Effect.logWarning(
+                    `CollectorBridgeMessageHandler.PageLoaded: URL-match step ${dispatchIndex} timed out after ${Duration.toMillis(
+                      timeout
+                    )}ms with no matching PageLoaded; aborting via SniffingComplete`
+                  )
+                  yield* sendMessage({ _tag: 'SniffingComplete' }).pipe(
+                    Effect.withSpan(Telemetry.Sniffing.Dispatch.Span.Name, {
+                      attributes: {
+                        [Telemetry.Sniffing.Attributes.StepIndex]: dispatchIndex,
+                        [Telemetry.Sniffing.Attributes.LinkKind]: 'SniffingComplete',
+                      },
+                    })
+                  )
+                  return { _tag: 'Done' } as const
+                })
+              )
+            )
+          })
+        )
+        return {
+          _tag: 'AwaitingUrlMatch',
+          dispatchIndex,
+          timeoutFiber,
+        } as const
+      })
+
+    /**
+     * Arm the machine for `dispatchIndex` given the url of the
+     * `PageLoaded` just observed. A step with no `advanceWhen` (or a
+     * `UrlMatch` whose pattern already matches this url) goes straight
+     * to the `stepDelay` settle timer; a `UrlMatch` whose pattern does
+     * not match parks in `AwaitingUrlMatch` under a fresh timeout fiber.
+     */
+    const armForIndex = (
+      dispatchIndex: number,
+      url: string
+    ): Effect.Effect<StepState, never, never> => {
+      const advance = advanceWhenForIndex(dispatchIndex)
+      if (advance !== undefined && advance._tag === 'UrlMatch' && !advance.pattern.test(url)) {
+        return scheduleTimeout(dispatchIndex, advance.timeout)
+      }
+      return scheduleTimer(dispatchIndex)
+    }
 
     const ResponseStart: Service['ResponseStart'] = (event) => {
       const entity = scrapingPlan.entityDefinitions.find((e) => e.isFoundAt(event.url))
@@ -382,10 +504,17 @@ const make = <TResources>({
 
     const PageLoaded: Service['PageLoaded'] = (event) =>
       // Atomic transition (serialized via SynchronizedRef):
-      // - `AwaitingPageLoaded(n)`: schedule a fresh timer at `n` → `TimerPending(n, f)`.
-      // - `TimerPending(d, f)`: interrupt `f`, then re-schedule at the same `d` →
-      //   `TimerPending(d, f')`. This is the "page navigated again mid-wait" case;
-      //   restart the wait without advancing the index.
+      // - `AwaitingPageLoaded(n)`: arm step `n` for this url — a fixed
+      //   settle timer, or (for an unmet `UrlMatch`) `AwaitingUrlMatch`.
+      // - `TimerPending(d, f)`: interrupt `f`, then re-schedule the
+      //   settle timer at the same `d` → `TimerPending(d, f')`. This is
+      //   the "page navigated again mid-wait" case; restart the settle
+      //   wait without advancing the index (the URL gate, if any, was
+      //   already satisfied to reach `TimerPending`).
+      // - `AwaitingUrlMatch(d, tf)`: re-test step `d`'s pattern against
+      //   this url. On a match, interrupt the timeout fiber `tf` and
+      //   start the settle timer → `TimerPending(d, f)`. Otherwise stay
+      //   parked under the same timeout fiber.
       // - `Done`: WARN-log and stay in `Done`.
       SynchronizedRef.updateAndGetEffect(
         stepStateRef,
@@ -394,7 +523,20 @@ const make = <TResources>({
           Match.tag('TimerPending', (s) =>
             Fiber.interrupt(s.fiber).pipe(Effect.andThen(scheduleTimer(s.dispatchIndex)))
           ),
-          Match.tag('AwaitingPageLoaded', (prior) => scheduleTimer(prior.nextIndex)),
+          Match.tag('AwaitingPageLoaded', (prior) => armForIndex(prior.nextIndex, event.url)),
+          Match.tag('AwaitingUrlMatch', (s) => {
+            const advance = advanceWhenForIndex(s.dispatchIndex)
+            if (
+              advance !== undefined &&
+              advance._tag === 'UrlMatch' &&
+              advance.pattern.test(event.url)
+            ) {
+              return Fiber.interrupt(s.timeoutFiber).pipe(
+                Effect.andThen(scheduleTimer(s.dispatchIndex))
+              )
+            }
+            return Effect.succeed(s)
+          }),
           Match.tag('Done', (state) => warnAndDrop(event).pipe(Effect.as(state))),
           Match.exhaustive
         )
@@ -412,6 +554,9 @@ const make = <TResources>({
         Match.type<StepState>().pipe(
           Match.withReturnType<Effect.Effect<StepState>>(),
           Match.tag('TimerPending', (s) => Fiber.interrupt(s.fiber).pipe(Effect.as(reset))),
+          Match.tag('AwaitingUrlMatch', (s) =>
+            Fiber.interrupt(s.timeoutFiber).pipe(Effect.as(reset))
+          ),
           Match.orElse(() => Effect.succeed(reset))
         )
       ).pipe(Effect.andThen(Effect.sync(() => MutableHashMap.clear(inProgressResponses))))
@@ -422,6 +567,9 @@ const make = <TResources>({
       // Atomic transition (serialized via SynchronizedRef):
       // - `TimerPending(d, f)`: interrupt `f`, fold to `AwaitingPageLoaded(d)`.
       //   A future `PageLoaded` would re-attempt the same step.
+      // - `AwaitingUrlMatch(d, tf)`: interrupt `tf`, fold to
+      //   `AwaitingPageLoaded(d)` — a future `PageLoaded` re-attempts the
+      //   URL-match wait from scratch.
       // - `AwaitingPageLoaded(n)` / `Done`: leave alone.
       SynchronizedRef.updateEffect(
         stepStateRef,
@@ -429,6 +577,11 @@ const make = <TResources>({
           Match.withReturnType<Effect.Effect<StepState>>(),
           Match.tag('TimerPending', (prior) =>
             Fiber.interrupt(prior.fiber).pipe(
+              Effect.as({ _tag: 'AwaitingPageLoaded', nextIndex: prior.dispatchIndex })
+            )
+          ),
+          Match.tag('AwaitingUrlMatch', (prior) =>
+            Fiber.interrupt(prior.timeoutFiber).pipe(
               Effect.as({ _tag: 'AwaitingPageLoaded', nextIndex: prior.dispatchIndex })
             )
           ),

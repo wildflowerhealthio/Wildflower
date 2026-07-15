@@ -22,7 +22,11 @@ import type * as WebViewSource from './web-view-source.ts'
  *     wins; non-matching responses are cancelled via `sendMessage`).
  *   - Drives the sniffer through `linkSequence` step-by-step,
  *     dispatching each `Link.Any` `stepDelay` after each `PageLoaded`
- *     event. When the sequence is exhausted, fires `SniffingComplete`
+ *     event. A step may instead carry `advanceWhen: { _tag: 'UrlMatch',
+ *     … }`, in which case the handler holds it until a `PageLoaded`
+ *     whose `url` matches the pattern (then still waits `stepDelay`),
+ *     aborting via `SniffingComplete` if the per-step `timeout` elapses
+ *     first. When the sequence is exhausted, fires `SniffingComplete`
  *     after a final `stepDelay`.
  *
  * `firstPage` is the host-side `WebViewSource` the sniffer webview is
@@ -45,8 +49,10 @@ import type * as WebViewSource from './web-view-source.ts'
  *   `https://` URI) to mount the sniffer webview with.
  * - `linkSequence`: ordered list of navigation steps. Each `Link.Open`
  *   is dispatched as an `OpenLink` web→host message; each `Link.Click`
- *   as a `ClickLink`. An empty array fires `SniffingComplete` after
- *   the first `PageLoaded`.
+ *   as a `ClickLink`; each `Link.Fill` as a `Fill`. A step's optional
+ *   `advanceWhen` gates when it is dispatched (default: a fixed
+ *   `stepDelay`; `UrlMatch`: after a matching `PageLoaded`). An empty
+ *   array fires `SniffingComplete` after the first `PageLoaded`.
  * - `stepDelay`: how long the handler waits between observing a
  *   `PageLoaded` and dispatching the next step (or `SniffingComplete`).
  *   The wait lets any post-load XHR fan-out finish before the next

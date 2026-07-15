@@ -28,6 +28,7 @@ pub const LOG: &str = "Log";
 /// event-bus listener (it holds an `allow-listen` grant) — no Rust forwarding
 /// needed — so the cfg(mobile) handlers in `lib.rs` are the only callers.
 pub const CLICK: &str = "Click";
+pub const FILL: &str = "Fill";
 pub const CANCEL_SNIFFER_REQUEST: &str = "CancelSnifferRequest";
 
 /// Window label assigned to the main React SPA webview by

@@ -150,6 +150,33 @@ const ClickMessageBody = Schema.TaggedStruct('Click', {
 })
 const ClickMessage = Schema.parseJson(ClickMessageBody)
 
+/**
+ * Host → Web: instruct the injected sniffer to fill a form input with a
+ * value. The sniffer resolves `document.querySelector(querySelector)`
+ * and, on a match, sets the element's value through the framework-aware
+ * native value-setter + `input`/`change` event dispatch (the standard
+ * controlled-input trick, needed for SPA frameworks like Angular that
+ * ignore a bare `.value` assignment). Like `Click`, this is best-effort:
+ * a missing element silently no-ops with no "no match" feedback path
+ * (the host retries by re-sending after the next `PageLoaded`).
+ *
+ * `querySelector` is `NonEmptyString` so a typo or empty value fails at
+ * the bridge boundary; `value` is a plain `String` so a deliberate
+ * empty-string fill (clearing a field) is valid.
+ *
+ * NOTE (secrets): a scripted login interpolates a credential (e.g. a
+ * password) into `value`, so this payload can carry a secret across the
+ * bridge. This is an accepted v1 deviation from the "never put secrets
+ * in a bridge payload" guidance in `docs/Messaging/Wire Pinning How-To.md`;
+ * a follow-up can gate it behind an out-of-band capability fetch
+ * (the `AuthTokenIssued` pattern).
+ */
+const FillMessageBody = Schema.TaggedStruct('Fill', {
+  querySelector: Schema.NonEmptyString,
+  value: Schema.String,
+})
+const FillMessage = Schema.parseJson(FillMessageBody)
+
 export {
   ResponseStartMessage,
   ResponseStartMessageBody,
@@ -167,6 +194,8 @@ export {
   CancelSnifferRequestMessageBody,
   ClickMessage,
   ClickMessageBody,
+  FillMessage,
+  FillMessageBody,
   SnifferRequestId,
   HeadersWire,
 }
