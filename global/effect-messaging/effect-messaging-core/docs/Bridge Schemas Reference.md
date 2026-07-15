@@ -1,6 +1,6 @@
 # Bridge Schemas Reference
 
-How to declare wire schemas for an `effect-messaging` `Bridge` without falling into the transforms-get-stripped trap. Companion to the source-level comments in `bridge-transport.ts` and the per-bridge files (`browser-sniffer-core/messages.ts`, `collector-core/bridge.ts`).
+How to declare wire schemas for an `effect-messaging` `Bridge` without falling into the transforms-get-stripped trap. Companion to the source-level comments in `bridge-transport.ts` and the per-bridge files (`browser-sniffer-core/messages.ts`, `collector-registry/bridge.ts`).
 
 ## The constraint
 

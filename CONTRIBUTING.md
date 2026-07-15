@@ -95,7 +95,7 @@ Order imports as follows:
 1. React and React-related libraries
 2. Third-party libraries
 3. Effect-TS imports
-4. Workspace package imports — `global/` shared utilities and other slices' packages, imported by bare package name (e.g. `collector-core/http-api-definition`)
+4. Workspace package imports — `global/` shared utilities and other slices' packages, imported by bare package name (e.g. `collector-registry/http-api-definition`)
 5. Current slice's `-core` imports
 6. Local utility imports
 7. Relative imports

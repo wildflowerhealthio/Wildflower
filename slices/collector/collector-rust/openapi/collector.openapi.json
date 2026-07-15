@@ -271,7 +271,7 @@
       },
       "Remote": {
         "type": "object",
-        "description": "A stored remote — the wire shape the `/collector/remotes` endpoints serve\n(the TS `RemoteSchema` in\n`collector-core/src/http-api-definition/remotes.ts`) AND the\n`collector_remotes` row: the diesel derives map this type straight to/from\nthe table, with [`JsonText`] converting `config` between `Value` and the\nJSON TEXT column at the bind/read boundary. serde's camelCase rename\nproduces the wire's `addedAt`.",
+        "description": "A stored remote — the wire shape the `/collector/remotes` endpoints serve\n(the TS `RemoteSchema` in\n`collector-registry/src/http-api-definition/remotes.ts`) AND the\n`collector_remotes` row: the diesel derives map this type straight to/from\nthe table, with [`JsonText`] converting `config` between `Value` and the\nJSON TEXT column at the bind/read boundary. serde's camelCase rename\nproduces the wire's `addedAt`.",
         "required": [
           "id",
           "name",
@@ -291,7 +291,7 @@
             "description": "Denormalized copy of `config._tag`, written alongside the config so\nclients filtering by collector kind don't need to crack the config JSON\n(mirrors the TS `RemoteSchema.tag` doc). Kept in sync by the write\nhandlers — [`config_tag`] is the single reader they both denormalize\nthrough."
           },
           "config": {
-            "description": "The full tagged `CollectorConfig` JSON, **opaque to Rust**: the\nper-collector config union is TS-owned (`collector-core`'s registry),\nso this crate stores and serves it verbatim rather than modeling it —\nadding a TS collector never requires a Rust change. The column keeps\nit as JSON TEXT; [`JsonText`] round-trips it through `serde_json`.\n`value_type = Value` keeps the OpenAPI schema an unconstrained `{}` (a\nwildcard to the TS spec-drift engine), matching that opacity."
+            "description": "The full tagged `CollectorConfig` JSON, **opaque to Rust**: the\nper-collector config union is TS-owned (`collector-registry`'s registry),\nso this crate stores and serves it verbatim rather than modeling it —\nadding a TS collector never requires a Rust change. The column keeps\nit as JSON TEXT; [`JsonText`] round-trips it through `serde_json`.\n`value_type = Value` keeps the OpenAPI schema an unconstrained `{}` (a\nwildcard to the TS spec-drift engine), matching that opacity."
           },
           "addedAt": {
             "type": "string",

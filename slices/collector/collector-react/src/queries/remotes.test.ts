@@ -1,6 +1,6 @@
 import { HttpClient, HttpClientResponse } from '@effect/platform'
 import { QueryClient } from '@tanstack/react-query'
-import type { CollectorHttpApiClient } from 'collector-core/clients'
+import type { CollectorHttpApiClient } from 'collector-registry/clients'
 import { Effect, Layer, pipe } from 'effect'
 import { FhirR4ResourcesRouterContext } from 'fhir-r4-react'
 import { type FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'

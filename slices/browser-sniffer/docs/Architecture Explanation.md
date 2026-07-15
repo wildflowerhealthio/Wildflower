@@ -37,7 +37,7 @@ The slice rule says "slices should not depend on other slices unless intrinsic �
 
 ## Data flow in the wider system
 
-The sniffer is half of a two-bridge sync. The other half — `CollectorBridge` — lives in `slices/collector/collector-core` and is added when the collector slice migrates. The flow once both are in place:
+The sniffer is half of a two-bridge sync. The other half — `CollectorBridge` — lives in `slices/collector/collector-registry` and is added when the collector slice migrates. The flow once both are in place:
 
 ```text
 [collector-react SPA, inside the main Tauri webview]

@@ -405,7 +405,7 @@ it('...', async () => {
 Drive tests through `vp` (never invoke `pnpm`/`npm`/`npx`/`vitest` directly — Vite+ owns the toolchain). `vp test` runs the suite across all packages via the root `vite.config.ts` `test.projects` wiring. To target a single package, pass its config explicitly:
 
 ```bash
-vp test --config slices/collector/collector-core/vite.config.ts --reporter=verbose
+vp test --config slices/collector/collector-registry/vite.config.ts --reporter=verbose
 ```
 
 Each package has its own **`vite.config.ts`** (there is no `vitest.config.ts` / `vitest.unit.config.ts`). These per-package configs are wired into the root `vite.config.ts` via Vitest's `test.projects` mode. Check the package directory for its `vite.config.ts` (its `test.include`/`test.exclude` govern which files run).
@@ -427,7 +427,7 @@ import { describe, expect, it } from 'vite-plus/test'
 - Synchronous: `fc.assert(fc.property(...arbs, (...values) => { ... }), { numRuns: numRunsFor({ base: 100 }) })`
 - Asynchronous: `await fc.assert(fc.asyncProperty(...arbs, async (...values) => { ... }), { numRuns: numRunsFor({ base: 100 }) })`
 
-Always route the run count through `numRunsFor({ base: N })` (from `kitchen-sink/test`) rather than a hardcoded `numRuns`, so `vp run test:changed` can scale it down for packages unchanged vs `origin/main`. `base` is the full run count used when the package *has* changed. This is the convention used by ~91 test files. Canonical examples to mirror: `global/effect-messaging/effect-messaging-core/src/logging.test.ts` and `slices/collector/collector-core/src/registry.test.ts`.
+Always route the run count through `numRunsFor({ base: N })` (from `kitchen-sink/test`) rather than a hardcoded `numRuns`, so `vp run test:changed` can scale it down for packages unchanged vs `origin/main`. `base` is the full run count used when the package *has* changed. This is the convention used by ~91 test files. Canonical examples to mirror: `global/effect-messaging/effect-messaging-core/src/logging.test.ts` and `slices/collector/collector-registry/src/registry.test.ts`.
 
 ### Do NOT use `@effect/vitest` or `@fast-check/vitest`
 

@@ -2,7 +2,7 @@
 //! endpoints — built as a `utoipa_axum::OpenApiRouter`, so the same
 //! `#[utoipa::path]`-annotated handlers that serve traffic also produce the
 //! committed OpenAPI snapshot (`openapi/collector.openapi.json`) that the TS
-//! spec-drift test (`collector-core/src/http-api-definition/openapi-drift.test.ts`)
+//! spec-drift test (`collector-registry/src/http-api-definition/openapi-drift.test.ts`)
 //! reads.
 //!
 //! The router carries no middleware — every endpoint exposes owner-only data,

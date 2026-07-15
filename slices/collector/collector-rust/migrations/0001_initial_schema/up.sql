@@ -1,7 +1,7 @@
 -- The remotes table: one row per user-visible remote on the
 -- `/collector/remotes` surface. `config` is the full tagged `CollectorConfig`
 -- JSON, opaque to Rust (the per-collector union is TS-owned — see
--- collector-core's registry); `tag` is denormalized from `config._tag` at
+-- collector-registry's registry); `tag` is denormalized from `config._tag` at
 -- write time so kind-filtering reads never crack the JSON. `added_at` is
 -- ISO-8601 UTC with milliseconds, the encoding the TS `Schema.DateTimeUtc`
 -- round-trips.

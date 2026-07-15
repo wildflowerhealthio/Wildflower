@@ -46,7 +46,7 @@ type BrowserSnifferBridge = Bridge.Bridge<
  * Consumers (e.g. `collector-react`) re-export this bridge's
  * `webToHost` schemas as their own `Host→Web` messages to forward
  * sniffer traffic across nested bridges — see
- * `slices/collector/collector-core/src/bridge.ts` for the pattern.
+ * `slices/collector/collector-registry/src/bridge.ts` for the pattern.
  *
  * @remarks
  * Cross-process `console.<level>(...)` mirroring is handled by the
