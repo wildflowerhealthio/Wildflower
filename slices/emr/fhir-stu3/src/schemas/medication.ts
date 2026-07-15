@@ -3,9 +3,6 @@ import { Schema } from 'effect'
 import { OrNullAsOptional, StructNoContext, mutableEncoded } from 'kitchen-sink/schema'
 
 import { CodeableConcept, DomainResource } from 'fhir-r4/data-types'
-import type * as FhirR4 from 'fhir/r4.d.ts'
-
-import type { Stu3DomainResourceEncoded, Stu3DomainResourceFields } from './base.ts'
 
 /**
  * Just-enough carebook STU3 `Medication`, as it appears in
@@ -21,27 +18,20 @@ import type { Stu3DomainResourceEncoded, Stu3DomainResourceFields } from './base
  * decoded R4 datatype value — which makes the STU3 → R4 transform a near
  * identity for medication `code` / `form`.
  */
-const MedicationStruct = mutableEncoded(
-  StructNoContext({
-    resourceType: Schema.Literal('Medication'),
-    ...DomainResource.fields,
-    code: OrNullAsOptional(Schema.suspend(() => CodeableConcept.Schema)),
-    form: OrNullAsOptional(Schema.suspend(() => CodeableConcept.Schema)),
-  })
+const MedicationStruct = Schema.extend(
+  Schema.Struct({ resourceType: Schema.Literal('Medication') }),
+  mutableEncoded(
+    StructNoContext({
+      ...DomainResource.fields,
+      code: OrNullAsOptional(Schema.suspend(() => CodeableConcept.Schema)),
+      form: OrNullAsOptional(Schema.suspend(() => CodeableConcept.Schema)),
+    })
+  )
 )
 
-interface Type extends Stu3DomainResourceFields {
-  readonly resourceType: 'Medication'
-  readonly code: typeof CodeableConcept.Schema.Type | null
-  readonly form: typeof CodeableConcept.Schema.Type | null
-}
+type Type = typeof MedicationStruct.Type
 
-interface Encoded extends Stu3DomainResourceEncoded {
-  resourceType: 'Medication'
-  code?: FhirR4.CodeableConcept | undefined
-  form?: FhirR4.CodeableConcept | undefined
-}
+const MedicationSchema: Schema.Schema<Type, typeof MedicationStruct.Encoded, never> =
+  MedicationStruct
 
-const MedicationSchema: Schema.Schema<Type, Encoded, never> = MedicationStruct
-
-export { MedicationSchema as Schema, type Type, type Encoded }
+export { MedicationSchema as Schema, type Type }

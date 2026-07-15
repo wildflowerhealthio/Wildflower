@@ -33,12 +33,13 @@ survive decode verbatim.
   files cover just the dialect deltas (`requester.agent`, contained `Medication`,
   carebook extensions). This makes the transform a near identity for shared
   fields.
-- **Declaration-emit portability (TS2883/TS4023).** Because the schemas reuse
-  fhir-r4's datatype schemas, their inferred types leak fhir-r4's internal
-  decoded interfaces, which `tsgo` cannot name from this package. Every exported
-  schema is therefore annotated with an explicit `Type` (decoded) and `Encoded`
-  (wire) interface — see `src/schemas/base.ts`. Keep that pattern when adding a
-  resource; do not fall back to `typeof Struct.Type` / `typeof Struct.Encoded`.
+- **Declaration-emit portability (TS2883).** Building schemas from fhir-r4's
+  datatype schemas embeds fhir-r4's internal decoded interfaces
+  (`ExtensionType`, `ReferenceType`, `IdentifierType`) in the inferred types.
+  `tsgo`'s `.d.ts` emit can only name those because `fhir-r4/data-types`
+  re-exports them at the top level — keep those exports if you touch fhir-r4.
+  With them in place the plain `typeof Struct.Type` / `typeof Struct.Encoded`
+  annotation packs cleanly; no hand-written wire interfaces are needed.
 
 ## Fixtures caveat
 

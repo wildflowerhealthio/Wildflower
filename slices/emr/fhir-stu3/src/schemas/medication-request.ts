@@ -12,14 +12,6 @@ import {
   Period,
   SimpleQuantity,
 } from 'fhir-r4/data-types'
-import type * as FhirR4 from 'fhir/r4.d.ts'
-
-import type {
-  Stu3BackboneElementEncoded,
-  Stu3BackboneElementFields,
-  Stu3DomainResourceEncoded,
-  Stu3DomainResourceFields,
-} from './base.ts'
 
 /**
  * FHIR STU3 `MedicationRequest.status` value set. Identical members to R4, so
@@ -44,11 +36,6 @@ const StatusSchema = Schema.Literal(
  */
 const IntentSchema = Schema.Literal('proposal', 'plan', 'order', 'instance-order')
 
-// The encoded (wire) sides below are spelled out explicitly against the FHIR R4
-// wire types the reused fhir-r4 datatype schemas encode to, so the generated
-// `.d.ts` never has to name fhir-r4's internal decoded interfaces — see
-// `base.ts` and TS2883.
-
 /**
  * STU3 `MedicationRequest.requester` — a backbone with an `agent` reference
  * (the prescriber) and optional `onBehalfOf`. This is the headline STU3→R4
@@ -62,17 +49,10 @@ const RequesterStruct = mutableEncoded(
   })
 )
 
-interface RequesterType extends Stu3BackboneElementFields {
-  readonly agent: IdentifierAndReference.ReferenceType
-  readonly onBehalfOf: IdentifierAndReference.ReferenceType | null
-}
+type RequesterType = typeof RequesterStruct.Type
 
-interface RequesterEncoded extends Stu3BackboneElementEncoded {
-  agent: FhirR4.Reference
-  onBehalfOf?: FhirR4.Reference | undefined
-}
-
-const RequesterSchema: Schema.Schema<RequesterType, RequesterEncoded, never> = RequesterStruct
+const RequesterSchema: Schema.Schema<RequesterType, typeof RequesterStruct.Encoded, never> =
+  RequesterStruct
 
 /**
  * STU3 `MedicationRequest.dispenseRequest`. The carebook
@@ -89,22 +69,13 @@ const DispenseRequestStruct = mutableEncoded(
   })
 )
 
-interface DispenseRequestType extends Stu3BackboneElementFields {
-  readonly numberOfRepeatsAllowed: number | null
-  readonly quantity: typeof SimpleQuantity.Schema.Type | null
-  readonly expectedSupplyDuration: typeof Duration.Schema.Type | null
-  readonly validityPeriod: typeof Period.Schema.Type | null
-}
+type DispenseRequestType = typeof DispenseRequestStruct.Type
 
-interface DispenseRequestEncoded extends Stu3BackboneElementEncoded {
-  numberOfRepeatsAllowed?: number | undefined
-  quantity?: FhirR4.Quantity | undefined
-  expectedSupplyDuration?: FhirR4.Duration | undefined
-  validityPeriod?: FhirR4.Period | undefined
-}
-
-const DispenseRequestSchema: Schema.Schema<DispenseRequestType, DispenseRequestEncoded, never> =
-  DispenseRequestStruct
+const DispenseRequestSchema: Schema.Schema<
+  DispenseRequestType,
+  typeof DispenseRequestStruct.Encoded,
+  never
+> = DispenseRequestStruct
 
 const identifierArray = Schema.optionalWith(
   mutableEncoded(Schema.Array(Schema.suspend(() => IdentifierAndReference.IdentifierSchema))),
@@ -122,57 +93,32 @@ const annotationArray = Schema.optionalWith(
  * (from `DomainResource.fields`) holds the STU3 `Medication` — decoded on
  * demand by the transform via {@link medication.Schema}.
  */
-const MedicationRequestStruct = mutableEncoded(
-  StructNoContext({
-    resourceType: Schema.Literal('MedicationRequest'),
-    ...DomainResource.fields,
-    identifier: identifierArray,
-    status: StatusSchema,
-    intent: IntentSchema,
-    medicationReference: OrNullAsOptional(
-      Schema.suspend(() => IdentifierAndReference.ReferenceSchema)
-    ),
-    medicationCodeableConcept: OrNullAsOptional(Schema.suspend(() => CodeableConcept.Schema)),
-    subject: Schema.suspend(() => IdentifierAndReference.ReferenceSchema),
-    context: OrNullAsOptional(Schema.suspend(() => IdentifierAndReference.ReferenceSchema)),
-    authoredOn: OrNullAsOptional(Schema.DateTimeUtc),
-    requester: OrNullAsOptional(RequesterSchema),
-    note: annotationArray,
-    dispenseRequest: OrNullAsOptional(DispenseRequestSchema),
-  })
+const MedicationRequestStruct = Schema.extend(
+  Schema.Struct({ resourceType: Schema.Literal('MedicationRequest') }),
+  mutableEncoded(
+    StructNoContext({
+      ...DomainResource.fields,
+      identifier: identifierArray,
+      status: StatusSchema,
+      intent: IntentSchema,
+      medicationReference: OrNullAsOptional(
+        Schema.suspend(() => IdentifierAndReference.ReferenceSchema)
+      ),
+      medicationCodeableConcept: OrNullAsOptional(Schema.suspend(() => CodeableConcept.Schema)),
+      subject: Schema.suspend(() => IdentifierAndReference.ReferenceSchema),
+      context: OrNullAsOptional(Schema.suspend(() => IdentifierAndReference.ReferenceSchema)),
+      authoredOn: OrNullAsOptional(Schema.DateTimeUtc),
+      requester: OrNullAsOptional(RequesterSchema),
+      note: annotationArray,
+      dispenseRequest: OrNullAsOptional(DispenseRequestSchema),
+    })
+  )
 )
 
-interface Type extends Stu3DomainResourceFields {
-  readonly resourceType: 'MedicationRequest'
-  readonly identifier: readonly IdentifierAndReference.IdentifierType[]
-  readonly status: typeof StatusSchema.Type
-  readonly intent: typeof IntentSchema.Type
-  readonly medicationReference: IdentifierAndReference.ReferenceType | null
-  readonly medicationCodeableConcept: typeof CodeableConcept.Schema.Type | null
-  readonly subject: IdentifierAndReference.ReferenceType
-  readonly context: IdentifierAndReference.ReferenceType | null
-  readonly authoredOn: typeof Schema.DateTimeUtc.Type | null
-  readonly requester: RequesterType | null
-  readonly note: readonly (typeof Annotation.Schema.Type)[]
-  readonly dispenseRequest: DispenseRequestType | null
-}
+type Type = typeof MedicationRequestStruct.Type
 
-interface Encoded extends Stu3DomainResourceEncoded {
-  resourceType: 'MedicationRequest'
-  identifier?: FhirR4.Identifier[] | undefined
-  status: typeof StatusSchema.Type
-  intent: typeof IntentSchema.Type
-  medicationReference?: FhirR4.Reference | undefined
-  medicationCodeableConcept?: FhirR4.CodeableConcept | undefined
-  subject: FhirR4.Reference
-  context?: FhirR4.Reference | undefined
-  authoredOn?: string | undefined
-  requester?: RequesterEncoded | undefined
-  note?: FhirR4.Annotation[] | undefined
-  dispenseRequest?: DispenseRequestEncoded | undefined
-}
-
-const MedicationRequestSchema: Schema.Schema<Type, Encoded, never> = MedicationRequestStruct
+const MedicationRequestSchema: Schema.Schema<Type, typeof MedicationRequestStruct.Encoded, never> =
+  MedicationRequestStruct
 
 export {
   MedicationRequestSchema as Schema,
@@ -181,9 +127,6 @@ export {
   RequesterSchema,
   DispenseRequestSchema,
   type Type,
-  type Encoded,
   type RequesterType,
-  type RequesterEncoded,
   type DispenseRequestType,
-  type DispenseRequestEncoded,
 }
