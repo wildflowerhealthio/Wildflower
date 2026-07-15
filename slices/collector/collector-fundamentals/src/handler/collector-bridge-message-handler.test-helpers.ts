@@ -36,7 +36,7 @@ const noopSendMessage: SimpleHandlerArgs['sendMessage'] = () => Effect.void
  */
 const makeSimpleHandler = (
   overrides: Partial<SimpleHandlerArgs> & {
-    readonly linkSequence?: readonly Link.Any[]
+    readonly linkSequence?: readonly Link.Step[]
     readonly stepDelay?: Duration.Duration
   } = {}
 ): Effect.Effect.Success<

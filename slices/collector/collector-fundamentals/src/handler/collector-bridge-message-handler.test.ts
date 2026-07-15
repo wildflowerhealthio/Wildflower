@@ -19,9 +19,8 @@ import {
  * one call reaches *both* halves.
  */
 describe('CollectorBridgeMessageHandler.make: composition', () => {
-  const linkA: Link.Any = {
-    _tag: 'Open',
-    source: { _tag: 'Uri', uri: 'https://example.com/a' },
+  const linkA: Link.Step = {
+    action: { _tag: 'Open', source: { _tag: 'Uri', uri: 'https://example.com/a' } },
   }
 
   it('clear() drops tracked responses AND interrupts the pending step timer in one call', () =>

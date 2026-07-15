@@ -8,8 +8,7 @@ import { BrowserSnifferBridge } from './bridge.ts'
 import {
   CancelSnifferRequestMessage,
   CancelledMessage,
-  ClickMessage,
-  FillMessage,
+  PageActionMessage,
   PageLoadedMessage,
   RequestErrorMessage,
   ResponseDataMessage,
@@ -27,8 +26,7 @@ type WebToHostMessage =
 
 type HostToWebMessage =
   | Schema.Schema.Type<typeof CancelSnifferRequestMessage>
-  | Schema.Schema.Type<typeof ClickMessage>
-  | Schema.Schema.Type<typeof FillMessage>
+  | Schema.Schema.Type<typeof PageActionMessage>
 
 // Arbitrary instances of each decoded payload, derived from the schemas
 // themselves so the test stays in lockstep with the bridge wire format —
@@ -45,8 +43,9 @@ const webToHostArb: fc.Arbitrary<WebToHostMessage> = fc.oneof(
 
 const hostToWebArb: fc.Arbitrary<HostToWebMessage> = fc.oneof(
   Arbitrary.make(Schema.typeSchema(CancelSnifferRequestMessage)),
-  Arbitrary.make(Schema.typeSchema(ClickMessage)),
-  Arbitrary.make(Schema.typeSchema(FillMessage))
+  // The PageAction arbitrary spans both `action` kinds (Click / Fill) via the
+  // schema-derived union, so the round-trip property exercises each.
+  Arbitrary.make(Schema.typeSchema(PageActionMessage))
 )
 
 const encodeWebToHost = (m: WebToHostMessage): string => {
@@ -144,7 +143,7 @@ const runHost = async (
 }
 
 describe('BrowserSnifferBridge — shape', () => {
-  test('declares the six sniffer events on Web→Host and the three control messages on Host→Web', () => {
+  test('declares the six sniffer events on Web→Host and the two control messages on Host→Web', () => {
     expect(Object.keys(BrowserSnifferBridge.WebToHost).toSorted()).toEqual([
       'Cancelled',
       'PageLoaded',
@@ -155,8 +154,7 @@ describe('BrowserSnifferBridge — shape', () => {
     ])
     expect(Object.keys(BrowserSnifferBridge.HostToWeb).toSorted()).toEqual([
       'CancelSnifferRequest',
-      'Click',
-      'Fill',
+      'PageAction',
     ])
   })
 })
@@ -180,11 +178,11 @@ describe('BrowserSnifferBridge — Web→Host round-trip', () => {
 })
 
 describe('BrowserSnifferBridge — Host→Web round-trip', () => {
-  // Property: arbitrary CancelSnifferRequest / Click payloads dispatched
+  // Property: arbitrary CancelSnifferRequest / PageAction payloads dispatched
   // on the Web side reproduce on the handler verbatim. Mirrors the
-  // Web→Host property — guards against the cancel / click contracts
+  // Web→Host property — guards against the cancel / page-action contracts
   // drifting between host (typed sendMessage) and page (hand-decoded
-  // `message`-event).
+  // `message`-event). PageAction spans both `action` kinds via the arbitrary.
   test('every encoded Host→Web payload round-trips through Web-side dispatch', async () => {
     await fc.assert(
       fc.asyncProperty(fc.array(hostToWebArb), async (messages) => {
@@ -196,18 +194,15 @@ describe('BrowserSnifferBridge — Host→Web round-trip', () => {
         const webHandlers: MessageHandler.HandlersFor<(typeof BrowserSnifferBridge)['HostToWeb']> =
           {
             CancelSnifferRequest: push,
-            Click: push,
-            Fill: push,
+            PageAction: push,
           }
 
         const encodeHostToWeb = (m: HostToWebMessage): string => {
           switch (m._tag) {
             case 'CancelSnifferRequest':
               return Schema.encodeSync(CancelSnifferRequestMessage)(m)
-            case 'Click':
-              return Schema.encodeSync(ClickMessage)(m)
-            case 'Fill':
-              return Schema.encodeSync(FillMessage)(m)
+            case 'PageAction':
+              return Schema.encodeSync(PageActionMessage)(m)
             default: {
               const exhaustive: never = m
               throw new Error(`unreachable encodeHostToWeb: ${JSON.stringify(exhaustive)}`)
@@ -243,6 +238,84 @@ describe('BrowserSnifferBridge — Host→Web round-trip', () => {
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )
+  })
+
+  // Focused runner for the explicit PageAction cases below — mirrors
+  // `runHost` on the Web side (drain sentinel rides the FIFO inbox behind
+  // the inputs; the capturing logger swallows the negative-path WARNs).
+  const runWeb = async (
+    inputs: string[],
+    handlers: MessageHandler.HandlersFor<(typeof BrowserSnifferBridge)['HostToWeb']>
+  ): Promise<void> => {
+    const { layer: adapterLayer } = TestPlatformAdapterLayer.make({
+      initialMessages: [...inputs, drainToWebEncoded],
+    })
+    const { layer: capturingLoggerLayer } = LoggingLayerTest.make()
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const drained = yield* Deferred.make<void>()
+          yield* BridgeTransport.makeWebTransport({
+            bridges: [BrowserSnifferBridge, SentinelBridge] as const,
+            handlers: [
+              handlers,
+              { __DrainToWeb__: () => Deferred.succeed(drained, undefined).pipe(Effect.asVoid) },
+            ] as const,
+          })
+          yield* Deferred.await(drained)
+        }).pipe(Effect.provide(adapterLayer), Effect.provide(capturingLoggerLayer))
+      )
+    )
+  }
+
+  test('dispatches a Click-kind and a Fill-kind PageAction with the inner action preserved', async () => {
+    const collected: HostToWebMessage[] = []
+    const push = (m: HostToWebMessage): Effect.Effect<void> =>
+      Effect.sync(() => {
+        collected.push(m)
+      })
+    const clickAction: Schema.Schema.Type<typeof PageActionMessage> = {
+      _tag: 'PageAction',
+      action: { kind: 'Click', querySelector: '#go' },
+    }
+    const fillAction: Schema.Schema.Type<typeof PageActionMessage> = {
+      _tag: 'PageAction',
+      action: { kind: 'Fill', querySelector: '#user', value: 'alice' },
+    }
+    await runWeb(
+      [
+        Schema.encodeSync(PageActionMessage)(clickAction),
+        Schema.encodeSync(PageActionMessage)(fillAction),
+      ],
+      { CancelSnifferRequest: push, PageAction: push }
+    )
+    expect(collected).toEqual([clickAction, fillAction])
+  })
+
+  test('drops a PageAction whose inner action fails the shape guard', async () => {
+    const collected: HostToWebMessage[] = []
+    const push = (m: HostToWebMessage): Effect.Effect<void> =>
+      Effect.sync(() => {
+        collected.push(m)
+      })
+    const valid: Schema.Schema.Type<typeof PageActionMessage> = {
+      _tag: 'PageAction',
+      action: { kind: 'Click', querySelector: '#ok' },
+    }
+    await runWeb(
+      [
+        // Unknown inner kind — not a union member.
+        JSON.stringify({ _tag: 'PageAction', action: { kind: 'Scroll', querySelector: '#x' } }),
+        // Click action missing the required querySelector.
+        JSON.stringify({ _tag: 'PageAction', action: { kind: 'Click' } }),
+        // Empty-string querySelector violates NonEmptyString.
+        JSON.stringify({ _tag: 'PageAction', action: { kind: 'Click', querySelector: '' } }),
+        // A well-formed message still makes it through.
+        Schema.encodeSync(PageActionMessage)(valid),
+      ],
+      { CancelSnifferRequest: push, PageAction: push }
+    )
+    expect(collected).toEqual([valid])
   })
 })
 

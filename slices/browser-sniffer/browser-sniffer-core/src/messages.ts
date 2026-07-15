@@ -138,44 +138,66 @@ const CancelSnifferRequestMessageBody = Schema.TaggedStruct('CancelSnifferReques
 const CancelSnifferRequestMessage = Schema.parseJson(CancelSnifferRequestMessageBody)
 
 /**
- * Host → Web: instruct the injected sniffer to synthesise a click on
- * the page. The sniffer runs `document.querySelector(querySelector)?.click()`;
- * a missing element silently no-ops (typically the host issued the click
- * before the target rendered — retry by re-sending after the next
- * `PageLoaded`). `querySelector` is `NonEmptyString` so a typo or
- * accidental empty value fails at the bridge boundary.
+ * A synthetic click on the page: the sniffer runs
+ * `document.querySelector(querySelector)?.click()`; a missing element
+ * silently no-ops (typically the host issued the click before the target
+ * rendered — retry by re-sending after the next `PageLoaded`).
+ * `querySelector` is `NonEmptyString` so a typo or accidental empty value
+ * fails at the bridge boundary. The `kind` literal discriminates this
+ * variant inside {@link PageActionMessageBody}'s `action` union.
  */
-const ClickMessageBody = Schema.TaggedStruct('Click', {
+const ClickAction = Schema.Struct({
+  kind: Schema.Literal('Click'),
   querySelector: Schema.NonEmptyString,
 })
-const ClickMessage = Schema.parseJson(ClickMessageBody)
 
 /**
- * Host → Web: instruct the injected sniffer to fill a form input with a
- * value. The sniffer resolves `document.querySelector(querySelector)`
- * and, on a match, sets the element's value through the framework-aware
- * native value-setter + `input`/`change` event dispatch (the standard
- * controlled-input trick, needed for SPA frameworks like Angular that
- * ignore a bare `.value` assignment). Like `Click`, this is best-effort:
- * a missing element silently no-ops with no "no match" feedback path
- * (the host retries by re-sending after the next `PageLoaded`).
+ * A synthetic form fill: the sniffer resolves
+ * `document.querySelector(querySelector)` and, on a match, sets the
+ * element's value through the framework-aware native value-setter +
+ * `input`/`change` event dispatch (the standard controlled-input trick,
+ * needed for SPA frameworks like Angular that ignore a bare `.value`
+ * assignment). Like {@link ClickAction}, best-effort: a missing element
+ * silently no-ops with no "no match" feedback path (the host retries by
+ * re-sending after the next `PageLoaded`).
  *
  * `querySelector` is `NonEmptyString` so a typo or empty value fails at
  * the bridge boundary; `value` is a plain `String` so a deliberate
  * empty-string fill (clearing a field) is valid.
  *
  * NOTE (secrets): a scripted login interpolates a credential (e.g. a
- * password) into `value`, so this payload can carry a secret across the
+ * password) into `value`, so this action can carry a secret across the
  * bridge. This is an accepted v1 deviation from the "never put secrets
  * in a bridge payload" guidance in `docs/Messaging/Wire Pinning How-To.md`;
  * a follow-up can gate it behind an out-of-band capability fetch
  * (the `AuthTokenIssued` pattern).
  */
-const FillMessageBody = Schema.TaggedStruct('Fill', {
+const FillAction = Schema.Struct({
+  kind: Schema.Literal('Fill'),
   querySelector: Schema.NonEmptyString,
   value: Schema.String,
 })
-const FillMessage = Schema.parseJson(FillMessageBody)
+
+/**
+ * Host → Web: instruct the injected sniffer to perform a single in-page
+ * action. One wire tag (`PageAction`) carries every scripted interaction;
+ * the `action` field is a union discriminated by an inner `kind`, so a new
+ * interaction kind (Scroll, WaitFor, Submit, …) becomes a new union variant
+ * rather than a whole new bridge tag with its own demux + drift-guard
+ * rollout. Best-effort with no acknowledgement, like the actions it wraps.
+ *
+ * The host (`browser-sniffer-tauri-rust`) never decodes this payload — it
+ * only forwards it by `_tag` into the native webview on mobile — so there is
+ * no serde mirror; the schema here is the sole validator. See
+ * `docs/Messaging/Wire Pinning How-To.md`.
+ *
+ * Wire (Click): `{"_tag":"PageAction","action":{"kind":"Click","querySelector":"#go"}}`
+ * Wire (Fill):  `{"_tag":"PageAction","action":{"kind":"Fill","querySelector":"#user","value":"alice"}}`
+ */
+const PageActionMessageBody = Schema.TaggedStruct('PageAction', {
+  action: Schema.Union(ClickAction, FillAction),
+})
+const PageActionMessage = Schema.parseJson(PageActionMessageBody)
 
 export {
   ResponseStartMessage,
@@ -192,10 +214,8 @@ export {
   PageLoadedMessageBody,
   CancelSnifferRequestMessage,
   CancelSnifferRequestMessageBody,
-  ClickMessage,
-  ClickMessageBody,
-  FillMessage,
-  FillMessageBody,
+  PageActionMessage,
+  PageActionMessageBody,
   SnifferRequestId,
   HeadersWire,
 }

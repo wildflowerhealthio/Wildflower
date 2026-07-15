@@ -1,8 +1,7 @@
 import {
   CancelSnifferRequestMessage,
   CancelledMessage,
-  ClickMessage,
-  FillMessage,
+  PageActionMessage,
   PageLoadedMessage,
   RequestErrorMessage,
   ResponseDataMessage,
@@ -78,8 +77,7 @@ type CollectorBridge = Bridge.Bridge<
     CancelSnifferRequest: typeof CancelSnifferRequestMessage
     SniffingComplete: typeof SniffingComplete
     Open: typeof OpenMessage
-    Click: typeof ClickMessage
-    Fill: typeof FillMessage
+    PageAction: typeof PageActionMessage
   }
 >
 
@@ -87,20 +85,18 @@ type CollectorBridge = Bridge.Bridge<
  * Slice-level bridge between the embedded collector SPA and the Tauri
  * host. Web→Host carries control signals (`RequestSniffableWebView`,
  * `CancelSnifferRequest`, `SniffingComplete`) and script-driven
- * navigation steps (`Open`, `Click`, `Fill`); Host→Web carries the
+ * navigation steps (`Open`, `PageAction`); Host→Web carries the
  * sniffer-event subset collector parses plus the `PageLoaded`
  * notification that drives the step timer.
  *
- * `Click` / `Fill` are the same `ClickMessage` / `FillMessage` schemas
- * `BrowserSnifferBridge` declares for its Host→Web side, so the Tauri
- * host forwards the decoded payload through both bridges without
- * re-encoding. The six
- * sniffer events imported from `browser-sniffer-core` keep wire
- * schemas in lockstep with `BrowserSnifferBridge` for the same reason.
- * `Cancelled` is the terminal acknowledgement for a mid-stream
- * `CancelSnifferRequest`; the handler uses it to release the
- * in-progress slot and notify the consumer via `onResult` with a
- * `Left(SnifferCancelled)`.
+ * `PageAction` is the same `PageActionMessage` schema `BrowserSnifferBridge`
+ * declares for its Host→Web side, so the Tauri host forwards the decoded
+ * payload through both bridges without re-encoding. The six sniffer events
+ * imported from `browser-sniffer-core` keep wire schemas in lockstep with
+ * `BrowserSnifferBridge` for the same reason. `Cancelled` is the terminal
+ * acknowledgement for a mid-stream `CancelSnifferRequest`; the handler uses
+ * it to release the in-progress slot and notify the consumer via `onResult`
+ * with a `Left(SnifferCancelled)`.
  */
 const CollectorBridge: CollectorBridge = Bridge.make({
   name: 'Collector',
@@ -117,8 +113,7 @@ const CollectorBridge: CollectorBridge = Bridge.make({
     ['CancelSnifferRequest', CancelSnifferRequestMessage],
     ['SniffingComplete', SniffingComplete],
     ['Open', OpenMessage],
-    ['Click', ClickMessage],
-    ['Fill', FillMessage],
+    ['PageAction', PageActionMessage],
   ] as const,
 })
 

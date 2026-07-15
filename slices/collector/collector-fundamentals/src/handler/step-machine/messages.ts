@@ -1,4 +1,4 @@
-import { type ClickMessage, type FillMessage, PageLoadedMessageBody } from 'browser-sniffer-core'
+import { type PageActionMessage, PageLoadedMessageBody } from 'browser-sniffer-core'
 import { Schema } from 'effect'
 
 import type { OpenMessage, SniffingComplete as SniffingCompleteMessage } from '../../bridge.ts'
@@ -13,14 +13,13 @@ import type { OpenMessage, SniffingComplete as SniffingCompleteMessage } from '.
 
 /**
  * The subset of the handler's outbound messages the step machine can ask
- * the host to send: the scripted `Open` / `Click` / `Fill` navigation
- * steps and the terminal `SniffingComplete`. (`CancelSnifferRequest` is
- * the response tracker's, not the step machine's.)
+ * the host to send: the scripted `Open` / `PageAction` navigation steps
+ * and the terminal `SniffingComplete`. (`CancelSnifferRequest` is the
+ * response tracker's, not the step machine's.)
  */
 type StepOutboundMessage =
   | typeof OpenMessage.Type
-  | typeof ClickMessage.Type
-  | typeof FillMessage.Type
+  | typeof PageActionMessage.Type
   | typeof SniffingCompleteMessage.Type
 
 // ---------------------------------------------------------------------------

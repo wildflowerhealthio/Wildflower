@@ -253,12 +253,11 @@ fn dispatch_body(app: &AppHandle, body: &InvokeResponseBody) {
 /// Forward a `BRIDGE_EVENT` payload string into the native webview as a
 /// `window.__nativeWebviewReceive(...)` call. Mobile-only, invoked from the
 /// bridge listener in `lib.rs` for the native-webview-bound tags
-/// ([`events::CLICK`](crate::events::CLICK) /
-/// [`events::FILL`](crate::events::FILL) /
+/// ([`events::PAGE_ACTION`](crate::events::PAGE_ACTION) /
 /// [`events::CANCEL_SNIFFER_REQUEST`](crate::events::CANCEL_SNIFFER_REQUEST));
 /// desktop's content webview receives `app.emit('bridge', …)` natively.
 ///
-/// `payload_str` is the raw bridge envelope (`{"_tag":"Click", …}`), re-wrapped
+/// `payload_str` is the raw bridge envelope (`{"_tag":"PageAction", …}`), re-wrapped
 /// in `{"event":"bridge","payload":<envelope>}` to match the native-webview-side
 /// `makeNativeBridgeEventBus` `parseEnvelope`.
 #[cfg(any(target_os = "ios", target_os = "android"))]

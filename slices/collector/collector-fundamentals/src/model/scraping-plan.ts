@@ -21,8 +21,8 @@ import type * as WebViewSource from './web-view-source.ts'
  *     whether to track the in-flight response (first `isFoundAt` match
  *     wins; non-matching responses are cancelled via `sendMessage`).
  *   - Drives the sniffer through `linkSequence` step-by-step,
- *     dispatching each `Link.Any` `stepDelay` after each `PageLoaded`
- *     event. A step may instead carry `advanceWhen: { _tag: 'UrlMatch',
+ *     dispatching each `Link.Step`'s `action` `stepDelay` after each
+ *     `PageLoaded` event. A step may instead carry `advanceWhen: { _tag: 'UrlMatch',
  *     … }`, in which case the handler holds it until a `PageLoaded`
  *     whose `url` matches the pattern (then still waits `stepDelay`),
  *     aborting via `SniffingComplete` if the per-step `timeout` elapses
@@ -47,12 +47,14 @@ import type * as WebViewSource from './web-view-source.ts'
  *   response URL; the first match wins.
  * - `firstPage`: the initial `WebViewSource` (inline HTML or absolute
  *   `https://` URI) to mount the sniffer webview with.
- * - `linkSequence`: ordered list of navigation steps. Each `Link.Open`
- *   is dispatched as an `OpenLink` web→host message; each `Link.Click`
- *   as a `ClickLink`; each `Link.Fill` as a `Fill`. A step's optional
- *   `advanceWhen` gates when it is dispatched (default: a fixed
- *   `stepDelay`; `UrlMatch`: after a matching `PageLoaded`). An empty
- *   array fires `SniffingComplete` after the first `PageLoaded`.
+ * - `linkSequence`: ordered list of navigation steps. Each step's `action`
+ *   is forwarded to the sniffer verbatim: an `Open` action becomes an `Open`
+ *   web→host message (host-navigation); a `PageAction` action becomes a
+ *   `PageAction` message the sniffer demuxes by its inner `kind`
+ *   (`Click` / `Fill`). A step's optional `advanceWhen` gates when it is
+ *   dispatched (default: a fixed `stepDelay`; `UrlMatch`: after a matching
+ *   `PageLoaded`). An empty array fires `SniffingComplete` after the first
+ *   `PageLoaded`.
  * - `stepDelay`: how long the handler waits between observing a
  *   `PageLoaded` and dispatching the next step (or `SniffingComplete`).
  *   The wait lets any post-load XHR fan-out finish before the next
@@ -63,7 +65,7 @@ interface ScrapingPlan<TResources> {
   readonly name: string
   readonly entityDefinitions: readonly EntityDefinition.EntityDefinition<TResources>[]
   readonly firstPage: WebViewSource.Any
-  readonly linkSequence: readonly Link.Any[]
+  readonly linkSequence: readonly Link.Step[]
   readonly stepDelay: Duration.Duration
 }
 

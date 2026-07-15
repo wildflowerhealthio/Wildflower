@@ -3,8 +3,7 @@
 import type {
   CancelSnifferRequestMessageBody,
   CancelledMessageBody,
-  ClickMessageBody,
-  FillMessageBody,
+  PageActionMessageBody,
   PageLoadedMessageBody,
   RequestErrorMessageBody,
   ResponseDataMessageBody,
@@ -33,10 +32,10 @@ import type { JsonValue } from 'kitchen-sink/schema'
  *     them to keep the ~64KB `ResponseData` chunks FIFO (see
  *     `filter-tauri-internal.ts`).
  *   - Listens for Host→Web messages on the same channel, demuxing by
- *     `_tag` (`CancelSnifferRequest` / `Click` / `Fill`). No
- *     `message`-event indirection or `source === null` guard: only Tauri
- *     IPC can invoke a Tauri listener, so page scripts can't spoof
- *     inbound messages.
+ *     `_tag` (`CancelSnifferRequest` / `PageAction`, the latter further
+ *     demuxed by its inner `action.kind`). No `message`-event indirection
+ *     or `source === null` guard: only Tauri IPC can invoke a Tauri
+ *     listener, so page scripts can't spoof inbound messages.
  *
  * Idempotent: a `Symbol.for('browser-sniffer:state')` slot on `window`
  * holds the captured natives, tracker state, and pending unlistens;
@@ -58,8 +57,7 @@ type SnifferOutboundMessage =
 /** Wire form received Host→Web. */
 type SnifferInboundMessage =
   | Schema.Schema.Encoded<typeof CancelSnifferRequestMessageBody>
-  | Schema.Schema.Encoded<typeof ClickMessageBody>
-  | Schema.Schema.Encoded<typeof FillMessageBody>
+  | Schema.Schema.Encoded<typeof PageActionMessageBody>
 
 interface SnifferState {
   readonly nativeFetch: typeof globalThis.fetch
@@ -670,9 +668,12 @@ const installSniffer = function (eventBus: TauriEventApi): void {
   //
   // `CancelSnifferRequest` emits a terminal `Cancelled` so the host can
   // release per-id state without a `ResponseFinished` that won't come.
-  // `Click` is best-effort `querySelector(...)?.click()` — no feedback on
-  // a miss (the host retries after the next `PageLoaded`). `Fill` is the
-  // same best-effort contract for a form input.
+  // `PageAction` is the single scripted-interaction tag; its `action.kind`
+  // selects the in-page effect (`Click` — best-effort
+  // `querySelector(...)?.click()`; `Fill` — controlled-input fill). Both are
+  // best-effort with no feedback on a miss (the host retries after the next
+  // `PageLoaded`). Validation is hand-rolled here (no runtime schemas survive
+  // the IIFE bundle) — a malformed envelope is dropped silently.
 
   /**
    * Framework-aware value write. Frameworks like Angular and React track
@@ -721,20 +722,25 @@ const installSniffer = function (eventBus: TauriEventApi): void {
         }
         return
       }
-      if (msg._tag === 'Click') {
-        if (typeof msg.querySelector !== 'string' || msg.querySelector.length === 0) return
-        const target = document.querySelector(msg.querySelector)
-        if (target !== null && 'click' in target && typeof target.click === 'function') {
-          target.click()
+      if (msg._tag === 'PageAction') {
+        const { action } = msg
+        // Envelope shape guard: an object `action` with a non-empty string
+        // `querySelector`. `kind` selects the effect below; an unknown kind
+        // falls through to the trailing no-op return.
+        if (action === undefined || action === null || typeof action !== 'object') return
+        if (typeof action.querySelector !== 'string' || action.querySelector.length === 0) return
+        const target = document.querySelector(action.querySelector)
+        if (target === null) return
+        if (action.kind === 'Click') {
+          if ('click' in target && typeof target.click === 'function') {
+            target.click()
+          }
+          return
         }
-        return
-      }
-      if (msg._tag === 'Fill') {
-        if (typeof msg.querySelector !== 'string' || msg.querySelector.length === 0) return
-        if (typeof msg.value !== 'string') return
-        const target = document.querySelector(msg.querySelector)
-        if (target !== null) {
-          fillInput(target, msg.value)
+        if (action.kind === 'Fill') {
+          if (typeof action.value !== 'string') return
+          fillInput(target, action.value)
+          return
         }
         return
       }

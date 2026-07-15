@@ -2,8 +2,7 @@ import { Bridge, type MessageHandler } from 'effect-messaging-core'
 import {
   CancelSnifferRequestMessage,
   CancelledMessage,
-  ClickMessage,
-  FillMessage,
+  PageActionMessage,
   PageLoadedMessage,
   RequestErrorMessage,
   ResponseDataMessage,
@@ -15,8 +14,7 @@ type BrowserSnifferBridge = Bridge.Bridge<
   'BrowserSniffer',
   {
     CancelSnifferRequest: typeof CancelSnifferRequestMessage
-    Click: typeof ClickMessage
-    Fill: typeof FillMessage
+    PageAction: typeof PageActionMessage
   },
   {
     ResponseStart: typeof ResponseStartMessage
@@ -34,9 +32,9 @@ type BrowserSnifferBridge = Bridge.Bridge<
  * notifications, and mid-stream cancel acknowledgements. Host→Web:
  * `CancelSnifferRequest` tells the page to stop pumping events for a
  * given request id (the page then posts `Cancelled` as the terminal
- * observation); `Click` / `Fill` are the scripted-interaction control
- * messages (`querySelector(...)?.click()` and controlled-input fill),
- * both best-effort with no acknowledgement.
+ * observation); `PageAction` is the scripted-interaction control message
+ * (a `Click` / `Fill` action demuxed by its inner `kind`), best-effort
+ * with no acknowledgement.
  *
  * `PageLoaded` carries the page URL and a `pageContentId` that
  * correlates with a `Response*` stream containing
@@ -59,8 +57,7 @@ const BrowserSnifferBridge: BrowserSnifferBridge = Bridge.make({
   name: 'BrowserSniffer',
   hostToWeb: [
     ['CancelSnifferRequest', CancelSnifferRequestMessage],
-    ['Click', ClickMessage],
-    ['Fill', FillMessage],
+    ['PageAction', PageActionMessage],
   ] as const,
   webToHost: [
     ['ResponseStart', ResponseStartMessage],

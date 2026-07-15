@@ -68,16 +68,20 @@ const sideEffectHandlers = {
     msg: { readonly dispatchIndex: number },
     ctx: HandlerContext<TResources>
   ): Effect.Effect<void, never, never> => {
-    // `Link.Open` / `Link.Click` / `Link.Fill` are structurally identical
-    // to the `Open` / `Click` / `Fill` bridge messages once the plan-only
-    // `advanceWhen` field is dropped — strip it and forward the rest.
-    const link = ctx.scrapingPlan.linkSequence[msg.dispatchIndex]
-    const { advanceWhen: _advanceWhen, ...message } = link
-    return ctx.sendMessage(message).pipe(
+    // A step is `{ action; advanceWhen? }`, and `action` is already a bridge
+    // message body — forward it straight to the sniffer. The plan-only
+    // `advanceWhen` lives on the wrapper, never on the action, so it cannot
+    // leak onto the wire (no destructure-and-strip needed).
+    const { action } = ctx.scrapingPlan.linkSequence[msg.dispatchIndex]
+    // Low-cardinality telemetry: the action tag, plus the inner `kind` for a
+    // `PageAction` (`PageAction:Click` / `PageAction:Fill`).
+    const linkKind =
+      action._tag === 'PageAction' ? `${action._tag}:${action.action.kind}` : action._tag
+    return ctx.sendMessage(action).pipe(
       Effect.withSpan(Telemetry.Sniffing.Dispatch.Span.Name, {
         attributes: {
           [Telemetry.Sniffing.Attributes.StepIndex]: msg.dispatchIndex,
-          [Telemetry.Sniffing.Attributes.LinkKind]: link._tag,
+          [Telemetry.Sniffing.Attributes.LinkKind]: linkKind,
         },
       })
     )

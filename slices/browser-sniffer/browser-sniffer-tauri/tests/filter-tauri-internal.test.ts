@@ -96,8 +96,12 @@ describe('makeFilteringEventBus', () => {
 
       const handler = listeners.get(BRIDGE_EVENT)
       expect(handler).toBeDefined()
-      handler?.({ payload: { _tag: 'Click', querySelector: '#btn' } })
-      expect(seen).toEqual([{ _tag: 'Click', querySelector: '#btn' }])
+      handler?.({
+        payload: { _tag: 'PageAction', action: { kind: 'Click', querySelector: '#btn' } },
+      })
+      expect(seen).toEqual([
+        { _tag: 'PageAction', action: { kind: 'Click', querySelector: '#btn' } },
+      ])
 
       unlisten()
       expect(listeners.has(BRIDGE_EVENT)).toBe(false)

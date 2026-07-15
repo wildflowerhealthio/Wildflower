@@ -132,10 +132,12 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<AnyReso
     firstPage,
     linkSequence: [
       {
-        _tag: 'Open',
-        source: {
-          _tag: 'Uri',
-          uri: observationUrl,
+        action: {
+          _tag: 'Open',
+          source: {
+            _tag: 'Uri',
+            uri: observationUrl,
+          },
         },
       },
     ],

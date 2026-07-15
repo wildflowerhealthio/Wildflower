@@ -99,10 +99,12 @@ describe('scrapingPlan', () => {
     const plan = scrapingPlan(defaultConfig)
     expect(plan.linkSequence).toEqual([
       {
-        _tag: 'Open',
-        source: {
-          _tag: 'Uri',
-          uri: 'https://r4.smarthealthit.org/Observation?subject%3APatient=8c0f46f4-dd7b-4a5f-bd35-f0f41a2f8882&_count=250&_format=json',
+        action: {
+          _tag: 'Open',
+          source: {
+            _tag: 'Uri',
+            uri: 'https://r4.smarthealthit.org/Observation?subject%3APatient=8c0f46f4-dd7b-4a5f-bd35-f0f41a2f8882&_count=250&_format=json',
+          },
         },
       },
     ])
