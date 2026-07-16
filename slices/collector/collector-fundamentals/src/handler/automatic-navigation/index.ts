@@ -1,5 +1,6 @@
 /**
- * Step-driver finite state machine, decomposed into its parts:
+ * The automatic-navigation finite state machine — it walks the scraping plan's
+ * `stepSequence`, decomposed into its parts:
  *
  * - `./messages.ts`   — input messages (1) & side-effect messages (3)
  * - `./state.ts`      — states (2)
@@ -7,7 +8,7 @@
  * - `./transition.ts` — the pure transition table (5)
  * - `./make.ts`       — the serialized runtime that ties them together (6)
  *
- * The public surface consumers use is `make` plus the `StepMachine` /
+ * The public surface consumers use is `make` plus the `AutomaticNavigation` /
  * `StepOutboundMessage` / `StepState` types; the remaining parts are
  * exported so the pure transition can be exercised in isolation.
  *
@@ -18,7 +19,7 @@
 
 export type { InputMessage, SideEffectMessage, StepOutboundMessage } from './messages.ts'
 export { make } from './make.ts'
-export type { StepMachine } from './make.ts'
+export type { AutomaticNavigation } from './make.ts'
 export { sideEffectHandlers } from './side-effect-handlers.ts'
 export type { StepState } from './state.ts'
 export { transition } from './transition.ts'

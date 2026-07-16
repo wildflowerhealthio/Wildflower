@@ -1,10 +1,11 @@
-import { Duration, Effect, Encoding } from 'effect'
+import { Chunk, Duration, Effect, Encoding } from 'effect'
 import { type TransportAdapter } from 'effect-messaging-core'
 import * as TestPlatformAdapterLayer from 'effect-messaging-core/test'
 
 import { type Step, ScrapingPlan } from 'collector-fundamentals/model'
 import { SimpleEntity } from 'collector-fundamentals/test-helpers'
 import * as CollectorBridgeMessageHandler from './collector-bridge-message-handler.ts'
+import type { SniffResult } from './sniffer-response-tracker.ts'
 
 const { layer: adapterLayer } = TestPlatformAdapterLayer.make()
 
@@ -53,11 +54,23 @@ const makeSimpleHandler = (
         stepDelay: stepDelay ?? Duration.seconds(5),
       }),
       sendMessage: noopSendMessage,
-      onResult: () => undefined,
       ...rest,
     })
   )
 }
+
+/**
+ * Synchronously drain every {@link SniffResult} the handler has published so far.
+ * The handlers run via `runHandlerSync` and `unsafeOffer` synchronously, so by
+ * the time a handler call returns its result is already queued — this takes the
+ * current contents without waiting. Uses `clear` (not `takeAll`, which blocks on
+ * an empty mailbox) so a no-result path drains to `[]`. Replaces the old
+ * `onResult` `vi.fn()` spy: assert on the returned array instead of mock calls.
+ */
+const drainResults = <TResources>(handler: {
+  readonly requestSniffingResults: CollectorBridgeMessageHandler.CollectorBridgeMessageHandler<TResources>['requestSniffingResults']
+}): ReadonlyArray<SniffResult<TResources>> =>
+  Chunk.toReadonlyArray(Effect.runSync(handler.requestSniffingResults.clear))
 
 type Handler = Effect.Effect.Success<
   ReturnType<typeof CollectorBridgeMessageHandler.make<SimpleResources>>
@@ -103,6 +116,7 @@ const pageLoaded = (overrides: { url?: string; pageContentId?: string } = {}): P
 export {
   adapterLayer,
   cancelled,
+  drainResults,
   makeSimpleHandler,
   noopSendMessage,
   pageLoaded,

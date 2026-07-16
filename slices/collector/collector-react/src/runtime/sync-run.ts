@@ -1,10 +1,10 @@
 /**
- * The framework-free core of the collector sync runner: the event
- * {@link RunStore}, the drive {@link buildDriveStream} that turns the run's
- * events into a `Stream` of write outcomes, and {@link collectImportSummary}
- * that folds that stream into the {@link ImportSummary}. Extracted from
- * `use-sync-runner.ts` so it is unit-testable with `TestClock` (no React
- * Testing Library).
+ * The framework-free core of the collector sync runner: the drive
+ * {@link buildDriveStream} that turns the run's events — drained from the
+ * handler's `requestSniffingResults` stream it is handed — into a `Stream` of
+ * write outcomes, and {@link collectImportSummary} that folds that stream into
+ * the {@link ImportSummary}. Extracted from `use-sync-runner.ts` so it is
+ * unit-testable with `TestClock` (no React Testing Library).
  *
  * This module has **no React imports** — the hook (`use-sync-runner.ts`)
  * owns the mutation wiring, the `AbortController`, and the `RunnerState`
@@ -23,27 +23,19 @@
  *
  * The run's output is **produced by a `Stream`**: {@link buildDriveStream}
  * emits one chunk of failures per drive step (via `Stream.paginateEffect`, so
- * the terminal step can still emit — the idle-timeout straggler settle), and
- * {@link collectImportSummary} runs the fold. The drive step is a plain
- * decision table — **not** an FSM (unlike the browser-sniffer step machine,
- * which models concurrent, interruptible timers; this does not). Its one real
- * subtlety is the completion predicate — see the timeline in
+ * the idle-timeout abandon tail still emits), and {@link collectImportSummary}
+ * runs the fold. The drive step is a plain decision table — **not** an FSM
+ * (unlike the browser-sniffer automatic-navigation machine, which models concurrent,
+ * interruptible timers; this does not). Completion is not computed here: it is
+ * the handler's `requestSniffingResults` stream finishing (the handler closes it
+ * at sniff-complete + drained) — see the timeline in
  * `collector-fundamentals/docs/Collector Sync Explanation.md`.
  */
 import { CollectorBridgeMessageHandler } from 'collector-fundamentals/handler'
 import type { CollectorDescriptor } from 'collector-fundamentals/model'
 import * as Telemetry from 'collector-fundamentals/telemetry'
-import {
-  Duration,
-  Effect,
-  Either,
-  Mailbox,
-  Match,
-  MutableHashMap,
-  Option,
-  Ref,
-  Stream,
-} from 'effect'
+import type { Mailbox } from 'effect'
+import { Duration, Effect, Either, Option, Stream } from 'effect'
 
 import { captureLinkedSpan } from './capture-linked-span.ts'
 import type { CollectorSender } from './collector-sender-context.ts'
@@ -68,178 +60,111 @@ interface ImportSummary {
 }
 
 /**
- * Internal events the inbound bridge handler feeds the drive loop. The
- * handler's `onResult` pushes `parsed` / `responseFailure` synchronously; the
- * sender wrap pushes `sniffDone` when the step machine dispatches its terminal
- * `SniffingComplete`, both to wake the loop and to flip the completion signal.
- * There is no per-write event: a batch's writes are awaited inside the drive
- * step, so the loop needs no write bookkeeping. `responseFailure` is a
- * *response-level* parse/transport failure (keyed on the response URL),
- * distinct from a resource's write failure (which the persist sink reports).
+ * The drive loop's queue element — one settled sniff outcome straight from the
+ * bridge handler ({@link CollectorBridgeMessageHandler.SniffResult}): `Right` a
+ * decoded batch, `Left` a sniff-level failure keyed on the URL. The runner drains
+ * the handler's `requestSniffingResults` stream directly, so this *is* the queue
+ * element — there is no per-write event (a batch's writes are awaited inside the
+ * drive step) and no synthetic completion event: completion is the stream
+ * finishing, not anything offered onto the queue.
  */
-type RunEvent<Resources> =
-  | { readonly _tag: 'parsed'; readonly resources: ReadonlyArray<Resources> }
-  | { readonly _tag: 'responseFailure'; readonly error: unknown; readonly url: string }
-  | { readonly _tag: 'sniffDone' }
+type SniffResult<Resources> = CollectorBridgeMessageHandler.SniffResult<Resources>
 
 /** Stalled-host guard window when the caller doesn't override it. */
 const DEFAULT_IDLE_TIMEOUT: Duration.DurationInput = Duration.seconds(30)
 
 /**
- * Grace window for the completion check. The handler now drops a response's
- * id from `inProgressResponses` only *after* it offers the terminal
- * `parsed`/`responseFailure` event, so a "quiescent" observation can no longer
- * precede the event that still needs a write — the parse→offer race is
- * closed structurally in `CollectorBridgeMessageHandler`. This window
- * remains a small belt-and-suspenders re-confirm: after quiescence first
- * holds we wait this long for a straggler before terminating, so a late
- * sniffer event (e.g. a `ResponseStart` that hasn't re-populated tracking
- * yet) still gets a chance to land.
+ * One drive-loop decision after waiting on the handler's read-only `results`
+ * mailbox: an `event` to process, `done` once the mailbox has finished *and*
+ * drained (its `take` fails with `NoSuchElementException`), or `idle` when the
+ * idle window elapses with nothing queued.
  */
-const SHORT_CONFIRM_WINDOW: Duration.DurationInput = Duration.millis(250)
+type DriveStep<Resources> =
+  | { readonly _tag: 'event'; readonly event: SniffResult<Resources> }
+  | { readonly _tag: 'idle' }
+  | { readonly _tag: 'done' }
 
 /**
- * The run's mutable state behind one named surface: the event mailbox plus the
- * one fact — whether sniffing dispatched its terminal step — that, together
- * with the mailbox and the caller's in-flight-response map, decides completion.
- * {@link RunStore.isSettled} is the single place that answers "are we done?".
- *
- * This is purely the *event source + completion facts*. Failures are **not**
- * stored here: the drive stream carries each batch's failures as data and
- * {@link collectImportSummary} accumulates them. Writes are not tracked either:
- * the drive step awaits each batch inline, so a processed event leaves its
- * writes already settled.
- *
- * Constructed effectfully (it owns a `Mailbox` and a `Ref`), so instances come
- * from the {@link RunStore.make} factory. The private fields are the plumbing;
- * the public methods are the whole surface the handler and drive loop use.
+ * Wait for the next {@link DriveStep} on `results`: take a result, or — via
+ * `timeoutTo` — report `idle` after `window`. A `take` on a finished, drained
+ * mailbox fails with `NoSuchElementException`, which maps to `done`. Queued
+ * results always take precedence: `end`ing a non-empty mailbox leaves it
+ * draining, so `take` yields the remaining results before it ever reports `done`.
  */
-class RunStore<Resources> {
-  private constructor(
-    private readonly events: Mailbox.Mailbox<RunEvent<Resources>>,
-    private readonly sniffComplete: Ref.Ref<boolean>
-  ) {}
-
-  static make<Resources>(): Effect.Effect<RunStore<Resources>> {
-    return Effect.gen(function* () {
-      const events = yield* Mailbox.make<RunEvent<Resources>>()
-      const sniffComplete = yield* Ref.make(false)
-      return new RunStore<Resources>(events, sniffComplete)
+const tryTakeEvent = <Resources>(
+  results: Mailbox.ReadonlyMailbox<SniffResult<Resources>>,
+  window: Duration.DurationInput
+): Effect.Effect<DriveStep<Resources>> =>
+  results.take.pipe(
+    Effect.map((event): DriveStep<Resources> => ({ _tag: 'event', event })),
+    Effect.catchTag('NoSuchElementException', () =>
+      Effect.succeed<DriveStep<Resources>>({ _tag: 'done' })
+    ),
+    Effect.timeoutTo({
+      duration: window,
+      onTimeout: (): DriveStep<Resources> => ({ _tag: 'idle' }),
+      onSuccess: (step) => step,
     })
-  }
-
-  /** Push a decoded response's resources (sync; called from `onResult`). */
-  offerParsed(resources: ReadonlyArray<Resources>): void {
-    this.events.unsafeOffer({ _tag: 'parsed', resources })
-  }
-
-  /** Push a response-level parse/transport failure (sync; from `onResult`). */
-  offerResponseFailure(error: unknown, url: string): void {
-    this.events.unsafeOffer({ _tag: 'responseFailure', error, url })
-  }
-
-  /** Mark sniffing finished and wake the loop (the sender wrap calls this). */
-  get signalSniffComplete(): Effect.Effect<void> {
-    return Ref.set(this.sniffComplete, true).pipe(
-      Effect.andThen(this.events.offer({ _tag: 'sniffDone' })),
-      Effect.asVoid
-    )
-  }
-
-  /** Next event, or `None` once `window` elapses with nothing queued. */
-  tryTakeEvent(window: Duration.DurationInput): Effect.Effect<Option.Option<RunEvent<Resources>>> {
-    return this.events.take.pipe(
-      Effect.timeoutOption(window),
-      Effect.catchTag('NoSuchElementException', () => Effect.succeedNone)
-    )
-  }
-
-  /** Sniffing finished, no response mid-stream, no event queued. */
-  isSettled(
-    inProgressResponses: MutableHashMap.MutableHashMap<string, unknown>
-  ): Effect.Effect<boolean> {
-    const { sniffComplete, events } = this
-    return Effect.gen(function* () {
-      if (!(yield* Ref.get(sniffComplete))) return false
-      if (MutableHashMap.size(inProgressResponses) > 0) return false
-      const queued = yield* events.size
-      return Option.match(queued, { onNone: () => true, onSome: (n) => n === 0 })
-    })
-  }
-}
+  )
 
 /**
- * The drive loop as a `Stream`: each step waits for the next event or a
- * timeout, acts, and emits the chunk of {@link CollectorDescriptor.PersistFailure}
- * that step produced (empty when it wrote nothing), continuing until the run is
- * complete. `Stream.paginateEffect` is used precisely because it emits its
- * element on the *terminal* step too — that is how the idle-timeout straggler
- * settle reports its failures and ends the stream in one step. A plain decision
- * table, not a state machine, because there is no concurrent/interruptible
- * state to track (contrast the step machine's overlapping timers). The one real
- * subtlety is *when to stop*; the timeline is documented in
+ * The drive loop as a `Stream` over the handler's read-only `results` mailbox
+ * (passed as `results`). **Completion is folded into that mailbox** — the
+ * handler `end`s it once sniffing is complete and every response has settled
+ * (or, at an idle timeout, via the abandon action) — so "are we done?" is
+ * simply "has the mailbox finished draining?" There is no separate quiescence
+ * check here: no sniff-complete signal and no in-flight-response map live in the
+ * runner. Failures are not stored either — each step emits its batch's failures
+ * as data and {@link collectImportSummary} accumulates them; a processed event
+ * leaves its writes already settled (the step awaits each batch inline).
+ *
+ * Each step waits on the mailbox, acts, and emits the chunk of
+ * {@link CollectorDescriptor.PersistFailure} that step produced (empty when it
+ * wrote nothing), until the mailbox is `done`. A plain decision table, not a
+ * state machine (contrast the automatic-navigation machine's overlapping timers). The completion
+ * timeline is documented in
  * `collector-fundamentals/docs/Collector Sync Explanation.md`.
  *
- * Each step:
- * - If quiescence already holds (`isSettled`), wait only the short
- *   {@link SHORT_CONFIRM_WINDOW}; otherwise wait the long `idleTimeout`.
- * - An event pulled from the mailbox is processed (its failures emitted), then
- *   the loop continues.
- * - The window elapsing on an empty mailbox is a *decision point*:
- *   - was settled → re-confirm `isSettled` (a straggler may have landed): if
- *     it still holds, the run is complete; else keep draining;
- *   - not settled (idle timeout) → nothing in-flight means the host went
- *     silent, so stop; responses still mid-stream (their `ResponseData`
- *     chunks don't wake the loop) are settled as failures via
- *     `settleStragglers` — emitted on the terminal step — then the loop stops.
+ * - `event` → hand the batch to `processEvent` (its failures emitted), loop.
+ * - `done` → the mailbox finished and drained; the run is complete.
+ * - `idle` → nothing arrived within `idleTimeout`: a response stalled or the
+ *   host went silent. Run `onIdleTimeout` — which settles any still-in-flight
+ *   response as a failure on the mailbox and `end`s it — then loop to drain
+ *   those failures and observe `done`. (`Stream.paginateEffect`, not `repeat`,
+ *   so that draining tail still emits.)
  *
- * Effectful reads (`isSettled`) and the actions (`processEvent`,
- * `settleStragglers`) are injected so this stays a small, `TestClock`-testable
- * unit independent of the bridge handler.
+ * `results`, `processEvent`, and `onIdleTimeout` are injected so this stays a
+ * small, `TestClock`-testable unit independent of the bridge handler. Generic
+ * over the collector's `Resources` and the write requirement `R`.
  */
 const buildDriveStream = <Resources, R>({
-  store,
-  inProgressResponses,
+  results,
   processEvent,
-  settleStragglers,
+  onIdleTimeout,
   idleTimeout,
 }: {
-  readonly store: RunStore<Resources>
-  readonly inProgressResponses: MutableHashMap.MutableHashMap<string, unknown>
+  readonly results: Mailbox.ReadonlyMailbox<SniffResult<Resources>>
   readonly processEvent: (
-    event: RunEvent<Resources>
+    event: SniffResult<Resources>
   ) => Effect.Effect<ReadonlyArray<CollectorDescriptor.PersistFailure>, never, R>
-  readonly settleStragglers: Effect.Effect<
-    ReadonlyArray<CollectorDescriptor.PersistFailure>,
-    never,
-    R
-  >
+  readonly onIdleTimeout: Effect.Effect<void, never, R>
   readonly idleTimeout: Duration.DurationInput
 }): Stream.Stream<ReadonlyArray<CollectorDescriptor.PersistFailure>, never, R> =>
   Stream.paginateEffect<void, ReadonlyArray<CollectorDescriptor.PersistFailure>, never, R>(
     undefined,
     () =>
       Effect.gen(function* () {
-        const settled = yield* store.isSettled(inProgressResponses)
-        const window = settled ? SHORT_CONFIRM_WINDOW : idleTimeout
-        const event = yield* store.tryTakeEvent(window)
-        if (Option.isSome(event)) {
-          const produced = yield* processEvent(event.value)
+        const step = yield* tryTakeEvent(results, idleTimeout)
+        if (step._tag === 'event') {
+          const produced = yield* processEvent(step.event)
           return [produced, Option.some<void>(undefined)] as const
         }
-        // The window elapsed with an empty mailbox — decide whether to stop.
-        if (settled) {
-          // Re-confirm: a straggler could have re-entered during the wait.
-          return (yield* store.isSettled(inProgressResponses))
-            ? ([[], Option.none<void>()] as const)
-            : ([[], Option.some<void>(undefined)] as const)
+        if (step._tag === 'idle') {
+          yield* onIdleTimeout
+          return [[], Option.some<void>(undefined)] as const
         }
-        // Idle timeout while still draining.
-        if (MutableHashMap.size(inProgressResponses) === 0) {
-          return [[], Option.none<void>()] as const
-        }
-        const stragglers = yield* settleStragglers
-        return [stragglers, Option.none<void>()] as const
+        // `done`: the mailbox finished and drained — the run is complete.
+        return [[], Option.none<void>()] as const
       })
   )
 
@@ -279,19 +204,21 @@ const collectImportSummary = <R>(
  *     bridge tags in the coordinator's `Collector` slot, then dispatch
  *     `RequestSniffableWebView`. Register-before-dispatch guarantees the
  *     host's sniffer events land on the live handler.
- *   - The handler's `onResult` pushes parsed resources / failures into the
- *     {@link RunStore} mailbox. The drive stream pulls each event and, for
- *     `parsed`, hands the batch to the injected `persistResources` *inline*
- *     (awaited): the batch is settled by the time the step finishes, so
+ *   - The handler publishes each result onto its `requestSniffingResults` stream,
+ *     which {@link buildDriveStream} reads directly. The drive stream pulls each
+ *     result and, for a `Right` batch, hands it to the injected `persistResources`
+ *     *inline* (awaited): the batch is settled by the time the step finishes, so
  *     there's no outstanding-write bookkeeping. The write requirement (`R`,
  *     the sink's environment) bubbles up to this Effect's `R`, which the
  *     broadened collector `runAuthed` satisfies.
- *   - Completion is {@link RunStore.isSettled}, driven by
- *     {@link buildDriveStream} and re-confirmed across
- *     {@link SHORT_CONFIRM_WINDOW}. {@link DEFAULT_IDLE_TIMEOUT} is the escape
- *     hatch for a silent host.
+ *   - Completion is the `requestSniffingResults` stream finishing: the handler
+ *     closes it once `SniffingComplete` has fired and every sniffed request has
+ *     settled, and {@link buildDriveStream} stops when a `take` sees it
+ *     done+drained. {@link DEFAULT_IDLE_TIMEOUT} is the escape hatch for a silent
+ *     host — on idle, `abandonAllRequestSniffing` fails any stalled request and
+ *     closes the stream.
  *   - `release` (natural completion, idle settle, or explicit cancel via
- *     the run's `AbortSignal`): `cancelAllInFlight` → `clear` → `unregister`.
+ *     the run's `AbortSignal`): `cancelAllRequestSniffing` → `unregister`.
  *
  * `context` — the config's plan + `persistResources`, resource type hidden (a
  * {@link CollectorDescriptor.ResourcePersistenceContext}) — is injected, so the
@@ -316,144 +243,108 @@ const buildImportEffect = <Resources, R>({
 }): Effect.Effect<ImportSummary, never, R> =>
   Effect.scoped(
     Effect.gen(function* () {
-      const store = yield* RunStore.make<Resources>()
-
-      // Persist a decoded batch, returning its failures as data. The sink owns
-      // the retry/backoff schedule, the per-resource span, and concurrency;
+      // Fold one response outcome into the drive step's failure data. The sink
+      // owns the retry/backoff schedule, the per-resource span, and concurrency;
       // the runner owns only the batch `collector.importing` span (resource
-      // count) and folding the returned failures into the summary. Null-id
-      // handling lives in the sink (a skipped resource contributes no failure),
-      // so the runner stays resource-agnostic.
+      // count) and folding failures into the summary. Null-id handling lives in
+      // the sink (a skipped resource contributes no failure), so the runner
+      // stays resource-agnostic. `Right` a decoded batch → persist; `Left` a
+      // response-level failure → one `PersistFailure` keyed on the URL.
       const processStateEvent = (
-        event: RunEvent<Resources>
+        event: SniffResult<Resources>
       ): Effect.Effect<ReadonlyArray<CollectorDescriptor.PersistFailure>, never, R> =>
-        Match.value(event).pipe(
-          Match.tag('parsed', ({ resources }) =>
+        Either.match(event, {
+          onRight: (resources) =>
             persistResources(resources).pipe(
               Effect.withSpan(Telemetry.Importing.Span.Name, {
                 attributes: {
                   [Telemetry.Importing.Span.Attributes.ResourceCount]: resources.length,
                 },
               })
-            )
-          ),
-          Match.tag('responseFailure', ({ error, url }) =>
+            ),
+          onLeft: ({ error, url }) =>
             Effect.succeed<ReadonlyArray<CollectorDescriptor.PersistFailure>>([
               { failed: { label: 'response', id: url }, cause: error },
-            ])
-          ),
-          // Wake-only: `signalSniffComplete` already flipped the flag.
-          Match.tag('sniffDone', () =>
-            Effect.succeed<ReadonlyArray<CollectorDescriptor.PersistFailure>>([])
-          ),
-          Match.exhaustive
-        )
+            ]),
+        })
 
-      // Wrap the sender so dispatching the terminal `SniffingComplete`
-      // (the step machine's last act) flips the completion signal — "follow
-      // the steps and note the end" without touching the pure handler.
-      const observingSend = (
-        message: CollectorBridgeMessageHandler.OutboundMessage
-      ): Effect.Effect<void> =>
-        message._tag === 'SniffingComplete'
-          ? sendCollectorMessage(message).pipe(Effect.andThen(store.signalSniffComplete))
-          : sendCollectorMessage(message)
+      // The handler observes its own `SniffingComplete` internally (the step
+      // machine's terminal dispatch runs the lifecycle's `markSniffingComplete`
+      // hook, which closes `requestSniffingResults`), so the runner passes the
+      // plain sender — no completion wrap needed here.
+      const { requestSniffingResults: handlerResults, abandonAllRequestSniffing } =
+        yield* Effect.acquireRelease(
+          Effect.gen(function* () {
+            // Separate out the `pipeThroughHandlers` bridge tags so the handler's
+            // `incompleteSniffedRequests` / `requestSniffingResults` /
+            // `abandonAllRequestSniffing` / `cancelAllRequestSniffing` don't leak
+            // into the transport's tag→handler map.
+            const {
+              incompleteSniffedRequests,
+              requestSniffingResults,
+              abandonAllRequestSniffing: handlerAbandonAll,
+              cancelAllRequestSniffing,
+              ...pipeThroughHandlers
+            } = yield* CollectorBridgeMessageHandler.make<Resources>({
+              scrapingPlan,
+              sendMessage: sendCollectorMessage,
+            })
 
-      const { inProgressResponses: inProgressBridgeResponses } = yield* Effect.acquireRelease(
-        Effect.gen(function* () {
-          // Separate out the `pipeThroughHandlers` bridge tags so the handler's
-          //  `clear` / `cancelAllInFlight` don't leak into the transport's
-          // tag→handler map.
-          const {
-            inProgressResponses,
-            clear: clearMessageHandler,
-            cancelAllInFlight,
-            ...pipeThroughHandlers
-          } = yield* CollectorBridgeMessageHandler.make<Resources>({
-            scrapingPlan,
-            sendMessage: observingSend,
-            onResult: ({ response, result }) =>
-              Either.match(result, {
-                onLeft: (error) => store.offerResponseFailure(error, response.url),
-                onRight: (resources) => store.offerParsed(resources),
-              }),
-          })
-
-          yield* collectorRegister
-            .register(pipeThroughHandlers)
-            .pipe(
-              Effect.catchAll((error) =>
-                Effect.logError('useSyncRunner: handler registration failed', error)
+            yield* collectorRegister
+              .register(pipeThroughHandlers)
+              .pipe(
+                Effect.catchAll((error) =>
+                  Effect.logError('useSyncRunner: handler registration failed', error)
+                )
+              )
+            // Captured inside the `Sync` span (see `Effect.withSpan` below),
+            // so the sniffer can link its per-page root traces back to this
+            // run's trace.
+            const linkedSpan = yield* captureLinkedSpan
+            yield* sendCollectorMessage(
+              linkedSpan === undefined
+                ? { _tag: 'RequestSniffableWebView', source: scrapingPlan.firstPage }
+                : { _tag: 'RequestSniffableWebView', source: scrapingPlan.firstPage, linkedSpan }
+            ).pipe(
+              Effect.catchAllCause((cause) =>
+                Effect.logError('useSyncRunner: failed to dispatch RequestSniffableWebView', cause)
               )
             )
-          // Captured inside the `Sync` span (see `Effect.withSpan` below),
-          // so the sniffer can link its per-page root traces back to this
-          // run's trace.
-          const linkedSpan = yield* captureLinkedSpan
-          yield* sendCollectorMessage(
-            linkedSpan === undefined
-              ? { _tag: 'RequestSniffableWebView', source: scrapingPlan.firstPage }
-              : { _tag: 'RequestSniffableWebView', source: scrapingPlan.firstPage, linkedSpan }
-          ).pipe(
-            Effect.catchAllCause((cause) =>
-              Effect.logError('useSyncRunner: failed to dispatch RequestSniffableWebView', cause)
-            )
-          )
-          return {
-            inProgressResponses,
-            clearMessageHandler,
-            cancelAllInFlight,
-            pipeThroughHandlers,
-          }
-        }),
-        ({ clearMessageHandler, cancelAllInFlight, pipeThroughHandlers }) =>
-          cancelAllInFlight(sendCollectorMessage).pipe(
-            Effect.andThen(clearMessageHandler()),
-            Effect.andThen(
-              collectorRegister
-                .unregister(pipeThroughHandlers)
-                .pipe(
-                  Effect.catchAll((error) =>
-                    Effect.logError('useSyncRunner: handler unregistration failed', error)
+            return {
+              incompleteSniffedRequests,
+              requestSniffingResults,
+              abandonAllRequestSniffing: handlerAbandonAll,
+              cancelAllRequestSniffing,
+              pipeThroughHandlers,
+            }
+          }),
+          ({ cancelAllRequestSniffing, pipeThroughHandlers }) =>
+            cancelAllRequestSniffing(sendCollectorMessage).pipe(
+              Effect.andThen(
+                collectorRegister
+                  .unregister(pipeThroughHandlers)
+                  .pipe(
+                    Effect.catchAll((error) =>
+                      Effect.logError('useSyncRunner: handler unregistration failed', error)
+                    )
                   )
-                )
+              )
             )
-          )
-      )
-
-      // Idle-timeout straggler settle, prefixed with a warning naming how many
-      // responses were abandoned. `ResponseData` chunks don't produce a mailbox
-      // event, so a large/slow download still streaming after `idleTimeout`
-      // would otherwise be silently abandoned by a hard terminate. Instead,
-      // settle every still-tracked id as a failure (surfacing them in the
-      // `partial` summary) so the run reports the loss rather than dropping it.
-      // Returned as data (like a write failure) for the drive stream to emit.
-      const settleStragglers: Effect.Effect<
-        ReadonlyArray<CollectorDescriptor.PersistFailure>,
-        never,
-        R
-      > = Effect.suspend(() => {
-        const inflight = Array.from(MutableHashMap.values(inProgressBridgeResponses))
-        return Effect.logWarning(
-          `sync-run: idle timeout with ${inflight.length} response(s) still in-flight; settling as failures`
-        ).pipe(
-          Effect.as(
-            inflight.map(({ response }) => ({
-              failed: { label: 'response', id: response.url },
-              cause: new Error(
-                `useSyncRunner: response for ${response.url} still in-flight at idle timeout; abandoning`
-              ),
-            }))
-          )
         )
-      })
 
+      // Idle-timeout escape: `abandonAllRequestSniffing` publishes every
+      // still-incomplete sniffed request as a `Left` failure on
+      // `requestSniffingResults` and closes the stream, so a stalled download
+      // (whose `ResponseData` chunks never produce a terminal) is reported as a
+      // loss instead of hanging the run. The drive loop reads
+      // `requestSniffingResults` directly (completion is that stream finishing)
+      // and drains those failures — they flow through `processStateEvent` like
+      // any other failure — then observes `done`.
       return yield* collectImportSummary(
         buildDriveStream({
-          store,
-          inProgressResponses: inProgressBridgeResponses,
+          results: handlerResults,
           processEvent: processStateEvent,
-          settleStragglers,
+          onIdleTimeout: abandonAllRequestSniffing,
           idleTimeout,
         }),
         setFailed,
@@ -475,12 +366,5 @@ const buildImportEffect = <Resources, R>({
     Effect.withSpan(Telemetry.Sync.Span.Name, {})
   )
 
-export {
-  buildDriveStream,
-  buildImportEffect,
-  collectImportSummary,
-  DEFAULT_IDLE_TIMEOUT,
-  RunStore,
-  SHORT_CONFIRM_WINDOW,
-}
-export type { FailedResource, ImportSummary, RunEvent }
+export { buildDriveStream, buildImportEffect, collectImportSummary, DEFAULT_IDLE_TIMEOUT }
+export type { FailedResource, ImportSummary, SniffResult }

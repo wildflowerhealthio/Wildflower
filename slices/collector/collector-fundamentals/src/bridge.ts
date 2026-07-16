@@ -95,8 +95,8 @@ type CollectorBridge = Bridge.Bridge<
  * imported from `browser-sniffer-core` keep wire schemas in lockstep with
  * `BrowserSnifferBridge` for the same reason. `Cancelled` is the terminal
  * acknowledgement for a mid-stream `CancelSnifferRequest`; the handler uses
- * it to release the in-progress slot and notify the consumer via `onResult`
- * with a `Left(SnifferCancelled)`.
+ * it to release the in-progress slot and offer a `Left(SnifferCancelled)`
+ * onto its `results` mailbox.
  */
 const CollectorBridge: CollectorBridge = Bridge.make({
   name: 'Collector',

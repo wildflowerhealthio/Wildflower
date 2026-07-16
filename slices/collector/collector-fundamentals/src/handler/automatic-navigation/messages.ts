@@ -3,7 +3,7 @@ import type { PageActionMessage, PageLoadedMessageBody } from 'browser-sniffer-c
 import type { OpenMessage, SniffingComplete as SniffingCompleteMessage } from '../../bridge.ts'
 
 /**
- * Parts 1 & 3 of the step machine: the input messages that drive it and
+ * Parts 1 & 3 of the automatic-navigation machine: the input messages that drive it and
  * the side-effect messages a transition can request. Both are plain
  * discriminated unions keyed by `_tag`; the transition routes on `_tag`
  * via `Match.tag`. They are never decoded, encoded, or `Schema.is`-tested
@@ -15,10 +15,10 @@ import type { OpenMessage, SniffingComplete as SniffingCompleteMessage } from '.
  */
 
 /**
- * The subset of the handler's outbound messages the step machine can ask
+ * The subset of the handler's outbound messages the automatic-navigation machine can ask
  * the host to send: the scripted `Open` / `PageAction` navigation steps
  * and the terminal `SniffingComplete`. (`CancelSnifferRequest` is the
- * response tracker's, not the step machine's.)
+ * response tracker's, not the automatic-navigation machine's.)
  */
 type StepOutboundMessage =
   | typeof OpenMessage.Type
@@ -35,9 +35,12 @@ type StepOutboundMessage =
  * - `PageLoaded` — the sole *external* event, forwarded verbatim from the
  *   bridge (its shape is `browser-sniffer-core`'s `PageLoadedMessageBody`,
  *   reused rather than re-declared).
- * - `Clear` / `CancelAllInFlight` — the two *commands* the composed
- *   handler folds into `clear` / `cancelAllInFlight`; modelling them as
- *   input messages keeps the whole machine a single transition table.
+ * - `Stop` — the single *command*, which the run lifecycle's `teardown`
+ *   invokes to halt the machine (interrupt any pending timer). Modelling it
+ *   as an input keeps the whole machine one transition table. There is no
+ *   separate "reset vs fold" variant: teardown always *discards* the machine
+ *   (a fresh one is built next run), so post-stop index would never be
+ *   observed.
  * - `SettleTimerFired` / `UrlMatchTimeoutFired` — the *internal* timer
  *   expiries. A forked daemon re-injects one of these (carrying the
  *   `generation` it was scheduled under) rather than committing a
@@ -47,8 +50,7 @@ type StepOutboundMessage =
  */
 type InputMessage =
   | typeof PageLoadedMessageBody.Type
-  | { readonly _tag: 'Clear' }
-  | { readonly _tag: 'CancelAllInFlight' }
+  | { readonly _tag: 'Stop' }
   | { readonly _tag: 'SettleTimerFired'; readonly generation: number }
   | { readonly _tag: 'UrlMatchTimeoutFired'; readonly generation: number }
 

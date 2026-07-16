@@ -1,16 +1,21 @@
 import { type CancelSnifferRequestMessage, type PageActionMessage } from 'browser-sniffer-core'
-import { Effect, type Either, type MutableHashMap, type ParseResult } from 'effect'
+import { Effect, type Mailbox, type MutableHashMap, Option } from 'effect'
 import type { MessageHandler } from 'effect-messaging-core'
-import type { UnknownException } from 'effect/Cause'
 import type {
   CollectorBridge,
   OpenMessage,
   SniffingComplete as SniffingCompleteMessage,
 } from '../bridge.ts'
-import type { Response, ScrapingPlan } from '../model/index.ts'
-import * as ResponseTracker from './response-tracker.ts'
-import { type InProgressResponse, SnifferCancelled } from './response-tracker.ts'
-import * as StepMachine from './step-machine/index.ts'
+import type { ScrapingPlan } from '../model/index.ts'
+import * as AutomaticNavigation from './automatic-navigation/index.ts'
+import * as RunLifecycleState from './run-lifecycle-state.ts'
+import * as SnifferResponseTracker from './sniffer-response-tracker.ts'
+import {
+  type IncompleteSniffedRequest,
+  SnifferCancelled,
+  type SniffFailure,
+  type SniffResult,
+} from './sniffer-response-tracker.ts'
 
 type Service = MessageHandler.HandlersFor<CollectorBridge['HostToWeb']>
 
@@ -19,7 +24,7 @@ type Service = MessageHandler.HandlersFor<CollectorBridge['HostToWeb']>
  * the supplied `sendMessage`. `CancelSnifferRequest` short-circuits an
  * unmatched response stream (response tracker); `Open` / `PageAction`
  * drive the scripted navigation and `SniffingComplete` is the terminal
- * hand-off when the link sequence is exhausted (step machine). The
+ * hand-off when the link sequence is exhausted (automatic navigation). The
  * `Open` / `PageAction` payloads *are* the step's `action` — the handler
  * forwards `scrapingPlan.stepSequence[i].action` to `sendMessage` without
  * translation (the plan-only `advanceWhen` rides the step wrapper, never
@@ -32,91 +37,123 @@ type OutboundMessage =
   | typeof SniffingCompleteMessage.Type
 
 interface CollectorBridgeMessageHandler<TResources> extends Service {
-  readonly inProgressResponses: MutableHashMap.MutableHashMap<
+  readonly incompleteSniffedRequests: MutableHashMap.MutableHashMap<
     string,
-    InProgressResponse<TResources>
+    IncompleteSniffedRequest<TResources>
   >
   /**
-   * Drop every in-flight tracked response and interrupt the pending
-   * step-timer fiber without emitting an `onResult`. Use from a
-   * screen-unmount / sync-abandoned path to release buffered chunks —
-   * the host alone knows when the sniffer is permanently silent for a
-   * session, so the handler can't time entries out on its own.
+   * The run's {@link SniffResult} stream, surfaced as the handler's result
+   * source. Read-only: the handler is the sole producer. The runner drains this
+   * instead of being handed an `onResult` callback — see the
+   * [Handler Explanation](../../docs/Handler%20Explanation.md).
    */
-  readonly clear: () => Effect.Effect<void, never, never>
+  readonly requestSniffingResults: Mailbox.ReadonlyMailbox<SniffResult<TResources>>
   /**
-   * Build an Effect that dispatches a `CancelSnifferRequest` through
-   * the supplied `send` for every currently in-flight id, and also
-   * interrupts the pending step-timer fiber. Pair with `clear()` from
-   * a screen-unmount path so the page stops streaming bytes that
-   * would otherwise be log-and-dropped by the runtime provider once
-   * the handler ref is null.
+   * Idle-timeout escape: publish every still-incomplete sniffed request as a
+   * `Left` failure and close `requestSniffingResults`. The runner calls this when
+   * its drive loop has been idle past the idle timeout (a stalled download that
+   * never finished), so the run reports the loss instead of hanging. See
+   * {@link RunLifecycleState}.
+   */
+  readonly abandonAllRequestSniffing: Effect.Effect<void, never, never>
+  /**
+   * Screen-unmount teardown: stop the automatic navigation (interrupt the
+   * pending step-timer fiber) and ask the host to `CancelSnifferRequest` every
+   * still-incomplete sniffed request, so the page stops streaming bytes that
+   * would otherwise be log-and-dropped by the runtime provider once the handler
+   * ref is null. Publishes no result and does not close the stream — the consumer
+   * has gone.
    *
    * The Effect runs each cancel sequentially; consumers typically
-   * `Effect.runFork` it during a synchronous React cleanup, then call
-   * `clear()` to drop the local tracking state.
+   * `Effect.runFork` it during a synchronous React cleanup.
    */
-  readonly cancelAllInFlight: (
+  readonly cancelAllRequestSniffing: (
     send: (message: typeof CancelSnifferRequestMessage.Type) => Effect.Effect<void, never, never>
   ) => Effect.Effect<void, never, never>
 }
 
 /**
- * Compose the response tracker and step machine — two independent
- * machines that interact only via the supplied `sendMessage` — into the
- * single `CollectorBridgeMessageHandler` public surface. Each machine
- * owns its handlers and its share of `clear` / `cancelAllInFlight`; this
- * function threads the shared inputs into both and folds their
- * `clear` / `cancelAllInFlight` contributions together (step machine
- * first — interrupt its fibers — then the response tracker). That order
- * is preserved from the pre-split handler but is not load-bearing: the
- * machines share no state, so neither can observe the other mid-teardown.
- * See the [Handler Explanation](../../docs/Handler%20Explanation.md) for
- * the composition rationale and the two machines' invariants.
+ * Compose the response tracker, the automatic navigation, and the run lifecycle into
+ * the single `CollectorBridgeMessageHandler` public surface. The tracker owns
+ * the five response handlers and the `incompleteSniffedRequests` map; the step
+ * machine owns `PageLoaded` and the scripted `stepSequence`; the
+ * {@link RunLifecycleState} owns the `requestSniffingResults` stream and every way a
+ * run can end (`markSniffingComplete` / `abandonAllRequestSniffing` /
+ * `cancelAllRequestSniffing`). The two machines interact only through the
+ * supplied `sendMessage` and share no state — the lifecycle mediates completion
+ * via an explicit `onSniffingComplete` hook (no message-tag sniffing). See the
+ * [Handler Explanation](../../docs/Handler%20Explanation.md).
+ *
+ * The three parts form a construction cycle — the tracker publishes into the
+ * lifecycle's stream, the lifecycle reads the tracker's incomplete-request state
+ * and the automatic navigation's completion, and its teardown drives both machines. We
+ * break it the way the automatic navigation breaks its own `dispatch`/`ctx` cycle:
+ * forward references that are only *invoked* after construction. The tracker's
+ * `publishSniffResult` / `endRequestSniffingResultsUnlessMoreExpected` close over
+ * `lifecycle` (fired only when a request settles), and the lifecycle's teardown
+ * closes over `automaticNavigation` (fired only at teardown), so there is no
+ * temporal-dead-zone hazard.
  */
 const make = <TResources>({
   scrapingPlan,
   sendMessage,
-  onResult,
 }: {
   scrapingPlan: ScrapingPlan.ScrapingPlan<TResources>
   sendMessage: (message: OutboundMessage) => Effect.Effect<void, never, never>
-  onResult: (args: {
-    readonly response: Response.RemoteResponse
-    readonly result: Either.Either<
-      readonly TResources[],
-      ParseResult.ParseError | UnknownException | SnifferCancelled
-    >
-  }) => void
 }): Effect.Effect<CollectorBridgeMessageHandler<TResources>, never, never> =>
   Effect.gen(function* () {
-    const tracker = yield* ResponseTracker.make<TResources>({
-      scrapingPlan,
-      sendMessage,
-      onResult,
-    })
-    const stepMachine = yield* StepMachine.make<TResources>({ scrapingPlan, sendMessage })
+    // Explicit annotations break the construction cycle's type inference (the
+    // three bindings reference one another): without them TS infers `any`.
+    const tracker: SnifferResponseTracker.SnifferResponseTracker<TResources> =
+      yield* SnifferResponseTracker.make<TResources>({
+        // The tracker only needs "which entity (if any) parses this URL"; derive
+        // it from the plan here so the tracker stays decoupled from `ScrapingPlan`.
+        matchEntity: (url) =>
+          Option.fromNullable(scrapingPlan.entityDefinitions.find((e) => e.isFoundAt(url))),
+        sendMessage,
+        publishSniffResult: (result) => lifecycle.publishSniffResult(result),
+        endRequestSniffingResultsUnlessMoreExpected: Effect.suspend(
+          () => lifecycle.endRequestSniffingResultsUnlessMoreExpected
+        ),
+      })
 
-    const clear = (): Effect.Effect<void, never, never> =>
-      stepMachine.clear().pipe(Effect.andThen(tracker.clear()))
+    const lifecycle: RunLifecycleState.RunLifecycleState<TResources> =
+      yield* RunLifecycleState.make<TResources>({
+        hasIncompleteSniffedRequests: tracker.hasIncompleteSniffedRequests,
+        failIncompleteSniffedRequests: tracker.failIncompleteSniffedRequests,
+        cancelIncompleteSniffedRequests: tracker.cancelIncompleteSniffedRequests,
+        stopAutomaticNavigation: () => automaticNavigation.stopAutomaticNavigation(),
+      })
 
-    const cancelAllInFlight = (
-      send: (message: typeof CancelSnifferRequestMessage.Type) => Effect.Effect<void, never, never>
-    ): Effect.Effect<void, never, never> =>
-      stepMachine.cancelAllInFlight().pipe(Effect.andThen(tracker.cancelAllInFlight(send)))
+    // `sendMessage` is now a plain passthrough: the automatic navigation's
+    // terminal `SniffingComplete` reaches the lifecycle through the explicit
+    // `onSniffingComplete` hook, not by inspecting the outbound message tag.
+    const automaticNavigation: AutomaticNavigation.AutomaticNavigation =
+      yield* AutomaticNavigation.make<TResources>({
+        scrapingPlan,
+        sendMessage,
+        onSniffingComplete: lifecycle.markSniffingComplete,
+      })
 
     return {
-      inProgressResponses: tracker.inProgressResponses,
-      clear,
-      cancelAllInFlight,
+      incompleteSniffedRequests: tracker.incompleteSniffedRequests,
+      requestSniffingResults: lifecycle.requestSniffingResults,
+      abandonAllRequestSniffing: lifecycle.abandonAllRequestSniffing,
+      cancelAllRequestSniffing: lifecycle.cancelAllRequestSniffing,
       ResponseStart: tracker.ResponseStart,
       ResponseData: tracker.ResponseData,
       ResponseFinished: tracker.ResponseFinished,
       RequestError: tracker.RequestError,
       Cancelled: tracker.Cancelled,
-      PageLoaded: stepMachine.PageLoaded,
+      PageLoaded: automaticNavigation.PageLoaded,
     }
   })
 
-export type { CollectorBridgeMessageHandler, InProgressResponse, OutboundMessage }
+export type {
+  CollectorBridgeMessageHandler,
+  IncompleteSniffedRequest,
+  OutboundMessage,
+  SniffFailure,
+  SniffResult,
+}
 export { make, SnifferCancelled }

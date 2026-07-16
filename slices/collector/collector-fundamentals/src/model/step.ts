@@ -4,7 +4,7 @@ import type { Duration } from 'effect'
 import type { OpenMessage } from '../bridge.ts'
 
 /**
- * When the step machine should dispatch a step, relative to the
+ * When the automatic-navigation machine should dispatch a step, relative to the
  * `PageLoaded` events flowing back from the sniffer.
  *
  * - Absent (`advanceWhen` omitted): the default — dispatch a fixed
@@ -48,16 +48,16 @@ type Advance = UrlMatchAdvance
  *   interaction kinds are added as `action` union variants, not new tags.
  *
  * Because {@link Step} is just `{ action; advanceWhen? }`, the plan-only
- * `advanceWhen` lives on the wrapper, not the action — the step machine
+ * `advanceWhen` lives on the wrapper, not the action — the automatic-navigation machine
  * forwards `step.action` untouched and it can never leak onto the wire.
  */
 type StepAction = typeof OpenMessage.Type | typeof PageActionMessage.Type
 
 /**
  * A scripted navigation step: an {@link StepAction} to dispatch plus an
- * optional {@link Advance} gating *when* the step machine dispatches it.
+ * optional {@link Advance} gating *when* the automatic-navigation machine dispatches it.
  *
- * `advanceWhen` is a plan-only field — the step machine reads it to schedule
+ * `advanceWhen` is a plan-only field — the automatic-navigation machine reads it to schedule
  * the dispatch but forwards only `action` to the sniffer, so it never reaches
  * the wire. A `Fill` action's `value` is interpolated from the remote's
  * config (e.g. a username / password) when the collector builds its

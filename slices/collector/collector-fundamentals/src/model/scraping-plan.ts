@@ -11,11 +11,10 @@ import type * as WebViewSource from './web-view-source.ts'
  * ```
  * CollectorBridgeMessageHandler.make({
  *   scrapingPlan,
- *   sendMessage,
- *   onResult
+ *   sendMessage
  * })
  * ```
- * which:
+ * whose `results` mailbox carries each terminal outcome, and which:
  *
  *   - Consults `entityDefinitions` for each `ResponseStart` to decide
  *     whether to track the in-flight response (first `isFoundAt` match

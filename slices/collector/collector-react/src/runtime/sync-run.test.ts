@@ -1,14 +1,6 @@
 import type { CollectorDescriptor } from 'collector-fundamentals/model'
-import {
-  Duration,
-  Effect,
-  Fiber,
-  MutableHashMap,
-  Option,
-  Stream,
-  TestClock,
-  TestContext,
-} from 'effect'
+import { Duration, Effect, Either, Fiber, Mailbox, Stream, TestClock, TestContext } from 'effect'
+import { UnknownException } from 'effect/Cause'
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
@@ -16,27 +8,25 @@ import { describe, expect, it } from 'vite-plus/test'
 import {
   buildDriveStream,
   collectImportSummary,
-  RunStore,
-  SHORT_CONFIRM_WINDOW,
   type FailedResource,
-  type RunEvent,
+  type SniffResult,
 } from './sync-run.ts'
 
 /**
  * Direct unit coverage of the extracted framework-free core
- * ({@link ./sync-run.ts}), without React Testing Library. Three suites:
+ * ({@link ./sync-run.ts}), without React Testing Library. Two suites:
  *
- * - {@link RunStore} — the completion predicate (`isSettled`) and the event
- *   mailbox (`tryTakeEvent`) the drive loop reads to decide "are we done?".
  * - {@link collectImportSummary} — the fold that turns the drive stream's
  *   per-step failure chunks into the `ImportSummary` (and drives `setFailed` /
  *   `onError`).
- * - {@link buildDriveStream} — the drive loop itself, over `TestClock`: events
- *   are processed, quiescence terminates the run, and an idle timeout with
- *   responses still in-flight settles the stragglers.
+ * - {@link buildDriveStream} — the drive loop itself, over `TestClock`: results
+ *   are drained until the mailbox is `done`, and an idle timeout triggers the
+ *   injected abandon action.
  *
  * Write-retry exhaustion (the persist sink) is covered by
- * `fhir-r4-client-collector/src/persist.test.ts`.
+ * `fhir-r4-client-collector/src/persist.test.ts`. Closing the
+ * `requestSniffingResults` stream (when the handler closes it) is covered in
+ * `collector-fundamentals/.../run-lifecycle-state.test.ts`.
  */
 
 type PersistFailure = CollectorDescriptor.PersistFailure
@@ -55,87 +45,6 @@ class RecordingSink {
     this.onErrorCalls.push(cause)
   }
 }
-
-describe('RunStore', () => {
-  describe('isSettled', () => {
-    it('is false before sniffing is signalled complete', async () => {
-      const settled = await runTest(
-        Effect.gen(function* () {
-          const store = yield* RunStore.make()
-          return yield* store.isSettled(MutableHashMap.empty())
-        })
-      )
-      expect(settled).toBe(false)
-    })
-
-    it('is false while a response is still in-flight, even after sniff-complete', async () => {
-      const settled = await runTest(
-        Effect.gen(function* () {
-          const store = yield* RunStore.make()
-          yield* store.signalSniffComplete
-          // Drain the `sniffDone` wake event so only the in-flight response
-          // keeps it unsettled.
-          yield* store.tryTakeEvent(Duration.zero)
-          const inProgress = MutableHashMap.make(['https://example.com/Patient/1', {}])
-          return yield* store.isSettled(inProgress)
-        })
-      )
-      expect(settled).toBe(false)
-    })
-
-    it('is false while an event is still queued', async () => {
-      const settled = await runTest(
-        Effect.gen(function* () {
-          const store = yield* RunStore.make()
-          yield* store.signalSniffComplete
-          store.offerParsed([])
-          return yield* store.isSettled(MutableHashMap.empty())
-        })
-      )
-      expect(settled).toBe(false)
-    })
-
-    it('is true once sniffing is complete, nothing is in-flight, and the mailbox is drained', async () => {
-      const settled = await runTest(
-        Effect.gen(function* () {
-          const store = yield* RunStore.make()
-          yield* store.signalSniffComplete
-          yield* store.tryTakeEvent(Duration.zero)
-          return yield* store.isSettled(MutableHashMap.empty())
-        })
-      )
-      expect(settled).toBe(true)
-    })
-  })
-
-  describe('tryTakeEvent', () => {
-    it('returns a queued event immediately', async () => {
-      const event = await runTest(
-        Effect.gen(function* () {
-          const store = yield* RunStore.make()
-          store.offerResponseFailure(new Error('boom'), 'https://example.com/x')
-          return yield* store.tryTakeEvent(SHORT_CONFIRM_WINDOW)
-        })
-      )
-      expect(Option.getOrThrow(event)).toMatchObject({
-        _tag: 'responseFailure',
-        url: 'https://example.com/x',
-      })
-    })
-
-    it('resolves to None after the window elapses on an empty mailbox', async () => {
-      const event = await runTest(
-        Effect.gen(function* () {
-          const store = yield* RunStore.make()
-          const fiber = yield* Effect.fork(store.tryTakeEvent(SHORT_CONFIRM_WINDOW))
-          yield* TestClock.adjust(SHORT_CONFIRM_WINDOW)
-          return yield* Fiber.join(fiber)
-        })
-      )
-      expect(Option.isNone(event)).toBe(true)
-    })
-  })
-})
 
 describe('collectImportSummary', () => {
   it('accumulates every failure, pushes the growing list to setFailed, and fires onError once each', async () => {
@@ -187,107 +96,84 @@ describe('collectImportSummary', () => {
 })
 
 describe('buildDriveStream', () => {
-  it('processes every queued event, then terminates once quiescence holds', async () => {
+  it('processes every queued result, then terminates once the mailbox is done', async () => {
     const rec = recorder()
     await runTest(
       Effect.gen(function* () {
-        const store = yield* RunStore.make<unknown>()
-        const inProgress = MutableHashMap.empty<string, unknown>()
-        // Sniffing is done and two decoded batches are already queued.
-        yield* store.signalSniffComplete
-        store.offerParsed([])
-        store.offerResponseFailure(new Error('x'), 'https://example.com/x')
+        const source = yield* Mailbox.make<SniffResult<unknown>>()
+        yield* source.offer(Either.right([]))
+        yield* source.offer(
+          Either.left({ error: new UnknownException('x'), url: 'https://example.com/x' })
+        )
+        yield* source.end
 
-        const fiber = yield* Effect.fork(drive(store, inProgress, rec))
-        // The queued events drain immediately; the loop then blocks on the
-        // confirm window, which the clock closes to terminate the run.
-        yield* TestClock.adjust(SHORT_CONFIRM_WINDOW)
-        yield* Fiber.join(fiber)
+        // A done, drained mailbox makes `take` fail immediately, so the loop
+        // drains both queued results then stops — no clock needed.
+        yield* Fiber.join(yield* Effect.fork(drive(source, neverIdle(source), rec)))
       })
     )
-    // sniffDone (from signalSniffComplete) + the two offered events, in order.
-    expect(rec.processed.map((e) => e._tag)).toEqual(['sniffDone', 'parsed', 'responseFailure'])
-    expect(rec.settled).toBe(false)
+    expect(rec.processed.map((e) => (Either.isRight(e) ? 'parsed' : 'responseFailure'))).toEqual([
+      'parsed',
+      'responseFailure',
+    ])
   })
 
-  it('terminates on quiescence with an empty mailbox, settling nothing', async () => {
+  it('terminates immediately when the mailbox is done and empty', async () => {
     const rec = recorder()
     await runTest(
       Effect.gen(function* () {
-        const store = yield* RunStore.make<unknown>()
-        const inProgress = MutableHashMap.empty<string, unknown>()
-        yield* store.signalSniffComplete
-        yield* store.tryTakeEvent(Duration.zero) // drain the `sniffDone` wake
-
-        const fiber = yield* Effect.fork(drive(store, inProgress, rec))
-        yield* TestClock.adjust(SHORT_CONFIRM_WINDOW)
-        yield* Fiber.join(fiber)
+        const source = yield* Mailbox.make<SniffResult<unknown>>()
+        yield* source.end
+        yield* Fiber.join(yield* Effect.fork(drive(source, neverIdle(source), rec)))
       })
     )
     expect(rec.processed).toEqual([])
-    expect(rec.settled).toBe(false)
   })
 
-  it('terminates on an idle timeout with nothing in-flight, settling nothing', async () => {
+  it('runs onIdleTimeout when nothing arrives within the idle timeout, then terminates', async () => {
     const rec = recorder()
+    let idled = false
     await runTest(
       Effect.gen(function* () {
-        // Sniffing never completes and nothing is in-flight: the host has
-        // gone silent, so the idle timeout ends the run.
-        const store = yield* RunStore.make<unknown>()
-        const inProgress = MutableHashMap.empty<string, unknown>()
+        const source = yield* Mailbox.make<SniffResult<unknown>>()
+        // The abandon action records the idle trip and ends the mailbox so the
+        // loop can then observe `done`.
+        const onIdleTimeout = Effect.sync(() => {
+          idled = true
+        }).pipe(Effect.andThen(source.end))
 
-        const fiber = yield* Effect.fork(drive(store, inProgress, rec))
+        const fiber = yield* Effect.fork(drive(source, onIdleTimeout, rec))
         yield* TestClock.adjust(IDLE_TIMEOUT)
         yield* Fiber.join(fiber)
       })
     )
+    expect(idled).toBe(true)
     expect(rec.processed).toEqual([])
-    expect(rec.settled).toBe(false)
   })
 
-  it('settles stragglers then terminates on an idle timeout with a response still in-flight', async () => {
+  it('drains a failure the abandon action offers on idle, then terminates', async () => {
     const rec = recorder()
     await runTest(
       Effect.gen(function* () {
-        const store = yield* RunStore.make<unknown>()
-        // A response is mid-stream (its data chunks never wake the loop),
-        // so the idle timeout must settle it as a failure.
-        const inProgress = MutableHashMap.make(['https://example.com/Patient/1', {}])
+        const source = yield* Mailbox.make<SniffResult<unknown>>()
+        // Mirrors `abandonAllRequestSniffing`: fail a stalled request as a Left, then close.
+        const onIdleTimeout = source
+          .offer(
+            Either.left({
+              error: new UnknownException('stalled'),
+              url: 'https://example.com/slow',
+            })
+          )
+          .pipe(Effect.andThen(source.end))
 
-        const fiber = yield* Effect.fork(drive(store, inProgress, rec))
+        const fiber = yield* Effect.fork(drive(source, onIdleTimeout, rec))
         yield* TestClock.adjust(IDLE_TIMEOUT)
         yield* Fiber.join(fiber)
       })
     )
-    expect(rec.settled).toBe(true)
-    expect(rec.processed).toEqual([])
-  })
-
-  it('keeps draining (does not terminate) when a straggler re-enters during the confirm window', async () => {
-    const rec = recorder()
-    const stillRunning = await runTest(
-      Effect.gen(function* () {
-        const store = yield* RunStore.make<unknown>()
-        const inProgress = MutableHashMap.empty<string, unknown>()
-        // Quiescence holds, so the loop enters the short confirm window…
-        yield* store.signalSniffComplete
-        yield* store.tryTakeEvent(Duration.zero)
-
-        const fiber = yield* Effect.fork(drive(store, inProgress, rec))
-        // …but a response re-enters before the window closes, so the
-        // re-confirm sees the run un-settled and keeps draining.
-        yield* TestClock.adjust(Duration.millis(100))
-        MutableHashMap.set(inProgress, 'https://example.com/Patient/1', {})
-        yield* TestClock.adjust(SHORT_CONFIRM_WINDOW)
-
-        const poll = yield* Fiber.poll(fiber)
-        yield* Fiber.interrupt(fiber)
-        return Option.isNone(poll)
-      })
-    )
-    expect(stillRunning).toBe(true)
-    expect(rec.settled).toBe(false)
+    // The abandoned response is drained as a normal Left result after the idle trip.
+    expect(rec.processed).toHaveLength(1)
+    expect(Either.isLeft(rec.processed[0])).toBe(true)
   })
 })
 
@@ -296,45 +182,45 @@ describe('buildDriveStream', () => {
 const IDLE_TIMEOUT = Duration.seconds(30)
 
 /**
- * A recording `processEvent` sink plus a one-shot `settleStragglers` flag, so
- * each `buildDriveStream` test can read back what the loop drove. Both actions
- * return no failures (`[]`); the failure-folding path is covered by
- * `collectImportSummary` above.
+ * A recording `processEvent` sink so each `buildDriveStream` test can read back
+ * what the loop drove. It returns no failures (`[]`); the failure-folding path
+ * is covered by `collectImportSummary` above.
  */
 const recorder = (): {
-  readonly processed: Array<RunEvent<unknown>>
-  readonly processEvent: (event: RunEvent<unknown>) => Effect.Effect<ReadonlyArray<PersistFailure>>
-  readonly settleStragglers: Effect.Effect<ReadonlyArray<PersistFailure>>
-  settled: boolean
+  readonly processed: Array<SniffResult<unknown>>
+  readonly processEvent: (
+    event: SniffResult<unknown>
+  ) => Effect.Effect<ReadonlyArray<PersistFailure>>
 } => {
-  const processed: Array<RunEvent<unknown>> = []
-  const state = {
+  const processed: Array<SniffResult<unknown>> = []
+  return {
     processed,
-    settled: false,
-    processEvent: (event: RunEvent<unknown>): Effect.Effect<ReadonlyArray<PersistFailure>> =>
+    processEvent: (event: SniffResult<unknown>): Effect.Effect<ReadonlyArray<PersistFailure>> =>
       Effect.sync(() => {
         processed.push(event)
         return []
       }),
-    settleStragglers: Effect.sync((): ReadonlyArray<PersistFailure> => {
-      state.settled = true
-      return []
-    }),
   }
-  return state
 }
 
+/**
+ * An `onIdleTimeout` for tests that should never idle: it just `end`s the
+ * mailbox (harmless — those tests end it up front), so an unexpected idle trip
+ * still terminates rather than hanging the test.
+ */
+const neverIdle = (source: Mailbox.Mailbox<SniffResult<unknown>>): Effect.Effect<void> =>
+  source.end.pipe(Effect.asVoid)
+
 const drive = (
-  store: RunStore<unknown>,
-  inProgress: MutableHashMap.MutableHashMap<string, unknown>,
+  results: Mailbox.ReadonlyMailbox<SniffResult<unknown>>,
+  onIdleTimeout: Effect.Effect<void>,
   rec: ReturnType<typeof recorder>
 ): Effect.Effect<void> =>
   Stream.runDrain(
     buildDriveStream({
-      store,
-      inProgressResponses: inProgress,
+      results,
       processEvent: rec.processEvent,
-      settleStragglers: rec.settleStragglers,
+      onIdleTimeout,
       idleTimeout: IDLE_TIMEOUT,
     })
   )

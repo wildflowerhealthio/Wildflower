@@ -5,20 +5,25 @@ import { LoggingLayerTest } from 'kitchen-sink/test'
 import { describe, expect, it, vi } from 'vite-plus/test'
 
 import { type Step, ScrapingPlan, UrlMatch } from 'collector-fundamentals/model'
-import { make, type StepMachine, type StepOutboundMessage } from './step-machine/index.ts'
+import {
+  type AutomaticNavigation,
+  make,
+  type StepOutboundMessage,
+} from './automatic-navigation/index.ts'
 
 /**
- * Build a step machine directly (not via `CollectorBridgeMessageHandler`),
- * so this suite exercises the step machine in isolation; the composition
- * with the response tracker is covered by
- * `collector-bridge-message-handler.test.ts`. The step machine ignores
+ * Build an automatic-navigation machine directly (not via
+ * `CollectorBridgeMessageHandler`), so this suite exercises the machine in
+ * isolation; the composition with the response tracker is covered by
+ * `collector-bridge-message-handler.test.ts`. The machine ignores
  * `entityDefinitions`, so the plan carries an empty list.
  */
 const makeMachine = (options: {
   readonly sendMessage: (message: StepOutboundMessage) => Effect.Effect<void, never, never>
+  readonly onSniffingComplete?: Effect.Effect<void, never, never>
   readonly stepSequence?: readonly Step.Step[]
   readonly stepDelay?: Duration.Duration
-}): StepMachine =>
+}): AutomaticNavigation =>
   Effect.runSync(
     make({
       scrapingPlan: ScrapingPlan.make({
@@ -29,6 +34,10 @@ const makeMachine = (options: {
         stepDelay: options.stepDelay ?? Duration.seconds(5),
       }),
       sendMessage: options.sendMessage,
+      // The composition wires this to the run lifecycle's `markSniffingComplete`;
+      // the machine treats it opaquely. Tests default to a no-op unless they
+      // assert it fired.
+      onSniffingComplete: options.onSniffingComplete ?? Effect.void,
     })
   )
 
@@ -43,7 +52,7 @@ const pageLoaded = (
   pageContentId: 'page-1',
 })
 
-describe('step-machine.make: step machine', () => {
+describe('automatic-navigation.make: automatic navigation', () => {
   describe('PageLoaded', () => {
     const linkA: Step.Step = {
       action: { _tag: 'Open', source: { _tag: 'Uri', uri: 'https://example.com/a' } },
@@ -77,6 +86,29 @@ describe('step-machine.make: step machine', () => {
           yield* Effect.yieldNow()
           expect(sendMessage).toHaveBeenCalledOnce()
           expect(sendMessage.mock.calls[0][0]).toEqual({ _tag: 'SniffingComplete' })
+        }).pipe(Effect.provide(TestContext.TestContext))
+      ))
+
+    it('runs the onSniffingComplete hook when it dispatches SniffingComplete', () =>
+      Effect.runPromise(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          let completed = 0
+          const machine = makeMachine({
+            sendMessage,
+            onSniffingComplete: Effect.sync(() => {
+              completed += 1
+            }),
+            stepSequence: [],
+          })
+
+          yield* machine.PageLoaded(pageLoaded())
+          yield* TestClock.adjust(Duration.seconds(5))
+          yield* Effect.yieldNow()
+
+          expect(sendMessage.mock.calls[0][0]).toEqual({ _tag: 'SniffingComplete' })
+          // The hook fires exactly once, after the terminal message is sent.
+          expect(completed).toBe(1)
         }).pipe(Effect.provide(TestContext.TestContext))
       ))
 
@@ -160,35 +192,21 @@ describe('step-machine.make: step machine', () => {
         }).pipe(Effect.provide(TestContext.TestContext))
       ))
 
-    it('clear() interrupts the pending step timer', () =>
+    it('stopAutomaticNavigation() interrupts the pending step timer', () =>
       Effect.runPromise(
         Effect.gen(function* () {
           const sendMessage = vi.fn<SendMessage>(() => Effect.void)
           const machine = makeMachine({ sendMessage, stepSequence: [linkA] })
 
           yield* machine.PageLoaded(pageLoaded())
-          yield* machine.clear()
+          yield* machine.stopAutomaticNavigation()
           yield* TestClock.adjust(Duration.seconds(5))
           yield* Effect.yieldNow()
           expect(sendMessage).not.toHaveBeenCalled()
         }).pipe(Effect.provide(TestContext.TestContext))
       ))
 
-    it('cancelAllInFlight interrupts the pending step timer', () =>
-      Effect.runPromise(
-        Effect.gen(function* () {
-          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
-          const machine = makeMachine({ sendMessage, stepSequence: [linkA] })
-
-          yield* machine.PageLoaded(pageLoaded())
-          yield* machine.cancelAllInFlight()
-          yield* TestClock.adjust(Duration.seconds(5))
-          yield* Effect.yieldNow()
-          expect(sendMessage).not.toHaveBeenCalled()
-        }).pipe(Effect.provide(TestContext.TestContext))
-      ))
-
-    it('clear() resets the index so subsequent PageLoadeds restart from stepSequence[0]', () =>
+    it('stopAutomaticNavigation() resets the index so subsequent PageLoadeds restart from stepSequence[0]', () =>
       Effect.runPromise(
         Effect.gen(function* () {
           const sendMessage = vi.fn<SendMessage>(() => Effect.void)
@@ -199,7 +217,7 @@ describe('step-machine.make: step machine', () => {
           yield* Effect.yieldNow()
           expect(sendMessage).toHaveBeenCalledTimes(1)
 
-          yield* machine.clear()
+          yield* machine.stopAutomaticNavigation()
 
           yield* machine.PageLoaded(pageLoaded())
           yield* TestClock.adjust(Duration.seconds(5))
@@ -335,14 +353,14 @@ describe('step-machine.make: step machine', () => {
           }).pipe(Effect.provide(TestContext.TestContext))
         ))
 
-      it('clear() interrupts a pending URL-match timeout', () =>
+      it('stopAutomaticNavigation() interrupts a pending URL-match timeout', () =>
         Effect.runPromise(
           Effect.gen(function* () {
             const sendMessage = vi.fn<SendMessage>(() => Effect.void)
             const machine = makeMachine({ sendMessage, stepSequence: [urlMatchLink] })
 
             yield* machine.PageLoaded(pageLoaded('https://example.com/login'))
-            yield* machine.clear()
+            yield* machine.stopAutomaticNavigation()
             yield* TestClock.adjust(Duration.seconds(30))
             yield* Effect.yieldNow()
             expect(sendMessage).not.toHaveBeenCalled()

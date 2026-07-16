@@ -1,4 +1,4 @@
-import { Duration, Effect, Layer, MutableHashMap, TestClock, TestContext } from 'effect'
+import { Duration, Effect, Layer, MutableHashMap, Option, TestClock, TestContext } from 'effect'
 import { describe, expect, it, vi } from 'vite-plus/test'
 
 import { type Step } from 'collector-fundamentals/model'
@@ -11,65 +11,42 @@ import {
 } from './collector-bridge-message-handler.test-helpers.ts'
 
 /**
- * Cross-machine integration: `make` composes the response tracker and the
- * step machine into one surface, and `clear` / `cancelAllInFlight` fold
- * both machines' contributions into a single call. The per-machine
- * behaviour is covered in `response-tracker.test.ts` /
- * `step-machine.test.ts`; these cases pin only the composition seam — that
- * one call reaches *both* halves.
+ * Cross-machine integration: `make` composes the response tracker, the
+ * automatic-navigation machine, and the run lifecycle into one surface.
+ * `cancelAllRequestSniffing` folds both machines' teardown into a single call,
+ * and the automatic-navigation machine's terminal `SniffingComplete` reaches the
+ * lifecycle through the `onSniffingComplete` hook. The per-part behaviour is
+ * covered in `sniffer-response-tracker.test.ts` / `automatic-navigation.test.ts`
+ * / `run-lifecycle-state.test.ts`;
+ * these cases pin only the composition seams — that one call, or one event,
+ * reaches *both* halves.
  */
 describe('CollectorBridgeMessageHandler.make: composition', () => {
   const linkA: Step.Step = {
     action: { _tag: 'Open', source: { _tag: 'Uri', uri: 'https://example.com/a' } },
   }
 
-  it('clear() drops tracked responses AND interrupts the pending step timer in one call', () =>
-    Effect.runPromise(
-      Effect.gen(function* () {
-        const sendMessage = vi.fn<SimpleHandlerArgs['sendMessage']>(() => Effect.void)
-        const handler = makeSimpleHandler({ sendMessage, stepSequence: [linkA] })
-
-        // Response tracker: two tracked in-flight responses.
-        yield* handler.ResponseStart(
-          responseStart({ id: 'r1', url: 'https://example.com/people/1' })
-        )
-        yield* handler.ResponseStart(
-          responseStart({ id: 'r2', url: 'https://example.com/people/2' })
-        )
-        // Step machine: a settle timer armed for linkA.
-        yield* handler.PageLoaded(pageLoaded())
-        expect(MutableHashMap.size(handler.inProgressResponses)).toBe(2)
-
-        yield* handler.clear()
-
-        // Tracker half: both tracked responses dropped.
-        expect(MutableHashMap.size(handler.inProgressResponses)).toBe(0)
-
-        // Step-machine half: the interrupted timer never dispatches linkA.
-        yield* TestClock.adjust(Duration.seconds(5))
-        yield* Effect.yieldNow()
-        expect(sendMessage).not.toHaveBeenCalled()
-      }).pipe(Effect.provide(Layer.mergeAll(TestContext.TestContext, adapterLayer)))
-    ))
-
-  it('cancelAllInFlight emits a CancelSnifferRequest per tracked id AND interrupts the pending step timer', () =>
+  it('cancelAllRequestSniffing sends a CancelSnifferRequest per incomplete id, drops them, AND stops the automatic navigation', () =>
     Effect.runPromise(
       Effect.gen(function* () {
         const sendMessage = vi.fn<SimpleHandlerArgs['sendMessage']>(() => Effect.void)
         const cancelSend = vi.fn<SimpleHandlerArgs['sendMessage']>(() => Effect.void)
         const handler = makeSimpleHandler({ sendMessage, stepSequence: [linkA] })
 
+        // Response tracker: two incomplete sniffed requests.
         yield* handler.ResponseStart(
           responseStart({ id: 'r1', url: 'https://example.com/people/1' })
         )
         yield* handler.ResponseStart(
           responseStart({ id: 'r2', url: 'https://example.com/people/2' })
         )
+        // Automatic navigation: a settle timer armed for linkA.
         yield* handler.PageLoaded(pageLoaded())
+        expect(MutableHashMap.size(handler.incompleteSniffedRequests)).toBe(2)
 
-        yield* handler.cancelAllInFlight(cancelSend)
+        yield* handler.cancelAllRequestSniffing(cancelSend)
 
-        // Tracker half: one CancelSnifferRequest dispatched per tracked id.
+        // Tracker half: one CancelSnifferRequest per id, then all dropped.
         expect(cancelSend).toHaveBeenCalledTimes(2)
         const messages = cancelSend.mock.calls.map((call) => call[0])
         expect(messages).toEqual(
@@ -78,11 +55,29 @@ describe('CollectorBridgeMessageHandler.make: composition', () => {
             { _tag: 'CancelSnifferRequest', id: 'r2' },
           ])
         )
+        expect(MutableHashMap.size(handler.incompleteSniffedRequests)).toBe(0)
 
-        // Step-machine half: the interrupted timer never dispatches linkA.
+        // Automatic-navigation half: the interrupted timer never dispatches linkA.
         yield* TestClock.adjust(Duration.seconds(5))
         yield* Effect.yieldNow()
         expect(sendMessage).not.toHaveBeenCalled()
+      }).pipe(Effect.provide(Layer.mergeAll(TestContext.TestContext, adapterLayer)))
+    ))
+
+  it('the onSniffingComplete hook closes requestSniffingResults when the step sequence is exhausted', () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const handler = makeSimpleHandler({ stepSequence: [] })
+        expect(Option.isNone(yield* handler.requestSniffingResults.size)).toBe(false)
+
+        // Empty sequence: the first PageLoaded arms the settle timer, which fires
+        // `SniffingComplete` → the lifecycle's `markSniffingComplete` hook. With
+        // nothing incomplete, that closes the stream end-to-end.
+        yield* handler.PageLoaded(pageLoaded())
+        yield* TestClock.adjust(Duration.seconds(5))
+        yield* Effect.yieldNow()
+
+        expect(Option.isNone(yield* handler.requestSniffingResults.size)).toBe(true)
       }).pipe(Effect.provide(Layer.mergeAll(TestContext.TestContext, adapterLayer)))
     ))
 })

@@ -1,5 +1,5 @@
 /**
- * Part 2 of the step machine: the states.
+ * Part 2 of the automatic-navigation machine: the states.
  *
  * A plain tagged union identified by `_tag` (not a runtime `Schema` —
  * nothing here crosses a wire). The timer-bearing variants hold no live

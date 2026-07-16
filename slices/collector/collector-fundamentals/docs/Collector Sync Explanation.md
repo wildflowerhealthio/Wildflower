@@ -3,7 +3,7 @@
 How one "Import Now" click turns a stored collector config into resources
 written to their target, and how the pieces fit together. Read this first;
 then each module makes sense in its slot. For the message-handling machines
-that sit _inside_ this pipeline (the response tracker and the step machine),
+that sit _inside_ this pipeline (the response tracker and the automatic-navigation machine),
 see the [Handler Explanation](./Handler%20Explanation.md).
 
 ## The pipeline, end to end
@@ -116,57 +116,56 @@ per-resource span — and returns the resources it could not write as
 a single fiber. It builds the `CollectorBridgeMessageHandler`, registers it,
 dispatches `RequestSniffableWebView`, and then runs the **drive Stream**
 (`buildDriveStream`), folded into the `ImportSummary` by `collectImportSummary`.
-The handler's `onResult` pushes decoded resources (or a response-level
-parse/transport failure) onto the run's mailbox; each drive step pulls one event
-and writes the batch inline, emitting that batch's `PersistFailure`s as the
-step's stream element. The run's output is thus _produced by the Stream_ — the
-fold is where `setFailed` / `onError` fire and the summary accumulates.
+The handler publishes each settled outcome — a decoded batch (`Right`) or a
+sniff-level parse/transport failure (`Left`) — onto its own
+`requestSniffingResults` stream, which `buildDriveStream` reads directly (no
+`onResult` callback, no adapter in between). Each drive step pulls one result and
+writes the batch inline, emitting that batch's `PersistFailure`s as the step's
+stream element. The run's output is thus _produced by the Stream_ — the fold is
+where `setFailed` / `onError` fire and the summary accumulates.
 
 The step is a plain decision table — **not** a state machine. (Contrast the step
 machine, which _is_ an FSM because it models concurrent, interruptible timers.
 This loop has no such concurrent state; forcing a transition table onto it
 would add ceremony for no benefit.) It is expressed with `Stream.paginateEffect`
 specifically because that emits its element on the _terminal_ step too — how the
-idle-timeout straggler settle reports its failures and ends the stream at once.
-Its mutable facts live in one `RunStore` (a class — event mailbox + the
-sniffing-complete flag behind a small public surface), and its one real subtlety
-is _when to stop_:
+idle-timeout abandon tail reports its failures and ends the stream at once.
+`buildDriveStream` is a plain generic function handed the handler's read-only
+`requestSniffingResults` stream; **completion is folded into that stream**. There
+is no `isSettled` predicate and no incomplete-request map in the runner — the
+handler's run lifecycle closes `requestSniffingResults` once sniffing is complete
+_and_ no sniffed request is still incomplete (see the
+[Handler Explanation](./Handler%20Explanation.md)), so the loop just drains until
+the stream reports done:
 
 ```text
-                 ┌─────────────────────────────────────────────┐
-   each iteration │  settled = RunStore.isSettled(inProgress)?   │
-                 └───────────────┬──────────────┬───────────────┘
-                          settled│              │not settled (still draining)
-                                 ▼              ▼
-                      wait SHORT_CONFIRM_WINDOW  wait idleTimeout
-                                 │              │
-             ┌───────────────────┴───┐      ┌───┴────────────────────┐
-             │ event pulled?          │      │ event pulled?           │
-             ├── yes → process, loop  │      ├── yes → process, loop   │
-             └── no ↓                 │      └── no ↓                  │
-        re-check isSettled            │      responses in-flight?
-          ├── still settled → DONE    │        ├── none → DONE (host silent)
-          └── lost → keep draining    │        └── some → settle as failures,
-                                      │                    then DONE
+                 ┌──────────────────────────────────────────────┐
+   each iteration │  take next result, waiting up to idleTimeout │
+                 └──────┬───────────────┬──────────────┬─────────┘
+                  result│          done │         idle │
+                        ▼               ▼              ▼
+                 process, loop        DONE        onIdleTimeout
+                                (stream drained) (abandonAllRequestSniffing:
+                                                    fail incomplete
+                                                    requests + close),
+                                                    then loop → drain → DONE
 ```
 
-- **`isSettled`** holds when sniffing has dispatched its terminal step, no
-  response is mid-stream, and the mailbox is empty. It is the single source of
-  "are we done?" and is unit-tested directly (`sync-run.test.ts`).
-- The **`SHORT_CONFIRM_WINDOW`** re-confirm is belt-and-suspenders: after
-  quiescence first holds, wait briefly for a straggler to land before
-  terminating. (The handler keeps a response tracked until _after_ its event
-  is offered, so quiescence cannot be observed mid parse→offer; the window
-  guards only a late re-navigation.)
-- The **`idleTimeout`** (`DEFAULT_IDLE_TIMEOUT`) is the escape hatch for a
-  silent host. Responses still mid-stream at that point are recorded as
-  failures (surfaced in the `partial` summary) rather than dropped — their
-  `ResponseData` chunks never wake the loop, so a hard terminate would lose
-  them silently.
+- **`done`** is a `take` on a finished, drained stream failing with
+  `NoSuchElementException`. `end`ing a non-empty mailbox leaves it _draining_, so
+  every queued result is taken before `done` — the offer-then-drop order in the
+  tracker guarantees the final result is queued before the stream closes.
+- The **`idleTimeout`** (`DEFAULT_IDLE_TIMEOUT`) is the escape hatch for a silent
+  host. If nothing arrives within it — a stalled download whose `ResponseData`
+  chunks never produce a terminal, or a host gone quiet — the loop runs the
+  injected abandon action (`abandonAllRequestSniffing`), which publishes every
+  still-incomplete sniffed request as a `Left` failure on `requestSniffingResults`
+  (surfaced in the `partial` summary) and closes the stream. Those failures then
+  drain like any other result before `done`.
 
 On completion (or idle settle, or an explicit cancel via the run's
 `AbortSignal`) the Effect's `release` tears the handler down:
-`cancelAllInFlight` → `clear` → `unregister`.
+`cancelAllRequestSniffing` → `unregister`.
 
 ## The React shell
 
@@ -180,7 +179,7 @@ why the loop is testable with `TestClock` and no React Testing Library.
 ## See also
 
 - [Handler Explanation](./Handler%20Explanation.md) — the response tracker and
-  the step machine that turn raw sniffer events into decoded resources.
+  the automatic-navigation machine that turn raw sniffer events into decoded resources.
 - [Bridge Explanation](../../../../docs/Messaging/Bridge%20Explanation.md) —
   the webview ↔ host bridge the sniffer events cross.
 - `model/resource-persistence-runtime.ts`, `collector-react/src/runtime/sync-run.ts`,

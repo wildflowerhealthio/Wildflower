@@ -21,7 +21,7 @@ import {
 } from './state.ts'
 
 /**
- * Part 5 of the step machine: the pure transition table.
+ * Part 5 of the automatic-navigation machine: the pure transition table.
  *
  * `transition(plan)(state, message) → [state, effects]` — no `Effect`, no
  * fibers, no clock. It routes on the input `_tag`, then each arm routes on
@@ -39,8 +39,7 @@ import {
  *   TimerPending(d)        ─SettleTimerFired (gen match), `d < N` → AwaitingPageLoaded(d + 1)
  *   TimerPending(N)        ─SettleTimerFired (gen match), `d ≡ N` → Done
  *   Done                   ─PageLoaded→ Done (WARN-log)
- *   any                    ─Clear→ AwaitingPageLoaded(0)
- *   any                    ─CancelAllInFlight→ AwaitingPageLoaded(d) (d preserved)
+ *   any                    ─Stop→ AwaitingPageLoaded(0) (interrupt any pending timer)
  */
 
 /** A pure transition result: the next state and the effects it requests. */
@@ -154,8 +153,10 @@ const onUrlMatchTimeoutFired = <TResources>(
   ]
 }
 
-// Reset to index 0 regardless of prior state; interrupt any pending timer.
-const onClear = (state: StepState): Transition =>
+// Halt the machine: interrupt any pending timer and reset to index 0. The
+// index is not load-bearing — `teardown` discards the machine right after — so
+// there is no "reset vs fold" distinction to preserve.
+const onStop = (state: StepState): Transition =>
   Match.value(state).pipe(
     Match.withReturnType<Transition>(),
     Match.tag('TimerPending', (s) => [
@@ -167,22 +168,6 @@ const onClear = (state: StepState): Transition =>
       [cancelTimer(s.generation)],
     ]),
     Match.orElse((s) => [awaitingPageLoaded(0, s.generation), []])
-  )
-
-// Fold back to AwaitingPageLoaded at the *same* index so a future
-// PageLoaded re-attempts the step; interrupt any pending timer.
-const onCancelAllInFlight = (state: StepState): Transition =>
-  Match.value(state).pipe(
-    Match.withReturnType<Transition>(),
-    Match.tag('TimerPending', (s) => [
-      awaitingPageLoaded(s.dispatchIndex, s.generation),
-      [cancelTimer(s.generation)],
-    ]),
-    Match.tag('AwaitingUrlMatch', (s) => [
-      awaitingPageLoaded(s.dispatchIndex, s.generation),
-      [cancelTimer(s.generation)],
-    ]),
-    Match.orElse((s) => [s, []])
   )
 
 /**
@@ -199,8 +184,7 @@ const transition =
       Match.tag('UrlMatchTimeoutFired', (m) =>
         onUrlMatchTimeoutFired(scrapingPlan, state, m.generation)
       ),
-      Match.tag('Clear', () => onClear(state)),
-      Match.tag('CancelAllInFlight', () => onCancelAllInFlight(state)),
+      Match.tag('Stop', () => onStop(state)),
       Match.exhaustive
     )
 
