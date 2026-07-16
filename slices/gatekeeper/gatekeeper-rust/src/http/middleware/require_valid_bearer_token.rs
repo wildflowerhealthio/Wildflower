@@ -46,9 +46,20 @@ pub async fn require_valid_bearer_token(
         );
     };
     let origin = shared_structures_rust::origin_string(&base_url);
-    if let Err(e) = verify_auth_token_claims(&gate.state, &origin, token) {
-        return errors::verify_error_response("verify_auth_token_claims failed", e);
-    }
+    let claims = match verify_auth_token_claims(&gate.state, &origin, token) {
+        Ok(claims) => claims,
+        Err(e) => return errors::verify_error_response("verify_auth_token_claims failed", e),
+    };
+    // Hand the caller's scope claim to any downstream slice router that
+    // scope-gates its endpoints via a `Scoped<…>` facade (databases, …). This is
+    // the seam that lets those slices authorize per-resource without depending on
+    // gatekeeper's domain `VerifiedClaims` type — they read the framework-neutral
+    // `ScopeClaims` from `shared-structures-rust`. Harmless for routers that don't
+    // read it (emr/HFS, tunnel, collector today).
+    req.extensions_mut()
+        .insert(shared_structures_rust::scope_gating::ScopeClaims::new(
+            claims.scope.clone(),
+        ));
     // Normalize a cookie-sourced token into an `Authorization: Bearer` header so
     // a downstream service that reads *only* that header still authenticates —
     // notably emr's JWKS-backed HFS auth on the FHIR router. A bearer-sourced

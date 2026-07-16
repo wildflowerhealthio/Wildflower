@@ -12,10 +12,10 @@ use axum::http::request::Parts;
 use axum::response::Response;
 
 use scopes_rust::Grant;
+use shared_structures_rust::scope_gating::GrantedScopes;
 
 use crate::domain::token::VerifiedClaims;
 use crate::http::errors;
-use crate::http::scoped::grant_from_claims;
 use crate::http::state::GatekeeperState;
 
 /// The verified claims of the caller behind an `/access` request. Present because
@@ -28,7 +28,7 @@ impl CallerSession {
     /// claim into a coverage-checkable [`Grant`] — the approver's authority used
     /// by the consent delegation clamp.
     pub(crate) fn granted_scopes(&self) -> Grant {
-        grant_from_claims(&self.0)
+        self.0.granted()
     }
 }
 

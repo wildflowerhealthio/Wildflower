@@ -20,8 +20,14 @@ serde_json.workspace = true
 utoipa.workspace = true
 utoipa-axum.workspace = true
 rusqlite.workspace = true
-# The shared opaque-500 `InternalError` template (see `http::errors`).
-shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = ["http-errors"] }
+# The scope grammar (`Scope`, `Grant`) the per-database read/delete gate checks
+# against — see `http::scoped`. Each database's governing scope is host policy
+# carried on its `DatabaseDescriptor`.
+scopes-rust = { path = "../../scopes/scopes-rust" }
+# The shared opaque-500 `InternalError` template (see `http::errors`) plus the
+# generic scope-gated service extractors (`Scoped<F>`, `GatedService`,
+# `ScopeClaims`, `insufficient_scope`) the `/databases` surface gates on.
+shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = ["http-errors", "scope-gating"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 tracing = "0.1"
 # The export streams a temp snapshot off the async runtime: `spawn_blocking` for

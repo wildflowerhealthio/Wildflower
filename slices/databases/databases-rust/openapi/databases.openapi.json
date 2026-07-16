@@ -10,8 +10,7 @@
         "tags": [
           "Management"
         ],
-        "summary": "`GET /databases` — list every catalogued database with its on-disk metadata\n(existence, size, table count, last-modified). The per-database reads are\n**best-effort**: a missing or unreadable file reports `exists: false` rather\nthan failing the listing.",
-        "description": "Each read does blocking fs stat plus a throwaway rusqlite `count(*)`, so the\nwhole loop runs on a blocking thread (`spawn_blocking`) rather than stalling\nthe async runtime — matching the download handler's sibling. Only a\n`spawn_blocking` join failure (a worker panic) can surface an error here.",
+        "summary": "`GET /databases` — list every catalogued database with its on-disk metadata\n(existence, size, table count, last-modified). Authenticated-only: listing\nexposes names/sizes, not contents, so it needs no per-database scope — the\n[`Scoped<DatabasesReader>`] gate is satisfied by any valid session. The\nper-database reads are **best-effort** (a missing or unreadable file reports\n`exists: false`) and run on a blocking thread inside the facade.",
         "operationId": "handle_list_databases",
         "responses": {
           "200": {
@@ -36,7 +35,7 @@
           "Management"
         ],
         "summary": "`GET /databases/{id}` — stream the database file as `application/vnd.sqlite3`\n(a `VACUUM INTO` snapshot, so it's internally consistent even while the\nowning slice is writing). Unknown ids and not-yet-created databases are\n`404 DatabaseNotFound`.",
-        "description": "The blocking snapshot + file IO runs on a blocking thread (`spawn_blocking`),\nand the result is streamed from the temp file rather than buffered into\nmemory, so a large database neither stalls the async runtime nor spikes RSS\nby its full size.\n\nThe body is binary, so this endpoint is documented here (utoipa) but is\nintentionally absent from the `databases-core` Effect `HttpApi`: the React\nclient downloads it through the raw `HttpClient` to get the bytes, not the\ngenerated JSON client. The spec-drift test scopes only the JSON endpoints.",
+        "description": "The blocking snapshot + file IO runs on a blocking thread (`spawn_blocking`),\nand the result is streamed from the temp file rather than buffered into\nmemory, so a large database neither stalls the async runtime nor spikes RSS\nby its full size.\n\nThe body is binary, so this endpoint is documented here (utoipa) but is\nintentionally absent from the `databases-core` Effect `HttpApi`: the React\nclient downloads it through the raw `HttpClient` to get the bytes, not the\ngenerated JSON client. The spec-drift test scopes only the JSON endpoints.\n\nGated by [`Scoped<DatabasesReader>`]: the snapshot + the database's\n`read_scope` check live in the facade, so this handler never touches the\nstore directly (a `403` on an under-scoped token, a `404` on unknown/absent).",
         "operationId": "handle_download_database",
         "parameters": [
           {

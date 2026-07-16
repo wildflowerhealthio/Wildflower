@@ -2,11 +2,10 @@
 
 use std::path::PathBuf;
 use std::pin::Pin;
-use std::sync::Arc;
 use std::task::{Context, Poll};
 
 use axum::body::{Body, Bytes};
-use axum::extract::{Path, State};
+use axum::extract::Path;
 use axum::http::header::{CONTENT_DISPOSITION, CONTENT_TYPE};
 use axum::http::HeaderValue;
 use axum::response::{IntoResponse, Response};
@@ -15,9 +14,8 @@ use tokio::fs::File;
 use tokio_util::io::ReaderStream;
 
 use crate::domain::DatabaseError;
-use crate::files::snapshot_to_temp;
 use crate::http::errors::DatabaseNotFoundBody;
-use crate::http::state::DatabasesState;
+use crate::http::scoped::{DatabasesReader, DownloadSnapshot, Scoped};
 
 /// `GET /databases/{id}` — stream the database file as `application/vnd.sqlite3`
 /// (a `VACUUM INTO` snapshot, so it's internally consistent even while the
@@ -33,6 +31,10 @@ use crate::http::state::DatabasesState;
 /// intentionally absent from the `databases-core` Effect `HttpApi`: the React
 /// client downloads it through the raw `HttpClient` to get the bytes, not the
 /// generated JSON client. The spec-drift test scopes only the JSON endpoints.
+///
+/// Gated by [`Scoped<DatabasesReader>`]: the snapshot + the database's
+/// `read_scope` check live in the facade, so this handler never touches the
+/// store directly (a `403` on an under-scoped token, a `404` on unknown/absent).
 #[utoipa::path(
     get,
     tag = "Management",
@@ -46,18 +48,13 @@ use crate::http::state::DatabasesState;
     ),
 )]
 pub(crate) async fn handle_download_database(
-    State(state): State<Arc<DatabasesState>>,
+    reader: Scoped<DatabasesReader>,
     Path(id): Path<String>,
 ) -> Result<Response, DatabaseError> {
-    let (descriptor, path) = state
-        .existing(&id)
-        .ok_or_else(|| DatabaseError::NotFound { id: id.clone() })?;
-    // Own the filename before the await (the descriptor borrows `state`).
-    let filename = descriptor.id.clone();
-
-    let temp_path = tokio::task::spawn_blocking(move || snapshot_to_temp(&path))
-        .await
-        .map_err(|error| DatabaseError::infrastructure("snapshot task panicked", error))??;
+    let DownloadSnapshot {
+        filename,
+        temp_path,
+    } = reader.download(&id).await?;
 
     let file = File::open(&temp_path)
         .await

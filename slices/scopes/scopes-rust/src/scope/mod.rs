@@ -56,6 +56,41 @@ pub enum Scope {
 }
 
 impl Scope {
+    /// Build a `wildflower/<Resource>.<perm>` scope on one of the app's own
+    /// resources — the typed way to name a Wildflower scope, so consumers
+    /// (gatekeeper's admin gate, host config) don't hand-spell scope strings or
+    /// re-declare a local constructor.
+    #[must_use]
+    pub fn wildflower(resource: WildflowerResource, permission: Permission) -> Scope {
+        Scope::WildflowerResource(WildflowerResourceScope {
+            resource: WildflowerResourceType::Known(resource),
+            permission,
+        })
+    }
+
+    /// Build a `wildflower/*.<perm>` scope — every Wildflower resource at this
+    /// permission (the wildcard an owner or a broad admin token carries).
+    #[must_use]
+    pub fn wildflower_all(permission: Permission) -> Scope {
+        Scope::WildflowerResource(WildflowerResourceScope {
+            resource: WildflowerResourceType::Wildcard,
+            permission,
+        })
+    }
+
+    /// Build a `system/*.<perm>` FHIR scope — every FHIR resource type at the
+    /// `system` access level and this permission. The typed way to name the broad
+    /// backend-service FHIR scope (e.g. `system/*.rs` to export the clinical
+    /// database) without string-parsing.
+    #[must_use]
+    pub fn fhir_system_all(permission: Permission) -> Scope {
+        Scope::FhirResource(FhirResourceScope {
+            context: ContextLevel::System,
+            resource: ResourceType::Wildcard,
+            permission,
+        })
+    }
+
     /// Does this (client-allowed) scope cover `other` (a requested scope)?
     /// Resource scopes compare structurally within their kind; known and unknown
     /// scopes — and any cross-kind pair — match exactly.
@@ -163,6 +198,47 @@ mod tests {
     /// into `Permission`'s private representation.
     fn rs() -> Permission {
         Permission::parse_segment("rs").unwrap()
+    }
+
+    #[test]
+    fn typed_builders_render_to_the_expected_strings() {
+        assert_eq!(
+            Scope::wildflower(WildflowerResource::Grant, Permission::READ).to_string(),
+            "wildflower/Grant.r",
+        );
+        assert_eq!(
+            Scope::wildflower_all(Permission::DELETE).to_string(),
+            "wildflower/*.d",
+        );
+        assert_eq!(
+            Scope::fhir_system_all(Permission::READ_SEARCH).to_string(),
+            "system/*.rs",
+        );
+        assert_eq!(
+            Scope::fhir_system_all(Permission::DELETE).to_string(),
+            "system/*.d",
+        );
+    }
+
+    #[test]
+    fn typed_builders_agree_with_string_parsing() {
+        // A builder is a typo-proof spelling of the same scope the parser yields.
+        assert_eq!(
+            Scope::fhir_system_all(Permission::READ_SEARCH),
+            Scope::from("system/*.rs"),
+        );
+        assert_eq!(
+            Scope::fhir_system_all(Permission::DELETE),
+            Scope::from("system/*.d"),
+        );
+        assert_eq!(
+            Scope::wildflower_all(Permission::READ),
+            Scope::from("wildflower/*.r"),
+        );
+        assert_eq!(
+            Scope::wildflower(WildflowerResource::Grant, Permission::DELETE),
+            Scope::from("wildflower/Grant.d"),
+        );
     }
 
     #[test]

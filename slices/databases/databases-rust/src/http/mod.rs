@@ -8,6 +8,7 @@
 
 mod errors;
 mod routes;
+mod scoped;
 mod state;
 
 pub use state::DatabasesState;

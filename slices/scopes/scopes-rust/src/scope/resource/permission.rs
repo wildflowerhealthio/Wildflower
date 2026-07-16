@@ -82,6 +82,13 @@ impl Permission {
     pub const DELETE: Self = Permission(PermissionRepr::InteractionSet(DELETE_INTERACTION_BIT));
     /// The single `s`earch interaction, as a v2 letter bag.
     pub const SEARCH: Self = Permission(PermissionRepr::InteractionSet(SEARCH_INTERACTION_BIT));
+    /// The `r`ead **and** `s`earch interactions, as a v2 letter bag (`rs`) — the
+    /// SMART read+search permission a caller needs to export a whole resource
+    /// collection. Spelled as a constant so callers name it instead of parsing
+    /// `"rs"`, and it stays in the letter grammar an owner's `cruds` can cover.
+    pub const READ_SEARCH: Self = Permission(PermissionRepr::InteractionSet(
+        READ_INTERACTION_BIT | SEARCH_INTERACTION_BIT,
+    ));
 
     /// Normalize a permission segment. Accepts the SMART v2 letter bags (`rs`,
     /// `cruds`) and the SMART v1 words (`read`/`write`/`*`), preserving which

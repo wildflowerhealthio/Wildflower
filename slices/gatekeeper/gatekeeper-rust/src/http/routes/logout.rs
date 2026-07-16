@@ -40,7 +40,7 @@ pub fn router() -> Router<Arc<GatekeeperState>> {
 
 async fn handle_logout(
     State(state): State<Arc<GatekeeperState>>,
-    caller: CallerSession,
+    CallerSession(claims): CallerSession,
     origin: ServedOrigin,
 ) -> Response {
     // Revoke the presented session token so a leaked copy can't outlive the
@@ -50,7 +50,7 @@ async fn handle_logout(
     // legacy no-`jti` token, an already-revoked token, or a transient store
     // error) must never block the cookie clear — leaving the session cookie in
     // place would be the worse outcome — so failures are logged and swallowed.
-    revoke_presented_token(&state, &caller.0);
+    revoke_presented_token(&state, &claims);
 
     let mut headers = HeaderMap::new();
     // Match the set form's `Secure` (HTTPS served origins only) so the clearing

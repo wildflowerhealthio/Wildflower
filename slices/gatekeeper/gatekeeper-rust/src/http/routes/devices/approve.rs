@@ -25,7 +25,7 @@ pub(super) fn route() -> MethodRouter<Arc<GatekeeperState>> {
 
 async fn handle_approve_device_consent(
     consents: Scoped<ConsentDecider>,
-    caller: CallerSession,
+    approver: CallerSession,
     Path(user_code): Path<String>,
     Json(body): Json<ApproveBody>,
 ) -> Result<Json<ConsentResult>, GatekeeperError> {
@@ -36,7 +36,7 @@ async fn handle_approve_device_consent(
             patient: body.patient,
             device_name: body.device_name,
         },
-        &caller.granted_scopes(),
+        &approver.granted_scopes(),
         Utc::now(),
     )?;
     Ok(Json(outcome.into()))

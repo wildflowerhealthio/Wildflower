@@ -85,6 +85,8 @@ mod tests {
             id: "evil\".sqlite".to_owned(),
             label: "Evil".to_owned(),
             description: "Quote in the id.".to_owned(),
+            read_scope: scopes_rust::Scope::wildflower_all(scopes_rust::Permission::READ),
+            delete_scope: scopes_rust::Scope::wildflower_all(scopes_rust::Permission::DELETE),
         };
         let _ = DatabasesState::new(PathBuf::from("/data"), vec![bad]);
     }

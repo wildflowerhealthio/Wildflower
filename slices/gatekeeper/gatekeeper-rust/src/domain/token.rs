@@ -171,6 +171,16 @@ pub struct VerifiedClaims {
     pub host_owner: Option<bool>,
 }
 
+/// Read the caller's authority from the verified `scope` claim so the shared
+/// [`Scoped`](crate::http::scoped::Scoped) extractor (and the `CallerSession`
+/// approver clamp) can coverage-check it. A missing `scope` claim yields an empty
+/// grant (covers nothing) — fail-closed.
+impl shared_structures_rust::scope_gating::GrantedScopes for VerifiedClaims {
+    fn granted(&self) -> scopes_rust::Grant {
+        scopes_rust::Grant::parse(self.scope.as_deref().unwrap_or("").split_whitespace())
+    }
+}
+
 /// Policy applied to incoming tokens during verification.
 pub struct VerifyOptions<'a> {
     /// Required `iss` value.

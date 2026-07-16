@@ -74,34 +74,16 @@ pub(crate) fn unauthorized() -> Response {
     (StatusCode::UNAUTHORIZED, "unauthorized").into_response()
 }
 
-/// Wire shape for a 403 — the caller authenticated, but their token doesn't
-/// cover the scope(s) an operation requires. `missingScopes` names the scopes
-/// the caller must additionally hold; the authentication mirror is
-/// [`unauthorized`] (401).
-#[derive(Debug, Serialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct InsufficientScopeBody {
-    pub(crate) error: &'static str,
-    pub(crate) missing_scopes: Vec<String>,
-}
-
 /// A `403 Forbidden` carrying the rendered scopes the caller lacks. Two callers
 /// share it: the scope-gated service extractors ([`crate::http::scoped`]) reject
 /// with it when a token doesn't cover a service's required scope, and the
 /// consent approver clamp uses it when an approver tries to delegate scopes
 /// beyond their own grant. This is the authorization (not authentication)
 /// failure path the resource-scope epic introduces — the first 403 the
-/// gatekeeper's `/access` surface can return.
-pub(crate) fn insufficient_scope(missing_scopes: Vec<String>) -> Response {
-    (
-        StatusCode::FORBIDDEN,
-        Json(InsufficientScopeBody {
-            error: "InsufficientScope",
-            missing_scopes,
-        }),
-    )
-        .into_response()
-}
+/// gatekeeper's `/access` surface can return. The wire shape and this
+/// constructor now live in `shared-structures-rust` (the reusable `scope_gating`
+/// layer), re-exported here so call sites keep importing it from `errors`.
+pub(crate) use shared_structures_rust::scope_gating::insufficient_scope;
 
 /// Wire shape for `GrantNotFound` (404) — no standing grant has this id.
 #[derive(Debug, Serialize, ToSchema)]

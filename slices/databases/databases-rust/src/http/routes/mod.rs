@@ -37,6 +37,9 @@ mod tests {
     use rusqlite::Connection;
     use tower::ServiceExt;
 
+    use scopes_rust::{Permission, Scope};
+    use shared_structures_rust::scope_gating::ScopeClaims;
+
     use super::*;
     use crate::config::DatabaseDescriptor;
     use crate::http::state::DatabasesState;
@@ -47,21 +50,31 @@ mod tests {
         openapi_router().split_for_parts().0
     }
 
-    /// The catalogue the tests expose — mirrors what the Tauri host passes.
+    /// The catalogue the tests expose — mirrors what the Tauri host passes,
+    /// including each database's governing read/delete scope (the FHIR clinical
+    /// database is gated by `system/*`, the app-data database by `wildflower/*`).
     fn descriptors() -> Vec<DatabaseDescriptor> {
         vec![
             DatabaseDescriptor {
                 id: "health-data.sqlite".to_owned(),
                 label: "Health data".to_owned(),
                 description: "Your clinical records.".to_owned(),
+                read_scope: Scope::fhir_system_all(Permission::READ_SEARCH),
+                delete_scope: Scope::fhir_system_all(Permission::DELETE),
             },
             DatabaseDescriptor {
                 id: "wildflower.sqlite".to_owned(),
                 label: "Wildflower app data".to_owned(),
                 description: "App state.".to_owned(),
+                read_scope: Scope::wildflower_all(Permission::READ),
+                delete_scope: Scope::wildflower_all(Permission::DELETE),
             },
         ]
     }
+
+    /// A scope claim covering **both** databases — the owner-shaped token the
+    /// behavioural tests present so the per-database gate never rejects them.
+    const OWNER_SCOPES: &str = "system/*.cruds wildflower/*.cruds";
 
     /// Create a real SQLite database at `path` with `tables` user tables, so
     /// metadata reads (size, table count) and the export snapshot have
@@ -100,14 +113,32 @@ mod tests {
         (status, json)
     }
 
+    /// A `GET` carrying the owner scope claim (covers both databases) — the
+    /// authN layer the host wraps this router with inserts a `ScopeClaims`, so
+    /// the tests do the same via a request extension.
     fn get(uri: &str) -> Request<Body> {
-        Request::builder().uri(uri).body(Body::empty()).unwrap()
+        get_as(uri, OWNER_SCOPES)
+    }
+
+    /// A `GET` carrying exactly `scopes`, for exercising the per-database gate.
+    fn get_as(uri: &str, scopes: &str) -> Request<Body> {
+        Request::builder()
+            .uri(uri)
+            .extension(ScopeClaims::new(Some(scopes.to_owned())))
+            .body(Body::empty())
+            .unwrap()
     }
 
     fn delete(uri: &str) -> Request<Body> {
+        delete_as(uri, OWNER_SCOPES)
+    }
+
+    /// A `DELETE` carrying exactly `scopes`, for exercising the per-database gate.
+    fn delete_as(uri: &str, scopes: &str) -> Request<Body> {
         Request::builder()
             .method("DELETE")
             .uri(uri)
+            .extension(ScopeClaims::new(Some(scopes.to_owned())))
             .body(Body::empty())
             .unwrap()
     }
@@ -271,5 +302,106 @@ mod tests {
         let (status, body) = send_json(&st, delete("/databases/wildflower.sqlite")).await;
         assert_eq!(status, StatusCode::NOT_FOUND);
         assert_eq!(body["error"], "DatabaseNotFound");
+    }
+
+    #[tokio::test]
+    async fn download_is_gated_by_the_target_databases_read_scope() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        seed_db(&dir.path().join("health-data.sqlite"), 1);
+        seed_db(&dir.path().join("wildflower.sqlite"), 1);
+        let st = state_with(dir.path());
+
+        // A token scoped to the app-data grammar covers that database's
+        // `read_scope` (`wildflower/*.r`) → download allowed.
+        let (status, _) = send(
+            &st,
+            get_as("/databases/wildflower.sqlite", "wildflower/*.r"),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+
+        // The same token cannot read the FHIR clinical database (needs
+        // `system/*.rs`) → 403 naming the missing scope.
+        let (status, body) = send_json(
+            &st,
+            get_as("/databases/health-data.sqlite", "wildflower/*.r"),
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "body: {body}");
+        assert_eq!(body["error"], "InsufficientScope");
+        assert_eq!(body["missingScopes"], serde_json::json!(["system/*.rs"]));
+    }
+
+    #[tokio::test]
+    async fn delete_is_gated_by_the_target_databases_delete_scope() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        seed_db(&dir.path().join("health-data.sqlite"), 1);
+        seed_db(&dir.path().join("wildflower.sqlite"), 1);
+        let st = state_with(dir.path());
+
+        // A `system/*.d` token can schedule the FHIR database's deletion.
+        let (status, body) = send_json(
+            &st,
+            delete_as("/databases/health-data.sqlite", "system/*.d"),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "body: {body}");
+        assert_eq!(body["deleted"], serde_json::json!(true));
+
+        // ...but cannot delete the app-data database (needs `wildflower/*.d`).
+        let (status, body) =
+            send_json(&st, delete_as("/databases/wildflower.sqlite", "system/*.d")).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "body: {body}");
+        assert_eq!(body["error"], "InsufficientScope");
+        assert_eq!(body["missingScopes"], serde_json::json!(["wildflower/*.d"]));
+    }
+
+    #[tokio::test]
+    async fn under_scoped_download_is_403_before_the_existence_check() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        // `health-data.sqlite` is catalogued but never created (absent).
+        let st = state_with(dir.path());
+
+        // The scope gate runs before the existence check, so an under-scoped
+        // caller gets 403 whether or not the file is present — no existence leak,
+        // mirroring gatekeeper's "gate rejects before the handler".
+        let (status, body) = send_json(
+            &st,
+            get_as("/databases/health-data.sqlite", "wildflower/*.r"),
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "body: {body}");
+        assert_eq!(body["error"], "InsufficientScope");
+    }
+
+    #[tokio::test]
+    async fn list_is_authenticated_only_regardless_of_resource_scopes() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        seed_db(&dir.path().join("health-data.sqlite"), 1);
+        let st = state_with(dir.path());
+
+        // A token holding no database resource scope at all still lists metadata:
+        // listing exposes names/sizes, not contents, so it needs no per-database
+        // scope — only a valid session (a present `ScopeClaims`).
+        let (status, body) = send_json(&st, get_as("/databases", "openid")).await;
+        assert_eq!(status, StatusCode::OK, "body: {body}");
+        assert_eq!(body.as_array().expect("array").len(), 2);
+    }
+
+    #[tokio::test]
+    async fn a_request_without_claims_fails_closed_with_500() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        seed_db(&dir.path().join("wildflower.sqlite"), 1);
+        let st = state_with(dir.path());
+
+        // No `ScopeClaims` extension — a wiring bug (the authN layer that inserts
+        // it didn't run). The `Scoped` extractor fails closed with a 500 rather
+        // than admit the request, so a mis-mounted router can't bypass the gate.
+        let req = Request::builder()
+            .uri("/databases")
+            .body(Body::empty())
+            .unwrap();
+        let (status, _) = send(&st, req).await;
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
     }
 }

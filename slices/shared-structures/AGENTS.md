@@ -13,6 +13,7 @@ Cross-slice utilities: the phantom-id HttpApi composition helper every slice use
 
 ## References
 
+- [Scope-Gated Endpoints How-To](../../docs/Authorization/Scope-Gated%20Endpoints%20How-To.md) — the reusable `scope_gating` machinery (`Scoped<F>`, `GatedService`, `ScopeClaims`) lives here behind the `scope-gating` feature; the how-to is the copy-this-pattern recipe
 - [HttpApi Composition How-To](../../docs/Effect/HttpApi%20Composition%20How-To.md) — phantom-id bridge, `topLevel` collision
 - [OpenAPI Spec Drift How-To](../../docs/Effect/OpenAPI%20Spec%20Drift%20How-To.md) — the drift guard this slice implements
 - [Web Handler Coordinator Explanation](../../docs/Effect/Web%20Handler%20Coordinator%20Explanation.md) — coordinator seam
