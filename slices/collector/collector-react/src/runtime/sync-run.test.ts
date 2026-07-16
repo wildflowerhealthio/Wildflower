@@ -3,11 +3,19 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { makeRunStateMachine, SHORT_CONFIRM_WINDOW, type FailedResource } from './sync-run.ts'
+import {
+  driveTransition,
+  makeRunStore,
+  SHORT_CONFIRM_WINDOW,
+  type DriveObservation,
+  type FailedResource,
+  type ImportEvent,
+  type RunPhase,
+} from './sync-run.ts'
 
 /**
  * Direct unit coverage of the extracted framework-free core
- * ({@link ./sync-run.ts}). This suite pins the {@link makeRunStateMachine}
+ * ({@link ./sync-run.ts}). This suite pins the {@link makeRunStore}
  * completion predicate and failure accounting — the facts the drive loop
  * reads to decide "are we done?" and to build the `partial` summary —
  * without React Testing Library.
@@ -43,13 +51,13 @@ const recordingSink = (): {
 const runTest = <A>(program: Effect.Effect<A, never, never>): Promise<A> =>
   Effect.runPromise(program.pipe(Effect.provide(TestContext.TestContext)))
 
-describe('makeRunStateMachine', () => {
+describe('makeRunStore', () => {
   describe('isSettled', () => {
     it('is false before sniffing is signalled complete', async () => {
       const sink = recordingSink()
       const settled = await runTest(
         Effect.gen(function* () {
-          const sm = yield* makeRunStateMachine(sink.setFailed, sink.onError)
+          const sm = yield* makeRunStore(sink.setFailed, sink.onError)
           return yield* sm.isSettled(MutableHashMap.empty())
         })
       )
@@ -60,7 +68,7 @@ describe('makeRunStateMachine', () => {
       const sink = recordingSink()
       const settled = await runTest(
         Effect.gen(function* () {
-          const sm = yield* makeRunStateMachine(sink.setFailed, sink.onError)
+          const sm = yield* makeRunStore(sink.setFailed, sink.onError)
           yield* sm.signalSniffComplete
           // Drain the `sniffDone` wake event so only the in-flight response
           // keeps it unsettled.
@@ -76,7 +84,7 @@ describe('makeRunStateMachine', () => {
       const sink = recordingSink()
       const settled = await runTest(
         Effect.gen(function* () {
-          const sm = yield* makeRunStateMachine(sink.setFailed, sink.onError)
+          const sm = yield* makeRunStore(sink.setFailed, sink.onError)
           yield* sm.signalSniffComplete
           sm.offerParsed([])
           return yield* sm.isSettled(MutableHashMap.empty())
@@ -89,7 +97,7 @@ describe('makeRunStateMachine', () => {
       const sink = recordingSink()
       const settled = await runTest(
         Effect.gen(function* () {
-          const sm = yield* makeRunStateMachine(sink.setFailed, sink.onError)
+          const sm = yield* makeRunStore(sink.setFailed, sink.onError)
           yield* sm.signalSniffComplete
           yield* sm.tryTakeEvent(Duration.zero)
           return yield* sm.isSettled(MutableHashMap.empty())
@@ -104,7 +112,7 @@ describe('makeRunStateMachine', () => {
       const sink = recordingSink()
       const event = await runTest(
         Effect.gen(function* () {
-          const sm = yield* makeRunStateMachine(sink.setFailed, sink.onError)
+          const sm = yield* makeRunStore(sink.setFailed, sink.onError)
           sm.offerFailure(new Error('boom'), 'https://example.com/x')
           return yield* sm.tryTakeEvent(SHORT_CONFIRM_WINDOW)
         })
@@ -119,7 +127,7 @@ describe('makeRunStateMachine', () => {
       const sink = recordingSink()
       const event = await runTest(
         Effect.gen(function* () {
-          const sm = yield* makeRunStateMachine(sink.setFailed, sink.onError)
+          const sm = yield* makeRunStore(sink.setFailed, sink.onError)
           const fiber = yield* Effect.fork(sm.tryTakeEvent(SHORT_CONFIRM_WINDOW))
           yield* TestClock.adjust(SHORT_CONFIRM_WINDOW)
           return yield* Fiber.join(fiber)
@@ -134,17 +142,17 @@ describe('makeRunStateMachine', () => {
       const sink = recordingSink()
       const summary = await runTest(
         Effect.gen(function* () {
-          const sm = yield* makeRunStateMachine(sink.setFailed, sink.onError)
-          yield* sm.handleFailure({ kind: 'Patient', id: '1' }, new Error('a'))
-          yield* sm.handleFailure({ kind: 'Observation', id: '2' }, new Error('b'))
+          const sm = yield* makeRunStore(sink.setFailed, sink.onError)
+          yield* sm.handleFailure({ label: 'Patient', id: '1' }, new Error('a'))
+          yield* sm.handleFailure({ label: 'Observation', id: '2' }, new Error('b'))
           return yield* sm.summary
         })
       )
       expect(summary).toEqual({
         cancelled: false,
         failed: [
-          { kind: 'Patient', id: '1' },
-          { kind: 'Observation', id: '2' },
+          { label: 'Patient', id: '1' },
+          { label: 'Observation', id: '2' },
         ],
       })
       // setFailed receives the cumulative list each time (last call is complete).
@@ -155,12 +163,12 @@ describe('makeRunStateMachine', () => {
     it('summary.failed always mirrors every handled failure, in order (property)', async () => {
       await fc.assert(
         fc.asyncProperty(
-          fc.array(fc.record({ kind: fc.string(), id: fc.string() })),
+          fc.array(fc.record({ label: fc.string(), id: fc.string() })),
           async (failures) => {
             const sink = recordingSink()
             const summary = await runTest(
               Effect.gen(function* () {
-                const sm = yield* makeRunStateMachine(sink.setFailed, sink.onError)
+                const sm = yield* makeRunStore(sink.setFailed, sink.onError)
                 yield* Effect.forEach(failures, (failed) =>
                   sm.handleFailure(failed, new Error(failed.id))
                 )
@@ -177,3 +185,116 @@ describe('makeRunStateMachine', () => {
     })
   })
 })
+
+describe('driveTransition', () => {
+  it('processes a pulled event and stays in the current phase (so the loop continues)', () => {
+    // Arrange
+    const event = { _tag: 'sniffDone' } as const
+    const observation: DriveObservation<unknown> = { _tag: 'Event', event }
+
+    // Act
+    const [nextPhase, effects] = driveTransition(draining, observation)
+
+    // Assert
+    expect(nextPhase).toEqual(draining)
+    expect(effects).toEqual([{ _tag: 'ProcessEvent', event }])
+  })
+
+  it('terminates cleanly when quiescence still holds after the confirm window', () => {
+    // Arrange
+    const observation: DriveObservation<unknown> = { _tag: 'QuiescenceHeld' }
+
+    // Act
+    const [nextPhase, effects] = driveTransition(confirming, observation)
+
+    // Assert
+    expect(nextPhase).toEqual(terminated)
+    expect(effects).toEqual([])
+  })
+
+  it('folds back to draining (no termination) when quiescence was lost', () => {
+    // Arrange
+    const observation: DriveObservation<unknown> = { _tag: 'QuiescenceLost' }
+
+    // Act
+    const [nextPhase, effects] = driveTransition(confirming, observation)
+
+    // Assert
+    expect(nextPhase).toEqual(draining)
+    expect(effects).toEqual([])
+  })
+
+  it('terminates cleanly on an idle timeout with nothing in-flight', () => {
+    // Arrange
+    const observation: DriveObservation<unknown> = { _tag: 'IdleQuiet' }
+
+    // Act
+    const [nextPhase, effects] = driveTransition(draining, observation)
+
+    // Assert
+    expect(nextPhase).toEqual(terminated)
+    expect(effects).toEqual([])
+  })
+
+  it('settles the stragglers then terminates on an idle timeout with responses in-flight', () => {
+    // Arrange
+    const observation: DriveObservation<unknown> = { _tag: 'IdleStragglers' }
+
+    // Act
+    const [nextPhase, effects] = driveTransition(draining, observation)
+
+    // Assert
+    expect(nextPhase).toEqual(terminated)
+    expect(effects).toEqual([{ _tag: 'SettleStragglers' }])
+  })
+
+  it('always passes the live phase through unchanged for an Event, requesting exactly its ProcessEvent', () => {
+    fc.assert(
+      fc.property(
+        fc.constantFrom<RunPhase>(draining, confirming),
+        fc.constantFrom<ImportEvent<unknown>>(
+          { _tag: 'sniffDone' },
+          { _tag: 'parsed', resources: [] },
+          { _tag: 'failure', error: new Error('x'), url: 'https://example.com/x' }
+        ),
+        (phase, event) => {
+          // Act
+          const [nextPhase, effects] = driveTransition(phase, { _tag: 'Event', event })
+
+          // Assert — the Event arm never terminates and never inspects the event.
+          expect(nextPhase).toEqual(phase)
+          expect(effects).toEqual([{ _tag: 'ProcessEvent', event }])
+        }
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('never depends on the incoming phase for a terminating observation', () => {
+    fc.assert(
+      fc.property(
+        fc.constantFrom<RunPhase>(draining, confirming, terminated),
+        fc.constantFrom<DriveObservation<unknown>>(
+          { _tag: 'QuiescenceHeld' },
+          { _tag: 'IdleQuiet' },
+          { _tag: 'IdleStragglers' }
+        ),
+        (phase, observation) => {
+          // Act — a terminating observation ignores the phase it arrives in.
+          const [fromPhase] = driveTransition(phase, observation)
+          const [fromDraining] = driveTransition(draining, observation)
+
+          // Assert
+          expect(fromPhase).toEqual(terminated)
+          expect(fromPhase).toEqual(fromDraining)
+        }
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+})
+
+// Helpers
+const draining: RunPhase = { _tag: 'Draining' }
+const confirming: RunPhase = { _tag: 'Confirming' }
+const terminated: RunPhase = { _tag: 'Terminated' }

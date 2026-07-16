@@ -107,11 +107,11 @@ describe('persistResource', () => {
 describe('describeResource', () => {
   it('labels a resource by its FHIR resourceType and id', () => {
     const observation = cases.find((c) => c.resourceType === 'Observation')!.make('obs-1')
-    expect(describeResource(observation)).toEqual({ kind: 'Observation', id: 'obs-1' })
+    expect(describeResource(observation)).toEqual({ label: 'Observation', id: 'obs-1' })
   })
 
   it('falls back to a sentinel id for a null-id resource', () => {
     const binary = cases.find((c) => c.resourceType === 'Binary')!.make(null)
-    expect(describeResource(binary)).toEqual({ kind: 'Binary', id: '<no-id>' })
+    expect(describeResource(binary)).toEqual({ label: 'Binary', id: '<no-id>' })
   })
 })

@@ -67,7 +67,7 @@ type CollectorRequirements = CollectorDescriptor.RequirementsOf<AnyCollectorDesc
  * for a stored `CollectorConfig` by dispatching to the owning descriptor,
  * with the resource union held **existential** (see
  * {@link CollectorDescriptor.RunIngredients}). Drives the sync runner: it
- * consumes the returned bundle through the `provide` continuation, so it
+ * consumes the returned bundle through the `runWith` continuation, so it
  * never names a collector's resource type.
  *
  * Each descriptor's `runIngredientsIfMatches` structurally validates the

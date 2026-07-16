@@ -93,26 +93,34 @@ const useSyncRunner = ({
   // Per-run AbortController so `cancel()` can interrupt the long Effect.
   const abortRef = useRef<AbortController | null>(null)
 
-  const mutation = useMutation<ImportSummary, Error, CollectorRemote>({
-    mutationFn: (remote) => {
-      const controller = new AbortController()
-      abortRef.current = controller
-      // The registry hands back the plan + persist sink + describe fn with
-      // the resource union held existential; `provide` runs the generic
-      // runner body over the hidden `Resources` (see `runIngredientsForConfig`).
-      const importEffect = runIngredientsForConfig(remote.config).provide((bundle) =>
+  // Assemble the generic runner for a stored config. The registry hands
+  // back the plan + persist sink + describe fn with the resource union held
+  // existential; `runWith` (NOT `Effect.provide` — see
+  // `collector-fundamentals` `run-ingredients.ts`) instantiates the generic
+  // runner body over the hidden `Resources`. Kept as one flat step so the
+  // `mutationFn` below reads as "build → run authed", not a nested stack.
+  const buildImportEffectForConfig = useCallback(
+    (config: CollectorRemote['config']) =>
+      runIngredientsForConfig(config).runWith((bundle) =>
         buildImportEffect({
-          scrapingPlan: bundle.scrapingPlan,
-          persistResource: bundle.persistResource,
-          describeResource: bundle.describeResource,
+          ...bundle,
           sendCollectorMessage,
           collectorRegister,
           onError: (error) => onErrorRef.current?.(error),
           setFailed,
           idleTimeout,
         })
-      )
-      return runAuthed(importEffect, { signal: controller.signal }).catch((error: unknown) => {
+      ),
+    [sendCollectorMessage, collectorRegister, setFailed, idleTimeout]
+  )
+
+  const mutation = useMutation<ImportSummary, Error, CollectorRemote>({
+    mutationFn: (remote) => {
+      const controller = new AbortController()
+      abortRef.current = controller
+      return runAuthed(buildImportEffectForConfig(remote.config), {
+        signal: controller.signal,
+      }).catch((error: unknown) => {
         // An explicit cancel surfaces as an interruption rejection;
         // resolve cleanly so the mutation lands on `idle`, not `error`.
         if (controller.signal.aborted) return { failed: [], cancelled: true }

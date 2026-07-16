@@ -23,6 +23,13 @@
  * runner still owns everything *around* a write — batching,
  * `WRITE_CONCURRENCY`, the retry/backoff schedule, spans, and failure
  * accounting.
+ *
+ * The drive loop is expressed as a small explicit state machine — a
+ * {@link RunPhase} tagged union plus the pure {@link driveTransition} —
+ * mirroring the browser-sniffer step machine's "tagged-union state + a
+ * pure `(state, input) → [state, effects]` transition" shape, without its
+ * full six-file ceremony (see `collector-fundamentals`'s
+ * `handler/step-machine/`). The mutable run facts live in {@link RunStore}.
  */
 import { CollectorBridgeMessageHandler } from 'collector-fundamentals/handler'
 import type { CollectorDescriptor, ScrapingPlan } from 'collector-fundamentals/model'
@@ -46,12 +53,12 @@ import type { useCollectorRegister } from './use-collector-register.ts'
 /**
  * Identifier of an upsert that failed after all retries (or a response
  * that failed to parse). Surfaced via the `partial` runner state so the
- * UI can render "N of M synced". `kind` / `id` are the descriptor's
+ * UI can render "N of M synced". `label` / `id` are the descriptor's
  * {@link CollectorDescriptor.ResourceDescription} — the runner never
  * inspects a resource's fields itself.
  */
 interface FailedResource {
-  readonly kind: string
+  readonly label: string
   readonly id: string
 }
 
@@ -108,12 +115,16 @@ const WRITE_CONCURRENCY = 1
  * The run's mutable state behind one named surface. It owns the event
  * mailbox plus the two facts that decide completion — whether sniffing
  * dispatched its terminal step, and the accumulated failures — and
- * exposes {@link RunStateMachine.isSettled} as the single place that
- * answers "are we done?". Writes are *not* tracked here: the drive loop
- * awaits each batch inline, so a processed event leaves its writes
- * already settled.
+ * exposes {@link RunStore.isSettled} as the single place that answers
+ * "are we done?". Writes are *not* tracked here: the drive loop awaits
+ * each batch inline, so a processed event leaves its writes already
+ * settled.
+ *
+ * This is a state *store* (a bag of mutable refs + a mailbox), deliberately
+ * distinct from the drive loop's {@link RunPhase} state *machine*: the store
+ * holds the facts, the machine decides transitions from them.
  */
-interface RunStateMachine<Resources> {
+interface RunStore<Resources> {
   /** Push a decoded response's resources (sync; called from `onResult`). */
   readonly offerParsed: (resources: ReadonlyArray<Resources>) => void
   /** Push a parse/transport failure (sync; called from `onResult`). */
@@ -134,16 +145,16 @@ interface RunStateMachine<Resources> {
   readonly summary: Effect.Effect<ImportSummary>
 }
 
-const makeRunStateMachine = <Resources>(
+const makeRunStore = <Resources>(
   setFailed: (failed: ReadonlyArray<FailedResource>) => void,
   onError: (error: unknown) => void
-): Effect.Effect<RunStateMachine<Resources>> =>
+): Effect.Effect<RunStore<Resources>> =>
   Effect.gen(function* () {
     const events = yield* Mailbox.make<ImportEvent<Resources>>()
     const sniffComplete = yield* Ref.make(false)
     const failures = yield* Ref.make<ReadonlyArray<FailedResource>>([])
 
-    const handleFailure: RunStateMachine<Resources>['handleFailure'] = (failed, error) =>
+    const handleFailure: RunStore<Resources>['handleFailure'] = (failed, error) =>
       Ref.updateAndGet(failures, (arr) => [...arr, failed]).pipe(
         Effect.flatMap((arr) =>
           Effect.sync(() => {
@@ -153,7 +164,7 @@ const makeRunStateMachine = <Resources>(
         )
       )
 
-    const isSettled: RunStateMachine<Resources>['isSettled'] = (inProgressResponses) =>
+    const isSettled: RunStore<Resources>['isSettled'] = (inProgressResponses) =>
       Effect.gen(function* () {
         if (!(yield* Ref.get(sniffComplete))) return false
         if (MutableHashMap.size(inProgressResponses) > 0) return false
@@ -184,6 +195,91 @@ const makeRunStateMachine = <Resources>(
   })
 
 /**
+ * The drive loop's phase — an explicit, named state, mirroring the
+ * browser-sniffer step machine's tagged-union-state shape.
+ *
+ * - `Draining`: still importing. The loop waits the long `idleTimeout` for
+ *   the next event; a quiet window here means the host may have stalled.
+ * - `Confirming`: quiescence has held once (`isSettled`). The loop waits the
+ *   short `SHORT_CONFIRM_WINDOW` to let a straggler land before terminating.
+ * - `Terminated`: the loop is done; the runtime stops.
+ *
+ * The phase is re-derived from `isSettled` at the top of every iteration, so
+ * `Draining` / `Confirming` name *which wait we are in*; `Terminated` is the
+ * one phase the transition commits to.
+ */
+type RunPhase =
+  | { readonly _tag: 'Draining' }
+  | { readonly _tag: 'Confirming' }
+  | { readonly _tag: 'Terminated' }
+
+const draining: RunPhase = { _tag: 'Draining' }
+const confirming: RunPhase = { _tag: 'Confirming' }
+const terminated: RunPhase = { _tag: 'Terminated' }
+
+/**
+ * What one wait resolved to — the pure transition's input. The runtime
+ * ({@link buildImportEffect}'s drive loop) performs the effectful reads
+ * (`tryTakeEvent`, a re-check of `isSettled`, the in-flight count) to build
+ * this, so {@link driveTransition} itself stays a pure
+ * `(phase, observation) → [phase, effects]`.
+ *
+ * - `Event`: an event was pulled from the mailbox.
+ * - `QuiescenceHeld`: the short window elapsed and `isSettled` still holds —
+ *   the run is genuinely complete.
+ * - `QuiescenceLost`: the short window elapsed but `isSettled` no longer
+ *   holds (a late event landed) — go back to draining.
+ * - `IdleQuiet`: the long window elapsed with nothing tracked in-flight — the
+ *   host has gone silent; terminate.
+ * - `IdleStragglers`: the long window elapsed with responses still mid-stream
+ *   (their `ResponseData` chunks don't wake the loop) — settle them as
+ *   failures, then terminate.
+ */
+type DriveObservation<Resources> =
+  | { readonly _tag: 'Event'; readonly event: ImportEvent<Resources> }
+  | { readonly _tag: 'QuiescenceHeld' }
+  | { readonly _tag: 'QuiescenceLost' }
+  | { readonly _tag: 'IdleQuiet' }
+  | { readonly _tag: 'IdleStragglers' }
+
+/**
+ * The effects {@link driveTransition} can request, as data — the runtime
+ * discharges them (mirrors the step machine's "the transition names effects,
+ * it never executes them").
+ *
+ * - `ProcessEvent`: handle a pulled event (write a batch / record a failure).
+ * - `SettleStragglers`: warn about, then record as failures, every response
+ *   still in-flight at the idle timeout.
+ */
+type DriveEffect<Resources> =
+  | { readonly _tag: 'ProcessEvent'; readonly event: ImportEvent<Resources> }
+  | { readonly _tag: 'SettleStragglers' }
+
+/**
+ * The pure drive-loop transition: `(phase, observation) → [phase, effects]`.
+ * No `Effect`, no clock — it only names what should happen next; the runtime
+ * interprets the effects and loops until `Terminated`.
+ *
+ * On `Event` the current `phase` is passed through (the next iteration
+ * re-derives `Draining` / `Confirming` from `isSettled`); the quiescence /
+ * idle observations are the ones that commit to `Terminated` (or fold back to
+ * `Draining` when quiescence was lost).
+ */
+const driveTransition = <Resources>(
+  phase: RunPhase,
+  observation: DriveObservation<Resources>
+): readonly [RunPhase, ReadonlyArray<DriveEffect<Resources>>] =>
+  Match.value(observation).pipe(
+    Match.withReturnType<readonly [RunPhase, ReadonlyArray<DriveEffect<Resources>>]>(),
+    Match.tag('Event', ({ event }) => [phase, [{ _tag: 'ProcessEvent', event }]]),
+    Match.tag('QuiescenceHeld', () => [terminated, []]),
+    Match.tag('QuiescenceLost', () => [draining, []]),
+    Match.tag('IdleQuiet', () => [terminated, []]),
+    Match.tag('IdleStragglers', () => [terminated, [{ _tag: 'SettleStragglers' }]]),
+    Match.exhaustive
+  )
+
+/**
  * Model the whole sync as one long, interruptible Effect on a single
  * fiber:
  *
@@ -192,14 +288,14 @@ const makeRunStateMachine = <Resources>(
  *     `RequestSniffableWebView`. Register-before-dispatch guarantees the
  *     host's sniffer events land on the live handler.
  *   - The handler's `onResult` pushes parsed resources / failures into the
- *     {@link RunStateMachine} mailbox. The drive loop pulls each event and, for
+ *     {@link RunStore} mailbox. The drive loop pulls each event and, for
  *     `parsed`, upserts the batch *inline* (`Effect.forEach`, awaited): the
  *     batch is settled by the time the event finishes, so there's no
  *     outstanding-write bookkeeping. The write requirement (`R`, the
  *     descriptor's `persistResource` environment) bubbles up to this
  *     Effect's `R`, which the broadened collector `runAuthed` satisfies.
- *   - Completion is {@link RunStateMachine.isSettled} — sniffing dispatched
- *     its terminal step, no response is mid-stream, the mailbox is empty —
+ *   - Completion is {@link RunStore.isSettled} — sniffing dispatched its
+ *     terminal step, no response is mid-stream, the mailbox is empty —
  *     re-confirmed across {@link SHORT_CONFIRM_WINDOW}. The handler keeps a
  *     response tracked until *after* its `parsed`/`failure` event is offered
  *     (see {@link SHORT_CONFIRM_WINDOW}), so quiescence can't be observed while
@@ -233,7 +329,7 @@ const buildImportEffect = <Resources, R>({
 }): Effect.Effect<ImportSummary, never, R> =>
   Effect.scoped(
     Effect.gen(function* () {
-      const stateMachine = yield* makeRunStateMachine<Resources>(setFailed, onError)
+      const store = yield* makeRunStore<Resources>(setFailed, onError)
 
       // One resource's write, retried with bounded exponential backoff (3
       // retries, 250ms → 1s). Each attempt is its own span, so the retry
@@ -243,20 +339,20 @@ const buildImportEffect = <Resources, R>({
       // where" is the injected `persistResource`; the runner owns the
       // schedule, the span, and the failure recording around it.
       const writeResourceWithRetries = (resource: Resources): Effect.Effect<void, never, R> => {
-        const { kind, id } = describeResource(resource)
+        const { label, id } = describeResource(resource)
         return persistResource(resource).pipe(
           Effect.tapError((err) =>
-            Effect.logError(`sync-run: upsert failed for ${kind}/${id}`, err)
+            Effect.logError(`sync-run: upsert failed for ${label}/${id}`, err)
           ),
           Effect.retry(
             Schedule.exponential('250 millis').pipe(Schedule.intersect(Schedule.recurs(3)))
           ),
           Effect.withSpan(Telemetry.Importing.Update.Span.Name, {
-            attributes: { [Telemetry.Importing.Update.Span.Attributes.Kind]: kind },
+            attributes: { [Telemetry.Importing.Update.Span.Attributes.Kind]: label },
           }),
           Effect.asVoid,
           // Retries exhausted: record + notify, but don't fail the run.
-          Effect.catchAll((err) => stateMachine.handleFailure({ kind, id }, err))
+          Effect.catchAll((err) => store.handleFailure({ label, id }, err))
         )
       }
 
@@ -270,9 +366,9 @@ const buildImportEffect = <Resources, R>({
         Effect.forEach(
           resources,
           (resource) => {
-            const { kind, id } = describeResource(resource)
+            const { label, id } = describeResource(resource)
             return Effect.andThen(
-              Effect.logDebug(`sync-run: upserting ${kind}/${id}`),
+              Effect.logDebug(`sync-run: upserting ${label}/${id}`),
               writeResourceWithRetries(resource)
             )
           },
@@ -287,7 +383,7 @@ const buildImportEffect = <Resources, R>({
         Match.value(event).pipe(
           Match.tag('parsed', ({ resources }) => writeBatch(resources)),
           Match.tag('failure', ({ error, url }) =>
-            stateMachine.handleFailure({ kind: 'response', id: url }, error)
+            store.handleFailure({ label: 'response', id: url }, error)
           ),
           // Wake-only: `signalSniffComplete` already flipped the flag.
           Match.tag('sniffDone', () => Effect.void),
@@ -301,7 +397,7 @@ const buildImportEffect = <Resources, R>({
         message: CollectorBridgeMessageHandler.OutboundMessage
       ): Effect.Effect<void> =>
         message._tag === 'SniffingComplete'
-          ? sendCollectorMessage(message).pipe(Effect.andThen(stateMachine.signalSniffComplete))
+          ? sendCollectorMessage(message).pipe(Effect.andThen(store.signalSniffComplete))
           : sendCollectorMessage(message)
 
       const { inProgressResponses: inProgressBridgeResponses } = yield* Effect.acquireRelease(
@@ -319,8 +415,8 @@ const buildImportEffect = <Resources, R>({
             sendMessage: observingSend,
             onResult: ({ response, result }) =>
               Either.match(result, {
-                onLeft: (error) => stateMachine.offerFailure(error, response.url),
-                onRight: (resources) => stateMachine.offerParsed(resources),
+                onLeft: (error) => store.offerFailure(error, response.url),
+                onRight: (resources) => store.offerParsed(resources),
               }),
           })
 
@@ -376,8 +472,8 @@ const buildImportEffect = <Resources, R>({
         Effect.forEach(
           MutableHashMap.values(inProgressBridgeResponses),
           ({ response }) =>
-            stateMachine.handleFailure(
-              { kind: 'response', id: response.url },
+            store.handleFailure(
+              { label: 'response', id: response.url },
               new Error(
                 `useSyncRunner: response for ${response.url} still in-flight at idle timeout; abandoning`
               )
@@ -386,60 +482,71 @@ const buildImportEffect = <Resources, R>({
         )
       )
 
+      // Discharge one effect named by {@link driveTransition}.
+      const runDriveEffect = (effect: DriveEffect<Resources>): Effect.Effect<void, never, R> =>
+        Match.value(effect).pipe(
+          Match.withReturnType<Effect.Effect<void, never, R>>(),
+          Match.tag('ProcessEvent', ({ event }) => processStateEvent(event)),
+          Match.tag('SettleStragglers', () =>
+            Effect.logWarning(
+              `useSyncRunner: idle timeout with ${MutableHashMap.size(
+                inProgressBridgeResponses
+              )} response(s) still in-flight; settling as failures`
+            ).pipe(Effect.andThen(settleInFlightAsFailures))
+          ),
+          Match.exhaustive
+        )
+
+      // Gather one wait's {@link DriveObservation}, doing the effectful reads
+      // (`isSettled` re-check, in-flight count) so {@link driveTransition}
+      // stays pure. `settledBeforeListening` fixes which observations are
+      // reachable: after a short (`Confirming`) wait we re-confirm quiescence;
+      // after a long (`Draining`) wait we inspect the in-flight set.
+      const observe = (
+        settledBeforeListening: boolean,
+        event: Option.Option<ImportEvent<Resources>>
+      ): Effect.Effect<DriveObservation<Resources>> =>
+        Option.match(event, {
+          onSome: (taken) =>
+            Effect.succeed<DriveObservation<Resources>>({ _tag: 'Event', event: taken }),
+          onNone: () =>
+            settledBeforeListening
+              ? store
+                  .isSettled(inProgressBridgeResponses)
+                  .pipe(
+                    Effect.map(
+                      (stillSettled): DriveObservation<Resources> =>
+                        stillSettled ? { _tag: 'QuiescenceHeld' } : { _tag: 'QuiescenceLost' }
+                    )
+                  )
+              : Effect.succeed<DriveObservation<Resources>>(
+                  MutableHashMap.size(inProgressBridgeResponses) === 0
+                    ? { _tag: 'IdleQuiet' }
+                    : { _tag: 'IdleStragglers' }
+                ),
+        })
+
+      // The drive loop as an explicit state machine: derive the phase from
+      // settledness, wait the phase's window, observe, run the pure
+      // transition, discharge its effects, repeat until `Terminated`.
       yield* Effect.gen(function* () {
-        while (true) {
-          const currentlySettled = yield* stateMachine.isSettled(inProgressBridgeResponses)
-          const waitDuration = currentlySettled ? SHORT_CONFIRM_WINDOW : idleTimeout
-          const event = yield* stateMachine.tryTakeEvent(waitDuration)
-
-          const shouldTerminate = yield* Match.value({
-            event,
-            settledBeforeListening: currentlySettled,
-          }).pipe(
-            Match.withReturnType<Effect.Effect<boolean, never, R>>(),
-            Match.when({ event: Option.isSome }, ({ event: { value: takenEvent } }) =>
-              processStateEvent(takenEvent).pipe(Effect.as(false))
-            ),
-            // Confirm things remained settled after SHORT_CONFIRM_WINDOW
-            Match.when({ event: Option.isNone, settledBeforeListening: true }, () =>
-              stateMachine.isSettled(inProgressBridgeResponses)
-            ),
-            // We waited the long `idleTimeout` with no mailbox event. If
-            // nothing is tracked, the host has gone quiet — terminate. But a
-            // response can still be mid-stream here (chunks don't wake the
-            // loop), so only terminate when `inProgressResponses` is empty;
-            // otherwise warn and settle the stalled responses as failures so
-            // they surface in `partial`, then terminate.
-            Match.when({ event: Option.isNone, settledBeforeListening: false }, () =>
-              MutableHashMap.size(inProgressBridgeResponses) === 0
-                ? Effect.succeed(true)
-                : Effect.logWarning(
-                    `useSyncRunner: idle timeout with ${MutableHashMap.size(
-                      inProgressBridgeResponses
-                    )} response(s) still in-flight; settling as failures`
-                  ).pipe(Effect.andThen(settleInFlightAsFailures), Effect.as(true))
-            ),
-            Match.orElse(() =>
-              Effect.logError('useSyncRunner: unexpected match case in drive loop').pipe(
-                Effect.as(true)
-              )
-            )
-          )
-
+        let phase: RunPhase = draining
+        while (phase._tag !== 'Terminated') {
+          const settledBeforeListening = yield* store.isSettled(inProgressBridgeResponses)
+          phase = settledBeforeListening ? confirming : draining
+          const window = settledBeforeListening ? SHORT_CONFIRM_WINDOW : idleTimeout
+          const event = yield* store.tryTakeEvent(window)
+          const observation = yield* observe(settledBeforeListening, event)
+          const [nextPhase, effects] = driveTransition(phase, observation)
+          yield* Effect.forEach(effects, runDriveEffect, { discard: true })
+          phase = nextPhase
           yield* Effect.logDebug(
-            `useSyncRunner: drive loop iteration — event=${Option.match(event, {
-              onNone: () => 'none',
-              onSome: (e) => e._tag,
-            })} settledBeforeListening=${currentlySettled} shouldTerminate=${shouldTerminate}`
+            `useSyncRunner: drive loop — observation=${observation._tag} nextPhase=${nextPhase._tag}`
           )
-
-          if (shouldTerminate) {
-            break
-          }
         }
       })
 
-      return yield* stateMachine.summary
+      return yield* store.summary
     })
   ).pipe(
     // Record how the run ended as a permanent attribute on the `Sync` span:
@@ -459,8 +566,17 @@ const buildImportEffect = <Resources, R>({
 export {
   buildImportEffect,
   DEFAULT_IDLE_TIMEOUT,
-  makeRunStateMachine,
+  driveTransition,
+  makeRunStore,
   SHORT_CONFIRM_WINDOW,
   WRITE_CONCURRENCY,
 }
-export type { FailedResource, ImportEvent, ImportSummary, RunStateMachine }
+export type {
+  DriveEffect,
+  DriveObservation,
+  FailedResource,
+  ImportEvent,
+  ImportSummary,
+  RunPhase,
+  RunStore,
+}

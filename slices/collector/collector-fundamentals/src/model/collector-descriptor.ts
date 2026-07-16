@@ -1,65 +1,27 @@
 import { type Effect, Schema } from 'effect'
 import { deepFreeze } from 'kitchen-sink'
+import type { CollectorDisplay } from './collector-display.ts'
+import type { ResourceDescription } from './resource-description.ts'
+import type { RunIngredients } from './run-ingredients.ts'
 import type * as ScrapingPlan from './scraping-plan.ts'
 
-/**
- * User-facing strings for one collector. Kept React-free here so the
- * descriptor stays importable by pure/native layers; `collector-react`
- * (stage 3A) consumes these to render the account list and the
- * "connect from" menu instead of the display strings currently
- * hardcoded in its routes.
+/*
+ * This file defines "a collector" as one first-class value. The supporting
+ * types each live in their own focused module and are re-exported here so
+ * the `CollectorDescriptor.*` namespace stays the single import surface:
  *
- * - `title`: the collector kind's name (e.g. "FHIR R4"). Distinct from
- *   a *remote's* user-chosen name and from a route's demo-entry label.
- * - `description`: one-line summary of what the collector imports.
- * - `listSubtitle`: derives the per-instance subtitle from a concrete
- *   config (e.g. the configured server URL). A function rather than a
- *   field because the salient detail differs per collector — the FHIR
- *   collector shows its `rootUrl`, a credential-based collector has no
- *   URL to show.
- */
-interface CollectorDisplay<Config> {
-  readonly title: string
-  readonly description: string
-  readonly listSubtitle: (config: Config) => string
-}
-
-/**
- * How the runner labels one resource in telemetry and in the `partial`
- * failure summary, without the runner ever naming a collector's resource
- * union. `kind` is a human/telemetry label (for FHIR, the `resourceType`);
- * `id` is the logical id the write targets. Produced by the descriptor's
- * {@link CollectorDescriptor.describeResource}.
- */
-interface ResourceDescription {
-  readonly kind: string
-  readonly id: string
-}
-
-/**
- * The runner's per-config write ingredients, with the resource union
- * held **existential**. A collector's plan, its `persistResource`, and
- * its `describeResource` all range over the *same* concrete `Resources`,
- * but no consumer of the registry should have to name that union (the
- * whole point of retiring `AnyCollectorResource`). This CPS / rank-N
- * encoding hands the three, still tied to one hidden `Resources`, to a
- * generic continuation: the runner instantiates its own generic body
- * with the hidden type and returns a value that never mentions it (an
- * `Effect<ImportSummary, …, R>`), so the encoding is sound with no cast.
+ * - `CollectorDisplay`     → ./collector-display.ts     (user-facing strings)
+ * - `ResourceDescription`  → ./resource-description.ts  (telemetry/failure label)
+ * - `RunIngredients`       → ./run-ingredients.ts       (existential write bundle)
  *
- * `R` is the descriptor's write requirement (for fhir-r4,
- * `FhirR4ResourcesHttpApiClient`); the registry's lookup surfaces the
- * union of every descriptor's `R`, which the authed runner provides.
+ * What stays here is the descriptor itself and how it is authored/derived:
+ * - `CollectorDescriptor` — the full value the registry/UI consume.
+ * - `CollectorDescriptorSpec` — the author-supplied half a `*-client-collector`
+ *   package writes; {@link make} adds the two derived `*IfMatches` guards.
+ * - `ConfigOf` / `RequirementsOf` — type-level extractors the registry uses
+ *   to derive the config union and the write-requirement union from the list.
+ * - `make` — the frozen-identity factory.
  */
-interface RunIngredients<R> {
-  readonly provide: <A>(
-    run: <Resources>(bundle: {
-      readonly scrapingPlan: ScrapingPlan.ScrapingPlan<Resources>
-      readonly persistResource: (resource: Resources) => Effect.Effect<void, unknown, R>
-      readonly describeResource: (resource: Resources) => ResourceDescription
-    }) => A
-  ) => A
-}
 
 /**
  * Everything the registry and (stage 3) the UI need to treat "a
@@ -83,13 +45,15 @@ interface RunIngredients<R> {
  * is `{ email, password }` (no `rootUrl`) is describable with the same
  * shape.
  *
+ * Authored fields (see {@link CollectorDescriptorSpec}):
  * - `tag`: the config's discriminant (`Config['_tag']`); the registry
  *   derives `CollectorTag` from the set of these.
  * - `configSchema`: the `Schema` for this collector's per-instance
  *   config; the registry unions these into `CollectorConfig`.
  * - `defaultConfig`: a valid config to seed a new-instance form.
- * - `makeScrapingPlan`: the per-config plan factory (today's
- *   `scrapingPlan(config)`).
+ * - `makeScrapingPlan`: the per-config plan *factory* (today's
+ *   `scrapingPlan(config)`). Distinct from the already-applied
+ *   `scrapingPlan` inside a {@link RunIngredients} bundle.
  * - `display`: the {@link CollectorDisplay} strings.
  * - `persistResource`: writes one parsed resource back to wherever this
  *   collector targets (for fhir-r4, the typed FHIR client). "Which write
@@ -98,14 +62,16 @@ interface RunIngredients<R> {
  * - `describeResource`: the {@link ResourceDescription} for a resource,
  *   so the runner can label spans and report failures without naming the
  *   resource union.
- * - `scrapingPlanIfMatches`: a derived guard built by {@link make} —
- *   returns this collector's plan when `config` is one of *its* configs
- *   (validated via `configSchema`), else `undefined`. It exists so the
- *   registry can dispatch over a heterogeneous descriptor list without
- *   an unsafe cast: the per-descriptor `Config` narrowing happens here,
- *   where the concrete type is still in scope, rather than in a loop
- *   over the union-typed list (where TS collapses each element to the
- *   union and the schema's invariance defeats a plain guard).
+ *
+ * Derived guards (added by {@link make}, not authored):
+ * - `scrapingPlanIfMatches`: returns this collector's plan when `config`
+ *   is one of *its* configs (validated via `configSchema`), else
+ *   `undefined`. It exists so the registry can dispatch over a
+ *   heterogeneous descriptor list without an unsafe cast: the
+ *   per-descriptor `Config` narrowing happens here, where the concrete
+ *   type is still in scope, rather than in a loop over the union-typed
+ *   list (where TS collapses each element to the union and the schema's
+ *   invariance defeats a plain guard).
  * - `runIngredientsIfMatches`: the same structural guard, returning the
  *   existential {@link RunIngredients} bundle (plan + persist + describe)
  *   so the runner can drive a matched config without naming `Resources`.
@@ -186,7 +152,7 @@ const make = <Config extends { readonly _tag: string }, Resources, R>(
   const runIngredientsIfMatches = (config: unknown): RunIngredients<R> | undefined =>
     isConfig(config)
       ? {
-          provide: (run) =>
+          runWith: (run) =>
             run({
               scrapingPlan: spec.makeScrapingPlan(config),
               persistResource: spec.persistResource,

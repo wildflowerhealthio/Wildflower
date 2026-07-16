@@ -35,7 +35,7 @@ const descriptor = CollectorDescriptor.make({
   // The sample plan emits `never`, so these are never actually invoked;
   // they exist to satisfy the descriptor shape.
   persistResource: () => Effect.void,
-  describeResource: () => ({ kind: 'sample', id: 'sample' }),
+  describeResource: () => ({ label: 'sample', id: 'sample' }),
 })
 
 describe('CollectorDescriptor.make', () => {
@@ -89,7 +89,7 @@ describe('CollectorDescriptor runIngredientsIfMatches', () => {
     expect(ingredients).toBeDefined()
     // The bundle holds `Resources` existential — consumers reach it only
     // through the `provide` continuation, never by naming the union.
-    const plan = ingredients?.provide((bundle) => bundle.scrapingPlan)
+    const plan = ingredients?.runWith((bundle) => bundle.scrapingPlan)
     expect(plan).toEqual(makeScrapingPlan(defaultConfig))
   })
 

@@ -68,9 +68,9 @@ describe('CollectorConfig', () => {
 
 describe('runIngredientsForConfig', () => {
   // The bundle holds the resource union existential; reach the plan only
-  // through the `provide` continuation, never by naming the union.
+  // through the `runWith` continuation, never by naming the union.
   const planFor = (config: typeof CollectorConfig.Type): ScrapingPlan.ScrapingPlan<unknown> =>
-    runIngredientsForConfig(config).provide((bundle) => bundle.scrapingPlan)
+    runIngredientsForConfig(config).runWith((bundle) => bundle.scrapingPlan)
 
   it('dispatches fhir-r4 configs to the fhir-r4 scraping plan', () => {
     const config = Schema.decodeSync(CollectorConfig)({

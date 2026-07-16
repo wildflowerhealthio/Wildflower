@@ -62,13 +62,13 @@ const persistResource = (
 
 /**
  * Describe a FHIR resource for the runner's telemetry and `partial`
- * failure summary — `kind` is the FHIR `resourceType`, `id` its logical
+ * failure summary — `label` is the FHIR `resourceType`, `id` its logical
  * id (falling back to a sentinel for the null-id case that
  * {@link persistResource} skips, so the runner never has to inspect a
  * resource's id itself).
  */
 const describeResource = (resource: AnyResource): CollectorDescriptor.ResourceDescription => ({
-  kind: resource.resourceType,
+  label: resource.resourceType,
   id: resource.id ?? '<no-id>',
 })
 
