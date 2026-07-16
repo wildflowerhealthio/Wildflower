@@ -19,21 +19,22 @@ resourcePersistenceRuntimeForConfig(config)
 runtime.run(context => buildImportEffect({ context, ...wiring }))
    │        provide the sealed context to the program; get a runnable Effect
    ▼  collector-react (sync-run)
-buildImportEffect  ── the drive loop ──►  CollectorBridgeMessageHandler
+buildImportEffect  ── the drive Stream ─►  CollectorBridgeMessageHandler
    │   pulls parsed resources off a mailbox,        (sniffs pages, decodes
-   │   writes each batch, tracks completion          responses to Resources)
+   │   writes each batch, folds the failures         responses to Resources)
    ▼
-persistResource(resource)              the descriptor's write sink
-   │        (fhir-r4: PUT to the typed FhirR4ResourcesHttpApiClient)
+persistResources(batch)                the descriptor's batch write sink
+   │        (fhir-r4: retries + spans around fhir-r4's upsertResource,
+   │         which routes each PUT to the typed FhirR4ResourcesHttpApiClient)
    ▼
 target store
 ```
 
 The runner in the middle (`buildImportEffect`) never names a collector's
-resource type. It calls the injected `persistResource` and labels telemetry
-and failures through `describeResource`. That is what let the old
-cross-package `AnyCollectorResource` union — and the FHIR `switch` that used
-to live in the runner — disappear.
+resource type. It hands each decoded batch to the injected `persistResources`
+and folds the failures that come back into the summary. That is what let the
+old cross-package `AnyCollectorResource` union — and the FHIR `switch` that
+used to live in the runner — disappear.
 
 ## The three collaborators: Context, Program, Runtime
 
@@ -43,19 +44,25 @@ collaboration, named as the `ResourcePersistence*` family (defined in
 `model/resource-persistence-runtime.ts`).
 
 - **`ResourcePersistenceContext<Resources, R>`** — one config's resolved
-  operations: its already-applied `scrapingPlan`, its `persistResource`, and
-  its `describeResource`, all over the _same_ concrete `Resources`. This is
-  the value the runner works from.
+  operations: its already-applied `scrapingPlan` and its batch
+  `persistResources`, both over the _same_ concrete `Resources`. This is the
+  value the runner works from. `persistResources` returns the resources it
+  could not write as `PersistFailure` data on a `never` error channel, so one
+  bad resource can't fail the run and the runner's failure accounting reads
+  straight off the return.
 - **`ResourcePersistenceProgram<R, A>`** — a resource-_generic_ body,
   `<Resources>(context) => A`. Because it is generic in `Resources` it cannot
-  assume or name the concrete union. The sync runner's
+  assume or name the concrete union. `A` is left unconstrained on purpose: the
+  existential is sound precisely because the result can't mention `Resources`,
+  effectful or not. The sync runner's
   `context => buildImportEffect({ context, ...wiring })` is the one concrete
   program (its `A` is `Effect<ImportSummary, never, R>`).
 - **`ResourcePersistenceRuntime<R>`** — the per-config carrier the registry
   hands back. You give its `run` a Program; it provides the sealed Context
   and returns the Program's result — "provide the context, get a runnable
-  effect". Its only implementer is `CollectorDescriptor.make`, which closes
-  over the single hidden `Resources` it knows.
+  effect". Its only constructor is `ResourcePersistenceRuntime.make`, which
+  `CollectorDescriptor.make` calls with the config's applied plan + persist
+  sink, sealing the single hidden `Resources`.
 
 `R` (the write requirement — for fhir-r4, `FhirR4ResourcesHttpApiClient`) is
 _not_ hidden. It stays a visible type parameter so the registry can surface
@@ -74,7 +81,7 @@ the family exists:
   name `Resources` in its type (`Ops<Resources>`), pushing the union back onto
   every consumer — exactly what we are removing.
 - What must be hidden is the _type_ `Resources`, not a value. That is an
-  **existential** (`∃Resources. { plan, persist, describe }`), which
+  **existential** (`∃Resources. { plan, persistResources }`), which
   TypeScript expresses through the CPS / rank-2 encoding above: `run` takes a
   Program that is itself generic in `Resources`, so the caller cannot name the
   concrete union. The one implementer applies the Program to the single hidden
@@ -93,27 +100,37 @@ everything from it — the config union, the tag literal,
 `CollectorRequirements`, and the `resourcePersistenceRuntimeForConfig`
 dispatch — so there is no parallel switch to keep in sync.
 
-`persistResource` and `describeResource` are the seam. For fhir-r4 (see
-`fhir-r4-client-collector/src/persist.ts`) `persistResource` is the
-`switch (resource.resourceType)` that PUTs each resource to its typed client
-endpoint. That is the _only_ place FHIR knowledge lives now; the runner owns
-everything around the write (batching, `WRITE_CONCURRENCY`, the retry/backoff
-schedule, spans, failure accounting).
+`persistResources` is the seam. For fhir-r4 (see
+`fhir-r4-client-collector/src/persist.ts`) it wraps `fhir-r4`'s reusable
+`upsertResource` — the `switch (resource.resourceType)` that PUTs each resource
+to its typed client endpoint, now owned by the `fhir-r4` slice so every
+FHIR-targeting collector reuses one dispatch. The sink owns everything about
+_how_ a batch is written — `WRITE_CONCURRENCY`, the retry/backoff schedule, the
+per-resource span — and returns the resources it could not write as
+`PersistFailure` data. The runner owns only _when_ to write, the batch
+`collector.importing` span, and folding those failures into the summary.
 
 ## The drive loop and its completion predicate
 
 `buildImportEffect` models the whole sync as one long, interruptible Effect on
 a single fiber. It builds the `CollectorBridgeMessageHandler`, registers it,
-dispatches `RequestSniffableWebView`, and then runs the **drive loop**
-(`driveUntilSettled`). The handler's `onResult` pushes decoded resources (or a
-parse/transport failure) onto the run's mailbox; the loop pulls each event and
-writes the batch inline.
+dispatches `RequestSniffableWebView`, and then runs the **drive Stream**
+(`buildDriveStream`), folded into the `ImportSummary` by `collectImportSummary`.
+The handler's `onResult` pushes decoded resources (or a response-level
+parse/transport failure) onto the run's mailbox; each drive step pulls one event
+and writes the batch inline, emitting that batch's `PersistFailure`s as the
+step's stream element. The run's output is thus _produced by the Stream_ — the
+fold is where `setFailed` / `onError` fire and the summary accumulates.
 
-The loop is a plain `while` — **not** a state machine. (Contrast the step
+The step is a plain decision table — **not** a state machine. (Contrast the step
 machine, which _is_ an FSM because it models concurrent, interruptible timers.
 This loop has no such concurrent state; forcing a transition table onto it
-would add ceremony for no benefit.) Its mutable facts live in one `RunStore`,
-and its one real subtlety is _when to stop_:
+would add ceremony for no benefit.) It is expressed with `Stream.paginateEffect`
+specifically because that emits its element on the _terminal_ step too — how the
+idle-timeout straggler settle reports its failures and ends the stream at once.
+Its mutable facts live in one `RunStore` (a class — event mailbox + the
+sniffing-complete flag behind a small public surface), and its one real subtlety
+is _when to stop_:
 
 ```text
                  ┌─────────────────────────────────────────────┐

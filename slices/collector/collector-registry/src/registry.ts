@@ -53,7 +53,7 @@ const CollectorTag: Schema.Schema<CollectorTag> = Schema.Literal(
 
 /**
  * The union of every collector's write requirement (`R`), derived from
- * the descriptors' `persistResource` sinks. This is the environment the
+ * the descriptors' `persistResources` sinks. This is the environment the
  * authed runner must provide for a {@link resourcePersistenceRuntimeForConfig}
  * program — today just `FhirR4ResourcesHttpApiClient`. Surfacing the union
  * here (rather than naming any resource type) is what lets
@@ -65,7 +65,7 @@ type CollectorRequirements = CollectorDescriptor.RequirementsOf<AnyCollectorDesc
 /**
  * Dispatch a stored `CollectorConfig` to the owning descriptor's
  * {@link CollectorDescriptor.ResourcePersistenceRuntime} — the config's
- * resolved plan + `persistResource` + `describeResource`, with the resource
+ * resolved plan + `persistResources`, with the resource
  * union held **existential**. The sync runner drives it by handing `.run` a
  * program, so it never names a collector's resource type. See
  * `collector-fundamentals/docs/Collector Sync Explanation.md`.

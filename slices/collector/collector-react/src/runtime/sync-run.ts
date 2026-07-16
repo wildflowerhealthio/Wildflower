@@ -1,8 +1,10 @@
 /**
- * The framework-free core of the collector sync runner: the mailbox drive
- * loop ({@link driveUntilSettled}), quiescence / idle-timeout logic, and
- * per-resource write retries. Extracted from `use-sync-runner.ts` so it is
- * unit-testable with `TestClock` (no React Testing Library).
+ * The framework-free core of the collector sync runner: the event
+ * {@link RunStore}, the drive {@link buildDriveStream} that turns the run's
+ * events into a `Stream` of write outcomes, and {@link collectImportSummary}
+ * that folds that stream into the {@link ImportSummary}. Extracted from
+ * `use-sync-runner.ts` so it is unit-testable with `TestClock` (no React
+ * Testing Library).
  *
  * This module has **no React imports** — the hook (`use-sync-runner.ts`)
  * owns the mutation wiring, the `AbortController`, and the `RunnerState`
@@ -10,19 +12,23 @@
  * `onError`) as plain functions.
  *
  * The runner is **fully generic** over a collector's resource type
- * (`Resources`) and its write requirement (`R`): it calls the injected
- * `persistResource` (from the config's
- * {@link CollectorDescriptor.ResourcePersistenceContext}) and labels
- * telemetry / failures through `describeResource`, so it never names a
- * collector's resource union. It still owns everything *around* a write —
- * batching, `WRITE_CONCURRENCY`, the retry/backoff schedule, spans, and
- * failure accounting.
+ * (`Resources`) and its write requirement (`R`): it hands each decoded batch to
+ * the injected `persistResources`
+ * ({@link CollectorDescriptor.ResourcePersistenceContext}) and never names a
+ * collector's resource union. The sink owns *how* a batch is written (retries,
+ * per-resource spans, concurrency) and returns the resources it could not write
+ * as {@link CollectorDescriptor.PersistFailure} data; the runner owns *when* to
+ * write, the batch `collector.importing` span, and folding those failures into
+ * the summary.
  *
- * The mutable run facts live in {@link RunStore}; the drive loop is a plain
- * `while` — **not** an FSM (unlike the browser-sniffer step machine, which
- * is an FSM because it models concurrent, interruptible timers; this loop
- * does not). Its one real subtlety is the completion predicate — see the
- * timeline in `collector-fundamentals/docs/Collector Sync Explanation.md`.
+ * The run's output is **produced by a `Stream`**: {@link buildDriveStream}
+ * emits one chunk of failures per drive step (via `Stream.paginateEffect`, so
+ * the terminal step can still emit — the idle-timeout straggler settle), and
+ * {@link collectImportSummary} runs the fold. The drive step is a plain
+ * decision table — **not** an FSM (unlike the browser-sniffer step machine,
+ * which models concurrent, interruptible timers; this does not). Its one real
+ * subtlety is the completion predicate — see the timeline in
+ * `collector-fundamentals/docs/Collector Sync Explanation.md`.
  */
 import { CollectorBridgeMessageHandler } from 'collector-fundamentals/handler'
 import type { CollectorDescriptor } from 'collector-fundamentals/model'
@@ -36,7 +42,7 @@ import {
   MutableHashMap,
   Option,
   Ref,
-  Schedule,
+  Stream,
 } from 'effect'
 
 import { captureLinkedSpan } from './capture-linked-span.ts'
@@ -44,16 +50,12 @@ import type { CollectorSender } from './collector-sender-context.ts'
 import type { useCollectorRegister } from './use-collector-register.ts'
 
 /**
- * Identifier of an upsert that failed after all retries (or a response
- * that failed to parse). Surfaced via the `partial` runner state so the
- * UI can render "N of M synced". `label` / `id` are the descriptor's
- * {@link CollectorDescriptor.ResourceDescription} — the runner never
- * inspects a resource's fields itself.
+ * Identifier of a resource whose write failed (or a response that failed to
+ * parse), surfaced via the `partial` runner state so the UI can render "N of M
+ * synced". Just the descriptor's {@link CollectorDescriptor.FailedResource}
+ * label/id — the runner never inspects a resource's fields itself.
  */
-interface FailedResource {
-  readonly label: string
-  readonly id: string
-}
+type FailedResource = CollectorDescriptor.FailedResource
 
 /**
  * Summary the long import Effect resolves with. `cancelled` is `true`
@@ -67,15 +69,17 @@ interface ImportSummary {
 
 /**
  * Internal events the inbound bridge handler feeds the drive loop. The
- * handler's `onResult` pushes `parsed` / `failure` synchronously; the
- * sender wrap pushes `sniffDone` when the step machine dispatches its
- * terminal `SniffingComplete`, both to wake the loop and to flip the
- * completion signal. There is no per-write event: writes are awaited
- * inline, so the loop needs no write bookkeeping.
+ * handler's `onResult` pushes `parsed` / `responseFailure` synchronously; the
+ * sender wrap pushes `sniffDone` when the step machine dispatches its terminal
+ * `SniffingComplete`, both to wake the loop and to flip the completion signal.
+ * There is no per-write event: a batch's writes are awaited inside the drive
+ * step, so the loop needs no write bookkeeping. `responseFailure` is a
+ * *response-level* parse/transport failure (keyed on the response URL),
+ * distinct from a resource's write failure (which the persist sink reports).
  */
-type ImportEvent<Resources> =
+type RunEvent<Resources> =
   | { readonly _tag: 'parsed'; readonly resources: ReadonlyArray<Resources> }
-  | { readonly _tag: 'failure'; readonly error: unknown; readonly url: string }
+  | { readonly _tag: 'responseFailure'; readonly error: unknown; readonly url: string }
   | { readonly _tag: 'sniffDone' }
 
 /** Stalled-host guard window when the caller doesn't override it. */
@@ -84,7 +88,7 @@ const DEFAULT_IDLE_TIMEOUT: Duration.DurationInput = Duration.seconds(30)
 /**
  * Grace window for the completion check. The handler now drops a response's
  * id from `inProgressResponses` only *after* it offers the terminal
- * `parsed`/`failure` event, so a "quiescent" observation can no longer
+ * `parsed`/`responseFailure` event, so a "quiescent" observation can no longer
  * precede the event that still needs a write — the parse→offer race is
  * closed structurally in `CollectorBridgeMessageHandler`. This window
  * remains a small belt-and-suspenders re-confirm: after quiescence first
@@ -95,122 +99,105 @@ const DEFAULT_IDLE_TIMEOUT: Duration.DurationInput = Duration.seconds(30)
 const SHORT_CONFIRM_WINDOW: Duration.DurationInput = Duration.millis(250)
 
 /**
- * TEMPORARY tunable (investigation): max concurrent resource PUTs within a
- * single `writeBatch`. Unbounded concurrency fired hundreds of simultaneous
- * upserts that stalled the inline-awaited drive loop, so the `Sync` span
- * never ended and never flushed. Capped at 1 while we confirm the writes
- * resolve/time out; widen once the stall is understood.
- */
-const WRITE_CONCURRENCY = 1
-
-/**
- * The run's mutable state behind one named surface. It owns the event
- * mailbox plus the two facts that decide completion — whether sniffing
- * dispatched its terminal step, and the accumulated failures — and
- * exposes {@link RunStore.isSettled} as the single place that answers
- * "are we done?". Writes are *not* tracked here: the drive loop awaits
- * each batch inline, so a processed event leaves its writes already
- * settled.
+ * The run's mutable state behind one named surface: the event mailbox plus the
+ * one fact — whether sniffing dispatched its terminal step — that, together
+ * with the mailbox and the caller's in-flight-response map, decides completion.
+ * {@link RunStore.isSettled} is the single place that answers "are we done?".
  *
- * This is a fact *store* — a bag of mutable refs plus a mailbox. The drive
- * loop ({@link driveUntilSettled}) reads these facts to decide what to do
- * next; it keeps no separate state of its own.
+ * This is purely the *event source + completion facts*. Failures are **not**
+ * stored here: the drive stream carries each batch's failures as data and
+ * {@link collectImportSummary} accumulates them. Writes are not tracked either:
+ * the drive step awaits each batch inline, so a processed event leaves its
+ * writes already settled.
+ *
+ * Constructed effectfully (it owns a `Mailbox` and a `Ref`), so instances come
+ * from the {@link RunStore.make} factory. The private fields are the plumbing;
+ * the public methods are the whole surface the handler and drive loop use.
  */
-interface RunStore<Resources> {
+class RunStore<Resources> {
+  private constructor(
+    private readonly events: Mailbox.Mailbox<RunEvent<Resources>>,
+    private readonly sniffComplete: Ref.Ref<boolean>
+  ) {}
+
+  static make<Resources>(): Effect.Effect<RunStore<Resources>> {
+    return Effect.gen(function* () {
+      const events = yield* Mailbox.make<RunEvent<Resources>>()
+      const sniffComplete = yield* Ref.make(false)
+      return new RunStore<Resources>(events, sniffComplete)
+    })
+  }
+
   /** Push a decoded response's resources (sync; called from `onResult`). */
-  readonly offerParsed: (resources: ReadonlyArray<Resources>) => void
-  /** Push a parse/transport failure (sync; called from `onResult`). */
-  readonly offerFailure: (error: unknown, url: string) => void
+  offerParsed(resources: ReadonlyArray<Resources>): void {
+    this.events.unsafeOffer({ _tag: 'parsed', resources })
+  }
+
+  /** Push a response-level parse/transport failure (sync; from `onResult`). */
+  offerResponseFailure(error: unknown, url: string): void {
+    this.events.unsafeOffer({ _tag: 'responseFailure', error, url })
+  }
+
   /** Mark sniffing finished and wake the loop (the sender wrap calls this). */
-  readonly signalSniffComplete: Effect.Effect<void>
+  get signalSniffComplete(): Effect.Effect<void> {
+    return Ref.set(this.sniffComplete, true).pipe(
+      Effect.andThen(this.events.offer({ _tag: 'sniffDone' })),
+      Effect.asVoid
+    )
+  }
+
   /** Next event, or `None` once `window` elapses with nothing queued. */
-  readonly tryTakeEvent: (
-    window: Duration.DurationInput
-  ) => Effect.Effect<Option.Option<ImportEvent<Resources>>>
-  /** Record a failed item: drives `partial` state and fires `onError` once. */
-  readonly handleFailure: (failed: FailedResource, error: unknown) => Effect.Effect<void>
+  tryTakeEvent(window: Duration.DurationInput): Effect.Effect<Option.Option<RunEvent<Resources>>> {
+    return this.events.take.pipe(
+      Effect.timeoutOption(window),
+      Effect.catchTag('NoSuchElementException', () => Effect.succeedNone)
+    )
+  }
+
   /** Sniffing finished, no response mid-stream, no event queued. */
-  readonly isSettled: (
+  isSettled(
     inProgressResponses: MutableHashMap.MutableHashMap<string, unknown>
-  ) => Effect.Effect<boolean>
-  /** Summary to resolve the mutation with (always `cancelled: false` here). */
-  readonly summary: Effect.Effect<ImportSummary>
+  ): Effect.Effect<boolean> {
+    const { sniffComplete, events } = this
+    return Effect.gen(function* () {
+      if (!(yield* Ref.get(sniffComplete))) return false
+      if (MutableHashMap.size(inProgressResponses) > 0) return false
+      const queued = yield* events.size
+      return Option.match(queued, { onNone: () => true, onSome: (n) => n === 0 })
+    })
+  }
 }
 
-const makeRunStore = <Resources>(
-  setFailed: (failed: ReadonlyArray<FailedResource>) => void,
-  onError: (error: unknown) => void
-): Effect.Effect<RunStore<Resources>> =>
-  Effect.gen(function* () {
-    const events = yield* Mailbox.make<ImportEvent<Resources>>()
-    const sniffComplete = yield* Ref.make(false)
-    const failures = yield* Ref.make<ReadonlyArray<FailedResource>>([])
-
-    const handleFailure: RunStore<Resources>['handleFailure'] = (failed, error) =>
-      Ref.updateAndGet(failures, (arr) => [...arr, failed]).pipe(
-        Effect.flatMap((arr) =>
-          Effect.sync(() => {
-            setFailed(arr)
-            onError(error)
-          })
-        )
-      )
-
-    const isSettled: RunStore<Resources>['isSettled'] = (inProgressResponses) =>
-      Effect.gen(function* () {
-        if (!(yield* Ref.get(sniffComplete))) return false
-        if (MutableHashMap.size(inProgressResponses) > 0) return false
-        const queued = yield* events.size
-        return Option.match(queued, { onNone: () => true, onSome: (n) => n === 0 })
-      })
-
-    return {
-      offerParsed: (resources) => {
-        events.unsafeOffer({ _tag: 'parsed', resources })
-      },
-      offerFailure: (error, url) => {
-        events.unsafeOffer({ _tag: 'failure', error, url })
-      },
-      signalSniffComplete: Ref.set(sniffComplete, true).pipe(
-        Effect.andThen(events.offer({ _tag: 'sniffDone' })),
-        Effect.asVoid
-      ),
-      tryTakeEvent: (window) =>
-        events.take.pipe(
-          Effect.timeoutOption(window),
-          Effect.catchTag('NoSuchElementException', () => Effect.succeedNone)
-        ),
-      handleFailure,
-      isSettled,
-      summary: Ref.get(failures).pipe(Effect.map((failed) => ({ failed, cancelled: false }))),
-    }
-  })
-
 /**
- * The drive loop: wait for the next event or a timeout, act, repeat until
- * the run is complete. A plain `while` — no state machine, because there is
- * no concurrent/interruptible state to track (contrast the step machine's
- * overlapping timers). The one real subtlety is *when to stop*; the timeline
- * is documented in
+ * The drive loop as a `Stream`: each step waits for the next event or a
+ * timeout, acts, and emits the chunk of {@link CollectorDescriptor.PersistFailure}
+ * that step produced (empty when it wrote nothing), continuing until the run is
+ * complete. `Stream.paginateEffect` is used precisely because it emits its
+ * element on the *terminal* step too — that is how the idle-timeout straggler
+ * settle reports its failures and ends the stream in one step. A plain decision
+ * table, not a state machine, because there is no concurrent/interruptible
+ * state to track (contrast the step machine's overlapping timers). The one real
+ * subtlety is *when to stop*; the timeline is documented in
  * `collector-fundamentals/docs/Collector Sync Explanation.md`.
  *
- * Each iteration:
+ * Each step:
  * - If quiescence already holds (`isSettled`), wait only the short
  *   {@link SHORT_CONFIRM_WINDOW}; otherwise wait the long `idleTimeout`.
- * - An event pulled from the mailbox is processed, then the loop repeats.
+ * - An event pulled from the mailbox is processed (its failures emitted), then
+ *   the loop continues.
  * - The window elapsing on an empty mailbox is a *decision point*:
  *   - was settled → re-confirm `isSettled` (a straggler may have landed): if
  *     it still holds, the run is complete; else keep draining;
  *   - not settled (idle timeout) → nothing in-flight means the host went
  *     silent, so stop; responses still mid-stream (their `ResponseData`
  *     chunks don't wake the loop) are settled as failures via
- *     `settleStragglers`, then the loop stops.
+ *     `settleStragglers` — emitted on the terminal step — then the loop stops.
  *
- * Effectful reads (`isSettled`, the in-flight count) and the actions
- * (`processEvent`, `settleStragglers`) are injected so this stays a small,
- * `TestClock`-testable unit independent of the bridge handler.
+ * Effectful reads (`isSettled`) and the actions (`processEvent`,
+ * `settleStragglers`) are injected so this stays a small, `TestClock`-testable
+ * unit independent of the bridge handler.
  */
-const driveUntilSettled = <Resources, R>({
+const buildDriveStream = <Resources, R>({
   store,
   inProgressResponses,
   processEvent,
@@ -219,31 +206,70 @@ const driveUntilSettled = <Resources, R>({
 }: {
   readonly store: RunStore<Resources>
   readonly inProgressResponses: MutableHashMap.MutableHashMap<string, unknown>
-  readonly processEvent: (event: ImportEvent<Resources>) => Effect.Effect<void, never, R>
-  readonly settleStragglers: Effect.Effect<void, never, R>
+  readonly processEvent: (
+    event: RunEvent<Resources>
+  ) => Effect.Effect<ReadonlyArray<CollectorDescriptor.PersistFailure>, never, R>
+  readonly settleStragglers: Effect.Effect<
+    ReadonlyArray<CollectorDescriptor.PersistFailure>,
+    never,
+    R
+  >
   readonly idleTimeout: Duration.DurationInput
-}): Effect.Effect<void, never, R> =>
-  Effect.gen(function* () {
-    while (true) {
-      const settled = yield* store.isSettled(inProgressResponses)
-      const window = settled ? SHORT_CONFIRM_WINDOW : idleTimeout
-      const event = yield* store.tryTakeEvent(window)
-      if (Option.isSome(event)) {
-        yield* processEvent(event.value)
-        continue
-      }
-      // The window elapsed with an empty mailbox — decide whether to stop.
-      if (settled) {
-        // Re-confirm: a straggler could have re-entered during the wait.
-        if (yield* store.isSettled(inProgressResponses)) return
-        continue
-      }
-      // Idle timeout while still draining.
-      if (MutableHashMap.size(inProgressResponses) === 0) return
-      yield* settleStragglers
-      return
-    }
-  })
+}): Stream.Stream<ReadonlyArray<CollectorDescriptor.PersistFailure>, never, R> =>
+  Stream.paginateEffect<void, ReadonlyArray<CollectorDescriptor.PersistFailure>, never, R>(
+    undefined,
+    () =>
+      Effect.gen(function* () {
+        const settled = yield* store.isSettled(inProgressResponses)
+        const window = settled ? SHORT_CONFIRM_WINDOW : idleTimeout
+        const event = yield* store.tryTakeEvent(window)
+        if (Option.isSome(event)) {
+          const produced = yield* processEvent(event.value)
+          return [produced, Option.some<void>(undefined)] as const
+        }
+        // The window elapsed with an empty mailbox — decide whether to stop.
+        if (settled) {
+          // Re-confirm: a straggler could have re-entered during the wait.
+          return (yield* store.isSettled(inProgressResponses))
+            ? ([[], Option.none<void>()] as const)
+            : ([[], Option.some<void>(undefined)] as const)
+        }
+        // Idle timeout while still draining.
+        if (MutableHashMap.size(inProgressResponses) === 0) {
+          return [[], Option.none<void>()] as const
+        }
+        const stragglers = yield* settleStragglers
+        return [stragglers, Option.none<void>()] as const
+      })
+  )
+
+/**
+ * Run the drive {@link Stream} and fold its per-step failure chunks into the
+ * {@link ImportSummary}. This fold *is* the run's output: `setFailed` receives
+ * the growing cumulative list (once per failure, so the `partial` UI count
+ * updates at the same cadence as before), and `onError` fires once per failure
+ * with its real `cause`. `runFoldEffect` manages the stream's scope, so the
+ * result's requirement is just the write `R`.
+ */
+const collectImportSummary = <R>(
+  failures: Stream.Stream<ReadonlyArray<CollectorDescriptor.PersistFailure>, never, R>,
+  setFailed: (failed: ReadonlyArray<FailedResource>) => void,
+  onError: (cause: unknown) => void
+): Effect.Effect<ImportSummary, never, R> =>
+  failures.pipe(
+    Stream.runFoldEffect([] as ReadonlyArray<FailedResource>, (acc, chunk) =>
+      Effect.sync(() => {
+        let next = acc
+        for (const { failed, cause } of chunk) {
+          next = [...next, failed]
+          setFailed(next)
+          onError(cause)
+        }
+        return next
+      })
+    ),
+    Effect.map((failed) => ({ failed, cancelled: false }))
+  )
 
 /**
  * Model the whole sync as one long, interruptible Effect on a single
@@ -254,27 +280,27 @@ const driveUntilSettled = <Resources, R>({
  *     `RequestSniffableWebView`. Register-before-dispatch guarantees the
  *     host's sniffer events land on the live handler.
  *   - The handler's `onResult` pushes parsed resources / failures into the
- *     {@link RunStore} mailbox. The drive loop pulls each event and, for
- *     `parsed`, upserts the batch *inline* (`Effect.forEach`, awaited): the
- *     batch is settled by the time the event finishes, so there's no
- *     outstanding-write bookkeeping. The write requirement (`R`, the
- *     descriptor's `persistResource` environment) bubbles up to this
- *     Effect's `R`, which the broadened collector `runAuthed` satisfies.
+ *     {@link RunStore} mailbox. The drive stream pulls each event and, for
+ *     `parsed`, hands the batch to the injected `persistResources` *inline*
+ *     (awaited): the batch is settled by the time the step finishes, so
+ *     there's no outstanding-write bookkeeping. The write requirement (`R`,
+ *     the sink's environment) bubbles up to this Effect's `R`, which the
+ *     broadened collector `runAuthed` satisfies.
  *   - Completion is {@link RunStore.isSettled}, driven by
- *     {@link driveUntilSettled} and re-confirmed across
+ *     {@link buildDriveStream} and re-confirmed across
  *     {@link SHORT_CONFIRM_WINDOW}. {@link DEFAULT_IDLE_TIMEOUT} is the escape
  *     hatch for a silent host.
  *   - `release` (natural completion, idle settle, or explicit cancel via
  *     the run's `AbortSignal`): `cancelAllInFlight` → `clear` → `unregister`.
  *
- * `context` — the config's plan + `persistResource` + `describeResource`,
- * resource type hidden (a {@link CollectorDescriptor.ResourcePersistenceContext})
- * — is injected, so the runner is generic over the collector's `Resources`
- * and its write requirement `R`. This function is the one concrete
+ * `context` — the config's plan + `persistResources`, resource type hidden (a
+ * {@link CollectorDescriptor.ResourcePersistenceContext}) — is injected, so the
+ * runner is generic over the collector's `Resources` and its write requirement
+ * `R`. This function is the one concrete
  * {@link CollectorDescriptor.ResourcePersistenceProgram}.
  */
 const buildImportEffect = <Resources, R>({
-  context: { scrapingPlan, persistResource, describeResource },
+  context: { scrapingPlan, persistResources },
   sendCollectorMessage,
   collectorRegister,
   onError,
@@ -290,64 +316,36 @@ const buildImportEffect = <Resources, R>({
 }): Effect.Effect<ImportSummary, never, R> =>
   Effect.scoped(
     Effect.gen(function* () {
-      const store = yield* makeRunStore<Resources>(setFailed, onError)
+      const store = yield* RunStore.make<Resources>()
 
-      // One resource's write, retried with bounded exponential backoff (3
-      // retries, 250ms → 1s). Each attempt is its own span, so the retry
-      // count reads straight off the trace — no counter needed.
-      // `Schedule.intersect` enforces both "stop after N" AND "exponential";
-      // `either` would stop on whichever fired first. "Which write goes
-      // where" is the injected `persistResource`; the runner owns the
-      // schedule, the span, and the failure recording around it.
-      const writeResourceWithRetries = (resource: Resources): Effect.Effect<void, never, R> => {
-        const { label, id } = describeResource(resource)
-        return persistResource(resource).pipe(
-          Effect.tapError((err) =>
-            Effect.logError(`sync-run: upsert failed for ${label}/${id}`, err)
-          ),
-          Effect.retry(
-            Schedule.exponential('250 millis').pipe(Schedule.intersect(Schedule.recurs(3)))
-          ),
-          Effect.withSpan(Telemetry.Importing.Update.Span.Name, {
-            attributes: { [Telemetry.Importing.Update.Span.Attributes.Kind]: label },
-          }),
-          Effect.asVoid,
-          // Retries exhausted: record + notify, but don't fail the run.
-          Effect.catchAll((err) => store.handleFailure({ label, id }, err))
-        )
-      }
-
-      // Upsert a decoded response's resources — concurrent within the
-      // batch, awaited as a whole so the drive loop blocks until they
-      // settle. `discard` because failures are recorded inside
-      // `writeResourceWithRetries`; nothing flows back. Null-id handling
-      // lives in the descriptor's `persistResource` (a skipped resource
-      // resolves cleanly), so the runner stays resource-agnostic.
-      const writeBatch = (resources: ReadonlyArray<Resources>): Effect.Effect<void, never, R> =>
-        Effect.forEach(
-          resources,
-          (resource) => {
-            const { label, id } = describeResource(resource)
-            return Effect.andThen(
-              Effect.logDebug(`sync-run: upserting ${label}/${id}`),
-              writeResourceWithRetries(resource)
-            )
-          },
-          { concurrency: WRITE_CONCURRENCY, discard: true }
-        ).pipe(
-          Effect.withSpan(Telemetry.Importing.Span.Name, {
-            attributes: { [Telemetry.Importing.Span.Attributes.ResourceCount]: resources.length },
-          })
-        )
-
-      const processStateEvent = (event: ImportEvent<Resources>): Effect.Effect<void, never, R> =>
+      // Persist a decoded batch, returning its failures as data. The sink owns
+      // the retry/backoff schedule, the per-resource span, and concurrency;
+      // the runner owns only the batch `collector.importing` span (resource
+      // count) and folding the returned failures into the summary. Null-id
+      // handling lives in the sink (a skipped resource contributes no failure),
+      // so the runner stays resource-agnostic.
+      const processStateEvent = (
+        event: RunEvent<Resources>
+      ): Effect.Effect<ReadonlyArray<CollectorDescriptor.PersistFailure>, never, R> =>
         Match.value(event).pipe(
-          Match.tag('parsed', ({ resources }) => writeBatch(resources)),
-          Match.tag('failure', ({ error, url }) =>
-            store.handleFailure({ label: 'response', id: url }, error)
+          Match.tag('parsed', ({ resources }) =>
+            persistResources(resources).pipe(
+              Effect.withSpan(Telemetry.Importing.Span.Name, {
+                attributes: {
+                  [Telemetry.Importing.Span.Attributes.ResourceCount]: resources.length,
+                },
+              })
+            )
+          ),
+          Match.tag('responseFailure', ({ error, url }) =>
+            Effect.succeed<ReadonlyArray<CollectorDescriptor.PersistFailure>>([
+              { failed: { label: 'response', id: url }, cause: error },
+            ])
           ),
           // Wake-only: `signalSniffComplete` already flipped the flag.
-          Match.tag('sniffDone', () => Effect.void),
+          Match.tag('sniffDone', () =>
+            Effect.succeed<ReadonlyArray<CollectorDescriptor.PersistFailure>>([])
+          ),
           Match.exhaustive
         )
 
@@ -376,7 +374,7 @@ const buildImportEffect = <Resources, R>({
             sendMessage: observingSend,
             onResult: ({ response, result }) =>
               Either.match(result, {
-                onLeft: (error) => store.offerFailure(error, response.url),
+                onLeft: (error) => store.offerResponseFailure(error, response.url),
                 onRight: (resources) => store.offerParsed(resources),
               }),
           })
@@ -423,46 +421,44 @@ const buildImportEffect = <Resources, R>({
           )
       )
 
-      // Idle-timeout escape hatch when responses are still mid-stream.
-      // `ResponseData` chunks don't produce a mailbox event, so a large/slow
-      // download still streaming after `idleTimeout` would otherwise be
-      // silently abandoned by a hard terminate. Instead, settle every still
-      // tracked id as a failure (surfacing them in the `partial` summary) so
-      // the run reports the loss rather than dropping it on the floor.
-      const settleInFlightAsFailures: Effect.Effect<void> = Effect.suspend(() =>
-        Effect.forEach(
-          MutableHashMap.values(inProgressBridgeResponses),
-          ({ response }) =>
-            store.handleFailure(
-              { label: 'response', id: response.url },
-              new Error(
+      // Idle-timeout straggler settle, prefixed with a warning naming how many
+      // responses were abandoned. `ResponseData` chunks don't produce a mailbox
+      // event, so a large/slow download still streaming after `idleTimeout`
+      // would otherwise be silently abandoned by a hard terminate. Instead,
+      // settle every still-tracked id as a failure (surfacing them in the
+      // `partial` summary) so the run reports the loss rather than dropping it.
+      // Returned as data (like a write failure) for the drive stream to emit.
+      const settleStragglers: Effect.Effect<
+        ReadonlyArray<CollectorDescriptor.PersistFailure>,
+        never,
+        R
+      > = Effect.suspend(() => {
+        const inflight = Array.from(MutableHashMap.values(inProgressBridgeResponses))
+        return Effect.logWarning(
+          `sync-run: idle timeout with ${inflight.length} response(s) still in-flight; settling as failures`
+        ).pipe(
+          Effect.as(
+            inflight.map(({ response }) => ({
+              failed: { label: 'response', id: response.url },
+              cause: new Error(
                 `useSyncRunner: response for ${response.url} still in-flight at idle timeout; abandoning`
-              )
-            ),
-          { discard: true }
+              ),
+            }))
+          )
         )
-      )
-
-      // The idle-timeout straggler settle, prefixed with a warning naming
-      // how many responses were abandoned. Passed to the drive loop as its
-      // `settleStragglers` action.
-      const settleStragglers: Effect.Effect<void, never, R> = Effect.suspend(() =>
-        Effect.logWarning(
-          `sync-run: idle timeout with ${MutableHashMap.size(
-            inProgressBridgeResponses
-          )} response(s) still in-flight; settling as failures`
-        ).pipe(Effect.andThen(settleInFlightAsFailures))
-      )
-
-      yield* driveUntilSettled({
-        store,
-        inProgressResponses: inProgressBridgeResponses,
-        processEvent: processStateEvent,
-        settleStragglers,
-        idleTimeout,
       })
 
-      return yield* store.summary
+      return yield* collectImportSummary(
+        buildDriveStream({
+          store,
+          inProgressResponses: inProgressBridgeResponses,
+          processEvent: processStateEvent,
+          settleStragglers,
+          idleTimeout,
+        }),
+        setFailed,
+        onError
+      )
     })
   ).pipe(
     // Record how the run ended as a permanent attribute on the `Sync` span:
@@ -480,11 +476,11 @@ const buildImportEffect = <Resources, R>({
   )
 
 export {
+  buildDriveStream,
   buildImportEffect,
+  collectImportSummary,
   DEFAULT_IDLE_TIMEOUT,
-  driveUntilSettled,
-  makeRunStore,
+  RunStore,
   SHORT_CONFIRM_WINDOW,
-  WRITE_CONCURRENCY,
 }
-export type { FailedResource, ImportEvent, ImportSummary, RunStore }
+export type { FailedResource, ImportSummary, RunEvent }

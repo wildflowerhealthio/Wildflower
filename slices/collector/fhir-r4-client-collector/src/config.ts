@@ -6,18 +6,12 @@ import {
 } from 'collector-fundamentals/model'
 import { Duration, type FastCheck, Schema } from 'effect'
 import type { LazyArbitrary } from 'effect/Arbitrary'
-import type {
-  Binary,
-  MedicationDispense,
-  MedicationRequest,
-  Observation,
-  Patient,
-} from 'fhir-r4/resources'
+import type { FhirResource } from 'fhir-r4/resources'
 
 import { ObservationEntity } from './entities/observation-entity.ts'
 import { ObservationListEntity } from './entities/observation-list-entity.ts'
 import { PatientEntity } from './entities/patient-entity.ts'
-import { describeResource, persistResource } from './persist.ts'
+import { persistResources } from './persist.ts'
 
 /**
  * `rootUrl` must be an absolute `http(s)://` URL with at least a host
@@ -78,17 +72,10 @@ const defaultConfig: InstanceConfig = {
 }
 
 // The scraping/parsing entities below produce only Binary / Patient /
-// Observation today; `MedicationRequest` and `MedicationDispense` are included
-// in the union type ahead of the Rexall collector ticket that adds the entity
-// definitions which actually emit them. Keeping them here now lets the
-// downstream sync-runner write switch (`writeResourceWithRetries`) and the
-// fhir-r4 typed client be wired for all five resource types (issue #334).
-type AnyResource =
-  | typeof Binary.Schema.Type
-  | typeof Patient.Schema.Type
-  | typeof Observation.Schema.Type
-  | typeof MedicationRequest.Schema.Type
-  | typeof MedicationDispense.Schema.Type
+// Observation today. The write surface (`fhir-r4`'s `FhirResource` union +
+// `upsertResource`) already covers `MedicationRequest` / `MedicationDispense`
+// ahead of the Rexall collector ticket that adds the entities emitting them
+// (issue #334), so this plan needs no widening when they arrive.
 
 /**
  * Build the FHIR R4 scraping plan for a configured patient on a
@@ -116,7 +103,7 @@ type AnyResource =
  * still applied defensively in case the value reaches this function
  * through an untyped path.
  */
-const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<AnyResource> => {
+const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirResource> => {
   const safePatientId = encodeURIComponent(config.patientId)
   const patientUrl = `${config.rootUrl}/Patient/${safePatientId}?_format=json`
   const observationUrl = `${config.rootUrl}/Observation?subject%3APatient=${safePatientId}&_count=250&_format=json`
@@ -124,13 +111,13 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<AnyReso
     _tag: 'Uri',
     uri: patientUrl,
   }
-  return ScrapingPlan.make<AnyResource>({
+  return ScrapingPlan.make<FhirResource>({
     name: 'FHIR R4',
     entityDefinitions: [
       PatientEntity,
       ObservationEntity,
       ObservationListEntity,
-    ] as readonly EntityDefinition.EntityDefinition<AnyResource>[],
+    ] as readonly EntityDefinition.EntityDefinition<FhirResource>[],
     firstPage,
     stepSequence: [
       {
@@ -167,9 +154,7 @@ const FhirR4CollectorDescriptor = CollectorDescriptor.make({
     description: 'Health records from a FHIR R4 server',
     listSubtitle: (config) => config.rootUrl,
   },
-  persistResource,
-  describeResource,
+  persistResources,
 })
 
 export { InstanceConfig, defaultConfig, scrapingPlan, FhirR4CollectorDescriptor }
-export type { AnyResource }

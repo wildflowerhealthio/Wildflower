@@ -1,11 +1,12 @@
 import { type Effect, Schema } from 'effect'
 import { deepFreeze } from 'kitchen-sink'
 import type { CollectorDisplay } from './collector-display.ts'
-import type { ResourceDescription } from './resource-description.ts'
-import type {
-  ResourcePersistenceContext,
-  ResourcePersistenceProgram,
+import {
   ResourcePersistenceRuntime,
+  type FailedResource,
+  type PersistFailure,
+  type ResourcePersistenceContext,
+  type ResourcePersistenceProgram,
 } from './resource-persistence-runtime.ts'
 import type * as ScrapingPlan from './scraping-plan.ts'
 
@@ -15,7 +16,7 @@ import type * as ScrapingPlan from './scraping-plan.ts'
  * the `CollectorDescriptor.*` namespace stays the single import surface:
  *
  * - `CollectorDisplay`               → ./collector-display.ts            (user-facing strings)
- * - `ResourceDescription`            → ./resource-description.ts         (telemetry/failure label)
+ * - `FailedResource` / `PersistFailure`  → ./resource-persistence-runtime.ts (failure records)
  * - `ResourcePersistence{Context,    → ./resource-persistence-runtime.ts (the existential
  *   Program,Runtime}`                                                     write seam)
  *
@@ -60,13 +61,12 @@ import type * as ScrapingPlan from './scraping-plan.ts'
  *   `scrapingPlan(config)`). Distinct from the already-applied
  *   `scrapingPlan` inside a {@link ResourcePersistenceContext}.
  * - `display`: the {@link CollectorDisplay} strings.
- * - `persistResource`: writes one parsed resource back to wherever this
- *   collector targets (for fhir-r4, the typed FHIR client). "Which write
- *   goes where" only — the runner owns batching, `WRITE_CONCURRENCY`, the
- *   retry/backoff schedule, spans, and failure accounting.
- * - `describeResource`: the {@link ResourceDescription} for a resource,
- *   so the runner can label spans and report failures without naming the
- *   resource union.
+ * - `persistResources`: writes one decoded batch back to wherever this
+ *   collector targets (for fhir-r4, the typed FHIR client). Owns *how* the
+ *   batch is written — its own retries, per-resource spans, concurrency —
+ *   and returns the resources it could not write as {@link PersistFailure}
+ *   data (never failing, so one bad resource can't fail the run). The runner
+ *   owns only *when* to write and how to fold the failures into the summary.
  *
  * Derived guards (added by {@link make}, not authored):
  * - `scrapingPlanIfMatches`: returns this collector's plan when `config`
@@ -79,7 +79,7 @@ import type * as ScrapingPlan from './scraping-plan.ts'
  *   invariance defeats a plain guard).
  * - `resourcePersistenceRuntimeIfMatches`: the same structural guard,
  *   returning the config's existential {@link ResourcePersistenceRuntime}
- *   (plan + persist + describe) so the runner can drive a matched config
+ *   (plan + persistResources) so the runner can drive a matched config
  *   without naming `Resources`.
  */
 interface CollectorDescriptor<Config extends { readonly _tag: string }, Resources, R> {
@@ -88,8 +88,9 @@ interface CollectorDescriptor<Config extends { readonly _tag: string }, Resource
   readonly defaultConfig: Config
   readonly makeScrapingPlan: (config: Config) => ScrapingPlan.ScrapingPlan<Resources>
   readonly display: CollectorDisplay<Config>
-  readonly persistResource: (resource: Resources) => Effect.Effect<void, unknown, R>
-  readonly describeResource: (resource: Resources) => ResourceDescription
+  readonly persistResources: (
+    resources: ReadonlyArray<Resources>
+  ) => Effect.Effect<ReadonlyArray<PersistFailure>, never, R>
   readonly scrapingPlanIfMatches: (
     config: unknown
   ) => ScrapingPlan.ScrapingPlan<Resources> | undefined
@@ -109,8 +110,9 @@ interface CollectorDescriptorSpec<Config extends { readonly _tag: string }, Reso
   readonly defaultConfig: Config
   readonly makeScrapingPlan: (config: Config) => ScrapingPlan.ScrapingPlan<Resources>
   readonly display: CollectorDisplay<Config>
-  readonly persistResource: (resource: Resources) => Effect.Effect<void, unknown, R>
-  readonly describeResource: (resource: Resources) => ResourceDescription
+  readonly persistResources: (
+    resources: ReadonlyArray<Resources>
+  ) => Effect.Effect<ReadonlyArray<PersistFailure>, never, R>
 }
 
 /**
@@ -122,7 +124,7 @@ type ConfigOf<D> =
   D extends CollectorDescriptor<infer Config, infer _Resources, infer _R> ? Config : never
 
 /**
- * The write requirement (`R`) a descriptor's `persistResource` needs.
+ * The write requirement (`R`) a descriptor's `persistResources` needs.
  * Used by the registry to derive `CollectorRequirements` — the union of
  * every descriptor's `R`, which the authed runner must provide — via
  * `RequirementsOf<(typeof descriptors)[number]>`.
@@ -145,11 +147,10 @@ type RequirementsOf<D> =
  *
  * `scrapingPlanIfMatches` and `resourcePersistenceRuntimeIfMatches` are
  * derived here: `Schema.is(spec.configSchema)` compiles the guard once,
- * closing over the concrete `Config` / `Resources` / `R` so the
- * `spec.makeScrapingPlan(config)` call and the existential
- * {@link ResourcePersistenceRuntime} type-check with no cast. `make` is the
- * sole implementer of `run`: it applies the program to the single hidden
- * `Resources` it closed over.
+ * closing over the concrete `Config` / `Resources` / `R`. When a config
+ * matches, {@link ResourcePersistenceRuntime.make} seals the applied plan and
+ * the persist sink behind the existential carrier, so the descriptor never
+ * spells out the `{ run: (program) => program(context) }` plumbing.
  */
 const make = <Config extends { readonly _tag: string }, Resources, R>(
   spec: CollectorDescriptorSpec<Config, Resources, R>
@@ -163,14 +164,10 @@ const make = <Config extends { readonly _tag: string }, Resources, R>(
     config: unknown
   ): ResourcePersistenceRuntime<R> | undefined =>
     isConfig(config)
-      ? {
-          run: (program) =>
-            program({
-              scrapingPlan: spec.makeScrapingPlan(config),
-              persistResource: spec.persistResource,
-              describeResource: spec.describeResource,
-            }),
-        }
+      ? ResourcePersistenceRuntime.make({
+          scrapingPlan: spec.makeScrapingPlan(config),
+          persistResources: spec.persistResources,
+        })
       : undefined
   // Freeze the descriptor's own data in place for its runtime-immutable
   // guarantee, but keep the precisely-typed references rather than
@@ -185,22 +182,21 @@ const make = <Config extends { readonly _tag: string }, Resources, R>(
     defaultConfig: spec.defaultConfig,
     makeScrapingPlan: spec.makeScrapingPlan,
     display: spec.display,
-    persistResource: spec.persistResource,
-    describeResource: spec.describeResource,
+    persistResources: spec.persistResources,
     scrapingPlanIfMatches,
     resourcePersistenceRuntimeIfMatches,
   })
 }
 
-export { make }
+export { make, ResourcePersistenceRuntime }
 export type {
   CollectorDescriptor,
   CollectorDescriptorSpec,
   CollectorDisplay,
   ConfigOf,
+  FailedResource,
+  PersistFailure,
   RequirementsOf,
-  ResourceDescription,
   ResourcePersistenceContext,
   ResourcePersistenceProgram,
-  ResourcePersistenceRuntime,
 }

@@ -97,8 +97,9 @@ const Importing = {
         Attempts: 'collector.importing.update.attempts',
         /**
          * The resource's collector-agnostic kind label (for fhir-r4, its
-         * `resourceType`), from the descriptor's `describeResource`. Kept
-         * generic so the runner never names a collector's resource union.
+         * `resourceType`), set by the collector's persist sink when it tags
+         * each write. Kept generic so telemetry never names a collector's
+         * resource union.
          */
         Kind: 'collector.importing.resource.kind',
       },

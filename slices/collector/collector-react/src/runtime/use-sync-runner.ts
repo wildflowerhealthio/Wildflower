@@ -7,8 +7,8 @@
  *
  * Where a collector's parsed resources are written is no longer decided
  * here: the registry's `resourcePersistenceRuntimeForConfig` hands back the
- * config's plan plus its `persistResource` / `describeResource` (from the
- * owning `CollectorDescriptor`), which this hook feeds to the generic
+ * config's plan plus its batch `persistResources` sink (from the owning
+ * `CollectorDescriptor`), which this hook feeds to the generic
  * runner. The runner's requirement `R` is the union of every collector's
  * write requirement (today `FhirR4ResourcesHttpApiClient`); the router
  * context's authed runner provides it. That residual coupling to the FHIR
