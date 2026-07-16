@@ -5,7 +5,9 @@ Tauri host into parsed resources and scripted navigation. Read the
 [Bridge Explanation](../../../../docs/Messaging/Bridge%20Explanation.md)
 first for the webview↔host channel these handlers sit on, and
 [scraping-plan.ts](../src/model/scraping-plan.ts) for the per-slice
-configuration they consume.
+configuration they consume. For how these handlers sit inside the whole
+"Import Now" pipeline (config → registry dispatch → drive loop → persist),
+see the [Collector Sync Explanation](./Collector%20Sync%20Explanation.md).
 
 ## Two machines, one surface
 

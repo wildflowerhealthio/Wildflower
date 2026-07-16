@@ -83,23 +83,25 @@ describe('CollectorDescriptor scrapingPlanIfMatches', () => {
   })
 })
 
-describe('CollectorDescriptor runIngredientsIfMatches', () => {
+describe('CollectorDescriptor resourcePersistenceRuntimeIfMatches', () => {
   it('delivers the plan (and persist/describe) for one of its configs', () => {
-    const ingredients = descriptor.runIngredientsIfMatches(defaultConfig)
-    expect(ingredients).toBeDefined()
-    // The bundle holds `Resources` existential — consumers reach it only
-    // through the `provide` continuation, never by naming the union.
-    const plan = ingredients?.runWith((bundle) => bundle.scrapingPlan)
+    const runtime = descriptor.resourcePersistenceRuntimeIfMatches(defaultConfig)
+    expect(runtime).toBeDefined()
+    // The context holds `Resources` existential — a program reaches it only
+    // through `run`, never by naming the union.
+    const plan = runtime?.run((context) => context.scrapingPlan)
     expect(plan).toEqual(makeScrapingPlan(defaultConfig))
   })
 
   it('returns undefined for a config with a different tag', () => {
-    expect(descriptor.runIngredientsIfMatches({ _tag: 'other', host: 'example' })).toBeUndefined()
+    expect(
+      descriptor.resourcePersistenceRuntimeIfMatches({ _tag: 'other', host: 'example' })
+    ).toBeUndefined()
   })
 
   it('returns undefined for a structurally invalid config', () => {
     expect(
-      descriptor.runIngredientsIfMatches({ _tag: 'sample', host: 'NOT-lower' })
+      descriptor.resourcePersistenceRuntimeIfMatches({ _tag: 'sample', host: 'NOT-lower' })
     ).toBeUndefined()
   })
 })

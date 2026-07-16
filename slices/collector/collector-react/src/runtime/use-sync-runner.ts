@@ -6,18 +6,18 @@
  * functions.
  *
  * Where a collector's parsed resources are written is no longer decided
- * here: the registry's `runIngredientsForConfig` hands back the config's
- * plan plus its `persistResource` / `describeResource` (from the owning
- * `CollectorDescriptor`), which this hook feeds to the generic runner. The
- * runner's requirement `R` is the union of every collector's write
- * requirement (today `FhirR4ResourcesHttpApiClient`); the router context's
- * authed runner provides it. That residual coupling to the FHIR R4 EMR
- * slice is documented as a deliberate slice-layering exception in the
+ * here: the registry's `resourcePersistenceRuntimeForConfig` hands back the
+ * config's plan plus its `persistResource` / `describeResource` (from the
+ * owning `CollectorDescriptor`), which this hook feeds to the generic
+ * runner. The runner's requirement `R` is the union of every collector's
+ * write requirement (today `FhirR4ResourcesHttpApiClient`); the router
+ * context's authed runner provides it. That residual coupling to the FHIR
+ * R4 EMR slice is documented as a deliberate slice-layering exception in the
  * `collector-react/package.json` description (per `slices/AGENTS.md`).
  */
 import { useMutation } from '@tanstack/react-query'
 import type { Remotes } from 'collector-registry/http-api-definition'
-import { runIngredientsForConfig } from 'collector-registry/registry'
+import { resourcePersistenceRuntimeForConfig } from 'collector-registry/registry'
 import { type Duration, Match } from 'effect'
 import { useCallback, useRef, useState } from 'react'
 
@@ -94,16 +94,15 @@ const useSyncRunner = ({
   const abortRef = useRef<AbortController | null>(null)
 
   // Assemble the generic runner for a stored config. The registry hands
-  // back the plan + persist sink + describe fn with the resource union held
-  // existential; `runWith` (NOT `Effect.provide` — see
-  // `collector-fundamentals` `run-ingredients.ts`) instantiates the generic
-  // runner body over the hidden `Resources`. Kept as one flat step so the
-  // `mutationFn` below reads as "build → run authed", not a nested stack.
+  // back the config's `ResourcePersistenceRuntime`; `.run` (NOT
+  // `Effect.provide`) provides the sealed `context` to our program — the
+  // `(context) => buildImportEffect(...)` body — over the hidden `Resources`.
+  // Kept as one flat step so `mutationFn` below reads "build → run authed".
   const buildImportEffectForConfig = useCallback(
     (config: CollectorRemote['config']) =>
-      runIngredientsForConfig(config).runWith((bundle) =>
+      resourcePersistenceRuntimeForConfig(config).run((context) =>
         buildImportEffect({
-          ...bundle,
+          context,
           sendCollectorMessage,
           collectorRegister,
           onError: (error) => onErrorRef.current?.(error),

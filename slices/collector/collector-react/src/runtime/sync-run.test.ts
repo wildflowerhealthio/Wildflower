@@ -4,27 +4,25 @@ import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import {
-  driveTransition,
+  driveUntilSettled,
   makeRunStore,
   SHORT_CONFIRM_WINDOW,
-  type DriveObservation,
   type FailedResource,
   type ImportEvent,
-  type RunPhase,
 } from './sync-run.ts'
 
 /**
  * Direct unit coverage of the extracted framework-free core
- * ({@link ./sync-run.ts}). This suite pins the {@link makeRunStore}
- * completion predicate and failure accounting — the facts the drive loop
- * reads to decide "are we done?" and to build the `partial` summary —
- * without React Testing Library.
+ * ({@link ./sync-run.ts}), without React Testing Library. Two suites:
  *
- * The full drive loop (`buildImportEffect`: quiescence re-confirm across
- * `SHORT_CONFIRM_WINDOW`, the idle-timeout `settleInFlightAsFailures` path,
- * and write-retry exhaustion) is exercised against a stub persistence sink
- * once the sink is injectable — see the runner tests that land with the
- * descriptor seam (3B of epic #382).
+ * - {@link makeRunStore} — the completion predicate (`isSettled`) and
+ *   failure accounting the loop reads to decide "are we done?".
+ * - {@link driveUntilSettled} — the drive loop itself, over `TestClock`:
+ *   events are processed, quiescence terminates the run, and an idle
+ *   timeout with responses still in-flight settles the stragglers.
+ *
+ * Write-retry exhaustion (inside `buildImportEffect`, against a real
+ * persistence sink) is covered by `fhir-r4-client-collector/src/persist.test.ts`.
  */
 
 /** Collects the arrays `setFailed` was called with, newest last. */
@@ -50,6 +48,9 @@ const recordingSink = (): {
 
 const runTest = <A>(program: Effect.Effect<A, never, never>): Promise<A> =>
   Effect.runPromise(program.pipe(Effect.provide(TestContext.TestContext)))
+
+/** No-op sink callback for tests that assert on the loop, not on failures. */
+const noop = (): void => {}
 
 describe('makeRunStore', () => {
   describe('isSettled', () => {
@@ -186,115 +187,145 @@ describe('makeRunStore', () => {
   })
 })
 
-describe('driveTransition', () => {
-  it('processes a pulled event and stays in the current phase (so the loop continues)', () => {
-    // Arrange
-    const event = { _tag: 'sniffDone' } as const
-    const observation: DriveObservation<unknown> = { _tag: 'Event', event }
+describe('driveUntilSettled', () => {
+  // A recording `processEvent` sink plus a one-shot `settleStragglers` flag,
+  // so each test can read back what the loop drove.
+  const recorder = (): {
+    readonly processed: Array<ImportEvent<unknown>>
+    readonly processEvent: (event: ImportEvent<unknown>) => Effect.Effect<void>
+    readonly settleStragglers: Effect.Effect<void>
+    settled: boolean
+  } => {
+    const processed: Array<ImportEvent<unknown>> = []
+    const state = {
+      processed,
+      settled: false,
+      processEvent: (event: ImportEvent<unknown>) =>
+        Effect.sync(() => {
+          processed.push(event)
+        }),
+      settleStragglers: Effect.sync(() => {
+        state.settled = true
+      }),
+    }
+    return state
+  }
 
-    // Act
-    const [nextPhase, effects] = driveTransition(draining, observation)
+  const drive = (
+    store: Parameters<typeof driveUntilSettled>[0]['store'],
+    inProgress: MutableHashMap.MutableHashMap<string, unknown>,
+    rec: ReturnType<typeof recorder>
+  ): Effect.Effect<void> =>
+    driveUntilSettled({
+      store,
+      inProgressResponses: inProgress,
+      processEvent: rec.processEvent,
+      settleStragglers: rec.settleStragglers,
+      idleTimeout: IDLE_TIMEOUT,
+    })
 
-    // Assert
-    expect(nextPhase).toEqual(draining)
-    expect(effects).toEqual([{ _tag: 'ProcessEvent', event }])
-  })
+  const IDLE_TIMEOUT = Duration.seconds(30)
 
-  it('terminates cleanly when quiescence still holds after the confirm window', () => {
-    // Arrange
-    const observation: DriveObservation<unknown> = { _tag: 'QuiescenceHeld' }
+  it('processes every queued event, then terminates once quiescence holds', async () => {
+    const rec = recorder()
+    await runTest(
+      Effect.gen(function* () {
+        const store = yield* makeRunStore(noop, noop)
+        const inProgress = MutableHashMap.empty<string, unknown>()
+        // Sniffing is done and two decoded batches are already queued.
+        yield* store.signalSniffComplete
+        store.offerParsed([])
+        store.offerFailure(new Error('x'), 'https://example.com/x')
 
-    // Act
-    const [nextPhase, effects] = driveTransition(confirming, observation)
-
-    // Assert
-    expect(nextPhase).toEqual(terminated)
-    expect(effects).toEqual([])
-  })
-
-  it('folds back to draining (no termination) when quiescence was lost', () => {
-    // Arrange
-    const observation: DriveObservation<unknown> = { _tag: 'QuiescenceLost' }
-
-    // Act
-    const [nextPhase, effects] = driveTransition(confirming, observation)
-
-    // Assert
-    expect(nextPhase).toEqual(draining)
-    expect(effects).toEqual([])
-  })
-
-  it('terminates cleanly on an idle timeout with nothing in-flight', () => {
-    // Arrange
-    const observation: DriveObservation<unknown> = { _tag: 'IdleQuiet' }
-
-    // Act
-    const [nextPhase, effects] = driveTransition(draining, observation)
-
-    // Assert
-    expect(nextPhase).toEqual(terminated)
-    expect(effects).toEqual([])
-  })
-
-  it('settles the stragglers then terminates on an idle timeout with responses in-flight', () => {
-    // Arrange
-    const observation: DriveObservation<unknown> = { _tag: 'IdleStragglers' }
-
-    // Act
-    const [nextPhase, effects] = driveTransition(draining, observation)
-
-    // Assert
-    expect(nextPhase).toEqual(terminated)
-    expect(effects).toEqual([{ _tag: 'SettleStragglers' }])
-  })
-
-  it('always passes the live phase through unchanged for an Event, requesting exactly its ProcessEvent', () => {
-    fc.assert(
-      fc.property(
-        fc.constantFrom<RunPhase>(draining, confirming),
-        fc.constantFrom<ImportEvent<unknown>>(
-          { _tag: 'sniffDone' },
-          { _tag: 'parsed', resources: [] },
-          { _tag: 'failure', error: new Error('x'), url: 'https://example.com/x' }
-        ),
-        (phase, event) => {
-          // Act
-          const [nextPhase, effects] = driveTransition(phase, { _tag: 'Event', event })
-
-          // Assert — the Event arm never terminates and never inspects the event.
-          expect(nextPhase).toEqual(phase)
-          expect(effects).toEqual([{ _tag: 'ProcessEvent', event }])
-        }
-      ),
-      { numRuns: numRunsFor({ base: 100 }) }
+        const fiber = yield* Effect.fork(drive(store, inProgress, rec))
+        // The queued events drain immediately; the loop then blocks on the
+        // confirm window, which the clock closes to terminate the run.
+        yield* TestClock.adjust(SHORT_CONFIRM_WINDOW)
+        yield* Fiber.join(fiber)
+      })
     )
+    // sniffDone (from signalSniffComplete) + the two offered events, in order.
+    expect(rec.processed.map((e) => e._tag)).toEqual(['sniffDone', 'parsed', 'failure'])
+    expect(rec.settled).toBe(false)
   })
 
-  it('never depends on the incoming phase for a terminating observation', () => {
-    fc.assert(
-      fc.property(
-        fc.constantFrom<RunPhase>(draining, confirming, terminated),
-        fc.constantFrom<DriveObservation<unknown>>(
-          { _tag: 'QuiescenceHeld' },
-          { _tag: 'IdleQuiet' },
-          { _tag: 'IdleStragglers' }
-        ),
-        (phase, observation) => {
-          // Act — a terminating observation ignores the phase it arrives in.
-          const [fromPhase] = driveTransition(phase, observation)
-          const [fromDraining] = driveTransition(draining, observation)
+  it('terminates on quiescence with an empty mailbox, settling nothing', async () => {
+    const rec = recorder()
+    await runTest(
+      Effect.gen(function* () {
+        const store = yield* makeRunStore(noop, noop)
+        const inProgress = MutableHashMap.empty<string, unknown>()
+        yield* store.signalSniffComplete
+        yield* store.tryTakeEvent(Duration.zero) // drain the `sniffDone` wake
 
-          // Assert
-          expect(fromPhase).toEqual(terminated)
-          expect(fromPhase).toEqual(fromDraining)
-        }
-      ),
-      { numRuns: numRunsFor({ base: 100 }) }
+        const fiber = yield* Effect.fork(drive(store, inProgress, rec))
+        yield* TestClock.adjust(SHORT_CONFIRM_WINDOW)
+        yield* Fiber.join(fiber)
+      })
     )
+    expect(rec.processed).toEqual([])
+    expect(rec.settled).toBe(false)
+  })
+
+  it('terminates on an idle timeout with nothing in-flight, settling nothing', async () => {
+    const rec = recorder()
+    await runTest(
+      Effect.gen(function* () {
+        // Sniffing never completes and nothing is in-flight: the host has
+        // gone silent, so the idle timeout ends the run.
+        const store = yield* makeRunStore(noop, noop)
+        const inProgress = MutableHashMap.empty<string, unknown>()
+
+        const fiber = yield* Effect.fork(drive(store, inProgress, rec))
+        yield* TestClock.adjust(IDLE_TIMEOUT)
+        yield* Fiber.join(fiber)
+      })
+    )
+    expect(rec.processed).toEqual([])
+    expect(rec.settled).toBe(false)
+  })
+
+  it('settles stragglers then terminates on an idle timeout with a response still in-flight', async () => {
+    const rec = recorder()
+    await runTest(
+      Effect.gen(function* () {
+        const store = yield* makeRunStore(noop, noop)
+        // A response is mid-stream (its data chunks never wake the loop),
+        // so the idle timeout must settle it as a failure.
+        const inProgress = MutableHashMap.make(['https://example.com/Patient/1', {}])
+
+        const fiber = yield* Effect.fork(drive(store, inProgress, rec))
+        yield* TestClock.adjust(IDLE_TIMEOUT)
+        yield* Fiber.join(fiber)
+      })
+    )
+    expect(rec.settled).toBe(true)
+    expect(rec.processed).toEqual([])
+  })
+
+  it('keeps draining (does not terminate) when a straggler re-enters during the confirm window', async () => {
+    const rec = recorder()
+    const stillRunning = await runTest(
+      Effect.gen(function* () {
+        const store = yield* makeRunStore(noop, noop)
+        const inProgress = MutableHashMap.empty<string, unknown>()
+        // Quiescence holds, so the loop enters the short confirm window…
+        yield* store.signalSniffComplete
+        yield* store.tryTakeEvent(Duration.zero)
+
+        const fiber = yield* Effect.fork(drive(store, inProgress, rec))
+        // …but a response re-enters before the window closes, so the
+        // re-confirm sees the run un-settled and keeps draining.
+        yield* TestClock.adjust(Duration.millis(100))
+        MutableHashMap.set(inProgress, 'https://example.com/Patient/1', {})
+        yield* TestClock.adjust(SHORT_CONFIRM_WINDOW)
+
+        const poll = yield* Fiber.poll(fiber)
+        yield* Fiber.interrupt(fiber)
+        return Option.isNone(poll)
+      })
+    )
+    expect(stillRunning).toBe(true)
+    expect(rec.settled).toBe(false)
   })
 })
-
-// Helpers
-const draining: RunPhase = { _tag: 'Draining' }
-const confirming: RunPhase = { _tag: 'Confirming' }
-const terminated: RunPhase = { _tag: 'Terminated' }

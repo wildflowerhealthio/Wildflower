@@ -15,7 +15,7 @@ import {
   descriptorForConfig,
   descriptorForTag,
   descriptors,
-  runIngredientsForConfig,
+  resourcePersistenceRuntimeForConfig,
 } from './registry.ts'
 
 const { expectLeftToEqual, expectRightToEqual } = utilityExpectations(expect)
@@ -66,11 +66,11 @@ describe('CollectorConfig', () => {
   })
 })
 
-describe('runIngredientsForConfig', () => {
-  // The bundle holds the resource union existential; reach the plan only
-  // through the `runWith` continuation, never by naming the union.
+describe('resourcePersistenceRuntimeForConfig', () => {
+  // The context holds the resource union existential; reach the plan only
+  // through a `run` program, never by naming the union.
   const planFor = (config: typeof CollectorConfig.Type): ScrapingPlan.ScrapingPlan<unknown> =>
-    runIngredientsForConfig(config).runWith((bundle) => bundle.scrapingPlan)
+    resourcePersistenceRuntimeForConfig(config).run((context) => context.scrapingPlan)
 
   it('dispatches fhir-r4 configs to the fhir-r4 scraping plan', () => {
     const config = Schema.decodeSync(CollectorConfig)({

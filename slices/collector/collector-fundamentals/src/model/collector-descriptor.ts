@@ -2,7 +2,11 @@ import { type Effect, Schema } from 'effect'
 import { deepFreeze } from 'kitchen-sink'
 import type { CollectorDisplay } from './collector-display.ts'
 import type { ResourceDescription } from './resource-description.ts'
-import type { RunIngredients } from './run-ingredients.ts'
+import type {
+  ResourcePersistenceContext,
+  ResourcePersistenceProgram,
+  ResourcePersistenceRuntime,
+} from './resource-persistence-runtime.ts'
 import type * as ScrapingPlan from './scraping-plan.ts'
 
 /*
@@ -10,9 +14,10 @@ import type * as ScrapingPlan from './scraping-plan.ts'
  * types each live in their own focused module and are re-exported here so
  * the `CollectorDescriptor.*` namespace stays the single import surface:
  *
- * - `CollectorDisplay`     → ./collector-display.ts     (user-facing strings)
- * - `ResourceDescription`  → ./resource-description.ts  (telemetry/failure label)
- * - `RunIngredients`       → ./run-ingredients.ts       (existential write bundle)
+ * - `CollectorDisplay`               → ./collector-display.ts            (user-facing strings)
+ * - `ResourceDescription`            → ./resource-description.ts         (telemetry/failure label)
+ * - `ResourcePersistence{Context,    → ./resource-persistence-runtime.ts (the existential
+ *   Program,Runtime}`                                                     write seam)
  *
  * What stays here is the descriptor itself and how it is authored/derived:
  * - `CollectorDescriptor` — the full value the registry/UI consume.
@@ -53,7 +58,7 @@ import type * as ScrapingPlan from './scraping-plan.ts'
  * - `defaultConfig`: a valid config to seed a new-instance form.
  * - `makeScrapingPlan`: the per-config plan *factory* (today's
  *   `scrapingPlan(config)`). Distinct from the already-applied
- *   `scrapingPlan` inside a {@link RunIngredients} bundle.
+ *   `scrapingPlan` inside a {@link ResourcePersistenceContext}.
  * - `display`: the {@link CollectorDisplay} strings.
  * - `persistResource`: writes one parsed resource back to wherever this
  *   collector targets (for fhir-r4, the typed FHIR client). "Which write
@@ -72,9 +77,10 @@ import type * as ScrapingPlan from './scraping-plan.ts'
  *   type is still in scope, rather than in a loop over the union-typed
  *   list (where TS collapses each element to the union and the schema's
  *   invariance defeats a plain guard).
- * - `runIngredientsIfMatches`: the same structural guard, returning the
- *   existential {@link RunIngredients} bundle (plan + persist + describe)
- *   so the runner can drive a matched config without naming `Resources`.
+ * - `resourcePersistenceRuntimeIfMatches`: the same structural guard,
+ *   returning the config's existential {@link ResourcePersistenceRuntime}
+ *   (plan + persist + describe) so the runner can drive a matched config
+ *   without naming `Resources`.
  */
 interface CollectorDescriptor<Config extends { readonly _tag: string }, Resources, R> {
   readonly tag: Config['_tag']
@@ -87,13 +93,15 @@ interface CollectorDescriptor<Config extends { readonly _tag: string }, Resource
   readonly scrapingPlanIfMatches: (
     config: unknown
   ) => ScrapingPlan.ScrapingPlan<Resources> | undefined
-  readonly runIngredientsIfMatches: (config: unknown) => RunIngredients<R> | undefined
+  readonly resourcePersistenceRuntimeIfMatches: (
+    config: unknown
+  ) => ResourcePersistenceRuntime<R> | undefined
 }
 
 /**
  * The author-supplied half of a descriptor: the fields a
  * `*-client-collector` package writes. {@link make} adds the derived
- * `scrapingPlanIfMatches` / `runIngredientsIfMatches` guards.
+ * `scrapingPlanIfMatches` / `resourcePersistenceRuntimeIfMatches` guards.
  */
 interface CollectorDescriptorSpec<Config extends { readonly _tag: string }, Resources, R> {
   readonly tag: Config['_tag']
@@ -135,11 +143,13 @@ type RequirementsOf<D> =
  * would mutate that module-level export for every other importer.
  * (Functions are opaque to `deepFreeze` anyway.)
  *
- * `scrapingPlanIfMatches` and `runIngredientsIfMatches` are derived
- * here: `Schema.is(spec.configSchema)` compiles the guard once, closing
- * over the concrete `Config` / `Resources` / `R` so the
+ * `scrapingPlanIfMatches` and `resourcePersistenceRuntimeIfMatches` are
+ * derived here: `Schema.is(spec.configSchema)` compiles the guard once,
+ * closing over the concrete `Config` / `Resources` / `R` so the
  * `spec.makeScrapingPlan(config)` call and the existential
- * {@link RunIngredients} bundle type-check with no cast.
+ * {@link ResourcePersistenceRuntime} type-check with no cast. `make` is the
+ * sole implementer of `run`: it applies the program to the single hidden
+ * `Resources` it closed over.
  */
 const make = <Config extends { readonly _tag: string }, Resources, R>(
   spec: CollectorDescriptorSpec<Config, Resources, R>
@@ -149,11 +159,13 @@ const make = <Config extends { readonly _tag: string }, Resources, R>(
     config: unknown
   ): ScrapingPlan.ScrapingPlan<Resources> | undefined =>
     isConfig(config) ? spec.makeScrapingPlan(config) : undefined
-  const runIngredientsIfMatches = (config: unknown): RunIngredients<R> | undefined =>
+  const resourcePersistenceRuntimeIfMatches = (
+    config: unknown
+  ): ResourcePersistenceRuntime<R> | undefined =>
     isConfig(config)
       ? {
-          runWith: (run) =>
-            run({
+          run: (program) =>
+            program({
               scrapingPlan: spec.makeScrapingPlan(config),
               persistResource: spec.persistResource,
               describeResource: spec.describeResource,
@@ -176,7 +188,7 @@ const make = <Config extends { readonly _tag: string }, Resources, R>(
     persistResource: spec.persistResource,
     describeResource: spec.describeResource,
     scrapingPlanIfMatches,
-    runIngredientsIfMatches,
+    resourcePersistenceRuntimeIfMatches,
   })
 }
 
@@ -188,5 +200,7 @@ export type {
   ConfigOf,
   RequirementsOf,
   ResourceDescription,
-  RunIngredients,
+  ResourcePersistenceContext,
+  ResourcePersistenceProgram,
+  ResourcePersistenceRuntime,
 }
