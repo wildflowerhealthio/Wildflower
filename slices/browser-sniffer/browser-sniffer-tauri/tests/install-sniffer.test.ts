@@ -99,6 +99,27 @@ const fireInbound = (event: string, payload: unknown): void => {
   handler?.({ payload })
 }
 
+// The sniffer's fetch string branch wraps the input in `new Request(input,
+// init)`. A real browser WebView resolves a relative string against the
+// document base there; jsdom's runtime `Request` (undici) instead throws
+// `Failed to parse URL`. So to exercise a relative-URL fetch end-to-end we
+// make `Request` browser-faithful for the callback — resolve string inputs
+// against `window.location.href` — and restore it afterward.
+const withBrowserRequest = async (fn: () => Promise<void>): Promise<void> => {
+  const OriginalRequest = globalThis.Request
+  class BrowserRequest extends OriginalRequest {
+    constructor(input: RequestInfo | URL, init?: RequestInit) {
+      super(typeof input === 'string' ? new URL(input, window.location.href).href : input, init)
+    }
+  }
+  globalThis.Request = BrowserRequest
+  try {
+    await fn()
+  } finally {
+    globalThis.Request = OriginalRequest
+  }
+}
+
 const withTag = (msgs: Message[], tag: string): Message[] => msgs.filter((m) => m._tag === tag)
 
 // jsdom types `document.contentType` as a non-writable prototype getter;
@@ -302,6 +323,60 @@ describe('fetch shim', () => {
     ])
   })
 
+  test('resolves a relative string URL to absolute in ResponseStart (issue #373)', async () => {
+    // A same-origin relative fetch — the common case in real web apps. It
+    // must be reported absolute so the downstream `://host…` UrlMatch can
+    // match it; a verbatim `/fhir/…` never matches and is silently cancelled.
+    await withBrowserRequest(async () => {
+      window.fetch = vi.fn().mockResolvedValue(new Response(null))
+      installSnifferForTest()
+      await window.fetch('/fhir/Patient/1')
+
+      const expected = new URL('/fhir/Patient/1', window.location.href).href
+      expect(expected).toMatch(/^https?:\/\//)
+      expect(withTag(getMessages(), 'ResponseStart')).toEqual([
+        expect.objectContaining({ url: expected }),
+      ])
+    })
+  })
+
+  test('leaves an already-absolute string URL byte-identical (idempotent normalization)', async () => {
+    window.fetch = vi.fn().mockResolvedValue(new Response(null))
+    installSnifferForTest()
+    await window.fetch('https://api.example.com/fhir/Patient/1?_format=json')
+
+    expect(withTag(getMessages(), 'ResponseStart')).toEqual([
+      expect.objectContaining({ url: 'https://api.example.com/fhir/Patient/1?_format=json' }),
+    ])
+  })
+
+  test('passes a data: URL through unchanged (exotic scheme, no throw)', async () => {
+    window.fetch = vi.fn().mockResolvedValue(new Response(null))
+    installSnifferForTest()
+    await window.fetch('data:text/plain,hello')
+
+    expect(withTag(getMessages(), 'ResponseStart')).toEqual([
+      expect.objectContaining({ url: 'data:text/plain,hello' }),
+    ])
+  })
+
+  test('reports a relative URL as absolute on a pre-response fetch error (issue #373)', async () => {
+    await withBrowserRequest(async () => {
+      window.fetch = vi.fn().mockRejectedValue(new Error('offline'))
+      installSnifferForTest()
+      const expected = new URL('/fhir/Patient/1', window.location.href).href
+
+      await expect(window.fetch('/fhir/Patient/1')).rejects.toThrow('offline')
+      expect(withTag(getMessages(), 'ResponseStart')).toEqual([
+        expect.objectContaining({ url: expected, status: 0 }),
+      ])
+      expect(withTag(getMessages(), 'RequestError')).toEqual([
+        expect.objectContaining({ url: expected, message: 'offline' }),
+      ])
+      validateMessages(getMessages())
+    })
+  })
+
   test('should produce schema-valid messages for any body', async () => {
     await fc.assert(
       fc.asyncProperty(fc.string({ unit: 'grapheme' }), async (body) => {
@@ -338,7 +413,7 @@ describe('fetch shim', () => {
     )
   })
 
-  test('should pass through the request URL in ResponseStart', async () => {
+  test('should report the request URL (normalized to absolute) in ResponseStart', async () => {
     await fc.assert(
       fc.asyncProperty(fc.webUrl(), async (url) => {
         resetShims()
@@ -347,7 +422,14 @@ describe('fetch shim', () => {
         installSnifferForTest()
         await window.fetch(url)
 
-        expect(withTag(getMs(), 'ResponseStart')).toEqual([expect.objectContaining({ url })])
+        // The sniffer resolves the input against `location.href` (issue
+        // #373). `fc.webUrl()` emits already-absolute URLs, so this is the
+        // idempotent case — but `new URL().href` still canonicalizes (a
+        // host-only URL gains a trailing `/`), so compare against that form.
+        const expected = new URL(url, window.location.href).href
+        expect(withTag(getMs(), 'ResponseStart')).toEqual([
+          expect.objectContaining({ url: expected }),
+        ])
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )
@@ -475,7 +557,9 @@ describe('fetch shim', () => {
           expect(starts).toHaveLength(requests.length)
           expectToMultisetEqual(
             starts.map((s_) => s_.url as string),
-            requests.map(([url]) => url)
+            // Reported URLs are normalized to absolute (issue #373); compare
+            // against the same canonical form the sniffer applies.
+            requests.map(([url]) => new URL(url, window.location.href).href)
           )
 
           const ids = starts.map((s_) => s_.id as string)
@@ -624,6 +708,56 @@ describe('XHR shim', () => {
         statusText: 'OK',
       }),
     ])
+  })
+
+  test('resolves a relative XHR URL to absolute in ResponseStart (issue #373)', () => {
+    installSnifferForTest()
+    const xhr = new XMLHttpRequest()
+    xhr.open('GET', '/fhir/Patient/1')
+    xhr.send()
+
+    Object.defineProperty(xhr, 'status', { value: 200, configurable: true })
+    Object.defineProperty(xhr, 'statusText', { value: 'OK', configurable: true })
+    Object.defineProperty(xhr, 'responseType', { value: '', configurable: true })
+    Object.defineProperty(xhr, 'responseText', { value: 'data', configurable: true })
+    xhr.dispatchEvent(new Event('progress'))
+
+    const expected = new URL('/fhir/Patient/1', window.location.href).href
+    expect(expected).toMatch(/^https?:\/\//)
+    expect(withTag(getMessages(), 'ResponseStart')).toEqual([
+      expect.objectContaining({ url: expected }),
+    ])
+  })
+
+  test('reports a relative XHR URL as absolute on the error event (issue #373)', () => {
+    installSnifferForTest()
+    const xhr = new XMLHttpRequest()
+    xhr.open('GET', '/fhir/Patient/1')
+    xhr.send()
+    xhr.dispatchEvent(new Event('error'))
+
+    const expected = new URL('/fhir/Patient/1', window.location.href).href
+    expect(withTag(getMessages(), 'RequestError')).toEqual([
+      expect.objectContaining({ url: expected, message: 'XMLHttpRequest error' }),
+    ])
+  })
+
+  test('still classifies a Tauri-internal XHR from the raw URL, not the normalized one', () => {
+    // Guard-on-raw: `ipc://localhost/cmd` is absolute already, but the point
+    // is that the internal check sees the raw string. It must skip sniffing.
+    installSnifferForTest()
+    const xhr = new XMLHttpRequest()
+    xhr.open('GET', 'ipc://localhost/cmd')
+    xhr.send()
+
+    Object.defineProperty(xhr, 'status', { value: 200, configurable: true })
+    Object.defineProperty(xhr, 'statusText', { value: 'OK', configurable: true })
+    Object.defineProperty(xhr, 'responseType', { value: '', configurable: true })
+    Object.defineProperty(xhr, 'responseText', { value: 'ipc', configurable: true })
+    xhr.dispatchEvent(new Event('progress'))
+    xhr.dispatchEvent(new Event('load'))
+
+    expect(withTag(getMessages(), 'ResponseStart')).toHaveLength(0)
   })
 
   test('should post ResponseFinished on load with remaining text flushed as base64', () => {

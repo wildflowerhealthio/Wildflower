@@ -132,6 +132,42 @@ describe('FhirR4Observation', () => {
     )
   })
 
+  describe('status leniency (client capability deviation)', () => {
+    // Minimal FHIR wire Observation — required per FHIR is resourceType +
+    // code + status, but this suite exercises what happens when `status`
+    // is absent / malformed on the wire.
+    const wireObservation = (extra: Record<string, unknown>): Record<string, unknown> => ({
+      resourceType: 'Observation',
+      id: 'obs-1',
+      code: { coding: [], text: 'Heart rate' },
+      ...extra,
+    })
+
+    test('a MISSING status decodes to the `unknown` sentinel', () => {
+      const decoded = Schema.decodeUnknownSync(Observation.Schema)(wireObservation({}))
+      expect(decoded.status).toBe('unknown')
+    })
+
+    test('a PRESENT valid status is preserved (not overwritten by the default)', () => {
+      const decoded = Schema.decodeUnknownSync(Observation.Schema)(
+        wireObservation({ status: 'final' })
+      )
+      expect(decoded.status).toBe('final')
+    })
+
+    test('a PRESENT but unrecognized status still fails to decode', () => {
+      expect(() =>
+        Schema.decodeUnknownSync(Observation.Schema)(wireObservation({ status: 'bogus' }))
+      ).toThrow()
+    })
+
+    test('a PRESENT null status still fails to decode (absence is rescued, a bad value is not)', () => {
+      expect(() =>
+        Schema.decodeUnknownSync(Observation.Schema)(wireObservation({ status: null }))
+      ).toThrow()
+    })
+  })
+
   test('property: identifier field round-trips', () => {
     fc.assert(
       fc.property(

@@ -15,10 +15,12 @@ import { persistResources } from './persist.ts'
 
 /**
  * `rootUrl` must be an absolute `http(s)://` URL with at least a host
- * and no trailing slash, no query string, and no fragment. The
- * dispatcher concatenates `rootUrl` with `/Patient/…` etc. and the
- * isFoundAt regexes assume a well-formed `…://host/Patient/…` shape;
- * pinning the format here keeps both producers and consumers honest.
+ * and no trailing slash, no query string, and no fragment. A base path
+ * is allowed (`https://hapi.fhir.org/baseR4`) — real FHIR servers mount
+ * the resource tree under a prefix. The dispatcher concatenates
+ * `rootUrl` with `/Patient/…` etc., and `UrlMatch` tolerates the base
+ * path between host and resource segment (see issue #376), so the two
+ * agree; pinning the format here keeps both producers and consumers honest.
  */
 const rootUrlPattern = /^https?:\/\/[^\s/?#]+(?:\/[^\s/?#]+)*$/
 

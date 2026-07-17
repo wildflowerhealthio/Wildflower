@@ -18,6 +18,19 @@ describe('UrlMatch.make', () => {
       { url: 'https://example.com/Patient/123/_history', match: false },
       // Empty id (no segment value) is rejected — `[^/?#]+` requires one char.
       { url: 'https://example.com/Patient/?', match: false },
+      // Base-path-mounted servers match (issue #376): the declared segments
+      // are a suffix of the path, not required directly under the origin root.
+      { url: 'https://hapi.fhir.org/baseR4/Patient/123', match: true },
+      { url: 'https://host/fhir/R4/Patient/123?_format=json', match: true },
+      {
+        url: 'https://fhir.epic.com/interconnect-fhir-oauth/api/FHIR/R4/Patient/123',
+        match: true,
+      },
+      // `_history` stays excluded even under a base path.
+      { url: 'https://host/fhir/Patient/123/_history', match: false },
+      // Authority-vs-segment guard: a host literally named `Patient` is NOT a
+      // `/Patient` segment (the greedy `://[^/]+` consumes it as the host).
+      { url: 'https://Patient/123', match: false },
     ])('returns $match for "$url"', ({ url, match }) => {
       expect(PatientUrl.test(url)).toBe(match)
     })
@@ -32,6 +45,10 @@ describe('UrlMatch.make', () => {
     it.each([
       { url: 'https://r4.smarthealthit.org/Observation?subject=Patient/1', match: true },
       { url: 'https://r4.smarthealthit.org/Observation?_count=250', match: true },
+      // Base path + query matches; single-resource under a base path does not
+      // (disjointness survives the base-path group — issue #376).
+      { url: 'https://hapi.fhir.org/baseR4/Observation?subject=Patient/1', match: true },
+      { url: 'https://hapi.fhir.org/baseR4/Observation/123', match: false },
       // No `?` — fails; the resource-list endpoint is `?…` form only.
       { url: 'https://r4.smarthealthit.org/Observation', match: false },
       { url: 'https://r4.smarthealthit.org/Observation/123', match: false },

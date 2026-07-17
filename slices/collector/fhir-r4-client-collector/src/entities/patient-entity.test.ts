@@ -46,6 +46,8 @@ describe('PatientEntity', () => {
       // New: ?-query terminator counts as a match (the production
       // URL is `…/Patient/<id>?_format=json`).
       { url: 'https://example.com/Patient/abc?_format=json', match: true },
+      // Base-path-mounted FHIR servers match (issue #376).
+      { url: 'https://hapi.fhir.org/baseR4/Patient/123', match: true },
       { url: 'https://example.com/Observation/456', match: false },
       // Trailing slash: not a match — the `(?:\?|$)` boundary excludes
       // `/_history` and other subresource paths.

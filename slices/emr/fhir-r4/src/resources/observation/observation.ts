@@ -278,7 +278,17 @@ const ObservationStruct = Schema.extend(
         { default: (): readonly (typeof ObservationReferenceRange.Schema.Type)[] => [] }
       ),
       specimen: OrNullAsOptional(Schema.suspend(() => IdentifierAndReference.ReferenceSchema)),
-      status: StatusSchema,
+      // Spec-deviation: FHIR R4 requires `status`, but real servers (e.g.
+      // HAPI's public sandbox) return hand-entered Observations that omit
+      // it. Rather than fail the whole resource — or, in a search Bundle,
+      // the whole page — default a MISSING/undefined status to FHIR's own
+      // `unknown` sentinel. A status that is PRESENT but not a valid code
+      // (an unrecognized string, or `null`) still fails: we only rescue
+      // absence, never coerce a bad value. Recorded in
+      // fhir-r4/docs/Client Capabilities Reference.md.
+      status: Schema.optionalWith(StatusSchema, {
+        default: (): typeof StatusSchema.Type => 'unknown',
+      }),
       subject: OrNullAsOptional(Schema.suspend(() => IdentifierAndReference.ReferenceSchema)),
       ...choiceElementSetPassthroughFields(
         'value',
@@ -292,7 +302,16 @@ const ObservationStruct = Schema.extend(
   )
 ).annotations({ jsonSchema: observationJsonSchema })
 
-const ObservationSchema: Schema.Schema<typeof ObservationStruct.Type, FhirR4.Observation, never> =
-  ObservationStruct
+// The wire (Encoded) type matches `FhirR4.Observation` except for `status`:
+// because we decode a missing status to a default (see the struct), the
+// encoded side must accept its absence, so it is optional here even though
+// FHIR R4 — and the hand-written `observationJsonSchema` / OpenAPI — mark it
+// required. The `Omit` keeps the guard against `fhir/r4.d.ts` for every other
+// field intact.
+const ObservationSchema: Schema.Schema<
+  typeof ObservationStruct.Type,
+  Omit<FhirR4.Observation, 'status'> & { status?: FhirR4.Observation['status'] },
+  never
+> = ObservationStruct
 
 export { ObservationSchema as Schema, StatusSchema }
