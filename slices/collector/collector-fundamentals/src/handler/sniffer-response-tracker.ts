@@ -168,6 +168,10 @@ const make = <TResources>({
      * never close the stream; see the [Handler
      * Explanation](../../docs/Handler%20Explanation.md).) The response URL is
      * folded into the failure `Left` here, where the `RemoteResponse` is in hand.
+     *
+     * `handleNewSniffResult` is passed to `Effect.andThen` as a *thunk* so it is
+     * evaluated only after the `remove` runs — its synchronous `unsafeOffer`
+     * must not fire eagerly (i.e. before the remove) at expression-build time.
      */
     const offerSniffResultAndUntrack = (
       id: string,
@@ -181,9 +185,10 @@ const make = <TResources>({
         Effect.sync(() => {
           MutableHashMap.remove(incompleteSniffedRequests, id)
         }),
-        handleNewSniffResult(
-          Either.mapLeft(result, (error) => ({ error, url: response.url, abandoned: false }))
-        )
+        () =>
+          handleNewSniffResult(
+            Either.mapLeft(result, (error) => ({ error, url: response.url, abandoned: false }))
+          )
       )
 
     const handleResponseStart: Service['ResponseStart'] = (event) => {
@@ -298,17 +303,24 @@ const make = <TResources>({
             `CollectorBridgeMessageHandler: idle timeout with ${incomplete.length} response(s) still in-flight; settling as failures`
           )
         }
-        for (const { response } of incomplete) {
-          handleNewSniffResult(
-            Either.left({
-              error: new UnknownException(
-                `response for ${response.url} still in-flight at idle timeout; abandoning`
-              ),
-              url: response.url,
-              abandoned: true,
-            })
-          )
-        }
+        // Run each publish (don't just call it): `handleNewSniffResult` returns
+        // an `Effect`, so a bare call in a loop that discarded it would rely on
+        // its offer being a synchronous side effect — a coupling a future refactor
+        // could silently break, dropping every abandoned failure.
+        yield* Effect.forEach(
+          incomplete,
+          ({ response }) =>
+            handleNewSniffResult(
+              Either.left({
+                error: new UnknownException(
+                  `response for ${response.url} still in-flight at idle timeout; abandoning`
+                ),
+                url: response.url,
+                abandoned: true,
+              })
+            ),
+          { discard: true }
+        )
         MutableHashMap.clear(incompleteSniffedRequests)
       }
     )

@@ -1,7 +1,24 @@
 import { type CancelSnifferRequestMessage } from 'browser-sniffer-core'
-import { Effect, Either, Mailbox, Ref } from 'effect'
+import { Duration, Effect, Either, Fiber, Mailbox, Ref } from 'effect'
+import type { RuntimeFiber } from 'effect/Fiber'
 
 import type { SniffResult } from './sniffer-response-tracker.ts'
+
+/**
+ * Grace window between quiescence first holding (sniffing complete *and* no
+ * sniffed request incomplete) and actually closing `requestSniffingResults`.
+ *
+ * The sniffer's `fetch` / `XHR` shims stay installed on the page after
+ * `SniffingComplete` — "sniffing complete" means the scripted navigation is
+ * exhausted, not that the page can no longer issue requests. So a lazily-fired
+ * request can still surface a `ResponseStart` a beat later; closing the instant
+ * the incomplete map first empties would track that straggler into an
+ * already-closed stream and drop its result silently (not even as a failure).
+ * Arming a short settle instead lets a late `ResponseStart` re-populate the map
+ * before the close is confirmed. Mirrors the `SHORT_CONFIRM_WINDOW` the
+ * pre-extraction `use-sync-runner` drive loop kept for the same reason.
+ */
+const SETTLE_CONFIRM_WINDOW: Duration.DurationInput = Duration.millis(250)
 
 /**
  * The run's termination surface: the one place every way a request-sniffing run
@@ -9,14 +26,16 @@ import type { SniffResult } from './sniffer-response-tracker.ts'
  *
  * A run is a bounded producer of {@link SniffResult}s on `requestSniffingResults`.
  * Its state is two independent facts: **sniffing** (the scripted navigation) is
- * `running → complete` (monotonic; once complete no new request can begin), and
+ * `running → complete` (monotonic; the scripted navigation is exhausted), and
  * the set of **incomplete sniffed requests** fluctuates as requests start and
- * settle. The stream closes when neither can produce more — sniffing complete
- * *and* no incomplete sniffed requests.
+ * settle. The stream closes once neither can produce more — sniffing complete
+ * *and* no incomplete sniffed requests — but only after a short
+ * {@link SETTLE_CONFIRM_WINDOW} settle, because the page's shims stay live and a
+ * straggler `ResponseStart` can still arrive just after quiescence first holds.
  *
  * - **`handleSniffingComplete`** — the scripted navigation dispatched its terminal
- *   `SniffingComplete`. Latch it, then close the stream if nothing is still
- *   incomplete; otherwise the last request to settle does.
+ *   `SniffingComplete`. Latch it, then (if nothing is still incomplete) arm the
+ *   settle window; otherwise the last request to settle does.
  * - **`abandonAllRequestSniffing`** — the idle-timeout escape. Publish every
  *   still-incomplete sniffed request as a failure and close the stream *now*, so
  *   the run reports the loss instead of hanging on a silent host.
@@ -54,13 +73,15 @@ interface RunLifecycleState<TResources> {
     result: SniffResult<TResources>
   ) => Effect.Effect<void, never, never>
   /**
-   * Run after every settle: close `requestSniffingResults` iff sniffing is
-   * complete *and* no sniffed request is still incomplete — i.e. no more results
-   * can come. Idempotent — `Mailbox.end` is a no-op once closed. `handleNewSniffResult`
-   * chains this after each publish; `handleSniffingComplete` after latching.
+   * Run after every settle: if sniffing is complete *and* no sniffed request is
+   * still incomplete, arm the {@link SETTLE_CONFIRM_WINDOW} settle-close (which
+   * re-confirms against live state before ending the stream); otherwise do
+   * nothing. Interrupt-and-replace, so each fresh quiescence restarts the
+   * window. `handleNewSniffResult` chains this after each publish;
+   * `handleSniffingComplete` after latching.
    */
   readonly endRequestSniffingResultsUnlessMoreExpected: Effect.Effect<void, never, never>
-  /** Latch that scripted sniffing finished; close the stream if nothing is incomplete. */
+  /** Latch that scripted sniffing finished; arm the settle-close if nothing is incomplete. */
   readonly handleSniffingComplete: Effect.Effect<void, never, never>
   /** Idle escape: publish every incomplete request as a failure, then close the stream. */
   readonly abandonAllRequestSniffing: Effect.Effect<void, never, never>
@@ -98,6 +119,46 @@ const make = <TResources>({
     // `endRequestSniffingResultsUnlessMoreExpected` after each settle and when
     // the latch is first set.
     const sniffingComplete = yield* Ref.make(false)
+    // Single-slot handle for the pending settle-close daemon (see
+    // `SETTLE_CONFIRM_WINDOW`). Interrupt-and-replace so each fresh quiescence
+    // restarts the window; interrupted at teardown so the daemon — a
+    // `forkDaemon`, untied to the run scope — can't outlive the run.
+    const pendingCloseFiber = yield* Ref.make<RuntimeFiber<void, never> | null>(null)
+
+    // Close the stream iff quiescence still holds. Re-checked against *live*
+    // state because a straggler `ResponseStart` may have re-populated the map
+    // during the settle window. Idempotent — `Mailbox.end` is a no-op once
+    // closed.
+    const confirmAndCloseIfStillQuiescent: Effect.Effect<void, never, never> = Effect.gen(
+      function* () {
+        if (!(yield* Ref.get(sniffingComplete))) return
+        if (hasIncompleteSniffedRequests()) return
+        yield* requestSniffingResults.end
+      }
+    )
+
+    // Interrupt any pending settle-close daemon (a no-op when none is armed).
+    const cancelPendingClose: Effect.Effect<void, never, never> = Effect.gen(function* () {
+      const existing = yield* Ref.getAndSet(pendingCloseFiber, null)
+      if (existing !== null) yield* Fiber.interrupt(existing)
+    })
+
+    // Arm (or re-arm) the settle-close: interrupt any pending daemon so the
+    // window restarts from now, then fork one that sleeps the window and
+    // re-confirms before closing. A `forkDaemon` (not `fork`) because the
+    // arming fiber is the message dispatcher's, which completes as soon as the
+    // handler returns — a child fiber would be interrupted immediately.
+    const armSettleClose: Effect.Effect<void, never, never> = Effect.gen(function* () {
+      yield* cancelPendingClose
+      const fiber = yield* Effect.forkDaemon(
+        Effect.gen(function* () {
+          yield* Effect.sleep(SETTLE_CONFIRM_WINDOW)
+          yield* Ref.set(pendingCloseFiber, null)
+          yield* confirmAndCloseIfStillQuiescent
+        })
+      )
+      yield* Ref.set(pendingCloseFiber, fiber)
+    })
 
     const endRequestSniffingResultsUnlessMoreExpected: Effect.Effect<void, never, never> =
       Effect.gen(function* () {
@@ -105,7 +166,10 @@ const make = <TResources>({
         // start new requests) or any sniffed request is still incomplete.
         if (!(yield* Ref.get(sniffingComplete))) return
         if (hasIncompleteSniffedRequests()) return
-        yield* requestSniffingResults.end
+        // Quiescent — but don't close yet: arm a short settle so a late
+        // `ResponseStart` (the shims stay live post-`SniffingComplete`) can
+        // re-populate the map before the close is confirmed.
+        yield* armSettleClose
       })
 
     const handleNewSniffResult = (
@@ -133,19 +197,26 @@ const make = <TResources>({
 
     // Publish every incomplete request as a failure, then force-close the stream
     // (the close is the lifecycle's), so a stalled host is reported as a loss,
-    // not a hang. It force-closes rather than deferring to the normal end-check
-    // because at an idle timeout sniffing may not yet be complete.
-    const abandonAllRequestSniffing: Effect.Effect<void, never, never> =
-      failIncompleteSniffedRequests.pipe(Effect.andThen(requestSniffingResults.end))
+    // not a hang. It force-closes rather than deferring to the settle-close
+    // because at an idle timeout sniffing may not yet be complete; cancel any
+    // pending settle first so it can't race this close (and can't leak).
+    const abandonAllRequestSniffing: Effect.Effect<void, never, never> = cancelPendingClose.pipe(
+      Effect.andThen(failIncompleteSniffedRequests),
+      Effect.andThen(requestSniffingResults.end)
+    )
 
     // Unmount teardown: stop the scripted navigation, then ask the host to cancel
     // the incomplete requests. Navigation-first is not load-bearing (the machines
     // share no state) but is preserved so the externally visible outbound-message
-    // order is unchanged.
+    // order is unchanged. Also interrupt any pending settle-close daemon so it
+    // can't outlive the run (it is a `forkDaemon`, untied to the run scope).
     const cancelAllRequestSniffing = (
       send: (message: typeof CancelSnifferRequestMessage.Type) => Effect.Effect<void, never, never>
     ): Effect.Effect<void, never, never> =>
-      stopAutomaticNavigation().pipe(Effect.andThen(cancelIncompleteSniffedRequests(send)))
+      cancelPendingClose.pipe(
+        Effect.andThen(stopAutomaticNavigation()),
+        Effect.andThen(cancelIncompleteSniffedRequests(send))
+      )
 
     return {
       requestSniffingResults,
@@ -158,4 +229,4 @@ const make = <TResources>({
   })
 
 export type { RunLifecycleState }
-export { make }
+export { make, SETTLE_CONFIRM_WINDOW }

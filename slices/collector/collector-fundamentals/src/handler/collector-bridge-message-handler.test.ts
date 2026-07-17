@@ -9,6 +9,7 @@ import {
   responseStart,
   type SimpleHandlerArgs,
 } from './collector-bridge-message-handler.test-helpers.ts'
+import { SETTLE_CONFIRM_WINDOW } from './run-lifecycle-state.ts'
 
 /**
  * Cross-machine integration: `make` composes the response tracker, the
@@ -72,11 +73,16 @@ describe('CollectorBridgeMessageHandler.make: composition', () => {
 
         // Empty sequence: the first PageLoaded arms the settle timer, which fires
         // `SniffingComplete` → the lifecycle's `handleSniffingComplete` hook. With
-        // nothing incomplete, that closes the stream end-to-end.
+        // nothing incomplete, that arms the settle-close; after the settle window
+        // elapses the stream is closed end-to-end.
         yield* handler.PageLoaded(pageLoaded())
         yield* TestClock.adjust(Duration.seconds(5))
         yield* Effect.yieldNow()
+        // Still open until the settle window passes (a straggler could re-open it).
+        expect(Option.isNone(yield* handler.requestSniffingResults.size)).toBe(false)
 
+        yield* TestClock.adjust(SETTLE_CONFIRM_WINDOW)
+        yield* Effect.yieldNow()
         expect(Option.isNone(yield* handler.requestSniffingResults.size)).toBe(true)
       }).pipe(Effect.provide(Layer.mergeAll(TestContext.TestContext, adapterLayer)))
     ))

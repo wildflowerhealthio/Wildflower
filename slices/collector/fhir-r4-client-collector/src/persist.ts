@@ -2,7 +2,7 @@ import type { CollectorDescriptor } from 'collector-fundamentals/model'
 import * as Telemetry from 'collector-fundamentals/telemetry'
 import { Array as Arr, Effect, Schedule } from 'effect'
 import type { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
-import { upsertResource } from 'fhir-r4/clients'
+import { UnsupportedFhirResourceTypeError, upsertResource } from 'fhir-r4/clients'
 import type { FhirResource } from 'fhir-r4/resources'
 
 /**
@@ -17,7 +17,9 @@ import type { FhirResource } from 'fhir-r4/resources'
  * - **retries**: bounded exponential backoff (3 retries, 250ms → 1s). Each
  *   attempt is its own OTel HTTP span, so the attempt count reads straight off
  *   the trace. `Schedule.intersect` enforces both "stop after N" *and*
- *   "exponential" (`either` would stop on whichever fired first).
+ *   "exponential" (`either` would stop on whichever fired first). A permanent
+ *   `UnsupportedFhirResourceTypeError` is *not* retried — it is recorded on the
+ *   first attempt rather than backed off pointlessly.
  * - **per-resource span**: `collector.importing.update`, tagged with the
  *   resource's kind label so a trace names what was written.
  * - **concurrency**: {@link WRITE_CONCURRENCY} PUTs in flight per batch.
@@ -71,9 +73,13 @@ const persistResources = (
     (resource) => {
       const failed = describeResource(resource)
       return upsertResource(resource).pipe(
-        Effect.retry(
-          Schedule.exponential('250 millis').pipe(Schedule.intersect(Schedule.recurs(3)))
-        ),
+        Effect.retry({
+          schedule: Schedule.exponential('250 millis').pipe(Schedule.intersect(Schedule.recurs(3))),
+          // Don't retry a permanent structural failure — an unsupported
+          // `resourceType` never becomes supported, so backing off 3× just
+          // delays recording it (~1.75s). Transient write errors still retry.
+          while: (cause) => !(cause instanceof UnsupportedFhirResourceTypeError),
+        }),
         // Log once, *after* the retries are exhausted — placing `tapError`
         // before `retry` would re-log on every failed attempt (up to 4× per
         // resource). Each attempt is still its own HTTP span on the trace.

@@ -11,7 +11,7 @@ import {
   TestClock,
   TestContext,
 } from 'effect'
-import { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
+import { FhirR4ResourcesHttpApiClient, UnsupportedFhirResourceTypeError } from 'fhir-r4/clients'
 import {
   Binary,
   type FhirResource,
@@ -81,6 +81,33 @@ describe('persistResources', () => {
     // Only the Observation comes back; the Patient wrote fine.
     expect(failures).toHaveLength(1)
     expect(failures[0].failed).toEqual({ label: 'Observation', id: 'bad-1' })
+  })
+
+  it('records an unsupported resourceType as a permanent failure — no write, no retry backoff', async () => {
+    // A resourceType outside the `FhirResource` union only reaches the sink via
+    // an untyped path; the cast fabricates exactly that scenario (there is no
+    // in-type way to build one). `upsertResource` fails in its exhaustive-default
+    // arm before any client call.
+    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- deliberately forging an out-of-union resourceType to exercise the untyped-path branch
+    const bogus = { resourceType: 'Practitioner', id: 'p-1' } as unknown as FhirResource
+    const records: Array<RecordedRequest> = []
+    const clientLayer = FhirR4ResourcesHttpApiClient.layer.pipe(
+      Layer.provide(recordingHttpClientLayer(records, () => false))
+    )
+    // Deliberately *no* `TestClock.adjust`: a retried failure would park on the
+    // first 250ms backoff `sleep` and never resolve (the virtual clock is never
+    // advanced). The permanent `UnsupportedFhirResourceTypeError` is not retried,
+    // so this resolves at once — the test would hang if the sink retried it.
+    const failures = await Effect.runPromise(
+      persistResources([bogus]).pipe(
+        Effect.provide(clientLayer),
+        Effect.provide(TestContext.TestContext)
+      )
+    )
+    expect(records).toEqual([])
+    expect(failures).toHaveLength(1)
+    expect(failures[0].failed).toEqual({ label: 'Practitioner', id: 'p-1' })
+    expect(failures[0].cause).toBeInstanceOf(UnsupportedFhirResourceTypeError)
   })
 })
 

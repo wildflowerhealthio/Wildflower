@@ -1,7 +1,20 @@
-import { Effect } from 'effect'
+import { Data, Effect } from 'effect'
 
 import type { FhirResource } from '../resources/index.ts'
 import { FhirR4ResourcesHttpApiClient } from './fhir-r4-resources-http-api-client.ts'
+
+/**
+ * Raised by {@link upsertResource}'s exhaustive-default arm for a `resourceType`
+ * outside the {@link FhirResource} union — reachable only through an untyped
+ * path. It is a distinct, tagged failure (not a bare `Error`) so a caller's
+ * retry policy can recognise it as *permanent* and skip the backoff: no number
+ * of retries turns an unknown resource type into a supported one.
+ */
+class UnsupportedFhirResourceTypeError extends Data.TaggedError(
+  'UnsupportedFhirResourceTypeError'
+)<{
+  readonly resourceType: string
+}> {}
 
 /**
  * Route one parsed {@link FhirResource} to its typed client endpoint — the
@@ -19,12 +32,14 @@ import { FhirR4ResourcesHttpApiClient } from './fhir-r4-resources-http-api-clien
  * caller owns everything *around* the write (batching, retries, spans, failure
  * accounting); this owns only "which resource type goes to which endpoint".
  *
- * The exhaustive-default arm `fail`s on the `unknown` error channel rather than
- * dying: an unrecognized `resourceType` can only arrive through an untyped path,
- * and a *failure* is caught by the caller's `matchEffect` and recorded as one
- * `PersistFailure`, whereas a *defect* would escape that seam and crash the whole
- * batch/run — breaking the sink's "one bad resource can't fail the run" contract
- * (the same contract the null-id skip honours).
+ * The exhaustive-default arm `fail`s (with {@link UnsupportedFhirResourceTypeError})
+ * on the `unknown` error channel rather than dying: an unrecognized `resourceType`
+ * can only arrive through an untyped path, and a *failure* is caught by the
+ * caller's `matchEffect` and recorded as one `PersistFailure`, whereas a *defect*
+ * would escape that seam and crash the whole batch/run — breaking the sink's
+ * "one bad resource can't fail the run" contract (the same contract the null-id
+ * skip honours). The failure is tagged so the caller can also tell it apart from
+ * a transient write error and skip retrying a permanent one.
  */
 const upsertResource = (
   resource: FhirResource
@@ -55,9 +70,11 @@ const upsertResource = (
         break
       default: {
         const unreachable: never = resource
-        yield* Effect.fail(new Error(`fhir-r4 upsert: unknown resourceType ${String(unreachable)}`))
+        yield* Effect.fail(
+          new UnsupportedFhirResourceTypeError({ resourceType: String(unreachable) })
+        )
       }
     }
   }).pipe(Effect.asVoid)
 
-export { upsertResource }
+export { upsertResource, UnsupportedFhirResourceTypeError }
