@@ -36,13 +36,24 @@ pub enum WildflowerResource {
     AuthorizationRequest,
     Grant,
     Client,
-    RefreshToken,
     /// An issued token (access **or** refresh) as a revocation target — the
     /// resource behind `POST /access/revocations`, which denylists a `jti` or
-    /// bumps a subject's epoch and so kills *both* token kinds. Broader than
-    /// [`RefreshToken`](WildflowerResource::RefreshToken), which names the
-    /// refresh-family lifecycle specifically.
+    /// bumps a subject's epoch and so kills *both* token kinds.
     Token,
+    /// The apps catalogue + home-screen surface (`/apps`, `/cloud-apps`,
+    /// `/self-hosted-apps`, `/system-apps`, `/home-screen`): read the catalogue
+    /// (`.r`) and manage entries (`.c`/`.u`/`.d`). Launching an app is a separate,
+    /// explicitly-granted capability — the `wildflower/launch` known scope
+    /// ([`KnownScope::AnyScopedAppLaunch`](crate::KnownScope::AnyScopedAppLaunch))
+    /// — not a permission on this resource.
+    Apps,
+    /// A collector "account" at a remote origin — the `/collector/remotes`
+    /// surface (a remote's config may carry origin credentials, so reads need
+    /// `.r`). The scope-layer name for what the collector code calls a `Remote`.
+    Accounts,
+    /// The tunnel/relay settings singleton (`/tunnel`): read state (`.r`) and
+    /// replace settings (`.u`).
+    TunnelSettings,
 }
 
 impl WildflowerResourceScope {
@@ -103,8 +114,10 @@ impl WildflowerResource {
             "AuthorizationRequest" => Some(WildflowerResource::AuthorizationRequest),
             "Grant" => Some(WildflowerResource::Grant),
             "Client" => Some(WildflowerResource::Client),
-            "RefreshToken" => Some(WildflowerResource::RefreshToken),
             "Token" => Some(WildflowerResource::Token),
+            "Apps" => Some(WildflowerResource::Apps),
+            "Accounts" => Some(WildflowerResource::Accounts),
+            "TunnelSettings" => Some(WildflowerResource::TunnelSettings),
             _ => None,
         }
     }
@@ -114,8 +127,10 @@ impl WildflowerResource {
             WildflowerResource::AuthorizationRequest => "AuthorizationRequest",
             WildflowerResource::Grant => "Grant",
             WildflowerResource::Client => "Client",
-            WildflowerResource::RefreshToken => "RefreshToken",
             WildflowerResource::Token => "Token",
+            WildflowerResource::Apps => "Apps",
+            WildflowerResource::Accounts => "Accounts",
+            WildflowerResource::TunnelSettings => "TunnelSettings",
         }
     }
 }

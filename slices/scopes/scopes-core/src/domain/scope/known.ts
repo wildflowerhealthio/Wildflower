@@ -21,6 +21,7 @@ const SCOPE_EXPLANATIONS: Readonly<Record<KnownScope.Name, string>> = {
   offline_access: accessAfterExpiryCopy(),
   launch: 'Know how the app was launched',
   'launch/patient': 'Open a specific patient',
+  'wildflower/launch': 'Launch apps you have access to',
 }
 
 /**
@@ -93,6 +94,7 @@ namespace KnownScope {
     | 'offline_access'
     | 'launch'
     | 'launch/patient'
+    | 'wildflower/launch'
 
   export namespace Name {
     export const all = [
@@ -102,6 +104,7 @@ namespace KnownScope {
       'offline_access',
       'launch',
       'launch/patient',
+      'wildflower/launch',
     ] as const satisfies readonly Name[]
     /** Whether a string is a known flag scope. */
     export const is = (s: string): s is Name => (all as readonly string[]).includes(s)
@@ -114,6 +117,14 @@ namespace KnownScope {
   export const offlineAccess = new KnownScope('offline_access')
   export const launch = new KnownScope('launch')
   export const launchPatient = new KnownScope('launch/patient')
+  /**
+   * `wildflower/launch` — the umbrella app-launch capability (Rust's
+   * `KnownScope::AnyScopedAppLaunch`). A *known* scope, matched exactly, so the
+   * `wildflower/*` resource wildcard does not cover it; launch is granted
+   * explicitly. The apps launch handler additionally checks a SMART app's own
+   * requested scopes.
+   */
+  export const anyScopedAppLaunch = new KnownScope('wildflower/launch')
 }
 
 export default KnownScope

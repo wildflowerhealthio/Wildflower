@@ -21,6 +21,23 @@
     },
     { "scope": "wildflower/*.rs", "kind": "wildflower", "rendered": "wildflower/*.rs" },
     { "scope": "wildflower/Token.d", "kind": "wildflower", "rendered": "wildflower/Token.d" },
+    { "scope": "wildflower/Apps.r", "kind": "wildflower", "rendered": "wildflower/Apps.r" },
+    {
+      "scope": "wildflower/Accounts.cruds",
+      "kind": "wildflower",
+      "rendered": "wildflower/Accounts.cruds"
+    },
+    {
+      "scope": "wildflower/TunnelSettings.u",
+      "kind": "wildflower",
+      "rendered": "wildflower/TunnelSettings.u"
+    },
+    { "scope": "wildflower/launch", "kind": "known", "rendered": "wildflower/launch" },
+    {
+      "scope": "wildflower/RefreshToken.cruds",
+      "kind": "unknown",
+      "rendered": "wildflower/RefreshToken.cruds"
+    },
     { "scope": "wildflower/Grant.read", "kind": "unknown", "rendered": "wildflower/Grant.read" },
     { "scope": "wildflower/Grant.*", "kind": "unknown", "rendered": "wildflower/Grant.*" },
     { "scope": "wildflower/*.write", "kind": "unknown", "rendered": "wildflower/*.write" },
@@ -80,12 +97,16 @@
     { "allowed": "wildflower/Grant.cruds", "requested": "system/Grant.r", "covers": false },
     { "allowed": "wildflower/*.cruds", "requested": "wildflower/Token.d", "covers": true },
     { "allowed": "wildflower/Token.cruds", "requested": "wildflower/Token.d", "covers": true },
-    { "allowed": "wildflower/Token.d", "requested": "wildflower/RefreshToken.d", "covers": false },
+    { "allowed": "wildflower/*.cruds", "requested": "wildflower/Apps.r", "covers": true },
+    { "allowed": "wildflower/Apps.cruds", "requested": "wildflower/Apps.r", "covers": true },
+    { "allowed": "wildflower/Apps.cruds", "requested": "wildflower/Accounts.r", "covers": false },
     {
-      "allowed": "wildflower/RefreshToken.cruds",
-      "requested": "wildflower/Token.d",
-      "covers": false
+      "allowed": "wildflower/*.cruds",
+      "requested": "wildflower/TunnelSettings.u",
+      "covers": true
     },
+    { "allowed": "wildflower/launch", "requested": "wildflower/launch", "covers": true },
+    { "allowed": "wildflower/*.cruds", "requested": "wildflower/launch", "covers": false },
     { "allowed": "offline_access", "requested": "offline_access", "covers": true },
     { "allowed": "offline_access", "requested": "openid", "covers": false },
     { "allowed": "wildflower/Grant.read", "requested": "wildflower/Grant.read", "covers": true },
