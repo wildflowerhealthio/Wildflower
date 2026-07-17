@@ -24,11 +24,13 @@ const observationListUrl = UrlMatch.make({
 
 /**
  * Entity for a FHIR R4 `Bundle` of `Observation` resources fetched at
- * `…/Observation?…`. Extracts the entries whose `resource` decodes as a
- * full `Observation` and drops the rest (the Bundle schema is
- * permissive about `entry.resource` so we re-check here). The dropped
- * count is surfaced via `Effect.logInfo` so partial-decode losses
- * aren't invisible at runtime. {@link extractJson} normalizes the body
+ * `…/Observation?…`. The Bundle schema decodes each `entry.resource` as
+ * `Observation | null` (`OrNullAsOptional`), so entries with no resource
+ * (search-outcome or request/response-only entries) survive decode as
+ * `null`; the `isObservation` filter drops those `null`s and keeps only
+ * present `Observation` resources. The dropped count is surfaced via
+ * `Effect.logInfo` so those losses aren't invisible at runtime.
+ * {@link extractJson} normalizes the body
  * across raw-JSON XHR intercepts and the mobile WebView's JSON viewer
  * wrap.
  */

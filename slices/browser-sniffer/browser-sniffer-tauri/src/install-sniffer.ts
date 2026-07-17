@@ -283,6 +283,25 @@ const installSniffer = function (eventBus: TauriEventApi): void {
     return false
   }
 
+  // Resolve a request URL against the page's own `location` so relative
+  // requests (`/api/fhir/Patient/123`) are reported absolute. The
+  // downstream `UrlMatch` entity matchers require a `://host…` shape
+  // (see `collector-fundamentals/model/url-match.ts`), so a verbatim
+  // relative URL would never match and the capture would be silently
+  // cancelled (issue #373). The sniffer is the only layer that knows the
+  // page's base, so normalize here — every consumer then sees absolute
+  // URLs. Idempotent on already-absolute URLs (`fetch(new Request('/x'))`
+  // and protocol-relative `//host/x` both round-trip). Falls back to the
+  // raw string for exotic schemes `new URL` rejects (`data:`, `blob:`,
+  // custom) so those still surface rather than throwing.
+  const toAbsoluteUrl = (raw: string): string => {
+    try {
+      return new URL(raw, win.location.href).href
+    } catch {
+      return raw
+    }
+  }
+
   // Fetch shim — capture the native into a const so the closure has a
   // typed, definitely-defined reference (no `!` later).
   logInfo('Shimming fetch')
@@ -314,7 +333,7 @@ const installSniffer = function (eventBus: TauriEventApi): void {
 
     try {
       if (typeof request === 'string') {
-        url = request
+        url = toAbsoluteUrl(request)
         response = await nativeFetch(new Request(request, init))
       } else if (request instanceof URL) {
         url = request.toString()
@@ -332,7 +351,7 @@ const installSniffer = function (eventBus: TauriEventApi): void {
       // pair is purely the wire-side observation.
       let errorUrl: string
       if (typeof request === 'string') {
-        errorUrl = request
+        errorUrl = toAbsoluteUrl(request)
       } else if (request instanceof URL) {
         errorUrl = request.toString()
       } else {
@@ -431,12 +450,16 @@ const installSniffer = function (eventBus: TauriEventApi): void {
     username?: string | null,
     password?: string | null
   ): void {
-    const urlStr = String(url)
+    const rawUrl = String(url)
     xhrState.set(this, {
       id: makeRequestId(),
-      url: urlStr,
+      // Report absolute (issue #373) so downstream `UrlMatch` can match a
+      // same-origin relative request. The internal guard stays on the RAW
+      // string — normalizing first could rewrite a relative `/foo` into
+      // `https://tauri.localhost/foo` and flip the guard's decision.
+      url: toAbsoluteUrl(rawUrl),
       sentBytes: 0,
-      internal: isTauriInternalUrl(urlStr),
+      internal: isTauriInternalUrl(rawUrl),
     })
     nativeXHROpen.call(this, method, url, async ?? true, username ?? null, password ?? null)
   } satisfies XMLHttpRequest['open']

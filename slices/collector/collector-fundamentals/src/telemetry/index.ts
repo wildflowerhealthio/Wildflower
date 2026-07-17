@@ -69,14 +69,7 @@ const Entity = {
   },
 } as const
 
-const FhirResource = {
-  Attributes: {
-    /** FHIR resource type (`Patient` / `Observation` / `Binary`). */
-    Type: 'fhir.resource.type',
-  },
-} as const
-
-/** Turning a scraped HTTP response into FHIR resources and writing them back. */
+/** Turning a scraped HTTP response into resources and writing them back. */
 const Importing = {
   Span: {
     Name: 'collector.importing',
@@ -95,13 +88,18 @@ const Importing = {
       },
     },
   },
-  /** Writing one parsed resource back to the FHIR server, with retries. */
+  /** Writing one parsed resource back to its target, with retries. */
   Update: {
     Span: {
       Name: 'collector.importing.update',
       Attributes: {
-        /** Total write attempts it took (1 = first try succeeded). */
-        Attempts: 'collector.importing.update.attempts',
+        /**
+         * The resource's collector-agnostic kind label (for fhir-r4, its
+         * `resourceType`), set by the collector's persist sink when it tags
+         * each write. Kept generic so telemetry never names a collector's
+         * resource union.
+         */
+        Kind: 'collector.importing.resource.kind',
       },
     },
     /** A single FHIR PUT — modelled as a standard OTel HTTP client request. */
@@ -130,4 +128,4 @@ const Sync = {
   },
 } as const
 
-export { Entity, Importing, Sniffing, Sync, FhirResource }
+export { Entity, Importing, Sniffing, Sync }

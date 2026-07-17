@@ -14,41 +14,47 @@ import { awaitingPageLoaded, type StepState } from './state.ts'
 import { transition } from './transition.ts'
 
 /**
- * Part 6 of the step machine: the plumbing that turns the pure transition
- * table and its side-effect handlers into a live, serialized machine.
+ * Part 6 of the automatic-navigation machine: the plumbing that turns the pure
+ * transition table and its side-effect handlers into a live, serialized machine.
  */
 
 type Service = MessageHandler.HandlersFor<CollectorBridge['HostToWeb']>
 
 /**
- * The step-machine half of {@link CollectorBridgeMessageHandler}: the
- * `PageLoaded` handler, the settle-timer / URL-match-timeout daemons, and
- * this machine's share of `clear` / `cancelAllInFlight`. It interacts with
- * the response tracker only through the supplied `sendMessage`.
+ * The automatic-navigation half of {@link CollectorBridgeMessageHandler}: the
+ * `handlePageLoaded` handler, the settle-timer / URL-match-timeout daemons, and
+ * `stopAutomaticNavigation` (this machine's share of the lifecycle's
+ * `cancelAllRequestSniffing`). It interacts with the response tracker only
+ * through the supplied `sendMessage`.
  */
-interface StepMachine {
-  readonly PageLoaded: Service['PageLoaded']
+interface AutomaticNavigation {
+  readonly handlePageLoaded: Service['PageLoaded']
   /**
-   * Interrupt any pending timer fiber and reset the index to 0. The step
-   * machine's contribution to the composed `clear`.
+   * Halt the automatic navigation: interrupt any pending timer fiber and reset
+   * the index to 0. This machine's contribution to the run lifecycle's
+   * `cancelAllRequestSniffing`. There is no separate "reset vs fold" variant —
+   * that teardown discards the machine right after, so the post-stop index is
+   * never observed.
    */
-  readonly clear: () => Effect.Effect<void, never, never>
-  /**
-   * Interrupt any pending timer fiber and fold back to
-   * `AwaitingPageLoaded` at the *same* index, so a future `PageLoaded`
-   * re-attempts the step. The step machine's contribution to the composed
-   * `cancelAllInFlight`.
-   */
-  readonly cancelAllInFlight: () => Effect.Effect<void, never, never>
+  readonly stopAutomaticNavigation: () => Effect.Effect<void, never, never>
 }
 
 const make = <TResources>({
   scrapingPlan,
   sendMessage,
+  onSniffingComplete,
 }: {
   scrapingPlan: ScrapingPlan.ScrapingPlan<TResources>
   sendMessage: (message: StepOutboundMessage) => Effect.Effect<void, never, never>
-}): Effect.Effect<StepMachine, never, never> =>
+  /**
+   * Run after the terminal `SniffingComplete` is dispatched (the
+   * {@link DispatchSniffingComplete} side-effect). The composition wires this to
+   * the {@link RunLifecycleState}'s `handleSniffingComplete`; the automatic
+   * navigation treats it as an opaque effect, so the two machines still share
+   * no state.
+   */
+  onSniffingComplete: Effect.Effect<void, never, never>
+}): Effect.Effect<AutomaticNavigation, never, never> =>
   Effect.gen(function* () {
     const stepStateRef = yield* SynchronizedRef.make<StepState>(awaitingPageLoaded(0, 0))
     const registry: TimerRegistry = yield* Ref.make(
@@ -63,6 +69,7 @@ const make = <TResources>({
     const ctx: HandlerContext<TResources> = {
       scrapingPlan,
       sendMessage,
+      onSniffingComplete,
       dispatch: (message) => dispatch(message),
       getState: () => SynchronizedRef.get(stepStateRef),
       registry,
@@ -71,7 +78,7 @@ const make = <TResources>({
     const runEffect = (effect: SideEffectMessage): Effect.Effect<void, never, never> =>
       Match.value(effect).pipe(
         Match.withReturnType<Effect.Effect<void, never, never>>(),
-        Match.tag('DispatchLink', (m) => sideEffectHandlers.DispatchLink(m, ctx)),
+        Match.tag('DispatchStep', (m) => sideEffectHandlers.DispatchStep(m, ctx)),
         Match.tag('DispatchSniffingComplete', (m) =>
           sideEffectHandlers.DispatchSniffingComplete(m, ctx)
         ),
@@ -89,8 +96,8 @@ const make = <TResources>({
      * Apply one input atomically: under the `SynchronizedRef` lock compute
      * `[next, effects]` from the pure transition, commit `next`, and run the
      * effects in order — all in one critical section. The body is
-     * deliberately *not* `uninterruptible`: `clear` / `cancelAllInFlight`
-     * interrupt a timer fiber while holding the lock, which would deadlock
+     * deliberately *not* `uninterruptible`: `stopAutomaticNavigation`
+     * interrupts a timer fiber while holding the lock, which would deadlock
      * inside an uninterruptible region. See
      * [Handler Explanation](../../../docs/Handler%20Explanation.md#why-dispatch-is-not-uninterruptible).
      */
@@ -103,13 +110,12 @@ const make = <TResources>({
         })
       )
 
-    const PageLoaded: Service['PageLoaded'] = (event) => dispatch(event)
-    const clear = (): Effect.Effect<void, never, never> => dispatch({ _tag: 'Clear' })
-    const cancelAllInFlight = (): Effect.Effect<void, never, never> =>
-      dispatch({ _tag: 'CancelAllInFlight' })
+    const handlePageLoaded: Service['PageLoaded'] = (event) => dispatch(event)
+    const stopAutomaticNavigation = (): Effect.Effect<void, never, never> =>
+      dispatch({ _tag: 'Stop' })
 
-    return { PageLoaded, clear, cancelAllInFlight }
+    return { handlePageLoaded, stopAutomaticNavigation }
   })
 
-export type { StepMachine }
+export type { AutomaticNavigation }
 export { make }

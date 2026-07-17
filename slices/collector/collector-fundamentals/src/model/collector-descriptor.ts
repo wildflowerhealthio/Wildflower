@@ -1,28 +1,33 @@
-import { Schema } from 'effect'
+import { type Effect, Schema } from 'effect'
 import { deepFreeze } from 'kitchen-sink'
+import type { CollectorDisplay } from './collector-display.ts'
+import {
+  ResourcePersistenceRuntime,
+  type FailedResource,
+  type PersistFailure,
+  type ResourcePersistenceContext,
+  type ResourcePersistenceProgram,
+} from './resource-persistence-runtime.ts'
 import type * as ScrapingPlan from './scraping-plan.ts'
 
-/**
- * User-facing strings for one collector. Kept React-free here so the
- * descriptor stays importable by pure/native layers; `collector-react`
- * (stage 3A) consumes these to render the account list and the
- * "connect from" menu instead of the display strings currently
- * hardcoded in its routes.
+/*
+ * This file defines "a collector" as one first-class value. The supporting
+ * types each live in their own focused module and are re-exported here so
+ * the `CollectorDescriptor.*` namespace stays the single import surface:
  *
- * - `title`: the collector kind's name (e.g. "FHIR R4"). Distinct from
- *   a *remote's* user-chosen name and from a route's demo-entry label.
- * - `description`: one-line summary of what the collector imports.
- * - `listSubtitle`: derives the per-instance subtitle from a concrete
- *   config (e.g. the configured server URL). A function rather than a
- *   field because the salient detail differs per collector — the FHIR
- *   collector shows its `rootUrl`, a credential-based collector has no
- *   URL to show.
+ * - `CollectorDisplay`               → ./collector-display.ts            (user-facing strings)
+ * - `FailedResource` / `PersistFailure`  → ./resource-persistence-runtime.ts (failure records)
+ * - `ResourcePersistence{Context,    → ./resource-persistence-runtime.ts (the existential
+ *   Program,Runtime}`                                                     write seam)
+ *
+ * What stays here is the descriptor itself and how it is authored/derived:
+ * - `CollectorDescriptor` — the full value the registry/UI consume.
+ * - `CollectorDescriptorSpec` — the author-supplied half a `*-client-collector`
+ *   package writes; {@link make} adds the two derived `*IfMatches` guards.
+ * - `ConfigOf` / `RequirementsOf` — type-level extractors the registry uses
+ *   to derive the config union and the write-requirement union from the list.
+ * - `make` — the frozen-identity factory.
  */
-interface CollectorDisplay<Config> {
-  readonly title: string
-  readonly description: string
-  readonly listSubtitle: (config: Config) => string
-}
 
 /**
  * Everything the registry and (stage 3) the UI need to treat "a
@@ -46,45 +51,62 @@ interface CollectorDisplay<Config> {
  * is `{ email, password }` (no `rootUrl`) is describable with the same
  * shape.
  *
+ * Authored fields (see {@link CollectorDescriptorSpec}):
  * - `tag`: the config's discriminant (`Config['_tag']`); the registry
  *   derives `CollectorTag` from the set of these.
  * - `configSchema`: the `Schema` for this collector's per-instance
  *   config; the registry unions these into `CollectorConfig`.
  * - `defaultConfig`: a valid config to seed a new-instance form.
- * - `makeScrapingPlan`: the per-config plan factory (today's
- *   `scrapingPlan(config)`).
+ * - `makeScrapingPlan`: the per-config plan *factory* (today's
+ *   `scrapingPlan(config)`). Distinct from the already-applied
+ *   `scrapingPlan` inside a {@link ResourcePersistenceContext}.
  * - `display`: the {@link CollectorDisplay} strings.
- * - `scrapingPlanIfMatches`: a derived guard built by {@link make} —
- *   returns this collector's plan when `config` is one of *its* configs
- *   (validated via `configSchema`), else `undefined`. It exists so the
- *   registry can dispatch over a heterogeneous descriptor list without
- *   an unsafe cast: the per-descriptor `Config` narrowing happens here,
- *   where the concrete type is still in scope, rather than in a loop
- *   over the union-typed list (where TS collapses each element to the
- *   union and the schema's invariance defeats a plain guard).
+ * - `persistResources`: writes one decoded batch back to wherever this
+ *   collector targets (for fhir-r4, the typed FHIR client). Owns *how* the
+ *   batch is written — its own retries, per-resource spans, concurrency —
+ *   and returns the resources it could not write as {@link PersistFailure}
+ *   data (never failing, so one bad resource can't fail the run). The runner
+ *   owns only *when* to write and how to fold the failures into the summary.
+ *
+ * Derived guard (added by {@link make}, not authored):
+ * - `resourcePersistenceRuntimeIfMatches`: returns the config's existential
+ *   {@link ResourcePersistenceRuntime} (plan + persistResources) when `config`
+ *   is one of *its* configs (validated via `configSchema`), else `undefined`.
+ *   It exists so the registry can dispatch over a heterogeneous descriptor list
+ *   without an unsafe cast: the per-descriptor `Config` narrowing happens here,
+ *   where the concrete type is still in scope, rather than in a loop over the
+ *   union-typed list (where TS collapses each element to the union and the
+ *   schema's invariance defeats a plain guard). The runner can then drive a
+ *   matched config without naming `Resources`.
  */
-interface CollectorDescriptor<Config extends { readonly _tag: string }, Resources> {
+interface CollectorDescriptor<Config extends { readonly _tag: string }, Resources, R> {
   readonly tag: Config['_tag']
   readonly configSchema: Schema.Schema<Config>
   readonly defaultConfig: Config
   readonly makeScrapingPlan: (config: Config) => ScrapingPlan.ScrapingPlan<Resources>
   readonly display: CollectorDisplay<Config>
-  readonly scrapingPlanIfMatches: (
+  readonly persistResources: (
+    resources: ReadonlyArray<Resources>
+  ) => Effect.Effect<ReadonlyArray<PersistFailure>, never, R>
+  readonly resourcePersistenceRuntimeIfMatches: (
     config: unknown
-  ) => ScrapingPlan.ScrapingPlan<Resources> | undefined
+  ) => ResourcePersistenceRuntime<R> | undefined
 }
 
 /**
- * The author-supplied half of a descriptor: the five fields a
+ * The author-supplied half of a descriptor: the fields a
  * `*-client-collector` package writes. {@link make} adds the derived
- * `scrapingPlanIfMatches` guard.
+ * `resourcePersistenceRuntimeIfMatches` guard.
  */
-interface CollectorDescriptorSpec<Config extends { readonly _tag: string }, Resources> {
+interface CollectorDescriptorSpec<Config extends { readonly _tag: string }, Resources, R> {
   readonly tag: Config['_tag']
   readonly configSchema: Schema.Schema<Config>
   readonly defaultConfig: Config
   readonly makeScrapingPlan: (config: Config) => ScrapingPlan.ScrapingPlan<Resources>
   readonly display: CollectorDisplay<Config>
+  readonly persistResources: (
+    resources: ReadonlyArray<Resources>
+  ) => Effect.Effect<ReadonlyArray<PersistFailure>, never, R>
 }
 
 /**
@@ -92,14 +114,17 @@ interface CollectorDescriptorSpec<Config extends { readonly _tag: string }, Reso
  * `CollectorConfig` from the descriptor list via
  * `ConfigOf<(typeof descriptors)[number]>`.
  */
-type ConfigOf<D> = D extends CollectorDescriptor<infer Config, infer _Resources> ? Config : never
+type ConfigOf<D> =
+  D extends CollectorDescriptor<infer Config, infer _Resources, infer _R> ? Config : never
 
 /**
- * The `Resources` a descriptor's plan produces. Used by the registry
- * to derive `AnyCollectorResource` from the descriptor list.
+ * The write requirement (`R`) a descriptor's `persistResources` needs.
+ * Used by the registry to derive `CollectorRequirements` — the union of
+ * every descriptor's `R`, which the authed runner must provide — via
+ * `RequirementsOf<(typeof descriptors)[number]>`.
  */
-type ResourcesOf<D> =
-  D extends CollectorDescriptor<infer _Config, infer Resources> ? Resources : never
+type RequirementsOf<D> =
+  D extends CollectorDescriptor<infer _Config, infer _Resources, infer R> ? R : never
 
 /**
  * Build a frozen {@link CollectorDescriptor} from its authored spec,
@@ -114,18 +139,26 @@ type ResourcesOf<D> =
  * would mutate that module-level export for every other importer.
  * (Functions are opaque to `deepFreeze` anyway.)
  *
- * `scrapingPlanIfMatches` is derived here: `Schema.is(spec.configSchema)`
- * compiles the guard once, closing over the concrete `Config` so the
- * `spec.makeScrapingPlan(config)` call type-checks with no cast.
+ * `resourcePersistenceRuntimeIfMatches` is derived here:
+ * `Schema.is(spec.configSchema)` compiles the guard once, closing over the
+ * concrete `Config` / `Resources` / `R`. When a config matches,
+ * {@link ResourcePersistenceRuntime.make} seals the applied plan and the persist
+ * sink behind the existential carrier, so the descriptor never spells out the
+ * `{ run: (program) => program(context) }` plumbing.
  */
-const make = <Config extends { readonly _tag: string }, Resources>(
-  spec: CollectorDescriptorSpec<Config, Resources>
-): CollectorDescriptor<Config, Resources> => {
+const make = <Config extends { readonly _tag: string }, Resources, R>(
+  spec: CollectorDescriptorSpec<Config, Resources, R>
+): CollectorDescriptor<Config, Resources, R> => {
   const isConfig = Schema.is(spec.configSchema)
-  const scrapingPlanIfMatches = (
+  const resourcePersistenceRuntimeIfMatches = (
     config: unknown
-  ): ScrapingPlan.ScrapingPlan<Resources> | undefined =>
-    isConfig(config) ? spec.makeScrapingPlan(config) : undefined
+  ): ResourcePersistenceRuntime<R> | undefined =>
+    isConfig(config)
+      ? ResourcePersistenceRuntime.make({
+          scrapingPlan: spec.makeScrapingPlan(config),
+          persistResources: spec.persistResources,
+        })
+      : undefined
   // Freeze the descriptor's own data in place for its runtime-immutable
   // guarantee, but keep the precisely-typed references rather than
   // `deepFreeze`'s `DeepReadonly<Config>` return — for a generic
@@ -139,15 +172,20 @@ const make = <Config extends { readonly _tag: string }, Resources>(
     defaultConfig: spec.defaultConfig,
     makeScrapingPlan: spec.makeScrapingPlan,
     display: spec.display,
-    scrapingPlanIfMatches,
+    persistResources: spec.persistResources,
+    resourcePersistenceRuntimeIfMatches,
   })
 }
 
-export { make }
+export { make, ResourcePersistenceRuntime }
 export type {
   CollectorDescriptor,
   CollectorDescriptorSpec,
   CollectorDisplay,
   ConfigOf,
-  ResourcesOf,
+  FailedResource,
+  PersistFailure,
+  RequirementsOf,
+  ResourcePersistenceContext,
+  ResourcePersistenceProgram,
 }

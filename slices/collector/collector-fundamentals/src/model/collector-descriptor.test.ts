@@ -1,4 +1,4 @@
-import { Duration, Schema } from 'effect'
+import { Duration, Effect, Schema } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as CollectorDescriptor from './collector-descriptor.ts'
@@ -18,7 +18,7 @@ const makeScrapingPlan = (config: SampleConfig): ScrapingPlan.ScrapingPlan<never
     name: `sample:${config.host}`,
     entityDefinitions: [],
     firstPage: { _tag: 'Uri', uri: `https://${config.host}` },
-    linkSequence: [],
+    stepSequence: [],
     stepDelay: Duration.seconds(1),
   })
 
@@ -32,6 +32,10 @@ const descriptor = CollectorDescriptor.make({
     description: 'A sample collector',
     listSubtitle: (config) => config.host,
   },
+  // The sample plan emits `never`, so this is never actually invoked; it
+  // exists to satisfy the descriptor shape (a batch that writes nothing and
+  // reports no failures).
+  persistResources: () => Effect.succeed([]),
 })
 
 describe('CollectorDescriptor.make', () => {
@@ -63,18 +67,27 @@ describe('CollectorDescriptor.make', () => {
   })
 })
 
-describe('CollectorDescriptor scrapingPlanIfMatches', () => {
-  it("returns this collector's plan for one of its configs", () => {
-    expect(descriptor.scrapingPlanIfMatches(defaultConfig)).toEqual(makeScrapingPlan(defaultConfig))
+describe('CollectorDescriptor resourcePersistenceRuntimeIfMatches', () => {
+  it('delivers the plan (and persist sink) for one of its configs', () => {
+    const runtime = descriptor.resourcePersistenceRuntimeIfMatches(defaultConfig)
+    expect(runtime).toBeDefined()
+    // The context holds `Resources` existential — a program reaches it only
+    // through `run`, never by naming the union.
+    const plan = runtime?.run((context) => context.scrapingPlan)
+    expect(plan).toEqual(makeScrapingPlan(defaultConfig))
   })
 
   it('returns undefined for a config with a different tag', () => {
-    expect(descriptor.scrapingPlanIfMatches({ _tag: 'other', host: 'example' })).toBeUndefined()
+    expect(
+      descriptor.resourcePersistenceRuntimeIfMatches({ _tag: 'other', host: 'example' })
+    ).toBeUndefined()
   })
 
   it('returns undefined for a structurally invalid config', () => {
     // Right tag, but `host` violates the schema pattern — the guard is
     // structural (via `Schema.is`), not tag-only.
-    expect(descriptor.scrapingPlanIfMatches({ _tag: 'sample', host: 'NOT-lower' })).toBeUndefined()
+    expect(
+      descriptor.resourcePersistenceRuntimeIfMatches({ _tag: 'sample', host: 'NOT-lower' })
+    ).toBeUndefined()
   })
 })

@@ -18,6 +18,14 @@ FHIR also marks `MedicationRequest.medication[x]` and `MedicationDispense.medica
 
 We accept the loosening for now because we don't have a place to perform the cross-field refinement cheaply with `Schema.transformOrFail` without changing the Type. To enforce, add a `Schema.filter` on the relevant container struct that asserts at most one variant is set.
 
+## `Observation.status` defaulted to `unknown` when absent
+
+FHIR R4 marks `Observation.status` as required (1..1). Real servers — notably HAPI's public sandbox — nonetheless return hand-entered Observations that omit it, and in a search `Bundle` a single such entry would otherwise fail the decode of the **entire page** (`Bundle.Schema(Observation.Schema)` types `entry.resource` as `Observation | undefined`, so a status-less resource matches neither arm). The client therefore models `status` as `Schema.optionalWith(StatusSchema, { default: () => 'unknown' })`: a **missing/undefined** status decodes to FHIR's own `unknown` sentinel, so the resource (and its Bundle page) survives.
+
+This rescues **absence only**. A status that is present but not a valid code — an unrecognized string, or `null` — still fails decode with a `ParseError`; a bad value is never coerced.
+
+Consequence on the types: because accepting a missing status on decode and the declared Encoded (wire) type are the same side, the schema's Encoded type now marks `status` **optional** (reflected in the `ObservationSchema` annotation, which `Omit`s `status` from `FhirR4.Observation` and re-adds it optional). The **published** contract is unchanged, though: the hand-written `observationJsonSchema` annotation still lists `status` in `required`, and it — not the derived struct — drives the OpenAPI snapshot, so the OpenAPI/drift guard sees no change.
+
 ## Medication resource (just-enough, added for the STU3 → R4 bridge)
 
 `Medication` is modeled with its standard R4 fields (`code`, `status`,

@@ -18,7 +18,7 @@ const patientUrl = UrlMatch.make({ segments: [UrlMatch.literal('Patient'), UrlMa
  * wrapper around it; {@link extractJson} normalizes both. On a successful
  * decode it emits the resource as a single-element array; follow-up
  * navigation (Observation list) is declared on the slice's
- * `ScrapingPlan.linkSequence`, not emitted from `parse`.
+ * `ScrapingPlan.stepSequence`, not emitted from `parse`.
  */
 const PatientEntity: EntityDefinition.EntityDefinition<PatientType> = EntityDefinition.make({
   name: 'PatientEntity',

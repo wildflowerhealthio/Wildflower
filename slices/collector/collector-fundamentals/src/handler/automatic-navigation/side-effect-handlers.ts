@@ -7,7 +7,7 @@ import type { InputMessage, StepOutboundMessage } from './messages.ts'
 import type { StepState } from './state.ts'
 
 /**
- * Part 4 of the step machine: the side-effect handlers.
+ * Part 4 of the automatic-navigation machine: the side-effect handlers.
  *
  * One handler per side-effect message `_tag`, each `(msg, ctx) =>
  * Effect<void>`. The interpreter in `./make.ts` routes to these; they
@@ -28,6 +28,13 @@ type TimerRegistry = Ref.Ref<HashMap.HashMap<number, RuntimeFiber<void, never>>>
 interface HandlerContext<TResources> {
   readonly scrapingPlan: ScrapingPlan.ScrapingPlan<TResources>
   readonly sendMessage: (message: StepOutboundMessage) => Effect.Effect<void, never, never>
+  /**
+   * Run right after the terminal `SniffingComplete` is sent to the host, inside
+   * the same span. The composition wires this to the {@link RunLifecycleState}'s
+   * `complete`, so the run's completion is an explicit hook rather than a tag
+   * match on the outbound message — the automatic-navigation machine still reads no shared state.
+   */
+  readonly onSniffingComplete: Effect.Effect<void, never, never>
   readonly dispatch: (message: InputMessage) => Effect.Effect<void, never, never>
   readonly getState: () => Effect.Effect<StepState, never, never>
   readonly registry: TimerRegistry
@@ -64,7 +71,7 @@ const scheduleTimerDaemon = <TResources>(
   })
 
 const sideEffectHandlers = {
-  DispatchLink: <TResources>(
+  DispatchStep: <TResources>(
     msg: { readonly dispatchIndex: number },
     ctx: HandlerContext<TResources>
   ): Effect.Effect<void, never, never> => {
@@ -72,7 +79,7 @@ const sideEffectHandlers = {
     // message body — forward it straight to the sniffer. The plan-only
     // `advanceWhen` lives on the wrapper, never on the action, so it cannot
     // leak onto the wire (no destructure-and-strip needed).
-    const { action } = ctx.scrapingPlan.linkSequence[msg.dispatchIndex]
+    const { action } = ctx.scrapingPlan.stepSequence[msg.dispatchIndex]
     // Low-cardinality telemetry: the action tag, plus the inner `kind` for a
     // `PageAction` (`PageAction:Click` / `PageAction:Fill`).
     const linkKind =
@@ -90,7 +97,10 @@ const sideEffectHandlers = {
     msg: { readonly dispatchIndex: number },
     ctx: HandlerContext<TResources>
   ): Effect.Effect<void, never, never> =>
+    // Send the terminal message to the host, then run the completion hook — both
+    // inside the one span, matching the pre-hook order (send, then signal).
     ctx.sendMessage({ _tag: 'SniffingComplete' }).pipe(
+      Effect.andThen(ctx.onSniffingComplete),
       Effect.withSpan(Telemetry.Sniffing.Dispatch.Span.Name, {
         attributes: {
           [Telemetry.Sniffing.Attributes.StepIndex]: msg.dispatchIndex,

@@ -1,4 +1,4 @@
-// oxlint-disable typescript-eslint/no-unsafe-assignment -- vitest matchers and `vi.fn()` call args are typed as `any`; the unsafe-assignment / unsafe-destructure lint fires on idiomatic `mock.calls[0]` access here
+// oxlint-disable typescript-eslint/no-unsafe-assignment -- vitest matchers and `vi.fn()` call args are typed as `any`; the unsafe-assignment lint fires on idiomatic `mock.calls[0]` access here
 
 import type { CancelSnifferRequestMessage } from 'browser-sniffer-core'
 import { Duration, Effect, MutableHashMap } from 'effect'
@@ -9,6 +9,7 @@ import { EntityDefinition, ScrapingPlan } from 'collector-fundamentals/model'
 import { AnotherEntity, SimpleEntity } from 'collector-fundamentals/test-helpers'
 import {
   cancelled,
+  drainResults,
   makeSimpleHandler,
   noopSendMessage,
   requestError,
@@ -24,7 +25,10 @@ import * as CollectorBridgeMessageHandler from './collector-bridge-message-handl
 
 const { expectRightToEqual, expectLeftToEqual } = utilityExpectations(expect)
 
-describe('CollectorBridgeMessageHandler.make: response tracker', () => {
+// The lifecycle's completion coupling (`handleSniffingComplete` / `abandonAllRequestSniffing` ending the
+// `results` mailbox) now lives on the `RunLifecycleState`; see `run-lifecycle-state.test.ts`.
+
+describe('CollectorBridgeMessageHandler.make: sniffer response tracker', () => {
   describe('ResponseStart', () => {
     it('begins tracking when the URL matches some entity', () => {
       const sendMessage = vi.fn(noopSendMessage)
@@ -35,7 +39,7 @@ describe('CollectorBridgeMessageHandler.make: response tracker', () => {
       )
 
       expect(sendMessage).not.toHaveBeenCalled()
-      expect(MutableHashMap.keys(handler.inProgressResponses)).toContain('r1')
+      expect(MutableHashMap.keys(handler.incompleteSniffedRequests)).toContain('r1')
     })
 
     it('cancels via sendMessage when no entity matches', () => {
@@ -51,7 +55,7 @@ describe('CollectorBridgeMessageHandler.make: response tracker', () => {
         _tag: 'CancelSnifferRequest',
         id: 'r2',
       } satisfies typeof CancelSnifferRequestMessage.Type)
-      expect(MutableHashMap.keys(handler.inProgressResponses)).not.toContain('r2')
+      expect(MutableHashMap.keys(handler.incompleteSniffedRequests)).not.toContain('r2')
     })
 
     it('matches against any of the configured entities', () => {
@@ -68,11 +72,10 @@ describe('CollectorBridgeMessageHandler.make: response tracker', () => {
               AnotherEntity,
             ] as readonly EntityDefinition.EntityDefinition<MultiResources>[],
             firstPage: { _tag: 'Uri', uri: 'https://example.com/' },
-            linkSequence: [],
+            stepSequence: [],
             stepDelay: Duration.seconds(5),
           }),
           sendMessage,
-          onResult: () => undefined,
         })
       )
 
@@ -84,15 +87,14 @@ describe('CollectorBridgeMessageHandler.make: response tracker', () => {
       )
 
       expect(sendMessage).not.toHaveBeenCalled()
-      expect(MutableHashMap.keys(handler.inProgressResponses)).toContain('r1')
-      expect(MutableHashMap.keys(handler.inProgressResponses)).toContain('r2')
+      expect(MutableHashMap.keys(handler.incompleteSniffedRequests)).toContain('r1')
+      expect(MutableHashMap.keys(handler.incompleteSniffedRequests)).toContain('r2')
     })
   })
 
   describe('ResponseData', () => {
     it('appends a base64-decoded chunk to a tracked response', () => {
-      const onResult = vi.fn()
-      const handler = makeSimpleHandler({ onResult })
+      const handler = makeSimpleHandler()
 
       runHandlerSync(
         handler.ResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/1' }))
@@ -101,13 +103,13 @@ describe('CollectorBridgeMessageHandler.make: response tracker', () => {
       runHandlerSync(handler.ResponseData(responseData('r1', ',"age":25}')))
       runHandlerSync(handler.ResponseFinished(responseFinished('r1')))
 
-      expect(onResult).toHaveBeenCalledOnce()
-      expectRightToEqual(onResult.mock.calls[0][0].result, [{ name: 'Bob', age: 25 }])
+      const results = drainResults(handler)
+      expect(results).toHaveLength(1)
+      expectRightToEqual(results[0], [{ name: 'Bob', age: 25 }])
     })
 
     it('emits a WARN log and no-ops for an untracked response id', async () => {
-      const onResult = vi.fn()
-      const handler = makeSimpleHandler({ onResult })
+      const handler = makeSimpleHandler()
 
       await runHandlerPromise(
         handler.ResponseData(responseData('unknown', 'data')).pipe(
@@ -124,12 +126,11 @@ describe('CollectorBridgeMessageHandler.make: response tracker', () => {
           Effect.scoped
         )
       )
-      expect(onResult).not.toHaveBeenCalled()
+      expect(drainResults(handler)).toHaveLength(0)
     })
 
-    it('emits onResult Left(UnknownException) and drops the entry when base64 decode fails on a tracked response', () => {
-      const onResult = vi.fn()
-      const handler = makeSimpleHandler({ onResult })
+    it('offers a Left(UnknownException) and drops the entry when base64 decode fails on a tracked response', () => {
+      const handler = makeSimpleHandler()
 
       runHandlerSync(
         handler.ResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/1' }))
@@ -137,23 +138,26 @@ describe('CollectorBridgeMessageHandler.make: response tracker', () => {
       runHandlerSync(
         handler.ResponseData({ _tag: 'ResponseData', id: 'r1', data: '!!! not base64 !!!' })
       )
-
-      expect(onResult).toHaveBeenCalledOnce()
-      const [{ response, result }] = onResult.mock.calls[0]
-      expect(response.url).toBe('https://example.com/people/1')
-      expectLeftToEqual(result, expect.objectContaining({ _tag: 'UnknownException' }))
       // The tracked entry is removed so a subsequent ResponseFinished
-      // becomes a no-op rather than a duplicate onResult.
-      expect(MutableHashMap.keys(handler.inProgressResponses)).not.toContain('r1')
+      // becomes a no-op rather than a duplicate result event.
+      expect(MutableHashMap.keys(handler.incompleteSniffedRequests)).not.toContain('r1')
       runHandlerSync(handler.ResponseFinished(responseFinished('r1')))
-      expect(onResult).toHaveBeenCalledOnce()
+
+      const results = drainResults(handler)
+      expect(results).toHaveLength(1)
+      expectLeftToEqual(
+        results[0],
+        expect.objectContaining({
+          url: 'https://example.com/people/1',
+          error: expect.objectContaining({ _tag: 'UnknownException' }),
+        })
+      )
     })
   })
 
   describe('ResponseFinished', () => {
     it('emits a WARN log and no-ops for an untracked response id', async () => {
-      const onResult = vi.fn()
-      const handler = makeSimpleHandler({ onResult })
+      const handler = makeSimpleHandler()
 
       await runHandlerPromise(
         handler.ResponseFinished(responseFinished('unknown')).pipe(
@@ -170,12 +174,11 @@ describe('CollectorBridgeMessageHandler.make: response tracker', () => {
           Effect.scoped
         )
       )
-      expect(onResult).not.toHaveBeenCalled()
+      expect(drainResults(handler)).toHaveLength(0)
     })
 
-    it('calls onResult with the RemoteResponse + a Right of parsed resources on a match', () => {
-      const onResult = vi.fn()
-      const handler = makeSimpleHandler({ onResult })
+    it('offers a Right of parsed resources on a match', () => {
+      const handler = makeSimpleHandler()
 
       const body = JSON.stringify({ name: 'Carol', age: 40 })
       runHandlerSync(
@@ -184,16 +187,15 @@ describe('CollectorBridgeMessageHandler.make: response tracker', () => {
       runHandlerSync(handler.ResponseData(responseData('r1', body)))
       runHandlerSync(handler.ResponseFinished(responseFinished('r1')))
 
-      expect(onResult).toHaveBeenCalledOnce()
-      const [{ response, result }] = onResult.mock.calls[0]
-      expect(response.url).toBe('https://example.com/people/99')
-      expect(response.text()).toBe(body)
-      expectRightToEqual(result, [{ name: 'Carol', age: 40 }])
+      const results = drainResults(handler)
+      expect(results).toHaveLength(1)
+      // The parsed resources reflect the appended body chunks; the response
+      // URL is asserted on the failure paths (which keep it on the `Left`).
+      expectRightToEqual(results[0], [{ name: 'Carol', age: 40 }])
     })
 
     it('removes the response after finishing so a second ResponseFinished is a no-op', async () => {
-      const onResult = vi.fn()
-      const handler = makeSimpleHandler({ onResult })
+      const handler = makeSimpleHandler()
 
       runHandlerSync(
         handler.ResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/1' }))
@@ -216,8 +218,8 @@ describe('CollectorBridgeMessageHandler.make: response tracker', () => {
           Effect.scoped
         )
       )
-      // Only the first finish should have produced an onResult call.
-      expect(onResult).toHaveBeenCalledOnce()
+      // Only the first finish should have produced a result event.
+      expect(drainResults(handler)).toHaveLength(1)
     })
 
     it('routes to the first entity whose isFoundAt matches when multiple match', () => {
@@ -228,18 +230,16 @@ describe('CollectorBridgeMessageHandler.make: response tracker', () => {
           parse: () => Effect.succeed([]),
         })
 
-      const onResult = vi.fn()
       const handler = Effect.runSync(
         CollectorBridgeMessageHandler.make<SimpleResources>({
           scrapingPlan: ScrapingPlan.make<SimpleResources>({
             name: 'OverlappingPlan',
             entityDefinitions: [OverlappingEntity, SimpleEntity],
             firstPage: { _tag: 'Uri', uri: 'https://example.com/' },
-            linkSequence: [],
+            stepSequence: [],
             stepDelay: Duration.seconds(5),
           }),
           sendMessage: noopSendMessage,
-          onResult,
         })
       )
 
@@ -249,15 +249,15 @@ describe('CollectorBridgeMessageHandler.make: response tracker', () => {
       runHandlerSync(handler.ResponseData(responseData('r1', '{}')))
       runHandlerSync(handler.ResponseFinished(responseFinished('r1')))
 
-      expect(onResult).toHaveBeenCalledOnce()
+      const results = drainResults(handler)
+      expect(results).toHaveLength(1)
       // Overlapping wins because it's first in `entityDefinitions`; its parse
       // returns an empty resource list regardless of body.
-      expectRightToEqual(onResult.mock.calls[0][0].result, [])
+      expectRightToEqual(results[0], [])
     })
 
     it('handles multiple concurrent tracked responses independently', () => {
-      const onResult = vi.fn()
-      const handler = makeSimpleHandler({ onResult })
+      const handler = makeSimpleHandler()
 
       runHandlerSync(
         handler.ResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/1' }))
@@ -275,32 +275,37 @@ describe('CollectorBridgeMessageHandler.make: response tracker', () => {
       runHandlerSync(handler.ResponseFinished(responseFinished('r2')))
       runHandlerSync(handler.ResponseFinished(responseFinished('r1')))
 
-      expect(onResult).toHaveBeenCalledTimes(2)
-      expectRightToEqual(onResult.mock.calls[0][0].result, [{ name: 'Bob', age: 25 }])
-      expectRightToEqual(onResult.mock.calls[1][0].result, [{ name: 'Alice', age: 30 }])
+      // Result events arrive in finish order: r2 first, then r1.
+      const results = drainResults(handler)
+      expect(results).toHaveLength(2)
+      expectRightToEqual(results[0], [{ name: 'Bob', age: 25 }])
+      expectRightToEqual(results[1], [{ name: 'Alice', age: 30 }])
     })
   })
 
   describe('Cancelled', () => {
-    it('emits onResult Left(SnifferCancelled) and drops the entry for a tracked response', () => {
-      const onResult = vi.fn()
-      const handler = makeSimpleHandler({ onResult })
+    it('offers a Left(SnifferCancelled) and drops the entry for a tracked response', () => {
+      const handler = makeSimpleHandler()
 
       runHandlerSync(
         handler.ResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/1' }))
       )
       runHandlerSync(handler.Cancelled(cancelled('r1')))
 
-      expect(onResult).toHaveBeenCalledOnce()
-      const [{ response, result }] = onResult.mock.calls[0]
-      expect(response.url).toBe('https://example.com/people/1')
-      expectLeftToEqual(result, expect.objectContaining({ _tag: 'SnifferCancelled', id: 'r1' }))
-      expect(MutableHashMap.keys(handler.inProgressResponses)).not.toContain('r1')
+      const results = drainResults(handler)
+      expect(results).toHaveLength(1)
+      expectLeftToEqual(
+        results[0],
+        expect.objectContaining({
+          url: 'https://example.com/people/1',
+          error: expect.objectContaining({ _tag: 'SnifferCancelled', id: 'r1' }),
+        })
+      )
+      expect(MutableHashMap.keys(handler.incompleteSniffedRequests)).not.toContain('r1')
     })
 
     it('emits a WARN log and no-ops for an unsolicited Cancelled (id not tracked)', async () => {
-      const onResult = vi.fn()
-      const handler = makeSimpleHandler({ onResult })
+      const handler = makeSimpleHandler()
 
       await runHandlerPromise(
         handler.Cancelled(cancelled('unknown')).pipe(
@@ -317,14 +322,13 @@ describe('CollectorBridgeMessageHandler.make: response tracker', () => {
           Effect.scoped
         )
       )
-      expect(onResult).not.toHaveBeenCalled()
+      expect(drainResults(handler)).toHaveLength(0)
     })
   })
 
   describe('RequestError', () => {
-    it('calls onResult with a Left(UnknownException) carrying the error message', () => {
-      const onResult = vi.fn()
-      const handler = makeSimpleHandler({ onResult })
+    it('offers a Left(UnknownException) carrying the error message', () => {
+      const handler = makeSimpleHandler()
 
       runHandlerSync(
         handler.ResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/99' }))
@@ -339,25 +343,26 @@ describe('CollectorBridgeMessageHandler.make: response tracker', () => {
         )
       )
 
-      expect(onResult).toHaveBeenCalledOnce()
-      const [{ response, result }] = onResult.mock.calls[0]
-      expect(response.url).toBe('https://example.com/people/99')
+      const results = drainResults(handler)
+      expect(results).toHaveLength(1)
       // `UnknownException` stores the original payload on `.cause` (and a
       // mirroring `.error`); `.message` is the generic "An unknown error
       // occurred" string. Assert on `cause` so the test pins the actual
-      // RequestError → UnknownException wiring.
+      // RequestError → UnknownException wiring, plus the folded-in `url`.
       expectLeftToEqual(
-        result,
+        results[0],
         expect.objectContaining({
-          _tag: 'UnknownException',
-          cause: 'network down',
+          url: 'https://example.com/people/99',
+          error: expect.objectContaining({
+            _tag: 'UnknownException',
+            cause: 'network down',
+          }),
         })
       )
     })
 
     it('emits a WARN log and no-ops for an untracked response id', async () => {
-      const onResult = vi.fn()
-      const handler = makeSimpleHandler({ onResult })
+      const handler = makeSimpleHandler()
 
       await runHandlerPromise(
         handler
@@ -378,14 +383,13 @@ describe('CollectorBridgeMessageHandler.make: response tracker', () => {
             Effect.scoped
           )
       )
-      expect(onResult).not.toHaveBeenCalled()
+      expect(drainResults(handler)).toHaveLength(0)
     })
   })
 
-  describe('clear', () => {
-    it('drops every in-flight tracked response without emitting onResult', () => {
-      const onResult = vi.fn()
-      const handler = makeSimpleHandler({ onResult })
+  describe('cancelAllRequestSniffing', () => {
+    it('drops every incomplete sniffed request without publishing a result', () => {
+      const handler = makeSimpleHandler()
 
       runHandlerSync(
         handler.ResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/1' }))
@@ -393,12 +397,12 @@ describe('CollectorBridgeMessageHandler.make: response tracker', () => {
       runHandlerSync(
         handler.ResponseStart(responseStart({ id: 'r2', url: 'https://example.com/people/2' }))
       )
-      expect(MutableHashMap.size(handler.inProgressResponses)).toBe(2)
+      expect(MutableHashMap.size(handler.incompleteSniffedRequests)).toBe(2)
 
-      runHandlerSync(handler.clear())
+      runHandlerSync(handler.cancelAllRequestSniffing(noopSendMessage))
 
-      expect(MutableHashMap.size(handler.inProgressResponses)).toBe(0)
-      expect(onResult).not.toHaveBeenCalled()
+      expect(MutableHashMap.size(handler.incompleteSniffedRequests)).toBe(0)
+      expect(drainResults(handler)).toHaveLength(0)
     })
   })
 })

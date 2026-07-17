@@ -109,12 +109,15 @@ describe('FhirR4CollectorDescriptor', () => {
     )
   })
 
-  it('matches its own configs and rejects foreign ones via scrapingPlanIfMatches', () => {
-    expect(FhirR4CollectorDescriptor.scrapingPlanIfMatches(defaultConfig)).toEqual(
-      scrapingPlan(defaultConfig)
-    )
+  it('matches its own configs and rejects foreign ones via resourcePersistenceRuntimeIfMatches', () => {
+    // The matched runtime seals `Resources`; reach the plan only through `run`.
+    const runtime = FhirR4CollectorDescriptor.resourcePersistenceRuntimeIfMatches(defaultConfig)
+    expect(runtime?.run((context) => context.scrapingPlan)).toEqual(scrapingPlan(defaultConfig))
     expect(
-      FhirR4CollectorDescriptor.scrapingPlanIfMatches({ _tag: 'not-fhir', rootUrl: 'x' })
+      FhirR4CollectorDescriptor.resourcePersistenceRuntimeIfMatches({
+        _tag: 'not-fhir',
+        rootUrl: 'x',
+      })
     ).toBeUndefined()
   })
 })
@@ -135,7 +138,7 @@ describe('scrapingPlan', () => {
 
   it('navigates to the Observation endpoint as a single Open step via a direct Uri', () => {
     const plan = scrapingPlan(defaultConfig)
-    expect(plan.linkSequence).toEqual([
+    expect(plan.stepSequence).toEqual([
       {
         action: {
           _tag: 'Open',

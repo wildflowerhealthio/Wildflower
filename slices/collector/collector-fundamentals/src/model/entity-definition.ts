@@ -35,7 +35,7 @@ import type { RemoteResponse } from './response.ts'
  *   stays compatible with future requirements that may need
  *   Effect-typed dependencies (clock, randomness, …). Follow-up
  *   navigation is no longer emitted from `parse` — it is declared
- *   statically on the slice's `ScrapingPlan.linkSequence`.
+ *   statically on the slice's `ScrapingPlan.stepSequence`.
  */
 interface EntityDefinition<TResources> {
   readonly name: string

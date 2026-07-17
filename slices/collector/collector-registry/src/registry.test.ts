@@ -1,3 +1,4 @@
+import type { ScrapingPlan } from 'collector-fundamentals/model'
 import { Arbitrary, Schema } from 'effect'
 import * as fc from 'fast-check'
 import {
@@ -14,7 +15,7 @@ import {
   descriptorForConfig,
   descriptorForTag,
   descriptors,
-  makeScrapingPlanForConfig,
+  resourcePersistenceRuntimeForConfig,
 } from './registry.ts'
 
 const { expectLeftToEqual, expectRightToEqual } = utilityExpectations(expect)
@@ -65,7 +66,12 @@ describe('CollectorConfig', () => {
   })
 })
 
-describe('makeScrapingPlanForConfig', () => {
+describe('resourcePersistenceRuntimeForConfig', () => {
+  // The context holds the resource union existential; reach the plan only
+  // through a `run` program, never by naming the union.
+  const planFor = (config: typeof CollectorConfig.Type): ScrapingPlan.ScrapingPlan<unknown> =>
+    resourcePersistenceRuntimeForConfig(config).run((context) => context.scrapingPlan)
+
   it('dispatches fhir-r4 configs to the fhir-r4 scraping plan', () => {
     const config = Schema.decodeSync(CollectorConfig)({
       _tag: 'fhir-r4',
@@ -74,9 +80,9 @@ describe('makeScrapingPlanForConfig', () => {
     })
 
     // The plan factory is per-config so structural equality stands in
-    // for identity. Same `name` + same `linkSequence` + a `firstPage`
+    // for identity. Same `name` + same step sequence + a `firstPage`
     // pointed at the configured patientUrl pin the dispatch.
-    expect(makeScrapingPlanForConfig(config)).toEqual(fhirR4ScrapingPlan(config))
+    expect(planFor(config)).toEqual(fhirR4ScrapingPlan(config))
   })
 
   it('dispatches every schema-conformant config to its descriptor plan', () => {
@@ -86,7 +92,7 @@ describe('makeScrapingPlanForConfig', () => {
       fc.property(Arbitrary.make(CollectorConfig), (config) => {
         const descriptor = descriptorForConfig(config)
         expect(descriptor).toBeDefined()
-        expect(makeScrapingPlanForConfig(config)).toEqual(descriptor?.makeScrapingPlan(config))
+        expect(planFor(config)).toEqual(descriptor?.makeScrapingPlan(config))
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )
