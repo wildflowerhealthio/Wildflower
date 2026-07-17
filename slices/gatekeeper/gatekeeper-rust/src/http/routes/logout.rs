@@ -27,7 +27,6 @@ use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::post;
 use axum::Router;
 
-use crate::domain::actions;
 use crate::domain::token::VerifiedClaims;
 use crate::http::state::GatekeeperState;
 use crate::http::CallerSession;
@@ -76,5 +75,5 @@ fn revoke_presented_token(state: &GatekeeperState, claims: &VerifiedClaims) {
         return;
     };
     // Best-effort denylist — the testable decision lives in the domain action.
-    actions::revoke_session_token(&state.revocation_store, jti, expires_at);
+    crate::domain::session::revoke_session_token(&state.revocation_store, jti, expires_at);
 }

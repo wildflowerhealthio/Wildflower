@@ -7,8 +7,8 @@ use utoipa::ToSchema;
 
 use scope_capabilities_rust::InsufficientScopeBody;
 
+use crate::domain::capabilities::{DatabasesDeleter, Scoped};
 use crate::domain::DatabaseError;
-use crate::http::capabilities::{DatabasesDeleter, Scoped};
 use crate::http::errors::DatabaseNotFoundBody;
 
 #[derive(Debug, Serialize, ToSchema)]

@@ -5,25 +5,24 @@ use axum::routing::{post, MethodRouter};
 use axum::Json;
 use chrono::Utc;
 
-use crate::domain::actions::ApproveDeviceConsentInput;
+use crate::domain::capabilities::{ApproveDeviceConsentInput, Scoped};
 use crate::domain::gatekeeper_error::GatekeeperError;
-use crate::http::capabilities::{ConsentDecider, Scoped};
 use crate::http::state::GatekeeperState;
 use crate::http::wire_representations::{ApproveBody, ConsentResult};
+use crate::state::ConsentDeciderCap;
 
 /// `POST /devices/{userCode}/approve` — the Owner approves a device-code
 /// consent prompt, granting the (expanded) scope set and leaving a standing
-/// device grant. Gated by [`ConsentDecider`] (scope
+/// device grant. Gated by [`ConsentDeciderCap`] (scope
 /// `wildflower/AuthorizationRequest.u`), which also carries the approver's own
 /// scopes: an approval delegating a resource scope beyond them is rejected with
-/// a `403`. The transaction lives in
-/// [`actions::approve_device_consent`](crate::domain::actions::approve_device_consent).
+/// a `403`. The transaction lives in the consent capability's `approve_device`.
 pub(super) fn route() -> MethodRouter<Arc<GatekeeperState>> {
     post(handle_approve_device_consent)
 }
 
 async fn handle_approve_device_consent(
-    consents: Scoped<ConsentDecider>,
+    consents: Scoped<ConsentDeciderCap>,
     Path(user_code): Path<String>,
     Json(body): Json<ApproveBody>,
 ) -> Result<Json<ConsentResult>, GatekeeperError> {

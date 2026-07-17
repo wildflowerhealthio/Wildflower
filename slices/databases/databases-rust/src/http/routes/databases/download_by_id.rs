@@ -15,8 +15,8 @@ use tokio_util::io::ReaderStream;
 
 use scope_capabilities_rust::InsufficientScopeBody;
 
+use crate::domain::capabilities::{DatabasesReader, DownloadSnapshot, Scoped};
 use crate::domain::DatabaseError;
-use crate::http::capabilities::{DatabasesReader, DownloadSnapshot, Scoped};
 use crate::http::errors::DatabaseNotFoundBody;
 
 /// `GET /databases/{id}` — stream the database file as `application/vnd.sqlite3`

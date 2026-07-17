@@ -35,7 +35,7 @@ diesel::joinable!(refresh_tokens -> refresh_token_families (family_id));
 diesel::allow_tables_to_appear_in_same_query!(refresh_tokens, refresh_token_families);
 
 /// Persist a new refresh-token family **row only** — a single-table insert. The
-/// [`insert_refresh_token_family`](crate::domain::actions::insert_refresh_token_family)
+/// [`insert_refresh_token_family`](crate::domain::refresh_token::insert_refresh_token_family)
 /// action sequences this then [`insert_refresh_token`] so a family never persists
 /// tokenless; the store stays a primitive with no transaction.
 pub(super) fn insert_refresh_token_family_row(
@@ -53,7 +53,7 @@ pub(super) fn insert_refresh_token_family_row(
 
 /// Persist a single refresh-token row into an existing family — a rotation
 /// successor, or the family's first token (sequenced after the family row by the
-/// [`insert_refresh_token_family`](crate::domain::actions::insert_refresh_token_family)
+/// [`insert_refresh_token_family`](crate::domain::refresh_token::insert_refresh_token_family)
 /// action).
 pub(super) fn insert_refresh_token(
     conn: &mut SqliteConnection,
@@ -88,7 +88,7 @@ pub(super) fn refresh_token_with_family_by_hash(
 /// same live token loses the affected-row count and gets `false`. The
 /// three-state consume decision (`Consumed` / `Replayed` / `NotFound`) is
 /// assembled from this plus [`refresh_token_exists`] in
-/// [`rotate_refresh_token`](crate::domain::actions::rotate_refresh_token), which
+/// [`rotate_refresh_token`](crate::domain::refresh_token::rotate_refresh_token), which
 /// runs both inside one domain transaction so the pair reads a single snapshot.
 pub(super) fn stamp_refresh_token_consumed_if_live(
     conn: &mut SqliteConnection,
@@ -311,7 +311,7 @@ mod tests {
         /// now-consumed token loses the `consumed_at IS NULL` guard (`false`)
         /// while the row still exists — the SQL facts the domain assembles into
         /// `Consumed` then `Replayed`. (The three-state decision itself is
-        /// tested against the action in `domain::actions::refresh_token`.)
+        /// tested against the action in `domain::refresh_token`.)
         #[test]
         fn stamp_consumes_live_then_loses_the_guard_on_replay(
             family in arb_family(),
@@ -372,7 +372,7 @@ mod tests {
     /// `insert_refresh_token_family` action sequences. Expressed as the
     /// primitives here so these store-level tests don't reach up into the domain
     /// layer for setup. (Rotation's own consume-then-insert orchestration is
-    /// tested against the action, in `domain::actions::refresh_token`.)
+    /// tested against the action, in `domain::refresh_token`.)
     fn seed_family_with_token(
         store: &SqliteGatekeeperStore,
         family: &RefreshTokenFamily,

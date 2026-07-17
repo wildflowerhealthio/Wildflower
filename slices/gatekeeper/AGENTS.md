@@ -16,7 +16,7 @@ OAuth 2.0 / SMART-on-FHIR authorization slice. Read the [Jargon Explanation](./d
 
 ## References
 
-- [Scope-Gated Endpoints How-To](../../docs/Authorization/Scope-Gated%20Endpoints%20How-To.md) — the `/access` surface's scope-gated `Scoped<F>`/capability pattern (machinery shared from `scopes/scope-capabilities-rust`); `http/capabilities/` is the worked fixed-scope example
+- [Scope-Gated Endpoints How-To](../../docs/Authorization/Scope-Gated%20Endpoints%20How-To.md) — the `/access` surface's scope-gated `Scoped<F>`/capability pattern (machinery shared from `scopes/scope-capabilities-rust`); `domain/capabilities/` is the worked fixed-scope example (capabilities generic over the store port, bound to the concrete store in `src/state/`)
 - [gatekeeper-core README](./gatekeeper-core/README.md) — tables, OAuth routes, page-path drift test
 - [Jargon Explanation](./docs/Jargon%20Explanation.md) — the domain vocabulary
 - [Auth Token Storage Explanation](./docs/Auth%20Token%20Storage%20Explanation.md) — token storage policies

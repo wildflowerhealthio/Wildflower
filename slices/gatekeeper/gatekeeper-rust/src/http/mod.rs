@@ -6,13 +6,11 @@
 
 use std::sync::Arc;
 
-pub(crate) mod capabilities;
 mod errors;
 mod extractors;
 mod middleware;
 mod routes;
 mod state;
-mod views;
 mod wire_representations;
 
 pub(crate) use extractors::served_origin::ServedOrigin;

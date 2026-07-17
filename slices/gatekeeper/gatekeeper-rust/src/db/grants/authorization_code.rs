@@ -27,7 +27,7 @@ diesel::table! {
 /// Insert a brand-new authorization-code grant row — a plain single-table
 /// insert. The insert branch of a first-time approval, and a test/seed helper;
 /// the scope-union re-approval flow is
-/// [`upsert_authorization_code_grant`](crate::domain::actions::upsert_authorization_code_grant),
+/// `upsert_authorization_code_grant`,
 /// which reads then chooses this or [`update_authorization_code_grant`]. The
 /// caller hands the concrete grant, so the store never inspects a polymorphic
 /// value to choose the table.
@@ -66,7 +66,7 @@ pub(crate) fn grant_by_client_and_redirect(
 /// Overwrite the mutable fields (`scopes`, `granted_at`, `patient`) of the
 /// authorization-code grant identified by `grant.id` — the write half of a
 /// re-approval, after
-/// [`upsert_authorization_code_grant`](crate::domain::actions::upsert_authorization_code_grant)
+/// `upsert_authorization_code_grant`
 /// has read the standing grant and folded the re-approval into it via
 /// [`absorb_reapproval`](crate::domain::grant::CumulativeConsent). The action
 /// runs the read + this write inside one `BEGIN IMMEDIATE` transaction so two
@@ -91,12 +91,46 @@ pub(crate) fn update_authorization_code_grant(
 
 #[cfg(test)]
 mod tests {
-    use chrono::Utc;
+    use chrono::{DateTime, Utc};
     use url::Url;
+    use uuid::Uuid;
 
     use crate::db::SqliteGatekeeperStore;
-    use crate::domain::actions;
-    use crate::domain::GatekeeperStore as _;
+    use crate::domain::grant::{AuthorizationCodeGrant, CumulativeConsent};
+    use crate::domain::{GatekeeperStore as _, GatekeeperTx as _};
+
+    /// The create-or-union upsert transaction, inlined here so the db test drives
+    /// the real adapter's grant primitives directly instead of reaching up into a
+    /// domain capability. Mirrors
+    /// `domain::capabilities::consents::upsert_authorization_code_grant`.
+    fn upsert_code_grant(
+        store: &SqliteGatekeeperStore,
+        client_id: &str,
+        redirect: &Url,
+        scopes: &[String],
+        patient: Option<&str>,
+        now: DateTime<Utc>,
+    ) {
+        store
+            .immediate_transaction(|tx| {
+                match tx.grant_by_client_and_redirect(client_id, redirect)? {
+                    Some(mut grant) => {
+                        grant.absorb_reapproval(scopes, patient, now);
+                        tx.update_authorization_code_grant(&grant)
+                    }
+                    None => tx.create_authorization_code_grant(&AuthorizationCodeGrant {
+                        id: Uuid::new_v4().to_string(),
+                        client_id: client_id.to_owned(),
+                        scopes: scopes.to_vec(),
+                        granted_at: now,
+                        last_used_at: None,
+                        patient: patient.map(str::to_owned),
+                        redirect_uri: redirect.clone(),
+                    }),
+                }
+            })
+            .expect("upsert code grant");
+    }
 
     fn read(url: &str) -> Url {
         Url::parse(url).expect("valid url")
@@ -108,7 +142,7 @@ mod tests {
     /// grant, unions scopes (cumulative consent) and writes it back through
     /// `update_authorization_code_grant` — all inside the action's
     /// `BEGIN IMMEDIATE` transaction, against one row. The pure union decision
-    /// is unit-tested against the fake in `domain::actions::grant`; this proves
+    /// is unit-tested against the fake in `domain::capabilities::consents`; this proves
     /// the same script lands correctly through diesel.
     #[test]
     fn upsert_action_inserts_then_unions_scopes_over_sqlite() {
@@ -116,15 +150,14 @@ mod tests {
         let redirect = read("https://example.com/cb");
         let now = Utc::now();
 
-        actions::upsert_authorization_code_grant(
+        upsert_code_grant(
             &store,
             "client-a",
             &redirect,
             &["read".to_owned()],
             Some("pat-1"),
             now,
-        )
-        .expect("insert");
+        );
         let grant = store
             .grant_by_client_and_redirect("client-a", &redirect)
             .expect("query")
@@ -133,15 +166,14 @@ mod tests {
         assert_eq!(grant.patient.as_deref(), Some("pat-1"));
 
         // Re-approve with an overlapping + a new scope: union, not replace.
-        actions::upsert_authorization_code_grant(
+        upsert_code_grant(
             &store,
             "client-a",
             &redirect,
             &["read".to_owned(), "write".to_owned()],
             Some("pat-2"),
             Utc::now(),
-        )
-        .expect("update");
+        );
         let updated = store
             .grant_by_client_and_redirect("client-a", &redirect)
             .expect("query")

@@ -121,8 +121,8 @@ sees `State<…>` or the store — that's the point.
 ### 5. Guard it with a source test
 
 Copy the source-guard test (see
-`gatekeeper-rust/src/http/capabilities/mod.rs` or
-`databases-rust/src/http/capabilities.rs`): it enumerates the routes directory at
+`gatekeeper-rust/src/domain/capabilities/mod.rs` or
+`databases-rust/src/domain/capabilities.rs`): it enumerates the routes directory at
 test time and asserts each handler's source never contains `State<` or a direct
 store accessor, so a NEW handler file is guarded by default and must be
 consciously exempted to escape. A future handler that reaches around the
@@ -146,21 +146,35 @@ capability then fails the build.
 
 ## Canonical layout
 
-Copy gatekeeper's layout so the third slice doesn't invent a fourth shape:
+Copy gatekeeper's layout so the third slice doesn't invent a fourth shape.
+Capabilities live in **`domain/`**, not `http/` — a capability owns its slice's
+operation, so it belongs beside the store port, and keeping it out of `http/`
+lets a guard test assert `domain/` never imports `crate::http`.
 
-- `http/capabilities/` — a module (dir or single `capabilities.rs`) holding the
-  capability structs + their `impl`s and the source-guard test.
-- `http/views.rs` (if needed) — Owner-UI read models the `GET` handlers return,
-  kept out of `capabilities/` so the capability modules stay capability-shaped.
+- `domain/capabilities/` — a module (dir or single `capabilities.rs`) holding the
+  capability structs + their operation logic and the source-guard test. A
+  store-touching capability is **generic over the store port** (`Cap<S: Store>`)
+  and holds its port dependencies (store, revocation, publisher, …) as fields —
+  **lifted from the state**, never an `Arc<…State>` it reaches into — so its logic
+  is unit-testable against an in-memory fake.
+- The `Capability`/`FixedScopeCapability` **bindings** — which name the concrete
+  store adapter and `build` a capability from the router state — live in the
+  composition layer beside the state (`crate::state`), so `domain/` stays
+  store-agnostic. The router state itself lives at the crate root (`crate::state`),
+  not under `http/`, for the same reason (`domain/` builds capabilities from it).
+- Owner-UI read models the `GET` handlers return live in `domain/` too (beside the
+  capability that produces them), since they're pure data.
 
 ## Worked examples
 
-- **Fixed:** `slices/gatekeeper/gatekeeper-rust/src/http/capabilities/` — the
+- **Fixed:** `slices/gatekeeper/gatekeeper-rust/src/domain/capabilities/` — the
   `/access` admin surface (`GrantsReader`, `GrantsRevoker`, `ConsentReader`,
-  `ConsentDecider`, `TokenRevoker`).
-- **Data-dependent:** `slices/databases/databases-rust/src/http/capabilities.rs` —
+  `ConsentDecider`, `TokenRevoker`), generic over `GatekeeperStore`, bound to the
+  concrete store in `gatekeeper-rust/src/state/capability_bindings.rs`.
+- **Data-dependent:** `slices/databases/databases-rust/src/domain/capabilities.rs` —
   `DatabasesReader` / `DatabasesDeleter`, gated per database by the `read_scope` /
-  `delete_scope` the host declares on each `DatabaseDescriptor`.
+  `delete_scope` the host declares on each `DatabaseDescriptor`, operating through
+  the `DatabaseFiles` port (stubbed with an in-memory fake in the unit tests).
 - **The authN-pair contract:**
   `gatekeeper-rust/tests/integration.rs::bearer_gate_inserts_scope_claims_a_downstream_capability_reads`
   drives the real bearer gate into the real databases capability.

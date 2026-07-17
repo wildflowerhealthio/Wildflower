@@ -4,7 +4,7 @@
 //! `CallerSession` when it needs the caller's own identity — logout's
 //! self-revoke (the caller's `jti`/`exp`) — instead of re-verifying. Handlers
 //! that need the caller's *scopes* go through a
-//! [`Scoped<…>`](crate::http::capabilities::Scoped) capability instead, which
+//! `Scoped<…>` capability instead, which
 //! reads the same extension.
 
 use std::sync::Arc;

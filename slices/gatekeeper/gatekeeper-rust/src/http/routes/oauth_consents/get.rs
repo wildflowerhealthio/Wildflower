@@ -5,10 +5,10 @@ use axum::routing::{get, MethodRouter};
 use axum::Json;
 use serde::Serialize;
 
+use crate::domain::capabilities::{OAuthConsentView, Scoped};
 use crate::domain::gatekeeper_error::GatekeeperError;
-use crate::http::capabilities::{ConsentReader, Scoped};
 use crate::http::state::GatekeeperState;
-use crate::http::views::OAuthConsentView;
+use crate::state::ConsentReaderCap;
 
 /// Body returned to the Owner UI when it loads an authorization-code consent
 /// prompt — describes the client, scopes, and any pre-approved subset. Local to
@@ -36,7 +36,7 @@ pub(super) fn route() -> MethodRouter<Arc<GatekeeperState>> {
 }
 
 async fn handle_get_oauth_consent(
-    consents: Scoped<ConsentReader>,
+    consents: Scoped<ConsentReaderCap>,
     Path(id): Path<String>,
 ) -> Result<Json<OAuthConsent>, GatekeeperError> {
     let OAuthConsentView {

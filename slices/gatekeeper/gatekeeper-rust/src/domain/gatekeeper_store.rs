@@ -8,7 +8,7 @@
 //!   semantic errors, raising only the opaque
 //!   [`Infrastructure`](GatekeeperError::Infrastructure) failure. The semantic
 //!   outcomes (the various `*NotFound`) are decided one layer up, in
-//!   [`crate::domain::actions`].
+//!   `domain::capabilities`.
 //! - [`GatekeeperStore`] is the **transaction seam**: it hands the domain a
 //!   [`GatekeeperTx`] scoped to one connection, either in autocommit
 //!   ([`with_connection`](GatekeeperStore::with_connection)) or wrapped in a
@@ -16,7 +16,7 @@
 //!   [`immediate_transaction`](GatekeeperStore::immediate_transaction). A
 //!   multi-statement operation that must be atomic (a grant upsert's
 //!   read-merge-write, a token rotation's consume-then-decide, a revoke's
-//!   delete-both-then-expire) is composed in [`crate::domain::actions`] from
+//!   delete-both-then-expire) is composed in `domain::capabilities` from
 //!   `GatekeeperTx` primitives inside one of these transactions — so the logic
 //!   lives in the pure domain, unit-tested against the in-memory
 //!   `FakeGatekeeperStore`, and the `SQLite` adapter carries only the primitives
@@ -29,7 +29,7 @@
 //!
 //! The `SQLite` adapter lives in [`crate::db`] as `SqliteGatekeeperStore` (its
 //! `SqliteGatekeeperTx` implements [`GatekeeperTx`]); the in-memory
-//! `FakeGatekeeperStore` in [`crate::domain::actions`] substitutes for it in the
+//! `FakeGatekeeperStore` in `domain::capabilities` substitutes for it in the
 //! semantic-mapping unit tests. Mirrors `collector-rust`'s `RemotesStore` and
 //! `tunnel-rust`'s `TunnelStore`, scaled up to the gatekeeper's six persistence
 //! concerns — plus the transaction seam neither of those simpler CRUD stores
@@ -260,7 +260,7 @@ pub trait GatekeeperTx {
 
     /// Persist a new refresh-token family **row only** — a single-table insert.
     /// Pairing it with its first token (so a family never persists tokenless) is
-    /// the [`insert_refresh_token_family`](crate::domain::actions::insert_refresh_token_family)
+    /// the [`insert_refresh_token_family`](crate::domain::refresh_token::insert_refresh_token_family)
     /// action's job, sequencing this then [`Self::insert_refresh_token`].
     ///
     /// # Errors
@@ -298,7 +298,7 @@ pub trait GatekeeperTx {
     /// a refresh-token consume. The `consumed_at IS NULL` guard makes a replay a
     /// `false`, and pairing this with [`Self::refresh_token_exists`] inside one
     /// transaction is how
-    /// [`rotate_refresh_token`](crate::domain::actions::rotate_refresh_token)
+    /// [`rotate_refresh_token`](crate::domain::refresh_token::rotate_refresh_token)
     /// resolves the three-state consume without a dedicated store method.
     ///
     /// # Errors
@@ -418,7 +418,7 @@ pub trait GatekeeperTx {
     /// insert). The caller hands the concrete grant — which table a write lands
     /// in is decided in the domain, not by the store re-inspecting a polymorphic
     /// value. The scope-union re-approval path is
-    /// [`upsert_authorization_code_grant`](crate::domain::actions::upsert_authorization_code_grant),
+    /// `upsert_authorization_code_grant`,
     /// which reads then chooses this or [`Self::update_authorization_code_grant`].
     ///
     /// # Errors
@@ -482,7 +482,7 @@ pub trait GatekeeperTx {
 /// atomic operation inside [`transaction`](Self::transaction) /
 /// [`immediate_transaction`](Self::immediate_transaction). This is what let the
 /// seven former compound store methods (grant upserts, the three-state consume,
-/// the delete-both-then-expire revoke) move into [`crate::domain::actions`] as
+/// the delete-both-then-expire revoke) move into `domain::capabilities` as
 /// pure, fake-tested scripts: the store no longer owns any multi-statement
 /// business logic, only the primitives and the three ways to scope them to a
 /// connection.

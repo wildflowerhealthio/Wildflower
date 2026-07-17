@@ -6,14 +6,12 @@
 //! handlers that serve traffic also produce the committed OpenAPI snapshot
 //! (`openapi/databases.openapi.json`) that the TS spec-drift test reads.
 
-mod capabilities;
 mod errors;
 mod routes;
-mod state;
-
-pub use state::DatabasesState;
 
 use std::sync::Arc;
+
+use crate::domain::DatabasesState;
 
 use axum::Router;
 use utoipa::OpenApi;

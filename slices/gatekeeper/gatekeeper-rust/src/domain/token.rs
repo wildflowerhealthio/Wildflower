@@ -172,7 +172,7 @@ pub struct VerifiedClaims {
 }
 
 /// Read the caller's authority from the verified `scope` claim so the shared
-/// [`Scoped`](crate::http::capabilities::Scoped) extractor can coverage-check
+/// `Scoped` extractor can coverage-check
 /// it. Delegates to the one shared claim-string → [`Grant`](scopes_rust::Grant)
 /// parse, so this gate and a downstream slice's `ScopeClaims` gate can't
 /// disagree on how a claim becomes authority; a missing `scope` claim yields an

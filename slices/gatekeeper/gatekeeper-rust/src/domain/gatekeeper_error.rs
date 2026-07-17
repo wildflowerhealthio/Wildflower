@@ -5,7 +5,7 @@
 //! here knows about HTTP, and the store ([`crate::db`]) produces
 //! [`Infrastructure`](GatekeeperError::Infrastructure) without leaking its
 //! database error types up to the routes. The semantic `*NotFound` outcomes are
-//! decided one layer up, in [`crate::domain::actions`], so both the `SQLite`
+//! decided one layer up, in `domain::capabilities`, so both the `SQLite`
 //! adapter and the in-memory test fake speak only the primitive port contract.
 
 /// The ways a gatekeeper domain operation can fail. The `*NotFound` variants

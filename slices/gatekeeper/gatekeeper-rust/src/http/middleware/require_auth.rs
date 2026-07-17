@@ -6,8 +6,8 @@ use axum::http::{header, HeaderMap};
 use axum::middleware::Next;
 use axum::response::Response;
 
-use crate::domain::actions;
 use crate::domain::token::{verify_jwt, VerifiedClaims, VerifyError, VerifyOptions};
+use crate::domain::GatekeeperStore;
 use crate::http::errors;
 use crate::http::served_base_url_for;
 use crate::http::state::GatekeeperState;
@@ -17,7 +17,7 @@ use scopes_rust::Scope;
 /// The `/access` authN gate: verify the request carries a **valid, non-revoked**
 /// bearer (or `wf_auth` cookie) token and stash the resulting [`VerifiedClaims`]
 /// in the request's extensions for the scope-gated capability extractors
-/// ([`crate::http::capabilities`]) to read — a missing/invalid token is a `401`.
+/// (`domain::capabilities`) to read — a missing/invalid token is a `401`.
 ///
 /// This replaces the old blanket owner gate: authorization is no longer
 /// all-or-nothing here. This layer only proves *who* the caller is (authN);
@@ -180,7 +180,10 @@ pub fn verify_auth_token_claims(
     origin: &str,
     token: &str,
 ) -> Result<VerifiedClaims, VerifyError> {
-    let keys = actions::all_signing_keys(&state.store).map_err(VerifyError::KeyStoreUnavailable)?;
+    let keys = state
+        .store
+        .all_signing_keys()
+        .map_err(VerifyError::KeyStoreUnavailable)?;
     let accepted = vec![
         format!("{origin}/fhir-r4"),
         origin.to_string(),

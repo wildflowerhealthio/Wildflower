@@ -76,7 +76,7 @@ pub(crate) fn unauthorized() -> Response {
 
 /// A `403 Forbidden` carrying the rendered scopes the caller lacks. Two callers
 /// share it: the scope-gated capability extractors
-/// ([`crate::http::capabilities`]) reject with it when a token doesn't cover a
+/// (`domain::capabilities`) reject with it when a token doesn't cover a
 /// capability's required scope, and the consent approver check uses it when an
 /// approver tries to delegate scopes beyond their own grant. This is the
 /// authorization (not authentication) failure path the resource-scope epic

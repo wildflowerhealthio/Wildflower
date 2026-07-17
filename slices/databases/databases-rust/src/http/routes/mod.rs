@@ -12,7 +12,7 @@ use std::sync::Arc;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
-use crate::http::state::DatabasesState;
+use crate::domain::DatabasesState;
 
 /// The whole databases surface as an `OpenApiRouter` — the spec-bearing inner of
 /// [`super::router`]. The host wraps the built router with its authN gate;
@@ -43,7 +43,7 @@ mod tests {
 
     use super::*;
     use crate::config::DatabaseDescriptor;
-    use crate::http::state::DatabasesState;
+    use crate::domain::DatabasesState;
 
     /// The served router (OpenAPI spec discarded) for exercising the handlers
     /// via `oneshot`.
@@ -91,7 +91,10 @@ mod tests {
     }
 
     fn state_with(dir: &Path) -> Arc<DatabasesState> {
-        Arc::new(DatabasesState::new(dir.to_path_buf(), descriptors()))
+        Arc::new(DatabasesState::with_files(
+            descriptors(),
+            crate::fs::filesystem_database_files(dir.to_path_buf()),
+        ))
     }
 
     async fn send(state: &Arc<DatabasesState>, req: Request<Body>) -> (StatusCode, Vec<u8>) {

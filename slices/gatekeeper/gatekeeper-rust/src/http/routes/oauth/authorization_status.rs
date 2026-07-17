@@ -9,10 +9,10 @@ use utoipa::ToSchema;
 
 use super::internal::OAuthErrorResponse;
 use super::openapi::AuthorizationRequestNotFound;
-use crate::domain::actions;
 use crate::domain::authorization_request::RequestStatus;
 use crate::domain::client_redirect::{build_client_error_redirect_url, build_client_redirect_url};
 use crate::domain::oauth_error_code::OAuthErrorCode;
+use crate::domain::GatekeeperStore;
 use crate::http::state::GatekeeperState;
 use crate::http::wire_representations::OAuthError;
 
@@ -67,7 +67,14 @@ pub(super) async fn handle_authorization_status_request(
     State(state): State<Arc<GatekeeperState>>,
     Path(id): Path<String>,
 ) -> axum::response::Result<AuthorizationStatus> {
-    let request = actions::authorization_request_for_status(&state.store, &id)?;
+    let request = state
+        .store
+        .authorization_request_by_id(&id)?
+        .ok_or_else(|| {
+            crate::domain::gatekeeper_error::GatekeeperError::AuthorizationRequestNotFound {
+                id: id.clone(),
+            }
+        })?;
     // Nothing actively transitions code-flow requests from Pending to Expired,
     // so a Pending request past its TTL must be reported as expired here rather
     // than left polling forever.
@@ -105,7 +112,9 @@ pub(super) async fn handle_authorization_status_request(
                 )
                 .into());
             };
-            let code = actions::authorization_code_by_request_id(&state.store, &id)?
+            let code = state
+                .store
+                .authorization_code_by_request_id(&id)?
                 .ok_or_else(|| OAuthErrorResponse::server_error("Authorization code missing"))?;
             AuthorizationStatus::Approved {
                 redirect: build_client_redirect_url(&redirect_uri, &code.code, &client_state),

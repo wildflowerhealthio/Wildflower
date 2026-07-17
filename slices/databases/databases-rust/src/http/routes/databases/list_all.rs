@@ -2,9 +2,8 @@
 
 use axum::Json;
 
-use crate::domain::DatabaseError;
-use crate::http::capabilities::{DatabasesReader, Scoped};
-use crate::metadata::DatabaseMetadata;
+use crate::domain::capabilities::{DatabasesReader, Scoped};
+use crate::domain::{DatabaseError, DatabaseMetadata};
 
 /// `GET /databases` — list every catalogued database with its on-disk metadata
 /// (existence, size, table count, last-modified). Authenticated-only: listing

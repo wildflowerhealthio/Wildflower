@@ -21,6 +21,11 @@ pub mod http;
 // apps-rust.
 pub(crate) mod ports;
 pub(crate) mod seeding;
+// The shared runtime state + capability bindings. At the crate root (not under
+// `http`) so the `domain/` capabilities can be built from it without `domain/`
+// depending on `crate::http`; the struct is axum-free (the one axum-touching seam
+// impl lives in `http::state`).
+pub(crate) mod state;
 
 use std::sync::Arc;
 
@@ -54,8 +59,8 @@ pub use cookies::{owner_session_cookies, rescope_owner_session_set_cookies};
 /// couple *enforced* (the scope-gated capability extractors) with *grantable*
 /// (the vocabulary the consent surfaces will offer). Re-exported for the host
 /// and the resource-authz epic's consent UI; nothing consumes it yet — its
-/// tests pin the set until then. See [`http::capabilities`].
-pub use http::capabilities::grantable_admin_scopes;
+/// tests pin the set until then. See [`domain::capabilities`].
+pub use domain::capabilities::grantable_admin_scopes;
 pub use http::{
     ensure_bearer_header, is_pre_auth_public_path, layer_router_with_gatekeeper_auth_gating,
     layer_router_with_loopback_peer_gating, openapi_spec, verify_owner_bearer, GatekeeperState,

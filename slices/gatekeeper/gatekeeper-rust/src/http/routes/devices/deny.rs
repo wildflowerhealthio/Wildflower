@@ -4,10 +4,11 @@ use axum::extract::Path;
 use axum::routing::{post, MethodRouter};
 use axum::Json;
 
+use crate::domain::capabilities::Scoped;
 use crate::domain::gatekeeper_error::GatekeeperError;
-use crate::http::capabilities::{ConsentDecider, Scoped};
 use crate::http::state::GatekeeperState;
 use crate::http::wire_representations::ConsentResult;
+use crate::state::ConsentDeciderCap;
 
 /// `POST /devices/{userCode}/deny` — the Owner declines a device-code consent
 /// prompt (scope `wildflower/AuthorizationRequest.u`).
@@ -16,7 +17,7 @@ pub(super) fn route() -> MethodRouter<Arc<GatekeeperState>> {
 }
 
 async fn handle_deny_device_consent(
-    consents: Scoped<ConsentDecider>,
+    consents: Scoped<ConsentDeciderCap>,
     Path(user_code): Path<String>,
 ) -> Result<Json<ConsentResult>, GatekeeperError> {
     consents.deny_device(&user_code)?;
