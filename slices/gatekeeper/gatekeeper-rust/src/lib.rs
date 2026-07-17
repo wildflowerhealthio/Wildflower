@@ -50,11 +50,12 @@ pub use persistence_rust::DieselPool;
 // (`gatekeeper_rust::owner_session_cookies`) after the lift out of `http`, so
 // the desktop host's call sites don't move.
 pub use cookies::{owner_session_cookies, rescope_owner_session_set_cookies};
-/// The admin scopes the `/access` surface enforces — the registry that couples
-/// *enforced* (the scope-gated extractors) with *grantable* (the vocabulary the
-/// consent surfaces offer). Re-exported for the host and the resource-authz
-/// epic's consent UI to read; see [`http::scoped`].
-pub use http::scoped::facades::grantable_admin_scopes;
+/// The admin scopes the `/access` surface enforces — the registry meant to
+/// couple *enforced* (the scope-gated capability extractors) with *grantable*
+/// (the vocabulary the consent surfaces will offer). Re-exported for the host
+/// and the resource-authz epic's consent UI; nothing consumes it yet — its
+/// tests pin the set until then. See [`http::capabilities`].
+pub use http::capabilities::grantable_admin_scopes;
 pub use http::{
     ensure_bearer_header, is_pre_auth_public_path, layer_router_with_gatekeeper_auth_gating,
     layer_router_with_loopback_peer_gating, openapi_spec, verify_owner_bearer, GatekeeperState,
@@ -185,7 +186,8 @@ pub struct Gatekeeper {
 ///    drives the popup (the row survived in SQLite, the in-memory
 ///    `watch` value didn't);
 ///  - returns a `Router` whose routes are at `/.well-known/jwks.json`,
-///    `/oauth/*`, and `/access/*` (Owner-only via bearer JWT) — the
+///    `/oauth/*`, and `/access/*` (authenticated bearer JWT + per-resource
+///    scope gates via the `Scoped<…>` extractors) — the
 ///    slice owns its mount paths so the caller just `.merge()`s;
 ///  - returns the `Arc<GatekeeperState>` the caller passes to
 ///    [`layer_router_with_gatekeeper_auth_gating`] to wrap emr-rust.

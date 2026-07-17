@@ -6,8 +6,7 @@ use axum::routing::{delete, MethodRouter};
 use chrono::Utc;
 
 use crate::domain::gatekeeper_error::GatekeeperError;
-use crate::http::scoped::facades::GrantsRevoker;
-use crate::http::scoped::Scoped;
+use crate::http::capabilities::{GrantsRevoker, Scoped};
 use crate::http::state::GatekeeperState;
 
 /// `DELETE /grants/{id}` — revoke a grant, expire the refresh-token families

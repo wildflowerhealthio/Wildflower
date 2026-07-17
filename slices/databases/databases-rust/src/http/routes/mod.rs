@@ -15,8 +15,9 @@ use utoipa_axum::routes;
 use crate::http::state::DatabasesState;
 
 /// The whole databases surface as an `OpenApiRouter` — the spec-bearing inner of
-/// [`super::router`]. Every route is Owner-only; the host wraps the built router
-/// with its auth gate.
+/// [`super::router`]. The host wraps the built router with its authN gate;
+/// download/delete additionally require the target database's declared
+/// `read_scope`/`delete_scope` (see [`crate::http::capabilities`]).
 pub(crate) fn openapi_router() -> OpenApiRouter<Arc<DatabasesState>> {
     OpenApiRouter::new()
         .routes(routes!(databases::list_all::handle_list_databases))
@@ -37,8 +38,8 @@ mod tests {
     use rusqlite::Connection;
     use tower::ServiceExt;
 
+    use scope_capabilities_rust::ScopeClaims;
     use scopes_rust::{Permission, Scope};
-    use shared_structures_rust::scope_gating::ScopeClaims;
 
     use super::*;
     use crate::config::DatabaseDescriptor;

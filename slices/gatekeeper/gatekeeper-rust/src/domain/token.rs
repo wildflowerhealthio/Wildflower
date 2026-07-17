@@ -172,12 +172,14 @@ pub struct VerifiedClaims {
 }
 
 /// Read the caller's authority from the verified `scope` claim so the shared
-/// [`Scoped`](crate::http::scoped::Scoped) extractor (and the `CallerSession`
-/// approver clamp) can coverage-check it. A missing `scope` claim yields an empty
-/// grant (covers nothing) — fail-closed.
-impl shared_structures_rust::scope_gating::GrantedScopes for VerifiedClaims {
+/// [`Scoped`](crate::http::capabilities::Scoped) extractor can coverage-check
+/// it. Delegates to the one shared claim-string → [`Grant`](scopes_rust::Grant)
+/// parse, so this gate and a downstream slice's `ScopeClaims` gate can't
+/// disagree on how a claim becomes authority; a missing `scope` claim yields an
+/// empty grant (covers nothing) — fail-closed.
+impl scope_capabilities_rust::GrantedScopes for VerifiedClaims {
     fn granted(&self) -> scopes_rust::Grant {
-        scopes_rust::Grant::parse(self.scope.as_deref().unwrap_or("").split_whitespace())
+        scope_capabilities_rust::grant_from_scope_claim(self.scope.as_deref())
     }
 }
 

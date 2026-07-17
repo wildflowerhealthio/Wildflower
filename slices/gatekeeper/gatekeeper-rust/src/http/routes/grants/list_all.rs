@@ -5,8 +5,7 @@ use axum::routing::{get, MethodRouter};
 use axum::Json;
 
 use crate::domain::gatekeeper_error::GatekeeperError;
-use crate::http::scoped::facades::GrantsReader;
-use crate::http::scoped::Scoped;
+use crate::http::capabilities::{GrantsReader, Scoped};
 use crate::http::state::GatekeeperState;
 
 /// `GET /grants` — list every standing client grant for the Owner UI. Acquired

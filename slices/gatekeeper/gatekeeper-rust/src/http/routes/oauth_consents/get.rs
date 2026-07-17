@@ -6,9 +6,9 @@ use axum::Json;
 use serde::Serialize;
 
 use crate::domain::gatekeeper_error::GatekeeperError;
-use crate::http::scoped::facades::{ConsentReader, OAuthConsentView};
-use crate::http::scoped::Scoped;
+use crate::http::capabilities::{ConsentReader, Scoped};
 use crate::http::state::GatekeeperState;
+use crate::http::views::OAuthConsentView;
 
 /// Body returned to the Owner UI when it loads an authorization-code consent
 /// prompt — describes the client, scopes, and any pre-approved subset. Local to

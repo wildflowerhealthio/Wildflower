@@ -33,13 +33,6 @@ pub fn origin_string(base_url: &url::Url) -> String {
 #[cfg(feature = "http-errors")]
 pub mod http_errors;
 
-/// The generic scope-gated service extractors (`Scoped<F>`, `GatedService`,
-/// `ScopeClaims`, the shared `insufficient_scope` 403) — the reusable core of the
-/// default-safe authorization pattern every HTTP slice can copy. Behind the
-/// `scope-gating` feature so non-HTTP crates stay free of `axum` / `scopes-rust`.
-#[cfg(feature = "scope-gating")]
-pub mod scope_gating;
-
 #[cfg(feature = "openapi-snapshot")]
 pub mod openapi_snapshot;
 

@@ -1,5 +1,5 @@
 //! `POST /access/revocations` — the token-revocation control surface. Acquired
-//! through the [`TokenRevoker`](crate::http::scoped::facades::TokenRevoker)
+//! through the [`TokenRevoker`](crate::http::capabilities::TokenRevoker)
 //! facade (scope `wildflower/Token.d`): a caller must cover the `Token` delete
 //! scope — which an owner's `wildflower/*.cruds` does — to revoke, else a `403`.
 //!
@@ -31,8 +31,7 @@ use serde::Deserialize;
 use serde_json::json;
 
 use crate::domain::gatekeeper_error::GatekeeperError;
-use crate::http::scoped::facades::TokenRevoker;
-use crate::http::scoped::Scoped;
+use crate::http::capabilities::{Scoped, TokenRevoker};
 use crate::http::state::GatekeeperState;
 
 pub fn router() -> Router<Arc<GatekeeperState>> {

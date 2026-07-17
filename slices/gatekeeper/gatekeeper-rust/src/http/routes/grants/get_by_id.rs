@@ -6,8 +6,7 @@ use axum::routing::{get, MethodRouter};
 use axum::Json;
 
 use crate::domain::gatekeeper_error::GatekeeperError;
-use crate::http::scoped::facades::GrantsReader;
-use crate::http::scoped::Scoped;
+use crate::http::capabilities::{GrantsReader, Scoped};
 use crate::http::state::GatekeeperState;
 
 /// `GET /grants/{id}` — fetch a single grant by id (scope `wildflower/Grant.r`).

@@ -36,9 +36,11 @@
 //!    [`purge_pending_deletions`] at startup (before opening any connection) to
 //!    remove it. The settings UI tells the Owner to restart to finish.
 //!
-//! The router carries no middleware. The host wraps it with its own auth gate
-//! (`gatekeeper_rust::layer_router_with_gatekeeper_auth_gating`) so the whole
-//! surface is Owner-gated, mirroring the apps admin surface.
+//! The router carries no middleware of its own. The host wraps it with the
+//! gatekeeper bearer gate (`gatekeeper_rust::layer_router_with_gatekeeper_auth_gating`)
+//! for authN; authZ is per-database: download/delete require the descriptor's
+//! declared `read_scope`/`delete_scope` (see [`http::capabilities`]), while the
+//! metadata list is authenticated-only.
 
 pub mod config;
 pub mod domain;
@@ -60,7 +62,8 @@ pub use http::{openapi_spec, DatabasesState};
 /// resolves each catalogued database beneath it on demand.
 ///
 /// The returned router carries no middleware — the consumer wraps it with its
-/// own auth gate (the Tauri host applies the gatekeeper Owner check).
+/// own authN gate (the Tauri host applies the gatekeeper bearer gate); the
+/// per-database scope checks live inside the router's facades.
 pub fn setup_databases(config: &DatabasesConfig) -> Router {
     let state = Arc::new(DatabasesState::new(
         config.data_dir.clone(),

@@ -6,9 +6,9 @@ use axum::Json;
 use serde::Serialize;
 
 use crate::domain::gatekeeper_error::GatekeeperError;
-use crate::http::scoped::facades::{ConsentReader, DeviceConsentView};
-use crate::http::scoped::Scoped;
+use crate::http::capabilities::{ConsentReader, Scoped};
 use crate::http::state::GatekeeperState;
+use crate::http::views::DeviceConsentView;
 
 /// Body returned to the Owner UI when it loads a pending device-code consent
 /// prompt — describes the requesting client, the device's chosen name, its

@@ -31,12 +31,6 @@ health-check = ["dep:axum", "dep:async-trait"]
 # don't serve HTTP don't pull `axum` / `tracing`; the `-rust` slices that own a
 # handler surface enable it.
 http-errors = ["dep:axum", "dep:tracing"]
-# Opt-in: the generic scope-gated service extractors (`Scoped<F>`, `GatedService`,
-# `ScopeClaims`, the shared 403 `insufficient_scope`) — the reusable core of the
-# default-safe authorization pattern every HTTP slice can copy. Pulls `axum` (the
-# extractor) and `scopes-rust` (the scope grammar); reuses the `http-errors`
-# `InternalError` for its fail-closed 500, so it turns that feature on too.
-scope-gating = ["dep:axum", "dep:scopes-rust", "http-errors"]
 # Opt-in: forwarding-header provenance helpers (`request_provenance`,
 # `served_base_url_for`) — the single source of truth for the `Forwarded` header
 # (RFC 7239) the trusted front sets on relayed requests. Gated so non-HTTP
@@ -78,9 +72,6 @@ async-trait = { version = "0.1", optional = true }
 # Only for the `health-check` `/health` router.
 axum = { workspace = true, optional = true }
 tracing = { version = "0.1", optional = true }
-# Only for the `scope-gating` feature: the scope grammar (`Scope`, `Grant`,
-# `render_scopes`) the extractors check against. Tiny, pure value library.
-scopes-rust = { path = "../../scopes/scopes-rust", optional = true }
 
 [dev-dependencies]
 # `bridge::tests` decodes a JSON wire payload to verify the envelope

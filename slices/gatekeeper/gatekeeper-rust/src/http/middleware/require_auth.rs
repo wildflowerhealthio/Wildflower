@@ -16,8 +16,8 @@ use scopes_rust::Scope;
 
 /// The `/access` authN gate: verify the request carries a **valid, non-revoked**
 /// bearer (or `wf_auth` cookie) token and stash the resulting [`VerifiedClaims`]
-/// in the request's extensions for the scope-gated service extractors
-/// ([`crate::http::scoped`]) to read — a missing/invalid token is a `401`.
+/// in the request's extensions for the scope-gated capability extractors
+/// ([`crate::http::capabilities`]) to read — a missing/invalid token is a `401`.
 ///
 /// This replaces the old blanket owner gate: authorization is no longer
 /// all-or-nothing here. This layer only proves *who* the caller is (authN);
@@ -26,34 +26,67 @@ use scopes_rust::Scope;
 /// with the missing scopes on failure. An owner token (covering
 /// [`WILDFLOWER_WIDEST_SCOPES`](crate::WILDFLOWER_WIDEST_SCOPES)) still covers
 /// every per-resource scope, so it passes every gate exactly as before.
+///
+/// This is one of the **pair** of claims-inserting authN gates (see
+/// `docs/Authorization/Scope-Gated Endpoints How-To.md`, "Wiring the claims"):
+/// this one guards gatekeeper's own `/access` router and inserts the domain
+/// [`VerifiedClaims`]; its sibling
+/// [`require_valid_bearer_token`](super::require_valid_bearer_token::require_valid_bearer_token)
+/// wraps the host's downstream slice routers and inserts the framework-neutral
+/// `ScopeClaims`. Both run the same [`verify_request_claims`] pipeline.
 pub async fn require_valid_session(
     State(state): State<Arc<GatekeeperState>>,
     headers: HeaderMap,
     mut req: Request<Body>,
     next: Next,
 ) -> Response {
-    let Some((token, _source)) = try_access_token_from_request(&headers) else {
-        return errors::unauthorized();
-    };
-    // Verify against the request's served origin (loopback for a direct hit,
-    // the forwarded public origin via the tunnel) so the token's `iss`/`aud`
-    // match the surface it was minted for. See `docs/Origins/Explanation.md`.
-    let Some(base_url) = served_base_url_for(&headers, &state.loopback_base_url) else {
-        return errors::internal_error(
-            "served base url",
-            "forwarded header did not indicate a valid base URL",
-        );
-    };
-    let origin = shared_structures_rust::origin_string(&base_url);
-    let claims = match verify_auth_token_claims(&state, &origin, token) {
-        Ok(claims) => claims,
-        Err(e) => return errors::verify_error_response("require_valid_session failed", e),
+    let claims = match verify_request_claims(&state, &headers, "require_valid_session failed") {
+        Ok((claims, _source)) => claims,
+        Err(response) => return *response,
     };
     // Hand the verified claims (incl. the `scope` claim) to the handler layer.
     // The scope-gated extractors read them from here rather than re-verifying —
     // authN runs exactly once, at this layer.
     req.extensions_mut().insert(claims);
     next.run(req).await
+}
+
+/// The shared authN pipeline both claims-inserting gates run: extract the access
+/// token (bearer header or `wf_auth` cookie), resolve the request's served
+/// origin, verify the token against it (signature, issuer/audience, revocation),
+/// and map each failure to its response — a missing token is a `401`, an
+/// unresolvable origin a `500`, a verify failure whatever
+/// [`errors::verify_error_response`] maps it to. Extracted so
+/// [`require_valid_session`] and
+/// [`require_valid_bearer_token`](super::require_valid_bearer_token::require_valid_bearer_token)
+/// cannot drift in how a token becomes claims; they differ only in the extension
+/// type they insert (and the bearer gate's exempt paths + cookie normalization).
+///
+/// Returns the claims plus the raw token and its [`AccessTokenSource`] (the
+/// bearer gate re-presents a cookie-sourced token as a bearer header
+/// downstream). The error is the prepared failure `Response`, boxed so the
+/// happy-path `Ok` stays small (the `Response` is large — `clippy::result_large_err`).
+pub(crate) fn verify_request_claims<'h>(
+    state: &GatekeeperState,
+    headers: &'h HeaderMap,
+    log_context: &'static str,
+) -> Result<(VerifiedClaims, (&'h str, AccessTokenSource)), Box<Response>> {
+    let Some((token, source)) = try_access_token_from_request(headers) else {
+        return Err(Box::new(errors::unauthorized()));
+    };
+    // Verify against the request's served origin (loopback for a direct hit,
+    // the forwarded public origin via the tunnel) so the token's `iss`/`aud`
+    // match the surface it was minted for. See `docs/Origins/Explanation.md`.
+    let Some(base_url) = served_base_url_for(headers, &state.loopback_base_url) else {
+        return Err(Box::new(errors::internal_error(
+            "served base url",
+            "forwarded header did not indicate a valid base URL",
+        )));
+    };
+    let origin = shared_structures_rust::origin_string(&base_url);
+    let claims = verify_auth_token_claims(state, &origin, token)
+        .map_err(|e| Box::new(errors::verify_error_response(log_context, e)))?;
+    Ok((claims, (token, source)))
 }
 
 /// Where a verified access token was extracted from. The FHIR bearer gate
@@ -172,7 +205,7 @@ pub fn verify_auth_token_claims(
     // Revocation is the last gate: the token is cryptographically valid, but a
     // logout / owner revoke / grant revoke may have denylisted its `jti` or
     // bumped the subject's epoch since it was minted. This is the single
-    // chokepoint both auth gates (`require_owner_auth` and the FHIR
+    // chokepoint both auth gates (`require_valid_session` and the FHIR
     // `BearerGate`) funnel through, and it holds the full claims — so it runs
     // the *complete* check (per-`jti` denylist **and** per-subject epoch). A
     // store-read failure fails closed (500), never admitting the token.

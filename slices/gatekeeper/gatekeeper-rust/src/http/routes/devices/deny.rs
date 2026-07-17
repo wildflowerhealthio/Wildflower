@@ -5,8 +5,7 @@ use axum::routing::{post, MethodRouter};
 use axum::Json;
 
 use crate::domain::gatekeeper_error::GatekeeperError;
-use crate::http::scoped::facades::ConsentDecider;
-use crate::http::scoped::Scoped;
+use crate::http::capabilities::{ConsentDecider, Scoped};
 use crate::http::state::GatekeeperState;
 use crate::http::wire_representations::ConsentResult;
 

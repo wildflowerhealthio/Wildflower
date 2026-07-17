@@ -1806,6 +1806,7 @@ dependencies = [
  "http",
  "http-body-util",
  "rusqlite",
+ "scope-capabilities-rust",
  "scopes-rust",
  "serde",
  "serde_json",
@@ -2691,6 +2692,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "cookie",
+ "databases-rust",
  "diesel",
  "diesel_migrations",
  "http",
@@ -2703,6 +2705,7 @@ dependencies = [
  "rand 0.10.2",
  "rsa",
  "rusqlite",
+ "scope-capabilities-rust",
  "scopes-rust",
  "serde",
  "serde_json",
@@ -6637,6 +6640,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "scope-capabilities-rust"
+version = "0.0.0"
+dependencies = [
+ "axum",
+ "scopes-rust",
+ "serde",
+ "shared-structures-rust",
+ "utoipa",
+]
+
+[[package]]
 name = "scopeguard"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6991,7 +7005,6 @@ dependencies = [
  "axum",
  "diesel",
  "http-body-util",
- "scopes-rust",
  "serde",
  "serde_json",
  "tokio",

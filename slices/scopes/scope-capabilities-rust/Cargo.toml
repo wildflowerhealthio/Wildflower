@@ -1,0 +1,33 @@
+[package]
+name = "scope-capabilities-rust"
+version = "0.0.0"
+edition.workspace = true
+publish.workspace = true
+
+# The enforcement half of the scope system — the generic scope-gated capability
+# extractors (`Scoped<F>`, `Capability`, `FixedScopeCapability`, `ScopeClaims`,
+# the shared 403 `insufficient_scope`) every HTTP slice copies to gate its
+# endpoints. Lives in the scopes slice, beside the grammar it enforces
+# (`scopes-rust`), as its own crate rather than a feature of `scopes-rust`: the
+# fail-closed 500 reuses shared-structures' `InternalError`, and shared-structures
+# already depends on `scopes-rust`, so folding this into `scopes-rust` would be a
+# dependency cycle. See `docs/Authorization/Scope-Gated Endpoints How-To.md`.
+
+[features]
+# Opt-in: derive `utoipa::ToSchema` on the wire bodies so a slice's documented
+# surface can declare the 403 in its `#[utoipa::path]` responses.
+openapi = ["dep:utoipa"]
+
+[dependencies]
+axum.workspace = true
+serde.workspace = true
+utoipa = { workspace = true, optional = true }
+# The scope grammar (`Scope`, `Grant`, `render_scopes`) the extractors check
+# against. Tiny, pure value library — the other half of this slice.
+scopes-rust = { path = "../scopes-rust" }
+# The shared opaque-500 `InternalError` template for the fail-closed
+# missing-claims path.
+shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = ["http-errors"] }
+
+[lints]
+workspace = true

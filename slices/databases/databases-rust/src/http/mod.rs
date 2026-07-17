@@ -6,9 +6,9 @@
 //! handlers that serve traffic also produce the committed OpenAPI snapshot
 //! (`openapi/databases.openapi.json`) that the TS spec-drift test reads.
 
+mod capabilities;
 mod errors;
 mod routes;
-mod scoped;
 mod state;
 
 pub use state::DatabasesState;

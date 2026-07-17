@@ -473,8 +473,9 @@ async fn run_server(
     // SQLite databases. It owns no store — it works at the file level on the
     // same `app_data_dir` the databases above live in — so the host passes the
     // directory plus the catalogue (the slice has no built-in knowledge of which
-    // databases exist; the user-facing strings live here). Owner-gated like the
-    // rest of the admin API.
+    // databases exist; the user-facing strings live here). Authenticated behind
+    // the gatekeeper bearer gate, then authorized per database (NOT a blanket
+    // owner gate):
     // Each database's export/delete is gated by the scope matching the *kind* of
     // data it holds (host policy — the slice enforces whatever scope we name
     // here): the FHIR clinical database by the SMART FHIR `system/*` grammar, the

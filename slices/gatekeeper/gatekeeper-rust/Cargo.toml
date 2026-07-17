@@ -37,7 +37,12 @@ scopes-rust = { path = "../../scopes/scopes-rust" }
 # them, and apps-rust dispatches launches off the same provenance, so the
 # `Forwarded`-header (RFC 7239) contract lives in one place. `http-errors` pulls
 # the shared opaque-500 `InternalError` the handler/OAuth error enums hold.
-shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = ["served-origin", "http-errors", "scope-gating"] }
+shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = ["served-origin", "http-errors"] }
+# The scope-gated capability extractors (`Scoped<F>`, `Capability`,
+# `FixedScopeCapability`, `ScopeClaims`) — the enforcement half of the scopes
+# slice; gatekeeper's `/access` surface is the pattern's original adopter and
+# its bearer gate inserts the `ScopeClaims` downstream slices gate on.
+scope-capabilities-rust = { path = "../../scopes/scope-capabilities-rust" }
 parking_lot = "0.12"
 # jsonwebtoken 10 split the crypto backend out of the default features: `default`
 # only enables PEM parsing, so a signer backend must be selected explicitly.
@@ -82,6 +87,11 @@ workspace = true
 
 [dev-dependencies]
 persistence-rust = { path = "../../persistence/persistence-rust" }
+# A real downstream slice router, used only by the cross-slice contract test that
+# proves the bearer gate inserts the `ScopeClaims` a `Scoped<…>` capability
+# reads — the producer (this gate) and consumer (databases' capabilities) driven
+# together rather than each mocking the seam.
+databases-rust = { path = "../../databases/databases-rust" }
 # The shared OpenAPI snapshot helper (assert/regenerate the committed spec). Only
 # the snapshot test uses it, so it's an extra dev-only feature on the existing
 # `[dependencies]` entry above (cargo unifies the feature set across both

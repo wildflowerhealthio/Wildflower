@@ -3,7 +3,7 @@
 use axum::Json;
 
 use crate::domain::DatabaseError;
-use crate::http::scoped::{DatabasesReader, Scoped};
+use crate::http::capabilities::{DatabasesReader, Scoped};
 use crate::metadata::DatabaseMetadata;
 
 /// `GET /databases` — list every catalogued database with its on-disk metadata

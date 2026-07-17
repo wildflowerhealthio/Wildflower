@@ -1,16 +1,16 @@
-//! Grant facades — the `wildflower/Grant.*` capabilities behind
+//! Grant capabilities — the `wildflower/Grant.*` capabilities behind
 //! `/access/grants[/{id}]`.
 
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 
-use scopes_rust::{Grant, Permission, Scope, WildflowerResource};
+use scopes_rust::{Permission, Scope, WildflowerResource};
 
 use crate::domain::actions;
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::grant::Grant as GrantRecord;
-use crate::http::scoped::GatedService;
+use crate::http::capabilities::FixedScopeCapability;
 use crate::http::state::GatekeeperState;
 
 /// Read access to standing client grants — `GET /access/grants[/{id}]`.
@@ -18,7 +18,7 @@ pub(crate) struct GrantsReader {
     state: Arc<GatekeeperState>,
 }
 
-impl GatedService for GrantsReader {
+impl FixedScopeCapability for GrantsReader {
     type State = Arc<GatekeeperState>;
     type Claims = crate::domain::token::VerifiedClaims;
 
@@ -29,7 +29,7 @@ impl GatedService for GrantsReader {
         )]
     }
 
-    fn build(state: Arc<GatekeeperState>, _granted: &Grant) -> Self {
+    fn build(state: Arc<GatekeeperState>) -> Self {
         GrantsReader { state }
     }
 }
@@ -53,7 +53,7 @@ pub(crate) struct GrantsRevoker {
     state: Arc<GatekeeperState>,
 }
 
-impl GatedService for GrantsRevoker {
+impl FixedScopeCapability for GrantsRevoker {
     type State = Arc<GatekeeperState>;
     type Claims = crate::domain::token::VerifiedClaims;
 
@@ -64,7 +64,7 @@ impl GatedService for GrantsRevoker {
         )]
     }
 
-    fn build(state: Arc<GatekeeperState>, _granted: &Grant) -> Self {
+    fn build(state: Arc<GatekeeperState>) -> Self {
         GrantsRevoker { state }
     }
 }

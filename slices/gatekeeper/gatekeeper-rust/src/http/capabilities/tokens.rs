@@ -1,14 +1,14 @@
-//! Token facade — the `wildflower/Token.d` capability behind
+//! Token capability — the `wildflower/Token.d` capability behind
 //! `POST /access/revocations`.
 
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 
-use scopes_rust::{Grant, Permission, Scope, WildflowerResource};
+use scopes_rust::{Permission, Scope, WildflowerResource};
 
 use crate::domain::gatekeeper_error::GatekeeperError;
-use crate::http::scoped::GatedService;
+use crate::http::capabilities::FixedScopeCapability;
 use crate::http::state::GatekeeperState;
 
 /// Revoke issued tokens — `POST /access/revocations`. The `Token` resource is
@@ -18,7 +18,7 @@ pub(crate) struct TokenRevoker {
     state: Arc<GatekeeperState>,
 }
 
-impl GatedService for TokenRevoker {
+impl FixedScopeCapability for TokenRevoker {
     type State = Arc<GatekeeperState>;
     type Claims = crate::domain::token::VerifiedClaims;
 
@@ -29,7 +29,7 @@ impl GatedService for TokenRevoker {
         )]
     }
 
-    fn build(state: Arc<GatekeeperState>, _granted: &Grant) -> Self {
+    fn build(state: Arc<GatekeeperState>) -> Self {
         TokenRevoker { state }
     }
 }

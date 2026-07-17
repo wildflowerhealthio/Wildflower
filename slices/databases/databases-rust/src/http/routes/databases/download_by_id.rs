@@ -13,9 +13,11 @@ use futures_core::Stream;
 use tokio::fs::File;
 use tokio_util::io::ReaderStream;
 
+use scope_capabilities_rust::InsufficientScopeBody;
+
 use crate::domain::DatabaseError;
+use crate::http::capabilities::{DatabasesReader, DownloadSnapshot, Scoped};
 use crate::http::errors::DatabaseNotFoundBody;
-use crate::http::scoped::{DatabasesReader, DownloadSnapshot, Scoped};
 
 /// `GET /databases/{id}` — stream the database file as `application/vnd.sqlite3`
 /// (a `VACUUM INTO` snapshot, so it's internally consistent even while the
@@ -44,6 +46,7 @@ use crate::http::scoped::{DatabasesReader, DownloadSnapshot, Scoped};
     ),
     responses(
         (status = 200, description = "The database as a consistent SQLite snapshot", content_type = "application/vnd.sqlite3"),
+        (status = 403, description = "The caller's token doesn't cover this database's declared read scope", body = InsufficientScopeBody),
         (status = 404, description = "No database has this id, or it doesn't exist yet", body = DatabaseNotFoundBody),
     ),
 )]
@@ -56,9 +59,17 @@ pub(crate) async fn handle_download_database(
         temp_path,
     } = reader.download(&id).await?;
 
-    let file = File::open(&temp_path)
-        .await
-        .map_err(|error| DatabaseError::infrastructure("open snapshot", error))?;
+    let file = match File::open(&temp_path).await {
+        Ok(file) => file,
+        Err(error) => {
+            // The snapshot exists but can't be opened: until `TempFileStream`
+            // takes ownership below, nothing else deletes it — unlink it here
+            // (best-effort) so a failing download doesn't strand a full copy of
+            // the database next to the original.
+            let _ = std::fs::remove_file(&temp_path);
+            return Err(DatabaseError::infrastructure("open snapshot", error));
+        }
+    };
     let body = Body::from_stream(TempFileStream::new(file, temp_path));
 
     // The filename is a catalogue id, enforced header-safe (ASCII alphanumeric

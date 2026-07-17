@@ -6,13 +6,10 @@ use axum::http::{header, HeaderMap, HeaderValue};
 use axum::middleware::Next;
 use axum::response::Response;
 
-use crate::http::errors;
-use crate::http::served_base_url_for;
 use crate::http::state::GatekeeperState;
 
 use crate::http::middleware::require_auth::{
-    try_access_token_from_request, try_bearer_token_from_headers, verify_auth_token_claims,
-    AccessTokenSource,
+    try_bearer_token_from_headers, verify_request_claims, AccessTokenSource,
 };
 
 /// State for [`require_valid_bearer_token`]: the gatekeeper [`GatekeeperState`]
@@ -24,6 +21,14 @@ pub struct BearerGate {
     pub exempt: Arc<[String]>,
 }
 
+/// The downstream-slice authN gate — the other half of the claims-inserting
+/// **pair** (see `docs/Authorization/Scope-Gated Endpoints How-To.md`, "Wiring
+/// the claims"): [`require_valid_session`](super::require_auth::require_valid_session)
+/// guards gatekeeper's own `/access` and inserts the domain `VerifiedClaims`;
+/// this gate wraps the host's other slice routers (emr/HFS, databases, …) and
+/// inserts the framework-neutral `ScopeClaims`. Both run the same
+/// [`verify_request_claims`] pipeline, so a token is verified exactly once and
+/// identically wherever it lands.
 pub async fn require_valid_bearer_token(
     State(gate): State<BearerGate>,
     headers: HeaderMap,
@@ -36,28 +41,19 @@ pub async fn require_valid_bearer_token(
     if is_exempt(req.uri().path(), &gate.exempt) {
         return next.run(req).await;
     }
-    let Some((token, source)) = try_access_token_from_request(&headers) else {
-        return errors::unauthorized();
-    };
-    let Some(base_url) = served_base_url_for(&headers, &gate.state.loopback_base_url) else {
-        return errors::internal_error(
-            "served base url",
-            "forwarded header did not indicate a valid base URL",
-        );
-    };
-    let origin = shared_structures_rust::origin_string(&base_url);
-    let claims = match verify_auth_token_claims(&gate.state, &origin, token) {
-        Ok(claims) => claims,
-        Err(e) => return errors::verify_error_response("verify_auth_token_claims failed", e),
-    };
+    let (claims, (token, source)) =
+        match verify_request_claims(&gate.state, &headers, "verify_auth_token_claims failed") {
+            Ok(verified) => verified,
+            Err(response) => return *response,
+        };
     // Hand the caller's scope claim to any downstream slice router that
-    // scope-gates its endpoints via a `Scoped<…>` facade (databases, …). This is
-    // the seam that lets those slices authorize per-resource without depending on
-    // gatekeeper's domain `VerifiedClaims` type — they read the framework-neutral
-    // `ScopeClaims` from `shared-structures-rust`. Harmless for routers that don't
-    // read it (emr/HFS, tunnel, collector today).
+    // scope-gates its endpoints via a `Scoped<…>` capability (databases, …).
+    // This is the seam that lets those slices authorize per-resource without
+    // depending on gatekeeper's domain `VerifiedClaims` type — they read the
+    // framework-neutral `ScopeClaims` from `scope-capabilities-rust`. Harmless
+    // for routers that don't read it (emr/HFS, tunnel, collector today).
     req.extensions_mut()
-        .insert(shared_structures_rust::scope_gating::ScopeClaims::new(
+        .insert(scope_capabilities_rust::ScopeClaims::new(
             claims.scope.clone(),
         ));
     // Normalize a cookie-sourced token into an `Authorization: Bearer` header so

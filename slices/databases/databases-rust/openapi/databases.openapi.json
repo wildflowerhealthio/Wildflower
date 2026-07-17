@@ -55,6 +55,16 @@
               "application/vnd.sqlite3": {}
             }
           },
+          "403": {
+            "description": "The caller's token doesn't cover this database's declared read scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          },
           "404": {
             "description": "No database has this id, or it doesn't exist yet",
             "content": {
@@ -92,6 +102,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/DeletedBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller's token doesn't cover this database's declared delete scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
                 }
               }
             }
@@ -192,6 +212,27 @@
         "properties": {
           "deleted": {
             "type": "boolean"
+          }
+        }
+      },
+      "InsufficientScopeBody": {
+        "type": "object",
+        "description": "Wire shape for a 403 — the caller authenticated, but their token doesn't cover\nthe scope(s) an operation requires. `missingScopes` names the scopes the\ncaller must additionally hold.",
+        "required": [
+          "error",
+          "missingScopes"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Always `\"InsufficientScope\"` — the discriminant a client switches on."
+          },
+          "missingScopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The rendered scopes the caller lacks."
           }
         }
       }

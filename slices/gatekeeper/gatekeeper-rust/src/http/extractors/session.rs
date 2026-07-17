@@ -1,18 +1,17 @@
 //! The authenticated-caller extractor — the [`VerifiedClaims`] the
 //! [`require_valid_session`](crate::http::middleware::require_valid_session)
 //! layer verified and stashed in the request extensions. A handler takes
-//! `CallerSession` when it needs the caller's own identity or scopes — logout's
-//! self-revoke (the caller's `jti`/`exp`) and the consent approver clamp (the
-//! caller's granted scopes) — instead of re-verifying the token.
+//! `CallerSession` when it needs the caller's own identity — logout's
+//! self-revoke (the caller's `jti`/`exp`) — instead of re-verifying. Handlers
+//! that need the caller's *scopes* go through a
+//! [`Scoped<…>`](crate::http::capabilities::Scoped) capability instead, which
+//! reads the same extension.
 
 use std::sync::Arc;
 
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
 use axum::response::Response;
-
-use scopes_rust::Grant;
-use shared_structures_rust::scope_gating::GrantedScopes;
 
 use crate::domain::token::VerifiedClaims;
 use crate::http::errors;
@@ -22,15 +21,6 @@ use crate::http::state::GatekeeperState;
 /// [`require_valid_session`](crate::http::middleware::require_valid_session) ran
 /// and inserted them; a handler reads them here rather than re-verifying.
 pub(crate) struct CallerSession(pub(crate) VerifiedClaims);
-
-impl CallerSession {
-    /// The caller's granted scopes, parsed from their space-separated `scope`
-    /// claim into a coverage-checkable [`Grant`] — the approver's authority used
-    /// by the consent delegation clamp.
-    pub(crate) fn granted_scopes(&self) -> Grant {
-        self.0.granted()
-    }
-}
 
 impl FromRequestParts<Arc<GatekeeperState>> for CallerSession {
     type Rejection = Response;

@@ -1,5 +1,5 @@
-//! Consent facades — the `wildflower/AuthorizationRequest.*` capabilities behind
-//! the `/access/oauth-consents/*` and `/access/devices/*` surfaces.
+//! Consent capabilities — the `wildflower/AuthorizationRequest.*` capabilities
+//! behind the `/access/oauth-consents/*` and `/access/devices/*` surfaces.
 
 use std::sync::Arc;
 
@@ -10,28 +10,11 @@ use scopes_rust::{Grant, Permission, Scope, WildflowerResource};
 use crate::domain::actions::{
     self, ApproveDeviceConsentInput, ApproveOAuthConsentInput, ConsentOutcome,
 };
-use crate::domain::authorization_request::AuthorizationRequest;
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::PendingCodeConsent;
-use crate::http::scoped::GatedService;
+use crate::http::capabilities::{Capability, FixedScopeCapability};
 use crate::http::state::GatekeeperState;
-
-/// A consent prompt loaded for the Owner UI to render — the data a `GET`
-/// authorization-code consent handler needs, with the client's display name
-/// already resolved.
-pub(crate) struct OAuthConsentView {
-    pub(crate) request: AuthorizationRequest,
-    pub(crate) redirect_uri: url::Url,
-    pub(crate) client_name: String,
-}
-
-/// A device-code consent prompt loaded for the Owner UI — adds the client's
-/// full `allowed_scopes` (the expansion envelope the approver may grant up to).
-pub(crate) struct DeviceConsentView {
-    pub(crate) request: AuthorizationRequest,
-    pub(crate) client_name: String,
-    pub(crate) allowed_scopes: Vec<String>,
-}
+use crate::http::views::{DeviceConsentView, OAuthConsentView};
 
 /// Read access to pending consent prompts — the `GET` sides of
 /// `/access/oauth-consents/{id}` and `/access/devices/{userCode}`.
@@ -39,7 +22,7 @@ pub(crate) struct ConsentReader {
     state: Arc<GatekeeperState>,
 }
 
-impl GatedService for ConsentReader {
+impl FixedScopeCapability for ConsentReader {
     type State = Arc<GatekeeperState>;
     type Claims = crate::domain::token::VerifiedClaims;
 
@@ -50,7 +33,7 @@ impl GatedService for ConsentReader {
         )]
     }
 
-    fn build(state: Arc<GatekeeperState>, _granted: &Grant) -> Self {
+    fn build(state: Arc<GatekeeperState>) -> Self {
         ConsentReader { state }
     }
 }
@@ -104,14 +87,21 @@ impl ConsentReader {
 }
 
 /// Decide (approve/deny) pending consent prompts — the `approve`/`deny` sides of
-/// both consent surfaces. Gated by `AuthorizationRequest.u`; the approve paths
-/// additionally clamp the grant to the approver's own scopes inside the domain
-/// action (an approver can't delegate more than they hold).
+/// both consent surfaces. Statically gated by `AuthorizationRequest.u`, and it
+/// additionally holds the caller's own [`Grant`]: the approve paths reject any
+/// delegation beyond the approver's authority inside the domain action (an
+/// approver can't delegate more than they hold), so this is the one gatekeeper
+/// capability that implements [`Capability`] directly — the static gate *and*
+/// the caller's grant both matter.
 pub(crate) struct ConsentDecider {
     state: Arc<GatekeeperState>,
+    /// The approver's own granted scopes — the same claims the extractor
+    /// coverage-checked, kept so the approve paths never re-read or re-parse
+    /// the request extensions.
+    approver: Grant,
 }
 
-impl GatedService for ConsentDecider {
+impl Capability for ConsentDecider {
     type State = Arc<GatekeeperState>;
     type Claims = crate::domain::token::VerifiedClaims;
 
@@ -122,18 +112,21 @@ impl GatedService for ConsentDecider {
         )]
     }
 
-    fn build(state: Arc<GatekeeperState>, _granted: &Grant) -> Self {
-        ConsentDecider { state }
+    fn build(state: Arc<GatekeeperState>, granted: Grant) -> Self {
+        ConsentDecider {
+            state,
+            approver: granted,
+        }
     }
 }
 
 impl ConsentDecider {
-    /// Approve an authorization-code consent, clamped to `approver`'s scopes.
+    /// Approve an authorization-code consent; a resource scope beyond the
+    /// approver's own authority fails the approval with a `403`.
     pub(crate) fn approve_oauth(
         &self,
         id: &str,
         input: ApproveOAuthConsentInput,
-        approver: &Grant,
         generate_code: impl FnOnce() -> String,
         now: DateTime<Utc>,
     ) -> Result<ConsentOutcome, GatekeeperError> {
@@ -142,7 +135,7 @@ impl ConsentDecider {
             &self.state,
             id,
             input,
-            approver,
+            &self.approver,
             generate_code,
             now,
         )
@@ -153,12 +146,12 @@ impl ConsentDecider {
         actions::deny_oauth_consent(&self.state.store, &self.state, id)
     }
 
-    /// Approve a device-code consent, clamped to `approver`'s scopes.
+    /// Approve a device-code consent; a resource scope beyond the approver's
+    /// own authority fails the approval with a `403`.
     pub(crate) fn approve_device(
         &self,
         user_code: &str,
         input: ApproveDeviceConsentInput,
-        approver: &Grant,
         now: DateTime<Utc>,
     ) -> Result<ConsentOutcome, GatekeeperError> {
         actions::approve_device_consent(
@@ -166,7 +159,7 @@ impl ConsentDecider {
             &self.state,
             user_code,
             input,
-            approver,
+            &self.approver,
             now,
         )
     }

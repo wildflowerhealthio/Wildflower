@@ -223,6 +223,81 @@ async fn bearer_gate_exempts_listed_paths_but_gates_the_rest() {
 }
 
 #[tokio::test]
+async fn bearer_gate_inserts_scope_claims_a_downstream_capability_reads() {
+    // Cross-slice contract: the databases router's per-database scope gate only
+    // works because gatekeeper's bearer gate inserts a `ScopeClaims` into the
+    // request extensions. Drive the real producer (the gate) and the real
+    // consumer (databases' `Scoped<DatabasesReader>`) together — if the gate ever
+    // stopped inserting `ScopeClaims`, every gated `/databases` request would 500
+    // instead of 200/403, and only this test would catch it (the slice's own
+    // tests fabricate the extension).
+    use gatekeeper_rust::layer_router_with_gatekeeper_auth_gating;
+
+    let (g, host_owner_token, db) = spin_up();
+
+    // A one-database catalogue gated by `wildflower/*` read/delete, backed by a
+    // real on-disk SQLite file so the metadata read + snapshot have something to
+    // work against.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let db_id = "wildflower.sqlite";
+    {
+        let conn = rusqlite::Connection::open(dir.path().join(db_id)).expect("seed db");
+        conn.execute_batch("CREATE TABLE t (id INTEGER PRIMARY KEY);")
+            .expect("seed table");
+    }
+    let config = databases_rust::DatabasesConfig {
+        data_dir: dir.path().to_path_buf(),
+        databases: vec![databases_rust::DatabaseDescriptor {
+            id: db_id.to_owned(),
+            label: "Wildflower app data".to_owned(),
+            description: "App state.".to_owned(),
+            read_scope: scopes_rust::Scope::wildflower_all(scopes_rust::Permission::READ),
+            delete_scope: scopes_rust::Scope::wildflower_all(scopes_rust::Permission::DELETE),
+        }],
+    };
+    let gated = layer_router_with_gatekeeper_auth_gating(
+        databases_rust::setup_databases(&config),
+        g.state.clone(),
+        &[],
+    );
+
+    let get = |path: String, token: Option<String>| {
+        let gated = gated.clone();
+        async move {
+            let mut builder = Request::get(&path);
+            if let Some(token) = token {
+                builder = builder.header("authorization", format!("Bearer {token}"));
+            }
+            gated
+                .oneshot(loopback_request(builder, Body::empty()))
+                .await
+                .expect("oneshot")
+                .status()
+        }
+    };
+
+    // No token → 401 at the gate, before any capability runs.
+    assert_eq!(
+        get(format!("/databases/{db_id}"), None).await,
+        StatusCode::UNAUTHORIZED,
+    );
+    // Owner token (covers `wildflower/*`) → the capability builds and streams the
+    // snapshot: proof the gate inserted a `ScopeClaims` the extractor could read.
+    assert_eq!(
+        get(format!("/databases/{db_id}"), Some(host_owner_token)).await,
+        StatusCode::OK,
+    );
+    // A valid token that does NOT cover the database's read scope → 403 from the
+    // capability (NOT a 500): the extractor read the inserted claims and found
+    // them insufficient.
+    let under_scoped = mint_scoped_token(&db, &["system/Observation.r"]);
+    assert_eq!(
+        get(format!("/databases/{db_id}"), Some(under_scoped)).await,
+        StatusCode::FORBIDDEN,
+    );
+}
+
+#[tokio::test]
 async fn access_grants_without_auth_returns_401() {
     let (g, _host_owner_token, _db) = spin_up();
     let req = loopback_request(Request::get("/access/grants"), Body::empty());

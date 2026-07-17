@@ -6,12 +6,13 @@
 
 use std::sync::Arc;
 
+pub(crate) mod capabilities;
 mod errors;
 mod extractors;
 mod middleware;
 mod routes;
-pub(crate) mod scoped;
 mod state;
+mod views;
 mod wire_representations;
 
 pub(crate) use extractors::served_origin::ServedOrigin;
@@ -44,8 +45,8 @@ fn documented_router() -> OpenApiRouter<Arc<GatekeeperState>> {
 }
 
 /// Build the gatekeeper's public HTTP surface. Routes live at
-/// `/.well-known/jwks.json`, `/oauth/*`, and `/access/*` (Owner-only via
-/// bearer JWT) — the module owns its mount paths so the caller just
+/// `/.well-known/jwks.json`, `/oauth/*`, and `/access/*` (authenticated
+/// bearer JWT + per-resource scope gates) — the module owns its mount paths so the caller just
 /// `.merge()`s. This router carries **no** loopback-peer gate of its own —
 /// the host applies that defense-in-depth to the whole merged surface via
 /// [`layer_router_with_loopback_peer_gating`]. Mounting `router()` directly
@@ -113,7 +114,7 @@ pub fn layer_router_with_loopback_peer_gating(router: Router) -> Router {
 /// Whether `path` is on the gatekeeper's **pre-auth public surface** — the
 /// discovery + OAuth routes a client reaches before it holds a token
 /// (`/.well-known/*` incl. `jwks.json`, and `/oauth/*`). The `/access/*` admin
-/// surface is Owner-gated and NOT public.
+/// surface is authenticated + scope-gated and NOT public.
 ///
 /// Owned here, beside [`router`] (which mounts these paths), so a consumer that
 /// must exclude the pre-auth surface can't drift from the routes. The desktop

@@ -61,14 +61,13 @@ impl DatabasesState {
         self.data_dir.join(&descriptor.id)
     }
 
-    /// Resolve `id` to the descriptor + path of a database that is both
-    /// catalogued *and* present on disk, or `None`. The single home of the
-    /// "known and exists, else 404" rule the `download` / `delete` handlers
-    /// share.
-    pub(crate) fn existing(&self, id: &str) -> Option<(&DatabaseDescriptor, PathBuf)> {
-        let descriptor = self.descriptor(id)?;
+    /// The on-disk path of an already-resolved descriptor's database, but only
+    /// if the file is present — the "exists, else 404" half of the lookup. Takes
+    /// the descriptor (not the id) so callers that already resolved and
+    /// scope-checked one don't scan the catalogue a second time.
+    pub(crate) fn existing_path(&self, descriptor: &DatabaseDescriptor) -> Option<PathBuf> {
         let path = self.path_for(descriptor);
-        path.exists().then_some((descriptor, path))
+        path.exists().then_some(path)
     }
 }
 
