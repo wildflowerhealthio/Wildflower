@@ -16,13 +16,16 @@
 //! Layered like `apps-rust` / `tunnel-rust`:
 //!
 //!  - [`config`] — the host-supplied [`DatabaseDescriptor`] catalogue.
-//!  - [`domain`] — core types: [`domain::DatabaseError`], the semantic failure
-//!    vocabulary the HTTP layer renders (this slice owns no store, so there is
-//!    no row/wire domain type — the wire metadata shape lives in [`metadata`]).
-//!  - [`metadata`] — the wire [`metadata::DatabaseMetadata`] (size, table
-//!    count, modified time) the settings screen renders.
-//!  - [`files`] — the file-level operations: a consistent export snapshot
-//!    (`VACUUM INTO`) and an on-disk delete (main file plus journal sidecars).
+//!  - [`domain`] — the failure vocabulary ([`domain::DatabaseError`]), the wire
+//!    metadata shape, the [`DatabaseFiles`](domain) port abstracting the
+//!    filesystem/SQLite side-effects, the [`DatabasesState`] the router carries,
+//!    and the scope-gated `capabilities`. Pure and `http`-free: it operates
+//!    through the port, never `std::fs` directly, so it's stubbable in tests.
+//!  - `fs` — the production [`DatabaseFiles`] adapter over the data directory,
+//!    injected by [`setup_databases`].
+//!  - [`files`] — the file-level primitives the adapter uses: a consistent export
+//!    snapshot (`VACUUM INTO`) and an on-disk delete (main file plus journal
+//!    sidecars).
 //!  - [`http`] — the `/databases` wire contract.
 //!
 //! ## Surface
@@ -36,35 +39,37 @@
 //!    [`purge_pending_deletions`] at startup (before opening any connection) to
 //!    remove it. The settings UI tells the Owner to restart to finish.
 //!
-//! The router carries no middleware. The host wraps it with its own auth gate
-//! (`gatekeeper_rust::layer_router_with_gatekeeper_auth_gating`) so the whole
-//! surface is Owner-gated, mirroring the apps admin surface.
+//! The router carries no middleware of its own. The host wraps it with the
+//! gatekeeper bearer gate (`gatekeeper_rust::layer_router_with_gatekeeper_auth_gating`)
+//! for authN; authZ is per-database: download/delete require the descriptor's
+//! declared `read_scope`/`delete_scope` (see [`domain::capabilities`]), while the
+//! metadata list is authenticated-only.
 
 pub mod config;
 pub mod domain;
 
 mod files;
+mod fs;
 pub mod http;
-mod metadata;
 
 use std::sync::Arc;
 
 use axum::Router;
 
 pub use config::{DatabaseDescriptor, DatabasesConfig};
+pub use domain::DatabasesState;
 pub use files::purge_pending_deletions;
-pub use http::{openapi_spec, DatabasesState};
+pub use http::openapi_spec;
 
 /// Build the `/databases` router over the host's data directory, mirroring
 /// `apps-rust`'s `setup_apps`. The host passes its app-data dir; the slice
 /// resolves each catalogued database beneath it on demand.
 ///
 /// The returned router carries no middleware — the consumer wraps it with its
-/// own auth gate (the Tauri host applies the gatekeeper Owner check).
+/// own authN gate (the Tauri host applies the gatekeeper bearer gate); the
+/// per-database scope checks live inside the router's facades.
 pub fn setup_databases(config: &DatabasesConfig) -> Router {
-    let state = Arc::new(DatabasesState::new(
-        config.data_dir.clone(),
-        config.databases.clone(),
-    ));
+    let files = fs::filesystem_database_files(config.data_dir.clone());
+    let state = Arc::new(DatabasesState::with_files(config.databases.clone(), files));
     http::router(state)
 }

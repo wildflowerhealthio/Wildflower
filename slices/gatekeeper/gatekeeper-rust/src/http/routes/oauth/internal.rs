@@ -7,7 +7,6 @@ use super::client_auth::{
     BASIC_AUTH_CHALLENGE,
 };
 use crate::crypto_util::client_secret::verify_client_secret;
-use crate::domain::actions;
 use crate::domain::client::{Client, ClientKind};
 use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::domain::token::{mint_access_token, NewJwtArgs, ACCESS_TOKEN_TTL};
@@ -198,10 +197,12 @@ pub fn require_valid_client_for_token(
         error: OAuthError::new(OAuthErrorCode::InvalidClient, Some(description)),
         attempted_via: presented_credentials.presented_via,
     };
-    let client = actions::client_by_id(store, &presented_credentials.client_id).map_err(|e| {
-        tracing::error!(error = %e, "client_by_id lookup failed");
-        ValidateClientError::Internal(OAuthError::new(OAuthErrorCode::ServerError, None))
-    })?;
+    let client = store
+        .client_by_id(&presented_credentials.client_id)
+        .map_err(|e| {
+            tracing::error!(error = %e, "client_by_id lookup failed");
+            ValidateClientError::Internal(OAuthError::new(OAuthErrorCode::ServerError, None))
+        })?;
     let client = client.ok_or_else(|| unauthorized("Unknown client_id"))?;
     if client.disabled_at.is_some() {
         return Err(unauthorized("Client is disabled"));
@@ -248,7 +249,8 @@ pub fn issue_token_response(
     store: &impl GatekeeperStore,
     input: &IssueTokenInput<'_>,
 ) -> Result<TokenResponse, OAuthError> {
-    let signing_key = actions::active_signing_key(store)
+    let signing_key = store
+        .active_signing_key()
         .map_err(|e| {
             tracing::error!(error = %e, "active_signing_key lookup failed");
             OAuthError::new(

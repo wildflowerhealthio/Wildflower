@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
-use axum::extract::{Path, State};
+use axum::extract::Path;
 use axum::routing::{get, MethodRouter};
 use axum::Json;
 use serde::Serialize;
 
-use crate::domain::actions::{self, load_pending_authorization_code_request};
+use crate::domain::capabilities::{OAuthConsentView, Scoped};
 use crate::domain::gatekeeper_error::GatekeeperError;
-use crate::domain::PendingCodeConsent;
 use crate::http::state::GatekeeperState;
+use crate::state::ConsentReaderCap;
 
 /// Body returned to the Owner UI when it loads an authorization-code consent
 /// prompt — describes the client, scopes, and any pre-approved subset. Local to
@@ -30,26 +30,20 @@ pub(crate) struct OAuthConsent {
 }
 
 /// `GET /oauth-consents/{id}` — load a pending authorization-code consent
-/// prompt for the Owner UI to render.
+/// prompt for the Owner UI to render (scope `wildflower/AuthorizationRequest.r`).
 pub(super) fn route() -> MethodRouter<Arc<GatekeeperState>> {
     get(handle_get_oauth_consent)
 }
 
 async fn handle_get_oauth_consent(
-    State(state): State<Arc<GatekeeperState>>,
+    consents: Scoped<ConsentReaderCap>,
     Path(id): Path<String>,
 ) -> Result<Json<OAuthConsent>, GatekeeperError> {
-    let PendingCodeConsent {
+    let OAuthConsentView {
         request,
         redirect_uri,
-        ..
-    } = load_pending_authorization_code_request(&state.store, &id)?;
-    let client_name = match actions::client_by_id(&state.store, &request.client_id) {
-        Ok(Some(c)) => c.name,
-        // Fall back to the raw client_id if lookup misses or fails — the UI
-        // still works, the owner just sees less context.
-        _ => request.client_id.clone(),
-    };
+        client_name,
+    } = consents.oauth_consent(&id)?;
     Ok(Json(OAuthConsent {
         id: id.clone(),
         client_id: request.client_id,

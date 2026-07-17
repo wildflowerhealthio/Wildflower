@@ -72,6 +72,24 @@ impl Permission {
     /// Every interaction, as the canonical v2 `cruds` letter bag.
     pub const ALL: Self = Permission(PermissionRepr::InteractionSet(ALL_INTERACTION_BITSTRING));
 
+    /// The single `c`reate interaction, as a v2 letter bag.
+    pub const CREATE: Self = Permission(PermissionRepr::InteractionSet(CREATE_INTERACTION_BIT));
+    /// The single `r`ead interaction, as a v2 letter bag.
+    pub const READ: Self = Permission(PermissionRepr::InteractionSet(READ_INTERACTION_BIT));
+    /// The single `u`pdate interaction, as a v2 letter bag.
+    pub const UPDATE: Self = Permission(PermissionRepr::InteractionSet(UPDATE_INTERACTION_BIT));
+    /// The single `d`elete interaction, as a v2 letter bag.
+    pub const DELETE: Self = Permission(PermissionRepr::InteractionSet(DELETE_INTERACTION_BIT));
+    /// The single `s`earch interaction, as a v2 letter bag.
+    pub const SEARCH: Self = Permission(PermissionRepr::InteractionSet(SEARCH_INTERACTION_BIT));
+    /// The `r`ead **and** `s`earch interactions, as a v2 letter bag (`rs`) — the
+    /// SMART read+search permission a caller needs to export a whole resource
+    /// collection. Spelled as a constant so callers name it instead of parsing
+    /// `"rs"`, and it stays in the letter grammar an owner's `cruds` can cover.
+    pub const READ_SEARCH: Self = Permission(PermissionRepr::InteractionSet(
+        READ_INTERACTION_BIT | SEARCH_INTERACTION_BIT,
+    ));
+
     /// Normalize a permission segment. Accepts the SMART v2 letter bags (`rs`,
     /// `cruds`) and the SMART v1 words (`read`/`write`/`*`), preserving which
     /// form was given. Returns `None` for an empty or unrecognized segment (e.g.
@@ -236,6 +254,30 @@ mod tests {
         let star = Permission::parse_segment("*").unwrap();
         assert!(!star.contains(Permission::ALL));
         assert!(!Permission::ALL.contains(star));
+    }
+
+    #[test]
+    fn single_interaction_constants_render_as_their_letter_and_are_covered_by_all() {
+        assert_eq!(Permission::CREATE.to_string(), "c");
+        assert_eq!(Permission::READ.to_string(), "r");
+        assert_eq!(Permission::UPDATE.to_string(), "u");
+        assert_eq!(Permission::DELETE.to_string(), "d");
+        assert_eq!(Permission::SEARCH.to_string(), "s");
+        // Each is a v2 letter bag, so `cruds` (ALL) covers it, and it round-trips
+        // through the same letter grammar the Wildflower scopes use.
+        for one in [
+            Permission::CREATE,
+            Permission::READ,
+            Permission::UPDATE,
+            Permission::DELETE,
+            Permission::SEARCH,
+        ] {
+            assert!(Permission::ALL.contains(one));
+            assert_eq!(
+                Permission::parse_letter_segment(&one.to_string()),
+                Some(one)
+            );
+        }
     }
 
     #[test]

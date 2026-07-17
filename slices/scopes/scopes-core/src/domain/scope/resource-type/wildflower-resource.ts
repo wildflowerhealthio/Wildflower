@@ -28,6 +28,7 @@ const RESOURCE_LABELS: Readonly<
   Grant: { label: 'Grant', plural: 'Grants' },
   Client: { label: 'Connected app', plural: 'Connected apps' },
   RefreshToken: { label: 'Refresh token', plural: 'Refresh tokens' },
+  Token: { label: 'Token', plural: 'Tokens' },
 }
 
 // oxlint-disable import/group-exports
@@ -89,7 +90,7 @@ namespace WildflowerResourceType {
   }
 
   /** A Wildflower-specific resource the gatekeeper governs (Rust's `WildflowerResource`). */
-  export type Resource = 'AuthorizationRequest' | 'Grant' | 'Client' | 'RefreshToken'
+  export type Resource = 'AuthorizationRequest' | 'Grant' | 'Client' | 'RefreshToken' | 'Token'
 
   namespace Resource {
     export const all: readonly Resource[] = [
@@ -97,6 +98,7 @@ namespace WildflowerResourceType {
       'Grant',
       'Client',
       'RefreshToken',
+      'Token',
     ]
 
     /** Whether a string is one of the closed set of Wildflower admin resources. */

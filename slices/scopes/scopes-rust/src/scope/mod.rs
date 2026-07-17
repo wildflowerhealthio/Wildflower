@@ -56,6 +56,41 @@ pub enum Scope {
 }
 
 impl Scope {
+    /// Build a `wildflower/<Resource>.<perm>` scope on one of the app's own
+    /// resources — the typed way to name a Wildflower scope, so consumers
+    /// (gatekeeper's admin gate, host config) don't hand-spell scope strings or
+    /// re-declare a local constructor.
+    #[must_use]
+    pub fn wildflower(resource: WildflowerResource, permission: Permission) -> Scope {
+        Scope::WildflowerResource(WildflowerResourceScope {
+            resource: WildflowerResourceType::Known(resource),
+            permission,
+        })
+    }
+
+    /// Build a `wildflower/*.<perm>` scope — every Wildflower resource at this
+    /// permission (the wildcard an owner or a broad admin token carries).
+    #[must_use]
+    pub fn wildflower_all(permission: Permission) -> Scope {
+        Scope::WildflowerResource(WildflowerResourceScope {
+            resource: WildflowerResourceType::Wildcard,
+            permission,
+        })
+    }
+
+    /// Build a `system/*.<perm>` FHIR scope — every FHIR resource type at the
+    /// `system` access level and this permission. The typed way to name the broad
+    /// backend-service FHIR scope (e.g. `system/*.rs` to export the clinical
+    /// database) without string-parsing.
+    #[must_use]
+    pub fn fhir_system_all(permission: Permission) -> Scope {
+        Scope::FhirResource(FhirResourceScope {
+            context: ContextLevel::System,
+            resource: ResourceType::Wildcard,
+            permission,
+        })
+    }
+
     /// Does this (client-allowed) scope cover `other` (a requested scope)?
     /// Resource scopes compare structurally within their kind; known and unknown
     /// scopes — and any cross-kind pair — match exactly.
@@ -155,209 +190,4 @@ impl<'de> Deserialize<'de> for Scope {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use proptest::prelude::*;
-
-    /// `rs` permission, built through the parser so these tests don't reach
-    /// into `Permission`'s private representation.
-    fn rs() -> Permission {
-        Permission::parse_segment("rs").unwrap()
-    }
-
-    #[test]
-    fn parse_prefers_known_over_resource() {
-        assert_eq!(Scope::from("openid"), Scope::Known(KnownScope::Openid));
-        assert_eq!(
-            Scope::from("launch/patient"),
-            Scope::Known(KnownScope::LaunchPatient)
-        );
-    }
-
-    #[test]
-    fn parse_fhir_resource_richest() {
-        assert_eq!(
-            Scope::from("patient/Observation.read"),
-            Scope::FhirResource(FhirResourceScope {
-                context: ContextLevel::Patient,
-                resource: ResourceType::Known("Observation".to_string()),
-                permission: Permission::parse_segment("read").unwrap(),
-            })
-        );
-        assert_eq!(
-            Scope::from("system/*.cruds"),
-            Scope::FhirResource(FhirResourceScope {
-                context: ContextLevel::System,
-                resource: ResourceType::Wildcard,
-                permission: Permission::ALL,
-            })
-        );
-    }
-
-    #[test]
-    fn wildflower_scopes_are_their_own_kind() {
-        // `wildflower/Grant.cruds` is a Wildflower scope...
-        assert_eq!(
-            Scope::from("wildflower/Grant.cruds"),
-            Scope::WildflowerResource(WildflowerResourceScope {
-                resource: WildflowerResourceType::Known(WildflowerResource::Grant),
-                permission: Permission::ALL,
-            })
-        );
-        // ...whereas `system/Grant.cruds` is just a FHIR scope named "Grant" —
-        // the Wildflower resource set is reachable *only* under `wildflower/`.
-        assert_eq!(
-            Scope::from("system/Grant.cruds"),
-            Scope::FhirResource(FhirResourceScope {
-                context: ContextLevel::System,
-                resource: ResourceType::Known("Grant".to_string()),
-                permission: Permission::ALL,
-            })
-        );
-    }
-
-    #[test]
-    fn parse_falls_back_to_unknown() {
-        // Retired admin scope, an unknown wildflower resource, a stray-letter
-        // perm bag, and v1-worded wildflower scopes (the word grammar is
-        // FHIR-only) all preserve verbatim rather than misparse.
-        for s in [
-            "wildflower/admin",
-            "wildflower/Nope.cruds",
-            "patient/Observation.rx",
-            "wildflower/Grant.*",
-            "wildflower/*.write",
-        ] {
-            assert_eq!(Scope::from(s), Scope::Unknown(UnknownScope::new(s)));
-        }
-    }
-
-    #[test]
-    fn display_round_trips_v1_words_and_canonicalizes_letter_order() {
-        // SMART v1 word forms round-trip verbatim (back-compat: a v1 grant is
-        // returned as v1, not collapsed to its letter equivalent).
-        assert_eq!(
-            Scope::from("patient/Observation.read").to_string(),
-            "patient/Observation.read"
-        );
-        assert_eq!(Scope::from("user/*.write").to_string(), "user/*.write");
-        assert_eq!(Scope::from("system/*.*").to_string(), "system/*.*");
-        // v2 letter bags normalize to canonical c,r,u,d,s order.
-        assert_eq!(
-            Scope::from("patient/Observation.sr").to_string(),
-            "patient/Observation.rs"
-        );
-        assert_eq!(Scope::from("system/*.cruds").to_string(), "system/*.cruds");
-        // Non-resource scopes round-trip unchanged.
-        assert_eq!(Scope::from("openid").to_string(), "openid");
-    }
-
-    #[test]
-    fn parse_strips_search_param_suffix() {
-        let scope = Scope::from("patient/Observation.rs?category=http://x|y");
-        assert_eq!(
-            scope,
-            Scope::FhirResource(FhirResourceScope {
-                context: ContextLevel::Patient,
-                resource: ResourceType::Known("Observation".to_string()),
-                permission: rs(),
-            })
-        );
-        assert_eq!(scope.to_string(), "patient/Observation.rs");
-    }
-
-    #[test]
-    fn covers_fhir_rules() {
-        let covers = |a: &str, b: &str| Scope::from(a).covers(&Scope::from(b));
-        assert!(covers("system/*.cruds", "system/Patient.r")); // wildcard + perm subset
-        assert!(covers("patient/*.*", "patient/Observation.read")); // v1 word subset
-        assert!(!covers(
-            "patient/Observation.read",
-            "patient/Observation.rs"
-        )); // grammars never cross
-        assert!(!covers(
-            "patient/Observation.cruds",
-            "patient/Observation.read"
-        )); // ...either way
-        assert!(covers("system/*.cruds", "user/Patient.r")); // context: system covers all
-        assert!(!covers("user/*.cruds", "patient/Observation.r")); // context: user ⊉ patient
-        assert!(!covers("patient/*.cruds", "user/Patient.r")); // context: patient ⊉ user
-        assert!(!covers("system/Patient.r", "system/Patient.cruds")); // perm not covered
-        assert!(!covers("system/Patient.cruds", "system/*.cruds")); // specific !covers wildcard
-    }
-
-    #[test]
-    fn covers_wildflower_rules() {
-        let covers = |a: &str, b: &str| Scope::from(a).covers(&Scope::from(b));
-        assert!(covers("wildflower/Grant.cruds", "wildflower/Grant.r")); // perm subset
-        assert!(covers("wildflower/*.cruds", "wildflower/Grant.r")); // wildcard covers any
-        assert!(!covers("wildflower/Grant.cruds", "wildflower/Client.r")); // explicit resource
-        assert!(!covers("wildflower/Grant.cruds", "wildflower/*.r")); // specific !covers wildcard
-                                                                      // FHIR full access does NOT reach Wildflower resources, and vice versa.
-        assert!(!covers("system/*.cruds", "wildflower/Grant.cruds"));
-        assert!(!covers("wildflower/Grant.cruds", "system/Grant.cruds"));
-        // Word-form wildflower strings parse as Unknown: exact-match only.
-        assert!(!covers("wildflower/Grant.cruds", "wildflower/Grant.read"));
-        assert!(covers("wildflower/Grant.read", "wildflower/Grant.read"));
-    }
-
-    #[test]
-    fn covers_known_and_unknown_match_exactly() {
-        assert!(Scope::from("offline_access").covers(&Scope::from("offline_access")));
-        assert!(!Scope::from("offline_access").covers(&Scope::from("openid")));
-        assert!(Scope::from("wildflower/admin").covers(&Scope::from("wildflower/admin")));
-        assert!(!Scope::from("system/*.cruds").covers(&Scope::from("offline_access")));
-    }
-
-    #[test]
-    fn from_and_fromstr_agree() {
-        assert_eq!(Scope::from("openid"), "openid".parse::<Scope>().unwrap());
-        assert_eq!(
-            Scope::from("wildflower/Grant.cruds"),
-            "wildflower/Grant.cruds".parse::<Scope>().unwrap()
-        );
-    }
-
-    #[test]
-    fn wildflower_scopes_round_trip_byte_compatibly() {
-        for s in [
-            "wildflower/*.cruds",
-            "wildflower/Grant.cruds",
-            "wildflower/AuthorizationRequest.rs",
-            "wildflower/Client.cud",
-        ] {
-            assert_eq!(Scope::from(s).to_string(), s);
-            assert_eq!(
-                serde_json::to_string(&Scope::from(s)).unwrap(),
-                serde_json::to_string(s).unwrap()
-            );
-        }
-    }
-
-    /// Canonical interaction letters for a raw bit set, independent of
-    /// `Permission`'s private representation.
-    fn canonical_letters(bits: u8) -> String {
-        [(1u8, 'c'), (2, 'r'), (4, 'u'), (8, 'd'), (16, 's')]
-            .into_iter()
-            .filter(|(b, _)| bits & b != 0)
-            .map(|(_, c)| c)
-            .collect()
-    }
-
-    proptest! {
-        /// A canonical FHIR scope string serializes byte-identically whether it's
-        /// a `String` or a parsed `Scope` — the property a future
-        /// `JsonColumn<Vec<Scope>>` relies on to avoid a migration.
-        #[test]
-        fn serde_is_byte_compatible_for_canonical_scopes(
-            ctx in prop::sample::select(vec!["patient", "user", "system"]),
-            rtype in prop::sample::select(vec!["*", "Patient", "Observation"]),
-            bits in 1u8..=31u8,
-        ) {
-            let canonical = format!("{ctx}/{rtype}.{}", canonical_letters(bits));
-            let via_scope = serde_json::to_string(&Scope::from(canonical.as_str())).unwrap();
-            let via_string = serde_json::to_string(&canonical).unwrap();
-            prop_assert_eq!(via_scope, via_string);
-        }
-    }
-}
+mod tests;

@@ -78,6 +78,15 @@ catalogs:
     '@tauri-apps/plugin-opener':
       specifier: ^2
       version: 2.5.4
+    '@testing-library/dom':
+      specifier: ^10.4.0
+      version: 10.4.1
+    '@testing-library/react':
+      specifier: ^16.3.0
+      version: 16.3.2
+    '@testing-library/user-event':
+      specifier: ^14.5.2
+      version: 14.6.1
     '@tsdown/css':
       specifier: ^0.22.3
       version: 0.22.3
@@ -868,6 +877,9 @@ importers:
       '@types/node':
         specifier: ^26
         version: 26.1.0
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.17
       '@typescript/native-preview':
         specifier: 'catalog:'
         version: 7.0.0-dev.20260707.2
@@ -886,6 +898,9 @@ importers:
       kitchen-sink:
         specifier: workspace:*
         version: link:../../../global/kitchen-sink
+      react:
+        specifier: 'catalog:'
+        version: 19.2.7
       typescript:
         specifier: 5.9.3
         version: 5.9.3
@@ -1024,9 +1039,24 @@ importers:
 
   slices/collector/fhir-r4-client-collector:
     devDependencies:
+      '@testing-library/dom':
+        specifier: 'catalog:'
+        version: 10.4.1
+      '@testing-library/react':
+        specifier: 'catalog:'
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@testing-library/user-event':
+        specifier: 'catalog:'
+        version: 14.6.1(@testing-library/dom@10.4.1)
       '@types/node':
         specifier: ^26
         version: 26.1.0
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.17
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.2.3(@types/react@19.2.17)
       '@typescript/native-preview':
         specifier: 'catalog:'
         version: 7.0.0-dev.20260707.2
@@ -1051,6 +1081,18 @@ importers:
       kitchen-sink:
         specifier: workspace:*
         version: link:../../../global/kitchen-sink
+      react:
+        specifier: 'catalog:'
+        version: 19.2.7
+      react-dom:
+        specifier: 19.2.7
+        version: 19.2.7(react@19.2.7)
+      react-kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../global/react-kitchen-sink
+      react-tundraish:
+        specifier: workspace:*
+        version: link:../../../global/react-tundraish
       typescript:
         specifier: 5.9.3
         version: 5.9.3

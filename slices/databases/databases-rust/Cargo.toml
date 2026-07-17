@@ -12,7 +12,8 @@ publish.workspace = true
 # runs no migrations — it works at the file level on databases other slices own,
 # so the host passes it only the data directory. Layered like `apps-rust` /
 # `tunnel-rust`: pure `catalog`/`metadata`/`files` helpers behind the `http`
-# surface, gated by the consumer (the gatekeeper Owner check).
+# surface; authN comes from the consumer (the gatekeeper bearer gate) and
+# download/delete are scope-gated per database (`http::scoped`).
 [dependencies]
 axum.workspace = true
 serde = { workspace = true }
@@ -20,8 +21,16 @@ serde_json.workspace = true
 utoipa.workspace = true
 utoipa-axum.workspace = true
 rusqlite.workspace = true
+# The scope grammar (`Scope`, `Grant`) the per-database read/delete gate checks
+# against — see `http::scoped`. Each database's governing scope is host policy
+# carried on its `DatabaseDescriptor`.
+scopes-rust = { path = "../../scopes/scopes-rust" }
 # The shared opaque-500 `InternalError` template (see `http::errors`).
 shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = ["http-errors"] }
+# The generic scope-gated capability extractors (`Scoped<F>`, `Capability`,
+# `ScopeClaims`, `insufficient_scope`) the `/databases` surface gates on; the
+# `openapi` feature lets the 403 wire body appear in the documented responses.
+scope-capabilities-rust = { path = "../../scopes/scope-capabilities-rust", features = ["openapi"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 tracing = "0.1"
 # The export streams a temp snapshot off the async runtime: `spawn_blocking` for

@@ -5,6 +5,8 @@
 
 use std::path::PathBuf;
 
+use scopes_rust::Scope;
+
 /// One database the host exposes for export / delete. `id` doubles as the
 /// on-disk filename and the REST resource id (e.g. `health-data.sqlite`), so it
 /// must be a bare filename with no path separators. The host owns every field —
@@ -18,6 +20,16 @@ pub struct DatabaseDescriptor {
     pub label: String,
     /// One-line, user-facing description of what the database holds.
     pub description: String,
+    /// The scope a caller's token must cover to **download** this database. Host
+    /// policy keyed off what the database holds — e.g. `system/*.rs` (FHIR
+    /// read+search) for the clinical database, `wildflower/*.r` for the app-data
+    /// database — so a narrowly-scoped token can't export data it can't read. The
+    /// per-database check lives in [`DatabasesReader`](crate::http) because the
+    /// required scope is data-dependent (which database), not fixed per route.
+    pub read_scope: Scope,
+    /// The scope a caller's token must cover to **delete** this database
+    /// (`system/*.d` / `wildflower/*.d`, matching `read_scope`'s grammar).
+    pub delete_scope: Scope,
 }
 
 impl DatabaseDescriptor {
@@ -58,6 +70,8 @@ pub struct DatabasesConfig {
 
 #[cfg(test)]
 mod tests {
+    use scopes_rust::Permission;
+
     use super::*;
 
     fn descriptor(id: &str) -> DatabaseDescriptor {
@@ -65,6 +79,9 @@ mod tests {
             id: id.to_owned(),
             label: "Label".to_owned(),
             description: "Description".to_owned(),
+            // The scopes are irrelevant to header-safety; any real scope will do.
+            read_scope: Scope::wildflower_all(Permission::READ),
+            delete_scope: Scope::wildflower_all(Permission::DELETE),
         }
     }
 

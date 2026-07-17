@@ -49,7 +49,7 @@ pub struct AuthorizationCode {
 /// (parse-don't-validate).
 ///
 /// Built only by
-/// [`actions::load_pending_authorization_code_request`](crate::domain::actions::load_pending_authorization_code_request)
+/// `actions::load_pending_authorization_code_request`
 /// — the sibling of the [`AuthorizationCode`] it exists to mint, so it lives
 /// beside it rather than in a file of its own.
 #[derive(Debug, PartialEq)]

@@ -4,7 +4,7 @@
 //! 6749 §4.1.2 / §4.1.2.1).
 //!
 //! Pure `Url` string-building with no axum, store, or HTTP coupling, so both the
-//! `/oauth` route surface and the Owner consent [`action`](crate::domain::actions)
+//! `/oauth` route surface and the Owner consent `action`
 //! can hand back the *same* callback URL without either reaching into the other —
 //! the consent action returns the URL it builds here, and the handler just renders
 //! it.

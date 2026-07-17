@@ -2,11 +2,10 @@
 
 use std::path::PathBuf;
 use std::pin::Pin;
-use std::sync::Arc;
 use std::task::{Context, Poll};
 
 use axum::body::{Body, Bytes};
-use axum::extract::{Path, State};
+use axum::extract::Path;
 use axum::http::header::{CONTENT_DISPOSITION, CONTENT_TYPE};
 use axum::http::HeaderValue;
 use axum::response::{IntoResponse, Response};
@@ -14,10 +13,11 @@ use futures_core::Stream;
 use tokio::fs::File;
 use tokio_util::io::ReaderStream;
 
+use scope_capabilities_rust::InsufficientScopeBody;
+
+use crate::domain::capabilities::{DatabasesReader, DownloadSnapshot, Scoped};
 use crate::domain::DatabaseError;
-use crate::files::snapshot_to_temp;
 use crate::http::errors::DatabaseNotFoundBody;
-use crate::http::state::DatabasesState;
 
 /// `GET /databases/{id}` — stream the database file as `application/vnd.sqlite3`
 /// (a `VACUUM INTO` snapshot, so it's internally consistent even while the
@@ -33,6 +33,10 @@ use crate::http::state::DatabasesState;
 /// intentionally absent from the `databases-core` Effect `HttpApi`: the React
 /// client downloads it through the raw `HttpClient` to get the bytes, not the
 /// generated JSON client. The spec-drift test scopes only the JSON endpoints.
+///
+/// Gated by [`Scoped<DatabasesReader>`]: the snapshot + the database's
+/// `read_scope` check live in the facade, so this handler never touches the
+/// store directly (a `403` on an under-scoped token, a `404` on unknown/absent).
 #[utoipa::path(
     get,
     tag = "Management",
@@ -42,26 +46,30 @@ use crate::http::state::DatabasesState;
     ),
     responses(
         (status = 200, description = "The database as a consistent SQLite snapshot", content_type = "application/vnd.sqlite3"),
+        (status = 403, description = "The caller's token doesn't cover this database's declared read scope", body = InsufficientScopeBody),
         (status = 404, description = "No database has this id, or it doesn't exist yet", body = DatabaseNotFoundBody),
     ),
 )]
 pub(crate) async fn handle_download_database(
-    State(state): State<Arc<DatabasesState>>,
+    reader: Scoped<DatabasesReader>,
     Path(id): Path<String>,
 ) -> Result<Response, DatabaseError> {
-    let (descriptor, path) = state
-        .existing(&id)
-        .ok_or_else(|| DatabaseError::NotFound { id: id.clone() })?;
-    // Own the filename before the await (the descriptor borrows `state`).
-    let filename = descriptor.id.clone();
+    let DownloadSnapshot {
+        filename,
+        temp_path,
+    } = reader.download(&id).await?;
 
-    let temp_path = tokio::task::spawn_blocking(move || snapshot_to_temp(&path))
-        .await
-        .map_err(|error| DatabaseError::infrastructure("snapshot task panicked", error))??;
-
-    let file = File::open(&temp_path)
-        .await
-        .map_err(|error| DatabaseError::infrastructure("open snapshot", error))?;
+    let file = match File::open(&temp_path).await {
+        Ok(file) => file,
+        Err(error) => {
+            // The snapshot exists but can't be opened: until `TempFileStream`
+            // takes ownership below, nothing else deletes it — unlink it here
+            // (best-effort) so a failing download doesn't strand a full copy of
+            // the database next to the original.
+            let _ = std::fs::remove_file(&temp_path);
+            return Err(DatabaseError::infrastructure("open snapshot", error));
+        }
+    };
     let body = Body::from_stream(TempFileStream::new(file, temp_path));
 
     // The filename is a catalogue id, enforced header-safe (ASCII alphanumeric

@@ -3,7 +3,7 @@
 //! `deny`), each exposing a `MethodRouter`; the DTOs shared with the code flow
 //! (`ApproveBody`, `ConsentResult`) live in [`crate::http::wire_representations`],
 //! the `get` response shape beside its route, and the consent logic in
-//! [`crate::domain::actions`]. `router()` is the only path table.
+//! `domain::capabilities`. `router()` is the only path table.
 
 mod approve;
 mod deny;

@@ -48,6 +48,9 @@ impl IntoResponse for DatabaseError {
                 }),
             )
                 .into_response(),
+            DatabaseError::InsufficientScope { missing_scopes } => {
+                scope_capabilities_rust::insufficient_scope(missing_scopes)
+            }
             DatabaseError::Infrastructure { context, source } => {
                 InternalError::new(context, source).into_response()
             }

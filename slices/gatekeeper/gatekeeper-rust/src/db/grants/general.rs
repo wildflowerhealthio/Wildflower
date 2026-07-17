@@ -3,7 +3,7 @@
 //! — shared columns + kind tag + NULLable payload columns) backs the two Owner-UI
 //! reads ([`all_grants`], [`grant_by_id`]); the two id-keyed deletes
 //! ([`delete_authorization_code_grant`], [`delete_device_grant`]) are the halves
-//! the [`revoke_grant`](crate::domain::actions::revoke_grant) action composes with
+//! the `revoke_grant` action composes with
 //! the client's refresh-family expiry in one transaction. Single-kind operations
 //! live in the sibling [`authorization_code`](super::authorization_code) /
 //! [`device`](super::device) files.
@@ -125,7 +125,7 @@ pub(crate) fn grant_by_id(
 /// Delete the authorization-code grant `id`, returning `true` iff a row was
 /// removed. One half of a revoke; grant ids are UUIDs unique across both tables,
 /// so at most one of this and [`delete_device_grant`] hits a row. The
-/// [`revoke_grant`](crate::domain::actions::revoke_grant) action runs both plus
+/// `revoke_grant` action runs both plus
 /// the client's refresh-family expiry inside one transaction, so standing consent
 /// and standing credentials die together or not at all.
 pub(crate) fn delete_authorization_code_grant(
@@ -154,16 +154,41 @@ pub(crate) fn delete_device_grant(
 
 #[cfg(test)]
 mod tests {
-    use chrono::Utc;
+    use chrono::{DateTime, Utc};
     use proptest::prelude::*;
     use url::Url;
+    use uuid::Uuid;
 
     use crate::db::test_support::{arb_opt_timestamp, arb_timestamp, arb_url};
     use crate::db::SqliteGatekeeperStore;
-    use crate::domain::actions;
     use crate::domain::gatekeeper_error::GatekeeperError;
     use crate::domain::grant::{AuthorizationCodeGrant, DeviceGrant, Grant};
-    use crate::domain::GatekeeperStore as _;
+    use crate::domain::{GatekeeperStore as _, GatekeeperTx as _};
+
+    /// The grant-revoke cascade (delete the grant + expire the client's
+    /// refresh-token families in one transaction), inlined so the db test drives
+    /// the real adapter directly rather than reaching up into a domain capability.
+    /// Mirrors `domain::capabilities::grants::revoke_grant`.
+    fn revoke_grant(
+        store: &SqliteGatekeeperStore,
+        grant_id: &str,
+        client_id: &str,
+        now: DateTime<Utc>,
+    ) -> Result<(), GatekeeperError> {
+        let removed = store.transaction(|tx| {
+            let removed_code = tx.delete_authorization_code_grant(grant_id)?;
+            let removed_device = tx.delete_device_grant(grant_id)?;
+            tx.expire_refresh_token_families_for_client(client_id, now)?;
+            Ok(removed_code || removed_device)
+        })?;
+        if removed {
+            Ok(())
+        } else {
+            Err(GatekeeperError::GrantNotFound {
+                id: grant_id.to_owned(),
+            })
+        }
+    }
 
     /// The columns both grant kinds share, in field order.
     type SharedGrantFields = (
@@ -252,24 +277,28 @@ mod tests {
         let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
         let redirect = read("https://example.com/cb");
         let now = Utc::now();
-        actions::upsert_authorization_code_grant(
-            &store,
-            "client-a",
-            &redirect,
-            &["read".to_owned()],
-            None,
-            now,
-        )
-        .expect("code grant");
-        actions::upsert_device_grant(
-            &store,
-            "client-a",
-            "Ada's laptop",
-            &["openid".to_owned()],
-            None,
-            now,
-        )
-        .expect("device grant");
+        store
+            .create_authorization_code_grant(&AuthorizationCodeGrant {
+                id: Uuid::new_v4().to_string(),
+                client_id: "client-a".to_owned(),
+                scopes: vec!["read".to_owned()],
+                granted_at: now,
+                last_used_at: None,
+                patient: None,
+                redirect_uri: redirect.clone(),
+            })
+            .expect("code grant");
+        store
+            .create_device_grant(&DeviceGrant {
+                id: Uuid::new_v4().to_string(),
+                client_id: "client-a".to_owned(),
+                scopes: vec!["openid".to_owned()],
+                granted_at: now,
+                last_used_at: None,
+                patient: None,
+                device_name: "Ada's laptop".to_owned(),
+            })
+            .expect("device grant");
 
         assert!(store
             .grant_by_client_and_redirect("client-a", &redirect)
@@ -298,15 +327,17 @@ mod tests {
         use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 
         let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
-        actions::upsert_device_grant(
-            &store,
-            "client-a",
-            "Ada's laptop",
-            &["openid".to_owned()],
-            None,
-            Utc::now(),
-        )
-        .expect("insert");
+        store
+            .create_device_grant(&DeviceGrant {
+                id: Uuid::new_v4().to_string(),
+                client_id: "client-a".to_owned(),
+                scopes: vec!["openid".to_owned()],
+                granted_at: Utc::now(),
+                last_used_at: None,
+                patient: None,
+                device_name: "Ada's laptop".to_owned(),
+            })
+            .expect("insert");
         let id = store.all_grants().expect("list")[0].id().to_owned();
         // A standing credential minted under this client, live at revoke time.
         let family = RefreshTokenFamily {
@@ -333,7 +364,7 @@ mod tests {
             .expect("insert live token");
 
         let revoked_at = Utc::now();
-        actions::revoke_grant(&store, &id, "client-a", revoked_at).expect("revoke");
+        revoke_grant(&store, &id, "client-a", revoked_at).expect("revoke");
         assert!(store.grant_by_id(&id).expect("query").is_none());
         assert!(store
             .device_grant_by_client_and_device_name("client-a", "Ada's laptop")
@@ -348,7 +379,7 @@ mod tests {
         assert_eq!(family.expires_at, revoked_at);
         assert_eq!(token.consumed_at, Some(revoked_at));
         assert_eq!(
-            actions::revoke_grant(&store, &id, "client-a", Utc::now()),
+            revoke_grant(&store, &id, "client-a", Utc::now()),
             Err(GatekeeperError::GrantNotFound { id: id.clone() }),
             "a second revoke of the same id is a miss",
         );

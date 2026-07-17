@@ -52,6 +52,18 @@ const CollectorTag: Schema.Schema<CollectorTag> = Schema.Literal(
 )
 
 /**
+ * The concrete config for a single {@link CollectorTag} — the member of the
+ * {@link CollectorConfig} union whose `_tag` is `T`. Lets consumers stay generic
+ * over a tag without erasing to the whole union (e.g. `collector-react`'s
+ * `tag → form` registry keys each form to `ConfigForTag<its tag>`).
+ *
+ * `Extract` distributes over unions, so `ConfigForTag<CollectorTag>` collapses
+ * back to `CollectorConfig` — a runtime-dispatch call site that only knows the
+ * widened `CollectorTag` still typechecks against the full union.
+ */
+type ConfigForTag<T extends CollectorTag> = Extract<CollectorConfig, { readonly _tag: T }>
+
+/**
  * The union of every collector's write requirement (`R`), derived from
  * the descriptors' `persistResources` sinks. This is the environment the
  * authed runner must provide for a {@link resourcePersistenceRuntimeForConfig}
@@ -114,4 +126,4 @@ export {
   descriptorForTag,
   descriptorForConfig,
 }
-export type { CollectorRequirements, AnyCollectorDescriptor }
+export type { CollectorRequirements, AnyCollectorDescriptor, ConfigForTag }

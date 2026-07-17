@@ -21,6 +21,11 @@ pub mod http;
 // apps-rust.
 pub(crate) mod ports;
 pub(crate) mod seeding;
+// The shared runtime state + capability bindings. At the crate root (not under
+// `http`) so the `domain/` capabilities can be built from it without `domain/`
+// depending on `crate::http`; the struct is axum-free (the one axum-touching seam
+// impl lives in `http::state`).
+pub(crate) mod state;
 
 use std::sync::Arc;
 
@@ -50,6 +55,12 @@ pub use persistence_rust::DieselPool;
 // (`gatekeeper_rust::owner_session_cookies`) after the lift out of `http`, so
 // the desktop host's call sites don't move.
 pub use cookies::{owner_session_cookies, rescope_owner_session_set_cookies};
+/// The admin scopes the `/access` surface enforces — the registry meant to
+/// couple *enforced* (the scope-gated capability extractors) with *grantable*
+/// (the vocabulary the consent surfaces will offer). Re-exported for the host
+/// and the resource-authz epic's consent UI; nothing consumes it yet — its
+/// tests pin the set until then. See [`domain::capabilities`].
+pub use domain::capabilities::grantable_admin_scopes;
 pub use http::{
     ensure_bearer_header, is_pre_auth_public_path, layer_router_with_gatekeeper_auth_gating,
     layer_router_with_loopback_peer_gating, openapi_spec, verify_owner_bearer, GatekeeperState,
@@ -69,9 +80,11 @@ pub const FIRST_PARTY_CLIENT_ID: &str = "wildflower-host";
 
 /// The maximal-access scopes that mark an Owner: full system FHIR access
 /// (`system/*.cruds`) **and** full Wildflower-resource access
-/// (`wildflower/*.cruds`). `require_owner_auth` treats a token as Owner iff it
-/// covers *every* one of these, gating the `/access/*` admin surface. (Replaced
-/// the bespoke `wildflower/admin` scope.)
+/// (`wildflower/*.cruds`). An Owner token covers *every* one of these, so it
+/// covers every per-resource `/access/*` scope the scope-gated extractors
+/// require — the fail-closed owner default. `verify_owner_token` still uses this
+/// set for the in-handler owner check (`verify_owner_bearer`). (Replaced the
+/// bespoke `wildflower/admin` scope.)
 pub const WILDFLOWER_WIDEST_SCOPES: &[Scope] = &[
     Scope::FhirResource(FhirResourceScope {
         context: ContextLevel::System,
@@ -178,7 +191,8 @@ pub struct Gatekeeper {
 ///    drives the popup (the row survived in SQLite, the in-memory
 ///    `watch` value didn't);
 ///  - returns a `Router` whose routes are at `/.well-known/jwks.json`,
-///    `/oauth/*`, and `/access/*` (Owner-only via bearer JWT) — the
+///    `/oauth/*`, and `/access/*` (authenticated bearer JWT + per-resource
+///    scope gates via the `Scoped<…>` extractors) — the
 ///    slice owns its mount paths so the caller just `.merge()`s;
 ///  - returns the `Arc<GatekeeperState>` the caller passes to
 ///    [`layer_router_with_gatekeeper_auth_gating`] to wrap emr-rust.

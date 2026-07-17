@@ -128,10 +128,11 @@ pub(crate) fn mint_host_owner_token(
         .active_signing_key()?
         .ok_or(HostTokenError::NoSigningKeys)?;
     // The host owner token carries the host's granted scopes (by default the FHIR
-    // and Wildflower full-access wildcards): it gates HFS's FHIR surface and —
-    // since `require_owner_auth` checks coverage of every `WILDFLOWER_WIDEST_SCOPES`
-    // entry — gatekeeper's `/access/*` admin surface too. `setup_gatekeeper`
-    // asserts the granted set covers WIDEST before we reach here.
+    // and Wildflower full-access wildcards): it gates HFS's FHIR surface, and —
+    // because those wildcards cover every per-resource scope the `Scoped<…>`
+    // extractors require — it passes every gate on gatekeeper's `/access/*` admin
+    // surface too. `setup_gatekeeper` asserts the granted set covers
+    // `WILDFLOWER_WIDEST_SCOPES` before we reach here.
     Ok(mint_access_token(
         &key,
         &NewJwtArgs {

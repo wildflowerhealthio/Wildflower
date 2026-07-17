@@ -37,6 +37,12 @@ pub enum WildflowerResource {
     Grant,
     Client,
     RefreshToken,
+    /// An issued token (access **or** refresh) as a revocation target — the
+    /// resource behind `POST /access/revocations`, which denylists a `jti` or
+    /// bumps a subject's epoch and so kills *both* token kinds. Broader than
+    /// [`RefreshToken`](WildflowerResource::RefreshToken), which names the
+    /// refresh-family lifecycle specifically.
+    Token,
 }
 
 impl WildflowerResourceScope {
@@ -98,6 +104,7 @@ impl WildflowerResource {
             "Grant" => Some(WildflowerResource::Grant),
             "Client" => Some(WildflowerResource::Client),
             "RefreshToken" => Some(WildflowerResource::RefreshToken),
+            "Token" => Some(WildflowerResource::Token),
             _ => None,
         }
     }
@@ -108,6 +115,7 @@ impl WildflowerResource {
             WildflowerResource::Grant => "Grant",
             WildflowerResource::Client => "Client",
             WildflowerResource::RefreshToken => "RefreshToken",
+            WildflowerResource::Token => "Token",
         }
     }
 }

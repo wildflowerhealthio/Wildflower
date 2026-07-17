@@ -27,7 +27,7 @@ diesel::table! {
 /// Insert a brand-new device grant row — a plain single-table insert. The
 /// insert branch of a first-time pairing, and a test/seed helper; the
 /// scope-union re-pairing flow is
-/// [`upsert_device_grant`](crate::domain::actions::upsert_device_grant), which
+/// `upsert_device_grant`, which
 /// reads then chooses this or [`update_device_grant`]. The caller hands the
 /// concrete grant, so the store never inspects a polymorphic value to choose the
 /// table.
@@ -65,7 +65,7 @@ pub(crate) fn device_grant_by_client_and_device_name(
 /// Overwrite the mutable fields (`scopes`, `granted_at`, `patient`) of the
 /// device grant identified by `grant.id` — the write half of a device
 /// re-pairing, after
-/// [`upsert_device_grant`](crate::domain::actions::upsert_device_grant) has read
+/// `upsert_device_grant` has read
 /// the standing grant and folded the re-approval into it via
 /// [`absorb_reapproval`](crate::domain::grant::CumulativeConsent). The action
 /// runs the read + this write inside one `BEGIN IMMEDIATE` transaction (the
@@ -88,11 +88,45 @@ pub(crate) fn update_device_grant(
 
 #[cfg(test)]
 mod tests {
-    use chrono::Utc;
+    use chrono::{DateTime, Utc};
+    use uuid::Uuid;
 
     use crate::db::SqliteGatekeeperStore;
-    use crate::domain::actions;
-    use crate::domain::GatekeeperStore as _;
+    use crate::domain::grant::{CumulativeConsent, DeviceGrant};
+    use crate::domain::{GatekeeperStore as _, GatekeeperTx as _};
+
+    /// The create-or-union device-grant upsert transaction, inlined here so the db
+    /// test drives the real adapter's grant primitives directly instead of
+    /// reaching up into a domain capability. Mirrors
+    /// `domain::capabilities::consents::upsert_device_grant`.
+    fn upsert_device_grant(
+        store: &SqliteGatekeeperStore,
+        client_id: &str,
+        device_name: &str,
+        scopes: &[String],
+        patient: Option<&str>,
+        now: DateTime<Utc>,
+    ) {
+        store
+            .immediate_transaction(|tx| {
+                match tx.device_grant_by_client_and_device_name(client_id, device_name)? {
+                    Some(mut grant) => {
+                        grant.absorb_reapproval(scopes, patient, now);
+                        tx.update_device_grant(&grant)
+                    }
+                    None => tx.create_device_grant(&DeviceGrant {
+                        id: Uuid::new_v4().to_string(),
+                        client_id: client_id.to_owned(),
+                        scopes: scopes.to_vec(),
+                        granted_at: now,
+                        last_used_at: None,
+                        patient: patient.map(str::to_owned),
+                        device_name: device_name.to_owned(),
+                    }),
+                }
+            })
+            .expect("upsert device grant");
+    }
 
     /// The `upsert_device_grant` action over the real `SQLite` adapter: a first
     /// pairing mints a durable device grant (via `create_device_grant`), and
@@ -104,15 +138,14 @@ mod tests {
         let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
         let now = Utc::now();
 
-        actions::upsert_device_grant(
+        upsert_device_grant(
             &store,
             "client-a",
             "Ada's laptop",
             &["openid".to_owned()],
             None,
             now,
-        )
-        .expect("insert");
+        );
         let grant = store
             .device_grant_by_client_and_device_name("client-a", "Ada's laptop")
             .expect("query")
@@ -120,15 +153,14 @@ mod tests {
         assert_eq!(grant.scopes, vec!["openid".to_owned()]);
         assert_eq!(grant.device_name, "Ada's laptop");
 
-        actions::upsert_device_grant(
+        upsert_device_grant(
             &store,
             "client-a",
             "Ada's laptop",
             &["openid".to_owned(), "offline_access".to_owned()],
             None,
             Utc::now(),
-        )
-        .expect("update");
+        );
         let updated = store
             .device_grant_by_client_and_device_name("client-a", "Ada's laptop")
             .expect("query")
@@ -144,15 +176,14 @@ mod tests {
         assert_eq!(store.all_grants().expect("list").len(), 1);
 
         // A different device name for the same client is a distinct grant.
-        actions::upsert_device_grant(
+        upsert_device_grant(
             &store,
             "client-a",
             "Ada's phone",
             &["openid".to_owned()],
             None,
             Utc::now(),
-        )
-        .expect("insert second device");
+        );
         assert_eq!(store.all_grants().expect("list").len(), 2);
     }
 }

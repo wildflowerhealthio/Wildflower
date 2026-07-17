@@ -14,6 +14,7 @@ mod state;
 mod wire_representations;
 
 pub(crate) use extractors::served_origin::ServedOrigin;
+pub(crate) use extractors::session::CallerSession;
 // Re-export so call sites read `crate::http::served_base_url_for` without the
 // `shared_structures_rust::` prefix. See `docs/Origins/Explanation.md`.
 pub(crate) use shared_structures_rust::served_origin::served_base_url_for;
@@ -42,8 +43,8 @@ fn documented_router() -> OpenApiRouter<Arc<GatekeeperState>> {
 }
 
 /// Build the gatekeeper's public HTTP surface. Routes live at
-/// `/.well-known/jwks.json`, `/oauth/*`, and `/access/*` (Owner-only via
-/// bearer JWT) — the module owns its mount paths so the caller just
+/// `/.well-known/jwks.json`, `/oauth/*`, and `/access/*` (authenticated
+/// bearer JWT + per-resource scope gates) — the module owns its mount paths so the caller just
 /// `.merge()`s. This router carries **no** loopback-peer gate of its own —
 /// the host applies that defense-in-depth to the whole merged surface via
 /// [`layer_router_with_loopback_peer_gating`]. Mounting `router()` directly
@@ -59,7 +60,7 @@ pub fn router(state: Arc<GatekeeperState>) -> Router {
         .merge(routes::revocations::router())
         .layer(axum_middleware::from_fn_with_state(
             state.clone(),
-            middleware::require_owner_auth,
+            middleware::require_valid_session,
         ));
 
     Router::new()
@@ -111,7 +112,7 @@ pub fn layer_router_with_loopback_peer_gating(router: Router) -> Router {
 /// Whether `path` is on the gatekeeper's **pre-auth public surface** — the
 /// discovery + OAuth routes a client reaches before it holds a token
 /// (`/.well-known/*` incl. `jwks.json`, and `/oauth/*`). The `/access/*` admin
-/// surface is Owner-gated and NOT public.
+/// surface is authenticated + scope-gated and NOT public.
 ///
 /// Owned here, beside [`router`] (which mounts these paths), so a consumer that
 /// must exclude the pre-auth surface can't drift from the routes. The desktop
@@ -124,9 +125,12 @@ pub fn is_pre_auth_public_path(path: &str) -> bool {
 }
 
 /// Whether `headers` carry a valid **Owner** bearer for `served_origin` — the
-/// non-middleware form of the
-/// [`require_owner_auth`](middleware::require_owner_auth) gate, for a slice that
-/// owner-gates a single in-handler action rather than wrapping a whole router.
+/// non-middleware form of the owner check
+/// ([`verify_owner_token`](middleware::require_auth::verify_owner_token)), for a
+/// slice that owner-gates a single in-handler action rather than wrapping a whole
+/// router. The `/access` router itself no longer owner-gates as a blanket layer:
+/// it authenticates via [`require_valid_session`](middleware::require_valid_session)
+/// and authorizes per-route through the scope-gated [`scoped`] extractors.
 /// The apps slice wires this through `apps_rust::OwnerAuth` to gate the loopback
 /// launch popup. Returns `false` for a missing, invalid, or non-owner token.
 #[must_use]
