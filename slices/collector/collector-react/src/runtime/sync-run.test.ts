@@ -6,7 +6,7 @@ import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import {
-  buildDriveStream,
+  processSniffResultsFromMailbox,
   collectImportSummary,
   type FailedResource,
   type SniffResult,
@@ -19,7 +19,7 @@ import {
  * - {@link collectImportSummary} — the fold that turns the drive stream's
  *   per-step failure chunks into the `ImportSummary` (and drives `setFailed` /
  *   `onError`).
- * - {@link buildDriveStream} — the drive loop itself, over `TestClock`: results
+ * - {@link processSniffResultsFromMailbox} — the drive loop itself, over `TestClock`: results
  *   are drained until the mailbox is `done`, and an idle timeout triggers the
  *   injected abandon action.
  *
@@ -95,7 +95,7 @@ describe('collectImportSummary', () => {
   })
 })
 
-describe('buildDriveStream', () => {
+describe('processSniffResultsFromMailbox', () => {
   it('processes every queued result, then terminates once the mailbox is done', async () => {
     const rec = recorder()
     await runTest(
@@ -103,7 +103,11 @@ describe('buildDriveStream', () => {
         const source = yield* Mailbox.make<SniffResult<unknown>>()
         yield* source.offer(Either.right([]))
         yield* source.offer(
-          Either.left({ error: new UnknownException('x'), url: 'https://example.com/x' })
+          Either.left({
+            error: new UnknownException('x'),
+            url: 'https://example.com/x',
+            abandoned: false,
+          })
         )
         yield* source.end
 
@@ -162,6 +166,7 @@ describe('buildDriveStream', () => {
             Either.left({
               error: new UnknownException('stalled'),
               url: 'https://example.com/slow',
+              abandoned: true,
             })
           )
           .pipe(Effect.andThen(source.end))
@@ -182,20 +187,22 @@ describe('buildDriveStream', () => {
 const IDLE_TIMEOUT = Duration.seconds(30)
 
 /**
- * A recording `processEvent` sink so each `buildDriveStream` test can read back
- * what the loop drove. It returns no failures (`[]`); the failure-folding path
- * is covered by `collectImportSummary` above.
+ * A recording `processSniffResult` sink so each `processSniffResultsFromMailbox`
+ * test can read back what the loop drove. It returns no failures (`[]`); the
+ * failure-folding path is covered by `collectImportSummary` above.
  */
 const recorder = (): {
   readonly processed: Array<SniffResult<unknown>>
-  readonly processEvent: (
+  readonly processSniffResult: (
     event: SniffResult<unknown>
   ) => Effect.Effect<ReadonlyArray<PersistFailure>>
 } => {
   const processed: Array<SniffResult<unknown>> = []
   return {
     processed,
-    processEvent: (event: SniffResult<unknown>): Effect.Effect<ReadonlyArray<PersistFailure>> =>
+    processSniffResult: (
+      event: SniffResult<unknown>
+    ): Effect.Effect<ReadonlyArray<PersistFailure>> =>
       Effect.sync(() => {
         processed.push(event)
         return []
@@ -217,9 +224,9 @@ const drive = (
   rec: ReturnType<typeof recorder>
 ): Effect.Effect<void> =>
   Stream.runDrain(
-    buildDriveStream({
-      results,
-      processEvent: rec.processEvent,
+    processSniffResultsFromMailbox({
+      sniffResultMailbox: results,
+      processSniffResult: rec.processSniffResult,
       onIdleTimeout,
       idleTimeout: IDLE_TIMEOUT,
     })

@@ -71,7 +71,7 @@ describe('CollectorBridgeMessageHandler.make: composition', () => {
         expect(Option.isNone(yield* handler.requestSniffingResults.size)).toBe(false)
 
         // Empty sequence: the first PageLoaded arms the settle timer, which fires
-        // `SniffingComplete` → the lifecycle's `markSniffingComplete` hook. With
+        // `SniffingComplete` → the lifecycle's `handleSniffingComplete` hook. With
         // nothing incomplete, that closes the stream end-to-end.
         yield* handler.PageLoaded(pageLoaded())
         yield* TestClock.adjust(Duration.seconds(5))

@@ -22,13 +22,13 @@ type Service = MessageHandler.HandlersFor<CollectorBridge['HostToWeb']>
 
 /**
  * The automatic-navigation half of {@link CollectorBridgeMessageHandler}: the
- * `PageLoaded` handler, the settle-timer / URL-match-timeout daemons, and
+ * `handlePageLoaded` handler, the settle-timer / URL-match-timeout daemons, and
  * `stopAutomaticNavigation` (this machine's share of the lifecycle's
  * `cancelAllRequestSniffing`). It interacts with the response tracker only
  * through the supplied `sendMessage`.
  */
 interface AutomaticNavigation {
-  readonly PageLoaded: Service['PageLoaded']
+  readonly handlePageLoaded: Service['PageLoaded']
   /**
    * Halt the automatic navigation: interrupt any pending timer fiber and reset
    * the index to 0. This machine's contribution to the run lifecycle's
@@ -49,7 +49,7 @@ const make = <TResources>({
   /**
    * Run after the terminal `SniffingComplete` is dispatched (the
    * {@link DispatchSniffingComplete} side-effect). The composition wires this to
-   * the {@link RunLifecycleState}'s `markSniffingComplete`; the automatic
+   * the {@link RunLifecycleState}'s `handleSniffingComplete`; the automatic
    * navigation treats it as an opaque effect, so the two machines still share
    * no state.
    */
@@ -110,11 +110,11 @@ const make = <TResources>({
         })
       )
 
-    const PageLoaded: Service['PageLoaded'] = (event) => dispatch(event)
+    const handlePageLoaded: Service['PageLoaded'] = (event) => dispatch(event)
     const stopAutomaticNavigation = (): Effect.Effect<void, never, never> =>
       dispatch({ _tag: 'Stop' })
 
-    return { PageLoaded, stopAutomaticNavigation }
+    return { handlePageLoaded, stopAutomaticNavigation }
   })
 
 export type { AutomaticNavigation }

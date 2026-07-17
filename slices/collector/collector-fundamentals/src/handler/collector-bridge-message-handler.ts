@@ -78,7 +78,7 @@ interface CollectorBridgeMessageHandler<TResources> extends Service {
  * the five response handlers and the `incompleteSniffedRequests` map; the step
  * machine owns `PageLoaded` and the scripted `stepSequence`; the
  * {@link RunLifecycleState} owns the `requestSniffingResults` stream and every way a
- * run can end (`markSniffingComplete` / `abandonAllRequestSniffing` /
+ * run can end (`handleSniffingComplete` / `abandonAllRequestSniffing` /
  * `cancelAllRequestSniffing`). The two machines interact only through the
  * supplied `sendMessage` and share no state — the lifecycle mediates completion
  * via an explicit `onSniffingComplete` hook (no message-tag sniffing). See the
@@ -89,8 +89,8 @@ interface CollectorBridgeMessageHandler<TResources> extends Service {
  * and the automatic navigation's completion, and its teardown drives both machines. We
  * break it the way the automatic navigation breaks its own `dispatch`/`ctx` cycle:
  * forward references that are only *invoked* after construction. The tracker's
- * `publishSniffResult` / `endRequestSniffingResultsUnlessMoreExpected` close over
- * `lifecycle` (fired only when a request settles), and the lifecycle's teardown
+ * `handleNewSniffResult` closes over `lifecycle` (fired only when a request
+ * settles), and the lifecycle's teardown
  * closes over `automaticNavigation` (fired only at teardown), so there is no
  * temporal-dead-zone hazard.
  */
@@ -111,10 +111,7 @@ const make = <TResources>({
         matchEntity: (url) =>
           Option.fromNullable(scrapingPlan.entityDefinitions.find((e) => e.isFoundAt(url))),
         sendMessage,
-        publishSniffResult: (result) => lifecycle.publishSniffResult(result),
-        endRequestSniffingResultsUnlessMoreExpected: Effect.suspend(
-          () => lifecycle.endRequestSniffingResultsUnlessMoreExpected
-        ),
+        handleNewSniffResult: (result) => lifecycle.handleNewSniffResult(result),
       })
 
     const lifecycle: RunLifecycleState.RunLifecycleState<TResources> =
@@ -132,7 +129,7 @@ const make = <TResources>({
       yield* AutomaticNavigation.make<TResources>({
         scrapingPlan,
         sendMessage,
-        onSniffingComplete: lifecycle.markSniffingComplete,
+        onSniffingComplete: lifecycle.handleSniffingComplete,
       })
 
     return {
@@ -140,12 +137,12 @@ const make = <TResources>({
       requestSniffingResults: lifecycle.requestSniffingResults,
       abandonAllRequestSniffing: lifecycle.abandonAllRequestSniffing,
       cancelAllRequestSniffing: lifecycle.cancelAllRequestSniffing,
-      ResponseStart: tracker.ResponseStart,
-      ResponseData: tracker.ResponseData,
-      ResponseFinished: tracker.ResponseFinished,
-      RequestError: tracker.RequestError,
-      Cancelled: tracker.Cancelled,
-      PageLoaded: automaticNavigation.PageLoaded,
+      ResponseStart: tracker.handleResponseStart,
+      ResponseData: tracker.handleResponseData,
+      ResponseFinished: tracker.handleResponseFinished,
+      RequestError: tracker.handleRequestError,
+      Cancelled: tracker.handleCancelled,
+      PageLoaded: automaticNavigation.handlePageLoaded,
     }
   })
 

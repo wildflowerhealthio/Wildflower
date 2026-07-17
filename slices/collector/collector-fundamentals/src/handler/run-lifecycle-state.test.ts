@@ -23,7 +23,7 @@ import * as SnifferResponseTracker from './sniffer-response-tracker.ts'
  * (the composed-handler tests go through `makeSimpleHandler`). The
  * `stopAutomaticNavigation` hook is stubbed with a counter so the teardown path
  * can be asserted without a live navigation machine. Closing the results stream
- * (`markSniffingComplete` / `abandonAllRequestSniffing`) and the "leaves the
+ * (`handleSniffingComplete` / `abandonAllRequestSniffing`) and the "leaves the
  * stream open" guard (`cancelAllRequestSniffing`) all live here.
  */
 
@@ -48,10 +48,7 @@ const makeHarness = (): Harness =>
         yield* SnifferResponseTracker.make<SimpleResources>({
           matchEntity: (url) => Option.fromNullable([SimpleEntity].find((e) => e.isFoundAt(url))),
           sendMessage: noopSendMessage,
-          publishSniffResult: (result) => lifecycle.publishSniffResult(result),
-          endRequestSniffingResultsUnlessMoreExpected: Effect.suspend(
-            () => lifecycle.endRequestSniffingResultsUnlessMoreExpected
-          ),
+          handleNewSniffResult: (result) => lifecycle.handleNewSniffResult(result),
         })
       const lifecycle: RunLifecycleState.RunLifecycleState<SimpleResources> =
         yield* RunLifecycleState.make<SimpleResources>({
@@ -80,7 +77,7 @@ describe('RunLifecycleState completion (closing requestSniffingResults)', () => 
     const { lifecycle } = makeHarness()
     expect(resultsDone(lifecycle)).toBe(false)
 
-    Effect.runSync(lifecycle.markSniffingComplete)
+    Effect.runSync(lifecycle.handleSniffingComplete)
 
     expect(resultsDone(lifecycle)).toBe(true)
   })
@@ -88,15 +85,17 @@ describe('RunLifecycleState completion (closing requestSniffingResults)', () => 
   it('defers the close until the last incomplete request settles after sniff-complete', () => {
     const { tracker, lifecycle } = makeHarness()
     runHandlerSync(
-      tracker.ResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/1' }))
+      tracker.handleResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/1' }))
     )
 
     // Sniffing is done but r1 is still incomplete: the stream must stay open.
-    Effect.runSync(lifecycle.markSniffingComplete)
+    Effect.runSync(lifecycle.handleSniffingComplete)
     expect(resultsDone(lifecycle)).toBe(false)
 
-    runHandlerSync(tracker.ResponseData(responseData('r1', JSON.stringify({ name: 'Al', age: 1 }))))
-    runHandlerSync(tracker.ResponseFinished(responseFinished('r1')))
+    runHandlerSync(
+      tracker.handleResponseData(responseData('r1', JSON.stringify({ name: 'Al', age: 1 })))
+    )
+    runHandlerSync(tracker.handleResponseFinished(responseFinished('r1')))
 
     // r1's result is queued and the stream is now closed: drain it, then done.
     const results = drainResults(lifecycle)
@@ -108,10 +107,10 @@ describe('RunLifecycleState completion (closing requestSniffingResults)', () => 
   it('abandonAllRequestSniffing publishes every incomplete request as a Left failure, then closes', () => {
     const { tracker, lifecycle } = makeHarness()
     runHandlerSync(
-      tracker.ResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/1' }))
+      tracker.handleResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/1' }))
     )
     runHandlerSync(
-      tracker.ResponseStart(responseStart({ id: 'r2', url: 'https://example.com/people/2' }))
+      tracker.handleResponseStart(responseStart({ id: 'r2', url: 'https://example.com/people/2' }))
     )
 
     Effect.runSync(lifecycle.abandonAllRequestSniffing)
@@ -140,10 +139,10 @@ describe('RunLifecycleState teardown (leaves the stream open)', () => {
     const harness = makeHarness()
     const { tracker, lifecycle } = harness
     runHandlerSync(
-      tracker.ResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/1' }))
+      tracker.handleResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/1' }))
     )
     runHandlerSync(
-      tracker.ResponseStart(responseStart({ id: 'r2', url: 'https://example.com/people/2' }))
+      tracker.handleResponseStart(responseStart({ id: 'r2', url: 'https://example.com/people/2' }))
     )
     expect(MutableHashMap.size(tracker.incompleteSniffedRequests)).toBe(2)
 

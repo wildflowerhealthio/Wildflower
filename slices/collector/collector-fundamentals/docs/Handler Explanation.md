@@ -25,7 +25,7 @@ record the bridge dispatches inbound messages to:
   and URL-match-timeout daemons.
 - The **run lifecycle** ([run-lifecycle-state.ts](../src/handler/run-lifecycle-state.ts))
   owns the `requestSniffingResults` stream and every way a run can end —
-  `markSniffingComplete`, `abandonAllRequestSniffing`, `cancelAllRequestSniffing`
+  `handleSniffingComplete`, `abandonAllRequestSniffing`, `cancelAllRequestSniffing`
   — see [Termination](#termination-the-run-lifecycle).
 
 The two machines share **no state**. Their only channel to each other is the
@@ -33,8 +33,8 @@ supplied `sendMessage` — both ask the host to send outbound messages, but
 neither reads the other's internals. The composition threads the shared inputs
 into both (the automatic-navigation machine gets `scrapingPlan`; the tracker gets a `matchEntity`
 derived from `scrapingPlan.entityDefinitions`) and wires them to the lifecycle:
-the tracker publishes into the lifecycle's stream (`publishSniffResult` /
-`endRequestSniffingResultsUnlessMoreExpected`), and the automatic-navigation machine's terminal
+the tracker publishes into the lifecycle's stream (via `handleNewSniffResult`,
+which offers the result and then runs the close-check), and the automatic-navigation machine's terminal
 `SniffingComplete` reaches the lifecycle through an explicit
 **`onSniffingComplete` hook** — not by sniffing the outbound message tag. The
 automatic-navigation machine treats that hook as an opaque effect, so the machines still share no
@@ -45,9 +45,8 @@ lifecycle's stream, the lifecycle reads the tracker's incomplete-request state
 and the automatic-navigation machine's completion, and its teardown drives both machines. It is
 broken the way the automatic-navigation machine breaks its own `dispatch`/`ctx` cycle
 ([make.ts](../src/handler/automatic-navigation/make.ts)): forward references that are
-only _invoked_ after construction (the tracker's `publishSniffResult` /
-`endRequestSniffingResultsUnlessMoreExpected` fire only when a request settles;
-the lifecycle's teardown fires only at teardown), so there is no
+only _invoked_ after construction (the tracker's `handleNewSniffResult` fires only
+when a request settles; the lifecycle's teardown fires only at teardown), so there is no
 temporal-dead-zone hazard.
 
 Keeping the two machines separate is a deliberate shape choice: the response
@@ -56,28 +55,39 @@ automaton, so it is _not_ modelled as a state machine even though the
 automatic-navigation machine is. Forcing a transition table onto it would add
 ceremony (a state per id) for no benefit.
 
-## Response tracker: the offer-then-drop invariant
+## Response tracker: the drop-then-offer invariant
 
 Every terminal path — `ResponseFinished` (parsed), `RequestError`,
 `Cancelled`, and a base64 decode failure inside `ResponseData` — does the
-same two things in the same order: **publish** the settled `SniffResult` onto the
-lifecycle's `requestSniffingResults` stream (synchronously, via the injected
-`publishSniffResult`, a thin wrapper over `unsafeOffer`), then **drop** the
-tracked id. This is the `offerSniffResultAndUntrack` helper, and the order is
-load-bearing.
+same two things in the same order: **drop** the tracked id, then **publish** the
+settled `SniffResult` via the injected `handleNewSniffResult`. This is the
+`offerSniffResultAndUntrack` helper, and the order is load-bearing.
 
-The order is load-bearing because **the drop is what completes the run.** The
-lifecycle closes `requestSniffingResults` the moment the last incomplete request
-is dropped _after_ sniffing is complete (see below). If a terminal path dropped
-the id before publishing, `endRequestSniffingResultsUnlessMoreExpected` could
-observe "sniff-complete and nothing incomplete" and close the stream with the
-final result never queued — losing the resource. Publishing first guarantees the
-final result is in the queue before the stream closes (`end` on a non-empty
-mailbox leaves it draining, so the consumer still takes it). The parse in
-`ResponseFinished` is span-wrapped and latency-bearing, which is exactly the
-window the wrong order would expose. Both `publishSniffResult` and the incomplete
-check (`MutableHashMap.size`) are synchronous, so the module boundary between
-tracker and lifecycle introduces no yield point here.
+`handleNewSniffResult` (the lifecycle seam the tracker is handed) does two things
+of its own, also in order: it offers the result onto `requestSniffingResults`
+(synchronously, `unsafeOffer`), _then_ runs the close-check
+`endRequestSniffingResultsUnlessMoreExpected`. Because that close-check now fires
+from inside the publish, **the drop must already have happened when publish
+runs.** The lifecycle closes the stream the moment the last incomplete request is
+gone from the map _after_ sniffing is complete (see below); if the id were still
+in the map at check time — as it would be if the path published before dropping —
+the check would see "still incomplete" and the final settle would never close the
+stream, hanging the run.
+
+Dropping first is safe precisely because the offer happens _before_ the check
+inside `handleNewSniffResult`: the result is queued ahead of the close (`end` on a
+non-empty mailbox leaves it draining, so the consumer still takes it). The drop,
+the offer, and the check all run synchronously with no intervening handler, so no
+other event can observe the momentary "dropped but not yet offered" state. The
+parse in `ResponseFinished` is span-wrapped and latency-bearing, but it runs
+_before_ `offerSniffResultAndUntrack` — by the time the drop-then-offer sequence
+starts there is no further yield point.
+
+The idle-timeout abandon path is the exception: `failIncompleteSniffedRequests`
+publishes each stalled request with `abandoned` set and force-closes the
+stream itself, so `handleNewSniffResult` skips the per-result close-check there
+(running it would be pointless — the map isn't cleared until every failure is
+published).
 
 The lifecycle exposes the stream read-only (as `requestSniffingResults`), so the
 consumer reads the same queue the tracker publishes into — there is no `onResult`
@@ -124,10 +134,10 @@ not yet complete, or any request is still incomplete, more results are expected,
 so return; otherwise close the stream. The consumer's drive loop simply drains
 until `take` reports it done.
 
-- **`markSniffingComplete`** flips the `sniffingComplete` latch (Gate A) then runs
+- **`handleSniffingComplete`** flips the `sniffingComplete` latch (Gate A) then runs
   the close-check. The automatic-navigation machine's terminal `DispatchSniffingComplete`
   side-effect sends `SniffingComplete` to the host _then_ runs the
-  `onSniffingComplete` hook the composition wired to `lifecycle.markSniffingComplete`
+  `onSniffingComplete` hook the composition wired to `lifecycle.handleSniffingComplete`
   — both inside the one span. (The machines still share no state — the lifecycle
   mediates.)
 - **`abandonAllRequestSniffing`** is the idle-timeout escape. The consumer calls it

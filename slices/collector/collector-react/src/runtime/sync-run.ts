@@ -1,6 +1,6 @@
 /**
  * The framework-free core of the collector sync runner: the drive
- * {@link buildDriveStream} that turns the run's events — drained from the
+ * {@link processSniffResultsFromMailbox} that turns the run's events — drained from the
  * handler's `requestSniffingResults` stream it is handed — into a `Stream` of
  * write outcomes, and {@link collectImportSummary} that folds that stream into
  * the {@link ImportSummary}. Extracted from `use-sync-runner.ts` so it is
@@ -21,7 +21,7 @@
  * write, the batch `collector.importing` span, and folding those failures into
  * the summary.
  *
- * The run's output is **produced by a `Stream`**: {@link buildDriveStream}
+ * The run's output is **produced by a `Stream`**: {@link processSniffResultsFromMailbox}
  * emits one chunk of failures per drive step (via `Stream.paginateEffect`, so
  * the idle-timeout abandon tail still emits), and {@link collectImportSummary}
  * runs the fold. The drive step is a plain decision table — **not** an FSM
@@ -74,42 +74,8 @@ type SniffResult<Resources> = CollectorBridgeMessageHandler.SniffResult<Resource
 const DEFAULT_IDLE_TIMEOUT: Duration.DurationInput = Duration.seconds(30)
 
 /**
- * One drive-loop decision after waiting on the handler's read-only `results`
- * mailbox: an `event` to process, `done` once the mailbox has finished *and*
- * drained (its `take` fails with `NoSuchElementException`), or `idle` when the
- * idle window elapses with nothing queued.
- */
-type DriveStep<Resources> =
-  | { readonly _tag: 'event'; readonly event: SniffResult<Resources> }
-  | { readonly _tag: 'idle' }
-  | { readonly _tag: 'done' }
-
-/**
- * Wait for the next {@link DriveStep} on `results`: take a result, or — via
- * `timeoutTo` — report `idle` after `window`. A `take` on a finished, drained
- * mailbox fails with `NoSuchElementException`, which maps to `done`. Queued
- * results always take precedence: `end`ing a non-empty mailbox leaves it
- * draining, so `take` yields the remaining results before it ever reports `done`.
- */
-const tryTakeEvent = <Resources>(
-  results: Mailbox.ReadonlyMailbox<SniffResult<Resources>>,
-  window: Duration.DurationInput
-): Effect.Effect<DriveStep<Resources>> =>
-  results.take.pipe(
-    Effect.map((event): DriveStep<Resources> => ({ _tag: 'event', event })),
-    Effect.catchTag('NoSuchElementException', () =>
-      Effect.succeed<DriveStep<Resources>>({ _tag: 'done' })
-    ),
-    Effect.timeoutTo({
-      duration: window,
-      onTimeout: (): DriveStep<Resources> => ({ _tag: 'idle' }),
-      onSuccess: (step) => step,
-    })
-  )
-
-/**
- * The drive loop as a `Stream` over the handler's read-only `results` mailbox
- * (passed as `results`). **Completion is folded into that mailbox** — the
+ * The drive loop as a `Stream` over the handler's read-only results mailbox
+ * (passed as `sniffResultMailbox`). **Completion is folded into that mailbox** — the
  * handler `end`s it once sniffing is complete and every response has settled
  * (or, at an idle timeout, via the abandon action) — so "are we done?" is
  * simply "has the mailbox finished draining?" There is no separate quiescence
@@ -125,7 +91,7 @@ const tryTakeEvent = <Resources>(
  * timeline is documented in
  * `collector-fundamentals/docs/Collector Sync Explanation.md`.
  *
- * - `event` → hand the batch to `processEvent` (its failures emitted), loop.
+ * - `event` → hand the batch to `processSniffResult` (its failures emitted), loop.
  * - `done` → the mailbox finished and drained; the run is complete.
  * - `idle` → nothing arrived within `idleTimeout`: a response stalled or the
  *   host went silent. Run `onIdleTimeout` — which settles any still-in-flight
@@ -133,18 +99,18 @@ const tryTakeEvent = <Resources>(
  *   those failures and observe `done`. (`Stream.paginateEffect`, not `repeat`,
  *   so that draining tail still emits.)
  *
- * `results`, `processEvent`, and `onIdleTimeout` are injected so this stays a
+ * `sniffResultMailbox`, `processSniffResult`, and `onIdleTimeout` are injected so this stays a
  * small, `TestClock`-testable unit independent of the bridge handler. Generic
  * over the collector's `Resources` and the write requirement `R`.
  */
-const buildDriveStream = <Resources, R>({
-  results,
-  processEvent,
+const processSniffResultsFromMailbox = <Resources, R>({
+  sniffResultMailbox,
+  processSniffResult,
   onIdleTimeout,
   idleTimeout,
 }: {
-  readonly results: Mailbox.ReadonlyMailbox<SniffResult<Resources>>
-  readonly processEvent: (
+  readonly sniffResultMailbox: Mailbox.ReadonlyMailbox<SniffResult<Resources>>
+  readonly processSniffResult: (
     event: SniffResult<Resources>
   ) => Effect.Effect<ReadonlyArray<CollectorDescriptor.PersistFailure>, never, R>
   readonly onIdleTimeout: Effect.Effect<void, never, R>
@@ -153,19 +119,39 @@ const buildDriveStream = <Resources, R>({
   Stream.paginateEffect<void, ReadonlyArray<CollectorDescriptor.PersistFailure>, never, R>(
     undefined,
     () =>
-      Effect.gen(function* () {
-        const step = yield* tryTakeEvent(results, idleTimeout)
-        if (step._tag === 'event') {
-          const produced = yield* processEvent(step.event)
-          return [produced, Option.some<void>(undefined)] as const
-        }
-        if (step._tag === 'idle') {
-          yield* onIdleTimeout
-          return [[], Option.some<void>(undefined)] as const
-        }
-        // `done`: the mailbox finished and drained — the run is complete.
-        return [[], Option.none<void>()] as const
-      })
+      sniffResultMailbox.take.pipe(
+        Effect.timeoutTo({
+          duration: idleTimeout,
+          onSuccess: (
+            event
+          ): Effect.Effect<
+            readonly [ReadonlyArray<CollectorDescriptor.PersistFailure>, Option.Option<void>],
+            never,
+            R
+          > =>
+            Effect.map(
+              processSniffResult(event),
+              (
+                produced
+              ): readonly [
+                ReadonlyArray<CollectorDescriptor.PersistFailure>,
+                Option.Option<void>,
+              ] => [produced, Option.some<void>(undefined)] as const
+            ),
+          onTimeout: (): Effect.Effect<
+            readonly [ReadonlyArray<CollectorDescriptor.PersistFailure>, Option.Option<void>],
+            never,
+            R
+          > => Effect.as(onIdleTimeout, [[], Option.some<void>(undefined)] as const),
+        }),
+        Effect.flatten,
+        Effect.catchTag('NoSuchElementException', () =>
+          // `done`: the mailbox finished and drained — the run is complete.
+          Effect.succeed<
+            readonly [ReadonlyArray<CollectorDescriptor.PersistFailure>, Option.Option<void>]
+          >([[], Option.none<void>()] as const)
+        )
+      )
   )
 
 /**
@@ -178,8 +164,8 @@ const buildDriveStream = <Resources, R>({
  */
 const collectImportSummary = <R>(
   failures: Stream.Stream<ReadonlyArray<CollectorDescriptor.PersistFailure>, never, R>,
-  setFailed: (failed: ReadonlyArray<FailedResource>) => void,
-  onError: (cause: unknown) => void
+  handleFailureSetUpdated: (failed: ReadonlyArray<FailedResource>) => void,
+  handleNewFailureCause: (cause: unknown) => void
 ): Effect.Effect<ImportSummary, never, R> =>
   failures.pipe(
     Stream.runFoldEffect([] as ReadonlyArray<FailedResource>, (acc, chunk) =>
@@ -187,8 +173,8 @@ const collectImportSummary = <R>(
         let next = acc
         for (const { failed, cause } of chunk) {
           next = [...next, failed]
-          setFailed(next)
-          onError(cause)
+          handleFailureSetUpdated(next)
+          handleNewFailureCause(cause)
         }
         return next
       })
@@ -205,7 +191,7 @@ const collectImportSummary = <R>(
  *     `RequestSniffableWebView`. Register-before-dispatch guarantees the
  *     host's sniffer events land on the live handler.
  *   - The handler publishes each result onto its `requestSniffingResults` stream,
- *     which {@link buildDriveStream} reads directly. The drive stream pulls each
+ *     which {@link processSniffResultsFromMailbox} reads directly. The drive stream pulls each
  *     result and, for a `Right` batch, hands it to the injected `persistResources`
  *     *inline* (awaited): the batch is settled by the time the step finishes, so
  *     there's no outstanding-write bookkeeping. The write requirement (`R`,
@@ -213,7 +199,7 @@ const collectImportSummary = <R>(
  *     broadened collector `runAuthed` satisfies.
  *   - Completion is the `requestSniffingResults` stream finishing: the handler
  *     closes it once `SniffingComplete` has fired and every sniffed request has
- *     settled, and {@link buildDriveStream} stops when a `take` sees it
+ *     settled, and {@link processSniffResultsFromMailbox} stops when a `take` sees it
  *     done+drained. {@link DEFAULT_IDLE_TIMEOUT} is the escape hatch for a silent
  *     host — on idle, `abandonAllRequestSniffing` fails any stalled request and
  *     closes the stream.
@@ -230,15 +216,15 @@ const buildImportEffect = <Resources, R>({
   context: { scrapingPlan, persistResources },
   sendCollectorMessage,
   collectorRegister,
-  onError,
-  setFailed,
+  onNewFailureCause: handleNewFailureCause,
+  onFailureSetUpdated: handleFailureSetUpdated,
   idleTimeout,
 }: {
   readonly context: CollectorDescriptor.ResourcePersistenceContext<Resources, R>
   readonly sendCollectorMessage: CollectorSender
   readonly collectorRegister: ReturnType<typeof useCollectorRegister>
-  readonly onError: (error: unknown) => void
-  readonly setFailed: (failed: ReadonlyArray<FailedResource>) => void
+  readonly onNewFailureCause: (error: unknown) => void
+  readonly onFailureSetUpdated: (failed: ReadonlyArray<FailedResource>) => void
   readonly idleTimeout: Duration.DurationInput
 }): Effect.Effect<ImportSummary, never, R> =>
   Effect.scoped(
@@ -250,7 +236,7 @@ const buildImportEffect = <Resources, R>({
       // the sink (a skipped resource contributes no failure), so the runner
       // stays resource-agnostic. `Right` a decoded batch → persist; `Left` a
       // response-level failure → one `PersistFailure` keyed on the URL.
-      const processStateEvent = (
+      const processSniffResult = (
         event: SniffResult<Resources>
       ): Effect.Effect<ReadonlyArray<CollectorDescriptor.PersistFailure>, never, R> =>
         Either.match(event, {
@@ -269,10 +255,10 @@ const buildImportEffect = <Resources, R>({
         })
 
       // The handler observes its own `SniffingComplete` internally (the step
-      // machine's terminal dispatch runs the lifecycle's `markSniffingComplete`
+      // machine's terminal dispatch runs the lifecycle's `handleSniffingComplete`
       // hook, which closes `requestSniffingResults`), so the runner passes the
       // plain sender — no completion wrap needed here.
-      const { requestSniffingResults: handlerResults, abandonAllRequestSniffing } =
+      const { requestSniffingResults: sniffResultMailbox, abandonAllRequestSniffing } =
         yield* Effect.acquireRelease(
           Effect.gen(function* () {
             // Separate out the `pipeThroughHandlers` bridge tags so the handler's
@@ -332,23 +318,24 @@ const buildImportEffect = <Resources, R>({
             )
         )
 
+      const persistFailureStream = processSniffResultsFromMailbox({
+        sniffResultMailbox,
+        processSniffResult,
+        onIdleTimeout: abandonAllRequestSniffing,
+        idleTimeout,
+      })
       // Idle-timeout escape: `abandonAllRequestSniffing` publishes every
       // still-incomplete sniffed request as a `Left` failure on
       // `requestSniffingResults` and closes the stream, so a stalled download
       // (whose `ResponseData` chunks never produce a terminal) is reported as a
       // loss instead of hanging the run. The drive loop reads
       // `requestSniffingResults` directly (completion is that stream finishing)
-      // and drains those failures — they flow through `processStateEvent` like
+      // and drains those failures — they flow through `processSniffResult` like
       // any other failure — then observes `done`.
       return yield* collectImportSummary(
-        buildDriveStream({
-          results: handlerResults,
-          processEvent: processStateEvent,
-          onIdleTimeout: abandonAllRequestSniffing,
-          idleTimeout,
-        }),
-        setFailed,
-        onError
+        persistFailureStream,
+        handleFailureSetUpdated,
+        handleNewFailureCause
       )
     })
   ).pipe(
@@ -366,5 +353,10 @@ const buildImportEffect = <Resources, R>({
     Effect.withSpan(Telemetry.Sync.Span.Name, {})
   )
 
-export { buildDriveStream, buildImportEffect, collectImportSummary, DEFAULT_IDLE_TIMEOUT }
+export {
+  processSniffResultsFromMailbox,
+  buildImportEffect,
+  collectImportSummary,
+  DEFAULT_IDLE_TIMEOUT,
+}
 export type { FailedResource, ImportSummary, SniffResult }

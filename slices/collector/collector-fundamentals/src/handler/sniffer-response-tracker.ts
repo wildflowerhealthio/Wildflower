@@ -39,6 +39,14 @@ class SnifferCancelled extends Data.TaggedError('SnifferCancelled')<{
 type SniffFailure = {
   readonly error: ParseResult.ParseError | UnknownException | SnifferCancelled
   readonly url: string
+  /**
+   * `true` only for a request settled by the idle-timeout abandon path
+   * (`failIncompleteSniffedRequests`), which force-closes the results stream
+   * itself — the signal for `handleNewSniffResult` to skip its per-result
+   * stream-close check. A normal terminal (including a `Cancelled` event) is
+   * `false`.
+   */
+  readonly abandoned: boolean
 }
 
 /**
@@ -54,8 +62,9 @@ type SniffResult<TResources> = Either.Either<readonly TResources[], SniffFailure
  * The response-tracker half of {@link CollectorBridgeMessageHandler}: the five
  * response handlers and the `incompleteSniffedRequests` map. It publishes each
  * settled request's {@link SniffResult} to the {@link RunLifecycleState}'s stream
- * (via the injected `publishSniffResult` / `endRequestSniffingResultsUnlessMoreExpected`)
- * and exposes the hooks the lifecycle needs to drive the run's end-paths. It
+ * (via the injected `handleNewSniffResult`, which both offers the result and runs
+ * the lifecycle's stream-close check) and exposes the hooks the lifecycle needs
+ * to drive the run's end-paths. It
  * interacts with the automatic-navigation machine only through the supplied `sendMessage` — no
  * shared state.
  */
@@ -64,11 +73,11 @@ interface SnifferResponseTracker<TResources> {
     string,
     IncompleteSniffedRequest<TResources>
   >
-  readonly ResponseStart: Service['ResponseStart']
-  readonly ResponseData: Service['ResponseData']
-  readonly ResponseFinished: Service['ResponseFinished']
-  readonly RequestError: Service['RequestError']
-  readonly Cancelled: Service['Cancelled']
+  readonly handleResponseStart: Service['ResponseStart']
+  readonly handleResponseData: Service['ResponseData']
+  readonly handleResponseFinished: Service['ResponseFinished']
+  readonly handleRequestError: Service['RequestError']
+  readonly handleCancelled: Service['Cancelled']
   /**
    * Whether any sniffed request is still incomplete — a synchronous
    * `MutableHashMap.size` read. The {@link RunLifecycleState} reads this as one of the
@@ -99,8 +108,7 @@ interface SnifferResponseTracker<TResources> {
 const make = <TResources>({
   matchEntity,
   sendMessage,
-  publishSniffResult,
-  endRequestSniffingResultsUnlessMoreExpected,
+  handleNewSniffResult,
 }: {
   matchEntity: (url: string) => Option.Option<EntityDefinition.EntityDefinition<TResources>>
   sendMessage: (
@@ -108,16 +116,11 @@ const make = <TResources>({
   ) => Effect.Effect<void, never, never>
   /**
    * Publish one settled {@link SniffResult} onto the {@link RunLifecycleState}'s
-   * stream — synchronous, so `offerSniffResultAndUntrack` keeps its
-   * offer-then-drop order.
+   * stream. Offers the result, then runs the lifecycle's stream-close check —
+   * so `offerSniffResultAndUntrack` drops the tracked id *before* calling this,
+   * letting that check see the settled request already gone from the map.
    */
-  publishSniffResult: (result: SniffResult<TResources>) => void
-  /**
-   * Run after each settle: the lifecycle closes its results stream iff sniffing
-   * is complete and no sniffed request is still incomplete. Chained after every
-   * publish + drop.
-   */
-  endRequestSniffingResultsUnlessMoreExpected: Effect.Effect<void, never, never>
+  handleNewSniffResult: (result: SniffResult<TResources>) => Effect.Effect<void, never, never>
 }): Effect.Effect<SnifferResponseTracker<TResources>, never, never> =>
   // No effectful setup — the tracker holds only a mutable map and closes over
   // the injected lifecycle seams — so this is a plain `Effect.sync`, not a
@@ -154,17 +157,17 @@ const make = <TResources>({
       })
 
     /**
-     * Publish the settled {@link SniffResult} for `id`, then drop the tracked
-     * entry — in that order. `publishSniffResult` is synchronous, so this
-     * preserves the "offer-then-drop" invariant every terminal path (finish,
-     * error, cancel, decode-failure) shares; see the [Handler
-     * Explanation](../../docs/Handler%20Explanation.md) for why removing the id
-     * first would let `endRequestSniffingResultsUnlessMoreExpected` observe a
-     * momentary "settled" state and close the stream mid-write. The response URL
-     * is folded into the failure `Left` here, where the `RemoteResponse` is in
-     * hand. Dropping the last incomplete request after sniffing completes is what
-     * closes the stream, so the offer-then-drop order also guarantees the final
-     * result is queued before the stream closes.
+     * Drop the tracked entry for `id`, then publish its settled
+     * {@link SniffResult} — in that order. The injected `handleNewSniffResult`
+     * (the {@link RunLifecycleState} seam) both offers the result onto the stream
+     * *and* runs the end-check, and it offers before it checks.
+     * So dropping the id first is what lets that end-check see the map without
+     * this request and close the stream once the last one settles — while the
+     * result is still queued ahead of the close. (Publishing first would leave
+     * the just-settled id in the map at end-check time, so the final settle could
+     * never close the stream; see the [Handler
+     * Explanation](../../docs/Handler%20Explanation.md).) The response URL is
+     * folded into the failure `Left` here, where the `RemoteResponse` is in hand.
      */
     const offerSniffResultAndUntrack = (
       id: string,
@@ -174,12 +177,16 @@ const make = <TResources>({
         ParseResult.ParseError | UnknownException | SnifferCancelled
       >
     ): Effect.Effect<void, never, never> =>
-      Effect.sync(() => {
-        publishSniffResult(Either.mapLeft(result, (error) => ({ error, url: response.url })))
-        MutableHashMap.remove(incompleteSniffedRequests, id)
-      }).pipe(Effect.andThen(endRequestSniffingResultsUnlessMoreExpected))
+      Effect.andThen(
+        Effect.sync(() => {
+          MutableHashMap.remove(incompleteSniffedRequests, id)
+        }),
+        handleNewSniffResult(
+          Either.mapLeft(result, (error) => ({ error, url: response.url, abandoned: false }))
+        )
+      )
 
-    const ResponseStart: Service['ResponseStart'] = (event) => {
+    const handleResponseStart: Service['ResponseStart'] = (event) => {
       const entity = matchEntity(event.url)
       if (Option.isNone(entity)) {
         return sendMessage({
@@ -199,7 +206,7 @@ const make = <TResources>({
       return Effect.void
     }
 
-    const ResponseData: Service['ResponseData'] = (event) =>
+    const handleResponseData: Service['ResponseData'] = (event) =>
       withTracked('ResponseData', event.id, ({ response }) =>
         Effect.gen(function* () {
           const decoded = Encoding.decodeBase64(event.data)
@@ -220,7 +227,7 @@ const make = <TResources>({
         })
       )
 
-    const ResponseFinished: Service['ResponseFinished'] = (event) =>
+    const handleResponseFinished: Service['ResponseFinished'] = (event) =>
       withTracked('ResponseFinished', event.id, ({ response, entity }) =>
         Effect.gen(function* () {
           // `url.path` is a path-only OTel semconv key: strip scheme/host/query
@@ -251,13 +258,13 @@ const make = <TResources>({
               },
             })
           )
-          // The parse is span-wrapped and latency-bearing, so the offer-then-drop
+          // The parse is span-wrapped and latency-bearing, so the drop-then-offer
           // ordering matters most here (see `offerSniffResultAndUntrack`).
           yield* offerSniffResultAndUntrack(event.id, response, result)
         })
       )
 
-    const RequestError: Service['RequestError'] = (event) =>
+    const handleRequestError: Service['RequestError'] = (event) =>
       // `event.url` is intentionally ignored — the URL captured at
       // `ResponseStart` is the routing source of truth and the entity is
       // already pinned there, so a redirected `event.url` is not
@@ -271,7 +278,7 @@ const make = <TResources>({
         )
       )
 
-    const Cancelled: Service['Cancelled'] = (event) =>
+    const handleCancelled: Service['Cancelled'] = (event) =>
       withTracked('Cancelled', event.id, ({ response }) =>
         offerSniffResultAndUntrack(
           event.id,
@@ -292,12 +299,13 @@ const make = <TResources>({
           )
         }
         for (const { response } of incomplete) {
-          publishSniffResult(
+          handleNewSniffResult(
             Either.left({
               error: new UnknownException(
                 `response for ${response.url} still in-flight at idle timeout; abandoning`
               ),
               url: response.url,
+              abandoned: true,
             })
           )
         }
@@ -318,11 +326,11 @@ const make = <TResources>({
 
     return {
       incompleteSniffedRequests,
-      ResponseStart,
-      ResponseData,
-      ResponseFinished,
-      RequestError,
-      Cancelled,
+      handleResponseStart,
+      handleResponseData,
+      handleResponseFinished,
+      handleRequestError,
+      handleCancelled,
       hasIncompleteSniffedRequests,
       failIncompleteSniffedRequests,
       cancelIncompleteSniffedRequests,

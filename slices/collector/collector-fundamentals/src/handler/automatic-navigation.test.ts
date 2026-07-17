@@ -34,7 +34,7 @@ const makeMachine = (options: {
         stepDelay: options.stepDelay ?? Duration.seconds(5),
       }),
       sendMessage: options.sendMessage,
-      // The composition wires this to the run lifecycle's `markSniffingComplete`;
+      // The composition wires this to the run lifecycle's `handleSniffingComplete`;
       // the machine treats it opaquely. Tests default to a no-op unless they
       // assert it fired.
       onSniffingComplete: options.onSniffingComplete ?? Effect.void,
@@ -79,7 +79,7 @@ describe('automatic-navigation.make: automatic navigation', () => {
           const sendMessage = vi.fn<SendMessage>(() => Effect.void)
           const machine = makeMachine({ sendMessage, stepSequence: [] })
 
-          yield* machine.PageLoaded(pageLoaded())
+          yield* machine.handlePageLoaded(pageLoaded())
           expect(sendMessage).not.toHaveBeenCalled()
 
           yield* TestClock.adjust(Duration.seconds(5))
@@ -102,7 +102,7 @@ describe('automatic-navigation.make: automatic navigation', () => {
             stepSequence: [],
           })
 
-          yield* machine.PageLoaded(pageLoaded())
+          yield* machine.handlePageLoaded(pageLoaded())
           yield* TestClock.adjust(Duration.seconds(5))
           yield* Effect.yieldNow()
 
@@ -118,19 +118,19 @@ describe('automatic-navigation.make: automatic navigation', () => {
           const sendMessage = vi.fn<SendMessage>(() => Effect.void)
           const machine = makeMachine({ sendMessage, stepSequence: [linkA, linkB] })
 
-          yield* machine.PageLoaded(pageLoaded('https://example.com/'))
+          yield* machine.handlePageLoaded(pageLoaded('https://example.com/'))
           yield* TestClock.adjust(Duration.seconds(5))
           yield* Effect.yieldNow()
           expect(sendMessage).toHaveBeenCalledTimes(1)
           expect(sendMessage.mock.calls[0][0]).toEqual(linkA.action)
 
-          yield* machine.PageLoaded(pageLoaded('https://example.com/a'))
+          yield* machine.handlePageLoaded(pageLoaded('https://example.com/a'))
           yield* TestClock.adjust(Duration.seconds(5))
           yield* Effect.yieldNow()
           expect(sendMessage).toHaveBeenCalledTimes(2)
           expect(sendMessage.mock.calls[1][0]).toEqual(linkB.action)
 
-          yield* machine.PageLoaded(pageLoaded('https://example.com/b'))
+          yield* machine.handlePageLoaded(pageLoaded('https://example.com/b'))
           yield* TestClock.adjust(Duration.seconds(5))
           yield* Effect.yieldNow()
           expect(sendMessage).toHaveBeenCalledTimes(3)
@@ -144,12 +144,12 @@ describe('automatic-navigation.make: automatic navigation', () => {
           const sendMessage = vi.fn<SendMessage>(() => Effect.void)
           const machine = makeMachine({ sendMessage, stepSequence: [linkA, linkB] })
 
-          yield* machine.PageLoaded(pageLoaded('https://example.com/'))
+          yield* machine.handlePageLoaded(pageLoaded('https://example.com/'))
           yield* TestClock.adjust(Duration.seconds(3))
           yield* Effect.yieldNow()
           expect(sendMessage).not.toHaveBeenCalled()
 
-          yield* machine.PageLoaded(pageLoaded('https://example.com/'))
+          yield* machine.handlePageLoaded(pageLoaded('https://example.com/'))
           yield* TestClock.adjust(Duration.seconds(3))
           yield* Effect.yieldNow()
           expect(sendMessage).not.toHaveBeenCalled()
@@ -167,12 +167,12 @@ describe('automatic-navigation.make: automatic navigation', () => {
           const sendMessage = vi.fn<SendMessage>(() => Effect.void)
           const machine = makeMachine({ sendMessage, stepSequence: [] })
 
-          yield* machine.PageLoaded(pageLoaded())
+          yield* machine.handlePageLoaded(pageLoaded())
           yield* TestClock.adjust(Duration.seconds(5))
           yield* Effect.yieldNow()
           expect(sendMessage).toHaveBeenCalledOnce()
 
-          yield* machine.PageLoaded(pageLoaded('https://example.com/next')).pipe(
+          yield* machine.handlePageLoaded(pageLoaded('https://example.com/next')).pipe(
             LoggingLayerTest.expectToLog((logs) => {
               expect(logs).toEqual([
                 expect.objectContaining({
@@ -198,7 +198,7 @@ describe('automatic-navigation.make: automatic navigation', () => {
           const sendMessage = vi.fn<SendMessage>(() => Effect.void)
           const machine = makeMachine({ sendMessage, stepSequence: [linkA] })
 
-          yield* machine.PageLoaded(pageLoaded())
+          yield* machine.handlePageLoaded(pageLoaded())
           yield* machine.stopAutomaticNavigation()
           yield* TestClock.adjust(Duration.seconds(5))
           yield* Effect.yieldNow()
@@ -212,14 +212,14 @@ describe('automatic-navigation.make: automatic navigation', () => {
           const sendMessage = vi.fn<SendMessage>(() => Effect.void)
           const machine = makeMachine({ sendMessage, stepSequence: [linkA, linkB] })
 
-          yield* machine.PageLoaded(pageLoaded())
+          yield* machine.handlePageLoaded(pageLoaded())
           yield* TestClock.adjust(Duration.seconds(5))
           yield* Effect.yieldNow()
           expect(sendMessage).toHaveBeenCalledTimes(1)
 
           yield* machine.stopAutomaticNavigation()
 
-          yield* machine.PageLoaded(pageLoaded())
+          yield* machine.handlePageLoaded(pageLoaded())
           yield* TestClock.adjust(Duration.seconds(5))
           yield* Effect.yieldNow()
           expect(sendMessage).toHaveBeenCalledTimes(2)
@@ -233,7 +233,7 @@ describe('automatic-navigation.make: automatic navigation', () => {
           const sendMessage = vi.fn<SendMessage>(() => Effect.void)
           const machine = makeMachine({ sendMessage, stepSequence: [fillLink] })
 
-          yield* machine.PageLoaded(pageLoaded())
+          yield* machine.handlePageLoaded(pageLoaded())
           yield* TestClock.adjust(Duration.seconds(5))
           yield* Effect.yieldNow()
 
@@ -261,7 +261,7 @@ describe('automatic-navigation.make: automatic navigation', () => {
           }
           const machine = makeMachine({ sendMessage, stepSequence: [gatedClick] })
 
-          yield* machine.PageLoaded(pageLoaded('https://example.com/dashboard'))
+          yield* machine.handlePageLoaded(pageLoaded('https://example.com/dashboard'))
           yield* TestClock.adjust(Duration.seconds(5))
           yield* Effect.yieldNow()
 
@@ -283,12 +283,12 @@ describe('automatic-navigation.make: automatic navigation', () => {
             const sendMessage = vi.fn<SendMessage>(() => Effect.void)
             const machine = makeMachine({ sendMessage, stepSequence: [urlMatchLink] })
 
-            yield* machine.PageLoaded(pageLoaded('https://example.com/login'))
+            yield* machine.handlePageLoaded(pageLoaded('https://example.com/login'))
             yield* TestClock.adjust(Duration.seconds(5))
             yield* Effect.yieldNow()
             expect(sendMessage).not.toHaveBeenCalled()
 
-            yield* machine.PageLoaded(pageLoaded('https://example.com/dashboard'))
+            yield* machine.handlePageLoaded(pageLoaded('https://example.com/dashboard'))
             yield* TestClock.adjust(Duration.seconds(5))
             yield* Effect.yieldNow()
             expect(sendMessage).toHaveBeenCalledTimes(1)
@@ -302,7 +302,7 @@ describe('automatic-navigation.make: automatic navigation', () => {
             const sendMessage = vi.fn<SendMessage>(() => Effect.void)
             const machine = makeMachine({ sendMessage, stepSequence: [urlMatchLink] })
 
-            yield* machine.PageLoaded(pageLoaded('https://example.com/login'))
+            yield* machine.handlePageLoaded(pageLoaded('https://example.com/login'))
             yield* TestClock.adjust(Duration.seconds(29))
             yield* Effect.yieldNow()
             expect(sendMessage).not.toHaveBeenCalled()
@@ -312,7 +312,7 @@ describe('automatic-navigation.make: automatic navigation', () => {
             expect(sendMessage).toHaveBeenCalledTimes(1)
             expect(sendMessage.mock.calls[0][0]).toEqual({ _tag: 'SniffingComplete' })
 
-            yield* machine.PageLoaded(pageLoaded('https://example.com/dashboard')).pipe(
+            yield* machine.handlePageLoaded(pageLoaded('https://example.com/dashboard')).pipe(
               LoggingLayerTest.expectToLog((logs) => {
                 expect(logs).toEqual([
                   expect.objectContaining({
@@ -337,11 +337,11 @@ describe('automatic-navigation.make: automatic navigation', () => {
             const sendMessage = vi.fn<SendMessage>(() => Effect.void)
             const machine = makeMachine({ sendMessage, stepSequence: [urlMatchLink] })
 
-            yield* machine.PageLoaded(pageLoaded('https://example.com/login'))
+            yield* machine.handlePageLoaded(pageLoaded('https://example.com/login'))
             yield* TestClock.adjust(Duration.seconds(10))
             yield* Effect.yieldNow()
 
-            yield* machine.PageLoaded(pageLoaded('https://example.com/dashboard'))
+            yield* machine.handlePageLoaded(pageLoaded('https://example.com/dashboard'))
             yield* TestClock.adjust(Duration.seconds(5))
             yield* Effect.yieldNow()
             expect(sendMessage).toHaveBeenCalledTimes(1)
@@ -359,7 +359,7 @@ describe('automatic-navigation.make: automatic navigation', () => {
             const sendMessage = vi.fn<SendMessage>(() => Effect.void)
             const machine = makeMachine({ sendMessage, stepSequence: [urlMatchLink] })
 
-            yield* machine.PageLoaded(pageLoaded('https://example.com/login'))
+            yield* machine.handlePageLoaded(pageLoaded('https://example.com/login'))
             yield* machine.stopAutomaticNavigation()
             yield* TestClock.adjust(Duration.seconds(30))
             yield* Effect.yieldNow()

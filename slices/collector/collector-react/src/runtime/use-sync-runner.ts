@@ -105,8 +105,8 @@ const useSyncRunner = ({
           context,
           sendCollectorMessage,
           collectorRegister,
-          onError: (error) => onErrorRef.current?.(error),
-          setFailed,
+          onNewFailureCause: (error) => onErrorRef.current?.(error),
+          onFailureSetUpdated: setFailed,
           idleTimeout,
         })
       ),

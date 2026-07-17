@@ -1,5 +1,5 @@
 import { type CancelSnifferRequestMessage } from 'browser-sniffer-core'
-import { Effect, Mailbox, Ref } from 'effect'
+import { Effect, Either, Mailbox, Ref } from 'effect'
 
 import type { SniffResult } from './sniffer-response-tracker.ts'
 
@@ -14,7 +14,7 @@ import type { SniffResult } from './sniffer-response-tracker.ts'
  * settle. The stream closes when neither can produce more — sniffing complete
  * *and* no incomplete sniffed requests.
  *
- * - **`markSniffingComplete`** — the scripted navigation dispatched its terminal
+ * - **`handleSniffingComplete`** — the scripted navigation dispatched its terminal
  *   `SniffingComplete`. Latch it, then close the stream if nothing is still
  *   incomplete; otherwise the last request to settle does.
  * - **`abandonAllRequestSniffing`** — the idle-timeout escape. Publish every
@@ -35,28 +35,33 @@ import type { SniffResult } from './sniffer-response-tracker.ts'
 interface RunLifecycleState<TResources> {
   /**
    * The stream of settled {@link SniffResult}s, surfaced as the handler's
-   * result source. The lifecycle closes it on `markSniffingComplete` (once no
+   * result source. The lifecycle closes it on `handleSniffingComplete` (once no
    * request is incomplete) or `abandonAllRequestSniffing`. Once closed *and*
    * drained, a consumer's `take` fails with `NoSuchElementException` — the run's
    * completion signal.
    */
   readonly requestSniffingResults: Mailbox.ReadonlyMailbox<SniffResult<TResources>>
   /**
-   * Publish one settled result onto `requestSniffingResults`. Synchronous
-   * (`unsafeOffer`), so the tracker can preserve its offer-then-drop invariant:
-   * publish here, then drop the tracked id, in one synchronous block. The tracker
-   * is the sole caller.
+   * Publish one settled result onto `requestSniffingResults` (a synchronous
+   * `unsafeOffer`), then run `endRequestSniffingResultsUnlessMoreExpected` so the
+   * stream closes if this was the last thing it was waiting on. The tracker is
+   * the sole caller, and it drops the settled id *before* calling this — so the
+   * offer lands before the end-check, and the end-check sees the request gone.
+   * The idle-timeout abandon path publishes with `abandoned` set: it
+   * force-closes the stream itself, so the per-result end-check is skipped.
    */
-  readonly publishSniffResult: (result: SniffResult<TResources>) => void
+  readonly handleNewSniffResult: (
+    result: SniffResult<TResources>
+  ) => Effect.Effect<void, never, never>
   /**
    * Run after every settle: close `requestSniffingResults` iff sniffing is
    * complete *and* no sniffed request is still incomplete — i.e. no more results
-   * can come. Idempotent — `Mailbox.end` is a no-op once closed. The tracker
-   * chains this after each `publishSniffResult` + drop.
+   * can come. Idempotent — `Mailbox.end` is a no-op once closed. `handleNewSniffResult`
+   * chains this after each publish; `handleSniffingComplete` after latching.
    */
   readonly endRequestSniffingResultsUnlessMoreExpected: Effect.Effect<void, never, never>
   /** Latch that scripted sniffing finished; close the stream if nothing is incomplete. */
-  readonly markSniffingComplete: Effect.Effect<void, never, never>
+  readonly handleSniffingComplete: Effect.Effect<void, never, never>
   /** Idle escape: publish every incomplete request as a failure, then close the stream. */
   readonly abandonAllRequestSniffing: Effect.Effect<void, never, never>
   /** Unmount teardown: stop navigation + `CancelSnifferRequest` each incomplete request; no close. */
@@ -103,11 +108,25 @@ const make = <TResources>({
         yield* requestSniffingResults.end
       })
 
-    const publishSniffResult = (result: SniffResult<TResources>): void => {
+    const handleNewSniffResult = (
+      result: SniffResult<TResources>
+    ): Effect.Effect<void, never, never> => {
       requestSniffingResults.unsafeOffer(result)
+      // The idle-timeout abandon path (`failIncompleteSniffedRequests`) publishes
+      // each stalled request `abandoned` before force-closing the stream itself,
+      // so running the end-check per result there is pointless — the map isn't
+      // cleared until every failure is published. Skip it for those.
+      const abandoned = Either.match(result, {
+        onLeft: (error) => error.abandoned,
+        onRight: () => false,
+      })
+      if (abandoned) {
+        return Effect.void
+      }
+      return endRequestSniffingResultsUnlessMoreExpected
     }
 
-    const markSniffingComplete: Effect.Effect<void, never, never> = Ref.set(
+    const handleSniffingComplete: Effect.Effect<void, never, never> = Ref.set(
       sniffingComplete,
       true
     ).pipe(Effect.andThen(endRequestSniffingResultsUnlessMoreExpected))
@@ -130,9 +149,9 @@ const make = <TResources>({
 
     return {
       requestSniffingResults,
-      publishSniffResult,
+      handleNewSniffResult,
       endRequestSniffingResultsUnlessMoreExpected,
-      markSniffingComplete,
+      handleSniffingComplete,
       abandonAllRequestSniffing,
       cancelAllRequestSniffing,
     }

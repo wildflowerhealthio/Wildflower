@@ -115,10 +115,10 @@ per-resource span — and returns the resources it could not write as
 `buildImportEffect` models the whole sync as one long, interruptible Effect on
 a single fiber. It builds the `CollectorBridgeMessageHandler`, registers it,
 dispatches `RequestSniffableWebView`, and then runs the **drive Stream**
-(`buildDriveStream`), folded into the `ImportSummary` by `collectImportSummary`.
+(`processSniffResultsFromMailbox`), folded into the `ImportSummary` by `collectImportSummary`.
 The handler publishes each settled outcome — a decoded batch (`Right`) or a
 sniff-level parse/transport failure (`Left`) — onto its own
-`requestSniffingResults` stream, which `buildDriveStream` reads directly (no
+`requestSniffingResults` stream, which `processSniffResultsFromMailbox` reads directly (no
 `onResult` callback, no adapter in between). Each drive step pulls one result and
 writes the batch inline, emitting that batch's `PersistFailure`s as the step's
 stream element. The run's output is thus _produced by the Stream_ — the fold is
@@ -130,7 +130,7 @@ This loop has no such concurrent state; forcing a transition table onto it
 would add ceremony for no benefit.) It is expressed with `Stream.paginateEffect`
 specifically because that emits its element on the _terminal_ step too — how the
 idle-timeout abandon tail reports its failures and ends the stream at once.
-`buildDriveStream` is a plain generic function handed the handler's read-only
+`processSniffResultsFromMailbox` is a plain generic function handed the handler's read-only
 `requestSniffingResults` stream; **completion is folded into that stream**. There
 is no `isSettled` predicate and no incomplete-request map in the runner — the
 handler's run lifecycle closes `requestSniffingResults` once sniffing is complete
@@ -153,8 +153,9 @@ the stream reports done:
 
 - **`done`** is a `take` on a finished, drained stream failing with
   `NoSuchElementException`. `end`ing a non-empty mailbox leaves it _draining_, so
-  every queued result is taken before `done` — the offer-then-drop order in the
-  tracker guarantees the final result is queued before the stream closes.
+  every queued result is taken before `done` — the tracker's drop-then-offer
+  order (it offers the result before the close-check runs) guarantees the final
+  result is queued before the stream closes.
 - The **`idleTimeout`** (`DEFAULT_IDLE_TIMEOUT`) is the escape hatch for a silent
   host. If nothing arrives within it — a stalled download whose `ResponseData`
   chunks never produce a terminal, or a host gone quiet — the loop runs the

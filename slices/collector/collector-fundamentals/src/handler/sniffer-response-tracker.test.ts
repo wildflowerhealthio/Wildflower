@@ -25,7 +25,7 @@ import * as CollectorBridgeMessageHandler from './collector-bridge-message-handl
 
 const { expectRightToEqual, expectLeftToEqual } = utilityExpectations(expect)
 
-// The lifecycle's completion coupling (`markSniffingComplete` / `abandonAllRequestSniffing` ending the
+// The lifecycle's completion coupling (`handleSniffingComplete` / `abandonAllRequestSniffing` ending the
 // `results` mailbox) now lives on the `RunLifecycleState`; see `run-lifecycle-state.test.ts`.
 
 describe('CollectorBridgeMessageHandler.make: sniffer response tracker', () => {
