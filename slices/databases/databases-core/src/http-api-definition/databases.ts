@@ -59,10 +59,23 @@ const DatabaseNotFoundSchema = Schema.Struct({
 const DeletedSchema = Schema.Struct({ deleted: Schema.Boolean })
 
 /**
+ * `403` body — the caller authenticated, but their token doesn't cover the
+ * target database's declared scope. Matches the shared Rust
+ * `InsufficientScopeBody` (`scope-capabilities-rust`); `missingScopes` names
+ * the scopes the caller must additionally hold.
+ */
+const InsufficientScopeSchema = Schema.Struct({
+  error: Schema.Literal('InsufficientScope'),
+  missingScopes: Schema.Array(Schema.String),
+})
+
+/**
  * Data-management endpoints — the JSON surface over the host's SQLite
- * databases. The group carries no middleware; the host gates the whole
- * `/databases` surface behind the gatekeeper Owner check, and the TS client
- * layer still attaches the bearer (see
+ * databases. The group carries no middleware; the host authenticates the whole
+ * `/databases` surface behind the gatekeeper bearer gate, each database's
+ * download/delete is additionally gated by its declared scope on the Rust side
+ * (a `403 InsufficientScope` when the token doesn't cover it), and the TS
+ * client layer still attaches the bearer (see
  * `databases-react/src/client/databases-client.ts`).
  *
  * The binary export endpoint (`GET /databases/:id`) is deliberately NOT modelled
@@ -77,6 +90,7 @@ const httpApiGroup = HttpApiGroup.make('databases', { topLevel: false })
     HttpApiEndpoint.del('DeleteDatabase', '/databases/:id')
       .setPath(DatabaseIdPathSchema)
       .addSuccess(DeletedSchema)
+      .addError(InsufficientScopeSchema, { status: 403 })
       .addError(DatabaseNotFoundSchema, { status: 404 })
   )
 
@@ -86,5 +100,6 @@ export {
   DatabaseMetadataSchema,
   DatabaseNotFoundSchema,
   DeletedSchema,
+  InsufficientScopeSchema,
   httpApiGroup,
 }

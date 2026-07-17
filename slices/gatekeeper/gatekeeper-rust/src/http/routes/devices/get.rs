@@ -1,13 +1,14 @@
 use std::sync::Arc;
 
-use axum::extract::{Path, State};
+use axum::extract::Path;
 use axum::routing::{get, MethodRouter};
 use axum::Json;
 use serde::Serialize;
 
-use crate::domain::actions;
+use crate::domain::capabilities::{DeviceConsentView, Scoped};
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::http::state::GatekeeperState;
+use crate::state::ConsentReaderCap;
 
 /// Body returned to the Owner UI when it loads a pending device-code consent
 /// prompt — describes the requesting client, the device's chosen name, its
@@ -26,30 +27,26 @@ pub(crate) struct DeviceConsent {
 }
 
 /// `GET /devices/{userCode}` — load a pending device-code consent prompt for
-/// the Owner UI to render.
+/// the Owner UI to render (scope `wildflower/AuthorizationRequest.r`).
 pub(super) fn route() -> MethodRouter<Arc<GatekeeperState>> {
     get(handle_get_device_consent)
 }
 
 async fn handle_get_device_consent(
-    State(state): State<Arc<GatekeeperState>>,
+    consents: Scoped<ConsentReaderCap>,
     Path(user_code): Path<String>,
 ) -> Result<Json<DeviceConsent>, GatekeeperError> {
-    let device_request = actions::load_pending_device_request(&state.store, &user_code)?;
-    let (client_name, allowed_scopes) =
-        match actions::client_by_id(&state.store, &device_request.client_id) {
-            Ok(Some(c)) => (c.name, c.allowed_scopes),
-            // Fall back to the raw client_id (and no expansion envelope) if lookup
-            // misses or fails — the UI still works, the approver just sees less
-            // context and can only grant within the requested set.
-            _ => (device_request.client_id.clone(), Vec::new()),
-        };
+    let DeviceConsentView {
+        request,
+        client_name,
+        allowed_scopes,
+    } = consents.device_consent(&user_code)?;
     Ok(Json(DeviceConsent {
         user_code,
-        client_id: device_request.client_id,
+        client_id: request.client_id,
         client_name,
-        device_name: device_request.device_name,
-        requested_scopes: device_request.requested_scopes,
+        device_name: request.device_name,
+        requested_scopes: request.requested_scopes,
         allowed_scopes,
     }))
 }

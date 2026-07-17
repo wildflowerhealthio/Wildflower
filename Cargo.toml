@@ -13,6 +13,7 @@ members = [
   "slices/gatekeeper/gatekeeper-rust",
   "slices/gatekeeper/token-revocation-rust",
   "slices/persistence/persistence-rust",
+  "slices/scopes/scope-capabilities-rust",
   "slices/scopes/scopes-rust",
   "slices/shared-structures/shared-structures-rust",
   "slices/shared-structures/shared-structures-server-rust",

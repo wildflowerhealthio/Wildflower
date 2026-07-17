@@ -114,16 +114,16 @@ pub(crate) enum ConsentResult {
     Denied,
 }
 
-/// Render the domain consent action's [`ConsentOutcome`](crate::domain::actions::ConsentOutcome)
+/// Render the domain consent action's [`ConsentOutcome`](crate::domain::capabilities::ConsentOutcome)
 /// onto the Owner-UI wire result, so an approve/deny handler is
 /// `Ok(Json(outcome.into()))`.
-impl From<crate::domain::actions::ConsentOutcome> for ConsentResult {
-    fn from(outcome: crate::domain::actions::ConsentOutcome) -> Self {
+impl From<crate::domain::capabilities::ConsentOutcome> for ConsentResult {
+    fn from(outcome: crate::domain::capabilities::ConsentOutcome) -> Self {
         match outcome {
-            crate::domain::actions::ConsentOutcome::Approved { redirect } => {
+            crate::domain::capabilities::ConsentOutcome::Approved { redirect } => {
                 ConsentResult::Approved { redirect }
             }
-            crate::domain::actions::ConsentOutcome::Denied => ConsentResult::Denied,
+            crate::domain::capabilities::ConsentOutcome::Denied => ConsentResult::Denied,
         }
     }
 }

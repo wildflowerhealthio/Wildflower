@@ -15,6 +15,11 @@ pub enum DatabaseError {
     /// No catalogued database has this id, or it isn't present on disk — a
     /// read / download / delete addressed an unknown or absent database.
     NotFound { id: String },
+    /// The caller authenticated, but their token doesn't cover the scope this
+    /// database requires for the attempted operation (its `read_scope` for a
+    /// download, `delete_scope` for a delete). Rendered as a `403` naming the
+    /// missing scope(s) — the same shape gatekeeper's `/access` surface returns.
+    InsufficientScope { missing_scopes: Vec<String> },
     /// An infrastructure failure in a file-level operation (a snapshot export or
     /// a marker write) — opaque to clients: the HTTP layer logs `context` +
     /// `source` and answers an empty 500. The cause is captured as text so this

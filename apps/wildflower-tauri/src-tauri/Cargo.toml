@@ -47,6 +47,8 @@ collector-rust = { path = "../../../slices/collector/collector-rust" }
 databases-rust = { path = "../../../slices/databases/databases-rust" }
 emr-rust = { path = "../../../slices/emr/emr-rust" }
 gatekeeper-rust = { path = "../../../slices/gatekeeper/gatekeeper-rust" }
+# Names the per-database export/delete `Scope`s the databases catalogue declares.
+scopes-rust = { path = "../../../slices/scopes/scopes-rust" }
 # Built once on the shared db and threaded into both gatekeeper and the FHIR
 # server so the auth gate and HFS read one revocation denylist/epoch store (#269).
 token-revocation-rust = { path = "../../../slices/gatekeeper/token-revocation-rust" }

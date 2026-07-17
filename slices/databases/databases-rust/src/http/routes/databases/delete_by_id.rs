@@ -1,16 +1,15 @@
 //! `DELETE /databases/{id}` — schedule a database for deletion at next startup.
 
-use std::sync::Arc;
-
-use axum::extract::{Path, State};
+use axum::extract::Path;
 use axum::Json;
 use serde::Serialize;
 use utoipa::ToSchema;
 
+use scope_capabilities_rust::InsufficientScopeBody;
+
+use crate::domain::capabilities::{DatabasesDeleter, Scoped};
 use crate::domain::DatabaseError;
-use crate::files::schedule_deletion;
 use crate::http::errors::DatabaseNotFoundBody;
-use crate::http::state::DatabasesState;
 
 #[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct DeletedBody {
@@ -36,23 +35,16 @@ pub(crate) struct DeletedBody {
     ),
     responses(
         (status = 200, description = "Deletion was scheduled (takes effect on restart)", body = DeletedBody),
+        (status = 403, description = "The caller's token doesn't cover this database's declared delete scope", body = InsufficientScopeBody),
         (status = 404, description = "No database has this id, or it doesn't exist", body = DatabaseNotFoundBody),
     ),
 )]
 pub(crate) async fn handle_delete_database(
-    State(state): State<Arc<DatabasesState>>,
+    deleter: Scoped<DatabasesDeleter>,
     Path(id): Path<String>,
 ) -> Result<Json<DeletedBody>, DatabaseError> {
-    // `existing` stats the file and `schedule_deletion` writes the marker, both
-    // blocking, so the whole check-then-write runs on a blocking thread rather
-    // than stalling the async runtime — matching the download handler's sibling.
-    tokio::task::spawn_blocking(move || {
-        let (_descriptor, path) = state
-            .existing(&id)
-            .ok_or_else(|| DatabaseError::NotFound { id: id.clone() })?;
-        schedule_deletion(&path)
-    })
-    .await
-    .map_err(|error| DatabaseError::infrastructure("delete task panicked", error))??;
+    // The `delete_scope` check and the blocking marker write live in the facade
+    // (a `403` on an under-scoped token, a `404` on unknown/absent).
+    deleter.delete(&id).await?;
     Ok(Json(DeletedBody { deleted: true }))
 }

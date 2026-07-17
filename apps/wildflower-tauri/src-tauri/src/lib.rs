@@ -473,8 +473,17 @@ async fn run_server(
     // SQLite databases. It owns no store — it works at the file level on the
     // same `app_data_dir` the databases above live in — so the host passes the
     // directory plus the catalogue (the slice has no built-in knowledge of which
-    // databases exist; the user-facing strings live here). Owner-gated like the
-    // rest of the admin API.
+    // databases exist; the user-facing strings live here). Authenticated behind
+    // the gatekeeper bearer gate, then authorized per database (NOT a blanket
+    // owner gate):
+    // Each database's export/delete is gated by the scope matching the *kind* of
+    // data it holds (host policy — the slice enforces whatever scope we name
+    // here): the FHIR clinical database by the SMART FHIR `system/*` grammar, the
+    // app-data database by the Wildflower `wildflower/*` grammar. An owner token
+    // (`system/*.cruds` + `wildflower/*.cruds`) covers both; a narrower token can
+    // export only what it can read. The scopes are built from `scopes-rust`'s
+    // typed constructors (tested there) rather than parsed from strings, so a
+    // typo is a compile error, never a silent `Unknown` scope.
     let databases_config = databases_rust::DatabasesConfig {
         data_dir: runtime.app_data_dir.clone(),
         databases: vec![
@@ -484,12 +493,16 @@ async fn run_server(
                 description:
                     "Your FHIR clinical records — patients, observations, and the rest of your chart."
                         .to_owned(),
+                read_scope: scopes_rust::Scope::fhir_system_all(scopes_rust::Permission::READ_SEARCH),
+                delete_scope: scopes_rust::Scope::fhir_system_all(scopes_rust::Permission::DELETE),
             },
             databases_rust::DatabaseDescriptor {
                 id: WILDFLOWER_DB.to_owned(),
                 label: "Wildflower app data".to_owned(),
                 description: "App state — access grants, tunnel settings, and the apps catalogue."
                     .to_owned(),
+                read_scope: scopes_rust::Scope::wildflower_all(scopes_rust::Permission::READ),
+                delete_scope: scopes_rust::Scope::wildflower_all(scopes_rust::Permission::DELETE),
             },
         ],
     };

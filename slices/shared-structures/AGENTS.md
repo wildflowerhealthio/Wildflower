@@ -13,6 +13,7 @@ Cross-slice utilities: the phantom-id HttpApi composition helper every slice use
 
 ## References
 
+- [Scope-Gated Endpoints How-To](../../docs/Authorization/Scope-Gated%20Endpoints%20How-To.md) — the reusable capability machinery (`Scoped<F>`, `Capability`, `ScopeClaims`) lives in `scopes/scope-capabilities-rust`, **not** here; this slice only supplies the `http-errors` `InternalError` the machinery reuses for its fail-closed 500
 - [HttpApi Composition How-To](../../docs/Effect/HttpApi%20Composition%20How-To.md) — phantom-id bridge, `topLevel` collision
 - [OpenAPI Spec Drift How-To](../../docs/Effect/OpenAPI%20Spec%20Drift%20How-To.md) — the drift guard this slice implements
 - [Web Handler Coordinator Explanation](../../docs/Effect/Web%20Handler%20Coordinator%20Explanation.md) — coordinator seam

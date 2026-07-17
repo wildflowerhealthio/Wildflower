@@ -74,6 +74,18 @@ pub(crate) fn unauthorized() -> Response {
     (StatusCode::UNAUTHORIZED, "unauthorized").into_response()
 }
 
+/// A `403 Forbidden` carrying the rendered scopes the caller lacks. Two callers
+/// share it: the scope-gated capability extractors
+/// (`domain::capabilities`) reject with it when a token doesn't cover a
+/// capability's required scope, and the consent approver check uses it when an
+/// approver tries to delegate scopes beyond their own grant. This is the
+/// authorization (not authentication) failure path the resource-scope epic
+/// introduces — the first 403 the gatekeeper's `/access` surface can return.
+/// The wire shape and this constructor live in `scope-capabilities-rust` (the
+/// reusable capability layer), re-exported here so call sites keep importing it
+/// from `errors`.
+pub(crate) use scope_capabilities_rust::insufficient_scope;
+
 /// Wire shape for `GrantNotFound` (404) — no standing grant has this id.
 #[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct GrantNotFoundBody {
@@ -148,6 +160,9 @@ impl IntoResponse for GatekeeperError {
                 }),
             )
                 .into_response(),
+            GatekeeperError::InsufficientApproverScope { missing_scopes } => {
+                insufficient_scope(missing_scopes)
+            }
             GatekeeperError::Infrastructure { context, source } => {
                 InternalError::new(context, source).into_response()
             }

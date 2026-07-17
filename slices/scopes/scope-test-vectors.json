@@ -20,6 +20,7 @@
       "rendered": "wildflower/Grant.cruds"
     },
     { "scope": "wildflower/*.rs", "kind": "wildflower", "rendered": "wildflower/*.rs" },
+    { "scope": "wildflower/Token.d", "kind": "wildflower", "rendered": "wildflower/Token.d" },
     { "scope": "wildflower/Grant.read", "kind": "unknown", "rendered": "wildflower/Grant.read" },
     { "scope": "wildflower/Grant.*", "kind": "unknown", "rendered": "wildflower/Grant.*" },
     { "scope": "wildflower/*.write", "kind": "unknown", "rendered": "wildflower/*.write" },
@@ -77,6 +78,14 @@
     { "allowed": "wildflower/Grant.cruds", "requested": "wildflower/Client.r", "covers": false },
     { "allowed": "system/*.cruds", "requested": "wildflower/Grant.r", "covers": false },
     { "allowed": "wildflower/Grant.cruds", "requested": "system/Grant.r", "covers": false },
+    { "allowed": "wildflower/*.cruds", "requested": "wildflower/Token.d", "covers": true },
+    { "allowed": "wildflower/Token.cruds", "requested": "wildflower/Token.d", "covers": true },
+    { "allowed": "wildflower/Token.d", "requested": "wildflower/RefreshToken.d", "covers": false },
+    {
+      "allowed": "wildflower/RefreshToken.cruds",
+      "requested": "wildflower/Token.d",
+      "covers": false
+    },
     { "allowed": "offline_access", "requested": "offline_access", "covers": true },
     { "allowed": "offline_access", "requested": "openid", "covers": false },
     { "allowed": "wildflower/Grant.read", "requested": "wildflower/Grant.read", "covers": true },

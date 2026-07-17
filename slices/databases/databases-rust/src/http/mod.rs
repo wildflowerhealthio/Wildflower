@@ -8,11 +8,10 @@
 
 mod errors;
 mod routes;
-mod state;
-
-pub use state::DatabasesState;
 
 use std::sync::Arc;
+
+use crate::domain::DatabasesState;
 
 use axum::Router;
 use utoipa::OpenApi;

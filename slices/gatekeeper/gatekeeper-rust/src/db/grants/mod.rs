@@ -3,7 +3,7 @@
 //! single-table statement (insert / keyed lookup / update / delete); cross-kind
 //! reads ([`all_grants`], [`grant_by_id`]) come off the `grants` SQL VIEW. The
 //! multi-statement flows that used to live here — the scope-union upserts and the
-//! delete-both-then-expire revoke — moved to [`crate::domain::actions`], which
+//! delete-both-then-expire revoke — moved to `domain::capabilities`, which
 //! composes these primitives inside a
 //! [`GatekeeperStore`](crate::domain::GatekeeperStore) transaction.
 //!

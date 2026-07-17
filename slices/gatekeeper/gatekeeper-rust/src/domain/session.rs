@@ -1,10 +1,11 @@
-//! Owner web-**session** actions — today just the logout token revoke, lifted out
-//! of the handler so the best-effort denylist decision is a pure, testable domain
-//! operation over the [`SessionRevoker`](crate::ports::SessionRevoker) port.
+//! Owner web-**session** operations — today just the logout token revoke, lifted
+//! out of the logout handler so the best-effort denylist decision is a pure,
+//! testable domain operation over the [`Revocation`](crate::ports::Revocation)
+//! port (no real revocation store in the way).
 
 use chrono::{DateTime, Utc};
 
-use crate::ports::SessionRevoker;
+use crate::ports::Revocation;
 
 /// Denylist the logged-out session token's `jti` until `expires_at`, so a leaked
 /// copy of the cookie can't be replayed after logout.
@@ -15,7 +16,7 @@ use crate::ports::SessionRevoker;
 /// — leaving the session cookie in place would be the worse outcome — so a
 /// failure is logged and swallowed rather than returned. See #218 / #269.
 pub(crate) fn revoke_session_token(
-    revoker: &impl SessionRevoker,
+    revoker: &impl Revocation,
     jti: &str,
     expires_at: DateTime<Utc>,
 ) {
@@ -26,17 +27,17 @@ pub(crate) fn revoke_session_token(
 
 #[cfg(test)]
 mod tests {
-    use std::cell::RefCell;
+    use std::sync::Mutex;
 
     use super::*;
 
     #[derive(Default)]
     struct RecordingRevoker {
-        calls: RefCell<Vec<(String, DateTime<Utc>, String)>>,
+        calls: Mutex<Vec<(String, DateTime<Utc>, String)>>,
         fail: bool,
     }
 
-    impl SessionRevoker for RecordingRevoker {
+    impl Revocation for RecordingRevoker {
         fn revoke_jti(
             &self,
             jti: &str,
@@ -44,13 +45,18 @@ mod tests {
             reason: &str,
         ) -> Result<(), String> {
             self.calls
-                .borrow_mut()
+                .lock()
+                .unwrap()
                 .push((jti.to_owned(), expires_at, reason.to_owned()));
             if self.fail {
                 Err("store unavailable".to_owned())
             } else {
                 Ok(())
             }
+        }
+
+        fn revoke_subject_as_of_now(&self, _subject: &str) -> Result<(), String> {
+            unreachable!("logout revokes a jti, never a subject")
         }
     }
 
@@ -60,7 +66,7 @@ mod tests {
         let exp = Utc::now();
         revoke_session_token(&revoker, "jti-1", exp);
         assert_eq!(
-            *revoker.calls.borrow(),
+            *revoker.calls.lock().unwrap(),
             vec![("jti-1".to_owned(), exp, "logout".to_owned())],
         );
     }
@@ -73,6 +79,6 @@ mod tests {
         };
         // Must not panic or propagate — the caller relies on this being infallible.
         revoke_session_token(&revoker, "jti-1", Utc::now());
-        assert_eq!(revoker.calls.borrow().len(), 1);
+        assert_eq!(revoker.calls.lock().unwrap().len(), 1);
     }
 }

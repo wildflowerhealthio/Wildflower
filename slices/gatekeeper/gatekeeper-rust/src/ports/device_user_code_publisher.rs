@@ -9,7 +9,7 @@
 /// ([`GatekeeperState`](crate::http::GatekeeperState)) recomputes the head from the store and
 /// publishes it through the bridge watch channel; a test fake just records that
 /// it was asked to.
-pub(crate) trait DeviceUserCodePublisher {
+pub(crate) trait DeviceUserCodePublisher: Send + Sync + 'static {
     /// Recompute and republish the active device-code consent head.
     fn republish_active(&self);
 }
