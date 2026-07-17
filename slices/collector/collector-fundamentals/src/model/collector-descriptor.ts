@@ -68,19 +68,16 @@ import type * as ScrapingPlan from './scraping-plan.ts'
  *   data (never failing, so one bad resource can't fail the run). The runner
  *   owns only *when* to write and how to fold the failures into the summary.
  *
- * Derived guards (added by {@link make}, not authored):
- * - `scrapingPlanIfMatches`: returns this collector's plan when `config`
- *   is one of *its* configs (validated via `configSchema`), else
- *   `undefined`. It exists so the registry can dispatch over a
- *   heterogeneous descriptor list without an unsafe cast: the
- *   per-descriptor `Config` narrowing happens here, where the concrete
- *   type is still in scope, rather than in a loop over the union-typed
- *   list (where TS collapses each element to the union and the schema's
- *   invariance defeats a plain guard).
- * - `resourcePersistenceRuntimeIfMatches`: the same structural guard,
- *   returning the config's existential {@link ResourcePersistenceRuntime}
- *   (plan + persistResources) so the runner can drive a matched config
- *   without naming `Resources`.
+ * Derived guard (added by {@link make}, not authored):
+ * - `resourcePersistenceRuntimeIfMatches`: returns the config's existential
+ *   {@link ResourcePersistenceRuntime} (plan + persistResources) when `config`
+ *   is one of *its* configs (validated via `configSchema`), else `undefined`.
+ *   It exists so the registry can dispatch over a heterogeneous descriptor list
+ *   without an unsafe cast: the per-descriptor `Config` narrowing happens here,
+ *   where the concrete type is still in scope, rather than in a loop over the
+ *   union-typed list (where TS collapses each element to the union and the
+ *   schema's invariance defeats a plain guard). The runner can then drive a
+ *   matched config without naming `Resources`.
  */
 interface CollectorDescriptor<Config extends { readonly _tag: string }, Resources, R> {
   readonly tag: Config['_tag']
@@ -91,9 +88,6 @@ interface CollectorDescriptor<Config extends { readonly _tag: string }, Resource
   readonly persistResources: (
     resources: ReadonlyArray<Resources>
   ) => Effect.Effect<ReadonlyArray<PersistFailure>, never, R>
-  readonly scrapingPlanIfMatches: (
-    config: unknown
-  ) => ScrapingPlan.ScrapingPlan<Resources> | undefined
   readonly resourcePersistenceRuntimeIfMatches: (
     config: unknown
   ) => ResourcePersistenceRuntime<R> | undefined
@@ -102,7 +96,7 @@ interface CollectorDescriptor<Config extends { readonly _tag: string }, Resource
 /**
  * The author-supplied half of a descriptor: the fields a
  * `*-client-collector` package writes. {@link make} adds the derived
- * `scrapingPlanIfMatches` / `resourcePersistenceRuntimeIfMatches` guards.
+ * `resourcePersistenceRuntimeIfMatches` guard.
  */
 interface CollectorDescriptorSpec<Config extends { readonly _tag: string }, Resources, R> {
   readonly tag: Config['_tag']
@@ -145,21 +139,17 @@ type RequirementsOf<D> =
  * would mutate that module-level export for every other importer.
  * (Functions are opaque to `deepFreeze` anyway.)
  *
- * `scrapingPlanIfMatches` and `resourcePersistenceRuntimeIfMatches` are
- * derived here: `Schema.is(spec.configSchema)` compiles the guard once,
- * closing over the concrete `Config` / `Resources` / `R`. When a config
- * matches, {@link ResourcePersistenceRuntime.make} seals the applied plan and
- * the persist sink behind the existential carrier, so the descriptor never
- * spells out the `{ run: (program) => program(context) }` plumbing.
+ * `resourcePersistenceRuntimeIfMatches` is derived here:
+ * `Schema.is(spec.configSchema)` compiles the guard once, closing over the
+ * concrete `Config` / `Resources` / `R`. When a config matches,
+ * {@link ResourcePersistenceRuntime.make} seals the applied plan and the persist
+ * sink behind the existential carrier, so the descriptor never spells out the
+ * `{ run: (program) => program(context) }` plumbing.
  */
 const make = <Config extends { readonly _tag: string }, Resources, R>(
   spec: CollectorDescriptorSpec<Config, Resources, R>
 ): CollectorDescriptor<Config, Resources, R> => {
   const isConfig = Schema.is(spec.configSchema)
-  const scrapingPlanIfMatches = (
-    config: unknown
-  ): ScrapingPlan.ScrapingPlan<Resources> | undefined =>
-    isConfig(config) ? spec.makeScrapingPlan(config) : undefined
   const resourcePersistenceRuntimeIfMatches = (
     config: unknown
   ): ResourcePersistenceRuntime<R> | undefined =>
@@ -183,7 +173,6 @@ const make = <Config extends { readonly _tag: string }, Resources, R>(
     makeScrapingPlan: spec.makeScrapingPlan,
     display: spec.display,
     persistResources: spec.persistResources,
-    scrapingPlanIfMatches,
     resourcePersistenceRuntimeIfMatches,
   })
 }

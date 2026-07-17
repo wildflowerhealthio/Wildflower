@@ -93,8 +93,6 @@ const Importing = {
     Span: {
       Name: 'collector.importing.update',
       Attributes: {
-        /** Total write attempts it took (1 = first try succeeded). */
-        Attempts: 'collector.importing.update.attempts',
         /**
          * The resource's collector-agnostic kind label (for fhir-r4, its
          * `resourceType`), set by the collector's persist sink when it tags

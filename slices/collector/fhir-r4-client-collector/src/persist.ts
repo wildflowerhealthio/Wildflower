@@ -31,13 +31,15 @@ import type { FhirResource } from 'fhir-r4/resources'
  */
 
 /**
- * TEMPORARY tunable (investigation): max concurrent resource PUTs within a
- * single batch. Unbounded concurrency fired hundreds of simultaneous upserts
- * that stalled the inline-awaited drive loop, so the `Sync` span never ended
- * and never flushed. Capped at 1 while we confirm the writes resolve/time out;
- * widen once the stall is understood.
+ * Max concurrent resource PUTs within a single batch. *Unbounded* concurrency
+ * fired hundreds of simultaneous upserts that stalled the inline-awaited drive
+ * loop, so the `Sync` span never ended and never flushed. The stall was a
+ * property of unboundedness, not of parallelism per se, so this stays a small
+ * fixed bound — enough to reclaim throughput over a serial `1`, far below the
+ * "hundreds in flight" that triggered the stall. Revisit if the drive loop is
+ * reworked to not await batches inline.
  */
-const WRITE_CONCURRENCY = 1
+const WRITE_CONCURRENCY = 8
 
 /**
  * Describe a FHIR resource for the write span and the runner's `partial`
@@ -69,11 +71,14 @@ const persistResources = (
     (resource) => {
       const failed = describeResource(resource)
       return upsertResource(resource).pipe(
-        Effect.tapError((cause) =>
-          Effect.logError(`fhir-r4 persist: upsert failed for ${failed.label}/${failed.id}`, cause)
-        ),
         Effect.retry(
           Schedule.exponential('250 millis').pipe(Schedule.intersect(Schedule.recurs(3)))
+        ),
+        // Log once, *after* the retries are exhausted — placing `tapError`
+        // before `retry` would re-log on every failed attempt (up to 4× per
+        // resource). Each attempt is still its own HTTP span on the trace.
+        Effect.tapError((cause) =>
+          Effect.logError(`fhir-r4 persist: upsert failed for ${failed.label}/${failed.id}`, cause)
         ),
         Effect.withSpan(Telemetry.Importing.Update.Span.Name, {
           attributes: { [Telemetry.Importing.Update.Span.Attributes.Kind]: failed.label },

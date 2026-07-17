@@ -67,22 +67,6 @@ describe('CollectorDescriptor.make', () => {
   })
 })
 
-describe('CollectorDescriptor scrapingPlanIfMatches', () => {
-  it("returns this collector's plan for one of its configs", () => {
-    expect(descriptor.scrapingPlanIfMatches(defaultConfig)).toEqual(makeScrapingPlan(defaultConfig))
-  })
-
-  it('returns undefined for a config with a different tag', () => {
-    expect(descriptor.scrapingPlanIfMatches({ _tag: 'other', host: 'example' })).toBeUndefined()
-  })
-
-  it('returns undefined for a structurally invalid config', () => {
-    // Right tag, but `host` violates the schema pattern — the guard is
-    // structural (via `Schema.is`), not tag-only.
-    expect(descriptor.scrapingPlanIfMatches({ _tag: 'sample', host: 'NOT-lower' })).toBeUndefined()
-  })
-})
-
 describe('CollectorDescriptor resourcePersistenceRuntimeIfMatches', () => {
   it('delivers the plan (and persist sink) for one of its configs', () => {
     const runtime = descriptor.resourcePersistenceRuntimeIfMatches(defaultConfig)
@@ -100,6 +84,8 @@ describe('CollectorDescriptor resourcePersistenceRuntimeIfMatches', () => {
   })
 
   it('returns undefined for a structurally invalid config', () => {
+    // Right tag, but `host` violates the schema pattern — the guard is
+    // structural (via `Schema.is`), not tag-only.
     expect(
       descriptor.resourcePersistenceRuntimeIfMatches({ _tag: 'sample', host: 'NOT-lower' })
     ).toBeUndefined()

@@ -18,6 +18,13 @@ import { FhirR4ResourcesHttpApiClient } from './fhir-r4-resources-http-api-clien
  * an untyped path, and a skip is not a failure — it resolves cleanly. The
  * caller owns everything *around* the write (batching, retries, spans, failure
  * accounting); this owns only "which resource type goes to which endpoint".
+ *
+ * The exhaustive-default arm `fail`s on the `unknown` error channel rather than
+ * dying: an unrecognized `resourceType` can only arrive through an untyped path,
+ * and a *failure* is caught by the caller's `matchEffect` and recorded as one
+ * `PersistFailure`, whereas a *defect* would escape that seam and crash the whole
+ * batch/run — breaking the sink's "one bad resource can't fail the run" contract
+ * (the same contract the null-id skip honours).
  */
 const upsertResource = (
   resource: FhirResource
@@ -48,7 +55,7 @@ const upsertResource = (
         break
       default: {
         const unreachable: never = resource
-        yield* Effect.dieMessage(`fhir-r4 upsert: unknown resourceType ${String(unreachable)}`)
+        yield* Effect.fail(new Error(`fhir-r4 upsert: unknown resourceType ${String(unreachable)}`))
       }
     }
   }).pipe(Effect.asVoid)
