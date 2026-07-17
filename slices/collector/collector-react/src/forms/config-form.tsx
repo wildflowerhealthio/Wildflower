@@ -23,6 +23,9 @@ type ConfigFormComponent<T extends CollectorTag> = (
  * compile until the new collector's form is registered, and each entry is
  * checked against *its own* config (there is no unknown-tag path —
  * {@link configFormForTag} is total over `CollectorTag`).
+ *
+ * This is step 8 of the recipe in
+ * `slices/collector/docs/Adding a Collector How-To.md`.
  */
 const configForms: { readonly [T in CollectorTag]: ConfigFormComponent<T> } = {
   'fhir-r4': FhirR4ConfigForm,

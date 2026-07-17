@@ -13,6 +13,10 @@ import { FhirR4CollectorDescriptor } from 'fhir-r4-client-collector'
  * from this tuple, so there is no parallel switch/union to keep in sync (the
  * four parallel edits this file used to require; see issue #387). There
  * is intentionally no runtime registry.
+ *
+ * For the full end-to-end recipe (this edit plus the client-collector
+ * package and the `collector-react` form registration), see
+ * `slices/collector/docs/Adding a Collector How-To.md`.
  */
 const descriptors = [FhirR4CollectorDescriptor] as const
 
