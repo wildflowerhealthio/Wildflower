@@ -392,8 +392,9 @@ mod tests {
                 .expect("enumerated under routes_dir")
                 .to_string_lossy()
                 .replace('\\', "/");
-            // Module glue only — every operation handler is gated.
-            if relative.ends_with("mod.rs") {
+            // Module glue and test-support files only — every operation handler
+            // is gated.
+            if relative.ends_with("mod.rs") || relative.ends_with("tests.rs") {
                 continue;
             }
             let source = std::fs::read_to_string(&path)

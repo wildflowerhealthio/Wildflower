@@ -176,7 +176,7 @@ lets a guard test assert `domain/` never imports `crate::http`.
   `delete_scope` the host declares on each `DatabaseDescriptor`, operating through
   the `DatabaseFiles` port (stubbed with an in-memory fake in the unit tests).
 - **The authN-pair contract:**
-  `gatekeeper-rust/tests/integration.rs::bearer_gate_inserts_scope_claims_a_downstream_capability_reads`
+  `gatekeeper-rust/tests/integration/smoke.rs::bearer_gate_inserts_scope_claims_a_downstream_capability_reads`
   drives the real bearer gate into the real databases capability.
 
 ## References

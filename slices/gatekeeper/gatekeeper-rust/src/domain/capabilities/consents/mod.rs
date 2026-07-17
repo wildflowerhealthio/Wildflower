@@ -6,22 +6,23 @@
 //! in-memory fake; the capabilities are the scope-gated entries, generic over the
 //! store and holding the port dependencies lifted from the state.
 
-use std::collections::HashSet;
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use scopes_rust::{grantable_scopes, Grant, Permission, Scope, WildflowerResource};
-use uuid::Uuid;
+use scopes_rust::{Grant, Permission, Scope, WildflowerResource};
 
-use crate::domain::authorization_code::{
-    AuthorizationCode, PendingCodeConsent, AUTHORIZATION_CODE_TTL,
-};
-use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
-use crate::domain::client_redirect::build_client_redirect_url;
+use crate::domain::authorization_code::PendingCodeConsent;
+use crate::domain::authorization_request::AuthorizationRequest;
 use crate::domain::gatekeeper_error::GatekeeperError;
-use crate::domain::grant::{AuthorizationCodeGrant, CumulativeConsent, DeviceGrant};
-use crate::domain::{GatekeeperStore, GatekeeperTx};
+use crate::domain::GatekeeperStore;
 use crate::ports::DeviceUserCodePublisher;
+
+mod delegation;
+mod device;
+mod oauth;
+
+use device::{approve_device_consent, deny_device_consent, load_pending_device_request};
+use oauth::{approve_oauth_consent, deny_oauth_consent, load_pending_authorization_code_request};
 
 /// The scope gating [`ConsentReader`] — `wildflower/AuthorizationRequest.r`.
 pub(crate) fn consent_reader_scopes() -> Vec<Scope> {
@@ -94,338 +95,6 @@ pub(crate) struct ApproveDeviceConsentInput {
     /// An optional adjusted device name (the approver renaming the device before
     /// approving); falls back to the device's own name, then the client's name.
     pub device_name: Option<String>,
-}
-
-// ---------------------------------------------------------------------------
-// Loaders — validate a pending request and unwrap it (parse-don't-validate).
-// ---------------------------------------------------------------------------
-
-/// Load the authorization request for `id` and verify it's a pending, unexpired
-/// authorization-code flow carrying both a `redirect_uri` and a PKCE
-/// `code_challenge`. On success the two optional fields are unwrapped into the
-/// returned [`PendingCodeConsent`]. A request whose `expires_at` has passed is
-/// treated as not found — the deadline is enforced here at read time.
-fn load_pending_authorization_code_request(
-    store: &impl GatekeeperStore,
-    id: &str,
-) -> Result<PendingCodeConsent, GatekeeperError> {
-    let make_consent_not_found = || GatekeeperError::OAuthConsentNotFound { id: id.to_owned() };
-    match store.authorization_request_by_id(id)? {
-        Some(r)
-            if r.status == RequestStatus::Pending
-                && r.grant_type == GrantType::AuthorizationCode
-                && r.expires_at > Utc::now() =>
-        {
-            match (r.redirect_uri.clone(), r.code_challenge.clone()) {
-                (Some(redirect_uri), Some(code_challenge)) => Ok(PendingCodeConsent {
-                    request: r,
-                    redirect_uri,
-                    code_challenge,
-                }),
-                _ => Err(make_consent_not_found()),
-            }
-        }
-        _ => Err(make_consent_not_found()),
-    }
-}
-
-/// Load the authorization request for `user_code` and verify it's a pending,
-/// unexpired device-code flow.
-fn load_pending_device_request(
-    store: &impl GatekeeperStore,
-    user_code: &str,
-) -> Result<AuthorizationRequest, GatekeeperError> {
-    match store.pending_authorization_request_by_user_code(user_code)? {
-        Some(r)
-            if r.grant_type == GrantType::DeviceCode
-                && r.status == RequestStatus::Pending
-                && r.expires_at > Utc::now() =>
-        {
-            Ok(r)
-        }
-        _ => Err(GatekeeperError::DeviceConsentNotFound {
-            user_code: user_code.to_owned(),
-        }),
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Standing-grant upserts — the read-merge-write transaction scripts consent
-// approval triggers. Their only runtime caller is the approve flow below.
-// ---------------------------------------------------------------------------
-
-/// Insert or cumulatively update the standing authorization-code grant for
-/// `(client_id, redirect_uri)`, all inside one `BEGIN IMMEDIATE` transaction:
-/// read the standing grant; if present, fold the re-approval in via
-/// [`CumulativeConsent::absorb_reapproval`] and write it back; otherwise mint a
-/// fresh grant. `BEGIN IMMEDIATE` takes the write lock before the read, so two
-/// concurrent approvals serialise at the read rather than both reading the
-/// pre-merge row and one losing its scope union.
-fn upsert_authorization_code_grant(
-    store: &impl GatekeeperStore,
-    client_id: &str,
-    redirect_uri: &url::Url,
-    scopes: &[String],
-    patient: Option<&str>,
-    now: DateTime<Utc>,
-) -> Result<(), GatekeeperError> {
-    store.immediate_transaction(|tx| {
-        match tx.grant_by_client_and_redirect(client_id, redirect_uri)? {
-            Some(mut grant) => {
-                grant.absorb_reapproval(scopes, patient, now);
-                tx.update_authorization_code_grant(&grant)
-            }
-            None => tx.create_authorization_code_grant(&AuthorizationCodeGrant {
-                id: Uuid::new_v4().to_string(),
-                client_id: client_id.to_owned(),
-                scopes: scopes.to_vec(),
-                granted_at: now,
-                last_used_at: None,
-                patient: patient.map(str::to_owned),
-                redirect_uri: redirect_uri.clone(),
-            }),
-        }
-    })
-}
-
-/// Insert or cumulatively update the standing device grant for
-/// `(client_id, device_name)`, same read-merge-write-under-`BEGIN IMMEDIATE`
-/// shape as [`upsert_authorization_code_grant`], keyed on the device name.
-fn upsert_device_grant(
-    store: &impl GatekeeperStore,
-    client_id: &str,
-    device_name: &str,
-    scopes: &[String],
-    patient: Option<&str>,
-    now: DateTime<Utc>,
-) -> Result<(), GatekeeperError> {
-    store.immediate_transaction(|tx| {
-        match tx.device_grant_by_client_and_device_name(client_id, device_name)? {
-            Some(mut grant) => {
-                grant.absorb_reapproval(scopes, patient, now);
-                tx.update_device_grant(&grant)
-            }
-            None => tx.create_device_grant(&DeviceGrant {
-                id: Uuid::new_v4().to_string(),
-                client_id: client_id.to_owned(),
-                scopes: scopes.to_vec(),
-                granted_at: now,
-                last_used_at: None,
-                patient: patient.map(str::to_owned),
-                device_name: device_name.to_owned(),
-            }),
-        }
-    })
-}
-
-// ---------------------------------------------------------------------------
-// The approve/deny transaction scripts.
-// ---------------------------------------------------------------------------
-
-/// Approve an authorization-code consent prompt: narrow the approved scopes to
-/// the requested-and-allowed set, transition the request, mint and persist the
-/// authorization code the polling endpoint hands back, refresh the standing
-/// grant, and return the client callback URL. An approval that grants nothing is
-/// applied as a **deny**. `approver` is the deciding Owner's granted scopes — the
-/// approval can't delegate a resource scope the approver doesn't hold (see
-/// [`ensure_approver_covers`]).
-fn approve_oauth_consent(
-    store: &impl GatekeeperStore,
-    publisher: &dyn DeviceUserCodePublisher,
-    id: &str,
-    input: ApproveOAuthConsentInput,
-    approver: &Grant,
-    generate_code: impl FnOnce() -> String,
-    now: DateTime<Utc>,
-) -> Result<ConsentOutcome, GatekeeperError> {
-    let make_consent_not_found = || GatekeeperError::OAuthConsentNotFound { id: id.to_owned() };
-    let PendingCodeConsent {
-        request,
-        redirect_uri,
-        code_challenge,
-    } = load_pending_authorization_code_request(store, id)?;
-
-    let requested: HashSet<&str> = request
-        .requested_scopes
-        .iter()
-        .map(String::as_str)
-        .collect();
-    let client = store
-        .client_by_id(&request.client_id)?
-        .ok_or_else(make_consent_not_found)?;
-    let allowed: HashSet<&str> = client.allowed_scopes.iter().map(String::as_str).collect();
-    let granted_scopes = grantable_scopes(input.approved_scopes, &requested, &allowed);
-    if granted_scopes.is_empty() {
-        return deny_consent(store, publisher, id).map(|()| ConsentOutcome::Denied);
-    }
-    ensure_approver_covers(&granted_scopes, approver)?;
-
-    let approved =
-        store.approve_authorization_request(id, &granted_scopes, input.patient.as_deref(), None)?;
-    if !approved {
-        return Err(make_consent_not_found());
-    }
-
-    let authorization_code = AuthorizationCode {
-        code: generate_code(),
-        request_id: id.to_owned(),
-        client_id: request.client_id.clone(),
-        redirect_uri: redirect_uri.clone(),
-        code_challenge,
-        granted_scopes: granted_scopes.clone(),
-        patient: input.patient.clone(),
-        issued_at: now,
-        expires_at: now + AUTHORIZATION_CODE_TTL,
-    };
-    store.issue_authorization_code(&authorization_code)?;
-
-    upsert_authorization_code_grant(
-        store,
-        &request.client_id,
-        &redirect_uri,
-        &granted_scopes,
-        input.patient.as_deref(),
-        now,
-    )?;
-
-    let redirect = request.client_state.as_deref().map(|client_state| {
-        build_client_redirect_url(&redirect_uri, &authorization_code.code, client_state)
-    });
-    Ok(ConsentOutcome::Approved { redirect })
-}
-
-/// Approve a device-code consent prompt: apply the **expandable** scope decision
-/// (up to the client's `allowed_scopes`), transition the request, mint (or
-/// refresh) the standing device grant, and republish the popup head. An approval
-/// that grants nothing is applied as a **deny**.
-fn approve_device_consent(
-    store: &impl GatekeeperStore,
-    publisher: &dyn DeviceUserCodePublisher,
-    user_code: &str,
-    input: ApproveDeviceConsentInput,
-    approver: &Grant,
-    now: DateTime<Utc>,
-) -> Result<ConsentOutcome, GatekeeperError> {
-    let make_consent_not_found = || GatekeeperError::DeviceConsentNotFound {
-        user_code: user_code.to_owned(),
-    };
-    let device_request = load_pending_device_request(store, user_code)?;
-    let client = store
-        .client_by_id(&device_request.client_id)?
-        .ok_or_else(make_consent_not_found)?;
-
-    let allowed: HashSet<&str> = client.allowed_scopes.iter().map(String::as_str).collect();
-    let granted_scopes = grantable_scopes(input.approved_scopes, &allowed, &allowed);
-    if granted_scopes.is_empty() {
-        return deny_consent(store, publisher, &device_request.id).map(|()| ConsentOutcome::Denied);
-    }
-    ensure_approver_covers(&granted_scopes, approver)?;
-
-    let request_device_name = input
-        .device_name
-        .as_deref()
-        .or(device_request.device_name.as_deref());
-    let approved = store.approve_authorization_request(
-        &device_request.id,
-        &granted_scopes,
-        input.patient.as_deref(),
-        request_device_name,
-    )?;
-    if !approved {
-        return Err(make_consent_not_found());
-    }
-
-    let effective_device_name = request_device_name.unwrap_or(client.name.as_str());
-    upsert_device_grant(
-        store,
-        &device_request.client_id,
-        effective_device_name,
-        &granted_scopes,
-        input.patient.as_deref(),
-        now,
-    )?;
-
-    publisher.republish_active();
-    Ok(ConsentOutcome::Approved { redirect: None })
-}
-
-/// Deny the pending authorization-code request `id`. Validates it's a live
-/// code-flow prompt first (so a stale/unknown id is the structured 404), then
-/// marks it denied and republishes the popup head.
-fn deny_oauth_consent(
-    store: &impl GatekeeperStore,
-    publisher: &dyn DeviceUserCodePublisher,
-    id: &str,
-) -> Result<(), GatekeeperError> {
-    load_pending_authorization_code_request(store, id)?;
-    deny_consent(store, publisher, id)
-}
-
-/// Deny the pending device-code request behind `user_code`. Validates it's a live
-/// device-flow prompt first, then marks it denied and republishes the popup head.
-fn deny_device_consent(
-    store: &impl GatekeeperStore,
-    publisher: &dyn DeviceUserCodePublisher,
-    user_code: &str,
-) -> Result<(), GatekeeperError> {
-    let device_request = load_pending_device_request(store, user_code)?;
-    deny_consent(store, publisher, &device_request.id)
-}
-
-/// Mark request `request_id` denied and republish the active device-consent head
-/// — the shared tail of every deny path (explicit deny + a nothing-granted
-/// approve). Code-flow denies are no-ops against the device-only query, so this
-/// is called unconditionally.
-fn deny_consent(
-    store: &impl GatekeeperStore,
-    publisher: &dyn DeviceUserCodePublisher,
-    request_id: &str,
-) -> Result<(), GatekeeperError> {
-    store.deny_authorization_request(request_id)?;
-    publisher.republish_active();
-    Ok(())
-}
-
-/// Reject (with a `403`-rendering error, NOT a silent narrowing) any **resource**
-/// scope in `granted_scopes` the `approver`'s own grant doesn't authorize — "an
-/// approver can't delegate more permission than they hold". Only FHIR/Wildflower
-/// resource scopes are checked; identity/session markers (`openid`,
-/// `offline_access`, …) pass through. Authority is checked across both the SMART
-/// v1-word and v2-letter spellings via [`Scope::as_alternate_canonical_form`],
-/// the same twinning the token minter applies, which bridges the spelling without
-/// widening the underlying interactions.
-fn ensure_approver_covers(
-    granted_scopes: &[String],
-    approver: &Grant,
-) -> Result<(), GatekeeperError> {
-    let approver_authority = Grant::new(
-        approver
-            .scopes
-            .iter()
-            .flat_map(|held| [Some(held.clone()), held.as_alternate_canonical_form()])
-            .flatten()
-            .collect(),
-    );
-    let authorizes = |scope: &Scope| {
-        approver_authority.covers(scope)
-            || scope
-                .as_alternate_canonical_form()
-                .is_some_and(|twin| approver_authority.covers(&twin))
-    };
-    let missing_scopes: Vec<String> = granted_scopes
-        .iter()
-        .filter(|rendered| {
-            let scope = Scope::from(rendered.as_str());
-            matches!(scope, Scope::FhirResource(_) | Scope::WildflowerResource(_))
-                && !authorizes(&scope)
-        })
-        .cloned()
-        .collect();
-    if missing_scopes.is_empty() {
-        Ok(())
-    } else {
-        Err(GatekeeperError::InsufficientApproverScope { missing_scopes })
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -568,7 +237,9 @@ mod tests {
 
     use chrono::Duration;
 
+    use super::oauth::upsert_authorization_code_grant;
     use super::*;
+    use crate::domain::authorization_request::RequestStatus;
     use crate::domain::test_fake::{client, code_request, device_request, FakeGatekeeperStore};
 
     /// A [`DeviceUserCodePublisher`] that just counts republish calls. Uses an

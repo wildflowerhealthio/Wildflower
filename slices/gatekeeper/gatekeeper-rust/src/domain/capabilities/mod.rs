@@ -101,7 +101,7 @@ mod tests {
     fn every_capability_scope_fn_is_registered_in_the_grantable_vocabulary() {
         const CAPABILITY_SOURCES: &[&str] = &[
             include_str!("grants.rs"),
-            include_str!("consents.rs"),
+            include_str!("consents/mod.rs"),
             include_str!("tokens.rs"),
         ];
         let scope_fns: usize = CAPABILITY_SOURCES
