@@ -29,6 +29,16 @@ diesel_migrations.workspace = true
 # The app-wide diesel connection pool (`DieselPool` / `open_pool`) shared across
 # diesel-backed slices; this crate names the pool type but not rusqlite.
 persistence-rust = { path = "../../persistence/persistence-rust" }
+# The scope grammar (`Scope`, `Permission`, `WildflowerResource`) the
+# `wildflower/Accounts.*` capabilities gate on — built with the typed
+# constructors so a typo is a compile error, not a silent `Unknown` scope.
+scopes-rust = { path = "../../scopes/scopes-rust" }
+# The generic scope-gated capability machinery (`Scoped<F>`,
+# `FixedScopeCapability`, `ScopeClaims`, `insufficient_scope` /
+# `InsufficientScopeBody`) the `/collector/remotes` surface gates on; the
+# `openapi` feature derives `ToSchema` on the 403 body so it's declarable in the
+# utoipa `responses`.
+scope-capabilities-rust = { path = "../../scopes/scope-capabilities-rust", features = ["openapi"] }
 utoipa.workspace = true
 utoipa-axum.workspace = true
 # The shared opaque-500 `InternalError` template (`http-errors`) and the diesel

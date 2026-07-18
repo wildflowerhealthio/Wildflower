@@ -115,62 +115,8 @@ fn now_added_at() -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::cell::RefCell;
-    use std::collections::HashMap;
-
     use super::*;
-
-    /// An in-memory [`RemotesStore`] modelling the real primitive semantics —
-    /// `insert` reports a duplicate id as `false`, `get`/`update` report an
-    /// absent id as `None`, `delete` reports a miss as `false` — with no diesel
-    /// and no database. Lets the actions' semantic mapping be exercised
-    /// directly; the `SQLite` adapter's own coverage lives in `crate::db`.
-    #[derive(Default)]
-    struct FakeRemotesStore {
-        remotes: RefCell<HashMap<String, Remote>>,
-    }
-
-    impl RemotesStore for FakeRemotesStore {
-        fn list(&self) -> Result<Vec<Remote>, RemoteError> {
-            let mut remotes: Vec<Remote> = self.remotes.borrow().values().cloned().collect();
-            remotes.sort_by(|a, b| (&a.added_at, &a.id).cmp(&(&b.added_at, &b.id)));
-            Ok(remotes)
-        }
-
-        fn get(&self, id: &str) -> Result<Option<Remote>, RemoteError> {
-            Ok(self.remotes.borrow().get(id).cloned())
-        }
-
-        fn insert(&self, remote: &Remote) -> Result<bool, RemoteError> {
-            let mut remotes = self.remotes.borrow_mut();
-            if remotes.contains_key(&remote.id) {
-                return Ok(false);
-            }
-            remotes.insert(remote.id.clone(), remote.clone());
-            Ok(true)
-        }
-
-        fn update(
-            &self,
-            id: &str,
-            name: &str,
-            tag: &str,
-            config: &serde_json::Value,
-        ) -> Result<Option<Remote>, RemoteError> {
-            let mut remotes = self.remotes.borrow_mut();
-            let Some(existing) = remotes.get_mut(id) else {
-                return Ok(None);
-            };
-            existing.name = name.to_owned();
-            existing.tag = tag.to_owned();
-            existing.config = config.clone();
-            Ok(Some(existing.clone()))
-        }
-
-        fn delete(&self, id: &str) -> Result<bool, RemoteError> {
-            Ok(self.remotes.borrow_mut().remove(id).is_some())
-        }
-    }
+    use crate::domain::test_fake::FakeRemotesStore;
 
     fn config(tag: &str) -> serde_json::Value {
         serde_json::json!({ "_tag": tag, "rootUrl": "https://x" })

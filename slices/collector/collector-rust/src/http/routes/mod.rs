@@ -9,11 +9,13 @@ use std::sync::Arc;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
-use crate::http::state::CollectorState;
+use crate::state::CollectorState;
 
 /// The whole collector surface as an `OpenApiRouter` — the spec-bearing inner
-/// of [`router`](super::router). Every route is owner-only; the host wraps the
-/// built router with its bearer gate.
+/// of [`router`](super::router). Every route is scope-gated per operation (the
+/// handlers take a `Scoped<…>` capability); the host additionally wraps the
+/// built router with its bearer gate, which inserts the `ScopeClaims` the
+/// capabilities read.
 pub(crate) fn openapi_router() -> OpenApiRouter<Arc<CollectorState>> {
     OpenApiRouter::new()
         .routes(routes!(
@@ -35,10 +37,17 @@ mod tests {
     use axum::http::{Request, StatusCode};
     use axum::Router;
     use http_body_util::BodyExt;
+    use scope_capabilities_rust::ScopeClaims;
     use tower::ServiceExt;
 
     use crate::db::SqliteRemotesStore;
-    use crate::http::state::CollectorState;
+    use crate::state::CollectorState;
+
+    /// A `ScopeClaims` covering every `wildflower/Accounts.*` operation — the
+    /// grant an owner token carries. `send` injects it so the round-trip tests
+    /// exercise the handlers (not the scope gate); the gate itself has its own
+    /// `403` tests below.
+    const FULL_ACCESS: &str = "wildflower/Accounts.cruds";
 
     fn state() -> Arc<CollectorState> {
         Arc::new(CollectorState::new(
@@ -52,10 +61,17 @@ mod tests {
         super::openapi_router().split_for_parts().0
     }
 
-    async fn send(
+    /// Drive one request with a `ScopeClaims` covering `scopes` inserted into the
+    /// extensions — standing in for the host's bearer gate, which the built
+    /// router carries no middleware for. An empty `scopes` covers nothing (the
+    /// fail-closed reading), so the scope gate rejects with a `403`.
+    async fn send_scoped(
         state: &Arc<CollectorState>,
-        req: Request<Body>,
+        mut req: Request<Body>,
+        scopes: &str,
     ) -> (StatusCode, serde_json::Value) {
+        req.extensions_mut()
+            .insert(ScopeClaims::new(Some(scopes.to_owned())));
         let res = router()
             .with_state(Arc::clone(state))
             .oneshot(req)
@@ -65,6 +81,15 @@ mod tests {
         let bytes = res.into_body().collect().await.expect("body").to_bytes();
         let json = serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null);
         (status, json)
+    }
+
+    /// The common case: drive a request as a full-access owner token, so the
+    /// scope gate always passes and the assertions are about the handler.
+    async fn send(
+        state: &Arc<CollectorState>,
+        req: Request<Body>,
+    ) -> (StatusCode, serde_json::Value) {
+        send_scoped(state, req, FULL_ACCESS).await
     }
 
     fn get(uri: &str) -> Request<Body> {
@@ -275,5 +300,102 @@ mod tests {
         );
         let (_status, seeded) = send(&st, get("/collector/remotes/fhir-demo")).await;
         assert_eq!(seeded["name"], "FHIR Demo", "the seeded row is untouched");
+    }
+
+    /// The read endpoints are gated by `wildflower/Accounts.r` — a token without
+    /// it (here a delete-only grant) is rejected with the shared
+    /// `403 InsufficientScope` naming the missing read scope, on both the list and
+    /// the by-id read. Reads are gated (not authenticated-only) because a remote's
+    /// `config` can carry origin credentials.
+    #[tokio::test]
+    async fn reads_403_without_the_read_scope() {
+        let st = state();
+        for req in [
+            get("/collector/remotes"),
+            get("/collector/remotes/fhir-demo"),
+        ] {
+            let uri = req.uri().clone();
+            let (status, body) = send_scoped(&st, req, "wildflower/Accounts.d").await;
+            assert_eq!(status, StatusCode::FORBIDDEN, "{uri}");
+            assert_eq!(body["error"], "InsufficientScope", "{uri}");
+            assert_eq!(
+                body["missingScopes"],
+                serde_json::json!(["wildflower/Accounts.r"]),
+                "{uri}",
+            );
+        }
+    }
+
+    /// A read-only token (`wildflower/Accounts.r`) reads both endpoints but is
+    /// `403`-ed on every write, each naming the exact permission it lacks
+    /// (`.c`/`.u`/`.d`) — the capabilities are separate, so a reader structurally
+    /// cannot mutate. The rejected writes leave the store untouched.
+    #[tokio::test]
+    async fn reader_scope_allows_reads_but_not_writes() {
+        let st = state();
+        let ro = "wildflower/Accounts.r";
+
+        let (status, list) = send_scoped(&st, get("/collector/remotes"), ro).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(list.as_array().expect("array").len(), 1, "the seed lists");
+        let (status, _b) = send_scoped(&st, get("/collector/remotes/fhir-demo"), ro).await;
+        assert_eq!(status, StatusCode::OK);
+
+        let writes = [
+            (
+                post_json(
+                    "/collector/remotes",
+                    serde_json::json!({ "id": "x", "name": "n", "config": { "_tag": "fhir-r4" } }),
+                ),
+                "wildflower/Accounts.c",
+            ),
+            (
+                put_json(
+                    "/collector/remotes/fhir-demo",
+                    serde_json::json!({ "name": "n", "config": { "_tag": "fhir-r4" } }),
+                ),
+                "wildflower/Accounts.u",
+            ),
+            (
+                delete("/collector/remotes/fhir-demo"),
+                "wildflower/Accounts.d",
+            ),
+        ];
+        for (req, needed) in writes {
+            let method = req.method().clone();
+            let (status, body) = send_scoped(&st, req, ro).await;
+            assert_eq!(status, StatusCode::FORBIDDEN, "{method}");
+            assert_eq!(body["error"], "InsufficientScope", "{method}");
+            assert_eq!(
+                body["missingScopes"],
+                serde_json::json!([needed]),
+                "{method}",
+            );
+        }
+
+        // None of the rejected writes touched the store — still just the seed.
+        let (_status, list) = send_scoped(&st, get("/collector/remotes"), ro).await;
+        assert_eq!(
+            list.as_array().expect("array").len(),
+            1,
+            "rejected writes left the store untouched",
+        );
+    }
+
+    /// A `Scoped<…>` handler mounted without a claims-inserting layer is a wiring
+    /// bug, not a client error — the extractor fails closed with a `500` rather
+    /// than admitting the request or guessing at a `401`. (The host always wraps
+    /// this router with its bearer gate, which inserts the `ScopeClaims`; this
+    /// pins the fail-closed behavior if that ever regresses.)
+    #[tokio::test]
+    async fn missing_claims_fails_closed_with_a_500() {
+        let st = state();
+        // Bypass `send_scoped` (which injects claims) — send a bare request.
+        let res = router()
+            .with_state(Arc::clone(&st))
+            .oneshot(get("/collector/remotes"))
+            .await
+            .expect("oneshot");
+        assert_eq!(res.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 }

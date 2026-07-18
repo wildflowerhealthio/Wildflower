@@ -1,25 +1,27 @@
 //! `GET /collector/remotes` — the full remotes catalogue, oldest first.
 
-use std::sync::Arc;
-
-use axum::extract::State;
 use axum::Json;
 
-use crate::domain::{actions, Remote, RemoteError};
-use crate::http::state::CollectorState;
+use scope_capabilities_rust::{InsufficientScopeBody, Scoped};
 
-/// `GET /collector/remotes` — list every remote. Owner-gated by the host.
+use crate::domain::{Remote, RemoteError};
+use crate::state::RemotesReaderCap;
+
+/// `GET /collector/remotes` — list every remote. Gated by
+/// [`Scoped<RemotesReaderCap>`] (`wildflower/Accounts.r`): a remote's `config`
+/// can carry origin credentials, so even the listing requires the read scope. The
+/// capability is the only door to the store — this handler never sees the state.
 #[utoipa::path(
     get,
     tag = "Remotes",
     path = "/collector/remotes",
     responses(
         (status = 200, description = "Every stored remote, oldest first", body = [Remote]),
+        (status = 403, description = "The caller's token doesn't cover `wildflower/Accounts.r`", body = InsufficientScopeBody),
     ),
 )]
 pub(crate) async fn handle_list_remotes(
-    State(state): State<Arc<CollectorState>>,
+    remotes: Scoped<RemotesReaderCap>,
 ) -> Result<Json<Vec<Remote>>, RemoteError> {
-    let remotes = actions::list_remotes(&state.store)?;
-    Ok(Json(remotes))
+    Ok(Json(remotes.list()?))
 }

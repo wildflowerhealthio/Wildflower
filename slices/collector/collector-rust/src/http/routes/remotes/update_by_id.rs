@@ -2,16 +2,16 @@
 //! `config` (`tag` is re-denormalized from the new `config._tag`; `id` and
 //! `addedAt` are immutable). Unknown ids return the structured 404.
 
-use std::sync::Arc;
-
-use axum::extract::{Path, State};
+use axum::extract::Path;
 use axum::Json;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-use crate::domain::{actions, Remote, RemoteError};
+use scope_capabilities_rust::{InsufficientScopeBody, Scoped};
+
+use crate::domain::{Remote, RemoteError};
 use crate::http::errors::{InvalidConfigBody, RemoteNotFoundBody};
-use crate::http::state::CollectorState;
+use crate::state::RemotesEditorCap;
 
 /// PUT body — matches the TS `UpdateRemotePayloadSchema`. Both fields are
 /// required (a full replace, not a patch); `config` stays opaque to Rust.
@@ -23,8 +23,9 @@ pub(crate) struct UpdateRemoteBody {
     config: serde_json::Value,
 }
 
-/// `PUT /collector/remotes/{id}` — replace a remote's name + config.
-/// Owner-gated by the host.
+/// `PUT /collector/remotes/{id}` — replace a remote's name + config. Gated by
+/// [`Scoped<RemotesEditorCap>`] (`wildflower/Accounts.u`); the capability is the
+/// only door to the store, so this handler never sees the state.
 #[utoipa::path(
     put,
     tag = "Remotes",
@@ -34,14 +35,15 @@ pub(crate) struct UpdateRemoteBody {
     responses(
         (status = 200, description = "The updated remote", body = Remote),
         (status = 400, description = "The config carries no string `_tag`", body = InvalidConfigBody),
+        (status = 403, description = "The caller's token doesn't cover `wildflower/Accounts.u`", body = InsufficientScopeBody),
         (status = 404, description = "No remote has this id", body = RemoteNotFoundBody),
     ),
 )]
 pub(crate) async fn handle_update_remote(
-    State(state): State<Arc<CollectorState>>,
+    remotes: Scoped<RemotesEditorCap>,
     Path(id): Path<String>,
     Json(body): Json<UpdateRemoteBody>,
 ) -> Result<Json<Remote>, RemoteError> {
-    let updated = actions::update_remote(&state.store, &id, &body.name, &body.config)?;
+    let updated = remotes.update(&id, &body.name, &body.config)?;
     Ok(Json(updated))
 }

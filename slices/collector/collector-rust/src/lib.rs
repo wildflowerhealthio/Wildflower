@@ -14,12 +14,25 @@
 //! SECURITY (decided for v1, see the Rexall collector epic): a remote's config
 //! may carry pharmacy credentials, stored plaintext inside the config JSON
 //! column. Moving secrets to OS keychain / encrypted storage via a Tauri
-//! secret-storage mechanism is a tracked follow-up.
+//! secret-storage mechanism is a tracked follow-up. Because that `config` is
+//! sensitive, the surface is **scope-gated per operation** on top of the host's
+//! authN gate: each endpoint reaches its store only through a scope-gated
+//! [`capability`](domain::capabilities), gated by `wildflower/Accounts.<perm>`
+//! (a collector remote is an *account* at a data origin — the scope-layer name
+//! for the code's `Remote`). Reads need `Accounts.r`, not merely authentication.
+//! See [`domain::capabilities`] and `docs/Authorization/Scope-Gated Endpoints
+//! How-To.md`.
 //!
 //! Layered like `tunnel-rust` and `apps-rust`:
 //!
 //!  - [`domain`] — core types: [`domain::Remote`] (the diesel-mapped row
-//!    **and** wire shape) and the [`domain::config_tag`] discriminant reader.
+//!    **and** wire shape) and the [`domain::config_tag`] discriminant reader,
+//!    plus the scope-gated [`capabilities`](domain::capabilities) the handlers
+//!    acquire.
+//!  - [`state`] — the router state ([`CollectorState`]) at the crate root, and
+//!    the `FixedScopeCapability` bindings that name the concrete store; kept out
+//!    of [`http`] so `domain/` can build capabilities from it without depending
+//!    on the transport layer.
 //!  - [`db`] — the SQLite store ([`db::SqliteRemotesStore`]) built on Diesel over
 //!    the app-wide r2d2 connection pool (`persistence_rust::DieselPool`) onto the
 //!    shared database file, migrated with embedded diesel migrations.
@@ -29,6 +42,11 @@
 pub mod db;
 pub mod domain;
 pub mod http;
+// The shared runtime state lives at the crate root (not under `http`) so the
+// scope-gated `domain/` capabilities can be built from it (via the
+// `FixedScopeCapability` bindings beside the state) without `domain/` depending
+// on `crate::http`. Mirrors gatekeeper's `crate::state` layout.
+pub(crate) mod state;
 
 use std::sync::Arc;
 
@@ -40,7 +58,13 @@ use axum::Router;
 pub use persistence_rust::DieselPool;
 
 pub use db::SqliteRemotesStore;
-pub use http::{openapi_spec, CollectorState};
+pub use http::openapi_spec;
+pub use state::CollectorState;
+
+// The per-slice grantable scope vocabulary — `wildflower/Accounts.{r,c,u,d}` —
+// the intended set for a future consent surface; a registry-completeness test
+// pins it against the capabilities that enforce it. See [`domain::capabilities`].
+pub use domain::capabilities::grantable_collector_scopes;
 
 /// Build the collector router over the host-owned connection `pool`, mirroring
 /// `tunnel-rust`'s `setup_tunnel` and `apps-rust`'s `setup_apps`. The host opens
@@ -54,9 +78,12 @@ pub use http::{openapi_spec, CollectorState};
 /// both cross-connection contention (with the host's rusqlite connection) and
 /// intra-pool write contention.
 ///
-/// The returned router carries no middleware — every endpoint exposes
-/// owner-only data, so the consumer MUST wrap it with its auth gate (the Tauri
-/// host applies `layer_router_with_gatekeeper_auth_gating`).
+/// The returned router carries no middleware, but every endpoint is scope-gated
+/// per operation (the handlers take a `Scoped<…>` capability). The consumer MUST
+/// still wrap it with its auth gate (the Tauri host applies
+/// `layer_router_with_gatekeeper_auth_gating`) — that gate inserts the
+/// `ScopeClaims` the capabilities read, so an unwrapped router fails closed with
+/// a 500 rather than admitting an unauthenticated caller.
 ///
 /// # Errors
 ///

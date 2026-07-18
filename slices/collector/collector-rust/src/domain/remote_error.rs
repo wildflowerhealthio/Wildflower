@@ -19,6 +19,18 @@ pub enum RemoteError {
     InvalidConfig { message: String },
     /// A create used a client-minted id that's already taken.
     AlreadyExists { id: String },
+    /// The caller authenticated but their token doesn't cover the
+    /// `wildflower/Accounts.<perm>` scope the operation requires — the
+    /// authorization (not authentication) failure the HTTP layer renders as the
+    /// shared `403 InsufficientScope` body. `missing_scopes` names the
+    /// (already-rendered) scopes the caller must additionally hold.
+    ///
+    /// The scope-gated handlers acquire a
+    /// [`Scoped`](scope_capabilities_rust::Scoped) capability whose extractor
+    /// produces this `403` directly, so this variant is part of the failure
+    /// *vocabulary* the HTTP layer models uniformly (and the OpenAPI `403`
+    /// documents) rather than one the handler bodies construct.
+    InsufficientScope { missing_scopes: Vec<String> },
     /// An infrastructure failure in the backing store (a checkout or query
     /// error) — opaque to clients: the HTTP layer logs `context` + `source` and
     /// answers an empty 500. The cause is captured as text so this type stays
