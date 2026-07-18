@@ -2,6 +2,7 @@
 // oxlint-disable typescript-eslint/no-unsafe-assignment -- vitest's `expect.any` / `expect.objectContaining` / `expect.stringMatching` matchers are typed as `any`; using them in object literals for `objectContaining` is the intended idiom
 
 import {
+  MatchesFoundMessage,
   PageLoadedMessage,
   RequestErrorMessage,
   ResponseDataMessage,
@@ -140,6 +141,7 @@ const decodeResponseData = Schema.decodeUnknownSync(Schema.typeSchema(ResponseDa
 const decodeResponseFinished = Schema.decodeUnknownSync(Schema.typeSchema(ResponseFinishedMessage))
 const decodeRequestError = Schema.decodeUnknownSync(Schema.typeSchema(RequestErrorMessage))
 const decodePageLoaded = Schema.decodeUnknownSync(Schema.typeSchema(PageLoadedMessage))
+const decodeMatchesFound = Schema.decodeUnknownSync(Schema.typeSchema(MatchesFoundMessage))
 const decodeByTag: Record<string, (msg: unknown) => unknown> = {
   Log: decodeLog,
   ResponseStart: decodeResponseStart,
@@ -147,6 +149,7 @@ const decodeByTag: Record<string, (msg: unknown) => unknown> = {
   ResponseFinished: decodeResponseFinished,
   RequestError: decodeRequestError,
   PageLoaded: decodePageLoaded,
+  MatchesFound: decodeMatchesFound,
 }
 
 const validateMessages = (msgs: Message[]): void => {
@@ -916,7 +919,8 @@ describe('CancelSnifferRequest (host→web bridge message)', () => {
   test('should register a single multiplexed Tauri listener on install', () => {
     installSnifferForTest()
     // One unlisten for the single `BRIDGE_EVENT` channel; inbound tags
-    // (`PageAction`, `CancelSnifferRequest`) demux by the payload's `_tag`.
+    // (`PageAction`, `CancelSnifferRequest`, `QueryMatches`) demux by the
+    // payload's `_tag`.
     expect(getState()?.unlistens).toHaveLength(1)
     expect(listeners.has(BRIDGE_EVENT)).toBe(true)
   })
@@ -1209,6 +1213,119 @@ describe('PageAction: malformed envelope (host→web bridge message)', () => {
     })
     expect(input.value).toBe('unchanged')
     expect(onInput).not.toHaveBeenCalled()
+  })
+})
+
+describe('QueryMatches → MatchesFound (runtime link discovery)', () => {
+  let getMessages: () => Message[]
+  const initialBodyHtml = document.body.innerHTML
+
+  beforeEach(() => {
+    resetShims()
+    XMLHttpRequest.prototype.open = vi.fn() as XMLHttpRequest['open']
+    XMLHttpRequest.prototype.send = vi.fn() as XMLHttpRequest['send']
+    document.body.innerHTML = initialBodyHtml
+    getMessages = setupEnv()
+  })
+
+  afterEach(() => {
+    document.body.innerHTML = initialBodyHtml
+    resetShims()
+  })
+
+  const queryMatches = (queryId: string, querySelector: string): void => {
+    fireInbound(BRIDGE_EVENT, { _tag: 'QueryMatches', queryId, querySelector })
+  }
+  const matchesFound = (): Message[] => withTag(getMessages(), 'MatchesFound')
+
+  test('answers with an empty match set when nothing matches (0 matches)', () => {
+    document.body.replaceChildren(document.createElement('section'))
+    installSnifferForTest()
+
+    queryMatches('q0', '.detail')
+    expect(matchesFound()).toEqual([
+      expect.objectContaining({ _tag: 'MatchesFound', queryId: 'q0', matches: [] }),
+    ])
+    validateMessages(getMessages())
+  })
+
+  test('echoes queryId and returns a re-selectable generated selector for a single match', () => {
+    const row = document.createElement('div')
+    row.className = 'detail'
+    document.body.replaceChildren(row)
+    installSnifferForTest()
+
+    queryMatches('q1', '.detail')
+    const [found] = matchesFound()
+    expect(found?.queryId).toBe('q1')
+    const matches = found?.matches as ReadonlyArray<{ generatedSelector: string; href?: string }>
+    expect(matches).toHaveLength(1)
+    // The generated selector must re-select exactly the same node.
+    expect(document.querySelector(matches[0].generatedSelector)).toBe(row)
+    // A non-anchor click-handler row reports no href.
+    expect(matches[0]).not.toHaveProperty('href')
+    validateMessages(getMessages())
+  })
+
+  test('returns one match per node for N matches, each re-selectable', () => {
+    const container = document.createElement('div')
+    container.className = 'table medicationItems'
+    const rows = [0, 1, 2].map((i) => {
+      const a = document.createElement('a')
+      a.className = 'detail'
+      a.href = `https://app.example/med/${i}`
+      return a
+    })
+    container.replaceChildren(...rows)
+    document.body.replaceChildren(container)
+    installSnifferForTest()
+
+    queryMatches('qN', '.table.medicationItems .detail')
+    const [found] = matchesFound()
+    const matches = found?.matches as ReadonlyArray<{ generatedSelector: string; href?: string }>
+    expect(matches).toHaveLength(3)
+    // Every generated selector re-selects the exact original node, in order.
+    matches.forEach((m, i) => {
+      expect(document.querySelector(m.generatedSelector)).toBe(rows[i])
+    })
+    validateMessages(getMessages())
+  })
+
+  test('includes href only for real anchors with a non-empty href', () => {
+    const anchor = document.createElement('a')
+    anchor.className = 'row'
+    anchor.href = 'https://app.example/detail/7'
+    const divRow = document.createElement('div')
+    divRow.className = 'row'
+    document.body.replaceChildren(anchor, divRow)
+    installSnifferForTest()
+
+    queryMatches('q2', '.row')
+    const matches = matchesFound()[0]?.matches as ReadonlyArray<{
+      generatedSelector: string
+      href?: string
+    }>
+    expect(matches).toHaveLength(2)
+    expect(matches[0]?.href).toBe('https://app.example/detail/7')
+    expect(matches[1]).not.toHaveProperty('href')
+  })
+
+  test('answers with no matches (no throw) for an invalid selector', () => {
+    installSnifferForTest()
+    expect(() => queryMatches('q3', ':::not-a-valid-selector')).not.toThrow()
+    expect(matchesFound()).toEqual([expect.objectContaining({ queryId: 'q3', matches: [] })])
+  })
+
+  test('drops a QueryMatches with an empty queryId or selector (no MatchesFound)', () => {
+    const row = document.createElement('div')
+    row.className = 'detail'
+    document.body.replaceChildren(row)
+    installSnifferForTest()
+
+    queryMatches('', '.detail')
+    queryMatches('q4', '')
+    fireInbound(BRIDGE_EVENT, { _tag: 'QueryMatches', querySelector: '.detail' })
+    expect(matchesFound()).toEqual([])
   })
 })
 

@@ -117,7 +117,7 @@ describe('tauriSnifferBootstrapScript', () => {
     // `installSniffer` to listen for it would silently drop those
     // messages on the floor.
     const declared = Object.keys(BrowserSnifferBridge.HostToWeb).toSorted()
-    expect(declared).toEqual(['CancelSnifferRequest', 'PageAction'])
+    expect(declared).toEqual(['CancelSnifferRequest', 'PageAction', 'QueryMatches'])
   })
 
   it('installs the sniffer when window.__TAURI__ event + core.invoke are present', () => {

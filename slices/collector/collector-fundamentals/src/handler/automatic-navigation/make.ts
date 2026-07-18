@@ -10,7 +10,7 @@ import {
   sideEffectHandlers,
   type TimerRegistry,
 } from './side-effect-handlers.ts'
-import { awaitingPageLoaded, type StepState } from './state.ts'
+import { awaitingPageLoaded, stateOf, type StepState } from './state.ts'
 import { transition } from './transition.ts'
 
 /**
@@ -29,6 +29,13 @@ type Service = MessageHandler.HandlersFor<CollectorBridge['HostToWeb']>
  */
 interface AutomaticNavigation {
   readonly handlePageLoaded: Service['PageLoaded']
+  /**
+   * The `MatchesFound` handler: the sniffer's answer to a `ForEach` step's
+   * discovery query, forwarded verbatim into the machine as an input (like
+   * `PageLoaded`). The machine correlates it by `queryId` and, on a match,
+   * expands the `ForEach` in place.
+   */
+  readonly handleMatchesFound: Service['MatchesFound']
   /**
    * Halt the automatic navigation: interrupt any pending timer fiber and reset
    * the index to 0. This machine's contribution to the run lifecycle's
@@ -56,7 +63,11 @@ const make = <TResources>({
   onSniffingComplete: Effect.Effect<void, never, never>
 }): Effect.Effect<AutomaticNavigation, never, never> =>
   Effect.gen(function* () {
-    const stepStateRef = yield* SynchronizedRef.make<StepState>(awaitingPageLoaded(0, 0))
+    // Seed the machine's dynamic queue from the frozen plan; a `ForEach` in it
+    // is expanded in place at runtime (the plan stays frozen).
+    const stepStateRef = yield* SynchronizedRef.make<StepState>(
+      stateOf(scrapingPlan.stepSequence, awaitingPageLoaded(0, 0))
+    )
     const registry: TimerRegistry = yield* Ref.make(
       HashMap.empty<number, RuntimeFiber<void, never>>()
     )
@@ -82,12 +93,23 @@ const make = <TResources>({
         Match.tag('DispatchSniffingComplete', (m) =>
           sideEffectHandlers.DispatchSniffingComplete(m, ctx)
         ),
+        Match.tag('DispatchQueryMatches', (m) => sideEffectHandlers.DispatchQueryMatches(m, ctx)),
         Match.tag('ScheduleSettleTimer', (m) => sideEffectHandlers.ScheduleSettleTimer(m, ctx)),
         Match.tag('ScheduleUrlMatchTimeout', (m) =>
           sideEffectHandlers.ScheduleUrlMatchTimeout(m, ctx)
         ),
+        Match.tag('ScheduleQueryMatchesTimeout', (m) =>
+          sideEffectHandlers.ScheduleQueryMatchesTimeout(m, ctx)
+        ),
         Match.tag('CancelTimer', (m) => sideEffectHandlers.CancelTimer(m, ctx)),
         Match.tag('WarnUrlMatchTimeout', (m) => sideEffectHandlers.WarnUrlMatchTimeout(m, ctx)),
+        Match.tag('WarnQueryMatchesTimeout', (m) =>
+          sideEffectHandlers.WarnQueryMatchesTimeout(m, ctx)
+        ),
+        Match.tag('WarnEmptyMatches', (m) => sideEffectHandlers.WarnEmptyMatches(m, ctx)),
+        Match.tag('WarnDroppedMatchesFound', (m) =>
+          sideEffectHandlers.WarnDroppedMatchesFound(m, ctx)
+        ),
         Match.tag('WarnDroppedPageLoaded', (m) => sideEffectHandlers.WarnDroppedPageLoaded(m, ctx)),
         Match.exhaustive
       )
@@ -111,10 +133,11 @@ const make = <TResources>({
       )
 
     const handlePageLoaded: Service['PageLoaded'] = (event) => dispatch(event)
+    const handleMatchesFound: Service['MatchesFound'] = (event) => dispatch(event)
     const stopAutomaticNavigation = (): Effect.Effect<void, never, never> =>
       dispatch({ _tag: 'Stop' })
 
-    return { handlePageLoaded, stopAutomaticNavigation }
+    return { handlePageLoaded, handleMatchesFound, stopAutomaticNavigation }
   })
 
 export type { AutomaticNavigation }

@@ -3,8 +3,10 @@
 import type {
   CancelSnifferRequestMessageBody,
   CancelledMessageBody,
+  MatchesFoundMessageBody,
   PageActionMessageBody,
   PageLoadedMessageBody,
+  QueryMatchesMessageBody,
   RequestErrorMessageBody,
   ResponseDataMessageBody,
   ResponseFinishedMessageBody,
@@ -26,16 +28,17 @@ import type { JsonValue } from 'kitchen-sink/schema'
  *
  * Wire format:
  *   - Emits `Log`, `ResponseStart`, `ResponseData`, `ResponseFinished`,
- *     `RequestError`, `Cancelled`, `PageLoaded` on the multiplexed
- *     `BRIDGE_EVENT` channel (discriminated by `_tag`). Emits are
- *     fire-and-forget here; the wrapping `makeFilteringEventBus` serializes
- *     them to keep the ~64KB `ResponseData` chunks FIFO (see
+ *     `RequestError`, `Cancelled`, `PageLoaded`, `MatchesFound` on the
+ *     multiplexed `BRIDGE_EVENT` channel (discriminated by `_tag`). Emits
+ *     are fire-and-forget here; the wrapping `makeFilteringEventBus`
+ *     serializes them to keep the ~64KB `ResponseData` chunks FIFO (see
  *     `filter-tauri-internal.ts`).
  *   - Listens for Host→Web messages on the same channel, demuxing by
  *     `_tag` (`CancelSnifferRequest` / `PageAction`, the latter further
- *     demuxed by its inner `action.kind`). No `message`-event indirection
- *     or `source === null` guard: only Tauri IPC can invoke a Tauri
- *     listener, so page scripts can't spoof inbound messages.
+ *     demuxed by its inner `action.kind`; `QueryMatches`, answered by a
+ *     `MatchesFound` emit). No `message`-event indirection or
+ *     `source === null` guard: only Tauri IPC can invoke a Tauri listener,
+ *     so page scripts can't spoof inbound messages.
  *
  * Idempotent: a `Symbol.for('browser-sniffer:state')` slot on `window`
  * holds the captured natives, tracker state, and pending unlistens;
@@ -53,11 +56,13 @@ type SnifferOutboundMessage =
   | Schema.Schema.Encoded<typeof RequestErrorMessageBody>
   | Schema.Schema.Encoded<typeof CancelledMessageBody>
   | Schema.Schema.Encoded<typeof PageLoadedMessageBody>
+  | Schema.Schema.Encoded<typeof MatchesFoundMessageBody>
 
 /** Wire form received Host→Web. */
 type SnifferInboundMessage =
   | Schema.Schema.Encoded<typeof CancelSnifferRequestMessageBody>
   | Schema.Schema.Encoded<typeof PageActionMessageBody>
+  | Schema.Schema.Encoded<typeof QueryMatchesMessageBody>
 
 interface SnifferState {
   readonly nativeFetch: typeof globalThis.fetch
@@ -731,6 +736,66 @@ const installSniffer = function (eventBus: TauriEventApi): void {
     target.dispatchEvent(new Event('change', { bubbles: true }))
   }
 
+  /**
+   * A document-absolute `:nth-child` path that re-selects exactly `element`
+   * via `document.querySelector`. Walks parent links to the root element,
+   * prepending a `tag:nth-child(n)` segment per level (the root gets a bare
+   * tag name). Position is counted over *element* siblings so text/comment
+   * nodes don't skew the index — the same basis CSS `:nth-child` uses. This
+   * is the stable target a `Click` step needs for a row that navigates via a
+   * click handler rather than an `href` (an Angular SPA row).
+   */
+  const cssPath = (element: Element): string => {
+    const segments: string[] = []
+    let node: Element | null = element
+    while (node !== null) {
+      const parent: Element | null = node.parentElement
+      const tag = node.tagName.toLowerCase()
+      if (parent === null) {
+        // Root element (`html`): no parent to index against.
+        segments.unshift(tag)
+        break
+      }
+      let index = 1
+      let sibling = node.previousElementSibling
+      while (sibling !== null) {
+        index += 1
+        sibling = sibling.previousElementSibling
+      }
+      segments.unshift(`${tag}:nth-child(${index})`)
+      node = parent
+    }
+    return segments.join(' > ')
+  }
+
+  /**
+   * Enumerate the live DOM for a `QueryMatches` and build the
+   * `MatchesFound` payload. Per matched node: always a generated selector
+   * (see {@link cssPath}); `href` only when the node is itself a real anchor
+   * with a non-empty href (a click-handler row reports the selector alone).
+   * An invalid selector is answered with no matches rather than throwing —
+   * the exchange stays best-effort and the collector's discovery timeout is
+   * the ultimate backstop.
+   */
+  const collectMatches = (
+    querySelector: string
+  ): Schema.Schema.Encoded<typeof MatchesFoundMessageBody>['matches'] => {
+    let nodes: NodeListOf<Element>
+    try {
+      nodes = document.querySelectorAll(querySelector)
+    } catch {
+      return []
+    }
+    // `Array.from(nodeList, mapFn)` is typed (unlike `Array.prototype.map.call`),
+    // so the mapped element type flows through with no cast.
+    return Array.from(nodes, (node) => {
+      const generatedSelector = cssPath(node)
+      return node instanceof HTMLAnchorElement && node.href.length > 0
+        ? { generatedSelector, href: node.href }
+        : { generatedSelector }
+    })
+  }
+
   const unlistens: Array<(() => void) | Promise<() => void>> = []
   unlistens.push(
     eventBus.listen(BRIDGE_EVENT, ({ payload }) => {
@@ -765,6 +830,17 @@ const installSniffer = function (eventBus: TauriEventApi): void {
           fillInput(target, action.value)
           return
         }
+        return
+      }
+      if (msg._tag === 'QueryMatches') {
+        // Discovery request: enumerate the live DOM and answer with a single
+        // `MatchesFound` echoing `queryId` so the collector can correlate (and
+        // drop a stale answer). Envelope guard: non-empty string `queryId` and
+        // `querySelector`, mirroring the schema's `NonEmptyString` fields.
+        const { queryId, querySelector } = msg
+        if (typeof queryId !== 'string' || queryId.length === 0) return
+        if (typeof querySelector !== 'string' || querySelector.length === 0) return
+        post({ _tag: 'MatchesFound', queryId, matches: collectMatches(querySelector) })
         return
       }
     })

@@ -1,8 +1,10 @@
 import {
   CancelSnifferRequestMessage,
   CancelledMessage,
+  MatchesFoundMessage,
   PageActionMessage,
   PageLoadedMessage,
+  QueryMatchesMessage,
   RequestErrorMessage,
   ResponseDataMessage,
   ResponseFinishedMessage,
@@ -71,6 +73,7 @@ type CollectorBridge = Bridge.Bridge<
     RequestError: typeof RequestErrorMessage
     Cancelled: typeof CancelledMessage
     PageLoaded: typeof PageLoadedMessage
+    MatchesFound: typeof MatchesFoundMessage
   },
   {
     RequestSniffableWebView: typeof RequestSniffableWebView
@@ -78,6 +81,7 @@ type CollectorBridge = Bridge.Bridge<
     SniffingComplete: typeof SniffingComplete
     Open: typeof OpenMessage
     PageAction: typeof PageActionMessage
+    QueryMatches: typeof QueryMatchesMessage
   }
 >
 
@@ -85,14 +89,16 @@ type CollectorBridge = Bridge.Bridge<
  * Slice-level bridge between the embedded collector SPA and the Tauri
  * host. Web→Host carries control signals (`RequestSniffableWebView`,
  * `CancelSnifferRequest`, `SniffingComplete`) and script-driven
- * navigation steps (`Open`, `PageAction`); Host→Web carries the
- * sniffer-event subset collector parses plus the `PageLoaded`
- * notification that drives the step timer.
+ * navigation steps (`Open`, `PageAction`) plus the `QueryMatches`
+ * discovery request; Host→Web carries the sniffer-event subset collector
+ * parses, the `PageLoaded` notification that drives the step timer, and the
+ * `MatchesFound` answer to a `QueryMatches`.
  *
- * `PageAction` is the same `PageActionMessage` schema `BrowserSnifferBridge`
- * declares for its Host→Web side, so the Tauri host forwards the decoded
- * payload through both bridges without re-encoding. The six sniffer events
- * imported from `browser-sniffer-core` keep wire schemas in lockstep with
+ * `PageAction` / `QueryMatches` are the same schemas `BrowserSnifferBridge`
+ * declares for its Host→Web side, and `MatchesFound` the same as its
+ * Web→Host side, so the Tauri host forwards the decoded payloads through
+ * both bridges without re-encoding. The seven sniffer events imported from
+ * `browser-sniffer-core` keep wire schemas in lockstep with
  * `BrowserSnifferBridge` for the same reason. `Cancelled` is the terminal
  * acknowledgement for a mid-stream `CancelSnifferRequest`; the handler uses
  * it to release the in-progress slot and offer a `Left(SnifferCancelled)`
@@ -107,6 +113,7 @@ const CollectorBridge: CollectorBridge = Bridge.make({
     ['RequestError', RequestErrorMessage],
     ['Cancelled', CancelledMessage],
     ['PageLoaded', PageLoadedMessage],
+    ['MatchesFound', MatchesFoundMessage],
   ] as const,
   webToHost: [
     ['RequestSniffableWebView', RequestSniffableWebView],
@@ -114,6 +121,7 @@ const CollectorBridge: CollectorBridge = Bridge.make({
     ['SniffingComplete', SniffingComplete],
     ['Open', OpenMessage],
     ['PageAction', PageActionMessage],
+    ['QueryMatches', QueryMatchesMessage],
   ] as const,
 })
 

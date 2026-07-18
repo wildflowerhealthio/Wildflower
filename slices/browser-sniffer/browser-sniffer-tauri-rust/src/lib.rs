@@ -26,10 +26,10 @@ pub use native_webview_bridge::native_webview_data_plane_emit;
 /// `setup()`.
 ///
 /// This also wires the native-webview bridge (`native_webview_bridge::install`)
-/// on every platform. The inbound `PageAction` / `CancelSnifferRequest`
-/// forwarding into the native webview stays mobile-only — on desktop the
-/// content webview is a Tauri webview that receives `app.emit('bridge', …)`
-/// natively, so those forwarders are `cfg`-gated out.
+/// on every platform. The inbound `PageAction` / `QueryMatches` /
+/// `CancelSnifferRequest` forwarding into the native webview stays mobile-only —
+/// on desktop the content webview is a Tauri webview that receives
+/// `app.emit('bridge', …)` natively, so those forwarders are `cfg`-gated out.
 ///
 /// Decode failures inside each handler log at warn; tags this crate
 /// does not care about (sibling slices' bridge traffic) are dropped silently.
@@ -40,11 +40,12 @@ pub fn attach_browser_sniffer(app: &AppHandle) {
     // the boot log shows who dispatches what. See the effect-messaging-tauri
     // README ("Tag uniqueness across processes").
     log::info!(
-        "[browser-sniffer] listening on '{BRIDGE_EVENT}' for tags: [{}, {}, {}, {}, {}]",
+        "[browser-sniffer] listening on '{BRIDGE_EVENT}' for tags: [{}, {}, {}, {}, {}, {}]",
         events::REQUEST_SNIFFABLE_WEBVIEW,
         events::OPEN,
         events::SNIFFING_COMPLETE,
         events::PAGE_ACTION,
+        events::QUERY_MATCHES,
         events::CANCEL_SNIFFER_REQUEST,
     );
     let handle = app.clone();
@@ -64,7 +65,7 @@ pub fn attach_browser_sniffer(app: &AppHandle) {
             events::OPEN => handlers::open::handle(&handle, payload),
             events::SNIFFING_COMPLETE => handlers::sniffing_complete::handle(&handle),
             #[cfg(any(target_os = "ios", target_os = "android"))]
-            events::PAGE_ACTION | events::CANCEL_SNIFFER_REQUEST => {
+            events::PAGE_ACTION | events::QUERY_MATCHES | events::CANCEL_SNIFFER_REQUEST => {
                 native_webview_bridge::forward_to_native_webview(&handle, payload);
             }
             _ => {}
@@ -86,6 +87,7 @@ mod tests {
         assert_eq!(events::OPEN, "Open");
         assert_eq!(events::SNIFFING_COMPLETE, "SniffingComplete");
         assert_eq!(events::PAGE_ACTION, "PageAction");
+        assert_eq!(events::QUERY_MATCHES, "QueryMatches");
         assert_eq!(events::CANCEL_SNIFFER_REQUEST, "CancelSnifferRequest");
     }
 

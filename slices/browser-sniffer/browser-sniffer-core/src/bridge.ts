@@ -2,8 +2,10 @@ import { Bridge, type MessageHandler } from 'effect-messaging-core'
 import {
   CancelSnifferRequestMessage,
   CancelledMessage,
+  MatchesFoundMessage,
   PageActionMessage,
   PageLoadedMessage,
+  QueryMatchesMessage,
   RequestErrorMessage,
   ResponseDataMessage,
   ResponseFinishedMessage,
@@ -15,6 +17,7 @@ type BrowserSnifferBridge = Bridge.Bridge<
   {
     CancelSnifferRequest: typeof CancelSnifferRequestMessage
     PageAction: typeof PageActionMessage
+    QueryMatches: typeof QueryMatchesMessage
   },
   {
     ResponseStart: typeof ResponseStartMessage
@@ -23,6 +26,7 @@ type BrowserSnifferBridge = Bridge.Bridge<
     RequestError: typeof RequestErrorMessage
     Cancelled: typeof CancelledMessage
     PageLoaded: typeof PageLoadedMessage
+    MatchesFound: typeof MatchesFoundMessage
   }
 >
 
@@ -34,7 +38,10 @@ type BrowserSnifferBridge = Bridge.Bridge<
  * given request id (the page then posts `Cancelled` as the terminal
  * observation); `PageAction` is the scripted-interaction control message
  * (a `Click` / `Fill` action demuxed by its inner `kind`), best-effort
- * with no acknowledgement.
+ * with no acknowledgement; `QueryMatches` asks the page to enumerate the
+ * live DOM (`querySelectorAll`) and is answered by a single `MatchesFound`
+ * on Web→Host — the request/response pair backing the collector's `ForEach`
+ * runtime link discovery (correlated by `queryId`).
  *
  * `PageLoaded` carries the page URL and a `pageContentId` that
  * correlates with a `Response*` stream containing
@@ -58,6 +65,7 @@ const BrowserSnifferBridge: BrowserSnifferBridge = Bridge.make({
   hostToWeb: [
     ['CancelSnifferRequest', CancelSnifferRequestMessage],
     ['PageAction', PageActionMessage],
+    ['QueryMatches', QueryMatchesMessage],
   ] as const,
   webToHost: [
     ['ResponseStart', ResponseStartMessage],
@@ -66,6 +74,7 @@ const BrowserSnifferBridge: BrowserSnifferBridge = Bridge.make({
     ['RequestError', RequestErrorMessage],
     ['Cancelled', CancelledMessage],
     ['PageLoaded', PageLoadedMessage],
+    ['MatchesFound', MatchesFoundMessage],
   ] as const,
 })
 

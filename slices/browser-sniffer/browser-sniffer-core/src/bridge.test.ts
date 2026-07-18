@@ -8,8 +8,10 @@ import { BrowserSnifferBridge } from './bridge.ts'
 import {
   CancelSnifferRequestMessage,
   CancelledMessage,
+  MatchesFoundMessage,
   PageActionMessage,
   PageLoadedMessage,
+  QueryMatchesMessage,
   RequestErrorMessage,
   ResponseDataMessage,
   ResponseFinishedMessage,
@@ -23,10 +25,12 @@ type WebToHostMessage =
   | Schema.Schema.Type<typeof RequestErrorMessage>
   | Schema.Schema.Type<typeof CancelledMessage>
   | Schema.Schema.Type<typeof PageLoadedMessage>
+  | Schema.Schema.Type<typeof MatchesFoundMessage>
 
 type HostToWebMessage =
   | Schema.Schema.Type<typeof CancelSnifferRequestMessage>
   | Schema.Schema.Type<typeof PageActionMessage>
+  | Schema.Schema.Type<typeof QueryMatchesMessage>
 
 // Arbitrary instances of each decoded payload, derived from the schemas
 // themselves so the test stays in lockstep with the bridge wire format —
@@ -38,14 +42,18 @@ const webToHostArb: fc.Arbitrary<WebToHostMessage> = fc.oneof(
   Arbitrary.make(Schema.typeSchema(ResponseFinishedMessage)),
   Arbitrary.make(Schema.typeSchema(RequestErrorMessage)),
   Arbitrary.make(Schema.typeSchema(CancelledMessage)),
-  Arbitrary.make(Schema.typeSchema(PageLoadedMessage))
+  Arbitrary.make(Schema.typeSchema(PageLoadedMessage)),
+  // The MatchesFound arbitrary spans an empty and populated `matches`, and the
+  // optional `href` present/absent, via the schema-derived shape.
+  Arbitrary.make(Schema.typeSchema(MatchesFoundMessage))
 )
 
 const hostToWebArb: fc.Arbitrary<HostToWebMessage> = fc.oneof(
   Arbitrary.make(Schema.typeSchema(CancelSnifferRequestMessage)),
   // The PageAction arbitrary spans both `action` kinds (Click / Fill) via the
   // schema-derived union, so the round-trip property exercises each.
-  Arbitrary.make(Schema.typeSchema(PageActionMessage))
+  Arbitrary.make(Schema.typeSchema(PageActionMessage)),
+  Arbitrary.make(Schema.typeSchema(QueryMatchesMessage))
 )
 
 const encodeWebToHost = (m: WebToHostMessage): string => {
@@ -62,6 +70,8 @@ const encodeWebToHost = (m: WebToHostMessage): string => {
       return Schema.encodeSync(CancelledMessage)(m)
     case 'PageLoaded':
       return Schema.encodeSync(PageLoadedMessage)(m)
+    case 'MatchesFound':
+      return Schema.encodeSync(MatchesFoundMessage)(m)
     default: {
       const exhaustive: never = m
       throw new Error(`unreachable encodeWebToHost: ${JSON.stringify(exhaustive)}`)
@@ -107,6 +117,7 @@ const makeCollectingHostHandlers = (): {
     RequestError: push,
     Cancelled: push,
     PageLoaded: push,
+    MatchesFound: push,
   }
   return { collected, handlers }
 }
@@ -143,9 +154,10 @@ const runHost = async (
 }
 
 describe('BrowserSnifferBridge — shape', () => {
-  test('declares the six sniffer events on Web→Host and the two control messages on Host→Web', () => {
+  test('declares the seven sniffer events on Web→Host and the three control messages on Host→Web', () => {
     expect(Object.keys(BrowserSnifferBridge.WebToHost).toSorted()).toEqual([
       'Cancelled',
+      'MatchesFound',
       'PageLoaded',
       'RequestError',
       'ResponseData',
@@ -155,6 +167,7 @@ describe('BrowserSnifferBridge — shape', () => {
     expect(Object.keys(BrowserSnifferBridge.HostToWeb).toSorted()).toEqual([
       'CancelSnifferRequest',
       'PageAction',
+      'QueryMatches',
     ])
   })
 })
@@ -195,6 +208,7 @@ describe('BrowserSnifferBridge — Host→Web round-trip', () => {
           {
             CancelSnifferRequest: push,
             PageAction: push,
+            QueryMatches: push,
           }
 
         const encodeHostToWeb = (m: HostToWebMessage): string => {
@@ -203,6 +217,8 @@ describe('BrowserSnifferBridge — Host→Web round-trip', () => {
               return Schema.encodeSync(CancelSnifferRequestMessage)(m)
             case 'PageAction':
               return Schema.encodeSync(PageActionMessage)(m)
+            case 'QueryMatches':
+              return Schema.encodeSync(QueryMatchesMessage)(m)
             default: {
               const exhaustive: never = m
               throw new Error(`unreachable encodeHostToWeb: ${JSON.stringify(exhaustive)}`)
@@ -287,9 +303,54 @@ describe('BrowserSnifferBridge — Host→Web round-trip', () => {
         Schema.encodeSync(PageActionMessage)(clickAction),
         Schema.encodeSync(PageActionMessage)(fillAction),
       ],
-      { CancelSnifferRequest: push, PageAction: push }
+      { CancelSnifferRequest: push, PageAction: push, QueryMatches: push }
     )
     expect(collected).toEqual([clickAction, fillAction])
+  })
+
+  test('dispatches a QueryMatches with queryId and selector preserved', async () => {
+    const collected: HostToWebMessage[] = []
+    const push = (m: HostToWebMessage): Effect.Effect<void> =>
+      Effect.sync(() => {
+        collected.push(m)
+      })
+    const query: Schema.Schema.Type<typeof QueryMatchesMessage> = {
+      _tag: 'QueryMatches',
+      queryId: '7',
+      querySelector: '.table.medicationItems .detail',
+    }
+    await runWeb([Schema.encodeSync(QueryMatchesMessage)(query)], {
+      CancelSnifferRequest: push,
+      PageAction: push,
+      QueryMatches: push,
+    })
+    expect(collected).toEqual([query])
+  })
+
+  test('drops a QueryMatches with an empty selector or missing queryId', async () => {
+    const collected: HostToWebMessage[] = []
+    const push = (m: HostToWebMessage): Effect.Effect<void> =>
+      Effect.sync(() => {
+        collected.push(m)
+      })
+    const valid: Schema.Schema.Type<typeof QueryMatchesMessage> = {
+      _tag: 'QueryMatches',
+      queryId: '1',
+      querySelector: '.detail',
+    }
+    await runWeb(
+      [
+        // Empty selector violates NonEmptyString.
+        JSON.stringify({ _tag: 'QueryMatches', queryId: '1', querySelector: '' }),
+        // Missing queryId.
+        JSON.stringify({ _tag: 'QueryMatches', querySelector: '.detail' }),
+        // Empty queryId violates SnifferQueryId (NonEmptyString).
+        JSON.stringify({ _tag: 'QueryMatches', queryId: '', querySelector: '.detail' }),
+        Schema.encodeSync(QueryMatchesMessage)(valid),
+      ],
+      { CancelSnifferRequest: push, PageAction: push, QueryMatches: push }
+    )
+    expect(collected).toEqual([valid])
   })
 
   test('drops a PageAction whose inner action fails the shape guard', async () => {
@@ -313,7 +374,60 @@ describe('BrowserSnifferBridge — Host→Web round-trip', () => {
         // A well-formed message still makes it through.
         Schema.encodeSync(PageActionMessage)(valid),
       ],
-      { CancelSnifferRequest: push, PageAction: push }
+      { CancelSnifferRequest: push, PageAction: push, QueryMatches: push }
+    )
+    expect(collected).toEqual([valid])
+  })
+})
+
+describe('BrowserSnifferBridge — MatchesFound shapes', () => {
+  test('round-trips an empty match set and matches with/without the optional href', async () => {
+    const { collected, handlers } = makeCollectingHostHandlers()
+    const empty: Schema.Schema.Type<typeof MatchesFoundMessage> = {
+      _tag: 'MatchesFound',
+      queryId: '3',
+      matches: [],
+    }
+    const populated: Schema.Schema.Type<typeof MatchesFoundMessage> = {
+      _tag: 'MatchesFound',
+      queryId: '4',
+      matches: [
+        // A real anchor: both a generated selector and a resolved href.
+        { generatedSelector: 'html > body:nth-child(2) > a:nth-child(1)', href: 'https://e/1' },
+        // A click-handler row: generated selector only, href omitted.
+        { generatedSelector: 'html > body:nth-child(2) > div:nth-child(2)' },
+      ],
+    }
+    await runHost(
+      [
+        Schema.encodeSync(MatchesFoundMessage)(empty),
+        Schema.encodeSync(MatchesFoundMessage)(populated),
+      ],
+      handlers
+    )
+    expect(collected).toEqual([empty, populated])
+  })
+
+  test('drops a MatchesFound whose match lacks a generatedSelector or whose queryId is empty', async () => {
+    const { collected, handlers } = makeCollectingHostHandlers()
+    const valid: Schema.Schema.Type<typeof MatchesFoundMessage> = {
+      _tag: 'MatchesFound',
+      queryId: '9',
+      matches: [{ generatedSelector: 'html > a:nth-child(1)' }],
+    }
+    await runHost(
+      [
+        // Empty queryId violates SnifferQueryId (NonEmptyString).
+        JSON.stringify({ _tag: 'MatchesFound', queryId: '', matches: [] }),
+        // A match with an empty generatedSelector violates NonEmptyString.
+        JSON.stringify({
+          _tag: 'MatchesFound',
+          queryId: '9',
+          matches: [{ generatedSelector: '' }],
+        }),
+        Schema.encodeSync(MatchesFoundMessage)(valid),
+      ],
+      handlers
     )
     expect(collected).toEqual([valid])
   })

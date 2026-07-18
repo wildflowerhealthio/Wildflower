@@ -1,4 +1,8 @@
-import { type CancelSnifferRequestMessage, type PageActionMessage } from 'browser-sniffer-core'
+import {
+  type CancelSnifferRequestMessage,
+  type PageActionMessage,
+  type QueryMatchesMessage,
+} from 'browser-sniffer-core'
 import { Effect, type Mailbox, type MutableHashMap, Option } from 'effect'
 import type { MessageHandler } from 'effect-messaging-core'
 import type {
@@ -23,17 +27,18 @@ type Service = MessageHandler.HandlersFor<CollectorBridge['HostToWeb']>
  * The union of every message the handler can ask the host to send via
  * the supplied `sendMessage`. `CancelSnifferRequest` short-circuits an
  * unmatched response stream (response tracker); `Open` / `PageAction`
- * drive the scripted navigation and `SniffingComplete` is the terminal
- * hand-off when the link sequence is exhausted (automatic navigation). The
- * `Open` / `PageAction` payloads *are* the step's `action` — the handler
- * forwards `scrapingPlan.stepSequence[i].action` to `sendMessage` without
- * translation (the plan-only `advanceWhen` rides the step wrapper, never
- * the action).
+ * drive the scripted navigation, `QueryMatches` runs a `ForEach` step's
+ * runtime link discovery, and `SniffingComplete` is the terminal hand-off
+ * when the (possibly expanded) link sequence is exhausted (automatic
+ * navigation). The `Open` / `PageAction` payloads *are* a leaf step's
+ * `action` — the handler forwards it to `sendMessage` without translation
+ * (the plan-only `advanceWhen` rides the step wrapper, never the action).
  */
 type OutboundMessage =
   | typeof CancelSnifferRequestMessage.Type
   | typeof OpenMessage.Type
   | typeof PageActionMessage.Type
+  | typeof QueryMatchesMessage.Type
   | typeof SniffingCompleteMessage.Type
 
 interface CollectorBridgeMessageHandler<TResources> extends Service {
@@ -76,7 +81,8 @@ interface CollectorBridgeMessageHandler<TResources> extends Service {
  * Compose the response tracker, the automatic navigation, and the run lifecycle into
  * the single `CollectorBridgeMessageHandler` public surface. The tracker owns
  * the five response handlers and the `incompleteSniffedRequests` map; the step
- * machine owns `PageLoaded` and the scripted `stepSequence`; the
+ * machine owns `PageLoaded`, the `MatchesFound` discovery answer, and the
+ * scripted `stepSequence`; the
  * {@link RunLifecycleState} owns the `requestSniffingResults` stream and every way a
  * run can end (`handleSniffingComplete` / `abandonAllRequestSniffing` /
  * `cancelAllRequestSniffing`). The two machines interact only through the
@@ -143,6 +149,7 @@ const make = <TResources>({
       RequestError: tracker.handleRequestError,
       Cancelled: tracker.handleCancelled,
       PageLoaded: automaticNavigation.handlePageLoaded,
+      MatchesFound: automaticNavigation.handleMatchesFound,
     }
   })
 

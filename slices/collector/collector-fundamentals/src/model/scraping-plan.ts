@@ -20,13 +20,17 @@ import type * as WebViewSource from './web-view-source.ts'
  *     whether to track the in-flight response (first `isFoundAt` match
  *     wins; non-matching responses are cancelled via `sendMessage`).
  *   - Drives the sniffer through `stepSequence` step-by-step,
- *     dispatching each `Step.Step`'s `action` `stepDelay` after each
+ *     dispatching each `LeafStep`'s `action` `stepDelay` after each
  *     `PageLoaded` event. A step may instead carry `advanceWhen: { _tag: 'UrlMatch',
  *     … }`, in which case the handler holds it until a `PageLoaded`
  *     whose `url` matches the pattern (then still waits `stepDelay`),
  *     aborting via `SniffingComplete` if the per-step `timeout` elapses
- *     first. When the sequence is exhausted, fires `SniffingComplete`
- *     after a final `stepDelay`.
+ *     first. A `ForEachStep` instead runs runtime link discovery
+ *     (`QueryMatches`/`MatchesFound`) and expands into one `body(match)`
+ *     sub-sequence per discovered match inside the machine's dynamic step
+ *     queue — the plan below stays frozen. When the (possibly expanded)
+ *     sequence is exhausted, fires `SniffingComplete` after a final
+ *     `stepDelay`.
  *
  * `firstPage` is the host-side `WebViewSource` the sniffer webview is
  * initially mounted with; it is *not* read by the handler (the handler
@@ -46,14 +50,15 @@ import type * as WebViewSource from './web-view-source.ts'
  *   response URL; the first match wins.
  * - `firstPage`: the initial `WebViewSource` (inline HTML or absolute
  *   `https://` URI) to mount the sniffer webview with.
- * - `stepSequence`: ordered list of navigation steps. Each step's `action`
- *   is forwarded to the sniffer verbatim: an `Open` action becomes an `Open`
- *   web→host message (host-navigation); a `PageAction` action becomes a
- *   `PageAction` message the sniffer demuxes by its inner `kind`
- *   (`Click` / `Fill`). A step's optional `advanceWhen` gates when it is
- *   dispatched (default: a fixed `stepDelay`; `UrlMatch`: after a matching
- *   `PageLoaded`). An empty array fires `SniffingComplete` after the first
- *   `PageLoaded`.
+ * - `stepSequence`: ordered list of navigation steps, each a `LeafStep` or a
+ *   `ForEachStep`. A `LeafStep`'s `action` is forwarded to the sniffer
+ *   verbatim: an `Open` action becomes an `Open` web→host message
+ *   (host-navigation); a `PageAction` action becomes a `PageAction` message
+ *   the sniffer demuxes by its inner `kind` (`Click` / `Fill`). A `ForEachStep`
+ *   fans out over links the sniffer discovers at runtime. A step's optional
+ *   `advanceWhen` gates when it is dispatched (default: a fixed `stepDelay`;
+ *   `UrlMatch`: after a matching `PageLoaded`). An empty array fires
+ *   `SniffingComplete` after the first `PageLoaded`.
  * - `stepDelay`: how long the handler waits between observing a
  *   `PageLoaded` and dispatching the next step (or `SniffingComplete`).
  *   The wait lets any post-load XHR fan-out finish before the next
@@ -85,18 +90,5 @@ const make = <TResources>(plan: ScrapingPlan<TResources>): ScrapingPlan<TResourc
     stepDelay: plan.stepDelay,
   })
 
-/**
- * The `advanceWhen` condition of the step at `index`, or `undefined` for
- * the out-of-range "index" that stands for the terminal `SniffingComplete`
- * (never URL-gated) and for steps that don't declare one.
- */
-const advanceConditionByIndex = <TResources>(
-  scrapingPlan: ScrapingPlan<TResources>,
-  index: number
-): Step.Advance | undefined =>
-  index < scrapingPlan.stepSequence.length
-    ? scrapingPlan.stepSequence[index].advanceWhen
-    : undefined
-
-export { make, advanceConditionByIndex }
+export { make }
 export type { ScrapingPlan }

@@ -2,6 +2,7 @@ import { Duration, Effect, Fiber, HashMap, Option, Ref } from 'effect'
 import type { RuntimeFiber } from 'effect/Fiber'
 
 import type { ScrapingPlan } from '../../model/index.ts'
+import type { StepAction } from '../../model/step.ts'
 import * as Telemetry from '../../telemetry/index.ts'
 import type { InputMessage, StepOutboundMessage } from './messages.ts'
 import type { StepState } from './state.ts'
@@ -72,14 +73,16 @@ const scheduleTimerDaemon = <TResources>(
 
 const sideEffectHandlers = {
   DispatchStep: <TResources>(
-    msg: { readonly dispatchIndex: number },
+    msg: { readonly dispatchIndex: number; readonly action: StepAction },
     ctx: HandlerContext<TResources>
   ): Effect.Effect<void, never, never> => {
-    // A step is `{ action; advanceWhen? }`, and `action` is already a bridge
-    // message body — forward it straight to the sniffer. The plan-only
-    // `advanceWhen` lives on the wrapper, never on the action, so it cannot
-    // leak onto the wire (no destructure-and-strip needed).
-    const { action } = ctx.scrapingPlan.stepSequence[msg.dispatchIndex]
+    // The resolved `action` is carried on the effect — the queue lives in the
+    // state, which a handler sees only in its pre-commit form, so the
+    // transition passes the action rather than an index to look up. `action`
+    // is already a bridge message body; forward it straight to the sniffer.
+    // The plan-only `advanceWhen` rode the step wrapper, never the action, so
+    // it cannot leak onto the wire.
+    const { action } = msg
     // Low-cardinality telemetry: the action tag, plus the inner `kind` for a
     // `PageAction` (`PageAction:Click` / `PageAction:Fill`).
     const linkKind =
@@ -93,6 +96,26 @@ const sideEffectHandlers = {
       })
     )
   },
+  DispatchQueryMatches: <TResources>(
+    msg: {
+      readonly dispatchIndex: number
+      readonly querySelector: string
+      readonly queryId: string
+    },
+    ctx: HandlerContext<TResources>
+  ): Effect.Effect<void, never, never> =>
+    // Send a `ForEach` step's discovery request. Low-cardinality telemetry: the
+    // `QueryMatches` tag as the link kind, never the selector itself.
+    ctx
+      .sendMessage({ _tag: 'QueryMatches', queryId: msg.queryId, querySelector: msg.querySelector })
+      .pipe(
+        Effect.withSpan(Telemetry.Sniffing.Dispatch.Span.Name, {
+          attributes: {
+            [Telemetry.Sniffing.Attributes.StepIndex]: msg.dispatchIndex,
+            [Telemetry.Sniffing.Attributes.LinkKind]: 'QueryMatches',
+          },
+        })
+      ),
   DispatchSniffingComplete: <TResources>(
     msg: { readonly dispatchIndex: number },
     ctx: HandlerContext<TResources>
@@ -140,6 +163,24 @@ const sideEffectHandlers = {
       },
       fired: { _tag: 'UrlMatchTimeoutFired', generation: msg.generation },
     }),
+  ScheduleQueryMatchesTimeout: <TResources>(
+    msg: {
+      readonly dispatchIndex: number
+      readonly generation: number
+      readonly timeoutMs: number
+    },
+    ctx: HandlerContext<TResources>
+  ): Effect.Effect<void, never, never> =>
+    scheduleTimerDaemon(ctx, {
+      generation: msg.generation,
+      duration: Duration.millis(msg.timeoutMs),
+      spanName: Telemetry.Sniffing.DiscoveryWait.Span.Name,
+      spanAttributes: {
+        [Telemetry.Sniffing.Attributes.StepIndex]: msg.dispatchIndex,
+        [Telemetry.Sniffing.Attributes.DiscoveryTimeoutMs]: msg.timeoutMs,
+      },
+      fired: { _tag: 'QueryMatchesTimeoutFired', generation: msg.generation },
+    }),
   CancelTimer: <TResources>(
     msg: { readonly generation: number },
     ctx: HandlerContext<TResources>
@@ -157,6 +198,31 @@ const sideEffectHandlers = {
   ): Effect.Effect<void, never, never> =>
     Effect.logWarning(
       `CollectorBridgeMessageHandler.PageLoaded: URL-match step ${msg.dispatchIndex} timed out after ${msg.timeoutMs}ms with no matching PageLoaded; aborting via SniffingComplete`
+    ),
+  WarnQueryMatchesTimeout: <TResources>(
+    msg: {
+      readonly dispatchIndex: number
+      readonly querySelector: string
+      readonly timeoutMs: number
+    },
+    _ctx: HandlerContext<TResources>
+  ): Effect.Effect<void, never, never> =>
+    Effect.logWarning(
+      `CollectorBridgeMessageHandler.MatchesFound: ForEach step ${msg.dispatchIndex} (querySelector=${msg.querySelector}) timed out after ${msg.timeoutMs}ms with no MatchesFound; aborting via SniffingComplete`
+    ),
+  WarnEmptyMatches: <TResources>(
+    msg: { readonly dispatchIndex: number; readonly querySelector: string },
+    _ctx: HandlerContext<TResources>
+  ): Effect.Effect<void, never, never> =>
+    Effect.logWarning(
+      `CollectorBridgeMessageHandler.MatchesFound: ForEach step ${msg.dispatchIndex} (querySelector=${msg.querySelector}) discovered no matches; skipping the fan-out`
+    ),
+  WarnDroppedMatchesFound: <TResources>(
+    msg: { readonly queryId: string },
+    _ctx: HandlerContext<TResources>
+  ): Effect.Effect<void, never, never> =>
+    Effect.logWarning(
+      `CollectorBridgeMessageHandler.MatchesFound: no ForEach step awaiting queryId=${msg.queryId}; ignoring (stale or duplicate answer)`
     ),
   WarnDroppedPageLoaded: <TResources>(
     msg: { readonly url: string },

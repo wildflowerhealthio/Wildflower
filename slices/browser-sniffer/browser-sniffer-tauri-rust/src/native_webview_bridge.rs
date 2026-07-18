@@ -44,6 +44,7 @@ const NATIVE_WEBVIEW_DATA_PLANE_TAGS: &[&str] = &[
     events::REQUEST_ERROR,
     events::CANCELLED,
     events::LOG,
+    events::MATCHES_FOUND,
 ];
 
 /// Managed state wrapping the [`Channel`] handed to each plugin `open` call.
@@ -406,6 +407,7 @@ mod tests {
                 "RequestError",
                 "Cancelled",
                 "Log",
+                "MatchesFound",
             ]
         );
     }

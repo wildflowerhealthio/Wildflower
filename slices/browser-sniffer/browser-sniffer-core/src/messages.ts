@@ -56,6 +56,18 @@ const SnifferRequestId = Schema.NonEmptyString.annotations({
 })
 
 /**
+ * Correlation key tying a {@link MatchesFoundMessageBody} answer back to the
+ * {@link QueryMatchesMessageBody} that asked for it. Non-empty so an empty
+ * id can't let a stale answer masquerade as the current query's. Distinct
+ * from {@link SnifferRequestId} (which correlates a `Response*` stream) — a
+ * discovery exchange is a single request/response, not a chunked stream.
+ */
+const SnifferQueryId = Schema.NonEmptyString.annotations({
+  identifier: 'SnifferQueryId',
+  description: 'Correlation key for a single QueryMatches/MatchesFound exchange.',
+})
+
+/**
  * Response headers as ordered `(name, value)` pairs. The web HTTP
  * spec allows the same header name to appear repeatedly (`Set-Cookie`
  * is the canonical case); a `Record<string, string>` collapses
@@ -199,6 +211,71 @@ const PageActionMessageBody = Schema.TaggedStruct('PageAction', {
 })
 const PageActionMessage = Schema.parseJson(PageActionMessageBody)
 
+/**
+ * One element matched by a {@link QueryMatchesMessageBody} discovery query,
+ * as the sniffer reports it inside {@link MatchesFoundMessageBody}. For each
+ * node `querySelectorAll` returns, the sniffer captures:
+ *
+ * - `generatedSelector`: a stable, document-absolute `:nth-child` path
+ *   (e.g. `html > body:nth-child(2) > … > a:nth-child(1)`) that re-selects
+ *   exactly this node through `document.querySelector`. Always present — it
+ *   is how a `Click` step re-targets a row that navigates via a click
+ *   handler rather than an `href` (the Angular SPA case). `NonEmptyString`
+ *   so a degenerate empty path fails at the bridge boundary.
+ * - `href`: the resolved `HTMLAnchorElement.href` when the matched node is a
+ *   real anchor; absent otherwise (the field is omitted, not `null`). An
+ *   `Open` step can navigate straight to it.
+ */
+const DiscoveredMatch = Schema.Struct({
+  generatedSelector: Schema.NonEmptyString,
+  href: Schema.optional(Schema.String),
+})
+
+/**
+ * Host → Web: instruct the injected sniffer to enumerate the live DOM. The
+ * sniffer runs `document.querySelectorAll(querySelector)` and answers with a
+ * single {@link MatchesFoundMessageBody} echoing `queryId`. This is the
+ * discovery half of the collector's `ForEach` fan-out — how a scraping plan
+ * learns, at runtime, the N links it must visit (e.g. every medication
+ * detail row) when the count is unknown until the page renders.
+ *
+ * `queryId` correlates the answer with this request so a stale `MatchesFound`
+ * (from a superseded query) is dropped; the collector's automatic-navigation
+ * machine derives it from its timer generation. `querySelector` is
+ * `NonEmptyString` so an empty selector fails at the bridge boundary.
+ *
+ * Like {@link PageActionMessageBody}, the Tauri host never decodes this
+ * payload — it only forwards it by `_tag` into the native webview on mobile —
+ * so there is no serde mirror; the schema here is the sole validator. See
+ * `docs/Messaging/Wire Pinning How-To.md`.
+ *
+ * Wire: `{"_tag":"QueryMatches","queryId":"7","querySelector":".detail"}`
+ */
+const QueryMatchesMessageBody = Schema.TaggedStruct('QueryMatches', {
+  queryId: SnifferQueryId,
+  querySelector: Schema.NonEmptyString,
+})
+const QueryMatchesMessage = Schema.parseJson(QueryMatchesMessageBody)
+
+/**
+ * Web → Host: the sniffer's answer to a {@link QueryMatchesMessageBody},
+ * carrying every node `querySelectorAll` matched — possibly none — as a
+ * {@link DiscoveredMatch}. `queryId` echoes the request so the collector can
+ * drop a stale answer and correlate the exchange.
+ *
+ * Posted on the data-plane like the other page→host events; the Rust host
+ * re-emits it by `_tag` without decoding the payload (it is allowlisted in
+ * `browser-sniffer-tauri-rust`'s native-webview data-plane set). An empty
+ * `matches` is a normal, non-error answer (the page had no matching rows).
+ *
+ * Wire: `{"_tag":"MatchesFound","queryId":"7","matches":[{"generatedSelector":"html > body:nth-child(2)"}]}`
+ */
+const MatchesFoundMessageBody = Schema.TaggedStruct('MatchesFound', {
+  queryId: SnifferQueryId,
+  matches: Schema.Array(DiscoveredMatch),
+})
+const MatchesFoundMessage = Schema.parseJson(MatchesFoundMessageBody)
+
 export {
   ResponseStartMessage,
   ResponseStartMessageBody,
@@ -216,6 +293,12 @@ export {
   CancelSnifferRequestMessageBody,
   PageActionMessage,
   PageActionMessageBody,
+  QueryMatchesMessage,
+  QueryMatchesMessageBody,
+  MatchesFoundMessage,
+  MatchesFoundMessageBody,
+  DiscoveredMatch,
   SnifferRequestId,
+  SnifferQueryId,
   HeadersWire,
 }

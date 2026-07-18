@@ -81,6 +81,7 @@ type FinishArg = Parameters<Handler['ResponseFinished']>[0]
 type ErrorArg = Parameters<Handler['RequestError']>[0]
 type CancelledArg = Parameters<Handler['Cancelled']>[0]
 type PageLoadedArg = Parameters<Handler['PageLoaded']>[0]
+type MatchesFoundArg = Parameters<Handler['MatchesFound']>[0]
 
 const responseStart = (overrides: { id: string; url: string }): StartArg => ({
   _tag: 'ResponseStart',
@@ -113,11 +114,18 @@ const pageLoaded = (overrides: { url?: string; pageContentId?: string } = {}): P
   pageContentId: overrides.pageContentId ?? 'page-1',
 })
 
+const matchesFound = (queryId: string, selectors: readonly string[] = []): MatchesFoundArg => ({
+  _tag: 'MatchesFound',
+  queryId,
+  matches: selectors.map((generatedSelector) => ({ generatedSelector })),
+})
+
 export {
   adapterLayer,
   cancelled,
   drainResults,
   makeSimpleHandler,
+  matchesFound,
   noopSendMessage,
   pageLoaded,
   requestError,
@@ -133,6 +141,7 @@ export type {
   ErrorArg,
   FinishArg,
   Handler,
+  MatchesFoundArg,
   PageLoadedArg,
   SimpleHandlerArgs,
   SimpleResources,

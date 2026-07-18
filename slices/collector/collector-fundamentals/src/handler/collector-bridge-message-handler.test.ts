@@ -5,6 +5,7 @@ import { type Step } from 'collector-fundamentals/model'
 import {
   adapterLayer,
   makeSimpleHandler,
+  matchesFound,
   pageLoaded,
   responseStart,
   type SimpleHandlerArgs,
@@ -81,6 +82,44 @@ describe('CollectorBridgeMessageHandler.make: composition', () => {
         // Still open until the settle window passes (a straggler could re-open it).
         expect(Option.isNone(yield* handler.requestSniffingResults.size)).toBe(false)
 
+        yield* TestClock.adjust(SETTLE_CONFIRM_WINDOW)
+        yield* Effect.yieldNow()
+        expect(Option.isNone(yield* handler.requestSniffingResults.size)).toBe(true)
+      }).pipe(Effect.provide(Layer.mergeAll(TestContext.TestContext, adapterLayer)))
+    ))
+
+  it('routes MatchesFound into the automatic navigation, whose terminal SniffingComplete closes the stream', () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const sendMessage = vi.fn<SimpleHandlerArgs['sendMessage']>(() => Effect.void)
+        // A ForEach whose body is empty; over zero matches it collapses to the
+        // terminal, so this pins the MatchesFound→machine→SniffingComplete→close
+        // seam end-to-end through the composed handler.
+        const forEachStep: Step.Step = {
+          _tag: 'ForEach',
+          discover: { querySelector: '.detail', timeout: Duration.seconds(10) },
+          body: () => [],
+        }
+        const handler = makeSimpleHandler({ sendMessage, stepSequence: [forEachStep] })
+
+        // List settles → the composed handler forwards a QueryMatches.
+        yield* handler.PageLoaded(pageLoaded({ url: 'https://example.com/list' }))
+        yield* TestClock.adjust(Duration.seconds(5))
+        yield* Effect.yieldNow()
+        const first = sendMessage.mock.calls[0]?.[0]
+        if (first === undefined || first._tag !== 'QueryMatches') {
+          throw new Error(`expected a QueryMatches, got ${JSON.stringify(first)}`)
+        }
+        expect(Option.isNone(yield* handler.requestSniffingResults.size)).toBe(false)
+
+        // The MatchesFound answer, routed through the composed handler, reaches
+        // the machine: an empty result skips the fan-out and completes the run.
+        yield* handler.MatchesFound(matchesFound(first.queryId, []))
+        yield* TestClock.adjust(Duration.seconds(5))
+        yield* Effect.yieldNow()
+        expect(sendMessage.mock.calls.at(-1)?.[0]).toEqual({ _tag: 'SniffingComplete' })
+
+        // The terminal SniffingComplete drives the lifecycle's close-check.
         yield* TestClock.adjust(SETTLE_CONFIRM_WINDOW)
         yield* Effect.yieldNow()
         expect(Option.isNone(yield* handler.requestSniffingResults.size)).toBe(true)

@@ -22,6 +22,11 @@ pub const RESPONSE_FINISHED: &str = "ResponseFinished";
 pub const REQUEST_ERROR: &str = "RequestError";
 pub const CANCELLED: &str = "Cancelled";
 pub const LOG: &str = "Log";
+/// The sniffer's answer to a [`QUERY_MATCHES`] discovery request: the nodes a
+/// `querySelectorAll` matched, backing the collector's `ForEach` runtime link
+/// discovery. A data-plane tag like the `Response*` set — the page raises it,
+/// the host re-emits it verbatim (see `native_webview_bridge`).
+pub const MATCHES_FOUND: &str = "MatchesFound";
 
 /// Host→web tag literals this crate forwards into the native webview on
 /// mobile. On desktop these are picked up by the content webview's own Tauri
@@ -30,8 +35,12 @@ pub const LOG: &str = "Log";
 ///
 /// `PageAction` is the single scripted-interaction tag (the sniffer demuxes
 /// its inner `action.kind` into a `Click` / `Fill`); the host never decodes
-/// the payload, only forwards it verbatim by `_tag`.
+/// the payload, only forwards it verbatim by `_tag`. `QueryMatches` is the
+/// discovery request behind the collector's `ForEach` fan-out — the host
+/// forwards it the same way, and the sniffer answers with a `MatchesFound`
+/// ([`MATCHES_FOUND`]) on the data plane.
 pub const PAGE_ACTION: &str = "PageAction";
+pub const QUERY_MATCHES: &str = "QueryMatches";
 pub const CANCEL_SNIFFER_REQUEST: &str = "CancelSnifferRequest";
 
 /// Window label assigned to the main React SPA webview by

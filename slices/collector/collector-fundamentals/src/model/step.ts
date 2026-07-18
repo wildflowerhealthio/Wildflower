@@ -1,4 +1,7 @@
-import type { PageActionMessage } from 'browser-sniffer-core'
+import type {
+  DiscoveredMatch as DiscoveredMatchSchema,
+  PageActionMessage,
+} from 'browser-sniffer-core'
 import type { Duration } from 'effect'
 
 import type { OpenMessage } from '../bridge.ts'
@@ -35,7 +38,7 @@ interface UrlMatchAdvance {
 type Advance = UrlMatchAdvance
 
 /**
- * What a step tells the sniffer to do, typed *against the bridge message
+ * What a leaf step tells the sniffer to do, typed *against the bridge message
  * bodies themselves* so a step can never carry a field the wire doesn't:
  *
  * - `Open` (the collector bridge's `OpenMessage`): host-navigation. Carries
@@ -46,27 +49,99 @@ type Advance = UrlMatchAdvance
  * - `PageAction` (`browser-sniffer-core`'s `PageActionMessage`): an in-page
  *   interaction (`Click` / `Fill`, discriminated by the inner `kind`). New
  *   interaction kinds are added as `action` union variants, not new tags.
- *
- * Because {@link Step} is just `{ action; advanceWhen? }`, the plan-only
- * `advanceWhen` lives on the wrapper, not the action — the automatic-navigation machine
- * forwards `step.action` untouched and it can never leak onto the wire.
  */
 type StepAction = typeof OpenMessage.Type | typeof PageActionMessage.Type
 
 /**
- * A scripted navigation step: an {@link StepAction} to dispatch plus an
- * optional {@link Advance} gating *when* the automatic-navigation machine dispatches it.
- *
- * `advanceWhen` is a plan-only field — the automatic-navigation machine reads it to schedule
- * the dispatch but forwards only `action` to the sniffer, so it never reaches
- * the wire. A `Fill` action's `value` is interpolated from the remote's
- * config (e.g. a username / password) when the collector builds its
- * `ScrapingPlan`; because a credential can therefore ride that payload, see
- * the secrets note on `browser-sniffer-core`'s `FillAction`.
+ * One element the sniffer's discovery query matched, as decoded from a
+ * `MatchesFound` (`browser-sniffer-core`'s `DiscoveredMatch`). A
+ * {@link ForEachStep}'s `body` receives one per match and decides how to
+ * visit it: `Click(generatedSelector)` for a row that navigates via a click
+ * handler (an Angular SPA row), or `Open(href)` when the match is a real
+ * anchor.
  */
-interface Step {
+type DiscoveredMatch = typeof DiscoveredMatchSchema.Type
+
+/**
+ * A scripted navigation step whose `action` is a single bridge message — the
+ * original `Step` shape, now one arm of the {@link Step} union. The
+ * automatic-navigation machine forwards `action` to the sniffer untouched; the
+ * plan-only `advanceWhen` rides this wrapper and never reaches the wire.
+ *
+ * A `Fill` action's `value` is interpolated from the remote's config (e.g. a
+ * username / password) when the collector builds its `ScrapingPlan`; because a
+ * credential can therefore ride that payload, see the secrets note on
+ * `browser-sniffer-core`'s `FillAction`.
+ */
+interface LeafStep {
   readonly action: StepAction
   readonly advanceWhen?: Advance
 }
 
-export type { Step, StepAction, Advance, UrlMatchAdvance }
+/**
+ * How a {@link ForEachStep} discovers the elements to fan out over: the
+ * sniffer runs `document.querySelectorAll(querySelector)` in the live DOM and
+ * answers with a `MatchesFound`. `timeout` bounds that wait — if no answer
+ * arrives, the run aborts via `SniffingComplete` (so a silent host can't hang
+ * it) rather than stalling; an *empty* answer is not a timeout but a clean
+ * skip (zero matches → zero body steps).
+ */
+interface DiscoverSpec {
+  readonly querySelector: string
+  readonly timeout: Duration.Duration
+}
+
+/**
+ * A declarative fan-out step: at runtime the automatic-navigation machine asks
+ * the sniffer to enumerate `discover.querySelector`, then expands the step into
+ * one `body(match)` sub-sequence per discovered match, splices those concrete
+ * steps into its internal queue *in place of* the `ForEach`, and continues. The
+ * plan stays frozen — the expansion lives in the machine's dynamic queue, not
+ * the plan (which is why `stepSequence` can stay deep-frozen).
+ *
+ * `body` maps a {@link DiscoveredMatch} to a small sequence of {@link LeafStep}s
+ * — not another `ForEach`; v1 does not nest. Iterating a SPA list usually needs
+ * a return-to-list step between items, so the body is a *sequence*, e.g.
+ * `(m) => [{ action: click(m.generatedSelector) }, { action: openList }]`; each
+ * body step may carry its own `advanceWhen`.
+ *
+ * `advanceWhen` gates *when discovery runs* (default: a fixed `stepDelay` after
+ * the list `PageLoaded`; `UrlMatch` to wait for a specific URL first), exactly
+ * as it gates when a {@link LeafStep} is dispatched. `_tag: 'ForEach'` is the
+ * discriminant — only this arm of {@link Step} carries a top-level `_tag`.
+ */
+interface ForEachStep {
+  readonly _tag: 'ForEach'
+  readonly discover: DiscoverSpec
+  readonly body: (match: DiscoveredMatch) => readonly LeafStep[]
+  readonly advanceWhen?: Advance
+}
+
+/**
+ * One entry in a plan's `stepSequence`: either a {@link LeafStep} (a single
+ * bridge action) or a {@link ForEachStep} (a runtime fan-out over discovered
+ * links). The union is discriminated structurally — a `ForEachStep` has a
+ * top-level `_tag: 'ForEach'`, a `LeafStep` has none — via {@link isForEach}.
+ * Existing static plans (all `LeafStep`s) are unchanged: `{ action, advanceWhen? }`
+ * is still a valid `Step`.
+ */
+type Step = LeafStep | ForEachStep
+
+/**
+ * Runtime guard: does this step fan out at runtime? Only {@link ForEachStep}
+ * carries a top-level `_tag`, so its presence discriminates the union at both
+ * type and value level.
+ */
+const isForEach = (step: Step): step is ForEachStep => '_tag' in step && step._tag === 'ForEach'
+
+export type {
+  Step,
+  LeafStep,
+  ForEachStep,
+  StepAction,
+  Advance,
+  UrlMatchAdvance,
+  DiscoverSpec,
+  DiscoveredMatch,
+}
+export { isForEach }

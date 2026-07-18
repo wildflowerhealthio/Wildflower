@@ -23,12 +23,15 @@ const Sniffing = {
     /**
      * Kind of the dispatched step: the action tag, with a `PageAction`'s
      * inner `kind` appended (`Open` / `PageAction:Click` / `PageAction:Fill`),
-     * or `SniffingComplete` for the terminal dispatch. Cardinality is kept
-     * low — the discriminator only, never per-selector detail.
+     * `QueryMatches` for a `ForEach` discovery request, or `SniffingComplete`
+     * for the terminal dispatch. Cardinality is kept low — the discriminator
+     * only, never per-selector detail.
      */
     LinkKind: 'collector.sniffing.link.kind',
     /** Configured URL-match wait cap for the step, in milliseconds. */
     UrlMatchTimeoutMs: 'collector.sniffing.step.url_match_timeout_ms',
+    /** Configured discovery wait cap for a `ForEach` step, in milliseconds. */
+    DiscoveryTimeoutMs: 'collector.sniffing.step.discovery_timeout_ms',
   },
   /** Waiting out the inter-step delay before dispatching the next link. */
   Wait: {
@@ -43,6 +46,16 @@ const Sniffing = {
    */
   UrlMatchWait: {
     Span: { Name: 'collector.sniffing.url_match_wait' },
+  },
+  /**
+   * Holding a `ForEach` step until the sniffer's `MatchesFound` answers its
+   * discovery query. Like {@link UrlMatchWait}, the span closes when the wait
+   * cap (`discover.timeout`) elapses; an answer interrupts the fiber first, so
+   * a closed span means discovery timed out and the run aborted via
+   * `SniffingComplete`.
+   */
+  DiscoveryWait: {
+    Span: { Name: 'collector.sniffing.discovery_wait' },
   },
   /** Dispatching a link (or the terminal `SniffingComplete`) to the sniffer. */
   Dispatch: {

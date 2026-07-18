@@ -21,8 +21,10 @@ record the bridge dispatches inbound messages to:
   `incompleteSniffedRequests` map (each entry is a sniffed request still
   accumulating body chunks).
 - The **automatic-navigation machine** ([automatic-navigation/](../src/handler/automatic-navigation/)) owns
-  `PageLoaded` and drives the scripted `stepSequence` through settle-timer
-  and URL-match-timeout daemons.
+  `PageLoaded` and the `MatchesFound` discovery answer, and drives the scripted
+  `stepSequence` through settle-timer, URL-match-timeout, and discovery-timeout
+  daemons. A `ForEach` step in the sequence fans out over links the sniffer
+  discovers at runtime (see [ForEach](#foreach-runtime-link-discovery)).
 - The **run lifecycle** ([run-lifecycle-state.ts](../src/handler/run-lifecycle-state.ts))
   owns the `requestSniffingResults` stream and every way a run can end —
   `handleSniffingComplete`, `abandonAllRequestSniffing`, `cancelAllRequestSniffing`
@@ -171,14 +173,14 @@ Two supporting invariants:
 The automatic-navigation machine is a textbook finite state machine, decomposed one file
 per part under [automatic-navigation/](../src/handler/automatic-navigation/):
 
-| Part                 | File                      | What it holds                                                    |
-| -------------------- | ------------------------- | ---------------------------------------------------------------- |
-| Input messages       | `messages.ts`             | `PageLoaded`, `Stop`, `SettleTimerFired`, `UrlMatchTimeoutFired` |
-| States               | `state.ts`                | `AwaitingPageLoaded`, `TimerPending`, `AwaitingUrlMatch`, `Done` |
-| Side-effect messages | `messages.ts`             | `Dispatch*`, `Schedule*`, `CancelTimer`, `Warn*`                 |
-| Side-effect handlers | `side-effect-handlers.ts` | one `(msg, ctx) => Effect` per side-effect tag                   |
-| Transition           | `transition.ts`           | pure `(state, input) → [state, effects]`                         |
-| Runtime              | `make.ts`                 | serialized dispatch + timer registry                             |
+| Part                 | File                      | What it holds                                                                                                              |
+| -------------------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Input messages       | `messages.ts`             | `PageLoaded`, `MatchesFound`, `Stop`, `SettleTimerFired`, `UrlMatchTimeoutFired`, `QueryMatchesTimeoutFired`               |
+| States               | `state.ts`                | a dynamic step **queue** plus a phase: `AwaitingPageLoaded`, `TimerPending`, `AwaitingUrlMatch`, `AwaitingMatches`, `Done` |
+| Side-effect messages | `messages.ts`             | `Dispatch*`, `Schedule*`, `CancelTimer`, `Warn*`                                                                           |
+| Side-effect handlers | `side-effect-handlers.ts` | one `(msg, ctx) => Effect` per side-effect tag                                                                             |
+| Transition           | `transition.ts`           | pure `(state, input) → [state, effects]`                                                                                   |
+| Runtime              | `make.ts`                 | serialized dispatch + timer registry                                                                                       |
 
 The **transition function is pure** — it never sends a message, forks a
 fiber, or logs; it only names the side-effect messages the runtime should
@@ -211,6 +213,50 @@ Wrapping the dispatch body in `Effect.uninterruptible` is therefore both
 unnecessary and actively harmful: `stopAutomaticNavigation` calls
 `Fiber.interrupt` on a timer fiber _while holding the lock_, and an
 uninterruptible region there deadlocks. Its absence is deliberate.
+
+### ForEach: runtime link discovery
+
+A `ForEachStep` ([step.ts](../src/model/step.ts)) fans out over N links that
+aren't known until the page renders — the Rexall medication rows are the
+motivating case. The plan stays **frozen**; the machine carries its _own_
+mutable copy of the sequence, the **dynamic queue**, in the state alongside the
+phase. Keeping the queue in the state (not a side ref) is what lets the pure
+transition both read it (advance lookups, the terminal-length check) and grow
+it, with no effect reaching outside the transition.
+
+The discovery itself is a request/response pair on the bridge — `QueryMatches`
+(web→host→sniffer) answered by `MatchesFound` (sniffer→host→web) — the sniffer
+runs `querySelectorAll` in the live DOM and returns, per match, a stable
+generated selector plus an `href` when the node is a real anchor. This handles
+Angular rows that navigate via click handlers rather than `href`s, and keeps
+HTML parsing out of the pure core. The wire pair is declared in
+`browser-sniffer-core` (reused by the collector bridge) and drift-guarded in
+`browser-sniffer-tauri-rust`; the host never decodes the payloads, only forwards
+them by `_tag`.
+
+The flow, all through the one transition table:
+
+1. The `ForEach` step is armed like any other (on `PageLoaded`, gated by its
+   `advanceWhen`). When its settle timer fires, instead of dispatching a bridge
+   action the machine sends `QueryMatches` (carrying a `queryId` derived from the
+   bumped generation) and parks in `AwaitingMatches` under a fresh discovery
+   timeout.
+2. `MatchesFound` arrives. If its `queryId` doesn't match the awaited generation
+   it's a stale/duplicate answer and is dropped (WARN). On a match, the
+   transition expands the `ForEach` **in place** — replacing it in the queue with
+   `matches.length` `body(match)` sub-sequences — and re-arms the settle timer at
+   that index, so the first body step dispatches through the same `dispatchAt`
+   path as any leaf. Because each body step (`Click`, then a return-to-list
+   `Open`) navigates, the rest of the queue drains one-step-per-`PageLoaded` as
+   usual.
+3. Two edge paths keep the run from hanging: an **empty** result expands to zero
+   body steps — a clean skip (WARN-logged), and the queue simply continues to the
+   next step (or the terminal); a discovery **timeout** (no `MatchesFound`)
+   aborts via `SniffingComplete`, exactly like a URL-match timeout.
+
+`queryId` correlation mirrors the timer generation discipline: the machine drops
+an answer whose id no longer matches the awaited discovery, so a late answer for
+a superseded query can't be consumed by a later `ForEach`.
 
 ## See also
 
