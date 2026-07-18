@@ -795,15 +795,123 @@ describe('XHR shim', () => {
     validateMessages(getMessages())
   })
 
-  test('should post ResponseFinished on abort', () => {
+  test('should post RequestError (not ResponseFinished) on abort', () => {
     installSnifferForTest()
     const xhr = new XMLHttpRequest()
-    xhr.open('GET', 'https://test.example/xhr')
+    xhr.open('GET', 'https://test.example/xhr-abort')
     xhr.send()
 
     xhr.dispatchEvent(new Event('abort'))
 
-    expect(withTag(getMessages(), 'ResponseFinished')).toHaveLength(1)
+    // An aborted request has a partial body: emitting `ResponseFinished`
+    // would hand that truncated payload to `entity.parse` as if complete.
+    // The terminal is a `RequestError` instead, preceded by a synthetic
+    // `ResponseStart` (abort before headers).
+    expect(withTag(getMessages(), 'ResponseFinished')).toEqual([])
+    expect(withTag(getMessages(), 'RequestError')).toEqual([
+      expect.objectContaining({
+        url: 'https://test.example/xhr-abort',
+        message: 'XMLHttpRequest aborted',
+      }),
+    ])
+    validateMessages(getMessages())
+  })
+
+  test('emits a synthetic ResponseStart {status:0, headers:[]} before RequestError when error fires before headers', () => {
+    // A network-level XHR failure fires `error` with no prior `progress`/`load`,
+    // so no `ResponseStart` was ever posted. The shim must synthesize one — with
+    // `status: 0` and empty headers (the XHR state after a network error) —
+    // mirroring the fetch pre-response path, so the host's `RequestError` handler
+    // finds a tracked response instead of dropping the failure with a WARN.
+    installSnifferForTest()
+    const xhr = new XMLHttpRequest()
+    xhr.open('GET', 'https://test.example/pre-headers-error')
+    xhr.send()
+
+    xhr.dispatchEvent(new Event('error'))
+
+    const lifecycle = getMessages()
+      .filter((m) => m._tag !== 'Log')
+      .map((m) => m._tag)
+    expect(lifecycle).toEqual(['ResponseStart', 'RequestError'])
+    expect(withTag(getMessages(), 'ResponseStart')).toEqual([
+      expect.objectContaining({
+        _tag: 'ResponseStart',
+        url: 'https://test.example/pre-headers-error',
+        status: 0,
+        headers: [],
+      }),
+    ])
+    expect(withTag(getMessages(), 'RequestError')).toEqual([
+      expect.objectContaining({
+        url: 'https://test.example/pre-headers-error',
+        message: 'XMLHttpRequest error',
+      }),
+    ])
+    validateMessages(getMessages())
+  })
+
+  test('does not emit a second ResponseStart when the error follows a progress that already sent Start', () => {
+    // `ensureStartSent` is idempotent (a `startSent` flag), so an `error` after
+    // a `progress` that already posted the Start does not double-emit it.
+    installSnifferForTest()
+    const xhr = new XMLHttpRequest()
+    xhr.open('GET', 'https://test.example/mid-error')
+    xhr.send()
+
+    Object.defineProperty(xhr, 'status', { value: 200, configurable: true })
+    Object.defineProperty(xhr, 'statusText', { value: 'OK', configurable: true })
+    Object.defineProperty(xhr, 'responseType', { value: '', configurable: true })
+    Object.defineProperty(xhr, 'responseText', { value: 'partial', configurable: true })
+    xhr.dispatchEvent(new Event('progress'))
+    expect(withTag(getMessages(), 'ResponseStart')).toHaveLength(1)
+
+    xhr.dispatchEvent(new Event('error'))
+
+    expect(withTag(getMessages(), 'ResponseStart')).toHaveLength(1)
+    expect(withTag(getMessages(), 'RequestError')).toHaveLength(1)
+    validateMessages(getMessages())
+  })
+
+  test('a reused XHR does not emit a terminal under a stale id when the second send errors', () => {
+    // XHR instances are reusable: `open()` rotates the id and each `send()` adds
+    // fresh `error`/`abort` listeners. A `{ once: true }` listener is only removed
+    // after it fires, so send #1's listeners (send #1 succeeded, they never fired)
+    // are still registered during send #2. When send #2 errors, send #1's stale
+    // listener fires too — the stale-id guard must keep it from posting a terminal
+    // under the first id.
+    installSnifferForTest()
+    const xhr = new XMLHttpRequest()
+
+    // Send #1 — succeeds via `load`; its error/abort listeners never fire.
+    xhr.open('GET', 'https://test.example/first')
+    xhr.send()
+    Object.defineProperty(xhr, 'status', { value: 200, configurable: true })
+    Object.defineProperty(xhr, 'statusText', { value: 'OK', configurable: true })
+    Object.defineProperty(xhr, 'responseType', { value: '', configurable: true })
+    Object.defineProperty(xhr, 'responseText', { value: 'first', configurable: true })
+    xhr.dispatchEvent(new Event('load'))
+
+    const firstId = withTag(getMessages(), 'ResponseStart')[0]?.id as string
+    expect(withTag(getMessages(), 'ResponseFinished').filter((m) => m.id === firstId)).toHaveLength(
+      1
+    )
+
+    // Reuse the same instance: `open()` rotates the id, `send()` re-arms listeners.
+    xhr.open('GET', 'https://test.example/second')
+    xhr.send()
+    xhr.dispatchEvent(new Event('error'))
+
+    // Exactly one terminal, under the second id — send #1's stale listener was
+    // guarded out, so no RequestError (nor a second ResponseFinished) under the
+    // first id.
+    const errors = withTag(getMessages(), 'RequestError')
+    expect(errors).toHaveLength(1)
+    const secondId = errors[0]?.id as string
+    expect(secondId).not.toBe(firstId)
+    expect(errors.filter((m) => m.id === firstId)).toEqual([])
+    expect(withTag(getMessages(), 'ResponseFinished').filter((m) => m.id === secondId)).toEqual([])
+    validateMessages(getMessages())
   })
 
   test('should produce schema-valid messages for XHR lifecycle', () => {
