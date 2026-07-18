@@ -688,18 +688,12 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
     nativeXHRSend.call(this, body ?? null)
   } satisfies XMLHttpRequest['send']
 
-  // Page-content capture, gated on page *settlement* rather than the raw
-  // `window.load` event. `PageLoaded` is just a notification; the DOM body
-  // (`Element.outerHTML`, so XML serialises too) streams through the standard
-  // Response triple, chunked to keep per-message size bounded.
-  //
-  // On `load` we start a settle watch — a `MutationObserver` plus the in-flight
-  // request count (`activeRequests`) — and only snapshot the DOM once the page
-  // has been quiet (no DOM mutations *and* no requests in flight) for a
-  // continuous quiet window, or a hard ceiling elapses (so a page that never
-  // fully quiesces, e.g. a long-poll or a perpetual spinner, still completes).
-  // Snapshotting post-settlement means an SPA's rendered DOM is captured, not
-  // the empty shell present at `load`.
+  // Page-content capture, gated on page settlement rather than the raw
+  // `window.load` event: on `load` we start a settle watch (a `MutationObserver`
+  // plus the in-flight-request count) and snapshot the DOM only once the page is
+  // quiet, or a hard ceiling elapses. `PageLoaded` is a notification; the DOM
+  // body streams through the standard Response triple, chunked. See the
+  // settlement section of the sniffer's Architecture Explanation for the why.
   const PAGE_CONTENT_CHUNK_BYTES = 65536
   // Settlement thresholds. Overridable via `options.settle` so tests can drive
   // the watcher deterministically; production callers pass none and get these.
