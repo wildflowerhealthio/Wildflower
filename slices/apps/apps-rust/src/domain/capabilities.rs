@@ -27,7 +27,7 @@
 use std::sync::Arc;
 
 use bytes::Bytes;
-use scopes_rust::{Permission, Scope, WildflowerResource};
+use scopes_rust::{Grant, Permission, Scope, WildflowerResource};
 
 use crate::domain::actions::{self, CloudAppPayload, SelfHostedAppPayload};
 use crate::domain::{
@@ -35,6 +35,7 @@ use crate::domain::{
     SelfHostedInstaller, SystemAppConfiguration,
 };
 use crate::id_utils::mint_app_id;
+use crate::ports::AppLaunchScopes;
 
 use std::collections::HashSet;
 
@@ -72,11 +73,20 @@ pub(crate) fn apps_deleter_scopes() -> Vec<Scope> {
     )]
 }
 
-/// The apps scopes the admin surface enforces, deduplicated in declaration order —
-/// the registry mapping *capability → required scope*. Because it reads the very
-/// `*_scopes()` functions the capability bindings enforce, what a token can be
-/// *granted* and what it is *checked against* come from one source. The intended
-/// grantable vocabulary for the consent surfaces (mirrors gatekeeper's
+/// Launch a scoped app — the `wildflower/launch` umbrella. A **known** scope, so
+/// (unlike `wildflower/Apps.*`) it is NOT covered by the `wildflower/*` resource
+/// wildcard and must be granted explicitly. The per-app SMART check that a launch
+/// additionally passes is data-dependent and lives on [`AppLauncher`], not here.
+pub(crate) fn app_launcher_scopes() -> Vec<Scope> {
+    vec![Scope::any_scoped_app_launch()]
+}
+
+/// The apps scopes the slice enforces, deduplicated in declaration order — the
+/// registry mapping *capability → required scope*, spanning the admin surface
+/// (`Apps.{r,c,u,d}`) and the launch umbrella (`wildflower/launch`). Because it
+/// reads the very `*_scopes()` functions the capability bindings enforce, what a
+/// token can be *granted* and what it is *checked against* come from one source.
+/// The intended grantable vocabulary for the consent surfaces (mirrors gatekeeper's
 /// `grantable_admin_scopes`); nothing consumes it yet — the tests below pin it.
 #[must_use]
 pub fn grantable_apps_scopes() -> Vec<Scope> {
@@ -85,6 +95,7 @@ pub fn grantable_apps_scopes() -> Vec<Scope> {
         apps_creator_scopes(),
         apps_editor_scopes(),
         apps_deleter_scopes(),
+        app_launcher_scopes(),
     ];
     let mut seen = HashSet::new();
     declared
@@ -250,13 +261,89 @@ impl<S: AppsStore, I: SelfHostedInstaller> AppsDeleter<S, I> {
     }
 }
 
+/// Launch authorization — the **hybrid** capability behind `GET` / `POST
+/// /apps/{id}`. Unlike the fixed-scope admin capabilities above, its binding
+/// implements [`Capability`](scope_capabilities_rust::Capability) directly: the
+/// static umbrella `wildflower/launch` (from [`app_launcher_scopes`]) is enforced
+/// by the [`Scoped`](scope_capabilities_rust::Scoped) extractor, **and** the
+/// builder stores the caller's [`Grant`] for the data-dependent per-app SMART
+/// check ([`missing_launch_scopes`](AppLauncher::missing_launch_scopes)).
+///
+/// Doesn't touch the store — the launch handler resolves the app through the
+/// (state-held) store as exempted launch glue; this capability owns only the
+/// authorization: the caller's grant + the [`AppLaunchScopes`] port that resolves
+/// a SMART app's required scopes.
+pub(crate) struct AppLauncher {
+    granted: Grant,
+    launch_scopes: Arc<dyn AppLaunchScopes>,
+}
+
+impl AppLauncher {
+    pub(crate) fn new(granted: Grant, launch_scopes: Arc<dyn AppLaunchScopes>) -> Self {
+        Self {
+            granted,
+            launch_scopes,
+        }
+    }
+
+    /// The scopes the caller lacks to launch `registration` — empty means
+    /// authorized. A **non-SMART** app (no `client_id`) needs only the umbrella
+    /// scope the extractor already enforced, so it short-circuits to no missing
+    /// scopes; a **SMART** app additionally requires the caller's grant to cover
+    /// its OAuth client's requested scopes (resolved through the
+    /// [`AppLaunchScopes`] port). The handler renders a non-empty result as a
+    /// `403 InsufficientScope` (JSON for the loopback/SPA arm, a browser-appropriate
+    /// response for a forwarded navigation).
+    pub(crate) fn missing_launch_scopes(
+        &self,
+        registration: &AppRegistration,
+    ) -> Result<Vec<Scope>, AppsError> {
+        if !registration.is_smart() {
+            return Ok(Vec::new());
+        }
+        let required = self.launch_scopes.required_scopes(registration)?;
+        Ok(self.granted.missing_scopes(&required))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::domain::actions::test_fake::{
-        create_cloud, seeded_self_hosted, system, FakeAppsStore, FakeInstaller,
+        create_cloud, registration, seeded_self_hosted, system, FakeAppsStore, FakeInstaller,
     };
     use crate::domain::AppKind;
+
+    /// A fake [`AppLaunchScopes`] returning a fixed required-scope set. The
+    /// capability only consults it for a SMART app, so a non-SMART test never
+    /// reaches here.
+    struct FakeLaunchScopes {
+        required: Vec<Scope>,
+    }
+
+    impl AppLaunchScopes for FakeLaunchScopes {
+        fn required_scopes(
+            &self,
+            _registration: &AppRegistration,
+        ) -> Result<Vec<Scope>, AppsError> {
+            Ok(self.required.clone())
+        }
+    }
+
+    fn launcher(granted: &str, required: &[&str]) -> AppLauncher {
+        AppLauncher::new(
+            Grant::parse(granted.split_whitespace()),
+            Arc::new(FakeLaunchScopes {
+                required: required.iter().map(|s| Scope::from(*s)).collect(),
+            }),
+        )
+    }
+
+    fn smart_registration() -> AppRegistration {
+        let mut reg = registration("smart-app", AppKind::Cloud);
+        reg.client_id = Some("client-1".to_owned());
+        reg
+    }
 
     fn reader(seed: impl FnOnce(&FakeAppsStore)) -> AppsReader<FakeAppsStore> {
         let store = FakeAppsStore::default();
@@ -358,7 +445,42 @@ mod tests {
     }
 
     #[test]
-    fn grantable_apps_scopes_are_the_expected_wildflower_scopes() {
+    fn launcher_smart_app_requires_covering_its_client_scopes() {
+        let reg = smart_registration();
+        // A grant covering the SMART client's scopes → nothing missing.
+        assert!(launcher(
+            "patient/Observation.rs openid",
+            &["patient/Observation.r", "openid"]
+        )
+        .missing_launch_scopes(&reg)
+        .expect("resolve")
+        .is_empty());
+
+        // A grant missing one → it comes back (in the order the port declared).
+        let missing = launcher("openid", &["patient/Observation.r", "openid"])
+            .missing_launch_scopes(&reg)
+            .expect("resolve");
+        assert_eq!(
+            scopes_rust::render_scopes(&missing),
+            vec!["patient/Observation.r".to_owned()],
+        );
+    }
+
+    #[test]
+    fn launcher_non_smart_app_needs_only_the_umbrella() {
+        // A non-SMART app (no `client_id`) short-circuits to no missing scopes even
+        // with an empty grant — the SMART port is never consulted (so the required
+        // set below is irrelevant).
+        let reg = registration("system-app", AppKind::System);
+        assert!(reg.client_id.is_none());
+        assert!(launcher("", &["patient/Observation.r"])
+            .missing_launch_scopes(&reg)
+            .expect("resolve")
+            .is_empty());
+    }
+
+    #[test]
+    fn grantable_apps_scopes_are_the_expected_scopes() {
         let rendered = scopes_rust::render_scopes(&grantable_apps_scopes());
         assert_eq!(
             rendered,
@@ -367,46 +489,47 @@ mod tests {
                 "wildflower/Apps.c".to_owned(),
                 "wildflower/Apps.u".to_owned(),
                 "wildflower/Apps.d".to_owned(),
+                // A *known* scope, deliberately last — not covered by the
+                // `wildflower/*` resource wildcard, so it must be granted explicitly.
+                "wildflower/launch".to_owned(),
             ],
         );
     }
 
     #[test]
-    fn every_required_scope_is_a_known_wildflower_resource_not_unknown() {
+    fn no_required_scope_is_an_unknown_scope() {
         // A typo in a required-scope spelling would fall to `Scope::Unknown`, which
-        // an owner's `wildflower/*.cruds` can't cover — locking the owner out.
+        // no token can cover — locking every caller out. Assert each is a real scope
+        // (a Wildflower resource, or the `wildflower/launch` known scope).
         for scope in grantable_apps_scopes() {
             assert!(
-                matches!(scope, Scope::WildflowerResource(_)),
-                "required scope {scope} is not a wildflower resource scope",
+                !matches!(scope, Scope::Unknown(_)),
+                "required scope {scope} parsed as Unknown — a typo no token can cover",
             );
         }
     }
 
-    /// Registry-completeness guard: every admin capability maps to exactly one
-    /// `wildflower/Apps.<perm>` scope, and [`grantable_apps_scopes`]'s `declared`
-    /// array must list all of them. Counting the resource-scope constructor
-    /// textually (each capability's `*_scopes()` calls it exactly once, and the
-    /// grantable fn / tests never do — tests spell scopes via `Scope::from`) keeps
-    /// an honest addition honest: a capability added without registering enforces a
-    /// scope the grantable vocabulary never offers — a silent lock-out.
+    /// Registry-completeness guard: every capability declares exactly one
+    /// `*_scopes()` function, and [`grantable_apps_scopes`]'s `declared` array must
+    /// list all of them. A capability added without registering enforces a scope the
+    /// grantable vocabulary never offers — a silent lock-out. Counting the scope
+    /// functions by their crate-visible `app…`-prefixed signature (the four
+    /// `apps_*_scopes` + `app_launcher_scopes`; the grantable fn is `pub`, and no
+    /// capability method is `app…`-named) keeps an honest addition honest — and,
+    /// unlike matching a call body, survives rustfmt's line wrapping.
     #[test]
     fn every_capability_scope_fn_is_registered_in_the_grantable_vocabulary() {
         const SOURCE: &str = include_str!("capabilities.rs");
         // Assembled from fragments so this needle's own literal doesn't appear
-        // contiguously in the counted source (each capability's `*_scopes()` fn is
-        // the only place the full call appears).
-        let needle = concat!(
-            "Scope::wildflower(",
-            "WildflowerResource::Apps, Permission::"
-        );
-        let scope_mappings = SOURCE.matches(needle).count();
+        // contiguously in the counted source (only the scope-fn signatures do).
+        let needle = concat!("pub(crate) fn ", "app");
+        let scope_fns = SOURCE.matches(needle).count();
         // One `declared` entry per capability scope function. Update BOTH when
         // adding a capability: its `*_scopes()` fn and the `declared` array.
-        let declared_entries = 4;
+        let declared_entries = 5;
         assert_eq!(
-            scope_mappings, declared_entries,
-            "found {scope_mappings} Apps scope mappings but grantable_apps_scopes() declares \
+            scope_fns, declared_entries,
+            "found {scope_fns} capability scope functions but grantable_apps_scopes() declares \
              {declared_entries}; register the new capability in its `declared` array",
         );
     }

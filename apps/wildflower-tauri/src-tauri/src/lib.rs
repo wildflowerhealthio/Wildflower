@@ -5,15 +5,15 @@ mod tunnel_adapters;
 
 use anyhow::Context;
 use apps_rust::{
-    ports::{LaunchCookies, OwnerAuth},
+    ports::{AppLaunchScopes, LaunchCookies},
     setup_apps, AppsConfig, SelfHostedAppsService,
 };
 use axum::Router;
 use emr_rust::{setup_fhir_r4, EmrConfig};
 use gatekeeper_rust::{
-    ensure_bearer_header, is_pre_auth_public_path, layer_router_with_gatekeeper_auth_gating,
-    layer_router_with_loopback_peer_gating, setup_gatekeeper, verify_owner_bearer,
-    GatekeeperConfig,
+    client_allowed_scopes, ensure_bearer_header, is_pre_auth_public_path,
+    layer_router_with_gatekeeper_auth_gating, layer_router_with_loopback_peer_gating,
+    setup_gatekeeper, GatekeeperConfig,
 };
 use shared_structures_rust::ServerRuntimeConfig;
 use shared_structures_server_rust::{ProxyTable, TunnelSubdomainReverseProxy};
@@ -63,20 +63,30 @@ const FIRST_PARTY_CLIENT_ID: &str = env!("WILDFLOWER_FIRST_PARTY_CLIENT_ID");
 const HEALTH_DATA_DB: &str = "health-data.sqlite";
 const WILDFLOWER_DB: &str = "wildflower.sqlite";
 
-/// The host's [`apps_rust::OwnerAuth`]: a loopback launch is owner-gated by the
-/// same Owner-bearer check gatekeeper applies to its `/access/*` admin surface
-/// (delegated to [`verify_owner_bearer`]), so the on-device popup can't be driven
-/// by a non-owner local process even though it cleared the loopback-peer gate. A
-/// forwarded launch never reaches this — the launch handler skips the owner check
-/// for the front-trusted remote path.
+/// The host's [`apps_rust::ports::AppLaunchScopes`]: resolves a **SMART** app's
+/// `client_id` to its OAuth client's allowed scopes (via
+/// [`gatekeeper_rust::client_allowed_scopes`], which reads inside the opaque
+/// `GatekeeperState`), so the apps launch handler can require the launching
+/// caller's grant to cover them. A non-SMART app (no `client_id`) needs no per-app
+/// scopes — only the `wildflower/launch` umbrella. (This replaced the former
+/// `GatekeeperOwnerAuth` loopback owner gate, now subsumed by the launch scope gate.)
 #[derive(Clone)]
-struct GatekeeperOwnerAuth {
+struct GatekeeperAppLaunchScopes {
     state: std::sync::Arc<gatekeeper_rust::GatekeeperState>,
 }
 
-impl OwnerAuth for GatekeeperOwnerAuth {
-    fn is_owner(&self, headers: &axum::http::HeaderMap, served_origin: &str) -> bool {
-        verify_owner_bearer(&self.state, headers, served_origin)
+impl AppLaunchScopes for GatekeeperAppLaunchScopes {
+    fn required_scopes(
+        &self,
+        registration: &apps_rust::AppRegistration,
+    ) -> Result<Vec<scopes_rust::Scope>, apps_rust::domain::AppsError> {
+        // The capability only calls this for a SMART app, but stay defensive.
+        let Some(client_id) = registration.client_id.as_deref() else {
+            return Ok(Vec::new());
+        };
+        client_allowed_scopes(&self.state, client_id).map_err(|error| {
+            apps_rust::domain::AppsError::infrastructure("resolve SMART app launch scopes", error)
+        })
     }
 }
 
@@ -366,15 +376,16 @@ async fn run_server(
         layer_router_with_gatekeeper_auth_gating(tunnel.router, gatekeeper.state.clone(), &[]);
 
     // The apps catalogue surface. `GET /apps` (list), the cloud-admin write
-    // surface (POST/PUT/DELETE /apps), and `PUT /home-screen` are owner-gated
-    // through the gatekeeper (`apps.gated_router`, below). The launch route
-    // `POST /apps/{id}` (`apps.launch_router`) is merged ungated at the router
-    // level: a loopback launch is owner-gated in-handler via `owner_auth`, a
-    // forwarded launch rides the front trust boundary. A `requires_tunnel` launch
-    // resolves to the tunnel's verified origin through the tunnel service (or
-    // fails 503 LaunchUnavailable when the tunnel can't be brought up). The apps
-    // slice derives the launch origin and the self-hosted listeners' hostname
-    // from `loopback_base_url`, so they can't drift.
+    // surface (POST/PUT/DELETE /apps), and `PUT /home-screen` are scope-gated on
+    // `wildflower/Apps.*` behind the gatekeeper bearer gate (`gated_apps`, below).
+    // The launch route `GET`/`POST /apps/{id}` (`apps.launch_router`) is scope-gated
+    // on the `wildflower/launch` umbrella behind the same bearer gate (`gated_launch`,
+    // below), with a per-app SMART check in the handler; a forwarded launch rides the
+    // front trust boundary for the redirect. A `requires_tunnel` launch resolves to
+    // the tunnel's verified origin through the tunnel service (or fails 503
+    // LaunchUnavailable when the tunnel can't be brought up). The apps slice derives
+    // the launch origin and the self-hosted listeners' hostname from
+    // `loopback_base_url`, so they can't drift.
     let apps_config = AppsConfig {
         loopback_base_url: loopback_base_url.clone(),
     };
@@ -390,10 +401,11 @@ async fn run_server(
             publishers.host_owner_token_sender.subscribe(),
             Arc::clone(&tunnel_service),
         ));
-    // The loopback launch owner-gate: the same Owner-bearer check the admin
-    // surface uses (a header-derived loopback provenance isn't a sufficient gate
-    // on its own — the network loopback-peer gate is the other half).
-    let owner_auth: Arc<dyn OwnerAuth> = Arc::new(GatekeeperOwnerAuth {
+    // The per-app SMART launch-scope seam: resolves a SMART app's OAuth client
+    // scopes so the launch handler can require the caller's grant to cover them.
+    // The launch umbrella (`wildflower/launch`) is enforced separately by the
+    // bearer gate + `Scoped<AppLauncher>` on the launch router (below).
+    let launch_scopes: Arc<dyn AppLaunchScopes> = Arc::new(GatekeeperAppLaunchScopes {
         state: gatekeeper.state.clone(),
     });
 
@@ -461,13 +473,20 @@ async fn run_server(
         &apps_config,
         Arc::clone(&tunnel_service),
         webview_handle,
-        owner_auth,
         Arc::clone(&self_hosted),
         launch_cookies,
+        launch_scopes,
     )
     .context("failed to set up apps")?;
     let gated_apps =
         layer_router_with_gatekeeper_auth_gating(apps.gated_router, gatekeeper.state.clone(), &[]);
+    // The launch surface, scope-gated on the `wildflower/launch` umbrella: wrapped
+    // by the SAME bearer gate as the admin surface so the `Scoped<AppLauncher>`
+    // extractor has the caller's scope claims (the per-app SMART check then runs
+    // in-handler). This replaced the former ungated mount whose loopback popup was
+    // owner-gated in-handler — the scope gate subsumes that gate.
+    let gated_launch =
+        layer_router_with_gatekeeper_auth_gating(apps.launch_router, gatekeeper.state.clone(), &[]);
 
     // The data-management surface (`/databases`): export + delete the host's
     // SQLite databases. It owns no store — it works at the file level on the
@@ -572,11 +591,12 @@ async fn run_server(
             Arc::new(shared_structures_rust::health_check::AlwaysHealthy),
         ))
         .merge(gated_apps)
-        // The launch route, merged AFTER the bearer-gated `gated_apps` so it
-        // stays ungated at the router level (axum layers only the routes present
-        // when `.layer()` ran). It's still under the outer loopback-peer gate;
-        // the launch handler owner-gates the loopback popup in-handler.
-        .merge(apps.launch_router)
+        // The launch surface, bearer-gated like `gated_apps` so the
+        // `Scoped<AppLauncher>` extractor sees the caller's scope claims (it gates
+        // on the `wildflower/launch` umbrella; the per-app SMART check runs
+        // in-handler). Built as its own gated router so its raised body limit /
+        // exemptions can differ from the admin surface.
+        .merge(gated_launch)
         .merge(gated_databases)
         .merge(gated_docs)
         .fallback(spa::handle_serving_spa_html)

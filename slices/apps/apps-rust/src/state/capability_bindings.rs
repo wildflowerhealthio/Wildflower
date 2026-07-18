@@ -9,13 +9,13 @@
 
 use std::sync::Arc;
 
-use scope_capabilities_rust::{FixedScopeCapability, ScopeClaims};
-use scopes_rust::Scope;
+use scope_capabilities_rust::{Capability, FixedScopeCapability, ScopeClaims};
+use scopes_rust::{Grant, Scope};
 
 use crate::db::SqliteAppsStore;
 use crate::domain::capabilities::{
-    apps_creator_scopes, apps_deleter_scopes, apps_editor_scopes, apps_reader_scopes, AppsCreator,
-    AppsDeleter, AppsEditor, AppsReader,
+    app_launcher_scopes, apps_creator_scopes, apps_deleter_scopes, apps_editor_scopes,
+    apps_reader_scopes, AppLauncher, AppsCreator, AppsDeleter, AppsEditor, AppsReader,
 };
 use crate::self_hosted_apps_service::SelfHostedAppsService;
 use crate::state::AppsState;
@@ -28,6 +28,8 @@ pub(crate) type AppsCreatorCap = AppsCreator<SqliteAppsStore, SelfHostedAppsServ
 pub(crate) type AppsEditorCap = AppsEditor<SqliteAppsStore>;
 /// Remove an app.
 pub(crate) type AppsDeleterCap = AppsDeleter<SqliteAppsStore, SelfHostedAppsService>;
+/// Launch a scoped app — the hybrid umbrella + per-app SMART capability.
+pub(crate) type AppLauncherCap = AppLauncher;
 
 impl FixedScopeCapability for AppsReaderCap {
     type State = Arc<AppsState>;
@@ -84,5 +86,22 @@ impl FixedScopeCapability for AppsDeleterCap {
 
     fn build(state: Arc<AppsState>) -> Self {
         AppsDeleter::new(state.store.clone(), Arc::clone(&state.self_hosted))
+    }
+}
+
+// The launch capability is the **hybrid** flavour: it implements `Capability`
+// directly (not `FixedScopeCapability`) so its builder can store the caller's
+// `Grant` for the per-app SMART check, while still declaring the static
+// `wildflower/launch` umbrella the `Scoped` extractor enforces before `build`.
+impl Capability for AppLauncherCap {
+    type State = Arc<AppsState>;
+    type Claims = ScopeClaims;
+
+    fn required_scopes() -> Vec<Scope> {
+        app_launcher_scopes()
+    }
+
+    fn build(state: Arc<AppsState>, granted: Grant) -> Self {
+        AppLauncher::new(granted, Arc::clone(&state.launch_scopes))
     }
 }

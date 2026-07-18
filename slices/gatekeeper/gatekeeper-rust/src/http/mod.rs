@@ -145,6 +145,37 @@ pub fn verify_owner_bearer(
     middleware::require_auth::verify_owner_token(state, served_origin, token).is_ok()
 }
 
+/// The scopes an OAuth client (`client_id`) is permitted to request — its stored
+/// `allowed_scopes`, parsed. The apps slice's per-app SMART launch check resolves a
+/// SMART app's `client_id` to this set through its `AppLaunchScopes` port (wired
+/// host-side to this fn), then requires the launching caller's grant to cover it.
+/// Reads inside the opaque [`GatekeeperState`] the same way [`verify_owner_bearer`]
+/// does, so the host never touches the store. An unknown `client_id` (a
+/// misconfigured registration) yields an empty set — only the launch umbrella then
+/// gates the launch.
+///
+/// # Errors
+///
+/// Propagates a store checkout / query failure.
+pub fn client_allowed_scopes(
+    state: &GatekeeperState,
+    client_id: &str,
+) -> anyhow::Result<Vec<scopes_rust::Scope>> {
+    use crate::domain::GatekeeperStore as _;
+    let scopes = state
+        .store
+        .client_by_id(client_id)?
+        .map(|client| {
+            client
+                .allowed_scopes
+                .iter()
+                .map(|scope| scopes_rust::Scope::from(scope.as_str()))
+                .collect()
+        })
+        .unwrap_or_default();
+    Ok(scopes)
+}
+
 /// The gatekeeper OAuth + discovery `OpenAPI` document, collected from the very
 /// routes that serve traffic. `info` is set explicitly so the committed snapshot
 /// doesn't churn with the crate version. Two consumers read it: the committed
