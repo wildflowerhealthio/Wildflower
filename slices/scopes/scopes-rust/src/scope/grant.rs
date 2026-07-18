@@ -49,6 +49,26 @@ impl Grant {
         self.scopes.iter().any(|s| s.covers(scope))
     }
 
+    /// The `required` scopes this grant does **not** cover, preserving the order
+    /// given — empty iff the grant covers every one. The list a per-resource gate
+    /// renders into an `InsufficientScope` 403's `missingScopes`: e.g. the apps
+    /// slice's per-app launch check names the SMART scopes a caller lacks for a
+    /// specific app. Pairs with [`covers_all`](Grant::covers_all), which is the
+    /// same test as a bool.
+    pub fn missing_scopes(&self, required: &[Scope]) -> Vec<Scope> {
+        required
+            .iter()
+            .filter(|scope| !self.covers(scope))
+            .cloned()
+            .collect()
+    }
+
+    /// Whether this grant covers **every** scope in `required` (vacuously true for
+    /// an empty `required`). The bool form of [`missing_scopes`](Grant::missing_scopes).
+    pub fn covers_all(&self, required: &[Scope]) -> bool {
+        required.iter().all(|scope| self.covers(scope))
+    }
+
     /// The structured FHIR/Wildflower resource scopes in the grant.
     pub fn resource_scopes(&self) -> impl Iterator<Item = &Scope> + '_ {
         self.scopes
@@ -103,6 +123,33 @@ mod tests {
         assert!(!grant.covers(&Scope::from("offline_access")));
         // The empty grant covers nothing.
         assert!(!Grant::default().covers(&Scope::from("openid")));
+    }
+
+    #[test]
+    fn missing_scopes_names_only_the_uncovered_in_order() {
+        // A wildcard covers the resource read; the launch known scope and a
+        // narrower FHIR read are absent, so both come back in the order asked.
+        let grant = Grant::parse(["wildflower/*.cruds"]);
+        let required = [
+            Scope::from("wildflower/Apps.r"),
+            Scope::any_scoped_app_launch(),
+            Scope::from("system/Observation.r"),
+        ];
+        assert_eq!(
+            grant.missing_scopes(&required),
+            vec![
+                Scope::any_scoped_app_launch(),
+                Scope::from("system/Observation.r"),
+            ],
+        );
+        assert!(!grant.covers_all(&required));
+
+        // Empty requirement is vacuously covered; a fully-covered set is empty.
+        assert!(grant.covers_all(&[]));
+        assert!(grant.missing_scopes(&[]).is_empty());
+        let covered = [Scope::from("wildflower/Apps.r")];
+        assert!(grant.covers_all(&covered));
+        assert!(grant.missing_scopes(&covered).is_empty());
     }
 
     #[test]

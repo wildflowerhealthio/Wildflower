@@ -91,6 +91,16 @@ impl Scope {
         })
     }
 
+    /// Build the `wildflower/launch` known scope — the umbrella app-launch
+    /// capability ([`KnownScope::AnyScopedAppLaunch`]). The typed way to name the
+    /// launch gate so the apps slice's `AppLauncher` and any grantable-scope list
+    /// don't hand-spell it. As a *known* scope it is not covered by the
+    /// `wildflower/*` resource wildcard — it must be granted explicitly.
+    #[must_use]
+    pub fn any_scoped_app_launch() -> Scope {
+        Scope::Known(KnownScope::AnyScopedAppLaunch)
+    }
+
     /// Does this (client-allowed) scope cover `other` (a requested scope)?
     /// Resource scopes compare structurally within their kind; known and unknown
     /// scopes — and any cross-kind pair — match exactly.
