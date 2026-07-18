@@ -86,6 +86,18 @@ const ReplaceTunnelRequestBodySchema = Schema.Struct({
 })
 
 /**
+ * `403` body — the caller authenticated, but their token doesn't cover the
+ * `/tunnel` scope the operation requires (`wildflower/TunnelSettings.r` to read,
+ * `.u` to replace). Matches the shared Rust `InsufficientScopeBody`
+ * (`scope-capabilities-rust`); `missingScopes` names the scopes the caller must
+ * additionally hold.
+ */
+const InsufficientScopeSchema = Schema.Struct({
+  error: Schema.Literal('InsufficientScope'),
+  missingScopes: Schema.Array(Schema.String),
+})
+
+/**
  * The fresh-install tunnel snapshot — every counter at zero, every nullable
  * `null`, the server bound to its loopback fallback. The single canonical
  * sample shared by the slice's tests, so the fixture doesn't drift across
@@ -109,9 +121,14 @@ const freshTunnelState: Schema.Schema.Type<typeof TunnelStateViewSchema> = {
  * behind the gatekeeper Owner check; the TS client layer still attaches
  * the bearer (see `tunnel-react/src/client/tunnel-client.ts`).
  *
+ * Both endpoints are scope-gated on the Rust side — `GetTunnel` by
+ * `wildflower/TunnelSettings.r`, `ReplaceTunnel` by `wildflower/TunnelSettings.u`
+ * — returning a `403 InsufficientScope` when the token doesn't cover it.
+ *
  * `ReplaceTunnel` is a full-replace `PUT`:
  * - **200** returns the new snapshot after the write applied and the
  *   daemon reconciled.
+ * - **403** the token doesn't cover `wildflower/TunnelSettings.u` (see above).
  * - **409** returns the *current* snapshot (same {@link TunnelStateViewSchema}
  *   shape, with the newer `settingsRevision`) because the caller's `settingsRevision`
  *   was stale — no partial write happened. The client surfaces this in
@@ -119,17 +136,23 @@ const freshTunnelState: Schema.Schema.Type<typeof TunnelStateViewSchema> = {
  *   `Schema.is(TunnelStateViewSchema)`.
  */
 const httpApiGroup = HttpApiGroup.make('tunnel', { topLevel: false })
-  .add(HttpApiEndpoint.get('GetTunnel', '/tunnel').addSuccess(TunnelStateViewSchema))
+  .add(
+    HttpApiEndpoint.get('GetTunnel', '/tunnel')
+      .addSuccess(TunnelStateViewSchema)
+      .addError(InsufficientScopeSchema, { status: 403 })
+  )
   .add(
     HttpApiEndpoint.put('ReplaceTunnel', '/tunnel')
       .setPayload(ReplaceTunnelRequestBodySchema)
       .addSuccess(TunnelStateViewSchema)
+      .addError(InsufficientScopeSchema, { status: 403 })
       .addError(TunnelStateViewSchema, { status: 409 })
   )
 
 export {
   freshTunnelState,
   httpApiGroup,
+  InsufficientScopeSchema,
   RelayInputSchema,
   RelayViewSchema,
   ReplaceTunnelRequestBodySchema,

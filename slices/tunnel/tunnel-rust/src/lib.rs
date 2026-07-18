@@ -23,8 +23,8 @@
 //! ## Reconcile + liveness model
 //!
 //! Every accepted write bumps `revision` and reconciles: the previous
-//! [`http::TunnelState`] supervisor is cancelled and a fresh one is spawned for
-//! the new revision. A supervisor owns a reconnect/backoff loop, awaits its own
+//! [`TunnelState`](state::TunnelState) supervisor is cancelled and a fresh one
+//! is spawned for the new revision. A supervisor owns a reconnect/backoff loop, awaits its own
 //! rathole child, *and* drives a concurrent `/health` probe — so `servedOrigin`
 //! resolves to the public origin only once a probe through it has come back
 //! healthy (`status == "verified"`). A post-launch failure
@@ -38,6 +38,7 @@ pub mod domain;
 pub mod health;
 pub mod http;
 mod relay_clients;
+mod state;
 #[cfg(test)]
 mod test_support;
 
@@ -49,9 +50,13 @@ use axum::Router;
 pub use config::TunnelConfig;
 pub use control::TunnelControl;
 pub use db::SqliteTunnelStore;
+// The per-slice grantable-scope vocabulary (`wildflower/TunnelSettings.{r,u}`) —
+// the scopes the `/tunnel` surface enforces, for a future consent/admin surface.
+pub use domain::grantable_tunnel_scopes;
 pub use domain::{RelaySettings, SettingsSeed, TunnelDaemon, TunnelSettings};
 pub use health::HealthProbe;
-pub use http::{openapi_spec, TunnelState};
+pub use http::openapi_spec;
+pub use state::TunnelState;
 // Re-exported so the host can name the pool type at the `setup_tunnel` call site
 // without a direct diesel dependency; the canonical home is persistence-rust.
 pub use persistence_rust::DieselPool;
@@ -104,7 +109,7 @@ pub fn setup_tunnel(
 
     let state = Arc::new(TunnelState {
         store,
-        daemon: tunnel_daemon,
+        daemon: Arc::new(tunnel_daemon),
     });
 
     // Seed build-time connection defaults into a fresh row (only where

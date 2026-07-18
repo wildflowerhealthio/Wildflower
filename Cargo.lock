@@ -8432,6 +8432,8 @@ dependencies = [
  "proptest",
  "rand 0.10.2",
  "rathole",
+ "scope-capabilities-rust",
+ "scopes-rust",
  "serde",
  "serde_json",
  "shared-structures-rust",

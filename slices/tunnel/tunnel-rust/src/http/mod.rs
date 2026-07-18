@@ -1,18 +1,19 @@
 //! The tunnel slice's HTTP surface. The only crate-facing surface is
-//! [`router`] and [`TunnelState`]; the route files are private implementation
-//! detail behind the route table.
+//! [`router`]; the route files are private implementation detail behind the
+//! route table. The router state ([`TunnelState`](crate::state::TunnelState))
+//! lives at the crate root (not here) so the scope-gated `domain/` capabilities
+//! can be built from it without `domain/` depending on `crate::http`.
 
 mod errors;
 mod routes;
-mod state;
-
-pub use state::TunnelState;
 
 use std::sync::Arc;
 
 use axum::Router;
 use utoipa::OpenApi;
 use utoipa_axum::router::OpenApiRouter;
+
+use crate::state::TunnelState;
 
 /// Base `OpenAPI` document; the collected routes fill in paths + components.
 #[derive(OpenApi)]

@@ -1,7 +1,7 @@
 //! The embedded rathole client that dials the relay.
 //!
 //! [`RelayClient`] is a one-attempt seam: `run_once` brings up a single rathole
-//! client and returns when it exits. The [`http::TunnelState`](crate::http)
+//! client and returns when it exits. The [`TunnelState`](crate::state::TunnelState)
 //! supervisor owns the retry/backoff loop and cancellation, so this layer holds
 //! no run lifecycle of its own. The trait exists so the supervisor can be tested
 //! against a fake instead of a live relay.
