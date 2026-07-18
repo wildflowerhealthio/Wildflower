@@ -24,6 +24,15 @@ diesel_migrations.workspace = true
 utoipa.workspace = true
 utoipa-axum.workspace = true
 persistence-rust = { path = "../../persistence/persistence-rust" }
+# The scope grammar (`Scope`, `Grant`, `WildflowerResource`, `Permission`) the
+# capabilities gate on, plus the shared default-safe capability machinery
+# (`Scoped<F>`, `Capability`/`FixedScopeCapability`, `ScopeClaims`,
+# `insufficient_scope`). `openapi` derives `ToSchema` on the shared 403 body so
+# each gated handler's `#[utoipa::path]` can declare it — mirrors databases-rust.
+scopes-rust = { path = "../../scopes/scopes-rust" }
+scope-capabilities-rust = { path = "../../scopes/scope-capabilities-rust", features = [
+  "openapi",
+] }
 # The tunnel service contract a `requires_tunnel` launch resolves through,
 # plus the shared forwarding-header provenance helper (`request_provenance`,
 # `served_base_url_for`) the launch handler dispatches and renders against —
@@ -79,6 +88,9 @@ shared-structures-rust = { path = "../../shared-structures/shared-structures-rus
 # separate test crate must name it as a dev-dep to `use` it.
 shared-structures-server-rust = { path = "../../shared-structures/shared-structures-server-rust" }
 async-trait = "0.1"
+# The integration crate injects the owner `ScopeClaims` the host's bearer gate
+# would insert, so the scope-gated `/apps` admin handlers pass end-to-end.
+scope-capabilities-rust = { path = "../../scopes/scope-capabilities-rust" }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync"] }
 http = "1"
 http-body-util = "0.1"

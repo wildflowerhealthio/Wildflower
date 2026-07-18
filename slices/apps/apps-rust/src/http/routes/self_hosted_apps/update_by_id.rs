@@ -4,17 +4,17 @@
 //! non-origin-relative path is `400`. The response is the refreshed
 //! [`SelfHostedAppDetail`], hydrated via `RETURNING`.
 
-use std::sync::Arc;
-
-use axum::extract::{Path, State};
+use axum::extract::Path;
 use axum::Json;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-use crate::domain::{actions, AppsError};
+use scope_capabilities_rust::{InsufficientScopeBody, Scoped};
+
+use crate::domain::AppsError;
 use crate::http::errors::{AppNotEditableBody, AppNotFoundBody, InvalidFieldBody};
-use crate::http::state::AppsState;
 use crate::http::wire_representations::SelfHostedAppDetail;
+use crate::state::AppsEditorCap;
 
 /// The `PUT /self-hosted-apps/{id}` body — the editable launch path. Absent or
 /// empty clears it back to root-serving. Matches the TS
@@ -27,7 +27,7 @@ pub(crate) struct SelfHostedAppBody {
 }
 
 /// `PUT /self-hosted-apps/{id}` — replace a self-hosted app's launch path.
-/// Owner-gated by the host.
+/// Scope-gated on `wildflower/Apps.u` through [`Scoped<AppsEditorCap>`].
 #[utoipa::path(
     put,
     tag = "Self-hosted apps",
@@ -37,16 +37,16 @@ pub(crate) struct SelfHostedAppBody {
     responses(
         (status = 200, description = "The updated self-hosted app detail", body = SelfHostedAppDetail),
         (status = 400, description = "The launch path isn't origin-relative (`InvalidUrl`)", body = InvalidFieldBody),
+        (status = 403, description = "The caller's token doesn't cover `wildflower/Apps.u`", body = InsufficientScopeBody),
         (status = 404, description = "No self-hosted app has this id", body = AppNotFoundBody),
         (status = 409, description = "A seeded self-hosted app is edit-protected", body = AppNotEditableBody),
     ),
 )]
 pub(crate) async fn handle_update_self_hosted_app(
-    State(state): State<Arc<AppsState>>,
+    editor: Scoped<AppsEditorCap>,
     Path(id): Path<String>,
     Json(body): Json<SelfHostedAppBody>,
 ) -> Result<Json<SelfHostedAppDetail>, AppsError> {
-    let (registration, config) =
-        actions::replace_self_hosted_app(&state.store, &id, body.launch_path)?;
+    let (registration, config) = editor.self_hosted(&id, body.launch_path)?;
     Ok(Json(SelfHostedAppDetail::from((&registration, &config))))
 }

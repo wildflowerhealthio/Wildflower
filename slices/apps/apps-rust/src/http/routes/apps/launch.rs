@@ -47,8 +47,8 @@ use crate::domain::{
     SelfHostedAppConfiguration, SystemAppConfiguration,
 };
 use crate::http::errors::{AppNotFoundBody, LaunchUnavailableBody};
-use crate::http::state::AppsState;
 use crate::id_utils::mint_launch_nonce;
+use crate::state::AppsState;
 
 /// `POST /apps/{id}` — launch an app (`404` if no app has this id). The loopback
 /// (Tauri) arm drives this through the typed client so the owner bearer rides

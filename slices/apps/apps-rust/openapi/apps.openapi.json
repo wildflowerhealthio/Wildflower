@@ -10,7 +10,7 @@
         "tags": [
           "Catalogue"
         ],
-        "summary": "`GET /apps` — the full registry in display order. Owner-gated by the host.",
+        "summary": "`GET /apps` — the full registry in display order. Scope-gated on\n`wildflower/Apps.r` through [`Scoped<AppsReaderCap>`]; the host wraps the router\nwith the bearer gate that inserts the caller's scope claims.",
         "operationId": "handle_list_apps",
         "responses": {
           "200": {
@@ -22,6 +22,16 @@
                   "items": {
                     "$ref": "#/components/schemas/AppRegistration"
                   }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller's token doesn't cover `wildflower/Apps.r`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
                 }
               }
             }
@@ -132,7 +142,7 @@
         "tags": [
           "Catalogue"
         ],
-        "summary": "`DELETE /apps/{id}` — remove a cloud app or an uploaded self-hosted app.\nOwner-gated by the host.",
+        "summary": "`DELETE /apps/{id}` — remove a cloud app or an uploaded self-hosted app.\nScope-gated on `wildflower/Apps.d` through [`Scoped<AppsDeleterCap>`].",
         "operationId": "handle_delete_app",
         "parameters": [
           {
@@ -148,6 +158,16 @@
         "responses": {
           "204": {
             "description": "The app was removed"
+          },
+          "403": {
+            "description": "The caller's token doesn't cover `wildflower/Apps.d`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
           },
           "404": {
             "description": "No app has this id",
@@ -177,7 +197,7 @@
         "tags": [
           "Cloud apps"
         ],
-        "summary": "`POST /cloud-apps` — create a cloud app. Owner-gated by the host.",
+        "summary": "`POST /cloud-apps` — create a cloud app. Scope-gated on `wildflower/Apps.c`\nthrough [`Scoped<AppsCreatorCap>`].",
         "operationId": "handle_create_cloud_app",
         "requestBody": {
           "content": {
@@ -209,6 +229,16 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "The caller's token doesn't cover `wildflower/Apps.c`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
           }
         }
       }
@@ -218,7 +248,7 @@
         "tags": [
           "Cloud apps"
         ],
-        "summary": "`GET /cloud-apps/{id}` — the cloud editor detail. Owner-gated by the host.",
+        "summary": "`GET /cloud-apps/{id}` — the cloud editor detail. Scope-gated on\n`wildflower/Apps.r` through [`Scoped<AppsReaderCap>`].",
         "operationId": "handle_get_cloud_app",
         "parameters": [
           {
@@ -242,6 +272,16 @@
               }
             }
           },
+          "403": {
+            "description": "The caller's token doesn't cover `wildflower/Apps.r`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          },
           "404": {
             "description": "No cloud app has this id",
             "content": {
@@ -258,7 +298,7 @@
         "tags": [
           "Cloud apps"
         ],
-        "summary": "`PUT /cloud-apps/{id}` — replace a cloud app's content. Owner-gated by the host.",
+        "summary": "`PUT /cloud-apps/{id}` — replace a cloud app's content. Scope-gated on\n`wildflower/Apps.u` through [`Scoped<AppsEditorCap>`].",
         "operationId": "handle_update_cloud_app",
         "parameters": [
           {
@@ -302,6 +342,16 @@
               }
             }
           },
+          "403": {
+            "description": "The caller's token doesn't cover `wildflower/Apps.u`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          },
           "404": {
             "description": "No cloud app has this id",
             "content": {
@@ -320,7 +370,7 @@
         "tags": [
           "Home screen"
         ],
-        "summary": "`PUT /home-screen` — atomically reorder + enable/disable every app. Owner-gated\nby the host. The body must list **every** registry app exactly once (its order\nis the new display order); a missing / duplicated / unknown id is\n`400 InvalidHomeScreen`. Returns the resulting catalogue in its new order.",
+        "summary": "`PUT /home-screen` — atomically reorder + enable/disable every app. Scope-gated\non `wildflower/Apps.u` through [`Scoped<AppsEditorCap>`]. The body must list\n**every** registry app exactly once (its order is the new display order); a\nmissing / duplicated / unknown id is `400 InvalidHomeScreen`. Returns the\nresulting catalogue in its new order.",
         "operationId": "handle_replace_home_screen",
         "requestBody": {
           "content": {
@@ -358,6 +408,16 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "The caller's token doesn't cover `wildflower/Apps.u`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
           }
         }
       }
@@ -367,7 +427,7 @@
         "tags": [
           "Self-hosted apps"
         ],
-        "summary": "`POST /self-hosted-apps` — install a self-hosted app from the uploaded `bundle`.\nOwner-gated by the host; the body limit is raised for this route (see the\nrouter wiring).",
+        "summary": "`POST /self-hosted-apps` — install a self-hosted app from the uploaded `bundle`.\nScope-gated on `wildflower/Apps.c` through [`Scoped<AppsCreatorCap>`]; the body\nlimit is raised for this route (see the router wiring).",
         "operationId": "handle_create_self_hosted_app",
         "requestBody": {
           "content": {
@@ -399,6 +459,16 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "The caller's token doesn't cover `wildflower/Apps.c`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
           }
         }
       }
@@ -408,7 +478,7 @@
         "tags": [
           "Self-hosted apps"
         ],
-        "summary": "`GET /self-hosted-apps/{id}` — the self-hosted editor detail. Owner-gated by\nthe host.",
+        "summary": "`GET /self-hosted-apps/{id}` — the self-hosted editor detail. Scope-gated on\n`wildflower/Apps.r` through [`Scoped<AppsReaderCap>`].",
         "operationId": "handle_get_self_hosted_app",
         "parameters": [
           {
@@ -432,6 +502,16 @@
               }
             }
           },
+          "403": {
+            "description": "The caller's token doesn't cover `wildflower/Apps.r`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          },
           "404": {
             "description": "No self-hosted app has this id",
             "content": {
@@ -448,7 +528,7 @@
         "tags": [
           "Self-hosted apps"
         ],
-        "summary": "`PUT /self-hosted-apps/{id}` — replace a self-hosted app's launch path.\nOwner-gated by the host.",
+        "summary": "`PUT /self-hosted-apps/{id}` — replace a self-hosted app's launch path.\nScope-gated on `wildflower/Apps.u` through [`Scoped<AppsEditorCap>`].",
         "operationId": "handle_update_self_hosted_app",
         "parameters": [
           {
@@ -492,6 +572,16 @@
               }
             }
           },
+          "403": {
+            "description": "The caller's token doesn't cover `wildflower/Apps.u`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          },
           "404": {
             "description": "No self-hosted app has this id",
             "content": {
@@ -520,7 +610,7 @@
         "tags": [
           "System apps"
         ],
-        "summary": "`GET /system-apps/{id}` — the system read-only detail. Owner-gated by the host.",
+        "summary": "`GET /system-apps/{id}` — the system read-only detail. Scope-gated on\n`wildflower/Apps.r` through [`Scoped<AppsReaderCap>`].",
         "operationId": "handle_get_system_app",
         "parameters": [
           {
@@ -540,6 +630,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SystemAppDetail"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller's token doesn't cover `wildflower/Apps.r`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
                 }
               }
             }
@@ -739,6 +839,27 @@
           },
           "onHomescreen": {
             "type": "boolean"
+          }
+        }
+      },
+      "InsufficientScopeBody": {
+        "type": "object",
+        "description": "Wire shape for a 403 — the caller authenticated, but their token doesn't cover\nthe scope(s) an operation requires. `missingScopes` names the scopes the\ncaller must additionally hold.",
+        "required": [
+          "error",
+          "missingScopes"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Always `\"InsufficientScope\"` — the discriminant a client switches on."
+          },
+          "missingScopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The rendered scopes the caller lacks."
           }
         }
       },

@@ -194,6 +194,8 @@ dependencies = [
  "http-body-util",
  "persistence-rust",
  "rand 0.10.2",
+ "scope-capabilities-rust",
+ "scopes-rust",
  "self-hosted-apps-rust",
  "serde",
  "serde_json",

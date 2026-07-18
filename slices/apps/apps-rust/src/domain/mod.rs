@@ -20,6 +20,7 @@ mod app_registration;
 mod app_url;
 mod apps_error;
 mod apps_store;
+pub(crate) mod capabilities;
 mod cloud_app_configuration;
 mod common_app_config;
 mod kind;
@@ -33,6 +34,10 @@ pub use app_registration::AppRegistration;
 pub use app_url::{AppUrl, AppUrlError, LaunchParams};
 pub use apps_error::AppsError;
 pub use apps_store::AppsStore;
+// The apps admin surface's grantable scope vocabulary (mirrors gatekeeper's
+// `grantable_admin_scopes`) — re-exported so a consent surface / registry test can
+// name it; `Apps.{r,c,u,d}` today.
+pub use capabilities::grantable_apps_scopes;
 pub use cloud_app_configuration::{CloudAppConfiguration, CloudInsertError};
 pub use common_app_config::CommonAppConfig;
 pub use kind::{AppKind, AppKindParseError};

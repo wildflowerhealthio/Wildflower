@@ -61,6 +61,7 @@ mod id_utils;
 mod install;
 mod seed;
 mod self_hosted_apps_service;
+mod state;
 
 use std::sync::Arc;
 
@@ -81,7 +82,8 @@ pub use db::SqliteAppsStore;
 // Re-exported so the host can name the self-hosted catalogue pair at the
 // `setup_apps` call site.
 pub use domain::{AppRegistration, SelfHostedAppConfiguration};
-pub use http::{openapi_spec, AppsState};
+pub use http::openapi_spec;
+pub use state::AppsState;
 
 pub use seed::sync_vendored_self_hosted_apps;
 pub use self_hosted_apps_service::SelfHostedAppsService;

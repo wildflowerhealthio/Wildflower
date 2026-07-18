@@ -108,6 +108,9 @@ impl IntoResponse for AppsError {
                 }),
             )
                 .into_response(),
+            AppsError::InsufficientScope { missing_scopes } => {
+                scope_capabilities_rust::insufficient_scope(missing_scopes)
+            }
             AppsError::Infrastructure { context, source } => {
                 InternalError::new(context, source).into_response()
             }

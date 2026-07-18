@@ -2,6 +2,19 @@
 //! loopback base URL the non-tunnel launch origin + self-hosted hostname derive
 //! from, the owner-auth gate for loopback launches, the tunnel-launch resolver,
 //! and the on-device webview seam.
+//!
+//! Lives at the crate root (not under `http/`) so the scope-gated
+//! [`capability_bindings`] — which name the concrete [`SqliteAppsStore`] adapter
+//! and `build` a capability from this state — sit beside it, while the generic
+//! capability structs in [`crate::domain::capabilities`] stay store-agnostic and
+//! free of any `crate::http` import (gatekeeper/databases style; see
+//! `docs/Authorization/Scope-Gated Endpoints How-To.md`).
+
+mod capability_bindings;
+
+pub(crate) use capability_bindings::{
+    AppsCreatorCap, AppsDeleterCap, AppsEditorCap, AppsReaderCap,
+};
 
 use std::sync::Arc;
 
@@ -15,9 +28,10 @@ use crate::OnDeviceWebviewHandle;
 
 /// Shared state threaded through the apps handlers. Holds the **concrete**
 /// [`SqliteAppsStore`] adapter (not `Arc<dyn AppsStore>` or a generic): the port
-/// abstraction lives in the domain `actions` the handlers call, so the HTTP state
+/// abstraction lives in the domain `actions` the capabilities call, so the state
 /// and axum wiring stay monomorphic. Held in an `Arc` and extracted via
-/// `State<Arc<AppsState>>` per the tunnel-rust pattern.
+/// `State<Arc<AppsState>>` (launch glue) or lifted into a `Scoped<…>` capability
+/// (every data-touching admin handler) per the tunnel-rust / gatekeeper pattern.
 pub struct AppsState {
     /// The apps store — serves the parent registry plus the cloud + self-hosted
     /// children.
