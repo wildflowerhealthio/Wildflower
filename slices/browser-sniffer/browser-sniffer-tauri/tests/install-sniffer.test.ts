@@ -851,9 +851,13 @@ describe('XHR shim', () => {
     validateMessages(getMessages())
   })
 
-  test('does not emit a second ResponseStart when the error follows a progress that already sent Start', () => {
-    // `ensureStartSent` is idempotent (a `startSent` flag), so an `error` after
-    // a `progress` that already posted the Start does not double-emit it.
+  test('an in-flight error (after progress delivered bytes) keeps the real Start + data and adds a single RequestError', () => {
+    // The connection drops *mid-stream*: `progress` already posted a
+    // `ResponseStart` with the real `status`/headers and flushed a
+    // `ResponseData` chunk, then `error` fires. `ensureStartSent` is
+    // idempotent (a `startSent` flag), so the error must NOT synthesize a
+    // second (`status: 0`) Start — the real Start and the partial body stand,
+    // and the error appends exactly one terminal.
     installSnifferForTest()
     const xhr = new XMLHttpRequest()
     xhr.open('GET', 'https://test.example/mid-error')
@@ -864,12 +868,26 @@ describe('XHR shim', () => {
     Object.defineProperty(xhr, 'responseType', { value: '', configurable: true })
     Object.defineProperty(xhr, 'responseText', { value: 'partial', configurable: true })
     xhr.dispatchEvent(new Event('progress'))
-    expect(withTag(getMessages(), 'ResponseStart')).toHaveLength(1)
 
     xhr.dispatchEvent(new Event('error'))
 
-    expect(withTag(getMessages(), 'ResponseStart')).toHaveLength(1)
-    expect(withTag(getMessages(), 'RequestError')).toHaveLength(1)
+    // Exactly one Start, carrying the real 200 status (not the synthetic 0 of a
+    // before-headers error), the partial chunk survives, one terminal, no
+    // ResponseFinished (the body was never complete).
+    const lifecycle = getMessages()
+      .filter((m) => m._tag !== 'Log')
+      .map((m) => m._tag)
+    expect(lifecycle).toEqual(['ResponseStart', 'ResponseData', 'RequestError'])
+    expect(withTag(getMessages(), 'ResponseStart')).toEqual([
+      expect.objectContaining({ status: 200, statusText: 'OK' }),
+    ])
+    expect(withTag(getMessages(), 'ResponseData')).toEqual([
+      expect.objectContaining({ data: btoa('partial') }),
+    ])
+    expect(withTag(getMessages(), 'ResponseFinished')).toEqual([])
+    expect(withTag(getMessages(), 'RequestError')).toEqual([
+      expect.objectContaining({ message: 'XMLHttpRequest error' }),
+    ])
     validateMessages(getMessages())
   })
 
