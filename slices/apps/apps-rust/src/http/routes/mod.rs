@@ -20,7 +20,7 @@ use axum::extract::DefaultBodyLimit;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
-use crate::http::state::AppsState;
+use crate::state::AppsState;
 
 /// The raw request-body cap for `POST /self-hosted-apps` (which accepts a
 /// self-hosted upload). Scoped to just that route (the rest of the surface keeps
@@ -104,13 +104,21 @@ mod tests {
         AppKind, AppRegistration, AppUrl, AppsStore, CloudAppConfiguration,
         SelfHostedAppConfigurationPayload,
     };
-    use crate::http::state::AppsState;
     use crate::http::test_support::{
         state, state_owner_denied, state_owner_denied_with_sink, state_with_launch_cookies,
         state_with_sink, state_with_tunnel, state_with_tunnel_and_handle, tunnel_at,
         tunnel_unavailable, tunnel_with_public_host, RecordingLaunchCookies, SENTINEL_SET_COOKIE,
     };
     use crate::ports::LaunchCookies;
+    use crate::state::AppsState;
+    use scope_capabilities_rust::ScopeClaims;
+
+    /// The owner-level scope claim the host's bearer gate would insert for the
+    /// device owner — `wildflower/*.cruds` covers every `wildflower/Apps.<perm>`
+    /// the admin capabilities gate on. Every request below carries it (via
+    /// [`send`] / [`send_raw`]) so the admin handlers' `Scoped<…>` extractors pass;
+    /// the focused scope tests below use [`send_scoped`] to vary it.
+    const OWNER_SCOPES: &str = "wildflower/*.cruds";
 
     /// The served router (state applied per-call). Spec half of
     /// `split_for_parts` is irrelevant in the handler tests.
@@ -118,10 +126,30 @@ mod tests {
         super::openapi_router().split_for_parts().0
     }
 
+    /// Insert the `ScopeClaims` the host's bearer gate would place in the request
+    /// extensions before a `Scoped<…>` admin handler reads them — modelling the
+    /// authN layer's half of the claims-inserting pair. `None` models a request
+    /// that reached a gated handler with no scope claim at all.
+    fn with_claims(mut req: Request<Body>, scopes: Option<&str>) -> Request<Body> {
+        req.extensions_mut()
+            .insert(ScopeClaims::new(scopes.map(str::to_owned)));
+        req
+    }
+
     async fn send(state: &Arc<AppsState>, req: Request<Body>) -> (StatusCode, serde_json::Value) {
+        send_scoped(state, req, Some(OWNER_SCOPES)).await
+    }
+
+    /// [`send`] with a caller-chosen scope claim — the focused 403 tests drive an
+    /// under-scoped (or absent) claim through the same gated handlers.
+    async fn send_scoped(
+        state: &Arc<AppsState>,
+        req: Request<Body>,
+        scopes: Option<&str>,
+    ) -> (StatusCode, serde_json::Value) {
         let res = router()
             .with_state(Arc::clone(state))
-            .oneshot(req)
+            .oneshot(with_claims(req, scopes))
             .await
             .expect("oneshot");
         let status = res.status();
@@ -133,7 +161,7 @@ mod tests {
     async fn send_raw(state: &Arc<AppsState>, req: Request<Body>) -> axum::response::Response {
         router()
             .with_state(Arc::clone(state))
-            .oneshot(req)
+            .oneshot(with_claims(req, Some(OWNER_SCOPES)))
             .await
             .expect("oneshot")
     }
@@ -1297,5 +1325,96 @@ mod tests {
         let (status, body) = send(&st, delete("/apps/patient-browser")).await;
         assert_eq!(status, StatusCode::CONFLICT);
         assert_eq!(body["error"], "AppNotEditable");
+    }
+
+    // --- Scope gating (the `Scoped<…>` admin capabilities) --------------------
+
+    /// A gated read reached with **no** scope claim is `403 InsufficientScope`
+    /// naming the exact scope the caller lacks — never the `200` body.
+    #[tokio::test]
+    async fn gated_read_without_any_scope_is_403_insufficient_scope() {
+        let st = state();
+        let (status, body) = send_scoped(&st, get("/apps"), None).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert_eq!(body["error"], "InsufficientScope");
+        assert_eq!(
+            body["missingScopes"],
+            serde_json::json!(["wildflower/Apps.r"])
+        );
+    }
+
+    /// The exact resource scope (not just the `wildflower/*` wildcard) satisfies a
+    /// gated read — so the gate keys on coverage, not on holding the owner wildcard.
+    #[tokio::test]
+    async fn gated_read_with_exact_apps_read_scope_is_allowed() {
+        let st = state();
+        let (status, _body) = send_scoped(&st, get("/apps"), Some("wildflower/Apps.r")).await;
+        assert_eq!(status, StatusCode::OK);
+
+        // A cross-resource scope does NOT cover it — `wildflower/*` never reaches
+        // across to the launch known scope, and a sibling resource read doesn't
+        // grant Apps.
+        let (status, body) = send_scoped(&st, get("/apps"), Some("wildflower/Grant.cruds")).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert_eq!(
+            body["missingScopes"],
+            serde_json::json!(["wildflower/Apps.r"])
+        );
+    }
+
+    /// Each write capability gates on its own permission: a token holding only
+    /// `Apps.r` is `403` on create (`Apps.c`), edit (`Apps.u`), and delete
+    /// (`Apps.d`), each naming the missing scope — a read grant can't write.
+    #[tokio::test]
+    async fn write_capabilities_reject_a_read_only_token() {
+        let read_only = Some("wildflower/Apps.r");
+
+        let st = state();
+        let (status, body) = send_scoped(
+            &st,
+            post_create_cloud("My App", "https://example.com/launch", false),
+            read_only,
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "create needs Apps.c");
+        assert_eq!(
+            body["missingScopes"],
+            serde_json::json!(["wildflower/Apps.c"])
+        );
+
+        let (status, body) = send_scoped(
+            &st,
+            put_json("/home-screen", serde_json::json!([])),
+            read_only,
+        )
+        .await;
+        assert_eq!(
+            status,
+            StatusCode::FORBIDDEN,
+            "home-screen edit needs Apps.u"
+        );
+        assert_eq!(
+            body["missingScopes"],
+            serde_json::json!(["wildflower/Apps.u"])
+        );
+
+        let (status, body) = send_scoped(&st, delete("/apps/growth-chart"), read_only).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "delete needs Apps.d");
+        assert_eq!(
+            body["missingScopes"],
+            serde_json::json!(["wildflower/Apps.d"])
+        );
+    }
+
+    /// The scope gate runs **before** the handler body: an under-scoped delete of a
+    /// protected app is `403` (the scope check), not the `409` it would be with the
+    /// scope — a forgotten permission can't leak the removability verdict.
+    #[tokio::test]
+    async fn scope_gate_precedes_the_handler_verdict() {
+        let st = state();
+        let (status, body) =
+            send_scoped(&st, delete("/apps/api-docs"), Some("wildflower/Apps.r")).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert_eq!(body["error"], "InsufficientScope");
     }
 }

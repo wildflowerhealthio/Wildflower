@@ -14,7 +14,9 @@
 //!    [`AppsError`](crate::domain::AppsError).
 //!  - [`ports`] — the host-seam dependency-inversion traits ([`OwnerAuth`],
 //!    [`LaunchCookies`]) the host wires into [`AppsState`].
-//!  - [`state`] — the shared [`AppsState`].
+//!
+//! The shared [`AppsState`] itself lives at the crate root ([`crate::state`]) so
+//! the scope-gated capability bindings sit beside it (see that module).
 //!
 //! The surface is exposed as two routers so the host can gate them differently:
 //! [`gated_router`] (list + cloud-admin + `PUT /home-screen`) is wrapped by the
@@ -25,12 +27,13 @@
 
 mod errors;
 mod routes;
-mod state;
 #[cfg(test)]
 pub(crate) mod test_support;
 pub(crate) mod wire_representations;
 
-pub use state::AppsState;
+// The shared state lives at the crate root ([`crate::state`]); re-exported here
+// so `apps_rust::http::AppsState` (and the router builders below) keep naming it.
+pub use crate::state::AppsState;
 
 use std::sync::Arc;
 

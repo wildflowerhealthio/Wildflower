@@ -31,8 +31,11 @@ mod cloud_apps;
 mod self_hosted_apps;
 mod system_apps;
 
+// `pub(crate)` (not `mod`) so the scope-gated capability tests in
+// `crate::domain::capabilities` can reuse the same in-memory `FakeAppsStore` /
+// `FakeInstaller` these action tests seed against.
 #[cfg(test)]
-mod test_fake;
+pub(crate) mod test_fake;
 
 pub(crate) use all_kinds_apps::{delete_app, get_app};
 pub(crate) use app_registration::{list_registrations, replace_placements};

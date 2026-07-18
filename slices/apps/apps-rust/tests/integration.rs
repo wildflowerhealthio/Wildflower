@@ -23,9 +23,22 @@ use shared_structures_server_rust::ProxyTable;
 use tower::ServiceExt;
 use url::Url;
 
+use scope_capabilities_rust::ScopeClaims;
 use shared_structures_rust::test_utils::RecordingStubWebviewHandle;
 
 const LOOPBACK_BASE_URL: &str = "http://127.0.0.1:8080/";
+
+/// Insert the owner `ScopeClaims` the host's bearer gate places in the request
+/// extensions before a scope-gated `/apps` admin handler reads them — the
+/// `wildflower/*.cruds` wildcard covers every `wildflower/Apps.<perm>`. Every
+/// request builder below carries it so these end-to-end tests exercise the wire
+/// contract without re-mounting the host's gate. (Harmless on the ungated launch
+/// route, which ignores the extension.)
+fn with_owner_claims(mut req: Request<Body>) -> Request<Body> {
+    req.extensions_mut()
+        .insert(ScopeClaims::new(Some("wildflower/*.cruds".to_owned())));
+    req
+}
 
 /// Spin up the slice plus the recording on-device webview handle, so a launch
 /// test can assert the URL a loopback launch routes to it.
@@ -83,7 +96,7 @@ async fn body_json(body: Body) -> Value {
 }
 
 fn get(uri: &str) -> Request<Body> {
-    Request::get(uri).body(Body::empty()).expect("build")
+    with_owner_claims(Request::get(uri).body(Body::empty()).expect("build"))
 }
 
 /// A cloud create — `POST /cloud-apps` as JSON.
@@ -95,26 +108,30 @@ fn post_create_cloud(name: &str, url: &str, requires_tunnel: bool) -> Request<Bo
 }
 
 fn post_json(uri: &str, body: serde_json::Value) -> Request<Body> {
-    Request::post(uri)
-        .header("content-type", "application/json")
-        .body(Body::from(body.to_string()))
-        .expect("build")
+    with_owner_claims(
+        Request::post(uri)
+            .header("content-type", "application/json")
+            .body(Body::from(body.to_string()))
+            .expect("build"),
+    )
 }
 
 fn put(uri: &str, body: serde_json::Value) -> Request<Body> {
-    Request::put(uri)
-        .header("content-type", "application/json")
-        .body(Body::from(body.to_string()))
-        .expect("build")
+    with_owner_claims(
+        Request::put(uri)
+            .header("content-type", "application/json")
+            .body(Body::from(body.to_string()))
+            .expect("build"),
+    )
 }
 
 fn delete(uri: &str) -> Request<Body> {
-    Request::delete(uri).body(Body::empty()).expect("build")
+    with_owner_claims(Request::delete(uri).body(Body::empty()).expect("build"))
 }
 
 /// A launch request — `POST /apps/{id}` with an empty body.
 fn launch(uri: &str) -> Request<Body> {
-    Request::post(uri).body(Body::empty()).expect("build")
+    with_owner_claims(Request::post(uri).body(Body::empty()).expect("build"))
 }
 
 /// Fresh-install seed: every code-defined default app present in display order.

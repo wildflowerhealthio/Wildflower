@@ -18,12 +18,12 @@ use crate::domain::{
 };
 
 #[derive(Default)]
-pub(super) struct FakeAppsStore {
-    pub(super) apps: RefCell<Vec<(AppRegistration, AppConfiguration)>>,
+pub(crate) struct FakeAppsStore {
+    pub(crate) apps: RefCell<Vec<(AppRegistration, AppConfiguration)>>,
 }
 
 impl FakeAppsStore {
-    pub(super) fn seed(&self, registration: AppRegistration, configuration: AppConfiguration) {
+    pub(crate) fn seed(&self, registration: AppRegistration, configuration: AppConfiguration) {
         self.apps.borrow_mut().push((registration, configuration));
     }
 
@@ -215,7 +215,7 @@ impl AppsStore for FakeAppsStore {
     }
 }
 
-pub(super) fn registration(id: &str, kind: AppKind) -> AppRegistration {
+pub(crate) fn registration(id: &str, kind: AppKind) -> AppRegistration {
     AppRegistration {
         id: id.to_owned(),
         kind,
@@ -231,7 +231,7 @@ pub(super) fn registration(id: &str, kind: AppKind) -> AppRegistration {
 
 /// Create a cloud app through the action with a caller-chosen id (the HTTP layer
 /// mints it in production) and default content.
-pub(super) fn create_cloud(
+pub(crate) fn create_cloud(
     store: &FakeAppsStore,
     id: &str,
 ) -> Result<(AppRegistration, CloudAppConfiguration), AppsError> {
@@ -247,7 +247,7 @@ pub(super) fn create_cloud(
     )
 }
 
-pub(super) fn seeded_self_hosted(store: &FakeAppsStore, id: &str, seeded: bool) {
+pub(crate) fn seeded_self_hosted(store: &FakeAppsStore, id: &str, seeded: bool) {
     let mut reg = registration(id, AppKind::SelfHosted);
     reg.position = store.next_position();
     store.seed(
@@ -262,7 +262,7 @@ pub(super) fn seeded_self_hosted(store: &FakeAppsStore, id: &str, seeded: bool) 
     );
 }
 
-pub(super) fn system(store: &FakeAppsStore, id: &str) {
+pub(crate) fn system(store: &FakeAppsStore, id: &str) {
     let mut reg = registration(id, AppKind::System);
     reg.position = store.next_position();
     store.seed(
@@ -278,15 +278,15 @@ pub(super) fn system(store: &FakeAppsStore, id: &str) {
 /// `stop_listener` calls it's driven with, so a test can assert both *which* platform
 /// work an action drove and (via the recorded order) that a delete stopped before it
 /// discarded.
-pub(super) struct FakeInstaller {
+pub(crate) struct FakeInstaller {
     staged: StagedBundle,
-    pub(super) discarded: RefCell<Vec<String>>,
-    pub(super) started: RefCell<Vec<String>>,
-    pub(super) stopped: RefCell<Vec<String>>,
+    pub(crate) discarded: RefCell<Vec<String>>,
+    pub(crate) started: RefCell<Vec<String>>,
+    pub(crate) stopped: RefCell<Vec<String>>,
 }
 
 impl FakeInstaller {
-    pub(super) fn new(content_folder: &str) -> Self {
+    pub(crate) fn new(content_folder: &str) -> Self {
         Self {
             staged: StagedBundle {
                 content_folder: content_folder.to_owned(),

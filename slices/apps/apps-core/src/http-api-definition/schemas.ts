@@ -216,6 +216,18 @@ const InvalidHomeScreenSchema = Schema.Struct({
   message: Schema.String,
 })
 
+/**
+ * Body for `InsufficientScope` (403) — the caller authenticated, but their token
+ * doesn't cover the scope the operation requires (a `wildflower/Apps.<perm>` on
+ * the admin surface). `missingScopes` names the scopes the caller must
+ * additionally hold. Matches the shared Rust `InsufficientScopeBody`
+ * (`scope-capabilities-rust`).
+ */
+const InsufficientScopeSchema = Schema.Struct({
+  error: Schema.Literal('InsufficientScope'),
+  missingScopes: Schema.Array(Schema.String),
+})
+
 export {
   AppIdPathSchema,
   AppListSchema,
@@ -228,6 +240,7 @@ export {
   CreateSelfHostedAppBodySchema,
   HomeScreenEntrySchema,
   HomeScreenSchema,
+  InsufficientScopeSchema,
   InvalidFieldSchema,
   InvalidHomeScreenSchema,
   KindSchema,
