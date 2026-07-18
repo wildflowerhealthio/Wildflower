@@ -589,6 +589,19 @@ const installSniffer = function (eventBus: TauriEventApi): void {
     this.addEventListener(
       'error',
       () => {
+        // Stale-id guard (XHR reuse): a `{ once: true }` listener from a
+        // prior `send()` that never fired is still registered; without this
+        // it would post a terminal under the old id. Mirror `progress`/`load`.
+        if (xhrState.get(this)?.id !== requestId) return
+        if (!activeRequests.has(requestId)) return
+        // Emit a synthetic `ResponseStart` before the terminal so the host
+        // sees the full Start→terminal pair. A network-level `error` fires
+        // with `xhr.status === 0` and empty headers, so the synthesized start
+        // carries `status: 0, headers: []` — exactly the fetch shim's
+        // pre-response synthetic start. Idempotent: a no-op if `progress`
+        // already sent it. Without it, `handleRequestError` finds no tracked
+        // response and drops the failure with only a WARN.
+        ensureStartSent(this)
         activeRequests.delete(requestId)
         post({
           _tag: 'RequestError',
@@ -602,8 +615,21 @@ const installSniffer = function (eventBus: TauriEventApi): void {
     this.addEventListener(
       'abort',
       () => {
+        if (xhrState.get(this)?.id !== requestId) return
+        if (!activeRequests.has(requestId)) return
+        // Same Start-before-terminal invariant as `error`. Emit `RequestError`
+        // rather than `ResponseFinished`: an aborted request's body is
+        // partial, and a `ResponseFinished` would hand that truncated payload
+        // to `entity.parse` as if complete — surfacing a confusing `ParseError`
+        // instead of a clean cancel/error terminal.
+        ensureStartSent(this)
         activeRequests.delete(requestId)
-        post({ _tag: 'ResponseFinished', id: requestId })
+        post({
+          _tag: 'RequestError',
+          id: requestId,
+          url: state.url,
+          message: 'XMLHttpRequest aborted',
+        })
       },
       { once: true }
     )
