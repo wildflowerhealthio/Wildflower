@@ -31,9 +31,11 @@ the captures reveal.
 
 ## Scope
 
-This package is the **dialect home only**. It does not yet register a `Remote`
-into `collector-core` — that wiring (and the actual sniffer/collector surface) is
-a later step in the epic.
+This package is the **dialect home only**. It does not yet register a
+`CollectorDescriptor` into `collector-registry` — that wiring (a descriptor +
+config form + scraping plan, the actual sniffer/collector surface) is a later
+step in the epic. When you build it, follow the
+[Adding a Collector How-To](../docs/Adding%20a%20Collector%20How-To.md).
 
 ## References
 
@@ -41,4 +43,6 @@ a later step in the epic.
   are built from
 - [fhir-r4](../../emr/fhir-r4) — the R4 resource types the schemas decode to
 - [collector-fundamentals](../collector-fundamentals) — the collector primitives a
-  future Rexall `Remote` would build on
+  future Rexall `CollectorDescriptor` would build on
+- [Adding a Collector How-To](../docs/Adding%20a%20Collector%20How-To.md) — the
+  recipe that wiring will follow
