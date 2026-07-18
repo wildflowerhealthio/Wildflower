@@ -20,8 +20,6 @@ pub enum AppsError {
     /// seeded self-hosted app. (A per-kind path given an id of another kind is a
     /// `404` instead — the kind mismatch can't be expressed.)
     NotEditable { id: String },
-    /// 401 — a loopback launch whose caller didn't pass the owner-auth gate.
-    Unauthorized,
     /// 400 — the submitted URL (or self-hosted launch path) failed the write-side
     /// validator.
     InvalidUrl { message: String },
@@ -57,7 +55,6 @@ impl std::fmt::Display for AppsError {
         match self {
             AppsError::NotFound { id } => write!(f, "no app has id {id}"),
             AppsError::NotEditable { id } => write!(f, "app {id} is not editable"),
-            AppsError::Unauthorized => f.write_str("unauthorized"),
             AppsError::InvalidUrl { message } => write!(f, "invalid url: {message}"),
             AppsError::InvalidName { message } => write!(f, "invalid name: {message}"),
             AppsError::InvalidZip { message } => write!(f, "invalid zip: {message}"),

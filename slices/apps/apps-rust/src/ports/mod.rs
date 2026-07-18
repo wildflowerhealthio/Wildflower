@@ -1,9 +1,10 @@
 //! Host-seam **dependency-inversion** traits — the ports the apps HTTP layer
 //! calls out through and the host wires concrete implementations into
-//! [`AppsState`](crate::http::AppsState):
+//! [`AppsState`](crate::state::AppsState):
 //!
-//!  - [`owner_auth::OwnerAuth`] — authorizes a loopback launch (the gatekeeper
-//!    owner-bearer check host-side);
+//!  - [`app_launch_scopes::AppLaunchScopes`] — resolves a SMART app's per-app
+//!    launch scopes (its OAuth client's allowed scopes, gatekeeper-backed
+//!    host-side) for the per-app launch check;
 //!  - [`launch_cookies::LaunchCookies`] — re-scopes the caller's owner session
 //!    onto a forwarded self-hosted app's public host (the gatekeeper cookie
 //!    builder host-side).
@@ -11,13 +12,12 @@
 //! Keeping them here (rather than beside the routes) marks them as seams: pure
 //! traits with no apps-slice logic, so apps-rust never learns the gatekeeper
 //! token or cookie formats.
+//!
+//! (The loopback launch's owner gate — the former `owner_auth` port — was retired
+//! once the `wildflower/launch` scope gate covered the launch surface.)
 
+pub mod app_launch_scopes;
 pub mod launch_cookies;
-pub mod owner_auth;
 
+pub use app_launch_scopes::{AppLaunchScopes, NoAppLaunchScopes};
 pub use launch_cookies::{LaunchCookies, NoLaunchCookies};
-pub use owner_auth::OwnerAuth;
-// Re-exported for tests (incl. the integration crate); the `#[deprecated]` is the
-// intended signal, so silence it on the re-export itself.
-#[allow(deprecated)]
-pub use owner_auth::StubOwnerAuth;

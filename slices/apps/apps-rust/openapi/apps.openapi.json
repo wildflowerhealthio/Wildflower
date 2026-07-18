@@ -64,8 +64,15 @@
           "302": {
             "description": "Redirect (Location header) to the resolved launch URL"
           },
-          "401": {
-            "description": "A loopback launch whose caller is not the device owner"
+          "403": {
+            "description": "The caller's token doesn't cover `wildflower/launch`, or a SMART app's required client scopes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
           },
           "404": {
             "description": "No app has this id",
@@ -93,7 +100,7 @@
         "tags": [
           "Launch"
         ],
-        "summary": "`POST /apps/{id}` — launch an app (`404` if no app has this id). The loopback\n(Tauri) arm drives this through the typed client so the owner bearer rides\nalong. See the module docs for the resolve-then-dispatch flow and the auth\nposture; the body is shared with [`handle_launch_app_get`] via [`launch`].",
+        "summary": "`POST /apps/{id}` — launch an app (`404` if no app has this id). The loopback\n(Tauri) arm drives this through the typed client so the owner bearer rides\nalong. Scope-gated on the `wildflower/launch` umbrella through\n[`Scoped<AppLauncherCap>`]; a SMART app additionally requires the caller's grant\nto cover its OAuth client's scopes (checked in [`launch`]). See the module docs\nfor the resolve-then-dispatch flow and the auth posture; the body is shared with\n[`handle_launch_app_get`] via [`launch`].",
         "operationId": "handle_launch_app",
         "parameters": [
           {
@@ -113,8 +120,15 @@
           "302": {
             "description": "Redirect (Location header) to the resolved launch URL"
           },
-          "401": {
-            "description": "A loopback launch whose caller is not the device owner"
+          "403": {
+            "description": "The caller's token doesn't cover `wildflower/launch`, or a SMART app's required client scopes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
           },
           "404": {
             "description": "No app has this id",

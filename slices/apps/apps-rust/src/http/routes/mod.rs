@@ -105,20 +105,22 @@ mod tests {
         SelfHostedAppConfigurationPayload,
     };
     use crate::http::test_support::{
-        state, state_owner_denied, state_owner_denied_with_sink, state_with_launch_cookies,
-        state_with_sink, state_with_tunnel, state_with_tunnel_and_handle, tunnel_at,
-        tunnel_unavailable, tunnel_with_public_host, RecordingLaunchCookies, SENTINEL_SET_COOKIE,
+        state, state_with_launch_cookies, state_with_launch_scopes, state_with_sink,
+        state_with_tunnel, state_with_tunnel_and_handle, tunnel_at, tunnel_unavailable,
+        tunnel_with_public_host, FixedLaunchScopes, RecordingLaunchCookies, SENTINEL_SET_COOKIE,
     };
     use crate::ports::LaunchCookies;
     use crate::state::AppsState;
     use scope_capabilities_rust::ScopeClaims;
 
     /// The owner-level scope claim the host's bearer gate would insert for the
-    /// device owner — `wildflower/*.cruds` covers every `wildflower/Apps.<perm>`
-    /// the admin capabilities gate on. Every request below carries it (via
-    /// [`send`] / [`send_raw`]) so the admin handlers' `Scoped<…>` extractors pass;
-    /// the focused scope tests below use [`send_scoped`] to vary it.
-    const OWNER_SCOPES: &str = "wildflower/*.cruds";
+    /// device owner — `wildflower/*.cruds` covers every `wildflower/Apps.<perm>` the
+    /// admin capabilities gate on, and the `wildflower/launch` known scope (NOT
+    /// covered by the `wildflower/*` wildcard) satisfies the launch umbrella. Every
+    /// request below carries it (via [`send`] / [`send_raw`]) so the handlers'
+    /// `Scoped<…>` extractors pass; the focused scope tests use [`send_scoped`] to
+    /// vary it.
+    const OWNER_SCOPES: &str = "wildflower/*.cruds wildflower/launch";
 
     /// The served router (state applied per-call). Spec half of
     /// `split_for_parts` is irrelevant in the handler tests.
@@ -159,9 +161,19 @@ mod tests {
     }
 
     async fn send_raw(state: &Arc<AppsState>, req: Request<Body>) -> axum::response::Response {
+        send_raw_scoped(state, req, Some(OWNER_SCOPES)).await
+    }
+
+    /// [`send_raw`] with a caller-chosen scope claim — the focused launch-scope
+    /// tests drive an under-scoped (or absent) claim through the gated launch arm.
+    async fn send_raw_scoped(
+        state: &Arc<AppsState>,
+        req: Request<Body>,
+        scopes: Option<&str>,
+    ) -> axum::response::Response {
         router()
             .with_state(Arc::clone(state))
-            .oneshot(with_claims(req, Some(OWNER_SCOPES)))
+            .oneshot(with_claims(req, scopes))
             .await
             .expect("oneshot")
     }
@@ -391,47 +403,63 @@ mod tests {
         assert_eq!(body["error"], "AppNotFound");
     }
 
-    /// A loopback launch whose owner gate denies → 401, no popup.
+    /// A launch whose caller lacks the `wildflower/launch` umbrella is `403` (the
+    /// `Scoped<AppLauncher>` extractor), and opens no popup. The umbrella is a
+    /// *known* scope, so the owner's `wildflower/*.cruds` alone does NOT cover it.
     #[tokio::test]
-    async fn loopback_launch_denied_by_owner_gate_is_401() {
-        let st = state_owner_denied();
-        let res = send_raw(&st, post_launch("/apps/api-docs")).await;
-        assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
-    }
-
-    /// The loopback owner gate runs *before* any lookup or side-effect: a denied
-    /// caller 401s without triggering the tunnel or revealing existence.
-    #[tokio::test]
-    async fn loopback_owner_gate_precedes_resolution_and_side_effects() {
+    async fn loopback_launch_without_umbrella_scope_is_403() {
         let handle = Arc::new(RecordingStubWebviewHandle::default());
-        let st =
-            state_owner_denied_with_sink(Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>);
-
-        let res = send_raw(&st, post_launch("/apps/growth-chart")).await;
-        assert_eq!(
-            res.status(),
-            StatusCode::UNAUTHORIZED,
-            "denied loopback launch must 401 before the requires_tunnel 503",
-        );
+        let st = state_with_sink(Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>);
+        let res = send_raw_scoped(
+            &st,
+            post_launch("/apps/api-docs"),
+            Some("wildflower/*.cruds"),
+        )
+        .await;
+        assert_eq!(res.status(), StatusCode::FORBIDDEN);
         assert!(
             handle.0.lock().expect("handle mutex").is_empty(),
-            "a denied caller opens no popup",
-        );
-
-        let res = send_raw(&st, post_launch("/apps/no-such-thing")).await;
-        assert_eq!(
-            res.status(),
-            StatusCode::UNAUTHORIZED,
-            "denied loopback launch of an unknown id must 401, not 404",
+            "an under-scoped launch opens no popup",
         );
     }
 
-    /// A forwarded launch skips the owner gate (front is the trust boundary).
+    /// The umbrella gate runs *before* any lookup or side-effect: an under-scoped
+    /// caller `403`s without triggering the tunnel or revealing existence (an
+    /// unknown id is `403`, not `404`).
     #[tokio::test]
-    async fn forwarded_launch_skips_owner_gate() {
-        let st = state_owner_denied();
-        let res = send_raw(&st, post_forwarded("/apps/api-docs")).await;
-        assert_eq!(res.status(), StatusCode::FOUND);
+    async fn umbrella_gate_precedes_lookup_and_side_effects() {
+        let handle = Arc::new(RecordingStubWebviewHandle::default());
+        let st = state_with_sink(Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>);
+
+        // A requires_tunnel app: 403 before the (would-be) 503 tunnel probe.
+        let res = send_raw_scoped(&st, post_launch("/apps/growth-chart"), None).await;
+        assert_eq!(res.status(), StatusCode::FORBIDDEN);
+        assert!(
+            handle.0.lock().expect("handle mutex").is_empty(),
+            "an under-scoped caller opens no popup and probes no tunnel",
+        );
+
+        // An unknown id under-scoped → 403, not 404 (no existence leak).
+        let res = send_raw_scoped(&st, post_launch("/apps/no-such-thing"), None).await;
+        assert_eq!(res.status(), StatusCode::FORBIDDEN);
+    }
+
+    /// A forwarded launch is gated on the umbrella too (the host wraps the launch
+    /// router with the same bearer gate): with the scope it 302s, without it 403s —
+    /// the front no longer bypasses authorization.
+    #[tokio::test]
+    async fn forwarded_launch_requires_the_umbrella_scope() {
+        let st = state();
+        let ok = send_raw(&st, post_forwarded("/apps/api-docs")).await;
+        assert_eq!(ok.status(), StatusCode::FOUND);
+
+        let denied = send_raw_scoped(
+            &st,
+            post_forwarded("/apps/api-docs"),
+            Some("wildflower/*.cruds"),
+        )
+        .await;
+        assert_eq!(denied.status(), StatusCode::FORBIDDEN);
     }
 
     /// A forwarded `GET` of a self-hosted app 302s to the public subdomain.
@@ -444,20 +472,144 @@ mod tests {
         assert_eq!(location, "https://patient-browser.demo.example.com/");
     }
 
-    /// A forwarded `GET` skips the owner gate.
+    /// A forwarded `GET` is umbrella-gated like the `POST` arm.
     #[tokio::test]
-    async fn get_launch_forwarded_skips_owner_gate() {
-        let st = state_owner_denied();
-        let res = send_raw(&st, get_forwarded("/apps/api-docs")).await;
-        assert_eq!(res.status(), StatusCode::FOUND);
+    async fn get_launch_forwarded_requires_the_umbrella_scope() {
+        let st = state();
+        let denied = send_raw_scoped(
+            &st,
+            get_forwarded("/apps/api-docs"),
+            Some("wildflower/*.cruds"),
+        )
+        .await;
+        assert_eq!(denied.status(), StatusCode::FORBIDDEN);
     }
 
-    /// A loopback `GET` is owner-gated.
+    /// A loopback `GET` without the umbrella scope is `403`.
     #[tokio::test]
-    async fn get_launch_loopback_is_owner_gated() {
-        let st = state_owner_denied();
-        let res = send_raw(&st, get_launch("/apps/api-docs")).await;
-        assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+    async fn get_launch_loopback_without_umbrella_is_403() {
+        let st = state();
+        let res = send_raw_scoped(
+            &st,
+            get_launch("/apps/api-docs"),
+            Some("wildflower/*.cruds"),
+        )
+        .await;
+        assert_eq!(res.status(), StatusCode::FORBIDDEN);
+    }
+
+    /// Seed a **SMART** cloud app (a `client_id` present) that launches against the
+    /// loopback origin — the fixture the per-app SMART launch tests drive.
+    fn seed_smart_cloud(store: &crate::db::SqliteAppsStore, id: &str) {
+        let registration = AppRegistration {
+            id: id.to_owned(),
+            kind: AppKind::Cloud,
+            position: 0,
+            on_homescreen: true,
+            name: id.to_owned(),
+            subtitle: None,
+            local_only: false,
+            client_id: Some("client-1".to_owned()),
+            requires_tunnel: false,
+        };
+        store
+            .insert_cloud_app(
+                &registration,
+                &CloudAppConfiguration {
+                    url: AppUrl::OriginRelative("/smart".to_owned()),
+                },
+            )
+            .unwrap()
+            .expect("inserted");
+    }
+
+    /// A SMART app launch additionally requires the caller's grant to cover its
+    /// client's scopes: a covering caller launches (`204`). `patient/Observation.rs`
+    /// (read+search) covers the required `.r` (read).
+    #[tokio::test]
+    async fn launch_smart_app_covering_client_scopes_succeeds() {
+        let handle = Arc::new(RecordingStubWebviewHandle::default());
+        let st = state_with_launch_scopes(
+            Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>,
+            FixedLaunchScopes::requiring("patient/Observation.r"),
+        );
+        seed_smart_cloud(&st.store, "smart-app");
+        let res = send_raw_scoped(
+            &st,
+            post_launch("/apps/smart-app"),
+            Some("wildflower/launch patient/Observation.rs"),
+        )
+        .await;
+        assert_eq!(res.status(), StatusCode::NO_CONTENT);
+    }
+
+    /// An under-scoped SMART launch (umbrella held, client scope not) is
+    /// `403 InsufficientScope` naming the gap — the loopback/SPA arm decodes JSON,
+    /// and no popup opens.
+    #[tokio::test]
+    async fn launch_smart_app_under_scoped_loopback_is_403_json() {
+        let handle = Arc::new(RecordingStubWebviewHandle::default());
+        let st = state_with_launch_scopes(
+            Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>,
+            FixedLaunchScopes::requiring("patient/Observation.r"),
+        );
+        seed_smart_cloud(&st.store, "smart-app");
+        let (status, body) = send_scoped(
+            &st,
+            post_launch("/apps/smart-app"),
+            Some("wildflower/launch"),
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert_eq!(body["error"], "InsufficientScope");
+        assert_eq!(
+            body["missingScopes"],
+            serde_json::json!(["patient/Observation.r"])
+        );
+        assert!(handle.0.lock().expect("handle mutex").is_empty());
+    }
+
+    /// A forwarded (browser-navigation) under-scoped SMART launch renders a plain
+    /// `text/plain` 403 — not the JSON body the SPA decodes.
+    #[tokio::test]
+    async fn launch_smart_app_under_scoped_forwarded_is_plain_403() {
+        let st = state_with_launch_scopes(
+            Arc::new(RecordingStubWebviewHandle::default()) as Arc<dyn OnDeviceWebviewHandle>,
+            FixedLaunchScopes::requiring("patient/Observation.r"),
+        );
+        seed_smart_cloud(&st.store, "smart-app");
+        let res = send_raw_scoped(
+            &st,
+            post_forwarded("/apps/smart-app"),
+            Some("wildflower/launch"),
+        )
+        .await;
+        assert_eq!(res.status(), StatusCode::FORBIDDEN);
+        let content_type = res.headers().get("content-type").unwrap().to_str().unwrap();
+        assert!(
+            content_type.starts_with("text/plain"),
+            "the browser arm gets a plain 403, not JSON: {content_type}",
+        );
+    }
+
+    /// A non-SMART app ignores the launch-scopes port entirely: even with a port
+    /// requiring a scope the caller lacks, a system app launches (the SMART check
+    /// short-circuits on `is_smart() == false`).
+    #[tokio::test]
+    async fn launch_non_smart_app_ignores_the_launch_scopes_port() {
+        let handle = Arc::new(RecordingStubWebviewHandle::default());
+        let st = state_with_launch_scopes(
+            Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>,
+            FixedLaunchScopes::requiring("patient/Observation.r"),
+        );
+        // api-docs is a seeded SYSTEM app (non-SMART).
+        let res = send_raw_scoped(
+            &st,
+            post_launch("/apps/api-docs"),
+            Some("wildflower/launch"),
+        )
+        .await;
+        assert_eq!(res.status(), StatusCode::NO_CONTENT);
     }
 
     /// A loopback `GET` of a system app 204s after handing the URL to the host sink.

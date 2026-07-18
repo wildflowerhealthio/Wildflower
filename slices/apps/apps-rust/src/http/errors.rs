@@ -88,7 +88,6 @@ impl IntoResponse for AppsError {
                 }),
             )
                 .into_response(),
-            AppsError::Unauthorized => StatusCode::UNAUTHORIZED.into_response(),
             AppsError::InvalidUrl { message } => invalid_field("InvalidUrl", message),
             AppsError::InvalidName { message } => invalid_field("InvalidName", message),
             AppsError::InvalidZip { message } => invalid_field("InvalidZip", message),

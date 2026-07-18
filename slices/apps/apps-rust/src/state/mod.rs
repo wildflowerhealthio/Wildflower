@@ -1,7 +1,7 @@
 //! Shared HTTP state — the store handle (serving every apps table), the
 //! loopback base URL the non-tunnel launch origin + self-hosted hostname derive
-//! from, the owner-auth gate for loopback launches, the tunnel-launch resolver,
-//! and the on-device webview seam.
+//! from, the tunnel-launch resolver, the on-device webview seam, and the
+//! host-seam ports (launch cookies, per-app launch scopes).
 //!
 //! Lives at the crate root (not under `http/`) so the scope-gated
 //! [`capability_bindings`] — which name the concrete [`SqliteAppsStore`] adapter
@@ -13,7 +13,7 @@
 mod capability_bindings;
 
 pub(crate) use capability_bindings::{
-    AppsCreatorCap, AppsDeleterCap, AppsEditorCap, AppsReaderCap,
+    AppLauncherCap, AppsCreatorCap, AppsDeleterCap, AppsEditorCap, AppsReaderCap,
 };
 
 use std::sync::Arc;
@@ -22,7 +22,7 @@ use shared_structures_rust::tunnel_service::TunnelService;
 use url::Url;
 
 use crate::db::SqliteAppsStore;
-use crate::ports::{LaunchCookies, OwnerAuth};
+use crate::ports::{AppLaunchScopes, LaunchCookies};
 use crate::self_hosted_apps_service::SelfHostedAppsService;
 use crate::OnDeviceWebviewHandle;
 
@@ -42,9 +42,6 @@ pub struct AppsState {
     /// `requires_tunnel` launch does **not** fall back here (it fails `503`
     /// instead — there's no reachable origin for it).
     pub(crate) loopback_base_url: Url,
-    /// Authorizes a loopback launch (the on-device popup is an owner-only
-    /// side-effect). A forwarded launch skips this; see [`OwnerAuth`].
-    pub(crate) owner_auth: Arc<dyn OwnerAuth>,
     /// The tunnel service a `requires_tunnel` launch resolves its origin
     /// through. The host wires the real tunnel slice; tests use a stub.
     pub(crate) tunnel: Arc<dyn TunnelService>,
@@ -62,6 +59,10 @@ pub struct AppsState {
     /// public host (see [`LaunchCookies`]). The host wires the gatekeeper cookie
     /// builder; a host with no cookie-auth path wires a no-op.
     pub(crate) launch_cookies: Arc<dyn LaunchCookies>,
+    /// Resolves a **SMART** app's required launch scopes (its OAuth client's
+    /// allowed scopes) for the per-app launch check (see [`AppLaunchScopes`]). The
+    /// host wires a gatekeeper-backed adapter; tests use a fake / no-op.
+    pub(crate) launch_scopes: Arc<dyn AppLaunchScopes>,
 }
 
 impl AppsState {
@@ -69,20 +70,20 @@ impl AppsState {
     pub fn new(
         store: SqliteAppsStore,
         loopback_base_url: Url,
-        owner_auth: Arc<dyn OwnerAuth>,
         tunnel: Arc<dyn TunnelService>,
         webview_handle: Arc<dyn OnDeviceWebviewHandle>,
         self_hosted: Arc<SelfHostedAppsService>,
         launch_cookies: Arc<dyn LaunchCookies>,
+        launch_scopes: Arc<dyn AppLaunchScopes>,
     ) -> Self {
         Self {
             store,
             loopback_base_url,
-            owner_auth,
             tunnel,
             on_device_webview_handle: webview_handle,
             self_hosted,
             launch_cookies,
+            launch_scopes,
         }
     }
 
