@@ -68,10 +68,9 @@ interface SnifferState {
   readonly nativeXHRSend: XMLHttpRequest['send']
   readonly activeRequests: Set<string>
   /**
-   * The `load` listener that starts the settle watch. Named `pageLoadHandler`
-   * for continuity (it is still the sole `window.load` handler); it no longer
-   * snapshots synchronously — it arms the settlement detector, which fires
-   * `PageLoaded` once the page is quiet.
+   * The sole `window.load` listener. Arms the settlement detector — which fires
+   * `PageLoaded` once the page is quiet — rather than snapshotting synchronously.
+   * Named `pageLoadHandler` because it remains the one `load` handler.
    */
   readonly pageLoadHandler: () => void
   /**
@@ -85,11 +84,8 @@ interface SnifferState {
 }
 
 /**
- * Tuning for the page-settlement detector, overridable per install so tests can
- * drive the watcher deterministically (e.g. `quietWindowMs: 0`). Omitted in
- * production — the bootstrap entries call `installSniffer(eventBus)` with no
- * options, so the in-body defaults (`SETTLE_QUIET_WINDOW_MS` /
- * `SETTLE_MAX_WAIT_MS`) apply.
+ * Per-install tuning for the page-settlement detector, so tests can drive it
+ * deterministically. Production passes none and gets the in-body defaults.
  */
 interface InstallSnifferOptions {
   readonly settle?: {
@@ -260,16 +256,14 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
     return entries
   }
 
-  // Track in-progress request IDs so they can be cancelled *and* so the settle
-  // watcher (below) can tell whether the network is idle. A request counts as
-  // in-flight from initiation (fetch: before the response headers arrive; XHR:
-  // from `send`) until its terminal, via `trackRequestStart` / `trackRequestEnd`.
+  // In-flight request IDs, for cancellation and for the settle watcher's
+  // network-idle check. Maintained via `trackRequestStart` / `trackRequestEnd`
+  // from initiation (fetch: before response headers; XHR: `send`) to terminal.
   const activeRequests = new Set<string>()
 
-  // The settle watcher's "something changed" signal. A no-op until `load` starts
-  // the watch (`startSettleWatch` reassigns it to re-arm the quiet window) and
-  // again after settlement tears the watch down. `let` so both reassignments are
-  // visible to the fetch/XHR shims, which poke it through `trackRequest*`.
+  // The settle watcher's activity signal, poked by the fetch/XHR shims through
+  // `trackRequest*`. A no-op until `load` starts the watch (then it re-arms the
+  // quiet window), and a no-op again once settled.
   const noopActivity = (): void => {}
   let signalActivity: () => void = noopActivity
   const trackRequestStart = (id: string): void => {
@@ -688,12 +682,10 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
     nativeXHRSend.call(this, body ?? null)
   } satisfies XMLHttpRequest['send']
 
-  // Page-content capture, gated on page settlement rather than the raw
-  // `window.load` event: on `load` we start a settle watch (a `MutationObserver`
-  // plus the in-flight-request count) and snapshot the DOM only once the page is
-  // quiet, or a hard ceiling elapses. `PageLoaded` is a notification; the DOM
-  // body streams through the standard Response triple, chunked. See the
-  // settlement section of the sniffer's Architecture Explanation for the why.
+  // Page-content capture, gated on settlement rather than raw `window.load` (the
+  // settle watch below). `PageLoaded` is a notification; the DOM body streams
+  // through the standard Response triple, chunked. See the sniffer's Architecture
+  // Explanation § settlement for the why.
   const PAGE_CONTENT_CHUNK_BYTES = 65536
   // Settlement thresholds. Overridable via `options.settle` so tests can drive
   // the watcher deterministically; production callers pass none and get these.
@@ -711,8 +703,8 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
   let ceilingTimer: ReturnType<typeof setTimeout> | undefined
   let observer: MutationObserver | undefined
 
-  // The actual snapshot + stream. Unchanged from the pre-settlement version
-  // except that it now runs once the page is quiet rather than on raw `load`.
+  // Snapshot the DOM + stream it, run once the page is quiet (via the settle
+  // watch below) rather than on raw `load`.
   const emitPageLoaded = (): void => {
     if (pageSnapshotEmitted) return
     pageSnapshotEmitted = true
@@ -769,10 +761,9 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
   const onQuietElapsed = (): void => {
     quietTimer = undefined
     if (pageSnapshotEmitted) return
-    // A quiet window only settles if the network is idle
-    // Otherwise stay dearmed: the next request terminal
-    // or DOM mutation re-arms via `signalActivity`, and the ceiling is the
-    // ultimate backstop for a page that never goes idle.
+    // Only settle if the network is also idle. Otherwise stay disarmed: the next
+    // request terminal or DOM mutation re-arms via `signalActivity`, and the
+    // ceiling is the ultimate backstop for a page that never goes idle.
     if (activeRequests.size === 0) {
       settleNow()
     }
@@ -789,8 +780,7 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
   const startSettleWatch = (): void => {
     if (settleWatchStarted || pageSnapshotEmitted) return
     settleWatchStarted = true
-    // From now on a request start/terminal counts as activity (see
-    // `trackRequestStart` / `trackRequestEnd`), re-arming the quiet window.
+    // Requests now re-arm the quiet window (via `trackRequest*`).
     signalActivity = armQuietTimer
     observer = new MutationObserver(() => {
       armQuietTimer()

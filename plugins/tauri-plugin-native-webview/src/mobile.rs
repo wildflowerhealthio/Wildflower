@@ -48,8 +48,7 @@ pub struct NativeWebview<R: Runtime>(tauri::plugin::PluginHandle<R>);
 impl<R: Runtime> NativeWebview<R> {
     /// Ensure a native webview exists (created hidden if absent) and navigate it
     /// to `payload.url` by invoking the Swift/Kotlin `openUrl` command. Does not
-    /// change visibility — call [`show`](Self::show) to present. `_id` is ignored
-    /// (single-instance; see the impl note).
+    /// change visibility — call [`show`](Self::show) to present.
     ///
     /// Validates the URL up front via [`crate::url_scheme::parse_http_url`] so
     /// every backend rejects a non-http(s) URL identically: the Android native
@@ -65,7 +64,6 @@ impl<R: Runtime> NativeWebview<R> {
 
     /// Present the native webview by invoking the Swift/Kotlin `show` command.
     /// See [`ShowResponse`](crate::ShowResponse) for the idempotency contract.
-    /// `_id` is ignored (single-instance; see the impl note).
     pub fn show(&self, _id: &str) -> crate::Result<()> {
         self.0
             .run_mobile_plugin::<ShowResponse>("show", ())
@@ -76,8 +74,7 @@ impl<R: Runtime> NativeWebview<R> {
     /// Evaluate JS inside the currently-open native webview by invoking the
     /// Swift/Kotlin `evaluateJs` command. If no native webview is open the native
     /// side rejects, surfaced here as
-    /// [`Error::PluginInvoke`](crate::Error::PluginInvoke). `_id` is ignored
-    /// (single-instance; see the impl note).
+    /// [`Error::PluginInvoke`](crate::Error::PluginInvoke).
     pub fn evaluate_js(&self, _id: &str, payload: EvaluateJsRequest) -> crate::Result<()> {
         self.0
             .run_mobile_plugin::<EvaluateJsResponse>("evaluateJs", payload)
@@ -88,8 +85,7 @@ impl<R: Runtime> NativeWebview<R> {
     /// Patch the native webview's chrome labels by invoking the Swift/Kotlin
     /// `patchWindowText` command. Best-effort: the native side resolves with
     /// `{set: false}` (not a hard reject) when no native webview is open. See
-    /// [`PatchWindowTextRequest`](crate::PatchWindowTextRequest). `_id` is ignored
-    /// (single-instance; see the impl note).
+    /// [`PatchWindowTextRequest`](crate::PatchWindowTextRequest).
     pub fn patch_window_text(
         &self,
         _id: &str,
@@ -104,7 +100,6 @@ impl<R: Runtime> NativeWebview<R> {
     /// Hide the currently-presented native webview by invoking the Swift/Kotlin
     /// `hide` command. Emits [`NativeWebviewEvent::Hidden`](crate::NativeWebviewEvent::Hidden)
     /// on the open channel once hidden. See [`HideResponse`](crate::HideResponse).
-    /// `_id` is ignored (single-instance; see the impl note).
     pub fn hide(&self, _id: &str) -> crate::Result<()> {
         self.0
             .run_mobile_plugin::<HideResponse>("hide", ())
@@ -115,8 +110,7 @@ impl<R: Runtime> NativeWebview<R> {
     /// Dispose the native webview by invoking the Swift/Kotlin `dispose` command.
     /// Emits [`NativeWebviewEvent::Disposed`](crate::NativeWebviewEvent::Disposed)
     /// on the open channel once torn down. See
-    /// [`DisposeResponse`](crate::DisposeResponse). `_id` is ignored
-    /// (single-instance; see the impl note).
+    /// [`DisposeResponse`](crate::DisposeResponse).
     pub fn dispose(&self, _id: &str) -> crate::Result<()> {
         self.0
             .run_mobile_plugin::<DisposeResponse>("dispose", ())

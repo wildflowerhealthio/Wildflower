@@ -696,7 +696,7 @@ pub fn run() {
                     "hyper_util::client::legacy",
                     tauri_plugin_log::log::LevelFilter::Info,
                 )
-                // Tunnel daemon heatbeats on debug
+                // Tunnel daemon heartbeats on debug
                 .level_for(
                     "tunnel_rust::domain::tunnel_daemon",
                     tauri_plugin_log::log::LevelFilter::Info,
@@ -707,7 +707,7 @@ pub fn run() {
                     tauri_plugin_log::log::LevelFilter::Info,
                 )
                 .level_for(
-                    "helios_rest::middleware::auth",
+                    "helios_auth::jwks",
                     tauri_plugin_log::log::LevelFilter::Info,
                 )
                 .level_for(
@@ -723,8 +723,9 @@ pub fn run() {
                     "tower_http::trace::on_request",
                     tauri_plugin_log::log::LevelFilter::Info,
                 )
-                // backend through the tracing→log bridge and drown the console.
-                // Pin the whole `h2` tree to warn — we never debug the codec here.
+                // `h2`'s frame-level codec chatter rides the tracing→log bridge
+                // and would drown the console at debug. Pin the whole `h2` tree
+                // to warn — we never debug the codec here.
                 .level_for("h2", tauri_plugin_log::log::LevelFilter::Warn)
                 .build(),
         )
