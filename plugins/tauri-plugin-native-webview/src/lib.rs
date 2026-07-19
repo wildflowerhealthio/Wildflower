@@ -25,7 +25,11 @@
 //!     // body: tauri::ipc::InvokeResponseBody — deserialise as NativeWebviewEvent and dispatch.
 //!     Ok(())
 //! });
-//! app.native_webview().open_url(OpenRequest {
+//! // Every call takes a caller-named instance id: distinct ids get independent,
+//! // concurrent native webviews (desktop); the same id reuses one. Mobile is
+//! // single-instance and ignores it (see #411).
+//! let id = "sniffer";
+//! app.native_webview().open_url(id, OpenRequest {
 //!     url: "https://example.test/".to_owned(),
 //!     init_script: Some("/* document-start IIFE */".to_owned()),
 //!     native_webview_event_channel: native_webview_event_channel.clone(),
@@ -35,14 +39,14 @@
 //!     cookies: vec![],
 //! })?;
 //! // `open_url` navigates without presenting; reveal it with `show()`.
-//! app.native_webview().show()?;
+//! app.native_webview().show(id)?;
 //! // Push a message into the native webview later:
-//! app.native_webview().evaluate_js(EvaluateJsRequest {
+//! app.native_webview().evaluate_js(id, EvaluateJsRequest {
 //!     script: "window.__nativeWebviewReceive('{\"event\":\"bridge\",\"payload\":…}')".to_owned(),
 //! })?;
 //! ```
 //!
-//! JS callers can also drive the plugin through `invoke('plugin:native-webview|open_url', { url, nativeWebviewEventChannel })`
+//! JS callers can also drive the plugin through `invoke('plugin:native-webview|open_url', { id, url, nativeWebviewEventChannel })`
 //! with a `new Channel<NativeWebviewEvent>()`, but the design point is to keep
 //! native webview event bridging in Rust — see [`docs/Explanation.md`](../docs/Explanation.md).
 
@@ -89,7 +93,7 @@ impl<R: Runtime, T: Manager<R>> NativeWebviewExt<R> for T {
 /// Initialize the plugin. Register on the host with
 /// `.plugin(tauri_plugin_native_webview::init())`.
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
-    Builder::new("native-webview")
+    let builder = Builder::new("native-webview")
         .invoke_handler(tauri::generate_handler![
             commands::open_url,
             commands::evaluate_js,
@@ -105,6 +109,11 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             let native = desktop::init(app, api)?;
             app.manage(native);
             Ok(())
-        })
-        .build()
+        });
+    // Desktop signals the chrome bar's clicks/height reports through the
+    // `x-nv-action://` URI scheme (see `desktop::register_chrome_action_scheme`);
+    // mobile uses a native nav controller and needs no such scheme.
+    #[cfg(desktop)]
+    let builder = desktop::register_chrome_action_scheme(builder);
+    builder.build()
 }

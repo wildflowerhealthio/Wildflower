@@ -28,6 +28,11 @@ use tauri::AppHandle;
 use tauri_plugin_log::log;
 use tauri_plugin_native_webview::{CookieSameSite, CookieSpec};
 use tokio::sync::watch;
+
+/// The `tauri-plugin-native-webview` instance id for the apps-launch popup — a
+/// distinct instance from the browser sniffer's scrape webview (`"sniffer"`), so
+/// launching an app never navigates a running scrape's webview away.
+const LAUNCH_WEBVIEW_ID: &str = "launch";
 use tunnel_rust::TunnelService;
 
 /// The host's on-device webview handle: opens the resolved launch URL in a
@@ -195,19 +200,22 @@ fn open_app_in_native_webview(
     let seeded_domain = cookies.first().map(|cookie| cookie.domain.clone());
     handle
         .native_webview()
-        .open_url(OpenRequest {
-            url: url.to_owned(),
-            // No host↔popup bridge on the apps-launch path, so no document-start
-            // script is injected.
-            init_script: None,
-            native_webview_event_channel: channel,
-            // Native chrome defaults its title to the URL host (e.g. a bare
-            // `127.0.0.1`); show the launched app's own name instead.
-            initial_title: Some(title),
-            initial_subtitle: None,
-            initial_message: None,
-            cookies,
-        })
+        .open_url(
+            LAUNCH_WEBVIEW_ID,
+            OpenRequest {
+                url: url.to_owned(),
+                // No host↔popup bridge on the apps-launch path, so no document-start
+                // script is injected.
+                init_script: None,
+                native_webview_event_channel: channel,
+                // Native chrome defaults its title to the URL host (e.g. a bare
+                // `127.0.0.1`); show the launched app's own name instead.
+                initial_title: Some(title),
+                initial_subtitle: None,
+                initial_message: None,
+                cookies,
+            },
+        )
         .map_err(|error| anyhow::anyhow!("tauri-plugin-native-webview open_url failed: {error}"))?;
     // Desktop `open_url` returns after the cookie seed commits, so read the store
     // back — against the seeded *domain* (the tunnel host), not the launch URL.
@@ -215,7 +223,10 @@ fn open_app_in_native_webview(
     #[cfg(desktop)]
     if let Some(domain) = seeded_domain {
         if let Ok(parsed) = tauri::Url::parse(&format!("https://{domain}/")) {
-            match handle.native_webview().content_cookie_names_for_url(parsed) {
+            match handle
+                .native_webview()
+                .content_cookie_names_for_url(LAUNCH_WEBVIEW_ID, parsed)
+            {
                 Ok(Some(names)) => log::info!(
                     "[launch] popup cookie store for https://{domain}/ now holds: {names:?}"
                 ),
@@ -228,7 +239,7 @@ fn open_app_in_native_webview(
     let _ = seeded_domain;
     handle
         .native_webview()
-        .show()
+        .show(LAUNCH_WEBVIEW_ID)
         .map_err(|error| anyhow::anyhow!("tauri-plugin-native-webview show failed: {error}"))?;
     Ok(())
 }

@@ -200,7 +200,7 @@ async fn run_server(
     // release from the bundled resource dir (declared in `tauri.conf.json` under
     // `bundle.resources`, copied to `<resource_dir>/fhir-search-params/`). Same
     // dev/release split as the vendored self-hosted apps below.
-    let search_parameter_data_dir = if cfg!(debug_assertions) {
+    let search_parameter_data_dir = if cfg!(debug_assertions) && !cfg!(mobile) {
         std::path::PathBuf::from(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../../slices/emr/emr-rust/assets"

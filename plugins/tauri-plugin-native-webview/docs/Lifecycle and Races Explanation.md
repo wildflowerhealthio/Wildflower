@@ -13,6 +13,15 @@ of flags named identically across platforms where practical (`isVisible` /
 `is_visible`, `isDisposing` / `disposing`, the URL-fallback claim flags). The
 sections below name the concept; the per-platform field names follow it.
 
+Instancing: on **desktop** every command takes a caller-named instance id, and
+each instance is fully independent (its own window + child webviews, and its own
+copy of the lifecycle state below, held per-id in `desktop::PluginState`). The
+protocols in this document apply **per instance** — read "the window" / "the
+webview" as "this instance's". **Mobile** is single-instance and ignores the id
+([#411] tracks lifting that), so there the protocols apply to the one webview.
+
+[#411]: https://github.com/wildflowerhealthio/Wildflower/issues/411
+
 ## Visibility, liveness, and existence are independent
 
 A native webview has three orthogonal states, and the command surface keeps them
@@ -98,7 +107,7 @@ forever after dismissal:
   cancel it. On fire it auto-`dispose`s.
 - **Desktop** has no idle timer; instead it caps **absolute lifetime at 15
   minutes** (`ABSOLUTE_TIMEOUT`) from each `open_url` (fresh build or reopen),
-  hidden or not. A generation counter (`PluginState::timeout_generation`) makes a
+  hidden or not. A generation counter (`InstanceState::timeout_generation`) makes a
   reopen/teardown supersede the previously-armed timer, so a stale timer is a
   no-op. On fire it disposes like a host `dispose()`.
 

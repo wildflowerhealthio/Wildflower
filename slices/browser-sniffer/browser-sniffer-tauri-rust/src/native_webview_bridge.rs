@@ -305,7 +305,7 @@ pub(crate) fn forward_to_native_webview(app: &AppHandle, payload_str: &str) {
 
     if let Err(error) = app
         .native_webview()
-        .evaluate_js(EvaluateJsRequest { script })
+        .evaluate_js(crate::SNIFFER_WEBVIEW_ID, EvaluateJsRequest { script })
     {
         // Two failure modes hide behind one reject. The SPA emits Cancel
         // speculatively, so a closed webview is benign/expected (debug);
