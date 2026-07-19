@@ -2,8 +2,9 @@
 //! [`capabilities`](crate::domain::capabilities) and the real filesystem/SQLite
 //! side-effects. Keyed by [`DatabaseDescriptor`] so path resolution stays inside
 //! the adapter ([`crate::adapters`]'s `FilesystemDatabaseFiles`), never in the capability
-//! — the capability holds an `Arc<dyn DatabaseFiles>` lifted from the state and
-//! is stubbed with an in-memory fake in tests, so `domain/` is swappable and
+//! — the capability is generic over the port and holds it by value (the concrete
+//! adapter binds once in [`crate::live_bindings`]), and is stubbed with an
+//! in-memory fake in tests, so `domain/` is swappable and
 //! runnable without a data directory.
 
 use std::path::PathBuf;

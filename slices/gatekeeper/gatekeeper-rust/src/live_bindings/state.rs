@@ -64,8 +64,9 @@ pub struct GatekeeperState {
     /// Watch sender that publishes the `user_code` of the
     /// currently-active pending device-code consent request — the head
     /// the host webview surfaces in its non-dismissable popup. Handlers
-    /// whose write may change the head call
-    /// [`Self::republish_active_device_user_code`] after the write
+    /// whose write may change the head call the
+    /// [`DeviceUserCodePublisher::republish_active`](crate::ports::DeviceUserCodePublisher::republish_active)
+    /// seam after the write
     /// completes; the host-side bridge task forwards the value over the
     /// `bridge:DeviceConsentRequested` event and focuses the window when
     /// it goes to `Some`.
