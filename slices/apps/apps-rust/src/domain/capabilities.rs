@@ -29,9 +29,10 @@ use std::sync::Arc;
 use bytes::Bytes;
 use scopes_rust::{Grant, Permission, Scope, WildflowerResource};
 
-use crate::domain::actions::{self, CloudAppPayload, SelfHostedAppPayload};
+use crate::domain::actions::{self, CloudAppPayload};
 use crate::domain::{
-    AppRegistration, AppsError, AppsStore, CloudAppConfiguration, SelfHostedAppConfiguration,
+    AppConfiguration, AppKind, AppRegistration, AppsError, AppsStore, CloudAppConfiguration,
+    CloudInsertError, SelfHostedAppConfiguration, SelfHostedAppConfigurationPayload,
     SelfHostedInstaller, SystemAppConfiguration,
 };
 use crate::id_utils::mint_app_id;
@@ -122,15 +123,19 @@ impl<S: AppsStore> AppsReader<S> {
 
     /// The full registry in display order (`GET /apps`).
     pub(crate) fn list(&self) -> Result<Vec<AppRegistration>, AppsError> {
-        actions::list_registrations(&self.store)
+        self.store.list_registrations()
     }
 
-    /// A cloud app's editor detail, or `404` if no cloud app has the id.
+    /// A cloud app's editor detail, or `404` if no cloud app has the id (an
+    /// unknown id, or one of another kind).
     pub(crate) fn cloud(
         &self,
         id: &str,
     ) -> Result<(AppRegistration, CloudAppConfiguration), AppsError> {
-        actions::get_cloud_app(&self.store, id)
+        match actions::get_app(&self.store, id)? {
+            (registration, AppConfiguration::Cloud(config)) => Ok((registration, config)),
+            _ => Err(AppsError::NotFound { id: id.to_owned() }),
+        }
     }
 
     /// A self-hosted app's editor detail, or `404` if no self-hosted app has the id.
@@ -138,7 +143,10 @@ impl<S: AppsStore> AppsReader<S> {
         &self,
         id: &str,
     ) -> Result<(AppRegistration, SelfHostedAppConfiguration), AppsError> {
-        actions::get_self_hosted_app(&self.store, id)
+        match actions::get_app(&self.store, id)? {
+            (registration, AppConfiguration::SelfHosted(config)) => Ok((registration, config)),
+            _ => Err(AppsError::NotFound { id: id.to_owned() }),
+        }
     }
 
     /// A system app's read-only detail, or `404` if no system app has the id.
@@ -146,7 +154,10 @@ impl<S: AppsStore> AppsReader<S> {
         &self,
         id: &str,
     ) -> Result<(AppRegistration, SystemAppConfiguration), AppsError> {
-        actions::get_system_app(&self.store, id)
+        match actions::get_app(&self.store, id)? {
+            (registration, AppConfiguration::System(config)) => Ok((registration, config)),
+            _ => Err(AppsError::NotFound { id: id.to_owned() }),
+        }
     }
 }
 
@@ -168,31 +179,100 @@ impl<S: AppsStore, I: SelfHostedInstaller> AppsCreator<S, I> {
         }
     }
 
-    /// Create a cloud app: mint the id, validate, insert, and read the pair back
-    /// in-transaction.
+    /// Create a cloud app: mint the id, validate the content, synthesize the
+    /// `(registration, configuration)`, and insert. A [`CloudInsertError::IdTaken`]
+    /// means the server-minted id was already taken (a vanishingly-unlikely 21-char
+    /// collision), surfaced as a logged [`AppsError::Infrastructure`] rather than
+    /// silently returning the existing row.
     pub(crate) fn cloud(
         &self,
         payload: CloudAppPayload,
     ) -> Result<(AppRegistration, CloudAppConfiguration), AppsError> {
-        actions::create_cloud_app(&self.store, mint_app_id, payload)
+        let id = mint_app_id();
+        let (name, subtitle, url) =
+            actions::validate_cloud_fields(payload.name, payload.subtitle, payload.url)?;
+        let registration = AppRegistration {
+            id,
+            kind: AppKind::Cloud,
+            // The store assigns the tail `position`; this is a placeholder.
+            position: 0,
+            on_homescreen: true,
+            name,
+            subtitle,
+            local_only: false,
+            client_id: None,
+            requires_tunnel: payload.requires_tunnel,
+        };
+        let config = CloudAppConfiguration { url };
+        self.store
+            .insert_cloud_app(&registration, &config)?
+            .map_err(|error| match error {
+                CloudInsertError::IdTaken => {
+                    tracing::error!("app id collision on {}", registration.id);
+                    AppsError::infrastructure("insert_cloud_app id collision", "id already exists")
+                }
+            })
     }
 
-    /// Install a self-hosted app from an uploaded `bundle`: stage → insert →
-    /// start the listener (cleaning up on failure), reserving the host's own
-    /// loopback port so an upload never binds over it.
+    /// Install a self-hosted app from an uploaded `bundle`: derive the slug (id /
+    /// subdomain) from `name`, stage the bundle, synthesize the pair, insert
+    /// (reserving the host's own loopback port so an upload never binds over it),
+    /// and start the listener — unwinding the staged files if the insert fails.
     pub(crate) async fn self_hosted(
         &self,
         name: String,
         subtitle: Option<String>,
         bundle: Bytes,
     ) -> Result<(AppRegistration, SelfHostedAppConfiguration), AppsError> {
-        let payload = SelfHostedAppPayload {
+        // The slug is the name reduced to a DNS label; a name that slugs to
+        // nothing is a `400 InvalidName` before anything is staged.
+        let slug = actions::slugify(&name).ok_or_else(|| AppsError::InvalidName {
+            message: "name must contain at least one letter or digit".to_owned(),
+        })?;
+
+        // Stage the bundle onto disk (extract + move into place) so a committed
+        // row always points at present files.
+        let staged = self.installer.stage(bundle).await?;
+
+        // Synthesize the registration + create payload the store persists — the
+        // slug is the id and subdomain, `position` is a placeholder the store
+        // overrides, and an empty subtitle clears to `None`. The store owns `port`
+        // and writes `seeded = false`.
+        let registration = AppRegistration {
+            id: slug.clone(),
+            kind: AppKind::SelfHosted,
+            position: 0,
+            on_homescreen: true,
             name,
-            subtitle,
-            bundle,
-            reserved_ports: self.reserved_ports.clone(),
+            subtitle: subtitle.filter(|s| !s.is_empty()),
+            local_only: true,
+            client_id: None,
+            requires_tunnel: false,
         };
-        actions::install_self_hosted_app(&self.store, self.installer.as_ref(), payload).await
+        let create = SelfHostedAppConfigurationPayload {
+            content_folder: staged.content_folder,
+            subdomain: slug,
+            launch_path: staged.launch_path,
+        };
+
+        // Insert; unwind the just-staged files if the row can't be written.
+        let (registration, config) =
+            match self
+                .store
+                .insert_self_hosted_app(&registration, &create, &self.reserved_ports)
+            {
+                Ok(pair) => pair,
+                Err(error) => {
+                    self.installer.discard(&create.content_folder);
+                    return Err(error);
+                }
+            };
+
+        // The row is committed and the files are in place — bring the listener online.
+        self.installer
+            .start_listener(&registration.id, &config)
+            .await?;
+        Ok((registration, config))
     }
 }
 
@@ -209,23 +289,71 @@ impl<S: AppsStore> AppsEditor<S> {
         Self { store }
     }
 
-    /// Replace a cloud app's content; a non-cloud id is `404`.
+    /// Replace a cloud app's content; a non-cloud id is `404`. Resolves the kind
+    /// before validating any field (a bad url on a non-cloud id is still a `404`),
+    /// then overlays the edited fields onto the current registration — the store
+    /// writes only the editable subset, so placement stays untouched.
     pub(crate) fn cloud(
         &self,
         id: &str,
         payload: CloudAppPayload,
     ) -> Result<(AppRegistration, CloudAppConfiguration), AppsError> {
-        actions::replace_cloud_app(&self.store, id, payload)
+        let (current, configuration) = actions::get_app(&self.store, id)?;
+        if !matches!(configuration, AppConfiguration::Cloud(_)) {
+            return Err(AppsError::NotFound { id: id.to_owned() });
+        }
+        let (name, subtitle, url) =
+            actions::validate_cloud_fields(payload.name, payload.subtitle, payload.url)?;
+        let edited = AppRegistration {
+            name,
+            subtitle,
+            requires_tunnel: payload.requires_tunnel,
+            ..current
+        };
+        self.store
+            .replace_cloud_app(&edited, &CloudAppConfiguration { url })?
+            .ok_or_else(|| {
+                AppsError::infrastructure(
+                    "cloud app vanished between find and replace",
+                    format!("id={id}"),
+                )
+            })
     }
 
     /// Replace a self-hosted app's launch path; a non-self-hosted id is `404`, a
-    /// seeded app `409`.
+    /// seeded app `409`. Overlays the new `launch_path` onto the current
+    /// configuration and hands the store the pair.
     pub(crate) fn self_hosted(
         &self,
         id: &str,
         launch_path: Option<String>,
     ) -> Result<(AppRegistration, SelfHostedAppConfiguration), AppsError> {
-        actions::replace_self_hosted_app(&self.store, id, launch_path)
+        let (current_registration, configuration) = actions::get_app(&self.store, id)?;
+        let current_config = match configuration {
+            AppConfiguration::SelfHosted(config) if config.seeded => {
+                // A migration-seeded app (patient-browser) is read-only, same 409
+                // as delete.
+                return Err(AppsError::NotEditable { id: id.to_owned() });
+            }
+            AppConfiguration::SelfHosted(config) => config,
+            _ => return Err(AppsError::NotFound { id: id.to_owned() }),
+        };
+        let launch_path = actions::validate_launch_path(launch_path)?;
+        // The store writes only `launch_path`; carry the immutable `content_folder`
+        // / `subdomain` from the current config to fill the shared payload.
+        let payload = SelfHostedAppConfigurationPayload {
+            content_folder: current_config.content_folder,
+            subdomain: current_config.subdomain,
+            launch_path,
+        };
+        self.store
+            .replace_self_hosted_app(&current_registration, &payload)?
+            .ok_or_else(|| {
+                AppsError::infrastructure(
+                    "self-hosted app vanished between find and replace",
+                    format!("id={id}"),
+                )
+            })
     }
 
     /// Atomically reorder + enable/disable the whole registry; a non-permutation
@@ -234,7 +362,11 @@ impl<S: AppsStore> AppsEditor<S> {
         &self,
         entries: &[(String, bool)],
     ) -> Result<Vec<AppRegistration>, AppsError> {
-        actions::replace_placements(&self.store, entries)
+        self.store
+            .replace_placements(entries)?
+            .ok_or_else(|| AppsError::InvalidHomeScreen {
+                message: "home-screen body must list every app exactly once".to_owned(),
+            })
     }
 }
 
@@ -253,10 +385,40 @@ impl<S: AppsStore, I: SelfHostedInstaller> AppsDeleter<S, I> {
     }
 
     /// Remove a cloud app or an uploaded self-hosted app; unknown id `404`, a
-    /// system / seeded self-hosted app `409`. The deleted pair the action returns
-    /// is discarded — the handler answers `204 No Content`.
+    /// system / seeded self-hosted app `409`. The handler answers `204 No Content`,
+    /// so the removed pair is discarded.
+    ///
+    /// A self-hosted app's teardown **brackets** the store delete: stop the listener
+    /// *before* the row (and its id) is freed — so a same-slug reinstall can't
+    /// interleave and get its fresh listener torn down — then discard the serving
+    /// folder *after* the row is gone. A cloud / system app has no host-side state,
+    /// so the installer is untouched. A `false` from the store means the row
+    /// vanished between the read and the delete (it was just read under the same
+    /// store, so it can't legitimately have gone) — a logged `Infrastructure` 500,
+    /// never a misleading 404.
     pub(crate) fn delete(&self, id: &str) -> Result<(), AppsError> {
-        actions::delete_app(&self.store, self.installer.as_ref(), id)?;
+        let (_registration, configuration) = actions::get_app(&self.store, id)?;
+        if !configuration.is_removable() {
+            // A system app, or a migration-seeded self-hosted app (patient-browser).
+            return Err(AppsError::NotEditable { id: id.to_owned() });
+        }
+
+        let self_hosted = configuration.as_self_hosted();
+        if self_hosted.is_some() {
+            // Stop the listener while the row still holds the id.
+            self.installer.stop_listener(id);
+        }
+        let did_delete = self.store.delete_app(id)?;
+        if !did_delete {
+            return Err(AppsError::infrastructure(
+                "row vanished between find_app and delete_app",
+                format!("id={id}"),
+            ));
+        }
+        if let Some(config) = self_hosted {
+            // Remove the serving folder now the row is gone.
+            self.installer.discard(&config.content_folder);
+        }
         Ok(())
     }
 }
@@ -368,7 +530,7 @@ mod tests {
             reader.system("sys-x").expect("system").0.kind,
             AppKind::System
         );
-        // A per-kind read of the wrong kind is a 404 (delegates to the action).
+        // A per-kind read of the wrong kind is a 404 (resolved through get_app).
         assert!(matches!(
             reader.cloud("sys-x"),
             Err(AppsError::NotFound { .. })
@@ -442,6 +604,189 @@ mod tests {
             deleter.delete("nope"),
             Err(AppsError::NotFound { .. })
         ));
+    }
+
+    /// A cloud replace resolves the kind before validating any field: an unknown
+    /// id and a wrong-kind id are both `404`, and the wrong-kind `404` wins even
+    /// over a bad url (the field is never reached).
+    #[test]
+    fn editor_cloud_replace_unknown_or_wrong_kind_is_not_found() {
+        let store = FakeAppsStore::default();
+        system(&store, "sys-x");
+        let editor = AppsEditor::new(store);
+        assert!(matches!(
+            editor.cloud(
+                "ghost",
+                CloudAppPayload {
+                    name: "n".to_owned(),
+                    subtitle: None,
+                    url: "https://x.example".to_owned(),
+                    requires_tunnel: false,
+                },
+            ),
+            Err(AppsError::NotFound { .. })
+        ));
+        // A system id is not a cloud app — the wrong-kind 404 wins over the bad url.
+        assert!(matches!(
+            editor.cloud(
+                "sys-x",
+                CloudAppPayload {
+                    name: "n".to_owned(),
+                    subtitle: None,
+                    url: "javascript:alert(1)".to_owned(),
+                    requires_tunnel: false,
+                },
+            ),
+            Err(AppsError::NotFound { .. })
+        ));
+    }
+
+    /// A self-hosted replace gates before editing: a seeded app is `409`, a
+    /// non-self-hosted id is `404`; an editable app rewrites its `launch_path` and
+    /// still rejects a non-origin-relative one as `400 InvalidUrl`.
+    #[test]
+    fn editor_self_hosted_replace_gates_and_edits() {
+        let store = FakeAppsStore::default();
+        seeded_self_hosted(&store, "seeded", true);
+        seeded_self_hosted(&store, "editable", false);
+        create_cloud(&store, "cloud-x").expect("seed cloud");
+        let editor = AppsEditor::new(store);
+
+        assert!(matches!(
+            editor.self_hosted("seeded", Some("/launch.html".to_owned())),
+            Err(AppsError::NotEditable { .. })
+        ));
+        assert!(matches!(
+            editor.self_hosted("cloud-x", Some("/launch.html".to_owned())),
+            Err(AppsError::NotFound { .. })
+        ));
+        let (_registration, config) = editor
+            .self_hosted("editable", Some("/launch.html".to_owned()))
+            .expect("replace");
+        assert_eq!(config.launch_path.as_deref(), Some("/launch.html"));
+        assert!(matches!(
+            editor.self_hosted("editable", Some("https://evil.example/x".to_owned())),
+            Err(AppsError::InvalidUrl { .. })
+        ));
+    }
+
+    /// A self-hosted install derives the slug id from the name, normalizes an empty
+    /// subtitle to `None`, records the staged folder, and starts the listener —
+    /// discarding nothing on success.
+    #[tokio::test]
+    // See `creator_creates_cloud_apps`: the fake installer's `Arc` is non-Send/Sync
+    // only in test; the production binding uses the `Send + Sync` service.
+    #[allow(clippy::arc_with_non_send_sync)]
+    async fn creator_installs_a_self_hosted_app_and_starts_its_listener() {
+        let installer = Arc::new(FakeInstaller::new("mint-abc"));
+        let creator =
+            AppsCreator::new(FakeAppsStore::default(), Arc::clone(&installer), Vec::new());
+        let (registration, config) = creator
+            .self_hosted(
+                "My App".to_owned(),
+                Some(String::new()),
+                bytes::Bytes::new(),
+            )
+            .await
+            .expect("install");
+        assert_eq!(registration.id, "my-app", "the id is the slugified name");
+        assert_eq!(registration.kind, AppKind::SelfHosted);
+        assert_eq!(
+            registration.subtitle, None,
+            "an empty subtitle clears to None"
+        );
+        assert_eq!(
+            config.content_folder, "mint-abc",
+            "the staged folder verbatim"
+        );
+        assert_eq!(config.launch_path.as_deref(), Some("/launch.html"));
+        assert_eq!(
+            installer.started.borrow().as_slice(),
+            ["my-app"],
+            "the listener is started for the installed id",
+        );
+        assert!(
+            installer.discarded.borrow().is_empty(),
+            "nothing is discarded on success",
+        );
+    }
+
+    /// A name that slugs to nothing is a `400 InvalidName` before anything is staged
+    /// or started.
+    #[tokio::test]
+    #[allow(clippy::arc_with_non_send_sync)]
+    async fn creator_self_hosted_rejects_a_nameless_slug_before_staging() {
+        let installer = Arc::new(FakeInstaller::new("mint"));
+        let creator =
+            AppsCreator::new(FakeAppsStore::default(), Arc::clone(&installer), Vec::new());
+        let result = creator
+            .self_hosted("!!!".to_owned(), None, bytes::Bytes::new())
+            .await;
+        assert!(matches!(result, Err(AppsError::InvalidName { .. })));
+        assert!(
+            installer.started.borrow().is_empty() && installer.discarded.borrow().is_empty(),
+            "a name that slugs to nothing never stages or starts",
+        );
+    }
+
+    /// When the store rejects the insert (a taken slug → `400 InvalidName`), the
+    /// just-staged bundle is unwound (`discard`) and the listener is never started.
+    #[tokio::test]
+    #[allow(clippy::arc_with_non_send_sync)]
+    async fn creator_self_hosted_discards_the_bundle_when_the_insert_fails() {
+        let store = FakeAppsStore::default();
+        // A pre-existing app owns the slug, so the store insert reports a taken id.
+        seeded_self_hosted(&store, "my-app", false);
+        let installer = Arc::new(FakeInstaller::new("mint-xyz"));
+        let creator = AppsCreator::new(store, Arc::clone(&installer), Vec::new());
+        let result = creator
+            .self_hosted("My App".to_owned(), None, bytes::Bytes::new())
+            .await;
+        assert!(matches!(result, Err(AppsError::InvalidName { .. })));
+        assert_eq!(
+            installer.discarded.borrow().as_slice(),
+            ["mint-xyz"],
+            "the staged folder is unwound when the row can't be written",
+        );
+        assert!(
+            installer.started.borrow().is_empty(),
+            "a failed insert never starts the listener",
+        );
+    }
+
+    /// A self-hosted delete brackets the store delete: the listener is stopped
+    /// (while the row still holds the id) and the serving folder discarded (by
+    /// `content_folder`) once the row is gone; a cloud delete drives no teardown.
+    #[test]
+    #[allow(clippy::arc_with_non_send_sync)]
+    fn deleter_self_hosted_teardown_brackets_the_store_delete() {
+        let store = FakeAppsStore::default();
+        // A non-seeded (removable) self-hosted app; `seeded_self_hosted` sets its
+        // `content_folder` to the id.
+        seeded_self_hosted(&store, "my-app", false);
+        create_cloud(&store, "cloud-x").expect("seed cloud");
+        let installer = Arc::new(FakeInstaller::new("unused"));
+        let deleter = AppsDeleter::new(store, Arc::clone(&installer));
+
+        deleter.delete("my-app").expect("delete self-hosted");
+        assert_eq!(
+            installer.stopped.borrow().as_slice(),
+            ["my-app"],
+            "the listener is stopped",
+        );
+        assert_eq!(
+            installer.discarded.borrow().as_slice(),
+            ["my-app"],
+            "the serving folder is discarded by content_folder",
+        );
+
+        deleter.delete("cloud-x").expect("delete cloud");
+        assert_eq!(
+            installer.stopped.borrow().len(),
+            1,
+            "a cloud delete drives no self-hosted teardown",
+        );
+        assert_eq!(installer.discarded.borrow().len(), 1);
     }
 
     #[test]

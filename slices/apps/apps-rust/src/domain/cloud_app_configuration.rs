@@ -40,7 +40,7 @@ impl CommonAppConfig for CloudAppConfiguration {
 /// Why [`insert_cloud_app`](super::AppsStore::insert_cloud_app) wrote nothing (the
 /// transaction was dropped unwritten). The only non-infrastructure way a cloud
 /// insert fails: the id was already taken. Distinguished (rather than a bare
-/// `None`) so the [`create_cloud_app`](super::actions) action reports the true
+/// `None`) so the cloud create capability (`AppsCreator::cloud`) reports the true
 /// cause instead of assuming a collision.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CloudInsertError {

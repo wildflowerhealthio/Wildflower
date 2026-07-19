@@ -10,9 +10,14 @@
 //! runtime-resolved kind (the launch dispatch, delete). [`CommonAppConfig`] is the
 //! common per-config
 //! interface (its [`AppKind`] + removability). [`AppsError`] is the semantic failure
-//! vocabulary the HTTP layer renders. The [`AppsStore`] persistence port and the
-//! [`actions`] the HTTP routes call against it complete the ports-and-adapters seam
-//! (the `SQLite` adapter lives in [`crate::db`]), mirroring collector.
+//! vocabulary the HTTP layer renders. The [`AppsStore`] persistence port (the `SQLite`
+//! adapter lives in [`crate::db`]) and the scope-gated [`capabilities`] the HTTP
+//! handlers acquire complete the ports-and-adapters seam; each capability owns its
+//! operation's store logic (synthesizing the `(registration, configuration)` a
+//! create/replace persists, gating on kind + seeded, mapping the store's primitive
+//! signals onto [`AppsError`]), and the [`actions`] module holds the cross-kind read
+//! ([`actions::get_app`](actions::get_app)) and write-side validators they share.
+//! Mirrors collector.
 
 pub(crate) mod actions;
 mod app_configuration;
