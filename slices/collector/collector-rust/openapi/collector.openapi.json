@@ -10,7 +10,7 @@
         "tags": [
           "Remotes"
         ],
-        "summary": "`GET /collector/remotes` — list every remote. Owner-gated by the host.",
+        "summary": "`GET /collector/remotes` — list every remote. Gated by\n[`Scoped<RemotesReaderCap>`] (`wildflower/Accounts.r`): a remote's `config`\ncan carry origin credentials, so even the listing requires the read scope. The\ncapability is the only door to the store — this handler never sees the state.",
         "operationId": "handle_list_remotes",
         "responses": {
           "200": {
@@ -25,6 +25,16 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "The caller's token doesn't cover `wildflower/Accounts.r`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
           }
         }
       },
@@ -32,7 +42,7 @@
         "tags": [
           "Remotes"
         ],
-        "summary": "`POST /collector/remotes` — create a remote. Owner-gated by the host.",
+        "summary": "`POST /collector/remotes` — create a remote. Gated by\n[`Scoped<RemotesCreatorCap>`] (`wildflower/Accounts.c`); the capability is the\nonly door to the store, so this handler never sees the state.",
         "operationId": "handle_create_remote",
         "requestBody": {
           "content": {
@@ -65,6 +75,16 @@
               }
             }
           },
+          "403": {
+            "description": "The caller's token doesn't cover `wildflower/Accounts.c`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          },
           "409": {
             "description": "A remote with this id already exists",
             "content": {
@@ -83,7 +103,7 @@
         "tags": [
           "Remotes"
         ],
-        "summary": "`GET /collector/remotes/{id}` — fetch one remote. Owner-gated by the host.",
+        "summary": "`GET /collector/remotes/{id}` — fetch one remote. Gated by\n[`Scoped<RemotesReaderCap>`] (`wildflower/Accounts.r`); the scope check runs\nduring extraction, before this body, so an under-scoped caller gets a `403`\nwhether or not the id exists.",
         "operationId": "handle_get_remote",
         "parameters": [
           {
@@ -107,6 +127,16 @@
               }
             }
           },
+          "403": {
+            "description": "The caller's token doesn't cover `wildflower/Accounts.r`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          },
           "404": {
             "description": "No remote has this id",
             "content": {
@@ -123,7 +153,7 @@
         "tags": [
           "Remotes"
         ],
-        "summary": "`PUT /collector/remotes/{id}` — replace a remote's name + config.\nOwner-gated by the host.",
+        "summary": "`PUT /collector/remotes/{id}` — replace a remote's name + config. Gated by\n[`Scoped<RemotesEditorCap>`] (`wildflower/Accounts.u`); the capability is the\nonly door to the store, so this handler never sees the state.",
         "operationId": "handle_update_remote",
         "parameters": [
           {
@@ -167,6 +197,16 @@
               }
             }
           },
+          "403": {
+            "description": "The caller's token doesn't cover `wildflower/Accounts.u`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          },
           "404": {
             "description": "No remote has this id",
             "content": {
@@ -183,7 +223,7 @@
         "tags": [
           "Remotes"
         ],
-        "summary": "`DELETE /collector/remotes/{id}` — remove a remote. Owner-gated by the host.",
+        "summary": "`DELETE /collector/remotes/{id}` — remove a remote. Gated by\n[`Scoped<RemotesDeleterCap>`] (`wildflower/Accounts.d`); the capability is the\nonly door to the store, so this handler never sees the state.",
         "operationId": "handle_delete_remote",
         "parameters": [
           {
@@ -203,6 +243,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/DeletedBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller's token doesn't cover `wildflower/Accounts.d`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
                 }
               }
             }
@@ -250,6 +300,27 @@
         "properties": {
           "deleted": {
             "type": "boolean"
+          }
+        }
+      },
+      "InsufficientScopeBody": {
+        "type": "object",
+        "description": "Wire shape for a 403 — the caller authenticated, but their token doesn't cover\nthe scope(s) an operation requires. `missingScopes` names the scopes the\ncaller must additionally hold.",
+        "required": [
+          "error",
+          "missingScopes"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Always `\"InsufficientScope\"` — the discriminant a client switches on."
+          },
+          "missingScopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The rendered scopes the caller lacks."
           }
         }
       },

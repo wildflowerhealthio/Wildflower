@@ -1,15 +1,18 @@
 //! `GET /collector/remotes/{id}` — a single remote, or the structured 404.
 
-use std::sync::Arc;
-
-use axum::extract::{Path, State};
+use axum::extract::Path;
 use axum::Json;
 
-use crate::domain::{actions, Remote, RemoteError};
-use crate::http::errors::RemoteNotFoundBody;
-use crate::http::state::CollectorState;
+use scope_capabilities_rust::{InsufficientScopeBody, Scoped};
 
-/// `GET /collector/remotes/{id}` — fetch one remote. Owner-gated by the host.
+use crate::domain::{Remote, RemoteError};
+use crate::http::errors::RemoteNotFoundBody;
+use crate::state::RemotesReaderCap;
+
+/// `GET /collector/remotes/{id}` — fetch one remote. Gated by
+/// [`Scoped<RemotesReaderCap>`] (`wildflower/Accounts.r`); the scope check runs
+/// during extraction, before this body, so an under-scoped caller gets a `403`
+/// whether or not the id exists.
 #[utoipa::path(
     get,
     tag = "Remotes",
@@ -17,12 +20,13 @@ use crate::http::state::CollectorState;
     params(("id" = String, Path, description = "Remote id")),
     responses(
         (status = 200, description = "The remote", body = Remote),
+        (status = 403, description = "The caller's token doesn't cover `wildflower/Accounts.r`", body = InsufficientScopeBody),
         (status = 404, description = "No remote has this id", body = RemoteNotFoundBody),
     ),
 )]
 pub(crate) async fn handle_get_remote(
-    State(state): State<Arc<CollectorState>>,
+    remotes: Scoped<RemotesReaderCap>,
     Path(id): Path<String>,
 ) -> Result<Json<Remote>, RemoteError> {
-    Ok(Json(actions::get_remote(&state.store, &id)?))
+    Ok(Json(remotes.get(&id)?))
 }

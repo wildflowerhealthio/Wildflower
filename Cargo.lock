@@ -1332,6 +1332,8 @@ dependencies = [
  "diesel_migrations",
  "http-body-util",
  "persistence-rust",
+ "scope-capabilities-rust",
+ "scopes-rust",
  "serde",
  "serde_json",
  "shared-structures-rust",

@@ -5,7 +5,7 @@
 //! return the port's PRIMITIVE shapes (absence as `None`, insert/delete outcome
 //! as `bool`) and raise only [`RemoteError::Infrastructure`] on a real db
 //! failure; the semantic `NotFound`/`AlreadyExists` decisions live one layer up
-//! in [`crate::domain::actions`]. The query SQL stays here, next to the
+//! in [`crate::domain::capabilities`]. The query SQL stays here, next to the
 //! [`Remote`] row type it maps (via [`JsonText`] for the `config` column).
 
 use diesel::prelude::*;

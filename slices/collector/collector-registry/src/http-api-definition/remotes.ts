@@ -54,12 +54,31 @@ const RemoteAlreadyExistsSchema = Schema.Struct({
   id: Schema.String,
 })
 
+/**
+ * 403 on every endpoint when the caller authenticated but their token doesn't
+ * cover the `wildflower/Accounts.<perm>` scope the operation requires — a
+ * collector remote is an *account* at a data origin, and a remote's `config` can
+ * carry that origin's credentials, so reads need `Accounts.r` and each write its
+ * matching `.c`/`.u`/`.d`. Matches the shared Rust `InsufficientScopeBody`
+ * (`scope-capabilities-rust`); `missingScopes` names the scopes the caller must
+ * additionally hold.
+ */
+const InsufficientScopeSchema = Schema.Struct({
+  error: Schema.Literal('InsufficientScope'),
+  missingScopes: Schema.Array(Schema.String),
+})
+
 const httpApiGroup = HttpApiGroup.make('collector-remotes', { topLevel: false })
-  .add(HttpApiEndpoint.get('ListRemotes', '/remotes').addSuccess(RemotesSchema))
+  .add(
+    HttpApiEndpoint.get('ListRemotes', '/remotes')
+      .addSuccess(RemotesSchema)
+      .addError(InsufficientScopeSchema, { status: 403 })
+  )
   .add(
     HttpApiEndpoint.get('GetRemote', '/remotes/:id')
       .setPath(Schema.Struct({ id: Schema.String }))
       .addSuccess(RemoteSchema)
+      .addError(InsufficientScopeSchema, { status: 403 })
       .addError(RemoteNotFoundSchema, { status: 404 })
   )
   .add(
@@ -67,6 +86,7 @@ const httpApiGroup = HttpApiGroup.make('collector-remotes', { topLevel: false })
       .setPayload(CreateRemotePayloadSchema)
       .addSuccess(RemoteSchema)
       .addError(InvalidConfigSchema, { status: 400 })
+      .addError(InsufficientScopeSchema, { status: 403 })
       .addError(RemoteAlreadyExistsSchema, { status: 409 })
   )
   .add(
@@ -75,12 +95,14 @@ const httpApiGroup = HttpApiGroup.make('collector-remotes', { topLevel: false })
       .setPayload(UpdateRemotePayloadSchema)
       .addSuccess(RemoteSchema)
       .addError(InvalidConfigSchema, { status: 400 })
+      .addError(InsufficientScopeSchema, { status: 403 })
       .addError(RemoteNotFoundSchema, { status: 404 })
   )
   .add(
     HttpApiEndpoint.del('DeleteRemote', '/remotes/:id')
       .setPath(Schema.Struct({ id: Schema.String }))
       .addSuccess(Schema.Struct({ deleted: Schema.Boolean }))
+      .addError(InsufficientScopeSchema, { status: 403 })
       .addError(RemoteNotFoundSchema, { status: 404 })
   )
   .prefix('/collector')
@@ -94,4 +116,5 @@ export {
   RemoteNotFoundSchema,
   InvalidConfigSchema,
   RemoteAlreadyExistsSchema,
+  InsufficientScopeSchema,
 }

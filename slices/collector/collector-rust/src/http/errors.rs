@@ -6,13 +6,20 @@
 //! with `?` and its `Result<_, RemoteError>` becomes a response with no HTTP
 //! glue at the call site.
 //!
-//! All three semantic shapes are part of the wire contract and modeled on both
-//! sides: `RemoteNotFoundBody` (404), `InvalidConfigBody` (400), and
-//! `RemoteAlreadyExistsBody` (409) each `derive(ToSchema)` and are declared in
+//! All four semantic shapes are part of the wire contract and modeled on both
+//! sides: `RemoteNotFoundBody` (404), `InvalidConfigBody` (400),
+//! `RemoteAlreadyExistsBody` (409), and the shared `InsufficientScopeBody` (403,
+//! from `scope-capabilities-rust`) each `derive(ToSchema)` and are declared in
 //! the routes' `#[utoipa::path]` `responses`, matching the errors the TS
 //! `collector-remotes` group adds (`remotes.ts`) so the spec-drift gate stays
 //! green. `Infrastructure` is deliberately **not** modeled — an opaque 500
 //! carries no body a client decodes.
+//!
+//! The `403` is produced two ways that render identically: the scope-gated
+//! handlers' [`Scoped`](scope_capabilities_rust::Scoped) extractor rejects an
+//! under-scoped caller directly, and — for uniformity of the failure vocabulary —
+//! a [`RemoteError::InsufficientScope`] renders through the same shared
+//! [`insufficient_scope`](scope_capabilities_rust::insufficient_scope) helper.
 
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
@@ -82,9 +89,30 @@ impl IntoResponse for RemoteError {
                 }),
             )
                 .into_response(),
+            RemoteError::InsufficientScope { missing_scopes } => {
+                scope_capabilities_rust::insufficient_scope(missing_scopes)
+            }
             RemoteError::Infrastructure { context, source } => {
                 InternalError::new(context, source).into_response()
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A [`RemoteError::InsufficientScope`] renders as a `403` through the shared
+    /// helper — the same body shape (and status) the `Scoped` extractor produces
+    /// for an under-scoped caller, so the two `403` paths stay indistinguishable
+    /// on the wire.
+    #[test]
+    fn insufficient_scope_renders_a_403() {
+        let response = RemoteError::InsufficientScope {
+            missing_scopes: vec!["wildflower/Accounts.c".to_owned()],
+        }
+        .into_response();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
     }
 }

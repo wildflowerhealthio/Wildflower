@@ -91,7 +91,7 @@ impl SqliteRemotesStore {
 /// file stays the migration + pool handle, and the query SQL stays next to the
 /// row type it maps. Every method returns the port's PRIMITIVE shape — absence
 /// as `None`, insert/delete outcome as `bool` — leaving the
-/// `NotFound`/`AlreadyExists` semantics to [`crate::domain::actions`].
+/// `NotFound`/`AlreadyExists` semantics to [`crate::domain::capabilities`].
 impl RemotesStore for SqliteRemotesStore {
     fn list(&self) -> Result<Vec<Remote>, RemoteError> {
         remotes::list(&mut self.connection()?)

@@ -49,9 +49,9 @@ pub struct Remote {
 
 /// The `_tag` discriminant of a `CollectorConfig` JSON value, or `None` when
 /// the value isn't an object carrying a string `_tag`. The only field of the
-/// otherwise-opaque config Rust reads — the write actions denormalize it into
-/// the `tag` column (and reject a config without one, since the wire `tag`
-/// couldn't be produced).
+/// otherwise-opaque config Rust reads — the create/update capabilities
+/// denormalize it into the `tag` column (and reject a config without one, since
+/// the wire `tag` couldn't be produced).
 #[must_use]
 pub fn config_tag(config: &serde_json::Value) -> Option<&str> {
     config.get("_tag").and_then(serde_json::Value::as_str)
@@ -59,9 +59,9 @@ pub fn config_tag(config: &serde_json::Value) -> Option<&str> {
 
 /// The `config._tag` discriminant as an owned `String`, or
 /// [`RemoteError::InvalidConfig`] when it's absent — without it neither the
-/// `tag` column nor the wire `tag` field can be produced. Shared by the write
-/// actions (create + update). Unreachable through the typed TS client, which
-/// validates the config union before sending.
+/// `tag` column nor the wire `tag` field can be produced. Shared by the create +
+/// update capabilities. Unreachable through the typed TS client, which validates
+/// the config union before sending.
 ///
 /// # Errors
 ///
@@ -85,8 +85,8 @@ mod tests {
     }
 
     /// A missing `_tag`, a non-string `_tag`, and a non-object config all read
-    /// as `None` — the write actions turn each into a 400 rather than storing
-    /// a row whose `tag` column can't be produced.
+    /// as `None` — the create/update capabilities turn each into a 400 rather
+    /// than storing a row whose `tag` column can't be produced.
     #[test]
     fn config_tag_is_none_for_shapes_without_a_string_tag() {
         assert_eq!(

@@ -5,22 +5,25 @@
 //! spec-drift test (`collector-registry/src/http-api-definition/openapi-drift.test.ts`)
 //! reads.
 //!
-//! The router carries no middleware — every endpoint exposes owner-only data,
-//! so the host wraps the built router with its bearer gate
-//! (`gatekeeper_rust::layer_router_with_gatekeeper_auth_gating`), mirroring
-//! the tunnel and databases surfaces.
+//! The router carries no middleware, but every endpoint is scope-gated per
+//! operation — its handler reaches the store only through a `Scoped<…>`
+//! capability (see [`crate::domain::capabilities`]), gated by
+//! `wildflower/Accounts.<perm>` and answering a `403 InsufficientScope` when the
+//! caller's token doesn't cover it. The host still wraps the built router with
+//! its bearer gate (`gatekeeper_rust::layer_router_with_gatekeeper_auth_gating`),
+//! which inserts the `ScopeClaims` those capabilities read, mirroring the tunnel
+//! and databases surfaces.
 
 mod errors;
 mod routes;
-mod state;
-
-pub use state::CollectorState;
 
 use std::sync::Arc;
 
 use axum::Router;
 use utoipa::OpenApi;
 use utoipa_axum::router::OpenApiRouter;
+
+use crate::state::CollectorState;
 
 /// Base `OpenAPI` document; the collected routes fill in paths + components.
 #[derive(OpenApi)]
