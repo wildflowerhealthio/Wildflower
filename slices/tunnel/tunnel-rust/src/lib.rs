@@ -54,6 +54,10 @@ pub use db::SqliteTunnelStore;
 // the scopes the `/tunnel` surface enforces, for a future consent/admin surface.
 pub use domain::grantable_tunnel_scopes;
 pub use domain::{RelaySettings, SettingsSeed, TunnelDaemon, TunnelSettings};
+// The persistence port trait, in scope so `setup_tunnel` can drive the store's
+// `seed_if_absent` / `get_settings` methods directly (the trivial reads/seeds the
+// domain no longer wraps in an action).
+use domain::TunnelStore;
 pub use health::HealthProbe;
 pub use http::openapi_spec;
 pub use state::TunnelState;
@@ -115,14 +119,18 @@ pub fn setup_tunnel(
     // Seed build-time connection defaults into a fresh row (only where
     // unconfigured) before resuming, so a reinstall picks up the baked-in
     // tunnel connection without clobbering any in-app edits.
-    domain::actions::seed_if_absent(&state.store, &config.seed)
+    state
+        .store
+        .seed_if_absent(&config.seed)
         .context("failed to seed tunnel settings")?;
 
     // Resume persisted intent: reconcile spawns a supervisor for the stored
     // revision (a no-op when the tunnel isn't requested or the relay isn't
     // configured).
-    let settings =
-        domain::actions::get_settings(&state.store).context("failed to read tunnel settings")?;
+    let settings = state
+        .store
+        .get_settings()
+        .context("failed to read tunnel settings")?;
     state.daemon.reconcile(&settings);
 
     // The control seam shares the daemon's liveness watch; a start persists,

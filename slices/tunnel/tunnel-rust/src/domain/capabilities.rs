@@ -91,7 +91,7 @@ impl<S: TunnelStore> TunnelSettingsReader<S> {
     ///
     /// [`TunnelError::Infrastructure`] if the store read fails.
     pub(crate) fn settings(&self) -> Result<TunnelSettings, TunnelError> {
-        actions::get_settings(&self.store)
+        self.store.get_settings()
     }
 
     /// The live daemon, for the handler to fold the observed runtime into the
