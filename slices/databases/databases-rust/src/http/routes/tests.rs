@@ -12,7 +12,7 @@ use scopes_rust::{Permission, Scope};
 
 use super::*;
 use crate::config::DatabaseDescriptor;
-use crate::domain::DatabasesState;
+use crate::live_bindings::state::DatabasesState;
 
 /// The served router (OpenAPI spec discarded) for exercising the handlers
 /// via `oneshot`.
@@ -60,9 +60,9 @@ fn seed_db(path: &Path, tables: usize) {
 }
 
 fn state_with(dir: &Path) -> Arc<DatabasesState> {
-    Arc::new(DatabasesState::with_files(
+    Arc::new(DatabasesState::new(
         descriptors(),
-        crate::fs::filesystem_database_files(dir.to_path_buf()),
+        crate::adapters::FilesystemDatabaseFiles::new(dir.to_path_buf()),
     ))
 }
 

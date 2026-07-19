@@ -17,12 +17,17 @@
 //!
 //!  - [`config`] — the host-supplied [`DatabaseDescriptor`] catalogue.
 //!  - [`domain`] — the failure vocabulary ([`domain::DatabaseError`]), the wire
-//!    metadata shape, the [`DatabaseFiles`](domain) port abstracting the
-//!    filesystem/SQLite side-effects, the [`DatabasesState`] the router carries,
-//!    and the scope-gated `capabilities`. Pure and `http`-free: it operates
-//!    through the port, never `std::fs` directly, so it's stubbable in tests.
-//!  - `fs` — the production [`DatabaseFiles`] adapter over the data directory,
-//!    injected by [`setup_databases`].
+//!    metadata shape, and the scope-gated `capabilities`. Pure, `http`-free, and
+//!    adapter-free: it operates through the [`DatabaseFiles`](ports) port, never
+//!    `std::fs` directly, so it's stubbable in tests.
+//!  - `ports` — the [`DatabaseFiles`](ports) port abstracting the
+//!    filesystem/SQLite side-effects the capabilities call out through.
+//!  - `adapters` — the production `FilesystemDatabaseFiles` adapter over the data
+//!    directory, built by [`setup_databases`].
+//!  - `live_bindings` — the composition seam: `DatabasesState` (the router state,
+//!    holding the catalogue + the concrete adapter) plus the per-capability
+//!    `Live…` bindings that monomorphize the generic domain capabilities over the
+//!    adapter.
 //!  - [`files`] — the file-level primitives the adapter uses: a consistent export
 //!    snapshot (`VACUUM INTO`) and an on-disk delete (main file plus journal
 //!    sidecars).
@@ -48,18 +53,20 @@
 pub mod config;
 pub mod domain;
 
+mod adapters;
 mod files;
-mod fs;
 pub mod http;
+mod live_bindings;
+mod ports;
 
 use std::sync::Arc;
 
 use axum::Router;
 
 pub use config::{DatabaseDescriptor, DatabasesConfig};
-pub use domain::DatabasesState;
 pub use files::purge_pending_deletions;
 pub use http::openapi_spec;
+pub use live_bindings::state::DatabasesState;
 
 /// Build the `/databases` router over the host's data directory, mirroring
 /// `apps-rust`'s `setup_apps`. The host passes its app-data dir; the slice
@@ -69,7 +76,7 @@ pub use http::openapi_spec;
 /// own authN gate (the Tauri host applies the gatekeeper bearer gate); the
 /// per-database scope checks live inside the router's facades.
 pub fn setup_databases(config: &DatabasesConfig) -> Router {
-    let files = fs::filesystem_database_files(config.data_dir.clone());
-    let state = Arc::new(DatabasesState::with_files(config.databases.clone(), files));
+    let files = adapters::FilesystemDatabaseFiles::new(config.data_dir.clone());
+    let state = Arc::new(DatabasesState::new(config.databases.clone(), files));
     http::router(state)
 }

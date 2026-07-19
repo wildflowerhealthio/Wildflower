@@ -7,9 +7,10 @@ use utoipa::ToSchema;
 
 use scope_capabilities_rust::InsufficientScopeBody;
 
-use crate::domain::capabilities::{DatabasesDeleter, Scoped};
+use crate::domain::capabilities::Scoped;
 use crate::domain::DatabaseError;
 use crate::http::errors::DatabaseNotFoundBody;
+use crate::live_bindings::LiveDatabasesDeleter;
 
 #[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct DeletedBody {
@@ -40,7 +41,7 @@ pub(crate) struct DeletedBody {
     ),
 )]
 pub(crate) async fn handle_delete_database(
-    deleter: Scoped<DatabasesDeleter>,
+    deleter: Scoped<LiveDatabasesDeleter>,
     Path(id): Path<String>,
 ) -> Result<Json<DeletedBody>, DatabaseError> {
     // The `delete_scope` check and the blocking marker write live in the facade

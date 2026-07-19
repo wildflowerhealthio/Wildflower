@@ -10,7 +10,7 @@
         "tags": [
           "Configuration"
         ],
-        "summary": "`GET /tunnel` — read the current persisted settings + observed runtime as a\nsingle wire snapshot. Collected into the `OpenAPI` doc via `routes!` in the\nparent module, which reads this `#[utoipa::path]`.",
+        "summary": "`GET /tunnel` — read the current persisted settings + observed runtime as a\nsingle wire snapshot. Gated by [`Scoped<LiveTunnelSettingsReader>`]: the\nsettings read lives behind the `wildflower/TunnelSettings.r` capability, so\nthis handler never touches the store directly (a `403` on an under-scoped\ntoken). Collected into the `OpenAPI` doc via `routes!` in the parent module,\nwhich reads this `#[utoipa::path]`.",
         "operationId": "handle_get_tunnel",
         "responses": {
           "200": {
@@ -22,6 +22,16 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "The caller's token doesn't cover `wildflower/TunnelSettings.r`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
           }
         }
       },
@@ -29,7 +39,8 @@
         "tags": [
           "Configuration"
         ],
-        "summary": "`PUT /tunnel` — full-replace of the visible settings under the caller's\n`revision` token. A stale revision returns 409 with the current snapshot so\nthe client can rebase; a winning write bumps the revision, reconciles the\nlive supervisor, then — like the launch seam — **awaits the liveness\nsettling** (a `/health` probe verifies, or the verify deadline elapses)\nbefore returning, so the snapshot reflects *real* reachability rather than an\noptimistic `dialing`. A no-op change (same dialable config on an already-up\ntunnel) returns immediately `verified` — `reconcile` leaves the live tunnel\nuntouched, so there's nothing to wait for. Collected into the `OpenAPI` doc\nvia `routes!` in the parent module, which reads this `#[utoipa::path]`.",
+        "summary": "`PUT /tunnel` — full-replace of the visible settings under the caller's\n`revision` token. Gated by [`Scoped<LiveTunnelSettingsEditor>`]: the write\nlives behind the `wildflower/TunnelSettings.u` capability, so this handler\nnever touches the store directly (a `403` on an under-scoped token).",
+        "description": "A stale revision returns 409 with the current snapshot so the client can\nrebase; a winning write bumps the revision, reconciles the live supervisor,\nthen — like the launch seam — **awaits the liveness settling** (a `/health`\nprobe verifies, or the verify deadline elapses) before returning, so the\nsnapshot reflects *real* reachability rather than an optimistic `dialing`. A\nno-op change (same dialable config on an already-up tunnel) returns\nimmediately `verified` — `reconcile` leaves the live tunnel untouched, so\nthere's nothing to wait for. Collected into the `OpenAPI` doc via `routes!`\nin the parent module, which reads this `#[utoipa::path]`.",
         "operationId": "handle_replace_tunnel",
         "requestBody": {
           "content": {
@@ -52,6 +63,16 @@
               }
             }
           },
+          "403": {
+            "description": "The caller's token doesn't cover `wildflower/TunnelSettings.u`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          },
           "409": {
             "description": "Stale revision; no write happened — the current snapshot is returned",
             "content": {
@@ -68,6 +89,27 @@
   },
   "components": {
     "schemas": {
+      "InsufficientScopeBody": {
+        "type": "object",
+        "description": "Wire shape for a 403 — the caller authenticated, but their token doesn't cover\nthe scope(s) an operation requires. `missingScopes` names the scopes the\ncaller must additionally hold.",
+        "required": [
+          "error",
+          "missingScopes"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Always `\"InsufficientScope\"` — the discriminant a client switches on."
+          },
+          "missingScopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The rendered scopes the caller lacks."
+          }
+        }
+      },
       "RelayInput": {
         "type": "object",
         "required": [

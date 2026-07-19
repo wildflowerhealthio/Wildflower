@@ -4,12 +4,14 @@
 //! routes call against it.
 
 pub(crate) mod actions;
+pub(crate) mod capabilities;
 mod relay_client;
 mod tunnel_daemon;
 mod tunnel_error;
 mod tunnel_settings;
 mod tunnel_store;
 
+pub use capabilities::grantable_tunnel_scopes;
 pub use relay_client::{RelayClient, RelaySettings};
 pub use tunnel_daemon::TunnelDaemon;
 pub use tunnel_error::TunnelError;

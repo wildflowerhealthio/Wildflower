@@ -1,25 +1,31 @@
-//! [`DatabasesState`] — the state the router carries and the capabilities are
-//! built from. A pure `domain/` value: the host-supplied catalogue plus a
-//! [`DatabaseFiles`] port handle (never a concrete filesystem or `crate::http`
-//! type), so the whole domain is runnable in tests with a stub port. The real
-//! `FilesystemDatabaseFiles` is injected by `crate::setup_databases`.
+//! [`DatabasesState`] — the router state: the host catalogue plus the concrete
+//! [`FilesystemDatabaseFiles`] adapter, built once by [`crate::setup_databases`]
+//! and handed in. It lives here in [`live_bindings`](super), not in `domain/`,
+//! deliberately: it names the concrete adapter (which `domain/` must not), and the
+//! sibling per-capability bindings clone it by value into each generic capability
+//! at construction — so the scope-gated [`capabilities`](crate::domain::capabilities)
+//! in `domain/` stay port-only and stubbable while the concrete wiring lives out
+//! here.
 
 use std::sync::Arc;
 
+use crate::adapters::FilesystemDatabaseFiles;
 use crate::config::DatabaseDescriptor;
-use crate::domain::DatabaseFiles;
 
 /// Shared handler state: the catalogue of databases the host exposes plus the
-/// [`DatabaseFiles`] port the capabilities operate through. Cheap to share behind
-/// an `Arc`. Opaque to callers outside the crate — the host receives one from
-/// [`crate::setup_databases`] and never looks inside.
+/// concrete [`FilesystemDatabaseFiles`] adapter over the data directory. Cheap to
+/// share behind an `Arc`. Opaque to callers outside the crate — the host receives
+/// one from [`crate::setup_databases`] and never looks inside.
 pub struct DatabasesState {
     catalogue: Arc<[DatabaseDescriptor]>,
-    files: Arc<dyn DatabaseFiles>,
+    /// The filesystem adapter, cloned by value into each capability binding at
+    /// construction (cheap — it only wraps the data-dir path).
+    pub(crate) files: FilesystemDatabaseFiles,
 }
 
 impl DatabasesState {
-    /// Build the state over the host catalogue and a [`DatabaseFiles`] port.
+    /// Build the state over the host catalogue and the [`FilesystemDatabaseFiles`]
+    /// adapter [`crate::setup_databases`] constructs over the data directory.
     ///
     /// # Panics
     ///
@@ -31,10 +37,7 @@ impl DatabasesState {
     /// catalogue is host-owned and build-time constant, so this fires only on a
     /// broken build, never on client input.
     #[must_use]
-    pub(crate) fn with_files(
-        databases: Vec<DatabaseDescriptor>,
-        files: Arc<dyn DatabaseFiles>,
-    ) -> Self {
+    pub(crate) fn new(databases: Vec<DatabaseDescriptor>, files: FilesystemDatabaseFiles) -> Self {
         for descriptor in &databases {
             assert!(
                 descriptor.has_header_safe_id(),
@@ -54,10 +57,5 @@ impl DatabasesState {
     /// scopes against it.
     pub(crate) fn catalogue(&self) -> Arc<[DatabaseDescriptor]> {
         Arc::clone(&self.catalogue)
-    }
-
-    /// The [`DatabaseFiles`] port handle a capability lifts at construction.
-    pub(crate) fn files(&self) -> Arc<dyn DatabaseFiles> {
-        Arc::clone(&self.files)
     }
 }

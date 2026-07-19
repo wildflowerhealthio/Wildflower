@@ -8,7 +8,7 @@
 //! signals onto [`RemoteError`]). **Nothing here depends on `crate::http`** — the
 //! concrete `SqliteRemotesStore` is injected through the [`RemotesStore`] port,
 //! and the `FixedScopeCapability` bindings that name it live beside the router
-//! state in [`crate::state`], so this whole layer is store-agnostic and
+//! state in [`crate::live_bindings`], so this whole layer is store-agnostic and
 //! transport-free.
 
 pub(crate) mod capabilities;

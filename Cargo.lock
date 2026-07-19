@@ -1802,6 +1802,7 @@ checksum = "be1e0bca6c3637f992fc1cc7cbc52a78c1ef6db076dbf1059c4323d6a2048376"
 name = "databases-rust"
 version = "0.0.0"
 dependencies = [
+ "async-trait",
  "axum",
  "chrono",
  "futures-core",
@@ -8432,6 +8433,8 @@ dependencies = [
  "proptest",
  "rand 0.10.2",
  "rathole",
+ "scope-capabilities-rust",
+ "scopes-rust",
  "serde",
  "serde_json",
  "shared-structures-rust",

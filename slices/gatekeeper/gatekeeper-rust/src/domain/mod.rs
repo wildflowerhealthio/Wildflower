@@ -9,14 +9,14 @@
 //! operations, generic over the store port); and everything fails with the
 //! domain's own [`gatekeeper_error`] vocabulary. Persistence mappings live in
 //! [`crate::db`], transport in [`crate::http`], the router state (which builds
-//! the capabilities) in [`crate::state`].
+//! the capabilities) in [`crate::live_bindings`].
 
 // The persistence port. Mirrors collector's `remotes_store`.
 pub mod gatekeeper_store;
 
 // The scope-gated `/access` capabilities — the per-(resource, permission)
 // operations, generic over the store port. Their `Capability` bindings to the
-// concrete state live in `crate::state`.
+// concrete state live in `crate::live_bindings`.
 pub(crate) mod capabilities;
 
 // The in-memory `FakeGatekeeperStore` + fixtures the domain unit tests share.
@@ -54,7 +54,7 @@ pub use gatekeeper_store::{GatekeeperStore, GatekeeperTx};
 #[cfg(test)]
 mod http_free_guard {
     /// `domain/` must never depend on `crate::http` — the capabilities live here
-    /// and are built from `crate::state`, so a stray `use crate::http::…` would
+    /// and are built from `crate::live_bindings`, so a stray `use crate::http::…` would
     /// re-couple the domain to the transport layer. This test enumerates the
     /// `domain/` tree and fails if any non-comment line names `crate::http`, so
     /// the invariant can't silently regress. (Doc comments may mention it in
@@ -75,7 +75,7 @@ mod http_free_guard {
                 assert!(
                     !line.contains(needle),
                     "domain/ file {} line {} imports the transport layer (`{needle}`) — domain \
-                     must stay transport-free; route the dependency through a port or `crate::state`",
+                     must stay transport-free; route the dependency through a port or `crate::live_bindings`",
                     path.display(),
                     n + 1,
                 );

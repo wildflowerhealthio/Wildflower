@@ -9,11 +9,11 @@ use crate::domain::capabilities::{ApproveDeviceConsentInput, Scoped};
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::http::state::GatekeeperState;
 use crate::http::wire_representations::{ApproveBody, ConsentResult};
-use crate::state::ConsentDeciderCap;
+use crate::live_bindings::LiveConsentDecider;
 
 /// `POST /devices/{userCode}/approve` — the Owner approves a device-code
 /// consent prompt, granting the (expanded) scope set and leaving a standing
-/// device grant. Gated by [`ConsentDeciderCap`] (scope
+/// device grant. Gated by [`LiveConsentDecider`] (scope
 /// `wildflower/AuthorizationRequest.u`), which also carries the approver's own
 /// scopes: an approval delegating a resource scope beyond them is rejected with
 /// a `403`. The transaction lives in the consent capability's `approve_device`.
@@ -22,7 +22,7 @@ pub(super) fn route() -> MethodRouter<Arc<GatekeeperState>> {
 }
 
 async fn handle_approve_device_consent(
-    consents: Scoped<ConsentDeciderCap>,
+    consents: Scoped<LiveConsentDecider>,
     Path(user_code): Path<String>,
     Json(body): Json<ApproveBody>,
 ) -> Result<Json<ConsentResult>, GatekeeperError> {

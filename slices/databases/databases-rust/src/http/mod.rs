@@ -11,7 +11,7 @@ mod routes;
 
 use std::sync::Arc;
 
-use crate::domain::DatabasesState;
+use crate::live_bindings::state::DatabasesState;
 
 use axum::Router;
 use utoipa::OpenApi;

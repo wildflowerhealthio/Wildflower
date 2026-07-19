@@ -1,4 +1,4 @@
-//! The filesystem adapter for the [`DatabaseFiles`](crate::domain::DatabaseFiles)
+//! The filesystem adapter for the [`DatabaseFiles`](crate::ports::DatabaseFiles)
 //! port — the concrete `std::fs` / `rusqlite` side of the databases slice. It
 //! resolves a catalogued [`DatabaseDescriptor`] to its path beneath the host's
 //! data directory and performs the metadata read, the `VACUUM INTO` export
@@ -17,11 +17,15 @@ use chrono::{DateTime, SecondsFormat, Utc};
 use rusqlite::OpenFlags;
 
 use crate::config::DatabaseDescriptor;
-use crate::domain::{DatabaseError, DatabaseFiles, DatabaseMetadata};
+use crate::domain::{DatabaseError, DatabaseMetadata};
+use crate::ports::DatabaseFiles;
 
 /// The production [`DatabaseFiles`]: resolves each catalogued id to
 /// `data_dir.join(id)` and delegates to the [`crate::files`] primitives. Built
-/// once by [`crate::setup_databases`] and shared behind an `Arc`.
+/// once by [`crate::setup_databases`], held by the `DatabasesState`, and cloned
+/// by value into each capability at construction (cheap — it only wraps the
+/// data-dir path).
+#[derive(Clone)]
 pub(crate) struct FilesystemDatabaseFiles {
     data_dir: PathBuf,
 }
@@ -40,28 +44,65 @@ impl FilesystemDatabaseFiles {
     }
 }
 
+#[async_trait::async_trait]
 impl DatabaseFiles for FilesystemDatabaseFiles {
-    fn read_metadata(&self, descriptor: &DatabaseDescriptor) -> DatabaseMetadata {
-        read_metadata(descriptor, &self.path_for(descriptor))
+    async fn read_catalogue_metadata(
+        &self,
+        catalogue: Arc<[DatabaseDescriptor]>,
+    ) -> Result<Vec<DatabaseMetadata>, DatabaseError> {
+        // Resolve every path up front (cheap, sync) so `path_for` stays the one
+        // place ids become filesystem paths; the blocking closure then owns only
+        // the descriptor+path pairs it reads.
+        let jobs: Vec<(DatabaseDescriptor, PathBuf)> = catalogue
+            .iter()
+            .map(|descriptor| (descriptor.clone(), self.path_for(descriptor)))
+            .collect();
+        // The per-database reads are best-effort and blocking, so the loop runs
+        // on a blocking thread rather than stalling the async runtime.
+        tokio::task::spawn_blocking(move || {
+            jobs.iter()
+                .map(|(descriptor, path)| read_metadata(descriptor, path))
+                .collect()
+        })
+        .await
+        .map_err(|error| DatabaseError::infrastructure("list metadata task panicked", error))
     }
 
-    fn snapshot(&self, descriptor: &DatabaseDescriptor) -> Result<Option<PathBuf>, DatabaseError> {
-        let path = self.path_for(descriptor);
-        // Prove existence before the (blocking) snapshot, so an absent-but-catalogued
-        // database is a `404` rather than an opaque open failure.
-        if path.exists() {
-            crate::files::snapshot_to_temp(&path).map(Some)
-        } else {
-            Ok(None)
-        }
+    async fn temp_download_for_descriptor(
+        &self,
+        descriptor: DatabaseDescriptor,
+    ) -> Result<PathBuf, DatabaseError> {
+        let path = self.path_for(&descriptor);
+        tokio::task::spawn_blocking(move || {
+            // Prove existence before the (blocking) snapshot, so an
+            // absent-but-catalogued database is a `404` rather than an opaque
+            // open failure.
+            if path.exists() {
+                crate::files::snapshot_to_temp(&path).map(Some)
+            } else {
+                Ok(None)
+            }
+        })
+        .await
+        .map_err(|error| DatabaseError::infrastructure("snapshot task panicked", error))??
+        .ok_or(DatabaseError::NotFound { id: descriptor.id })
     }
 
-    fn schedule_deletion(&self, descriptor: &DatabaseDescriptor) -> Result<bool, DatabaseError> {
-        let path = self.path_for(descriptor);
-        if path.exists() {
-            crate::files::schedule_deletion(&path).map(|()| true)
+    async fn schedule_delete(&self, descriptor: DatabaseDescriptor) -> Result<(), DatabaseError> {
+        let path = self.path_for(&descriptor);
+        let scheduled = tokio::task::spawn_blocking(move || {
+            if path.exists() {
+                crate::files::schedule_deletion(&path).map(|()| true)
+            } else {
+                Ok(false)
+            }
+        })
+        .await
+        .map_err(|error| DatabaseError::infrastructure("delete task panicked", error))??;
+        if scheduled {
+            Ok(())
         } else {
-            Ok(false)
+            Err(DatabaseError::NotFound { id: descriptor.id })
         }
     }
 }
@@ -109,10 +150,4 @@ fn count_user_tables(path: &Path) -> Option<u64> {
         )
         .ok()?;
     u64::try_from(count).ok()
-}
-
-/// Coerce a concrete [`FilesystemDatabaseFiles`] into the port handle the state
-/// carries — a tiny helper so `setup_databases` reads cleanly.
-pub(crate) fn filesystem_database_files(data_dir: PathBuf) -> Arc<dyn DatabaseFiles> {
-    Arc::new(FilesystemDatabaseFiles::new(data_dir))
 }

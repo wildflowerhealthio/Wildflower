@@ -1,27 +1,18 @@
-//! Domain actions over the [`TunnelStore`] port — the seam the HTTP routes (and
-//! the control seam) call instead of touching a concrete store. Each function
-//! takes `&impl TunnelStore`, so it runs against the `SQLite` adapter in
-//! production and against an in-memory fake in tests, with no database or HTTP
-//! layer in the way.
+//! The one tunnel domain action over the [`TunnelStore`] port —
+//! [`replace_settings`], the seam the HTTP write capability (and the control
+//! seam's tests) call instead of touching a concrete store. It takes
+//! `&impl TunnelStore`, so it runs against the `SQLite` adapter in production and
+//! against an in-memory fake in tests, with no database or HTTP layer in the way.
 //!
-//! For tunnel these are thin relays to the port: the settings surface carries no
-//! domain logic beyond the store's own compare-and-swap. They exist for the test
-//! seam and to keep the routes uniform with collector, whose actions do hold
-//! inner logic. Any genuine settings-level logic added later lands here, not in a
-//! route handler.
+//! It exists because it holds the one piece of settings-level logic that isn't
+//! the store's own compare-and-swap: the relay-present / relay-absent routing
+//! (which store method a `PUT /tunnel` body maps to). That choice lives here, in
+//! the domain, so both the write capability and the control seam drive the same
+//! switch and a fake store can validate the routing without a database. The
+//! trivial reads / seeds are one-liners inlined at their call sites (the capability
+//! and `setup_tunnel`).
 
-use crate::domain::{
-    SettingsSeed, SettingsUpdate, SettingsUpdateOutcome, TunnelError, TunnelSettings, TunnelStore,
-};
-
-/// Read the current persisted settings.
-///
-/// # Errors
-///
-/// [`TunnelError::Infrastructure`] if the store read fails.
-pub fn get_settings(store: &impl TunnelStore) -> Result<TunnelSettings, TunnelError> {
-    store.get_settings()
-}
+use crate::domain::{SettingsUpdate, SettingsUpdateOutcome, TunnelError, TunnelStore};
 
 /// Compare-and-swap the settings under `expected_revision`, routing to the store
 /// method that matches the update's shape: an update **with** a relay block
@@ -56,22 +47,12 @@ pub fn replace_settings(
     }
 }
 
-/// Seed build-time defaults into any unconfigured fields (see
-/// [`TunnelStore::seed_if_absent`]).
-///
-/// # Errors
-///
-/// [`TunnelError::Infrastructure`] if the store write fails.
-pub fn seed_if_absent(store: &impl TunnelStore, seed: &SettingsSeed) -> Result<(), TunnelError> {
-    store.seed_if_absent(seed)
-}
-
 #[cfg(test)]
 mod tests {
     use std::cell::RefCell;
 
     use super::*;
-    use crate::domain::RelaySettings;
+    use crate::domain::{RelaySettings, SettingsSeed, TunnelSettings};
 
     /// Which store method the action routed a `replace_settings` call to, with
     /// the args it forwarded. Recorded by [`FakeTunnelStore`] so a test can
@@ -188,15 +169,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn get_settings_relays_the_stored_snapshot() {
-        let store = FakeTunnelStore::default();
-        let s = get_settings(&store).expect("read");
-        assert_eq!(s.revision, 0);
-        assert_eq!(s.public_host, None);
-        assert!(!s.requested_running);
-    }
-
     /// An update carrying a relay block routes to `update_all_settings`, which
     /// writes the relay alongside the visible fields. Asserted through the
     /// recorded [`LastCall`] as well as the effect — no database.
@@ -278,54 +250,5 @@ mod tests {
         assert_eq!(s.revision, 1, "current row returned");
         assert_eq!(s.public_host.as_deref(), Some("dev1"), "unchanged");
         assert!(s.requested_running, "unchanged");
-    }
-
-    #[test]
-    fn seed_fills_absent_fields_without_bumping_revision() {
-        let store = FakeTunnelStore::default();
-        seed_if_absent(
-            &store,
-            &SettingsSeed {
-                public_host: Some("seed.example.com".into()),
-                relay: Some(relay()),
-            },
-        )
-        .unwrap();
-        let s = get_settings(&store).unwrap();
-        assert_eq!(s.revision, 0, "seeding is initialization, not a write");
-        assert_eq!(s.public_host.as_deref(), Some("seed.example.com"));
-        assert_eq!(s.relay_settings, Some(relay()));
-    }
-
-    #[test]
-    fn seed_never_clobbers_a_configured_value() {
-        let store = FakeTunnelStore::default();
-        replace_settings(
-            &store,
-            0,
-            SettingsUpdate {
-                public_host: Some("user.example.com".into()),
-                requested_running: false,
-                relay_settings: Some(relay()),
-            },
-        )
-        .unwrap();
-        seed_if_absent(
-            &store,
-            &SettingsSeed {
-                public_host: Some("seed.example.com".into()),
-                relay: Some(RelaySettings {
-                    remote_addr: "other:1".into(),
-                    token: "other".into(),
-                    public_key: "other".into(),
-                    service_name: "other".into(),
-                }),
-            },
-        )
-        .unwrap();
-        let s = get_settings(&store).unwrap();
-        assert_eq!(s.public_host.as_deref(), Some("user.example.com"), "kept");
-        assert_eq!(s.relay_settings, Some(relay()), "kept");
-        assert_eq!(s.revision, 1, "seed didn't bump revision");
     }
 }

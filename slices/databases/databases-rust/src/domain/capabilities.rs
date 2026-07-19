@@ -2,30 +2,33 @@
 //! copy of the default-safe authorization pattern (the generic machinery lives in
 //! [`scope_capabilities_rust`]; the pattern originated on gatekeeper's `/access`
 //! surface). They live in `domain/` and depend only on the
-//! [`DatabaseFiles`](crate::domain::DatabaseFiles) port + the catalogue lifted
-//! from the state — never on `crate::http`, `std::fs`, or `rusqlite`, so the whole
-//! surface is unit-testable against an in-memory fake (see the tests below).
+//! [`DatabaseFiles`](crate::ports::DatabaseFiles) port + a catalogue and [`Grant`]
+//! handed to their constructors — never on `crate::http`, `std::fs`, `rusqlite`,
+//! or the router state, so the whole surface is unit-testable against an in-memory
+//! fake (see the tests below). The `Capability` bindings that build these from the
+//! `DatabasesState` (and construct the concrete adapter) live one layer out in
+//! [`crate::live_bindings`].
 //!
 //! Unlike gatekeeper's fixed-scope capabilities, the scope a database requires
 //! depends on **which** database — the host declares every
 //! [`DatabaseDescriptor`]'s `read_scope` / `delete_scope`. So both capabilities
-//! here are the **data-dependent** flavour (`impl Capability` directly): the
-//! static [`required_scopes`](Capability::required_scopes) gate is empty
-//! ("authenticated only", enforced by the claims-inserting authN layer the host
-//! wraps this router with), the builder stores the caller's [`Grant`], and the
-//! real check lives in [`authorized_descriptor`] — the only descriptor accessor
-//! the methods use, so resolving an id to a database is inseparable from proving
-//! the scope.
+//! here are the **data-dependent** flavour: their static required-scope gate is
+//! empty ("authenticated only", enforced by the claims-inserting authN layer the
+//! host wraps this router with), the constructor stores the caller's [`Grant`],
+//! and the real check lives in [`authorized_descriptor`] — the only descriptor
+//! accessor the methods use, so resolving an id to a database is inseparable from
+//! proving the scope.
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use scopes_rust::{Grant, Scope};
 
-pub(crate) use scope_capabilities_rust::{Capability, ScopeClaims, Scoped};
+pub(crate) use scope_capabilities_rust::Scoped;
 
 use crate::config::DatabaseDescriptor;
-use crate::domain::{DatabaseError, DatabaseFiles, DatabaseMetadata, DatabasesState};
+use crate::domain::{DatabaseError, DatabaseMetadata};
+use crate::ports::DatabaseFiles;
 
 /// Resolve `id` to its catalogued descriptor **and** prove the caller's grant
 /// covers the descriptor scope `scope_of` selects — the one door from an id to a
@@ -59,71 +62,54 @@ fn authorized_descriptor<'c>(
 
 /// Read access to catalogued databases — `GET /databases[/{id}]`. `list` is
 /// authenticated-only (metadata for every database, no contents); `download`
-/// requires the target database's declared `read_scope`. Holds the
-/// [`DatabaseFiles`] port + catalogue lifted from the state (not the state
-/// itself) and the caller's [`Grant`].
-pub(crate) struct DatabasesReader {
-    files: Arc<dyn DatabaseFiles>,
+/// requires the target database's declared `read_scope`. Generic over the
+/// [`DatabaseFiles`] port `F` (held by value, not `Arc<dyn …>`), so the concrete
+/// adapter binds once in [`crate::live_bindings`] and tests monomorphize it to an
+/// in-memory fake. Also holds the catalogue and the caller's [`Grant`].
+pub(crate) struct DatabasesReader<F> {
+    files: F,
     catalogue: Arc<[DatabaseDescriptor]>,
     granted: Grant,
 }
 
-impl Capability for DatabasesReader {
-    type State = Arc<DatabasesState>;
-    type Claims = ScopeClaims;
-
-    // Empty — the data-dependent flavour: listing needs only authentication, and
-    // the per-database read scope is checked in `download` via
-    // `authorized_descriptor`.
-    fn required_scopes() -> Vec<Scope> {
-        Vec::new()
-    }
-
-    fn build(state: Arc<DatabasesState>, granted: Grant) -> Self {
-        DatabasesReader {
-            files: state.files(),
-            catalogue: state.catalogue(),
+impl<F: DatabaseFiles> DatabasesReader<F> {
+    /// Assemble the reader from a [`DatabaseFiles`] port `F`, the catalogue, and
+    /// the caller's [`Grant`] — called by the `Capability` binding in
+    /// [`crate::live_bindings`], or directly in tests with an in-memory fake.
+    pub(crate) fn new(files: F, catalogue: Arc<[DatabaseDescriptor]>, granted: Grant) -> Self {
+        Self {
+            files,
+            catalogue,
             granted,
         }
     }
-}
 
-impl DatabasesReader {
     /// Metadata for every catalogued database (existence, size, table count,
     /// last-modified). Authenticated-only — the listing exposes names/sizes, not
-    /// contents, so it needs no per-database scope. The per-database reads are
-    /// best-effort and blocking, so the loop runs on a blocking thread.
+    /// contents, so it needs no per-database scope. The port owns dispatching the
+    /// best-effort, blocking per-file reads off the async runtime.
     pub(crate) async fn list(&self) -> Result<Vec<DatabaseMetadata>, DatabaseError> {
-        let files = Arc::clone(&self.files);
-        let catalogue = Arc::clone(&self.catalogue);
-        tokio::task::spawn_blocking(move || {
-            catalogue
-                .iter()
-                .map(|descriptor| files.read_metadata(descriptor))
-                .collect()
-        })
-        .await
-        .map_err(|error| DatabaseError::infrastructure("list metadata task panicked", error))
+        self.files
+            .read_catalogue_metadata(Arc::clone(&self.catalogue))
+            .await
     }
 
     /// Snapshot a database for download. [`authorized_descriptor`] proves the
     /// caller covers the database's declared `read_scope` **before** the on-disk
-    /// existence check (inside the port's `snapshot`), so an under-scoped caller
-    /// gets a `403` whether or not the file is present — what does (deliberately)
-    /// remain distinguishable is catalogue membership, which `GET /databases`
-    /// already exposes to any authenticated caller. Unknown id / absent file are
-    /// `404`. Returns the download filename + the temp snapshot path for the
-    /// handler to stream and unlink.
+    /// existence check (inside the port's `temp_download_for_descriptor`), so an
+    /// under-scoped caller gets a `403` whether or not the file is present — what
+    /// does (deliberately) remain distinguishable is catalogue membership, which
+    /// `GET /databases` already exposes to any authenticated caller. Unknown id /
+    /// absent file are `404`. Returns the download filename + the temp snapshot
+    /// path for the handler to stream and unlink.
     pub(crate) async fn download(&self, id: &str) -> Result<DownloadSnapshot, DatabaseError> {
         let descriptor =
             authorized_descriptor(&self.catalogue, &self.granted, id, |d| &d.read_scope)?;
         let filename = descriptor.id.clone();
-        let descriptor = descriptor.clone();
-        let files = Arc::clone(&self.files);
-        let temp_path = tokio::task::spawn_blocking(move || files.snapshot(&descriptor))
-            .await
-            .map_err(|error| DatabaseError::infrastructure("snapshot task panicked", error))??
-            .ok_or_else(|| DatabaseError::NotFound { id: id.to_owned() })?;
+        let temp_path = self
+            .files
+            .temp_download_for_descriptor(descriptor.clone())
+            .await?;
         Ok(DownloadSnapshot {
             filename,
             temp_path,
@@ -141,50 +127,35 @@ pub(crate) struct DownloadSnapshot {
 
 /// Delete (schedule for deletion at next startup) a catalogued database —
 /// `DELETE /databases/{id}`. Requires the target database's declared
-/// `delete_scope`. Separate from [`DatabasesReader`] so a read handler holding
-/// `Scoped<DatabasesReader>` structurally cannot delete.
-pub(crate) struct DatabasesDeleter {
-    files: Arc<dyn DatabaseFiles>,
+/// `delete_scope`. Separate from [`DatabasesReader`] so a read handler holding the
+/// reader capability structurally cannot delete. Generic over the
+/// [`DatabaseFiles`] port `F`, same as [`DatabasesReader`].
+pub(crate) struct DatabasesDeleter<F> {
+    files: F,
     catalogue: Arc<[DatabaseDescriptor]>,
     granted: Grant,
 }
 
-impl Capability for DatabasesDeleter {
-    type State = Arc<DatabasesState>;
-    type Claims = ScopeClaims;
-
-    // Empty — the data-dependent flavour; see `DatabasesReader`.
-    fn required_scopes() -> Vec<Scope> {
-        Vec::new()
-    }
-
-    fn build(state: Arc<DatabasesState>, granted: Grant) -> Self {
-        DatabasesDeleter {
-            files: state.files(),
-            catalogue: state.catalogue(),
+impl<F: DatabaseFiles> DatabasesDeleter<F> {
+    /// Assemble the deleter from a [`DatabaseFiles`] port `F`, the catalogue, and
+    /// the caller's [`Grant`] — called by the `Capability` binding in
+    /// [`crate::live_bindings`], or directly in tests with an in-memory fake.
+    pub(crate) fn new(files: F, catalogue: Arc<[DatabaseDescriptor]>, granted: Grant) -> Self {
+        Self {
+            files,
+            catalogue,
             granted,
         }
     }
-}
 
-impl DatabasesDeleter {
     /// Schedule a database for deletion. [`authorized_descriptor`] proves the
     /// caller covers the database's `delete_scope` before the on-disk existence
-    /// check (inside the port's `schedule_deletion`), same boundary as `download`.
+    /// check (inside the port's `schedule_delete`), same boundary as `download`.
     /// Unknown id / absent file are `404`.
     pub(crate) async fn delete(&self, id: &str) -> Result<(), DatabaseError> {
         let descriptor =
             authorized_descriptor(&self.catalogue, &self.granted, id, |d| &d.delete_scope)?;
-        let descriptor = descriptor.clone();
-        let files = Arc::clone(&self.files);
-        let scheduled = tokio::task::spawn_blocking(move || files.schedule_deletion(&descriptor))
-            .await
-            .map_err(|error| DatabaseError::infrastructure("delete task panicked", error))??;
-        if scheduled {
-            Ok(())
-        } else {
-            Err(DatabaseError::NotFound { id: id.to_owned() })
-        }
+        self.files.schedule_delete(descriptor.clone()).await
     }
 }
 
@@ -204,43 +175,57 @@ mod tests {
     }
 
     impl FakeDatabaseFiles {
-        fn with(present: &[&str]) -> Arc<dyn DatabaseFiles> {
-            Arc::new(FakeDatabaseFiles {
+        fn with(present: &[&str]) -> FakeDatabaseFiles {
+            FakeDatabaseFiles {
                 present: present.iter().map(|id| (*id).to_owned()).collect(),
-            })
+            }
         }
     }
 
+    #[async_trait::async_trait]
     impl DatabaseFiles for FakeDatabaseFiles {
-        fn read_metadata(&self, descriptor: &DatabaseDescriptor) -> DatabaseMetadata {
-            let exists = self.present.contains(&descriptor.id);
-            DatabaseMetadata {
-                id: descriptor.id.clone(),
-                label: descriptor.label.clone(),
-                description: descriptor.description.clone(),
-                exists,
-                size_bytes: u64::from(exists),
-                table_count: exists.then_some(1),
-                modified_at: None,
-                pending_deletion: false,
+        async fn read_catalogue_metadata(
+            &self,
+            catalogue: Arc<[DatabaseDescriptor]>,
+        ) -> Result<Vec<DatabaseMetadata>, DatabaseError> {
+            Ok(catalogue
+                .iter()
+                .map(|descriptor| {
+                    let exists = self.present.contains(&descriptor.id);
+                    DatabaseMetadata {
+                        id: descriptor.id.clone(),
+                        label: descriptor.label.clone(),
+                        description: descriptor.description.clone(),
+                        exists,
+                        size_bytes: u64::from(exists),
+                        table_count: exists.then_some(1),
+                        modified_at: None,
+                        pending_deletion: false,
+                    }
+                })
+                .collect())
+        }
+
+        async fn temp_download_for_descriptor(
+            &self,
+            descriptor: DatabaseDescriptor,
+        ) -> Result<PathBuf, DatabaseError> {
+            if self.present.contains(&descriptor.id) {
+                Ok(PathBuf::from(format!("/snap/{}", descriptor.id)))
+            } else {
+                Err(DatabaseError::NotFound { id: descriptor.id })
             }
         }
 
-        fn snapshot(
+        async fn schedule_delete(
             &self,
-            descriptor: &DatabaseDescriptor,
-        ) -> Result<Option<PathBuf>, DatabaseError> {
-            Ok(self
-                .present
-                .contains(&descriptor.id)
-                .then(|| PathBuf::from(format!("/snap/{}", descriptor.id))))
-        }
-
-        fn schedule_deletion(
-            &self,
-            descriptor: &DatabaseDescriptor,
-        ) -> Result<bool, DatabaseError> {
-            Ok(self.present.contains(&descriptor.id))
+            descriptor: DatabaseDescriptor,
+        ) -> Result<(), DatabaseError> {
+            if self.present.contains(&descriptor.id) {
+                Ok(())
+            } else {
+                Err(DatabaseError::NotFound { id: descriptor.id })
+            }
         }
     }
 
@@ -267,20 +252,20 @@ mod tests {
         Grant::parse(scopes.split_whitespace())
     }
 
-    fn reader(present: &[&str], scopes: &str) -> DatabasesReader {
-        DatabasesReader {
-            files: FakeDatabaseFiles::with(present),
-            catalogue: Arc::from(descriptors()),
-            granted: grant(scopes),
-        }
+    fn reader(present: &[&str], scopes: &str) -> DatabasesReader<FakeDatabaseFiles> {
+        DatabasesReader::new(
+            FakeDatabaseFiles::with(present),
+            Arc::from(descriptors()),
+            grant(scopes),
+        )
     }
 
-    fn deleter(present: &[&str], scopes: &str) -> DatabasesDeleter {
-        DatabasesDeleter {
-            files: FakeDatabaseFiles::with(present),
-            catalogue: Arc::from(descriptors()),
-            granted: grant(scopes),
-        }
+    fn deleter(present: &[&str], scopes: &str) -> DatabasesDeleter<FakeDatabaseFiles> {
+        DatabasesDeleter::new(
+            FakeDatabaseFiles::with(present),
+            Arc::from(descriptors()),
+            grant(scopes),
+        )
     }
 
     #[tokio::test]
@@ -382,7 +367,7 @@ mod tests {
     fn database_handlers_reach_the_store_only_through_capabilities() {
         // Raw router state, or any direct filesystem / adapter access — the only
         // ways to reach a database without a capability.
-        const FORBIDDEN: &[&str] = &["State<", "crate::files", "crate::fs", "DatabaseFiles"];
+        const FORBIDDEN: &[&str] = &["State<", "crate::files", "crate::adapters", "DatabaseFiles"];
         let routes_dir =
             std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src/http/routes"));
         let mut checked = 0;

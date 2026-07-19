@@ -36,6 +36,16 @@ shared-structures-rust = { path = "../../shared-structures/shared-structures-rus
   "tunnel-service",
   "http-errors",
 ] }
+# The scope grammar (`Scope`, `Permission`, `WildflowerResource`) the `/tunnel`
+# scope gate builds its required scopes from — `wildflower/TunnelSettings.{r,u}`.
+scopes-rust = { path = "../../scopes/scopes-rust" }
+# The generic scope-gated capability machinery (`Scoped<F>`,
+# `FixedScopeCapability`, `ScopeClaims`, `insufficient_scope` +
+# `InsufficientScopeBody`) the `/tunnel` surface gates on; the `openapi` feature
+# derives `ToSchema` on the 403 body so the handlers can declare it in utoipa.
+scope-capabilities-rust = { path = "../../scopes/scope-capabilities-rust", features = [
+  "openapi",
+] }
 rathole = { version = "0.5", default-features = false, features = [
   "client",
   "noise",

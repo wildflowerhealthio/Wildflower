@@ -16,8 +16,8 @@ use std::sync::Arc;
 use shared_structures_rust::tunnel_service::{TunnelLiveness, TunnelService, TunnelStatus};
 use tokio::sync::watch;
 
-use crate::domain::{SettingsUpdateOutcome, TunnelStore};
-use crate::http::TunnelState;
+use crate::domain::{SettingsUpdateOutcome, TunnelDaemon, TunnelStore};
+use crate::live_bindings::state::TunnelState;
 
 /// How many times the start path re-reads and retries its persist
 /// compare-and-swap when a racing write bumps the settings revision between the
@@ -115,7 +115,7 @@ async fn start_and_verify(state: &Arc<TunnelState>) -> Result<String, String> {
 
     persist_start(state).await?;
     tracing::info!("tunnel launch: persisted start, waiting for the tunnel to verify");
-    await_verified(state).await
+    await_verified(&state.daemon).await
 }
 
 /// Await the daemon's liveness reaching a verdict: `Verified` → `Ok(origin)`, a
@@ -126,11 +126,11 @@ async fn start_and_verify(state: &Arc<TunnelState>) -> Result<String, String> {
 /// settings `PUT` so both report *real* reachability rather than an optimistic
 /// `Dialing`. Returns immediately when the liveness already holds a verdict
 /// (e.g. a no-op reconcile that left a `Verified` tunnel untouched).
-pub(crate) async fn await_verified(state: &Arc<TunnelState>) -> Result<String, String> {
-    let mut rx = state.daemon.watch_liveness();
+pub(crate) async fn await_verified(daemon: &TunnelDaemon) -> Result<String, String> {
+    let mut rx = daemon.watch_liveness();
     // Long enough for the first probe to land (one interval) and complete (one
     // timeout); shorter and a healthy-but-slow tunnel loses the race.
-    let deadline_after = state.daemon.verify_deadline();
+    let deadline_after = daemon.verify_deadline();
     let started = tokio::time::Instant::now();
     let deadline = tokio::time::sleep(deadline_after);
     tokio::pin!(deadline);
@@ -274,7 +274,10 @@ mod tests {
         .expect("seed settings");
         let daemon = TunnelDaemon::new_test(client, probe, "http://127.0.0.1:8080", 8080);
         daemon.reconcile(&store.get_settings().expect("read settings"));
-        Arc::new(TunnelState { store, daemon })
+        Arc::new(TunnelState {
+            store,
+            daemon: Arc::new(daemon),
+        })
     }
 
     #[tokio::test]

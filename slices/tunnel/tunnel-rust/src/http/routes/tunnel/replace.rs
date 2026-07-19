@@ -1,25 +1,29 @@
-use std::sync::Arc;
-
-use axum::extract::State;
 use axum::http::StatusCode;
 use axum::Json;
 use serde::{Deserialize, Deserializer};
 use utoipa::ToSchema;
 
+use scope_capabilities_rust::InsufficientScopeBody;
+
 use super::wire_representations::TunnelStateResponse;
+use crate::domain::capabilities::Scoped;
 use crate::domain::{RelaySettings, SettingsUpdate, SettingsUpdateOutcome, TunnelError};
-use crate::http::state::TunnelState;
+use crate::live_bindings::LiveTunnelSettingsEditor;
 
 /// `PUT /tunnel` — full-replace of the visible settings under the caller's
-/// `revision` token. A stale revision returns 409 with the current snapshot so
-/// the client can rebase; a winning write bumps the revision, reconciles the
-/// live supervisor, then — like the launch seam — **awaits the liveness
-/// settling** (a `/health` probe verifies, or the verify deadline elapses)
-/// before returning, so the snapshot reflects *real* reachability rather than an
-/// optimistic `dialing`. A no-op change (same dialable config on an already-up
-/// tunnel) returns immediately `verified` — `reconcile` leaves the live tunnel
-/// untouched, so there's nothing to wait for. Collected into the `OpenAPI` doc
-/// via `routes!` in the parent module, which reads this `#[utoipa::path]`.
+/// `revision` token. Gated by [`Scoped<LiveTunnelSettingsEditor>`]: the write
+/// lives behind the `wildflower/TunnelSettings.u` capability, so this handler
+/// never touches the store directly (a `403` on an under-scoped token).
+///
+/// A stale revision returns 409 with the current snapshot so the client can
+/// rebase; a winning write bumps the revision, reconciles the live supervisor,
+/// then — like the launch seam — **awaits the liveness settling** (a `/health`
+/// probe verifies, or the verify deadline elapses) before returning, so the
+/// snapshot reflects *real* reachability rather than an optimistic `dialing`. A
+/// no-op change (same dialable config on an already-up tunnel) returns
+/// immediately `verified` — `reconcile` leaves the live tunnel untouched, so
+/// there's nothing to wait for. Collected into the `OpenAPI` doc via `routes!`
+/// in the parent module, which reads this `#[utoipa::path]`.
 #[utoipa::path(
     put,
     tag = "Configuration",
@@ -27,11 +31,12 @@ use crate::http::state::TunnelState;
     request_body = ReplaceTunnelRequestBody,
     responses(
         (status = 200, description = "Write applied; the new snapshot after the daemon reconciled", body = TunnelStateResponse),
+        (status = 403, description = "The caller's token doesn't cover `wildflower/TunnelSettings.u`", body = InsufficientScopeBody),
         (status = 409, description = "Stale revision; no write happened — the current snapshot is returned", body = TunnelStateResponse)
     )
 )]
 pub(super) async fn handle_replace_tunnel(
-    State(state): State<Arc<TunnelState>>,
+    tunnel: Scoped<LiveTunnelSettingsEditor>,
     Json(body): Json<ReplaceTunnelRequestBody>,
 ) -> Result<(StatusCode, Json<TunnelStateResponse>), TunnelError> {
     let update = SettingsUpdate {
@@ -39,22 +44,24 @@ pub(super) async fn handle_replace_tunnel(
         requested_running: body.requested_running,
         relay_settings: body.relay.map(RelaySettings::from),
     };
-    let settings_update_outcome =
-        crate::domain::actions::replace_settings(&state.store, body.settings_revision, update)?;
+    let settings_update_outcome = tunnel.replace(body.settings_revision, update)?;
 
     match settings_update_outcome {
         SettingsUpdateOutcome::Applied(settings) => {
-            state.daemon.reconcile(&settings);
+            // Drive the supervisor through the daemon the capability lifted from
+            // the state (`TunnelControl` wiring unchanged — the gate only fronts
+            // the entry).
+            tunnel.daemon().reconcile(&settings);
             // Await the liveness settling (verified / terminal / deadline) so the
             // response carries real reachability — the same verify seam the
             // launch path uses. The verdict itself is surfaced through the
             // snapshot below (status/error/servedOrigin), so discard the
             // `Result` here.
-            let _ = crate::control::await_verified(&state).await;
+            let _ = crate::control::await_verified(tunnel.daemon()).await;
             Ok((
                 StatusCode::OK,
                 Json(TunnelStateResponse::from_current_state(
-                    &state.daemon,
+                    tunnel.daemon(),
                     &settings,
                 )),
             ))
@@ -62,7 +69,7 @@ pub(super) async fn handle_replace_tunnel(
         SettingsUpdateOutcome::Conflict(current) => Ok((
             StatusCode::CONFLICT,
             Json(TunnelStateResponse::from_current_state(
-                &state.daemon,
+                tunnel.daemon(),
                 &current,
             )),
         )),

@@ -29,10 +29,10 @@
 //!    **and** wire shape) and the [`domain::config_tag`] discriminant reader,
 //!    plus the scope-gated [`capabilities`](domain::capabilities) the handlers
 //!    acquire.
-//!  - [`state`] — the router state ([`CollectorState`]) at the crate root, and
-//!    the `FixedScopeCapability` bindings that name the concrete store; kept out
-//!    of [`http`] so `domain/` can build capabilities from it without depending
-//!    on the transport layer.
+//!  - [`live_bindings`] — the router state ([`CollectorState`](live_bindings::state::CollectorState))
+//!    at the crate root, and the per-capability `FixedScopeCapability` bindings
+//!    that name the concrete store; kept out of [`http`] so `domain/` can build
+//!    capabilities from it without depending on the transport layer.
 //!  - [`db`] — the SQLite store ([`db::SqliteRemotesStore`]) built on Diesel over
 //!    the app-wide r2d2 connection pool (`persistence_rust::DieselPool`) onto the
 //!    shared database file, migrated with embedded diesel migrations.
@@ -43,10 +43,10 @@ pub mod db;
 pub mod domain;
 pub mod http;
 // The shared runtime state lives at the crate root (not under `http`) so the
-// scope-gated `domain/` capabilities can be built from it (via the
-// `FixedScopeCapability` bindings beside the state) without `domain/` depending
-// on `crate::http`. Mirrors gatekeeper's `crate::state` layout.
-pub(crate) mod state;
+// scope-gated `domain/` capabilities can be built from it (via the per-capability
+// `FixedScopeCapability` bindings that live beside the state) without `domain/`
+// depending on `crate::http`. Mirrors gatekeeper's `crate::live_bindings` layout.
+pub(crate) mod live_bindings;
 
 use std::sync::Arc;
 
@@ -59,7 +59,7 @@ pub use persistence_rust::DieselPool;
 
 pub use db::SqliteRemotesStore;
 pub use http::openapi_spec;
-pub use state::CollectorState;
+pub use live_bindings::state::CollectorState;
 
 // The per-slice grantable scope vocabulary — `wildflower/Accounts.{r,c,u,d}` —
 // the intended set for a future consent surface; a registry-completeness test

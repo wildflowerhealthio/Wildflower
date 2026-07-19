@@ -5,10 +5,10 @@ use axum::Json;
 use scope_capabilities_rust::{InsufficientScopeBody, Scoped};
 
 use crate::domain::{Remote, RemoteError};
-use crate::state::RemotesReaderCap;
+use crate::live_bindings::LiveRemotesReader;
 
 /// `GET /collector/remotes` — list every remote. Gated by
-/// [`Scoped<RemotesReaderCap>`] (`wildflower/Accounts.r`): a remote's `config`
+/// [`Scoped<LiveRemotesReader>`] (`wildflower/Accounts.r`): a remote's `config`
 /// can carry origin credentials, so even the listing requires the read scope. The
 /// capability is the only door to the store — this handler never sees the state.
 #[utoipa::path(
@@ -21,7 +21,7 @@ use crate::state::RemotesReaderCap;
     ),
 )]
 pub(crate) async fn handle_list_remotes(
-    remotes: Scoped<RemotesReaderCap>,
+    remotes: Scoped<LiveRemotesReader>,
 ) -> Result<Json<Vec<Remote>>, RemoteError> {
     Ok(Json(remotes.list()?))
 }
