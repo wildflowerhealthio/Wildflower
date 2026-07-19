@@ -17,8 +17,14 @@ use axum::Router;
 use utoipa::OpenApi;
 use utoipa_axum::router::OpenApiRouter;
 
-/// Base `OpenAPI` document; the collected routes fill in paths + components.
+/// Base `OpenAPI` document; the collected routes fill in paths + components. The
+/// shared `InsufficientScopeBody` is registered here (rather than via a
+/// per-handler `body = …`) so [`InsufficientScopeResponses`] can `$ref` it when
+/// it documents the `403` on the scope-gated paths — see [`openapi_spec`].
+///
+/// [`InsufficientScopeResponses`]: scope_capabilities_rust::InsufficientScopeResponses
 #[derive(OpenApi)]
+#[openapi(components(schemas(scope_capabilities_rust::InsufficientScopeBody)))]
 struct ApiDoc;
 
 /// The `/databases` surface as an `OpenApiRouter`, so the spec is collected from
@@ -42,8 +48,16 @@ pub fn router(state: Arc<DatabasesState>) -> Router {
 /// merges this with the other slices' documents.
 #[must_use]
 pub fn openapi_spec() -> utoipa::openapi::OpenApi {
+    use utoipa::Modify as _;
+
     let (_router, mut spec) = documented_router().split_for_parts();
     spec.info = utoipa::openapi::Info::new("Databases API", "0.0.0");
+    // Document the shared `403 InsufficientScope` on the per-database surface
+    // (download + delete are scope-gated) in one place, instead of a
+    // `#[utoipa::path(responses(...))]` on each handler. `/databases` (list) is
+    // authenticated-only (no per-database scope), so it stays 403-free.
+    scope_capabilities_rust::InsufficientScopeResponses::for_paths(["/databases/{id}"])
+        .modify(&mut spec);
     spec
 }
 

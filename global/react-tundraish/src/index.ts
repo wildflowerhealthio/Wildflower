@@ -12,6 +12,11 @@ export { Chip, type ChipProps } from './chip.tsx'
 export { Dialog, type DialogProps } from './dialog.tsx'
 export { ErrorBoundary, type ErrorBoundaryProps } from './error-boundary.tsx'
 export {
+  ErrorBodyRendererContext,
+  useErrorBodyRenderer,
+  type ErrorBodyRenderer,
+} from './error-body-renderer.ts'
+export {
   Field,
   FieldDescription,
   FieldGroup,

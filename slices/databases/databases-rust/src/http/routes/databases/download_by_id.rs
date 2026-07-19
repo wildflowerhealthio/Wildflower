@@ -13,8 +13,6 @@ use futures_core::Stream;
 use tokio::fs::File;
 use tokio_util::io::ReaderStream;
 
-use scope_capabilities_rust::InsufficientScopeBody;
-
 use crate::domain::capabilities::{DownloadSnapshot, Scoped};
 use crate::domain::DatabaseError;
 use crate::http::errors::DatabaseNotFoundBody;
@@ -47,7 +45,8 @@ use crate::live_bindings::LiveDatabasesReader;
     ),
     responses(
         (status = 200, description = "The database as a consistent SQLite snapshot", content_type = "application/vnd.sqlite3"),
-        (status = 403, description = "The caller's token doesn't cover this database's declared read scope", body = InsufficientScopeBody),
+        // The `403 InsufficientScope` is documented centrally by
+        // `InsufficientScopeResponses` in `http/mod.rs` (this path is scope-gated).
         (status = 404, description = "No database has this id, or it doesn't exist yet", body = DatabaseNotFoundBody),
     ),
 )]

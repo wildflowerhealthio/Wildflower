@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import type { JSX } from 'react'
-import { AsyncErrorView } from 'react-tundraish'
+import { AsyncErrorView, useErrorBodyRenderer } from 'react-tundraish'
 
 import { DatabasesView } from '../../../databases-view.tsx'
 import { saveBytesAsFile } from '../../../format.ts'
@@ -17,8 +17,14 @@ const DatabasesScreen = (): JSX.Element => {
   const exportMutation = useExportDatabaseMutation()
   const deleteMutation = useDeleteDatabaseMutation()
 
+  // A failed mutation (e.g. a `403 InsufficientScope` on delete) renders through
+  // the same app-provided error renderer the route's `errorComponent` uses — so
+  // it gets the scope-naming surface — falling back to the plain message banner
+  // for everything else.
+  const renderError = useErrorBodyRenderer()
   const error = exportMutation.error ?? deleteMutation.error
-  const errorMessage = error === null ? null : error.message
+  const errorSurface = error === null ? null : (renderError?.(error) ?? null)
+  const errorMessage = error === null || errorSurface !== null ? null : error.message
 
   return (
     <DatabasesView
@@ -26,6 +32,7 @@ const DatabasesScreen = (): JSX.Element => {
       exportingId={exportMutation.isPending ? (exportMutation.variables?.id ?? null) : null}
       deletingId={deleteMutation.isPending ? (deleteMutation.variables?.id ?? null) : null}
       errorMessage={errorMessage}
+      errorSurface={errorSurface}
       onExport={(id) => {
         exportMutation.mutate(
           { id },

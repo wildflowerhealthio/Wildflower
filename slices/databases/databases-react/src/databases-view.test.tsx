@@ -156,4 +156,19 @@ describe('DatabasesView', () => {
     const alert = await screen.findByRole('alert')
     expect(within(alert).getByText('export failed')).toBeTruthy()
   })
+
+  test('renders errorSurface in place of the message banner when supplied', async () => {
+    renderView({
+      databases: [health],
+      onExport: noop,
+      onDelete: noop,
+      exportingId: null,
+      deletingId: null,
+      errorMessage: 'export failed',
+      errorSurface: <div data-testid="scope-surface">missing scope</div>,
+    })
+    expect(await screen.findByTestId('scope-surface')).toBeTruthy()
+    // The plain message banner is not shown when a surface is provided.
+    expect(screen.queryByText('export failed')).toBeNull()
+  })
 })

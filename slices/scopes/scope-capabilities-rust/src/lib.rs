@@ -243,6 +243,89 @@ pub fn insufficient_scope(missing_scopes: Vec<String>) -> Response {
         .into_response()
 }
 
+/// A [`utoipa::Modify`] addon that documents the shared `403 InsufficientScope`
+/// on the operations of the given **gated paths** — so a slice declares the
+/// authorization-failure response **once**, where it assembles its `OpenApi`,
+/// instead of repeating `#[utoipa::path(responses((status = 403, …)))]` on every
+/// scope-gated handler.
+///
+/// It injects only the `403` *response* (a `$ref` to `InsufficientScopeBody`).
+/// Register the schema itself declaratively — add
+/// `#[openapi(components(schemas(scope_capabilities_rust::InsufficientScopeBody)))]`
+/// to the slice's `ApiDoc` — so the `$ref` resolves. Apply it after the routes
+/// are merged (the paths must be present), e.g. in the slice's `openapi_spec()`:
+///
+/// ```ignore
+/// use utoipa::Modify as _;
+/// let mut spec = documented_router().split_for_parts().1;
+/// InsufficientScopeResponses::for_paths(["/databases/{id}"]).modify(&mut spec);
+/// ```
+///
+/// Paths match the generated OpenAPI path keys exactly (e.g. `"/databases/{id}"`,
+/// `{id}` not `:id`). **Every** operation present on a listed path gets the 403,
+/// so list only paths whose every method is scope-gated — a path mixing a gated
+/// and a public method would need splitting (none do today). An operation that
+/// already documents a `403` is left untouched.
+#[cfg(feature = "openapi")]
+#[derive(Debug, Clone)]
+pub struct InsufficientScopeResponses {
+    gated_paths: Vec<String>,
+}
+
+#[cfg(feature = "openapi")]
+impl InsufficientScopeResponses {
+    /// Document the shared 403 on every operation of each given gated path.
+    #[must_use]
+    pub fn for_paths<I, S>(gated_paths: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        Self {
+            gated_paths: gated_paths.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+#[cfg(feature = "openapi")]
+impl utoipa::Modify for InsufficientScopeResponses {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        use utoipa::openapi::{Content, Ref, RefOr, Response};
+
+        for path in &self.gated_paths {
+            let Some(item) = openapi.paths.paths.get_mut(path) else {
+                continue;
+            };
+            let operations = [
+                item.get.as_mut(),
+                item.put.as_mut(),
+                item.post.as_mut(),
+                item.delete.as_mut(),
+                item.options.as_mut(),
+                item.head.as_mut(),
+                item.patch.as_mut(),
+                item.trace.as_mut(),
+            ];
+            for operation in operations.into_iter().flatten() {
+                operation
+                    .responses
+                    .responses
+                    .entry("403".to_owned())
+                    .or_insert_with(|| {
+                        let mut response = Response::new(
+                            "The caller's token doesn't cover the scope this operation requires",
+                        );
+                        response.content.insert(
+                            "application/json".to_owned(),
+                            Content::new(Some(Ref::from_schema_name("InsufficientScopeBody"))),
+                        );
+                        RefOr::T(response)
+                    });
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -269,5 +352,88 @@ mod tests {
     fn insufficient_scope_renders_a_403() {
         let response = insufficient_scope(vec!["wildflower/Grant.d".to_owned()]);
         assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    /// The addon documents the 403 on every operation of a gated path, and on no
+    /// operation of a path it isn't told about.
+    #[cfg(feature = "openapi")]
+    #[test]
+    fn addon_documents_403_on_gated_paths_only() {
+        use utoipa::openapi::path::OperationBuilder;
+        use utoipa::openapi::{HttpMethod, OpenApiBuilder, PathItem, RefOr};
+        use utoipa::Modify as _;
+
+        let mut openapi = OpenApiBuilder::new().build();
+        // A gated path with both a GET and a DELETE, and a separate public path.
+        let mut gated = PathItem::new(HttpMethod::Get, OperationBuilder::new().build());
+        gated.delete = Some(OperationBuilder::new().build());
+        openapi.paths.paths.insert("/grants/{id}".to_owned(), gated);
+        openapi.paths.paths.insert(
+            "/token".to_owned(),
+            PathItem::new(HttpMethod::Post, OperationBuilder::new().build()),
+        );
+
+        InsufficientScopeResponses::for_paths(["/grants/{id}"]).modify(&mut openapi);
+
+        let gated = &openapi.paths.paths["/grants/{id}"];
+        for op in [gated.get.as_ref(), gated.delete.as_ref()] {
+            let response = op
+                .expect("operation present")
+                .responses
+                .responses
+                .get("403")
+                .expect("gated operation documents a 403");
+            match response {
+                RefOr::T(response) => {
+                    assert!(response.content.contains_key("application/json"));
+                }
+                RefOr::Ref(_) => panic!("expected an inline 403 response, not a $ref"),
+            }
+        }
+
+        assert!(
+            !openapi.paths.paths["/token"]
+                .post
+                .as_ref()
+                .expect("post present")
+                .responses
+                .responses
+                .contains_key("403"),
+            "a path not listed as gated must not advertise a 403",
+        );
+    }
+
+    /// An operation that already documents a 403 keeps its own — the addon fills
+    /// gaps, it doesn't overwrite.
+    #[cfg(feature = "openapi")]
+    #[test]
+    fn addon_leaves_an_existing_403_untouched() {
+        use utoipa::openapi::path::OperationBuilder;
+        use utoipa::openapi::{HttpMethod, OpenApiBuilder, PathItem, RefOr, Response};
+        use utoipa::Modify as _;
+
+        let mut operation = OperationBuilder::new().build();
+        operation
+            .responses
+            .responses
+            .insert("403".to_owned(), RefOr::T(Response::new("pre-existing")));
+        let mut openapi = OpenApiBuilder::new().build();
+        openapi.paths.paths.insert(
+            "/grants".to_owned(),
+            PathItem::new(HttpMethod::Get, operation),
+        );
+
+        InsufficientScopeResponses::for_paths(["/grants"]).modify(&mut openapi);
+
+        let response = &openapi.paths.paths["/grants"]
+            .get
+            .as_ref()
+            .expect("get present")
+            .responses
+            .responses["403"];
+        match response {
+            RefOr::T(response) => assert_eq!(response.description, "pre-existing"),
+            RefOr::Ref(_) => panic!("expected the pre-existing inline response"),
+        }
     }
 }

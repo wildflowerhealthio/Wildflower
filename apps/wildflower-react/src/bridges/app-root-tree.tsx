@@ -3,8 +3,10 @@ import { HandlerCoordinatorContext } from 'effect-messaging-react'
 import { NavigationBridgeHandler } from 'navigation-react'
 import { Fragment, useMemo, type JSX, type PropsWithChildren } from 'react'
 import { usePromiseOrDefault } from 'react-kitchen-sink'
+import { ErrorBodyRendererContext } from 'react-tundraish'
 import type { SettingsItem } from 'shared-structures-react'
 
+import { renderScopeError } from '../scope-error-renderer.tsx'
 import { PlatformSettingsItemsProvider } from '../session/platform-settings-items.tsx'
 import { CollectorSenderForwarder } from './collector-sender-forwarder.tsx'
 import { stubTransport, TransportContext, type ReactTransport } from './transport-context.ts'
@@ -54,13 +56,15 @@ const AppRootTree = ({
   )
 
   return (
-    <PlatformSettingsItemsProvider items={platformSettingsItems}>
-      <TransportContext.Provider value={transport}>
-        <HandlerCoordinatorContext.Provider value={transport.coordinator}>
-          <RouterProvider router={router} InnerWrap={InnerWrap} />
-        </HandlerCoordinatorContext.Provider>
-      </TransportContext.Provider>
-    </PlatformSettingsItemsProvider>
+    <ErrorBodyRendererContext.Provider value={renderScopeError}>
+      <PlatformSettingsItemsProvider items={platformSettingsItems}>
+        <TransportContext.Provider value={transport}>
+          <HandlerCoordinatorContext.Provider value={transport.coordinator}>
+            <RouterProvider router={router} InnerWrap={InnerWrap} />
+          </HandlerCoordinatorContext.Provider>
+        </TransportContext.Provider>
+      </PlatformSettingsItemsProvider>
+    </ErrorBodyRendererContext.Provider>
   )
 }
 
