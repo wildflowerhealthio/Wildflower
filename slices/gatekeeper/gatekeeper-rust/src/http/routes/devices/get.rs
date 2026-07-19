@@ -8,7 +8,7 @@ use serde::Serialize;
 use crate::domain::capabilities::{DeviceConsentView, Scoped};
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::http::state::GatekeeperState;
-use crate::state::ConsentReaderCap;
+use crate::live_bindings::LiveConsentReader;
 
 /// Body returned to the Owner UI when it loads a pending device-code consent
 /// prompt — describes the requesting client, the device's chosen name, its
@@ -33,7 +33,7 @@ pub(super) fn route() -> MethodRouter<Arc<GatekeeperState>> {
 }
 
 async fn handle_get_device_consent(
-    consents: Scoped<ConsentReaderCap>,
+    consents: Scoped<LiveConsentReader>,
     Path(user_code): Path<String>,
 ) -> Result<Json<DeviceConsent>, GatekeeperError> {
     let DeviceConsentView {

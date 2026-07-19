@@ -24,6 +24,7 @@ use crate::domain::GatekeeperStore;
 use crate::http::state::GatekeeperState;
 use crate::http::wire_representations::{CacheSuppressed, OAuthError};
 use crate::http::ServedOrigin;
+use crate::ports::DeviceUserCodePublisher;
 
 /// Lifetime of a device-flow authorization request — the user has this long
 /// to enter their `user_code` before the flow expires.
@@ -89,13 +90,14 @@ pub(super) async fn handle_device_authorization_request(
     let user_agent = headers
         .get(header::USER_AGENT)
         .and_then(|value| value.to_str().ok());
-    device_authorization(&state, &origin, user_agent, request).into_response()
+    device_authorization(&state, state.as_ref(), &origin, user_agent, request).into_response()
 }
 
 /// Validate the request, authenticate the client, and mint a
 /// `(device_code, user_code)` pair, surfacing every failure as a [`TokenError`].
 fn device_authorization(
     state: &GatekeeperState,
+    device_user_code_publisher: &dyn DeviceUserCodePublisher,
     origin: &ServedOrigin,
     user_agent: Option<&str>,
     request: TokenRequest<DeviceAuthorizationPayload>,
@@ -159,7 +161,7 @@ fn device_authorization(
     // device-consent queue (it always does, unless an older
     // non-expired pending request still leads). Republish so the
     // host webview popup picks it up.
-    state.republish_active_device_user_code();
+    device_user_code_publisher.republish_active();
     Ok(DeviceAuthorizationResponse {
         device_code,
         user_code: user_code.clone(),

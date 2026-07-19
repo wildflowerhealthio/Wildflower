@@ -7,10 +7,10 @@ use scope_capabilities_rust::{InsufficientScopeBody, Scoped};
 
 use crate::domain::{Remote, RemoteError};
 use crate::http::errors::RemoteNotFoundBody;
-use crate::state::RemotesReaderCap;
+use crate::live_bindings::LiveRemotesReader;
 
 /// `GET /collector/remotes/{id}` — fetch one remote. Gated by
-/// [`Scoped<RemotesReaderCap>`] (`wildflower/Accounts.r`); the scope check runs
+/// [`Scoped<LiveRemotesReader>`] (`wildflower/Accounts.r`); the scope check runs
 /// during extraction, before this body, so an under-scoped caller gets a `403`
 /// whether or not the id exists.
 #[utoipa::path(
@@ -25,7 +25,7 @@ use crate::state::RemotesReaderCap;
     ),
 )]
 pub(crate) async fn handle_get_remote(
-    remotes: Scoped<RemotesReaderCap>,
+    remotes: Scoped<LiveRemotesReader>,
     Path(id): Path<String>,
 ) -> Result<Json<Remote>, RemoteError> {
     Ok(Json(remotes.get(&id)?))

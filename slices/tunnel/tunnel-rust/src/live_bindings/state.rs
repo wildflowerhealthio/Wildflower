@@ -6,14 +6,12 @@
 //! [`capabilities`](crate::domain::capabilities) in `domain/` are built from it,
 //! and `domain/` must not depend on `crate::http`.
 //!
-//! The capability-binding `FixedScopeCapability` impls live here too (see
-//! [`capability_bindings`]): they name the concrete [`SqliteTunnelStore`] and
-//! lift the store + daemon handles out of the state, so the generic,
-//! store-agnostic capabilities in `domain/` never mention a concrete adapter.
-
-mod capability_bindings;
-
-pub(crate) use capability_bindings::{TunnelSettingsEditorCap, TunnelSettingsReaderCap};
+//! The capability-binding `FixedScopeCapability` impls live in the sibling
+//! [`tunnel_settings_reader`](super::tunnel_settings_reader) /
+//! [`tunnel_settings_editor`](super::tunnel_settings_editor) modules: they name
+//! the concrete [`SqliteTunnelStore`] and lift the store + daemon handles out of
+//! the state, so the generic, store-agnostic capabilities in `domain/` never
+//! mention a concrete adapter.
 
 use std::sync::Arc;
 

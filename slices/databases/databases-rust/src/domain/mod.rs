@@ -1,23 +1,21 @@
 //! Core types for the databases slice's host side, and the scope-gated
 //! capabilities that own its operations. [`DatabaseError`] is the failure
 //! vocabulary the HTTP layer renders; [`DatabaseMetadata`] is the wire shape;
-//! [`DatabaseFiles`] is the port abstracting the filesystem/SQLite side-effects;
-//! [`DatabasesState`] is the state the router carries; [`capabilities`] are the
+//! the [`DatabaseFiles`](crate::ports::DatabaseFiles) port (in [`crate::ports`])
+//! abstracts the filesystem/SQLite side-effects; [`capabilities`] are the
 //! `Scoped<…>` facades the handlers acquire. **Nothing here depends on
-//! `crate::http`** — the concrete filesystem adapter is [`crate::fs`], injected as
-//! a `DatabaseFiles`, so the whole layer is stubbable and interface-agnostic.
+//! `crate::http` or the concrete adapter** — the capabilities operate purely
+//! through the port, so the whole layer is stubbable and interface-agnostic. The
+//! router state (`DatabasesState`) and the concrete-adapter wiring live one layer
+//! out in [`crate::live_bindings`].
 
 mod database_error;
-mod database_files;
 mod metadata;
-mod state;
 
 pub(crate) mod capabilities;
 
 pub use database_error::DatabaseError;
-pub(crate) use database_files::DatabaseFiles;
 pub(crate) use metadata::DatabaseMetadata;
-pub use state::DatabasesState;
 
 #[cfg(test)]
 mod http_free_guard {

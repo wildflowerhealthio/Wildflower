@@ -23,7 +23,7 @@
 //! ## Reconcile + liveness model
 //!
 //! Every accepted write bumps `revision` and reconciles: the previous
-//! [`TunnelState`](state::TunnelState) supervisor is cancelled and a fresh one
+//! [`TunnelState`](live_bindings::state::TunnelState) supervisor is cancelled and a fresh one
 //! is spawned for the new revision. A supervisor owns a reconnect/backoff loop, awaits its own
 //! rathole child, *and* drives a concurrent `/health` probe — so `servedOrigin`
 //! resolves to the public origin only once a probe through it has come back
@@ -37,8 +37,8 @@ pub mod db;
 pub mod domain;
 pub mod health;
 pub mod http;
+pub mod live_bindings;
 mod relay_clients;
-mod state;
 #[cfg(test)]
 mod test_support;
 
@@ -60,7 +60,7 @@ pub use domain::{RelaySettings, SettingsSeed, TunnelDaemon, TunnelSettings};
 use domain::TunnelStore;
 pub use health::HealthProbe;
 pub use http::openapi_spec;
-pub use state::TunnelState;
+use live_bindings::state::TunnelState;
 // Re-exported so the host can name the pool type at the `setup_tunnel` call site
 // without a direct diesel dependency; the canonical home is persistence-rust.
 pub use persistence_rust::DieselPool;

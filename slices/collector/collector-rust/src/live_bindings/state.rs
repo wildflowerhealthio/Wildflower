@@ -2,21 +2,9 @@
 //! over, and the composition point that names the concrete [`SqliteRemotesStore`]
 //! adapter. It lives at the crate root (not under [`crate::http`]) deliberately:
 //! the scope-gated [`capabilities`](crate::domain::capabilities) in `domain/` are
-//! built from it through the bindings below, and `domain/` must not depend on
+//! built from it through the per-capability bindings in the parent
+//! [`live_bindings`](super) module, and `domain/` must not depend on
 //! `crate::http`.
-//!
-//! The capability-binding [`FixedScopeCapability`](scope_capabilities_rust::FixedScopeCapability)
-//! impls live here too (see [`capability_bindings`]): they name the concrete
-//! `SqliteRemotesStore` and lift the store handle out of the state, so the
-//! generic, store-agnostic capabilities in `domain/` never mention a concrete
-//! adapter. The `type …Cap` aliases the handlers name in `Scoped<…>` are
-//! re-exported from here.
-
-mod capability_bindings;
-
-pub(crate) use capability_bindings::{
-    RemotesCreatorCap, RemotesDeleterCap, RemotesEditorCap, RemotesReaderCap,
-};
 
 use crate::db::SqliteRemotesStore;
 

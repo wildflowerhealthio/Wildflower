@@ -1,4 +1,4 @@
-//! The router state is defined at the crate root ([`crate::state`]) so the
+//! The router state is defined at the crate root ([`crate::live_bindings`]) so the
 //! scope-gated capabilities in `domain/` can be built from it without `domain/`
 //! depending on `crate::http`. This module re-exports it (so the many
 //! `crate::http::state::GatekeeperState` call sites keep their path) and holds the
@@ -8,8 +8,8 @@
 
 use std::sync::Arc;
 
+pub use crate::live_bindings::GatekeeperState;
 use crate::ports::SessionCookies;
-pub use crate::state::GatekeeperState;
 
 /// The session-cookie clear seam — delegates to the crate-level cookie builder so
 /// the `wf_auth` format stays in [`crate::cookies`]. On `Arc<GatekeeperState>`

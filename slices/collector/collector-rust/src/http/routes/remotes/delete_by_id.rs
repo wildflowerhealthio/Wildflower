@@ -10,7 +10,7 @@ use scope_capabilities_rust::{InsufficientScopeBody, Scoped};
 
 use crate::domain::RemoteError;
 use crate::http::errors::RemoteNotFoundBody;
-use crate::state::RemotesDeleterCap;
+use crate::live_bindings::LiveRemotesDeleter;
 
 /// Wire shape for the delete acknowledgement — matches the TS success schema
 /// (`Schema.Struct({ deleted: Schema.Boolean })`).
@@ -20,7 +20,7 @@ pub(crate) struct DeletedBody {
 }
 
 /// `DELETE /collector/remotes/{id}` — remove a remote. Gated by
-/// [`Scoped<RemotesDeleterCap>`] (`wildflower/Accounts.d`); the capability is the
+/// [`Scoped<LiveRemotesDeleter>`] (`wildflower/Accounts.d`); the capability is the
 /// only door to the store, so this handler never sees the state.
 #[utoipa::path(
     delete,
@@ -34,7 +34,7 @@ pub(crate) struct DeletedBody {
     ),
 )]
 pub(crate) async fn handle_delete_remote(
-    remotes: Scoped<RemotesDeleterCap>,
+    remotes: Scoped<LiveRemotesDeleter>,
     Path(id): Path<String>,
 ) -> Result<Json<DeletedBody>, RemoteError> {
     remotes.delete(&id)?;

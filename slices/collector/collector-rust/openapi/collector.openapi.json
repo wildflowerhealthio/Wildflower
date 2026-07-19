@@ -10,7 +10,7 @@
         "tags": [
           "Remotes"
         ],
-        "summary": "`GET /collector/remotes` — list every remote. Gated by\n[`Scoped<RemotesReaderCap>`] (`wildflower/Accounts.r`): a remote's `config`\ncan carry origin credentials, so even the listing requires the read scope. The\ncapability is the only door to the store — this handler never sees the state.",
+        "summary": "`GET /collector/remotes` — list every remote. Gated by\n[`Scoped<LiveRemotesReader>`] (`wildflower/Accounts.r`): a remote's `config`\ncan carry origin credentials, so even the listing requires the read scope. The\ncapability is the only door to the store — this handler never sees the state.",
         "operationId": "handle_list_remotes",
         "responses": {
           "200": {
@@ -42,7 +42,7 @@
         "tags": [
           "Remotes"
         ],
-        "summary": "`POST /collector/remotes` — create a remote. Gated by\n[`Scoped<RemotesCreatorCap>`] (`wildflower/Accounts.c`); the capability is the\nonly door to the store, so this handler never sees the state.",
+        "summary": "`POST /collector/remotes` — create a remote. Gated by\n[`Scoped<LiveRemotesCreator>`] (`wildflower/Accounts.c`); the capability is the\nonly door to the store, so this handler never sees the state.",
         "operationId": "handle_create_remote",
         "requestBody": {
           "content": {
@@ -103,7 +103,7 @@
         "tags": [
           "Remotes"
         ],
-        "summary": "`GET /collector/remotes/{id}` — fetch one remote. Gated by\n[`Scoped<RemotesReaderCap>`] (`wildflower/Accounts.r`); the scope check runs\nduring extraction, before this body, so an under-scoped caller gets a `403`\nwhether or not the id exists.",
+        "summary": "`GET /collector/remotes/{id}` — fetch one remote. Gated by\n[`Scoped<LiveRemotesReader>`] (`wildflower/Accounts.r`); the scope check runs\nduring extraction, before this body, so an under-scoped caller gets a `403`\nwhether or not the id exists.",
         "operationId": "handle_get_remote",
         "parameters": [
           {
@@ -153,7 +153,7 @@
         "tags": [
           "Remotes"
         ],
-        "summary": "`PUT /collector/remotes/{id}` — replace a remote's name + config. Gated by\n[`Scoped<RemotesEditorCap>`] (`wildflower/Accounts.u`); the capability is the\nonly door to the store, so this handler never sees the state.",
+        "summary": "`PUT /collector/remotes/{id}` — replace a remote's name + config. Gated by\n[`Scoped<LiveRemotesEditor>`] (`wildflower/Accounts.u`); the capability is the\nonly door to the store, so this handler never sees the state.",
         "operationId": "handle_update_remote",
         "parameters": [
           {
@@ -223,7 +223,7 @@
         "tags": [
           "Remotes"
         ],
-        "summary": "`DELETE /collector/remotes/{id}` — remove a remote. Gated by\n[`Scoped<RemotesDeleterCap>`] (`wildflower/Accounts.d`); the capability is the\nonly door to the store, so this handler never sees the state.",
+        "summary": "`DELETE /collector/remotes/{id}` — remove a remote. Gated by\n[`Scoped<LiveRemotesDeleter>`] (`wildflower/Accounts.d`); the capability is the\nonly door to the store, so this handler never sees the state.",
         "operationId": "handle_delete_remote",
         "parameters": [
           {

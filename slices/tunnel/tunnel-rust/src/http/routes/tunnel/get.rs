@@ -7,10 +7,10 @@ use scope_capabilities_rust::InsufficientScopeBody;
 use super::wire_representations::TunnelStateResponse;
 use crate::domain::capabilities::Scoped;
 use crate::domain::TunnelError;
-use crate::state::TunnelSettingsReaderCap;
+use crate::live_bindings::LiveTunnelSettingsReader;
 
 /// `GET /tunnel` — read the current persisted settings + observed runtime as a
-/// single wire snapshot. Gated by [`Scoped<TunnelSettingsReaderCap>`]: the
+/// single wire snapshot. Gated by [`Scoped<LiveTunnelSettingsReader>`]: the
 /// settings read lives behind the `wildflower/TunnelSettings.r` capability, so
 /// this handler never touches the store directly (a `403` on an under-scoped
 /// token). Collected into the `OpenAPI` doc via `routes!` in the parent module,
@@ -25,7 +25,7 @@ use crate::state::TunnelSettingsReaderCap;
     )
 )]
 pub(super) async fn handle_get_tunnel(
-    tunnel: Scoped<TunnelSettingsReaderCap>,
+    tunnel: Scoped<LiveTunnelSettingsReader>,
 ) -> Result<Json<TunnelStateResponse>, TunnelError> {
     let settings = tunnel.settings()?;
     Ok(Json(TunnelStateResponse::from_current_state(

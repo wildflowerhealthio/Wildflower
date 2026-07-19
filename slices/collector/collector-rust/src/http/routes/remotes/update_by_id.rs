@@ -11,7 +11,7 @@ use scope_capabilities_rust::{InsufficientScopeBody, Scoped};
 
 use crate::domain::{Remote, RemoteError};
 use crate::http::errors::{InvalidConfigBody, RemoteNotFoundBody};
-use crate::state::RemotesEditorCap;
+use crate::live_bindings::LiveRemotesEditor;
 
 /// PUT body — matches the TS `UpdateRemotePayloadSchema`. Both fields are
 /// required (a full replace, not a patch); `config` stays opaque to Rust.
@@ -24,7 +24,7 @@ pub(crate) struct UpdateRemoteBody {
 }
 
 /// `PUT /collector/remotes/{id}` — replace a remote's name + config. Gated by
-/// [`Scoped<RemotesEditorCap>`] (`wildflower/Accounts.u`); the capability is the
+/// [`Scoped<LiveRemotesEditor>`] (`wildflower/Accounts.u`); the capability is the
 /// only door to the store, so this handler never sees the state.
 #[utoipa::path(
     put,
@@ -40,7 +40,7 @@ pub(crate) struct UpdateRemoteBody {
     ),
 )]
 pub(crate) async fn handle_update_remote(
-    remotes: Scoped<RemotesEditorCap>,
+    remotes: Scoped<LiveRemotesEditor>,
     Path(id): Path<String>,
     Json(body): Json<UpdateRemoteBody>,
 ) -> Result<Json<Remote>, RemoteError> {

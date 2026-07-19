@@ -8,7 +8,7 @@ use axum::Json;
 use crate::domain::capabilities::Scoped;
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::http::state::GatekeeperState;
-use crate::state::GrantsReaderCap;
+use crate::live_bindings::LiveGrantsReader;
 
 /// `GET /grants/{id}` — fetch a single grant by id (scope `wildflower/Grant.r`).
 pub(super) fn route() -> MethodRouter<Arc<GatekeeperState>> {
@@ -16,7 +16,7 @@ pub(super) fn route() -> MethodRouter<Arc<GatekeeperState>> {
 }
 
 async fn handle_get_grant(
-    grants: Scoped<GrantsReaderCap>,
+    grants: Scoped<LiveGrantsReader>,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, GatekeeperError> {
     Ok(Json(grants.get(&id)?))

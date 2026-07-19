@@ -14,7 +14,7 @@ use std::sync::Arc;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
-use crate::state::TunnelState;
+use crate::live_bindings::state::TunnelState;
 
 pub(crate) fn openapi_router() -> OpenApiRouter<Arc<TunnelState>> {
     OpenApiRouter::new().routes(routes!(

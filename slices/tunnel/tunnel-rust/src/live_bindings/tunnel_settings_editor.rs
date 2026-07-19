@@ -11,32 +11,14 @@ use std::sync::Arc;
 use scope_capabilities_rust::{FixedScopeCapability, ScopeClaims};
 use scopes_rust::Scope;
 
+use super::state::TunnelState;
 use crate::db::SqliteTunnelStore;
-use crate::domain::capabilities::{
-    tunnel_settings_editor_scopes, tunnel_settings_reader_scopes, TunnelSettingsEditor,
-    TunnelSettingsReader,
-};
-use crate::state::TunnelState;
+use crate::domain::capabilities::{tunnel_settings_editor_scopes, TunnelSettingsEditor};
 
-/// Read the tunnel settings — `Scoped<TunnelSettingsReaderCap>` in the handler.
-pub(crate) type TunnelSettingsReaderCap = TunnelSettingsReader<SqliteTunnelStore>;
 /// Replace the tunnel settings.
-pub(crate) type TunnelSettingsEditorCap = TunnelSettingsEditor<SqliteTunnelStore>;
+pub(crate) type LiveTunnelSettingsEditor = TunnelSettingsEditor<SqliteTunnelStore>;
 
-impl FixedScopeCapability for TunnelSettingsReaderCap {
-    type State = Arc<TunnelState>;
-    type Claims = ScopeClaims;
-
-    fn required_scopes() -> Vec<Scope> {
-        tunnel_settings_reader_scopes()
-    }
-
-    fn build(state: Arc<TunnelState>) -> Self {
-        TunnelSettingsReader::new(state.store.clone(), Arc::clone(&state.daemon))
-    }
-}
-
-impl FixedScopeCapability for TunnelSettingsEditorCap {
+impl FixedScopeCapability for LiveTunnelSettingsEditor {
     type State = Arc<TunnelState>;
     type Claims = ScopeClaims;
 

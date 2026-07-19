@@ -21,11 +21,14 @@ pub mod http;
 // apps-rust.
 pub(crate) mod ports;
 pub(crate) mod seeding;
-// The shared runtime state + capability bindings. At the crate root (not under
-// `http`) so the `domain/` capabilities can be built from it without `domain/`
-// depending on `crate::http`; the struct is axum-free (the one axum-touching seam
-// impl lives in `http::state`).
-pub(crate) mod state;
+
+pub(crate) mod adapters;
+
+// The shared runtime state + per-resource capability bindings. At the crate root
+// (not under `http`) so the `domain/` capabilities can be built from it without
+// `domain/` depending on `crate::http`; the struct is axum-free (the one
+// axum-touching seam impl lives in `http::state`).
+pub(crate) mod live_bindings;
 
 use std::sync::Arc;
 
@@ -269,7 +272,7 @@ pub fn setup_gatekeeper(
     // across an app restart still drives the modal on first webview
     // load — the `watch` value itself doesn't survive the process, but
     // the row does.
-    state.republish_active_device_user_code();
+    ports::DeviceUserCodePublisher::republish_active(state.as_ref());
     spawn_device_consent_reaper(state.clone());
     // Keep the webview's owner-session token fresh: re-mint + republish inside
     // the (now-short) owner-token TTL. See #269.
@@ -376,7 +379,7 @@ fn spawn_device_consent_reaper(state: Arc<GatekeeperState>) {
         ticks.tick().await;
         loop {
             ticks.tick().await;
-            state.republish_active_device_user_code();
+            ports::DeviceUserCodePublisher::republish_active(state.as_ref());
         }
     });
 }

@@ -14,7 +14,7 @@
 //! from the state** — never an `Arc<GatekeeperState>` it reaches into — so its
 //! logic is unit-testable against the in-memory fake. The `Capability` bindings
 //! that name the concrete `SqliteGatekeeperStore` and build a capability from the
-//! router state live in the composition layer (`crate::state`), so `domain/`
+//! router state live in the composition layer (`crate::live_bindings`), so `domain/`
 //! stays store-agnostic.
 //!
 //! The (resource, permission) → required-scope mapping lives in one place — each

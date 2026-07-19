@@ -15,9 +15,10 @@ use tokio_util::io::ReaderStream;
 
 use scope_capabilities_rust::InsufficientScopeBody;
 
-use crate::domain::capabilities::{DatabasesReader, DownloadSnapshot, Scoped};
+use crate::domain::capabilities::{DownloadSnapshot, Scoped};
 use crate::domain::DatabaseError;
 use crate::http::errors::DatabaseNotFoundBody;
+use crate::live_bindings::LiveDatabasesReader;
 
 /// `GET /databases/{id}` — stream the database file as `application/vnd.sqlite3`
 /// (a `VACUUM INTO` snapshot, so it's internally consistent even while the
@@ -34,7 +35,7 @@ use crate::http::errors::DatabaseNotFoundBody;
 /// client downloads it through the raw `HttpClient` to get the bytes, not the
 /// generated JSON client. The spec-drift test scopes only the JSON endpoints.
 ///
-/// Gated by [`Scoped<DatabasesReader>`]: the snapshot + the database's
+/// Gated by [`Scoped<LiveDatabasesReader>`]: the snapshot + the database's
 /// `read_scope` check live in the facade, so this handler never touches the
 /// store directly (a `403` on an under-scoped token, a `404` on unknown/absent).
 #[utoipa::path(
@@ -51,7 +52,7 @@ use crate::http::errors::DatabaseNotFoundBody;
     ),
 )]
 pub(crate) async fn handle_download_database(
-    reader: Scoped<DatabasesReader>,
+    reader: Scoped<LiveDatabasesReader>,
     Path(id): Path<String>,
 ) -> Result<Response, DatabaseError> {
     let DownloadSnapshot {

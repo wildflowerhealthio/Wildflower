@@ -23,7 +23,7 @@ use axum::Router;
 use utoipa::OpenApi;
 use utoipa_axum::router::OpenApiRouter;
 
-use crate::state::CollectorState;
+use crate::live_bindings::state::CollectorState;
 
 /// Base `OpenAPI` document; the collected routes fill in paths + components.
 #[derive(OpenApi)]

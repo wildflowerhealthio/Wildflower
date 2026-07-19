@@ -9,7 +9,7 @@ use std::sync::Arc;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
-use crate::state::CollectorState;
+use crate::live_bindings::state::CollectorState;
 
 /// The whole collector surface as an `OpenApiRouter` — the spec-bearing inner
 /// of [`router`](super::router). Every route is scope-gated per operation (the
@@ -41,7 +41,7 @@ mod tests {
     use tower::ServiceExt;
 
     use crate::db::SqliteRemotesStore;
-    use crate::state::CollectorState;
+    use crate::live_bindings::state::CollectorState;
 
     /// A `ScopeClaims` covering every `wildflower/Accounts.*` operation — the
     /// grant an owner token carries. `send` injects it so the round-trip tests

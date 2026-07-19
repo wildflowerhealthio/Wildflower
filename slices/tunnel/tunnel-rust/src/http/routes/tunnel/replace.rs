@@ -8,10 +8,10 @@ use scope_capabilities_rust::InsufficientScopeBody;
 use super::wire_representations::TunnelStateResponse;
 use crate::domain::capabilities::Scoped;
 use crate::domain::{RelaySettings, SettingsUpdate, SettingsUpdateOutcome, TunnelError};
-use crate::state::TunnelSettingsEditorCap;
+use crate::live_bindings::LiveTunnelSettingsEditor;
 
 /// `PUT /tunnel` — full-replace of the visible settings under the caller's
-/// `revision` token. Gated by [`Scoped<TunnelSettingsEditorCap>`]: the write
+/// `revision` token. Gated by [`Scoped<LiveTunnelSettingsEditor>`]: the write
 /// lives behind the `wildflower/TunnelSettings.u` capability, so this handler
 /// never touches the store directly (a `403` on an under-scoped token).
 ///
@@ -36,7 +36,7 @@ use crate::state::TunnelSettingsEditorCap;
     )
 )]
 pub(super) async fn handle_replace_tunnel(
-    tunnel: Scoped<TunnelSettingsEditorCap>,
+    tunnel: Scoped<LiveTunnelSettingsEditor>,
     Json(body): Json<ReplaceTunnelRequestBody>,
 ) -> Result<(StatusCode, Json<TunnelStateResponse>), TunnelError> {
     let update = SettingsUpdate {

@@ -8,7 +8,7 @@ use serde::Serialize;
 use crate::domain::capabilities::{OAuthConsentView, Scoped};
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::http::state::GatekeeperState;
-use crate::state::ConsentReaderCap;
+use crate::live_bindings::LiveConsentReader;
 
 /// Body returned to the Owner UI when it loads an authorization-code consent
 /// prompt — describes the client, scopes, and any pre-approved subset. Local to
@@ -36,7 +36,7 @@ pub(super) fn route() -> MethodRouter<Arc<GatekeeperState>> {
 }
 
 async fn handle_get_oauth_consent(
-    consents: Scoped<ConsentReaderCap>,
+    consents: Scoped<LiveConsentReader>,
     Path(id): Path<String>,
 ) -> Result<Json<OAuthConsent>, GatekeeperError> {
     let OAuthConsentView {

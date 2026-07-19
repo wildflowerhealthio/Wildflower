@@ -1,5 +1,5 @@
 //! `POST /access/revocations` — the token-revocation control surface. Acquired
-//! through the [`TokenRevokerCap`](crate::state::TokenRevokerCap)
+//! through the [`LiveTokenRevoker`](crate::live_bindings::LiveTokenRevoker)
 //! facade (scope `wildflower/Token.d`): a caller must cover the `Token` delete
 //! scope — which an owner's `wildflower/*.cruds` does — to revoke, else a `403`.
 //!
@@ -33,7 +33,7 @@ use serde_json::json;
 use crate::domain::capabilities::Scoped;
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::http::state::GatekeeperState;
-use crate::state::TokenRevokerCap;
+use crate::live_bindings::LiveTokenRevoker;
 
 pub fn router() -> Router<Arc<GatekeeperState>> {
     Router::new().route("/revocations", post(handle_create_revocation))
@@ -144,7 +144,7 @@ impl RevocationRequest {
 }
 
 async fn handle_create_revocation(
-    tokens: Scoped<TokenRevokerCap>,
+    tokens: Scoped<LiveTokenRevoker>,
     Json(request): Json<RevocationRequest>,
 ) -> Result<StatusCode, RevocationError> {
     match request.into_revocation()? {

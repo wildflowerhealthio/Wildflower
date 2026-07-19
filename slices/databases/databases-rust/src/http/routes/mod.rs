@@ -12,7 +12,7 @@ use std::sync::Arc;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
-use crate::domain::DatabasesState;
+use crate::live_bindings::state::DatabasesState;
 
 /// The whole databases surface as an `OpenApiRouter` — the spec-bearing inner of
 /// [`super::router`]. The host wraps the built router with its authN gate;

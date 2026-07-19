@@ -17,7 +17,7 @@ use shared_structures_rust::tunnel_service::{TunnelLiveness, TunnelService, Tunn
 use tokio::sync::watch;
 
 use crate::domain::{SettingsUpdateOutcome, TunnelDaemon, TunnelStore};
-use crate::state::TunnelState;
+use crate::live_bindings::state::TunnelState;
 
 /// How many times the start path re-reads and retries its persist
 /// compare-and-swap when a racing write bumps the settings revision between the

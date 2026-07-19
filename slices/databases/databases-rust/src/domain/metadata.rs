@@ -1,7 +1,8 @@
 //! The wire metadata shape for a single database. A **pure** serde/utoipa type —
 //! the best-effort filesystem/SQLite reads that populate it live in the
-//! [`DatabaseFiles`](crate::domain::DatabaseFiles) adapter (`crate::fs`), so this
-//! layer carries no `std::fs`/`rusqlite` logic and `domain/` stays swappable.
+//! [`DatabaseFiles`](crate::ports::DatabaseFiles) adapter ([`crate::adapters`]),
+//! so this layer carries no `std::fs`/`rusqlite` logic and `domain/` stays
+//! swappable.
 
 use serde::Serialize;
 use utoipa::ToSchema;
