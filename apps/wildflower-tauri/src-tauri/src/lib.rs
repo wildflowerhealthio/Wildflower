@@ -200,7 +200,7 @@ async fn run_server(
     // release from the bundled resource dir (declared in `tauri.conf.json` under
     // `bundle.resources`, copied to `<resource_dir>/fhir-search-params/`). Same
     // dev/release split as the vendored self-hosted apps below.
-    let search_parameter_data_dir = if cfg!(debug_assertions) {
+    let search_parameter_data_dir = if cfg!(debug_assertions) && !cfg!(mobile) {
         std::path::PathBuf::from(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../../slices/emr/emr-rust/assets"
@@ -691,7 +691,42 @@ pub fn run() {
                 // debug — far too repetitive to read the tunnel lifecycle
                 // through. Pin it to info; the tunnel slice's own
                 // dial/probe/transition logs carry the timeline we care about.
-                .level_for("rathole", tauri_plugin_log::log::LevelFilter::Info)
+                .level_for("rathole", tauri_plugin_log::log::LevelFilter::Warn)
+                .level_for(
+                    "hyper_util::client::legacy",
+                    tauri_plugin_log::log::LevelFilter::Info,
+                )
+                // Tunnel daemon heartbeats on debug
+                .level_for(
+                    "tunnel_rust::domain::tunnel_daemon",
+                    tauri_plugin_log::log::LevelFilter::Info,
+                )
+                // Helios's logging can be very chatty at debug, especially the auth middleware, so pin it to info
+                .level_for(
+                    "helios_rest::middleware::auth",
+                    tauri_plugin_log::log::LevelFilter::Info,
+                )
+                .level_for(
+                    "helios_auth::jwks",
+                    tauri_plugin_log::log::LevelFilter::Info,
+                )
+                .level_for(
+                    "helios_rest::handlers",
+                    tauri_plugin_log::log::LevelFilter::Info,
+                )
+                // Tower has a number of loggers that are redundant unless you're particularly debugging a specific tower service.
+                .level_for(
+                    "tower_http::trace::on_eos",
+                    tauri_plugin_log::log::LevelFilter::Info,
+                )
+                .level_for(
+                    "tower_http::trace::on_request",
+                    tauri_plugin_log::log::LevelFilter::Info,
+                )
+                // `h2`'s frame-level codec chatter rides the tracing→log bridge
+                // and would drown the console at debug. Pin the whole `h2` tree
+                // to warn — we never debug the codec here.
+                .level_for("h2", tauri_plugin_log::log::LevelFilter::Warn)
                 .build(),
         )
         .setup(|app| {

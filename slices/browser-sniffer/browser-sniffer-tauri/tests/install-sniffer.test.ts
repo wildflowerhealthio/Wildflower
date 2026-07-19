@@ -50,6 +50,9 @@ const resetShims = (): void => {
   const state = getState()
   if (state !== undefined) {
     window.removeEventListener('load', state.pageLoadHandler)
+    // Disconnect the MutationObserver and clear any pending settle timers so a
+    // mid-flight watch from one test can't leak a PageLoaded into the next.
+    state.teardownSettleWatch()
     for (const entry of state.unlistens) {
       void Promise.resolve(entry).then((unlisten) => {
         unlisten()
@@ -89,8 +92,8 @@ const setupEnv = (): (() => Message[]) => {
   return () => emits
 }
 
-const installSnifferForTest = (): void => {
-  installSniffer(testEventBus)
+const installSnifferForTest = (settle?: { quietWindowMs?: number; maxWaitMs?: number }): void => {
+  installSniffer(testEventBus, settle === undefined ? undefined : { settle })
 }
 
 const fireInbound = (event: string, payload: unknown): void => {
@@ -121,13 +124,6 @@ const withBrowserRequest = async (fn: () => Promise<void>): Promise<void> => {
 }
 
 const withTag = (msgs: Message[], tag: string): Message[] => msgs.filter((m) => m._tag === tag)
-
-// jsdom types `document.contentType` as a non-writable prototype getter;
-// shadow it with a configurable own property so the page-load tests can
-// drive the JSON-viewer branch. Teardown drops the shadow.
-const setContentType = (value: string): void => {
-  Object.defineProperty(document, 'contentType', { value, configurable: true })
-}
 
 const cancelRequest = (id: string): void => {
   fireInbound(BRIDGE_EVENT, { _tag: 'CancelSnifferRequest', id })
@@ -1364,6 +1360,20 @@ describe('idempotent re-injection (simulating post-navigation re-inject)', () =>
   })
 })
 
+// --- page-settlement test helpers ---
+// Deterministic settle thresholds for the settlement tests. Fake timers make
+// the wall-clock cost zero; distinct quiet-window vs ceiling values let a test
+// target one or the other unambiguously.
+const SETTLE = { quietWindowMs: 100, maxWaitMs: 5000 } as const
+
+// Let any pending MutationObserver callback run (it delivers on a microtask and
+// re-arms the quiet window), then push the fake clock forward by `ms` so the
+// settle debounce / ceiling timer fires. Requires `vi.useFakeTimers()`.
+const advanceSettle = async (ms: number): Promise<void> => {
+  await Promise.resolve()
+  await vi.advanceTimersByTimeAsync(ms)
+}
+
 describe('PageLoaded', () => {
   let getMessages: () => Message[]
   // Remember the initial body so each test can scribble on it and the next
@@ -1376,9 +1386,15 @@ describe('PageLoaded', () => {
     XMLHttpRequest.prototype.send = vi.fn() as XMLHttpRequest['send']
     document.body.innerHTML = initialBodyHtml
     getMessages = setupEnv()
+    // `PageLoaded` now fires once the page *settles* (a debounced quiet window),
+    // not synchronously on `load`; fake timers drive that window deterministically.
+    vi.useFakeTimers()
   })
 
-  afterEach(resetShims)
+  afterEach(() => {
+    resetShims()
+    vi.useRealTimers()
+  })
 
   /** Extract the single PageLoaded message and the page-content stream it points to. */
   const pageLoadedAndContent = (msgs: Message[]): { loaded: Message; content: string } => {
@@ -1388,9 +1404,16 @@ describe('PageLoaded', () => {
     return { loaded, content: reassembleStream(msgs, pageContentId) }
   }
 
-  test('should post PageLoaded (notification only) with a pageContentId on window load event', () => {
-    installSnifferForTest()
+  // Install, fire `load`, and drive the fake clock past the quiet window so a
+  // page with a static DOM (set before install) settles and emits PageLoaded.
+  const installAndSettle = async (): Promise<void> => {
+    installSnifferForTest(SETTLE)
     window.dispatchEvent(new Event('load'))
+    await advanceSettle(SETTLE.quietWindowMs)
+  }
+
+  test('should post PageLoaded (notification only) with a pageContentId once the page settles', async () => {
+    await installAndSettle()
 
     const loaded = withTag(getMessages(), 'PageLoaded')
     expect(loaded).toEqual([
@@ -1405,9 +1428,8 @@ describe('PageLoaded', () => {
     expect(loaded[0]).not.toHaveProperty('content')
   })
 
-  test('should stream the DOM content through the standard Response* triple', () => {
-    installSnifferForTest()
-    window.dispatchEvent(new Event('load'))
+  test('should stream the DOM content through the standard Response* triple', async () => {
+    await installAndSettle()
 
     const msgs = getMessages()
     const [loaded] = withTag(msgs, 'PageLoaded')
@@ -1427,24 +1449,35 @@ describe('PageLoaded', () => {
     expect(reassembleStream(msgs, pageContentId)).toMatch(/.+/)
   })
 
-  test('should produce schema-valid PageLoaded + Response* messages', () => {
-    installSnifferForTest()
-    window.dispatchEvent(new Event('load'))
+  test('should produce schema-valid PageLoaded + Response* messages', async () => {
+    await installAndSettle()
     validateMessages(getMessages())
   })
 
-  test('should not register the load listener twice on double injection', () => {
-    installSnifferForTest()
-    installSnifferForTest()
+  test('should register a single settle watch across double injection', async () => {
+    installSnifferForTest(SETTLE)
+    installSnifferForTest(SETTLE)
     window.dispatchEvent(new Event('load'))
+    await advanceSettle(SETTLE.quietWindowMs)
 
     expect(withTag(getMessages(), 'PageLoaded')).toHaveLength(1)
   })
 
-  test('should serialize the entire <html>… subtree, including arbitrary body content', () => {
-    document.body.innerHTML = '<p id="x">hello &amp; goodbye</p>'
-    installSnifferForTest()
+  test('should emit a single PageLoaded even if load fires twice', async () => {
+    // A re-fired `load` must not start a second watch (distinct pageContentIds
+    // would double-count the page).
+    document.body.innerHTML = '<main>ready</main>'
+    installSnifferForTest(SETTLE)
     window.dispatchEvent(new Event('load'))
+    window.dispatchEvent(new Event('load'))
+    await advanceSettle(SETTLE.quietWindowMs)
+
+    expect(withTag(getMessages(), 'PageLoaded')).toHaveLength(1)
+  })
+
+  test('should serialize the entire <html>… subtree, including arbitrary body content', async () => {
+    document.body.innerHTML = '<p id="x">hello &amp; goodbye</p>'
+    await installAndSettle()
 
     // `&amp;` survives the HTML-escaped round-trip — `Element.outerHTML`
     // entity-encodes for HTML, so the host parses the captured content as
@@ -1453,7 +1486,7 @@ describe('PageLoaded', () => {
     expect(content).toMatch(/^<html[^>]*>.*<p id="x">hello &amp; goodbye<\/p>.*<\/html>$/s)
   })
 
-  test('should serialize XML-namespaced subtrees (SVG) via HTML rules', () => {
+  test('should serialize XML-namespaced subtrees (SVG) via HTML rules', async () => {
     // SVG inside an HTML document exercises non-HTML element serialization.
     // `Element.outerHTML` is defined on every Element (incl. SVGElement),
     // so the subtree round-trips with HTML serialization rules (tag close,
@@ -1461,8 +1494,7 @@ describe('PageLoaded', () => {
     // the expectation for hosts that ingest the captured payload as HTML.
     document.body.innerHTML =
       '<svg xmlns="http://www.w3.org/2000/svg"><circle cx="1" cy="2" r="3"/></svg>'
-    installSnifferForTest()
-    window.dispatchEvent(new Event('load'))
+    await installAndSettle()
 
     // `<circle>` closes per HTML rules — either self-closing or paired —
     // and jsdom emits one of those two forms; we accept both so a jsdom
@@ -1471,7 +1503,7 @@ describe('PageLoaded', () => {
     expect(content).toMatch(/<svg[^>]*>.*<circle[^>]*(?:\/>|><\/circle>).*<\/svg>/s)
   })
 
-  test('should capture WebView-wrapped HTML for text/plain documents', () => {
+  test('should capture WebView-wrapped HTML for text/plain documents', async () => {
     // Every WebView engine renders `text/plain` by wrapping it in a
     // `<pre>` inside `<html><body>`; the sniffer runs against *that*
     // DOM, never the raw bytes, so our handler captures the wrapper.
@@ -1480,8 +1512,7 @@ describe('PageLoaded', () => {
     const pre = document.createElement('pre')
     pre.textContent = lines
     document.body.replaceChildren(pre)
-    installSnifferForTest()
-    window.dispatchEvent(new Event('load'))
+    await installAndSettle()
 
     // `<` and `>` come back HTML-entity-encoded inside the <pre>;
     // line breaks survive as literal `\n` in the serialized HTML.
@@ -1490,7 +1521,7 @@ describe('PageLoaded', () => {
     validateMessages(getMessages())
   })
 
-  test('should round-trip binary-shaped DOM text via the streamed wire', () => {
+  test('should round-trip binary-shaped DOM text via the streamed wire', async () => {
     // The injected sniffer never sees raw bytes — a `Content-Type:
     // application/octet-stream` URL fails to load (no `load` event) or is
     // wrapped by the WebView into an `<img>`/`<embed>` HTML representation.
@@ -1500,8 +1531,7 @@ describe('PageLoaded', () => {
     // text should preserve high-byte characters.
     const allBytes = Array.from({ length: 256 }, (_, i) => String.fromCharCode(i)).join('')
     document.body.textContent = allBytes
-    installSnifferForTest()
-    window.dispatchEvent(new Event('load'))
+    await installAndSettle()
 
     const msgs = getMessages()
     const { content } = pageLoadedAndContent(msgs)
@@ -1513,118 +1543,91 @@ describe('PageLoaded', () => {
   })
 })
 
-describe('pageLoadHandler JSON-viewer retry', () => {
+describe('page settlement', () => {
   let getMessages: () => Message[]
-  let rafQueue: FrameRequestCallback[]
-  const originalRaf = window.requestAnimationFrame
   const initialBodyHtml = document.body.innerHTML
-
-  // Run every callback queued for the current animation frame. A retry
-  // schedules a *nested* rAF (two frames), so advancing one retry is two
-  // flushes; callbacks scheduled during a flush land in the next frame.
-  const flushFrame = (): void => {
-    const due = rafQueue
-    rafQueue = []
-    for (const cb of due) cb(0)
-  }
-  const advanceRetries = (retries: number): void => {
-    for (let i = 0; i < retries * 2; i += 1) flushFrame()
-  }
 
   beforeEach(() => {
     resetShims()
     XMLHttpRequest.prototype.open = vi.fn() as XMLHttpRequest['open']
     XMLHttpRequest.prototype.send = vi.fn() as XMLHttpRequest['send']
-    rafQueue = []
-    window.requestAnimationFrame = (cb: FrameRequestCallback): number => {
-      rafQueue.push(cb)
-      return rafQueue.length
-    }
-    document.body.innerHTML = ''
+    document.body.innerHTML = initialBodyHtml
     getMessages = setupEnv()
+    vi.useFakeTimers()
   })
 
   afterEach(() => {
-    window.requestAnimationFrame = originalRaf
-    Reflect.deleteProperty(document, 'contentType')
-    document.body.innerHTML = initialBodyHtml
     resetShims()
+    vi.useRealTimers()
   })
 
-  test('defers the snapshot for a JSON document until the <pre> viewer is built', () => {
-    setContentType('application/json')
-    installSnifferForTest()
-    // Empty body + JSON content type: the first attempt schedules a retry
-    // instead of snapshotting an empty shell.
+  test('should hold PageLoaded until the quiet window elapses after load', async () => {
+    installSnifferForTest(SETTLE)
     window.dispatchEvent(new Event('load'))
+
+    // One tick short of the window: not settled yet.
+    await advanceSettle(SETTLE.quietWindowMs - 1)
     expect(withTag(getMessages(), 'PageLoaded')).toHaveLength(0)
 
-    // WebKit builds the viewer over the next frame(s); once the <pre>
-    // exists, the retry lands the snapshot exactly once.
-    const pre = document.createElement('pre')
-    pre.textContent = '{"resourceType":"Patient"}'
-    document.body.replaceChildren(pre)
-    advanceRetries(1)
+    // Crossing the window with a quiet DOM and no in-flight requests settles it.
+    await advanceSettle(1)
     expect(withTag(getMessages(), 'PageLoaded')).toHaveLength(1)
   })
 
-  test('snapshots a JSON document immediately when the <pre> is already present', () => {
-    setContentType('application/json')
-    const pre = document.createElement('pre')
-    pre.textContent = '{"ok":true}'
-    document.body.replaceChildren(pre)
-    installSnifferForTest()
+  test('should reset the quiet window on each DOM mutation, settling only once mutations stop', async () => {
+    installSnifferForTest(SETTLE)
     window.dispatchEvent(new Event('load'))
-    expect(withTag(getMessages(), 'PageLoaded')).toHaveLength(1)
-    expect(rafQueue).toHaveLength(0)
-  })
 
-  test('defers when contentType carries a charset/casing parameter', () => {
-    // A non-conformant engine may report `application/fhir+json; charset=UTF-8`
-    // rather than the bare lowercase essence; the handler must still recognize
-    // it as a JSON viewer and wait for the <pre>, not snapshot an empty shell.
-    setContentType('application/fhir+json; charset=UTF-8')
-    installSnifferForTest()
-    window.dispatchEvent(new Event('load'))
+    // A mutation late in the window re-arms it, so the original deadline passes
+    // without a fire.
+    await advanceSettle(SETTLE.quietWindowMs - 10)
+    document.body.appendChild(document.createElement('div'))
+    await advanceSettle(SETTLE.quietWindowMs - 10)
     expect(withTag(getMessages(), 'PageLoaded')).toHaveLength(0)
 
-    const pre = document.createElement('pre')
-    pre.textContent = '{"resourceType":"Bundle"}'
-    document.body.replaceChildren(pre)
-    advanceRetries(1)
+    // Once the (re-armed) window fully elapses with no further mutations, settle.
+    await advanceSettle(10)
     expect(withTag(getMessages(), 'PageLoaded')).toHaveLength(1)
   })
 
-  test('caps retries and snapshots once even if the <pre> never appears', () => {
-    setContentType('application/json')
-    installSnifferForTest()
+  test('should not settle while a request is in flight, then settle after it terminates', async () => {
+    installSnifferForTest(SETTLE)
+    const xhr = new XMLHttpRequest()
+    xhr.open('GET', 'https://test.example/data')
+    xhr.send() // in-flight from send()
     window.dispatchEvent(new Event('load'))
+
+    // The DOM is quiet, but an in-flight request blocks settlement past the
+    // quiet window (and well before the ceiling).
+    await advanceSettle(SETTLE.quietWindowMs * 2)
     expect(withTag(getMessages(), 'PageLoaded')).toHaveLength(0)
-    // Far more frames than the retry budget; the attempt counter must
-    // terminate the loop and still emit exactly one snapshot.
-    advanceRetries(12)
+
+    // The request completes; its terminal re-arms the quiet window.
+    Object.defineProperty(xhr, 'status', { value: 200, configurable: true })
+    Object.defineProperty(xhr, 'statusText', { value: 'OK', configurable: true })
+    Object.defineProperty(xhr, 'responseType', { value: '', configurable: true })
+    Object.defineProperty(xhr, 'responseText', { value: 'done', configurable: true })
+    xhr.dispatchEvent(new Event('load'))
+
+    await advanceSettle(SETTLE.quietWindowMs)
     expect(withTag(getMessages(), 'PageLoaded')).toHaveLength(1)
   })
 
-  test('does not defer non-JSON documents — XML snapshots immediately with no retry', () => {
-    // Regression guard: text/xml / application/xml were previously in the
-    // async-viewer set and burned the whole retry budget on a document
-    // that is already parsed at `load`. They must snapshot on attempt 0.
-    setContentType('application/xml')
-    document.body.innerHTML = '<data>ready</data>'
-    installSnifferForTest()
+  test('should force PageLoaded at the ceiling when a request never terminates', async () => {
+    // A request that stays in-flight forever (a hung download / long-poll) can
+    // never let the quiet window settle; the ceiling is the backstop.
+    installSnifferForTest({ quietWindowMs: 100, maxWaitMs: 300 })
+    const xhr = new XMLHttpRequest()
+    xhr.open('GET', 'https://test.example/never')
+    xhr.send() // in-flight, never completes
     window.dispatchEvent(new Event('load'))
-    expect(withTag(getMessages(), 'PageLoaded')).toHaveLength(1)
-    expect(rafQueue).toHaveLength(0)
-  })
 
-  test('emits a single PageLoaded even if load fires twice', () => {
-    // Default text/html snapshots immediately; a re-fired `load` must not
-    // double-emit (distinct pageContentIds would double-count the page).
-    document.body.innerHTML = '<main>ready</main>'
-    installSnifferForTest()
-    window.dispatchEvent(new Event('load'))
-    window.dispatchEvent(new Event('load'))
+    // Past the quiet window, the stuck request still blocks settlement.
+    await advanceSettle(200)
+    expect(withTag(getMessages(), 'PageLoaded')).toHaveLength(0)
+
+    // The ceiling (300ms) forces exactly one PageLoaded regardless.
+    await advanceSettle(100)
     expect(withTag(getMessages(), 'PageLoaded')).toHaveLength(1)
   })
 })

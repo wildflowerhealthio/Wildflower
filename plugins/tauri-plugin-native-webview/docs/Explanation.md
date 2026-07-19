@@ -57,15 +57,27 @@ via the windows crate) would require `unsafe` FFI, which this workspace forbids
 still real native webviews (WKWebView on macOS, WebView2 on Windows, webkit2gtk
 on Linux) — with document-start injection via `initialization_script`.
 
-To mirror the mobile native webviews' native chrome, the desktop backend builds a parent
-`Window` (label `native-webview`) with **two child webviews** (via Tauri's
-`unstable` multi-webview-per-window API): a `data:`-HTML **chrome bar** child
-(`native-webview-chrome`) anchored at the top — drawing the host/subtitle/message
-labels plus back/forward/refresh — and the external **content** child
-(`native-webview-content`) below it. The plugin draws this chrome itself; it is
-not the OS window frame. Chrome → Rust IPC rides a custom-scheme `on_navigation`
-intercept (no `__TAURI__` commands), and Rust → chrome state push uses
-`Webview::eval`; see the `desktop.rs` module docs.
+To mirror the mobile native webviews' native chrome, the desktop backend builds, per
+**caller-named instance id**, a parent `Window` (label `native-webview-<id>`) with
+**two child webviews** (via Tauri's `unstable` multi-webview-per-window API): a
+`data:`-HTML **chrome bar** child (`native-webview-<id>-chrome`) anchored at the
+top — drawing the host/subtitle/message labels plus back/forward/refresh — and
+the external **content** child (`native-webview-<id>-content`) below it. The plugin
+draws this chrome itself; it is not the OS window frame. Chrome → Rust IPC rides a
+custom-scheme `fetch` handled by a registered URI-scheme protocol (no `__TAURI__`
+commands, and no navigation — so no WebKit policy-`ignore` backtrace); the chrome
+label names the instance so the app-global handler routes to the right one, and
+Rust → chrome state push uses `Webview::eval`; see the `desktop.rs` module docs.
+
+Distinct ids get **independent, concurrent** instances (each its own window, chrome
+height, nav history, event channel, and dispose/timeout state, kept in a per-id map
+in `PluginState`), so a background sniffer scrape (`sniffer`) and a launched app
+(`launch`) coexist without one navigating the other's webview away. The same id
+reuses its instance. Mobile stays single-instance — a phone presents one
+full-screen native webview at a time — and ignores the id ([#411] tracks lifting
+that).
+
+[#411]: https://github.com/wildflowerhealthio/Wildflower/issues/411
 
 The trade-off: the content child is a Tauri webview, so `window.__TAURI__` is
 present in the loaded page. It is scoped by

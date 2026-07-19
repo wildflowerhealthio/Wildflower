@@ -16,7 +16,7 @@ use tauri_plugin_native_webview::NativeWebviewExt;
 /// alive and sniffing in the background) and never reaches here; only the SPA's
 /// `SniffingComplete` disposes.
 pub(crate) fn handle(app: &AppHandle) {
-    if let Err(error) = app.native_webview().dispose() {
+    if let Err(error) = app.native_webview().dispose(crate::SNIFFER_WEBVIEW_ID) {
         log::error!("[browser-sniffer] failed to dispose the native webview: {error}");
     }
 }

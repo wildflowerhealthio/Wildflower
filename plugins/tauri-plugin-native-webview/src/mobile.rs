@@ -40,6 +40,11 @@ pub fn init<R: Runtime, C: DeserializeOwned>(
 /// Mobile handle to the native-webview plugin.
 pub struct NativeWebview<R: Runtime>(tauri::plugin::PluginHandle<R>);
 
+// Every method takes the caller-named instance `id` for API parity with the
+// desktop backend, but mobile is **single-instance** and ignores it: a phone
+// presents one full-screen native webview at a time, so concurrent instances
+// aren't presentable here. Multi-instance mobile support is tracked in
+// https://github.com/wildflowerhealthio/Wildflower/issues/411.
 impl<R: Runtime> NativeWebview<R> {
     /// Ensure a native webview exists (created hidden if absent) and navigate it
     /// to `payload.url` by invoking the Swift/Kotlin `openUrl` command. Does not
@@ -49,7 +54,7 @@ impl<R: Runtime> NativeWebview<R> {
     /// every backend rejects a non-http(s) URL identically: the Android native
     /// side otherwise hands an unvalidated string straight to `WebView.loadUrl`
     /// and still resolves `opened: true`.
-    pub fn open_url(&self, payload: OpenRequest) -> crate::Result<()> {
+    pub fn open_url(&self, _id: &str, payload: OpenRequest) -> crate::Result<()> {
         crate::url_scheme::parse_http_url(&payload.url)?;
         self.0
             .run_mobile_plugin::<OpenResponse>("openUrl", payload)
@@ -59,7 +64,7 @@ impl<R: Runtime> NativeWebview<R> {
 
     /// Present the native webview by invoking the Swift/Kotlin `show` command.
     /// See [`ShowResponse`](crate::ShowResponse) for the idempotency contract.
-    pub fn show(&self) -> crate::Result<()> {
+    pub fn show(&self, _id: &str) -> crate::Result<()> {
         self.0
             .run_mobile_plugin::<ShowResponse>("show", ())
             .map_err(|error| crate::Error::PluginInvoke(error.to_string()))?;
@@ -70,7 +75,7 @@ impl<R: Runtime> NativeWebview<R> {
     /// Swift/Kotlin `evaluateJs` command. If no native webview is open the native
     /// side rejects, surfaced here as
     /// [`Error::PluginInvoke`](crate::Error::PluginInvoke).
-    pub fn evaluate_js(&self, payload: EvaluateJsRequest) -> crate::Result<()> {
+    pub fn evaluate_js(&self, _id: &str, payload: EvaluateJsRequest) -> crate::Result<()> {
         self.0
             .run_mobile_plugin::<EvaluateJsResponse>("evaluateJs", payload)
             .map_err(|error| crate::Error::PluginInvoke(error.to_string()))?;
@@ -81,7 +86,11 @@ impl<R: Runtime> NativeWebview<R> {
     /// `patchWindowText` command. Best-effort: the native side resolves with
     /// `{set: false}` (not a hard reject) when no native webview is open. See
     /// [`PatchWindowTextRequest`](crate::PatchWindowTextRequest).
-    pub fn patch_window_text(&self, payload: PatchWindowTextRequest) -> crate::Result<()> {
+    pub fn patch_window_text(
+        &self,
+        _id: &str,
+        payload: PatchWindowTextRequest,
+    ) -> crate::Result<()> {
         self.0
             .run_mobile_plugin::<PatchWindowTextResponse>("patchWindowText", payload)
             .map_err(|error| crate::Error::PluginInvoke(error.to_string()))?;
@@ -91,7 +100,7 @@ impl<R: Runtime> NativeWebview<R> {
     /// Hide the currently-presented native webview by invoking the Swift/Kotlin
     /// `hide` command. Emits [`NativeWebviewEvent::Hidden`](crate::NativeWebviewEvent::Hidden)
     /// on the open channel once hidden. See [`HideResponse`](crate::HideResponse).
-    pub fn hide(&self) -> crate::Result<()> {
+    pub fn hide(&self, _id: &str) -> crate::Result<()> {
         self.0
             .run_mobile_plugin::<HideResponse>("hide", ())
             .map_err(|error| crate::Error::PluginInvoke(error.to_string()))?;
@@ -102,7 +111,7 @@ impl<R: Runtime> NativeWebview<R> {
     /// Emits [`NativeWebviewEvent::Disposed`](crate::NativeWebviewEvent::Disposed)
     /// on the open channel once torn down. See
     /// [`DisposeResponse`](crate::DisposeResponse).
-    pub fn dispose(&self) -> crate::Result<()> {
+    pub fn dispose(&self, _id: &str) -> crate::Result<()> {
         self.0
             .run_mobile_plugin::<DisposeResponse>("dispose", ())
             .map_err(|error| crate::Error::PluginInvoke(error.to_string()))?;

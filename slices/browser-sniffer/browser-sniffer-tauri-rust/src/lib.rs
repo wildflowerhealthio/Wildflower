@@ -10,6 +10,13 @@ mod model;
 mod native_webview_bridge;
 mod sniffer_window;
 
+/// The `tauri-plugin-native-webview` instance id this slice owns. The sniffer's
+/// scrape webview is a distinct instance from the apps-launch popup (`"launch"`),
+/// so a background scrape and a launched app can coexist without one navigating
+/// the other's webview away. Every `native_webview()` call in this crate keys on
+/// it.
+pub(crate) const SNIFFER_WEBVIEW_ID: &str = "sniffer";
+
 use shared_structures_rust::bridge::{BridgeEnvelope, BRIDGE_EVENT};
 use tauri::{AppHandle, Listener};
 use tauri_plugin_log::log;

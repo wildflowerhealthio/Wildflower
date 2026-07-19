@@ -20,24 +20,28 @@ use crate::{NativeWebviewExt, Result};
 #[tauri::command]
 pub(crate) async fn open_url<R: Runtime>(
     app: AppHandle<R>,
+    id: String,
     url: String,
     init_script: Option<String>,
     native_webview_event_channel: Channel<NativeWebviewEvent>,
 ) -> Result<()> {
-    app.native_webview().open_url(OpenRequest {
-        url,
-        init_script,
-        native_webview_event_channel,
-        // JS callers drive window text through the `patch_window_text` command;
-        // the initial-chrome fields are the Rust-caller convenience path.
-        initial_title: None,
-        initial_subtitle: None,
-        initial_message: None,
-        // Cookie seeding is deliberately not exposed to JS callers — a webview
-        // page must never hand the plugin credential material; the Rust host
-        // (`native_webview_handle`) is the only seeding path.
-        cookies: vec![],
-    })
+    app.native_webview().open_url(
+        &id,
+        OpenRequest {
+            url,
+            init_script,
+            native_webview_event_channel,
+            // JS callers drive window text through the `patch_window_text` command;
+            // the initial-chrome fields are the Rust-caller convenience path.
+            initial_title: None,
+            initial_subtitle: None,
+            initial_message: None,
+            // Cookie seeding is deliberately not exposed to JS callers — a webview
+            // page must never hand the plugin credential material; the Rust host
+            // (`native_webview_handle`) is the only seeding path.
+            cookies: vec![],
+        },
+    )
 }
 
 /// JS entry point for `evaluate_js`. Invoked as
@@ -46,9 +50,13 @@ pub(crate) async fn open_url<R: Runtime>(
 /// `window.__nativeWebviewReceive(JSON.stringify({ event, payload }))` to push
 /// bridge messages into the native webview). See [`EvaluateJsRequest`].
 #[tauri::command]
-pub(crate) async fn evaluate_js<R: Runtime>(app: AppHandle<R>, script: String) -> Result<()> {
+pub(crate) async fn evaluate_js<R: Runtime>(
+    app: AppHandle<R>,
+    id: String,
+    script: String,
+) -> Result<()> {
     app.native_webview()
-        .evaluate_js(EvaluateJsRequest { script })
+        .evaluate_js(&id, EvaluateJsRequest { script })
 }
 
 /// JS entry point for `patch_window_text`. Invoked as
@@ -57,40 +65,43 @@ pub(crate) async fn evaluate_js<R: Runtime>(app: AppHandle<R>, script: String) -
 #[tauri::command]
 pub(crate) async fn patch_window_text<R: Runtime>(
     app: AppHandle<R>,
+    id: String,
     title: Option<String>,
     subtitle: Option<String>,
     message: Option<String>,
 ) -> Result<()> {
-    app.native_webview()
-        .patch_window_text(PatchWindowTextRequest {
+    app.native_webview().patch_window_text(
+        &id,
+        PatchWindowTextRequest {
             title,
             subtitle,
             message,
-        })
+        },
+    )
 }
 
 /// JS entry point for `show` — present a freshly-created or previously-hidden
 /// instance. Idempotent (`requestCausedShow: false` when nothing needed
-/// presenting). Invoked as `invoke('plugin:native-webview|show')`.
+/// presenting). Invoked as `invoke('plugin:native-webview|show', { id })`.
 #[tauri::command]
-pub(crate) async fn show<R: Runtime>(app: AppHandle<R>) -> Result<()> {
-    app.native_webview().show()
+pub(crate) async fn show<R: Runtime>(app: AppHandle<R>, id: String) -> Result<()> {
+    app.native_webview().show(&id)
 }
 
 /// JS entry point for `hide` — remove from view but keep alive. Idempotent
 /// (`requestCausedHide: false` when nothing was visible); emits
 /// [`NativeWebviewEvent::Hidden`] on a true transition. Invoked as
-/// `invoke('plugin:native-webview|hide')`.
+/// `invoke('plugin:native-webview|hide', { id })`.
 #[tauri::command]
-pub(crate) async fn hide<R: Runtime>(app: AppHandle<R>) -> Result<()> {
-    app.native_webview().hide()
+pub(crate) async fn hide<R: Runtime>(app: AppHandle<R>, id: String) -> Result<()> {
+    app.native_webview().hide(&id)
 }
 
 /// JS entry point for `dispose` — tear down (visible or hidden) and free
 /// resources. Idempotent (`requestCausedDispose: false` when none existed);
 /// emits [`NativeWebviewEvent::Disposed`] on a true transition. Invoked as
-/// `invoke('plugin:native-webview|dispose')`.
+/// `invoke('plugin:native-webview|dispose', { id })`.
 #[tauri::command]
-pub(crate) async fn dispose<R: Runtime>(app: AppHandle<R>) -> Result<()> {
-    app.native_webview().dispose()
+pub(crate) async fn dispose<R: Runtime>(app: AppHandle<R>, id: String) -> Result<()> {
+    app.native_webview().dispose(&id)
 }

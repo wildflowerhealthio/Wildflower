@@ -27,7 +27,10 @@ import type { JsonValue } from 'kitchen-sink/schema'
  * Wire format:
  *   - Emits `Log`, `ResponseStart`, `ResponseData`, `ResponseFinished`,
  *     `RequestError`, `Cancelled`, `PageLoaded` on the multiplexed
- *     `BRIDGE_EVENT` channel (discriminated by `_tag`). Emits are
+ *     `BRIDGE_EVENT` channel (discriminated by `_tag`). `PageLoaded` is held
+ *     until the page *settles* — no DOM mutations and no in-flight fetch/XHR
+ *     for a continuous quiet window, or a hard ceiling — rather than firing on
+ *     the raw `window.load` event (see the settle watch below). Emits are
  *     fire-and-forget here; the wrapping `makeFilteringEventBus` serializes
  *     them to keep the ~64KB `ResponseData` chunks FIFO (see
  *     `filter-tauri-internal.ts`).
@@ -64,9 +67,33 @@ interface SnifferState {
   readonly nativeXHROpen: XMLHttpRequest['open']
   readonly nativeXHRSend: XMLHttpRequest['send']
   readonly activeRequests: Set<string>
+  /**
+   * The sole `window.load` listener. Arms the settlement detector — which fires
+   * `PageLoaded` once the page is quiet — rather than snapshotting synchronously.
+   * Named `pageLoadHandler` because it remains the one `load` handler.
+   */
   readonly pageLoadHandler: () => void
+  /**
+   * Tear the settle watch down: disconnect the `MutationObserver` and clear the
+   * quiet-window / ceiling timers. Idempotent. Settlement calls it itself before
+   * snapshotting; exposed so tests can reset a mid-flight watch between cases.
+   */
+  readonly teardownSettleWatch: () => void
   /** Resolved `event.listen(...)` cleanups; drained on re-injection. */
   readonly unlistens: Array<(() => void) | Promise<() => void>>
+}
+
+/**
+ * Per-install tuning for the page-settlement detector, so tests can drive it
+ * deterministically. Production passes none and gets the in-body defaults.
+ */
+interface InstallSnifferOptions {
+  readonly settle?: {
+    /** Continuous quiet (no DOM mutation, no in-flight request) before firing `PageLoaded`. */
+    readonly quietWindowMs?: number
+    /** Hard ceiling from `load`: fire `PageLoaded` even if the page never fully quiesces. */
+    readonly maxWaitMs?: number
+  }
 }
 
 /**
@@ -97,7 +124,7 @@ const BRIDGE_EVENT = 'bridge'
  * `tauri-sniffer-entry.ts` wrapper looks the global up once and passes
  * it in.
  */
-const installSniffer = function (eventBus: TauriEventApi): void {
+const installSniffer = function (eventBus: TauriEventApi, options?: InstallSnifferOptions): void {
   const win = window
   // Single state slot keyed by a registry symbol — eliminates name
   // collisions with arbitrary host-page globals and gives idempotency
@@ -229,8 +256,24 @@ const installSniffer = function (eventBus: TauriEventApi): void {
     return entries
   }
 
-  // Track in-progress request IDs so they can be cancelled.
+  // In-flight request IDs, for cancellation and for the settle watcher's
+  // network-idle check. Maintained via `trackRequestStart` / `trackRequestEnd`
+  // from initiation (fetch: before response headers; XHR: `send`) to terminal.
   const activeRequests = new Set<string>()
+
+  // The settle watcher's activity signal, poked by the fetch/XHR shims through
+  // `trackRequest*`. A no-op until `load` starts the watch (then it re-arms the
+  // quiet window), and a no-op again once settled.
+  const noopActivity = (): void => {}
+  let signalActivity: () => void = noopActivity
+  const trackRequestStart = (id: string): void => {
+    activeRequests.add(id)
+    signalActivity()
+  }
+  const trackRequestEnd = (id: string): void => {
+    activeRequests.delete(id)
+    signalActivity()
+  }
   // Per-XHR state keyed by instance — avoids polluting `XMLHttpRequest`
   // instances with `_sniffer*` properties.
   interface XhrState {
@@ -331,6 +374,11 @@ const installSniffer = function (eventBus: TauriEventApi): void {
     let url: string
     let response: Response
 
+    // Count the request as in-flight *before* awaiting the response so a slow
+    // header round-trip keeps the page from settling prematurely. Every terminal
+    // path below balances this with `trackRequestEnd`.
+    trackRequestStart(requestId)
+
     try {
       if (typeof request === 'string') {
         url = toAbsoluteUrl(request)
@@ -359,7 +407,6 @@ const installSniffer = function (eventBus: TauriEventApi): void {
       }
       const message = err instanceof Error ? err.message : String(err)
       logWarning(`fetch threw before response: ${message}`)
-      activeRequests.add(requestId)
       post({
         _tag: 'ResponseStart',
         id: requestId,
@@ -368,12 +415,10 @@ const installSniffer = function (eventBus: TauriEventApi): void {
         statusText: '',
         headers: [],
       })
-      activeRequests.delete(requestId)
+      trackRequestEnd(requestId)
       post({ _tag: 'RequestError', id: requestId, url: errorUrl, message })
       throw err
     }
-
-    activeRequests.add(requestId)
 
     post({
       _tag: 'ResponseStart',
@@ -393,6 +438,15 @@ const installSniffer = function (eventBus: TauriEventApi): void {
     const responseRedirected = response.redirected
 
     if (response.body !== null) {
+      // WARNING — a fetched body the page never drains leaks `requestId`: the
+      // balancing `trackRequestEnd` lives in this `flush()`, which runs only once
+      // `wrapped.body` is read to completion. Fire-and-forget fetches (`fetch(url)`,
+      // `fetch(url).then((r) => r.ok)`) never drain it, so `requestId` sticks in
+      // `activeRequests` forever and the settle watcher's network-idle check
+      // (`activeRequests.size === 0`) never passes — the page then settles only at
+      // the `SETTLE_MAX_WAIT_MS` ceiling, and the host keeps a dangling response
+      // (no `ResponseFinished`). Left unfixed by decision; flagged so it's
+      // recognized if a page settles only at the ceiling.
       const ts = new TransformStream<Uint8Array, Uint8Array>({
         transform(chunk, controller): void {
           if (!activeRequests.has(requestId)) {
@@ -404,7 +458,7 @@ const installSniffer = function (eventBus: TauriEventApi): void {
         },
         flush(): void {
           if (!activeRequests.has(requestId)) return
-          activeRequests.delete(requestId)
+          trackRequestEnd(requestId)
           post({ _tag: 'ResponseFinished', id: requestId })
         },
       })
@@ -425,7 +479,7 @@ const installSniffer = function (eventBus: TauriEventApi): void {
       })
       response = wrapped
     } else {
-      activeRequests.delete(requestId)
+      trackRequestEnd(requestId)
       post({ _tag: 'ResponseFinished', id: requestId })
     }
 
@@ -484,7 +538,7 @@ const installSniffer = function (eventBus: TauriEventApi): void {
     const requestId = state.id
     let startSent = false
 
-    activeRequests.add(requestId)
+    trackRequestStart(requestId)
 
     const ensureStartSent = (xhr: XMLHttpRequest): void => {
       if (startSent) return
@@ -580,7 +634,7 @@ const installSniffer = function (eventBus: TauriEventApi): void {
         ensureStartSent(this)
         flushTextChunk(this)
         flushFinalNonTextBody(this)
-        activeRequests.delete(requestId)
+        trackRequestEnd(requestId)
         post({ _tag: 'ResponseFinished', id: requestId })
       },
       { once: true }
@@ -602,7 +656,7 @@ const installSniffer = function (eventBus: TauriEventApi): void {
         // already sent it. Without it, `handleRequestError` finds no tracked
         // response and drops the failure with only a WARN.
         ensureStartSent(this)
-        activeRequests.delete(requestId)
+        trackRequestEnd(requestId)
         post({
           _tag: 'RequestError',
           id: requestId,
@@ -623,7 +677,7 @@ const installSniffer = function (eventBus: TauriEventApi): void {
         // to `entity.parse` as if complete — surfacing a confusing `ParseError`
         // instead of a clean cancel/error terminal.
         ensureStartSent(this)
-        activeRequests.delete(requestId)
+        trackRequestEnd(requestId)
         post({
           _tag: 'RequestError',
           id: requestId,
@@ -637,52 +691,30 @@ const installSniffer = function (eventBus: TauriEventApi): void {
     nativeXHRSend.call(this, body ?? null)
   } satisfies XMLHttpRequest['send']
 
-  // Page-content capture on window `load`. `PageLoaded` is just a
-  // notification; the DOM body (`Element.outerHTML`, so XML serialises
-  // too) streams through the standard Response triple, chunked to keep
-  // per-message size bounded.
+  // Page-content capture, gated on settlement rather than raw `window.load` (the
+  // settle watch below). `PageLoaded` is a notification; the DOM body streams
+  // through the standard Response triple, chunked. See the sniffer's Architecture
+  // Explanation § settlement for the why.
   const PAGE_CONTENT_CHUNK_BYTES = 65536
-  const MAX_PAGE_LOAD_RETRIES = 8
-  // WebKit builds its JSON viewer (`<pre>{json}</pre>`) a frame or two
-  // *after* `load` fires for these content types, so a synchronous
-  // snapshot captures an empty shell — wait for the `<pre>`. XML (tree)
-  // and HTML (its own content) snapshot immediately.
-  const JSON_VIEWER_CONTENT_TYPES: ReadonlySet<string> = new Set([
-    'application/json',
-    'application/fhir+json',
-    'application/ld+json',
-  ])
-  // At most one snapshot per installed page — guards a re-fired `load`
-  // and a second retry chain from double-emitting. Reset per page by
-  // re-injection rebuilding the closure.
+  // Settlement thresholds. Overridable via `options.settle` so tests can drive
+  // the watcher deterministically; production callers pass none and get these.
+  const SETTLE_QUIET_WINDOW_MS = 1000
+  const SETTLE_MAX_WAIT_MS = 10_000
+  const quietWindowMs = options?.settle?.quietWindowMs ?? SETTLE_QUIET_WINDOW_MS
+  const maxWaitMs = options?.settle?.maxWaitMs ?? SETTLE_MAX_WAIT_MS
+
+  // At most one snapshot per installed page — guards a re-fired `load`, a
+  // quiet-window/ceiling race, and re-injection. Reset per page by re-injection
+  // rebuilding the closure.
   let pageSnapshotEmitted = false
-  // Serves both the `load` listener (passed the `Event`) and its own rAF
-  // retry (passed a numeric `attempt`); the `typeof` narrow lets the one
-  // function `resetShims` unregisters cover both.
-  const pageLoadHandler = (attemptOrEvent: number | Event = 0): void => {
-    const attempt = typeof attemptOrEvent === 'number' ? attemptOrEvent : 0
-    // Readiness is judged off the live DOM so a multi-MB document isn't
-    // re-serialized each retry. The content-type parameter is stripped
-    // (`application/json; charset=utf-8`) because WebKit hasn't always
-    // reported the bare spec essence.
-    // oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- intentional runtime guard
-    const contentType = (String(document.contentType ?? '').split(';')[0] ?? '')
-      .trim()
-      .toLowerCase()
-    const jsonViewerNotReady =
-      JSON_VIEWER_CONTENT_TYPES.has(contentType) && document.querySelector('pre') === null
-    const shouldRetry =
-      attempt < MAX_PAGE_LOAD_RETRIES &&
-      typeof win.requestAnimationFrame === 'function' &&
-      jsonViewerNotReady
-    if (shouldRetry) {
-      win.requestAnimationFrame(() => {
-        win.requestAnimationFrame(() => {
-          pageLoadHandler(attempt + 1)
-        })
-      })
-      return
-    }
+  let settleWatchStarted = false
+  let quietTimer: ReturnType<typeof setTimeout> | undefined
+  let ceilingTimer: ReturnType<typeof setTimeout> | undefined
+  let observer: MutationObserver | undefined
+
+  // Snapshot the DOM + stream it, run once the page is quiet (via the settle
+  // watch below) rather than on raw `load`.
+  const emitPageLoaded = (): void => {
     if (pageSnapshotEmitted) return
     pageSnapshotEmitted = true
     const content = document.documentElement.outerHTML
@@ -708,7 +740,74 @@ const installSniffer = function (eventBus: TauriEventApi): void {
       post({ _tag: 'ResponseFinished', id: pageContentId })
     }
   }
-  win.addEventListener('load', pageLoadHandler)
+
+  const teardownSettleWatch = (): void => {
+    if (observer !== undefined) {
+      observer.disconnect()
+      observer = undefined
+    }
+    if (quietTimer !== undefined) {
+      clearTimeout(quietTimer)
+      quietTimer = undefined
+    }
+    if (ceilingTimer !== undefined) {
+      clearTimeout(ceilingTimer)
+      ceilingTimer = undefined
+    }
+    // Post-settlement the page-content stream still touches `activeRequests`;
+    // detach the signal so those touches can't re-arm a torn-down watch.
+    signalActivity = noopActivity
+  }
+
+  // Settle: tear the watch down *first* (so the page-content stream below can't
+  // re-arm anything via `activeRequests`), then snapshot.
+  const settleNow = (): void => {
+    if (pageSnapshotEmitted) return
+    teardownSettleWatch()
+    emitPageLoaded()
+  }
+
+  const onQuietElapsed = (): void => {
+    quietTimer = undefined
+    if (pageSnapshotEmitted) return
+    // Only settle if the network is also idle. Otherwise stay disarmed: the next
+    // request terminal or DOM mutation re-arms via `signalActivity`, and the
+    // ceiling is the ultimate backstop for a page that never goes idle.
+    if (activeRequests.size === 0) {
+      settleNow()
+    }
+  }
+
+  // Debounce: (re)start the quiet window. Called on every DOM mutation and every
+  // request start/terminal, so the window measures continuous quiet.
+  const armQuietTimer = (): void => {
+    if (pageSnapshotEmitted) return
+    if (quietTimer !== undefined) clearTimeout(quietTimer)
+    quietTimer = setTimeout(onQuietElapsed, quietWindowMs)
+  }
+
+  const startSettleWatch = (): void => {
+    if (settleWatchStarted || pageSnapshotEmitted) return
+    settleWatchStarted = true
+    // Requests now re-arm the quiet window (via `trackRequest*`).
+    signalActivity = armQuietTimer
+    observer = new MutationObserver(() => {
+      armQuietTimer()
+    })
+    // Structural mutations only — NOT `attributes`/`characterData`: EMR/SPA pages
+    // mutate those forever after load (spinners, animations, clocks, `aria-live`,
+    // React re-renders), which would re-arm the quiet window every tick and pin
+    // every such page to the `SETTLE_MAX_WAIT_MS` ceiling. Node add/remove is the
+    // signal that real content (an SPA subtree, a JSON viewer's `<pre>`) is still
+    // arriving; cosmetic churn on existing nodes is not.
+    observer.observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+    })
+    ceilingTimer = setTimeout(settleNow, maxWaitMs)
+    armQuietTimer()
+  }
+  win.addEventListener('load', startSettleWatch)
 
   // Host→Web messages arrive on the multiplexed `BRIDGE_EVENT` channel;
   // demux by `_tag`. Unrecognized tags (other slices' traffic, our own
@@ -765,7 +864,7 @@ const installSniffer = function (eventBus: TauriEventApi): void {
       if (msg._tag === 'CancelSnifferRequest') {
         if (typeof msg.id !== 'string') return
         const wasActive = activeRequests.has(msg.id)
-        activeRequests.delete(msg.id)
+        trackRequestEnd(msg.id)
         if (wasActive) {
           post({ _tag: 'Cancelled', id: msg.id })
         }
@@ -801,7 +900,8 @@ const installSniffer = function (eventBus: TauriEventApi): void {
     nativeXHROpen,
     nativeXHRSend,
     activeRequests,
-    pageLoadHandler,
+    pageLoadHandler: startSettleWatch,
+    teardownSettleWatch,
     unlistens,
   }
   // `logError` is captured for use by future top-level error sinks;
@@ -811,4 +911,4 @@ const installSniffer = function (eventBus: TauriEventApi): void {
 }
 
 export { BRIDGE_EVENT, installSniffer, SNIFFER_STATE_KEY }
-export type { SnifferInboundMessage, SnifferOutboundMessage, SnifferState }
+export type { InstallSnifferOptions, SnifferInboundMessage, SnifferOutboundMessage, SnifferState }
