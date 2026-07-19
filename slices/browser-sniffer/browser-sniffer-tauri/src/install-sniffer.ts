@@ -697,30 +697,10 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
   const PAGE_CONTENT_CHUNK_BYTES = 65536
   // Settlement thresholds. Overridable via `options.settle` so tests can drive
   // the watcher deterministically; production callers pass none and get these.
-  const SETTLE_QUIET_WINDOW_MS = 500
+  const SETTLE_QUIET_WINDOW_MS = 1000
   const SETTLE_MAX_WAIT_MS = 10_000
   const quietWindowMs = options?.settle?.quietWindowMs ?? SETTLE_QUIET_WINDOW_MS
   const maxWaitMs = options?.settle?.maxWaitMs ?? SETTLE_MAX_WAIT_MS
-  // WebKit builds its JSON viewer (`<pre>{json}</pre>`) a frame or two *after*
-  // `load` for these content types; a snapshot before the `<pre>` exists
-  // captures an empty shell. That insertion is itself a DOM mutation, so the
-  // quiet window already waits for it; this guard additionally blocks an early
-  // fire when the quiet window is shorter than WebKit's build delay (only
-  // reachable with a tuned-down `quietWindowMs`). XML/HTML are ready at `load`.
-  const JSON_VIEWER_CONTENT_TYPES: ReadonlySet<string> = new Set([
-    'application/json',
-    'application/fhir+json',
-    'application/ld+json',
-  ])
-  const jsonViewerNotReady = (): boolean => {
-    // The content-type parameter is stripped (`application/json; charset=utf-8`)
-    // because WebKit hasn't always reported the bare spec essence.
-    // oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- intentional runtime guard
-    const contentType = (String(document.contentType ?? '').split(';')[0] ?? '')
-      .trim()
-      .toLowerCase()
-    return JSON_VIEWER_CONTENT_TYPES.has(contentType) && document.querySelector('pre') === null
-  }
 
   // At most one snapshot per installed page — guards a re-fired `load`, a
   // quiet-window/ceiling race, and re-injection. Reset per page by re-injection
@@ -789,11 +769,11 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
   const onQuietElapsed = (): void => {
     quietTimer = undefined
     if (pageSnapshotEmitted) return
-    // A quiet window only settles if the network is idle and (for a JSON viewer)
-    // the `<pre>` has rendered. Otherwise stay dearmed: the next request terminal
+    // A quiet window only settles if the network is idle
+    // Otherwise stay dearmed: the next request terminal
     // or DOM mutation re-arms via `signalActivity`, and the ceiling is the
     // ultimate backstop for a page that never goes idle.
-    if (activeRequests.size === 0 && !jsonViewerNotReady()) {
+    if (activeRequests.size === 0) {
       settleNow()
     }
   }

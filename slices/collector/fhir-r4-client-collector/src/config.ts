@@ -132,7 +132,7 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirRes
         },
       },
     ],
-    stepDelay: Duration.seconds(5),
+    stepDelay: Duration.seconds(0),
   })
 }
 
