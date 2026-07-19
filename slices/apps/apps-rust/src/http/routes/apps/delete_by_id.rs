@@ -2,7 +2,7 @@
 //! from the registration, so tiles and the editor need no kind to delete. All of the
 //! work — the **removability policy** and the self-hosted host-side teardown (stop the
 //! listener before the row is freed, remove the serving folder after) — lives in the
-//! domain action ([`actions::delete_app`], driven over the store + the
+//! `AppsDeleter` capability (over the store + the
 //! [`SelfHostedInstaller`](crate::domain::SelfHostedInstaller) port); this handler only
 //! wires the request to it.
 //!

@@ -1,15 +1,15 @@
-//! The in-memory [`AppsStore`] fake shared by every action file's unit tests, plus
-//! the small data builders they seed it with. Modelling the real primitive
-//! semantics — `insert_cloud_app` reports a duplicate id as
-//! [`CloudInsertError::IdTaken`], `find_app` / `replace_*` report an absent id as
+//! The in-memory [`AppsStore`] fake shared by the scope-gated
+//! [`capabilities`](crate::domain::capabilities) unit tests and the residual helper
+//! tests (`get_app`, `slugify`, …), plus the small data builders they seed it with.
+//! Modelling the real primitive semantics — `insert_cloud_app` reports a duplicate id
+//! as [`CloudInsertError::IdTaken`], `find_app` / `replace_*` report an absent id as
 //! `None`, `delete_app` reports a miss as `false`, `replace_placements` reports a
 //! non-permutation as `None` — it stores `(registration, configuration)` pairs with
-//! no diesel and no database, so the actions' semantic mapping is exercised directly.
-//! The `SQLite` adapter's own coverage lives in `crate::db`.
+//! no diesel and no database, so the capabilities' semantic mapping is exercised
+//! directly. The `SQLite` adapter's own coverage lives in `crate::db`.
 
 use std::cell::RefCell;
 
-use super::cloud_apps::{create_cloud_app, CloudAppPayload};
 use crate::domain::{
     is_exact_registry_permutation, lowest_free_port, AppConfiguration, AppKind, AppRegistration,
     AppUrl, AppsError, AppsStore, CloudAppConfiguration, CloudInsertError,
@@ -229,22 +229,23 @@ pub(crate) fn registration(id: &str, kind: AppKind) -> AppRegistration {
     }
 }
 
-/// Create a cloud app through the action with a caller-chosen id (the HTTP layer
-/// mints it in production) and default content.
+/// Seed a cloud app straight through the store port with a caller-chosen id (the
+/// HTTP layer mints it in production) and default content — the pair the capability
+/// tests build a store from.
 pub(crate) fn create_cloud(
     store: &FakeAppsStore,
     id: &str,
 ) -> Result<(AppRegistration, CloudAppConfiguration), AppsError> {
-    create_cloud_app(
-        store,
-        || id.to_owned(),
-        CloudAppPayload {
-            name: id.to_owned(),
-            subtitle: None,
-            url: "https://example.com/launch".to_owned(),
-            requires_tunnel: false,
-        },
-    )
+    let config = CloudAppConfiguration {
+        url: "https://example.com/launch"
+            .parse::<AppUrl>()
+            .expect("a valid seed launch url"),
+    };
+    store
+        .insert_cloud_app(&registration(id, AppKind::Cloud), &config)?
+        .map_err(|_| {
+            AppsError::infrastructure("test seed cloud id already taken", format!("id={id}"))
+        })
 }
 
 pub(crate) fn seeded_self_hosted(store: &FakeAppsStore, id: &str, seeded: bool) {
