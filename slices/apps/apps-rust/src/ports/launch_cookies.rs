@@ -16,7 +16,8 @@
 //! builds [`AppsState`](crate::http::AppsState); a host with no cookie-auth path
 //! wires the [`NoLaunchCookies`] no-op. apps-rust never learns the `wf_auth`
 //! cookie name or format — the seam keeps that in the gatekeeper slice, exactly
-//! as [`OwnerAuth`](crate::http::OwnerAuth) keeps the owner-bearer check there.
+//! as [`AppLaunchScopes`](crate::ports::AppLaunchScopes) keeps the SMART
+//! client-scope lookup there.
 
 use axum::http::{HeaderMap, HeaderValue};
 

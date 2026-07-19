@@ -47,8 +47,9 @@
 //! ## Launch / tunnel seam
 //!
 //! `POST /apps/{id}` resolves a launch target and dispatches on the *request's*
-//! provenance (loopback vs. forwarded) — see the launch handler module. A
-//! loopback launch is owner-gated through [`http::OwnerAuth`]. A
+//! provenance (loopback vs. forwarded) — see the launch handler module. The launch
+//! surface is scope-gated on the `wildflower/launch` umbrella (plus a per-app SMART
+//! check) through the [`AppLauncher`](domain::capabilities) capability. A
 //! `requires_tunnel` (cloud) launch resolves through the shared
 //! [`TunnelService`](shared_structures_rust::tunnel_service::TunnelService)
 //! contract, keeping apps-rust decoupled from tunnel-rust.
@@ -59,9 +60,9 @@ pub mod domain;
 pub mod http;
 mod id_utils;
 mod install;
+mod live_bindings;
 mod seed;
 mod self_hosted_apps_service;
-mod state;
 
 use std::sync::Arc;
 
@@ -83,7 +84,7 @@ pub use db::SqliteAppsStore;
 // `setup_apps` call site.
 pub use domain::{AppRegistration, SelfHostedAppConfiguration};
 pub use http::openapi_spec;
-pub use state::AppsState;
+pub use live_bindings::state::AppsState;
 
 pub use seed::sync_vendored_self_hosted_apps;
 pub use self_hosted_apps_service::SelfHostedAppsService;

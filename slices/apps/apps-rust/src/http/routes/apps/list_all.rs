@@ -10,10 +10,10 @@ use axum::Json;
 use scope_capabilities_rust::{InsufficientScopeBody, Scoped};
 
 use crate::domain::{AppRegistration, AppsError};
-use crate::state::AppsReaderCap;
+use crate::live_bindings::LiveAppsReader;
 
 /// `GET /apps` — the full registry in display order. Scope-gated on
-/// `wildflower/Apps.r` through [`Scoped<AppsReaderCap>`]; the host wraps the router
+/// `wildflower/Apps.r` through [`Scoped<LiveAppsReader>`]; the host wraps the router
 /// with the bearer gate that inserts the caller's scope claims.
 #[utoipa::path(
     get,
@@ -25,7 +25,7 @@ use crate::state::AppsReaderCap;
     ),
 )]
 pub(crate) async fn handle_list_apps(
-    reader: Scoped<AppsReaderCap>,
+    reader: Scoped<LiveAppsReader>,
 ) -> Result<Json<Vec<AppRegistration>>, AppsError> {
     Ok(Json(reader.list()?))
 }

@@ -11,10 +11,10 @@ use scope_capabilities_rust::{InsufficientScopeBody, Scoped};
 use crate::domain::AppsError;
 use crate::http::errors::AppNotFoundBody;
 use crate::http::wire_representations::CloudAppDetail;
-use crate::state::AppsReaderCap;
+use crate::live_bindings::LiveAppsReader;
 
 /// `GET /cloud-apps/{id}` — the cloud editor detail. Scope-gated on
-/// `wildflower/Apps.r` through [`Scoped<AppsReaderCap>`].
+/// `wildflower/Apps.r` through [`Scoped<LiveAppsReader>`].
 #[utoipa::path(
     get,
     tag = "Cloud apps",
@@ -27,7 +27,7 @@ use crate::state::AppsReaderCap;
     ),
 )]
 pub(crate) async fn handle_get_cloud_app(
-    reader: Scoped<AppsReaderCap>,
+    reader: Scoped<LiveAppsReader>,
     Path(id): Path<String>,
 ) -> Result<Json<CloudAppDetail>, AppsError> {
     let (registration, config) = reader.cloud(&id)?;

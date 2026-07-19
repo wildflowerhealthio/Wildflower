@@ -12,18 +12,21 @@
 //!    gated/launch router split lives in [`routes`]; the route files stay pure.
 //!  - [`errors`] — the wire bodies + `impl IntoResponse` for
 //!    [`AppsError`](crate::domain::AppsError).
-//!  - [`ports`] — the host-seam dependency-inversion traits ([`OwnerAuth`],
-//!    [`LaunchCookies`]) the host wires into [`AppsState`].
+//!  - [`ports`] — the host-seam dependency-inversion traits
+//!    ([`AppLaunchScopes`](crate::ports::AppLaunchScopes),
+//!    [`LaunchCookies`](crate::ports::LaunchCookies)) the host wires into
+//!    [`AppsState`].
 //!
-//! The shared [`AppsState`] itself lives at the crate root ([`crate::state`]) so
-//! the scope-gated capability bindings sit beside it (see that module).
+//! The shared [`AppsState`] itself lives at the crate root
+//! ([`crate::live_bindings::state`]) so the scope-gated capability bindings sit
+//! beside it (see that module).
 //!
 //! The surface is exposed as two routers so the host can gate them differently:
 //! [`gated_router`] (list + cloud-admin + `PUT /home-screen`) is wrapped by the
-//! host's bearer gate; [`launch_router`] (`GET` + `POST /apps/{id}`) is mounted
-//! ungated at the router level — the launch handler owner-gates the loopback popup
-//! through [`ports::owner_auth::OwnerAuth`] while a forwarded launch rides the
-//! front trust boundary.
+//! host's bearer gate; [`launch_router`] (`GET` + `POST /apps/{id}`) is wrapped by
+//! the same bearer gate too — it inserts the scope claims the launch handler's
+//! `wildflower/launch` gate (plus a per-app SMART check) reads — while a forwarded
+//! launch rides the front trust boundary.
 
 mod errors;
 mod routes;
@@ -31,9 +34,10 @@ mod routes;
 pub(crate) mod test_support;
 pub(crate) mod wire_representations;
 
-// The shared state lives at the crate root ([`crate::state`]); re-exported here
-// so `apps_rust::http::AppsState` (and the router builders below) keep naming it.
-pub use crate::state::AppsState;
+// The shared state lives at the crate root ([`crate::live_bindings::state`]);
+// re-exported here so `apps_rust::http::AppsState` (and the router builders below)
+// keep naming it.
+pub use crate::live_bindings::state::AppsState;
 
 use std::sync::Arc;
 
@@ -65,10 +69,10 @@ pub fn gated_router(state: Arc<AppsState>) -> Router {
     router.with_state(state)
 }
 
-/// Build the launch routes (`GET` + `POST /apps/{id}`), mounted **ungated** at the
-/// router level: the host puts them behind only its network (loopback-peer) gate,
-/// and the launch handler owner-gates the loopback popup internally via
-/// [`OwnerAuth`] while a forwarded launch rides the front trust boundary.
+/// Build the launch routes (`GET` + `POST /apps/{id}`). Carries no middleware —
+/// the host wraps it with the same bearer gate (which inserts the scope claims the
+/// launch handler's `wildflower/launch` + per-app SMART gate reads), while a
+/// forwarded launch rides the front trust boundary.
 pub fn launch_router(state: Arc<AppsState>) -> Router {
     let (router, _spec) = routes::launch_openapi_router().split_for_parts();
     router.with_state(state)

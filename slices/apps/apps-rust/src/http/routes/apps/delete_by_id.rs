@@ -20,10 +20,10 @@ use scope_capabilities_rust::{InsufficientScopeBody, Scoped};
 
 use crate::domain::AppsError;
 use crate::http::errors::{AppNotEditableBody, AppNotFoundBody};
-use crate::state::AppsDeleterCap;
+use crate::live_bindings::LiveAppsDeleter;
 
 /// `DELETE /apps/{id}` — remove a cloud app or an uploaded self-hosted app.
-/// Scope-gated on `wildflower/Apps.d` through [`Scoped<AppsDeleterCap>`].
+/// Scope-gated on `wildflower/Apps.d` through [`Scoped<LiveAppsDeleter>`].
 #[utoipa::path(
     delete,
     tag = "Catalogue",
@@ -37,7 +37,7 @@ use crate::state::AppsDeleterCap;
     ),
 )]
 pub(crate) async fn handle_delete_app(
-    deleter: Scoped<AppsDeleterCap>,
+    deleter: Scoped<LiveAppsDeleter>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppsError> {
     // The capability owns the removability verdict (404 unknown / 409 protected),

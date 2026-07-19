@@ -14,7 +14,7 @@ use scope_capabilities_rust::{InsufficientScopeBody, Scoped};
 use crate::domain::AppsError;
 use crate::http::errors::{AppNotEditableBody, AppNotFoundBody, InvalidFieldBody};
 use crate::http::wire_representations::SelfHostedAppDetail;
-use crate::state::AppsEditorCap;
+use crate::live_bindings::LiveAppsEditor;
 
 /// The `PUT /self-hosted-apps/{id}` body — the editable launch path. Absent or
 /// empty clears it back to root-serving. Matches the TS
@@ -27,7 +27,7 @@ pub(crate) struct SelfHostedAppBody {
 }
 
 /// `PUT /self-hosted-apps/{id}` — replace a self-hosted app's launch path.
-/// Scope-gated on `wildflower/Apps.u` through [`Scoped<AppsEditorCap>`].
+/// Scope-gated on `wildflower/Apps.u` through [`Scoped<LiveAppsEditor>`].
 #[utoipa::path(
     put,
     tag = "Self-hosted apps",
@@ -43,7 +43,7 @@ pub(crate) struct SelfHostedAppBody {
     ),
 )]
 pub(crate) async fn handle_update_self_hosted_app(
-    editor: Scoped<AppsEditorCap>,
+    editor: Scoped<LiveAppsEditor>,
     Path(id): Path<String>,
     Json(body): Json<SelfHostedAppBody>,
 ) -> Result<Json<SelfHostedAppDetail>, AppsError> {

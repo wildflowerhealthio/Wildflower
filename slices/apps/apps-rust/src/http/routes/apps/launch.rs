@@ -16,7 +16,7 @@
 //!      `Forwarded` host can't make the gate-vs-resolve and which-origin
 //!      decisions disagree.
 //!   2. The `wildflower/launch` umbrella is enforced *before this handler runs* by
-//!      the [`Scoped<AppLauncherCap>`](crate::state::AppLauncherCap) extractor
+//!      the [`Scoped<LiveAppLauncher>`](crate::live_bindings::LiveAppLauncher) extractor
 //!      (the host wraps the launch router with the bearer gate that inserts the
 //!      caller's scope claims). An under-umbrella caller `403`s before `find_app`
 //!      or target resolution, so it triggers no `tunnel.try_start()` and learns
@@ -57,12 +57,13 @@ use crate::domain::{
 };
 use crate::http::errors::{AppNotFoundBody, LaunchUnavailableBody};
 use crate::id_utils::mint_launch_nonce;
-use crate::state::{AppLauncherCap, AppsState};
+use crate::live_bindings::state::AppsState;
+use crate::live_bindings::LiveAppLauncher;
 
 /// `POST /apps/{id}` — launch an app (`404` if no app has this id). The loopback
 /// (Tauri) arm drives this through the typed client so the owner bearer rides
 /// along. Scope-gated on the `wildflower/launch` umbrella through
-/// [`Scoped<AppLauncherCap>`]; a SMART app additionally requires the caller's grant
+/// [`Scoped<LiveAppLauncher>`]; a SMART app additionally requires the caller's grant
 /// to cover its OAuth client's scopes (checked in [`launch`]). See the module docs
 /// for the resolve-then-dispatch flow and the auth posture; the body is shared with
 /// [`handle_launch_app_get`] via [`launch`].
@@ -80,7 +81,7 @@ use crate::state::{AppLauncherCap, AppsState};
     ),
 )]
 pub(crate) async fn handle_launch_app(
-    launcher: Scoped<AppLauncherCap>,
+    launcher: Scoped<LiveAppLauncher>,
     State(state): State<Arc<AppsState>>,
     headers: HeaderMap,
     Path(id): Path<String>,
@@ -110,7 +111,7 @@ pub(crate) async fn handle_launch_app(
     ),
 )]
 pub(crate) async fn handle_launch_app_get(
-    launcher: Scoped<AppLauncherCap>,
+    launcher: Scoped<LiveAppLauncher>,
     State(state): State<Arc<AppsState>>,
     headers: HeaderMap,
     Path(id): Path<String>,
@@ -122,7 +123,7 @@ pub(crate) async fn handle_launch_app_get(
 /// picks the arm (native anchor navigation vs. the typed loopback client); the
 /// resolve-then-dispatch flow and auth posture are identical.
 async fn launch(
-    launcher: &AppLauncherCap,
+    launcher: &LiveAppLauncher,
     state: Arc<AppsState>,
     headers: HeaderMap,
     id: String,
