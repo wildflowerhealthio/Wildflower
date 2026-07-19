@@ -28,9 +28,10 @@
 //! capability's `*_scopes()` function — read by **both** its `Capability` binding
 //! and [`grantable_collector_scopes`], so *enforced* and *grantable* can't drift.
 
+use chrono::{SecondsFormat, Utc};
 use scopes_rust::{Permission, Scope, WildflowerResource};
 
-use crate::domain::{actions, Remote, RemoteError, RemotesStore};
+use crate::domain::{required_config_tag, Remote, RemoteError, RemotesStore};
 
 /// The scope gating [`RemotesReader`] — `wildflower/Accounts.r`. Reads require
 /// `.r` (not merely authentication) because the returned `config` can carry the
@@ -104,13 +105,24 @@ impl<S: RemotesStore> RemotesReader<S> {
     }
 
     /// Every remote, oldest first — the `GET /collector/remotes` catalogue.
+    ///
+    /// # Errors
+    ///
+    /// [`RemoteError::Infrastructure`] if the store read fails.
     pub(crate) fn list(&self) -> Result<Vec<Remote>, RemoteError> {
-        actions::list_remotes(&self.store)
+        self.store.list()
     }
 
     /// A single remote by id, or [`RemoteError::NotFound`] when absent.
+    ///
+    /// # Errors
+    ///
+    /// [`RemoteError::NotFound`] when no remote has this id;
+    /// [`RemoteError::Infrastructure`] if the store read fails.
     pub(crate) fn get(&self, id: &str) -> Result<Remote, RemoteError> {
-        actions::get_remote(&self.store, id)
+        self.store
+            .get(id)?
+            .ok_or_else(|| RemoteError::NotFound { id: id.to_owned() })
     }
 }
 
@@ -127,16 +139,40 @@ impl<S: RemotesStore> RemotesCreator<S> {
         RemotesCreator { store }
     }
 
-    /// Store a new remote (denormalizing `tag`, stamping `added_at`), or
-    /// [`RemoteError::AlreadyExists`] on a taken id / [`RemoteError::InvalidConfig`]
-    /// on a config with no string `_tag`.
+    /// Store a new remote — denormalize `config._tag` into `tag`, stamp
+    /// `added_at`, and insert. Returns [`RemoteError::AlreadyExists`] when the
+    /// client-minted id is already taken (the insert affected no row) rather than
+    /// overwriting.
+    ///
+    /// # Errors
+    ///
+    /// [`RemoteError::InvalidConfig`] when the config carries no string `_tag`;
+    /// [`RemoteError::AlreadyExists`] when the id is already taken;
+    /// [`RemoteError::Infrastructure`] if the store write fails.
     pub(crate) fn create(
         &self,
         id: String,
         name: String,
         config: serde_json::Value,
     ) -> Result<Remote, RemoteError> {
-        actions::create_remote(&self.store, id, name, config)
+        let tag = required_config_tag(&config)?;
+        let remote = Remote {
+            id,
+            name,
+            tag,
+            config,
+            // ISO-8601 UTC with milliseconds (e.g. `2026-06-17T14:29:22.363Z`) —
+            // the encoding the TS `Schema.DateTimeUtc` round-trips and the seed
+            // migration pins.
+            added_at: Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true),
+        };
+        if self.store.insert(&remote)? {
+            Ok(remote)
+        } else {
+            Err(RemoteError::AlreadyExists {
+                id: remote.id.clone(),
+            })
+        }
     }
 }
 
@@ -152,16 +188,26 @@ impl<S: RemotesStore> RemotesEditor<S> {
         RemotesEditor { store }
     }
 
-    /// Full-replace a remote's `name` + `config` (re-denormalizing `tag`), or
+    /// Full-replace a remote's `name` + `config` (re-denormalizing `tag` from the
+    /// new `config._tag`; `id` and `added_at` are immutable), or
     /// [`RemoteError::NotFound`] on an unknown id / [`RemoteError::InvalidConfig`]
     /// on a config with no string `_tag`.
+    ///
+    /// # Errors
+    ///
+    /// [`RemoteError::InvalidConfig`] when the config carries no string `_tag`;
+    /// [`RemoteError::NotFound`] when no remote has this id;
+    /// [`RemoteError::Infrastructure`] if the store write fails.
     pub(crate) fn update(
         &self,
         id: &str,
         name: &str,
         config: &serde_json::Value,
     ) -> Result<Remote, RemoteError> {
-        actions::update_remote(&self.store, id, name, config)
+        let tag = required_config_tag(config)?;
+        self.store
+            .update(id, name, &tag, config)?
+            .ok_or_else(|| RemoteError::NotFound { id: id.to_owned() })
     }
 }
 
@@ -178,8 +224,17 @@ impl<S: RemotesStore> RemotesDeleter<S> {
     }
 
     /// Remove a remote by id, or [`RemoteError::NotFound`] when no remote has it.
+    ///
+    /// # Errors
+    ///
+    /// [`RemoteError::NotFound`] when no remote has this id;
+    /// [`RemoteError::Infrastructure`] if the store write fails.
     pub(crate) fn delete(&self, id: &str) -> Result<(), RemoteError> {
-        actions::delete_remote(&self.store, id)
+        if self.store.delete(id)? {
+            Ok(())
+        } else {
+            Err(RemoteError::NotFound { id: id.to_owned() })
+        }
     }
 }
 
@@ -207,8 +262,8 @@ mod tests {
     }
 
     /// A reader over a fake store seeded with one remote lists it and fetches it
-    /// by id, and reports an unknown id as `NotFound` — the capability delegates
-    /// to the domain actions over the store handle it holds.
+    /// by id, and reports an unknown id as `NotFound` — the capability reads
+    /// through the store handle it holds.
     #[test]
     fn reader_lists_and_gets_through_the_store_handle() {
         let store = FakeRemotesStore::default();
@@ -222,8 +277,20 @@ mod tests {
         ));
     }
 
-    /// A creator inserts a fresh remote (denormalizing `tag`) and reports a taken
-    /// id as `AlreadyExists`.
+    /// The reader lists rows in a total order — `added_at` then `id`. Both seeds
+    /// share an `added_at`, so the `id` tiebreak ("a" < "b") fixes the order.
+    #[test]
+    fn reader_lists_remotes_in_a_total_order() {
+        let store = FakeRemotesStore::default();
+        seed(&store, "b", "B", "fhir-r4");
+        seed(&store, "a", "A", "fhir-r4");
+        let reader = RemotesReader::new(store);
+        let ids: Vec<String> = reader.list().unwrap().into_iter().map(|r| r.id).collect();
+        assert_eq!(ids, vec!["a", "b"]);
+    }
+
+    /// A creator inserts a fresh remote (denormalizing `tag`, stamping a
+    /// millisecond-precision `added_at`) and reports a taken id as `AlreadyExists`.
     #[test]
     fn creator_inserts_then_conflicts_on_a_taken_id() {
         let creator = RemotesCreator::new(FakeRemotesStore::default());
@@ -231,12 +298,34 @@ mod tests {
             .create("r1".to_owned(), "One".to_owned(), config("rexall"))
             .expect("create");
         assert_eq!(created.tag, "rexall", "tag denormalized from config._tag");
+        assert!(
+            created.added_at.len() == 24
+                && created.added_at.ends_with('Z')
+                && created.added_at.contains('.'),
+            "added_at is ISO-8601 UTC with milliseconds, got {}",
+            created.added_at,
+        );
         assert_eq!(
             creator.create("r1".to_owned(), "Dup".to_owned(), config("fhir-r4")),
             Err(RemoteError::AlreadyExists {
                 id: "r1".to_owned()
             }),
         );
+    }
+
+    /// A create with a config carrying no string `_tag` is rejected as
+    /// `InvalidConfig` before anything is stored.
+    #[test]
+    fn creator_rejects_a_config_without_a_string_tag() {
+        let creator = RemotesCreator::new(FakeRemotesStore::default());
+        assert!(matches!(
+            creator.create(
+                "bad".to_owned(),
+                "n".to_owned(),
+                serde_json::json!({ "rootUrl": "x" }),
+            ),
+            Err(RemoteError::InvalidConfig { .. }),
+        ));
     }
 
     /// An editor rewrites `name` + `config` on an existing remote, and reports an
@@ -254,6 +343,19 @@ mod tests {
         assert!(matches!(
             editor.update("ghost", "n", &config("fhir-r4")),
             Err(RemoteError::NotFound { .. }),
+        ));
+    }
+
+    /// An update with a config carrying no string `_tag` is rejected as
+    /// `InvalidConfig`.
+    #[test]
+    fn editor_rejects_a_config_without_a_string_tag() {
+        let store = FakeRemotesStore::default();
+        seed(&store, "r1", "One", "fhir-r4");
+        let editor = RemotesEditor::new(store);
+        assert!(matches!(
+            editor.update("r1", "n", &serde_json::json!({ "rootUrl": "x" })),
+            Err(RemoteError::InvalidConfig { .. }),
         ));
     }
 

@@ -2,14 +2,15 @@
 //! coupling in the logic: the [`Remote`] row/wire shape and the
 //! [`config_tag`]/[`required_config_tag`] discriminant readers, [`RemoteError`]
 //! (the semantic failure vocabulary the HTTP layer renders), the [`RemotesStore`]
-//! persistence port, the [`actions`] the [`capabilities`] call against it, and
-//! the scope-gated [`capabilities`] the HTTP handlers acquire. **Nothing here
-//! depends on `crate::http`** — the concrete `SqliteRemotesStore` is injected
-//! through the [`RemotesStore`] port, and the `FixedScopeCapability` bindings
-//! that name it live beside the router state in [`crate::state`], so this whole
-//! layer is store-agnostic and transport-free.
+//! persistence port, and the scope-gated [`capabilities`] the HTTP handlers
+//! acquire (each owns the store logic for its operation — denormalizing the
+//! `tag`, stamping `added_at`, mapping the store's primitive absence/conflict
+//! signals onto [`RemoteError`]). **Nothing here depends on `crate::http`** — the
+//! concrete `SqliteRemotesStore` is injected through the [`RemotesStore`] port,
+//! and the `FixedScopeCapability` bindings that name it live beside the router
+//! state in [`crate::state`], so this whole layer is store-agnostic and
+//! transport-free.
 
-pub(crate) mod actions;
 pub(crate) mod capabilities;
 mod remote;
 mod remote_error;

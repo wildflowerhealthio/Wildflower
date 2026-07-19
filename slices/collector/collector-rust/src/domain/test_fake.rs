@@ -1,12 +1,11 @@
-//! An in-memory [`RemotesStore`] fake for unit tests — shared by the
-//! [`actions`](crate::domain::actions) tests (which exercise the semantic
-//! mapping onto `NotFound`/`AlreadyExists`) and the
-//! [`capabilities`](crate::domain::capabilities) tests (which exercise the
-//! scope-gated capability operations). It models the port's PRIMITIVE
-//! semantics — `insert` reports a duplicate id as `false`, `get`/`update` report
-//! an absent id as `None`, `delete` reports a miss as `false` — with no diesel
-//! and no database, so the domain logic is testable without touching the
-//! `SQLite` adapter (whose own coverage lives in [`crate::db`]).
+//! An in-memory [`RemotesStore`] fake for the
+//! [`capabilities`](crate::domain::capabilities) unit tests, which exercise the
+//! scope-gated capability operations and their semantic mapping onto
+//! `NotFound`/`AlreadyExists`. It models the port's PRIMITIVE semantics —
+//! `insert` reports a duplicate id as `false`, `get`/`update` report an absent id
+//! as `None`, `delete` reports a miss as `false` — with no diesel and no
+//! database, so the domain logic is testable without touching the `SQLite`
+//! adapter (whose own coverage lives in [`crate::db`]).
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -14,8 +13,8 @@ use std::collections::HashMap;
 use crate::domain::{Remote, RemoteError, RemotesStore};
 
 /// An in-memory [`RemotesStore`] modelling the real primitive semantics, with no
-/// diesel and no database. Lets the domain's semantic mapping and the
-/// capabilities' delegation be exercised directly.
+/// diesel and no database. Lets the capabilities' store logic and semantic
+/// mapping be exercised directly.
 #[derive(Default)]
 pub(crate) struct FakeRemotesStore {
     remotes: RefCell<HashMap<String, Remote>>,

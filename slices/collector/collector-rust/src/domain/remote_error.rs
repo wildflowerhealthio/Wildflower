@@ -8,8 +8,9 @@
 /// to a status and wire body (or a logged opaque 500 for `Infrastructure`);
 /// nothing here knows about HTTP, and the store ([`crate::db`]) produces
 /// `Infrastructure` without leaking its db/`anyhow` types up to the routes. The
-/// semantic outcomes are decided in [`crate::domain::actions`], which maps the
-/// store's primitive absence/conflict signals onto `NotFound` / `AlreadyExists`.
+/// semantic outcomes are decided in [`crate::domain::capabilities`], which map
+/// the store's primitive absence/conflict signals onto `NotFound` /
+/// `AlreadyExists`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RemoteError {
     /// No remote has this id (a read / update / delete addressed an unknown id).
