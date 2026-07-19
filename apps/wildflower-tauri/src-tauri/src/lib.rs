@@ -691,7 +691,41 @@ pub fn run() {
                 // debug — far too repetitive to read the tunnel lifecycle
                 // through. Pin it to info; the tunnel slice's own
                 // dial/probe/transition logs carry the timeline we care about.
-                .level_for("rathole", tauri_plugin_log::log::LevelFilter::Info)
+                .level_for("rathole", tauri_plugin_log::log::LevelFilter::Warn)
+                .level_for(
+                    "hyper_util::client::legacy",
+                    tauri_plugin_log::log::LevelFilter::Info,
+                )
+                // Tunnel daemon heatbeats on debug
+                .level_for(
+                    "tunnel_rust::domain::tunnel_daemon",
+                    tauri_plugin_log::log::LevelFilter::Info,
+                )
+                // Helios's logging can be very chatty at debug, especially the auth middleware, so pin it to info
+                .level_for(
+                    "helios_rest::middleware::auth",
+                    tauri_plugin_log::log::LevelFilter::Info,
+                )
+                .level_for(
+                    "helios_rest::middleware::auth",
+                    tauri_plugin_log::log::LevelFilter::Info,
+                )
+                .level_for(
+                    "helios_rest::handlers",
+                    tauri_plugin_log::log::LevelFilter::Info,
+                )
+                // Tower has a number of loggers that are redundant unless you're particularly debugging a specific tower service.
+                .level_for(
+                    "tower_http::trace::on_eos",
+                    tauri_plugin_log::log::LevelFilter::Info,
+                )
+                .level_for(
+                    "tower_http::trace::on_request",
+                    tauri_plugin_log::log::LevelFilter::Info,
+                )
+                // backend through the tracing→log bridge and drown the console.
+                // Pin the whole `h2` tree to warn — we never debug the codec here.
+                .level_for("h2", tauri_plugin_log::log::LevelFilter::Warn)
                 .build(),
         )
         .setup(|app| {
