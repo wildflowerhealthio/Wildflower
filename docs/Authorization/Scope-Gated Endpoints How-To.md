@@ -159,9 +159,10 @@ lets a guard test assert `domain/` never imports `crate::http`.
   is unit-testable against an in-memory fake.
 - The `Capability`/`FixedScopeCapability` **bindings** — which name the concrete
   store adapter and `build` a capability from the router state — live in the
-  composition layer beside the state (`crate::state`), so `domain/` stays
-  store-agnostic. The router state itself lives at the crate root (`crate::state`),
-  not under `http/`, for the same reason (`domain/` builds capabilities from it).
+  composition layer beside the state (`crate::live_bindings`, one binding file per
+  capability), so `domain/` stays store-agnostic. The router state itself lives at
+  the crate root (`crate::live_bindings::state`), not under `http/`, for the same
+  reason (`domain/` builds capabilities from it).
 - Owner-UI read models the `GET` handlers return live in `domain/` too (beside the
   capability that produces them), since they're pure data.
 
@@ -170,7 +171,8 @@ lets a guard test assert `domain/` never imports `crate::http`.
 - **Fixed:** `slices/gatekeeper/gatekeeper-rust/src/domain/capabilities/` — the
   `/access` admin surface (`GrantsReader`, `GrantsRevoker`, `ConsentReader`,
   `ConsentDecider`, `TokenRevoker`), generic over `GatekeeperStore`, bound to the
-  concrete store in `gatekeeper-rust/src/state/capability_bindings.rs`.
+  concrete store in `gatekeeper-rust/src/live_bindings/` (one binding file per
+  capability).
 - **Data-dependent:** `slices/databases/databases-rust/src/domain/capabilities.rs` —
   `DatabasesReader` / `DatabasesDeleter`, gated per database by the `read_scope` /
   `delete_scope` the host declares on each `DatabaseDescriptor`, operating through
