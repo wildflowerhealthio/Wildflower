@@ -64,7 +64,7 @@ pub(crate) use chrome::register_chrome_action_scheme;
 use chrome::WINDOW_TEXT_FN;
 use cookies::seed_cookies;
 use labels::{chrome_label, content_label, window_label};
-use lifecycle::{blank_url, present};
+use lifecycle::{blank_url, present, PresentOutcome};
 use state::{instance_state, PluginState};
 
 /// Build the desktop backend.
@@ -96,21 +96,27 @@ impl<R: Runtime> NativeWebview<R> {
     /// from OFF the main thread: the webview builds at `about:blank`, then this
     /// caller thread queues the cookie writes + the real-target navigation onto the
     /// main loop (FIFO). See [`cookies::seed_cookies`] for why the main thread
-    /// deadlocks.
-    pub fn open_url(&self, id: &str, mut payload: OpenRequest) -> crate::Result<()> {
+    /// deadlocks. Exception: when a dispose is in flight `present` defers the whole
+    /// request (cookies and all) into `pending_reopen` and returns
+    /// [`PresentOutcome::Deferred`], and this thread seeds nothing — the
+    /// `CloseRequested` replay ([`lifecycle`]) seeds the deferred cookies off-main
+    /// after it reuses the content webview, so a dispose→open on the `launch`
+    /// instance keeps its auth seeding.
+    pub fn open_url(&self, id: &str, payload: OpenRequest) -> crate::Result<()> {
         // Parse once (http(s)-only — see [`crate::url_scheme`]) and thread the
         // parsed `Url` to `present` so the build path doesn't re-parse.
         let target = crate::url_scheme::parse_http_url(&payload.url)?;
-        // Cookies are seeded from THIS thread after the build, never inside
-        // `present()` — see the method doc.
-        let cookies = std::mem::take(&mut payload.cookies);
+        // Keep a copy for the caller-thread seed on the build/rewire path. The
+        // payload keeps its OWN `cookies` so the deferred branch carries them into
+        // `pending_reopen` for the replay to seed (see the method doc).
+        let cookies = payload.cookies.clone();
         let build_url = if cookies.is_empty() {
             target.clone()
         } else {
             blank_url()?
         };
         let app = self.0.clone();
-        let (tx, rx) = std::sync::mpsc::sync_channel::<crate::Result<()>>(1);
+        let (tx, rx) = std::sync::mpsc::sync_channel::<crate::Result<PresentOutcome>>(1);
         let present_target = target.clone();
         let present_id = id.to_owned();
         self.0.run_on_main_thread(move || {
@@ -123,9 +129,15 @@ impl<R: Runtime> NativeWebview<R> {
                 build_url,
             ));
         })?;
-        rx.recv()
+        let outcome = rx
+            .recv()
             .map_err(|error| crate::Error::Internal(error.to_string()))??;
-        if !cookies.is_empty() {
+        // Seed from this thread ONLY when `present` built or rewired now — the
+        // content webview is live. On the deferred branch (`present` saw a dispose
+        // in flight) the instance's content webview is doomed, so seeding here
+        // would race the teardown and lose the cookies; the `CloseRequested` replay
+        // seeds the deferred payload's cookies instead.
+        if !cookies.is_empty() && matches!(outcome, PresentOutcome::Presented) {
             let content = self.0.get_webview(&content_label(id)).ok_or_else(|| {
                 crate::Error::Internal(
                     "native-webview content webview missing after a cookie-seeding open".to_owned(),

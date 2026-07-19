@@ -17,9 +17,23 @@ use super::chrome::{
     apply_chrome_height, build_chrome_data_url, InitialChromeState, CHROME_HEIGHT_BASE,
     CHROME_NAV_STATE_FN, CHROME_RESET_TEXT_FN, CHROME_SET_URL_FN,
 };
+use super::cookies::seed_cookies;
 use super::labels::{chrome_label, content_label, window_label};
 use super::state::{install_instance_state, instance_state, lock_state};
 use crate::models::{NativeWebviewEvent, OpenRequest};
+
+/// What [`present`] did, so [`super::NativeWebview::open_url`] knows whether the
+/// content webview exists yet and thus who seeds the cookies.
+pub(super) enum PresentOutcome {
+    /// Built fresh or rewired in place — the content webview is live now, so the
+    /// caller seeds any cookies from its off-main thread and navigates to the
+    /// target.
+    Presented,
+    /// A dispose was in flight, so the request (cookies and all) was deferred into
+    /// [`super::state::InstanceState::pending_reopen`]; the `CloseRequested`
+    /// replay owns the rebuild AND the cookie seeding.
+    Deferred,
+}
 
 /// Teardown backstop — see docs/Lifecycle and Races Explanation.md § "Teardown backstops"
 /// (desktop's absolute-lifetime cap; re-armed per `open_url` via
@@ -109,30 +123,36 @@ fn arm_absolute_timeout<R: Runtime>(app: &AppHandle<R>, id: &str) {
 /// navigates to — identical except on a cookie-seeding open, where the build
 /// parks at `about:blank` and [`super::NativeWebview::open_url`] navigates to the
 /// target from the caller thread once the queued cookie writes commit.
+///
+/// The returned [`PresentOutcome`] tells the caller whether the content webview
+/// is live now (`Presented` — seed cookies from the caller thread) or the request
+/// was deferred (`Deferred` — the `CloseRequested` replay seeds them instead).
 pub(super) fn present<R: Runtime>(
     app: &AppHandle<R>,
     id: &str,
     payload: OpenRequest,
     target_url: Url,
     build_url: Url,
-) -> crate::Result<()> {
+) -> crate::Result<PresentOutcome> {
     // Dispose in flight (for THIS instance): defer the replay (last-write-wins on
-    // a rapid double-`open`). See [`super::state::InstanceState`]. The replay
-    // stores the TARGET: by the time it runs, the caller thread's cookie writes
-    // are queued/committed, so navigating straight to the target is correct (and
-    // parking on `about:blank` would strand the popup — nobody re-navigates a
-    // replay).
+    // a rapid double-`open`). See [`super::state::InstanceState`]. The stored
+    // payload keeps its `cookies`: the `CloseRequested` replay seeds them onto the
+    // reused content webview (off-main) before navigating to the target, so a
+    // dispose→open carrying auth cookies still lands them. This thread must NOT
+    // seed on the deferred branch — the instance's current content webview is
+    // doomed (about to close), so seeding there would race the teardown and drop
+    // the cookies. `open_url` keys off the `Deferred` outcome to skip its seed.
     if let Some(instance) = instance_state(app, id) {
         if instance.disposing.load(Ordering::SeqCst) {
             *lock_state(&instance.pending_reopen, "pending-reopen")? = Some((payload, target_url));
-            return Ok(());
+            return Ok(PresentOutcome::Deferred);
         }
     }
 
     // Already open: rewire this instance in place rather than rebuild.
     if let Some(content) = app.get_webview(&content_label(id)) {
         apply_rewire(app, id, &content, &payload, target_url, build_url)?;
-        return Ok(());
+        return Ok(PresentOutcome::Presented);
     }
 
     let init_script = payload.init_script;
@@ -247,7 +267,7 @@ pub(super) fn present<R: Runtime>(
     install_window_listeners(app, id, &window);
     arm_absolute_timeout(app, id);
 
-    Ok(())
+    Ok(PresentOutcome::Presented)
 }
 
 /// Replay an `open` request onto instance `id`'s existing chrome + content
@@ -358,7 +378,7 @@ fn install_window_listeners<R: Runtime>(app: &AppHandle<R>, id: &str, window: &W
                 // Poisoned lock: can't consult the slot → let the dispose proceed.
                 Err(_) => return,
             };
-            let Some((payload, target)) = pending else {
+            let Some((mut payload, target)) = pending else {
                 return;
             };
             api.prevent_close();
@@ -366,10 +386,34 @@ fn install_window_listeners<R: Runtime>(app: &AppHandle<R>, id: &str, window: &W
             let Some(content) = app_window.get_webview(&content_label(&id)) else {
                 return;
             };
-            // Navigate straight to the target — a cookie-seeding open's writes
-            // were queued by the caller thread ahead of this replay (see
-            // [`present`]'s pending-reopen note).
-            let _ = apply_rewire(&app_window, &id, &content, &payload, target.clone(), target);
+            // The deferred open carried its cookies — `open_url` skipped its own
+            // seed on the `Deferred` outcome because the instance was mid-dispose
+            // (see [`present`]). Seed them now, onto the reused content webview.
+            let cookies = std::mem::take(&mut payload.cookies);
+            if cookies.is_empty() {
+                let _ = apply_rewire(&app_window, &id, &content, &payload, target.clone(), target);
+            } else {
+                // Mirror `open_url`'s fresh-build cookie order: rewire the reused
+                // webview to `about:blank`, then seed the jar and navigate to the
+                // target from an OFF-main thread. `set_cookie` deadlocks if run
+                // inline in this main-thread tao callback (see
+                // [`super::cookies::seed_cookies`]). `apply_rewire` runs (queuing
+                // its blank navigate) before the thread spawns, so the FIFO main
+                // loop processes blank-nav → set_cookie(s) → target-nav — cookies
+                // land before the target's first request.
+                let blank = blank_url().unwrap_or_else(|_| target.clone());
+                let _ = apply_rewire(&app_window, &id, &content, &payload, target.clone(), blank);
+                let app_seed = app_window.clone();
+                let id_seed = id.clone();
+                std::thread::spawn(move || {
+                    let Some(content) = app_seed.get_webview(&content_label(&id_seed)) else {
+                        return;
+                    };
+                    if seed_cookies(&content, &cookies).is_ok() {
+                        let _ = content.navigate(target);
+                    }
+                });
+            }
         }
         WindowEvent::Destroyed => {
             let Some(instance) = instance_state(&app_window, &id) else {

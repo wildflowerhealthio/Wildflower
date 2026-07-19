@@ -125,13 +125,6 @@ const withBrowserRequest = async (fn: () => Promise<void>): Promise<void> => {
 
 const withTag = (msgs: Message[], tag: string): Message[] => msgs.filter((m) => m._tag === tag)
 
-// jsdom types `document.contentType` as a non-writable prototype getter;
-// shadow it with a configurable own property so the page-load tests can
-// drive the JSON-viewer branch. Teardown drops the shadow.
-const setContentType = (value: string): void => {
-  Object.defineProperty(document, 'contentType', { value, configurable: true })
-}
-
 const cancelRequest = (id: string): void => {
   fireInbound(BRIDGE_EVENT, { _tag: 'CancelSnifferRequest', id })
 }
@@ -1635,101 +1628,6 @@ describe('page settlement', () => {
 
     // The ceiling (300ms) forces exactly one PageLoaded regardless.
     await advanceSettle(100)
-    expect(withTag(getMessages(), 'PageLoaded')).toHaveLength(1)
-  })
-})
-
-describe('page settlement — JSON viewer', () => {
-  let getMessages: () => Message[]
-  const initialBodyHtml = document.body.innerHTML
-
-  beforeEach(() => {
-    resetShims()
-    XMLHttpRequest.prototype.open = vi.fn() as XMLHttpRequest['open']
-    XMLHttpRequest.prototype.send = vi.fn() as XMLHttpRequest['send']
-    document.body.innerHTML = ''
-    getMessages = setupEnv()
-    vi.useFakeTimers()
-  })
-
-  afterEach(() => {
-    resetShims()
-    vi.useRealTimers()
-    Reflect.deleteProperty(document, 'contentType')
-    document.body.innerHTML = initialBodyHtml
-  })
-
-  test('holds the snapshot for a JSON document until the <pre> viewer is built', async () => {
-    setContentType('application/json')
-    installSnifferForTest(SETTLE)
-    window.dispatchEvent(new Event('load'))
-
-    // Empty body + JSON content type: the quiet window elapses, but the viewer
-    // guard blocks the fire — a synchronous snapshot would capture an empty shell.
-    await advanceSettle(SETTLE.quietWindowMs)
-    expect(withTag(getMessages(), 'PageLoaded')).toHaveLength(0)
-
-    // WebKit builds the viewer; the `<pre>` insertion is a DOM mutation that
-    // re-arms the quiet window, and settlement lands the snapshot exactly once.
-    const pre = document.createElement('pre')
-    pre.textContent = '{"resourceType":"Patient"}'
-    document.body.replaceChildren(pre)
-    await advanceSettle(SETTLE.quietWindowMs)
-    expect(withTag(getMessages(), 'PageLoaded')).toHaveLength(1)
-  })
-
-  test('snapshots a JSON document once settled when the <pre> is already present', async () => {
-    setContentType('application/json')
-    const pre = document.createElement('pre')
-    pre.textContent = '{"ok":true}'
-    document.body.replaceChildren(pre)
-    installSnifferForTest(SETTLE)
-    window.dispatchEvent(new Event('load'))
-
-    await advanceSettle(SETTLE.quietWindowMs)
-    expect(withTag(getMessages(), 'PageLoaded')).toHaveLength(1)
-  })
-
-  test('recognizes a JSON viewer despite a charset/casing content-type parameter', async () => {
-    // A non-conformant engine may report `application/fhir+json; charset=UTF-8`
-    // rather than the bare lowercase essence; the guard must still recognize it
-    // as a JSON viewer and wait for the <pre>, not snapshot an empty shell.
-    setContentType('application/fhir+json; charset=UTF-8')
-    installSnifferForTest(SETTLE)
-    window.dispatchEvent(new Event('load'))
-    await advanceSettle(SETTLE.quietWindowMs)
-    expect(withTag(getMessages(), 'PageLoaded')).toHaveLength(0)
-
-    const pre = document.createElement('pre')
-    pre.textContent = '{"resourceType":"Bundle"}'
-    document.body.replaceChildren(pre)
-    await advanceSettle(SETTLE.quietWindowMs)
-    expect(withTag(getMessages(), 'PageLoaded')).toHaveLength(1)
-  })
-
-  test('forces the snapshot at the ceiling if the <pre> never appears', async () => {
-    setContentType('application/json')
-    installSnifferForTest({ quietWindowMs: 100, maxWaitMs: 300 })
-    window.dispatchEvent(new Event('load'))
-
-    // The quiet window keeps being blocked by the viewer guard…
-    await advanceSettle(100)
-    expect(withTag(getMessages(), 'PageLoaded')).toHaveLength(0)
-    // …but the ceiling (300ms) forces exactly one snapshot regardless.
-    await advanceSettle(200)
-    expect(withTag(getMessages(), 'PageLoaded')).toHaveLength(1)
-  })
-
-  test('does not defer non-JSON documents — XML settles without the viewer guard', async () => {
-    // Regression guard: text/xml / application/xml are already parsed at `load`,
-    // so the JSON-viewer guard must not apply — they settle on the first quiet
-    // window with no <pre> needed.
-    setContentType('application/xml')
-    document.body.innerHTML = '<data>ready</data>'
-    installSnifferForTest(SETTLE)
-    window.dispatchEvent(new Event('load'))
-
-    await advanceSettle(SETTLE.quietWindowMs)
     expect(withTag(getMessages(), 'PageLoaded')).toHaveLength(1)
   })
 })

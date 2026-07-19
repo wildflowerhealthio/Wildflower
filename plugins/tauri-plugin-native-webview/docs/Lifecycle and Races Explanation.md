@@ -85,7 +85,11 @@ The guard, identical in shape across platforms:
    `handleDisposed`, Android dismiss listener) consumes the deferred replay: if
    present, it cancels/absorbs the teardown and rebuilds with the new wiring **and
    suppresses the `Disposed` echo** (the caller logically continued, it did not
-   tear down); if absent, the teardown proceeds and emits `Disposed`.
+   tear down); if absent, the teardown proceeds and emits `Disposed`. The deferred
+   payload carries its cookies, so on desktop the replay re-seeds them onto the
+   reused content webview (off the main thread, `about:blank` → seed →
+   target-navigate — the same order a non-deferred cookie open uses) rather than
+   `open_url` seeding the doomed pre-dispose webview.
 4. The flag is cleared on that same completion, so later calls aren't stuck in the
    deferral branch.
 

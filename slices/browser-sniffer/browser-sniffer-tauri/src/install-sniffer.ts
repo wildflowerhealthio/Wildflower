@@ -438,6 +438,15 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
     const responseRedirected = response.redirected
 
     if (response.body !== null) {
+      // WARNING — a fetched body the page never drains leaks `requestId`: the
+      // balancing `trackRequestEnd` lives in this `flush()`, which runs only once
+      // `wrapped.body` is read to completion. Fire-and-forget fetches (`fetch(url)`,
+      // `fetch(url).then((r) => r.ok)`) never drain it, so `requestId` sticks in
+      // `activeRequests` forever and the settle watcher's network-idle check
+      // (`activeRequests.size === 0`) never passes — the page then settles only at
+      // the `SETTLE_MAX_WAIT_MS` ceiling, and the host keeps a dangling response
+      // (no `ResponseFinished`). Left unfixed by decision; flagged so it's
+      // recognized if a page settles only at the ceiling.
       const ts = new TransformStream<Uint8Array, Uint8Array>({
         transform(chunk, controller): void {
           if (!activeRequests.has(requestId)) {
@@ -785,11 +794,15 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
     observer = new MutationObserver(() => {
       armQuietTimer()
     })
+    // Structural mutations only — NOT `attributes`/`characterData`: EMR/SPA pages
+    // mutate those forever after load (spinners, animations, clocks, `aria-live`,
+    // React re-renders), which would re-arm the quiet window every tick and pin
+    // every such page to the `SETTLE_MAX_WAIT_MS` ceiling. Node add/remove is the
+    // signal that real content (an SPA subtree, a JSON viewer's `<pre>`) is still
+    // arriving; cosmetic churn on existing nodes is not.
     observer.observe(document.documentElement, {
       childList: true,
       subtree: true,
-      attributes: true,
-      characterData: true,
     })
     ceilingTimer = setTimeout(settleNow, maxWaitMs)
     armQuietTimer()
