@@ -1,13 +1,12 @@
 import type { JSX, ReactNode } from 'react'
 import { cn } from 'react-kitchen-sink'
-import { PageHeader, ToggleSwitch } from 'react-tundraish'
+import { ErrorBanner, PageHeader, ToggleSwitch } from 'react-tundraish'
 
 import {
   useAppsAdminDeleteMutation,
   useAppsListQuery,
   useReplaceHomeScreenMutation,
 } from '../../../queries.ts'
-import { formatError } from './-forms.tsx'
 import formStyles from './-forms.module.css'
 
 /**
@@ -62,11 +61,7 @@ const BaseAppDetailPage = ({ app, onRemoved, children }: BaseAppDetailPageProps)
     <>
       <PageHeader title={app.name} backHref="/settings/apps" backLabel="Apps" />
 
-      {error !== null ? (
-        <p className={cn(formStyles['error'], 'text-body-3')} role="alert">
-          {formatError(error)}
-        </p>
-      ) : null}
+      <ErrorBanner error={error} />
 
       {homeScreenMutation.isPending ? (
         <ToggleSwitch checked={enabled} label="Show on home screen" disabled />

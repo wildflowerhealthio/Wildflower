@@ -238,7 +238,9 @@ describe('OAuthConsentForm — decision routing', () => {
 
     await user.click(screen.getByRole('button', { name: 'Allow access' }))
 
-    expect((await screen.findByRole('alert')).textContent).toBe('Something went wrong')
+    // `ErrorBanner` prefixes an aria-hidden glyph + sr-only "Error:", so assert
+    // the message is present rather than the exact textContent.
+    expect((await screen.findByRole('alert')).textContent).toContain('Something went wrong')
     // The error banner sits above the form, so it's scrolled into view.
     expect(scrollIntoView).toHaveBeenCalled()
     expect(onDone).not.toHaveBeenCalled()
@@ -253,7 +255,9 @@ describe('OAuthConsentForm — decision routing', () => {
 
     await user.click(screen.getByRole('button', { name: 'Allow access' }))
 
-    expect((await screen.findByRole('alert')).textContent).toBe('Authorization request was denied.')
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'Authorization request was denied.'
+    )
     expect(onDone).not.toHaveBeenCalled()
   })
 })

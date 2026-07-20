@@ -160,7 +160,11 @@ describe('DeviceConsentForm', () => {
     await user.click(screen.getByRole('button', { name: 'Approve' }))
 
     // Assert — message shown, flow not completed.
-    expect((await screen.findByRole('alert')).textContent).toBe('Authorization request was denied.')
+    // `ErrorBanner` prefixes an aria-hidden glyph + sr-only "Error:", so assert
+    // the message is present rather than the exact textContent.
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'Authorization request was denied.'
+    )
     expect(onDone).not.toHaveBeenCalled()
   })
 
@@ -174,7 +178,7 @@ describe('DeviceConsentForm', () => {
     await user.click(screen.getByRole('button', { name: 'Approve' }))
 
     // Assert — the real error is shown (not the denial copy), flow not done.
-    expect((await screen.findByRole('alert')).textContent).toBe('Network unreachable')
+    expect((await screen.findByRole('alert')).textContent).toContain('Network unreachable')
     expect(onDone).not.toHaveBeenCalled()
   })
 

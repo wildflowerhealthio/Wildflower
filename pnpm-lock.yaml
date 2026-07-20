@@ -358,6 +358,9 @@ importers:
       scopes-react:
         specifier: workspace:*
         version: link:../../slices/scopes/scopes-react
+      shared-structures-core:
+        specifier: workspace:*
+        version: link:../../slices/shared-structures/shared-structures-core
       shared-structures-react:
         specifier: workspace:*
         version: link:../../slices/shared-structures/shared-structures-react
@@ -787,6 +790,9 @@ importers:
       react-tundraish:
         specifier: workspace:*
         version: link:../../../global/react-tundraish
+      shared-structures-core:
+        specifier: workspace:*
+        version: link:../../shared-structures/shared-structures-core
       shared-structures-react:
         specifier: workspace:*
         version: link:../../shared-structures/shared-structures-react

@@ -1,6 +1,5 @@
 import { useState, type JSX } from 'react'
-import { cn } from 'react-kitchen-sink'
-import { FieldDescription, TextField, ToggleSwitch } from 'react-tundraish'
+import { ErrorBanner, FieldDescription, TextField, ToggleSwitch } from 'react-tundraish'
 
 import {
   useCloudAppReplaceMutation,
@@ -16,9 +15,6 @@ import formStyles from './-forms.module.css'
  * directory (the `index.tsx` / `new.tsx` / `$id.tsx` / per-kind `$id` files are
  * the real routes).
  */
-
-const formatError = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error)
 
 /** Controlled state for the cloud app fields, shared by create + edit. */
 interface CloudFields {
@@ -129,11 +125,7 @@ const CloudEditForm = ({ app }: { readonly app: CloudAppDetail }): JSX.Element =
         save()
       }}
     >
-      {replaceMutation.error !== null ? (
-        <p className={cn(formStyles['error'], 'text-body-3')} role="alert">
-          {formatError(replaceMutation.error)}
-        </p>
-      ) : null}
+      <ErrorBanner error={replaceMutation.error} />
       <CloudAppFields
         fields={fields}
         disabled={replaceMutation.isPending}
@@ -174,11 +166,7 @@ const SelfHostedLaunchPathEditor = ({
         replaceMutation.mutate({ id: app.id, launchPath: launchPath.trim() })
       }}
     >
-      {replaceMutation.error !== null ? (
-        <p className={cn(formStyles['error'], 'text-body-3')} role="alert">
-          {formatError(replaceMutation.error)}
-        </p>
-      ) : null}
+      <ErrorBanner error={replaceMutation.error} />
       <TextField
         label="Launch path"
         value={launchPath}
@@ -200,5 +188,5 @@ const SelfHostedLaunchPathEditor = ({
   )
 }
 
-export { CloudAppFields, CloudEditForm, SelfHostedLaunchPathEditor, formatError }
+export { CloudAppFields, CloudEditForm, SelfHostedLaunchPathEditor }
 export type { CloudFields }

@@ -40,15 +40,16 @@ const INTERACTIONS: [(u8, char); 5] = [
 
 /// A non-empty set of interactions — the permission half of every resource scope.
 ///
-/// Coverage never crosses grammars: v1 words compare only against v1 words and
-/// v2 letter bags only against letter bags (within a grammar the comparison is
-/// by interaction bit set). This mirrors scopes-core's no-cross-style-conversion
-/// invariant — a client registered in one grammar authorizes requests in that
-/// grammar only. The SMART v1 *word* forms (`read`/`write`/`*`) are preserved so
-/// they round-trip: per the SMART App Launch v1↔v2 back-compat rule, a grant
-/// requested as `read` is returned as `read` (not its `rs` letter equivalent).
-/// v2 letter bags render in canonical `c,r,u,d,s` order regardless of input
-/// order.
+/// Coverage ([`contains`](Permission::contains)) compares by interaction bit set,
+/// with one asymmetry across grammars: a v2 *letter* grant covers both letter and
+/// v1 *word* requests (`cruds` ⊇ `read`), but a v1 *word* grant never covers a
+/// letter request. Tokens are minted in the letter grammar, so a letter grant
+/// covering a word request is the live case; blocking the reverse keeps a
+/// word-registered client out of letter-grammar access. The SMART v1 *word* forms
+/// (`read`/`write`/`*`) are still preserved as distinct *values* so they
+/// round-trip: per the SMART App Launch v1↔v2 back-compat rule, a grant requested
+/// as `read` is returned as `read` (not its `rs` letter equivalent). v2 letter
+/// bags render in canonical `c,r,u,d,s` order regardless of input order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Permission(PermissionRepr);
 
@@ -140,12 +141,16 @@ impl Permission {
         )
     }
 
-    /// Does `self` grant every interaction in `other`, **within the same
-    /// grammar**? v1 words compare only against v1 words (`*` ⊇ `read`/`write`),
-    /// letter bags only against letter bags; a cross-grammar pair is never
-    /// covered — mirroring scopes-core's no-cross-style-conversion invariant.
+    /// Does `self` grant every interaction in `other`? A superset check on the
+    /// interaction bit set, with one grammar asymmetry: a v2 *letter* grant covers
+    /// both letter and v1 *word* requests (`cruds` ⊇ `read`, `rs` ⊇ `read`), but a
+    /// v1 *word* grant never covers a letter request. Within the word grammar, `*`
+    /// still covers `read`/`write`. Tokens are minted in the letter grammar, so a
+    /// letter grant covering a word request is the live case (e.g. the host's
+    /// `system/*.cruds` launching a `patient/*.read` app); blocking the reverse
+    /// keeps a word-registered client out of letter-grammar access.
     pub(in crate::scope) fn contains(self, other: Permission) -> bool {
-        self.is_word_form() == other.is_word_form() && other.bits() & !self.bits() == 0
+        (!self.is_word_form() || other.is_word_form()) && other.bits() & !self.bits() == 0
     }
 
     /// This same permission as a canonical v2 letter bag (`read` → `rs`,
@@ -244,16 +249,21 @@ mod tests {
     }
 
     #[test]
-    fn contains_never_crosses_grammars() {
-        // Same bits, different grammars: neither direction covers.
+    fn contains_bridges_letter_over_word_but_not_the_reverse() {
+        // Same bits, different grammars: a letter grant covers the equivalent word
+        // request, but a word grant never covers a letter request.
         let read = Permission::parse_segment("read").unwrap();
         let rs = Permission::parse_segment("rs").unwrap();
+        assert!(rs.contains(read));
         assert!(!read.contains(rs));
-        assert!(!rs.contains(read));
-        // Even the full sets don't bridge: `*` vs `cruds`.
+        // `cruds` (letter) is a strict superset of `read`'s bits, so it covers the
+        // v1 word too — the host-launch case.
+        assert!(Permission::ALL.contains(read));
+        // The full sets follow the same asymmetry: `cruds` (letter) covers `*`
+        // (word), but `*` (word) does not cover `cruds` (letter).
         let star = Permission::parse_segment("*").unwrap();
+        assert!(Permission::ALL.contains(star));
         assert!(!star.contains(Permission::ALL));
-        assert!(!Permission::ALL.contains(star));
     }
 
     #[test]

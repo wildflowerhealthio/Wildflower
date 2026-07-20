@@ -1,5 +1,6 @@
 import { HttpApiEndpoint, HttpApiGroup } from '@effect/platform'
 import { Schema } from 'effect'
+import { InsufficientScopeSchema } from 'shared-structures-core/http-api-definition'
 import { RequireAuthMiddleware } from './require-auth.ts'
 /**
  * A `Grant` is a materialized consent decision — the Owner approved a client for
@@ -122,6 +123,11 @@ const httpApiGroup = HttpApiGroup.make('access-management', { topLevel: false })
       .setPath(Schema.Struct({ id: Schema.String }))
       .addError(HttpRequestNotFoundSchema, { status: 404 })
   )
+  // Every endpoint on this surface is scope-gated on the server (a `Scoped<…>`
+  // capability per operation), so the shared `403 InsufficientScope` is declared
+  // once at the group level rather than per endpoint — the generated client then
+  // decodes it (naming the missing scopes) instead of an opaque `ResponseError`.
+  .addError(InsufficientScopeSchema, { status: 403 })
   .middleware(RequireAuthMiddleware)
   .prefix('/access')
 

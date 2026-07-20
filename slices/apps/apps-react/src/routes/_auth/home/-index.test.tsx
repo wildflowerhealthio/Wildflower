@@ -37,6 +37,7 @@ vi.mock('../../../queries.ts', () => ({
 }))
 
 import type { AppRegistration } from '../../../queries.ts'
+import { encodeLaunchError } from './-launch-error.ts'
 import { AppsHomeBody } from './index.tsx'
 
 const cloudApp = (overrides: Partial<AppRegistration> = {}): AppRegistration => ({
@@ -75,6 +76,34 @@ describe('<AppsHomeBody> reorder-failure banner', () => {
   })
 
   test('renders no banner while the home-screen mutation is idle', () => {
+    render(<AppsHomeBody apps={[APP]} />)
+
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+})
+
+describe('<AppsHomeBody> launch-error banner', () => {
+  beforeEach(() => {
+    homeScreenStub.isError = false
+    homeScreenStub.error = null
+  })
+
+  afterEach(() => {
+    cleanup()
+  })
+
+  test('decodes a launchError body into a friendly banner', () => {
+    // A non-scope launch failure reads as a sentence. (A scope failure renders the
+    // AuthorizationFailure surface via the app's ambient renderer — covered in the
+    // scopes-react / renderer tests; there's no provider here, so use a message body.)
+    render(
+      <AppsHomeBody apps={[APP]} launchError={encodeLaunchError({ error: 'LaunchUnavailable' })} />
+    )
+
+    expect(screen.getByRole('alert').textContent).toContain('reached')
+  })
+
+  test('renders no launch banner when there is no launchError', () => {
     render(<AppsHomeBody apps={[APP]} />)
 
     expect(screen.queryByRole('alert')).toBeNull()

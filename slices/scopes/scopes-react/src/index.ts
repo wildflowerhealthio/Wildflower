@@ -19,6 +19,10 @@ export {
   type AddRuleButtonProps,
   type AddRuleOption,
 } from './atoms/add-rule-button.tsx'
+export {
+  AuthorizationFailure,
+  type AuthorizationFailureProps,
+} from './organisms/authorization-failure.tsx'
 export { ContextCard, type ContextCardProps } from './atoms/context-card.tsx'
 export { ExclusionRow, type ExclusionRowProps } from './atoms/exclusion-row.tsx'
 export { FlagToggleRow, type FlagToggleRowProps } from './atoms/flag-toggle-row.tsx'

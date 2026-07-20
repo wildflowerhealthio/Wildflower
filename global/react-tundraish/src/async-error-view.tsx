@@ -1,5 +1,6 @@
 import type { JSX } from 'react'
 
+import type { ErrorBodyRenderer } from './error-body-renderer.ts'
 import { PageBodyError } from './page-body-error.tsx'
 
 interface AsyncErrorViewProps {
@@ -9,6 +10,8 @@ interface AsyncErrorViewProps {
   readonly title?: string
   readonly titleClassName?: string
   readonly retry?: () => void
+  /** Override how the error body renders; passed straight through to `PageBodyError` (defaults to the ambient renderer). */
+  readonly renderError?: ErrorBodyRenderer
 }
 
 /**
@@ -25,8 +28,15 @@ const AsyncErrorView = ({
   title,
   titleClassName,
   retry,
+  renderError,
 }: AsyncErrorViewProps): JSX.Element => (
-  <PageBodyError title={title} error={error} titleClassName={titleClassName} retry={retry} />
+  <PageBodyError
+    title={title}
+    error={error}
+    titleClassName={titleClassName}
+    retry={retry}
+    renderError={renderError}
+  />
 )
 
 export { AsyncErrorView }

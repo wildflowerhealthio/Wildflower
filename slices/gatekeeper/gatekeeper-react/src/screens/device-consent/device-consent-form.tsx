@@ -19,11 +19,9 @@
  * (page shell + `PageHeader`, or the `Dialog`) is the caller's.
  */
 
-import { unknownErrorToString } from 'kitchen-sink'
 import type { JSX } from 'react'
 import { useMemo, useState } from 'react'
-import { cn } from 'react-kitchen-sink'
-import { Field, FieldDescription, pageLayoutStyles, TextField } from 'react-tundraish'
+import { ErrorBanner, Field, FieldDescription, TextField } from 'react-tundraish'
 import { GrantDraft, ScopeRequest } from 'scopes-core'
 import { ScopePicker } from 'scopes-react'
 
@@ -63,10 +61,9 @@ const DeviceConsentForm = ({
   const { options: patients } = usePatientOptions(true)
 
   const submitting = consentMutation.isPending
-  const mutationError =
-    consentMutation.error === null ? null : unknownErrorToString(consentMutation.error)
-  // A genuine mutation failure takes precedence over a stale "denied" flag.
-  const errorMessage = mutationError ?? (denied ? 'Authorization request was denied.' : null)
+  // A genuine mutation failure (a `403` shows the permission surface) takes
+  // precedence over a stale "denied" flag; `ErrorBanner` renders whichever is set.
+  const error = consentMutation.error ?? (denied ? 'Authorization request was denied.' : null)
 
   // The statement subject: the device's (possibly just-edited) name, falling back to the
   // registered client name. Two-step so the naming policy reads plainly:
@@ -171,11 +168,7 @@ const DeviceConsentForm = ({
         forcedSubject="system"
       />
 
-      {errorMessage !== null ? (
-        <p className={cn(pageLayoutStyles['error'], 'text-body-3')} role="alert">
-          {errorMessage}
-        </p>
-      ) : null}
+      <ErrorBanner error={error} />
 
       <div className={styles['actions']}>
         <button

@@ -17,15 +17,16 @@ const DatabasesScreen = (): JSX.Element => {
   const exportMutation = useExportDatabaseMutation()
   const deleteMutation = useDeleteDatabaseMutation()
 
-  const error = exportMutation.error ?? deleteMutation.error
-  const errorMessage = error === null ? null : error.message
-
+  // A failed mutation (e.g. a `403 InsufficientScope` on delete) flows straight
+  // into `ErrorBanner`, which consults the same app-provided error renderer the
+  // route's `errorComponent` uses — so it gets the scope-naming surface — and
+  // falls back to a plain message banner for everything else.
   return (
     <DatabasesView
       databases={databases}
       exportingId={exportMutation.isPending ? (exportMutation.variables?.id ?? null) : null}
       deletingId={deleteMutation.isPending ? (deleteMutation.variables?.id ?? null) : null}
-      errorMessage={errorMessage}
+      error={exportMutation.error ?? deleteMutation.error}
       onExport={(id) => {
         exportMutation.mutate(
           { id },

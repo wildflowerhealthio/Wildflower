@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
+import { ErrorBodyRendererContext } from './error-body-renderer.ts'
 import { PageBodyError } from './page-body-error.tsx'
 
 afterEach(() => {
@@ -51,5 +52,52 @@ describe('PageBodyError', () => {
 
     // Assert
     expect(screen.getByRole('heading', { name: 'T' }).classList.contains('custom-title')).toBe(true)
+  })
+
+  it('renders a custom renderError body in place of the message + retry, keeping the title', () => {
+    render(
+      <PageBodyError
+        title="Your data"
+        error={new Error('boom')}
+        retry={() => undefined}
+        renderError={() => <div data-testid="custom">custom body</div>}
+      />
+    )
+
+    expect(screen.getByRole('heading', { name: 'Your data' })).toBeTruthy()
+    expect(screen.getByTestId('custom')).toBeTruthy()
+    expect(screen.queryByText('boom')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
+  })
+
+  it('falls back to the default message when renderError returns null', () => {
+    render(<PageBodyError error={new Error('fallback')} renderError={() => null} />)
+
+    expect(screen.getByText('fallback')).toBeTruthy()
+  })
+
+  it('consults the ambient ErrorBodyRendererContext when no prop is given', () => {
+    render(
+      <ErrorBodyRendererContext.Provider value={() => <div data-testid="ambient">ambient</div>}>
+        <PageBodyError error={new Error('boom')} />
+      </ErrorBodyRendererContext.Provider>
+    )
+
+    expect(screen.getByTestId('ambient')).toBeTruthy()
+    expect(screen.queryByText('boom')).toBeNull()
+  })
+
+  it('lets the renderError prop override the ambient context', () => {
+    render(
+      <ErrorBodyRendererContext.Provider value={() => <div>ambient</div>}>
+        <PageBodyError
+          error={new Error('boom')}
+          renderError={() => <div data-testid="prop">prop</div>}
+        />
+      </ErrorBodyRendererContext.Provider>
+    )
+
+    expect(screen.getByTestId('prop')).toBeTruthy()
+    expect(screen.queryByText('ambient')).toBeNull()
   })
 })

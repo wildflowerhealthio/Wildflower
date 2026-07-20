@@ -7,6 +7,7 @@ import {
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import { DateTime, Effect } from 'effect'
 import type { JSX } from 'react'
+import { ErrorBodyRendererContext, type ErrorBodyRenderer } from 'react-tundraish'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 
 import { DatabasesView } from './databases-view.tsx'
@@ -44,9 +45,20 @@ const scheduled: DatabaseMetadata = {
 const noop = (): void => {}
 
 // `DatabasesView`'s `PageHeader` back-link renders a TanStack `<Link>`, so it
-// must mount inside a router. Mirrors `RelaySettingsEntry.test.tsx`.
-const renderView = (props: Parameters<typeof DatabasesView>[0]): void => {
-  const rootRoute = createRootRoute({ component: (): JSX.Element => <DatabasesView {...props} /> })
+// must mount inside a router. Mirrors `RelaySettingsEntry.test.tsx`. An optional
+// `renderer` provides the ambient `ErrorBodyRenderer` the view's `ErrorBanner`
+// consults (the app supplies the real one for `403 InsufficientScope`).
+const renderView = (
+  props: Parameters<typeof DatabasesView>[0],
+  renderer?: ErrorBodyRenderer
+): void => {
+  const rootRoute = createRootRoute({
+    component: (): JSX.Element => (
+      <ErrorBodyRendererContext.Provider value={renderer ?? null}>
+        <DatabasesView {...props} />
+      </ErrorBodyRendererContext.Provider>
+    ),
+  })
   const router = createRouter({
     routeTree: rootRoute,
     history: createMemoryHistory({ initialEntries: ['/'] }),
@@ -76,7 +88,7 @@ describe('DatabasesView', () => {
       onDelete: noop,
       exportingId: null,
       deletingId: null,
-      errorMessage: null,
+      error: null,
     })
     await waitFor(() => expect(screen.getByText('Health data')).toBeTruthy())
     expect(screen.getByText('Wildflower app data')).toBeTruthy()
@@ -100,7 +112,7 @@ describe('DatabasesView', () => {
       onDelete: noop,
       exportingId: null,
       deletingId: null,
-      errorMessage: null,
+      error: null,
     })
     await openRowMenu('Health data')
     const download = await screen.findByRole('menuitem', { name: 'Download' })
@@ -115,7 +127,7 @@ describe('DatabasesView', () => {
       onDelete: noop,
       exportingId: null,
       deletingId: null,
-      errorMessage: null,
+      error: null,
     })
     await openRowMenu('Wildflower app data')
     const download = await screen.findByRole('menuitem', { name: 'Download' })
@@ -131,7 +143,7 @@ describe('DatabasesView', () => {
       onDelete: noop,
       exportingId: null,
       deletingId: null,
-      errorMessage: null,
+      error: null,
     })
     // The restart banner is present...
     const alert = await screen.findByRole('alert')
@@ -151,9 +163,44 @@ describe('DatabasesView', () => {
       onDelete: noop,
       exportingId: null,
       deletingId: null,
-      errorMessage: 'export failed',
+      error: new Error('export failed'),
     })
     const alert = await screen.findByRole('alert')
     expect(within(alert).getByText('export failed')).toBeTruthy()
+  })
+
+  test('routes an error through the ambient renderer surface when one matches', async () => {
+    // The app injects an `ErrorBodyRenderer` (its `403 InsufficientScope` surface);
+    // `ErrorBanner` inside the view consults it, so a recognised error renders the
+    // surface in place of the plain message banner.
+    const error = new Error('403')
+    renderView(
+      {
+        databases: [health],
+        onExport: noop,
+        onDelete: noop,
+        exportingId: null,
+        deletingId: null,
+        error,
+      },
+      (value) => (value === error ? <div data-testid="scope-surface">missing scope</div> : null)
+    )
+    expect(await screen.findByTestId('scope-surface')).toBeTruthy()
+    // The plain message banner is not shown when a surface takes over.
+    expect(screen.queryByText('403')).toBeNull()
+  })
+
+  test('renders no error region in the resting state', () => {
+    renderView({
+      databases: [health],
+      onExport: noop,
+      onDelete: noop,
+      exportingId: null,
+      deletingId: null,
+      error: null,
+    })
+    // No database is scheduled here, so the only possible `alert` would be the
+    // error banner — absent when `error` is null.
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 })

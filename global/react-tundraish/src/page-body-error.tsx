@@ -1,6 +1,7 @@
 import type { JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 
+import { useErrorBodyRenderer, type ErrorBodyRenderer } from './error-body-renderer.ts'
 import pageLayout from './page-layout.module.css'
 
 interface PageBodyErrorProps {
@@ -10,6 +11,14 @@ interface PageBodyErrorProps {
   readonly error: unknown
   readonly titleClassName?: string
   readonly retry?: () => void
+  /**
+   * Override how this error body renders. When it returns a node, that node is
+   * shown beneath the `title` in place of the default message + retry; when it
+   * returns `null`, the default rendering applies. Defaults to the ambient
+   * {@link ErrorBodyRendererContext}, so an app can inject bespoke surfaces
+   * (e.g. an authorization-failure surface for a 403) once, above the router.
+   */
+  readonly renderError?: ErrorBodyRenderer
 }
 
 /**
@@ -23,13 +32,28 @@ const PageBodyError = ({
   error,
   titleClassName,
   retry,
+  renderError,
 }: PageBodyErrorProps): JSX.Element => {
+  const heading =
+    title === undefined ? null : <h2 className={cn('text-heading-3', titleClassName)}>{title}</h2>
+
+  // A custom renderer (prop, else the ambient context) may own the body for a
+  // recognised error shape; `null` falls through to the default message.
+  const ambientRenderer = useErrorBodyRenderer()
+  const custom = (renderError ?? ambientRenderer)?.(error) ?? null
+  if (custom !== null) {
+    return (
+      <>
+        {heading}
+        {custom}
+      </>
+    )
+  }
+
   const message = error instanceof Error ? error.message : String(error)
   return (
     <>
-      {title === undefined ? null : (
-        <h2 className={cn('text-heading-3', titleClassName)}>{title}</h2>
-      )}
+      {heading}
       {message.includes('\n') ? (
         // Multi-line messages (Effect Schema ParseError trees etc.)
         // keep their own line structure: a `<pre>` with the same error

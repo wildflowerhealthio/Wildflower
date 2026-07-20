@@ -5,7 +5,9 @@ import { CollectorRouterContext } from 'collector-react'
 import { DatabasesRouterContext } from 'databases-react'
 import { Duration, Effect, Layer, pipe, Schedule } from 'effect'
 import { FhirR4ResourcesRouterContext } from 'fhir-r4-react'
-import { GatekeeperRouterContext, unwrapFiberFailure } from 'gatekeeper-react'
+import { GatekeeperRouterContext } from 'gatekeeper-react'
+import { unwrapFiberFailure } from 'kitchen-sink'
+import { isInsufficientScopeBody } from 'shared-structures-core/http-api-definition'
 import type { BaseRouterContext } from 'shared-structures-react'
 import { TunnelRouterContext } from 'tunnel-react'
 
@@ -115,6 +117,50 @@ const isUnauthorizedFailure = (error: unknown): boolean =>
   isUnauthorizedError(unwrapFiberFailure(error))
 
 /**
+ * The scopes named by a `403 InsufficientScope` (the authorization — not
+ * authentication — failure the scope-gated endpoints return), or `null` when
+ * `error` is not one. Two shapes reach us, mirroring the 401 split above:
+ *
+ * - a **declared** 403 decodes onto the failure channel as the shared schema
+ *   value (`{ error: 'InsufficientScope', missingScopes }`) — matched by
+ *   {@link isInsufficientScopeBody}, so the surface can name the scopes; and
+ * - an **undeclared** 403 arrives as a bare `HttpClientError.ResponseError` at
+ *   status 403 whose body was never decoded — we still detect the authorization
+ *   failure, but can't name the scopes, so `missingScopes` is empty.
+ *
+ * Unlike a 401, a 403 is not redirected to device login (the caller *is*
+ * authenticated); the app renders it in place — so this returns the payload to
+ * render rather than triggering a global side-effect.
+ */
+const insufficientScopeFromError = (
+  error: unknown
+): { readonly missingScopes: readonly string[] } | null => {
+  if (isInsufficientScopeBody(error)) return { missingScopes: error.missingScopes }
+  if (error instanceof HttpClientError.ResponseError && error.response.status === 403) {
+    return { missingScopes: [] }
+  }
+  return null
+}
+
+/**
+ * {@link insufficientScopeFromError} against the value a rejected `runAuthed`
+ * (a TanStack Query `queryFn`/mutation) surfaces — the `FiberFailure` is
+ * unwrapped to the underlying error first, exactly as {@link isUnauthorizedFailure} does.
+ */
+const insufficientScopeFromFailure = (
+  error: unknown
+): { readonly missingScopes: readonly string[] } | null =>
+  insufficientScopeFromError(unwrapFiberFailure(error))
+
+/** True when a raw (already-unwrapped) `error` is a 403 InsufficientScope in either shape. */
+const isInsufficientScopeError = (error: unknown): boolean =>
+  insufficientScopeFromError(error) !== null
+
+/** Boolean form of {@link insufficientScopeFromFailure}, for the retry policy below. */
+const isInsufficientScopeFailure = (error: unknown): boolean =>
+  insufficientScopeFromFailure(error) !== null
+
+/**
  * Retry policy for the cookie-plant boot race: re-send only on a 401,
  * {@link UNAUTHORIZED_RETRY_TIMES} times, {@link UNAUTHORIZED_RETRY_SPACING}
  * apart. `whileInput` gates on the 401 test so any other failure propagates on
@@ -153,8 +199,14 @@ const buildQueryClient = (onUnauthorized: () => void): QueryClient => {
         staleTime: pipe(5, Duration.minutes, Duration.toMillis),
         gcTime: pipe(30, Duration.minutes, Duration.toMillis),
         refetchOnWindowFocus: false,
+        // Skip re-sends for both auth failures: a 401 already spent the
+        // boot-race budget (see {@link buildRunAuthed}), and a 403
+        // `InsufficientScope` is deterministic — the token's scopes don't change
+        // mid-session, so retrying only delays the in-place surface.
         retry: (failureCount, error) =>
-          !isUnauthorizedFailure(error) && failureCount < DEFAULT_QUERY_RETRIES,
+          !isUnauthorizedFailure(error) &&
+          !isInsufficientScopeFailure(error) &&
+          failureCount < DEFAULT_QUERY_RETRIES,
       },
     },
   })
@@ -227,6 +279,10 @@ const buildRunAuthed = (
 export {
   buildQueryClient,
   buildRunAuthed,
+  insufficientScopeFromError,
+  insufficientScopeFromFailure,
+  isInsufficientScopeError,
+  isInsufficientScopeFailure,
   isUnauthorizedError,
   isUnauthorizedFailure,
   unauthorizedRetrySchedule,

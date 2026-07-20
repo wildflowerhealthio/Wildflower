@@ -5,8 +5,6 @@ use axum::Json;
 use serde::Serialize;
 use utoipa::ToSchema;
 
-use scope_capabilities_rust::InsufficientScopeBody;
-
 use crate::domain::capabilities::Scoped;
 use crate::domain::DatabaseError;
 use crate::http::errors::DatabaseNotFoundBody;
@@ -36,7 +34,8 @@ pub(crate) struct DeletedBody {
     ),
     responses(
         (status = 200, description = "Deletion was scheduled (takes effect on restart)", body = DeletedBody),
-        (status = 403, description = "The caller's token doesn't cover this database's declared delete scope", body = InsufficientScopeBody),
+        // The `403 InsufficientScope` is documented centrally by
+        // `InsufficientScopeResponses` in `http/mod.rs` (this path is scope-gated).
         (status = 404, description = "No database has this id, or it doesn't exist", body = DatabaseNotFoundBody),
     ),
 )]

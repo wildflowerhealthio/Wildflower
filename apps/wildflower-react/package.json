@@ -75,6 +75,7 @@
     "react-kitchen-sink": "workspace:*",
     "react-tundraish": "workspace:*",
     "scopes-react": "workspace:*",
+    "shared-structures-core": "workspace:*",
     "shared-structures-react": "workspace:*",
     "telemetry-react": "workspace:*",
     "telemetry-web": "workspace:*",

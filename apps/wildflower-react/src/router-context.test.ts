@@ -12,6 +12,9 @@ import { describe, expect, expectTypeOf, it, vi } from 'vite-plus/test'
 import {
   buildQueryClient,
   buildRunAuthed,
+  insufficientScopeFromError,
+  insufficientScopeFromFailure,
+  isInsufficientScopeError,
   isUnauthorizedError,
   isUnauthorizedFailure,
   unauthorizedRetrySchedule,
@@ -173,6 +176,58 @@ describe('isUnauthorizedFailure', () => {
 
   it('is false for a FiberFailure wrapping an unrelated error', async () => {
     expect(isUnauthorizedFailure(await asFiberFailure(new Error('nope')))).toBe(false)
+  })
+})
+
+// A decoded `403 InsufficientScope` body — the value a *declared* 403 surfaces
+// on the Effect failure channel (not a `ResponseError`).
+const insufficientScopeBody = {
+  error: 'InsufficientScope',
+  missingScopes: ['wildflower/Grant.d', 'system/*.rs'],
+} as const
+
+describe('insufficientScopeFromError', () => {
+  it('names the missing scopes for a decoded InsufficientScope body', () => {
+    expect(insufficientScopeFromError(insufficientScopeBody)).toEqual({
+      missingScopes: ['wildflower/Grant.d', 'system/*.rs'],
+    })
+    expect(isInsufficientScopeError(insufficientScopeBody)).toBe(true)
+  })
+
+  it('detects a bare 403 ResponseError but cannot name the scopes', () => {
+    // An *undeclared* 403 never has its body decoded, so the authorization
+    // failure is still recognised (surface renders) but with no scope names.
+    expect(insufficientScopeFromError(responseErrorWithStatus(403))).toEqual({ missingScopes: [] })
+    expect(isInsufficientScopeError(responseErrorWithStatus(403))).toBe(true)
+  })
+
+  it('is null for a 401, a 500, and unrelated errors', () => {
+    expect(insufficientScopeFromError(responseErrorWithStatus(401))).toBeNull()
+    expect(insufficientScopeFromError(responseErrorWithStatus(500))).toBeNull()
+    expect(insufficientScopeFromError(new Error('boom'))).toBeNull()
+    expect(insufficientScopeFromError(null)).toBeNull()
+    // A look-alike that isn't the real decoded body must not match.
+    expect(insufficientScopeFromError({ error: 'InsufficientScope' })).toBeNull()
+  })
+})
+
+describe('insufficientScopeFromFailure', () => {
+  it('unwraps a FiberFailure wrapping a decoded body and names the scopes', async () => {
+    expect(insufficientScopeFromFailure(await asFiberFailure(insufficientScopeBody))).toEqual({
+      missingScopes: ['wildflower/Grant.d', 'system/*.rs'],
+    })
+  })
+
+  it('unwraps a FiberFailure wrapping a bare 403 ResponseError', async () => {
+    expect(
+      insufficientScopeFromFailure(await asFiberFailure(responseErrorWithStatus(403)))
+    ).toEqual({ missingScopes: [] })
+  })
+
+  it('is null for a wrapped 401 (that path redirects, it does not surface in place)', async () => {
+    expect(
+      insufficientScopeFromFailure(await asFiberFailure(responseErrorWithStatus(401)))
+    ).toBeNull()
   })
 })
 
@@ -352,17 +407,20 @@ describe('buildQueryClient unauthorized redirect', () => {
     expect(onUnauthorized).not.toHaveBeenCalled()
   })
 
-  it('skips TanStack retry for a 401 but keeps the default count for other errors', async () => {
+  it('skips TanStack retry for a 401 or a 403 but keeps the default count for other errors', async () => {
     // Arrange
     const queryClient = buildQueryClient(() => undefined)
     const retry = queryClient.getDefaultOptions().queries?.retry
     const wrapped401 = await asFiberFailure(responseErrorWithStatus(401))
+    const wrapped403 = await asFiberFailure(insufficientScopeBody)
     const wrapped500 = await asFiberFailure(responseErrorWithStatus(500))
 
-    // Assert — 401: never; others: the default three attempts.
+    // Assert — 401 and 403 (deterministic authz): never; others: the default
+    // three attempts.
     expect(typeof retry).toBe('function')
     if (typeof retry === 'function') {
       expect(retry(0, wrapped401)).toBe(false)
+      expect(retry(0, wrapped403)).toBe(false)
       expect(retry(0, wrapped500)).toBe(true)
       expect(retry(3, wrapped500)).toBe(false)
     }

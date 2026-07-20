@@ -1,14 +1,12 @@
 import { createFileRoute, useNavigate, useRouteContext } from '@tanstack/react-router'
-import { unknownErrorToString } from 'kitchen-sink'
 import type { JSX } from 'react'
 import { useState } from 'react'
-import { cn } from 'react-kitchen-sink'
 import {
   AsyncErrorView,
+  ErrorBanner,
   ItemList,
   Menu,
   PageHeader,
-  pageLayoutStyles,
   type MenuItem,
 } from 'react-tundraish'
 
@@ -37,9 +35,6 @@ const AccessIndexBody = ({ grants }: AccessIndexBodyProps): JSX.Element => {
   const revokeMutation = useRevokeGrantMutation()
   const [confirmRevokeId, setConfirmRevokeId] = useState<string | null>(null)
 
-  const errorMessage =
-    revokeMutation.error === null ? null : unknownErrorToString(revokeMutation.error)
-
   const revoke = (id: string): void => {
     revokeMutation.mutate(
       { id },
@@ -65,11 +60,7 @@ const AccessIndexBody = ({ grants }: AccessIndexBodyProps): JSX.Element => {
     <>
       <PageHeader title="Access" backHref="/settings" backLabel="Settings" />
 
-      {errorMessage !== null ? (
-        <p className={cn(pageLayoutStyles['error'], 'text-body-3')} role="alert">
-          {errorMessage}
-        </p>
-      ) : null}
+      <ErrorBanner error={revokeMutation.error} />
 
       <ItemList
         title="Requests"

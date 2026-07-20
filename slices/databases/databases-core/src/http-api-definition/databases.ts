@@ -1,5 +1,6 @@
 import { HttpApiEndpoint, HttpApiGroup } from '@effect/platform'
 import { Schema } from 'effect'
+import { InsufficientScopeSchema } from 'shared-structures-core/http-api-definition'
 
 /**
  * Metadata for a single host database — mirrors the Rust `DatabaseMetadata`
@@ -59,17 +60,6 @@ const DatabaseNotFoundSchema = Schema.Struct({
 const DeletedSchema = Schema.Struct({ deleted: Schema.Boolean })
 
 /**
- * `403` body — the caller authenticated, but their token doesn't cover the
- * target database's declared scope. Matches the shared Rust
- * `InsufficientScopeBody` (`scope-capabilities-rust`); `missingScopes` names
- * the scopes the caller must additionally hold.
- */
-const InsufficientScopeSchema = Schema.Struct({
-  error: Schema.Literal('InsufficientScope'),
-  missingScopes: Schema.Array(Schema.String),
-})
-
-/**
  * Data-management endpoints — the JSON surface over the host's SQLite
  * databases. The group carries no middleware; the host authenticates the whole
  * `/databases` surface behind the gatekeeper bearer gate, each database's
@@ -100,6 +90,5 @@ export {
   DatabaseMetadataSchema,
   DatabaseNotFoundSchema,
   DeletedSchema,
-  InsufficientScopeSchema,
   httpApiGroup,
 }

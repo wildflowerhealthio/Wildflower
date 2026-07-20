@@ -172,8 +172,11 @@ so an under-scoped caller gets a `403 { error: "InsufficientScope", missingScope
   check that the caller's grant covers the app's OAuth client's requested
   **resource** scopes (its FHIR / Wildflower data access; the OIDC and SMART
   launch-context scopes are the app's own OAuth concern, so the owner isn't required
-  to hold them). A shortfall on the per-app check renders JSON for the loopback/SPA
-  arm and a plain-text `403` for a forwarded browser navigation.
+  to hold them). A shortfall on the per-app check renders the shared
+  `InsufficientScope` JSON body for both arms: the loopback/SPA arm decodes it
+  directly, and a forwarded browser `GET` has it base64'd into `?launchError` and
+  decoded by the home banner — keeping the missing scopes structured so the banner
+  names them (and a future "request permissions" action can read them).
 - Both the loopback and the forwarded launch ride the same bearer gate. On the web
   the home tile is a native `<a href="/apps/{id}">`, so the launch is a `GET`: a
   plain click navigates the current tab and a cmd/ctrl-click opens a new one —

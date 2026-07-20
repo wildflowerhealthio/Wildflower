@@ -47,6 +47,11 @@ const httpApiGroup = HttpApiGroup.make('apps', { topLevel: false })
       .addSuccess(HttpApiSchema.Text({ contentType: 'text/html; charset=utf-8' }), { status: 302 })
       .addSuccess(HttpApiSchema.NoContent)
       .addError(AppNotFoundSchema, { status: 404 })
+      // The launch umbrella / a SMART app's required scopes come back `403
+      // InsufficientScope`; decode it (the loopback arm reads `missingScopes` to
+      // route the home-screen permission banner). Modelled on the Rust side too;
+      // the drift test exempts this endpoint's responses (see below).
+      .addError(InsufficientScopeSchema, { status: 403 })
   )
   .add(
     // `GET /apps/:id`: the native web launch arm. The home-screen tile is a real

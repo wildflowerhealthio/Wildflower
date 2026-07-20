@@ -91,3 +91,8 @@ const defineSliceHttpClient = <
 }
 
 export { defineSliceHttpClient }
+export {
+  InsufficientScopeSchema,
+  isInsufficientScopeBody,
+  type InsufficientScope,
+} from './insufficient-scope.ts'

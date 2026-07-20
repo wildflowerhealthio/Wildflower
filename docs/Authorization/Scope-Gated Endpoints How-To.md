@@ -128,6 +128,40 @@ store accessor, so a NEW handler file is guarded by default and must be
 consciously exempted to escape. A future handler that reaches around the
 capability then fails the build.
 
+### 6. Document the `403` once (only if the surface is OpenAPI-documented)
+
+If the slice's handlers are collected into a `utoipa` `OpenApiRouter` (they carry
+`#[utoipa::path]` and feed a committed spec), declare the `403 InsufficientScope`
+**once**, where the slice assembles its `OpenApi`, rather than repeating
+`#[utoipa::path(responses((status = 403, …)))]` on every gated handler:
+
+1. Register the shared body on the slice's `ApiDoc` (needs the crate's `openapi`
+   feature): `#[openapi(components(schemas(scope_capabilities_rust::InsufficientScopeBody)))]`.
+2. In the slice's `openapi_spec()`, after the routes are merged, apply the addon
+   for the **gated paths** (every method on a listed path gets the 403, so list
+   only fully-gated paths):
+
+   ```rust
+   use utoipa::Modify as _;
+   scope_capabilities_rust::InsufficientScopeResponses::for_paths(["/databases/{id}"])
+       .modify(&mut spec);
+   ```
+
+   Worked example: `databases-rust/src/http/mod.rs`.
+
+On the **TypeScript** side, mirror it once per boundary so the generated client
+decodes the body (and the web UI can name the missing scopes via `scopes-react`'s
+`AuthorizationFailure` surface):
+import `InsufficientScopeSchema` from `shared-structures-core/http-api-definition`
+and attach it with `.addError(InsufficientScopeSchema, { status: 403 })` — at the
+`HttpApiGroup` level when the whole group is scope-gated (e.g. gatekeeper's
+`/access`), or per endpoint when a group mixes gated and ungated endpoints (e.g.
+databases' `DeleteDatabase`, since `ListDatabases` is authenticated-only). Keep
+the Rust-documented set and the TS-declared set the same, or the per-slice
+OpenAPI drift snapshot test fails. A surface with no `utoipa` documentation (e.g.
+gatekeeper's `/access`, which isn't in any committed spec) still returns the 403
+at runtime via the extractor — only the TS declaration is needed there.
+
 ## Two flavours of gate
 
 - **Fixed capability** (gatekeeper's `/access`): the scope is constant, so

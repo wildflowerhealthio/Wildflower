@@ -15,8 +15,9 @@ import {
 import { createFileRoute, useRouteContext } from '@tanstack/react-router'
 import { useEffect, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
-import { AsyncErrorView, PageHeader } from 'react-tundraish'
+import { AsyncErrorView, ErrorBanner, PageHeader } from 'react-tundraish'
 
+import { Either } from 'effect'
 import {
   appsListQueryOptions,
   useAppsListQuery,
@@ -24,13 +25,25 @@ import {
   type AppRegistration,
 } from '../../../queries.ts'
 import type { RouterContext } from '../../../router-context.ts'
+import { launchBannerError } from './-launch-error.ts'
 import { launchApp, launchHref } from './-launch.ts'
 import { reorderApps } from './-reorder.ts'
 import { SortableAppTile } from './-tiles.tsx'
 import tileStyles from '../../../styles/app-tiles.module.css'
 
-const formatError = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error)
+interface HomeSearch {
+  /** The base64 launch-error body (see `-launch-error.ts`) — an opaque string the
+   * banner decodes; both arms set it, so it's kept verbatim. */
+  readonly launchError?: string
+}
+
+/** Validate `/home`'s search: keep a string `launchError` param (the base64 error
+ * body both arms set — see the Rust launch middleware and `-launch.ts`), drop
+ * anything else. */
+const validateHomeSearch = (search: Record<string, unknown>): HomeSearch => {
+  const raw = search['launchError']
+  return typeof raw === 'string' ? { launchError: raw } : {}
+}
 
 /**
  * Owner-facing apps landing. The route `loader` warms the apps-list query
@@ -44,14 +57,45 @@ const formatError = (error: unknown): string =>
  */
 const AppsHomeScreen = (): JSX.Element => {
   const { data: apps } = useAppsListQuery()
-  return <AppsHomeBody apps={apps} />
+  const { launchError } = Route.useSearch()
+  const navigate = Route.useNavigate()
+  return (
+    <AppsHomeBody
+      apps={apps}
+      launchError={launchError}
+      onLaunchResult={(launchResult) => {
+        // Only the loopback (Tauri) arm reaches here — the web tile is a bare
+        // `<a href>` with no `onClick` (see `-tiles.tsx`), so this never races a
+        // full-page navigation. Reflect the outcome into the `?launchError` param:
+        // a failure shows the banner; a later success clears a stale one.
+        Either.match(launchResult, {
+          onLeft: (errorBody) => {
+            void navigate({ search: { launchError: errorBody } })
+          },
+          onRight: () => {
+            if (launchError !== undefined) {
+              void navigate({ search: {} })
+            }
+          },
+        })
+      }}
+    />
+  )
 }
 
 interface AppsHomeBodyProps {
   readonly apps: readonly AppRegistration[]
+  /** The base64 launch-error body from the `?launchError` search param, if any. */
+  readonly launchError?: string
+  /**
+   * Called with the loopback launch outcome — the encoded `?launchError` body on
+   * failure, `null` on success — so the route can reflect it into the search param.
+   * Only ever invoked on the Tauri arm (the web tile launches by anchor navigation).
+   */
+  readonly onLaunchResult?: (result: Either.Either<void, string>) => void
 }
 
-const AppsHomeBody = ({ apps }: AppsHomeBodyProps): JSX.Element => {
+const AppsHomeBody = ({ apps, launchError, onLaunchResult }: AppsHomeBodyProps): JSX.Element => {
   // Home-screen edit mode. Off by default: tiles launch on click and can't be
   // dragged. Toggling "Edit" arms drag-to-reorder and the per-tile "Hide"
   // (disable) control; "Done" returns to launch mode.
@@ -113,9 +157,13 @@ const AppsHomeBody = ({ apps }: AppsHomeBodyProps): JSX.Element => {
   )
 
   // Only the Tauri (loopback) arm runs JS on launch — the web arm is the
-  // anchor's own navigation (see `launchHref` / `launchApp`).
+  // anchor's own navigation (see `launchHref` / `launchApp`). The loopback outcome
+  // (a failure kind, or `null` on success) is handed up so the route reflects it
+  // into the `?launchError` banner.
   const launch = (app: AppRegistration): void => {
-    void launchApp({ apiBaseUrl, runAuthed }, app)
+    void launchApp({ apiBaseUrl, runAuthed }, app).then((kind) => {
+      onLaunchResult?.(kind)
+    })
   }
 
   const onDragEnd = (event: DragEndEvent): void => {
@@ -191,11 +239,12 @@ const AppsHomeBody = ({ apps }: AppsHomeBodyProps): JSX.Element => {
           </button>
         }
       />
-      {homeScreenMutation.isError ? (
-        <p className={tileStyles['app-tiles__error']} role="alert">
-          Couldn't save the change: {formatError(homeScreenMutation.error)}
-        </p>
-      ) : null}
+      {/* A launch that failed (the browser arm was redirected here with
+          `?launchError`; the Tauri arm set it via `onLaunchResult`). The decoded
+          body routes through the same renderer, so a `403` names the missing scopes. */}
+      <ErrorBanner error={launchBannerError(launchError)} />
+      {/* A failed home-screen reorder/hide — a `403` shows the permission surface. */}
+      <ErrorBanner error={homeScreenMutation.error} />
       {visible.length === 0 ? (
         <p className="text-body-2">No apps on your home screen. Add or enable apps in Settings.</p>
       ) : (
@@ -228,6 +277,7 @@ const AppsHomeBody = ({ apps }: AppsHomeBodyProps): JSX.Element => {
 }
 
 const Route = createFileRoute('/_auth/home/')({
+  validateSearch: validateHomeSearch,
   loader: ({ context }) =>
     context.queryClient.ensureQueryData(appsListQueryOptions(context.runAuthed)),
   component: AppsHomeScreen,

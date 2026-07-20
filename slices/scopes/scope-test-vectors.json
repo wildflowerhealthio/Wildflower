@@ -70,7 +70,7 @@
     {
       "allowed": "patient/Observation.cruds",
       "requested": "patient/Observation.read",
-      "covers": false
+      "covers": true
     },
     { "allowed": "patient/*.*", "requested": "patient/Observation.cruds", "covers": false },
     { "allowed": "patient/*.*", "requested": "patient/Observation.read", "covers": true },

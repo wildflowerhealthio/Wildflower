@@ -56,7 +56,7 @@
             }
           },
           "403": {
-            "description": "The caller's token doesn't cover this database's declared read scope",
+            "description": "The caller's token doesn't cover the scope this operation requires",
             "content": {
               "application/json": {
                 "schema": {
@@ -107,7 +107,7 @@
             }
           },
           "403": {
-            "description": "The caller's token doesn't cover this database's declared delete scope",
+            "description": "The caller's token doesn't cover the scope this operation requires",
             "content": {
               "application/json": {
                 "schema": {

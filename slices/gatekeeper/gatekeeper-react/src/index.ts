@@ -46,7 +46,6 @@ export {
   makeAwaitEmbeddedAuthReady,
   makeAwaitWebAuthReady,
   TokenTimeout,
-  unwrapFiberFailure,
 } from './client/auth-ready.ts'
 
 export {
