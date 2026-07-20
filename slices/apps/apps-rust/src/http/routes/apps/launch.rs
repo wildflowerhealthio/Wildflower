@@ -44,9 +44,10 @@
 
 use std::sync::Arc;
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Request, State};
 use axum::http::header::{CONTENT_TYPE, LOCATION, SET_COOKIE};
-use axum::http::{HeaderMap, HeaderValue, StatusCode};
+use axum::http::{HeaderMap, HeaderValue, Method, StatusCode};
+use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 
 use scope_capabilities_rust::{InsufficientScopeBody, Scoped};
@@ -99,6 +100,12 @@ pub(crate) async fn handle_launch_app(
 /// `GET` authenticates and the server `302`s to the resolved target. Shares
 /// [`launch`] with the `POST` arm — identical resolve-then-dispatch and auth
 /// posture.
+///
+/// A *failed* `GET` (`403`/`404`/`503`) is rewritten to a `303` back to
+/// `/home?launchError=<kind>` by [`redirect_browser_launch_errors`], so the browser
+/// lands on the SPA's banner instead of the raw error body. The `4xx`/`5xx`
+/// responses documented below are the handler's own (what the `POST` arm returns);
+/// the browser arm never renders them.
 #[utoipa::path(
     get,
     tag = "Launch",
@@ -119,6 +126,53 @@ pub(crate) async fn handle_launch_app_get(
     Path(id): Path<String>,
 ) -> Result<Response, AppsError> {
     launch(&launcher, state, headers, id).await
+}
+
+/// The SPA route a failed **browser** launch bounces to; the home screen decodes
+/// the `launchError` kind into a banner (see the apps-react `/home` route).
+const LAUNCH_ERROR_HOME: &str = "/home";
+
+/// The coarse `launchError` kind the home-screen banner switches on, by failure
+/// status. Deliberately coarse — a browser navigation shouldn't leak the missing
+/// scope or whether the app exists; the SPA maps each kind to a sentence.
+fn launch_error_kind(status: StatusCode) -> &'static str {
+    match status {
+        StatusCode::FORBIDDEN => "forbidden",
+        StatusCode::NOT_FOUND => "not-found",
+        StatusCode::SERVICE_UNAVAILABLE => "unavailable",
+        _ => "failed",
+    }
+}
+
+/// A layer over the launch routes that bounces a **failed browser (`GET`) launch**
+/// to `/home?launchError=<kind>` instead of letting the raw error body render as a
+/// full page (the web arm is a native `<a href="/apps/{id}">` navigation, so a
+/// `403`/`404`/`503` would otherwise paint its JSON/text body as the page).
+///
+/// Only a `GET` is rewritten, and only on an error status — a successful launch
+/// (`302` to the app, or `204`) passes through untouched, and the typed loopback
+/// `POST` arm (the SPA/Tauri client, which decodes the body) is never rewritten, so
+/// it still sees the real status. Applied in
+/// [`launch_openapi_router`](crate::http::routes::launch_openapi_router).
+pub(crate) async fn redirect_browser_launch_errors(request: Request, next: Next) -> Response {
+    let is_browser_get = request.method() == Method::GET;
+    let response = next.run(request).await;
+    let status = response.status();
+    if !is_browser_get || !(status.is_client_error() || status.is_server_error()) {
+        return response;
+    }
+    let location = format!(
+        "{LAUNCH_ERROR_HOME}?launchError={}",
+        launch_error_kind(status)
+    );
+    // `303 See Other`: the browser re-issues a `GET` to `/home` (dropping the failed
+    // request's method + body). `location` is a static path plus a fixed kind, so
+    // the header value is always valid ASCII.
+    Response::builder()
+        .status(StatusCode::SEE_OTHER)
+        .header(LOCATION, location)
+        .body(axum::body::Body::empty())
+        .expect("a static /home redirect is always a valid response")
 }
 
 /// The shared launch body for both `GET` and `POST /apps/{id}` — the method only

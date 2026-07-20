@@ -72,10 +72,19 @@ pub(crate) fn gated_openapi_router() -> OpenApiRouter<Arc<AppsState>> {
 /// the native-anchor web arm; `POST` is the typed loopback (Tauri) arm — both
 /// share one handler body.
 pub(crate) fn launch_openapi_router() -> OpenApiRouter<Arc<AppsState>> {
-    OpenApiRouter::new().routes(routes!(
-        apps::launch::handle_launch_app,
-        apps::launch::handle_launch_app_get
-    ))
+    OpenApiRouter::new()
+        .routes(routes!(
+            apps::launch::handle_launch_app,
+            apps::launch::handle_launch_app_get
+        ))
+        // Bounce a failed *browser* (`GET`) launch to `/home?launchError=<kind>`
+        // rather than rendering its raw error body as a page; the typed `POST` arm
+        // (which decodes the JSON) is left untouched. Scoped to the launch routes
+        // only — a `.layer` here survives the merge into `openapi_router` without
+        // touching the gated surface (mirrors the `upload_router` body limit).
+        .layer(axum::middleware::from_fn(
+            apps::launch::redirect_browser_launch_errors,
+        ))
 }
 
 /// The full apps surface (gated routes + launch) as one `OpenApiRouter`. Backs
@@ -473,9 +482,12 @@ mod tests {
         assert_eq!(location, "https://patient-browser.demo.example.com/");
     }
 
-    /// A forwarded `GET` is umbrella-gated like the `POST` arm.
+    /// A forwarded `GET` (browser) without the umbrella scope bounces to the banner
+    /// too (`303` → `/home?launchError=forbidden`), like the loopback `GET` — both
+    /// browser arms redirect rather than paint a raw `403`. (The umbrella gate still
+    /// runs; only the failed response's *shape* changes.)
     #[tokio::test]
-    async fn get_launch_forwarded_requires_the_umbrella_scope() {
+    async fn get_launch_forwarded_without_umbrella_redirects_home() {
         let st = state();
         let denied = send_raw_scoped(
             &st,
@@ -483,12 +495,19 @@ mod tests {
             Some("wildflower/*.cruds"),
         )
         .await;
-        assert_eq!(denied.status(), StatusCode::FORBIDDEN);
+        assert_eq!(denied.status(), StatusCode::SEE_OTHER);
+        assert_eq!(
+            denied.headers().get("location").unwrap().to_str().unwrap(),
+            "/home?launchError=forbidden",
+        );
     }
 
-    /// A loopback `GET` without the umbrella scope is `403`.
+    /// A loopback `GET` (browser) without the umbrella scope bounces to the
+    /// home-screen banner — a `303` to `/home?launchError=forbidden` — not a raw
+    /// `403` page. (The typed `POST` arm still `403`s: see
+    /// `loopback_launch_without_umbrella_scope_is_403`.)
     #[tokio::test]
-    async fn get_launch_loopback_without_umbrella_is_403() {
+    async fn get_launch_loopback_without_umbrella_redirects_home() {
         let st = state();
         let res = send_raw_scoped(
             &st,
@@ -496,7 +515,11 @@ mod tests {
             Some("wildflower/*.cruds"),
         )
         .await;
-        assert_eq!(res.status(), StatusCode::FORBIDDEN);
+        assert_eq!(res.status(), StatusCode::SEE_OTHER);
+        assert_eq!(
+            res.headers().get("location").unwrap().to_str().unwrap(),
+            "/home?launchError=forbidden",
+        );
     }
 
     /// Seed a **SMART** cloud app (a `client_id` present) that launches against the
@@ -624,13 +647,32 @@ mod tests {
         assert_eq!(opened, vec!["http://127.0.0.1:8080/docs".to_string()]);
     }
 
-    /// A `GET` of an unknown id is `404 AppNotFound`.
+    /// A `GET` (browser) launch of an unknown id bounces to the banner
+    /// (`303` → `/home?launchError=not-found`) rather than a raw `404` page; the
+    /// typed `POST` arm still `404`s with JSON (`launch_unknown_id_is_404`).
     #[tokio::test]
-    async fn get_launch_unknown_id_is_404() {
+    async fn get_launch_unknown_id_redirects_home() {
         let st = state();
-        let (status, body) = send(&st, get_launch("/apps/no-such-thing")).await;
-        assert_eq!(status, StatusCode::NOT_FOUND);
-        assert_eq!(body["error"], "AppNotFound");
+        let res = send_raw(&st, get_launch("/apps/no-such-thing")).await;
+        assert_eq!(res.status(), StatusCode::SEE_OTHER);
+        assert_eq!(
+            res.headers().get("location").unwrap().to_str().unwrap(),
+            "/home?launchError=not-found",
+        );
+    }
+
+    /// A `GET` (browser) launch with no reachable target (a forwarded self-hosted
+    /// launch with no public host — a `503`) bounces to
+    /// `/home?launchError=unavailable`.
+    #[tokio::test]
+    async fn get_launch_unavailable_redirects_home() {
+        let st = state();
+        let res = send_raw(&st, get_forwarded("/apps/patient-browser")).await;
+        assert_eq!(res.status(), StatusCode::SEE_OTHER);
+        assert_eq!(
+            res.headers().get("location").unwrap().to_str().unwrap(),
+            "/home?launchError=unavailable",
+        );
     }
 
     /// A system app launches via its stored source URL, resolved against the

@@ -1,4 +1,6 @@
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
+import { HttpClientError, HttpClientRequest, HttpClientResponse } from '@effect/platform'
+import { Effect } from 'effect'
+import { describe, expect, test } from 'vite-plus/test'
 
 import type { AppRegistration } from '../../../queries.ts'
 import type { RunAuthed } from '../../../router-context.ts'
@@ -15,37 +17,37 @@ const app: AppRegistration = {
   requiresTunnel: false,
 }
 
-// The loopback arm runs an Effect through `runAuthed`; the helper only cares
-// that it's invoked with *some* effect and that it resolves or rejects. A
-// genuine `RunAuthed` stub records its calls into `calls` (the tests assert
-// against that) and, by default, resolves — standing in for the host `204`ing
-// through the typed client. `mode: 'reject'` exercises the typed-failure path.
-//
-// `RunAuthed` is generic (`<A, E>(effect) => Promise<A>`): the only value
-// assignable to its return `Promise<A>` for *all* `A` is `Promise<never>`
-// (reject/throw), so a *resolving* generic `RunAuthed` is inherently
-// untypeable — hence the one contained cast (`untypedResolve`) on the resolve
-// branch. It doesn't weaken the test: `launchApp` never reads the resolved
-// value (it just `await`s), so resolving with `undefined` is faithful.
 interface RunAuthedStub {
   readonly runAuthed: RunAuthed
   readonly calls: readonly { readonly effect: unknown }[]
 }
 
-// A resolving generic `RunAuthed` can't be expressed without a cast (see above);
-// isolate it to this one helper so the rest of the file stays cast-free. This is
-// the documented test-file exception to the no-casts rule — it doesn't reduce
-// confidence in the test (the resolved value is never read by `launchApp`).
-// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- resolving generic RunAuthed is inherently untypeable; see block comment above
+// A resolving generic `RunAuthed` can't be expressed without a cast: its return
+// `Promise<A>` is inhabited for *all* `A` only by `Promise<never>` (reject). Isolate
+// the cast here so the rest of the file stays cast-free — the documented test-file
+// exception; `launchApp` never reads the resolved value, so this is faithful.
+// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- resolving generic RunAuthed is inherently untypeable
 const untypedResolve: RunAuthed = (() => Promise.resolve(undefined)) as RunAuthed
 
-const makeRunAuthed = (mode: 'resolve' | 'reject' = 'resolve'): RunAuthedStub => {
+const resolvingRunAuthed = (): RunAuthedStub => {
   const calls: { readonly effect: unknown }[] = []
-  const runAuthed: RunAuthed = (effect) => {
-    calls.push({ effect })
-    return mode === 'reject' ? Promise.reject(new Error('AppNotFound')) : untypedResolve(effect)
-  }
-  return { runAuthed, calls }
+  return { calls, runAuthed: (effect) => (calls.push({ effect }), untypedResolve(effect)) }
+}
+
+const rejectingRunAuthed = (error: unknown): RunAuthedStub => {
+  const calls: { readonly effect: unknown }[] = []
+  return { calls, runAuthed: (effect) => (calls.push({ effect }), Promise.reject(error)) }
+}
+
+/** A `ResponseError` at `status` — the shape an *undeclared* launch status (`403` /
+ * `503`) reaches the typed client as. */
+const responseError = (status: number): HttpClientError.ResponseError => {
+  const request = HttpClientRequest.get('/apps/pt-browser')
+  return new HttpClientError.ResponseError({
+    request,
+    response: HttpClientResponse.fromWeb(request, new Response(null, { status })),
+    reason: 'StatusCode',
+  })
 }
 
 // A representative Tauri host origin — its presence (not its value) is the
@@ -71,60 +73,67 @@ describe('launchHref', () => {
 })
 
 describe('launchApp', () => {
-  let consoleError: ReturnType<typeof vi.spyOn>
-  beforeEach(() => {
-    // The loopback arm logs through `console.error` on a typed failure; spy on
-    // it so the assertions can read what was logged and the output stays quiet.
-    consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
-  })
-  afterEach(() => {
-    consoleError.mockRestore()
-  })
-
   describe('loopback / Tauri arm (apiBaseUrl set)', () => {
-    test('launches through the authed Effect client (carries the owner bearer)', async () => {
-      const stub = makeRunAuthed()
+    test('launches through the authed Effect client and resolves null on success', async () => {
+      const stub = resolvingRunAuthed()
 
-      await launchApp({ apiBaseUrl: TAURI_API_BASE, runAuthed: stub.runAuthed }, app)
+      const kind = await launchApp({ apiBaseUrl: TAURI_API_BASE, runAuthed: stub.runAuthed }, app)
 
-      // The launch rides `runAuthed` (not a raw `fetch`), so the owner bearer
-      // is attached the same way the apps-list read and admin writes attach it.
+      // Success is `null` (no banner); the launch rides `runAuthed` (not a raw
+      // `fetch`), so the owner bearer is attached like the apps-list read.
+      expect(kind).toBeNull()
       expect(stub.calls).toHaveLength(1)
       expect(stub.calls[0]?.effect).toBeDefined()
     })
 
-    test('logs a typed failure (e.g. a 404 for a just-deleted app) instead of throwing', async () => {
-      // A typed error surfaces as a rejected `runAuthed`; the helper catches it
-      // so the click handler never sees a throw.
-      const stub = makeRunAuthed('reject')
+    test('maps a 403 to the "forbidden" banner kind instead of throwing', async () => {
+      const stub = rejectingRunAuthed(responseError(403))
 
       await expect(
         launchApp({ apiBaseUrl: TAURI_API_BASE, runAuthed: stub.runAuthed }, app)
-      ).resolves.toBeUndefined()
-
-      expect(consoleError).toHaveBeenCalledWith(
-        expect.stringContaining('launch failed'),
-        expect.any(Error)
-      )
+      ).resolves.toBe('forbidden')
     })
 
-    test('does not log on the happy path (the host 204s, the client resolves)', async () => {
-      await launchApp({ apiBaseUrl: TAURI_API_BASE, runAuthed: makeRunAuthed().runAuthed }, app)
+    test('maps a 503 to "unavailable"', async () => {
+      const stub = rejectingRunAuthed(responseError(503))
 
-      expect(consoleError).not.toHaveBeenCalled()
+      await expect(
+        launchApp({ apiBaseUrl: TAURI_API_BASE, runAuthed: stub.runAuthed }, app)
+      ).resolves.toBe('unavailable')
+    })
+
+    test('maps an unrecognised failure to the generic "failed"', async () => {
+      const stub = rejectingRunAuthed(new Error('boom'))
+
+      await expect(
+        launchApp({ apiBaseUrl: TAURI_API_BASE, runAuthed: stub.runAuthed }, app)
+      ).resolves.toBe('failed')
+    })
+
+    test('unwraps a FiberFailure before reading the status', async () => {
+      // `runAuthed` rejects with a `FiberFailure` (what `Effect.runPromise` throws),
+      // so the kind must be read from the wrapped `ResponseError`, not the wrapper.
+      const fiberFailure = await Effect.runPromise(Effect.fail(responseError(403))).then(
+        () => null,
+        (rejection: unknown) => rejection
+      )
+      const stub = rejectingRunAuthed(fiberFailure)
+
+      await expect(
+        launchApp({ apiBaseUrl: TAURI_API_BASE, runAuthed: stub.runAuthed }, app)
+      ).resolves.toBe('forbidden')
     })
   })
 
   describe('web arm (apiBaseUrl unset)', () => {
     test('is a no-op — the anchor navigates, so JS never touches runAuthed', async () => {
-      const stub = makeRunAuthed()
+      const stub = resolvingRunAuthed()
 
-      await expect(
-        launchApp({ apiBaseUrl: undefined, runAuthed: stub.runAuthed }, app)
-      ).resolves.toBeUndefined()
+      const kind = await launchApp({ apiBaseUrl: undefined, runAuthed: stub.runAuthed }, app)
 
-      // The web arm rides the anchor navigation (cookie authenticates) — no
-      // bearer, no client call.
+      // The web arm rides the anchor navigation (cookie authenticates) — no bearer,
+      // no client call, and no banner to raise from JS.
+      expect(kind).toBeNull()
       expect(stub.calls).toHaveLength(0)
     })
   })

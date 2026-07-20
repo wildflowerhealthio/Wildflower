@@ -81,6 +81,29 @@ describe('<AppsHomeBody> reorder-failure banner', () => {
   })
 })
 
+describe('<AppsHomeBody> launch-error banner', () => {
+  beforeEach(() => {
+    homeScreenStub.isError = false
+    homeScreenStub.error = null
+  })
+
+  afterEach(() => {
+    cleanup()
+  })
+
+  test('reads a launchError kind as a friendly sentence, not the raw token', () => {
+    render(<AppsHomeBody apps={[APP]} launchError="forbidden" />)
+
+    expect(screen.getByRole('alert').textContent).toContain('permission to launch that app')
+  })
+
+  test('renders no launch banner when there is no launchError', () => {
+    render(<AppsHomeBody apps={[APP]} />)
+
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+})
+
 describe('<AppsHomeBody> edit mode', () => {
   beforeEach(() => {
     homeScreenStub.isError = false

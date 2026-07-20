@@ -1,8 +1,18 @@
+import { HttpClientError } from '@effect/platform'
 import { AppsHttpApiClient } from 'apps-core/clients'
 import { Effect } from 'effect'
+import { unwrapFiberFailure } from 'kitchen-sink'
 
 import type { AppRegistration } from '../../../queries.ts'
 import type { RunAuthed } from '../../../router-context.ts'
+
+/**
+ * The coarse launch-failure kind the home-screen banner switches on — the client
+ * mirror of the Rust web arm's `?launchError=<kind>` redirect (the launch route's
+ * `redirect_browser_launch_errors`), so the loopback (Tauri) arm and the web arm
+ * show the same banner for the same failure.
+ */
+type LaunchErrorKind = 'forbidden' | 'not-found' | 'unavailable' | 'failed'
 
 /**
  * Inputs the {@link launchApp} dispatch needs to pick — and reach — its arm.
@@ -58,24 +68,46 @@ const launchHref = (apiBaseUrl: string | undefined, id: string): string | undefi
  *   SPA stays mounted. A typed error (e.g. a `404` for a just-deleted app) is
  *   caught and logged rather than thrown to the click handler.
  */
-const launchApp = async (ctx: LaunchContext, app: AppRegistration): Promise<void> => {
-  if (ctx.apiBaseUrl === undefined) return
-  await postLaunch(ctx.runAuthed, app.id)
+const launchApp = async (
+  ctx: LaunchContext,
+  app: AppRegistration
+): Promise<LaunchErrorKind | null> => {
+  // Web arm: the tile is a native `<a href>` the browser follows, and a failed
+  // navigation is redirected server-side to `/home?launchError=…` — nothing for JS
+  // to do or report, so `null`.
+  if (ctx.apiBaseUrl === undefined) return null
+  return postLaunch(ctx.runAuthed, app.id)
 }
 
-const postLaunch = async (runAuthed: RunAuthed, id: string): Promise<void> => {
+/**
+ * Map a rejected loopback launch to its banner kind (`null` on success).
+ * `runAuthed` rejects with a `FiberFailure`, so unwrap it first; `LaunchApp`
+ * declares only the `404` (`AppNotFound`) typed error, so a `403`/`503` reaches us
+ * as a bare `HttpClientError.ResponseError` carrying the status — a declared `404`
+ * (a just-deleted app) falls through to the generic `failed`.
+ */
+const postLaunch = async (runAuthed: RunAuthed, id: string): Promise<LaunchErrorKind | null> => {
   try {
     await runAuthed(Effect.flatMap(AppsHttpApiClient, (c) => c.apps.LaunchApp({ path: { id } })))
+    return null
   } catch (error: unknown) {
-    // The host's launch sink already opened (or failed to open) the popup;
-    // a typed failure here (e.g. a `404` for a just-deleted/disabled app)
-    // surfaces as a rejected `runAuthed`. Log it rather than throw into the
-    // click handler — the SPA stays mounted either way.
-    // oxlint-disable-next-line no-console
-    console.error('[apps] launch failed', error)
+    const cause = unwrapFiberFailure(error)
+    if (cause instanceof HttpClientError.ResponseError) {
+      switch (cause.response.status) {
+        case 403:
+          return 'forbidden'
+        case 404:
+          return 'not-found'
+        case 503:
+          return 'unavailable'
+        default:
+          return 'failed'
+      }
+    }
+    return 'failed'
   }
 }
 
-// `LaunchContext` stays an inline `export interface` above; the two functions are
-// grouped here to satisfy `import/group-exports` (a single value-export decl).
-export { launchApp, launchHref }
+// `LaunchContext` stays an inline `export interface` above; the functions + the
+// kind type are grouped here to satisfy `import/group-exports` (one export decl).
+export { launchApp, launchHref, type LaunchErrorKind }
