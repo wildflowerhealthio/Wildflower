@@ -1,4 +1,4 @@
-import { Duration, Effect, Schema } from 'effect'
+import { Effect, Schema } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as CollectorDescriptor from './collector-descriptor.ts'
@@ -19,7 +19,6 @@ const makeScrapingPlan = (config: SampleConfig): ScrapingPlan.ScrapingPlan<never
     entityDefinitions: [],
     firstPage: { _tag: 'Uri', uri: `https://${config.host}` },
     stepSequence: [],
-    stepDelay: Duration.seconds(1),
   })
 
 const descriptor = CollectorDescriptor.make({

@@ -73,18 +73,46 @@ before adding one.
 
 ## Traps
 
-- **`Step` is `{ action; advanceWhen? }` — the plan-only `advanceWhen` cannot
-  reach the wire by construction.** The automatic-navigation machine forwards
-  only `step.action` (typed against the bridge message bodies themselves), so a
-  `UrlMatch` gate stays on the wrapper. There is no "strip before dispatch"
-  step to remember. A new scripted interaction is a `PageAction` `action` union
-  variant, not a new bridge tag.
+- **`Step` is a `Navigation | Delay` union; only `NavigationStep.action` reaches
+  the wire.** The automatic-navigation machine forwards only a `Navigation` step's
+  `action` (typed against the bridge message bodies themselves), so both the
+  plan-only `advanceWhen` gate and the whole `Delay` variant stay off the wire by
+  construction — there is no "strip before dispatch" step to remember. A new
+  scripted interaction is a `PageAction` `action` union variant, not a new bridge
+  tag; a new _pause_ is a `Delay` step, not a plan-wide delay field.
+- **There is no implicit inter-step settle — plans own their grace periods.** A
+  `Navigation` dispatches on the same transition as its gating `PageLoaded`, and
+  the run closes the stream the moment both completion gates hold. If post-load
+  XHR fan-out must finish before the run completes, add an explicit **trailing
+  `Delay` step** (it delays reaching `Drained`, keeping the run open while those
+  requests start and are tracked).
+- **Completion couples the two machines — `Drained ∧ all requests settled`.** The
+  automatic-navigation machine can't complete on an empty queue alone (an in-flight
+  request may still `followUpSteps`). It reaches `Done` only when the lifecycle
+  injects `NoMoreResultsExpected` (map empty) _and_ its queue is drained; the
+  re-check fires on _both_ edges (a settle emptying the map, and the queue draining
+  via `onDrained`). `SniffingComplete` therefore fires only once every sniffed
+  request has settled — completion waits on Gate B. The `handleSniffingComplete`
+  hook must never re-inject `NoMoreResultsExpected` (re-entrant lock → deadlock);
+  it only closes the stream.
+- **`followUpSteps` generation is guarded at the injection point, not in the pure
+  transition.** The composition (`collector-bridge-message-handler.ts`) dedups
+  generated `Open`s by `Uri` (a run-wide visited-set seeded with `firstPage` +
+  authored `Open`s) and caps total generated steps at `maxGeneratedSteps`
+  (default 500) — both adjustable per-plan (`dedupeGeneratedOpenUris`,
+  `maxGeneratedSteps`). Dropped steps WARN-log with counts. These two are the
+  termination guards for the naturally-recursive entity-hung generators.
+- **The tracker's ordering is generate → drop → offer.** A successful parse's
+  `followUpSteps` are injected _before_ the settle is dropped and offered, so the
+  machine leaves `Drained` before the offer's close-check can inject
+  `NoMoreResultsExpected` — completion can't race ahead of the steps a settle
+  produced.
 - **The sync drive loop is a decision table, not a state machine, and
   completion is not computed in the runner.** It drains the handler's
   `requestSniffingResults` stream until that stream finishes; the handler closes
   it once sniffing is complete and every response has settled. `idleTimeout` is
   the escape hatch for a silent host. Contrast the automatic-navigation machine,
-  which _is_ an FSM (overlapping settle/URL-match timers).
+  which _is_ an FSM (overlapping delay/URL-match timers).
 - **`CollectorConfig` is TS-owned and opaque to Rust.** `collector-rust` stores
   and serves the config JSON verbatim; its utoipa field is
   `#[schema(value_type = Value)]` (an empty schema the drift engine treats as a

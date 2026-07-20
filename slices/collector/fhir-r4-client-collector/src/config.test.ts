@@ -140,6 +140,7 @@ describe('scrapingPlan', () => {
     const plan = scrapingPlan(defaultConfig)
     expect(plan.stepSequence).toEqual([
       {
+        _tag: 'Navigation',
         action: {
           _tag: 'Open',
           source: {

@@ -4,20 +4,20 @@ import type { Duration } from 'effect'
 import type { OpenMessage } from '../bridge.ts'
 
 /**
- * When the automatic-navigation machine should dispatch a step, relative to the
- * `PageLoaded` events flowing back from the sniffer.
+ * When the automatic-navigation machine should dispatch a {@link NavigationStep},
+ * relative to the `PageLoaded` events flowing back from the sniffer.
  *
- * - Absent (`advanceWhen` omitted): the default — dispatch a fixed
- *   `ScrapingPlan.stepDelay` after each `PageLoaded`, matching the
- *   pre-existing behaviour (so plans that don't script a login, like
- *   the fhir-r4 collector, need no edits).
- * - `UrlMatch`: hold the step until a `PageLoaded` arrives whose `url`
- *   matches `pattern`, then dispatch after the usual `stepDelay` settle.
- *   Use for login flows whose redirects / SPA navigations settle at an
- *   unpredictable time — a fixed delay would race them. `pattern` is a
- *   `RegExp` built with `UrlMatch.make({ segments, end })`. `timeout`
- *   bounds the wait: if no matching `PageLoaded` is seen within it, the
- *   run aborts via `SniffingComplete` rather than hanging (the sync
+ * - Absent (`advanceWhen` omitted): the default — dispatch as soon as the
+ *   machine reaches this step's turn in the queue (on the `PageLoaded` that
+ *   pops it, or immediately when a generated step re-awakens a drained
+ *   machine). No implicit settle delay is applied; a plan that needs a grace
+ *   period inserts an explicit {@link DelayStep}.
+ * - `UrlMatch`: hold the step until a `PageLoaded` arrives whose `url` matches
+ *   `pattern`, then dispatch. Use for login flows whose redirects / SPA
+ *   navigations settle at an unpredictable time — a fixed delay would race
+ *   them. `pattern` is a `RegExp` built with `UrlMatch.make({ segments, end })`.
+ *   `timeout` bounds the wait: if no matching `PageLoaded` is seen within it,
+ *   the run aborts via `SniffingComplete` rather than hanging (the sync
  *   runner's idle timeout is the ultimate backstop).
  */
 interface UrlMatchAdvance {
@@ -27,16 +27,17 @@ interface UrlMatchAdvance {
 }
 
 /**
- * The advance condition attached to a {@link Step}. A union so more
+ * The advance condition attached to a {@link NavigationStep}. A union so more
  * trigger kinds (element-present, response-seen, …) can be added later
- * without touching the {@link Step} shape; today the only non-default kind
- * is {@link UrlMatchAdvance}.
+ * without touching the {@link NavigationStep} shape; today the only non-default
+ * kind is {@link UrlMatchAdvance}.
  */
 type Advance = UrlMatchAdvance
 
 /**
- * What a step tells the sniffer to do, typed *against the bridge message
- * bodies themselves* so a step can never carry a field the wire doesn't:
+ * What a {@link NavigationStep} tells the sniffer to do, typed *against the
+ * bridge message bodies themselves* so a step can never carry a field the wire
+ * doesn't:
  *
  * - `Open` (the collector bridge's `OpenMessage`): host-navigation. Carries
  *   the same `WebViewSource` shape the host uses for the initial `firstPage`,
@@ -47,26 +48,54 @@ type Advance = UrlMatchAdvance
  *   interaction (`Click` / `Fill`, discriminated by the inner `kind`). New
  *   interaction kinds are added as `action` union variants, not new tags.
  *
- * Because {@link Step} is just `{ action; advanceWhen? }`, the plan-only
- * `advanceWhen` lives on the wrapper, not the action — the automatic-navigation machine
- * forwards `step.action` untouched and it can never leak onto the wire.
+ * Because the wire-facing step field is exactly `StepAction`, both the
+ * plan-only `advanceWhen` (on {@link NavigationStep}) and the whole
+ * {@link DelayStep} variant structurally cannot leak onto the wire — the
+ * automatic-navigation machine forwards a `NavigationStep`'s `action` untouched
+ * and never forwards a `DelayStep` at all (it consumes it as a timer).
  */
 type StepAction = typeof OpenMessage.Type | typeof PageActionMessage.Type
 
 /**
- * A scripted navigation step: an {@link StepAction} to dispatch plus an
- * optional {@link Advance} gating *when* the automatic-navigation machine dispatches it.
+ * A scripted navigation step: a {@link StepAction} to dispatch plus an optional
+ * {@link Advance} gating *when* the automatic-navigation machine dispatches it.
  *
- * `advanceWhen` is a plan-only field — the automatic-navigation machine reads it to schedule
- * the dispatch but forwards only `action` to the sniffer, so it never reaches
- * the wire. A `Fill` action's `value` is interpolated from the remote's
- * config (e.g. a username / password) when the collector builds its
- * `ScrapingPlan`; because a credential can therefore ride that payload, see
- * the secrets note on `browser-sniffer-core`'s `FillAction`.
+ * `advanceWhen` is a plan-only field — the automatic-navigation machine reads it
+ * to schedule the dispatch but forwards only `action` to the sniffer, so it
+ * never reaches the wire. A `Fill` action's `value` is interpolated from the
+ * remote's config (e.g. a username / password) when the collector builds its
+ * `ScrapingPlan`; because a credential can therefore ride that payload, see the
+ * secrets note on `browser-sniffer-core`'s `FillAction`.
  */
-interface Step {
+interface NavigationStep {
+  readonly _tag: 'Navigation'
   readonly action: StepAction
   readonly advanceWhen?: Advance
 }
 
-export type { Step, StepAction, Advance, UrlMatchAdvance }
+/**
+ * A plan-only pause: the automatic-navigation machine arms a timer for
+ * `duration`, waits it out, then processes the next queue entry. It is never
+ * forwarded to the wire (it carries no `action`) — the FSM consumes it as a
+ * timer, so, like `advanceWhen`, a `Delay` structurally cannot reach the bridge.
+ *
+ * A plan inserts an explicit `Delay` exactly where a wait matters — most
+ * commonly a *trailing* `Delay` so post-load XHR fan-out has time to start (and
+ * be tracked) before the queue drains and the run completes. There is no other
+ * inter-step wait: an ungated `Navigation` dispatches on its gating `PageLoaded`.
+ */
+interface DelayStep {
+  readonly _tag: 'Delay'
+  readonly duration: Duration.Duration
+}
+
+/**
+ * One entry in a {@link ScrapingPlan.stepSequence} (or generated by an
+ * {@link EntityDefinition.followUpSteps}): either a {@link NavigationStep}
+ * dispatched to the sniffer or a plan-only {@link DelayStep} the FSM consumes as
+ * a timer. A tagged union keyed by `_tag`; the automatic-navigation machine
+ * routes on it.
+ */
+type Step = NavigationStep | DelayStep
+
+export type { Step, NavigationStep, DelayStep, StepAction, Advance, UrlMatchAdvance }
