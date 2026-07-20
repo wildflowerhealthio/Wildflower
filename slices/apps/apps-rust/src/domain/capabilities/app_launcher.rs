@@ -46,10 +46,15 @@ impl AppLauncher {
     /// authorized. A **non-SMART** app (no `client_id`) needs only the umbrella
     /// scope the extractor already enforced, so it short-circuits to no missing
     /// scopes; a **SMART** app additionally requires the caller's grant to cover
-    /// its OAuth client's requested scopes (resolved through the
-    /// [`AppLaunchScopes`] port). The handler renders a non-empty result as a
-    /// `403 InsufficientScope` (JSON for the loopback/SPA arm, a browser-appropriate
-    /// response for a forwarded navigation).
+    /// its OAuth client's requested **resource** scopes — the FHIR / Wildflower
+    /// data-access scopes (resolved through the [`AppLaunchScopes`] port). The
+    /// client's OAuth-handshake scopes — OIDC identity (`openid`, `fhirUser`,
+    /// `profile`), refresh (`offline_access`), and SMART launch context (`launch`,
+    /// `launch/patient`, …) — are filtered out first: they are negotiated in the
+    /// app's own OAuth flow, and no Wildflower owner grant carries them, so
+    /// requiring them would `403`-lock every launch of a standard SMART app. The
+    /// handler renders a non-empty result as a `403 InsufficientScope` (JSON for the
+    /// loopback/SPA arm, a browser-appropriate response for a forwarded navigation).
     pub(crate) fn missing_launch_scopes(
         &self,
         registration: &AppRegistration,
@@ -57,9 +62,26 @@ impl AppLauncher {
         if !registration.is_smart() {
             return Ok(Vec::new());
         }
-        let required = self.launch_scopes.required_scopes(registration)?;
+        // Only the app's data-access (resource) scopes are the launching owner's to
+        // cover; the OAuth-handshake scopes are the app's own concern (see the
+        // method docs).
+        let required: Vec<Scope> = self
+            .launch_scopes
+            .required_scopes(registration)?
+            .into_iter()
+            .filter(is_resource_scope)
+            .collect();
         Ok(self.granted.missing_scopes(&required))
     }
+}
+
+/// Whether a scope names data access — a FHIR (`context/Type.perms`) or Wildflower
+/// (`wildflower/Resource.perms`) resource scope. The launching owner authorizes an
+/// app's *data access*, so only these are required of the caller; OIDC / refresh /
+/// launch-context / unknown scopes are OAuth-handshake mechanics no Wildflower grant
+/// holds. Mirrors the partition `Grant::resource_scopes` draws.
+fn is_resource_scope(scope: &Scope) -> bool {
+    matches!(scope, Scope::FhirResource(_) | Scope::WildflowerResource(_))
 }
 
 #[cfg(test)]
@@ -100,24 +122,66 @@ mod tests {
     }
 
     #[test]
-    fn launcher_smart_app_requires_covering_its_client_scopes() {
+    fn launcher_smart_app_requires_covering_its_client_resource_scopes() {
         let reg = smart_registration();
-        // A grant covering the SMART client's scopes → nothing missing.
-        assert!(launcher(
-            "patient/Observation.rs openid",
-            &["patient/Observation.r", "openid"]
-        )
-        .missing_launch_scopes(&reg)
-        .expect("resolve")
-        .is_empty());
+        // A grant covering the SMART client's resource scope → nothing missing.
+        assert!(
+            launcher("patient/Observation.rs", &["patient/Observation.r"])
+                .missing_launch_scopes(&reg)
+                .expect("resolve")
+                .is_empty()
+        );
 
-        // A grant missing one → it comes back (in the order the port declared).
-        let missing = launcher("openid", &["patient/Observation.r", "openid"])
+        // A grant missing the resource scope → it comes back.
+        let missing = launcher("openid", &["patient/Observation.r"])
             .missing_launch_scopes(&reg)
             .expect("resolve");
         assert_eq!(
             scopes_rust::render_scopes(&missing),
             vec!["patient/Observation.r".to_owned()],
+        );
+    }
+
+    /// The launching owner authorizes an app's *data access* — its FHIR / Wildflower
+    /// resource scopes. A SMART client's OAuth-handshake scopes (OIDC identity,
+    /// refresh, and SMART launch context — including a launch scope we don't model,
+    /// `launch/encounter`, which parses as `Unknown`) are filtered out before the
+    /// coverage check, so an owner grant that holds none of them (as no Wildflower
+    /// grant does) still launches a standard SMART app.
+    #[test]
+    fn launcher_filters_oauth_handshake_scopes_from_the_requirement() {
+        let reg = smart_registration();
+        // A standard SMART client: OIDC + refresh + launch context + one FHIR
+        // resource scope.
+        let required = &[
+            "openid",
+            "fhirUser",
+            "profile",
+            "offline_access",
+            "launch",
+            "launch/patient",
+            "launch/encounter",
+            "patient/Observation.r",
+        ];
+        // `system/*.cruds` (the owner's FHIR wildcard) covers the resource scope and
+        // none of the handshake scopes — yet the launch is authorized.
+        assert!(
+            launcher("system/*.cruds", required)
+                .missing_launch_scopes(&reg)
+                .expect("resolve")
+                .is_empty(),
+            "only resource scopes are required; handshake scopes are filtered",
+        );
+
+        // The resource scope is still enforced: an owner holding only handshake
+        // scopes (no resource grant) is short exactly the FHIR read.
+        let missing = launcher("openid launch", required)
+            .missing_launch_scopes(&reg)
+            .expect("resolve");
+        assert_eq!(
+            scopes_rust::render_scopes(&missing),
+            vec!["patient/Observation.r".to_owned()],
+            "the uncovered resource scope survives the filter",
         );
     }
 

@@ -24,9 +24,11 @@
 //!      former in-handler loopback owner gate.)
 //!   3. Look up the app (`404 AppNotFound` if absent).
 //!   4. Per-app SMART gate: a **SMART** app additionally requires the caller's
-//!      grant to cover its OAuth client's scopes. A shortfall `403`s before any
-//!      side-effect — JSON for the loopback/SPA arm, a plain-text response for a
-//!      forwarded browser navigation. A non-SMART app needs only the umbrella.
+//!      grant to cover its OAuth client's requested *resource* scopes (the OIDC /
+//!      launch-context scopes are the app's own OAuth concern, filtered out). A
+//!      shortfall `403`s before any side-effect — JSON for the loopback/SPA arm, a
+//!      plain-text response for a forwarded browser navigation. A non-SMART app
+//!      needs only the umbrella.
 //!   5. Resolve the launch target by the app's kind (System → compiled-in source,
 //!      Self-Hosted → loopback/subdomain, Cloud → the stored template). Fails
 //!      `503 LaunchUnavailable` when no *reachable* target exists.
@@ -154,10 +156,11 @@ async fn launch(
         .ok_or_else(|| AppsError::NotFound { id: id.clone() })?;
 
     // Per-app SMART gate (module docs, step 4): a SMART app additionally requires
-    // the caller's grant to cover its OAuth client's scopes. A shortfall bails with
-    // a `403` shaped for the caller's arm — JSON for the loopback/SPA caller, a
-    // plain-text response for a forwarded browser navigation — before any
-    // side-effect. A non-SMART app needs only the umbrella (short-circuited inside).
+    // the caller's grant to cover its OAuth client's resource scopes (OIDC /
+    // launch-context scopes are filtered out). A shortfall bails with a `403` shaped
+    // for the caller's arm — JSON for the loopback/SPA caller, a plain-text response
+    // for a forwarded browser navigation — before any side-effect. A non-SMART app
+    // needs only the umbrella (short-circuited inside).
     let missing = launcher.missing_launch_scopes(&registration)?;
     if !missing.is_empty() {
         return Ok(insufficient_launch_scope(missing, &provenance));

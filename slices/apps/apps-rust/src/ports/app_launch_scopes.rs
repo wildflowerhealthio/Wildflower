@@ -2,7 +2,9 @@
 //! launch scopes. Launching a scoped app is gated in two layers (see the launch
 //! handler): the static `wildflower/launch` umbrella the [`Scoped`] extractor
 //! enforces, and — for a SMART app (a host-only `client_id`) — a per-app check that
-//! the caller's stored grant covers the app's OAuth client's requested scopes.
+//! the caller's stored grant covers the app's OAuth client's requested *resource*
+//! scopes (the `AppLauncher` filters the returned set to FHIR / Wildflower resource
+//! scopes; the OIDC / launch-context scopes are the app's own OAuth concern).
 //! This port resolves that per-app requirement, keeping apps-rust decoupled from
 //! gatekeeper: the host wires a gatekeeper-backed adapter that maps a
 //! `client_id` to its client's `allowed_scopes`; a host with no SMART client
@@ -19,8 +21,12 @@ use crate::domain::{AppRegistration, AppsError};
 /// short-circuits a non-SMART one to "no extra scopes"), so an implementation
 /// resolves the registration's `client_id` to its OAuth client's allowed scopes.
 pub trait AppLaunchScopes: Send + Sync {
-    /// The extra scopes required to launch `registration` — its SMART client's
-    /// allowed scopes. An empty vec means only the umbrella scope is needed.
+    /// The SMART client's full `allowed_scopes` for `registration`. The caller
+    /// ([`AppLauncher`](crate::domain::capabilities::AppLauncher)) requires only the
+    /// *resource* subset (FHIR / Wildflower) to be covered — the OIDC /
+    /// launch-context scopes are filtered out — so an implementation returns the raw
+    /// set and need not classify it. An empty vec means no per-app resource
+    /// requirement (only the umbrella gates the launch).
     ///
     /// # Errors
     ///
