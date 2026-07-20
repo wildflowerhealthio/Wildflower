@@ -1,8 +1,8 @@
 import type { JSX, ReactNode } from 'react'
 import { cn } from 'react-kitchen-sink'
-import { StatusBadge } from 'react-tundraish'
 import { Scope } from 'scopes-core'
 
+import React from 'react'
 import styles from './authorization-failure.module.css'
 
 interface AuthorizationFailureProps {
@@ -70,8 +70,7 @@ const AuthorizationFailure = ({
   const scopes = [...new Set(missingScopes)]
   return (
     <section className={cn(styles['surface'], className)} role="alert">
-      <StatusBadge tone="danger">Not permitted</StatusBadge>
-      <h2 className={cn(styles['title'], 'text-heading-3')}>
+      <h2 className={cn(styles['title'], 'text-heading-2')}>
         {action ?? 'You don’t have permission to do that'}
       </h2>
       {scopes.length === 0 ? (
@@ -82,25 +81,29 @@ const AuthorizationFailure = ({
         <>
           <p className={cn(styles['body'], 'text-body-3')}>
             Your session doesn’t have permission to:
-          </p>
-          <ul className={styles['scopes']}>
-            {scopes.map((scope) => {
+            {scopes.map((scope, i) => {
               const phrase = fluentScope(scope)
               // A resource scope reads as plain language ("read Accounts"); the
               // canonical scope stays available on hover for anyone who needs it.
               // A non-resource scope (a bare flag / umbrella / unparseable token)
               // has no fluent form, so the raw string is the fallback.
-              return phrase !== null ? (
-                <li key={scope} className={styles['scope']} title={scope}>
-                  {phrase}
-                </li>
-              ) : (
-                <li key={scope} className={styles['scope']}>
+              const scopeElement =
+                phrase !== null ? (
+                  <span className={styles['scope']} title={scope}>
+                    {phrase}
+                  </span>
+                ) : (
                   <code className={styles['code']}>{scope}</code>
-                </li>
+                )
+
+              return (
+                <React.Fragment key={scope}>
+                  {scopeElement}
+                  {i !== scopes.length - 1 ? ',' : ''}
+                </React.Fragment>
               )
             })}
-          </ul>
+          </p>
         </>
       )}
       {onRequestAccess !== undefined ? (
