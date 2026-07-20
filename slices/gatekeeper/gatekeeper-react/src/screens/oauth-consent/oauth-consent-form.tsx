@@ -81,13 +81,16 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
   const hasError = resultError !== null || consentMutation.error !== null
 
   // The error banner sits at the top of the card, but the buttons that trigger
-  // it are at the bottom — scroll it into view whenever it appears so a
-  // scrolled-down user sees why their approval/denial didn't go through.
+  // it are at the bottom — scroll it into view whenever an error appears *or
+  // changes* (e.g. a mutation error replaced by a fresh denial message) so a
+  // scrolled-down user sees why their approval/denial didn't go through. Keyed on
+  // the rendered error identity, not a boolean, so a swap between two non-null
+  // errors still re-scrolls.
   useEffect(() => {
-    if (hasError) {
+    if (error !== null) {
       errorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     }
-  }, [hasError])
+  }, [error])
 
   const handleApprove = (): void => {
     setResultError(null)

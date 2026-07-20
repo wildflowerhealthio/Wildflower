@@ -1,8 +1,7 @@
-import type { JSX, ReactNode } from 'react'
+import { Fragment, type JSX, type ReactNode } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { Scope } from 'scopes-core'
 
-import React from 'react'
 import styles from './authorization-failure.module.css'
 
 interface AuthorizationFailureProps {
@@ -97,10 +96,10 @@ const AuthorizationFailure = ({
                 )
 
               return (
-                <React.Fragment key={scope}>
+                <Fragment key={scope}>
                   {scopeElement}
                   {i !== scopes.length - 1 ? ',' : ''}
-                </React.Fragment>
+                </Fragment>
               )
             })}
           </p>

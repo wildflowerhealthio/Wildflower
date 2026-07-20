@@ -165,7 +165,9 @@ pub(crate) async fn redirect_browser_launch_errors(request: Request, next: Next)
     }
     // Consume the error body and base64 it into the redirect so the SPA banner
     // shows exactly what the server reported. An unreadable body degrades to an
-    // empty param (the SPA then falls back to a generic launch-failure message).
+    // empty param, which the SPA treats as "no launch error" (no banner) rather
+    // than a generic message — see `launchBannerError` in apps-react's
+    // `-launch-error.ts`.
     let body = axum::body::to_bytes(response.into_body(), LAUNCH_ERROR_BODY_LIMIT)
         .await
         .unwrap_or_default();

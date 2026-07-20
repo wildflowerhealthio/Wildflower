@@ -1,5 +1,6 @@
 import { HttpApiSchema, Multipart } from '@effect/platform'
 import { Schema } from 'effect'
+import { InsufficientScopeSchema } from 'shared-structures-core/http-api-definition'
 
 /**
  * Validates an app launch-URL string (mirrors the Rust server's `AppUrl`).
@@ -217,16 +218,13 @@ const InvalidHomeScreenSchema = Schema.Struct({
 })
 
 /**
- * Body for `InsufficientScope` (403) — the caller authenticated, but their token
- * doesn't cover the scope the operation requires (a `wildflower/Apps.<perm>` on
- * the admin surface). `missingScopes` names the scopes the caller must
- * additionally hold. Matches the shared Rust `InsufficientScopeBody`
- * (`scope-capabilities-rust`).
+ * `InsufficientScopeSchema` — the shared `403 InsufficientScope` body (the caller
+ * authenticated, but their token doesn't cover the scope the operation requires;
+ * `missingScopes` names the scopes they must additionally hold) — is imported from
+ * `shared-structures-core` and re-exported below, so apps' HttpApi definitions keep
+ * sourcing every schema from this one module while the shape stays single-sourced
+ * with the other slices (databases, gatekeeper) and the Rust `InsufficientScopeBody`.
  */
-const InsufficientScopeSchema = Schema.Struct({
-  error: Schema.Literal('InsufficientScope'),
-  missingScopes: Schema.Array(Schema.String),
-})
 
 export {
   AppIdPathSchema,
