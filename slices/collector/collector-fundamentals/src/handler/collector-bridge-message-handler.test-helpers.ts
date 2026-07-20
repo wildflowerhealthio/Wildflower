@@ -1,4 +1,4 @@
-import { Chunk, Duration, Effect, Encoding } from 'effect'
+import { Chunk, Effect, Encoding } from 'effect'
 import { type TransportAdapter } from 'effect-messaging-core'
 import * as TestPlatformAdapterLayer from 'effect-messaging-core/test'
 
@@ -38,12 +38,11 @@ const noopSendMessage: SimpleHandlerArgs['sendMessage'] = () => Effect.void
 const makeSimpleHandler = (
   overrides: Partial<SimpleHandlerArgs> & {
     readonly stepSequence?: readonly Step.Step[]
-    readonly stepDelay?: Duration.Duration
   } = {}
 ): Effect.Effect.Success<
   ReturnType<typeof CollectorBridgeMessageHandler.make<SimpleResources>>
 > => {
-  const { stepSequence, stepDelay, ...rest } = overrides
+  const { stepSequence, ...rest } = overrides
   return Effect.runSync(
     CollectorBridgeMessageHandler.make({
       scrapingPlan: ScrapingPlan.make<SimpleResources>({
@@ -51,7 +50,6 @@ const makeSimpleHandler = (
         entityDefinitions: [SimpleEntity],
         firstPage: { _tag: 'Uri', uri: 'https://example.com/' },
         stepSequence: stepSequence ?? [],
-        stepDelay: stepDelay ?? Duration.seconds(5),
       }),
       sendMessage: noopSendMessage,
       ...rest,
@@ -113,6 +111,17 @@ const pageLoaded = (overrides: { url?: string; pageContentId?: string } = {}): P
   pageContentId: overrides.pageContentId ?? 'page-1',
 })
 
+/**
+ * Let a forked `RequestCompletionCheck` daemon run to completion. It sleeps
+ * nothing, so cooperative yields — not a clock tick — are what let it re-enter
+ * the machine and drive `SniffingComplete`; bounded so a genuine hang still fails.
+ */
+const settleForkedWork: Effect.Effect<void> = Effect.gen(function* () {
+  for (let i = 0; i < 20; i += 1) {
+    yield* Effect.yieldNow()
+  }
+})
+
 export {
   adapterLayer,
   cancelled,
@@ -126,6 +135,7 @@ export {
   responseStart,
   runHandlerPromise,
   runHandlerSync,
+  settleForkedWork,
 }
 export type {
   CancelledArg,

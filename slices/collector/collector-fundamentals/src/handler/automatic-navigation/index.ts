@@ -1,6 +1,7 @@
 /**
- * The automatic-navigation finite state machine — it walks the scraping plan's
- * `stepSequence`, decomposed into its parts:
+ * The automatic-navigation finite state machine — it owns a breadth-first step
+ * queue seeded from the scraping plan's `stepSequence` and grown by
+ * `followUpSteps`, decomposed into its parts:
  *
  * - `./messages.ts`   — input messages (1) & side-effect messages (3)
  * - `./state.ts`      — states (2)
@@ -13,8 +14,8 @@
  * exported so the pure transition can be exercised in isolation.
  *
  * See the [Handler Explanation](../../../docs/Handler%20Explanation.md) for
- * the FSM rationale — the generation discipline and why `dispatch` isn't
- * `uninterruptible`.
+ * the FSM rationale — the generation discipline, the queue/completion model,
+ * and why `dispatch` isn't `uninterruptible`.
  */
 
 export type { InputMessage, SideEffectMessage, StepOutboundMessage } from './messages.ts'

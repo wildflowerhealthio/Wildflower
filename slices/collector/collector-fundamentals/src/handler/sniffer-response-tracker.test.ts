@@ -1,11 +1,11 @@
 // oxlint-disable typescript-eslint/no-unsafe-assignment -- vitest matchers and `vi.fn()` call args are typed as `any`; the unsafe-assignment lint fires on idiomatic `mock.calls[0]` access here
 
 import type { CancelSnifferRequestMessage } from 'browser-sniffer-core'
-import { Duration, Effect, MutableHashMap } from 'effect'
+import { Effect, MutableHashMap, Option, Schema } from 'effect'
 import { LoggingLayerTest, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it, vi } from 'vite-plus/test'
 
-import { EntityDefinition, ScrapingPlan } from 'collector-fundamentals/model'
+import { EntityDefinition, ScrapingPlan, type Step } from 'collector-fundamentals/model'
 import { AnotherEntity, SimpleEntity } from 'collector-fundamentals/test-helpers'
 import {
   cancelled,
@@ -22,6 +22,7 @@ import {
   type SimpleResources,
 } from './collector-bridge-message-handler.test-helpers.ts'
 import * as CollectorBridgeMessageHandler from './collector-bridge-message-handler.ts'
+import * as SnifferResponseTracker from './sniffer-response-tracker.ts'
 
 const { expectRightToEqual, expectLeftToEqual } = utilityExpectations(expect)
 
@@ -73,7 +74,6 @@ describe('CollectorBridgeMessageHandler.make: sniffer response tracker', () => {
             ] as readonly EntityDefinition.EntityDefinition<MultiResources>[],
             firstPage: { _tag: 'Uri', uri: 'https://example.com/' },
             stepSequence: [],
-            stepDelay: Duration.seconds(5),
           }),
           sendMessage,
         })
@@ -237,7 +237,6 @@ describe('CollectorBridgeMessageHandler.make: sniffer response tracker', () => {
             entityDefinitions: [OverlappingEntity, SimpleEntity],
             firstPage: { _tag: 'Uri', uri: 'https://example.com/' },
             stepSequence: [],
-            stepDelay: Duration.seconds(5),
           }),
           sendMessage: noopSendMessage,
         })
@@ -406,3 +405,211 @@ describe('CollectorBridgeMessageHandler.make: sniffer response tracker', () => {
     })
   })
 })
+
+/**
+ * The follow-up generation seam: on a successful parse the tracker calls the
+ * pinned entity's `followUpSteps` and feeds the result to `handleGeneratedSteps`
+ * — **before** dropping and offering the settled result. These build a bare
+ * tracker (not the composed handler) so both hooks can be observed directly.
+ */
+describe('SnifferResponseTracker.make: follow-up generation', () => {
+  it('generates the entity follow-up steps before offering the settled result', () => {
+    // Arrange
+    const calls: string[] = []
+    const generated: Step.Step[] = []
+    const tracker = makeBareTracker({
+      entity: generatingEntity,
+      handleGeneratedSteps: (steps) =>
+        Effect.sync(() => {
+          calls.push('generate')
+          generated.push(...steps)
+        }),
+      handleNewSniffResult: () => Effect.sync(() => calls.push('offer')),
+    })
+
+    // Act
+    runHandlerSync(
+      tracker.handleResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/1' }))
+    )
+    runHandlerSync(
+      tracker.handleResponseData(responseData('r1', JSON.stringify({ name: 'Ada', age: 36 })))
+    )
+    runHandlerSync(tracker.handleResponseFinished(responseFinished('r1')))
+
+    // Assert: generate → offer, and the response url is resolved against.
+    expect(calls).toEqual(['generate', 'offer'])
+    expect(generated).toEqual([openStepFor('https://example.com/people/1/child')])
+  })
+
+  it('generates nothing when the parse fails', () => {
+    // Arrange: no ResponseData → empty body → `parseJson('')` fails.
+    const generateSpy = vi.fn<(steps: readonly Step.Step[]) => Effect.Effect<void>>(
+      () => Effect.void
+    )
+    const offerSpy = vi.fn(() => Effect.void)
+    const tracker = makeBareTracker({
+      entity: generatingEntity,
+      handleGeneratedSteps: generateSpy,
+      handleNewSniffResult: offerSpy,
+    })
+
+    // Act
+    runHandlerSync(
+      tracker.handleResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/1' }))
+    )
+    runHandlerSync(tracker.handleResponseFinished(responseFinished('r1')))
+
+    // Assert: the failure is still offered, but no follow-ups are generated.
+    expect(offerSpy).toHaveBeenCalledOnce()
+    expect(generateSpy).not.toHaveBeenCalled()
+  })
+
+  it('generates nothing on a RequestError', () => {
+    // Arrange
+    const generateSpy = vi.fn<(steps: readonly Step.Step[]) => Effect.Effect<void>>(
+      () => Effect.void
+    )
+    const tracker = makeBareTracker({
+      entity: generatingEntity,
+      handleGeneratedSteps: generateSpy,
+      handleNewSniffResult: () => Effect.void,
+    })
+
+    // Act
+    runHandlerSync(
+      tracker.handleResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/1' }))
+    )
+    runHandlerSync(
+      tracker.handleRequestError(
+        requestError({ id: 'r1', url: 'https://example.com/people/1', message: 'boom' })
+      )
+    )
+
+    // Assert
+    expect(generateSpy).not.toHaveBeenCalled()
+  })
+
+  it('generates nothing on a Cancelled', () => {
+    // Arrange
+    const generateSpy = vi.fn<(steps: readonly Step.Step[]) => Effect.Effect<void>>(
+      () => Effect.void
+    )
+    const tracker = makeBareTracker({
+      entity: generatingEntity,
+      handleGeneratedSteps: generateSpy,
+      handleNewSniffResult: () => Effect.void,
+    })
+
+    // Act
+    runHandlerSync(
+      tracker.handleResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/1' }))
+    )
+    runHandlerSync(tracker.handleCancelled(cancelled('r1')))
+
+    // Assert
+    expect(generateSpy).not.toHaveBeenCalled()
+  })
+
+  it('contains a throwing followUpSteps: WARNs, generates nothing, still offers the result', async () => {
+    // Arrange: `parse` succeeds but the generator throws (a bad
+    // `new URL(badHref)` on malformed scraped input).
+    const generateSpy = vi.fn<(steps: readonly Step.Step[]) => Effect.Effect<void>>(
+      () => Effect.void
+    )
+    const offerSpy = vi.fn(() => Effect.void)
+    const tracker = makeBareTracker({
+      entity: throwingEntity,
+      handleGeneratedSteps: generateSpy,
+      handleNewSniffResult: offerSpy,
+    })
+
+    // Act
+    runHandlerSync(
+      tracker.handleResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/1' }))
+    )
+    runHandlerSync(
+      tracker.handleResponseData(responseData('r1', JSON.stringify({ name: 'Ada', age: 36 })))
+    )
+    await runHandlerPromise(
+      tracker.handleResponseFinished(responseFinished('r1')).pipe(
+        LoggingLayerTest.expectToLog((logs) => {
+          expect(logs).toContainEqual(
+            expect.objectContaining({
+              level: 'WARN',
+              message: expect.stringContaining('followUpSteps threw'),
+            })
+          )
+        }),
+        Effect.scoped
+      )
+    )
+
+    // Assert: the throw is contained — nothing enqueued, but the settled result
+    // is still offered and the id dropped, so the run can complete (no hang).
+    expect(generateSpy).not.toHaveBeenCalled()
+    expect(offerSpy).toHaveBeenCalledOnce()
+    expect(MutableHashMap.size(tracker.incompleteSniffedRequests)).toBe(0)
+  })
+})
+
+// Helpers
+
+/** A `Navigation`/`Open` step targeting `uri`, the shape `followUpSteps` returns. */
+const openStepFor = (uri: string): Step.Step => ({
+  _tag: 'Navigation',
+  action: { _tag: 'Open', source: { _tag: 'Uri', uri } },
+})
+
+/**
+ * An entity that parses a JSON person and, on success, opens a `…/child` page
+ * relative to the settled response's url — exercising both the `resources` and
+ * `response` arguments of `followUpSteps`.
+ */
+const generatingEntity: EntityDefinition.EntityDefinition<SimpleResources> = EntityDefinition.make({
+  name: 'GeneratingEntity',
+  isFoundAt: (url) => /\/people\//.test(url),
+  parse: (response) =>
+    Effect.map(
+      Schema.decode(Schema.parseJson(Schema.Struct({ name: Schema.String, age: Schema.Number })))(
+        response.text()
+      ),
+      (person) => [person]
+    ),
+  followUpSteps: (_resources, response) => [openStepFor(`${response.url}/child`)],
+})
+
+/**
+ * An entity whose `parse` succeeds but whose `followUpSteps` throws — models a
+ * generator that hits malformed scraped data. The tracker must contain the
+ * throw rather than let it strand the settled request in the incomplete map.
+ */
+const throwingEntity: EntityDefinition.EntityDefinition<SimpleResources> = EntityDefinition.make({
+  name: 'ThrowingEntity',
+  isFoundAt: (url) => /\/people\//.test(url),
+  parse: (response) =>
+    Effect.map(
+      Schema.decode(Schema.parseJson(Schema.Struct({ name: Schema.String, age: Schema.Number })))(
+        response.text()
+      ),
+      (person) => [person]
+    ),
+  followUpSteps: () => {
+    throw new Error('boom: malformed href')
+  },
+})
+
+/** Build a bare tracker with stubbed lifecycle hooks so both seams are observable. */
+const makeBareTracker = (options: {
+  readonly entity: EntityDefinition.EntityDefinition<SimpleResources>
+  readonly handleGeneratedSteps: (steps: readonly Step.Step[]) => Effect.Effect<void>
+  readonly handleNewSniffResult: () => Effect.Effect<void>
+}): SnifferResponseTracker.SnifferResponseTracker<SimpleResources> =>
+  Effect.runSync(
+    SnifferResponseTracker.make<SimpleResources>({
+      matchEntity: (url) =>
+        options.entity.isFoundAt(url) ? Option.some(options.entity) : Option.none(),
+      sendMessage: noopSendMessage,
+      handleNewSniffResult: options.handleNewSniffResult,
+      handleGeneratedSteps: options.handleGeneratedSteps,
+    })
+  )

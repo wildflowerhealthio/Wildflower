@@ -4,6 +4,7 @@ import type { RuntimeFiber } from 'effect/Fiber'
 
 import type { CollectorBridge } from '../../bridge.ts'
 import type { ScrapingPlan } from '../../model/index.ts'
+import type { Step } from '../../model/step.ts'
 import type { InputMessage, SideEffectMessage, StepOutboundMessage } from './messages.ts'
 import {
   type HandlerContext,
@@ -22,19 +23,34 @@ type Service = MessageHandler.HandlersFor<CollectorBridge['HostToWeb']>
 
 /**
  * The automatic-navigation half of {@link CollectorBridgeMessageHandler}: the
- * `handlePageLoaded` handler, the settle-timer / URL-match-timeout daemons, and
- * `stopAutomaticNavigation` (this machine's share of the lifecycle's
- * `cancelAllRequestSniffing`). It interacts with the response tracker only
- * through the supplied `sendMessage`.
+ * `handlePageLoaded` handler, the injection points the composition drives
+ * (`handleStepsGenerated` / `signalNoMoreResultsExpected`), the delay /
+ * URL-match-timeout daemons, and `stopAutomaticNavigation` (this machine's share
+ * of the lifecycle teardown). It interacts with the response tracker only
+ * through the supplied `sendMessage` and the injected hooks.
  */
 interface AutomaticNavigation {
   readonly handlePageLoaded: Service['PageLoaded']
   /**
-   * Halt the automatic navigation: interrupt any pending timer fiber and reset
-   * the index to 0. This machine's contribution to the run lifecycle's
-   * `cancelAllRequestSniffing`. There is no separate "reset vs fold" variant —
-   * that teardown discards the machine right after, so the post-stop index is
-   * never observed.
+   * Append `followUpSteps`-generated steps to the back of the queue (the
+   * composition dedups/caps them first). From `Drained` this re-awakens the
+   * machine and dispatches the new head without waiting for a `PageLoaded`.
+   */
+  readonly handleStepsGenerated: (steps: readonly Step[]) => Effect.Effect<void, never, never>
+  /**
+   * Signal that no sniffed request is still incomplete. Completes the run
+   * (`Drained → Done`, dispatching `SniffingComplete`) or is a no-op if the
+   * queue is not yet drained. The lifecycle injects this after a settle empties
+   * the incomplete-request map, and the `onDrained` hook re-injects it when the
+   * queue drains onto an already-empty map.
+   */
+  readonly signalNoMoreResultsExpected: Effect.Effect<void, never, never>
+  /**
+   * Halt the automatic navigation: interrupt any pending timer fiber and restore
+   * the initial queue. This machine's contribution to the lifecycle's
+   * `cancelAllRequestSniffing` / `abandonAllRequestSniffing`. There is no
+   * separate "reset vs fold" variant — that teardown discards the machine right
+   * after, so the restored queue is never observed.
    */
   readonly stopAutomaticNavigation: () => Effect.Effect<void, never, never>
 }
@@ -43,52 +59,63 @@ const make = <TResources>({
   scrapingPlan,
   sendMessage,
   onSniffingComplete,
+  onDrained,
 }: {
   scrapingPlan: ScrapingPlan.ScrapingPlan<TResources>
   sendMessage: (message: StepOutboundMessage) => Effect.Effect<void, never, never>
   /**
-   * Run after the terminal `SniffingComplete` is dispatched (the
-   * {@link DispatchSniffingComplete} side-effect). The composition wires this to
-   * the {@link RunLifecycleState}'s `handleSniffingComplete`; the automatic
-   * navigation treats it as an opaque effect, so the two machines still share
-   * no state.
+   * Run after the terminal `SniffingComplete` is dispatched. The composition
+   * wires this to the {@link RunLifecycleState}'s `handleSniffingComplete`; the
+   * automatic navigation treats it as an opaque effect, so the two machines
+   * still share no state.
    */
   onSniffingComplete: Effect.Effect<void, never, never>
+  /**
+   * Run (forked) when the queue drains. The composition wires this to a
+   * lifecycle check that re-injects `NoMoreResultsExpected` iff no request is
+   * still incomplete — closing the "map emptied before the queue drained" gap
+   * (e.g. a trailing `Delay`) that a settle-only trigger would leave hanging.
+   */
+  onDrained: Effect.Effect<void, never, never>
 }): Effect.Effect<AutomaticNavigation, never, never> =>
   Effect.gen(function* () {
-    const stepStateRef = yield* SynchronizedRef.make<StepState>(awaitingPageLoaded(0, 0))
+    const initialQueue = scrapingPlan.stepSequence
+    const stepStateRef = yield* SynchronizedRef.make<StepState>(awaitingPageLoaded(initialQueue, 0))
     const registry: TimerRegistry = yield* Ref.make(
       HashMap.empty<number, RuntimeFiber<void, never>>()
     )
-    const step = transition(scrapingPlan)
+    const step = transition(initialQueue)
 
-    // `dispatch` and `ctx` are mutually recursive (a timer daemon in a
-    // handler re-injects an input via `ctx.dispatch`). The arrow closes
-    // over the `dispatch` binding below; it is only *invoked* later, from
+    // `dispatch` and `ctx` are mutually recursive (a timer daemon / the
+    // completion-check daemon re-injects an input via `ctx.dispatch`). The arrow
+    // closes over the `dispatch` binding below; it is only *invoked* later, from
     // an already-forked daemon, so there is no temporal-dead-zone hazard.
-    const ctx: HandlerContext<TResources> = {
-      scrapingPlan,
+    const ctx: HandlerContext = {
       sendMessage,
       onSniffingComplete,
+      onDrained,
       dispatch: (message) => dispatch(message),
-      getState: () => SynchronizedRef.get(stepStateRef),
       registry,
     }
 
     const runEffect = (effect: SideEffectMessage): Effect.Effect<void, never, never> =>
       Match.value(effect).pipe(
         Match.withReturnType<Effect.Effect<void, never, never>>(),
-        Match.tag('DispatchStep', (m) => sideEffectHandlers.DispatchStep(m, ctx)),
+        Match.tag('DispatchNavigation', (m) => sideEffectHandlers.DispatchNavigation(m, ctx)),
         Match.tag('DispatchSniffingComplete', (m) =>
           sideEffectHandlers.DispatchSniffingComplete(m, ctx)
         ),
-        Match.tag('ScheduleSettleTimer', (m) => sideEffectHandlers.ScheduleSettleTimer(m, ctx)),
+        Match.tag('ScheduleDelayTimer', (m) => sideEffectHandlers.ScheduleDelayTimer(m, ctx)),
         Match.tag('ScheduleUrlMatchTimeout', (m) =>
           sideEffectHandlers.ScheduleUrlMatchTimeout(m, ctx)
         ),
         Match.tag('CancelTimer', (m) => sideEffectHandlers.CancelTimer(m, ctx)),
+        Match.tag('RequestCompletionCheck', (m) =>
+          sideEffectHandlers.RequestCompletionCheck(m, ctx)
+        ),
         Match.tag('WarnUrlMatchTimeout', (m) => sideEffectHandlers.WarnUrlMatchTimeout(m, ctx)),
         Match.tag('WarnDroppedPageLoaded', (m) => sideEffectHandlers.WarnDroppedPageLoaded(m, ctx)),
+        Match.tag('WarnDroppedSteps', (m) => sideEffectHandlers.WarnDroppedSteps(m, ctx)),
         Match.exhaustive
       )
 
@@ -111,10 +138,20 @@ const make = <TResources>({
       )
 
     const handlePageLoaded: Service['PageLoaded'] = (event) => dispatch(event)
+    const handleStepsGenerated = (steps: readonly Step[]): Effect.Effect<void, never, never> =>
+      dispatch({ _tag: 'StepsGenerated', steps })
+    const signalNoMoreResultsExpected: Effect.Effect<void, never, never> = dispatch({
+      _tag: 'NoMoreResultsExpected',
+    })
     const stopAutomaticNavigation = (): Effect.Effect<void, never, never> =>
       dispatch({ _tag: 'Stop' })
 
-    return { handlePageLoaded, stopAutomaticNavigation }
+    return {
+      handlePageLoaded,
+      handleStepsGenerated,
+      signalNoMoreResultsExpected,
+      stopAutomaticNavigation,
+    }
   })
 
 export type { AutomaticNavigation }

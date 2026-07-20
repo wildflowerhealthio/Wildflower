@@ -1,12 +1,13 @@
 import { type CancelSnifferRequestMessage, type PageActionMessage } from 'browser-sniffer-core'
-import { Effect, type Mailbox, type MutableHashMap, Option } from 'effect'
+import { Effect, type Mailbox, type MutableHashMap, Option, Schema } from 'effect'
 import type { MessageHandler } from 'effect-messaging-core'
-import type {
-  CollectorBridge,
+import {
+  type CollectorBridge,
   OpenMessage,
-  SniffingComplete as SniffingCompleteMessage,
+  type SniffingComplete as SniffingCompleteMessage,
 } from '../bridge.ts'
-import type { ScrapingPlan } from '../model/index.ts'
+import { ScrapingPlan, WebViewSource } from '../model/index.ts'
+import type * as Step from '../model/step.ts'
 import * as AutomaticNavigation from './automatic-navigation/index.ts'
 import * as RunLifecycleState from './run-lifecycle-state.ts'
 import * as SnifferResponseTracker from './sniffer-response-tracker.ts'
@@ -25,10 +26,11 @@ type Service = MessageHandler.HandlersFor<CollectorBridge['HostToWeb']>
  * unmatched response stream (response tracker); `Open` / `PageAction`
  * drive the scripted navigation and `SniffingComplete` is the terminal
  * hand-off when the link sequence is exhausted (automatic navigation). The
- * `Open` / `PageAction` payloads *are* the step's `action` — the handler
- * forwards `scrapingPlan.stepSequence[i].action` to `sendMessage` without
- * translation (the plan-only `advanceWhen` rides the step wrapper, never
- * the action).
+ * `Open` / `PageAction` payloads *are* a `Navigation` step's `action` — the
+ * handler forwards that `action` to `sendMessage` without translation (the
+ * plan-only `advanceWhen` rides the step wrapper, never the action; a `Delay`
+ * step carries no `action` and is consumed by the FSM as a timer, so it never
+ * reaches the wire).
  */
 type OutboundMessage =
   | typeof CancelSnifferRequestMessage.Type
@@ -73,26 +75,54 @@ interface CollectorBridgeMessageHandler<TResources> extends Service {
 }
 
 /**
+ * Structural guards compiled once (the `CollectorDescriptor`
+ * `Schema.is(configSchema)` pattern): the step-action shapes below are
+ * schema-backed, so their variants are tested with `Schema.is` rather than
+ * hand-chained `_tag` comparisons.
+ */
+const isOpenAction = Schema.is(OpenMessage)
+const isUriSource = Schema.is(WebViewSource.UriSchema)
+
+/**
+ * The `Uri` a step's `Open` action navigates to, or `undefined` for a
+ * `PageAction` step, an `Open` with an inline `Html` source, or a `Delay`. Used
+ * to key the generated-`Open` dedup visited-set (only `Uri` sources dedup).
+ */
+const openUri = (step: Step.Step): string | undefined => {
+  if (step._tag !== 'Navigation') return undefined
+  const { action } = step
+  if (!isOpenAction(action)) return undefined
+  return isUriSource(action.source) ? action.source.uri : undefined
+}
+
+/**
  * Compose the response tracker, the automatic navigation, and the run lifecycle into
  * the single `CollectorBridgeMessageHandler` public surface. The tracker owns
  * the five response handlers and the `incompleteSniffedRequests` map; the step
- * machine owns `PageLoaded` and the scripted `stepSequence`; the
- * {@link RunLifecycleState} owns the `requestSniffingResults` stream and every way a
- * run can end (`handleSniffingComplete` / `abandonAllRequestSniffing` /
- * `cancelAllRequestSniffing`). The two machines interact only through the
- * supplied `sendMessage` and share no state — the lifecycle mediates completion
- * via an explicit `onSniffingComplete` hook (no message-tag sniffing). See the
+ * machine owns `PageLoaded`, the breadth-first step queue, and the generated
+ * follow-ups; the {@link RunLifecycleState} owns the `requestSniffingResults`
+ * stream and every way a run can end (`handleSniffingComplete` /
+ * `abandonAllRequestSniffing` / `cancelAllRequestSniffing`). The two machines
+ * interact only through the supplied `sendMessage` and the injected hooks, and
+ * share no state — the lifecycle mediates completion via explicit
+ * `onSniffingComplete` / `onDrained` hooks and the `signalNoMoreResultsExpected`
+ * injection (no message-tag sniffing). See the
  * [Handler Explanation](../../docs/Handler%20Explanation.md).
  *
+ * **Dedup + cap live here, at the injection point**, so the pure transition table
+ * stays free of run-history: generated steps are filtered (run-wide URI dedup of
+ * `Open`s, seeded with the `firstPage` and authored `Open` URIs; a
+ * `maxGeneratedSteps` cap) *before* `handleStepsGenerated` dispatches them, and
+ * dropped counts are WARN-logged.
+ *
  * The three parts form a construction cycle — the tracker publishes into the
- * lifecycle's stream, the lifecycle reads the tracker's incomplete-request state
- * and the automatic navigation's completion, and its teardown drives both machines. We
- * break it the way the automatic navigation breaks its own `dispatch`/`ctx` cycle:
- * forward references that are only *invoked* after construction. The tracker's
- * `handleNewSniffResult` closes over `lifecycle` (fired only when a request
- * settles), and the lifecycle's teardown
- * closes over `automaticNavigation` (fired only at teardown), so there is no
- * temporal-dead-zone hazard.
+ * lifecycle's stream and injects generated steps into the machine, the lifecycle
+ * reads the tracker's incomplete-request state and drives the machine's
+ * completion, and its teardown drives both machines. We break it the way the
+ * automatic navigation breaks its own `dispatch`/`ctx` cycle: forward references
+ * that are only *invoked* after construction (the tracker's hooks fire only when
+ * a request settles; the lifecycle's `signalNoMoreResultsExpected` and teardown
+ * fire only later), so there is no temporal-dead-zone hazard.
  */
 const make = <TResources>({
   scrapingPlan,
@@ -102,6 +132,66 @@ const make = <TResources>({
   sendMessage: (message: OutboundMessage) => Effect.Effect<void, never, never>
 }): Effect.Effect<CollectorBridgeMessageHandler<TResources>, never, never> =>
   Effect.gen(function* () {
+    // Run-wide crawler safety, applied to *generated* steps only (never the
+    // authored sequence): dedup generated `Open`s by URI so a self-link or a
+    // cycle terminates, and cap total generated steps. The visited-set is seeded
+    // with the `firstPage` and the authored `Open` URIs, so a generator can't
+    // re-open an already-visited page.
+    const maxGeneratedSteps =
+      scrapingPlan.maxGeneratedSteps ?? ScrapingPlan.DEFAULT_MAX_GENERATED_STEPS
+    const dedupeGeneratedOpenUris = scrapingPlan.dedupeGeneratedOpenUris ?? true
+    const visitedUris = new Set<string>()
+    // Only seed when dedup is on — with it off the set is never consulted below.
+    if (dedupeGeneratedOpenUris) {
+      if (isUriSource(scrapingPlan.firstPage)) visitedUris.add(scrapingPlan.firstPage.uri)
+      for (const step of scrapingPlan.stepSequence) {
+        const uri = openUri(step)
+        if (uri !== undefined) visitedUris.add(uri)
+      }
+    }
+    let generatedCount = 0
+
+    /**
+     * Filter a batch of `followUpSteps`-generated steps through dedup + cap, then
+     * hand the survivors to the machine. WARN-logs the dropped counts. Only
+     * `Uri`-source `Open`s participate in dedup; `PageAction` / `Delay` /
+     * inline-`Html` `Open`s pass through (and don't count against the visited-set,
+     * but do count against the cap).
+     */
+    const enqueueGeneratedSteps = (
+      steps: readonly Step.Step[]
+    ): Effect.Effect<void, never, never> =>
+      Effect.gen(function* () {
+        const kept: Step.Step[] = []
+        let dedupDropped = 0
+        let capDropped = 0
+        for (const step of steps) {
+          const uri = dedupeGeneratedOpenUris ? openUri(step) : undefined
+          if (uri !== undefined && visitedUris.has(uri)) {
+            dedupDropped += 1
+            continue
+          }
+          if (generatedCount >= maxGeneratedSteps) {
+            capDropped += 1
+            continue
+          }
+          if (uri !== undefined) visitedUris.add(uri)
+          generatedCount += 1
+          kept.push(step)
+        }
+        if (dedupDropped > 0) {
+          yield* Effect.logWarning(
+            `CollectorBridgeMessageHandler: dropped ${dedupDropped} generated Open step(s) whose URI was already visited`
+          )
+        }
+        if (capDropped > 0) {
+          yield* Effect.logWarning(
+            `CollectorBridgeMessageHandler: maxGeneratedSteps (${maxGeneratedSteps}) reached; dropped ${capDropped} generated step(s)`
+          )
+        }
+        if (kept.length > 0) yield* automaticNavigation.handleStepsGenerated(kept)
+      })
+
     // Explicit annotations break the construction cycle's type inference (the
     // three bindings reference one another): without them TS infers `any`.
     const tracker: SnifferResponseTracker.SnifferResponseTracker<TResources> =
@@ -112,6 +202,7 @@ const make = <TResources>({
           Option.fromNullable(scrapingPlan.entityDefinitions.find((e) => e.isFoundAt(url))),
         sendMessage,
         handleNewSniffResult: (result) => lifecycle.handleNewSniffResult(result),
+        handleGeneratedSteps: (steps) => enqueueGeneratedSteps(steps),
       })
 
     const lifecycle: RunLifecycleState.RunLifecycleState<TResources> =
@@ -120,16 +211,22 @@ const make = <TResources>({
         failIncompleteSniffedRequests: tracker.failIncompleteSniffedRequests,
         cancelIncompleteSniffedRequests: tracker.cancelIncompleteSniffedRequests,
         stopAutomaticNavigation: () => automaticNavigation.stopAutomaticNavigation(),
+        // Forward-ref the machine (built below): only *invoked* at runtime.
+        signalNoMoreResultsExpected: Effect.suspend(
+          () => automaticNavigation.signalNoMoreResultsExpected
+        ),
       })
 
-    // `sendMessage` is now a plain passthrough: the automatic navigation's
-    // terminal `SniffingComplete` reaches the lifecycle through the explicit
-    // `onSniffingComplete` hook, not by inspecting the outbound message tag.
+    // `sendMessage` is a plain passthrough: the automatic navigation's terminal
+    // `SniffingComplete` reaches the lifecycle through the explicit
+    // `onSniffingComplete` hook, and the queue-drained fact through `onDrained`
+    // (wired to the lifecycle's end-check so a trailing `Delay` still completes).
     const automaticNavigation: AutomaticNavigation.AutomaticNavigation =
       yield* AutomaticNavigation.make<TResources>({
         scrapingPlan,
         sendMessage,
         onSniffingComplete: lifecycle.handleSniffingComplete,
+        onDrained: lifecycle.endRequestSniffingResultsUnlessMoreExpected,
       })
 
     return {

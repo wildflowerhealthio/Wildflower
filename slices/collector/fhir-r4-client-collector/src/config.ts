@@ -4,7 +4,7 @@ import {
   ScrapingPlan,
   type WebViewSource,
 } from 'collector-fundamentals/model'
-import { Duration, type FastCheck, Schema } from 'effect'
+import { type FastCheck, Schema } from 'effect'
 import type { LazyArbitrary } from 'effect/Arbitrary'
 import type { FhirResource } from 'fhir-r4/resources'
 
@@ -92,9 +92,12 @@ const defaultConfig: InstanceConfig = {
  * the same snapshot-and-extract flow yields the Observation Bundle
  * entries.
  *
- * `stepDelay` is a flat 5 seconds — enough for the FHIR server's
- * round-trip plus the WebView's render on a slow tablet.
- * `entityDefinitions` are listed Patient → Observation → Bundle so
+ * There is no implicit inter-step delay: the single `Open` step
+ * dispatches as soon as the Patient page's `PageLoaded` arrives, and the
+ * run completes once the queue drains *and* both sniffed requests have
+ * settled. The FHIR endpoints are direct JSON documents (one request per
+ * page, no post-load XHR fan-out), so no trailing `Delay` grace step is
+ * needed. `entityDefinitions` are listed Patient → Observation → Bundle so
  * `isFoundAt` matches are evaluated in that order; `mustHaveQuery` on
  * the Bundle pattern keeps the list disjoint from the single-resource
  * Observation pattern.
@@ -123,6 +126,7 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirRes
     firstPage,
     stepSequence: [
       {
+        _tag: 'Navigation',
         action: {
           _tag: 'Open',
           source: {
@@ -132,7 +136,6 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirRes
         },
       },
     ],
-    stepDelay: Duration.seconds(0),
   })
 }
 

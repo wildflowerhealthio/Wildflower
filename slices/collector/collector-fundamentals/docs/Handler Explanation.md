@@ -21,8 +21,10 @@ record the bridge dispatches inbound messages to:
   `incompleteSniffedRequests` map (each entry is a sniffed request still
   accumulating body chunks).
 - The **automatic-navigation machine** ([automatic-navigation/](../src/handler/automatic-navigation/)) owns
-  `PageLoaded` and drives the scripted `stepSequence` through settle-timer
-  and URL-match-timeout daemons.
+  `PageLoaded` and a **breadth-first step queue** — seeded from `stepSequence`
+  and grown by entities' `followUpSteps` — driven through delay-timer and
+  URL-match-timeout daemons. There is no implicit inter-step settle; plans
+  insert explicit `Delay` steps where a wait matters.
 - The **run lifecycle** ([run-lifecycle-state.ts](../src/handler/run-lifecycle-state.ts))
   owns the `requestSniffingResults` stream and every way a run can end —
   `handleSniffingComplete`, `abandonAllRequestSniffing`, `cancelAllRequestSniffing`
@@ -34,20 +36,26 @@ neither reads the other's internals. The composition threads the shared inputs
 into both (the automatic-navigation machine gets `scrapingPlan`; the tracker gets a `matchEntity`
 derived from `scrapingPlan.entityDefinitions`) and wires them to the lifecycle:
 the tracker publishes into the lifecycle's stream (via `handleNewSniffResult`,
-which offers the result and then runs the close-check), and the automatic-navigation machine's terminal
-`SniffingComplete` reaches the lifecycle through an explicit
-**`onSniffingComplete` hook** — not by sniffing the outbound message tag. The
-automatic-navigation machine treats that hook as an opaque effect, so the machines still share no
-state; the lifecycle is the sole mediator.
+which offers the result and then runs the close-check) and injects an entity's
+generated `followUpSteps` into the machine (via `handleGeneratedSteps`, which
+the composition wraps with dedup + cap). The automatic-navigation machine's
+terminal `SniffingComplete` reaches the lifecycle through an explicit
+**`onSniffingComplete` hook**, and the machine's queue-drained fact through an
+**`onDrained` hook** — not by sniffing the outbound message tag. Conversely the
+lifecycle drives the machine's completion by injecting `NoMoreResultsExpected`
+(`signalNoMoreResultsExpected`) when the incomplete-request map empties. The
+automatic-navigation machine treats those hooks as opaque effects, so the
+machines still share no state; the lifecycle is the sole mediator.
 
 The three parts form a **construction cycle** — the tracker publishes into the
-lifecycle's stream, the lifecycle reads the tracker's incomplete-request state
-and the automatic-navigation machine's completion, and its teardown drives both machines. It is
-broken the way the automatic-navigation machine breaks its own `dispatch`/`ctx` cycle
+lifecycle's stream and injects generated steps into the machine, the lifecycle
+reads the tracker's incomplete-request state and drives the machine's
+completion, and its teardown drives both machines. It is broken the way the
+automatic-navigation machine breaks its own `dispatch`/`ctx` cycle
 ([make.ts](../src/handler/automatic-navigation/make.ts)): forward references that are
-only _invoked_ after construction (the tracker's `handleNewSniffResult` fires only
-when a request settles; the lifecycle's teardown fires only at teardown), so there is no
-temporal-dead-zone hazard.
+only _invoked_ after construction (the tracker's hooks fire only
+when a request settles; the lifecycle's `signalNoMoreResultsExpected` and teardown
+fire only later), so there is no temporal-dead-zone hazard.
 
 Keeping the two machines separate is a deliberate shape choice: the response
 tracker is a keyed collection of independent per-id accumulators, not an
@@ -55,13 +63,31 @@ automaton, so it is _not_ modelled as a state machine even though the
 automatic-navigation machine is. Forcing a transition table onto it would add
 ceremony (a state per id) for no benefit.
 
-## Response tracker: the drop-then-offer invariant
+## Response tracker: the generate-then-drop-then-offer invariant
 
 Every terminal path — `ResponseFinished` (parsed), `RequestError`,
 `Cancelled`, and a base64 decode failure inside `ResponseData` — does the
 same two things in the same order: **drop** the tracked id, then **publish** the
 settled `SniffResult` via the injected `handleNewSniffResult`. This is the
 `offerSniffResultAndUntrack` helper, and the order is load-bearing.
+
+A successful `ResponseFinished` parse prepends a third step: **generate**. Before
+the drop, it calls the pinned entity's `followUpSteps` (if any) with the parsed
+resources and the settled `RemoteResponse`, and hands them to
+`handleGeneratedSteps` — so the full order is **generate → drop → offer**. The
+generate-first ordering is what makes completion race-free: injecting the
+generated steps moves the machine _out of_ `Drained` (see [Termination](#termination-the-run-lifecycle))
+before the offer's close-check can inject `NoMoreResultsExpected`, so the machine
+can never observe "no more results" before it has seen the steps this settle
+produced. Failed parses, `RequestError`, `Cancelled`, and the abandon path
+generate nothing.
+
+`followUpSteps` runs on freshly-parsed, possibly-malformed data, so the generate
+step is wrapped defensively (like `parse`'s `Effect.either`): if the generator
+throws, the tracker WARN-logs and generates nothing, then **still** drops and
+offers. A throw must not skip the drop-then-offer — that would strand the id in
+the incomplete map (Gate B never empties) and hang the run until the idle
+timeout.
 
 `handleNewSniffResult` (the lifecycle seam the tracker is handed) does two things
 of its own, also in order: it offers the result onto `requestSniffingResults`
@@ -98,19 +124,42 @@ callback and no adapter in between.
 ### The theory: two gates, three phases, two exits
 
 A run is a bounded producer of `SniffResult`s on `requestSniffingResults`. Its
-whole state is two independent facts:
+whole state is two facts:
 
 - **Gate A — sniffing** (the scripted navigation): `running → complete`.
-  Monotonic. While running it can start new sniffed requests; once complete
-  (`SniffingComplete`), no new request can begin.
+  Monotonic. Once complete (the machine dispatched `SniffingComplete`), no new
+  request can begin.
 - **Gate B — incomplete sniffed requests** (the tracker's map): fluctuates as
   requests start and settle.
 
 The stream stays open while more results are possible and closes when none are —
-exactly `A complete ∧ B empty`. So the run occupies one of three phases: **active**
-(sniffing running and/or requests incomplete), **quiescing** (sniffing complete,
-requests still incomplete — draining the last few), **quiesced** (both gates met;
-stream closed = natural completion).
+exactly `A complete ∧ B empty`.
+
+**With breadth-first `followUpSteps` generation, Gate A now _depends on_ Gate B.**
+The machine can't declare completion just because its queue is empty — any
+in-flight request could still parse into follow-ups — so natural completion is
+_queue drained (`Drained`) ∧ no incomplete request_. Gate A is reached only via
+the lifecycle: whenever the incomplete map empties, the lifecycle injects
+`NoMoreResultsExpected` into the machine (`signalNoMoreResultsExpected`), which
+completes it (`Drained → Done`, dispatching `SniffingComplete`) iff its queue is
+already drained. The coupling is symmetric — completion must be re-checked
+whenever _either_ fact becomes true — so the machine also re-checks on the other
+edge: when its queue drains (`Drained`) it fires the `onDrained` hook, wired to
+the same lifecycle close-check, which injects `NoMoreResultsExpected` if the map
+is already empty (this is how a trailing `Delay` completes — the map often empties
+_before_ the queue drains). The machines still share no state; both facts flow as
+explicit inputs/hooks through the lifecycle.
+
+The run occupies one of three phases: **active** (sniffing running and/or requests
+incomplete), **quiescing** (queue drained, requests still incomplete — draining
+the last few), **quiesced** (both gates met; stream closed = natural completion).
+
+> **No implicit settle window.** Completion closes the stream as soon as the two
+> gates hold — there is no grace period. The page's `fetch`/`XHR` shims stay live
+> after `SniffingComplete`, so a plan that needs post-load XHR fan-out to finish
+> before completing inserts an explicit **trailing `Delay` step**: it delays
+> reaching `Drained`, keeping the run open while those requests start and are
+> tracked.
 
 ### The lifecycle owns every end-path
 
@@ -128,24 +177,31 @@ truth, so there is no shadow counter to drift.
 | `cancelAllRequestSniffing`  | nothing                       | no (consumer has gone)        | screen unmount                                    |
 
 Completion is thus a property of the stream, not a predicate the consumer
-computes. After each settle (and when Gate A is first set),
-`endRequestSniffingResultsUnlessMoreExpected` runs — two guards: if sniffing is
-not yet complete, or any request is still incomplete, more results are expected,
-so return; otherwise close the stream. The consumer's drive loop simply drains
-until `take` reports it done.
+computes. `endRequestSniffingResultsUnlessMoreExpected` runs after each settle
+_and_ whenever the machine's queue drains (its `onDrained` hook is wired to it):
+if any request is still incomplete, more results are expected, so return;
+otherwise inject `NoMoreResultsExpected` into the machine (completing it iff its
+queue is drained) and — if sniffing is now complete — close the stream. The
+consumer's drive loop simply drains until `take` reports it done.
 
-- **`handleSniffingComplete`** flips the `sniffingComplete` latch (Gate A) then runs
-  the close-check. The automatic-navigation machine's terminal `DispatchSniffingComplete`
-  side-effect sends `SniffingComplete` to the host _then_ runs the
-  `onSniffingComplete` hook the composition wired to `lifecycle.handleSniffingComplete`
-  — both inside the one span. (The machines still share no state — the lifecycle
-  mediates.)
+- **`handleSniffingComplete`** flips the `sniffingComplete` latch (Gate A) then
+  closes the stream if no request is still incomplete. The automatic-navigation
+  machine's terminal `DispatchSniffingComplete` side-effect sends `SniffingComplete`
+  to the host _then_ runs the `onSniffingComplete` hook the composition wired to
+  `lifecycle.handleSniffingComplete` — both inside the one span. It deliberately
+  does **not** re-inject `NoMoreResultsExpected` (that would re-enter the machine's
+  lock while the terminal transition still holds it — a deadlock); it only closes.
+  A url-match-timeout abort reaches `Done` with requests possibly still in flight,
+  so `handleSniffingComplete` withholds the close then and lets the last settle's
+  close-check do it. (The machines still share no state — the lifecycle mediates.)
 - **`abandonAllRequestSniffing`** is the idle-timeout escape. The consumer calls it
   when its drive loop has been idle past its timeout (a stalled download whose
-  `ResponseData` chunks never produced a terminal): the tracker's
-  `failIncompleteSniffedRequests` publishes every still-incomplete request as a
-  `Left` failure, then the lifecycle closes the stream _now_ — it force-closes
-  (bypassing Gate A) because at an idle timeout sniffing may not yet be complete.
+  `ResponseData` chunks never produced a terminal): it `stopAutomaticNavigation`s
+  the machine first (so a parked `Delay`/URL-match timer can't leak), then the
+  tracker's `failIncompleteSniffedRequests` publishes every still-incomplete
+  request as a `Left` failure, then the lifecycle closes the stream _now_ — it
+  force-closes (bypassing Gate A) because at an idle timeout sniffing may not yet
+  be complete.
 - **`cancelAllRequestSniffing`** is the screen-unmount teardown. It runs
   `stopAutomaticNavigation` (interrupt the automatic-navigation machine's timer) then the tracker's
   `cancelIncompleteSniffedRequests` (send a `CancelSnifferRequest` to the host per
@@ -168,17 +224,36 @@ Two supporting invariants:
 
 ## Automatic navigation: a rigorous FSM
 
-The automatic-navigation machine is a textbook finite state machine, decomposed one file
-per part under [automatic-navigation/](../src/handler/automatic-navigation/):
+The automatic-navigation machine is a textbook finite state machine whose
+identity is **owner of a step queue** (seeded from `stepSequence`, grown by
+`followUpSteps`), decomposed one file per part under
+[automatic-navigation/](../src/handler/automatic-navigation/):
 
-| Part                 | File                      | What it holds                                                    |
-| -------------------- | ------------------------- | ---------------------------------------------------------------- |
-| Input messages       | `messages.ts`             | `PageLoaded`, `Stop`, `SettleTimerFired`, `UrlMatchTimeoutFired` |
-| States               | `state.ts`                | `AwaitingPageLoaded`, `TimerPending`, `AwaitingUrlMatch`, `Done` |
-| Side-effect messages | `messages.ts`             | `Dispatch*`, `Schedule*`, `CancelTimer`, `Warn*`                 |
-| Side-effect handlers | `side-effect-handlers.ts` | one `(msg, ctx) => Effect` per side-effect tag                   |
-| Transition           | `transition.ts`           | pure `(state, input) → [state, effects]`                         |
-| Runtime              | `make.ts`                 | serialized dispatch + timer registry                             |
+| Part                 | File                    | What it holds                                  |
+| -------------------- | ----------------------- | ---------------------------------------------- |
+| Input messages       | messages.ts             | the six inputs that drive the machine          |
+| States               | state.ts                | five states; active variants carry the queue   |
+| Side-effect messages | messages.ts             | the effects a transition can request           |
+| Side-effect handlers | side-effect-handlers.ts | one `(msg, ctx) => Effect` per side-effect tag |
+| Transition           | transition.ts           | pure `(state, input) → [state, effects]`       |
+| Runtime              | make.ts                 | serialized dispatch + timer registry           |
+
+The inputs are `PageLoaded`, `Stop`, `DelayTimerFired`, `UrlMatchTimeoutFired`,
+`StepsGenerated`, and `NoMoreResultsExpected`; the states are
+`AwaitingPageLoaded`, `DelayPending`, `AwaitingUrlMatch`, `Drained`, and `Done`.
+Because the queue lives in the state, the transition needs no `ScrapingPlan`
+closure — it names `DispatchNavigation` / `DispatchSniffingComplete` /
+`Schedule*` / `CancelTimer` / `RequestCompletionCheck` / `Warn*` effects for the
+runtime to discharge.
+
+On each `PageLoaded` the machine pops and processes the queue head: a
+`Navigation` dispatches its `action` (immediately, or — for an unmet `UrlMatch`
+`advanceWhen` — once a matching `PageLoaded` arrives), a `Delay` arms a timer for
+its `duration`, and an empty queue transitions to `Drained`. A `StepsGenerated`
+input appends to the back of the queue (breadth-first), or from `Drained`
+re-awakens the machine and dispatches the new head with no `PageLoaded`. There is
+**no implicit settle timer**: a dispatch happens on the same transition as its
+gating `PageLoaded`.
 
 The **transition function is pure** — it never sends a message, forks a
 fiber, or logs; it only names the side-effect messages the runtime should
@@ -186,11 +261,18 @@ discharge. `make.ts` runs each input through `SynchronizedRef.updateEffect`
 (serializing all transitions), commits the next state, and interprets the
 named effects in order, all inside that one critical section.
 
+The `RequestCompletionCheck` side-effect (emitted on entering `Drained`) is the
+one that must _not_ run inline: it forks the injected `onDrained` effect, exactly
+like a timer daemon, so the lifecycle's `NoMoreResultsExpected` injection
+re-enters the machine's lock _after_ the current transition commits — never
+re-entrant. See [Termination](#termination-the-run-lifecycle) for the completion
+coupling this drives.
+
 ### Timers are inputs, correlated by generation
 
 A pure transition can't fork or interrupt a fiber, so timers are modelled
 as messages: a `Schedule*` effect forks a daemon that sleeps and then
-re-injects a `SettleTimerFired` / `UrlMatchTimeoutFired` **input** back
+re-injects a `DelayTimerFired` / `UrlMatchTimeoutFired` **input** back
 through `dispatch`. To tell a live timer from a stale one, every
 timer-bearing state carries a monotonic **generation**, and the fired input
 carries the generation it was scheduled under. The transition advances only

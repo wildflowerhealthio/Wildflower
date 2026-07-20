@@ -1,6 +1,7 @@
 import type { PageActionMessage, PageLoadedMessageBody } from 'browser-sniffer-core'
 
 import type { OpenMessage, SniffingComplete as SniffingCompleteMessage } from '../../bridge.ts'
+import type { Step, StepAction } from '../../model/step.ts'
 
 /**
  * Parts 1 & 3 of the automatic-navigation machine: the input messages that drive it and
@@ -30,29 +31,39 @@ type StepOutboundMessage =
 // ---------------------------------------------------------------------------
 
 /**
- * Everything that can drive the machine forward. Three kinds:
+ * Everything that can drive the machine forward. Five kinds:
  *
  * - `PageLoaded` — the sole *external* event, forwarded verbatim from the
  *   bridge (its shape is `browser-sniffer-core`'s `PageLoadedMessageBody`,
  *   reused rather than re-declared).
- * - `Stop` — the single *command*, which the run lifecycle's `teardown`
- *   invokes to halt the machine (interrupt any pending timer). Modelling it
- *   as an input keeps the whole machine one transition table. There is no
- *   separate "reset vs fold" variant: teardown always *discards* the machine
- *   (a fresh one is built next run), so post-stop index would never be
- *   observed.
- * - `SettleTimerFired` / `UrlMatchTimeoutFired` — the *internal* timer
- *   expiries. A forked daemon re-injects one of these (carrying the
- *   `generation` it was scheduled under) rather than committing a
- *   transition directly, so the transition stays the single source of
- *   truth. A fired timer whose `generation` no longer matches the current
- *   state is a stale re-arm and is dropped.
+ * - `Stop` — the single *command*, which the run lifecycle's teardown (and its
+ *   idle-timeout abandon) invokes to halt the machine (interrupt any pending
+ *   timer). Modelling it as an input keeps the whole machine one transition
+ *   table. There is no separate "reset vs fold" variant: teardown always
+ *   *discards* the machine (a fresh one is built next run).
+ * - `DelayTimerFired` / `UrlMatchTimeoutFired` — the *internal* timer expiries.
+ *   A forked daemon re-injects one of these (carrying the `generation` it was
+ *   scheduled under) rather than committing a transition directly, so the
+ *   transition stays the single source of truth. A fired timer whose
+ *   `generation` no longer matches the current state is a stale re-arm and is
+ *   dropped.
+ * - `StepsGenerated` — an entity's `followUpSteps` produced steps; the
+ *   composition dedups/caps them and injects them here. From `Drained` it
+ *   re-awakens the machine (process the new head, dispatching without waiting
+ *   for a `PageLoaded`); from any active state it appends to the back of the
+ *   queue and otherwise changes nothing.
+ * - `NoMoreResultsExpected` — the lifecycle observed that no sniffed request is
+ *   still incomplete. Only meaningful in `Drained` (`Drained → Done`,
+ *   dispatching `SniffingComplete`); a no-op in every other state, because more
+ *   `PageLoaded`s / generations may still come from steps not yet dispatched.
  */
 type InputMessage =
   | typeof PageLoadedMessageBody.Type
   | { readonly _tag: 'Stop' }
-  | { readonly _tag: 'SettleTimerFired'; readonly generation: number }
+  | { readonly _tag: 'DelayTimerFired'; readonly generation: number }
   | { readonly _tag: 'UrlMatchTimeoutFired'; readonly generation: number }
+  | { readonly _tag: 'StepsGenerated'; readonly steps: readonly Step[] }
+  | { readonly _tag: 'NoMoreResultsExpected' }
 
 // ---------------------------------------------------------------------------
 // Side-effect messages
@@ -64,77 +75,87 @@ type InputMessage =
  * *names* these, which the interpreter in `./make.ts` discharges through
  * the handlers in `./side-effect-handlers.ts`.
  *
- * - `DispatchStep` / `DispatchSniffingComplete` — send a scripted step (or
- *   the terminal `SniffingComplete`) to the sniffer, span-wrapped.
- * - `ScheduleSettleTimer` / `ScheduleUrlMatchTimeout` — fork a daemon that
- *   sleeps then re-injects the matching `*Fired` input under `generation`.
+ * - `DispatchNavigation` — forward a `Navigation` step's `action` (already a
+ *   bridge message body) to the sniffer, span-wrapped. The transition carries
+ *   the action itself (the queue lives in the state), so the handler needs no
+ *   plan lookup.
+ * - `DispatchSniffingComplete` — send the terminal `SniffingComplete`, then run
+ *   the `onSniffingComplete` hook, span-wrapped.
+ * - `ScheduleDelayTimer` / `ScheduleUrlMatchTimeout` — fork a daemon that sleeps
+ *   then re-injects the matching `*Fired` input under `generation`.
  * - `CancelTimer` — interrupt the daemon registered under `generation`
  *   (the no-wasted-sleep optimisation; the generation guard alone would
  *   already make a fired-but-stale timer inert).
- * - `WarnUrlMatchTimeout` / `WarnDroppedPageLoaded` — the two WARN logs.
+ * - `RequestCompletionCheck` — emitted when the queue drains to `Drained`. The
+ *   handler forks the injected `onDrained` effect (which asks the lifecycle
+ *   whether requests have all settled and, if so, re-injects
+ *   `NoMoreResultsExpected`). Forked, exactly like a timer, so it re-enters the
+ *   machine's lock *after* this transition commits — no re-entrant deadlock.
+ * - `WarnUrlMatchTimeout` / `WarnDroppedPageLoaded` / `WarnDroppedSteps` — the
+ *   WARN logs.
  *
  * Durations ride as `…Ms` numbers so the messages stay plain structs; the
  * handlers re-inflate via `Duration.millis`.
  */
 type SideEffectMessage =
-  | { readonly _tag: 'DispatchStep'; readonly dispatchIndex: number }
-  | { readonly _tag: 'DispatchSniffingComplete'; readonly dispatchIndex: number }
+  | { readonly _tag: 'DispatchNavigation'; readonly action: StepAction }
+  | { readonly _tag: 'DispatchSniffingComplete' }
   | {
-      readonly _tag: 'ScheduleSettleTimer'
-      readonly dispatchIndex: number
+      readonly _tag: 'ScheduleDelayTimer'
       readonly generation: number
+      readonly durationMs: number
     }
   | {
       readonly _tag: 'ScheduleUrlMatchTimeout'
-      readonly dispatchIndex: number
       readonly generation: number
       readonly timeoutMs: number
     }
   | { readonly _tag: 'CancelTimer'; readonly generation: number }
-  | {
-      readonly _tag: 'WarnUrlMatchTimeout'
-      readonly dispatchIndex: number
-      readonly timeoutMs: number
-    }
+  | { readonly _tag: 'RequestCompletionCheck' }
+  | { readonly _tag: 'WarnUrlMatchTimeout'; readonly timeoutMs: number }
   | { readonly _tag: 'WarnDroppedPageLoaded'; readonly url: string }
+  | { readonly _tag: 'WarnDroppedSteps'; readonly count: number }
 
 // Terse constructors so the transition table reads as data, not object literals.
-const dispatchStep = (dispatchIndex: number): SideEffectMessage => ({
-  _tag: 'DispatchStep',
-  dispatchIndex,
+const dispatchNavigation = (action: StepAction): SideEffectMessage => ({
+  _tag: 'DispatchNavigation',
+  action,
 })
-const dispatchSniffingComplete = (dispatchIndex: number): SideEffectMessage => ({
-  _tag: 'DispatchSniffingComplete',
-  dispatchIndex,
-})
-const scheduleSettleTimer = (dispatchIndex: number, generation: number): SideEffectMessage => ({
-  _tag: 'ScheduleSettleTimer',
-  dispatchIndex,
+const dispatchSniffingComplete: SideEffectMessage = { _tag: 'DispatchSniffingComplete' }
+const scheduleDelayTimer = (generation: number, durationMs: number): SideEffectMessage => ({
+  _tag: 'ScheduleDelayTimer',
   generation,
+  durationMs,
 })
-const scheduleUrlMatchTimeout = (
-  dispatchIndex: number,
-  generation: number,
-  timeoutMs: number
-): SideEffectMessage => ({ _tag: 'ScheduleUrlMatchTimeout', dispatchIndex, generation, timeoutMs })
+const scheduleUrlMatchTimeout = (generation: number, timeoutMs: number): SideEffectMessage => ({
+  _tag: 'ScheduleUrlMatchTimeout',
+  generation,
+  timeoutMs,
+})
 const cancelTimer = (generation: number): SideEffectMessage => ({ _tag: 'CancelTimer', generation })
-const warnUrlMatchTimeout = (dispatchIndex: number, timeoutMs: number): SideEffectMessage => ({
+const requestCompletionCheck: SideEffectMessage = { _tag: 'RequestCompletionCheck' }
+const warnUrlMatchTimeout = (timeoutMs: number): SideEffectMessage => ({
   _tag: 'WarnUrlMatchTimeout',
-  dispatchIndex,
   timeoutMs,
 })
 const warnDroppedPageLoaded = (url: string): SideEffectMessage => ({
   _tag: 'WarnDroppedPageLoaded',
   url,
 })
+const warnDroppedSteps = (count: number): SideEffectMessage => ({
+  _tag: 'WarnDroppedSteps',
+  count,
+})
 
 export type { InputMessage, SideEffectMessage, StepOutboundMessage }
 export {
   cancelTimer,
-  dispatchStep,
+  dispatchNavigation,
   dispatchSniffingComplete,
-  scheduleSettleTimer,
+  requestCompletionCheck,
+  scheduleDelayTimer,
   scheduleUrlMatchTimeout,
   warnDroppedPageLoaded,
+  warnDroppedSteps,
   warnUrlMatchTimeout,
 }

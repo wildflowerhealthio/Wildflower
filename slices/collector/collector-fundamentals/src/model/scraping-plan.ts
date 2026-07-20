@@ -1,8 +1,10 @@
-import type { Duration } from 'effect'
 import { deepFreeze } from 'kitchen-sink'
 import type * as EntityDefinition from './entity-definition.ts'
 import type * as Step from './step.ts'
 import type * as WebViewSource from './web-view-source.ts'
+
+/** Default {@link ScrapingPlan.maxGeneratedSteps} when a plan omits it. */
+const DEFAULT_MAX_GENERATED_STEPS = 500
 
 /**
  * Per-slice declaration of *what* to recognize on a sync run and *how*
@@ -14,31 +16,29 @@ import type * as WebViewSource from './web-view-source.ts'
  *   sendMessage
  * })
  * ```
- * whose `results` mailbox carries each terminal outcome, and which:
+ * whose `requestSniffingResults` stream carries each terminal outcome, and
+ * which:
  *
  *   - Consults `entityDefinitions` for each `ResponseStart` to decide
  *     whether to track the in-flight response (first `isFoundAt` match
  *     wins; non-matching responses are cancelled via `sendMessage`).
- *   - Drives the sniffer through `stepSequence` step-by-step,
- *     dispatching each `Step.Step`'s `action` `stepDelay` after each
- *     `PageLoaded` event. A step may instead carry `advanceWhen: { _tag: 'UrlMatch',
- *     … }`, in which case the handler holds it until a `PageLoaded`
- *     whose `url` matches the pattern (then still waits `stepDelay`),
- *     aborting via `SniffingComplete` if the per-step `timeout` elapses
- *     first. When the sequence is exhausted, fires `SniffingComplete`
- *     after a final `stepDelay`.
+ *   - Drives the sniffer through a **breadth-first step queue** seeded with
+ *     `stepSequence`. On each `PageLoaded` it pops and processes the queue
+ *     head: a `Navigation` step's `action` is dispatched (immediately, or —
+ *     for a `UrlMatch` `advanceWhen` — once a matching `PageLoaded` arrives,
+ *     aborting via `SniffingComplete` if the per-step `timeout` elapses); a
+ *     `Delay` step arms a timer for its `duration` before the next entry. When
+ *     the queue drains *and* every sniffed request has settled, fires
+ *     `SniffingComplete`.
+ *   - Appends any steps an entity's `followUpSteps` produces to the *back* of
+ *     that same queue, so a parsed list/table can open every page it links —
+ *     naturally recursive. `maxGeneratedSteps` and run-wide URI dedup of
+ *     generated `Open`s (see below) keep that fan-out terminating.
  *
  * `firstPage` is the host-side `WebViewSource` the sniffer webview is
  * initially mounted with; it is *not* read by the handler (the handler
  * only sees PageLoaded events). It lives on the plan so each slice's
  * configuration is a single export.
- *
- * Replaces the previous `RemoteKind<T>` shape (`name + entityDefinitions`),
- * absorbing the slice's `firstPage(config)` factory and adding the new
- * `stepSequence` / `stepDelay` fields. Splitting "what to recognize"
- * from "how to navigate" was attempted and reverted: every consumer
- * needed both, and a single per-config function is easier to reason
- * about.
  *
  * - `name`: stable identifier for logs / UI.
  * - `entityDefinitions`: ordered list of recognizer/parser pairs.
@@ -46,32 +46,32 @@ import type * as WebViewSource from './web-view-source.ts'
  *   response URL; the first match wins.
  * - `firstPage`: the initial `WebViewSource` (inline HTML or absolute
  *   `https://` URI) to mount the sniffer webview with.
- * - `stepSequence`: ordered list of navigation steps. Each step's `action`
- *   is forwarded to the sniffer verbatim: an `Open` action becomes an `Open`
- *   web→host message (host-navigation); a `PageAction` action becomes a
- *   `PageAction` message the sniffer demuxes by its inner `kind`
- *   (`Click` / `Fill`). A step's optional `advanceWhen` gates when it is
- *   dispatched (default: a fixed `stepDelay`; `UrlMatch`: after a matching
- *   `PageLoaded`). An empty array fires `SniffingComplete` after the first
- *   `PageLoaded`.
- * - `stepDelay`: how long the handler waits between observing a
- *   `PageLoaded` and dispatching the next step (or `SniffingComplete`).
- *   The wait lets any post-load XHR fan-out finish before the next
- *   navigation tears the page down. Per-slice so each scraper can
- *   pick a cadence that matches the remote's loading characteristics.
+ * - `stepSequence`: the *initial* contents of the navigation queue — an
+ *   ordered list of `Step`s (`Navigation` actions and/or `Delay` pauses). An
+ *   empty array completes as soon as the first `PageLoaded`'s requests settle.
+ * - `maxGeneratedSteps`: per-run safety cap on steps produced by
+ *   `followUpSteps` (default {@link DEFAULT_MAX_GENERATED_STEPS}). Generated
+ *   steps beyond it are WARN-logged and dropped; the run continues. The
+ *   authored `stepSequence` never counts against this.
+ * - `dedupeGeneratedOpenUris`: when `true` (the default), a *generated* `Open`
+ *   step whose `Uri` source was already visited (the `firstPage`, any authored
+ *   `Open`, or an earlier generated `Open`) is dropped, so a page that links to
+ *   itself or a cycle of pages terminates. Dedup applies only to *generated*
+ *   steps — the authored sequence is never dropped.
  */
 interface ScrapingPlan<TResources> {
   readonly name: string
   readonly entityDefinitions: readonly EntityDefinition.EntityDefinition<TResources>[]
   readonly firstPage: WebViewSource.Any
   readonly stepSequence: readonly Step.Step[]
-  readonly stepDelay: Duration.Duration
+  readonly maxGeneratedSteps?: number
+  readonly dedupeGeneratedOpenUris?: boolean
 }
 
 /**
  * Shallow-clone + deep-freeze the supplied plan. Freezing matters
  * because the handler pins the matched entity per in-flight request
- * at `ResponseStart` and consumes `stepSequence` step-by-step;
+ * at `ResponseStart` and seeds its step queue from `stepSequence`;
  * freezing also keeps the type-level `readonly` honest at runtime so
  * a caller can't push into `entityDefinitions` or `stepSequence`
  * after construction.
@@ -82,21 +82,9 @@ const make = <TResources>(plan: ScrapingPlan<TResources>): ScrapingPlan<TResourc
     entityDefinitions: plan.entityDefinitions,
     firstPage: plan.firstPage,
     stepSequence: plan.stepSequence,
-    stepDelay: plan.stepDelay,
+    maxGeneratedSteps: plan.maxGeneratedSteps,
+    dedupeGeneratedOpenUris: plan.dedupeGeneratedOpenUris,
   })
 
-/**
- * The `advanceWhen` condition of the step at `index`, or `undefined` for
- * the out-of-range "index" that stands for the terminal `SniffingComplete`
- * (never URL-gated) and for steps that don't declare one.
- */
-const advanceConditionByIndex = <TResources>(
-  scrapingPlan: ScrapingPlan<TResources>,
-  index: number
-): Step.Advance | undefined =>
-  index < scrapingPlan.stepSequence.length
-    ? scrapingPlan.stepSequence[index].advanceWhen
-    : undefined
-
-export { make, advanceConditionByIndex }
+export { make, DEFAULT_MAX_GENERATED_STEPS }
 export type { ScrapingPlan }

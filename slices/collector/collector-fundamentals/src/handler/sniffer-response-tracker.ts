@@ -5,6 +5,7 @@ import { UnknownException } from 'effect/Cause'
 import type { CollectorBridge } from '../bridge.ts'
 import type * as EntityDefinition from '../model/entity-definition.ts'
 import { Response } from '../model/index.ts'
+import type * as Step from '../model/step.ts'
 import * as Telemetry from '../telemetry/index.ts'
 
 type Service = MessageHandler.HandlersFor<CollectorBridge['HostToWeb']>
@@ -64,9 +65,9 @@ type SniffResult<TResources> = Either.Either<readonly TResources[], SniffFailure
  * settled request's {@link SniffResult} to the {@link RunLifecycleState}'s stream
  * (via the injected `handleNewSniffResult`, which both offers the result and runs
  * the lifecycle's stream-close check) and exposes the hooks the lifecycle needs
- * to drive the run's end-paths. It
- * interacts with the automatic-navigation machine only through the supplied `sendMessage` — no
- * shared state.
+ * to drive the run's end-paths. It reaches the automatic-navigation machine only
+ * through the supplied `sendMessage` and the injected `handleGeneratedSteps`
+ * hook (a successful parse's `followUpSteps`) — no shared state.
  */
 interface SnifferResponseTracker<TResources> {
   readonly incompleteSniffedRequests: MutableHashMap.MutableHashMap<
@@ -109,6 +110,7 @@ const make = <TResources>({
   matchEntity,
   sendMessage,
   handleNewSniffResult,
+  handleGeneratedSteps,
 }: {
   matchEntity: (url: string) => Option.Option<EntityDefinition.EntityDefinition<TResources>>
   sendMessage: (
@@ -121,6 +123,16 @@ const make = <TResources>({
    * letting that check see the settled request already gone from the map.
    */
   handleNewSniffResult: (result: SniffResult<TResources>) => Effect.Effect<void, never, never>
+  /**
+   * Feed the steps a successfully-parsed entity's `followUpSteps` produced to
+   * the automatic-navigation queue (the composition dedups/caps them first).
+   * Called **before** the drop-then-offer in {@link offerSniffResultAndUntrack},
+   * extending that invariant to **generate → drop → offer**: the machine sees
+   * the generated steps (leaving `Drained` if it was idle) before the offer's
+   * close-check can inject `NoMoreResultsExpected`, so it can never observe "no
+   * more results" before the steps this settle produced.
+   */
+  handleGeneratedSteps: (steps: readonly Step.Step[]) => Effect.Effect<void, never, never>
 }): Effect.Effect<SnifferResponseTracker<TResources>, never, never> =>
   // No effectful setup — the tracker holds only a mutable map and closes over
   // the injected lifecycle seams — so this is a plain `Effect.sync`, not a
@@ -263,6 +275,29 @@ const make = <TResources>({
               },
             })
           )
+          // Generate → drop → offer: a successful parse's `followUpSteps` are
+          // fed to the queue *before* the settle is dropped and offered, so the
+          // automatic-navigation machine leaves `Drained` (if idle) ahead of the
+          // offer's `NoMoreResultsExpected` close-check. Failed parses,
+          // `RequestError`, `Cancelled`, and abandons generate nothing.
+          if (Either.isRight(result) && entity.followUpSteps !== undefined) {
+            const parsed = result.right
+            // Bind the pure, this-free method so the thunk can call it.
+            // oxlint-disable-next-line typescript-eslint/unbound-method -- pure, this-free method; the call is safe
+            const generateFollowUps = entity.followUpSteps
+            // A generator running on malformed scraped data can throw; contain it
+            // like `parse`'s `Effect.either` above so a throw WARNs and generates
+            // nothing but still reaches the drop-then-offer below — skipping it
+            // would strand this id and hang the run (see Handler Explanation).
+            yield* Effect.try(() => generateFollowUps(parsed, response)).pipe(
+              Effect.flatMap(handleGeneratedSteps),
+              Effect.catchAll((error) =>
+                Effect.logWarning(
+                  `CollectorBridgeMessageHandler.ResponseFinished: ${entity.name}.followUpSteps threw; generating no follow-ups (${error.message})`
+                )
+              )
+            )
+          }
           // The parse is span-wrapped and latency-bearing, so the drop-then-offer
           // ordering matters most here (see `offerSniffResultAndUntrack`).
           yield* offerSniffResultAndUntrack(event.id, response, result)

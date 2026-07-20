@@ -12,14 +12,12 @@
  * namespaced under `collector.*`.
  */
 
-/** The timed walk through a scraping plan's link sequence. */
+/** The breadth-first walk through a scraping plan's step queue. */
 const Sniffing = {
   /** Attribute keys shared across the sniffing spans. */
   Attributes: {
-    /** Zero-based index of the step within the link sequence. */
-    StepIndex: 'collector.sniffing.step.index',
-    /** Configured delay before the step dispatches, in milliseconds. */
-    StepDelayMs: 'collector.sniffing.step.delay_ms',
+    /** Configured duration of a `Delay` step being waited out, in milliseconds. */
+    DelayMs: 'collector.sniffing.delay_ms',
     /**
      * Kind of the dispatched step: the action tag, with a `PageAction`'s
      * inner `kind` appended (`Open` / `PageAction:Click` / `PageAction:Fill`),
@@ -30,7 +28,7 @@ const Sniffing = {
     /** Configured URL-match wait cap for the step, in milliseconds. */
     UrlMatchTimeoutMs: 'collector.sniffing.step.url_match_timeout_ms',
   },
-  /** Waiting out the inter-step delay before dispatching the next link. */
+  /** Waiting out an explicit `Delay` step before processing the next queue entry. */
   Wait: {
     Span: { Name: 'collector.sniffing.wait' },
   },
@@ -44,7 +42,7 @@ const Sniffing = {
   UrlMatchWait: {
     Span: { Name: 'collector.sniffing.url_match_wait' },
   },
-  /** Dispatching a link (or the terminal `SniffingComplete`) to the sniffer. */
+  /** Dispatching a navigation (or the terminal `SniffingComplete`) to the sniffer. */
   Dispatch: {
     Span: { Name: 'collector.sniffing.dispatch' },
   },

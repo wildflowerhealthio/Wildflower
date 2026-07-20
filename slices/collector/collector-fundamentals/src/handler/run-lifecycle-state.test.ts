@@ -1,6 +1,6 @@
 // oxlint-disable typescript-eslint/no-unsafe-assignment -- vitest matchers are typed as `any`; the unsafe-assignment lint fires on idiomatic `expect.objectContaining` nesting here
 
-import { Chunk, Effect, MutableHashMap, Option, TestClock, TestContext } from 'effect'
+import { Chunk, Effect, MutableHashMap, Option } from 'effect'
 import { utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -13,22 +13,20 @@ import {
   type SimpleResources,
 } from './collector-bridge-message-handler.test-helpers.ts'
 import * as RunLifecycleState from './run-lifecycle-state.ts'
-import { SETTLE_CONFIRM_WINDOW } from './run-lifecycle-state.ts'
 import * as SnifferResponseTracker from './sniffer-response-tracker.ts'
 
 /**
  * Direct coverage of the {@link RunLifecycleState} — the run's termination surface —
  * wired to a bare {@link SnifferResponseTracker} the way the composition wires them
- * (the composed-handler tests go through `makeSimpleHandler`). The
- * `stopAutomaticNavigation` hook is stubbed with a counter so the teardown path
- * can be asserted without a live navigation machine. Closing the results stream
- * (`handleSniffingComplete` / `abandonAllRequestSniffing`), the
- * {@link SETTLE_CONFIRM_WINDOW} straggler grace, and the "leaves the stream open"
- * guard (`cancelAllRequestSniffing`) all live here.
+ * (the composed-handler tests go through `makeSimpleHandler`).
  *
- * The settle-close is a forked `TestClock`-driven daemon, so every test runs
- * inside one `Effect` program with `TestContext` and advances the clock by
- * {@link SETTLE_CONFIRM_WINDOW} to observe the close.
+ * Two hooks are stubbed to stand in for the automatic-navigation machine:
+ * `stopAutomaticNavigation` increments a counter, and `signalNoMoreResultsExpected`
+ * models the machine's response to "no more results" — it records the signal and,
+ * when the harness's `drained` flag is set (the machine's queue is empty), fires
+ * `handleSniffingComplete` just as `Drained + NoMoreResultsExpected → Done →
+ * SniffingComplete` would. Completion is thus the queue-drained ∧ requests-settled
+ * coupling, with no settle window (that grace is gone; plans use trailing `Delay`s).
  */
 
 const { expectRightToEqual, expectLeftToEqual } = utilityExpectations(expect)
@@ -37,21 +35,22 @@ interface Harness {
   readonly tracker: SnifferResponseTracker.SnifferResponseTracker<SimpleResources>
   readonly lifecycle: RunLifecycleState.RunLifecycleState<SimpleResources>
   readonly navigationStops: () => number
+  readonly noMoreResultsSignals: () => number
+  /** Model the machine's queue-drained state so a `signal` can complete the run. */
+  readonly setDrained: (value: boolean) => void
 }
 
-/**
- * Wire a tracker and lifecycle exactly as the composition does — the tracker
- * publishes into the lifecycle's stream, the lifecycle reads the tracker's
- * incomplete-request state — with `stopAutomaticNavigation` replaced by a counter.
- */
 const makeHarness = (): Effect.Effect<Harness> =>
   Effect.gen(function* () {
     let stopCount = 0
+    let signalCount = 0
+    const drained = { value: false }
     const tracker: SnifferResponseTracker.SnifferResponseTracker<SimpleResources> =
       yield* SnifferResponseTracker.make<SimpleResources>({
         matchEntity: (url) => Option.fromNullable([SimpleEntity].find((e) => e.isFoundAt(url))),
         sendMessage: noopSendMessage,
         handleNewSniffResult: (result) => lifecycle.handleNewSniffResult(result),
+        handleGeneratedSteps: () => Effect.void,
       })
     const lifecycle: RunLifecycleState.RunLifecycleState<SimpleResources> =
       yield* RunLifecycleState.make<SimpleResources>({
@@ -62,16 +61,24 @@ const makeHarness = (): Effect.Effect<Harness> =>
           Effect.sync(() => {
             stopCount += 1
           }),
+        // The machine: on "no more results", complete iff the queue is drained.
+        signalNoMoreResultsExpected: Effect.gen(function* () {
+          signalCount += 1
+          if (drained.value) yield* lifecycle.handleSniffingComplete
+        }),
       })
     return {
       tracker,
       lifecycle,
       navigationStops: () => stopCount,
+      noMoreResultsSignals: () => signalCount,
+      setDrained: (value) => {
+        drained.value = value
+      },
     }
   })
 
-const runTest = <A>(program: Effect.Effect<A>): Promise<A> =>
-  Effect.runPromise(program.pipe(Effect.provide(TestContext.TestContext)))
+const runTest = <A>(program: Effect.Effect<A>): Promise<A> => Effect.runPromise(program)
 
 /** `None` once the results stream is finished *and* drained. */
 const isDone = (harness: Harness): Effect.Effect<boolean> =>
@@ -83,51 +90,51 @@ const drain = (
 ): Effect.Effect<ReadonlyArray<SnifferResponseTracker.SniffResult<SimpleResources>>> =>
   Effect.map(harness.lifecycle.requestSniffingResults.clear, Chunk.toReadonlyArray)
 
-// Advance past the settle window so the forked settle-close daemon fires.
-const passSettleWindow = TestClock.adjust(SETTLE_CONFIRM_WINDOW).pipe(
-  Effect.andThen(Effect.yieldNow())
-)
+/** Settle a tracked request `id` with a valid person body. */
+const settle = (
+  harness: Harness,
+  id: string,
+  person: { name: string; age: number }
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    yield* harness.tracker.handleResponseData(responseData(id, JSON.stringify(person)))
+    yield* harness.tracker.handleResponseFinished(responseFinished(id))
+  })
 
 describe('RunLifecycleState completion (closing requestSniffingResults)', () => {
-  it('closes the stream after a settle window when sniffing completes with nothing incomplete', () =>
+  it('signals the machine and closes when the queue drains onto an empty request map', () =>
     runTest(
       Effect.gen(function* () {
         const harness = yield* makeHarness()
+        harness.setDrained(true)
         expect(yield* isDone(harness)).toBe(false)
 
-        yield* harness.lifecycle.handleSniffingComplete
-        // The settle-close is armed, not fired: the stream stays open until the
-        // window elapses (so a straggler ResponseStart still has a chance).
-        expect(yield* isDone(harness)).toBe(false)
+        // The machine's `onDrained` hook is wired to this exact effect.
+        yield* harness.lifecycle.endRequestSniffingResultsUnlessMoreExpected
 
-        yield* passSettleWindow
+        expect(harness.noMoreResultsSignals()).toBe(1)
         expect(yield* isDone(harness)).toBe(true)
       })
     ))
 
-  it('defers the close until the last incomplete request settles after sniff-complete', () =>
+  it('defers completion until the last incomplete request settles', () =>
     runTest(
       Effect.gen(function* () {
         const harness = yield* makeHarness()
         const { tracker } = harness
+        harness.setDrained(true)
         yield* tracker.handleResponseStart(
           responseStart({ id: 'r1', url: 'https://example.com/people/1' })
         )
 
-        // Sniffing is done but r1 is still incomplete: the stream must stay open,
-        // and no settle is even armed yet.
-        yield* harness.lifecycle.handleSniffingComplete
-        yield* passSettleWindow
+        // Queue drained, but r1 is still incomplete: no signal, no close.
+        yield* harness.lifecycle.endRequestSniffingResultsUnlessMoreExpected
+        expect(harness.noMoreResultsSignals()).toBe(0)
         expect(yield* isDone(harness)).toBe(false)
 
-        yield* tracker.handleResponseData(
-          responseData('r1', JSON.stringify({ name: 'Al', age: 1 }))
-        )
-        yield* tracker.handleResponseFinished(responseFinished('r1'))
-        // r1's result is queued; the settle-close is now armed but not yet fired.
-        expect(yield* isDone(harness)).toBe(false)
-
-        yield* passSettleWindow
+        // r1 settles → the end-check signals → (drained) completes → closes.
+        yield* settle(harness, 'r1', { name: 'Al', age: 1 })
+        expect(harness.noMoreResultsSignals()).toBe(1)
         const results = yield* drain(harness)
         expect(results).toHaveLength(1)
         expectRightToEqual(results[0], [{ name: 'Al', age: 1 }])
@@ -135,53 +142,51 @@ describe('RunLifecycleState completion (closing requestSniffingResults)', () => 
       })
     ))
 
-  it('keeps the stream open for a straggler ResponseStart arriving during the settle window (issue: late response drop)', () =>
+  it('signals but does not close when the request map empties while the queue is not drained', () =>
     runTest(
       Effect.gen(function* () {
         const harness = yield* makeHarness()
         const { tracker } = harness
-
-        // r1 finishes after sniff-complete → quiescent → settle-close armed.
+        // The machine is still navigating (queue not drained).
+        harness.setDrained(false)
         yield* tracker.handleResponseStart(
           responseStart({ id: 'r1', url: 'https://example.com/people/1' })
         )
-        yield* harness.lifecycle.handleSniffingComplete
-        yield* tracker.handleResponseData(
-          responseData('r1', JSON.stringify({ name: 'Al', age: 1 }))
-        )
-        yield* tracker.handleResponseFinished(responseFinished('r1'))
 
-        // A late request arrives *during* the settle window — the shims are still
-        // live post-SniffingComplete. It re-populates the incomplete map before
-        // the window elapses.
-        yield* tracker.handleResponseStart(
-          responseStart({ id: 'r2', url: 'https://example.com/people/2' })
-        )
+        yield* settle(harness, 'r1', { name: 'Al', age: 1 })
 
-        // Window elapses: the daemon re-confirms, sees r2 incomplete, does NOT
-        // close. The straggler is preserved instead of being dropped.
-        yield* passSettleWindow
+        // The map emptied, so the machine was told — but it isn't drained, so the
+        // run continues (more steps to dispatch) and the stream stays open.
+        expect(harness.noMoreResultsSignals()).toBe(1)
         expect(yield* isDone(harness)).toBe(false)
-        expect(MutableHashMap.size(tracker.incompleteSniffedRequests)).toBe(1)
+      })
+    ))
 
-        // r2 settles → re-arms → closes. Both results are delivered.
-        yield* tracker.handleResponseData(
-          responseData('r2', JSON.stringify({ name: 'Bo', age: 2 }))
+  it('a url-match-timeout abort with a request still in flight defers the close to the last settle', () =>
+    runTest(
+      Effect.gen(function* () {
+        const harness = yield* makeHarness()
+        const { tracker } = harness
+        yield* tracker.handleResponseStart(
+          responseStart({ id: 'r1', url: 'https://example.com/people/1' })
         )
-        yield* tracker.handleResponseFinished(responseFinished('r2'))
-        yield* passSettleWindow
 
+        // The machine reached `Done` via a url-match-timeout abort (not via a
+        // signal) while r1 is still in flight: Gate A is set, but the stream must
+        // stay open so r1's result still drains.
+        yield* harness.lifecycle.handleSniffingComplete
+        expect(yield* isDone(harness)).toBe(false)
+
+        // r1 settles → end-check → Gate A already set → close.
+        yield* settle(harness, 'r1', { name: 'Al', age: 1 })
         const results = yield* drain(harness)
-        expect(results).toHaveLength(2)
-        const parsed = results.map((r) =>
-          r._tag === 'Right' ? r.right : expect.fail('expected a Right result')
-        )
-        expect(parsed).toEqual([[{ name: 'Al', age: 1 }], [{ name: 'Bo', age: 2 }]])
+        expect(results).toHaveLength(1)
+        expectRightToEqual(results[0], [{ name: 'Al', age: 1 }])
         expect(yield* isDone(harness)).toBe(true)
       })
     ))
 
-  it('abandonAllRequestSniffing publishes every incomplete request as a Left failure, then closes', () =>
+  it('abandonAllRequestSniffing stops the machine, publishes every incomplete request as a Left, then closes', () =>
     runTest(
       Effect.gen(function* () {
         const harness = yield* makeHarness()
@@ -195,6 +200,8 @@ describe('RunLifecycleState completion (closing requestSniffingResults)', () => 
 
         yield* harness.lifecycle.abandonAllRequestSniffing
 
+        // The machine is stopped so a parked `Delay` timer can't leak.
+        expect(harness.navigationStops()).toBe(1)
         const results = yield* drain(harness)
         expect(results).toHaveLength(2)
         const urls = results.map((r) =>

@@ -1,24 +1,7 @@
 import { type CancelSnifferRequestMessage } from 'browser-sniffer-core'
-import { Duration, Effect, Either, Fiber, Mailbox, Ref } from 'effect'
-import type { RuntimeFiber } from 'effect/Fiber'
+import { Effect, Either, Mailbox, Ref } from 'effect'
 
 import type { SniffResult } from './sniffer-response-tracker.ts'
-
-/**
- * Grace window between quiescence first holding (sniffing complete *and* no
- * sniffed request incomplete) and actually closing `requestSniffingResults`.
- *
- * The sniffer's `fetch` / `XHR` shims stay installed on the page after
- * `SniffingComplete` — "sniffing complete" means the scripted navigation is
- * exhausted, not that the page can no longer issue requests. So a lazily-fired
- * request can still surface a `ResponseStart` a beat later; closing the instant
- * the incomplete map first empties would track that straggler into an
- * already-closed stream and drop its result silently (not even as a failure).
- * Arming a short settle instead lets a late `ResponseStart` re-populate the map
- * before the close is confirmed. Mirrors the `SHORT_CONFIRM_WINDOW` the
- * pre-extraction `use-sync-runner` drive loop kept for the same reason.
- */
-const SETTLE_CONFIRM_WINDOW: Duration.DurationInput = Duration.millis(250)
 
 /**
  * The run's termination surface: the one place every way a request-sniffing run
@@ -26,30 +9,45 @@ const SETTLE_CONFIRM_WINDOW: Duration.DurationInput = Duration.millis(250)
  *
  * A run is a bounded producer of {@link SniffResult}s on `requestSniffingResults`.
  * Its state is two independent facts: **sniffing** (the scripted navigation) is
- * `running → complete` (monotonic; the scripted navigation is exhausted), and
+ * `running → complete` (monotonic; the machine's step queue drains and, once no
+ * request can still generate more work, it dispatches `SniffingComplete`), and
  * the set of **incomplete sniffed requests** fluctuates as requests start and
  * settle. The stream closes once neither can produce more — sniffing complete
- * *and* no incomplete sniffed requests — but only after a short
- * {@link SETTLE_CONFIRM_WINDOW} settle, because the page's shims stay live and a
- * straggler `ResponseStart` can still arrive just after quiescence first holds.
+ * *and* no incomplete sniffed requests.
  *
- * - **`handleSniffingComplete`** — the scripted navigation dispatched its terminal
- *   `SniffingComplete`. Latch it, then (if nothing is still incomplete) arm the
- *   settle window; otherwise the last request to settle does.
- * - **`abandonAllRequestSniffing`** — the idle-timeout escape. Publish every
- *   still-incomplete sniffed request as a failure and close the stream *now*, so
- *   the run reports the loss instead of hanging on a silent host.
+ * **Completion is now coupled across the two machines.** With breadth-first
+ * `followUpSteps` generation, the automatic-navigation machine cannot declare
+ * completion just because its queue is empty — any in-flight request could still
+ * parse into follow-ups. So natural completion is *queue drained ∧ no incomplete
+ * request*, and Gate A (the machine's `SniffingComplete`) *depends on* Gate B
+ * (this map), mediated by the lifecycle: whenever the incomplete map empties, the
+ * lifecycle injects `NoMoreResultsExpected` into the machine (`signalNoMoreResultsExpected`),
+ * which completes it iff its queue is already drained. The machines still share
+ * no state — both facts flow as explicit inputs/hooks. There is no implicit
+ * settle window: a plan that needs post-load XHR fan-out to finish before
+ * completing inserts an explicit trailing `Delay` step.
+ *
+ * - **`handleSniffingComplete`** — the machine reached `Done` and dispatched its
+ *   terminal `SniffingComplete` (via `NoMoreResultsExpected`, or a
+ *   url-match-timeout abort). Latch Gate A and close the stream — unless a
+ *   request is still incomplete (an abort can fire mid-flight), in which case the
+ *   last settle's end-check closes it.
+ * - **`abandonAllRequestSniffing`** — the idle-timeout escape. Stop the machine
+ *   (so a parked timer can't leak), publish every still-incomplete request as a
+ *   failure, and close the stream *now*, so the run reports the loss instead of
+ *   hanging on a silent host.
  * - **`cancelAllRequestSniffing`** — the screen-unmount teardown. Stop the
  *   automatic navigation and ask the host to `CancelSnifferRequest` every
- *   incomplete request (so the page stops streaming to a handler nobody reads);
- *   publishes nothing and leaves the stream open (the consumer has gone).
+ *   incomplete request; publishes nothing and leaves the stream open (the
+ *   consumer has gone).
  *
  * The lifecycle owns `requestSniffingResults` and the `sniffingComplete` latch;
  * it reads *whether any request is still incomplete* through the injected
  * `hasIncompleteSniffedRequests` — the tracker's map stays the single source of
  * truth, so there is no shadow counter to drift. It reaches the response tracker
- * and automatic-navigation machine only through the injected hooks; neither machine reads the
- * other's state. See the [Handler Explanation](../../docs/Handler%20Explanation.md).
+ * and automatic-navigation machine only through the injected hooks; neither
+ * machine reads the other's state. See the
+ * [Handler Explanation](../../docs/Handler%20Explanation.md).
  */
 interface RunLifecycleState<TResources> {
   /**
@@ -63,27 +61,27 @@ interface RunLifecycleState<TResources> {
   /**
    * Publish one settled result onto `requestSniffingResults` (a synchronous
    * `unsafeOffer`), then run `endRequestSniffingResultsUnlessMoreExpected` so the
-   * stream closes if this was the last thing it was waiting on. The tracker is
-   * the sole caller, and it drops the settled id *before* calling this — so the
-   * offer lands before the end-check, and the end-check sees the request gone.
-   * The idle-timeout abandon path publishes with `abandoned` set: it
-   * force-closes the stream itself, so the per-result end-check is skipped.
+   * machine is told when the map has emptied (and the stream closes if it was the
+   * last thing awaited). The tracker is the sole caller, and it drops the settled
+   * id *before* calling this — so the offer lands before the end-check, and the
+   * end-check sees the request gone. The idle-timeout abandon path publishes with
+   * `abandoned` set: it force-closes the stream itself, so the per-result
+   * end-check is skipped.
    */
   readonly handleNewSniffResult: (
     result: SniffResult<TResources>
   ) => Effect.Effect<void, never, never>
   /**
-   * Run after every settle: if sniffing is complete *and* no sniffed request is
-   * still incomplete, arm the {@link SETTLE_CONFIRM_WINDOW} settle-close (which
-   * re-confirms against live state before ending the stream); otherwise do
-   * nothing. Interrupt-and-replace, so each fresh quiescence restarts the
-   * window. `handleNewSniffResult` chains this after each publish;
-   * `handleSniffingComplete` after latching.
+   * Run after every settle *and* whenever the machine's queue drains (wired to
+   * its `onDrained` hook): if no sniffed request is still incomplete, inject
+   * `NoMoreResultsExpected` into the machine (completing it iff its queue is
+   * drained) and — if sniffing is already complete — close the stream. If a
+   * request is still incomplete, more results are expected, so do nothing.
    */
   readonly endRequestSniffingResultsUnlessMoreExpected: Effect.Effect<void, never, never>
-  /** Latch that scripted sniffing finished; arm the settle-close if nothing is incomplete. */
+  /** The machine reached `Done`: latch Gate A and close the stream if nothing is incomplete. */
   readonly handleSniffingComplete: Effect.Effect<void, never, never>
-  /** Idle escape: publish every incomplete request as a failure, then close the stream. */
+  /** Idle escape: stop the machine, publish every incomplete request as a failure, then close. */
   readonly abandonAllRequestSniffing: Effect.Effect<void, never, never>
   /** Unmount teardown: stop navigation + `CancelSnifferRequest` each incomplete request; no close. */
   readonly cancelAllRequestSniffing: (
@@ -97,13 +95,15 @@ interface RunLifecycleState<TResources> {
  * and automatic-navigation hooks. `hasIncompleteSniffedRequests` reads the tracker's map
  * (the sole quiescence source), `failIncompleteSniffedRequests` publishes the
  * still-incomplete requests as failures and drops them *without* closing — the
- * lifecycle owns the close.
+ * lifecycle owns the close — and `signalNoMoreResultsExpected` injects the
+ * completion input into the automatic-navigation machine.
  */
 const make = <TResources>({
   hasIncompleteSniffedRequests,
   failIncompleteSniffedRequests,
   cancelIncompleteSniffedRequests,
   stopAutomaticNavigation,
+  signalNoMoreResultsExpected,
 }: {
   readonly hasIncompleteSniffedRequests: () => boolean
   readonly failIncompleteSniffedRequests: Effect.Effect<void, never, never>
@@ -111,65 +111,33 @@ const make = <TResources>({
     send: (message: typeof CancelSnifferRequestMessage.Type) => Effect.Effect<void, never, never>
   ) => Effect.Effect<void, never, never>
   readonly stopAutomaticNavigation: () => Effect.Effect<void, never, never>
+  /**
+   * Inject `NoMoreResultsExpected` into the automatic-navigation machine. The
+   * machine completes (`Drained → Done`, dispatching `SniffingComplete`) iff its
+   * queue is drained, and otherwise no-ops. Forward-referenced by the
+   * composition (the machine is built after the lifecycle).
+   */
+  readonly signalNoMoreResultsExpected: Effect.Effect<void, never, never>
 }): Effect.Effect<RunLifecycleState<TResources>, never, never> =>
   Effect.gen(function* () {
     const requestSniffingResults = yield* Mailbox.make<SniffResult<TResources>>()
-    // Set true once `SniffingComplete` is observed. The stream closes when this
-    // holds *and* no sniffed request is incomplete — checked by
-    // `endRequestSniffingResultsUnlessMoreExpected` after each settle and when
-    // the latch is first set.
+    // Set true once the machine dispatches `SniffingComplete`. The stream closes
+    // when this holds *and* no sniffed request is incomplete.
     const sniffingComplete = yield* Ref.make(false)
-    // Single-slot handle for the pending settle-close daemon (see
-    // `SETTLE_CONFIRM_WINDOW`). Interrupt-and-replace so each fresh quiescence
-    // restarts the window; interrupted at teardown so the daemon — a
-    // `forkDaemon`, untied to the run scope — can't outlive the run.
-    const pendingCloseFiber = yield* Ref.make<RuntimeFiber<void, never> | null>(null)
-
-    // Close the stream iff quiescence still holds. Re-checked against *live*
-    // state because a straggler `ResponseStart` may have re-populated the map
-    // during the settle window. Idempotent — `Mailbox.end` is a no-op once
-    // closed.
-    const confirmAndCloseIfStillQuiescent: Effect.Effect<void, never, never> = Effect.gen(
-      function* () {
-        if (!(yield* Ref.get(sniffingComplete))) return
-        if (hasIncompleteSniffedRequests()) return
-        yield* requestSniffingResults.end
-      }
-    )
-
-    // Interrupt any pending settle-close daemon (a no-op when none is armed).
-    const cancelPendingClose: Effect.Effect<void, never, never> = Effect.gen(function* () {
-      const existing = yield* Ref.getAndSet(pendingCloseFiber, null)
-      if (existing !== null) yield* Fiber.interrupt(existing)
-    })
-
-    // Arm (or re-arm) the settle-close: interrupt any pending daemon so the
-    // window restarts from now, then fork one that sleeps the window and
-    // re-confirms before closing. A `forkDaemon` (not `fork`) because the
-    // arming fiber is the message dispatcher's, which completes as soon as the
-    // handler returns — a child fiber would be interrupted immediately.
-    const armSettleClose: Effect.Effect<void, never, never> = Effect.gen(function* () {
-      yield* cancelPendingClose
-      const fiber = yield* Effect.forkDaemon(
-        Effect.gen(function* () {
-          yield* Effect.sleep(SETTLE_CONFIRM_WINDOW)
-          yield* Ref.set(pendingCloseFiber, null)
-          yield* confirmAndCloseIfStillQuiescent
-        })
-      )
-      yield* Ref.set(pendingCloseFiber, fiber)
-    })
 
     const endRequestSniffingResultsUnlessMoreExpected: Effect.Effect<void, never, never> =
       Effect.gen(function* () {
-        // More results are still expected while sniffing has not finished (it may
-        // start new requests) or any sniffed request is still incomplete.
-        if (!(yield* Ref.get(sniffingComplete))) return
+        // More results are still expected while any sniffed request is
+        // incomplete — it may yet parse into follow-up steps.
         if (hasIncompleteSniffedRequests()) return
-        // Quiescent — but don't close yet: arm a short settle so a late
-        // `ResponseStart` (the shims stay live post-`SniffingComplete`) can
-        // re-populate the map before the close is confirmed.
-        yield* armSettleClose
+        // The map is empty. Tell the machine (completes it iff its queue is
+        // drained); this is also how a trailing `Delay` completes — the machine's
+        // `onDrained` hook routes here when the queue drains onto an empty map.
+        yield* signalNoMoreResultsExpected
+        // If the machine has already reached `Done` (just now, or on an earlier
+        // url-match-timeout abort whose in-flight requests have since settled),
+        // close the stream.
+        if (yield* Ref.get(sniffingComplete)) yield* requestSniffingResults.end
       })
 
     const handleNewSniffResult = (
@@ -190,33 +158,40 @@ const make = <TResources>({
       return endRequestSniffingResultsUnlessMoreExpected
     }
 
-    const handleSniffingComplete: Effect.Effect<void, never, never> = Ref.set(
-      sniffingComplete,
-      true
-    ).pipe(Effect.andThen(endRequestSniffingResultsUnlessMoreExpected))
+    // The machine reached `Done` and dispatched `SniffingComplete` (via the
+    // `onSniffingComplete` hook). Latch Gate A, then close the stream — but only
+    // if no request is still incomplete. A url-match-timeout abort reaches `Done`
+    // with requests possibly in flight; those results must still drain, and the
+    // last settle's end-check does the close. Never dispatches back to the machine
+    // (it does not call the end-check), so it can't re-enter the machine's lock.
+    const handleSniffingComplete: Effect.Effect<void, never, never> = Effect.gen(function* () {
+      yield* Ref.set(sniffingComplete, true)
+      if (!hasIncompleteSniffedRequests()) {
+        yield* requestSniffingResults.end
+      }
+    })
 
-    // Publish every incomplete request as a failure, then force-close the stream
-    // (the close is the lifecycle's), so a stalled host is reported as a loss,
-    // not a hang. It force-closes rather than deferring to the settle-close
-    // because at an idle timeout sniffing may not yet be complete; cancel any
-    // pending settle first so it can't race this close (and can't leak).
-    const abandonAllRequestSniffing: Effect.Effect<void, never, never> = cancelPendingClose.pipe(
-      Effect.andThen(failIncompleteSniffedRequests),
-      Effect.andThen(requestSniffingResults.end)
-    )
+    // Idle-timeout escape: stop the machine first (interrupt any pending `Delay` /
+    // URL-match timer so a parked state can't leak one), publish every incomplete
+    // request as a failure, then force-close the stream — a stalled host is
+    // reported as a loss, not a hang. Wrapped in `Effect.gen` (not an eager
+    // `.pipe`) so `stopAutomaticNavigation()` is invoked at run time, not while
+    // constructing this value — the machine is a forward reference built after
+    // the lifecycle, so calling it during construction would hit its TDZ.
+    const abandonAllRequestSniffing: Effect.Effect<void, never, never> = Effect.gen(function* () {
+      yield* stopAutomaticNavigation()
+      yield* failIncompleteSniffedRequests
+      yield* requestSniffingResults.end
+    })
 
     // Unmount teardown: stop the scripted navigation, then ask the host to cancel
     // the incomplete requests. Navigation-first is not load-bearing (the machines
     // share no state) but is preserved so the externally visible outbound-message
-    // order is unchanged. Also interrupt any pending settle-close daemon so it
-    // can't outlive the run (it is a `forkDaemon`, untied to the run scope).
+    // order is unchanged. Publishes nothing and leaves the stream open.
     const cancelAllRequestSniffing = (
       send: (message: typeof CancelSnifferRequestMessage.Type) => Effect.Effect<void, never, never>
     ): Effect.Effect<void, never, never> =>
-      cancelPendingClose.pipe(
-        Effect.andThen(stopAutomaticNavigation()),
-        Effect.andThen(cancelIncompleteSniffedRequests(send))
-      )
+      stopAutomaticNavigation().pipe(Effect.andThen(cancelIncompleteSniffedRequests(send)))
 
     return {
       requestSniffingResults,
@@ -229,4 +204,4 @@ const make = <TResources>({
   })
 
 export type { RunLifecycleState }
-export { make, SETTLE_CONFIRM_WINDOW }
+export { make }

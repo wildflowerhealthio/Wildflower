@@ -64,9 +64,16 @@ const PatientEntity = EntityDefinition.make({
   `end: 'mustHaveQuery'` so the two are structurally disjoint.
 - **`parse` returns an `Effect`** (`ParseError` in the error channel), not an
   `Either`, so an entity can `Effect.logInfo` dropped entries. Emit `[]` for a
-  resource you can't use (e.g. a null id) rather than failing. **Follow-up
-  navigation is declared on the plan's `stepSequence`, never emitted from
-  `parse`.**
+  resource you can't use (e.g. a null id) rather than failing. `parse` stays a
+  **pure decode** — it never emits navigation.
+- **`followUpSteps` (optional) is the reactive-crawl seam.** A pure, synchronous
+  `(resources, response) => Step[]`: every time this entity's `parse` succeeds,
+  the returned steps are appended to the back of the navigation queue (open every
+  page a parsed list/table links, resolving relative links against
+  `response.url`). It is naturally recursive; run-wide URI dedup of generated
+  `Open`s and the plan's `maxGeneratedSteps` cap keep it terminating. Omit it for
+  a leaf entity. (Kept a named field, not a `parse` side-channel, so generation
+  stays statically visible and the handler owns its invocation.)
 
 ## 3. Config schema + arbitraries
 
@@ -98,24 +105,38 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirRes
     name: 'FHIR R4',
     entityDefinitions: [PatientEntity, ObservationEntity, ObservationListEntity],
     firstPage: { _tag: 'Uri', uri: `${config.rootUrl}/Patient/${id}?_format=json` },
-    stepSequence: [{ action: { _tag: 'Open', source: { _tag: 'Uri', uri: observationUrl } } }],
-    stepDelay: Duration.seconds(5),
+    stepSequence: [
+      {
+        _tag: 'Navigation',
+        action: { _tag: 'Open', source: { _tag: 'Uri', uri: observationUrl } },
+      },
+    ],
+    // maxGeneratedSteps / dedupeGeneratedOpenUris default to 500 / true.
   })
 ```
 
 - **`firstPage`** is the `WebViewSource` (inline `Html` or absolute `Uri`) the
   sniffer webview mounts first.
-- **`stepSequence`** is the scripted navigation. Each step's `action` is
-  forwarded to the sniffer verbatim: an `Open` action navigates the host
-  webview; a `PageAction` action (`Click` / `Fill`, discriminated by inner
-  `kind`) scripts an in-page interaction. A step's optional `advanceWhen`
-  (`UrlMatch`) gates _when_ it dispatches — use it for login redirects that
-  settle at an unpredictable time; the default is a fixed `stepDelay`. Because
-  `advanceWhen` lives on the step wrapper, not the action, it can never leak
-  onto the wire. An empty `stepSequence` fires `SniffingComplete` after the
-  first `PageLoaded`.
-- **`stepDelay`** is the settle time between a `PageLoaded` and the next
-  dispatch — long enough for post-load XHR fan-out to finish.
+- **`stepSequence`** is the _initial_ contents of the navigation queue — a list
+  of `Step`s, each a `Navigation` or a `Delay`:
+  - A **`Navigation`** step's `action` is forwarded to the sniffer verbatim: an
+    `Open` navigates the host webview; a `PageAction` (`Click` / `Fill`,
+    discriminated by inner `kind`) scripts an in-page interaction. It dispatches
+    as soon as the machine reaches it, on the gating `PageLoaded` — there is no
+    implicit settle delay. Its optional `advanceWhen` (`UrlMatch`) holds it until
+    a `PageLoaded` whose `url` matches — use it for login redirects that settle at
+    an unpredictable time. `advanceWhen` lives on the step wrapper, not the
+    action, so it never leaks onto the wire. An empty `stepSequence` completes as
+    soon as the first `PageLoaded`'s requests settle.
+  - A **`Delay`** step (`{ _tag: 'Delay', duration }`) pauses the queue for
+    `duration` before the next step. It never reaches the wire (the FSM consumes
+    it as a timer). Add a **trailing** `Delay` when post-load XHR fan-out must
+    start (and be tracked) before the queue drains and the run completes.
+- **`maxGeneratedSteps`** (default 500) caps steps produced by `followUpSteps`,
+  and **`dedupeGeneratedOpenUris`** (default `true`) drops a generated `Open`
+  whose `Uri` was already visited (the `firstPage`, an authored `Open`, or an
+  earlier generated `Open`). Together they terminate a naturally-recursive crawl;
+  both are adjustable per-plan.
 
 For the machines that consume the plan, see the
 [Handler Explanation](../collector-fundamentals/docs/Handler%20Explanation.md).
