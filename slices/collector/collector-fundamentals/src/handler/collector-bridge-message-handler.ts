@@ -1,12 +1,12 @@
 import { type CancelSnifferRequestMessage, type PageActionMessage } from 'browser-sniffer-core'
-import { Effect, type Mailbox, type MutableHashMap, Option } from 'effect'
+import { Effect, type Mailbox, type MutableHashMap, Option, Schema } from 'effect'
 import type { MessageHandler } from 'effect-messaging-core'
-import type {
-  CollectorBridge,
+import {
+  type CollectorBridge,
   OpenMessage,
-  SniffingComplete as SniffingCompleteMessage,
+  type SniffingComplete as SniffingCompleteMessage,
 } from '../bridge.ts'
-import { ScrapingPlan } from '../model/index.ts'
+import { ScrapingPlan, WebViewSource } from '../model/index.ts'
 import type * as Step from '../model/step.ts'
 import * as AutomaticNavigation from './automatic-navigation/index.ts'
 import * as RunLifecycleState from './run-lifecycle-state.ts'
@@ -74,14 +74,25 @@ interface CollectorBridgeMessageHandler<TResources> extends Service {
 }
 
 /**
+ * Structural guards compiled once (the `CollectorDescriptor`
+ * `Schema.is(configSchema)` pattern): the step-action shapes below are
+ * schema-backed, so their variants are tested with `Schema.is` rather than
+ * hand-chained `_tag` comparisons.
+ */
+const isOpenAction = Schema.is(OpenMessage)
+const isUriSource = Schema.is(WebViewSource.UriSchema)
+
+/**
  * The `Uri` a step's `Open` action navigates to, or `undefined` for a
  * `PageAction` step, an `Open` with an inline `Html` source, or a `Delay`. Used
  * to key the generated-`Open` dedup visited-set (only `Uri` sources dedup).
  */
-const openUri = (step: Step.Step): string | undefined =>
-  step._tag === 'Navigation' && step.action._tag === 'Open' && step.action.source._tag === 'Uri'
-    ? step.action.source.uri
-    : undefined
+const openUri = (step: Step.Step): string | undefined => {
+  if (step._tag !== 'Navigation') return undefined
+  const { action } = step
+  if (!isOpenAction(action)) return undefined
+  return isUriSource(action.source) ? action.source.uri : undefined
+}
 
 /**
  * Compose the response tracker, the automatic navigation, and the run lifecycle into
@@ -129,7 +140,7 @@ const make = <TResources>({
       scrapingPlan.maxGeneratedSteps ?? ScrapingPlan.DEFAULT_MAX_GENERATED_STEPS
     const dedupeGeneratedOpenUris = scrapingPlan.dedupeGeneratedOpenUris ?? true
     const visitedUris = new Set<string>()
-    if (scrapingPlan.firstPage._tag === 'Uri') visitedUris.add(scrapingPlan.firstPage.uri)
+    if (isUriSource(scrapingPlan.firstPage)) visitedUris.add(scrapingPlan.firstPage.uri)
     for (const step of scrapingPlan.stepSequence) {
       const uri = openUri(step)
       if (uri !== undefined) visitedUris.add(uri)

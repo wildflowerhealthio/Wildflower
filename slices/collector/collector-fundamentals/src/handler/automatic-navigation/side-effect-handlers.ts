@@ -1,4 +1,5 @@
-import { Duration, Effect, Fiber, HashMap, Option, Ref } from 'effect'
+import { PageActionMessage } from 'browser-sniffer-core'
+import { Duration, Effect, Fiber, HashMap, Option, Ref, Schema } from 'effect'
 import type { RuntimeFiber } from 'effect/Fiber'
 
 import type { StepAction } from '../../model/step.ts'
@@ -79,9 +80,15 @@ const scheduleTimerDaemon = (
     yield* Ref.update(ctx.registry, HashMap.set(options.generation, fiber))
   })
 
+/**
+ * Compiled once: a schema guard for the `PageAction` step-action variant, so the
+ * label routes via `Schema.is` rather than a hand-written `_tag` comparison.
+ */
+const isPageAction = Schema.is(PageActionMessage)
+
 /** Low-cardinality dispatch label: the action tag, `PageAction`'s inner `kind` appended. */
 const linkKindOf = (action: StepAction): string =>
-  action._tag === 'PageAction' ? `${action._tag}:${action.action.kind}` : action._tag
+  isPageAction(action) ? `${action._tag}:${action.action.kind}` : action._tag
 
 const sideEffectHandlers = {
   DispatchNavigation: (

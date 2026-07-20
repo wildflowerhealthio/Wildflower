@@ -4,11 +4,12 @@ import { Duration, Effect, Layer, Option, Schema, TestClock, TestContext } from 
 import { LoggingLayerTest } from 'kitchen-sink/test'
 import { describe, expect, it, vi } from 'vite-plus/test'
 
+import { OpenMessage } from 'collector-fundamentals/bridge'
 import {
   EntityDefinition,
   ScrapingPlan,
   type Step,
-  type WebViewSource,
+  WebViewSource,
 } from 'collector-fundamentals/model'
 import type { TransportAdapter } from 'effect-messaging-core'
 
@@ -187,12 +188,15 @@ const openStepFor = (uri: string): Step.Step => ({
   action: { _tag: 'Open', source: { _tag: 'Uri', uri } },
 })
 
+const isOpenMessage = Schema.is(OpenMessage)
+const isUriSource = Schema.is(WebViewSource.UriSchema)
+
 /** The `Uri`s of the `Open` navigations sent so far, in order (ignores the terminal). */
 const dispatchedOpens = (sendMessage: ReturnType<typeof vi.fn<SendMessage>>): string[] =>
   sendMessage.mock.calls
     .map((call) => call[0])
-    .filter((m): m is Extract<typeof m, { _tag: 'Open' }> => m._tag === 'Open')
-    .map((m) => (m.source._tag === 'Uri' ? m.source.uri : ''))
+    .filter(isOpenMessage)
+    .map((m) => (isUriSource(m.source) ? m.source.uri : ''))
 
 /**
  * Build a handler whose single entity parses a JSON person and generates the
