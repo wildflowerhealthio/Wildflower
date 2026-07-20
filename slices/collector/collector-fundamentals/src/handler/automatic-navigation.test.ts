@@ -11,6 +11,7 @@ import {
   make,
   type StepOutboundMessage,
 } from './automatic-navigation/index.ts'
+import { settleForkedWork } from './collector-bridge-message-handler.test-helpers.ts'
 
 /**
  * The automatic-navigation machine in isolation (not via
@@ -540,14 +541,3 @@ const gatedFill: Step.NavigationStep = {
 /** The `_tag`s of the messages sent so far, in order. */
 const sentTags = (sendMessage: ReturnType<typeof vi.fn<SendMessage>>): string[] =>
   sendMessage.mock.calls.map((call) => call[0]._tag)
-
-/**
- * Let a forked `RequestCompletionCheck` daemon run to completion. It sleeps
- * nothing, so cooperative yields — not a clock tick — are what let it re-enter
- * the machine; bounded so a genuine hang still fails.
- */
-const settleForkedWork: Effect.Effect<void> = Effect.gen(function* () {
-  for (let i = 0; i < 20; i += 1) {
-    yield* Effect.yieldNow()
-  }
-})

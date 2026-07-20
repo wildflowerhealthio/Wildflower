@@ -82,6 +82,13 @@ can never observe "no more results" before it has seen the steps this settle
 produced. Failed parses, `RequestError`, `Cancelled`, and the abandon path
 generate nothing.
 
+`followUpSteps` runs on freshly-parsed, possibly-malformed data, so the generate
+step is wrapped defensively (like `parse`'s `Effect.either`): if the generator
+throws, the tracker WARN-logs and generates nothing, then **still** drops and
+offers. A throw must not skip the drop-then-offer — that would strand the id in
+the incomplete map (Gate B never empties) and hang the run until the idle
+timeout.
+
 `handleNewSniffResult` (the lifecycle seam the tracker is handed) does two things
 of its own, also in order: it offers the result onto `requestSniffingResults`
 (synchronously, `unsafeOffer`), _then_ runs the close-check

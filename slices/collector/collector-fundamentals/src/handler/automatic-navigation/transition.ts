@@ -76,7 +76,7 @@ const processHead = (
     return [State.delayPending(tail, g), [scheduleDelayTimer(g, Duration.toMillis(head.duration))]]
   }
   const advance = head.advanceWhen
-  if (advance !== undefined && !(url !== undefined && advance.pattern.test(url))) {
+  if (advance !== undefined && (url === undefined || !advance.pattern.test(url))) {
     // Gated `Navigation` whose `UrlMatch` is not (yet) satisfied by this url:
     // keep it at the queue head and park under a fresh URL-match timeout.
     const g = generation + 1

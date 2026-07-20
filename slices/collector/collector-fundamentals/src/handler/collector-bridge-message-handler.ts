@@ -26,10 +26,11 @@ type Service = MessageHandler.HandlersFor<CollectorBridge['HostToWeb']>
  * unmatched response stream (response tracker); `Open` / `PageAction`
  * drive the scripted navigation and `SniffingComplete` is the terminal
  * hand-off when the link sequence is exhausted (automatic navigation). The
- * `Open` / `PageAction` payloads *are* the step's `action` — the handler
- * forwards `scrapingPlan.stepSequence[i].action` to `sendMessage` without
- * translation (the plan-only `advanceWhen` rides the step wrapper, never
- * the action).
+ * `Open` / `PageAction` payloads *are* a `Navigation` step's `action` — the
+ * handler forwards that `action` to `sendMessage` without translation (the
+ * plan-only `advanceWhen` rides the step wrapper, never the action; a `Delay`
+ * step carries no `action` and is consumed by the FSM as a timer, so it never
+ * reaches the wire).
  */
 type OutboundMessage =
   | typeof CancelSnifferRequestMessage.Type
@@ -140,10 +141,13 @@ const make = <TResources>({
       scrapingPlan.maxGeneratedSteps ?? ScrapingPlan.DEFAULT_MAX_GENERATED_STEPS
     const dedupeGeneratedOpenUris = scrapingPlan.dedupeGeneratedOpenUris ?? true
     const visitedUris = new Set<string>()
-    if (isUriSource(scrapingPlan.firstPage)) visitedUris.add(scrapingPlan.firstPage.uri)
-    for (const step of scrapingPlan.stepSequence) {
-      const uri = openUri(step)
-      if (uri !== undefined) visitedUris.add(uri)
+    // Only seed when dedup is on — with it off the set is never consulted below.
+    if (dedupeGeneratedOpenUris) {
+      if (isUriSource(scrapingPlan.firstPage)) visitedUris.add(scrapingPlan.firstPage.uri)
+      for (const step of scrapingPlan.stepSequence) {
+        const uri = openUri(step)
+        if (uri !== undefined) visitedUris.add(uri)
+      }
     }
     let generatedCount = 0
 

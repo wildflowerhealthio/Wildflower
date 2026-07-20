@@ -509,6 +509,47 @@ describe('SnifferResponseTracker.make: follow-up generation', () => {
     // Assert
     expect(generateSpy).not.toHaveBeenCalled()
   })
+
+  it('contains a throwing followUpSteps: WARNs, generates nothing, still offers the result', async () => {
+    // Arrange: `parse` succeeds but the generator throws (a bad
+    // `new URL(badHref)` on malformed scraped input).
+    const generateSpy = vi.fn<(steps: readonly Step.Step[]) => Effect.Effect<void>>(
+      () => Effect.void
+    )
+    const offerSpy = vi.fn(() => Effect.void)
+    const tracker = makeBareTracker({
+      entity: throwingEntity,
+      handleGeneratedSteps: generateSpy,
+      handleNewSniffResult: offerSpy,
+    })
+
+    // Act
+    runHandlerSync(
+      tracker.handleResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/1' }))
+    )
+    runHandlerSync(
+      tracker.handleResponseData(responseData('r1', JSON.stringify({ name: 'Ada', age: 36 })))
+    )
+    await runHandlerPromise(
+      tracker.handleResponseFinished(responseFinished('r1')).pipe(
+        LoggingLayerTest.expectToLog((logs) => {
+          expect(logs).toContainEqual(
+            expect.objectContaining({
+              level: 'WARN',
+              message: expect.stringContaining('followUpSteps threw'),
+            })
+          )
+        }),
+        Effect.scoped
+      )
+    )
+
+    // Assert: the throw is contained — nothing enqueued, but the settled result
+    // is still offered and the id dropped, so the run can complete (no hang).
+    expect(generateSpy).not.toHaveBeenCalled()
+    expect(offerSpy).toHaveBeenCalledOnce()
+    expect(MutableHashMap.size(tracker.incompleteSniffedRequests)).toBe(0)
+  })
 })
 
 // Helpers
@@ -535,6 +576,26 @@ const generatingEntity: EntityDefinition.EntityDefinition<SimpleResources> = Ent
       (person) => [person]
     ),
   followUpSteps: (_resources, response) => [openStepFor(`${response.url}/child`)],
+})
+
+/**
+ * An entity whose `parse` succeeds but whose `followUpSteps` throws — models a
+ * generator that hits malformed scraped data. The tracker must contain the
+ * throw rather than let it strand the settled request in the incomplete map.
+ */
+const throwingEntity: EntityDefinition.EntityDefinition<SimpleResources> = EntityDefinition.make({
+  name: 'ThrowingEntity',
+  isFoundAt: (url) => /\/people\//.test(url),
+  parse: (response) =>
+    Effect.map(
+      Schema.decode(Schema.parseJson(Schema.Struct({ name: Schema.String, age: Schema.Number })))(
+        response.text()
+      ),
+      (person) => [person]
+    ),
+  followUpSteps: () => {
+    throw new Error('boom: malformed href')
+  },
 })
 
 /** Build a bare tracker with stubbed lifecycle hooks so both seams are observable. */

@@ -281,7 +281,22 @@ const make = <TResources>({
           // offer's `NoMoreResultsExpected` close-check. Failed parses,
           // `RequestError`, `Cancelled`, and abandons generate nothing.
           if (Either.isRight(result) && entity.followUpSteps !== undefined) {
-            yield* handleGeneratedSteps(entity.followUpSteps(result.right, response))
+            const parsed = result.right
+            // Bind the pure, this-free method so the thunk can call it.
+            // oxlint-disable-next-line typescript-eslint/unbound-method -- pure, this-free method; the call is safe
+            const generateFollowUps = entity.followUpSteps
+            // A generator running on malformed scraped data can throw; contain it
+            // like `parse`'s `Effect.either` above so a throw WARNs and generates
+            // nothing but still reaches the drop-then-offer below — skipping it
+            // would strand this id and hang the run (see Handler Explanation).
+            yield* Effect.try(() => generateFollowUps(parsed, response)).pipe(
+              Effect.flatMap(handleGeneratedSteps),
+              Effect.catchAll((error) =>
+                Effect.logWarning(
+                  `CollectorBridgeMessageHandler.ResponseFinished: ${entity.name}.followUpSteps threw; generating no follow-ups (${error.message})`
+                )
+              )
+            )
           }
           // The parse is span-wrapped and latency-bearing, so the drop-then-offer
           // ordering matters most here (see `offerSniffResultAndUntrack`).

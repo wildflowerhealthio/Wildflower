@@ -21,6 +21,7 @@ import {
   responseData,
   responseFinished,
   responseStart,
+  settleForkedWork,
   type SimpleHandlerArgs,
 } from './collector-bridge-message-handler.test-helpers.ts'
 import * as CollectorBridgeMessageHandler from './collector-bridge-message-handler.ts'
@@ -243,14 +244,3 @@ const settleRequest = (
     yield* handler.ResponseData(responseData(id, JSON.stringify(person)))
     yield* handler.ResponseFinished(responseFinished(id))
   })
-
-/**
- * Let the forked `RequestCompletionCheck` daemon run to completion. It sleeps
- * nothing, so cooperative yields (not a clock tick) are what let it re-enter the
- * machine and drive `SniffingComplete`; bounded so a genuine hang still fails.
- */
-const settleForkedWork: Effect.Effect<void> = Effect.gen(function* () {
-  for (let i = 0; i < 20; i += 1) {
-    yield* Effect.yieldNow()
-  }
-})

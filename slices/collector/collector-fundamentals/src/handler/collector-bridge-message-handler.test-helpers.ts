@@ -111,6 +111,17 @@ const pageLoaded = (overrides: { url?: string; pageContentId?: string } = {}): P
   pageContentId: overrides.pageContentId ?? 'page-1',
 })
 
+/**
+ * Let a forked `RequestCompletionCheck` daemon run to completion. It sleeps
+ * nothing, so cooperative yields — not a clock tick — are what let it re-enter
+ * the machine and drive `SniffingComplete`; bounded so a genuine hang still fails.
+ */
+const settleForkedWork: Effect.Effect<void> = Effect.gen(function* () {
+  for (let i = 0; i < 20; i += 1) {
+    yield* Effect.yieldNow()
+  }
+})
+
 export {
   adapterLayer,
   cancelled,
@@ -124,6 +135,7 @@ export {
   responseStart,
   runHandlerPromise,
   runHandlerSync,
+  settleForkedWork,
 }
 export type {
   CancelledArg,
