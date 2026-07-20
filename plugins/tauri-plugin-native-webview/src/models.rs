@@ -258,6 +258,40 @@ pub struct DisposeResponse {
     pub request_caused_dispose: bool,
 }
 
+/// A wire payload tagged with the caller-named instance `id`, used **only by the
+/// mobile transport** (`mobile.rs`). Every native-webview command takes the same
+/// `id` the desktop backend uses; desktop keys each `NativeWebview` method by its
+/// separate `id` argument and never serialises it, but mobile's native side reads
+/// the id off the invoke payload — so `mobile.rs` wraps each request in this and
+/// the Swift `Decodable` / Kotlin `@InvokeArg` sides pick up a top-level `id`
+/// (routing to the matching per-id instance in their registries).
+///
+/// `inner` is `#[serde(flatten)]`ed, so the wrapped request's existing camelCase
+/// fields (e.g. [`OpenRequest`]'s `url` / `initScript` / `nativeWebviewEventChannel`)
+/// ride at the top level unchanged — the id is simply an added sibling key.
+/// Serialize-only (like [`OpenRequest`], which it can wrap — a [`Channel`] only
+/// serialises one way).
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct WithId<'a, T: Serialize> {
+    /// The caller-named instance id (e.g. `"sniffer"`, `"launch"`).
+    pub(crate) id: &'a str,
+    /// The wrapped request, flattened so its fields sit alongside `id`.
+    #[serde(flatten)]
+    pub(crate) inner: T,
+}
+
+/// A wire payload carrying **only** the instance `id` — the mobile transport for
+/// the argument-less commands (`show` / `hide` / `dispose`), which previously
+/// invoked the native side with `()`. See [`WithId`] for why mobile carries the
+/// id in the payload while desktop takes it as a function argument.
+#[derive(Clone, Copy, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct IdOnly<'a> {
+    /// The caller-named instance id (e.g. `"sniffer"`, `"launch"`).
+    pub(crate) id: &'a str,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -578,5 +612,38 @@ mod tests {
         let already: DisposeResponse =
             serde_json::from_str(r#"{"requestCausedDispose":false}"#).expect("de");
         assert!(!already.request_caused_dispose);
+    }
+
+    /// [`WithId`] flattens the caller-named `id` in as a sibling of the wrapped
+    /// request's own fields — the exact top-level shape the mobile native
+    /// `@InvokeArg` / `Decodable` sides parse (a top-level `id` plus the request
+    /// keys). Drift here would leave every mobile command routing to the wrong
+    /// (or no) per-id instance. Uses [`EvaluateJsRequest`] as a stand-in inner so
+    /// the assertion needs no `Channel`.
+    #[test]
+    fn with_id_flattens_id_alongside_inner_fields() {
+        let json = serde_json::to_string(&WithId {
+            id: "sniffer",
+            inner: EvaluateJsRequest {
+                script: "window.x = 1".to_owned(),
+            },
+        })
+        .expect("ser");
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("parse");
+        assert_eq!(parsed.get("id").and_then(|v| v.as_str()), Some("sniffer"));
+        // The wrapped request's fields ride at the top level, not nested.
+        assert_eq!(
+            parsed.get("script").and_then(|v| v.as_str()),
+            Some("window.x = 1")
+        );
+        assert!(parsed.get("inner").is_none());
+    }
+
+    /// [`IdOnly`] serialises to exactly `{ "id": … }` — the payload the mobile
+    /// `show` / `hide` / `dispose` commands send in place of the former `()`.
+    #[test]
+    fn id_only_serializes_just_the_id() {
+        let json = serde_json::to_string(&IdOnly { id: "launch" }).expect("ser");
+        assert_eq!(json, r#"{"id":"launch"}"#);
     }
 }

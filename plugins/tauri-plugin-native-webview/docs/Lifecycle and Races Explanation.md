@@ -13,12 +13,38 @@ of flags named identically across platforms where practical (`isVisible` /
 `is_visible`, `isDisposing` / `disposing`, the URL-fallback claim flags). The
 sections below name the concept; the per-platform field names follow it.
 
-Instancing: on **desktop** every command takes a caller-named instance id, and
-each instance is fully independent (its own window + child webviews, and its own
-copy of the lifecycle state below, held per-id in `desktop::PluginState`). The
-protocols in this document apply **per instance** — read "the window" / "the
-webview" as "this instance's". **Mobile** is single-instance and ignores the id
-([#411] tracks lifting that), so there the protocols apply to the one webview.
+Instancing: **every command takes a caller-named instance id on every platform**,
+and each instance is fully independent — its own webview(s), native chrome, event
+`Channel`, and its own copy of the lifecycle state below. Desktop holds this per-id
+in `desktop::PluginState` (one OS window per id); mobile holds it in a per-id map
+(`instances[id]`) in each native backend (Swift / Kotlin). The protocols in this
+document apply **per instance** — read "the window" / "the webview" as "this
+instance's". (Mobile per-id support landed in [#411]; it was previously
+single-instance, keyed only by the one webview.)
+
+The one platform difference is **presentation**, not instancing: desktop gives
+each instance its own OS window, so N instances can be _visible_ at once. A phone
+presents one full-screen native webview at a time, so mobile keeps at most one
+instance _visible_ and `show` performs a **foreground swap** (see below). Non-visible
+mobile instances stay alive and running (a hidden `sniffer` keeps scraping while
+`launch` is on screen), exactly like a hidden desktop window.
+
+## Foreground swap (mobile only)
+
+Desktop `show(id)` just reveals that id's window; other windows keep their own
+visibility. Mobile can only show one native webview at a time, so `show(id)`:
+
+1. If another instance is currently visible (tracked by `visibleId`), **hides it**
+   first — routing through the same hide path a user dismissal uses (emits that
+   instance's `Hidden`, arms its idle backstop), keeping it alive.
+2. Presents `id` and records it as the new `visibleId`.
+
+iOS sequences this through the outgoing sheet's animated-dismiss completion (UIKit
+rejects presenting while a dismiss animates) and claims the incoming instance's
+visibility synchronously so a re-entrant `show` during the animation no-ops rather
+than double-presenting; Android's `Dialog.hide()`/`show()` are synchronous, so the
+swap is a plain hide-then-show. Either way the outgoing instance is **hidden, not
+disposed** — the "hide vs. dispose" rule below still holds.
 
 [#411]: https://github.com/wildflowerhealthio/Wildflower/issues/411
 
@@ -106,9 +132,12 @@ A hidden instance is alive but bounded, so an untrusted third-party page can't r
 forever after dismissal:
 
 - **Mobile** arms a **5-minute idle** timer (`idleTeardownSeconds` /
-  `IDLE_TEARDOWN_MS`) whenever the instance is hidden-and-present; any activity
-  (an inbound bridge message, or any command) resets it, and `show`/`dispose`
-  cancel it. On fire it auto-`dispose`s.
+  `IDLE_TEARDOWN_MS`) **per instance** whenever that instance is hidden-and-present;
+  any activity on it (an inbound bridge message, or any command carrying its id)
+  resets its timer, and `show`/`dispose` cancel it. On fire it auto-`dispose`s that
+  instance. A `sniffer` swapped into the background by a `show("launch")` therefore
+  has ~5 minutes of idle grace before it's reclaimed — reset by its own scrape
+  traffic, so an actively-streaming hidden scrape stays alive.
 - **Desktop** has no idle timer; instead it caps **absolute lifetime at 15
   minutes** (`ABSOLUTE_TIMEOUT`) from each `open_url` (fresh build or reopen),
   hidden or not. A generation counter (`InstanceState::timeout_generation`) makes a

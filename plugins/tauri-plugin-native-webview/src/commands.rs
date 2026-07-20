@@ -9,8 +9,8 @@ use crate::{NativeWebviewExt, Result};
 
 /// JS entry point for [`crate::NativeWebviewExt::native_webview`]'s `open_url`.
 /// Invoked as
-/// `invoke('plugin:native-webview|open_url', { url, initScript, nativeWebviewEventChannel })`,
-/// where `nativeWebviewEventChannel` is a `new Channel<NativeWebviewEvent>()` the
+/// `invoke('plugin:native-webview|open_url', { id, url, initScript, nativeWebviewEventChannel })`,
+/// where `id` is the caller-named instance id and `nativeWebviewEventChannel` is a `new Channel<NativeWebviewEvent>()` the
 /// caller constructed to receive [`NativeWebviewEvent`] payloads. Tauri maps the
 /// camelCase args to their snake_case parameters.
 ///
@@ -45,7 +45,7 @@ pub(crate) async fn open_url<R: Runtime>(
 }
 
 /// JS entry point for `evaluate_js`. Invoked as
-/// `invoke('plugin:native-webview|evaluate_js', { script })`. The caller owns the
+/// `invoke('plugin:native-webview|evaluate_js', { id, script })`. The caller owns the
 /// content (e.g. the browser-sniffer host emits
 /// `window.__nativeWebviewReceive(JSON.stringify({ event, payload }))` to push
 /// bridge messages into the native webview). See [`EvaluateJsRequest`].
@@ -60,7 +60,7 @@ pub(crate) async fn evaluate_js<R: Runtime>(
 }
 
 /// JS entry point for `patch_window_text`. Invoked as
-/// `invoke('plugin:native-webview|patch_window_text', { title?, subtitle?, message? })`.
+/// `invoke('plugin:native-webview|patch_window_text', { id, title?, subtitle?, message? })`.
 /// See [`PatchWindowTextRequest`] for the per-slot claim/URL-fallback semantics.
 #[tauri::command]
 pub(crate) async fn patch_window_text<R: Runtime>(

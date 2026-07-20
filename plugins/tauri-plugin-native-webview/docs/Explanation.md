@@ -6,10 +6,13 @@ A Tauri v2 plugin that presents an external URL in a **native, JavaScript-inject
 web view** with **native chrome**, instead of a Tauri `WebviewWindow` with
 fake in-page chrome.
 
-It exposes six commands, with a backend per platform. **Visibility, content, and
-liveness are independent concerns**: `open_url` navigates without presenting,
-`show`/`hide` toggle visibility while keeping the webview alive, and only
-`dispose` tears it down.
+It exposes six commands, with a backend per platform. Every command takes a
+caller-named instance **`id`** (distinct ids get independent, concurrent
+instances on every platform — see "Desktop is different on purpose" for the
+per-platform presentation difference). **Visibility, content, and liveness are
+independent concerns**: `open_url` navigates without presenting, `show`/`hide`
+toggle visibility while keeping the webview alive, and only `dispose` tears it
+down.
 
 The cross-platform protocols the three backends share — the lifecycle, the
 dispose→open switch race, teardown backstops, the chrome URL-fallback, and the
@@ -73,9 +76,16 @@ Distinct ids get **independent, concurrent** instances (each its own window, chr
 height, nav history, event channel, and dispose/timeout state, kept in a per-id map
 in `PluginState`), so a background sniffer scrape (`sniffer`) and a launched app
 (`launch`) coexist without one navigating the other's webview away. The same id
-reuses its instance. Mobile stays single-instance — a phone presents one
-full-screen native webview at a time — and ignores the id ([#411] tracks lifting
-that).
+reuses its instance.
+
+**Mobile is also per-id** ([#411]): each native backend keeps an `instances[id]`
+map mirroring desktop's `PluginState`, so the same `sniffer` / `launch` ids get
+independent, concurrent instances there too. The one difference is presentation —
+a phone shows one full-screen native webview at a time, so at most one instance is
+_visible_ and `show(id)` performs a **foreground swap** (hiding whichever instance
+was visible, keeping it alive, before presenting `id`). Non-visible mobile
+instances stay alive and running, so a hidden `sniffer` keeps scraping while
+`launch` is shown. See the Lifecycle & Races doc's "Foreground swap".
 
 [#411]: https://github.com/wildflowerhealthio/Wildflower/issues/411
 
@@ -100,7 +110,7 @@ plugins/tauri-plugin-native-webview/
 │   ├── error.rs               — Error (PluginInvoke on mobile / Internal on desktop)
 │   ├── url_scheme.rs          — http(s)-only URL parse/validate, shared by both backends
 │   ├── desktop.rs             — parent Window + chrome/content child webviews, initialization_script on content, eval for evaluate_js/patch_window_text
-│   └── mobile.rs              — registers the Swift (iOS) / Kotlin (Android) plugin
+│   └── mobile.rs              — registers + forwards each command (keyed by instance id via WithId/IdOnly) to the Swift (iOS) / Kotlin (Android) plugin
 ├── ios/
 │   ├── Package.swift
 │   └── Sources/NativeWebviewPlugin.swift
@@ -119,8 +129,8 @@ plugins/tauri-plugin-native-webview/
       ▼
 [Rust] commands::open_url → NativeWebviewExt::open_url → platform backend (then show())
       │
-      ├─ iOS/Android: run_mobile_plugin("openUrl", { url, initScript, nativeWebviewEventChannel }) ; run_mobile_plugin("show", ())
-      │     → build native WebView hidden (native chrome), navigate; show() presents it
+      ├─ iOS/Android: run_mobile_plugin("openUrl", { id, url, initScript, nativeWebviewEventChannel }) ; run_mobile_plugin("show", { id })
+      │     → build native WebView hidden (native chrome) under instances[id], navigate; show() presents it (swapping out the visible instance)
       │     → caller's initScript injected at document start on ANY origin
       │     → page posts an opaque JSON string over the scoped native bridge
       │       (window.webkit.messageHandlers.nativeWebview / window.nativeWebview)

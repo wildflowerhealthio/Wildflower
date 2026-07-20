@@ -26,8 +26,9 @@
 //!     Ok(())
 //! });
 //! // Every call takes a caller-named instance id: distinct ids get independent,
-//! // concurrent native webviews (desktop); the same id reuses one. Mobile is
-//! // single-instance and ignores it (see #411).
+//! // concurrent native webviews on every platform; the same id reuses one. On
+//! // mobile only one instance is visible at a time, so `show` foreground-swaps
+//! // (hidden instances stay alive) — see the Lifecycle & Races doc.
 //! let id = "sniffer";
 //! app.native_webview().open_url(id, OpenRequest {
 //!     url: "https://example.test/".to_owned(),
