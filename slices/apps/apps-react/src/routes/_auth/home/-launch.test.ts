@@ -1,5 +1,5 @@
 import { HttpClientError, HttpClientRequest, HttpClientResponse } from '@effect/platform'
-import { Effect } from 'effect'
+import { Effect, Either } from 'effect'
 import { describe, expect, test } from 'vite-plus/test'
 
 import type { AppRegistration } from '../../../queries.ts'
@@ -82,7 +82,7 @@ describe('launchApp', () => {
 
       // Success is `null` (no banner); the launch rides `runAuthed` (not a raw
       // `fetch`), so the owner bearer is attached like the apps-list read.
-      expect(param).toBeNull()
+      expect(Either.isRight(param)).toBe(true)
       expect(stub.calls).toHaveLength(1)
       expect(stub.calls[0]?.effect).toBeDefined()
     })
@@ -96,7 +96,7 @@ describe('launchApp', () => {
 
       const param = await launchApp({ apiBaseUrl: TAURI_API_BASE, runAuthed: stub.runAuthed }, app)
 
-      expect(launchBannerError(param ?? undefined)).toEqual(body)
+      expect(launchBannerError(Either.isLeft(param) ? param.left : undefined)).toEqual(body)
     })
 
     test('encodes a 503 as a reachability message', async () => {
@@ -104,7 +104,7 @@ describe('launchApp', () => {
 
       const param = await launchApp({ apiBaseUrl: TAURI_API_BASE, runAuthed: stub.runAuthed }, app)
 
-      expect(launchBannerError(param ?? undefined)).toContain('reached')
+      expect(launchBannerError(Either.isLeft(param) ? param.left : undefined)).toContain('reached')
     })
 
     test('encodes an unrecognised failure as the generic launch message', async () => {
@@ -112,7 +112,9 @@ describe('launchApp', () => {
 
       const param = await launchApp({ apiBaseUrl: TAURI_API_BASE, runAuthed: stub.runAuthed }, app)
 
-      expect(launchBannerError(param ?? undefined)).toBe('That app couldn’t be launched.')
+      expect(launchBannerError(Either.isLeft(param) ? param.left : undefined)).toBe(
+        'That app couldn’t be launched.'
+      )
     })
 
     test('unwraps a FiberFailure before classifying', async () => {
@@ -127,7 +129,7 @@ describe('launchApp', () => {
 
       const param = await launchApp({ apiBaseUrl: TAURI_API_BASE, runAuthed: stub.runAuthed }, app)
 
-      expect(launchBannerError(param ?? undefined)).toEqual(body)
+      expect(launchBannerError(Either.isLeft(param) ? param.left : undefined)).toEqual(body)
     })
   })
 
@@ -139,7 +141,7 @@ describe('launchApp', () => {
 
       // The web arm rides the anchor navigation (cookie authenticates) — no bearer,
       // no client call, and no banner to raise from JS.
-      expect(param).toBeNull()
+      expect(Either.isRight(param)).toBe(true)
       expect(stub.calls).toHaveLength(0)
     })
   })

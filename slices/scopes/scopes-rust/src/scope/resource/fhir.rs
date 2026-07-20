@@ -60,8 +60,9 @@ impl FhirResourceScope {
 
     /// Does this (client-allowed) scope cover `other` (a requested scope)?
     /// Context coverage (`system` covers everything; `user`/`patient` only
-    /// themselves), wildcard-aware resource match, and a same-grammar
-    /// permission superset.
+    /// themselves), wildcard-aware resource match, and a permission-bit superset
+    /// (a v2 letter permission covers the equivalent v1 word, but not the reverse
+    /// — see [`Permission::contains`](super::Permission::contains)).
     pub(in crate::scope) fn covers(&self, other: &FhirResourceScope) -> bool {
         self.context.covers(other.context)
             && self.resource.covers(&other.resource)

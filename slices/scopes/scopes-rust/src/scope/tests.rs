@@ -157,11 +157,11 @@ fn covers_fhir_rules() {
     assert!(!covers(
         "patient/Observation.read",
         "patient/Observation.rs"
-    )); // grammars never cross
-    assert!(!covers(
+    )); // word grant ⊉ letter request
+    assert!(covers(
         "patient/Observation.cruds",
         "patient/Observation.read"
-    )); // ...either way
+    )); // ...but letter grant ⊇ equivalent word request
     assert!(covers("system/*.cruds", "user/Patient.r")); // context: system covers all
     assert!(!covers("user/*.cruds", "patient/Observation.r")); // context: user ⊉ patient
     assert!(!covers("patient/*.cruds", "user/Patient.r")); // context: patient ⊉ user

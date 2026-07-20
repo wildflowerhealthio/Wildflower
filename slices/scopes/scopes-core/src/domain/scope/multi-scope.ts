@@ -149,6 +149,38 @@ namespace MultiScope {
   ): boolean => configuration.within(grant[configuration.id], allowed[configuration.id])
 
   /**
+   * The v2 cruds interactions a v1 *word* grants — `read` ⇒ `r`,`s`; `write` ⇒ `c`,`u`,`d`. The
+   * one deliberate word→letter mapping, used only by the coverage bridge in
+   * {@link fhirV1ScopeWithin} — never in the editing algebra (see {@link BasePermission}'s
+   * no-cross-style-conversion invariant, which this coverage seam is the sole documented exception to).
+   */
+  const wordToCruds = (
+    word: Permission.ReadWrite.Interaction
+  ): readonly Permission.Cruds.Interaction[] => (word === 'read' ? ['r', 's'] : ['c', 'u', 'd'])
+
+  /**
+   * Whether a requested v1 *word* FHIR scope is within `allowed` — covered same-style by the
+   * fhirV1 partition, OR (the coverage-only cross-style bridge) each word's cruds-expansion
+   * ({@link wordToCruds}) fully covered by a v2 *letter* scope in the fhirV2 partition. This is the
+   * single place the same-style rule is crossed, and only for coverage: tokens are minted in the
+   * letter grammar, so a `patient/Observation.cruds` grant must cover a `patient/Observation.read`
+   * request. The reverse — a word grant covering a letter request — has NO bridge (fhirV2 requests
+   * are checked same-style only), mirroring scopes-rust's `Permission::contains` asymmetry.
+   * {@link BaseResourceScope.isSupersetOf} itself stays same-style: a cruds interaction is probed
+   * only against fhirV2 scopes, a word only against fhirV1.
+   */
+  const fhirV1ScopeWithin = (scope: ScopeOf<'fhirV1'>, allowed: MultiScope): boolean =>
+    scope.permission
+      .toArray()
+      .every(
+        (word) =>
+          allowed.fhirV1.some((a) => a.isSupersetOf(scope.context, scope.resource, word)) ||
+          wordToCruds(word).every((cruds) =>
+            allowed.fhirV2.some((a) => a.isSupersetOf(scope.context, scope.resource, cruds))
+          )
+      )
+
+  /**
    * A {@link MultiScope} over a flat scope list, partitioned by `.kind` (kinds not present
    * get an empty partition). The structured-form constructor shared by every bag of scopes;
    * {@link Grant.make} re-exports it.
@@ -181,11 +213,17 @@ namespace MultiScope {
 
   /**
    * Whether every resource partition of `grant` is within `allowed`'s (`spec.md §2`) — each
-   * recipe checks its own partition ({@link ResourceScopeConfiguration.within}). The flag-partition
-   * subset check is a caller concern ({@link ScopeRequest.isWithin}).
+   * recipe checks its own partition ({@link ResourceScopeConfiguration.within}), except the
+   * fhirV1 partition, whose requests additionally accept the coverage-only letter→word bridge
+   * ({@link fhirV1ScopeWithin}). The flag-partition subset check is a caller concern
+   * ({@link ScopeRequest.isWithin}).
    */
   export const within = (grant: MultiScope, allowed: MultiScope): boolean =>
-    resourceConfigurations.every((configuration) => withinPartition(configuration, grant, allowed))
+    resourceConfigurations.every((configuration) =>
+      configuration.id === 'fhirV1'
+        ? grant.fhirV1.every((scope) => fhirV1ScopeWithin(scope, allowed))
+        : withinPartition(configuration, grant, allowed)
+    )
 
   export const fhirScopes = (ms: MultiScope): readonly (FhirV1 | FhirV2)[] => [
     ...ms.fhirV1,

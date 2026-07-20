@@ -1,6 +1,6 @@
 import { HttpClientError } from '@effect/platform'
 import { AppsHttpApiClient } from 'apps-core/clients'
-import { Effect } from 'effect'
+import { Effect, Either } from 'effect'
 import { unwrapFiberFailure } from 'kitchen-sink'
 import { isInsufficientScopeBody } from 'shared-structures-core/http-api-definition'
 
@@ -66,11 +66,14 @@ const launchHref = (apiBaseUrl: string | undefined, id: string): string | undefi
  * route's search (so the banner names the missing scopes for a `403`), or `null`
  * on success / the web arm.
  */
-const launchApp = async (ctx: LaunchContext, app: AppRegistration): Promise<string | null> => {
+const launchApp = async (
+  ctx: LaunchContext,
+  app: AppRegistration
+): Promise<Either.Either<void, string>> => {
   // Web arm: the tile is a native `<a href>` the browser follows, and a failed
   // navigation is redirected server-side to `/home?launchError=…` — nothing for JS
   // to do or report, so `null`.
-  if (ctx.apiBaseUrl === undefined) return null
+  if (ctx.apiBaseUrl === undefined) return Either.right(undefined)
   return postLaunch(ctx.runAuthed, app.id)
 }
 
@@ -95,12 +98,15 @@ const launchErrorBody = (error: unknown): LaunchErrorBody => {
 }
 
 /** Run the loopback launch; `null` on success, else the encoded launch-error body. */
-const postLaunch = async (runAuthed: RunAuthed, id: string): Promise<string | null> => {
+const postLaunch = async (
+  runAuthed: RunAuthed,
+  id: string
+): Promise<Either.Either<void, string>> => {
   try {
     await runAuthed(Effect.flatMap(AppsHttpApiClient, (c) => c.apps.LaunchApp({ path: { id } })))
-    return null
+    return Either.right(undefined)
   } catch (error: unknown) {
-    return encodeLaunchError(launchErrorBody(error))
+    return Either.left(encodeLaunchError(launchErrorBody(error)))
   }
 }
 

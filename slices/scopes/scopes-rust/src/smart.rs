@@ -17,8 +17,9 @@ use crate::scope::Scope;
 /// and compared with [`Scope::covers`]). Coverage on the requested side is what
 /// lets an Owner narrow: an approved `patient/Observation.s` is still ⊆ a requested
 /// `patient/Observation.rs`, so it's granted where exact equality would drop it.
-/// Coverage is same-grammar and wildcard/context-aware (v1 words and v2 letters
-/// never cross-cover; known/unknown match exactly — see [`Scope::covers`]).
+/// Coverage is wildcard/context-aware and bridges grammars one way — a v2 letter
+/// scope covers the equivalent v1 word, but not the reverse (known/unknown match
+/// exactly — see [`Scope::covers`]).
 ///
 /// Every kept scope is rendered back to its own approved wire spelling (v1↔v2
 /// back-compat — see [`Permission`](crate::Permission)), de-duplicated by rendered
@@ -49,10 +50,10 @@ pub fn grantable_scopes(
 
 /// Does the client-allowed scope `allowed` cover the approved scope `requested`?
 /// Both sides are parsed to a [`Scope`] and compared with [`Scope::covers`]:
-/// resource scopes match by context + resource-type (wildcard-aware) +
-/// permission subset within the same v1/v2 grammar (a word-form allowed scope
-/// never covers a letter-form request, or vice versa); known and unknown scopes
-/// match exactly.
+/// resource scopes match by context + resource-type (wildcard-aware) + a
+/// permission-bit superset — a v2 letter-form `allowed` covers an equivalent v1
+/// word request, but a v1 word-form `allowed` never covers a letter request;
+/// known and unknown scopes match exactly.
 pub fn allowed_scope_covers(allowed: &str, requested: &str) -> bool {
     Scope::from(allowed).covers(&Scope::from(requested))
 }
@@ -180,16 +181,18 @@ mod tests {
     }
 
     #[test]
-    fn v1_and_v2_perms_never_cross_cover() {
-        // Same interaction bits, different grammars — coverage never bridges
-        // them (mirrors scopes-core's no-cross-style-conversion invariant).
+    fn v1_and_v2_perms_cross_cover_letter_over_word_only() {
+        // A v2 letter grant covers the equivalent v1 word request (same interaction
+        // bits) — the live case, since tokens are minted in the letter grammar.
+        assert!(allowed_scope_covers(
+            "patient/Patient.cruds",
+            "patient/Patient.read"
+        ));
+        // But a v1 word grant never covers a v2 letter request — a word-registered
+        // client can't reach into letter-grammar access.
         assert!(!allowed_scope_covers(
             "patient/Patient.read",
             "patient/Patient.rs"
-        ));
-        assert!(!allowed_scope_covers(
-            "patient/Patient.cruds",
-            "patient/Patient.read"
         ));
         assert!(!allowed_scope_covers(
             "patient/Patient.*",
@@ -273,7 +276,8 @@ mod tests {
             "patient/Observation.rs".to_string(),
         ];
         let requested = s(&["patient/Observation.read", "patient/Observation.rs"]);
-        // Coverage is per-grammar, so allowing both forms takes both spellings.
+        // Each approval round-trips to its own wire form, so both spellings are
+        // emitted (deduplicated by rendered form); `patient/*.cruds` covers both.
         let allowed = s(&["patient/*.cruds", "patient/*.*"]);
         let granted = grantable_scopes(approved, &requested, &allowed);
         assert_eq!(
@@ -333,26 +337,32 @@ mod tests {
     }
 
     #[test]
-    fn grantable_never_crosses_v1_and_v2_grammars() {
-        // `Scope::covers` never bridges word and letter grammars, so a v1
-        // `.read` request does not make a v2 `.r` approval grantable, nor the
-        // reverse. Verified against `Scope::covers` semantics (see the
-        // `v1_and_v2_perms_never_cross_cover` test in `scope`).
-        let allowed = s(&["patient/*.cruds", "patient/*.*"]);
+    fn grantable_bridges_letter_over_word_asymmetrically() {
+        // `Scope::covers` bridges grammars one way (letter covers word, not the
+        // reverse — see the `v1_and_v2_perms_cross_cover_letter_over_word_only`
+        // test in `scope`).
+        let allowed = s(&["patient/*.cruds"]);
 
-        let v1_requested_v2_approved = grantable_scopes(
-            vec!["patient/Observation.r".to_string()],
+        // A v1 *word* request does not make a v2 *letter* approval grantable — a
+        // word grant never reaches into letter-grammar access.
+        let word_requested_letter_approved = grantable_scopes(
+            vec!["patient/Observation.rs".to_string()],
             &s(&["patient/Observation.read"]),
             &allowed,
         );
-        assert!(v1_requested_v2_approved.is_empty());
+        assert!(word_requested_letter_approved.is_empty());
 
-        let v2_requested_v1_approved = grantable_scopes(
+        // But a v2 *letter* request covers the equivalent v1 *word* approval, and
+        // the approved word spelling is returned verbatim.
+        let letter_requested_word_approved = grantable_scopes(
             vec!["patient/Observation.read".to_string()],
-            &s(&["patient/Observation.r"]),
+            &s(&["patient/Observation.rs"]),
             &allowed,
         );
-        assert!(v2_requested_v1_approved.is_empty());
+        assert_eq!(
+            letter_requested_word_approved,
+            vec!["patient/Observation.read".to_string()]
+        );
     }
 
     #[test]

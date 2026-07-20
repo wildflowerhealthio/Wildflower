@@ -17,6 +17,7 @@ import { useEffect, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { AsyncErrorView, ErrorBanner, PageHeader } from 'react-tundraish'
 
+import { Either } from 'effect'
 import {
   appsListQueryOptions,
   useAppsListQuery,
@@ -62,16 +63,21 @@ const AppsHomeScreen = (): JSX.Element => {
     <AppsHomeBody
       apps={apps}
       launchError={launchError}
-      onLaunchResult={(param) => {
+      onLaunchResult={(launchResult) => {
         // Only the loopback (Tauri) arm reaches here — the web tile is a bare
         // `<a href>` with no `onClick` (see `-tiles.tsx`), so this never races a
         // full-page navigation. Reflect the outcome into the `?launchError` param:
         // a failure shows the banner; a later success clears a stale one.
-        if (param !== null) {
-          void navigate({ search: { launchError: param } })
-        } else if (launchError !== undefined) {
-          void navigate({ search: {} })
-        }
+        Either.match(launchResult, {
+          onLeft: (errorBody) => {
+            void navigate({ search: { launchError: errorBody } })
+          },
+          onRight: () => {
+            if (launchError !== undefined) {
+              void navigate({ search: {} })
+            }
+          },
+        })
       }}
     />
   )
@@ -86,7 +92,7 @@ interface AppsHomeBodyProps {
    * failure, `null` on success — so the route can reflect it into the search param.
    * Only ever invoked on the Tauri arm (the web tile launches by anchor navigation).
    */
-  readonly onLaunchResult?: (param: string | null) => void
+  readonly onLaunchResult?: (result: Either.Either<void, string>) => void
 }
 
 const AppsHomeBody = ({ apps, launchError, onLaunchResult }: AppsHomeBodyProps): JSX.Element => {
