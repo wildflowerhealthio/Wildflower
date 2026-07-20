@@ -604,10 +604,14 @@ mod tests {
         assert!(handle.0.lock().expect("handle mutex").is_empty());
     }
 
-    /// A forwarded (browser-navigation) under-scoped SMART launch renders a plain
-    /// `text/plain` 403 — not the JSON body the SPA decodes.
+    /// A forwarded browser `GET` under-scoped SMART launch bounces to the home
+    /// banner (`303` → `/home?launchError=…`) carrying the **structured**
+    /// `InsufficientScope` body — `missingScopes` and all — so the banner names the
+    /// gap and a future "request permissions" action can read the exact scopes. (The
+    /// old browser body was `text/plain`, which the SPA couldn't decode — it fell
+    /// through to a generic "couldn't be launched" message.)
     #[tokio::test]
-    async fn launch_smart_app_under_scoped_forwarded_is_plain_403() {
+    async fn get_launch_forwarded_under_scoped_smart_redirects_home_with_scopes() {
         let st = state_with_launch_scopes(
             Arc::new(RecordingStubWebviewHandle::default()) as Arc<dyn OnDeviceWebviewHandle>,
             FixedLaunchScopes::requiring("patient/Observation.r"),
@@ -615,15 +619,16 @@ mod tests {
         seed_smart_cloud(&st.store, "smart-app");
         let res = send_raw_scoped(
             &st,
-            post_forwarded("/apps/smart-app"),
+            get_forwarded("/apps/smart-app"),
             Some("wildflower/launch"),
         )
         .await;
-        assert_eq!(res.status(), StatusCode::FORBIDDEN);
-        let content_type = res.headers().get("content-type").unwrap().to_str().unwrap();
-        assert!(
-            content_type.starts_with("text/plain"),
-            "the browser arm gets a plain 403, not JSON: {content_type}",
+        assert_eq!(res.status(), StatusCode::SEE_OTHER);
+        let body = launch_error_body(res.headers().get("location").unwrap().to_str().unwrap());
+        assert_eq!(body["error"], "InsufficientScope");
+        assert_eq!(
+            body["missingScopes"],
+            serde_json::json!(["patient/Observation.r"])
         );
     }
 

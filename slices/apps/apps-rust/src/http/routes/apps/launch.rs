@@ -26,9 +26,11 @@
 //!   4. Per-app SMART gate: a **SMART** app additionally requires the caller's
 //!      grant to cover its OAuth client's requested *resource* scopes (the OIDC /
 //!      launch-context scopes are the app's own OAuth concern, filtered out). A
-//!      shortfall `403`s before any side-effect — JSON for the loopback/SPA arm, a
-//!      plain-text response for a forwarded browser navigation. A non-SMART app
-//!      needs only the umbrella.
+//!      shortfall `403`s with the shared `InsufficientScope` JSON body naming the
+//!      missing scopes, before any side-effect — the loopback/SPA arm decodes it
+//!      directly, and a forwarded browser `GET` has it base64'd into `?launchError`
+//!      (see [`redirect_browser_launch_errors`]) and decoded by the home banner. A
+//!      non-SMART app needs only the umbrella.
 //!   5. Resolve the launch target by the app's kind (System → compiled-in source,
 //!      Self-Hosted → loopback/subdomain, Cloud → the stored template). Fails
 //!      `503 LaunchUnavailable` when no *reachable* target exists.
@@ -45,7 +47,7 @@
 use std::sync::Arc;
 
 use axum::extract::{Path, Request, State};
-use axum::http::header::{CONTENT_TYPE, LOCATION, SET_COOKIE};
+use axum::http::header::{LOCATION, SET_COOKIE};
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
@@ -53,7 +55,6 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine as _;
 
 use scope_capabilities_rust::{InsufficientScopeBody, Scoped};
-use scopes_rust::Scope;
 use shared_structures_rust::served_origin::{request_provenance, RequestProvenance};
 
 use crate::domain::{
@@ -216,13 +217,19 @@ async fn launch(
 
     // Per-app SMART gate (module docs, step 4): a SMART app additionally requires
     // the caller's grant to cover its OAuth client's resource scopes (OIDC /
-    // launch-context scopes are filtered out). A shortfall bails with a `403` shaped
-    // for the caller's arm — JSON for the loopback/SPA caller, a plain-text response
-    // for a forwarded browser navigation — before any side-effect. A non-SMART app
-    // needs only the umbrella (short-circuited inside).
+    // launch-context scopes are filtered out). A shortfall bails before any
+    // side-effect with the shared `403 InsufficientScope` JSON body naming the gap —
+    // the same body for both arms: the loopback/SPA caller decodes it directly, and a
+    // forwarded browser `GET` has it base64'd into `?launchError` by
+    // `redirect_browser_launch_errors` and decoded by the home banner. Keeping it
+    // structured (not a flattened message) lets the banner name the scopes and a
+    // future "request permissions" action read them. A non-SMART app needs only the
+    // umbrella (short-circuited inside).
     let missing = launcher.missing_launch_scopes(&registration)?;
     if !missing.is_empty() {
-        return Ok(insufficient_launch_scope(missing, &provenance));
+        return Err(AppsError::InsufficientScope {
+            missing_scopes: scopes_rust::render_scopes(&missing),
+        });
     }
 
     // Resolve before dispatching: an unreachable target bails here with
@@ -247,31 +254,6 @@ async fn launch(
             };
             redirect(resolved.target_url, set_cookies)
         }
-    }
-}
-
-/// Render an under-scoped SMART launch as a `403` shaped for the caller's arm: a
-/// loopback/SPA caller decodes the JSON `InsufficientScope` body (the same shape
-/// the admin surface returns, via [`AppsError::InsufficientScope`]), while a
-/// forwarded browser navigation gets a plain `text/plain` `403` rather than a JSON
-/// body it would render as page text. (The umbrella-scope failure is handled
-/// earlier by the `Scoped` extractor and always renders as JSON — a coarse gate an
-/// authenticated launch-capable caller doesn't hit.)
-fn insufficient_launch_scope(missing: Vec<Scope>, provenance: &RequestProvenance) -> Response {
-    let missing_scopes = scopes_rust::render_scopes(&missing);
-    match provenance {
-        RequestProvenance::Loopback => {
-            AppsError::InsufficientScope { missing_scopes }.into_response()
-        }
-        RequestProvenance::Forwarded { .. } => (
-            StatusCode::FORBIDDEN,
-            [(CONTENT_TYPE, "text/plain; charset=utf-8")],
-            format!(
-                "Insufficient scope to launch this app. Missing: {}",
-                missing_scopes.join(" ")
-            ),
-        )
-            .into_response(),
     }
 }
 
