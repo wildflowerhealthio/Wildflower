@@ -1,7 +1,8 @@
 /*
  * The read-only authorization-failure surface (a 403 InsufficientScope). Neutral
  * container chrome — the danger cue comes from the StatusBadge — with the missing
- * scopes listed as a friendly label plus the canonical scope string in mono.
+ * scopes listed as plain-language phrases ("read Accounts"); the canonical scope
+ * string rides a hover tooltip, and a non-resource scope falls back to mono code.
  */
 
 .surface {
@@ -41,14 +42,12 @@
   flex-wrap: wrap;
   align-items: baseline;
   gap: var(--space-2);
-}
-
-.label {
   font-weight: var(--font-weight-3);
   color: var(--color-foreground);
 }
 
 .code {
+  font-weight: var(--font-weight-1);
   font-family: var(--font-mono);
   font-size: var(--font-size-1);
   color: var(--color-neutral-4);

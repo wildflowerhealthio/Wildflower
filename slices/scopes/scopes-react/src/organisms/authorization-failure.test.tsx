@@ -10,18 +10,23 @@ afterEach(() => {
 })
 
 describe('AuthorizationFailure', () => {
-  it('names every missing scope by its canonical string', () => {
-    render(<AuthorizationFailure missingScopes={['wildflower/Grant.d', 'system/*.rs']} />)
-    expect(screen.getByText('wildflower/Grant.d')).toBeTruthy()
-    expect(screen.getByText('system/*.rs')).toBeTruthy()
+  it('reads each resource scope as a plain-language phrase', () => {
+    // `wildflower/Accounts.r` → "read Accounts" (verb from `permission.label()`,
+    // record type from `resource.pluralLabel()`); `wildflower/Grant.cd` folds the
+    // two verbs the same way the scope form's statements do.
+    render(
+      <AuthorizationFailure missingScopes={['wildflower/Accounts.r', 'wildflower/Grant.cd']} />
+    )
+    expect(screen.getByText('read Accounts')).toBeTruthy()
+    expect(screen.getByText('create and delete Grants')).toBeTruthy()
   })
 
-  it('shows a friendly resource label for a resource scope', () => {
-    // `wildflower/Grant.d` parses to the Grant admin resource, whose
-    // `singularLabel()` is "Grant" — shown alongside the raw scope.
+  it('keeps the canonical scope available on a hover tooltip', () => {
+    // The raw `context/Resource.perms` string is demoted to the row's `title`, so
+    // it never fronts as the primary text but stays reachable.
     render(<AuthorizationFailure missingScopes={['wildflower/Grant.d']} />)
-    expect(screen.getByText('Grant')).toBeTruthy()
-    expect(screen.getByText('wildflower/Grant.d')).toBeTruthy()
+    expect(screen.getByText('delete Grants')).toBeTruthy()
+    expect(screen.getByTitle('wildflower/Grant.d')).toBeTruthy()
   })
 
   it('renders a generic message and no list when no scopes are named', () => {

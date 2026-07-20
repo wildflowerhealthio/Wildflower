@@ -30,14 +30,25 @@ interface AuthorizationFailureProps {
 }
 
 /**
- * A friendly resource label for a scope string (e.g. `wildflower/Grant.d` →
- * "Grant"), or `null` when the string isn't a resource scope (a bare known
- * scope like `openid`, or an unparseable one) — the raw scope is always shown
- * regardless, so an unlabelled scope still reads unambiguously.
+ * A plain-language phrase for a missing scope — the verb(s) it grants and the
+ * record type they act on, e.g. `wildflower/Accounts.r` → "read Accounts",
+ * `wildflower/Grant.cd` → "create and delete Grants". Reuses the domain's own
+ * fluency (the scope form's plain statements read the same `permission.label()`
+ * words and `resource.pluralLabel()` names), so this surface never shows a raw
+ * `context/Resource.perms` string as its primary text.
+ *
+ * `null` when the string has no (verb, resource) shape — a bare known flag
+ * (`openid`), the `wildflower/launch` umbrella, or an unparseable token — where
+ * the raw scope is shown as the fallback instead.
  */
-const resourceLabelFor = (raw: string): string | null => {
+const fluentScope = (raw: string): string | null => {
   const parsed = Scope.parse(raw)
-  return Scope.ResourceScope.isResourceScope(parsed) ? parsed.resource.singularLabel() : null
+  if (!Scope.ResourceScope.isResourceScope(parsed)) return null
+  // `permission.label()` is the same sentence-joined verb list the scope form's
+  // statements render ("Read", "Create and Delete"); lower-cased to sit mid-line
+  // after "permission to". `pluralLabel()` matches the form's running-sentence
+  // resource wording ("Accounts", "Grants").
+  return `${parsed.permission.label().toLowerCase()} ${parsed.resource.pluralLabel()}`
 }
 
 /**
@@ -70,15 +81,21 @@ const AuthorizationFailure = ({
       ) : (
         <>
           <p className={cn(styles['body'], 'text-body-3')}>
-            It needs {scopes.length === 1 ? 'a permission' : 'permissions'} your session doesn’t
-            have:
+            Your session doesn’t have permission to:
           </p>
           <ul className={styles['scopes']}>
             {scopes.map((scope) => {
-              const label = resourceLabelFor(scope)
-              return (
+              const phrase = fluentScope(scope)
+              // A resource scope reads as plain language ("read Accounts"); the
+              // canonical scope stays available on hover for anyone who needs it.
+              // A non-resource scope (a bare flag / umbrella / unparseable token)
+              // has no fluent form, so the raw string is the fallback.
+              return phrase !== null ? (
+                <li key={scope} className={styles['scope']} title={scope}>
+                  {phrase}
+                </li>
+              ) : (
                 <li key={scope} className={styles['scope']}>
-                  {label !== null ? <span className={styles['label']}>{label}</span> : null}
                   <code className={styles['code']}>{scope}</code>
                 </li>
               )
