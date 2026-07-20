@@ -2,7 +2,7 @@
 //! `bundle`. The body is `multipart/form-data` (`name`, optional `subtitle`, and
 //! the `bundle` file); form fields cross the wire as text and the file rides its own
 //! part, so the handler reads the [`Multipart`] parts by hand. It only shapes the
-//! parts and hands them to the [`AppsCreatorCap`] capability's `self_hosted` install
+//! parts and hands them to the [`AppsCreatorCap`] capability's `create_self_hosted_app`
 //! — the staged install (extract → move → insert → start, cleaning up on failure)
 //! lives in the capability + its installer, not here. Returns the created
 //! [`SelfHostedAppDetail`].
@@ -101,6 +101,8 @@ pub(crate) async fn handle_create_self_hosted_app(
     // Everything below the wire shaping — slugify, stage, synthesize, insert, start,
     // cleanup, and reserving the host's own loopback port — lives in the capability
     // + its installer.
-    let (registration, config) = creator.self_hosted(name, subtitle, bundle).await?;
+    let (registration, config) = creator
+        .create_self_hosted_app(name, subtitle, bundle)
+        .await?;
     Ok(Json(SelfHostedAppDetail::from((&registration, &config))))
 }

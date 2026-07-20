@@ -43,6 +43,6 @@ pub(crate) async fn handle_delete_app(
     // The capability owns the removability verdict (404 unknown / 409 protected),
     // the store delete, and the self-hosted teardown it brackets around it (stop
     // before the row is freed, discard the folder after).
-    deleter.delete(&id)?;
+    deleter.delete_by_id(&id)?;
     Ok(StatusCode::NO_CONTENT)
 }

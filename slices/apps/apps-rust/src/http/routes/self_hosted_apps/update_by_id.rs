@@ -47,6 +47,6 @@ pub(crate) async fn handle_update_self_hosted_app(
     Path(id): Path<String>,
     Json(body): Json<SelfHostedAppBody>,
 ) -> Result<Json<SelfHostedAppDetail>, AppsError> {
-    let (registration, config) = editor.self_hosted(&id, body.launch_path)?;
+    let (registration, config) = editor.update_self_hosted_app(&id, body.launch_path)?;
     Ok(Json(SelfHostedAppDetail::from((&registration, &config))))
 }

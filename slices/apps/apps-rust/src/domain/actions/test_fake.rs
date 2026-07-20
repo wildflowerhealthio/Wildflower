@@ -1,6 +1,7 @@
 //! The in-memory [`AppsStore`] fake shared by the scope-gated
-//! [`capabilities`](crate::domain::capabilities) unit tests and the residual helper
-//! tests (`get_app`, `slugify`, …), plus the small data builders they seed it with.
+//! [`capabilities`](crate::domain::capabilities) unit tests and the residual
+//! validator helper tests (`slugify`, …), plus the small data builders they seed it
+//! with.
 //! Modelling the real primitive semantics — `insert_cloud_app` reports a duplicate id
 //! as [`CloudInsertError::IdTaken`], `find_app` / `replace_*` report an absent id as
 //! `None`, `delete_app` reports a miss as `false`, `replace_placements` reports a

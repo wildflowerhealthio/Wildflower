@@ -15,9 +15,10 @@
 //! handlers acquire complete the ports-and-adapters seam; each capability owns its
 //! operation's store logic (synthesizing the `(registration, configuration)` a
 //! create/replace persists, gating on kind + seeded, mapping the store's primitive
-//! signals onto [`AppsError`]), and the [`actions`] module holds the cross-kind read
-//! ([`actions::get_app`](actions::get_app)) and write-side validators they share.
-//! Mirrors collector.
+//! signals onto [`AppsError`]) — including the cross-kind `(registration,
+//! configuration)` read (a private `get_app` helper in [`capabilities`], with the
+//! launch route inlining the same `find_app` + `NotFound` shape) — while the
+//! [`actions`] module holds the write-side validators they share. Mirrors collector.
 
 pub(crate) mod actions;
 mod app_configuration;

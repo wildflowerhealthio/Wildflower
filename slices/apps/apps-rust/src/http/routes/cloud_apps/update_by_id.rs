@@ -38,7 +38,7 @@ pub(crate) async fn handle_update_cloud_app(
 ) -> Result<Json<CloudAppDetail>, AppsError> {
     // The capability resolves the kind (a non-cloud id is a 404) before validating
     // any field, then validates (400) and writes the registration + payload in-txn.
-    let (registration, config) = editor.cloud(
+    let (registration, config) = editor.update_cloud_app(
         &id,
         CloudAppPayload {
             name: body.name,

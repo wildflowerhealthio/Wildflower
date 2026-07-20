@@ -38,7 +38,7 @@ pub(crate) async fn handle_create_cloud_app(
     // synthesizes the registration + configuration, inserts (mapping a server-minted
     // id collision to a logged 500), and reads the pair back in-txn — exactly the
     // `GET /cloud-apps/{id}` shape with no second read.
-    let (registration, config) = creator.cloud(CloudAppPayload {
+    let (registration, config) = creator.create_cloud_app(CloudAppPayload {
         name: body.name,
         subtitle: body.subtitle,
         url: body.url,

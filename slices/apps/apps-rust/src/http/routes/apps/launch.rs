@@ -52,7 +52,7 @@ use scopes_rust::Scope;
 use shared_structures_rust::served_origin::{request_provenance, RequestProvenance};
 
 use crate::domain::{
-    actions, AppConfiguration, AppRegistration, AppsError, CloudAppConfiguration, LaunchParams,
+    AppConfiguration, AppRegistration, AppsError, AppsStore, CloudAppConfiguration, LaunchParams,
     SelfHostedAppConfiguration, SystemAppConfiguration,
 };
 use crate::http::errors::{AppNotFoundBody, LaunchUnavailableBody};
@@ -145,7 +145,12 @@ async fn launch(
     // 404 before resolving — an unknown id is never an availability failure. The
     // store hands back the `(registration, configuration)` pair; both halves feed
     // the kind-dispatched resolve below (no "combined app" — the tuple is the app).
-    let (registration, configuration) = actions::get_app(&state.store, &id)?;
+    // Inlined `find_app` + `NotFound` (the shape the admin capabilities share via
+    // their private `get_app` helper) — this is the read's one launch-side caller.
+    let (registration, configuration) = state
+        .store
+        .find_app(&id)?
+        .ok_or_else(|| AppsError::NotFound { id: id.clone() })?;
 
     // Per-app SMART gate (module docs, step 3): a SMART app additionally requires
     // the caller's grant to cover its OAuth client's scopes. A shortfall bails with

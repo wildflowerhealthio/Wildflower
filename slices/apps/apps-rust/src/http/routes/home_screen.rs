@@ -5,8 +5,9 @@
 //! the array *is* its new display `position`. The dense-`0..n` /
 //! single-writer / drag-reorder-bug rationale is canonical on the
 //! [`AppsStore::replace_placements`](crate::domain::AppsStore::replace_placements)
-//! port method (the [`AppsEditor::home_screen`](crate::domain::capabilities) call
-//! this handler makes maps its non-permutation `None` onto `400 InvalidHomeScreen`).
+//! port method (the [`AppsEditor::update_home_screen`](crate::domain::capabilities)
+//! call this handler makes maps its non-permutation `None` onto
+//! `400 InvalidHomeScreen`).
 //! The per-kind `PUT /cloud-apps/{id}` etc. edit an app's *content* — homescreen
 //! curation lives here.
 
@@ -51,10 +52,10 @@ pub(crate) async fn handle_replace_home_screen(
     Json(body): Json<Vec<HomeScreenEntry>>,
 ) -> Result<Json<Vec<AppRegistration>>, AppsError> {
     // The home screen *is* the whole registry, reordered — so the body must be an
-    // exact permutation of the current ids. The `home_screen` capability's store
-    // validates that against the live registry **and** renumbers in one transaction
+    // exact permutation of the current ids. The `update_home_screen` capability
+    // method validates that against the live registry **and** renumbers in one transaction
     // (the dense-`0..n` guarantee can't be split across two lock acquisitions), and
     // maps a non-permutation onto `400 InvalidHomeScreen`.
     let entries: Vec<(String, bool)> = body.into_iter().map(|e| (e.id, e.on_homescreen)).collect();
-    Ok(Json(editor.home_screen(&entries)?))
+    Ok(Json(editor.update_home_screen(&entries)?))
 }
