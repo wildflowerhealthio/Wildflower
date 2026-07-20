@@ -1,15 +1,6 @@
 import { redirect, type AnyRedirect } from '@tanstack/react-router'
-import {
-  Cause,
-  Data,
-  Duration,
-  Effect,
-  Option,
-  pipe,
-  Runtime,
-  Stream,
-  type Subscribable,
-} from 'effect'
+import { Data, Duration, Effect, Option, pipe, Stream, type Subscribable } from 'effect'
+import { unwrapFiberFailure } from 'kitchen-sink'
 
 import { type AuthState, isAuthed } from 'react-kitchen-sink'
 
@@ -25,35 +16,6 @@ class TokenTimeout extends Data.TaggedError('TokenTimeout')<Record<string, never
 
 /** How long the embedded entry waits for the host's bearer token. */
 const EMBEDDED_TOKEN_TIMEOUT = Duration.seconds(5)
-
-/**
- * Reach through any `FiberFailure`-style wrapping to the underlying
- * raised value. Returns `caught` unchanged when nothing to unwrap.
- *
- * Checks both the failure channel (`Cause.failureOption` — what a
- * typed `Effect.fail(...)` rides) and the defect channel
- * (`Cause.dieOption` — what `Effect.die(...)` / unhandled throws ride)
- * so a `TokenTimeout` raised either way reaches the same branch
- * downstream. Defensive against future refactors / scope-interrupt
- * edge cases — today `embeddedAuthReadyEffect` raises `TokenTimeout`
- * on the failure channel and `webAuthReadyEffect` raises `AnyRedirect`
- * on the failure channel, so the typed-failure path is the common one,
- * but the defect path stays covered.
- *
- * `FiberFailure` stores its cause under a unique-symbol-keyed property
- * (`Runtime.FiberFailureCauseId`), not a string-named field, so the
- * `Runtime.isFiberFailure` guard is the only safe way to detect and
- * unwrap it from outside the Effect runtime.
- */
-const unwrapFiberFailure = (caught: unknown): unknown => {
-  if (!Runtime.isFiberFailure(caught)) return caught
-  const cause = caught[Runtime.FiberFailureCauseId]
-  const failure = Cause.failureOption(cause)
-  if (failure._tag === 'Some') return failure.value
-  const die = Cause.dieOption(cause)
-  if (die._tag === 'Some') return die.value
-  return caught
-}
 
 /**
  * Run a `Promise<void>`-producing thunk and unwrap any
@@ -205,6 +167,5 @@ export {
   makeAwaitEmbeddedAuthReady,
   makeAwaitWebAuthReady,
   TokenTimeout,
-  unwrapFiberFailure,
   webAuthReadyEffect,
 }
