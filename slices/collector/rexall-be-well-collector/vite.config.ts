@@ -8,15 +8,21 @@ export default defineConfig({
   pack: {
     dts: { tsgo: true },
     exports: false,
-    platform: 'neutral',
+    // The package now ships a React config form alongside the pure dialect
+    // schemas, so it packs for the browser (like fhir-r4-client-collector).
+    platform: 'browser',
     entry: { index: 'src/index.ts' },
   },
   test: {
+    ...base.test,
+    // jsdom for the config-form component test; the schema-equal matcher setup
+    // is still loaded for the carebook bundle tests.
+    environment: 'jsdom',
     setupFiles: [
       path.join(path.dirname(fileURLToPath(import.meta.url)), '/vitest.setupSchemaEqual.ts'),
     ],
     testTimeout: 120_000,
-    include: ['src/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
     exclude: ['**/node_modules/**', '**/dist/**'],
   },
 })

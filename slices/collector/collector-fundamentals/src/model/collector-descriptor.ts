@@ -68,16 +68,21 @@ import type * as ScrapingPlan from './scraping-plan.ts'
  *   data (never failing, so one bad resource can't fail the run). The runner
  *   owns only *when* to write and how to fold the failures into the summary.
  *
- * Derived guard (added by {@link make}, not authored):
+ * Derived guards (added by {@link make}, not authored) — both exist so the
+ * registry can dispatch over a heterogeneous descriptor list without an unsafe
+ * cast: the per-descriptor `Config` narrowing happens here, where the concrete
+ * type is still in scope, rather than in a loop over the union-typed list (where
+ * TS collapses each element to the union and the schema's invariance defeats a
+ * plain guard):
  * - `resourcePersistenceRuntimeIfMatches`: returns the config's existential
  *   {@link ResourcePersistenceRuntime} (plan + persistResources) when `config`
  *   is one of *its* configs (validated via `configSchema`), else `undefined`.
- *   It exists so the registry can dispatch over a heterogeneous descriptor list
- *   without an unsafe cast: the per-descriptor `Config` narrowing happens here,
- *   where the concrete type is still in scope, rather than in a loop over the
- *   union-typed list (where TS collapses each element to the union and the
- *   schema's invariance defeats a plain guard). The runner can then drive a
- *   matched config without naming `Resources`.
+ *   The runner can then drive a matched config without naming `Resources`.
+ * - `listSubtitleIfMatches`: returns `display.listSubtitle(config)` when `config`
+ *   is one of *its* configs, else `undefined`. Lets a UI resolve a stored
+ *   config's list subtitle without calling the config-parameterized
+ *   `display.listSubtitle` on a union-typed descriptor (whose parameter collapses
+ *   to `never`).
  */
 interface CollectorDescriptor<Config extends { readonly _tag: string }, Resources, R> {
   readonly tag: Config['_tag']
@@ -91,6 +96,7 @@ interface CollectorDescriptor<Config extends { readonly _tag: string }, Resource
   readonly resourcePersistenceRuntimeIfMatches: (
     config: unknown
   ) => ResourcePersistenceRuntime<R> | undefined
+  readonly listSubtitleIfMatches: (config: unknown) => string | undefined
 }
 
 /**
@@ -159,6 +165,11 @@ const make = <Config extends { readonly _tag: string }, Resources, R>(
           persistResources: spec.persistResources,
         })
       : undefined
+  // Same narrowing rationale as above: `isConfig` narrows to the concrete
+  // `Config` here, so `display.listSubtitle` is callable — a union-typed
+  // descriptor's `listSubtitle` parameter collapses to `never`.
+  const listSubtitleIfMatches = (config: unknown): string | undefined =>
+    isConfig(config) ? spec.display.listSubtitle(config) : undefined
   // Freeze the descriptor's own data in place for its runtime-immutable
   // guarantee, but keep the precisely-typed references rather than
   // `deepFreeze`'s `DeepReadonly<Config>` return — for a generic
@@ -174,6 +185,7 @@ const make = <Config extends { readonly _tag: string }, Resources, R>(
     display: spec.display,
     persistResources: spec.persistResources,
     resourcePersistenceRuntimeIfMatches,
+    listSubtitleIfMatches,
   })
 }
 

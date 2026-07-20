@@ -27,8 +27,9 @@ before adding one.
   `CollectorDescriptor` per import site: config schema + arbitraries, scraping
   plan, entities, display strings, persist sink, and the collector's own
   `ConfigForm`. Depends on `collector-fundamentals` only — never on
-  `collector-react`. (`rexall-be-well-collector` is currently a
-  [dialect home](./rexall-be-well-collector/AGENTS.md), not yet a descriptor.)
+  `collector-react`. (`fhir-r4-client-collector` and `rexall-be-well-collector`
+  are the two today; the latter also carries the Rexall
+  [carebook dialect](./rexall-be-well-collector/AGENTS.md) it decodes with.)
 - **`collector-react`** — the browser UI adapter: the generic account
   create/edit/list screens, the closed `tag → ConfigForm` registry
   (`src/forms/config-form.tsx`), the remotes queries/mutations, and the sync

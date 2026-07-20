@@ -985,6 +985,9 @@ importers:
       react-tundraish:
         specifier: workspace:*
         version: link:../../../global/react-tundraish
+      rexall-be-well-collector:
+        specifier: workspace:*
+        version: link:../rexall-be-well-collector
       shared-structures-react:
         specifier: workspace:*
         version: link:../../shared-structures/shared-structures-react
@@ -1033,6 +1036,9 @@ importers:
       kitchen-sink:
         specifier: workspace:*
         version: link:../../../global/kitchen-sink
+      rexall-be-well-collector:
+        specifier: workspace:*
+        version: link:../rexall-be-well-collector
       shared-structures-core:
         specifier: workspace:*
         version: link:../../shared-structures/shared-structures-core
@@ -1108,12 +1114,33 @@ importers:
 
   slices/collector/rexall-be-well-collector:
     devDependencies:
+      '@testing-library/dom':
+        specifier: 'catalog:'
+        version: 10.4.1
+      '@testing-library/react':
+        specifier: 'catalog:'
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@testing-library/user-event':
+        specifier: 'catalog:'
+        version: 14.6.1(@testing-library/dom@10.4.1)
       '@types/node':
         specifier: ^26
         version: 26.1.0
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.17
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.2.3(@types/react@19.2.17)
       '@typescript/native-preview':
         specifier: 'catalog:'
         version: 7.0.0-dev.20260707.2
+      browser-sniffer-core:
+        specifier: workspace:*
+        version: link:../../browser-sniffer/browser-sniffer-core
+      collector-fundamentals:
+        specifier: workspace:*
+        version: link:../collector-fundamentals
       effect:
         specifier: 3.21.4
         version: 3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
@@ -1126,9 +1153,24 @@ importers:
       fhir-stu3-as-r4:
         specifier: workspace:*
         version: link:../../emr/fhir-stu3-as-r4
+      jsdom:
+        specifier: 'catalog:'
+        version: 29.1.1
       kitchen-sink:
         specifier: workspace:*
         version: link:../../../global/kitchen-sink
+      react:
+        specifier: 'catalog:'
+        version: 19.2.7
+      react-dom:
+        specifier: 19.2.7
+        version: 19.2.7(react@19.2.7)
+      react-kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../global/react-kitchen-sink
+      react-tundraish:
+        specifier: workspace:*
+        version: link:../../../global/react-tundraish
       typescript:
         specifier: 5.9.3
         version: 5.9.3

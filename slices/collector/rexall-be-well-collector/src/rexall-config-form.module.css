@@ -1,0 +1,17 @@
+/*
+ * The Rexall config form's own field layout. `.field` / `.field__label` mirror
+ * the chrome the generic account screen renders around the form (its
+ * `account-form.module.css`), so the two fields this form owns (Email /
+ * Password) line up with the injected name field. The screen's chrome-only
+ * classes (`.type-badge`, `.button-row`) stay with the screen.
+ */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.field__label {
+  color: var(--color-neutral-4);
+}

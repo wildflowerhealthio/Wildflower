@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { descriptors, descriptorForConfig } from 'collector-registry/registry'
+import { descriptors, listSubtitleForConfig } from 'collector-registry/registry'
 import { useState, type JSX } from 'react'
 import { cn, unwrapCause } from 'react-kitchen-sink'
 import {
@@ -86,8 +86,7 @@ function AccountListBody({ remotes }: AccountListBodyProps): JSX.Element {
         <ItemList
           title="Accounts"
           items={remotes.map((remote) => {
-            const subtitle =
-              descriptorForConfig(remote.config)?.display.listSubtitle(remote.config) ?? ''
+            const subtitle = listSubtitleForConfig(remote.config)
             return {
               id: remote.id,
               title: remote.name,
@@ -142,29 +141,17 @@ function AccountListBody({ remotes }: AccountListBodyProps): JSX.Element {
 
       <ItemList
         title="Connect Accounts From"
-        items={[
-          ...descriptors.map((descriptor) => ({
-            id: descriptor.tag,
-            title: descriptor.display.title,
-            subtitle: descriptor.display.description,
-            onClick: (): void => {
-              void navigate({
-                to: '/collector/account/new',
-                search: { tag: descriptor.tag, prefill: {} },
-              })
-            },
-          })),
-          // Hardcoded placeholder until #339 registers the Rexall collector,
-          // at which point it becomes one of the mapped `descriptors` rows above.
-          {
-            id: 'rexall-pharmacy',
-            title: 'Rexall Pharmacy',
-            subtitle: 'Prescription and pharmacy records',
-            badge: 'Coming Soon',
-            disabled: true,
-            onClick: (): void => undefined,
+        items={descriptors.map((descriptor) => ({
+          id: descriptor.tag,
+          title: descriptor.display.title,
+          subtitle: descriptor.display.description,
+          onClick: (): void => {
+            void navigate({
+              to: '/collector/account/new',
+              search: { tag: descriptor.tag, prefill: {} },
+            })
           },
-        ]}
+        }))}
       />
 
       {remotes.length === 0 ? (

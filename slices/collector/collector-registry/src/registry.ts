@@ -1,6 +1,7 @@
 import type { CollectorDescriptor } from 'collector-fundamentals/model'
 import { Schema } from 'effect'
 import { FhirR4CollectorDescriptor } from 'fhir-r4-client-collector'
+import { RexallCollectorDescriptor } from 'rexall-be-well-collector'
 
 /**
  * The ordered, **closed, compile-time** list of every collector.
@@ -18,7 +19,7 @@ import { FhirR4CollectorDescriptor } from 'fhir-r4-client-collector'
  * package and the `collector-react` form registration), see
  * `slices/collector/docs/Adding a Collector How-To.md`.
  */
-const descriptors = [FhirR4CollectorDescriptor] as const
+const descriptors = [FhirR4CollectorDescriptor, RexallCollectorDescriptor] as const
 
 type AnyCollectorDescriptor = (typeof descriptors)[number]
 
@@ -108,6 +109,26 @@ const resourcePersistenceRuntimeForConfig = (
 }
 
 /**
+ * The per-instance list subtitle for a stored config, dispatched to the owning
+ * descriptor's `display.listSubtitle` with the config narrowed to that
+ * descriptor's concrete type. Mirrors {@link resourcePersistenceRuntimeForConfig}:
+ * each descriptor's `listSubtitleIfMatches` does the narrowing where its concrete
+ * `Config` is in scope, so callers avoid the union-invariance trap of calling the
+ * config-parameterized `descriptorForConfig(config)?.display.listSubtitle(config)`
+ * directly (whose parameter collapses to `never` once more than one collector is
+ * registered). Returns `''` for a config no descriptor owns (an untyped path).
+ */
+const listSubtitleForConfig = (config: CollectorConfig): string => {
+  for (const descriptor of descriptors) {
+    const subtitle = descriptor.listSubtitleIfMatches(config)
+    if (subtitle !== undefined) {
+      return subtitle
+    }
+  }
+  return ''
+}
+
+/**
  * Look up the descriptor that owns a `_tag`, for stage-3 consumers that
  * need a collector's `display` / `defaultConfig` / schema. Returns
  * `undefined` for an unregistered tag.
@@ -127,6 +148,7 @@ export {
   CollectorConfig,
   CollectorTag,
   resourcePersistenceRuntimeForConfig,
+  listSubtitleForConfig,
   descriptorForTag,
   descriptorForConfig,
 }
