@@ -11,6 +11,7 @@ import {
   CloudAppBodySchema,
   CloudAppDetailSchema,
   HomeScreenSchema,
+  InsufficientScopeSchema,
   InvalidFieldSchema,
   InvalidHomeScreenSchema,
   KindSchema,
@@ -312,6 +313,28 @@ describe('AppNotEditableSchema', () => {
   it('rejects any other error literal', () => {
     expectLeftToEqual(
       Schema.decodeUnknownEither(AppNotEditableSchema)({ error: 'AppNotFound', id: 'x' }),
+      expect.objectContaining({ _tag: 'ParseError' })
+    )
+  })
+})
+
+describe('InsufficientScopeSchema', () => {
+  it('accepts the declared 403 payload', () => {
+    expectRightToEqual(
+      Schema.decodeUnknownEither(InsufficientScopeSchema)({
+        error: 'InsufficientScope',
+        missingScopes: ['wildflower/Apps.c'],
+      }),
+      { error: 'InsufficientScope', missingScopes: ['wildflower/Apps.c'] }
+    )
+  })
+
+  it('rejects any other error literal', () => {
+    expectLeftToEqual(
+      Schema.decodeUnknownEither(InsufficientScopeSchema)({
+        error: 'AppNotFound',
+        missingScopes: [],
+      }),
       expect.objectContaining({ _tag: 'ParseError' })
     )
   })

@@ -35,8 +35,8 @@ use std::sync::Arc;
 use anyhow::Context;
 use chrono::{Duration, Utc};
 use scopes_rust::{
-    ContextLevel, FhirResourceScope, Permission, ResourceType, Scope, WildflowerResourceScope,
-    WildflowerResourceType,
+    ContextLevel, FhirResourceScope, KnownScope, Permission, ResourceType, Scope,
+    WildflowerResourceScope, WildflowerResourceType,
 };
 use token_revocation_rust::RevocationStore;
 use tokio::sync::watch;
@@ -65,8 +65,9 @@ pub use cookies::{owner_session_cookies, rescope_owner_session_set_cookies};
 /// tests pin the set until then. See [`domain::capabilities`].
 pub use domain::capabilities::grantable_admin_scopes;
 pub use http::{
-    ensure_bearer_header, is_pre_auth_public_path, layer_router_with_gatekeeper_auth_gating,
-    layer_router_with_loopback_peer_gating, openapi_spec, verify_owner_bearer, GatekeeperState,
+    client_allowed_scopes, ensure_bearer_header, is_pre_auth_public_path,
+    layer_router_with_gatekeeper_auth_gating, layer_router_with_loopback_peer_gating, openapi_spec,
+    verify_owner_bearer, GatekeeperState,
 };
 
 /// `client_id` of the host application's first-party OAuth client. The host
@@ -111,10 +112,12 @@ pub const WILDFLOWER_WIDEST_SCOPES: &[Scope] = &[
 /// standalone/test builds that don't thread one.
 ///
 /// Spelled out independently of [`WILDFLOWER_WIDEST_SCOPES`] (the owner-defining
-/// set) even though the two currently coincide: the host's *grant* and the
-/// *owner definition* are distinct concepts that may diverge — e.g. the host
-/// could later be granted `offline_access` without that scope widening the
-/// `/access/*` owner gate.
+/// set) even though the FHIR + Wildflower wildcards coincide: the host's *grant*
+/// and the *owner definition* are distinct concepts that diverge here — the grant
+/// additionally carries `wildflower/launch`, an owner *capability* (not part of the
+/// owner *identity* [`WILDFLOWER_WIDEST_SCOPES`]). As a *known* scope it is NOT
+/// covered by the `wildflower/*` resource wildcard, so the apps launch surface
+/// would `403` the owner without it granted explicitly here.
 pub const WILDFLOWER_LOCAL_GRANTED_SCOPES: &[Scope] = &[
     Scope::FhirResource(FhirResourceScope {
         context: ContextLevel::System,
@@ -125,6 +128,8 @@ pub const WILDFLOWER_LOCAL_GRANTED_SCOPES: &[Scope] = &[
         resource: WildflowerResourceType::Wildcard,
         permission: Permission::ALL,
     }),
+    // The app-launch umbrella capability — granted, not part of the owner identity.
+    Scope::Known(KnownScope::AnyScopedAppLaunch),
 ];
 
 /// The default host granted-scope wire strings — the rendered

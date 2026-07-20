@@ -5,8 +5,9 @@ import * as Schemas from './schemas.ts'
 
 /**
  * Read + launch surface — `ListApps` + `LaunchApp`. Carries no TS-side
- * middleware; the canonical host owner-gates `ListApps` and mounts `LaunchApp`
- * ungated. See {@link Apps} and `docs/Apps/Explanation.md` §"Auth posture".
+ * middleware; the canonical host scope-gates `ListApps` on `wildflower/Apps.r` and
+ * mounts `LaunchApp` behind the `wildflower/launch` scope gate. See {@link Apps}
+ * and `docs/Apps/Explanation.md` §"Auth posture".
  */
 const AppsApi = HttpApi.make('AppsApi').add(Apps.httpApiGroup)
 

@@ -33,6 +33,10 @@
 //!    [`domain::AppsError`] (the failure vocabulary), and [`domain::AppUrl`] (the
 //!    write-side URL validator). The per-kind editor wire shapes live in
 //!    `http::wire_representations`, built from the pair.
+//!  - [`live_bindings`] — the router state ([`AppsState`](live_bindings::state::AppsState))
+//!    at the crate root, and the per-capability `FixedScopeCapability` bindings
+//!    that name the concrete store + installer; kept out of [`http`] so `domain/`
+//!    can build capabilities from it without depending on the transport layer.
 //!  - [`db`] — the `SQLite` store adapter ([`db::SqliteAppsStore`], the
 //!    implementation of the [`domain::AppsStore`] port) over the app-wide diesel
 //!    r2d2 pool (`persistence_rust::DieselPool`), migrated with embedded diesel
@@ -47,8 +51,9 @@
 //! ## Launch / tunnel seam
 //!
 //! `POST /apps/{id}` resolves a launch target and dispatches on the *request's*
-//! provenance (loopback vs. forwarded) — see the launch handler module. A
-//! loopback launch is owner-gated through [`http::OwnerAuth`]. A
+//! provenance (loopback vs. forwarded) — see the launch handler module. The launch
+//! surface is scope-gated on the `wildflower/launch` umbrella (a SMART app
+//! additionally requires the caller's grant to cover its client scopes). A
 //! `requires_tunnel` (cloud) launch resolves through the shared
 //! [`TunnelService`](shared_structures_rust::tunnel_service::TunnelService)
 //! contract, keeping apps-rust decoupled from tunnel-rust.
@@ -59,6 +64,12 @@ pub mod domain;
 pub mod http;
 mod id_utils;
 mod install;
+// The shared runtime state lives at the crate root (not under `http`) so the
+// scope-gated `domain/` capabilities can be built from it (via the per-capability
+// `FixedScopeCapability` bindings that live beside the state) without `domain/`
+// depending on `crate::http`. Mirrors collector's / gatekeeper's `crate::live_bindings`
+// layout.
+pub(crate) mod live_bindings;
 mod seed;
 mod self_hosted_apps_service;
 
@@ -81,7 +92,8 @@ pub use db::SqliteAppsStore;
 // Re-exported so the host can name the self-hosted catalogue pair at the
 // `setup_apps` call site.
 pub use domain::{AppRegistration, SelfHostedAppConfiguration};
-pub use http::{openapi_spec, AppsState};
+pub use http::openapi_spec;
+pub use live_bindings::state::AppsState;
 
 pub use seed::sync_vendored_self_hosted_apps;
 pub use self_hosted_apps_service::SelfHostedAppsService;
@@ -89,28 +101,32 @@ pub use shared_structures_rust::OnDeviceWebviewHandle;
 
 pub mod ports;
 
-use ports::{LaunchCookies, OwnerAuth};
+use ports::{AppLaunchScopes, LaunchCookies};
 
 /// Result of [`setup_apps`]: the two routers a host mounts (gated + launch),
 /// plus the shared state and the self-hosted catalogue.
 ///
-/// The host wraps [`Self::gated_router`] with its bearer gate and mounts
-/// [`Self::launch_router`] under only its network (loopback-peer) gate — the
-/// launch handler owner-gates the loopback popup internally, while a forwarded
-/// launch rides the front trust boundary (the bearer gate can't exempt the
-/// parameterized launch path, so the two are split). [`Self::self_hosted_apps_at_start`]
-/// is the catalogue the host iterates to bind a loopback listener per self-hosted
-/// app at startup (both migration-seeded and previously-uploaded rows).
+/// The host wraps **both** [`Self::gated_router`] and [`Self::launch_router`] with
+/// its bearer gate (the one that inserts the caller's scope claims): the admin
+/// surface is gated on `wildflower/Apps.*` and the launch surface on the
+/// `wildflower/launch` umbrella (plus a per-app SMART check in the handler), so the
+/// two are kept separate only so the host can size the launch body limit / exempts
+/// differently. [`Self::self_hosted_apps_at_start`] is the catalogue the host
+/// iterates to bind a loopback listener per self-hosted app at startup (both
+/// migration-seeded and previously-uploaded rows).
 pub struct Apps {
-    /// The owner-gated routes: `GET /apps`, `DELETE /apps/{id}`, `PUT /home-screen`,
-    /// and the per-kind `/cloud-apps` / `/self-hosted-apps` / `/system-apps`
-    /// resources. The host wraps this with its bearer gate.
+    /// The admin routes: `GET /apps`, `DELETE /apps/{id}`, `PUT /home-screen`, and
+    /// the per-kind `/cloud-apps` / `/self-hosted-apps` / `/system-apps` resources —
+    /// each scope-gated on `wildflower/Apps.*`. The host wraps this with its bearer
+    /// gate (which inserts the scope claims the `Scoped<…>` capabilities read).
     pub gated_router: Router,
-    /// The launch routes `GET`/`POST /apps/{id}`, mounted ungated at the router
-    /// level (network-gated by the host; owner-gated in-handler for loopback).
+    /// The launch routes `GET`/`POST /apps/{id}`, scope-gated on the
+    /// `wildflower/launch` umbrella (plus the per-app SMART check). The host wraps
+    /// this with the same bearer gate so the `Scoped<AppLauncher>` extractor has
+    /// claims.
     pub launch_router: Router,
-    /// Shared handler state (the store, the loopback base URL, the owner-auth
-    /// gate, the tunnel, the on-device webview seam).
+    /// Shared handler state (the store, the loopback base URL, the tunnel, the
+    /// on-device webview seam, and the launch-cookie / launch-scope ports).
     pub state: Arc<AppsState>,
     /// The self-hosted catalogue the host binds loopback listeners for — each app's
     /// `(registration, configuration)` pair.
@@ -132,8 +148,7 @@ impl Apps {
 /// (via `persistence_rust::open_pool`) on the same shared database file its
 /// rusqlite connection serves the other slices from, and passes a clone in — along
 /// with the `tunnel` service a `requires_tunnel` launch resolves its origin
-/// through, the `owner_auth` gate the loopback launch uses, and the
-/// `webview_handle` the on-device launch side-effect runs through.
+/// through and the `webview_handle` the on-device launch side-effect runs through.
 ///
 /// `webview_handle` is the host seam for the on-device launch side-effect: a
 /// loopback launch opens the resolved URL through it and `204`s. The Tauri host
@@ -148,6 +163,10 @@ impl Apps {
 /// forwarded self-hosted app's public host (see [`LaunchCookies`]). The Tauri host
 /// passes the gatekeeper cookie builder; others pass [`NoLaunchCookies`].
 ///
+/// `launch_scopes` is the host seam resolving a SMART app's required launch scopes
+/// for the per-app launch check (see [`AppLaunchScopes`]). The Tauri host passes a
+/// gatekeeper-backed adapter; others pass [`NoAppLaunchScopes`](ports::NoAppLaunchScopes).
+///
 /// # Errors
 ///
 /// Returns an error if the store can't be migrated.
@@ -156,9 +175,9 @@ pub fn setup_apps(
     config: &AppsConfig,
     tunnel: Arc<dyn TunnelService>,
     webview_handle: Arc<dyn OnDeviceWebviewHandle>,
-    owner_auth: Arc<dyn OwnerAuth>,
     self_hosted: Arc<SelfHostedAppsService>,
     launch_cookies: Arc<dyn LaunchCookies>,
+    launch_scopes: Arc<dyn AppLaunchScopes>,
 ) -> anyhow::Result<Apps> {
     // `SqliteAppsStore::new` runs the embedded migrations — building the
     // `app_registrations` table and its three configuration tables. The one store
@@ -173,11 +192,11 @@ pub fn setup_apps(
     let state = Arc::new(AppsState::new(
         store,
         config.loopback_base_url.clone(),
-        owner_auth,
         tunnel,
         webview_handle,
         self_hosted,
         launch_cookies,
+        launch_scopes,
     ));
 
     Ok(Apps {

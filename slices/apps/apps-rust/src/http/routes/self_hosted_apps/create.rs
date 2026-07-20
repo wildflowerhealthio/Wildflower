@@ -2,24 +2,23 @@
 //! `bundle`. The body is `multipart/form-data` (`name`, optional `subtitle`, and
 //! the `bundle` file); form fields cross the wire as text and the file rides its own
 //! part, so the handler reads the [`Multipart`] parts by hand. It only shapes the
-//! parts into a [`SelfHostedAppPayload`] and hands them (with the service, which is
-//! the [`SelfHostedInstaller`](crate::domain::SelfHostedInstaller)) to
-//! [`install_self_hosted_app`](actions::install_self_hosted_app) — the staged install
-//! (extract → move → insert → start, cleaning up on failure) lives in the action +
-//! its installer, not here. Returns the created [`SelfHostedAppDetail`].
-
-use std::sync::Arc;
+//! parts and hands them to the [`LiveAppsCreator`] capability's `create_self_hosted_app`
+//! — the staged install (extract → move → insert → start, cleaning up on failure)
+//! lives in the capability + its installer, not here. Returns the created
+//! [`SelfHostedAppDetail`].
 
 use axum::body::Bytes;
-use axum::extract::{Multipart, State};
+use axum::extract::Multipart;
 use axum::Json;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-use crate::domain::{actions, actions::SelfHostedAppPayload, AppsError};
+use scope_capabilities_rust::{InsufficientScopeBody, Scoped};
+
+use crate::domain::AppsError;
 use crate::http::errors::InvalidFieldBody;
-use crate::http::state::AppsState;
 use crate::http::wire_representations::SelfHostedAppDetail;
+use crate::live_bindings::LiveAppsCreator;
 
 /// Documents the `multipart/form-data` body for OpenAPI. The handler reads the
 /// parts manually via [`Multipart`], so this is never deserialized directly (the
@@ -38,8 +37,8 @@ pub(crate) struct CreateSelfHostedAppMultipart {
 }
 
 /// `POST /self-hosted-apps` — install a self-hosted app from the uploaded `bundle`.
-/// Owner-gated by the host; the body limit is raised for this route (see the
-/// router wiring).
+/// Scope-gated on `wildflower/Apps.c` through [`Scoped<LiveAppsCreator>`]; the body
+/// limit is raised for this route (see the router wiring).
 #[utoipa::path(
     post,
     tag = "Self-hosted apps",
@@ -48,10 +47,11 @@ pub(crate) struct CreateSelfHostedAppMultipart {
     responses(
         (status = 200, description = "The installed self-hosted app detail", body = SelfHostedAppDetail),
         (status = 400, description = "Empty/unusable or already-taken name (`InvalidName`) or a bad bundle (`InvalidZip`)", body = InvalidFieldBody),
+        (status = 403, description = "The caller's token doesn't cover `wildflower/Apps.c`", body = InsufficientScopeBody),
     ),
 )]
 pub(crate) async fn handle_create_self_hosted_app(
-    State(state): State<Arc<AppsState>>,
+    creator: Scoped<LiveAppsCreator>,
     mut multipart: Multipart,
 ) -> Result<Json<SelfHostedAppDetail>, AppsError> {
     let mut name: Option<String> = None;
@@ -99,15 +99,10 @@ pub(crate) async fn handle_create_self_hosted_app(
     })?;
 
     // Everything below the wire shaping — slugify, stage, synthesize, insert, start,
-    // cleanup — lives in the action + its installer. The service *is* the installer.
-    let payload = SelfHostedAppPayload {
-        name,
-        subtitle,
-        bundle,
-        // The host's own loopback port is reserved so an upload never binds over it.
-        reserved_ports: state.loopback_base_url.port().into_iter().collect(),
-    };
-    let (registration, config) =
-        actions::install_self_hosted_app(&state.store, state.self_hosted.as_ref(), payload).await?;
+    // cleanup, and reserving the host's own loopback port — lives in the capability
+    // + its installer.
+    let (registration, config) = creator
+        .create_self_hosted_app(name, subtitle, bundle)
+        .await?;
     Ok(Json(SelfHostedAppDetail::from((&registration, &config))))
 }

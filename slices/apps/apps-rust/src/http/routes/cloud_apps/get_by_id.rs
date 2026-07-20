@@ -3,17 +3,18 @@
 //! has the id (an unknown id, or one of another kind — the kind mismatch can't be
 //! expressed as a `409` any more).
 
-use std::sync::Arc;
-
-use axum::extract::{Path, State};
+use axum::extract::Path;
 use axum::Json;
 
-use crate::domain::{actions, AppsError};
-use crate::http::errors::AppNotFoundBody;
-use crate::http::state::AppsState;
-use crate::http::wire_representations::CloudAppDetail;
+use scope_capabilities_rust::{InsufficientScopeBody, Scoped};
 
-/// `GET /cloud-apps/{id}` — the cloud editor detail. Owner-gated by the host.
+use crate::domain::AppsError;
+use crate::http::errors::AppNotFoundBody;
+use crate::http::wire_representations::CloudAppDetail;
+use crate::live_bindings::LiveAppsReader;
+
+/// `GET /cloud-apps/{id}` — the cloud editor detail. Scope-gated on
+/// `wildflower/Apps.r` through [`Scoped<LiveAppsReader>`].
 #[utoipa::path(
     get,
     tag = "Cloud apps",
@@ -21,13 +22,14 @@ use crate::http::wire_representations::CloudAppDetail;
     params(("id" = String, Path, description = "App id")),
     responses(
         (status = 200, description = "The cloud app detail", body = CloudAppDetail),
+        (status = 403, description = "The caller's token doesn't cover `wildflower/Apps.r`", body = InsufficientScopeBody),
         (status = 404, description = "No cloud app has this id", body = AppNotFoundBody),
     ),
 )]
 pub(crate) async fn handle_get_cloud_app(
-    State(state): State<Arc<AppsState>>,
+    reader: Scoped<LiveAppsReader>,
     Path(id): Path<String>,
 ) -> Result<Json<CloudAppDetail>, AppsError> {
-    let (registration, config) = actions::get_cloud_app(&state.store, &id)?;
+    let (registration, config) = reader.cloud(&id)?;
     Ok(Json(CloudAppDetail::from((&registration, &config))))
 }

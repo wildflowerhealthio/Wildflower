@@ -8,6 +8,7 @@ import {
   CloudAppDetailSchema,
   CreateSelfHostedAppBodySchema,
   HomeScreenSchema,
+  InsufficientScopeSchema,
   InvalidFieldSchema,
   InvalidHomeScreenSchema,
   SelfHostedAppBodySchema,
@@ -19,7 +20,9 @@ import {
  * Owner-only mutations + per-kind detail reads on the apps catalogue. The group
  * itself carries no middleware — `wildflower-server` (or any other composing app)
  * applies `RequireAuthMiddleware` when adding `AppsAdminApi` to its root
- * `HttpApi`, so slice cores stay free of auth dependencies.
+ * `HttpApi`, so slice cores stay free of auth dependencies. Each endpoint is
+ * additionally scope-gated on the Rust side (`wildflower/Apps.{r,c,u,d}`), which
+ * surfaces as a `403 InsufficientScope` when the caller's token doesn't cover it.
  *
  * Per-kind detail/create/replace live on their own root resources (`/cloud-apps`,
  * `/self-hosted-apps`, `/system-apps`), each returning the flat per-kind detail
@@ -35,11 +38,13 @@ const httpApiGroup = HttpApiGroup.make('apps-admin', { topLevel: false })
       .setPayload(CloudAppBodySchema)
       .addSuccess(CloudAppDetailSchema)
       .addError(InvalidFieldSchema, { status: 400 })
+      .addError(InsufficientScopeSchema, { status: 403 })
   )
   .add(
     HttpApiEndpoint.get('GetCloudApp', '/cloud-apps/:id')
       .setPath(AppIdPathSchema)
       .addSuccess(CloudAppDetailSchema)
+      .addError(InsufficientScopeSchema, { status: 403 })
       .addError(AppNotFoundSchema, { status: 404 })
   )
   .add(
@@ -49,6 +54,7 @@ const httpApiGroup = HttpApiGroup.make('apps-admin', { topLevel: false })
       .setPayload(CloudAppBodySchema)
       .addSuccess(CloudAppDetailSchema)
       .addError(InvalidFieldSchema, { status: 400 })
+      .addError(InsufficientScopeSchema, { status: 403 })
       .addError(AppNotFoundSchema, { status: 404 })
   )
   // --- Self-hosted apps ---------------------------------------------------
@@ -60,11 +66,13 @@ const httpApiGroup = HttpApiGroup.make('apps-admin', { topLevel: false })
       .setPayload(CreateSelfHostedAppBodySchema)
       .addSuccess(SelfHostedAppDetailSchema)
       .addError(InvalidFieldSchema, { status: 400 })
+      .addError(InsufficientScopeSchema, { status: 403 })
   )
   .add(
     HttpApiEndpoint.get('GetSelfHostedApp', '/self-hosted-apps/:id')
       .setPath(AppIdPathSchema)
       .addSuccess(SelfHostedAppDetailSchema)
+      .addError(InsufficientScopeSchema, { status: 403 })
       .addError(AppNotFoundSchema, { status: 404 })
   )
   .add(
@@ -75,6 +83,7 @@ const httpApiGroup = HttpApiGroup.make('apps-admin', { topLevel: false })
       .setPayload(SelfHostedAppBodySchema)
       .addSuccess(SelfHostedAppDetailSchema)
       .addError(InvalidFieldSchema, { status: 400 })
+      .addError(InsufficientScopeSchema, { status: 403 })
       .addError(AppNotFoundSchema, { status: 404 })
       .addError(AppNotEditableSchema, { status: 409 })
   )
@@ -83,6 +92,7 @@ const httpApiGroup = HttpApiGroup.make('apps-admin', { topLevel: false })
     HttpApiEndpoint.get('GetSystemApp', '/system-apps/:id')
       .setPath(AppIdPathSchema)
       .addSuccess(SystemAppDetailSchema)
+      .addError(InsufficientScopeSchema, { status: 403 })
       .addError(AppNotFoundSchema, { status: 404 })
   )
   // --- Unified delete + homescreen ---------------------------------------
@@ -92,6 +102,7 @@ const httpApiGroup = HttpApiGroup.make('apps-admin', { topLevel: false })
     HttpApiEndpoint.del('DeleteApp', '/apps/:id')
       .setPath(AppIdPathSchema)
       .addSuccess(HttpApiSchema.NoContent)
+      .addError(InsufficientScopeSchema, { status: 403 })
       .addError(AppNotFoundSchema, { status: 404 })
       .addError(AppNotEditableSchema, { status: 409 })
   )
@@ -102,6 +113,7 @@ const httpApiGroup = HttpApiGroup.make('apps-admin', { topLevel: false })
       .setPayload(HomeScreenSchema)
       .addSuccess(AppListSchema)
       .addError(InvalidHomeScreenSchema, { status: 400 })
+      .addError(InsufficientScopeSchema, { status: 403 })
   )
 
 export { httpApiGroup }

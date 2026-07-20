@@ -6,7 +6,7 @@
 //! and the store produces `Infrastructure` without leaking its diesel error types
 //! up to the routes.
 //!
-//! The first eight variants are **semantic**, client-facing outcomes that are
+//! Every variant but the last is a **semantic**, client-facing outcome that is
 //! part of the wire contract; [`Infrastructure`](AppsError::Infrastructure) is an
 //! opaque infrastructure failure (a pool checkout / query error) answered as an
 //! empty 500 — the operator sees the detail, the client doesn't.
@@ -20,8 +20,6 @@ pub enum AppsError {
     /// seeded self-hosted app. (A per-kind path given an id of another kind is a
     /// `404` instead — the kind mismatch can't be expressed.)
     NotEditable { id: String },
-    /// 401 — a loopback launch whose caller didn't pass the owner-auth gate.
-    Unauthorized,
     /// 400 — the submitted URL (or self-hosted launch path) failed the write-side
     /// validator.
     InvalidUrl { message: String },
@@ -36,6 +34,12 @@ pub enum AppsError {
     /// 400 — the `PUT /home-screen` body wasn't an exact permutation of the
     /// registry (missing / duplicated / unknown id).
     InvalidHomeScreen { message: String },
+    /// 403 — the caller authenticated, but their token doesn't cover the
+    /// scope(s) the operation requires (a scope-gated admin surface, or a
+    /// per-app SMART launch check). `missing_scopes` are the rendered scopes the
+    /// caller must additionally hold; the HTTP layer delegates to the shared
+    /// [`scope_capabilities_rust::insufficient_scope`] body.
+    InsufficientScope { missing_scopes: Vec<String> },
     /// An infrastructure failure in the backing store (a pool checkout or query
     /// error) — opaque to clients: the HTTP layer logs `context` + `source` and
     /// answers an empty 500. The cause is captured as text so this type stays
@@ -51,12 +55,18 @@ impl std::fmt::Display for AppsError {
         match self {
             AppsError::NotFound { id } => write!(f, "no app has id {id}"),
             AppsError::NotEditable { id } => write!(f, "app {id} is not editable"),
-            AppsError::Unauthorized => f.write_str("unauthorized"),
             AppsError::InvalidUrl { message } => write!(f, "invalid url: {message}"),
             AppsError::InvalidName { message } => write!(f, "invalid name: {message}"),
             AppsError::InvalidZip { message } => write!(f, "invalid zip: {message}"),
             AppsError::Unavailable { reason } => write!(f, "launch unavailable: {reason}"),
             AppsError::InvalidHomeScreen { message } => write!(f, "invalid home screen: {message}"),
+            AppsError::InsufficientScope { missing_scopes } => {
+                write!(
+                    f,
+                    "insufficient scope: missing {}",
+                    missing_scopes.join(" ")
+                )
+            }
             AppsError::Infrastructure { context, source } => write!(f, "{context}: {source}"),
         }
     }

@@ -1,16 +1,27 @@
 import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from '@effect/platform'
-import { AppIdPathSchema, AppListSchema, AppNotFoundSchema } from './schemas.ts'
+import {
+  AppIdPathSchema,
+  AppListSchema,
+  AppNotFoundSchema,
+  InsufficientScopeSchema,
+} from './schemas.ts'
 
 /**
  * Read + launch endpoints for the apps catalogue. This group carries no
- * middleware; the canonical (Rust) host owner-gates `ListApps` and mounts
- * `LaunchApp` ungated (a forwarded launch rides the front trust boundary, a
- * loopback launch is owner-gated in-handler) — see `docs/Apps/Explanation.md`
- * §"Auth posture". The client attaches a bearer that a gating host enforces and
- * an ungated host ignores. The cloud-admin mutations live on `AppsAdminApi`.
+ * middleware; the canonical (Rust) host scope-gates `ListApps` on
+ * `wildflower/Apps.r` (a `403 InsufficientScope` when the token doesn't cover it)
+ * and mounts `LaunchApp` behind the launch scope gate (a forwarded launch rides
+ * the front trust boundary; the per-app SMART check is in-handler) — see
+ * `docs/Apps/Explanation.md` §"Auth posture". The client attaches a bearer that a
+ * gating host enforces and an ungated host ignores. The cloud-admin mutations live
+ * on `AppsAdminApi`.
  */
 const httpApiGroup = HttpApiGroup.make('apps', { topLevel: false })
-  .add(HttpApiEndpoint.get('ListApps', '/apps').addSuccess(AppListSchema))
+  .add(
+    HttpApiEndpoint.get('ListApps', '/apps')
+      .addSuccess(AppListSchema)
+      .addError(InsufficientScopeSchema, { status: 403 })
+  )
   .add(
     // `POST` rather than `GET`: launching mutates host state (brings the tunnel
     // up). The host answers `204` for a loopback (Tauri) caller, after the native
@@ -28,8 +39,9 @@ const httpApiGroup = HttpApiGroup.make('apps', { topLevel: false })
     //     collapses to a single status. The typed client never decodes the `302`
     //     (only the raw web form hits that path), so a loose `text/html` body —
     //     matching the host's redirect `Content-Type` — is harmless.
-    // (The Rust server also answers `401`/`503`, modelled only on its side; the
-    // drift test exempts this endpoint's responses and pins only the path/method.)
+    // (The Rust server also answers `403 InsufficientScope`/`503`, modelled only on
+    // its side; the drift test exempts this endpoint's responses and pins only the
+    // path/method.)
     HttpApiEndpoint.post('LaunchApp', '/apps/:id')
       .setPath(AppIdPathSchema)
       .addSuccess(HttpApiSchema.Text({ contentType: 'text/html; charset=utf-8' }), { status: 302 })

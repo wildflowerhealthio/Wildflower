@@ -15,45 +15,60 @@
 //!   1. Read the request's [`RequestProvenance`] *once*, so an empty/spoofed
 //!      `Forwarded` host can't make the gate-vs-resolve and which-origin
 //!      decisions disagree.
-//!   2. Owner-gate a **loopback** request *before any lookup or side-effect*: an
-//!      unauthorized loopback caller `401`s before `find_app` or target
-//!      resolution, so it triggers no `tunnel.try_start()` and learns nothing
-//!      about whether the id exists (`404`) or is reachable (`503`). A forwarded
-//!      request skips the gate — the trusted front is its boundary.
+//!   2. The `wildflower/launch` umbrella is enforced *before this handler runs* by
+//!      the [`Scoped<LiveAppLauncher>`](crate::live_bindings::LiveAppLauncher) extractor
+//!      (the host wraps the launch router with the bearer gate that inserts the
+//!      caller's scope claims). An under-umbrella caller `403`s before `find_app`
+//!      or target resolution, so it triggers no `tunnel.try_start()` and learns
+//!      nothing about existence (`404`) or reachability (`503`). (This retired the
+//!      former in-handler loopback owner gate.)
 //!   3. Look up the app (`404 AppNotFound` if absent).
-//!   4. Resolve the launch target by the app's kind (System → compiled-in source,
+//!   4. Per-app SMART gate: a **SMART** app additionally requires the caller's
+//!      grant to cover its OAuth client's requested *resource* scopes (the OIDC /
+//!      launch-context scopes are the app's own OAuth concern, filtered out). A
+//!      shortfall `403`s before any side-effect — JSON for the loopback/SPA arm, a
+//!      plain-text response for a forwarded browser navigation. A non-SMART app
+//!      needs only the umbrella.
+//!   5. Resolve the launch target by the app's kind (System → compiled-in source,
 //!      Self-Hosted → loopback/subdomain, Cloud → the stored template). Fails
 //!      `503 LaunchUnavailable` when no *reachable* target exists.
-//!   5. Dispatch on the request's provenance: a loopback launch `204`s after
-//!      handing the (already owner-checked) URL to the host webview; a forwarded
-//!      launch `302`s. A forwarded **self-hosted** launch additionally plants a
-//!      `Set-Cookie` re-scoping the caller's owner session onto the app's public
-//!      host — see [`crate::http::LaunchCookies`] and `docs/Apps/Explanation.md`.
+//!   6. Dispatch on the request's provenance: a loopback launch `204`s after
+//!      handing the URL to the host webview; a forwarded launch `302`s. A forwarded
+//!      **self-hosted** launch additionally plants a `Set-Cookie` re-scoping the
+//!      caller's owner session onto the app's public host — see
+//!      [`crate::http::LaunchCookies`] and `docs/Apps/Explanation.md`.
 //!
-//! The auth posture (loopback owner-gated, forwarded on the front trust boundary)
-//! is canonical in `docs/Apps/Explanation.md` §"Auth posture".
+//! The auth posture (scope-gated on `wildflower/launch` + a per-app SMART check;
+//! a forwarded launch rides the front trust boundary) is canonical in
+//! `docs/Apps/Explanation.md` §"Auth posture".
 
 use std::sync::Arc;
 
 use axum::extract::{Path, State};
-use axum::http::header::{LOCATION, SET_COOKIE};
+use axum::http::header::{CONTENT_TYPE, LOCATION, SET_COOKIE};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 
+use scope_capabilities_rust::{InsufficientScopeBody, Scoped};
+use scopes_rust::Scope;
 use shared_structures_rust::served_origin::{request_provenance, RequestProvenance};
 
 use crate::domain::{
-    actions, AppConfiguration, AppRegistration, AppsError, CloudAppConfiguration, LaunchParams,
+    AppConfiguration, AppRegistration, AppsError, AppsStore, CloudAppConfiguration, LaunchParams,
     SelfHostedAppConfiguration, SystemAppConfiguration,
 };
 use crate::http::errors::{AppNotFoundBody, LaunchUnavailableBody};
-use crate::http::state::AppsState;
 use crate::id_utils::mint_launch_nonce;
+use crate::live_bindings::state::AppsState;
+use crate::live_bindings::LiveAppLauncher;
 
 /// `POST /apps/{id}` — launch an app (`404` if no app has this id). The loopback
 /// (Tauri) arm drives this through the typed client so the owner bearer rides
-/// along. See the module docs for the resolve-then-dispatch flow and the auth
-/// posture; the body is shared with [`handle_launch_app_get`] via [`launch`].
+/// along. Scope-gated on the `wildflower/launch` umbrella through
+/// [`Scoped<LiveAppLauncher>`]; a SMART app additionally requires the caller's grant
+/// to cover its OAuth client's scopes (checked in [`launch`]). See the module docs
+/// for the resolve-then-dispatch flow and the auth posture; the body is shared with
+/// [`handle_launch_app_get`] via [`launch`].
 #[utoipa::path(
     post,
     tag = "Launch",
@@ -62,17 +77,18 @@ use crate::id_utils::mint_launch_nonce;
     responses(
         (status = 204, description = "Host sink opened the launch URL for a loopback caller (no redirect)"),
         (status = 302, description = "Redirect (Location header) to the resolved launch URL"),
-        (status = 401, description = "A loopback launch whose caller is not the device owner"),
+        (status = 403, description = "The caller's token doesn't cover `wildflower/launch`, or a SMART app's required client scopes", body = InsufficientScopeBody),
         (status = 404, description = "No app has this id", body = AppNotFoundBody),
         (status = 503, description = "No reachable launch target (forwarded launch with no public host, or a requires_tunnel app while the tunnel is down)", body = LaunchUnavailableBody),
     ),
 )]
 pub(crate) async fn handle_launch_app(
+    launcher: Scoped<LiveAppLauncher>,
     State(state): State<Arc<AppsState>>,
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Response, AppsError> {
-    launch(state, headers, id).await
+    launch(&launcher, state, headers, id).await
 }
 
 /// `GET /apps/{id}` — the web launch arm. A home-screen tile is a real
@@ -91,23 +107,25 @@ pub(crate) async fn handle_launch_app(
     responses(
         (status = 204, description = "Host sink opened the launch URL for a loopback caller (no redirect)"),
         (status = 302, description = "Redirect (Location header) to the resolved launch URL"),
-        (status = 401, description = "A loopback launch whose caller is not the device owner"),
+        (status = 403, description = "The caller's token doesn't cover `wildflower/launch`, or a SMART app's required client scopes", body = InsufficientScopeBody),
         (status = 404, description = "No app has this id", body = AppNotFoundBody),
         (status = 503, description = "No reachable launch target (forwarded launch with no public host, or a requires_tunnel app while the tunnel is down)", body = LaunchUnavailableBody),
     ),
 )]
 pub(crate) async fn handle_launch_app_get(
+    launcher: Scoped<LiveAppLauncher>,
     State(state): State<Arc<AppsState>>,
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Response, AppsError> {
-    launch(state, headers, id).await
+    launch(&launcher, state, headers, id).await
 }
 
 /// The shared launch body for both `GET` and `POST /apps/{id}` — the method only
 /// picks the arm (native anchor navigation vs. the typed loopback client); the
 /// resolve-then-dispatch flow and auth posture are identical.
 async fn launch(
+    launcher: &LiveAppLauncher,
     state: Arc<AppsState>,
     headers: HeaderMap,
     id: String,
@@ -122,29 +140,39 @@ async fn launch(
         ));
     };
 
-    // Owner-gate a loopback request before any lookup or side-effect (module docs,
-    // step 2): an unauthorized loopback caller must trigger no `tunnel.try_start()`
-    // and must not learn whether the id exists (`404`) or is reachable (`503`).
-    if matches!(provenance, RequestProvenance::Loopback)
-        && !state
-            .owner_auth
-            .is_owner(&headers, &state.loopback_origin())
-    {
-        return Err(AppsError::Unauthorized);
-    }
+    // The `wildflower/launch` umbrella has already been enforced by the
+    // `Scoped<AppLauncher>` extractor (module docs, step 2) — retiring the former
+    // in-handler loopback owner gate. An under-umbrella caller was `403`d before
+    // this handler ran, so it triggered no lookup or side-effect.
 
     // 404 before resolving — an unknown id is never an availability failure. The
     // store hands back the `(registration, configuration)` pair; both halves feed
     // the kind-dispatched resolve below (no "combined app" — the tuple is the app).
-    let (registration, configuration) = actions::get_app(&state.store, &id)?;
+    // Inlined `find_app` + `NotFound` (the same shape each admin read capability
+    // inlines — there is no shared `get_app` helper) — the read's one launch caller.
+    let (registration, configuration) = state
+        .store
+        .find_app(&id)?
+        .ok_or_else(|| AppsError::NotFound { id: id.clone() })?;
+
+    // Per-app SMART gate (module docs, step 4): a SMART app additionally requires
+    // the caller's grant to cover its OAuth client's resource scopes (OIDC /
+    // launch-context scopes are filtered out). A shortfall bails with a `403` shaped
+    // for the caller's arm — JSON for the loopback/SPA caller, a plain-text response
+    // for a forwarded browser navigation — before any side-effect. A non-SMART app
+    // needs only the umbrella (short-circuited inside).
+    let missing = launcher.missing_launch_scopes(&registration)?;
+    if !missing.is_empty() {
+        return Ok(insufficient_launch_scope(missing, &provenance));
+    }
 
     // Resolve before dispatching: an unreachable target bails here with
     // `503 LaunchUnavailable` rather than opening a doomed popup / dead redirect.
     let resolved = resolve_launch(&registration, &configuration, &state, &provenance).await?;
 
     match &provenance {
-        // The loopback caller was owner-checked above; hand the URL to the host
-        // webview and `204` (the seam is contractually fire-and-forget).
+        // The loopback caller cleared the umbrella + SMART gates above; hand the URL
+        // to the host webview and `204` (the seam is contractually fire-and-forget).
         RequestProvenance::Loopback => {
             state
                 .on_device_webview_handle
@@ -160,6 +188,31 @@ async fn launch(
             };
             redirect(resolved.target_url, set_cookies)
         }
+    }
+}
+
+/// Render an under-scoped SMART launch as a `403` shaped for the caller's arm: a
+/// loopback/SPA caller decodes the JSON `InsufficientScope` body (the same shape
+/// the admin surface returns, via [`AppsError::InsufficientScope`]), while a
+/// forwarded browser navigation gets a plain `text/plain` `403` rather than a JSON
+/// body it would render as page text. (The umbrella-scope failure is handled
+/// earlier by the `Scoped` extractor and always renders as JSON — a coarse gate an
+/// authenticated launch-capable caller doesn't hit.)
+fn insufficient_launch_scope(missing: Vec<Scope>, provenance: &RequestProvenance) -> Response {
+    let missing_scopes = scopes_rust::render_scopes(&missing);
+    match provenance {
+        RequestProvenance::Loopback => {
+            AppsError::InsufficientScope { missing_scopes }.into_response()
+        }
+        RequestProvenance::Forwarded { .. } => (
+            StatusCode::FORBIDDEN,
+            [(CONTENT_TYPE, "text/plain; charset=utf-8")],
+            format!(
+                "Insufficient scope to launch this app. Missing: {}",
+                missing_scopes.join(" ")
+            ),
+        )
+            .into_response(),
     }
 }
 

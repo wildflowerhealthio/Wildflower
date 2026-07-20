@@ -3,14 +3,11 @@
 //! copied into each. Request-builder helpers (`post`/`get`/…) stay per-test
 //! module.
 
-// `StubOwnerAuth` is `#[deprecated]` to keep the no-op stub out of production
-// wiring; these fixtures are exactly the sanctioned test use, so silence it.
-#![allow(deprecated)]
-
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use axum::http::{HeaderMap, HeaderValue};
+use scopes_rust::Scope;
 use shared_structures_rust::test_utils::RecordingStubWebviewHandle;
 use shared_structures_rust::tunnel_service::{
     OfflineTunnel, TunnelLiveness, TunnelService, TunnelStatus,
@@ -19,8 +16,9 @@ use shared_structures_server_rust::ProxyTable;
 use url::Url;
 
 use crate::db::SqliteAppsStore;
-use crate::http::state::AppsState;
-use crate::ports::{LaunchCookies, NoLaunchCookies, OwnerAuth, StubOwnerAuth};
+use crate::domain::{AppRegistration, AppsError};
+use crate::live_bindings::state::AppsState;
+use crate::ports::{AppLaunchScopes, LaunchCookies, NoAppLaunchScopes, NoLaunchCookies};
 use crate::self_hosted_apps_service::SelfHostedAppsService;
 use crate::OnDeviceWebviewHandle;
 
@@ -130,99 +128,108 @@ impl LaunchCookies for RecordingLaunchCookies {
     }
 }
 
+/// An [`AppLaunchScopes`] fake that requires a fixed scope set for any SMART app —
+/// drives the per-app SMART launch check. The launch capability only consults it
+/// for a SMART app (a `client_id`), so a non-SMART launch never reaches it.
+pub(crate) struct FixedLaunchScopes {
+    required: Vec<Scope>,
+}
+
+impl FixedLaunchScopes {
+    /// Requires the given (space-separated) scopes for every SMART launch.
+    pub(crate) fn requiring(scopes: &str) -> Arc<dyn AppLaunchScopes> {
+        Arc::new(FixedLaunchScopes {
+            required: scopes.split_whitespace().map(Scope::from).collect(),
+        })
+    }
+}
+
+impl AppLaunchScopes for FixedLaunchScopes {
+    fn required_scopes(&self, _registration: &AppRegistration) -> Result<Vec<Scope>, AppsError> {
+        Ok(self.required.clone())
+    }
+}
+
 /// Build apps state over a fresh in-memory store with a specific `tunnel`,
-/// `owner_auth`, on-device webview handle, and launch-cookie seam, using the
-/// shared loopback base URL. The most general fixture; the others below pin one
-/// or two of the knobs.
+/// on-device webview handle, launch-cookie seam, and launch-scope seam, using the
+/// shared loopback base URL. The most general fixture; the others below pin one or
+/// two of the knobs.
 pub(crate) fn state_full(
-    owner_auth: Arc<dyn OwnerAuth>,
     tunnel: Arc<dyn TunnelService>,
     webview_handle: Arc<dyn OnDeviceWebviewHandle>,
     launch_cookies: Arc<dyn LaunchCookies>,
+    launch_scopes: Arc<dyn AppLaunchScopes>,
 ) -> Arc<AppsState> {
     let store = SqliteAppsStore::open_in_memory().expect("store");
     let self_hosted = self_hosted_service(Arc::clone(&tunnel));
     Arc::new(AppsState::new(
         store,
         loopback_base_url(),
-        owner_auth,
         tunnel,
         webview_handle,
         self_hosted,
         launch_cookies,
+        launch_scopes,
     ))
 }
 
-/// Apps state with a specific `tunnel` + launch-cookie seam, an allow-all owner
-/// gate, and a throwaway recording handle — drives the forwarded self-hosted
-/// cookie-planting branch.
+/// Apps state with a specific `tunnel` + launch-cookie seam and a throwaway
+/// recording handle — drives the forwarded self-hosted cookie-planting branch. No
+/// per-app SMART scopes required.
 pub(crate) fn state_with_launch_cookies(
     tunnel: Arc<dyn TunnelService>,
     launch_cookies: Arc<dyn LaunchCookies>,
 ) -> Arc<AppsState> {
     state_full(
-        Arc::new(StubOwnerAuth::always_allowed()),
         tunnel,
         Arc::new(RecordingStubWebviewHandle::default()),
         launch_cookies,
+        Arc::new(NoAppLaunchScopes),
     )
 }
 
-/// Apps state with a specific `tunnel` + on-device handle and an allow-all owner
-/// gate. Lets a test drive the tunnel branch and assert what the handle received
-/// for a loopback launch.
+/// Apps state with a specific `tunnel` + on-device handle. Lets a test drive the
+/// tunnel branch and assert what the handle received for a loopback launch.
 pub(crate) fn state_with_tunnel_and_handle(
     tunnel: Arc<dyn TunnelService>,
     webview_handle: Arc<dyn OnDeviceWebviewHandle>,
 ) -> Arc<AppsState> {
     state_full(
-        Arc::new(StubOwnerAuth::always_allowed()),
         tunnel,
         webview_handle,
         Arc::new(NoLaunchCookies),
+        Arc::new(NoAppLaunchScopes),
     )
 }
 
-/// Apps state with the given tunnel, an allow-all owner gate, and a throwaway
-/// recording handle — for tests that don't inspect what the handle received.
+/// Apps state with the given tunnel and a throwaway recording handle — for tests
+/// that don't inspect what the handle received.
 pub(crate) fn state_with_tunnel(tunnel: Arc<dyn TunnelService>) -> Arc<AppsState> {
     state_with_tunnel_and_handle(tunnel, Arc::new(RecordingStubWebviewHandle::default()))
 }
 
-/// Apps state with the offline tunnel and an allow-all owner gate — the default
-/// for tests that don't exercise the tunnel or owner-auth branch.
+/// Apps state with the offline tunnel — the default for tests that don't exercise
+/// the tunnel branch.
 pub(crate) fn state() -> Arc<AppsState> {
     state_with_tunnel(tunnel_unavailable())
 }
 
-/// Apps state with the offline tunnel, an allow-all owner gate, and a
-/// caller-provided handle — so a loopback launch's resolved URL can be read back
-/// off the handle.
+/// Apps state with the offline tunnel and a caller-provided handle — so a loopback
+/// launch's resolved URL can be read back off the handle.
 pub(crate) fn state_with_sink(webview_handle: Arc<dyn OnDeviceWebviewHandle>) -> Arc<AppsState> {
     state_with_tunnel_and_handle(tunnel_unavailable(), webview_handle)
 }
 
-/// Apps state whose owner gate **denies** every loopback launch — drives the
-/// `401` branch.
-pub(crate) fn state_owner_denied() -> Arc<AppsState> {
-    state_full(
-        Arc::new(StubOwnerAuth::always_denied()),
-        tunnel_unavailable(),
-        Arc::new(RecordingStubWebviewHandle::default()),
-        Arc::new(NoLaunchCookies),
-    )
-}
-
-/// Apps state whose owner gate **denies**, with the offline tunnel and a
-/// caller-provided handle — lets a test assert a denied loopback launch neither
-/// opens the popup nor reaches the (down) tunnel.
-pub(crate) fn state_owner_denied_with_sink(
+/// Apps state with the offline tunnel, a caller-provided handle, and a specific
+/// [`AppLaunchScopes`] seam — drives the per-app SMART launch check.
+pub(crate) fn state_with_launch_scopes(
     webview_handle: Arc<dyn OnDeviceWebviewHandle>,
+    launch_scopes: Arc<dyn AppLaunchScopes>,
 ) -> Arc<AppsState> {
     state_full(
-        Arc::new(StubOwnerAuth::always_denied()),
         tunnel_unavailable(),
         webview_handle,
         Arc::new(NoLaunchCookies),
+        launch_scopes,
     )
 }

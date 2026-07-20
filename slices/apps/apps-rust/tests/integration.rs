@@ -4,15 +4,10 @@
 //! `204` routes to the on-device webview handle — fails the test rather than
 //! relying on unit-level handler coverage.
 
-// `StubOwnerAuth` is `#[deprecated]` to keep the no-op stub out of production
-// wiring; this end-to-end test is exactly the sanctioned test use, so silence it
-// (matching the `#![allow(deprecated)]` in `http/test_support.rs`).
-#![allow(deprecated)]
-
 use std::sync::Arc;
 
 use apps_rust::{
-    ports::{NoLaunchCookies, OwnerAuth, StubOwnerAuth},
+    ports::{NoAppLaunchScopes, NoLaunchCookies},
     setup_apps, Apps, AppsConfig, SelfHostedAppsService,
 };
 use axum::body::{to_bytes, Body};
@@ -23,27 +18,36 @@ use shared_structures_server_rust::ProxyTable;
 use tower::ServiceExt;
 use url::Url;
 
+use scope_capabilities_rust::ScopeClaims;
 use shared_structures_rust::test_utils::RecordingStubWebviewHandle;
 
 const LOOPBACK_BASE_URL: &str = "http://127.0.0.1:8080/";
 
+/// Insert the owner `ScopeClaims` the host's bearer gate places in the request
+/// extensions before a scope-gated `/apps` handler reads them — `wildflower/*.cruds`
+/// covers every `wildflower/Apps.<perm>`, and the `wildflower/launch` known scope
+/// (not covered by the wildcard) satisfies the launch umbrella. Every request
+/// builder below carries it so these end-to-end tests exercise the wire contract
+/// without re-mounting the host's gate.
+fn with_owner_claims(mut req: Request<Body>) -> Request<Body> {
+    req.extensions_mut().insert(ScopeClaims::new(Some(
+        "wildflower/*.cruds wildflower/launch".to_owned(),
+    )));
+    req
+}
+
 /// Spin up the slice plus the recording on-device webview handle, so a launch
 /// test can assert the URL a loopback launch routes to it.
 ///
-/// An allow-all owner gate (loopback launches succeed) and no tunnel (an
-/// [`OfflineTunnel`]): a `requires_tunnel` launch would `503`, so the harness
-/// only issues loopback launches of non-tunnel apps.
+/// No per-app SMART launch scopes ([`NoAppLaunchScopes`]) and no tunnel (an
+/// [`OfflineTunnel`]): a `requires_tunnel` launch would `503`, so the harness only
+/// issues loopback launches of non-tunnel apps.
 fn spin_up_with_handle() -> (Apps, Arc<RecordingStubWebviewHandle>) {
     let pool = persistence_rust::open_in_memory_pool().expect("open in-memory diesel pool");
     let config = AppsConfig {
         loopback_base_url: Url::parse(LOOPBACK_BASE_URL).expect("valid base url"),
     };
     let handle = Arc::new(RecordingStubWebviewHandle::default());
-    // `StubOwnerAuth` is `#[deprecated]` to keep the no-op stub out of production
-    // wiring; this allow-all owner is the sanctioned test use, so scope the
-    // silence to exactly this construction rather than the whole crate.
-    #[allow(deprecated)]
-    let owner_auth: Arc<dyn OwnerAuth> = Arc::new(StubOwnerAuth::always_allowed());
     let tunnel = Arc::new(OfflineTunnel::new("http://127.0.0.1:8080"));
     // A throwaway apps dir + fresh proxy table back the self-hosted service the
     // slice now takes; the integration tests here don't exercise upload/serve, so
@@ -65,9 +69,9 @@ fn spin_up_with_handle() -> (Apps, Arc<RecordingStubWebviewHandle>) {
         &config,
         tunnel,
         handle.clone(),
-        owner_auth,
         self_hosted,
         Arc::new(NoLaunchCookies),
+        Arc::new(NoAppLaunchScopes),
     )
     .expect("setup_apps");
     (apps, handle)
@@ -83,7 +87,7 @@ async fn body_json(body: Body) -> Value {
 }
 
 fn get(uri: &str) -> Request<Body> {
-    Request::get(uri).body(Body::empty()).expect("build")
+    with_owner_claims(Request::get(uri).body(Body::empty()).expect("build"))
 }
 
 /// A cloud create — `POST /cloud-apps` as JSON.
@@ -95,26 +99,30 @@ fn post_create_cloud(name: &str, url: &str, requires_tunnel: bool) -> Request<Bo
 }
 
 fn post_json(uri: &str, body: serde_json::Value) -> Request<Body> {
-    Request::post(uri)
-        .header("content-type", "application/json")
-        .body(Body::from(body.to_string()))
-        .expect("build")
+    with_owner_claims(
+        Request::post(uri)
+            .header("content-type", "application/json")
+            .body(Body::from(body.to_string()))
+            .expect("build"),
+    )
 }
 
 fn put(uri: &str, body: serde_json::Value) -> Request<Body> {
-    Request::put(uri)
-        .header("content-type", "application/json")
-        .body(Body::from(body.to_string()))
-        .expect("build")
+    with_owner_claims(
+        Request::put(uri)
+            .header("content-type", "application/json")
+            .body(Body::from(body.to_string()))
+            .expect("build"),
+    )
 }
 
 fn delete(uri: &str) -> Request<Body> {
-    Request::delete(uri).body(Body::empty()).expect("build")
+    with_owner_claims(Request::delete(uri).body(Body::empty()).expect("build"))
 }
 
 /// A launch request — `POST /apps/{id}` with an empty body.
 fn launch(uri: &str) -> Request<Body> {
-    Request::post(uri).body(Body::empty()).expect("build")
+    with_owner_claims(Request::post(uri).body(Body::empty()).expect("build"))
 }
 
 /// Fresh-install seed: every code-defined default app present in display order.

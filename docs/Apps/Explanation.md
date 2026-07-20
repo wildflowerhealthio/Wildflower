@@ -38,7 +38,7 @@ cloud↔self-hosted re-point, but there is no switch UI yet.
   isolated origin is what lets a Self-Hosted app make data-residence guarantees.
   A Self-Hosted app is either **seeded** (a Wildflower-shipped vendored build,
   synced into app-data at host startup — Patient Browser) or **uploaded** (a
-  user-supplied `.zip` extracted at runtime by the owner-gated
+  user-supplied `.zip` extracted at runtime by the `wildflower/Apps.c`-gated
   `POST /self-hosted-apps` upload endpoint). Both serve the same way; they
   differ only in origin and removability (see the data model).
 - **Cloud** — assets served from a **remote** origin, reaching PHI back through
@@ -155,24 +155,33 @@ the database.
 
 ## Auth posture and the remote trust boundary
 
-The whole `/apps` API is reached through the host's loopback-peer gate. On top of
-that:
+The whole `/apps` API is reached through the host's loopback-peer gate, and every
+route is behind the **gatekeeper bearer gate** (which inserts the caller's scope
+claims). On top of that each route is **scope-gated** through the shared
+default-safe capability pattern (`scope-capabilities-rust`; see
+[Scope-Gated Endpoints How-To](../Authorization/Scope-Gated%20Endpoints%20How-To.md)),
+so an under-scoped caller gets a `403 { error: "InsufficientScope", missingScopes }`:
 
-- `GET /apps` is **owner-gated** (a bearer the SPA already carries).
-- The **loopback** launch (`POST /apps/{id}` from the on-device webview) is
-  owner-gated. The Tauri home tile drives this through the typed client so the
-  owner bearer rides along and the webview stays mounted.
-- The **forwarded** launch (a remote browser through the tunnel) stays on the
-  network gate / front trust boundary — owner-gating it would require a bearer
-  whose audience matches the public origin, which is out of scope this pass. On
-  the web the home tile is a native `<a href="/apps/{id}">`, so the launch is a
-  `GET`: a plain click navigates the current tab and a cmd/ctrl-click opens a new
-  one — affordances a form-`POST`/`fetch` can't preserve. The web auth cookie
-  rides that anchor navigation (even the initial document request, before any
-  JS), so the forwarded `GET` authenticates. `GET` and `POST` share one handler;
-  a launch is a navigation (like an OAuth `authorize`), so a `GET` minting a
-  `{launch}` nonce — and bringing the tunnel up for a `requires_tunnel` app — is
-  intentional.
+- `GET /apps` and the admin surface (`/cloud-apps`, `/self-hosted-apps`,
+  `/system-apps`, `DELETE /apps/{id}`, `PUT /home-screen`) are gated on
+  `wildflower/Apps.{r,c,u,d}` — a read/create/update/delete grant per capability.
+- The launch (`GET`/`POST /apps/{id}`) is gated in two layers: a static
+  `wildflower/launch` **umbrella** the `Scoped<AppLauncher>` extractor enforces (a
+  _known_ scope, granted to the owner explicitly — the `wildflower/*` wildcard does
+  not cover it), and — for a **SMART** app (a host-only `client_id`) — a per-app
+  check that the caller's grant covers the app's OAuth client's requested
+  **resource** scopes (its FHIR / Wildflower data access; the OIDC and SMART
+  launch-context scopes are the app's own OAuth concern, so the owner isn't required
+  to hold them). A shortfall on the per-app check renders JSON for the loopback/SPA
+  arm and a plain-text `403` for a forwarded browser navigation.
+- Both the loopback and the forwarded launch ride the same bearer gate. On the web
+  the home tile is a native `<a href="/apps/{id}">`, so the launch is a `GET`: a
+  plain click navigates the current tab and a cmd/ctrl-click opens a new one —
+  affordances a form-`POST`/`fetch` can't preserve. The web auth cookie rides that
+  anchor navigation (even the initial document request, before any JS), so the
+  forwarded `GET` authenticates. `GET` and `POST` share one handler; a launch is a
+  navigation (like an OAuth `authorize`), so a `GET` minting a `{launch}` nonce —
+  and bringing the tunnel up for a `requires_tunnel` app — is intentional.
 
 Separately, a Self-Hosted app reachable remotely is served by the host's
 **subdomain reverse proxy**: a forwarded `<id>.<public_host>` request is proxied
@@ -197,7 +206,7 @@ token the caller already holds — it mints nothing, and the `Domain` is always 
 full tunnel `public_host` (never its registrable parent), so the bearer never
 reaches a sibling tenant. The cookie name and attributes stay owned by the
 gatekeeper slice; the apps launch handler reaches them through a host-wired seam
-(`LaunchCookies`), mirroring how the loopback owner gate reaches the owner-bearer
-check. Loopback and Cloud launches plant nothing here: a loopback self-hosted app
+(`LaunchCookies`), mirroring how the per-app SMART check reaches the client's
+allowed scopes (`AppLaunchScopes`). Loopback and Cloud launches plant nothing here: a loopback self-hosted app
 shares the `127.0.0.1` cookie already (and the desktop webview authenticates on
 connection provenance), and a Cloud app authenticates through its own OAuth flow.
