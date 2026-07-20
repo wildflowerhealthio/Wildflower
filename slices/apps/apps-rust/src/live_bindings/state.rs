@@ -1,20 +1,15 @@
-//! Shared HTTP state — the store handle (serving every apps table), the
-//! loopback base URL the non-tunnel launch origin + self-hosted hostname derive
-//! from, the tunnel-launch resolver, the on-device webview seam, and the
-//! host-seam ports (launch cookies, per-app launch scopes).
+//! The shared apps runtime state — the router state every handler is built over,
+//! and the composition point that names the concrete [`SqliteAppsStore`] adapter.
+//! It also holds the loopback base URL the non-tunnel launch origin + self-hosted
+//! hostname derive from, the tunnel-launch resolver, the on-device webview seam,
+//! and the host-seam ports (launch cookies, per-app launch scopes).
 //!
-//! Lives at the crate root (not under `http/`) so the scope-gated
-//! [`capability_bindings`] — which name the concrete [`SqliteAppsStore`] adapter
-//! and `build` a capability from this state — sit beside it, while the generic
-//! capability structs in [`crate::domain::capabilities`] stay store-agnostic and
-//! free of any `crate::http` import (gatekeeper/databases style; see
+//! It lives at the crate root (not under [`crate::http`]) deliberately: the
+//! scope-gated [`capabilities`](crate::domain::capabilities) in `domain/` are
+//! built from it through the per-capability bindings in the parent
+//! [`live_bindings`](super) module, and `domain/` must not depend on
+//! `crate::http` (gatekeeper/databases style; see
 //! `docs/Authorization/Scope-Gated Endpoints How-To.md`).
-
-mod capability_bindings;
-
-pub(crate) use capability_bindings::{
-    AppLauncherCap, AppsCreatorCap, AppsDeleterCap, AppsEditorCap, AppsReaderCap,
-};
 
 use std::sync::Arc;
 

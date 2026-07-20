@@ -17,9 +17,9 @@ use url::Url;
 
 use crate::db::SqliteAppsStore;
 use crate::domain::{AppRegistration, AppsError};
+use crate::live_bindings::state::AppsState;
 use crate::ports::{AppLaunchScopes, LaunchCookies, NoAppLaunchScopes, NoLaunchCookies};
 use crate::self_hosted_apps_service::SelfHostedAppsService;
-use crate::state::AppsState;
 use crate::OnDeviceWebviewHandle;
 
 /// The loopback base URL clients reach when the tunnel is down. Its origin

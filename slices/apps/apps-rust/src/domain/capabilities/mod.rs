@@ -15,7 +15,7 @@
 //! state** — never an `Arc<AppsState>` they reach into. The concrete
 //! [`FixedScopeCapability`](scope_capabilities_rust::FixedScopeCapability) bindings
 //! that name the `SqliteAppsStore` adapter and build a capability from the router
-//! state live beside the state in [`crate::state`], so `domain/` stays
+//! state live beside the state in [`crate::live_bindings`], so `domain/` stays
 //! store-agnostic.
 //!
 //! One capability per file — [`AppsReader`], [`AppsCreator`], [`AppsEditor`],

@@ -10,10 +10,10 @@ use scope_capabilities_rust::{InsufficientScopeBody, Scoped};
 use crate::domain::AppsError;
 use crate::http::errors::AppNotFoundBody;
 use crate::http::wire_representations::SystemAppDetail;
-use crate::state::AppsReaderCap;
+use crate::live_bindings::LiveAppsReader;
 
 /// `GET /system-apps/{id}` — the system read-only detail. Scope-gated on
-/// `wildflower/Apps.r` through [`Scoped<AppsReaderCap>`].
+/// `wildflower/Apps.r` through [`Scoped<LiveAppsReader>`].
 #[utoipa::path(
     get,
     tag = "System apps",
@@ -26,7 +26,7 @@ use crate::state::AppsReaderCap;
     ),
 )]
 pub(crate) async fn handle_get_system_app(
-    reader: Scoped<AppsReaderCap>,
+    reader: Scoped<LiveAppsReader>,
     Path(id): Path<String>,
 ) -> Result<Json<SystemAppDetail>, AppsError> {
     let (registration, config) = reader.system(&id)?;

@@ -19,7 +19,7 @@ use scope_capabilities_rust::{InsufficientScopeBody, Scoped};
 
 use crate::domain::{AppRegistration, AppsError};
 use crate::http::errors::InvalidHomeScreenBody;
-use crate::state::AppsEditorCap;
+use crate::live_bindings::LiveAppsEditor;
 
 /// One entry in the `PUT /home-screen` body: an app id and its desired
 /// `onHomescreen` flag. The entry's index in the array is its new display
@@ -32,7 +32,7 @@ pub(crate) struct HomeScreenEntry {
 }
 
 /// `PUT /home-screen` — atomically reorder + enable/disable every app. Scope-gated
-/// on `wildflower/Apps.u` through [`Scoped<AppsEditorCap>`]. The body must list
+/// on `wildflower/Apps.u` through [`Scoped<LiveAppsEditor>`]. The body must list
 /// **every** registry app exactly once (its order is the new display order); a
 /// missing / duplicated / unknown id is `400 InvalidHomeScreen`. Returns the
 /// resulting catalogue in its new order.
@@ -48,7 +48,7 @@ pub(crate) struct HomeScreenEntry {
     ),
 )]
 pub(crate) async fn handle_replace_home_screen(
-    editor: Scoped<AppsEditorCap>,
+    editor: Scoped<LiveAppsEditor>,
     Json(body): Json<Vec<HomeScreenEntry>>,
 ) -> Result<Json<Vec<AppRegistration>>, AppsError> {
     // The home screen *is* the whole registry, reordered — so the body must be an

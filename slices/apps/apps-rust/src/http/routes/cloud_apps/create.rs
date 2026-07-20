@@ -14,10 +14,10 @@ use crate::domain::actions::CloudAppPayload;
 use crate::domain::AppsError;
 use crate::http::errors::InvalidFieldBody;
 use crate::http::wire_representations::CloudAppDetail;
-use crate::state::AppsCreatorCap;
+use crate::live_bindings::LiveAppsCreator;
 
 /// `POST /cloud-apps` — create a cloud app. Scope-gated on `wildflower/Apps.c`
-/// through [`Scoped<AppsCreatorCap>`].
+/// through [`Scoped<LiveAppsCreator>`].
 #[utoipa::path(
     post,
     tag = "Cloud apps",
@@ -30,7 +30,7 @@ use crate::state::AppsCreatorCap;
     ),
 )]
 pub(crate) async fn handle_create_cloud_app(
-    creator: Scoped<AppsCreatorCap>,
+    creator: Scoped<LiveAppsCreator>,
     Json(body): Json<CloudAppBody>,
 ) -> Result<Json<CloudAppDetail>, AppsError> {
     // The handler transforms: it maps its `CloudAppBody` onto the capability's

@@ -2,7 +2,7 @@
 //! `bundle`. The body is `multipart/form-data` (`name`, optional `subtitle`, and
 //! the `bundle` file); form fields cross the wire as text and the file rides its own
 //! part, so the handler reads the [`Multipart`] parts by hand. It only shapes the
-//! parts and hands them to the [`AppsCreatorCap`] capability's `create_self_hosted_app`
+//! parts and hands them to the [`LiveAppsCreator`] capability's `create_self_hosted_app`
 //! — the staged install (extract → move → insert → start, cleaning up on failure)
 //! lives in the capability + its installer, not here. Returns the created
 //! [`SelfHostedAppDetail`].
@@ -18,7 +18,7 @@ use scope_capabilities_rust::{InsufficientScopeBody, Scoped};
 use crate::domain::AppsError;
 use crate::http::errors::InvalidFieldBody;
 use crate::http::wire_representations::SelfHostedAppDetail;
-use crate::state::AppsCreatorCap;
+use crate::live_bindings::LiveAppsCreator;
 
 /// Documents the `multipart/form-data` body for OpenAPI. The handler reads the
 /// parts manually via [`Multipart`], so this is never deserialized directly (the
@@ -37,7 +37,7 @@ pub(crate) struct CreateSelfHostedAppMultipart {
 }
 
 /// `POST /self-hosted-apps` — install a self-hosted app from the uploaded `bundle`.
-/// Scope-gated on `wildflower/Apps.c` through [`Scoped<AppsCreatorCap>`]; the body
+/// Scope-gated on `wildflower/Apps.c` through [`Scoped<LiveAppsCreator>`]; the body
 /// limit is raised for this route (see the router wiring).
 #[utoipa::path(
     post,
@@ -51,7 +51,7 @@ pub(crate) struct CreateSelfHostedAppMultipart {
     ),
 )]
 pub(crate) async fn handle_create_self_hosted_app(
-    creator: Scoped<AppsCreatorCap>,
+    creator: Scoped<LiveAppsCreator>,
     mut multipart: Multipart,
 ) -> Result<Json<SelfHostedAppDetail>, AppsError> {
     let mut name: Option<String> = None;

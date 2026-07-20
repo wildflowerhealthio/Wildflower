@@ -33,6 +33,10 @@
 //!    [`domain::AppsError`] (the failure vocabulary), and [`domain::AppUrl`] (the
 //!    write-side URL validator). The per-kind editor wire shapes live in
 //!    `http::wire_representations`, built from the pair.
+//!  - [`live_bindings`] — the router state ([`AppsState`](live_bindings::state::AppsState))
+//!    at the crate root, and the per-capability `FixedScopeCapability` bindings
+//!    that name the concrete store + installer; kept out of [`http`] so `domain/`
+//!    can build capabilities from it without depending on the transport layer.
 //!  - [`db`] — the `SQLite` store adapter ([`db::SqliteAppsStore`], the
 //!    implementation of the [`domain::AppsStore`] port) over the app-wide diesel
 //!    r2d2 pool (`persistence_rust::DieselPool`), migrated with embedded diesel
@@ -59,9 +63,14 @@ pub mod domain;
 pub mod http;
 mod id_utils;
 mod install;
+// The shared runtime state lives at the crate root (not under `http`) so the
+// scope-gated `domain/` capabilities can be built from it (via the per-capability
+// `FixedScopeCapability` bindings that live beside the state) without `domain/`
+// depending on `crate::http`. Mirrors collector's / gatekeeper's `crate::live_bindings`
+// layout.
+pub(crate) mod live_bindings;
 mod seed;
 mod self_hosted_apps_service;
-mod state;
 
 use std::sync::Arc;
 
@@ -83,7 +92,7 @@ pub use db::SqliteAppsStore;
 // `setup_apps` call site.
 pub use domain::{AppRegistration, SelfHostedAppConfiguration};
 pub use http::openapi_spec;
-pub use state::AppsState;
+pub use live_bindings::state::AppsState;
 
 pub use seed::sync_vendored_self_hosted_apps;
 pub use self_hosted_apps_service::SelfHostedAppsService;

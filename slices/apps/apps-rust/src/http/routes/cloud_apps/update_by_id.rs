@@ -14,10 +14,10 @@ use crate::domain::actions::CloudAppPayload;
 use crate::domain::AppsError;
 use crate::http::errors::{AppNotFoundBody, InvalidFieldBody};
 use crate::http::wire_representations::CloudAppDetail;
-use crate::state::AppsEditorCap;
+use crate::live_bindings::LiveAppsEditor;
 
 /// `PUT /cloud-apps/{id}` — replace a cloud app's content. Scope-gated on
-/// `wildflower/Apps.u` through [`Scoped<AppsEditorCap>`].
+/// `wildflower/Apps.u` through [`Scoped<LiveAppsEditor>`].
 #[utoipa::path(
     put,
     tag = "Cloud apps",
@@ -32,7 +32,7 @@ use crate::state::AppsEditorCap;
     ),
 )]
 pub(crate) async fn handle_update_cloud_app(
-    editor: Scoped<AppsEditorCap>,
+    editor: Scoped<LiveAppsEditor>,
     Path(id): Path<String>,
     Json(body): Json<CloudAppBody>,
 ) -> Result<Json<CloudAppDetail>, AppsError> {

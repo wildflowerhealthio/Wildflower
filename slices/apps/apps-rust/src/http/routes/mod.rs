@@ -20,7 +20,7 @@ use axum::extract::DefaultBodyLimit;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
-use crate::state::AppsState;
+use crate::live_bindings::state::AppsState;
 
 /// The raw request-body cap for `POST /self-hosted-apps` (which accepts a
 /// self-hosted upload). Scoped to just that route (the rest of the surface keeps
@@ -109,8 +109,8 @@ mod tests {
         state_with_tunnel, state_with_tunnel_and_handle, tunnel_at, tunnel_unavailable,
         tunnel_with_public_host, FixedLaunchScopes, RecordingLaunchCookies, SENTINEL_SET_COOKIE,
     };
+    use crate::live_bindings::state::AppsState;
     use crate::ports::LaunchCookies;
-    use crate::state::AppsState;
     use scope_capabilities_rust::ScopeClaims;
 
     /// The owner-level scope claim the host's bearer gate would insert for the
