@@ -67,6 +67,15 @@ interface ScopePickerProps {
    * in {@link GrantDraft.GrantDraft.patient} (a UI concern — never serialized into scopes).
    */
   readonly patients?: readonly PatientOption[]
+  /**
+   * Forces the FHIR subject that new rules target, hiding the one-patient / all-patients
+   * selector so the picker can't switch contexts. Device-auth surfaces pass `'system'` so a
+   * device grant targets all patients only — the FHIR server's `patient/` support is too weak
+   * to offer the one-patient subject there. Omitted ⇒ the user picks freely via the selector
+   * (the normal expandable behaviour); this prop scopes the restriction to the caller, leaving
+   * every other picker untouched.
+   */
+  readonly forcedSubject?: SubjectContext
 }
 
 /** Which projection is showing — plain-language statements or the resource×interaction grid. */
@@ -169,19 +178,25 @@ const ScopePicker = ({
   mode = 'clamped',
   phrasing = 'can',
   patients,
+  forcedSubject,
 }: ScopePickerProps): JSX.Element => {
   const isExpandable = mode === 'expandable'
 
   const [view, setView] = useState<View>('plain')
   const [openRow, setOpenRow] = useState<string | null>(null)
-  // The FHIR context new rules target — driven by the one-patient / all-patients selector.
-  const [subject, setSubject] = useState<SubjectContext>(() => initialSubject(request, draft))
+  // The FHIR context new rules target — a forced subject (device auth pins all-patients) when
+  // the caller supplies one, otherwise the one-patient / all-patients selector's live choice.
+  const [subject, setSubject] = useState<SubjectContext>(
+    () => forcedSubject ?? initialSubject(request, draft)
+  )
   // Resources the user added via "+ Add rule" but hasn't toggled yet, keyed by section prefix.
   // Held here (never as empty-permission draft scopes) so `GrantDraft.hasScopes` stays honest.
   const [extra, setExtra] = useState<ReadonlyMap<string, readonly string[]>>(() => new Map())
 
-  // The subject selector is only meaningful when the envelope can grant at both contexts.
-  const showSubjectSelector = isExpandable && availableCoversSystem(request)
+  // The subject selector is only meaningful when the caller hasn't forced a subject and the
+  // envelope can grant at both contexts.
+  const showSubjectSelector =
+    isExpandable && forcedSubject === undefined && availableCoversSystem(request)
   const activeContext = contextFor(subject)
 
   const sections = useMemo(
