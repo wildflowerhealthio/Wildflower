@@ -10,15 +10,12 @@ import * as DomainResource from '../../data-types/base/domain-resource.ts'
 import * as Annotation from '../../data-types/complex/annotation.ts'
 import * as CodeableConcept from '../../data-types/complex/codeable-concept.ts'
 import * as IdentifierAndReference from '../../data-types/complex/identifier-and-reference.ts'
-// registration: imported for the side-effect of running
-// `registerDatatypeSchema` so `value[x] / effective[x] {Ratio, SampledData,
-// SimpleQuantity, Timing}` round-trip. Removing one of these lines makes the
-// matching choice slot fail encode with `UnregisteredDatatype` — do not
-// strip as "unused".
-import '../../data-types/complex/ratio.ts'
-import '../../data-types/complex/sampled-data.ts'
-import '../../data-types/complex/simple-quantity.ts'
-import '../../data-types/complex/timing.ts'
+// Registration barrel — imported for the side effect of running every complex
+// datatype's `registerDatatypeSchema` so `value[x] / effective[x]` slots (here
+// {Ratio, SampledData, SimpleQuantity, Timing}) round-trip. One import instead
+// of hand-listing each module; `data-types/register-all.test.ts` asserts the
+// barrel is complete, so a forgotten registration fails CI, not just encode.
+import '../../data-types/register-all.ts'
 import * as ObservationComponent from './observation-component.ts'
 import * as ObservationReferenceRange from './observation-reference-range.ts'
 

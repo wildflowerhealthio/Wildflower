@@ -11,7 +11,7 @@ FHIR R4 slice: pure wire schemas (Patient / Observation / Binary), the `HttpApi`
 ## Traps
 
 - **No drift guard exists between `fhir-r4`'s `HttpApi` and HFS's actual surface.** A snapshot pair does exist (`emr-rust/openapi/fhir-r4.openapi.json`, generated from the TS `fhir-r4` `HttpApi` and kept fresh by a TS-side test, and read on the Rust side by `emr_rust::openapi_spec` for the host's unified `/docs` page) — but it only guards the snapshot against the `HttpApi`, not against what HFS actually serves. If you change the `HttpApi` definition, verify HFS actually serves that shape (see the Client Capabilities Reference).
-- Complex datatypes self-register into the registry at module load (`registerDatatypeSchema` at the bottom of each datatype file). A `value[x]` slot whose datatype module hasn't been imported fails encode with `UnregisteredDatatype` — keep the side-effect imports (e.g. in `observation.ts`) intact.
+- Complex datatypes self-register into the registry at module load (`registerDatatypeSchema` at the bottom of each datatype file). A `value[x]` slot whose datatype module hasn't been imported fails encode with `UnregisteredDatatype`. Import the registration barrel `fhir-r4/src/data-types/register-all.ts` (one side-effect import that loads every registrable module) instead of hand-listing modules per resource. `register-all.test.ts` asserts the barrel populates every registry slot, so a dropped or forgotten registration is a CI failure rather than a latent runtime one — but the barrel's imports are still bare side effects, so add the matching line whenever a new complex datatype module lands.
 
 ## References
 
