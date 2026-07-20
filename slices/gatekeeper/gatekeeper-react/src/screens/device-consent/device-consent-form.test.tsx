@@ -79,23 +79,22 @@ describe('DeviceConsentForm', () => {
     expect(screen.queryByText('patient/Observation.rs')).toBeNull()
   })
 
-  test('offers the which-patient pill when the account has patients', async () => {
-    // Arrange — one patient on the account; allowed scopes cover system/ so the
-    // whose-records selector renders.
+  test('withholds the whose-records selector and which-patient pill, even with patients', () => {
+    // Device-auth is pinned to all-patients (the FHIR server's patient/ support is too weak
+    // to offer a one-patient subject), so neither the selector nor the pill appears — even
+    // though the account has a pickable patient and the allowed set covers system/.
     patientResources = [{ id: 'p-1', name: [{ given: ['Ada'], family: 'Lovelace' }] }]
-    const { user } = renderConsentForm(makeConsent({ allowedScopes: ['system/*.cruds'] }), vi.fn())
+    renderConsentForm(makeConsent({ allowedScopes: ['system/*.cruds'] }), vi.fn())
 
-    // Act — the landing subject is "Just one patient"; pick the patient.
-    await user.click(screen.getByRole('button', { name: /Select a Patient/ }))
-    await user.click(screen.getByRole('option', { name: /Ada Lovelace/ }))
-
-    // Assert — the pill reflects the chosen patient.
-    expect(screen.getByRole('button', { name: /Ada Lovelace/ })).toBeDefined()
+    expect(screen.queryByRole('radio', { name: /Just one patient/ })).toBeNull()
+    expect(screen.queryByRole('radio', { name: /All patients/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Select a Patient/ })).toBeNull()
   })
 
-  test('sends the chosen patient in the approve payload', async () => {
-    // Arrange — run the mutation's Effect for real against a stub client that
-    // captures the wire payload (the only place the body is observable).
+  test('honors a device-requested patient/ scope and approves it with no launch patient', async () => {
+    // "Apps can still use them if that's what they expect": a device may request patient/
+    // scopes and have them granted as-is. With no one-patient subject to pick, the approve
+    // payload carries the requested scope untouched and no `patient` claim.
     let capturedPayload: unknown
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test stub: only `devices.ApproveDeviceConsent` is touched on this path
     const clientLayer = Layer.succeed(GatekeeperHttpApiClient, {
@@ -119,19 +118,14 @@ describe('DeviceConsentForm', () => {
     const onDone = vi.fn()
     const { user } = renderConsentForm(makeConsent({ allowedScopes: ['system/*.cruds'] }), onDone)
 
-    // Act — pick the patient, then approve.
-    await user.click(screen.getByRole('button', { name: /Select a Patient/ }))
-    await user.click(screen.getByRole('option', { name: /Ada Lovelace/ }))
+    // Act — approve straight away; there is no patient to pick.
     await user.click(screen.getByRole('button', { name: 'Approve' }))
 
-    // Assert — the wire body binds the grant to the chosen patient.
+    // Assert — the requested patient/ scope rides through, with no `patient` in the body.
     await waitFor(() => {
       expect(onDone).toHaveBeenCalledTimes(1)
     })
-    expect(capturedPayload).toEqual({
-      approvedScopes: ['patient/Observation.rs'],
-      patient: 'p-1',
-    })
+    expect(capturedPayload).toEqual({ approvedScopes: ['patient/Observation.rs'] })
   })
 
   test('approves and finishes when the server records the grant', async () => {

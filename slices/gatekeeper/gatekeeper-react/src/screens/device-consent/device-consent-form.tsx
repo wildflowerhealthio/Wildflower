@@ -166,6 +166,9 @@ const DeviceConsentForm = ({
         mode="expandable"
         phrasing="asking"
         patients={patients}
+        // The FHIR server's patient/ support is too weak to rely on, so a device grant targets
+        // all patients only — pin the subject and hide the one-patient / all-patients selector.
+        forcedSubject="system"
       />
 
       {errorMessage !== null ? (

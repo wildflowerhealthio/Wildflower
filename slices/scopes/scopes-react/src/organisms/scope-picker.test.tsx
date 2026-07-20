@@ -363,6 +363,68 @@ describe('ScopePicker — which-patient choice (answer side)', () => {
   })
 })
 
+describe('ScopePicker — forcedSubject', () => {
+  it('should hide the subject selector and pin the context when a subject is forced', () => {
+    const request = ScopeRequest.expandable({ requested: [], available: ['system/*.cruds'] })
+    const Host = (): JSX.Element => {
+      const [draft, setDraft] = useState(() => GrantDraft.fromScopes([], null))
+      return (
+        <ScopePicker
+          subjectName="New device"
+          request={request}
+          draft={draft}
+          onDraftChange={setDraft}
+          mode="expandable"
+          forcedSubject="system"
+        />
+      )
+    }
+    render(<Host />)
+
+    // The caller forced the subject, so the one-patient / all-patients selector is gone…
+    expect(screen.queryByRole('radio', { name: /Just one patient/ })).toBeNull()
+    expect(screen.queryByRole('radio', { name: /All patients/ })).toBeNull()
+    // …and the lone FHIR section names the forced (all-patients) context.
+    expect(screen.getByRole('heading', { name: 'Health records — all patients' })).toBeDefined()
+  })
+
+  it('should withhold the which-patient pill even when patients are supplied', () => {
+    const request = ScopeRequest.expandable({
+      requested: ['system/Observation.r'],
+      available: ['system/*.cruds'],
+    })
+    const Host = (): JSX.Element => {
+      const [draft, setDraft] = useState(() =>
+        GrantDraft.fromScopes(['system/Observation.r'], null)
+      )
+      return (
+        <ScopePicker
+          subjectName="New device"
+          request={request}
+          draft={draft}
+          onDraftChange={setDraft}
+          mode="expandable"
+          phrasing="asking"
+          patients={[{ id: 'p-1', displayName: 'Ada Lovelace' }]}
+          forcedSubject="system"
+        />
+      )
+    }
+    render(<Host />)
+
+    // With no one-patient subject to switch to, the which-patient pill never appears.
+    expect(screen.queryByRole('button', { name: /Select a Patient/ })).toBeNull()
+  })
+
+  it('should leave the selector in place when no subject is forced (default expandable)', () => {
+    render(<ExpandableHarness requested={[]} available={['system/*.cruds']} />)
+
+    // The default expandable picker is unchanged — the selector still offers both subjects.
+    expect(screen.getByRole('radio', { name: /Just one patient/ })).toBeDefined()
+    expect(screen.getByRole('radio', { name: /All patients/ })).toBeDefined()
+  })
+})
+
 describe('ScopePicker — flags', () => {
   it('should toggle a known flag off and back on', async () => {
     const user = userEvent.setup()

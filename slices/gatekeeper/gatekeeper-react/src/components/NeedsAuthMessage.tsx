@@ -263,6 +263,9 @@ const NeedsAuthMessage = (): JSX.Element => {
           onDraftChange={setDraft}
           mode="expandable"
           phrasing="requesting"
+          // The FHIR server's patient/ support is too weak to rely on, so a device request
+          // targets all patients only — pin the subject and hide the subject selector.
+          forcedSubject="system"
         />
         <div className={pageLayout['buttons']}>
           <button type="button" className="button-2 filled" onClick={handleStart}>
