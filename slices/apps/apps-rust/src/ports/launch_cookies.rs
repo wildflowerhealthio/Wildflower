@@ -13,10 +13,11 @@
 //! already presents; it mints nothing.
 //!
 //! The host wires the real implementation (the gatekeeper cookie builder) when it
-//! builds [`AppsState`](crate::http::AppsState); a host with no cookie-auth path
-//! wires the [`NoLaunchCookies`] no-op. apps-rust never learns the `wf_auth`
-//! cookie name or format — the seam keeps that in the gatekeeper slice, exactly
-//! as [`OwnerAuth`](crate::http::OwnerAuth) keeps the owner-bearer check there.
+//! builds [`AppsState`](crate::live_bindings::state::AppsState); a host with no
+//! cookie-auth path wires the [`NoLaunchCookies`] no-op. apps-rust never learns the
+//! `wf_auth` cookie name or format — the seam keeps that in the gatekeeper slice,
+//! exactly as the sibling [`AppLaunchScopes`](crate::ports::app_launch_scopes::AppLaunchScopes)
+//! seam keeps SMART scope resolution there.
 
 use axum::http::{HeaderMap, HeaderValue};
 

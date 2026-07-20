@@ -139,7 +139,7 @@ impl<S: AppsStore, I: SelfHostedInstaller> AppsCreator<S, I> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::actions::test_fake::{seeded_self_hosted, FakeAppsStore, FakeInstaller};
+    use crate::domain::test_fake::{seeded_self_hosted, FakeAppsStore, FakeInstaller};
 
     #[test]
     // The single-threaded fake installer holds `RefCell`s (not `Sync`); the real

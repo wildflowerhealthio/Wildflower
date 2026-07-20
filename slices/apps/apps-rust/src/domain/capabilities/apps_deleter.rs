@@ -74,7 +74,7 @@ impl<S: AppsStore, I: SelfHostedInstaller> AppsDeleter<S, I> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::actions::test_fake::{
+    use crate::domain::test_fake::{
         create_cloud, seeded_self_hosted, FakeAppsStore, FakeInstaller,
     };
 

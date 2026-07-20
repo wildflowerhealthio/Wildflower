@@ -19,11 +19,5 @@
 mod cloud_apps;
 mod self_hosted_apps;
 
-// `pub(crate)` (not `mod`) so the scope-gated capability tests in
-// `crate::domain::capabilities` can reuse the same in-memory `FakeAppsStore` /
-// `FakeInstaller` these helper tests seed against.
-#[cfg(test)]
-pub(crate) mod test_fake;
-
 pub(crate) use cloud_apps::{validate_cloud_fields, CloudAppPayload};
 pub(crate) use self_hosted_apps::{slugify, validate_launch_path};

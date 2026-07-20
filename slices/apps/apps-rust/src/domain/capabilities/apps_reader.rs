@@ -84,9 +84,7 @@ impl<S: AppsStore> AppsReader<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::actions::test_fake::{
-        create_cloud, seeded_self_hosted, system, FakeAppsStore,
-    };
+    use crate::domain::test_fake::{create_cloud, seeded_self_hosted, system, FakeAppsStore};
     use crate::domain::AppKind;
 
     fn reader(seed: impl FnOnce(&FakeAppsStore)) -> AppsReader<FakeAppsStore> {

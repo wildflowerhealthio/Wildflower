@@ -51,8 +51,9 @@
 //! ## Launch / tunnel seam
 //!
 //! `POST /apps/{id}` resolves a launch target and dispatches on the *request's*
-//! provenance (loopback vs. forwarded) — see the launch handler module. A
-//! loopback launch is owner-gated through [`http::OwnerAuth`]. A
+//! provenance (loopback vs. forwarded) — see the launch handler module. The launch
+//! surface is scope-gated on the `wildflower/launch` umbrella (a SMART app
+//! additionally requires the caller's grant to cover its client scopes). A
 //! `requires_tunnel` (cloud) launch resolves through the shared
 //! [`TunnelService`](shared_structures_rust::tunnel_service::TunnelService)
 //! contract, keeping apps-rust decoupled from tunnel-rust.

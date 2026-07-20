@@ -18,7 +18,9 @@
 //! signals onto [`AppsError`]) — including the cross-kind `(registration,
 //! configuration)` read (a private `get_app` helper in [`capabilities`], with the
 //! launch route inlining the same `find_app` + `NotFound` shape) — while the
-//! [`actions`] module holds the write-side validators they share. Mirrors collector.
+//! [`actions`] module holds the write-side validators they share (multi-caller
+//! logic kept out of the capabilities; collector inlined its single-caller
+//! equivalents into its capabilities, tunnel keeps a single-file `domain::actions`).
 
 pub(crate) mod actions;
 mod app_configuration;
@@ -33,6 +35,12 @@ mod kind;
 mod self_hosted_app_configuration;
 mod self_hosted_installer;
 mod system_app_configuration;
+// The in-memory `FakeAppsStore` / `FakeInstaller` shared by the scope-gated
+// capability tests and the residual `actions` validator tests. Lives at the domain
+// root (not under `actions`) since it's reused above that layer — the collector
+// `domain::test_fake` placement.
+#[cfg(test)]
+pub(crate) mod test_fake;
 
 pub use app_configuration::AppConfiguration;
 pub(crate) use app_registration::is_exact_registry_permutation;

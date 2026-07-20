@@ -65,7 +65,7 @@ impl AppLauncher {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::actions::test_fake::registration;
+    use crate::domain::test_fake::registration;
     use crate::domain::AppKind;
 
     /// A fake [`AppLaunchScopes`] returning a fixed required-scope set. The

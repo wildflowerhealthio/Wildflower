@@ -120,9 +120,7 @@ impl<S: AppsStore> AppsEditor<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::actions::test_fake::{
-        create_cloud, seeded_self_hosted, system, FakeAppsStore,
-    };
+    use crate::domain::test_fake::{create_cloud, seeded_self_hosted, system, FakeAppsStore};
 
     #[test]
     fn editor_replaces_content_and_reorders() {
