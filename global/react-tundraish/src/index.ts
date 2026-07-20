@@ -10,6 +10,7 @@ export {
 } from './checkbox-group.tsx'
 export { Chip, type ChipProps } from './chip.tsx'
 export { Dialog, type DialogProps } from './dialog.tsx'
+export { ErrorBanner, type ErrorBannerProps } from './error-banner.tsx'
 export { ErrorBoundary, type ErrorBoundaryProps } from './error-boundary.tsx'
 export {
   ErrorBodyRendererContext,

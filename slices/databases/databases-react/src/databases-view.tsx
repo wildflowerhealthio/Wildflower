@@ -1,9 +1,10 @@
 import { Effect } from 'effect'
 import { formatBytes } from 'kitchen-sink'
-import { useState, type JSX, type ReactNode } from 'react'
+import { useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import {
   Dialog,
+  ErrorBanner,
   ItemList,
   Menu,
   PageHeader,
@@ -37,14 +38,13 @@ interface DatabasesViewProps {
   readonly exportingId: string | null
   /** The id currently deleting, if any. */
   readonly deletingId: string | null
-  readonly errorMessage: string | null
   /**
-   * A pre-rendered error surface (e.g. the scope-failure surface for a `403
-   * InsufficientScope`) shown in place of the plain `errorMessage` banner. The
-   * screen supplies it via the app's error renderer; `null`/absent falls back to
-   * the message banner.
+   * The failed export/delete mutation's error, or `null` when neither failed.
+   * Rendered by {@link ErrorBanner}: a `403 InsufficientScope` becomes the app's
+   * authorization-failure surface (via the ambient error renderer), anything else
+   * a plain message banner.
    */
-  readonly errorSurface?: ReactNode
+  readonly error: unknown
 }
 
 /**
@@ -58,8 +58,7 @@ const DatabasesView = ({
   onDelete,
   exportingId,
   deletingId,
-  errorMessage,
-  errorSurface,
+  error,
 }: DatabasesViewProps): JSX.Element => {
   const [confirmId, setConfirmId] = useState<string | null>(null)
   const confirmTarget = databases.find((database) => database.id === confirmId) ?? null
@@ -120,12 +119,7 @@ const DatabasesView = ({
         </p>
       ) : null}
 
-      {errorSurface ??
-        (errorMessage !== null ? (
-          <p className={cn(pageLayoutStyles['error'], 'text-body-3')} role="alert">
-            {errorMessage}
-          </p>
-        ) : null)}
+      <ErrorBanner error={error} />
 
       <ItemList items={databases.map((database) => toItem(database))} />
 
