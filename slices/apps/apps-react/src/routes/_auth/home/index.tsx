@@ -24,36 +24,24 @@ import {
   type AppRegistration,
 } from '../../../queries.ts'
 import type { RouterContext } from '../../../router-context.ts'
-import { launchApp, launchHref, type LaunchErrorKind } from './-launch.ts'
+import { launchBannerError } from './-launch-error.ts'
+import { launchApp, launchHref } from './-launch.ts'
 import { reorderApps } from './-reorder.ts'
 import { SortableAppTile } from './-tiles.tsx'
 import tileStyles from '../../../styles/app-tiles.module.css'
 
-/** The `?launchError` search value, kept as the closed {@link LaunchErrorKind} set
- * so a hand-edited URL can't inject an arbitrary banner. */
-const LAUNCH_ERROR_KINDS = new Set<string>(['forbidden', 'not-found', 'unavailable', 'failed'])
-const isLaunchErrorKind = (value: unknown): value is LaunchErrorKind =>
-  typeof value === 'string' && LAUNCH_ERROR_KINDS.has(value)
-
 interface HomeSearch {
-  readonly launchError?: LaunchErrorKind
+  /** The base64 launch-error body (see `-launch-error.ts`) — an opaque string the
+   * banner decodes; both arms set it, so it's kept verbatim. */
+  readonly launchError?: string
 }
 
-/** Validate `/home`'s search: keep a recognised `launchError` kind, drop anything
- * else (both arms only ever set a known kind — see the Rust launch middleware and
- * `-launch.ts`). */
+/** Validate `/home`'s search: keep a string `launchError` param (the base64 error
+ * body both arms set — see the Rust launch middleware and `-launch.ts`), drop
+ * anything else. */
 const validateHomeSearch = (search: Record<string, unknown>): HomeSearch => {
   const raw = search['launchError']
-  return isLaunchErrorKind(raw) ? { launchError: raw } : {}
-}
-
-/** The friendly sentence each launch-failure kind reads as in the banner (a
- * `Record`, so a new kind is a compile error until it's given copy). */
-const LAUNCH_ERROR_MESSAGES: Record<LaunchErrorKind, string> = {
-  forbidden: 'You don’t have permission to launch that app.',
-  'not-found': 'That app is no longer available.',
-  unavailable: 'That app can’t be reached right now. Try again in a moment.',
-  failed: 'That app couldn’t be launched.',
+  return typeof raw === 'string' ? { launchError: raw } : {}
 }
 
 /**
@@ -74,13 +62,13 @@ const AppsHomeScreen = (): JSX.Element => {
     <AppsHomeBody
       apps={apps}
       launchError={launchError}
-      onLaunchResult={(kind) => {
+      onLaunchResult={(param) => {
         // Only the loopback (Tauri) arm reaches here — the web tile is a bare
         // `<a href>` with no `onClick` (see `-tiles.tsx`), so this never races a
         // full-page navigation. Reflect the outcome into the `?launchError` param:
         // a failure shows the banner; a later success clears a stale one.
-        if (kind !== null) {
-          void navigate({ search: { launchError: kind } })
+        if (param !== null) {
+          void navigate({ search: { launchError: param } })
         } else if (launchError !== undefined) {
           void navigate({ search: {} })
         }
@@ -91,14 +79,14 @@ const AppsHomeScreen = (): JSX.Element => {
 
 interface AppsHomeBodyProps {
   readonly apps: readonly AppRegistration[]
-  /** The launch failure to surface (from the `?launchError` search param), if any. */
-  readonly launchError?: LaunchErrorKind
+  /** The base64 launch-error body from the `?launchError` search param, if any. */
+  readonly launchError?: string
   /**
-   * Called with the loopback launch outcome — a {@link LaunchErrorKind} on failure,
-   * `null` on success — so the route can reflect it into the `?launchError` param.
+   * Called with the loopback launch outcome — the encoded `?launchError` body on
+   * failure, `null` on success — so the route can reflect it into the search param.
    * Only ever invoked on the Tauri arm (the web tile launches by anchor navigation).
    */
-  readonly onLaunchResult?: (kind: LaunchErrorKind | null) => void
+  readonly onLaunchResult?: (param: string | null) => void
 }
 
 const AppsHomeBody = ({ apps, launchError, onLaunchResult }: AppsHomeBodyProps): JSX.Element => {
@@ -246,8 +234,9 @@ const AppsHomeBody = ({ apps, launchError, onLaunchResult }: AppsHomeBodyProps):
         }
       />
       {/* A launch that failed (the browser arm was redirected here with
-          `?launchError`; the Tauri arm set it via `onLaunchResult`). */}
-      <ErrorBanner error={launchError !== undefined ? LAUNCH_ERROR_MESSAGES[launchError] : null} />
+          `?launchError`; the Tauri arm set it via `onLaunchResult`). The decoded
+          body routes through the same renderer, so a `403` names the missing scopes. */}
+      <ErrorBanner error={launchBannerError(launchError)} />
       {/* A failed home-screen reorder/hide — a `403` shows the permission surface. */}
       <ErrorBanner error={homeScreenMutation.error} />
       {visible.length === 0 ? (

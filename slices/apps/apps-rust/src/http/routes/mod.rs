@@ -234,6 +234,19 @@ mod tests {
             .unwrap()
     }
 
+    /// Decode the base64 `launchError` param a browser-launch redirect carries into
+    /// the JSON error body the SPA banner reads.
+    fn launch_error_body(location: &str) -> serde_json::Value {
+        use base64::Engine as _;
+        let encoded = location
+            .strip_prefix("/home?launchError=")
+            .expect("a /home?launchError= redirect");
+        let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(encoded)
+            .expect("valid URL-safe base64");
+        serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null)
+    }
+
     fn post_json(uri: &str, body: serde_json::Value) -> Request<Body> {
         Request::builder()
             .method("POST")
@@ -496,10 +509,8 @@ mod tests {
         )
         .await;
         assert_eq!(denied.status(), StatusCode::SEE_OTHER);
-        assert_eq!(
-            denied.headers().get("location").unwrap().to_str().unwrap(),
-            "/home?launchError=forbidden",
-        );
+        let body = launch_error_body(denied.headers().get("location").unwrap().to_str().unwrap());
+        assert_eq!(body["error"], "InsufficientScope");
     }
 
     /// A loopback `GET` (browser) without the umbrella scope bounces to the
@@ -516,10 +527,10 @@ mod tests {
         )
         .await;
         assert_eq!(res.status(), StatusCode::SEE_OTHER);
-        assert_eq!(
-            res.headers().get("location").unwrap().to_str().unwrap(),
-            "/home?launchError=forbidden",
-        );
+        // The base64 body is the `InsufficientScope` the extractor returned, so the
+        // SPA banner can name the missing scopes.
+        let body = launch_error_body(res.headers().get("location").unwrap().to_str().unwrap());
+        assert_eq!(body["error"], "InsufficientScope");
     }
 
     /// Seed a **SMART** cloud app (a `client_id` present) that launches against the
@@ -655,10 +666,8 @@ mod tests {
         let st = state();
         let res = send_raw(&st, get_launch("/apps/no-such-thing")).await;
         assert_eq!(res.status(), StatusCode::SEE_OTHER);
-        assert_eq!(
-            res.headers().get("location").unwrap().to_str().unwrap(),
-            "/home?launchError=not-found",
-        );
+        let body = launch_error_body(res.headers().get("location").unwrap().to_str().unwrap());
+        assert_eq!(body["error"], "AppNotFound");
     }
 
     /// A `GET` (browser) launch with no reachable target (a forwarded self-hosted
@@ -669,10 +678,8 @@ mod tests {
         let st = state();
         let res = send_raw(&st, get_forwarded("/apps/patient-browser")).await;
         assert_eq!(res.status(), StatusCode::SEE_OTHER);
-        assert_eq!(
-            res.headers().get("location").unwrap().to_str().unwrap(),
-            "/home?launchError=unavailable",
-        );
+        let body = launch_error_body(res.headers().get("location").unwrap().to_str().unwrap());
+        assert_eq!(body["error"], "LaunchUnavailable");
     }
 
     /// A system app launches via its stored source URL, resolved against the

@@ -790,6 +790,9 @@ importers:
       react-tundraish:
         specifier: workspace:*
         version: link:../../../global/react-tundraish
+      shared-structures-core:
+        specifier: workspace:*
+        version: link:../../shared-structures/shared-structures-core
       shared-structures-react:
         specifier: workspace:*
         version: link:../../shared-structures/shared-structures-react

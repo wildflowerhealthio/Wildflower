@@ -45,7 +45,7 @@
           "Launch"
         ],
         "summary": "`GET /apps/{id}` — the web launch arm. A home-screen tile is a real\n`<a href=\"/apps/{id}\" rel=\"nofollow noreferrer\">`, so a plain click navigates\nthe current tab and a cmd/ctrl-click opens a new one — native affordances a\nform-`POST` or `fetch` can't preserve. The auth cookie rides the anchor\nnavigation (even the initial document request, before any JS), so a forwarded\n`GET` authenticates and the server `302`s to the resolved target. Shares\n[`launch`] with the `POST` arm — identical resolve-then-dispatch and auth\nposture.",
-        "description": "A *failed* `GET` (`403`/`404`/`503`) is rewritten to a `303` back to\n`/home?launchError=<kind>` by [`redirect_browser_launch_errors`], so the browser\nlands on the SPA's banner instead of the raw error body. The `4xx`/`5xx`\nresponses documented below are the handler's own (what the `POST` arm returns);\nthe browser arm never renders them.",
+        "description": "A *failed* `GET` (`403`/`404`/`503`) is rewritten to a `303` back to\n`/home?launchError=<base64 body>` by [`redirect_browser_launch_errors`], so the\nbrowser lands on the SPA's banner (naming the missing scopes for a `403`) instead\nof the raw error body. The `4xx`/`5xx` responses documented below are the\nhandler's own (what the `POST` arm returns); the browser arm never renders them.",
         "operationId": "handle_launch_app_get",
         "parameters": [
           {

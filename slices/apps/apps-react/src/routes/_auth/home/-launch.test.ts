@@ -4,6 +4,7 @@ import { describe, expect, test } from 'vite-plus/test'
 
 import type { AppRegistration } from '../../../queries.ts'
 import type { RunAuthed } from '../../../router-context.ts'
+import { launchBannerError } from './-launch-error.ts'
 import { launchApp, launchHref } from './-launch.ts'
 
 // A minimal uniform registration — `launchApp` / `launchHref` read only `id`.
@@ -77,51 +78,56 @@ describe('launchApp', () => {
     test('launches through the authed Effect client and resolves null on success', async () => {
       const stub = resolvingRunAuthed()
 
-      const kind = await launchApp({ apiBaseUrl: TAURI_API_BASE, runAuthed: stub.runAuthed }, app)
+      const param = await launchApp({ apiBaseUrl: TAURI_API_BASE, runAuthed: stub.runAuthed }, app)
 
       // Success is `null` (no banner); the launch rides `runAuthed` (not a raw
       // `fetch`), so the owner bearer is attached like the apps-list read.
-      expect(kind).toBeNull()
+      expect(param).toBeNull()
       expect(stub.calls).toHaveLength(1)
       expect(stub.calls[0]?.effect).toBeDefined()
     })
 
-    test('maps a 403 to the "forbidden" banner kind instead of throwing', async () => {
-      const stub = rejectingRunAuthed(responseError(403))
+    test('encodes a 403 InsufficientScope so the banner can name the missing scopes', async () => {
+      // `LaunchApp` declares the `403`, so it decodes to the shared body; the encoded
+      // param round-trips back to that body (which the app's ambient renderer turns
+      // into the AuthorizationFailure surface).
+      const body = { error: 'InsufficientScope', missingScopes: ['wildflower/launch'] }
+      const stub = rejectingRunAuthed(body)
 
-      await expect(
-        launchApp({ apiBaseUrl: TAURI_API_BASE, runAuthed: stub.runAuthed }, app)
-      ).resolves.toBe('forbidden')
+      const param = await launchApp({ apiBaseUrl: TAURI_API_BASE, runAuthed: stub.runAuthed }, app)
+
+      expect(launchBannerError(param ?? undefined)).toEqual(body)
     })
 
-    test('maps a 503 to "unavailable"', async () => {
+    test('encodes a 503 as a reachability message', async () => {
       const stub = rejectingRunAuthed(responseError(503))
 
-      await expect(
-        launchApp({ apiBaseUrl: TAURI_API_BASE, runAuthed: stub.runAuthed }, app)
-      ).resolves.toBe('unavailable')
+      const param = await launchApp({ apiBaseUrl: TAURI_API_BASE, runAuthed: stub.runAuthed }, app)
+
+      expect(launchBannerError(param ?? undefined)).toContain('reached')
     })
 
-    test('maps an unrecognised failure to the generic "failed"', async () => {
+    test('encodes an unrecognised failure as the generic launch message', async () => {
       const stub = rejectingRunAuthed(new Error('boom'))
 
-      await expect(
-        launchApp({ apiBaseUrl: TAURI_API_BASE, runAuthed: stub.runAuthed }, app)
-      ).resolves.toBe('failed')
+      const param = await launchApp({ apiBaseUrl: TAURI_API_BASE, runAuthed: stub.runAuthed }, app)
+
+      expect(launchBannerError(param ?? undefined)).toBe('That app couldn’t be launched.')
     })
 
-    test('unwraps a FiberFailure before reading the status', async () => {
+    test('unwraps a FiberFailure before classifying', async () => {
       // `runAuthed` rejects with a `FiberFailure` (what `Effect.runPromise` throws),
-      // so the kind must be read from the wrapped `ResponseError`, not the wrapper.
-      const fiberFailure = await Effect.runPromise(Effect.fail(responseError(403))).then(
+      // so the body must be read from the wrapped value, not the wrapper.
+      const body = { error: 'InsufficientScope', missingScopes: ['wildflower/launch'] }
+      const fiberFailure = await Effect.runPromise(Effect.fail(body)).then(
         () => null,
         (rejection: unknown) => rejection
       )
       const stub = rejectingRunAuthed(fiberFailure)
 
-      await expect(
-        launchApp({ apiBaseUrl: TAURI_API_BASE, runAuthed: stub.runAuthed }, app)
-      ).resolves.toBe('forbidden')
+      const param = await launchApp({ apiBaseUrl: TAURI_API_BASE, runAuthed: stub.runAuthed }, app)
+
+      expect(launchBannerError(param ?? undefined)).toEqual(body)
     })
   })
 
@@ -129,11 +135,11 @@ describe('launchApp', () => {
     test('is a no-op — the anchor navigates, so JS never touches runAuthed', async () => {
       const stub = resolvingRunAuthed()
 
-      const kind = await launchApp({ apiBaseUrl: undefined, runAuthed: stub.runAuthed }, app)
+      const param = await launchApp({ apiBaseUrl: undefined, runAuthed: stub.runAuthed }, app)
 
       // The web arm rides the anchor navigation (cookie authenticates) — no bearer,
       // no client call, and no banner to raise from JS.
-      expect(kind).toBeNull()
+      expect(param).toBeNull()
       expect(stub.calls).toHaveLength(0)
     })
   })

@@ -49,6 +49,8 @@ use axum::http::header::{CONTENT_TYPE, LOCATION, SET_COOKIE};
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::Engine as _;
 
 use scope_capabilities_rust::{InsufficientScopeBody, Scoped};
 use scopes_rust::Scope;
@@ -102,10 +104,10 @@ pub(crate) async fn handle_launch_app(
 /// posture.
 ///
 /// A *failed* `GET` (`403`/`404`/`503`) is rewritten to a `303` back to
-/// `/home?launchError=<kind>` by [`redirect_browser_launch_errors`], so the browser
-/// lands on the SPA's banner instead of the raw error body. The `4xx`/`5xx`
-/// responses documented below are the handler's own (what the `POST` arm returns);
-/// the browser arm never renders them.
+/// `/home?launchError=<base64 body>` by [`redirect_browser_launch_errors`], so the
+/// browser lands on the SPA's banner (naming the missing scopes for a `403`) instead
+/// of the raw error body. The `4xx`/`5xx` responses documented below are the
+/// handler's own (what the `POST` arm returns); the browser arm never renders them.
 #[utoipa::path(
     get,
     tag = "Launch",
@@ -129,25 +131,24 @@ pub(crate) async fn handle_launch_app_get(
 }
 
 /// The SPA route a failed **browser** launch bounces to; the home screen decodes
-/// the `launchError` kind into a banner (see the apps-react `/home` route).
+/// the base64 `launchError` body into a banner (see the apps-react `/home` route).
 const LAUNCH_ERROR_HOME: &str = "/home";
 
-/// The coarse `launchError` kind the home-screen banner switches on, by failure
-/// status. Deliberately coarse — a browser navigation shouldn't leak the missing
-/// scope or whether the app exists; the SPA maps each kind to a sentence.
-fn launch_error_kind(status: StatusCode) -> &'static str {
-    match status {
-        StatusCode::FORBIDDEN => "forbidden",
-        StatusCode::NOT_FOUND => "not-found",
-        StatusCode::SERVICE_UNAVAILABLE => "unavailable",
-        _ => "failed",
-    }
-}
+/// Cap on the error body read into the redirect param. The launch error bodies (a
+/// JSON `InsufficientScope` / `AppNotFound` / `LaunchUnavailable`) are tiny; this
+/// only bounds a pathological body.
+const LAUNCH_ERROR_BODY_LIMIT: usize = 64 * 1024;
 
 /// A layer over the launch routes that bounces a **failed browser (`GET`) launch**
-/// to `/home?launchError=<kind>` instead of letting the raw error body render as a
-/// full page (the web arm is a native `<a href="/apps/{id}">` navigation, so a
+/// to `/home?launchError=<base64>` instead of letting the raw error body render as
+/// a full page (the web arm is a native `<a href="/apps/{id}">` navigation, so a
 /// `403`/`404`/`503` would otherwise paint its JSON/text body as the page).
+///
+/// The failed response body — a JSON `InsufficientScope` naming the missing scopes,
+/// or an `AppNotFound` / `LaunchUnavailable` — is URL-safe-base64'd into the
+/// redirect so the SPA can decode it and show the *same* permission banner a failed
+/// mutation would (an `AuthorizationFailure` surface naming the scopes), rather than
+/// a coarse kind.
 ///
 /// Only a `GET` is rewritten, and only on an error status — a successful launch
 /// (`302` to the app, or `204`) passes through untouched, and the typed loopback
@@ -161,13 +162,17 @@ pub(crate) async fn redirect_browser_launch_errors(request: Request, next: Next)
     if !is_browser_get || !(status.is_client_error() || status.is_server_error()) {
         return response;
     }
-    let location = format!(
-        "{LAUNCH_ERROR_HOME}?launchError={}",
-        launch_error_kind(status)
-    );
+    // Consume the error body and base64 it into the redirect so the SPA banner
+    // shows exactly what the server reported. An unreadable body degrades to an
+    // empty param (the SPA then falls back to a generic launch-failure message).
+    let body = axum::body::to_bytes(response.into_body(), LAUNCH_ERROR_BODY_LIMIT)
+        .await
+        .unwrap_or_default();
+    let encoded = URL_SAFE_NO_PAD.encode(&body);
+    let location = format!("{LAUNCH_ERROR_HOME}?launchError={encoded}");
     // `303 See Other`: the browser re-issues a `GET` to `/home` (dropping the failed
-    // request's method + body). `location` is a static path plus a fixed kind, so
-    // the header value is always valid ASCII.
+    // request's method + body). `location` is a path plus URL-safe base64, so the
+    // header value is always valid ASCII.
     Response::builder()
         .status(StatusCode::SEE_OTHER)
         .header(LOCATION, location)
