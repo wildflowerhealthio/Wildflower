@@ -1,7 +1,7 @@
 import { descriptorForTag, type CollectorTag, type ConfigForTag } from 'collector-registry/registry'
 import { useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
-import { PageHeader, pageLayoutStyles } from 'react-tundraish'
+import { ErrorBanner, PageHeader } from 'react-tundraish'
 
 import { configFormForTag } from './config-form.tsx'
 import styles from './account-form.module.css'
@@ -19,8 +19,12 @@ interface AccountFormScreenProps<T extends CollectorTag> {
   readonly initialName: string
   /** Mirrors the owning mutation's pending state. */
   readonly disabled: boolean
-  /** Mutation error to surface in the banner, or `null`. */
-  readonly error: string | null
+  /**
+   * The owning mutation's error, surfaced in the banner — a `403
+   * InsufficientScope` renders the permission surface (naming the missing
+   * scopes), anything else a plain message; `null`/absent when idle.
+   */
+  readonly error: unknown
   /** Called with the resolved name + decoded config once the fields validate. */
   readonly onSubmit: (name: string, config: ConfigForTag<T>) => void
   readonly onCancel: () => void
@@ -67,9 +71,7 @@ function AccountFormScreen<T extends CollectorTag>({
     <>
       <PageHeader title={title} backHref="/collector" backLabel="Collector" />
 
-      {error !== null ? (
-        <p className={cn(pageLayoutStyles['error'], 'text-body-3')}>{error}</p>
-      ) : null}
+      <ErrorBanner error={error} />
 
       <ConfigForm
         initial={initial}

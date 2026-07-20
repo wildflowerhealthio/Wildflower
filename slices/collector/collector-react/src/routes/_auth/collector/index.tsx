@@ -1,15 +1,14 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { descriptors, descriptorForConfig } from 'collector-registry/registry'
-import { unknownErrorToString } from 'kitchen-sink'
 import { useState, type JSX } from 'react'
 import { cn, unwrapCause } from 'react-kitchen-sink'
 import {
   AsyncErrorView,
   Dialog,
+  ErrorBanner,
   ItemList,
   Menu,
   PageHeader,
-  pageLayoutStyles,
   type MenuItem,
 } from 'react-tundraish'
 
@@ -54,9 +53,10 @@ function AccountListBody({ remotes }: AccountListBodyProps): JSX.Element {
     },
   })
 
-  const deleteError =
-    deleteMutation.error === null ? null : unknownErrorToString(deleteMutation.error)
-  const error = importError ?? deleteError
+  // An import error is a plain string from the sync runner; a delete-mutation
+  // error flows through `ErrorBanner`, which renders the permission surface for a
+  // `403 InsufficientScope` and a plain message otherwise.
+  const error = importError ?? deleteMutation.error
 
   const deleteRemote = (id: string): void => {
     deleteMutation.mutate(
@@ -80,9 +80,7 @@ function AccountListBody({ remotes }: AccountListBodyProps): JSX.Element {
     <>
       <PageHeader title="Collector" />
 
-      {error !== null ? (
-        <p className={cn(pageLayoutStyles['error'], 'text-body-3')}>{error}</p>
-      ) : null}
+      <ErrorBanner error={error} />
 
       {remotes.length > 0 ? (
         <ItemList

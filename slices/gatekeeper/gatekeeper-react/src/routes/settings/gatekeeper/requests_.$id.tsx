@@ -1,11 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { unknownErrorToString } from 'kitchen-sink'
 import type { JSX } from 'react'
-import { cn } from 'react-kitchen-sink'
 import {
   AsyncErrorView,
+  ErrorBanner,
   PageHeader,
-  pageLayoutStyles,
   StatusBadge,
   type StatusTone,
 } from 'react-tundraish'
@@ -33,8 +31,6 @@ interface RequestDetailBodyProps {
 
 const RequestDetailBody = ({ request, id }: RequestDetailBodyProps): JSX.Element => {
   const decideMutation = useDecideRequestMutation()
-  const errorMessage =
-    decideMutation.error === null ? null : unknownErrorToString(decideMutation.error)
 
   const decide = (decision: 'approved' | 'rejected'): void => {
     decideMutation.mutate({ id, decision })
@@ -96,11 +92,7 @@ const RequestDetailBody = ({ request, id }: RequestDetailBodyProps): JSX.Element
         </div>
       ) : null}
 
-      {errorMessage !== null ? (
-        <p className={cn(pageLayoutStyles['error'], 'text-body-3')} role="alert">
-          {errorMessage}
-        </p>
-      ) : null}
+      <ErrorBanner error={decideMutation.error} />
     </>
   )
 }

@@ -1,10 +1,17 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
-import { AsyncErrorView, Field, FieldDescription, PageHeader, TextField } from 'react-tundraish'
+import {
+  AsyncErrorView,
+  ErrorBanner,
+  Field,
+  FieldDescription,
+  PageHeader,
+  TextField,
+} from 'react-tundraish'
 
 import { useCloudAppCreateMutation, useSelfHostedAppCreateMutation } from '../../../queries.ts'
-import { CloudAppFields, formatError, type CloudFields } from './-forms.tsx'
+import { CloudAppFields, type CloudFields } from './-forms.tsx'
 import formStyles from './-forms.module.css'
 
 /** The two creatable kinds (system apps are seeded, not user-added). */
@@ -100,11 +107,7 @@ const NewAppBody = ({ onCreated }: NewAppBodyProps): JSX.Element => {
             submitCloud()
           }}
         >
-          {createMutation.error !== null ? (
-            <p className={cn(formStyles['error'], 'text-body-3')} role="alert">
-              {formatError(createMutation.error)}
-            </p>
-          ) : null}
+          <ErrorBanner error={createMutation.error} />
           <CloudAppFields fields={cloud} onChange={setCloud} disabled={createMutation.isPending} />
           <div className={formStyles['actions']}>
             <button
@@ -125,11 +128,7 @@ const NewAppBody = ({ onCreated }: NewAppBodyProps): JSX.Element => {
             submitSelfHosted()
           }}
         >
-          {selfHostedMutation.error !== null ? (
-            <p className={cn(formStyles['error'], 'text-body-3')} role="alert">
-              {formatError(selfHostedMutation.error)}
-            </p>
-          ) : null}
+          <ErrorBanner error={selfHostedMutation.error} />
           <TextField
             label="Name"
             value={selfHostedName}

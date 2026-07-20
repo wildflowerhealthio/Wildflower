@@ -1,8 +1,7 @@
-import { unknownErrorToString } from 'kitchen-sink'
 import type { JSX } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { cn } from 'react-kitchen-sink'
-import { pageLayoutStyles, StatusBadge } from 'react-tundraish'
+import { ErrorBanner, pageLayoutStyles, StatusBadge } from 'react-tundraish'
 import { GrantDraft, Scope, ScopeRequest } from 'scopes-core'
 import type { GrantDraft as GrantDraftModel } from 'scopes-core'
 import { PatientPillPicker, ScopePicker } from 'scopes-react'
@@ -70,23 +69,25 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
   )
 
   const patientBarRef = useRef<HTMLDivElement>(null)
-  const errorRef = useRef<HTMLParagraphElement>(null)
+  const errorRef = useRef<HTMLDivElement>(null)
 
   const patientPickerShown = draftHasPatientScope && patients.length > 0
 
   const submitting = consentMutation.isPending
-  const mutationError =
-    consentMutation.error === null ? null : unknownErrorToString(consentMutation.error)
-  const errorMessage = resultError ?? mutationError
+  // A result message (a denial / result error) takes precedence over the raw
+  // mutation error; `ErrorBanner` renders whichever is set (a `403` — unreachable
+  // on the consent surface, but handled uniformly — as the permission surface).
+  const error = resultError ?? consentMutation.error
+  const hasError = resultError !== null || consentMutation.error !== null
 
   // The error banner sits at the top of the card, but the buttons that trigger
   // it are at the bottom — scroll it into view whenever it appears so a
   // scrolled-down user sees why their approval/denial didn't go through.
   useEffect(() => {
-    if (errorMessage !== null) {
+    if (hasError) {
       errorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     }
-  }, [errorMessage])
+  }, [hasError])
 
   const handleApprove = (): void => {
     setResultError(null)
@@ -150,14 +151,10 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
         <StatusBadge tone="info">Review request</StatusBadge>
       </header>
 
-      {errorMessage !== null ? (
-        <p
-          ref={errorRef}
-          className={cn(pageLayoutStyles['error'], styles['result-error'], 'text-body-3')}
-          role="alert"
-        >
-          {errorMessage}
-        </p>
+      {hasError ? (
+        <div ref={errorRef} className={styles['result-error']}>
+          <ErrorBanner error={error} />
+        </div>
       ) : null}
 
       {patientPickerShown ? (

@@ -1,7 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { CollectorTag, descriptors } from 'collector-registry/registry'
 import { Schema } from 'effect'
-import { unknownErrorToString } from 'kitchen-sink'
 import type { JSX } from 'react'
 
 import { AccountFormScreen } from '../../../forms/account-form.tsx'
@@ -32,7 +31,6 @@ function AccountNewRoute(): JSX.Element {
   const { tag, prefill } = Route.useSearch()
   const navigate = useNavigate()
   const createMutation = useCreateRemoteMutation()
-  const error = createMutation.error === null ? null : unknownErrorToString(createMutation.error)
 
   return (
     <AccountFormScreen
@@ -42,7 +40,7 @@ function AccountNewRoute(): JSX.Element {
       prefill={prefill}
       initialName={prefill?.['name'] ?? ''}
       disabled={createMutation.isPending}
-      error={error}
+      error={createMutation.error}
       onSubmit={(name, config) => {
         createMutation.mutate(
           { id: crypto.randomUUID(), name, config },

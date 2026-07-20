@@ -29,9 +29,6 @@ import { reorderApps } from './-reorder.ts'
 import { SortableAppTile } from './-tiles.tsx'
 import tileStyles from '../../../styles/app-tiles.module.css'
 
-const formatError = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error)
-
 /** The `?launchError` search value, kept as the closed {@link LaunchErrorKind} set
  * so a hand-edited URL can't inject an arbitrary banner. */
 const LAUNCH_ERROR_KINDS = new Set<string>(['forbidden', 'not-found', 'unavailable', 'failed'])
@@ -251,11 +248,8 @@ const AppsHomeBody = ({ apps, launchError, onLaunchResult }: AppsHomeBodyProps):
       {/* A launch that failed (the browser arm was redirected here with
           `?launchError`; the Tauri arm set it via `onLaunchResult`). */}
       <ErrorBanner error={launchError !== undefined ? LAUNCH_ERROR_MESSAGES[launchError] : null} />
-      {homeScreenMutation.isError ? (
-        <p className={tileStyles['app-tiles__error']} role="alert">
-          Couldn't save the change: {formatError(homeScreenMutation.error)}
-        </p>
-      ) : null}
+      {/* A failed home-screen reorder/hide — a `403` shows the permission surface. */}
+      <ErrorBanner error={homeScreenMutation.error} />
       {visible.length === 0 ? (
         <p className="text-body-2">No apps on your home screen. Add or enable apps in Settings.</p>
       ) : (

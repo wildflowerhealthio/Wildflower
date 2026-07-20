@@ -1,5 +1,4 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { unknownErrorToString } from 'kitchen-sink'
 import type { JSX } from 'react'
 import { AsyncErrorView } from 'react-tundraish'
 
@@ -23,7 +22,6 @@ function AccountConfigRoute(): JSX.Element {
   const navigate = useNavigate()
   const { data: existing } = useRemoteQuery(id)
   const updateMutation = useUpdateRemoteMutation()
-  const error = updateMutation.error === null ? null : unknownErrorToString(updateMutation.error)
 
   return (
     <AccountFormScreen
@@ -33,7 +31,7 @@ function AccountConfigRoute(): JSX.Element {
       prefill={undefined}
       initialName={existing.name}
       disabled={updateMutation.isPending}
-      error={error}
+      error={updateMutation.error}
       onSubmit={(name, config) => {
         updateMutation.mutate(
           { id: existing.id, payload: { name, config } },
