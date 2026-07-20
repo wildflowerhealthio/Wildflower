@@ -14,15 +14,7 @@ import {
   warnDroppedSteps,
   warnUrlMatchTimeout,
 } from './messages.ts'
-import {
-  awaitingPageLoaded,
-  awaitingUrlMatch,
-  delayPending,
-  done,
-  drained,
-  type Queue,
-  type StepState,
-} from './state.ts'
+import * as State from './state.ts'
 
 /**
  * Part 5 of the automatic-navigation machine: the pure transition table.
@@ -58,7 +50,7 @@ import {
  */
 
 /** A pure transition result: the next state and the effects it requests. */
-type Transition = readonly [StepState, readonly SideEffectMessage[]]
+type Transition = readonly [State.StepState, readonly SideEffectMessage[]]
 
 /**
  * Pop and act on the queue head. `url` is the `PageLoaded` url in hand, or
@@ -67,17 +59,21 @@ type Transition = readonly [StepState, readonly SideEffectMessage[]]
  * head with no url in hand parks in `AwaitingUrlMatch` to await a matching
  * `PageLoaded`.
  */
-const processHead = (queue: Queue, url: string | undefined, generation: number): Transition => {
+const processHead = (
+  queue: State.Queue,
+  url: string | undefined,
+  generation: number
+): Transition => {
   const [head, ...tail] = queue
   if (head === undefined) {
     // Queue drained. Not terminal on its own — an in-flight request could still
     // generate more steps — so ask the lifecycle to confirm all requests have
     // settled (it re-injects `NoMoreResultsExpected` iff so).
-    return [drained(generation), [requestCompletionCheck]]
+    return [State.drained(generation), [requestCompletionCheck]]
   }
   if (head._tag === 'Delay') {
     const g = generation + 1
-    return [delayPending(tail, g), [scheduleDelayTimer(g, Duration.toMillis(head.duration))]]
+    return [State.delayPending(tail, g), [scheduleDelayTimer(g, Duration.toMillis(head.duration))]]
   }
   const advance = head.advanceWhen
   if (advance !== undefined && !(url !== undefined && advance.pattern.test(url))) {
@@ -85,16 +81,16 @@ const processHead = (queue: Queue, url: string | undefined, generation: number):
     // keep it at the queue head and park under a fresh URL-match timeout.
     const g = generation + 1
     return [
-      awaitingUrlMatch(queue, g),
+      State.awaitingUrlMatch(queue, g),
       [scheduleUrlMatchTimeout(g, Duration.toMillis(advance.timeout))],
     ]
   }
   // Ungated, or gated and satisfied → dispatch the action now. No timer is
   // armed, so the generation is unchanged.
-  return [awaitingPageLoaded(tail, generation), [dispatchNavigation(head.action)]]
+  return [State.awaitingPageLoaded(tail, generation), [dispatchNavigation(head.action)]]
 }
 
-const onPageLoaded = (state: StepState, url: string): Transition =>
+const onPageLoaded = (state: State.StepState, url: string): Transition =>
   Match.value(state).pipe(
     Match.withReturnType<Transition>(),
     Match.tag('AwaitingPageLoaded', (s) => processHead(s.queue, url, s.generation)),
@@ -112,7 +108,7 @@ const onPageLoaded = (state: StepState, url: string): Transition =>
         head.advanceWhen.pattern.test(url)
       ) {
         return [
-          awaitingPageLoaded(tail, s.generation),
+          State.awaitingPageLoaded(tail, s.generation),
           [cancelTimer(s.generation), dispatchNavigation(head.action)],
         ]
       }
@@ -123,7 +119,7 @@ const onPageLoaded = (state: StepState, url: string): Transition =>
     Match.exhaustive
   )
 
-const onDelayTimerFired = (state: StepState, generation: number): Transition => {
+const onDelayTimerFired = (state: State.StepState, generation: number): Transition => {
   // Stale fire — re-armed, cleared, or cancelled since it was scheduled.
   if (state._tag !== 'DelayPending' || state.generation !== generation) {
     return [state, []]
@@ -131,7 +127,7 @@ const onDelayTimerFired = (state: StepState, generation: number): Transition => 
   return processHead(state.queue, undefined, state.generation)
 }
 
-const onUrlMatchTimeoutFired = (state: StepState, generation: number): Transition => {
+const onUrlMatchTimeoutFired = (state: State.StepState, generation: number): Transition => {
   if (state._tag !== 'AwaitingUrlMatch' || state.generation !== generation) {
     return [state, []] // stale fire — a match arrived first, or it was cleared
   }
@@ -140,23 +136,32 @@ const onUrlMatchTimeoutFired = (state: StepState, generation: number): Transitio
     head !== undefined && head._tag === 'Navigation' && head.advanceWhen !== undefined
       ? Duration.toMillis(head.advanceWhen.timeout)
       : 0
-  return [done(state.generation), [warnUrlMatchTimeout(timeoutMs), dispatchSniffingComplete]]
+  return [State.done(state.generation), [warnUrlMatchTimeout(timeoutMs), dispatchSniffingComplete]]
 }
 
-const onStepsGenerated = (state: StepState, steps: readonly Step[]): Transition => {
+const onStepsGenerated = (state: State.StepState, steps: readonly Step[]): Transition => {
   if (steps.length === 0) {
     return [state, []]
   }
-  const append = (queue: Queue): Queue => [...queue, ...steps]
+  const prependToExistingSteps = (queue: State.Queue): State.Queue => [...queue, ...steps]
   return Match.value(state).pipe(
     Match.withReturnType<Transition>(),
     // Idle: the generated head dispatches now (the machine is idle; the steps'
     // own `advanceWhen` gates still apply), typically re-entering
     // `AwaitingPageLoaded` on a navigation.
     Match.tag('Drained', (s) => processHead(steps, undefined, s.generation)),
-    Match.tag('AwaitingPageLoaded', (s) => [awaitingPageLoaded(append(s.queue), s.generation), []]),
-    Match.tag('DelayPending', (s) => [delayPending(append(s.queue), s.generation), []]),
-    Match.tag('AwaitingUrlMatch', (s) => [awaitingUrlMatch(append(s.queue), s.generation), []]),
+    Match.tag('AwaitingPageLoaded', (s) => [
+      State.awaitingPageLoaded(prependToExistingSteps(s.queue), s.generation),
+      [],
+    ]),
+    Match.tag('DelayPending', (s) => [
+      State.delayPending(prependToExistingSteps(s.queue), s.generation),
+      [],
+    ]),
+    Match.tag('AwaitingUrlMatch', (s) => [
+      State.awaitingUrlMatch(prependToExistingSteps(s.queue), s.generation),
+      [],
+    ]),
     // Terminal: a straggler request settled and generated steps after the run
     // completed. Nothing to do — drop and WARN.
     Match.tag('Done', (s) => [s, [warnDroppedSteps(steps.length)]]),
@@ -164,24 +169,26 @@ const onStepsGenerated = (state: StepState, steps: readonly Step[]): Transition 
   )
 }
 
-const onNoMoreResultsExpected = (state: StepState): Transition =>
-  state._tag === 'Drained' ? [done(state.generation), [dispatchSniffingComplete]] : [state, []]
+const onNoMoreResultsExpected = (state: State.StepState): Transition =>
+  state._tag === 'Drained'
+    ? [State.done(state.generation), [dispatchSniffingComplete]]
+    : [state, []]
 
 // Halt the machine: interrupt any pending timer and restore the initial queue.
 // The restored queue is not load-bearing — teardown discards the machine right
 // after — so there is no "reset vs fold" distinction to preserve.
-const onStop = (state: StepState, initialQueue: Queue): Transition =>
+const onStop = (state: State.StepState, initialQueue: State.Queue): Transition =>
   Match.value(state).pipe(
     Match.withReturnType<Transition>(),
     Match.tag('DelayPending', (s) => [
-      awaitingPageLoaded(initialQueue, s.generation),
+      State.awaitingPageLoaded(initialQueue, s.generation),
       [cancelTimer(s.generation)],
     ]),
     Match.tag('AwaitingUrlMatch', (s) => [
-      awaitingPageLoaded(initialQueue, s.generation),
+      State.awaitingPageLoaded(initialQueue, s.generation),
       [cancelTimer(s.generation)],
     ]),
-    Match.orElse((s) => [awaitingPageLoaded(initialQueue, s.generation), []])
+    Match.orElse((s) => [State.awaitingPageLoaded(initialQueue, s.generation), []])
   )
 
 /**
@@ -190,8 +197,8 @@ const onStop = (state: StepState, initialQueue: Queue): Transition =>
  * `initialQueue` is closed over only for `Stop`'s reset.
  */
 const transition =
-  (initialQueue: Queue) =>
-  (state: StepState, message: InputMessage): Transition =>
+  (initialQueue: State.Queue) =>
+  (state: State.StepState, message: InputMessage): Transition =>
     Match.value(message).pipe(
       Match.withReturnType<Transition>(),
       Match.tag('PageLoaded', (m) => onPageLoaded(state, m.url)),
