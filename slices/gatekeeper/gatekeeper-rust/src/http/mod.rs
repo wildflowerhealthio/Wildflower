@@ -131,8 +131,9 @@ pub fn is_pre_auth_public_path(path: &str) -> bool {
 /// router. The `/access` router itself no longer owner-gates as a blanket layer:
 /// it authenticates via [`require_valid_session`](middleware::require_valid_session)
 /// and authorizes per-route through the scope-gated [`scoped`] extractors.
-/// The apps slice wires this through `apps_rust::OwnerAuth` to gate the loopback
-/// launch popup. Returns `false` for a missing, invalid, or non-owner token.
+/// (The apps slice previously wired this to gate its loopback launch popup; that
+/// gate is now the `wildflower/launch` scope gate, so this helper currently has no
+/// in-tree caller.) Returns `false` for a missing, invalid, or non-owner token.
 #[must_use]
 pub fn verify_owner_bearer(
     state: &GatekeeperState,
@@ -152,7 +153,8 @@ pub fn verify_owner_bearer(
 /// Reads inside the opaque [`GatekeeperState`] the same way [`verify_owner_bearer`]
 /// does, so the host never touches the store. An unknown `client_id` (a
 /// misconfigured registration) yields an empty set — only the launch umbrella then
-/// gates the launch.
+/// gates the launch — and is logged as a warning so the fail-open scope downgrade
+/// is detectable rather than silent.
 ///
 /// # Errors
 ///
@@ -162,18 +164,22 @@ pub fn client_allowed_scopes(
     client_id: &str,
 ) -> anyhow::Result<Vec<scopes_rust::Scope>> {
     use crate::domain::GatekeeperStore as _;
-    let scopes = state
-        .store
-        .client_by_id(client_id)?
-        .map(|client| {
-            client
-                .allowed_scopes
-                .iter()
-                .map(|scope| scopes_rust::Scope::from(scope.as_str()))
-                .collect()
-        })
-        .unwrap_or_default();
-    Ok(scopes)
+    let Some(client) = state.store.client_by_id(client_id)? else {
+        // A SMART app registration whose `client_id` has no gatekeeper client row
+        // (deleted or misconfigured): the per-app launch check then sees no required
+        // scopes and gates on the `wildflower/launch` umbrella alone. Log it so this
+        // fail-open scope downgrade is detectable rather than silent.
+        tracing::warn!(
+            "app launch scopes requested for unknown client_id `{client_id}`; per-app \
+             SMART scope check falls open to the `wildflower/launch` umbrella only",
+        );
+        return Ok(Vec::new());
+    };
+    Ok(client
+        .allowed_scopes
+        .iter()
+        .map(|scope| scopes_rust::Scope::from(scope.as_str()))
+        .collect())
 }
 
 /// The gatekeeper OAuth + discovery `OpenAPI` document, collected from the very

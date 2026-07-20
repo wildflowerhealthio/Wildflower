@@ -28,7 +28,8 @@ use crate::live_bindings::state::AppsState;
 /// *extracted* cap still applies inside the handler.
 const UPLOAD_BODY_LIMIT_BYTES: usize = 64 * 1024 * 1024;
 
-/// The owner-gated routes as an `OpenApiRouter` (the spec-bearing inner of
+/// The scope-gated admin routes as an `OpenApiRouter`, each gated on
+/// `wildflower/Apps.{r,c,u,d}` (the spec-bearing inner of
 /// [`gated_router`](super::gated_router), which documents the gating split):
 ///
 ///  - `GET /apps` (uniform registry list) + `DELETE /apps/{id}` (unified delete) —

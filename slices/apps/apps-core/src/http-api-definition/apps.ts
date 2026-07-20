@@ -39,8 +39,9 @@ const httpApiGroup = HttpApiGroup.make('apps', { topLevel: false })
     //     collapses to a single status. The typed client never decodes the `302`
     //     (only the raw web form hits that path), so a loose `text/html` body —
     //     matching the host's redirect `Content-Type` — is harmless.
-    // (The Rust server also answers `401`/`503`, modelled only on its side; the
-    // drift test exempts this endpoint's responses and pins only the path/method.)
+    // (The Rust server also answers `403 InsufficientScope`/`503`, modelled only on
+    // its side; the drift test exempts this endpoint's responses and pins only the
+    // path/method.)
     HttpApiEndpoint.post('LaunchApp', '/apps/:id')
       .setPath(AppIdPathSchema)
       .addSuccess(HttpApiSchema.Text({ contentType: 'text/html; charset=utf-8' }), { status: 302 })

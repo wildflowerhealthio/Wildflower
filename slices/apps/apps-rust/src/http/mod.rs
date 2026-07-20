@@ -53,8 +53,8 @@ struct ApiDoc;
 
 /// The full apps surface as one `OpenAPI` document — every endpoint the TS
 /// `AppsApi` client speaks (the gated list/cloud-admin/home-screen surface plus
-/// the ungated launch route). `info` is set explicitly so the committed snapshot
-/// doesn't churn with the crate version.
+/// the launch route, now behind the `wildflower/launch` umbrella). `info` is set
+/// explicitly so the committed snapshot doesn't churn with the crate version.
 #[must_use]
 pub fn openapi_spec() -> utoipa::openapi::OpenApi {
     let combined = OpenApiRouter::with_openapi(ApiDoc::openapi()).merge(routes::openapi_router());
@@ -63,9 +63,11 @@ pub fn openapi_spec() -> utoipa::openapi::OpenApi {
     spec
 }
 
-/// Build the owner-gated routes (`GET /apps`, `POST /apps`,
-/// `PUT`/`DELETE /apps/{id}`, `PUT /home-screen`). Carries no middleware — the
-/// host wraps it with its bearer gate.
+/// Build the scope-gated admin routes (`GET /apps`, `DELETE /apps/{id}`,
+/// `PUT /home-screen`, and the per-kind `/cloud-apps` / `/self-hosted-apps` /
+/// `/system-apps` resources), each gated on `wildflower/Apps.{r,c,u,d}`. Carries
+/// no middleware — the host wraps it with its bearer gate (which inserts the
+/// caller's scope claims).
 pub fn gated_router(state: Arc<AppsState>) -> Router {
     let (router, _spec) = routes::gated_openapi_router().split_for_parts();
     router.with_state(state)

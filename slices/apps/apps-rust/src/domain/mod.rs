@@ -16,8 +16,9 @@
 //! operation's store logic (synthesizing the `(registration, configuration)` a
 //! create/replace persists, gating on kind + seeded, mapping the store's primitive
 //! signals onto [`AppsError`]) — including the cross-kind `(registration,
-//! configuration)` read (a private `get_app` helper in [`capabilities`], with the
-//! launch route inlining the same `find_app` + `NotFound` shape) — while the
+//! configuration)` read, which each capability inlines as `find_app` + `NotFound`
+//! (the launch route inlines the same shape; there is no shared cross-kind read
+//! helper) — while the
 //! [`actions`] module holds the write-side validators they share (multi-caller
 //! logic kept out of the capabilities; collector inlined its single-caller
 //! equivalents into its capabilities, tunnel keeps a single-file `domain::actions`).
