@@ -21,6 +21,13 @@ interface SubjectSelectorProps {
   /** The chosen patient id (`patients` mode), or `null` when none picked yet. */
   readonly patientId?: string | null
   readonly onPatientChange?: (patientId: string) => void
+  /**
+   * Whether to render the one-patient / all-patients context radios. `false` drops them and
+   * keeps only the which-patient pill — for the patient-only envelope, where `system/` isn't
+   * grantable so there's no "whose records" choice to make, but a launch patient must still be
+   * named. Defaults to `true` (both radios shown).
+   */
+  readonly showContextChoice?: boolean
 }
 
 /**
@@ -38,29 +45,32 @@ const SubjectSelector = ({
   patients,
   patientId = null,
   onPatientChange,
+  showContextChoice = true,
 }: SubjectSelectorProps): JSX.Element => (
   <div className={styles['selector']}>
-    <div role="radiogroup" aria-label="Whose records this applies to" className={styles['group']}>
-      <ContextCard
-        label="Just one patient"
-        sublabel="Access is limited to a single patient's records."
-        code="patient/"
-        selected={value === 'patient'}
-        onSelect={() => {
-          onChange('patient')
-        }}
-      />
-      <ContextCard
-        label="All patients"
-        sublabel="Access spans every patient's records."
-        code="system/"
-        selected={value === 'system'}
-        badge={<StatusBadge tone="neutral">Everyone</StatusBadge>}
-        onSelect={() => {
-          onChange('system')
-        }}
-      />
-    </div>
+    {showContextChoice ? (
+      <div role="radiogroup" aria-label="Whose records this applies to" className={styles['group']}>
+        <ContextCard
+          label="Just one patient"
+          sublabel="Access is limited to a single patient's records."
+          code="patient/"
+          selected={value === 'patient'}
+          onSelect={() => {
+            onChange('patient')
+          }}
+        />
+        <ContextCard
+          label="All patients"
+          sublabel="Access spans every patient's records."
+          code="system/"
+          selected={value === 'system'}
+          badge={<StatusBadge tone="neutral">Everyone</StatusBadge>}
+          onSelect={() => {
+            onChange('system')
+          }}
+        />
+      </div>
+    ) : null}
     {value === 'patient' && patients !== undefined && onPatientChange !== undefined ? (
       <div className={styles['patient']}>
         <PatientPillPicker patients={patients} value={patientId} onChange={onPatientChange} />

@@ -363,6 +363,96 @@ describe('ScopePicker — which-patient choice (answer side)', () => {
   })
 })
 
+describe('ScopePicker — which-patient without the whose-records radio', () => {
+  /**
+   * A patient-only expandable envelope (no `system/` in `available`): the whose-records
+   * selector can't render (there's no all-patients choice), but a patient-context grant still
+   * needs a launch patient — so the pill must stand on its own. Mirrors the device-consent
+   * surface for a client whose `allowed_scopes` cover only `patient/*`.
+   */
+  const PatientOnlyHarness = ({
+    requested,
+    available,
+    patients,
+  }: {
+    readonly requested: readonly string[]
+    readonly available: readonly string[]
+    readonly patients: readonly { readonly id: string; readonly displayName: string }[]
+  }): JSX.Element => {
+    const request = useMemo(
+      () => ScopeRequest.expandable({ requested, available }),
+      [requested, available]
+    )
+    const [draft, setDraft] = useState(() => GrantDraft.fromScopes(requested, null))
+    return (
+      <ScopePicker
+        subjectName="New device"
+        request={request}
+        draft={draft}
+        onDraftChange={setDraft}
+        mode="expandable"
+        phrasing="asking"
+        patients={patients}
+      />
+    )
+  }
+
+  it('should offer the launch-patient pill even with no whose-records radio', async () => {
+    const user = userEvent.setup()
+    render(
+      <PatientOnlyHarness
+        requested={['patient/Observation.rs']}
+        available={['patient/*.cruds']}
+        patients={[{ id: 'p-1', displayName: 'Ada Lovelace' }]}
+      />
+    )
+
+    // The envelope can't grant all-patients, so the whose-records radio is absent…
+    expect(screen.queryByRole('radio', { name: /All patients/ })).toBeNull()
+    // …but the launch patient is still choosable, and the pick is recorded.
+    await user.click(screen.getByRole('button', { name: /Select a Patient/ }))
+    await user.click(screen.getByRole('option', { name: /Ada Lovelace/ }))
+    expect(screen.getByRole('button', { name: /Ada Lovelace/ })).toBeDefined()
+  })
+
+  it('should hide the pill when the draft grants no patient-context scope', () => {
+    // A wildflower-admin-only grant needs no launch patient, even with patients on the account.
+    render(
+      <PatientOnlyHarness
+        requested={['wildflower/Client.r']}
+        available={['wildflower/*.cruds']}
+        patients={[{ id: 'p-1', displayName: 'Ada Lovelace' }]}
+      />
+    )
+    expect(screen.queryByRole('button', { name: /Select a Patient/ })).toBeNull()
+  })
+
+  it('should not offer the pill on the requesting side (no patients supplied)', () => {
+    // The device-setup surface passes no `patients`; the pill must stay absent.
+    const request = ScopeRequest.expandable({
+      requested: ['patient/Observation.rs'],
+      available: ['patient/*.cruds'],
+    })
+    const Host = (): JSX.Element => {
+      const [draft, setDraft] = useState(() =>
+        GrantDraft.fromScopes(['patient/Observation.rs'], null)
+      )
+      return (
+        <ScopePicker
+          subjectName="This device"
+          request={request}
+          draft={draft}
+          onDraftChange={setDraft}
+          mode="expandable"
+          phrasing="requesting"
+        />
+      )
+    }
+    render(<Host />)
+    expect(screen.queryByRole('button', { name: /Select a Patient/ })).toBeNull()
+  })
+})
+
 describe('ScopePicker — flags', () => {
   it('should toggle a known flag off and back on', async () => {
     const user = userEvent.setup()

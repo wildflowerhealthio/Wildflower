@@ -93,6 +93,21 @@ describe('DeviceConsentForm', () => {
     expect(screen.getByRole('button', { name: /Ada Lovelace/ })).toBeDefined()
   })
 
+  test('offers the which-patient pill for a patient-only device (no system/ scopes)', async () => {
+    // Arrange — the default consent allows only `patient/*`, so the whose-records selector
+    // can't render; the launch patient must still be choosable (the reported bug: the pill
+    // was reachable only through that absent selector).
+    patientResources = [{ id: 'p-1', name: [{ given: ['Ada'], family: 'Lovelace' }] }]
+    const { user } = renderConsentForm(makeConsent(), vi.fn())
+
+    // No all-patients radio (patient-only envelope)…
+    expect(screen.queryByRole('radio', { name: /All patients/ })).toBeNull()
+    // …but the pill still lets the approver name the launch patient.
+    await user.click(screen.getByRole('button', { name: /Select a Patient/ }))
+    await user.click(screen.getByRole('option', { name: /Ada Lovelace/ }))
+    expect(screen.getByRole('button', { name: /Ada Lovelace/ })).toBeDefined()
+  })
+
   test('sends the chosen patient in the approve payload', async () => {
     // Arrange — run the mutation's Effect for real against a stub client that
     // captures the wire payload (the only place the body is observable).

@@ -184,6 +184,17 @@ const ScopePicker = ({
   const showSubjectSelector = isExpandable && availableCoversSystem(request)
   const activeContext = contextFor(subject)
 
+  // Whether the live draft grants any patient-context FHIR scope (or `launch/patient`) — the
+  // signal that a single launch patient can meaningfully be named. Mirrors the OAuth consent
+  // form's `draftHasPatientScope`.
+  const draftHasPatientScope = useMemo(
+    () =>
+      Scope.MultiScope.fhirScopes(draft).some((scope) =>
+        scope.hasContext(Scope.Contexts.Fhir.patient)
+      ) || draft.known.some((known) => known.name === 'launch/patient'),
+    [draft]
+  )
+
   const sections = useMemo(
     () =>
       isExpandable
@@ -281,6 +292,30 @@ const ScopePicker = ({
     </button>
   )
 
+  // The launch-patient pill on its own — shown in place of the whose-records selector when the
+  // envelope grants only the patient context (no `system/`, so there's no "whose records"
+  // choice), yet a patient-context scope is granted and needs a *which* patient. Without this
+  // the pill was reachable only through the (absent) subject selector, so a patient-only device
+  // consent surfaced no way to name the launch patient at all. Rendered through the same
+  // `SubjectSelector` with its context radios suppressed, so all which-patient UI stays in one
+  // place; `onChange` is inert here (no radios to fire it).
+  const whichPatientPicker =
+    isExpandable && patients !== undefined && patients.length > 0 && draftHasPatientScope ? (
+      <div className={styles['section']}>
+        <p className={styles['eyebrow']}>Patient</p>
+        <SubjectSelector
+          value="patient"
+          onChange={changeSubject}
+          showContextChoice={false}
+          patients={patients}
+          patientId={draft.patient}
+          onPatientChange={(patientId) => {
+            onDraftChange({ ...draft, patient: patientId })
+          }}
+        />
+      </div>
+    ) : null
+
   return (
     <>
       {showSubjectSelector ? (
@@ -296,7 +331,9 @@ const ScopePicker = ({
             }}
           />
         </div>
-      ) : null}
+      ) : (
+        whichPatientPicker
+      )}
 
       {view === 'plain' ? (
         <div className={styles['section']}>
