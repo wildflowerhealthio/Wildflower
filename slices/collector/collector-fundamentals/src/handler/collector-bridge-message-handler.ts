@@ -28,9 +28,9 @@ type Service = MessageHandler.HandlersFor<CollectorBridge['HostToWeb']>
  * hand-off when the link sequence is exhausted (automatic navigation). The
  * `Open` / `PageAction` payloads *are* a `Navigation` step's `action` — the
  * handler forwards that `action` to `sendMessage` without translation (the
- * plan-only `advanceWhen` rides the step wrapper, never the action; a `Delay`
- * step carries no `action` and is consumed by the FSM as a timer, so it never
- * reaches the wire).
+ * plan-only holds carry no `action`: a `Delay` / `AwaitPageSettled` step is
+ * consumed by the FSM as a timer / page-settle wait, so neither reaches the
+ * wire).
  */
 type OutboundMessage =
   | typeof CancelSnifferRequestMessage.Type

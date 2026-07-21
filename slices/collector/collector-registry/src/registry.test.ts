@@ -15,6 +15,7 @@ import {
   descriptorForConfig,
   descriptorForTag,
   descriptors,
+  listSubtitleForConfig,
   resourcePersistenceRuntimeForConfig,
 } from './registry.ts'
 
@@ -73,7 +74,10 @@ describe('resourcePersistenceRuntimeForConfig', () => {
     resourcePersistenceRuntimeForConfig(config).run((context) => context.scrapingPlan)
 
   it('dispatches fhir-r4 configs to the fhir-r4 scraping plan', () => {
-    const config = Schema.decodeSync(CollectorConfig)({
+    // Decode through the concrete fhir-r4 schema so `config` is the fhir-r4
+    // type `fhirR4ScrapingPlan` expects (the `CollectorConfig` union is now
+    // wider than a single collector).
+    const config = Schema.decodeSync(FhirR4InstanceConfig)({
       _tag: 'fhir-r4',
       rootUrl: 'https://example.com',
       patientId: '12345',
@@ -92,10 +96,38 @@ describe('resourcePersistenceRuntimeForConfig', () => {
       fc.property(Arbitrary.make(CollectorConfig), (config) => {
         const descriptor = descriptorForConfig(config)
         expect(descriptor).toBeDefined()
-        expect(planFor(config)).toEqual(descriptor?.makeScrapingPlan(config))
+        // `descriptor` is union-typed here, so its config-parameterized
+        // `makeScrapingPlan` isn't directly callable; reach the same plan via
+        // the descriptor's own narrowing guard (which validates the config
+        // against its concrete schema), pinning that the tag lookup and the
+        // schema-guard dispatch agree.
+        const descriptorPlan = descriptor
+          ?.resourcePersistenceRuntimeIfMatches(config)
+          ?.run((context) => context.scrapingPlan)
+        expect(planFor(config)).toEqual(descriptorPlan)
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )
+  })
+})
+
+describe('listSubtitleForConfig', () => {
+  it('renders the fhir-r4 subtitle from the configured rootUrl', () => {
+    const config = Schema.decodeSync(CollectorConfig)({
+      _tag: 'fhir-r4',
+      rootUrl: 'https://example.com',
+      patientId: '12345',
+    })
+    expect(listSubtitleForConfig(config)).toBe('https://example.com')
+  })
+
+  it('renders the rexall subtitle from the configured account email', () => {
+    const config = Schema.decodeSync(CollectorConfig)({
+      _tag: 'rexall',
+      email: 'member@rexall.test',
+      password: 'secret',
+    })
+    expect(listSubtitleForConfig(config)).toBe('member@rexall.test')
   })
 })
 

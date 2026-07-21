@@ -1,0 +1,19 @@
+{
+  "data": {
+    "identifiers": {
+      "uid": "uid-abc-123",
+      "carebookId": "cb-99887766",
+      "email": "jordan.rivera@example.com"
+    },
+    "firstName": "Jordan",
+    "lastName": "Rivera",
+    "birthDate": "1985-07-14",
+    "phone": "+1-416-555-0142",
+    "address": {
+      "line1": "123 Redacted St",
+      "city": "Toronto",
+      "province": "ON",
+      "postalCode": "M5V 2T6"
+    }
+  }
+}

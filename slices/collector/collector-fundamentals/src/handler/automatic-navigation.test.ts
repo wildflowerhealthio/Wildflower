@@ -19,49 +19,69 @@ import { settleForkedWork } from './collector-bridge-message-handler.test-helper
  * is covered by `collector-bridge-message-handler.test.ts`. The machine ignores
  * `entityDefinitions`, so the plan carries an empty list.
  *
- * The machine now *owns a breadth-first step queue* (seeded from `stepSequence`,
- * grown by `handleStepsGenerated`) rather than an index. There is **no implicit
- * settle timer**: a `Navigation` dispatches on the same transition as the
- * gating `PageLoaded`, so the dispatch assertions need no clock advance. Only
- * explicit `Delay` steps and URL-match timeouts involve the clock. Completion is
- * `queue drained (Drained) ∧ NoMoreResultsExpected`.
+ * The machine *owns a breadth-first step queue* (seeded from `stepSequence`,
+ * grown by `handleStepsGenerated`). Every `Navigation` **dispatches and advances
+ * immediately** — no action waits for a `PageLoaded` — so consecutive
+ * navigations drain on a single settled load. The only waits are the hold steps:
+ * a `Delay` (fixed timer) and an `AwaitPageSettled` (park until a matching
+ * settled `PageLoaded`, aborting on its `timeout`). The first `PageLoaded` is
+ * start-up: it kicks off draining the queue. Completion is `queue drained
+ * (Drained) ∧ NoMoreResultsExpected`.
  */
 describe('automatic-navigation.make', () => {
   describe('navigation dispatch', () => {
-    it('should dispatch each navigation immediately on its PageLoaded, with no settle delay', () =>
+    it('should drain consecutive navigations on the first settled load, with no settle delay', () =>
       run(
         Effect.gen(function* () {
           const sendMessage = vi.fn<SendMessage>(() => Effect.void)
           const machine = makeMachine({ sendMessage, stepSequence: [linkA, linkB] })
 
-          // No clock is advanced anywhere: the dispatch is on the PageLoaded
-          // transition itself.
+          // A single PageLoaded drains BOTH — each `Open` dispatches and advances
+          // in the same turn. No clock is advanced anywhere.
           yield* machine.handlePageLoaded(pageLoaded('https://example.com/'))
-          expect(sendMessage).toHaveBeenCalledTimes(1)
-          expect(sendMessage.mock.calls[0][0]).toEqual(linkA.action)
-
-          yield* machine.handlePageLoaded(pageLoaded('https://example.com/a'))
           expect(sendMessage).toHaveBeenCalledTimes(2)
+          expect(sendMessage.mock.calls[0][0]).toEqual(linkA.action)
           expect(sendMessage.mock.calls[1][0]).toEqual(linkB.action)
         })
       ))
 
-    it('should dispatch a PageAction step verbatim, never carrying advanceWhen on the wire payload', () =>
+    it('should chain consecutive PageActions (fill/fill/click) on a single settled load', () =>
       run(
         Effect.gen(function* () {
           const sendMessage = vi.fn<SendMessage>(() => Effect.void)
-          const machine = makeMachine({ sendMessage, stepSequence: [gatedFill] })
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [
+              fillStep('alice'),
+              fillStep('hunter2'),
+              clickStep('button[type="submit"]'),
+            ],
+          })
 
-          yield* machine.handlePageLoaded(pageLoaded('https://example.com/dashboard'))
+          // A `Fill`/`Click` fires no `PageLoaded`, yet all three dispatch in
+          // order off the single start-up load — the whole point of the model.
+          yield* machine.handlePageLoaded(pageLoaded('https://example.com/login'))
+          expect(sendMessage.mock.calls.map((call) => call[0])).toEqual([
+            fillStep('alice').action,
+            fillStep('hunter2').action,
+            clickStep('button[type="submit"]').action,
+          ])
+        })
+      ))
+
+    it('should dispatch a PageAction step verbatim (no extra step fields on the wire)', () =>
+      run(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({ sendMessage, stepSequence: [fillStep('alice')] })
+
+          yield* machine.handlePageLoaded(pageLoaded('https://example.com/login'))
 
           expect(sendMessage).toHaveBeenCalledTimes(1)
-          const sent = sendMessage.mock.calls[0][0]
-          expect(sent).toEqual({
+          expect(sendMessage.mock.calls[0][0]).toEqual({
             _tag: 'PageAction',
-            action: { kind: 'Fill', querySelector: '#username', value: 'alice' },
+            action: { kind: 'Fill', querySelector: '#field', value: 'alice' },
           })
-          // The gate rode the step wrapper; the wire payload never carries it.
-          expect(sent).not.toHaveProperty('advanceWhen')
         })
       ))
 
@@ -73,13 +93,11 @@ describe('automatic-navigation.make', () => {
           const sendMessage = vi.fn<SendMessage>(() => Effect.void)
           const machine = makeMachine({ sendMessage, stepSequence: steps })
 
-          // Act: one PageLoaded pops+dispatches each step; a final PageLoaded
-          // drains the queue; NoMoreResultsExpected then completes.
+          // Act: a single PageLoaded drains the whole queue (each Open dispatches
+          // and advances); NoMoreResultsExpected then completes.
           Effect.runSync(
             Effect.gen(function* () {
-              for (let i = 0; i <= steps.length; i += 1) {
-                yield* machine.handlePageLoaded(pageLoaded())
-              }
+              yield* machine.handlePageLoaded(pageLoaded())
               yield* machine.signalNoMoreResultsExpected
             }).pipe(Effect.provide(TestContext.TestContext))
           )
@@ -118,33 +136,48 @@ describe('automatic-navigation.make', () => {
         })
       ))
 
-    it('should not complete while the queue still has steps', () =>
+    it('should not complete before the start-up load while the queue still has steps', () =>
       run(
         Effect.gen(function* () {
           const sendMessage = vi.fn<SendMessage>(() => Effect.void)
           const machine = makeMachine({ sendMessage, stepSequence: [linkA] })
 
-          // Queue non-empty → NoMoreResultsExpected is a no-op.
+          // Still AwaitingPageLoaded (start-up) → NoMoreResultsExpected is a no-op.
           yield* machine.signalNoMoreResultsExpected
           expect(sendMessage).not.toHaveBeenCalled()
         })
       ))
 
-    it('should not complete while awaiting the last dispatched navigation PageLoaded', () =>
+    it('should reach Drained immediately after an Open — no implicit page wait', () =>
       run(
         Effect.gen(function* () {
           const sendMessage = vi.fn<SendMessage>(() => Effect.void)
           const machine = makeMachine({ sendMessage, stepSequence: [linkA] })
 
-          // linkA dispatched; queue empty but state is AwaitingPageLoaded, NOT
-          // Drained — the machine still expects linkA's PageLoaded.
+          // linkA dispatches AND the queue drains on the same load — the machine
+          // does NOT park awaiting linkA's page. So the very next signal completes.
           yield* machine.handlePageLoaded(pageLoaded('https://example.com/'))
           yield* machine.signalNoMoreResultsExpected
-          expect(sendMessage).toHaveBeenCalledTimes(1) // linkA only, no terminal
-          expect(sentTags(sendMessage)).not.toContain('SniffingComplete')
+          expect(sentTags(sendMessage)).toEqual([linkA.action._tag, 'SniffingComplete'])
+        })
+      ))
 
-          // The nav's PageLoaded drains the queue; only then does the signal complete.
-          yield* machine.handlePageLoaded(pageLoaded('https://example.com/a'))
+    it('should stay open past an Open when a trailing AwaitPageSettled holds the run', () =>
+      run(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [linkA, awaitSettled('done')],
+          })
+
+          // linkA dispatches, then the hold parks the run: not Drained yet.
+          yield* machine.handlePageLoaded(pageLoaded('https://example.com/'))
+          yield* machine.signalNoMoreResultsExpected
+          expect(sentTags(sendMessage)).toEqual([linkA.action._tag]) // no terminal
+
+          // The awaited settled page arrives → queue drains → the signal completes.
+          yield* machine.handlePageLoaded(pageLoaded('https://example.com/done'))
           yield* machine.signalNoMoreResultsExpected
           expect(sentTags(sendMessage)).toEqual([linkA.action._tag, 'SniffingComplete'])
         })
@@ -192,13 +225,18 @@ describe('automatic-navigation.make', () => {
       run(
         Effect.gen(function* () {
           const sendMessage = vi.fn<SendMessage>(() => Effect.void)
-          const machine = makeMachine({ sendMessage, stepSequence: [linkA, linkB] })
+          const machine = makeMachine({
+            sendMessage,
+            // A hold sits between linkA and linkB so the machine rests mid-queue
+            // when linkC is generated — otherwise the whole queue would drain at
+            // once and there'd be no "back of the queue" to observe.
+            stepSequence: [linkA, awaitSettled('gate'), linkB],
+          })
 
-          yield* machine.handlePageLoaded(pageLoaded('https://example.com/')) // dispatch linkA
+          yield* machine.handlePageLoaded(pageLoaded('https://example.com/')) // dispatch linkA, park on hold
           // linkC is generated mid-run: it queues *after* the remaining linkB.
           yield* machine.handleStepsGenerated([linkC])
-          yield* machine.handlePageLoaded(pageLoaded('https://example.com/a')) // dispatch linkB
-          yield* machine.handlePageLoaded(pageLoaded('https://example.com/b')) // dispatch linkC
+          yield* machine.handlePageLoaded(pageLoaded('https://example.com/gate')) // release hold → linkB, linkC
 
           expect(sendMessage.mock.calls.map((call) => call[0])).toEqual([
             linkA.action,
@@ -305,8 +343,8 @@ describe('automatic-navigation.make', () => {
             }),
           })
 
-          yield* machine.handlePageLoaded(pageLoaded('https://example.com/')) // dispatch linkA
-          yield* machine.handlePageLoaded(pageLoaded('https://example.com/a')) // arm trailing delay
+          // One load dispatches linkA and arms the trailing delay in the same turn.
+          yield* machine.handlePageLoaded(pageLoaded('https://example.com/'))
           yield* settleForkedWork
           expect(drainedCount).toBe(0) // still delaying, not drained
 
@@ -317,28 +355,48 @@ describe('automatic-navigation.make', () => {
       ))
   })
 
-  describe('advanceWhen: UrlMatch', () => {
-    it('should hold the step until a matching PageLoaded, then dispatch immediately', () =>
+  describe('AwaitPageSettled', () => {
+    it('should hold until a matching settled load, then resume draining', () =>
       run(
         Effect.gen(function* () {
           const sendMessage = vi.fn<SendMessage>(() => Effect.void)
-          const machine = makeMachine({ sendMessage, stepSequence: [gatedLink] })
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [awaitSettled('dashboard'), linkA],
+          })
 
           yield* machine.handlePageLoaded(pageLoaded('https://example.com/login'))
-          expect(sendMessage).not.toHaveBeenCalled()
+          expect(sendMessage).not.toHaveBeenCalled() // login ≠ dashboard → parked
 
-          // On match the step dispatches on that same transition — no settle wait.
+          // On match the hold is consumed and the tail drains — linkA dispatches.
           yield* machine.handlePageLoaded(pageLoaded('https://example.com/dashboard'))
           expect(sendMessage).toHaveBeenCalledTimes(1)
-          expect(sendMessage.mock.calls[0][0]).toEqual(gatedLink.action)
+          expect(sendMessage.mock.calls[0][0]).toEqual(linkA.action)
         })
       ))
 
-    it('should abort via SniffingComplete when no matching PageLoaded arrives within the timeout', () =>
+    it('should be satisfied immediately when the page in hand already matches', () =>
       run(
         Effect.gen(function* () {
           const sendMessage = vi.fn<SendMessage>(() => Effect.void)
-          const machine = makeMachine({ sendMessage, stepSequence: [gatedLink] })
+          const machine = makeMachine({ sendMessage, stepSequence: [awaitSettled('login'), linkA] })
+
+          // The start-up load is already on the awaited page → the hold passes
+          // through in the same drain and linkA dispatches at once.
+          yield* machine.handlePageLoaded(pageLoaded('https://example.com/login'))
+          expect(sendMessage).toHaveBeenCalledTimes(1)
+          expect(sendMessage.mock.calls[0][0]).toEqual(linkA.action)
+        })
+      ))
+
+    it('should abort via SniffingComplete when no matching settled load arrives within the timeout', () =>
+      run(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [awaitSettled('dashboard'), linkA],
+          })
 
           yield* machine.handlePageLoaded(pageLoaded('https://example.com/login'))
           yield* TestClock.adjust(Duration.seconds(29))
@@ -352,17 +410,20 @@ describe('automatic-navigation.make', () => {
         })
       ))
 
-    it('should cancel the abort when a matching PageLoaded arrives before the timeout', () =>
+    it('should cancel the abort when a matching settled load arrives before the timeout', () =>
       run(
         Effect.gen(function* () {
           const sendMessage = vi.fn<SendMessage>(() => Effect.void)
-          const machine = makeMachine({ sendMessage, stepSequence: [gatedLink] })
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [awaitSettled('dashboard'), linkA],
+          })
 
           yield* machine.handlePageLoaded(pageLoaded('https://example.com/login'))
           yield* TestClock.adjust(Duration.seconds(10))
           yield* machine.handlePageLoaded(pageLoaded('https://example.com/dashboard'))
           expect(sendMessage).toHaveBeenCalledTimes(1)
-          expect(sendMessage.mock.calls[0][0]).toEqual(gatedLink.action)
+          expect(sendMessage.mock.calls[0][0]).toEqual(linkA.action)
 
           // The superseded timeout must not fire an abort after being cancelled.
           yield* TestClock.adjust(Duration.seconds(60))
@@ -387,11 +448,14 @@ describe('automatic-navigation.make', () => {
         })
       ))
 
-    it('should interrupt a pending URL-match timeout', () =>
+    it('should interrupt a pending AwaitPageSettled timeout', () =>
       run(
         Effect.gen(function* () {
           const sendMessage = vi.fn<SendMessage>(() => Effect.void)
-          const machine = makeMachine({ sendMessage, stepSequence: [gatedLink] })
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [awaitSettled('dashboard'), linkA],
+          })
 
           yield* machine.handlePageLoaded(pageLoaded('https://example.com/login'))
           yield* machine.stopAutomaticNavigation()
@@ -405,13 +469,19 @@ describe('automatic-navigation.make', () => {
       run(
         Effect.gen(function* () {
           const sendMessage = vi.fn<SendMessage>(() => Effect.void)
-          const machine = makeMachine({ sendMessage, stepSequence: [linkA, linkB] })
+          // A hold after linkA keeps the first drain from consuming linkB, so the
+          // restart is observable as a *second* linkA dispatch.
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [linkA, awaitSettled('gate'), linkB],
+          })
 
-          yield* machine.handlePageLoaded(pageLoaded()) // dispatch linkA
+          yield* machine.handlePageLoaded(pageLoaded('https://example.com/')) // dispatch linkA, park
           expect(sendMessage).toHaveBeenCalledTimes(1)
+          expect(sendMessage.mock.calls[0][0]).toEqual(linkA.action)
 
           yield* machine.stopAutomaticNavigation()
-          yield* machine.handlePageLoaded(pageLoaded()) // restart from linkA
+          yield* machine.handlePageLoaded(pageLoaded('https://example.com/')) // restart from linkA
           expect(sendMessage).toHaveBeenCalledTimes(2)
           expect(sendMessage.mock.calls[1][0]).toEqual(linkA.action)
         })
@@ -516,27 +586,32 @@ const openStep = (uri: string): Step.NavigationStep => ({
   action: { _tag: 'Open', source: { _tag: 'Uri', uri } },
 })
 
+/** A `Fill` PageAction step; the querySelector is fixed so equality is by value. */
+const fillStep = (value: string): Step.NavigationStep => ({
+  _tag: 'Navigation',
+  action: { _tag: 'PageAction', action: { kind: 'Fill', querySelector: '#field', value } },
+})
+
+const clickStep = (querySelector: string): Step.NavigationStep => ({
+  _tag: 'Navigation',
+  action: { _tag: 'PageAction', action: { kind: 'Click', querySelector } },
+})
+
 const delayStep = (duration: Duration.Duration): Step.Step => ({ _tag: 'Delay', duration })
+
+/** A hold until a settled `PageLoaded` whose last path segment is `segment`. */
+const awaitSettled = (
+  segment: string,
+  timeout: Duration.Duration = Duration.seconds(30)
+): Step.AwaitPageSettledStep => ({
+  _tag: 'AwaitPageSettled',
+  pattern: UrlMatch.make({ segments: [UrlMatch.literal(segment)] }),
+  timeout,
+})
 
 const linkA = openStep('https://example.com/a')
 const linkB = openStep('https://example.com/b')
 const linkC = openStep('https://example.com/c')
-
-/** A step gated on landing at `…/dashboard`, timing out after 30s. */
-const dashboardPattern = UrlMatch.make({ segments: [UrlMatch.literal('dashboard')] })
-const gatedLink: Step.NavigationStep = {
-  _tag: 'Navigation',
-  action: { _tag: 'Open', source: { _tag: 'Uri', uri: 'https://example.com/next' } },
-  advanceWhen: { _tag: 'UrlMatch', pattern: dashboardPattern, timeout: Duration.seconds(30) },
-}
-const gatedFill: Step.NavigationStep = {
-  _tag: 'Navigation',
-  action: {
-    _tag: 'PageAction',
-    action: { kind: 'Fill', querySelector: '#username', value: 'alice' },
-  },
-  advanceWhen: { _tag: 'UrlMatch', pattern: dashboardPattern, timeout: Duration.seconds(30) },
-}
 
 /** The `_tag`s of the messages sent so far, in order. */
 const sentTags = (sendMessage: ReturnType<typeof vi.fn<SendMessage>>): string[] =>

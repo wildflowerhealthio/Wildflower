@@ -1,7 +1,8 @@
 {
   "compilerOptions": {
     "target": "esnext",
-    "lib": ["es2023"],
+    "lib": ["es2024", "dom"],
+    "jsx": "react-jsx",
     "moduleDetection": "force",
     "module": "nodenext",
     "moduleResolution": "nodenext",

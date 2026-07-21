@@ -2,9 +2,10 @@ import {
   CollectorDescriptor,
   type EntityDefinition,
   ScrapingPlan,
+  UrlMatch,
   type WebViewSource,
 } from 'collector-fundamentals/model'
-import { type FastCheck, Schema } from 'effect'
+import { Duration, type FastCheck, Schema } from 'effect'
 import type { LazyArbitrary } from 'effect/Arbitrary'
 import type { FhirResource } from 'fhir-r4/resources'
 
@@ -80,6 +81,18 @@ const defaultConfig: InstanceConfig = {
 // (issue #334), so this plan needs no widening when they arrive.
 
 /**
+ * The settled `Observation` list page the trailing hold waits for — the same
+ * `…/Observation?…` shape `ObservationListEntity` matches (host-relative,
+ * `mustHaveQuery` so it's the list endpoint, not a single-resource read).
+ */
+const OBSERVATION_SETTLED_PATTERN = UrlMatch.make({
+  segments: [UrlMatch.literal('Observation')],
+  end: 'mustHaveQuery',
+})
+/** Machine-side cap on waiting for the Observation page to settle. */
+const OBSERVATION_TIMEOUT = Duration.seconds(30)
+
+/**
  * Build the FHIR R4 scraping plan for a configured patient on a
  * configured server. The plan's `firstPage` navigates the sniffer
  * webview directly to `/Patient/:id?_format=json`; the browser-sniffer's
@@ -87,17 +100,20 @@ const defaultConfig: InstanceConfig = {
  * native JSON viewer wraps the response in `<pre>{json}</pre>`), streams
  * it through the standard `ResponseStart`/`Data`/`Finished` triple keyed
  * on the FHIR URL, and `PatientEntity.parse` extracts the JSON via
- * `extractJson`. Once the Patient page is settled, `stepSequence[0]`
+ * `extractJson`. Once the Patient page is settled, the `Open` step
  * navigates the WebView to `/Observation?subject:Patient=…&_count=250`;
  * the same snapshot-and-extract flow yields the Observation Bundle
  * entries.
  *
- * There is no implicit inter-step delay: the single `Open` step
- * dispatches as soon as the Patient page's `PageLoaded` arrives, and the
- * run completes once the queue drains *and* both sniffed requests have
- * settled. The FHIR endpoints are direct JSON documents (one request per
- * page, no post-load XHR fan-out), so no trailing `Delay` grace step is
- * needed. `entityDefinitions` are listed Patient → Observation → Bundle so
+ * A `Navigation` dispatches and advances immediately (it never waits for a
+ * `PageLoaded`), so the `Open` is followed by a trailing `AwaitPageSettled`
+ * hold that keeps the run open until the Observation page has actually loaded
+ * and settled — without it the queue would drain the instant the `Open`
+ * dispatches and the run could complete before the Observation request is even
+ * tracked. The FHIR endpoints are direct JSON documents (one request per page,
+ * no post-load XHR fan-out), so the hold on the settled page is sufficient — no
+ * additional fixed `Delay` grace step is needed.
+ * `entityDefinitions` are listed Patient → Observation → Bundle so
  * `isFoundAt` matches are evaluated in that order; `mustHaveQuery` on
  * the Bundle pattern keeps the list disjoint from the single-resource
  * Observation pattern.
@@ -134,6 +150,14 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirRes
             uri: observationUrl,
           },
         },
+      },
+      // Keep the run open until the Observation page has loaded and settled — the
+      // `Open` above dispatches and advances immediately, so without this hold the
+      // queue would drain before the Observation request is tracked.
+      {
+        _tag: 'AwaitPageSettled',
+        pattern: OBSERVATION_SETTLED_PATTERN,
+        timeout: OBSERVATION_TIMEOUT,
       },
     ],
   })
