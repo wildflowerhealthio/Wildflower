@@ -196,7 +196,7 @@ mod tests {
             .count()
             .get_result(&mut conn)
             .expect("app_registrations must exist after migrate");
-        assert_eq!(row_count, 6, "exactly the six seeded default apps");
+        assert_eq!(row_count, 7, "exactly the seven seeded default apps");
     }
 
     /// The `app_registrations` primary key gives global id uniqueness across kinds
@@ -242,6 +242,7 @@ mod tests {
                 "growth-chart",
                 "medication-viewer",
                 "precise-hbr",
+                "medication-sponsorship",
             ],
         );
     }

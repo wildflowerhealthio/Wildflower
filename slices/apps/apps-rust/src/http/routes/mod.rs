@@ -385,6 +385,7 @@ mod tests {
                 "growth-chart",
                 "medication-viewer",
                 "precise-hbr",
+                "medication-sponsorship",
             ],
         );
     }
@@ -1268,6 +1269,7 @@ mod tests {
             ("api-docs", false),
             ("api-view", true),
             ("patient-browser", true),
+            ("medication-sponsorship", true),
         ];
         let (status, body) = send(&st, put_json("/home-screen", home_screen_body(&ordered))).await;
         assert_eq!(status, StatusCode::OK, "body: {body}");
@@ -1287,6 +1289,7 @@ mod tests {
                 "api-docs",
                 "api-view",
                 "patient-browser",
+                "medication-sponsorship",
             ],
         );
         let api_docs = body
