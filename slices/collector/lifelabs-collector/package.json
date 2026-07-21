@@ -1,0 +1,61 @@
+{
+  "name": "lifelabs-collector",
+  "version": "0.0.0",
+  "private": true,
+  "description": "LifeLabs collector: the full CollectorDescriptor — config, captcha-aware login-and-analytics scraping plan, the analytic-summary entity that synthesizes R4 Patient + Observations from MyCareCompass's GetAnalyticSummary payload, persist sink, and config form — that imports LifeLabs lab results into the on-device FHIR R4 store.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Assessment-is/wildflower.git",
+    "directory": "slices/collector/lifelabs-collector"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "catalog:",
+    "@testing-library/react": "catalog:",
+    "@testing-library/user-event": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "browser-sniffer-core": "workspace:*",
+    "collector-fundamentals": "workspace:*",
+    "effect": "catalog:",
+    "fast-check": "catalog:",
+    "fhir-r4": "workspace:*",
+    "jsdom": "catalog:",
+    "kitchen-sink": "workspace:*",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-kitchen-sink": "workspace:*",
+    "react-tundraish": "workspace:*",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "browser-sniffer-core": "workspace:*",
+    "collector-fundamentals": "workspace:*",
+    "effect": "catalog:",
+    "fhir-r4": "workspace:*",
+    "kitchen-sink": "workspace:*",
+    "react": "catalog:",
+    "react-kitchen-sink": "workspace:*",
+    "react-tundraish": "workspace:*"
+  }
+}

@@ -49,6 +49,7 @@
     "fast-check": "catalog:",
     "fhir-r4-client-collector": "workspace:*",
     "kitchen-sink": "workspace:*",
+    "lifelabs-collector": "workspace:*",
     "rexall-be-well-collector": "workspace:*",
     "shared-structures-core": "workspace:*",
     "typescript": "catalog:",
@@ -62,6 +63,7 @@
     "effect-messaging-core": "workspace:*",
     "fhir-r4-client-collector": "workspace:*",
     "kitchen-sink": "workspace:*",
+    "lifelabs-collector": "workspace:*",
     "rexall-be-well-collector": "workspace:*",
     "shared-structures-core": "workspace:*"
   }

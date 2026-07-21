@@ -1,6 +1,7 @@
 import type { CollectorDescriptor } from 'collector-fundamentals/model'
 import { Schema } from 'effect'
 import { FhirR4CollectorDescriptor } from 'fhir-r4-client-collector'
+import { LifeLabsCollectorDescriptor } from 'lifelabs-collector'
 import { RexallCollectorDescriptor } from 'rexall-be-well-collector'
 
 /**
@@ -19,7 +20,11 @@ import { RexallCollectorDescriptor } from 'rexall-be-well-collector'
  * package and the `collector-react` form registration), see
  * `slices/collector/docs/Adding a Collector How-To.md`.
  */
-const descriptors = [FhirR4CollectorDescriptor, RexallCollectorDescriptor] as const
+const descriptors = [
+  FhirR4CollectorDescriptor,
+  RexallCollectorDescriptor,
+  LifeLabsCollectorDescriptor,
+] as const
 
 type AnyCollectorDescriptor = (typeof descriptors)[number]
 
