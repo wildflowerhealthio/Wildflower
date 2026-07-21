@@ -1,0 +1,51 @@
+.card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--sponsorship-border, #ddd);
+  border-radius: 0.5rem;
+  background: var(--sponsorship-surface, #fafafa);
+}
+
+.logo {
+  width: 3rem;
+  height: 3rem;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.brand {
+  font-weight: 700;
+}
+
+.generic {
+  font-size: 0.85rem;
+  color: var(--sponsorship-muted, #666);
+  font-style: italic;
+}
+
+.link {
+  font-size: 0.8rem;
+  color: var(--sponsorship-accent, #1a5fb4);
+}
+
+@media (prefers-color-scheme: dark) {
+  .card {
+    border-color: var(--sponsorship-border, #444);
+    background: var(--sponsorship-surface, #202020);
+  }
+  .generic {
+    color: var(--sponsorship-muted, #9a9a9a);
+  }
+  .link {
+    color: var(--sponsorship-accent, #78aeed);
+  }
+}
