@@ -1,0 +1,29 @@
+[
+  {
+    "title": "Abilify\u00ae",
+    "header": "Abilify<sup>\u00ae</sup>",
+    "subtitle": "aripiprazole",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,SK,YT",
+    "image": "https://www.innovicares.ca/public-images/Brands/abilify_en.png",
+    "enableBrandPage": true,
+    "newMolecules": true,
+    "newToInnovicares": false,
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/abilify/"
+  },
+  {
+    "title": "Lipitor\u00ae",
+    "header": "Lipitor<sup>\u00ae</sup>",
+    "subtitle": "atorvastatin",
+    "provinces": "AB,BC,ON,QC",
+    "enableBrandPage": true,
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/lipitor/"
+  },
+  {
+    "title": "Synthroid\u00ae",
+    "header": "Synthroid<sup>\u00ae</sup>",
+    "subtitle": "levothyroxine sodium",
+    "provinces": "",
+    "enableBrandPage": true,
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/synthroid/"
+  }
+]

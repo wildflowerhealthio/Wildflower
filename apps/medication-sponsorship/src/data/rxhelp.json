@@ -1,0 +1,31 @@
+{
+  "items": [
+    {
+      "encId": "ZbXW7B90k1ALelD",
+      "name": "Actonel DR\u00ae",
+      "nameHtml": "<p><strong>Actonel DR\u00ae</strong></p>",
+      "frName": "Actonel DR\u00ae",
+      "logo": {
+        "encId": "jY4PJ5eODBpQGWd",
+        "name": "actonel.png",
+        "content": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+      },
+      "provinces": [],
+      "genericName": "risedronate sodium",
+      "promotionalText": ""
+    },
+    {
+      "encId": "Kd93jf0AzQ1mBxy",
+      "name": "Humira\u00ae",
+      "nameHtml": "<p><strong>Humira\u00ae</strong></p>",
+      "logo": {
+        "encId": "h1",
+        "name": "humira.png",
+        "content": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+      },
+      "provinces": ["ON", "BC", "AB"],
+      "genericName": "adalimumab",
+      "promotionalText": ""
+    }
+  ]
+}
