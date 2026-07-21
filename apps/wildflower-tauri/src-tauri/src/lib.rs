@@ -235,13 +235,24 @@ async fn run_server(
             format!("failed to create fhir-search-params dir {}", dir.display())
         })?;
         let file = dir.join("search-parameters-r4.json");
-        // Rewrite unconditionally so an app update ships a fresh bundle.
-        std::fs::write(&file, EMBEDDED_SEARCH_PARAMETERS_R4).with_context(|| {
-            format!(
-                "failed to materialize embedded SearchParameter bundle to {}",
-                file.display()
-            )
-        })?;
+        // Materialize the embedded bundle only when the on-disk copy is missing
+        // or differs from what this build carries — an app update ships fresh
+        // bytes and triggers a rewrite, while an unchanged bundle skips the
+        // ~2.3 MB write on every cold start. A cheap length check short-circuits
+        // the common already-current case before the byte-for-byte compare.
+        let up_to_date = std::fs::metadata(&file)
+            .ok()
+            .filter(|m| m.len() == EMBEDDED_SEARCH_PARAMETERS_R4.len() as u64)
+            .and_then(|_| std::fs::read(&file).ok())
+            .is_some_and(|existing| existing == EMBEDDED_SEARCH_PARAMETERS_R4);
+        if !up_to_date {
+            std::fs::write(&file, EMBEDDED_SEARCH_PARAMETERS_R4).with_context(|| {
+                format!(
+                    "failed to materialize embedded SearchParameter bundle to {}",
+                    file.display()
+                )
+            })?;
+        }
         dir
     };
     #[cfg(not(target_os = "android"))]

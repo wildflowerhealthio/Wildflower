@@ -576,6 +576,7 @@ class NativeWebviewPlugin: Plugin {
   @objc public func patchWindowText(_ invoke: Invoke) throws {
     let args = try invoke.parseArgs(PatchWindowTextArgs.self)
     DispatchQueue.main.async {
+      self.resetIdleTimer(args.id)  // a command carrying its id counts as activity
       guard let instance = self.instances[args.id], let controller = instance.controller else {
         invoke.resolve(["set": false])
         return
