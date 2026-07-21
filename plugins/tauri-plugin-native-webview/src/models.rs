@@ -271,6 +271,12 @@ pub struct DisposeResponse {
 /// ride at the top level unchanged — the id is simply an added sibling key.
 /// Serialize-only (like [`OpenRequest`], which it can wrap — a [`Channel`] only
 /// serialises one way).
+///
+/// Only constructed by the mobile transport (`mobile.rs`, `#[cfg(mobile)]`) and
+/// the host wire-shape tests below, so on a desktop build the type is compiled
+/// (for those tests) but never constructed — hence the `not(mobile)` dead-code
+/// allowance.
+#[cfg_attr(not(mobile), allow(dead_code))]
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct WithId<'a, T: Serialize> {
@@ -285,6 +291,10 @@ pub(crate) struct WithId<'a, T: Serialize> {
 /// the argument-less commands (`show` / `hide` / `dispose`), which previously
 /// invoked the native side with `()`. See [`WithId`] for why mobile carries the
 /// id in the payload while desktop takes it as a function argument.
+///
+/// Mobile-transport-only (see [`WithId`]): unused on a desktop build apart from
+/// the host wire-shape tests, hence the `not(mobile)` dead-code allowance.
+#[cfg_attr(not(mobile), allow(dead_code))]
 #[derive(Clone, Copy, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct IdOnly<'a> {

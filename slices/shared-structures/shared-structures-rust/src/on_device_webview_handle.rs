@@ -20,6 +20,9 @@
 /// failure (it can't surface one onto the already-sent response).
 pub trait OnDeviceWebviewHandle: Send + Sync {
     /// Open `url` in a native popup whose chrome shows `title` (the launched
-    /// app's name).
-    fn open(&self, title: String, url: String);
+    /// app's name). `app_id` identifies the launched app so the host can give
+    /// each app its **own** popup instance — isolated history/session, and (on
+    /// mobile) its own entry in the presentation stack — rather than navigating a
+    /// single shared webview across every launch.
+    fn open(&self, app_id: String, title: String, url: String);
 }

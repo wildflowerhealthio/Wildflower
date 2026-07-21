@@ -168,12 +168,17 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
     private val instances = mutableMapOf<String, Instance>()
 
     /**
-     * The id of the instance currently on screen, or `null` when none is. A phone
-     * shows one native webview at a time; [show] swaps this (hiding the outgoing
-     * instance, showing the incoming one — see § "Foreground swap"). Kept in sync
-     * with the winning instance's [Instance.isVisible].
+     * The logical z-order of on-screen instances, bottom → top; the last element
+     * is the **frontmost** (the one whose `Dialog` is showing). A phone shows one
+     * native webview at a time, so [show] presents `id` on top and hides the
+     * previous frontmost (kept alive), while a dismissal/dispose pops and reveals
+     * the one beneath — see § "Presentation stack" in
+     * docs/Lifecycle and Races Explanation.md. Membership means "on screen
+     * (frontmost or covered)"; a covered instance's `Dialog` is `hide()`-n but its
+     * `WebView` keeps running/scraping. Kept in sync with each instance's
+     * [Instance.isVisible] ([presentationStack]`.last` ⇔ the sole `isVisible` one).
      */
-    private var visibleId: String? = null
+    private val presentationStack = mutableListOf<String>()
 
     /** Main-looper handler the per-instance idle teardown backstops post on (keeps teardown on the UI thread). */
     private val idleHandler = Handler(Looper.getMainLooper())
@@ -188,14 +193,21 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
      * the cross-platform lifecycle/race protocols apply per instance.
      */
     private inner class Instance(val id: String) {
-        /** This instance's `Dialog`. Held across a hide so the same live instance can be re-presented. */
+        /**
+         * This instance's `Dialog`. Held across a hide OR a cover so the same live
+         * instance can be re-shown — Android `Dialog.hide()` keeps the window
+         * intact, so revealing a covered instance is a plain `dialog.show()` (no
+         * rebuild, unlike iOS's fresh sheet wrapper).
+         */
         var dialog: Dialog? = null
 
         /**
-         * Whether this instance is presently on screen — tracked explicitly
-         * because a hidden instance is kept alive (see § "Visibility, liveness,
-         * and existence are independent"). At most one instance is [isVisible] at
-         * a time (the foreground-swap invariant, also tracked by [visibleId]).
+         * Whether this instance is the **frontmost** (its `Dialog` is showing) —
+         * tracked explicitly because covered and hidden instances are kept alive
+         * (see § "Visibility, liveness, and existence are independent"). At most
+         * one instance is [isVisible] at a time: the top of [presentationStack].
+         * Covered (dialog `hide()`-n but still stacked) and dismissed instances are
+         * both `isVisible == false`.
          */
         var isVisible = false
 
@@ -410,12 +422,13 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
     }
 
     /**
-     * Present the native webview — bring a freshly-built or previously-hidden
-     * instance to the foreground (`dialog.show()`). Resolves with
-     * `{requestCausedShow: true}` only when this call actually presented it;
-     * `{requestCausedShow: false}` when no instance exists or it was already
-     * visible (a transition flag, matching `hide` / `dispose`). Cancels the
-     * idle teardown backstop (a visible webview is never idle-reclaimed).
+     * Present the native webview — push `id` onto the top of the presentation
+     * stack (`dialog.show()`), covering the previous frontmost (hidden but kept
+     * alive). Resolves with `{requestCausedShow: true}` only when this call
+     * actually presented it; `{requestCausedShow: false}` when no instance exists,
+     * it is mid-dispose, or it is already on the stack (frontmost or covered) — a
+     * transition flag, matching `hide` / `dispose`. Cancels the idle teardown
+     * backstop (a frontmost webview is never idle-reclaimed).
      */
     @Command
     fun show(invoke: Invoke) {
@@ -423,51 +436,44 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
         val id = args.id
         activity.runOnUiThread {
             val instance = instances[id]
-            if (instance == null) {
+            val d = instance?.dialog
+            // No instance / no dialog / mid-dispose → nothing presentable. (Do NOT
+            // cancel the idle timer here: a covered instance re-`show`-n while
+            // already stacked must keep counting down.)
+            if (instance == null || d == null || instance.isDisposing) {
                 val result = JSObject()
                 result.put("requestCausedShow", false)
                 invoke.resolve(result)
                 return@runOnUiThread
             }
-            cancelIdleTimer(instance)
-            // Dispose teardown in flight — nothing presentable; showing the doomed
-            // dialog would be a use-after-destroy. See docs/Lifecycle and Races Explanation.md
-            // § "The dispose→open \"switch-demo\" race".
-            if (instance.isDisposing) {
+            // Already on the stack (frontmost or covered) — idempotent, no
+            // transition. A covered instance is revealed only by dismissing/
+            // disposing what is above it, never by reordering.
+            if (presentationStack.contains(id)) {
                 val result = JSObject()
                 result.put("requestCausedShow", false)
                 invoke.resolve(result)
                 return@runOnUiThread
             }
-            val d = instance.dialog
-            if (d == null) {
-                val result = JSObject()
-                result.put("requestCausedShow", false)
-                invoke.resolve(result)
-                return@runOnUiThread
-            }
-            if (instance.isVisible) {
-                // Already on screen — no transition caused, so report `false`.
-                val result = JSObject()
-                result.put("requestCausedShow", false)
-                invoke.resolve(result)
-                return@runOnUiThread
-            }
-            // Foreground swap — a phone shows one native webview at a time, so hide
-            // whichever instance is currently visible (keeping it ALIVE and
-            // running) before showing `id`. `Dialog.hide()`/`show()` are
-            // synchronous (no animation to sequence), so this is a simple swap.
-            // See docs/Lifecycle and Races Explanation.md § "Foreground swap".
-            visibleId?.let { currentId ->
-                if (currentId != id) {
-                    instances[currentId]?.let { current ->
-                        if (current.isVisible) hideDialog(current)
+            // Cover the previous frontmost — a phone shows one native webview at a
+            // time, so hide it (keeping it ALIVE and running: a background
+            // `sniffer` keeps scraping) before showing `id`. Covering emits no
+            // `hidden` (it is not a user-facing dismissal) but arms its idle
+            // backstop. `Dialog.hide()`/`show()` are synchronous, so no sequencing.
+            // See docs/Lifecycle and Races Explanation.md § "Presentation stack".
+            presentationStack.lastOrNull()?.let { currentId ->
+                instances[currentId]?.let { current ->
+                    if (current.isVisible) {
+                        current.dialog?.hide()
+                        current.isVisible = false
+                        resetIdleTimer(currentId) // covered → idle-eligible
                     }
                 }
             }
             d.show()
             instance.isVisible = true
-            visibleId = id
+            cancelIdleTimer(instance)
+            presentationStack.add(id)
             val result = JSObject()
             result.put("requestCausedShow", true)
             invoke.resolve(result)
@@ -537,10 +543,12 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
      */
     private fun hideDialog(instance: Instance) {
         val d = instance.dialog ?: return
+        // Only the frontmost can be hidden — a covered instance's dialog is
+        // already `hide()`-n, so there is nothing to dismiss.
         if (!instance.isVisible) return
         d.hide()
         instance.isVisible = false
-        if (visibleId == instance.id) visibleId = null
+        presentationStack.remove(instance.id)
         // Emit `Hidden` on the latest (possibly re-wired) channel.
         instance.bridge?.let { bridge ->
             val payload = JSObject()
@@ -548,6 +556,26 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
             bridge.channel.send(payload)
         }
         resetIdleTimer(instance.id) // hidden now — start the idle backstop counting down
+        // Hiding the frontmost exposes whatever it was covering — bring that next
+        // instance back to the foreground.
+        revealTopIfNeeded()
+    }
+
+    /**
+     * Reveal the top of the presentation stack if it is not already the frontmost
+     * — used after a dismissal/dispose pops the frontmost, bringing the next
+     * instance back on screen (`dialog.show()`). No-op when the stack is empty or
+     * its top is already showing. See docs/Lifecycle and Races Explanation.md
+     * § "Presentation stack".
+     */
+    private fun revealTopIfNeeded() {
+        val topId = presentationStack.lastOrNull() ?: return
+        val top = instances[topId] ?: return
+        if (top.isVisible) return
+        val d = top.dialog ?: return
+        d.show()
+        top.isVisible = true
+        cancelIdleTimer(top) // frontmost again — never idle-reclaimed
     }
 
     /**
@@ -879,7 +907,7 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
             webView.loadUrl(url)
         }
 
-        instance.dialog = Dialog(activity, android.R.style.Theme_Black_NoTitleBar_Fullscreen).apply {
+        instance.dialog = Dialog(activity, android.R.style.Theme_Black_NoTitleBar).apply {
             setContentView(layout)
             // System back: navigate WebView history when there is one, else HIDE
             // (see below) — without this hook the Dialog's default back tears the
@@ -904,16 +932,34 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
                     false
                 }
             }
-            // The fullscreen theme draws the dialog window edge-to-edge —
-            // without an insets-aware pad, the top toolbar collides with the
-            // status bar / camera cutout, and the bottom bar with the
-            // gesture navigation bar. Opt in to edge-to-edge explicitly
-            // (so the inset listener actually fires on API 30+) and apply
-            // status-bar + cutout insets to the top toolbar and nav-bar
-            // insets to the bottom bar. The WebView keeps its zero padding
-            // — its content scrolls under everything but isn't clipped by
-            // the chrome bars.
-            window?.also { WindowCompat.setDecorFitsSystemWindows(it, false) }
+            // Fill the screen and draw edge-to-edge, but keep the system bars
+            // VISIBLE (transparent) rather than hiding them. The old
+            // `…_Fullscreen` theme hid the status bar while the popup was up,
+            // which toggled the host Activity's fullscreen state — so opening the
+            // popup stuttered to full height and dismissing it made the main SPA
+            // snap full-height then drop back to the safe area as the bar
+            // returned. With the bars kept visible+transparent the Activity's
+            // window state never changes, so neither surface jumps. We still
+            // `setDecorFitsSystemWindows(false)` and pad our own chrome to the
+            // insets below (the top toolbar to the status bar / cutout, the bottom
+            // bar to the nav bar); the WebView keeps its zero padding so its
+            // content scrolls under everything without being clipped.
+            window?.also {
+                it.setLayout(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+                it.statusBarColor = android.graphics.Color.TRANSPARENT
+                it.navigationBarColor = android.graphics.Color.TRANSPARENT
+                WindowCompat.setDecorFitsSystemWindows(it, false)
+                // The bars are now visible (not hidden), so make their icons
+                // legible against the app background: dark icons on the light
+                // theme, light icons in dark mode. `night` is resolved above.
+                WindowCompat.getInsetsController(it, it.decorView).apply {
+                    isAppearanceLightStatusBars = !night
+                    isAppearanceLightNavigationBars = !night
+                }
+            }
             val bottomBarBasePadding = bottomBar.paddingBottom
             ViewCompat.setOnApplyWindowInsetsListener(layout) { _, insets ->
                 val safeArea =
@@ -946,9 +992,10 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
                 (webView.parent as? ViewGroup)?.removeView(webView)
                 webView.destroy()
                 cancelIdleTimer(instance)
+                val wasVisible = instance.isVisible
                 instance.dialog = null
                 instance.isVisible = false
-                if (visibleId == id) visibleId = null
+                presentationStack.remove(id)
                 instance.webView = null
                 instance.toolbar = null
                 instance.messageView = null
@@ -974,6 +1021,10 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
                     val payload = JSObject()
                     payload.put("event", "disposed")
                     disposeChannel.send(payload)
+                    // Disposing the frontmost exposes whatever it was covering —
+                    // reveal it. (A covered/hidden dispose leaves the frontmost
+                    // untouched, so this no-ops.)
+                    if (wasVisible) revealTopIfNeeded()
                 }
             }
             // Build HIDDEN — do NOT call `show()` here (`show` presents it later).

@@ -81,11 +81,12 @@ reuses its instance.
 **Mobile is also per-id** ([#411]): each native backend keeps an `instances[id]`
 map mirroring desktop's `PluginState`, so the same `sniffer` / `launch` ids get
 independent, concurrent instances there too. The one difference is presentation —
-a phone shows one full-screen native webview at a time, so at most one instance is
-_visible_ and `show(id)` performs a **foreground swap** (hiding whichever instance
-was visible, keeping it alive, before presenting `id`). Non-visible mobile
-instances stay alive and running, so a hidden `sniffer` keeps scraping while
-`launch` is shown. See the Lifecycle & Races doc's "Foreground swap".
+a phone shows one full-screen native webview at a time, so mobile models it as a
+**z-order stack**: `show(id)` presents `id` on top, **covering** the previous
+frontmost (kept alive), and dismissing or disposing the frontmost **reveals the one
+beneath**. Covered and dismissed instances stay alive and running, so a background
+`sniffer` keeps scraping while `launch` is shown. See the Lifecycle & Races doc's
+"Presentation stack".
 
 [#411]: https://github.com/wildflowerhealthio/Wildflower/issues/411
 
@@ -130,7 +131,7 @@ plugins/tauri-plugin-native-webview/
 [Rust] commands::open_url → NativeWebviewExt::open_url → platform backend (then show())
       │
       ├─ iOS/Android: run_mobile_plugin("openUrl", { id, url, initScript, nativeWebviewEventChannel }) ; run_mobile_plugin("show", { id })
-      │     → build native WebView hidden (native chrome) under instances[id], navigate; show() presents it (swapping out the visible instance)
+      │     → build native WebView hidden (native chrome) under instances[id], navigate; show() presents it on top of the stack (covering the previous frontmost)
       │     → caller's initScript injected at document start on ANY origin
       │     → page posts an opaque JSON string over the scoped native bridge
       │       (window.webkit.messageHandlers.nativeWebview / window.nativeWebview)
