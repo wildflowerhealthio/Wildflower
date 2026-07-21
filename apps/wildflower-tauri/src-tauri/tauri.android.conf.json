@@ -1,0 +1,8 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "resources": {
+      "../../../slices/emr/emr-rust/assets/search-parameters-r4.json": null
+    }
+  }
+}

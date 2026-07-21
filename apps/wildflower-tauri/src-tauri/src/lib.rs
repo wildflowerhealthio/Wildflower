@@ -217,6 +217,9 @@ async fn run_server(
     // `frontendDist`), and reading the APK asset directly needs the `unsafe` JNI
     // `AssetManager` the workspace forbids. So on Android we embed the ~2.3 MB
     // bundle in the binary and materialize it to a real app-data dir at startup.
+    // Because the APK-asset copy is never read on Android, `tauri.android.conf.json`
+    // drops it from `bundle.resources` (a `null` merge-patch override) so the APK
+    // ships the bundle once (the binary embed) rather than twice.
     // Desktop/iOS keep reading the deployed resource straight off disk (their
     // resource dir is a real directory). NOTE: the sibling `self-hosted-apps/`
     // resource has the same limitation, but `sync_vendored_self_hosted_apps`
