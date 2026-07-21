@@ -50,7 +50,7 @@
     "@effect/platform": "catalog:",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
-    "bumpp": "^11.0.1",
+    "bumpp": "^12.0.0",
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
     "fast-check": "catalog:",
