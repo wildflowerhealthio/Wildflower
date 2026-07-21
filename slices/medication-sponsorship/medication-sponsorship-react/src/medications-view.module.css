@@ -1,0 +1,193 @@
+.sections {
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.sectionHeading {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--sponsorship-muted, #666);
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/*
+ * Mobile-first: each row is a vertical stack. Only the header line uses flex
+ * wrapping, so a long name and the eligibility/pharmacy actions reflow cleanly
+ * on narrow screens; on wider screens the actions are pushed to the right edge.
+ */
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--sponsorship-border, #eee);
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.6rem;
+  margin: 0;
+}
+
+.name {
+  min-width: 0;
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+@media (min-width: 32rem) {
+  .actions {
+    margin-left: auto;
+  }
+}
+
+/* Secondary + metadata lines both wrap; items are separated by inline "·". */
+.secondary,
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  row-gap: 0.1rem;
+  margin: 0;
+  font-size: 0.8rem;
+}
+
+.meta {
+  font-size: 0.82rem;
+}
+
+.metaItem {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3rem;
+}
+
+.description {
+  color: var(--sponsorship-muted, #555);
+}
+
+.din {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  color: var(--sponsorship-muted, #666);
+}
+
+/* Small caps-y label for the "Next fill" / "Supply exhausted" field name. */
+.factLabel {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--sponsorship-muted, #888);
+}
+
+.factValue {
+  color: inherit;
+}
+
+.repeats {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* "No Repeats Remaining" — nothing left to dispense. */
+.repeatsDanger {
+  font-weight: 600;
+  color: var(--sponsorship-danger, #b3261e);
+}
+
+.relative {
+  color: var(--sponsorship-muted, #666);
+}
+
+.sep {
+  color: var(--sponsorship-muted, #aaa);
+}
+
+.prescriber {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--sponsorship-muted, #555);
+}
+
+/* Blue pharmacy-location button. */
+.pharmacyLink {
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  background: var(--sponsorship-accent, #0b5cff);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.pharmacyLink:hover {
+  background: var(--sponsorship-accent-hover, #0847c4);
+}
+
+.pharmacyLink:focus-visible {
+  outline: 2px solid var(--sponsorship-accent, #0b5cff);
+  outline-offset: 2px;
+}
+
+.note {
+  margin: 0.1rem 0 0;
+  font-size: 0.8rem;
+  font-style: italic;
+  white-space: pre-line;
+  color: var(--sponsorship-muted, #666);
+}
+
+.empty {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--sponsorship-muted, #888);
+}
+
+@media (prefers-color-scheme: dark) {
+  .row {
+    border-color: var(--sponsorship-border, #333);
+  }
+  .sectionHeading,
+  .description,
+  .din,
+  .relative,
+  .prescriber,
+  .note {
+    color: var(--sponsorship-muted, #9a9a9a);
+  }
+  .factLabel {
+    color: var(--sponsorship-muted, #8a8a8a);
+  }
+  .repeatsDanger {
+    color: var(--sponsorship-danger, #f2b8b5);
+  }
+}

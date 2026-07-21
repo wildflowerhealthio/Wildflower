@@ -436,7 +436,7 @@ async fn token_endpoint_rejects_grant_outside_client_allow_list() {
             client_id: "code-only".to_string(),
             name: "Code-only client".to_string(),
             kind: ClientKind::Public,
-            redirect_uris: vec![Url::parse("https://app.example/cb").unwrap()],
+            redirect_uris: vec![Url::parse("https://app.example/cb").unwrap().into()],
             allowed_scopes: vec!["read".to_string(), "offline_access".to_string()],
             allowed_grant_types: vec![AllowedGrantType::AuthorizationCode],
             secret_hash: None,

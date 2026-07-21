@@ -1,0 +1,33 @@
+{
+  "name": "wildflower-medication",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc && vp build",
+    "check": "vp check",
+    "dev": "vp dev",
+    "preview": "vp preview",
+    "test": "vp test --passWithNoTests"
+  },
+  "dependencies": {
+    "effect": "catalog:",
+    "fhir-r4-react": "workspace:*",
+    "medication-sponsorship-core": "workspace:*",
+    "medication-sponsorship-react": "workspace:*",
+    "react": "catalog:",
+    "react-dom": "catalog:"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/react": "^16.3.0",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "fhir-r4": "workspace:*",
+    "jsdom": "catalog:",
+    "typescript": "~7.0.2",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

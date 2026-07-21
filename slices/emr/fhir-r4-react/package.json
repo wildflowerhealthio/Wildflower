@@ -9,6 +9,10 @@
       "source": "./src/index.ts",
       "default": "./dist/index.js"
     },
+    "./smart": {
+      "source": "./src/smart/index.ts",
+      "default": "./dist/smart/index.js"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {
@@ -16,6 +20,9 @@
     "check": "vp check",
     "dev": "vp pack --watch",
     "test": "vp test"
+  },
+  "dependencies": {
+    "fhirclient": "^2.5.4"
   },
   "devDependencies": {
     "@effect/platform": "catalog:",
@@ -26,6 +33,7 @@
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "effect": "catalog:",
+    "fast-check": "catalog:",
     "fhir-r4": "workspace:*",
     "jsdom": "catalog:",
     "kitchen-sink": "workspace:*",

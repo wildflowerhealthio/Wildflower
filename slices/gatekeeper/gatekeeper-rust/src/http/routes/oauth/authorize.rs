@@ -13,7 +13,7 @@ use uuid::Uuid;
 use crate::crypto_util::random_token::generate_authorization_code;
 use crate::domain::authorization_code::{AuthorizationCode, AUTHORIZATION_CODE_TTL};
 use crate::domain::authorization_request::{AuthorizationRequest, StartCodeAuthorizationArgs};
-use crate::domain::client::Client;
+use crate::domain::client::{Client, RegisteredRedirectUri};
 use crate::domain::client_redirect::{build_client_error_redirect_url, build_client_redirect_url};
 use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::domain::page_paths;
@@ -22,7 +22,7 @@ use crate::http::errors::InternalError;
 use crate::http::errors::{oauth_error_html, OAuthErrorKind};
 use crate::http::state::GatekeeperState;
 use crate::http::ServedOrigin;
-use crate::ports::DeviceUserCodePublisher;
+use crate::ports::{DeviceUserCodePublisher, SelfHostedRedirectTopology};
 
 /// A `code_challenge` for the S256 method is the base64url SHA-256 digest:
 /// exactly 43 unpadded base64url characters (RFC 7636 §4.2).
@@ -212,7 +212,13 @@ pub(super) async fn handle_authorize_request(
     // helper returns the values the rest of the flow needs or the matching
     // `AuthorizeError`.
     let client = validate_and_load_client(&state, &params)?;
-    let parsed_redirect = validate_redirect_url(&params, &client)?;
+    // A self-hosted app registers an app-relative redirect entry; resolve its
+    // topology so `validate_redirect_url` can expand it against this request's
+    // provenance. `None` for a non-self-hosted client, whose relative entries (if
+    // any) then match nothing.
+    let redirect_topology = state.self_hosted_redirects.resolve(&params.client_id);
+    let parsed_redirect =
+        validate_redirect_url(&params, &client, &origin, redirect_topology.as_ref())?;
     validate_code(&params, &parsed_redirect)?;
     let requested_scopes = validate_requested_scopes(&params, &client, &parsed_redirect)?;
 
@@ -292,23 +298,107 @@ fn validate_and_load_client(
 }
 
 /// Validate the `redirect_uri` against `client`: a well-formed http/https URL
-/// (RFC 6749 §4.1.2.1) that is on the client's allowlist. A `redirect_uri` that
-/// isn't trusted can't be used as a redirect target, so failures render a local
-/// HTML page. Returns the parsed URL the redirect flow uses thereafter.
-fn validate_redirect_url(params: &AuthorizeParams, client: &Client) -> Result<Url, AuthorizeError> {
+/// (RFC 6749 §4.1.2.1) that matches the client's allowlist. An
+/// [`Absolute`](RegisteredRedirectUri::Absolute) entry matches by exact URL
+/// equality; an [`AppRelative`](RegisteredRedirectUri::AppRelative) entry is
+/// resolved against the self-hosted app's own origin **for this request's
+/// provenance** (from `served_origin` + `topology`) and then matched exactly, so
+/// one registration covers both the on-device and tunneled launch origins
+/// without either being knowable at seed time. A `redirect_uri` that isn't
+/// trusted can't be a redirect target, so failures render a local HTML page.
+/// Returns the parsed URL the redirect flow uses thereafter.
+fn validate_redirect_url(
+    params: &AuthorizeParams,
+    client: &Client,
+    served_origin: &str,
+    topology: Option<&SelfHostedRedirectTopology>,
+) -> Result<Url, AuthorizeError> {
     let parsed_redirect = Url::parse(&params.redirect_uri)
         .map_err(|_| AuthorizeError::LocalPage(OAuthErrorKind::InvalidRedirectUri))?;
     if parsed_redirect.scheme() != "http" && parsed_redirect.scheme() != "https" {
         return Err(AuthorizeError::LocalPage(OAuthErrorKind::InvalidScheme));
     }
-    // Exact match against the already-parsed `Url` — both sides go through the
-    // same normalizer.
-    if !client.redirect_uris.iter().any(|u| u == &parsed_redirect) {
+    // The served origin comes from the trusted extractor; if it somehow can't
+    // parse, no app-relative entry resolves (absolute entries still match).
+    let served = Url::parse(served_origin).ok();
+    let matches = client.redirect_uris.iter().any(|entry| {
+        resolve_registered_redirect(entry, served.as_ref(), topology)
+            .is_some_and(|resolved| resolved == parsed_redirect)
+    });
+    if !matches {
         return Err(AuthorizeError::LocalPage(
             OAuthErrorKind::RedirectUriNotAllowed,
         ));
     }
     Ok(parsed_redirect)
+}
+
+/// The concrete redirect URL a registered allowlist entry authorizes for this
+/// request, or `None` when it can't be resolved (an app-relative entry on a
+/// non-self-hosted client, or with an unparseable served origin). Both sides go
+/// through the same URL normalizer, so the caller compares by `==`.
+fn resolve_registered_redirect(
+    entry: &RegisteredRedirectUri,
+    served: Option<&Url>,
+    topology: Option<&SelfHostedRedirectTopology>,
+) -> Option<Url> {
+    match entry {
+        RegisteredRedirectUri::Absolute(url) => Some(url.clone()),
+        RegisteredRedirectUri::AppRelative(path) => {
+            let base = self_hosted_app_origin(served?, topology?)?;
+            let resolved = base.join(path).ok()?;
+            // An app-relative entry may only pick a path *under its own origin*.
+            // `Url::join` on an http(s) base folds `\`→`/` and strips tab/newline,
+            // so a tampered `/\evil.example` (which the parse-time `//` screen does
+            // not catch) would otherwise resolve to `http://evil.example/`. This
+            // origin-equality check is the authoritative same-origin guard; the
+            // parse-time rejection only screens the most obvious form.
+            (resolved.origin() == base.origin()).then_some(resolved)
+        }
+    }
+}
+
+/// The self-hosted app's own origin for the request's provenance, derived from
+/// the request's served origin + the app's topology — so an app-relative entry
+/// resolves to the *same-provenance* origin only:
+/// - a **loopback** served origin (the on-device API) → same scheme + host, the
+///   app's loopback port (`http://127.0.0.1:<port>`);
+/// - any other served origin (the tunnel apex) → the app's subdomain under that
+///   host, carrying the apex's own scheme and port (`https://<subdomain>.<apex>`
+///   for the usual https:443 tunnel).
+fn self_hosted_app_origin(served: &Url, topology: &SelfHostedRedirectTopology) -> Option<Url> {
+    let host = served.host_str()?;
+    if host_is_loopback(host) {
+        let mut origin = served.clone();
+        origin.set_port(Some(topology.port)).ok()?;
+        Some(origin)
+    } else {
+        // Prepend the app's subdomain to the served apex, preserving the served
+        // scheme AND port (`host_str` drops the port, so a non-443 apex would
+        // otherwise resolve to the wrong origin). `set_host` also validates the
+        // interpolated subdomain rather than trusting it into a URL string.
+        let mut origin = served.clone();
+        origin
+            .set_host(Some(&format!("{}.{}", topology.subdomain, host)))
+            .ok()?;
+        Some(origin)
+    }
+}
+
+/// Whether `host` (a URL host string) is a loopback address (`127.0.0.0/8`,
+/// `::1`) or `localhost` — the provenance split for [`self_hosted_app_origin`].
+fn host_is_loopback(host: &str) -> bool {
+    if host.eq_ignore_ascii_case("localhost") {
+        return true;
+    }
+    // `host_str` brackets an IPv6 literal (`[::1]`); strip them so it parses.
+    let unbracketed = host
+        .strip_prefix('[')
+        .and_then(|inner| inner.strip_suffix(']'))
+        .unwrap_or(host);
+    unbracketed
+        .parse::<std::net::IpAddr>()
+        .is_ok_and(|ip| ip.is_loopback())
 }
 
 /// Validate the response type and PKCE challenge. With `redirect_uri` +
@@ -484,4 +574,184 @@ fn redirect_to_client(parsed_redirect: &Url, code: &str, client_state: &str) -> 
 
 fn html_bad_request(html: String) -> Response {
     (StatusCode::BAD_REQUEST, Html(html)).into_response()
+}
+
+#[cfg(test)]
+mod redirect_resolution_tests {
+    use super::*;
+
+    fn topology() -> SelfHostedRedirectTopology {
+        SelfHostedRedirectTopology {
+            port: 8090,
+            subdomain: "medication".to_owned(),
+        }
+    }
+
+    fn served(origin: &str) -> Url {
+        Url::parse(origin).expect("served origin")
+    }
+
+    fn relative() -> RegisteredRedirectUri {
+        RegisteredRedirectUri::AppRelative("/".to_owned())
+    }
+
+    /// A loopback served origin (the on-device API) resolves an app-relative
+    /// entry to the app's own loopback origin — same scheme + host, the app port.
+    #[test]
+    fn relative_resolves_to_the_loopback_app_origin_on_device() {
+        let resolved = resolve_registered_redirect(
+            &relative(),
+            Some(&served("http://127.0.0.1:8080")),
+            Some(&topology()),
+        );
+        assert_eq!(
+            resolved,
+            Some(Url::parse("http://127.0.0.1:8090/").unwrap())
+        );
+    }
+
+    /// A forwarded served origin (the tunnel apex) resolves the same entry to the
+    /// app's subdomain under that apex, over https.
+    #[test]
+    fn relative_resolves_to_the_subdomain_origin_when_forwarded() {
+        let resolved = resolve_registered_redirect(
+            &relative(),
+            Some(&served("https://ruth.wildflowerhealth.io")),
+            Some(&topology()),
+        );
+        assert_eq!(
+            resolved,
+            Some(Url::parse("https://medication.ruth.wildflowerhealth.io/").unwrap())
+        );
+    }
+
+    /// Provenance is matched: a loopback flow resolves only the loopback origin
+    /// and a forwarded flow only the subdomain origin, so a redirect from the
+    /// other provenance can't match.
+    #[test]
+    fn relative_matches_only_the_same_provenance_origin() {
+        let loopback = resolve_registered_redirect(
+            &relative(),
+            Some(&served("http://127.0.0.1:8080")),
+            Some(&topology()),
+        )
+        .unwrap();
+        let forwarded = resolve_registered_redirect(
+            &relative(),
+            Some(&served("https://ruth.wildflowerhealth.io")),
+            Some(&topology()),
+        )
+        .unwrap();
+        assert_ne!(loopback, forwarded);
+        assert_eq!(loopback.scheme(), "http");
+        assert_eq!(forwarded.scheme(), "https");
+    }
+
+    /// Without topology (a non-self-hosted client) an app-relative entry resolves
+    /// to nothing, so it can never match a request.
+    #[test]
+    fn relative_resolves_to_nothing_without_topology() {
+        assert_eq!(
+            resolve_registered_redirect(&relative(), Some(&served("http://127.0.0.1:8080")), None),
+            None
+        );
+    }
+
+    /// An unparseable served origin also resolves an app-relative entry to
+    /// nothing (rather than trusting a bogus base).
+    #[test]
+    fn relative_resolves_to_nothing_without_a_served_origin() {
+        assert_eq!(
+            resolve_registered_redirect(&relative(), None, Some(&topology())),
+            None
+        );
+    }
+
+    /// A tampered app-relative entry that would swap the origin resolves to
+    /// nothing. `Url::join` on an http(s) base folds `\`→`/` and strips
+    /// tab/newline, so each of these joins to a foreign authority — the
+    /// resolution-time origin-equality guard (not the parse-time `//` screen)
+    /// rejects them. This is the same tampered-row threat the `//` parse test
+    /// treats as in scope.
+    #[test]
+    fn relative_that_would_swap_origin_resolves_to_nothing() {
+        for tampered in [
+            "/\\evil.example",   // backslash → folded to `//`
+            "/\\\\evil.example", // `\\` → authority
+            "/\t/evil.example",  // tab stripped, then `//`
+            "/\n/evil.example",  // newline stripped, then `//`
+        ] {
+            let entry = RegisteredRedirectUri::AppRelative(tampered.to_owned());
+            assert_eq!(
+                resolve_registered_redirect(
+                    &entry,
+                    Some(&served("https://ruth.wildflowerhealth.io")),
+                    Some(&topology()),
+                ),
+                None,
+                "tampered `{tampered}` must not resolve across the origin"
+            );
+            assert_eq!(
+                resolve_registered_redirect(
+                    &entry,
+                    Some(&served("http://127.0.0.1:8080")),
+                    Some(&topology()),
+                ),
+                None,
+                "tampered `{tampered}` must not resolve across the loopback origin"
+            );
+        }
+    }
+
+    /// A same-origin path with a `\` that `Url::join` folds to `/` still resolves
+    /// (the guard is on the *origin*, not the path), so a legitimate nested path
+    /// keeps working.
+    #[test]
+    fn relative_same_origin_path_with_backslash_still_resolves() {
+        let entry = RegisteredRedirectUri::AppRelative("/a\\b".to_owned());
+        assert_eq!(
+            resolve_registered_redirect(
+                &entry,
+                Some(&served("http://127.0.0.1:8080")),
+                Some(&topology()),
+            ),
+            Some(Url::parse("http://127.0.0.1:8090/a/b").unwrap()),
+        );
+    }
+
+    /// A tunnel apex served on a non-default port carries that port onto the
+    /// resolved subdomain origin (`host_str` alone would drop it, leaving an
+    /// implicit :443 that no real redirect could match).
+    #[test]
+    fn forwarded_apex_preserves_a_non_default_port() {
+        let resolved = resolve_registered_redirect(
+            &relative(),
+            Some(&served("https://ruth.wildflowerhealth.io:8443")),
+            Some(&topology()),
+        );
+        assert_eq!(
+            resolved,
+            Some(Url::parse("https://medication.ruth.wildflowerhealth.io:8443/").unwrap())
+        );
+    }
+
+    /// An absolute entry resolves to itself regardless of served origin/topology.
+    #[test]
+    fn absolute_resolves_to_itself() {
+        let url = Url::parse("https://app.example/cb").unwrap();
+        let resolved =
+            resolve_registered_redirect(&RegisteredRedirectUri::Absolute(url.clone()), None, None);
+        assert_eq!(resolved, Some(url));
+    }
+
+    #[test]
+    fn host_is_loopback_classifies_hosts() {
+        assert!(host_is_loopback("127.0.0.1"));
+        assert!(host_is_loopback("127.5.5.5"));
+        assert!(host_is_loopback("localhost"));
+        assert!(host_is_loopback("LocalHost"));
+        assert!(host_is_loopback("[::1]"));
+        assert!(!host_is_loopback("ruth.wildflowerhealth.io"));
+        assert!(!host_is_loopback("192.168.1.9"));
+    }
 }

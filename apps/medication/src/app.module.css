@@ -1,0 +1,40 @@
+.app {
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 4rem;
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.title {
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+.status {
+  color: #555;
+}
+
+.error {
+  color: #b3261e;
+}
+
+@media (prefers-color-scheme: dark) {
+  .status {
+    color: #aaa;
+  }
+  .error {
+    color: #f2b8b5;
+  }
+}

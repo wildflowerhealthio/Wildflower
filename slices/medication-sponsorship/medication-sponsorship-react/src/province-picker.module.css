@@ -1,0 +1,31 @@
+.picker {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font: inherit;
+}
+
+.label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--sponsorship-muted, #555);
+}
+
+.select {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--sponsorship-border, #ccc);
+  border-radius: 0.375rem;
+  background: var(--sponsorship-surface, #fff);
+  color: inherit;
+  font: inherit;
+}
+
+@media (prefers-color-scheme: dark) {
+  .label {
+    color: var(--sponsorship-muted, #aaa);
+  }
+  .select {
+    border-color: var(--sponsorship-border, #444);
+    background: var(--sponsorship-surface, #1c1c1c);
+  }
+}

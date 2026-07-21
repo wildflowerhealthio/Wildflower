@@ -70,7 +70,7 @@ pub(crate) fn client(client_id: &str, allowed_scopes: &[&str]) -> Client {
         client_id: client_id.to_owned(),
         name: format!("{client_id} display name"),
         kind: ClientKind::Public,
-        redirect_uris: vec![Url::parse("https://example.com/cb").unwrap()],
+        redirect_uris: vec![Url::parse("https://example.com/cb").unwrap().into()],
         allowed_scopes: allowed_scopes.iter().map(|s| (*s).to_owned()).collect(),
         allowed_grant_types: AllowedGrantType::ALL.to_vec(),
         secret_hash: None,
