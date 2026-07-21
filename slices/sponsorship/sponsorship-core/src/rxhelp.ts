@@ -1,25 +1,16 @@
 import { Schema } from 'effect'
 
-import { allProvinces, isProvince } from './province.ts'
+import { allProvinces } from './province.ts'
 import type { SponsoredDrug } from './sponsor.ts'
-
-/** RxHelp embeds logos inline as base64 `data:` URIs under `logo.content`. */
-const RxHelpLogo = Schema.Struct({
-  content: Schema.optional(Schema.String),
-})
 
 /**
  * Raw shape of one entry in the RxHelp `items` array. Only consumed fields are
- * described; the many others (French names, cards, promotional text) are
+ * described; the many others (French names, logos, cards, promotional text) are
  * ignored.
  */
 const RxHelpRaw = Schema.Struct({
-  encId: Schema.optional(Schema.String),
   name: Schema.String,
-  nameHtml: Schema.optional(Schema.String),
   genericName: Schema.optional(Schema.String),
-  provinces: Schema.optional(Schema.Array(Schema.String)),
-  logo: Schema.optional(RxHelpLogo),
 })
 type RxHelpRaw = typeof RxHelpRaw.Type
 
@@ -42,22 +33,16 @@ const slug = (value: string): string =>
     .replace(/^-+|-+$/g, '')
 
 /**
- * Normalize one raw RxHelp entry. An absent or empty `provinces` array is
- * treated as "covered everywhere" (expanded to {@link allProvinces}); unknown
- * province tokens are dropped.
+ * Normalize one raw RxHelp entry. The RxHelp list carries no per-drug province
+ * restriction, so coverage is always expanded to {@link allProvinces}.
  */
-const rxhelpToDrug = (raw: RxHelpRaw): SponsoredDrug => {
-  const codes = (raw.provinces ?? []).map((code) => code.trim().toUpperCase()).filter(isProvince)
-  return {
-    sponsor: 'rxhelp',
-    id: raw.encId ?? slug(raw.name),
-    brandName: stripMarks(raw.name),
-    brandHtml: raw.nameHtml,
-    genericName: raw.genericName ?? '',
-    provinces: codes.length > 0 ? codes : allProvinces,
-    logoDataUri: raw.logo?.content,
-  }
-}
+const rxhelpToDrug = (raw: RxHelpRaw): SponsoredDrug => ({
+  sponsor: 'rxhelp',
+  id: slug(raw.name),
+  brandName: stripMarks(raw.name),
+  genericName: raw.genericName ?? '',
+  provinces: allProvinces,
+})
 
 /** Decode and normalize a whole RxHelp file. Throws on a malformed file. */
 const decodeRxHelpFile = (input: unknown): readonly SponsoredDrug[] =>

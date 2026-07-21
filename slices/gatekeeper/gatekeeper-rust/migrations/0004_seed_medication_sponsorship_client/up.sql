@@ -12,7 +12,9 @@
 --
 -- `allowed_scopes` mirrors what the app requests: EHR launch + patient context,
 -- then read the patient plus their MedicationRequests and any referenced
--- Medication resources.
+-- Medication resources. The `system/` scopes cover a launch with no patient in
+-- context, where the app reads MedicationRequests across every patient the
+-- granted scopes expose.
 INSERT OR IGNORE INTO clients
     (client_id, name, kind, redirect_uris, allowed_scopes, allowed_grant_types, secret_hash, registered_at, disabled_at)
 VALUES
@@ -21,7 +23,7 @@ VALUES
         'Sponsored Medications',
         'public',
         '["http://127.0.0.1:8090/"]',
-        '["launch","openid","fhirUser","patient/Patient.read","patient/MedicationRequest.read","patient/Medication.read"]',
+        '["launch","openid","fhirUser","patient/Patient.read","patient/MedicationRequest.read","patient/Medication.read","system/MedicationRequest.read","system/Medication.read"]',
         '["authorization_code","refresh_token"]',
         NULL,
         '2024-01-01 00:00:00+00:00',

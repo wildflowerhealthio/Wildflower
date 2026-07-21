@@ -17,8 +17,11 @@ describe('bundled sponsor catalogs', () => {
     }
   })
 
-  test('an entry with empty province coverage is expanded to all provinces', () => {
-    const synthroid = catalogs[0]?.drugs.find((drug) => drug.brandName === 'Synthroid')
-    expect(synthroid?.provinces).toHaveLength(13)
+  test('RxHelp drugs carry no province restriction, so each covers all provinces', () => {
+    const rxhelp = catalogs.find((catalog) => catalog.sponsor === 'rxhelp')
+    expect(rxhelp?.drugs.length).toBeGreaterThan(0)
+    for (const drug of rxhelp?.drugs ?? []) {
+      expect(drug.provinces).toHaveLength(13)
+    }
   })
 })

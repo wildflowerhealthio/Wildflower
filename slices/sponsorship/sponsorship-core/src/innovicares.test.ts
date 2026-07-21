@@ -6,13 +6,8 @@ import { allProvinces } from './province.ts'
 // The exact sample shape supplied for the innoviCares list.
 const abilify = {
   title: 'Abilify®',
-  header: 'Abilify<sup>®</sup>',
   subtitle: 'aripiprazole',
   provinces: 'AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,SK,YT',
-  image: 'https://www.innovicares.ca/public-images/Brands/abilify_en.png',
-  enableBrandPage: true,
-  newMolecules: true,
-  newToInnovicares: false,
   url: 'https://www.innovicares.ca/en/about-the-card/whats-covered/abilify/',
 }
 
@@ -21,10 +16,8 @@ describe('innovicaresToDrug', () => {
     const drug = innovicaresToDrug(abilify)
     expect(drug.sponsor).toBe('innovicares')
     expect(drug.brandName).toBe('Abilify')
-    expect(drug.brandHtml).toBe('Abilify<sup>®</sup>')
     expect(drug.genericName).toBe('aripiprazole')
     expect(drug.url).toBe(abilify.url)
-    expect(drug.imageUrl).toBe(abilify.image)
     expect(drug.id).toBe('abilify')
   })
 
@@ -38,6 +31,14 @@ describe('innovicaresToDrug', () => {
   test('an absent/empty province string means covered everywhere', () => {
     expect(innovicaresToDrug({ title: 'X' }).provinces).toEqual(allProvinces)
     expect(innovicaresToDrug({ title: 'X', provinces: '' }).provinces).toEqual(allProvinces)
+  })
+
+  test('an entry with no url falls back to the innoviCares home page', () => {
+    expect(innovicaresToDrug({ title: 'X' }).url).toBe('https://www.innovicares.ca/en/')
+    expect(innovicaresToDrug({ title: 'X', url: '  ' }).url).toBe('https://www.innovicares.ca/en/')
+    expect(innovicaresToDrug({ title: 'X', url: 'https://example.test/x' }).url).toBe(
+      'https://example.test/x'
+    )
   })
 })
 

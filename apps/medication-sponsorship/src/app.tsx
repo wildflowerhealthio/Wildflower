@@ -2,10 +2,11 @@ import type { JSX } from 'react'
 import { useEffect, useState } from 'react'
 
 import { fetchMedicationRequests, readySmartClient } from 'fhir-r4-react/smart'
-import type { Medication, Province } from 'sponsorship-core'
+import type { Province } from 'sponsorship-core'
 import {
-  GroupedMedicationsView,
-  medicationRequestsToMedications,
+  MedicationsView,
+  type MedicationView,
+  medicationRequestsToMedicationViews,
   ProvincePicker,
 } from 'sponsorship-react'
 
@@ -15,14 +16,15 @@ import styles from './app.module.css'
 type LoadState =
   | { readonly kind: 'loading' }
   | { readonly kind: 'error'; readonly message: string }
-  | { readonly kind: 'ready'; readonly medications: readonly Medication[] }
+  | { readonly kind: 'ready'; readonly medications: readonly MedicationView[] }
 
-const loadMedications = async (): Promise<readonly Medication[]> => {
+const loadMedications = async (): Promise<readonly MedicationView[]> => {
   const client = await readySmartClient()
-  const patientId = client.patient.id
-  if (patientId === null) throw new Error('No patient is in the SMART launch context.')
-  const requests = await fetchMedicationRequests(client, patientId)
-  return medicationRequestsToMedications(requests)
+  // `client.patient.id` is `null` under a `system/` launch (no patient context);
+  // `fetchMedicationRequests` then reads across every patient the granted scopes
+  // expose rather than failing.
+  const requests = await fetchMedicationRequests(client, client.patient.id)
+  return medicationRequestsToMedicationViews(requests)
 }
 
 /**
@@ -64,11 +66,7 @@ export const App = (): JSX.Element => {
         <p className={styles.error}>Could not load medications: {state.message}</p>
       )}
       {state.kind === 'ready' && (
-        <GroupedMedicationsView
-          medications={state.medications}
-          province={province}
-          catalogs={catalogs}
-        />
+        <MedicationsView medications={state.medications} province={province} catalogs={catalogs} />
       )}
     </main>
   )

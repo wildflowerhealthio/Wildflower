@@ -1,29 +1,428 @@
 [
   {
-    "title": "Abilify\u00ae",
-    "header": "Abilify<sup>\u00ae</sup>",
+    "title": "Abilify®",
     "subtitle": "aripiprazole",
     "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,SK,YT",
-    "image": "https://www.innovicares.ca/public-images/Brands/abilify_en.png",
-    "enableBrandPage": true,
-    "newMolecules": true,
-    "newToInnovicares": false,
     "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/abilify/"
   },
   {
-    "title": "Lipitor\u00ae",
-    "header": "Lipitor<sup>\u00ae</sup>",
-    "subtitle": "atorvastatin",
-    "provinces": "AB,BC,ON,QC",
-    "enableBrandPage": true,
-    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/lipitor/"
+    "title": "Adderall XR",
+    "subtitle": "amphetamine aspartate monohydrate",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,SK,YT"
   },
   {
-    "title": "Synthroid\u00ae",
-    "header": "Synthroid<sup>\u00ae</sup>",
-    "subtitle": "levothyroxine sodium",
-    "provinces": "",
-    "enableBrandPage": true,
-    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/synthroid/"
+    "title": "Advagraf®",
+    "subtitle": "tacrolimus",
+    "provinces": "MB,NB,ON",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/advagraf/"
+  },
+  {
+    "title": "Advair Diskus",
+    "subtitle": "salmeterol xinafoate / fluticasone propionate",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/advair-diskus/"
+  },
+  {
+    "title": "Apprilon®",
+    "subtitle": "doxycycline monohydrate 40mg",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,QC,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/apprilon/"
+  },
+  {
+    "title": "Arimidex®",
+    "subtitle": "anastrozole",
+    "provinces": "MB,NB,NL,NS,NT,ON,PE,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/arimidex/"
+  },
+  {
+    "title": "Avodart",
+    "subtitle": "dutasteride 0.5 mg",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/avodart/"
+  },
+  {
+    "title": "Azilect®",
+    "subtitle": "rasagiline tablets",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/azilect/"
+  },
+  {
+    "title": "Bezalip® SR",
+    "subtitle": "bezafibrate",
+    "provinces": "AB,BC,MB,NB,NL,NS,ON,PE,SK",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/bezalip-sr/"
+  },
+  {
+    "title": "Biphentin",
+    "subtitle": "methylphenidate hydrochloride",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,SK,YT"
+  },
+  {
+    "title": "Blexten®",
+    "subtitle": "bilastine",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/blexten/"
+  },
+  {
+    "title": "Brilinta®",
+    "subtitle": "ticagrelor tablets",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,QC,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/brilinta/"
+  },
+  {
+    "title": "Casodex®",
+    "subtitle": "bicalutamide",
+    "provinces": "MB,NB,NL,NS,NT,ON,PE,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/casodex/"
+  },
+  {
+    "title": "Celexa®",
+    "subtitle": "citalopram",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/celexa/"
+  },
+  {
+    "title": "CellCept®",
+    "subtitle": "mycophenolate mofetil",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/cellcept/"
+  },
+  {
+    "title": "Cesamet",
+    "subtitle": "nabilone",
+    "provinces": "AB,BC,MB,NB,NL,NS,ON,PE,SK"
+  },
+  {
+    "title": "Cipralex®",
+    "subtitle": "escitalopram oxalate",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/cipralex/"
+  },
+  {
+    "title": "Combigan®",
+    "subtitle": "brimonidine tartrate and timolol (as timolol maleate)",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/combigan/"
+  },
+  {
+    "title": "Concerta",
+    "subtitle": "methylphenidate",
+    "provinces": "BC,MB,NB,NL,NS,NT,NU,ON,PE,YT"
+  },
+  {
+    "title": "Coversyl®",
+    "subtitle": "perindopril erbumine",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/coversyl/"
+  },
+  {
+    "title": "Coversyl® Plus",
+    "subtitle": "perindopril erbumine + indapamide",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/coversyl-plus/"
+  },
+  {
+    "title": "Coversyl® Plus HD",
+    "subtitle": "perindopril erbumine + indapamide",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/coversyl-plus-hd/"
+  },
+  {
+    "title": "Crestor®",
+    "subtitle": "rosuvastatin calcium",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/crestor/"
+  },
+  {
+    "title": "Dexcom G7 Sensors",
+    "subtitle": "Continuous Glucose Monitoring (CGM) System",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,QC,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/dexcom-g7/"
+  },
+  {
+    "title": "Dexilant®",
+    "subtitle": "dexlansoprazole",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/dexilant/"
+  },
+  {
+    "title": "Diamicron® MR",
+    "subtitle": "gliclazide",
+    "provinces": "BC,MB,NB,NL,NS,ON,PE,SK",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/diamicron-mr/"
+  },
+  {
+    "title": "Duotrav® PQ",
+    "subtitle": "travoprost and timolol maleate",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/duotrav-pq/"
+  },
+  {
+    "title": "Faslodex®",
+    "subtitle": "fulvestrant",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/faslodex/"
+  },
+  {
+    "title": "Fetzima®",
+    "subtitle": "levomilnacipran (levomilnacipran hydrochloride)",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/fetzima/"
+  },
+  {
+    "title": "Flovent HFA",
+    "subtitle": "fluticasone propionate",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/flovent-hfa/"
+  },
+  {
+    "title": "Forxiga®",
+    "subtitle": "dapagliflozin",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/forxiga/"
+  },
+  {
+    "title": "Imitrex DF",
+    "subtitle": "sumatriptan succinate",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/imitrex-df/"
+  },
+  {
+    "title": "Intuniv XR®",
+    "subtitle": "guanfacine hydrochloride",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/intuniv-xr/"
+  },
+  {
+    "title": "Iressa®",
+    "subtitle": "gefitinib",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/iressa/"
+  },
+  {
+    "title": "Lamictal",
+    "subtitle": "lamotrigine tablets",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/lamictal/"
+  },
+  {
+    "title": "Lokelma®",
+    "subtitle": "sodium zirconium cyclosilicate powder for oral suspension",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/lokelma/"
+  },
+  {
+    "title": "Lolo®",
+    "subtitle": "ethinyl estradiol 10 mcg/norethindrone acetate 1 mg",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/lolo/"
+  },
+  {
+    "title": "Losec®",
+    "subtitle": "omeprazole",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/losec/"
+  },
+  {
+    "title": "Lumigan® RC",
+    "subtitle": "bimatoprost solution",
+    "provinces": "AB,MB,NB,NL,NS,NT,NU,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/lumigan-rc/"
+  },
+  {
+    "title": "Mepron",
+    "subtitle": "atovaquone",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/mepron/"
+  },
+  {
+    "title": "MyrbetriqTM",
+    "subtitle": "mirabegron",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/myrbetriq/"
+  },
+  {
+    "title": "Nexium®",
+    "subtitle": "esomeprazole",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/nexium/"
+  },
+  {
+    "title": "Onglyza®",
+    "subtitle": "saxagliptin",
+    "provinces": "AB,BC,MB,NB,NL,NS,ON,PE",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/onglyza/"
+  },
+  {
+    "title": "Ozempic®",
+    "subtitle": "semaglutide injection",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/ozempic/"
+  },
+  {
+    "title": "Paxil",
+    "subtitle": "paroxetine tablets",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/paxil/"
+  },
+  {
+    "title": "Pentasa 1G suppository",
+    "subtitle": "mesalamine (5-aminosalicylic acid)",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/pentasa/"
+  },
+  {
+    "title": "Prograf®",
+    "subtitle": "tacrolimus",
+    "provinces": "NB,NS,ON,PE",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/prograf/"
+  },
+  {
+    "title": "Pulmicort® Nebuamp®",
+    "subtitle": "budesonide",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/pulmicort-nebuamp/"
+  },
+  {
+    "title": "Restasis MultiDose®",
+    "subtitle": "Cyclosporine Emulsion",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/restasis-multidose/"
+  },
+  {
+    "title": "Restasis®",
+    "subtitle": "cyclosporine emulsion",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/restasis/"
+  },
+  {
+    "title": "Rocaltrol®",
+    "subtitle": "calcitirol",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/rocaltrol/"
+  },
+  {
+    "title": "Seroquel® IR",
+    "subtitle": "quetiapine",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/seroquel-ir/"
+  },
+  {
+    "title": "Seroquel® XR",
+    "subtitle": "quetiapine",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/seroquel-xr/"
+  },
+  {
+    "title": "Soriatane®",
+    "subtitle": "acitretin",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/soriatane/"
+  },
+  {
+    "title": "Sublinox",
+    "subtitle": "zolpidem tartrate",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,QC,SK,YT"
+  },
+  {
+    "title": "TactuPump®",
+    "subtitle": "adapalene and benzoyl peroxide, 0.1%/2.5% w/w",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,QC,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/tactupump/"
+  },
+  {
+    "title": "TactuPump® Forte",
+    "subtitle": "adapalene and benzoyl peroxide, 0.3%/2.5% w/w",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,QC,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/tactupump-forte/"
+  },
+  {
+    "title": "Tamiflu®",
+    "subtitle": "oseltamivir phosphate",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/tamiflu/"
+  },
+  {
+    "title": "Tenormin®",
+    "subtitle": "atenolol",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/tenormin/"
+  },
+  {
+    "title": "Trintellix®",
+    "subtitle": "vortioxetine",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/trintellix/"
+  },
+  {
+    "title": "Valcyte®",
+    "subtitle": "valganciclovir hydrochloride",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/valcyte/"
+  },
+  {
+    "title": "Valtrex",
+    "subtitle": "valacyclovir hcl",
+    "provinces": "AB,BC,MB,NB,NL,NS,ON,PE,SK",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/valtrex/"
+  },
+  {
+    "title": "Vimovo®",
+    "subtitle": "naproxen/esomeprazole",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/vimovo/"
+  },
+  {
+    "title": "Vyvanse",
+    "subtitle": "lisdexamfetamine dimesylate",
+    "provinces": "AB,BC,MB,NL,NS,NT,NU,ON,PE,SK,YT"
+  },
+  {
+    "title": "Wegovy®",
+    "subtitle": "semaglutide injection",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/wegovy/"
+  },
+  {
+    "title": "Xarelto®",
+    "subtitle": "rivaroxaban tablets",
+    "provinces": "AB,BC,NB,NL,NS,NT,NU,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/xarelto/"
+  },
+  {
+    "title": "Xigduo®",
+    "subtitle": "dapagliflozin and metformin hydrochloride",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/xigduo/"
+  },
+  {
+    "title": "Zestoretic®",
+    "subtitle": "lisinopril and hydrochlorothiazide",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/zestoretic/"
+  },
+  {
+    "title": "Zestril®",
+    "subtitle": "lisinopril",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/zestril/"
+  },
+  {
+    "title": "Zomig Rapimelt®",
+    "subtitle": "zolmitriptan",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,ON,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/zomig-rapimelt/"
+  },
+  {
+    "title": "Zomig®",
+    "subtitle": "zolmitriptan",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,ON,PE,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/zomig/"
+  },
+  {
+    "title": "Zovirax®",
+    "subtitle": "acyclovir ointment/cream 5%",
+    "provinces": "AB,BC,MB,NB,NL,NS,NT,NU,ON,PE,QC,SK,YT",
+    "url": "https://www.innovicares.ca/en/about-the-card/whats-covered/zovirax/"
   }
 ]

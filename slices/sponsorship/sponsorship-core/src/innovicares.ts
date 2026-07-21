@@ -10,10 +10,8 @@ import type { SponsoredDrug } from './sponsor.ts'
  */
 const InnovicaresRaw = Schema.Struct({
   title: Schema.String,
-  header: Schema.optional(Schema.String),
   subtitle: Schema.optional(Schema.String),
   provinces: Schema.optional(Schema.String),
-  image: Schema.optional(Schema.String),
   url: Schema.optional(Schema.String),
 })
 type InnovicaresRaw = typeof InnovicaresRaw.Type
@@ -34,9 +32,14 @@ const slug = (value: string): string =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
 
+/** Where an innoviCares entry with no per-drug page links instead. */
+const INNOVICARES_HOME = 'https://www.innovicares.ca/en/'
+
 /**
  * Normalize one raw innoviCares entry. An absent or empty `provinces` string is
- * treated as "covered everywhere" (expanded to {@link allProvinces}).
+ * treated as "covered everywhere" (expanded to {@link allProvinces}); an entry
+ * with no `url` falls back to the innoviCares home page so every drug links
+ * somewhere.
  */
 const innovicaresToDrug = (raw: InnovicaresRaw): SponsoredDrug => {
   const listed =
@@ -47,11 +50,9 @@ const innovicaresToDrug = (raw: InnovicaresRaw): SponsoredDrug => {
     sponsor: 'innovicares',
     id: slug(raw.title),
     brandName: stripMarks(raw.title),
-    brandHtml: raw.header,
     genericName: raw.subtitle ?? '',
     provinces: listed,
-    url: raw.url,
-    imageUrl: raw.image,
+    url: raw.url !== undefined && raw.url.trim().length > 0 ? raw.url : INNOVICARES_HOME,
   }
 }
 

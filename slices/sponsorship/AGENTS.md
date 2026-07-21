@@ -10,8 +10,11 @@ programs (**innoviCares** and **RxHelp**) and groups them for display.
   brand+generic name matching, and province-aware grouping. No DOM, no FHIR, no
   platform imports; the matcher works on a minimal `Medication` value type so
   adapters map their own resources onto it.
-- `sponsorship-react` — browser UI: the province picker and the grouped
-  medication view, plus the `MedicationRequest → Medication` adapter.
+- `sponsorship-react` — browser UI: the province picker and the flat
+  medications view (active first, newest-authored first; per-row sponsorship
+  chip), plus the `MedicationRequest → MedicationView` adapter (the core
+  `Medication` for matching, plus carebook display fields — DIN, description,
+  prescriber, notes, repeat counts).
 
 ## Rules
 

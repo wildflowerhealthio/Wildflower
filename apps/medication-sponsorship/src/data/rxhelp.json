@@ -1,31 +1,514 @@
 {
+  "chars": [
+    "A",
+    "C",
+    "E",
+    "F",
+    "L",
+    "N",
+    "Z",
+    "X",
+    "V",
+    "T",
+    "S",
+    "R",
+    "P",
+    "O",
+    "M",
+    "I",
+    "G",
+    "D",
+    "B"
+  ],
+  "pageNumber": 1,
+  "pageSize": 200,
+  "totalPages": 1,
+  "totalRecords": 97,
   "items": [
     {
-      "encId": "ZbXW7B90k1ALelD",
-      "name": "Actonel DR\u00ae",
-      "nameHtml": "<p><strong>Actonel DR\u00ae</strong></p>",
-      "frName": "Actonel DR\u00ae",
-      "logo": {
-        "encId": "jY4PJ5eODBpQGWd",
-        "name": "actonel.png",
-        "content": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
-      },
-      "provinces": [],
-      "genericName": "risedronate sodium",
-      "promotionalText": ""
+      "name": "Actemra® SC",
+      "frName": "Actemra® SC",
+      "genericName": "tocilizumab"
     },
     {
-      "encId": "Kd93jf0AzQ1mBxy",
-      "name": "Humira\u00ae",
-      "nameHtml": "<p><strong>Humira\u00ae</strong></p>",
-      "logo": {
-        "encId": "h1",
-        "name": "humira.png",
-        "content": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
-      },
-      "provinces": ["ON", "BC", "AB"],
-      "genericName": "adalimumab",
-      "promotionalText": ""
+      "name": "Actonel DR®",
+      "frName": "Actonel DR®",
+      "genericName": "risedronate sodium"
+    },
+    {
+      "name": "Alesse®",
+      "frName": "Alesse®",
+      "genericName": "levonorgestrel 100 ug and ethinyl estradiol 20 ug"
+    },
+    {
+      "name": "Androgel®",
+      "frName": "Androgel®",
+      "genericName": "testosterone gel"
+    },
+    {
+      "name": "Arava®",
+      "frName": "Arava®",
+      "genericName": "Leflunomide"
+    },
+    {
+      "name": "Aricept®",
+      "frName": "Aricept®",
+      "genericName": "donepezil hydrochloride"
+    },
+    {
+      "name": "ARIMIDEX®",
+      "frName": "ARIMIDEX®",
+      "genericName": "anastrozole"
+    },
+    {
+      "name": "Arixtra®",
+      "frName": "Arixtra®",
+      "genericName": "fondaparinux"
+    },
+    {
+      "name": "Arthrotec®",
+      "frName": "Arthrotec®",
+      "genericName": "diclofenac sodium and misoprostol enteric-coated tablets"
+    },
+    {
+      "name": "AVALIDE®",
+      "frName": "AVALIDE®",
+      "genericName": "Irbesartan-hydrochlorothiazide"
+    },
+    {
+      "name": "AVAPRO®",
+      "frName": "AVAPRO®",
+      "genericName": "Irbesartan"
+    },
+    {
+      "name": "Biaxin BID®",
+      "frName": "Biaxin BID®",
+      "genericName": "Clarithromycin"
+    },
+    {
+      "name": "Biaxin®",
+      "frName": "Biaxin®",
+      "genericName": "Clarithromycin"
+    },
+    {
+      "name": "BRILINTA®",
+      "frName": "BRILINTA®",
+      "genericName": "ticagrelor"
+    },
+    {
+      "name": "Brivlera®",
+      "frName": "BrivleraMD",
+      "genericName": "brivaracetam"
+    },
+    {
+      "name": "Bystolic®",
+      "frName": "Bystolic®",
+      "genericName": "Nebivolol"
+    },
+    {
+      "name": "Caduet®",
+      "frName": "Caduet®",
+      "genericName": "amlodipine besylate/atorvastatin calcium"
+    },
+    {
+      "name": "CASODEX",
+      "frName": "CASODEX",
+      "genericName": "bicalutamide"
+    },
+    {
+      "name": "Celebrex®",
+      "frName": "Celebrex®",
+      "genericName": "celecoxib"
+    },
+    {
+      "name": "Concerta",
+      "frName": "Concerta",
+      "genericName": "methylphenidate hydrochloride"
+    },
+    {
+      "name": "Cosopt®",
+      "frName": "Cosopt®",
+      "genericName": "Dorzolamide"
+    },
+    {
+      "name": "CRESTOR®",
+      "frName": "CRESTOR®",
+      "genericName": "rosuvastatin"
+    },
+    {
+      "name": "Detrol®",
+      "frName": "Detrol®",
+      "genericName": "tolterodine tartrate"
+    },
+    {
+      "name": "Detrol® LA",
+      "frName": "Detrol® LA",
+      "genericName": "tolterodine tartrate"
+    },
+    {
+      "name": "Dicetel®",
+      "frName": "Dicetel®",
+      "genericName": "Pinaverium bromide"
+    },
+    {
+      "name": "Diclectin®",
+      "frName": "Diclectin®",
+      "genericName": "doxylamine succinate and pyridoxine hydrochloride"
+    },
+    {
+      "name": "Dymista",
+      "frName": "Dymista",
+      "genericName": "Azelastine Hydrochloride"
+    },
+    {
+      "name": "Effexor® XR",
+      "frName": "Effexor® XR",
+      "genericName": "venlafaxine HCL"
+    },
+    {
+      "name": "ELIQUIS®",
+      "frName": "ELIQUIS®",
+      "genericName": "apixaban tablets"
+    },
+    {
+      "name": "Elocom®",
+      "frName": "Elocom®",
+      "genericName": "mometasone furoate cream, ointment or lotion"
+    },
+    {
+      "name": "Epival®",
+      "frName": "Epival®",
+      "genericName": "divalproex sodium"
+    },
+    {
+      "name": "Ezetrol®",
+      "frName": "Ezetrol®",
+      "genericName": "ezetimibe"
+    },
+    {
+      "name": "Forxiga&nbsp;",
+      "frName": "Forxiga&nbsp;",
+      "genericName": "dapagliflozin"
+    },
+    {
+      "name": "Fosavance®",
+      "frName": "Fosavance®",
+      "genericName": "alendronate sodium / cholecalciferol (Vitamin D3)"
+    },
+    {
+      "name": "GLUCOPHAGE®",
+      "frName": "GLUCOPHAGE®",
+      "genericName": "Metformin Hydrochloride"
+    },
+    {
+      "name": "IMOVANE®",
+      "frName": "IMOVANE®",
+      "genericName": "Zopiclone"
+    },
+    {
+      "name": "Invanz®",
+      "frName": "Invanz®",
+      "genericName": "Ertapenem"
+    },
+    {
+      "name": "INVOKANA®",
+      "frName": "INVOKANA®",
+      "genericName": "Canagliflozin"
+    },
+    {
+      "name": "Isoptin®",
+      "frName": "Isoptin®",
+      "genericName": "verapamil hydrochloride"
+    },
+    {
+      "name": "Lipidil EZ®",
+      "frName": "Lipidil EZ®",
+      "genericName": "fenofibrate, NanoCrystal® Formulation"
+    },
+    {
+      "name": "Lipidil Supra®",
+      "frName": "Lipidil Supra®",
+      "genericName": "fenofibrate, microcoated formulation"
+    },
+    {
+      "name": "Lipitor®",
+      "frName": "Lipitor®",
+      "genericName": "atorvastatin calcium"
+    },
+    {
+      "name": "LOSEC",
+      "frName": "LOSEC",
+      "genericName": "omeprazole"
+    },
+    {
+      "name": "LOTERIDERM® CREAM",
+      "frName": "Loteriderm® crème",
+      "genericName": "betamethasone / clotrimazole"
+    },
+    {
+      "name": "Luvox®",
+      "frName": "Luvox®",
+      "genericName": "fluvoxamine maleate"
+    },
+    {
+      "name": "Lyrica®",
+      "frName": "Lyrica®",
+      "genericName": "pregabalin"
+    },
+    {
+      "name": "Marvelon®",
+      "frName": "Marvelon®",
+      "genericName": "desogestrel and ethinyl estradiol tablets"
+    },
+    {
+      "name": "Mavik®",
+      "frName": "Mavik®",
+      "genericName": "Trandolapril Capsules"
+    },
+    {
+      "name": "Maxalt RPD®",
+      "frName": "Maxalt RPD®",
+      "genericName": "rizatriptan benzoate"
+    },
+    {
+      "name": "Maxalt®",
+      "frName": "Maxalt®",
+      "genericName": "rizatriptan benzoate"
+    },
+    {
+      "name": "myfortic®",
+      "frName": "myfortic®",
+      "genericName": "mycophenolate sodium"
+    },
+    {
+      "name": "Nasonex®",
+      "frName": "Nasonex®",
+      "genericName": "mometasone furoate monohydrate"
+    },
+    {
+      "name": "NEXIUM",
+      "frName": "NEXIUM",
+      "genericName": "esomeprazole"
+    },
+    {
+      "name": "Norvasc®",
+      "frName": "Norvasc®",
+      "genericName": "amlodipine besylate"
+    },
+    {
+      "name": "Nuvaring®",
+      "frName": "Nuvaring®",
+      "genericName": "etonogestrel/ethinyl estradiol"
+    },
+    {
+      "name": "ONGLYZA®",
+      "frName": "ONGLYZA®",
+      "genericName": "saxagliptin tablets"
+    },
+    {
+      "name": "OTEZLA®",
+      "frName": "OTEZLA®",
+      "genericName": "apremilast tablets"
+    },
+    {
+      "name": "Pantoloc",
+      "frName": "Pantoloc",
+      "genericName": "pantoprazole sodium"
+    },
+    {
+      "name": "PLAQUENIL®",
+      "frName": "PLAQUENIL®",
+      "genericName": "Hydroxychloroquine Suflate"
+    },
+    {
+      "name": "PLAVIX®",
+      "frName": "PLAVIX®",
+      "genericName": "Clopidogrel Bisulfate"
+    },
+    {
+      "name": "PLENDIL",
+      "frName": "PLENDIL",
+      "genericName": "felodipine"
+    },
+    {
+      "name": "Posanol®",
+      "frName": "Posanol®",
+      "genericName": "Posaconazole"
+    },
+    {
+      "name": "Prevacid®",
+      "frName": "Prevacid®",
+      "genericName": "lansoprazole delayed-release capsules"
+    },
+    {
+      "name": "Prometrium®",
+      "frName": "Prometrium®",
+      "genericName": "progesterone capsules"
+    },
+    {
+      "name": "Propecia﻿®",
+      "frName": "Propecia®",
+      "genericName": "finasteride"
+    },
+    {
+      "name": "Proscar®",
+      "frName": "Proscar®",
+      "genericName": "finasteride"
+    },
+    {
+      "name": "Relpax®",
+      "frName": "Relpax®",
+      "genericName": "eletriptan HBr"
+    },
+    {
+      "name": "Rocaltrol®",
+      "frName": "Rocaltrol®",
+      "genericName": "calcitriol"
+    },
+    {
+      "name": "Rythmol®",
+      "frName": "Rythmol®",
+      "genericName": "propafenone hydrochloride"
+    },
+    {
+      "name": "Serc®",
+      "frName": "Serc®",
+      "genericName": "betahistine dihydrochloride"
+    },
+    {
+      "name": "SEROQUEL",
+      "frName": "SEROQUEL",
+      "genericName": "quetiapine"
+    },
+    {
+      "name": "SEROQUEL XR",
+      "frName": "SEROQUEL XR",
+      "genericName": "quetiapine"
+    },
+    {
+      "name": "Singulair®",
+      "frName": "Singulair®",
+      "genericName": "montelukast sodium"
+    },
+    {
+      "name": "Sporanox®",
+      "frName": "Sporanox®",
+      "genericName": "Itraconazole"
+    },
+    {
+      "name": "Tecta",
+      "frName": "Tecta",
+      "genericName": "pantoprazole magnesium enteric coated"
+    },
+    {
+      "name": "Temodal®",
+      "frName": "Temodal®",
+      "genericName": "temozolomide"
+    },
+    {
+      "name": "TENORMIN",
+      "frName": "TENORMIN",
+      "genericName": "atenolol"
+    },
+    {
+      "name": "Timoptic-XE®",
+      "frName": "Timoptic-XE®",
+      "genericName": "timolol maleate solution"
+    },
+    {
+      "name": "Trusopt®",
+      "frName": "Trusopt®",
+      "genericName": "dorzolamide hydrochloride solution"
+    },
+    {
+      "name": "Valcyte®",
+      "frName": "Valcyte®",
+      "genericName": "Valganciclovir"
+    },
+    {
+      "name": "VALTREX®",
+      "frName": "VALTREX®",
+      "genericName": "valacyclovir hydrochloride"
+    },
+    {
+      "name": "Vasotec®",
+      "frName": "Vasotec®",
+      "genericName": "enalapril"
+    },
+    {
+      "name": "VFEND®",
+      "frName": "VFEND®",
+      "genericName": "voriconazole"
+    },
+    {
+      "name": "Viibryd®&nbsp;",
+      "frName": "Viibryd®&nbsp;",
+      "genericName": "vilazodone hydrochloride"
+    },
+    {
+      "name": "Vimovo®",
+      "frName": "Vimovo®",
+      "genericName": "NAPROXEN/ESOMEPRAZOLE"
+    },
+    {
+      "name": "Xalacom®",
+      "frName": "Xalacom®",
+      "genericName": "latanoprost and timolol"
+    },
+    {
+      "name": "Xalatan®",
+      "frName": "Xalatan®",
+      "genericName": "latanoprost ophthalmic solution"
+    },
+    {
+      "name": "Xarelto",
+      "frName": "Xarelto",
+      "genericName": "Rivaroxaban tablets"
+    },
+    {
+      "name": "XELJANZ®",
+      "frName": "XELJANZ®",
+      "genericName": "tofacitinib citrate"
+    },
+    {
+      "name": "Xigduo",
+      "frName": "Xigduo",
+      "genericName": "dapagliflozin"
+    },
+    {
+      "name": "ZESTORETIC",
+      "frName": "ZESTORETIC",
+      "genericName": "lisinopril/hctz"
+    },
+    {
+      "name": "ZESTRIL",
+      "frName": "ZESTRIL",
+      "genericName": "lisinopril"
+    },
+    {
+      "name": "Zocor®",
+      "frName": "Zocor®",
+      "genericName": "simvastatin"
+    },
+    {
+      "name": "Zoloft®",
+      "frName": "Zoloft®",
+      "genericName": "sertraline hydrochloride"
+    },
+    {
+      "name": "ZOMIG",
+      "frName": "ZOMIG",
+      "genericName": "zolmitriptan"
+    },
+    {
+      "name": "ZOMIG RAPIMELT",
+      "frName": "ZOMIG RAPIMELT",
+      "genericName": "zolmitriptan ODT"
+    },
+    {
+      "name": "Zytiga®",
+      "frName": "Zytiga®",
+      "genericName": "Abiraterone Acetate"
     }
   ]
 }

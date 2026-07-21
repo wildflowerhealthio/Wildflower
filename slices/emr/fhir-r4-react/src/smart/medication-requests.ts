@@ -8,16 +8,22 @@ type MedicationRequestResource = Schema.Schema.Type<typeof MedicationRequest.Sch
 const decodeMedicationRequest = Schema.decodeUnknownOption(MedicationRequest.Schema)
 
 /**
- * Fetch every `MedicationRequest` for the patient in SMART context, following
- * bundle pagination (`pageLimit: 0`) and flattening to resources. Each entry is
- * decoded through the fhir-r4 schema; anything that fails to decode is dropped,
- * so a single malformed row never fails the whole read.
+ * Fetch `MedicationRequest`s from the SMART FHIR server, following bundle
+ * pagination (`pageLimit: 0`) and flattening to resources. When `patientId` is a
+ * string the read is scoped to that patient (a `patient/` launch); when it is
+ * `null` — a `system/` launch with no patient in context — every
+ * `MedicationRequest` the granted scopes expose is read. Each entry is decoded
+ * through the fhir-r4 schema; anything that fails to decode is dropped, so a
+ * single malformed row never fails the whole read.
  */
 const fetchMedicationRequests = async (
   client: Client,
-  patientId: string
+  patientId: string | null
 ): Promise<readonly MedicationRequestResource[]> => {
-  const query = `MedicationRequest?patient=${encodeURIComponent(patientId)}`
+  const query =
+    patientId === null
+      ? 'MedicationRequest'
+      : `MedicationRequest?patient=${encodeURIComponent(patientId)}`
   const response = await client.request<unknown>(query, { flat: true, pageLimit: 0 })
   const items: readonly unknown[] = Array.isArray(response) ? response : []
   return items.flatMap((item) => {

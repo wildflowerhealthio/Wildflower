@@ -1,14 +1,14 @@
 export {
   medicationRequestsToMedications,
+  medicationRequestsToMedicationViews,
   medicationRequestToMedication,
+  medicationRequestToMedicationView,
   type MedicationRequestResource,
+  type MedicationView,
 } from './medication.ts'
 
 export { ProvincePicker, type ProvincePickerProps } from './province-picker.tsx'
 
-export { SponsorCard, type SponsorCardProps } from './sponsor-card.tsx'
+export { SponsorChip, type SponsorChipProps } from './sponsor-chip.tsx'
 
-export {
-  GroupedMedicationsView,
-  type GroupedMedicationsViewProps,
-} from './grouped-medications-view.tsx'
+export { MedicationsView, type MedicationsViewProps } from './medications-view.tsx'

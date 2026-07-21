@@ -20,22 +20,16 @@ const sponsorProgramLabels: Readonly<Record<SponsorProgram, string>> = {
  */
 const SponsoredDrug = Schema.Struct({
   sponsor: SponsorProgram,
-  /** Stable id within the program (the source `encId`, or a slug of the brand). */
+  /** Stable id within the program (a slug of the brand name). */
   id: Schema.String,
   /** Plain-text brand / trade name, marks stripped (e.g. `"Abilify"`). */
   brandName: Schema.String,
-  /** Original HTML brand name if the source provided one (e.g. `"Abilify<sup>®</sup>"`). */
-  brandHtml: Schema.optional(Schema.String),
   /** Generic / ingredient name (e.g. `"aripiprazole"`). May be empty. */
   genericName: Schema.String,
   /** Provinces where the program covers this drug (expanded; never empty-means-all). */
   provinces: Schema.Array(Province),
   /** Program brand page, if any. */
   url: Schema.optional(Schema.String),
-  /** Remote logo image URL (innoviCares). */
-  imageUrl: Schema.optional(Schema.String),
-  /** Inline `data:` logo (RxHelp embeds base64 logos). */
-  logoDataUri: Schema.optional(Schema.String),
 })
 type SponsoredDrug = typeof SponsoredDrug.Type
 

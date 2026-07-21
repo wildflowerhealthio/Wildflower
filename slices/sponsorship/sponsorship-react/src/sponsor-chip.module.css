@@ -1,0 +1,29 @@
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  background: var(--sponsorship-eligible-bg, #e2f4e6);
+  color: var(--sponsorship-eligible, #1c7c3c);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+a.chip:hover {
+  background: var(--sponsorship-eligible-bg-hover, #d1ecd8);
+}
+
+a.chip:focus-visible {
+  outline: 2px solid var(--sponsorship-eligible, #1c7c3c);
+  outline-offset: 2px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .chip {
+    background: var(--sponsorship-eligible-bg, #1e3a26);
+    color: var(--sponsorship-eligible, #7fd39a);
+  }
+}
