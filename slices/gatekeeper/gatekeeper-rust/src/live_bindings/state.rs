@@ -71,4 +71,11 @@ pub struct GatekeeperState {
     /// `bridge:DeviceConsentRequested` event and focuses the window when
     /// it goes to `Some`.
     pub(crate) active_device_user_code_sender: watch::Sender<Option<String>>,
+    /// Resolves a `client_id` to a self-hosted app's redirect topology so
+    /// `/authorize` can expand an app-relative `redirect_uri` entry against the
+    /// request's provenance (see
+    /// [`SelfHostedRedirectResolver`](crate::ports::SelfHostedRedirectResolver)).
+    /// The host wires the apps-store-backed impl; a host with no self-hosted apps
+    /// (and tests) wires the no-op, so relative entries simply never match.
+    pub(crate) self_hosted_redirects: Arc<dyn crate::ports::SelfHostedRedirectResolver>,
 }

@@ -62,6 +62,7 @@ pub fn spin_up() -> (Gatekeeper, String, TestDb) {
         &config,
         &token_tx,
         active_device_tx,
+        std::sync::Arc::new(gatekeeper_rust::NoSelfHostedRedirects),
     )
     .expect("setup");
     let host_owner_token = token_rx
@@ -103,7 +104,7 @@ pub fn seed_client_with_redirect(
             client_id: client_id.to_string(),
             name: "Integration Test Client".to_string(),
             kind: ClientKind::Public,
-            redirect_uris: vec![Url::parse(redirect_uri).expect("redirect url")],
+            redirect_uris: vec![Url::parse(redirect_uri).expect("redirect url").into()],
             allowed_scopes: scopes.iter().map(ToString::to_string).collect(),
             allowed_grant_types: AllowedGrantType::ALL.to_vec(),
             secret_hash: None,

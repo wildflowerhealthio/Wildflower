@@ -1,5 +1,6 @@
 mod bridge;
 mod native_webview_handle;
+mod self_hosted_redirect_resolver;
 mod spa;
 mod tunnel_adapters;
 
@@ -283,6 +284,18 @@ async fn run_server(
     let diesel_pool =
         persistence_rust::open_pool(&db_path).context("failed to open diesel db pool")?;
 
+    // Resolves a self-hosted app's `{port, subdomain}` for gatekeeper's
+    // app-relative redirect matching (see `self_hosted_redirect_resolver`). Built
+    // from the shared pool here so it is ready before the gatekeeper state; its
+    // own `SqliteAppsStore` applies the apps migrations (idempotent with the one
+    // `setup_apps` builds later).
+    let redirect_resolver = Arc::new(
+        self_hosted_redirect_resolver::AppsStoreRedirectResolver::new(
+            apps_rust::SqliteAppsStore::new(diesel_pool.clone())
+                .context("failed to open apps store for redirect resolution")?,
+        ),
+    );
+
     // `setup_gatekeeper` publishes the freshly-minted host owner token (and
     // device-consent heads) through the bridge publishers; `bridge::attach_bridge`
     // documents how the resident task delivers them to the webview.
@@ -292,6 +305,7 @@ async fn run_server(
         &gatekeeper_config,
         &publishers.host_owner_token_sender,
         publishers.active_device_user_code_sender,
+        redirect_resolver,
     )
     .context("failed to set up gatekeeper")?;
 

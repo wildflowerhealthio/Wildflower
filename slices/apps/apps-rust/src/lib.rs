@@ -79,10 +79,6 @@ use anyhow::Context;
 use axum::Router;
 use shared_structures_rust::tunnel_service::TunnelService;
 
-// The `AppsStore` port trait — in scope so `setup_apps` can call the store's
-// `list_self_hosted_apps` read on the concrete adapter.
-use crate::domain::AppsStore as _;
-
 // Re-exported so the host can name the pool type at the `setup_apps` call site
 // without a direct diesel dependency; the canonical home is persistence-rust.
 pub use persistence_rust::DieselPool;
@@ -90,8 +86,12 @@ pub use persistence_rust::DieselPool;
 pub use config::AppsConfig;
 pub use db::SqliteAppsStore;
 // Re-exported so the host can name the self-hosted catalogue pair at the
-// `setup_apps` call site.
-pub use domain::{AppRegistration, SelfHostedAppConfiguration};
+// `setup_apps` call site, and read an app's configuration through the store
+// (`AppsStore` + the `AppConfiguration` union) when adapting it to another
+// slice's seam — e.g. gatekeeper's self-hosted redirect resolver. The
+// `AppsStore` trait is also in scope here so `setup_apps` can call the store's
+// `list_self_hosted_apps` read on the concrete adapter.
+pub use domain::{AppConfiguration, AppRegistration, AppsStore, SelfHostedAppConfiguration};
 pub use http::openapi_spec;
 pub use live_bindings::state::AppsState;
 

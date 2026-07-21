@@ -69,6 +69,9 @@ pub use http::{
     layer_router_with_gatekeeper_auth_gating, layer_router_with_loopback_peer_gating, openapi_spec,
     verify_owner_bearer, GatekeeperState,
 };
+// The self-hosted redirect seam: the host implements it (backed by the apps
+// store) and passes it into `setup_gatekeeper`, so its trait + types are public.
+pub use ports::{NoSelfHostedRedirects, SelfHostedRedirectResolver, SelfHostedRedirectTopology};
 
 /// `client_id` of the host application's first-party OAuth client. The host
 /// uses this identity to mint Owner tokens for itself and to recognise its
@@ -229,6 +232,7 @@ pub fn setup_gatekeeper(
     config: &GatekeeperConfig,
     local_owner_token_tx: &watch::Sender<Option<String>>,
     active_device_user_code_tx: watch::Sender<Option<String>>,
+    self_hosted_redirects: Arc<dyn ports::SelfHostedRedirectResolver>,
 ) -> anyhow::Result<Gatekeeper> {
     // The host owner token is minted from `granted_scopes` (the live app sources
     // these from `tauri-shared-config.json`), but the `/access/*` owner gate
@@ -272,6 +276,7 @@ pub fn setup_gatekeeper(
         loopback_base_url: config.loopback_base_url.clone(),
         first_party_client_id: config.first_party_client_id.clone().into(),
         active_device_user_code_sender: active_device_user_code_tx,
+        self_hosted_redirects,
     });
     // Seed the popup head from SQLite so a request that was pending
     // across an app restart still drives the modal on first webview

@@ -2,13 +2,15 @@
 -- column formats as 0003_seed_sample_clients; see `db/clients.rs`). A public
 -- PKCE client — the app is a browser SMART app with no client secret.
 --
--- The app is a self-hosted bundle the host serves at its own loopback origin
--- `http://127.0.0.1:8090/` (the port seeded in apps migration
--- 0003_seed_medication_sponsorship_app), so the SMART redirect back from
--- `launch.html` lands at that origin root — the sole registered `redirect_uris`
--- entry. (A launch forwarded through the tunnel would use the app's
--- `https://<subdomain>.<public_host>/` origin instead; register that as an
--- additional redirect URI per deployment if tunneled launch is needed.)
+-- The app is a self-hosted bundle served from its own origin, which differs by
+-- launch: `http://127.0.0.1:8090/` on the device, or
+-- `https://<subdomain>.<public_host>/` through the tunnel — and the tunnel host
+-- isn't known at seed time. So `redirect_uris` is the single **app-relative**
+-- entry `"/"` (a leading-`/` path): at `/authorize` gatekeeper resolves it
+-- against the app's own origin for the request's provenance (see
+-- `RegisteredRedirectUri` and `validate_redirect_url`), covering both launch
+-- origins without naming a per-deployment host. The SMART redirect back from
+-- `launch.html` lands at that origin root.
 --
 -- `allowed_scopes` mirrors what the app requests: EHR launch + patient context,
 -- then read the patient plus their MedicationRequests and any referenced
@@ -22,7 +24,7 @@ VALUES
         'medication-sponsorship',
         'Sponsored Medications',
         'public',
-        '["http://127.0.0.1:8090/"]',
+        '["/"]',
         '["launch","openid","fhirUser","patient/Patient.read","patient/MedicationRequest.read","patient/Medication.read","system/MedicationRequest.read","system/Medication.read"]',
         '["authorization_code","refresh_token"]',
         NULL,

@@ -8,10 +8,9 @@
 
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
-use url::Url;
 
 use crate::db::shared::{json_text_column, text_enum_column};
-use crate::domain::client::{AllowedGrantType, Client, ClientKind};
+use crate::domain::client::{AllowedGrantType, Client, ClientKind, RegisteredRedirectUri};
 use crate::domain::gatekeeper_error::GatekeeperError;
 
 diesel::table! {
@@ -29,9 +28,11 @@ diesel::table! {
 }
 
 json_text_column!(
-    /// A client's `redirect_uris` allowlist as a JSON TEXT column.
-    JsonUrls,
-    Vec<Url>
+    /// A client's `redirect_uris` allowlist as a JSON TEXT column — an array of
+    /// bare strings, each an absolute URL or an app-relative path (see
+    /// [`RegisteredRedirectUri`]).
+    JsonRedirectUris,
+    Vec<RegisteredRedirectUri>
 );
 json_text_column!(
     /// A client's `allowed_grant_types` as a JSON TEXT column (the wire
@@ -95,12 +96,21 @@ mod tests {
     use crate::domain::GatekeeperStore as _;
     use proptest::prelude::*;
 
+    /// A registered redirect entry: an absolute URL or an app-relative path
+    /// (leading `/`, never `//`), so the round-trip covers both stored forms.
+    fn arb_registered_redirect() -> impl Strategy<Value = RegisteredRedirectUri> {
+        prop_oneof![
+            arb_url().prop_map(RegisteredRedirectUri::Absolute),
+            "/[a-z][a-z0-9/_-]{0,15}".prop_map(RegisteredRedirectUri::AppRelative),
+        ]
+    }
+
     fn arb_client() -> impl Strategy<Value = Client> {
         (
             "[a-zA-Z0-9_-]{1,32}",
             "[ -~]{0,48}",
             prop_oneof![Just(ClientKind::Public), Just(ClientKind::Confidential)],
-            prop::collection::vec(arb_url(), 1..4),
+            prop::collection::vec(arb_registered_redirect(), 1..4),
             prop::collection::vec("[a-z][a-z0-9_]{0,15}", 0..5),
             prop::option::of("[0-9a-f]{64}"),
             arb_timestamp(),
@@ -224,7 +234,10 @@ mod tests {
             ],
         );
         assert_eq!(
-            mwa.redirect_uris[0].as_str(),
+            mwa.redirect_uris[0]
+                .absolute()
+                .expect("a seeded absolute redirect")
+                .as_str(),
             "https://mitre.github.io/smart-on-fhir-demo/index.html",
         );
         assert_eq!(
@@ -241,7 +254,7 @@ mod tests {
 
     /// Each of the client row's custom column mappings rejects an out-of-domain
     /// stored value on read as a typed diesel error, never a panic: the JSON TEXT
-    /// newtypes ([`JsonUrls`](super::JsonUrls) / [`JsonStrings`](crate::db::shared::JsonStrings)
+    /// newtypes ([`JsonRedirectUris`](super::JsonRedirectUris) / [`JsonStrings`](crate::db::shared::JsonStrings)
     /// / [`JsonAllowedGrantTypes`](super::JsonAllowedGrantTypes)) on malformed JSON
     /// or an unknown enum member, and the [`ClientKind`] text-enum mapping on an
     /// unknown discriminant. A row tampered via raw SQL surfaces at the
@@ -252,8 +265,8 @@ mod tests {
         // `column = bad_value` tampered onto the migration-seeded `growth_chart`
         // row, each asserted to fail the read.
         for (column, bad_value) in [
-            ("redirect_uris", "not json"),        // JsonUrls: malformed JSON
-            ("redirect_uris", "[\"not a url\"]"), // JsonUrls: valid JSON, invalid URL
+            ("redirect_uris", "not json"), // JsonRedirectUris: malformed JSON
+            ("redirect_uris", "[\"not a url\"]"), // JsonRedirectUris: valid JSON, neither URL nor path
             ("allowed_scopes", "not json"),       // JsonStrings: malformed JSON
             ("allowed_grant_types", "[\"totally_unknown\"]"), // JsonAllowedGrantTypes: unknown member
             ("kind", "bogus_kind"),                           // ClientKind: unknown discriminant
