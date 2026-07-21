@@ -4,7 +4,7 @@ import { MedicationDispense, MedicationRequest, Patient } from 'fhir-r4/resource
 import type { FhirResource } from 'fhir-r4/resources'
 
 import { extractJson } from '../extract-json.ts'
-import { DIN_CODE_SYSTEM, ShoppersIdentifierSystem } from '../shoppers.ts'
+import { DIN_CODE_SYSTEM, ShoppersIdentifierSystem, shoppersStoreLocatorUrl } from '../shoppers.ts'
 
 /**
  * Just-enough schema for one `…/api/v1/prescriptions/:uuid/prescription-status`
@@ -40,6 +40,13 @@ const SourcePrescription = Schema.Struct({
   refillQuantity: Schema.optional(Schema.Number),
   expiryDate: Schema.optional(Schema.String),
   lastFillDate: Schema.optional(Schema.String),
+  // Only ever one of `lastFillDate` / `nextFillDate` is observed on a payload;
+  // together they bound the fill window (see {@link dispenseRequestWire}).
+  nextFillDate: Schema.optional(Schema.String),
+  // The dispensing store's numeric id → the `…/store-locator/store/:id` link on
+  // `supportingInformation` (see {@link supportingInformationWire}). Lenient on
+  // string vs number since the portal's typing of it is unconfirmed.
+  storeId: Schema.optional(Schema.Union(Schema.String, Schema.Number)),
   dispenses: Schema.optional(Schema.Array(Schema.Unknown)),
 })
 
@@ -64,6 +71,10 @@ const decodeDispense = Schema.decodeUnknown(MedicationDispense.Schema)
 /** True iff `value` decodes as a FHIR R4 date-time (so it can ride a wire slot). */
 const decodesAsDateTime = (value: string | undefined): value is string =>
   value != null && Option.isSome(Schema.decodeUnknownOption(Schema.DateTimeUtc)(value))
+
+/** The first of `values` that decodes as a FHIR date-time, else `undefined`. */
+const firstDateTime = (...values: Array<string | undefined>): string | undefined =>
+  values.find(decodesAsDateTime)
 
 /**
  * Unwrap the numeric-keyed dispense wrappers real captures use
@@ -151,10 +162,33 @@ const dispenseRequestWire = (rx: SourcePrescription): Record<string, unknown> | 
   if (rx.refillQuantity != null && Number.isFinite(rx.refillQuantity)) {
     dr['quantity'] = { value: rx.refillQuantity }
   }
-  if (decodesAsDateTime(rx.expiryDate)) {
-    dr['validityPeriod'] = { end: rx.expiryDate }
+  // The fill window: `lastFillDate` opens it (`start`), `nextFillDate` closes it
+  // (`end`). `nextFillDate` takes precedence over the prescription `expiryDate`
+  // for `end`, which remains the fallback when no next-fill date is present.
+  const validityStart = firstDateTime(rx.lastFillDate)
+  const validityEnd = firstDateTime(rx.nextFillDate)
+  if (validityStart != null || validityEnd != null) {
+    dr['validityPeriod'] = {
+      ...(validityStart != null ? { start: validityStart } : {}),
+      ...(validityEnd != null ? { end: validityEnd } : {}),
+    }
   }
   return Object.keys(dr).length > 0 ? dr : undefined
+}
+
+/**
+ * The `supportingInformation` wire: a single `Reference` whose `reference` is
+ * the public Shoppers store-locator URL for the prescription's `storeId`
+ * (`…/store-locator/store/:id`). `undefined` when no (non-empty) store id is
+ * present, so the caller omits the slot.
+ */
+const supportingInformationWire = (
+  rx: SourcePrescription
+): ReadonlyArray<Record<string, unknown>> | undefined => {
+  if (rx.storeId == null) return undefined
+  const storeId = String(rx.storeId)
+  if (storeId.length === 0) return undefined
+  return [{ reference: shoppersStoreLocatorUrl(storeId) }]
 }
 
 /**
@@ -190,8 +224,14 @@ const requestWire = (rx: SourcePrescription): Record<string, unknown> => {
     wire['note'] = [{ text: rx.status.labelDescription }]
   }
 
-  if (decodesAsDateTime(rx.lastFillDate)) wire['authoredOn'] = rx.lastFillDate
+  // `authoredOn` prefers `lastFillDate`, falling back to `nextFillDate` when a
+  // payload carries only the latter — the two are never both present.
+  const authoredOn = firstDateTime(rx.lastFillDate, rx.nextFillDate)
+  if (authoredOn != null) wire['authoredOn'] = authoredOn
   if (rx.direction != null) wire['dosageInstruction'] = [{ text: rx.direction }]
+
+  const supportingInformation = supportingInformationWire(rx)
+  if (supportingInformation != null) wire['supportingInformation'] = supportingInformation
 
   const dispenseRequest = dispenseRequestWire(rx)
   if (dispenseRequest != null) wire['dispenseRequest'] = dispenseRequest

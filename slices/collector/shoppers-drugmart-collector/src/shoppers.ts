@@ -46,4 +46,25 @@ const ShoppersIdentifierSystem = {
  */
 const DIN_CODE_SYSTEM = `${SYSTEM_BASE}/CodeSystem/din`
 
-export { ShoppersIdentifierSystem, DIN_CODE_SYSTEM, SYSTEM_BASE }
+/**
+ * Base of the public Shoppers Drug Mart store-locator URL. A prescription's
+ * `storeId` is appended to build the `…/store-locator/store/:id` link stamped
+ * onto `MedicationRequest.supportingInformation` (see {@link shoppersStoreLocatorUrl}).
+ * This is a **customer-facing web URL**, not a portal-namespaced FHIR system, so
+ * it lives on `www.shoppersdrugmart.ca` rather than under {@link SYSTEM_BASE}.
+ * The medication-sponsorship UI recognizes a Shoppers store by prefix-matching
+ * this same base, so keep the two in sync.
+ */
+const SHOPPERS_STORE_LOCATOR_BASE = 'https://www.shoppersdrugmart.ca/store-locator/store/'
+
+/** The store-locator URL for a prescription's `storeId`. */
+const shoppersStoreLocatorUrl = (storeId: string | number): string =>
+  `${SHOPPERS_STORE_LOCATOR_BASE}${encodeURIComponent(String(storeId))}`
+
+export {
+  ShoppersIdentifierSystem,
+  DIN_CODE_SYSTEM,
+  SYSTEM_BASE,
+  SHOPPERS_STORE_LOCATOR_BASE,
+  shoppersStoreLocatorUrl,
+}

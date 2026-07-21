@@ -106,7 +106,9 @@ export const MedicationsView = ({
         {/* Name + right-aligned eligibility / pharmacy actions (wrap on mobile). */}
         <p className={styles.header}>
           <span className={styles.name}>{view.medication.displayName}</span>
-          {(eligible !== undefined || view.rexallStoreUrl !== null) && (
+          {(eligible !== undefined ||
+            view.rexallStoreUrl !== null ||
+            view.shoppersStoreUrl !== null) && (
             <span className={styles.actions}>
               {eligible !== undefined && (
                 <SponsorChip sponsor={eligible.sponsor} drug={eligible.drug} />
@@ -119,6 +121,16 @@ export const MedicationsView = ({
                   rel="noreferrer"
                 >
                   Rexall
+                </a>
+              )}
+              {view.shoppersStoreUrl !== null && (
+                <a
+                  className={styles.pharmacyLink}
+                  href={view.shoppersStoreUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Shoppers
                 </a>
               )}
             </span>

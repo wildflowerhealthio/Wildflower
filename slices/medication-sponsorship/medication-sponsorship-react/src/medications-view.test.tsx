@@ -37,6 +37,7 @@ const view = (medication: Medication, over: Partial<MedicationView> = {}): Medic
   repeatsAvailable: null,
   nextFillDate: null,
   rexallStoreUrl: null,
+  shoppersStoreUrl: null,
   ...over,
 })
 
@@ -186,6 +187,30 @@ describe('MedicationsView', () => {
     }
     // Exactly one Rexall link across the list — the non-Rexall row has none.
     expect(screen.getAllByRole('link', { name: 'Rexall' })).toHaveLength(1)
+  })
+
+  test('renders a Shoppers store link only when the request carries a store URL', () => {
+    const medications: readonly MedicationView[] = [
+      view(
+        { id: 'shoppers', displayName: 'From Shoppers' },
+        { shoppersStoreUrl: 'https://www.shoppersdrugmart.ca/store-locator/store/1414' }
+      ),
+      view({ id: 'other', displayName: 'From elsewhere' }),
+    ]
+    render(<MedicationsView medications={medications} province="ON" catalogs={catalogs} />)
+
+    const shoppersRow = screen
+      .getAllByRole('listitem')
+      .find((row) => row.textContent?.includes('From Shoppers'))
+    expect(shoppersRow).toBeDefined()
+    if (shoppersRow !== undefined) {
+      const link = within(shoppersRow).getByRole('link', { name: 'Shoppers' })
+      expect(link.getAttribute('href')).toBe(
+        'https://www.shoppersdrugmart.ca/store-locator/store/1414'
+      )
+    }
+    // Exactly one Shoppers link across the list — the non-Shoppers row has none.
+    expect(screen.getAllByRole('link', { name: 'Shoppers' })).toHaveLength(1)
   })
 
   test('splits medications into "Active Medications" and "Completed" sections', () => {

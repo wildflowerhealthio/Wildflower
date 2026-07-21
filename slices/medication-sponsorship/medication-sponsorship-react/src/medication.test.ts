@@ -64,6 +64,25 @@ const carebookRequest = {
   },
 }
 
+// A Shoppers-Drug-Mart-dialect request: no contained Medication — the DIN rides
+// the top-level `medicationCodeableConcept.coding` (under a portal-namespaced
+// system) and the sig lives in `dosageInstruction.text`.
+const shoppersRequest = {
+  ...base,
+  id: 'mr-sdm',
+  medicationCodeableConcept: {
+    text: 'LIPITOR',
+    coding: [
+      {
+        system: 'https://mypharmacy.shoppersdrugmart.ca/fhir/CodeSystem/din',
+        code: '02241497',
+        display: 'atorvastatin calcium',
+      },
+    ],
+  },
+  dosageInstruction: [{ text: 'Take 1 tablet by mouth once daily' }],
+}
+
 describe('medicationRequestToMedication', () => {
   test('prefers the codeableConcept text', () => {
     const request = decode({
@@ -85,6 +104,25 @@ describe('medicationRequestToMedication', () => {
       medicationCodeableConcept: { coding: [{ display: 'aripiprazole' }] },
     })
     expect(medicationRequestToMedication(request, 'fallback').displayName).toBe('aripiprazole')
+  })
+
+  test('falls back to the coding display even when the coding carries a system', () => {
+    // The top-level `medicationCodeableConcept.coding.system` decodes to a `URL`;
+    // the concept reader must still surface the sibling `display`.
+    const request = decode({
+      ...base,
+      medicationCodeableConcept: {
+        coding: [
+          {
+            system: 'https://mypharmacy.shoppersdrugmart.ca/fhir/CodeSystem/din',
+            display: 'atorvastatin calcium',
+          },
+        ],
+      },
+    })
+    expect(medicationRequestToMedication(request, 'fallback').displayName).toBe(
+      'atorvastatin calcium'
+    )
   })
 
   test('falls back to a medication reference display', () => {
@@ -189,6 +227,7 @@ describe('medicationRequestToMedicationView', () => {
     expect(view.repeatsAvailable).toBeNull()
     expect(view.nextFillDate).toBeNull()
     expect(view.rexallStoreUrl).toBeNull()
+    expect(view.shoppersStoreUrl).toBeNull()
   })
 
   test('builds a Rexall store URL only when both source and store-id extensions are present', () => {
@@ -220,6 +259,58 @@ describe('medicationRequestToMedicationView', () => {
       'fallback'
     )
     expect(sourceOnly.rexallStoreUrl).toBeNull()
+  })
+
+  test('surfaces a Shoppers store URL from a supportingInformation reference under the store base', () => {
+    const withStore = medicationRequestToMedicationView(
+      decode({
+        ...base,
+        supportingInformation: [
+          { reference: 'https://www.shoppersdrugmart.ca/store-locator/store/1414' },
+        ],
+      }),
+      'fallback'
+    )
+    expect(withStore.shoppersStoreUrl).toBe(
+      'https://www.shoppersdrugmart.ca/store-locator/store/1414'
+    )
+
+    // A supportingInformation reference to anything else is not a store link.
+    const other = medicationRequestToMedicationView(
+      decode({ ...base, supportingInformation: [{ reference: 'Encounter/9' }] }),
+      'fallback'
+    )
+    expect(other.shoppersStoreUrl).toBeNull()
+  })
+
+  test('falls back to validityPeriod.end for next fill when no supply duration is present', () => {
+    // Shoppers requests carry an explicit fill window but no expectedSupplyDuration.
+    const view = medicationRequestToMedicationView(
+      decode({
+        ...base,
+        dispenseRequest: {
+          numberOfRepeatsAllowed: 2,
+          validityPeriod: { start: '2026-06-01T00:00:00Z', end: '2026-09-01T00:00:00Z' },
+        },
+      }),
+      'fallback'
+    )
+    expect(view.nextFillDate).toBe('2026-09-01T00:00:00.000Z')
+  })
+
+  test('prefers the computed supply-runout over validityPeriod.end when both are present', () => {
+    const view = medicationRequestToMedicationView(
+      decode({
+        ...base,
+        authoredOn: '2026-06-01T00:00:00Z',
+        dispenseRequest: {
+          expectedSupplyDuration: { value: 30, code: 'd', system: 'http://unitsofmeasure.org' },
+          validityPeriod: { end: '2026-12-31T00:00:00Z' },
+        },
+      }),
+      'fallback'
+    )
+    expect(view.nextFillDate).toBe('2026-07-01T00:00:00.000Z')
   })
 
   test('estimates next fill as authoredOn + expectedSupplyDuration', () => {
@@ -273,6 +364,35 @@ describe('medicationRequestToMedicationView', () => {
       'fallback'
     )
     expect(unknownUnit.nextFillDate).toBe('2026-07-01T00:00:00.000Z')
+  })
+
+  test('falls back to the first coded medicationCodeableConcept coding for DIN', () => {
+    const view = medicationRequestToMedicationView(decode(shoppersRequest), 'fallback')
+    expect(view.din).toBe('02241497')
+  })
+
+  test('falls back to the joined dosageInstruction sig for the description', () => {
+    const view = medicationRequestToMedicationView(
+      decode({
+        ...shoppersRequest,
+        dosageInstruction: [{ text: 'Take 1 tablet by mouth once daily' }, { text: 'With food' }],
+      }),
+      'fallback'
+    )
+    expect(view.description).toBe('Take 1 tablet by mouth once daily\nWith food')
+  })
+
+  test('prefers the contained Medication DIN and description over the concept/sig fallbacks', () => {
+    const view = medicationRequestToMedicationView(
+      decode({
+        ...carebookRequest,
+        medicationCodeableConcept: { coding: [{ code: 'DO-NOT-USE' }] },
+        dosageInstruction: [{ text: 'do-not-use sig' }],
+      }),
+      'fallback'
+    )
+    expect(view.din).toBe('02241497')
+    expect(view.description).toBe('20 mg - Tablet')
   })
 
   test('joins multiple notes with newlines', () => {

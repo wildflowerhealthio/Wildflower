@@ -31,6 +31,12 @@ const EXTERNAL_STORE_ID_URL =
   'http://schemas.carebook.com/v1/fhir/medicationrequest/extension/external-store-id'
 const REXALL_SYSTEM_SOURCE = 'RexallPharmacy'
 const REXALL_STORE_URL_BASE = 'https://www.rexall.ca/storelocator/store/'
+// A Shoppers Drug Mart request carries its dispensing store as a
+// `supportingInformation` reference to the public store-locator URL. Unlike
+// Rexall (which needs two top-level extensions), the URL is self-identifying:
+// any `supportingInformation.reference` under this base marks a Shoppers store.
+// Keep in sync with the collector's `SHOPPERS_STORE_LOCATOR_BASE`.
+const SHOPPERS_STORE_URL_BASE = 'https://www.shoppersdrugmart.ca/store-locator/store/'
 
 // Several fields we read — the `medication[x]` choice slots, `contained`,
 // `requester`, `note`, `dispenseRequest`, and the passthrough `value[x]` on an
@@ -42,8 +48,33 @@ const REXALL_STORE_URL_BASE = 'https://www.rexall.ca/storelocator/store/'
 const nullableString = Schema.optional(Schema.NullOr(Schema.String))
 const nullableNumber = Schema.optional(Schema.NullOr(Schema.Number))
 
+// A FHIR `uri` is a plain string on the wire and on loosely-typed `contained`
+// resources, but the fully-typed top-level `medicationCodeableConcept` decodes
+// it to a `URL`. Accept either and normalize to the string form so a decoded
+// `Coding.system` still reads (and `=== <system-uri>` comparisons still work).
+const nullableUri = Schema.optional(
+  Schema.NullOr(
+    Schema.transform(Schema.Union(Schema.String, Schema.instanceOf(URL)), Schema.String, {
+      decode: (value) => (typeof value === 'string' ? value : value.href),
+      encode: (value) => value,
+    })
+  )
+)
+
+// A FHIR `dateTime` on a fully-typed decoded resource is an Effect `DateTime.Utc`
+// (see `Period.start`/`end`), but on the wire it is a plain ISO string. Accept
+// either and normalize to the ISO string form the UI renders and date-maths on.
+const nullableIsoDateTime = Schema.optional(
+  Schema.NullOr(
+    Schema.transform(Schema.Union(Schema.String, Schema.DateTimeUtcFromSelf), Schema.String, {
+      decode: (value) => (typeof value === 'string' ? value : DateTime.formatIso(value)),
+      encode: (value) => value,
+    })
+  )
+)
+
 const Coding = Schema.Struct({
-  system: nullableString,
+  system: nullableUri,
   code: nullableString,
   display: nullableString,
 })
@@ -70,6 +101,8 @@ type ContainedMedicationValue = Schema.Schema.Type<typeof ContainedMedication>
 
 const Requester = Schema.Struct({ display: nullableString })
 const Notes = Schema.Array(Schema.Struct({ text: nullableString }))
+/** `MedicationRequest.dosageInstruction` entries carrying a free-text sig. */
+const DosageInstructions = Schema.Array(Schema.Struct({ text: nullableString }))
 /** FHIR `Duration` (a Quantity): a numeric `value` with a UCUM `code`/`unit`. */
 const SupplyDuration = Schema.Struct({
   value: nullableNumber,
@@ -77,9 +110,12 @@ const SupplyDuration = Schema.Struct({
   code: nullableString,
 })
 type SupplyDuration = Schema.Schema.Type<typeof SupplyDuration>
+/** FHIR `Period` (`dispenseRequest.validityPeriod`): the prescription's fill window. */
+const Period = Schema.Struct({ start: nullableIsoDateTime, end: nullableIsoDateTime })
 const DispenseRequest = Schema.Struct({
   numberOfRepeatsAllowed: nullableNumber,
   expectedSupplyDuration: Schema.optional(Schema.NullOr(SupplyDuration)),
+  validityPeriod: Schema.optional(Schema.NullOr(Period)),
   modifierExtension: Schema.optional(
     Schema.Array(Schema.Struct({ url: nullableString, valueDecimal: nullableNumber }))
   ),
@@ -90,13 +126,18 @@ const StringExtensions = Schema.Array(
   Schema.Struct({ url: nullableString, valueString: nullableString })
 )
 
+/** `MedicationRequest.supportingInformation` references (Shoppers store-locator link). */
+const SupportingInformation = Schema.Array(Schema.Struct({ reference: nullableString }))
+
 const decodeConcept = Schema.decodeUnknownOption(MedicationConcept)
 const decodeReference = Schema.decodeUnknownOption(MedicationReference)
 const decodeContainedMedication = Schema.decodeUnknownOption(ContainedMedication)
 const decodeRequester = Schema.decodeUnknownOption(Requester)
 const decodeNotes = Schema.decodeUnknownOption(Notes)
+const decodeDosageInstructions = Schema.decodeUnknownOption(DosageInstructions)
 const decodeDispenseRequest = Schema.decodeUnknownOption(DispenseRequest)
 const decodeStringExtensions = Schema.decodeUnknownOption(StringExtensions)
+const decodeSupportingInformation = Schema.decodeUnknownOption(SupportingInformation)
 
 /**
  * The Medication resource carebook inlines in `MedicationRequest.contained`,
@@ -131,6 +172,23 @@ const dinOf = (medication: ContainedMedicationValue): string | null => {
       const code = nonEmpty(coding.code)
       if (code !== null) return code
     }
+  }
+  return null
+}
+
+/**
+ * DIN fallback for requests that carry the code inline on
+ * `medicationCodeableConcept.coding` (e.g. Shoppers Drug Mart) rather than on a
+ * contained Medication: the first coding bearing a non-empty `code`, whatever
+ * its system.
+ */
+const conceptDinOf = (request: MedicationRequestResource): string | null => {
+  const conceptSlot: unknown = request.medicationCodeableConcept
+  const concept = decodeConcept(conceptSlot)
+  if (Option.isNone(concept)) return null
+  for (const coding of concept.value.coding ?? []) {
+    const code = nonEmpty(coding.code)
+    if (code !== null) return code
   }
   return null
 }
@@ -186,6 +244,22 @@ const descriptionOf = (medication: ContainedMedicationValue): string | null => {
   }
   const narrative = nonEmpty(medication.text?.div)
   return narrative === null ? null : nonEmpty(narrativeText(narrative))
+}
+
+/**
+ * The free-text dosage sig, newline-joining every `dosageInstruction.text`
+ * (e.g. Shoppers Drug Mart's per-prescription "direction"); `null` when none
+ * carry text. Used as the description fallback when no carebook description
+ * extension is present.
+ */
+const dosageTextOf = (request: MedicationRequestResource): string | null => {
+  const instructions = decodeDosageInstructions(request.dosageInstruction)
+  if (Option.isNone(instructions)) return null
+  const texts = instructions.value.flatMap((instruction) => {
+    const text = nonEmpty(instruction.text)
+    return text === null ? [] : [text]
+  })
+  return texts.length > 0 ? texts.join('\n') : null
 }
 
 /**
@@ -263,6 +337,22 @@ const rexallStoreUrlOf = (request: MedicationRequestResource): string | null => 
   return isRexall && storeId !== null
     ? `${REXALL_STORE_URL_BASE}${encodeURIComponent(storeId)}`
     : null
+}
+
+/**
+ * The Shoppers Drug Mart store-locator URL for a request whose
+ * `supportingInformation` carries a reference under the Shoppers store base
+ * (`…/store-locator/store/:id`); the first such reference, or `null` when none.
+ */
+const shoppersStoreUrlOf = (request: MedicationRequestResource): string | null => {
+  const slot: unknown = request.supportingInformation
+  const supportingInformation = decodeSupportingInformation(slot)
+  if (Option.isNone(supportingInformation)) return null
+  for (const entry of supportingInformation.value) {
+    const reference = nonEmpty(entry.reference)
+    if (reference !== null && reference.startsWith(SHOPPERS_STORE_URL_BASE)) return reference
+  }
+  return null
 }
 
 /**
@@ -353,6 +443,18 @@ const nextFillDateOf = (request: MedicationRequestResource): string | null => {
 }
 
 /**
+ * The end of `dispenseRequest.validityPeriod` as an ISO instant, or `null` when
+ * absent. Sources (e.g. Shoppers Drug Mart) that carry an explicit next-fill /
+ * expiry date but no `expectedSupplyDuration` populate this, so it backs the
+ * next-fill hint when {@link nextFillDateOf} can't compute one.
+ */
+const validityPeriodEndOf = (request: MedicationRequestResource): string | null => {
+  const dispenseRequest = decodeDispenseRequest(request.dispenseRequest)
+  if (Option.isNone(dispenseRequest)) return null
+  return nonEmpty(dispenseRequest.value.validityPeriod?.end)
+}
+
+/**
  * A coarse, human-readable distance from `nowMillis` (epoch ms) to an ISO
  * instant, for a next-fill hint: `"today"`, `"in 3 days"`, `"in 2 weeks"`,
  * `"in 5 months"` (and the past `"… ago"` forms). Rounds to whole days, then
@@ -401,9 +503,15 @@ const medicationRequestToMedication = (
  */
 interface MedicationView {
   readonly medication: Medication
-  /** Drug Identification Number, from the contained Medication's DIN coding. */
+  /**
+   * Drug Identification Number, from the contained Medication's DIN coding,
+   * falling back to the first coded `medicationCodeableConcept.coding`.
+   */
   readonly din: string | null
-  /** carebook human-readable description (e.g. `"999 mg - Capsule"`). */
+  /**
+   * carebook human-readable description (e.g. `"999 mg - Capsule"`), falling
+   * back to the newline-joined `dosageInstruction.text` sig.
+   */
   readonly description: string | null
   /** Prescriber display name (`requester.display`). */
   readonly requester: string | null
@@ -413,10 +521,16 @@ interface MedicationView {
   readonly repeatsAllowed: number | null
   /** carebook remaining-repeats `modifierExtension` (`valueDecimal`). */
   readonly repeatsAvailable: number | null
-  /** Estimated next-fill date (ISO) — `authoredOn` + `expectedSupplyDuration`. */
+  /**
+   * Estimated next-fill date (ISO) — `authoredOn` + `expectedSupplyDuration`,
+   * falling back to `dispenseRequest.validityPeriod.end` for sources that carry
+   * an explicit next-fill / expiry date but no supply duration (e.g. Shoppers).
+   */
   readonly nextFillDate: string | null
   /** Rexall store-locator URL when the request is sourced from a Rexall store. */
   readonly rexallStoreUrl: string | null
+  /** Shoppers Drug Mart store-locator URL when the request is sourced from a Shoppers store. */
+  readonly shoppersStoreUrl: string | null
 }
 
 /** Build the rich {@link MedicationView} for one request. */
@@ -428,14 +542,16 @@ const medicationRequestToMedicationView = (
   const repeats = repeatsOf(request)
   return {
     medication: medicationRequestToMedication(request, fallbackId),
-    din: contained === undefined ? null : dinOf(contained),
-    description: contained === undefined ? null : descriptionOf(contained),
+    din: (contained === undefined ? null : dinOf(contained)) ?? conceptDinOf(request),
+    description:
+      (contained === undefined ? null : descriptionOf(contained)) ?? dosageTextOf(request),
     requester: requesterOf(request),
     note: noteOf(request),
     repeatsAllowed: repeats.allowed,
     repeatsAvailable: repeats.available,
-    nextFillDate: nextFillDateOf(request),
+    nextFillDate: nextFillDateOf(request) ?? validityPeriodEndOf(request),
     rexallStoreUrl: rexallStoreUrlOf(request),
+    shoppersStoreUrl: shoppersStoreUrlOf(request),
   }
 }
 

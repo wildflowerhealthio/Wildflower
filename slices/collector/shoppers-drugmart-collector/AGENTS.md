@@ -81,6 +81,15 @@ payload never carries `pcId`).
   so nothing is lost and no clinical state is asserted.
 - **Dates are validated before use** (`decodesAsDateTime`), so a malformed
   date drops just that slot rather than failing the whole resource decode.
+- **The fill window is `dispenseRequest.validityPeriod`** — `lastFillDate` opens
+  it (`start`), `nextFillDate` closes it (`end`), with the prescription
+  `expiryDate` as the `end` fallback when no `nextFillDate` is present. Only one
+  of `lastFillDate` / `nextFillDate` is ever observed, and whichever is present
+  also authors the request (`authoredOn`, preferring `lastFillDate`).
+- **The dispensing `storeId` becomes a `supportingInformation` reference** to the
+  public store-locator URL (`…/store-locator/store/:id`, built from
+  `SHOPPERS_STORE_LOCATOR_BASE`). The medication-sponsorship UI shows a "Shoppers"
+  store button by prefix-matching that same base — keep the two constants in sync.
 - A **dispense with no `dispenseId`** has no logical id to write under, so it is
   dropped-and-counted (`Effect.logInfo`) rather than silently skipped at the sink.
 

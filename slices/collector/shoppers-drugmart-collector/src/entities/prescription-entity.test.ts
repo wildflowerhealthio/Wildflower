@@ -1,4 +1,4 @@
-import { Effect, type Either, type ParseResult } from 'effect'
+import { DateTime, Effect, type Either, type ParseResult } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
@@ -76,6 +76,10 @@ const byType = <T extends FhirResource['resourceType']>(
   type: T
 ): ReadonlyArray<Extract<FhirResource, { resourceType: T }>> =>
   resources.filter((r): r is Extract<FhirResource, { resourceType: T }> => r.resourceType === type)
+
+/** Epoch-ms of a decoded FHIR `dateTime` slot (a `DateTime`), format-agnostic. */
+const epoch = (dt: DateTime.DateTime | null | undefined): number | undefined =>
+  dt == null ? undefined : DateTime.toEpochMillis(dt)
 
 describe('PrescriptionEntity', () => {
   describe('isFoundAt', () => {
@@ -172,6 +176,56 @@ describe('PrescriptionEntity', () => {
       expect(dispenseRequest?.numberOfRepeatsAllowed).toBe(3)
       expect(dispenseRequest?.quantity?.value).toBe(90)
       expect(dispenseRequest?.validityPeriod?.end).toBeDefined()
+    })
+
+    it('opens the validity window at lastFillDate and, absent a nextFillDate, has a null end', () => {
+      const result = Effect.runSync(PrescriptionEntity.parse(makeResponse(prescriptionJson())))
+      const [request] = byType(result, 'MedicationRequest')
+      const period = request?.dispenseRequest?.validityPeriod
+      expect(epoch(period?.start)).toBe(Date.parse('2026-01-10T00:00:00Z'))
+      expect(epoch(period?.end)).toBe(null)
+      // lastFillDate also authors the request.
+      expect(epoch(request?.authoredOn)).toBe(Date.parse('2026-01-10T00:00:00Z'))
+    })
+
+    it('ends the validity window at nextFillDate in preference to expiryDate', () => {
+      const json = prescriptionJson({ nextFillDate: '2026-03-15T00:00:00Z' })
+      const result = Effect.runSync(PrescriptionEntity.parse(makeResponse(json)))
+      const [request] = byType(result, 'MedicationRequest')
+      const period = request?.dispenseRequest?.validityPeriod
+      expect(epoch(period?.start)).toBe(Date.parse('2026-01-10T00:00:00Z'))
+      expect(epoch(period?.end)).toBe(Date.parse('2026-03-15T00:00:00Z'))
+    })
+
+    it('falls back to nextFillDate for authoredOn (and the window end) when lastFillDate is absent', () => {
+      const json = prescriptionJson({
+        lastFillDate: undefined,
+        nextFillDate: '2026-03-15T00:00:00Z',
+      })
+      const result = Effect.runSync(PrescriptionEntity.parse(makeResponse(json)))
+      const [request] = byType(result, 'MedicationRequest')
+      expect(epoch(request?.authoredOn)).toBe(Date.parse('2026-03-15T00:00:00Z'))
+      const period = request?.dispenseRequest?.validityPeriod
+      // No lastFillDate → the window has no start; nextFillDate is its end.
+      expect(epoch(period?.start)).toBeUndefined()
+      expect(epoch(period?.end)).toBe(Date.parse('2026-03-15T00:00:00Z'))
+    })
+
+    it('stamps the storeId onto supportingInformation as a store-locator reference', () => {
+      const result = Effect.runSync(PrescriptionEntity.parse(makeResponse(prescriptionJson())))
+      const [request] = byType(result, 'MedicationRequest')
+      expect(request?.supportingInformation).toEqual([
+        expect.objectContaining({
+          reference: 'https://www.shoppersdrugmart.ca/store-locator/store/1414',
+        }),
+      ])
+    })
+
+    it('omits supportingInformation when the payload carries no storeId', () => {
+      const json = prescriptionJson({ storeId: undefined })
+      const result = Effect.runSync(PrescriptionEntity.parse(makeResponse(json)))
+      const [request] = byType(result, 'MedicationRequest')
+      expect(request?.supportingInformation).toEqual([])
     })
 
     it('maps a COMPLETE dispense onto a completed MedicationDispense linked to its request', () => {
