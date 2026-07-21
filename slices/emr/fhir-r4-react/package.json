@@ -33,6 +33,7 @@
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "effect": "catalog:",
+    "fast-check": "catalog:",
     "fhir-r4": "workspace:*",
     "jsdom": "catalog:",
     "kitchen-sink": "workspace:*",

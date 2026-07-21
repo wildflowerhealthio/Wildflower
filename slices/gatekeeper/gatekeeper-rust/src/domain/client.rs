@@ -89,8 +89,11 @@ impl RegisteredRedirectUri {
     /// Classify a stored allowlist string: a single leading `/` is an
     /// app-relative path; anything else must parse as an absolute URL. A `//…`
     /// (protocol-relative) string is neither a path we resolve nor a valid
-    /// absolute URL, so it is rejected here — it must never be joinable in a way
-    /// that could swap the origin.
+    /// absolute URL, so it is rejected here as the most obvious origin-swap form.
+    /// This prefix screen is *not* the authoritative same-origin guard, though —
+    /// other joinable forms (`/\evil`, tab/newline) still classify as
+    /// app-relative here, so `resolve_registered_redirect` re-checks that a
+    /// resolved app-relative entry keeps the app's own origin.
     fn parse(raw: &str) -> Result<Self, url::ParseError> {
         if raw.starts_with('/') && !raw.starts_with("//") {
             Ok(RegisteredRedirectUri::AppRelative(raw.to_owned()))

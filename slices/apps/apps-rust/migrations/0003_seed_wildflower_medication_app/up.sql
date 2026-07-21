@@ -15,8 +15,15 @@
 -- no-egress app. Port 8090 sits above the upload-allocation floor
 -- (`MIN_UPLOAD_PORT = 8082`) so shipping it does not consume the low upload
 -- ports — uploaded apps still fill 8082+ lowest-first and simply skip 8090.
+--
+-- `position` is computed as the current tail (MAX+1), not a hardcoded 6:
+-- `position` is UNIQUE and uploads allocate `MAX(position)+1`, so on an install
+-- that ran 0002 and then uploaded a self-hosted app before upgrading into 0003,
+-- position 6 is already taken — a literal `6` here would abort the migration on
+-- the UNIQUE constraint. On a fresh 0001..0003 run MAX+1 is still 6, so the
+-- seeded display order is unchanged; on a collision it simply appends at the tail.
 INSERT INTO app_registrations (id, kind, position, on_homescreen, name, subtitle, local_only, client_id, requires_tunnel) VALUES
-    ('wildflower-medication', 'self-hosted', 6, 1, 'Medications', 'View your medications and check on refills', 0, 'wildflower-medication', 0);
+    ('wildflower-medication', 'self-hosted', (SELECT COALESCE(MAX(position), -1) + 1 FROM app_registrations), 1, 'Medications', 'View your medications and check on refills', 0, 'wildflower-medication', 0);
 
 INSERT INTO self_hosted_app_configurations (id, port, content_folder, subdomain, seeded, launch_path) VALUES
     ('wildflower-medication', 8090, 'medication', 'medication', 1, '/launch.html?launch={launch}&iss={origin}/fhir-r4');

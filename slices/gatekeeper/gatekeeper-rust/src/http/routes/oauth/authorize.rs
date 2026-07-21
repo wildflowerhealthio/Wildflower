@@ -345,7 +345,15 @@ fn resolve_registered_redirect(
     match entry {
         RegisteredRedirectUri::Absolute(url) => Some(url.clone()),
         RegisteredRedirectUri::AppRelative(path) => {
-            self_hosted_app_origin(served?, topology?)?.join(path).ok()
+            let base = self_hosted_app_origin(served?, topology?)?;
+            let resolved = base.join(path).ok()?;
+            // An app-relative entry may only pick a path *under its own origin*.
+            // `Url::join` on an http(s) base folds `\`→`/` and strips tab/newline,
+            // so a tampered `/\evil.example` (which the parse-time `//` screen does
+            // not catch) would otherwise resolve to `http://evil.example/`. This
+            // origin-equality check is the authoritative same-origin guard; the
+            // parse-time rejection only screens the most obvious form.
+            (resolved.origin() == base.origin()).then_some(resolved)
         }
     }
 }
@@ -355,8 +363,9 @@ fn resolve_registered_redirect(
 /// resolves to the *same-provenance* origin only:
 /// - a **loopback** served origin (the on-device API) → same scheme + host, the
 ///   app's loopback port (`http://127.0.0.1:<port>`);
-/// - any other served origin (the tunnel apex) → https, the app's subdomain
-///   under that host (`https://<subdomain>.<apex>`).
+/// - any other served origin (the tunnel apex) → the app's subdomain under that
+///   host, carrying the apex's own scheme and port (`https://<subdomain>.<apex>`
+///   for the usual https:443 tunnel).
 fn self_hosted_app_origin(served: &Url, topology: &SelfHostedRedirectTopology) -> Option<Url> {
     let host = served.host_str()?;
     if host_is_loopback(host) {
@@ -364,13 +373,15 @@ fn self_hosted_app_origin(served: &Url, topology: &SelfHostedRedirectTopology) -
         origin.set_port(Some(topology.port)).ok()?;
         Some(origin)
     } else {
-        Url::parse(&format!(
-            "{}://{}.{}",
-            served.scheme(),
-            topology.subdomain,
-            host
-        ))
-        .ok()
+        // Prepend the app's subdomain to the served apex, preserving the served
+        // scheme AND port (`host_str` drops the port, so a non-443 apex would
+        // otherwise resolve to the wrong origin). `set_host` also validates the
+        // interpolated subdomain rather than trusting it into a URL string.
+        let mut origin = served.clone();
+        origin
+            .set_host(Some(&format!("{}.{}", topology.subdomain, host)))
+            .ok()?;
+        Some(origin)
     }
 }
 
@@ -653,6 +664,74 @@ mod redirect_resolution_tests {
         assert_eq!(
             resolve_registered_redirect(&relative(), None, Some(&topology())),
             None
+        );
+    }
+
+    /// A tampered app-relative entry that would swap the origin resolves to
+    /// nothing. `Url::join` on an http(s) base folds `\`→`/` and strips
+    /// tab/newline, so each of these joins to a foreign authority — the
+    /// resolution-time origin-equality guard (not the parse-time `//` screen)
+    /// rejects them. This is the same tampered-row threat the `//` parse test
+    /// treats as in scope.
+    #[test]
+    fn relative_that_would_swap_origin_resolves_to_nothing() {
+        for tampered in [
+            "/\\evil.example",   // backslash → folded to `//`
+            "/\\\\evil.example", // `\\` → authority
+            "/\t/evil.example",  // tab stripped, then `//`
+            "/\n/evil.example",  // newline stripped, then `//`
+        ] {
+            let entry = RegisteredRedirectUri::AppRelative(tampered.to_owned());
+            assert_eq!(
+                resolve_registered_redirect(
+                    &entry,
+                    Some(&served("https://ruth.wildflowerhealth.io")),
+                    Some(&topology()),
+                ),
+                None,
+                "tampered `{tampered}` must not resolve across the origin"
+            );
+            assert_eq!(
+                resolve_registered_redirect(
+                    &entry,
+                    Some(&served("http://127.0.0.1:8080")),
+                    Some(&topology()),
+                ),
+                None,
+                "tampered `{tampered}` must not resolve across the loopback origin"
+            );
+        }
+    }
+
+    /// A same-origin path with a `\` that `Url::join` folds to `/` still resolves
+    /// (the guard is on the *origin*, not the path), so a legitimate nested path
+    /// keeps working.
+    #[test]
+    fn relative_same_origin_path_with_backslash_still_resolves() {
+        let entry = RegisteredRedirectUri::AppRelative("/a\\b".to_owned());
+        assert_eq!(
+            resolve_registered_redirect(
+                &entry,
+                Some(&served("http://127.0.0.1:8080")),
+                Some(&topology()),
+            ),
+            Some(Url::parse("http://127.0.0.1:8090/a/b").unwrap()),
+        );
+    }
+
+    /// A tunnel apex served on a non-default port carries that port onto the
+    /// resolved subdomain origin (`host_str` alone would drop it, leaving an
+    /// implicit :443 that no real redirect could match).
+    #[test]
+    fn forwarded_apex_preserves_a_non_default_port() {
+        let resolved = resolve_registered_redirect(
+            &relative(),
+            Some(&served("https://ruth.wildflowerhealth.io:8443")),
+            Some(&topology()),
+        );
+        assert_eq!(
+            resolved,
+            Some(Url::parse("https://medication.ruth.wildflowerhealth.io:8443/").unwrap())
         );
     }
 
