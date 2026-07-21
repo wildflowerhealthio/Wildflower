@@ -1,0 +1,9 @@
+# The FHIR R4 SearchParameter bundle is copied here by `tauri android build`
+# from `bundle.resources` (tauri.conf.json). It's a ~2.3 MB generated build
+# artifact — never hand-edit it and never commit it. On Android the bundle is
+# read from the binary (embedded via `include_bytes!` in `src/lib.rs`, since the
+# APK's virtual `assets/` path isn't `std::fs`-readable), so this copy is unused
+# at runtime anyway. Mirrors the sibling `self-hosted-apps/` convention: track
+# only this ignore file, ignore everything else.
+/*
+!.gitignore

@@ -2,12 +2,17 @@ import Tauri
 import UIKit
 import WebKit
 
-/// Arguments decoded from `invoke('plugin:native-webview|open_url', { url, initScript, nativeWebviewEventChannel })`.
-/// Keys match `OpenRequest`'s camelCase serde wire shape; `initScript` is
+/// Arguments decoded from `invoke('plugin:native-webview|open_url', { id, url, initScript, nativeWebviewEventChannel })`.
+/// Keys match the mobile `WithId<OpenRequest>` camelCase serde wire shape (`id`
+/// plus `OpenRequest`'s flattened fields); `initScript` is
 /// omitted when absent. `nativeWebviewEventChannel` is a Tauri `Channel<NativeWebviewEvent>`
 /// the caller receives native webview events on (`{"event":"message", "payload": …}` /
 /// `{"event":"hidden"}` / `{"event":"disposed"}`) — see `models.rs` `NativeWebviewEvent`.
 class OpenArgs: Decodable {
+  /// Caller-named instance id (e.g. `"sniffer"`, `"launch"`) — routes to the
+  /// matching per-id instance in `NativeWebviewPlugin.instances`. Matches the
+  /// `WithId` wrapper the Rust `mobile.rs` serialises around `OpenRequest`.
+  let id: String
   let url: String
   let initScript: String?
   let nativeWebviewEventChannel: Channel
@@ -39,23 +44,34 @@ class CookieArg: Decodable {
   let maxAge: Int64?
 }
 
-/// Arguments decoded from `invoke('plugin:native-webview|evaluate_js', { script })`.
-/// Keys match `EvaluateJsRequest`'s camelCase serde wire shape. The host evaluates
+/// Arguments decoded from `invoke('plugin:native-webview|evaluate_js', { id, script })`.
+/// Keys match the mobile `WithId<EvaluateJsRequest>` camelCase serde wire shape. The host evaluates
 /// `script` verbatim in the native webview — typically a
 /// `window.__nativeWebviewReceive(JSON.stringify(...))` call carrying a bridge
 /// envelope.
 class EvaluateJsArgs: Decodable {
+  /// Caller-named instance id — see `OpenArgs.id`.
+  let id: String
   let script: String
 }
 
-/// Arguments decoded from `invoke('plugin:native-webview|patch_window_text', { title?, subtitle?, message? })`.
-/// Keys match `PatchWindowTextRequest`'s camelCase serde wire shape. Each field is
+/// Arguments decoded from `invoke('plugin:native-webview|patch_window_text', { id, title?, subtitle?, message? })`.
+/// Keys match the mobile `WithId<PatchWindowTextRequest>` camelCase serde wire shape. Each field is
 /// optional: `nil` / absent means "leave unchanged"; empty string clears that
 /// label. The plugin batches all three to keep multi-field updates flicker-free.
 class PatchWindowTextArgs: Decodable {
+  /// Caller-named instance id — see `OpenArgs.id`.
+  let id: String
   let title: String?
   let subtitle: String?
   let message: String?
+}
+
+/// Arguments decoded from the id-only commands `show` / `hide` / `dispose`
+/// (`invoke('plugin:native-webview|show', { id })`). Matches the Rust `IdOnly`
+/// wrapper the mobile transport serialises for these argument-less commands.
+class IdArgs: Decodable {
+  let id: String
 }
 
 /// Per-native-webview script message handler: holds the caller's [`Channel`] and
@@ -101,16 +117,78 @@ class NativeWebviewMessageBridge: NSObject, WKScriptMessageHandler {
   }
 }
 
+/// One native-webview instance's live state, keyed by the caller-named `id` in
+/// `NativeWebviewPlugin.instances`. Mirrors the desktop backend's per-id
+/// `InstanceState` registry: each instance owns its own `WKWebView`, chrome
+/// controller, event bridge, navigation controller, visibility + dispose flags,
+/// deferred switch-demo replay, and idle-teardown timer, so a background
+/// `sniffer` scrape and a `launch` popup never trample each other's wiring. All
+/// the cross-platform lifecycle/race protocols apply per instance. See
+/// docs/Lifecycle and Races Explanation.md.
+class NativeWebviewInstance {
+  /// The `WKWebView`, if any. Held STRONGLY so a hidden instance stays alive;
+  /// cleared only in `handleDisposed(id:)`, after which `evaluateJs` rejects.
+  var webView: WKWebView?
+  /// The chrome controller — target for chrome updates and `show`/`hide`.
+  var controller: NativeWebviewController?
+  /// The message bridge; its `channel` is rebound on Re-open rewire.
+  var bridge: NativeWebviewMessageBridge?
+  /// The `UINavigationController` presenting `controller`, or `nil` when this
+  /// instance is not the frontmost. It is a **transient presentation wrapper**:
+  /// `show` builds a fresh one each time and dismissing (hide / cover / dispose)
+  /// discards it, so a previously-dismissed controller is never re-presented
+  /// (re-presenting a stale wrapper is what wedged UIKit into an unlaunchable
+  /// state). `controller` / `webView` outlive it — that's what keeps a covered
+  /// instance alive and scraping.
+  var navigation: UINavigationController?
+  /// Whether this instance is the **frontmost** (actually on screen) — tracked
+  /// explicitly because visibility and existence are independent (see the doc's
+  /// first section). At most one instance is `isVisible` at a time (it is the top
+  /// of `NativeWebviewPlugin.presentationStack`); covered and dismissed-but-alive
+  /// instances are both `isVisible == false`.
+  var isVisible = false
+  /// The `disposing` flag of the switch-demo race guard: set between a `dispose`
+  /// (host or idle backstop) and the `handleDisposed(id:)` that completes
+  /// teardown. A same-tick `openUrl` queues a replay only when set; a `hide`
+  /// leaves it false and rewires in place.
+  var isDisposing = false
+  /// Deferred replay armed by the dispose→open switch-demo race: a closure that
+  /// presents the fresh instance, run from `handleDisposed(id:)` once teardown
+  /// completes (and which then suppresses the `disposed` echo).
+  var onDisposeFinishedHandler: (() -> Void)?
+  /// The `Invoke` owned by `onDisposeFinishedHandler`, held separately so a
+  /// second `openUrl()` superseding a still-queued one can reject it (no timeout
+  /// on `openUrl`).
+  var pendingInvoke: Invoke?
+  /// Idle teardown timer (Teardown backstops). Fires on the main run loop.
+  var idleTimer: Timer?
+
+  /// Exists but off screen — the only state the idle backstop reclaims.
+  var isHidden: Bool { controller != nil && !isVisible }
+}
+
 /// Native webview plugin — iOS backend of the cross-platform lifecycle protocol.
 /// See docs/Lifecycle and Races Explanation.md for the shared model; this type implements it
 /// with a `WKWebView` inside a `UINavigationController` presented as a page sheet.
 ///
+/// **Multi-instance**: every command takes the caller-named `id` (see
+/// `OpenArgs.id`), and each instance's state lives in `instances[id]` — mirroring
+/// desktop's per-id registry. A phone presents one full-screen native webview at
+/// a time, so presentation is a **z-order stack** (`presentationStack`): `show(id)`
+/// presents `id` on top, covering the previous frontmost (kept alive and running,
+/// e.g. a background `sniffer` keeps scraping); dismissing or disposing the
+/// frontmost pops it and **reveals the one beneath**. Only the frontmost is
+/// actually presented in UIKit — covered instances are dismissed-but-alive — so a
+/// mid-stack `dispose` needs no UIKit removal, and each `show` builds a fresh
+/// sheet wrapper (never re-presenting a discarded one).
+///
 /// Orientation: `openUrl` builds (HIDDEN if absent) and navigates without
-/// presenting; `show` presents; `hide` removes from view but keeps the instance
-/// alive; `dispose` tears it down. A document-start `WKUserScript` is injected on
-/// every origin and each ping is forwarded to the caller's per-instance
-/// [`Channel`]. See the doc's "Visibility, liveness, and existence are
-/// independent" and "User dismissal hides; only `dispose` tears down".
+/// presenting; `show` presents on top of the stack; `hide` removes from view but
+/// keeps the instance alive; `dispose` tears it down. A
+/// document-start `WKUserScript` is injected on every origin and each ping is
+/// forwarded to that instance's [`Channel`]. See the doc's "Visibility, liveness,
+/// and existence are independent" and "User dismissal hides; only `dispose` tears
+/// down".
 class NativeWebviewPlugin: Plugin {
   /// `window.webkit.messageHandlers.<name>` the injected script posts to.
   static let messageHandlerName = "nativeWebview"
@@ -119,45 +197,22 @@ class NativeWebviewPlugin: Plugin {
   /// backstops in docs/Lifecycle and Races Explanation.md.
   static let idleTeardownSeconds: TimeInterval = 5 * 60
 
-  /// The current `WKWebView`, if any. Held STRONGLY so a hidden instance stays
-  /// alive; cleared only in `handleDisposed()`, after which `evaluateJs` rejects.
-  private var currentWebView: WKWebView?
+  /// Live instances keyed by caller-named id. An entry is created by
+  /// `buildInstance` and removed by the terminal branch of `handleDisposed(id:)`.
+  /// Ids are a small fixed set (`sniffer`, `launch`), so the map never grows
+  /// unbounded.
+  private var instances: [String: NativeWebviewInstance] = [:]
 
-  /// The current controller — target for chrome updates and `show`/`hide`.
-  /// Strongly held (keep-alive-while-hidden).
-  private var currentController: NativeWebviewController?
-
-  /// The current message bridge; its `channel` is rebound on Re-open rewire.
-  /// Strongly held (keep-alive-while-hidden).
-  private var currentBridge: NativeWebviewMessageBridge?
-
-  /// The `UINavigationController` wrapping `currentController` — `show`
-  /// re-presents and `hide` dismisses it without teardown. Strongly held.
-  private var currentNavigation: UINavigationController?
-
-  /// Whether the instance is on screen — tracked explicitly because visibility
-  /// and existence are independent (see the doc's first section).
-  private var isVisible = false
-
-  /// Deferred replay armed by the dispose→open switch-demo race: a closure that
-  /// presents the fresh instance, run from `handleDisposed` once teardown
-  /// completes (and which then suppresses the `disposed` echo). See "The
-  /// dispose→open \"switch-demo\" race" in docs/Lifecycle and Races Explanation.md.
-  private var onDisposeFinishedHandler: (() -> Void)?
-
-  /// The `Invoke` owned by [`onDisposeFinishedHandler`], held separately so a
-  /// second `openUrl()` superseding a still-queued one can reject it (no timeout
-  /// on `openUrl`). See "The dispose→open \"switch-demo\" race".
-  private var pendingInvoke: Invoke?
-
-  /// The `disposing` flag of the switch-demo race guard: set between a `dispose`
-  /// (host or idle backstop) and the `handleDisposed` that completes teardown. A
-  /// same-tick `openUrl` queues a replay only when set; a `hide` leaves it false
-  /// and rewires in place. See "The dispose→open \"switch-demo\" race".
-  private var isDisposing = false
-
-  /// Idle teardown timer (Teardown backstops). Fires on the main run loop.
-  private var idleTimer: Timer?
+  /// The logical z-order of alive-and-navigated instances, bottom → top; the
+  /// last element is the **frontmost** (the one actually presented in UIKit). A
+  /// phone shows one native webview at a time, so at most the frontmost is
+  /// presented — the others are dismissed-but-alive (their `WKWebView` keeps
+  /// running/scraping) and kept here purely for reveal ordering when the
+  /// frontmost is dismissed or disposed. `show` pushes to the top (covering the
+  /// previous frontmost); a dismissal/dispose pops and reveals the next. See the
+  /// "Presentation stack (mobile only)" section in
+  /// docs/Lifecycle and Races Explanation.md.
+  private var presentationStack: [String] = []
 
   /// Build the `HTTPCookie` for one wire [`CookieArg`]. Returns nil only when
   /// Foundation rejects the property set — unexpected, since every required
@@ -226,22 +281,26 @@ class NativeWebviewPlugin: Plugin {
       invoke.reject("native-webview: invalid URL \(args.url)")
       return
     }
+    let id = args.id
 
     DispatchQueue.main.async {
-      self.resetIdleTimer()  // a command counts as activity
-      // Dispose→open switch-demo race: a dispose teardown is in flight, so queue
-      // a replay (run from `handleDisposed`) instead of re-wiring the doomed
-      // instance. A HIDE never arms `isDisposing`, so it falls through to the
-      // Re-open rewire branch below. See docs/Lifecycle and Races Explanation.md.
-      if self.isDisposing {
+      self.resetIdleTimer(id)  // a command counts as activity (no-op if no instance yet)
+      let instance = self.instances[id]
+      // Dispose→open switch-demo race: a dispose teardown is in flight for THIS
+      // id, so queue a replay (run from `handleDisposed(id:)`) instead of
+      // re-wiring the doomed instance. A HIDE never arms `isDisposing`, so it
+      // falls through to the Re-open rewire branch below. See
+      // docs/Lifecycle and Races Explanation.md.
+      if let instance = instance, instance.isDisposing {
         // Supersede any already-queued openUrl so its `await` isn't left hung
         // (last-write-wins would otherwise drop its `resolve`).
-        self.pendingInvoke?.reject(
+        instance.pendingInvoke?.reject(
           "native-webview: superseded by a newer open() before the popup finished closing")
-        self.pendingInvoke = invoke
-        self.onDisposeFinishedHandler = { [weak self] in
+        instance.pendingInvoke = invoke
+        instance.onDisposeFinishedHandler = { [weak self] in
           guard let self = self else { return }
-          self.present(
+          self.buildInstance(
+            id: id,
             url: url,
             initScript: args.initScript,
             channel: args.nativeWebviewEventChannel,
@@ -260,7 +319,7 @@ class NativeWebviewPlugin: Plugin {
       // `eval`'d into the current page and re-registered as document-start for
       // future loads; `reopen` resets the URL-fallback claim state. See
       // docs/Lifecycle and Races Explanation.md.
-      if let existing = self.currentWebView, let bridge = self.currentBridge {
+      if let instance = instance, let existing = instance.webView, let bridge = instance.bridge {
         bridge.channel = args.nativeWebviewEventChannel
         if let initScript = args.initScript {
           existing.evaluateJavaScript(initScript, completionHandler: nil)
@@ -276,7 +335,7 @@ class NativeWebviewPlugin: Plugin {
             )
           )
         }
-        self.currentController?.reopen(
+        instance.controller?.reopen(
           url: url.absoluteString,
           title: args.initialTitle,
           subtitle: args.initialSubtitle,
@@ -291,10 +350,11 @@ class NativeWebviewPlugin: Plugin {
         invoke.resolve(["opened": true])
         return
       }
-      // No instance: build one HIDDEN — `present` constructs the webview graph
-      // but does not call UIKit `present(_:)` (build/navigate are separate from
+      // No instance for this id: build one HIDDEN — `buildInstance` constructs
+      // the webview graph but does not present (build/navigate are separate from
       // presentation; see the doc's first section).
-      self.present(
+      self.buildInstance(
+        id: id,
         url: url,
         initScript: args.initScript,
         channel: args.nativeWebviewEventChannel,
@@ -308,34 +368,99 @@ class NativeWebviewPlugin: Plugin {
   }
 
   /// Present the native webview — bring a freshly-built or previously-hidden
-  /// instance to the foreground as a page sheet. Resolves with
-  /// `{requestCausedShow: true}` only when this call actually presented it;
-  /// `{requestCausedShow: false}` when none exists or it was already visible (a
-  /// transition flag, matching `hide` / `dispose`). Cancels the hidden-idle
-  /// teardown backstop (a visible webview is never idle-reclaimed).
+  /// instance to the foreground of the presentation stack as a page sheet.
+  /// Resolves with `{requestCausedShow: true}` only when this call actually
+  /// presented it; `{requestCausedShow: false}` when none exists, it is mid-
+  /// dispose, or it is already on the stack (a transition flag, matching `hide` /
+  /// `dispose`). Cancels the hidden-idle teardown backstop (a frontmost webview
+  /// is never idle-reclaimed).
   @objc public func show(_ invoke: Invoke) throws {
+    let args = try invoke.parseArgs(IdArgs.self)
     DispatchQueue.main.async {
-      self.cancelIdleTimer()
+      let id = args.id
+      guard let instance = self.instances[id], instance.controller != nil else {
+        invoke.resolve(["requestCausedShow": false])
+        return
+      }
       // Dispose teardown in flight: nothing presentable (presenting would race
-      // UIKit's dismiss-in-progress no-op and desync `isVisible` on a doomed
-      // instance). See "The dispose→open \"switch-demo\" race".
-      if self.isDisposing {
+      // UIKit's dismiss-in-progress no-op and desync a doomed instance). See
+      // "The dispose→open \"switch-demo\" race".
+      if instance.isDisposing {
         invoke.resolve(["requestCausedShow": false])
         return
       }
-      guard let navigation = self.currentNavigation else {
+      // Already on the stack (frontmost or covered) — idempotent, no transition.
+      // We never reorder a covered instance to the front; a covered instance is
+      // revealed only by dismissing/disposing what is above it.
+      if self.presentationStack.contains(id) {
         invoke.resolve(["requestCausedShow": false])
         return
       }
-      if self.isVisible {
-        // Already on screen — idempotent, but no transition caused.
-        invoke.resolve(["requestCausedShow": false])
-        return
-      }
-      self.isVisible = true
-      self.topViewController()?.present(navigation, animated: true)
+      // Push `id` onto the top of the stack, covering the previous frontmost
+      // (kept ALIVE and running — a background `sniffer` keeps scraping while
+      // `launch` is shown). See docs/Lifecycle and Races Explanation.md.
+      self.presentInstance(id: id)
       invoke.resolve(["requestCausedShow": true])
     }
+  }
+
+  /// Present instance `id` as the frontmost page sheet, covering the previous
+  /// frontmost if there is one. Assumes `id` is not already on the stack (its
+  /// `show` caller guards that). Builds a **fresh** `UINavigationController`
+  /// wrapper every time — never re-presenting a previously-dismissed one — which
+  /// is what keeps re-shows from wedging UIKit into an unlaunchable state, and
+  /// lets the sheet's presentation delegate be re-bound each present. The
+  /// outgoing frontmost is covered — dismissed but NOT torn down, so it keeps
+  /// running; covering emits no `hidden` (it is not a user-facing dismissal) but
+  /// does arm its idle backstop. UIKit rejects presenting while a dismiss
+  /// animates, so when covering is needed the incoming present runs from the
+  /// outgoing dismiss's completion. Main-thread only.
+  private func presentInstance(id: String) {
+    guard let instance = self.instances[id], let controller = instance.controller else { return }
+    // Snapshot the outgoing (current frontmost), if a different live instance.
+    var outgoing: (navigation: UINavigationController, id: String)?
+    if let currentId = self.presentationStack.last, currentId != id,
+      let current = self.instances[currentId], let currentNavigation = current.navigation
+    {
+      current.isVisible = false
+      current.navigation = nil  // discard the stale wrapper; rebuilt on its next show
+      self.resetIdleTimer(currentId)  // covered → idle-eligible
+      outgoing = (currentNavigation, currentId)
+    }
+    // Claim frontmost SYNCHRONOUSLY (state + fresh wrapper) so a re-entrant
+    // `show()` during the outgoing dismiss animation sees `id` on the stack and
+    // no-ops instead of double-presenting.
+    let navigation = self.buildNavigation(for: controller)
+    instance.navigation = navigation
+    instance.isVisible = true
+    self.cancelIdleTimer(instance)
+    self.presentationStack.append(id)
+    let present: () -> Void = { [weak self] in
+      self?.topViewController()?.present(navigation, animated: true)
+    }
+    if let outgoing = outgoing {
+      // UIKit rejects presenting while a dismiss animates, so present the
+      // incoming instance from the outgoing dismiss's completion. Covering emits
+      // no `hidden`, so we do NOT route the outgoing through `handleHidden`.
+      outgoing.navigation.dismiss(animated: true) { present() }
+    } else {
+      present()
+    }
+  }
+
+  /// Reveal the top of the presentation stack if nothing is currently presented
+  /// for it — used after a dismissal/dispose pops the frontmost, bringing the
+  /// next instance back to the foreground (a fresh-wrapper present). No-op when
+  /// the stack is empty or its top is already frontmost.
+  private func revealTopIfNeeded() {
+    guard let topId = self.presentationStack.last, let top = self.instances[topId],
+      !top.isVisible
+    else { return }
+    // `presentInstance` re-pushes `topId` (it removes nothing), but it is already
+    // the stack's last element, so the order is unchanged and there is no
+    // outgoing to cover.
+    self.presentationStack.removeLast()
+    self.presentInstance(id: topId)
   }
 
   /// Hide the native webview — remove it from view but keep it alive and
@@ -344,23 +469,29 @@ class NativeWebviewPlugin: Plugin {
   /// `{requestCausedHide: false}` when nothing was visible, `{requestCausedHide:
   /// true}` once hidden.
   @objc public func hide(_ invoke: Invoke) throws {
+    let args = try invoke.parseArgs(IdArgs.self)
     DispatchQueue.main.async {
-      self.resetIdleTimer()
-      guard self.isVisible, let navigation = self.currentNavigation else {
+      let id = args.id
+      // Only the frontmost instance can be hidden — a covered instance is not
+      // presented in UIKit, so there is nothing to dismiss (it is already off
+      // screen). `isVisible` is the frontmost flag.
+      guard let instance = self.instances[id], instance.isVisible,
+        let navigation = instance.navigation
+      else {
         invoke.resolve(["requestCausedHide": false])
         return
       }
-      // Flip `isVisible` synchronously (mirroring Android's `hideDialog`) so a
-      // second `hide()` racing this in-flight animated dismiss sees the new
-      // state and no-ops instead of dismissing again and double-emitting
-      // `hidden`. `handleHidden` re-sets it from the dismiss completion, which is
-      // idempotent.
-      self.isVisible = false
-      // Host `hide()` shares `handleHidden()` with user dismissal, fired here
+      // Flip `isVisible` and pop the stack synchronously (mirroring Android's
+      // `hideDialog`) so a second `hide()` racing this in-flight animated dismiss
+      // sees the new state and no-ops instead of dismissing again and double-
+      // emitting `hidden`. `handleHidden(id:)` re-applies both idempotently.
+      instance.isVisible = false
+      self.presentationStack.removeAll { $0 == id }
+      // Host `hide()` shares `handleHidden(id:)` with user dismissal, fired here
       // from the dismiss completion. See "User dismissal hides; only `dispose`
-      // tears down".
+      // tears down". `handleHidden` then reveals the newly-exposed frontmost.
       navigation.dismiss(animated: true) { [weak self] in
-        self?.handleHidden()
+        self?.handleHidden(id: id)
       }
       invoke.resolve(["requestCausedHide": true])
     }
@@ -372,50 +503,50 @@ class NativeWebviewPlugin: Plugin {
   /// existed, `true` once torn down. See "User dismissal hides; only `dispose`
   /// tears down" in docs/Lifecycle and Races Explanation.md.
   @objc public func dispose(_ invoke: Invoke) throws {
+    let args = try invoke.parseArgs(IdArgs.self)
     DispatchQueue.main.async {
-      self.cancelIdleTimer()
-      guard let controller = self.currentController else {
+      let id = args.id
+      guard let instance = self.instances[id], let controller = instance.controller else {
         invoke.resolve(["requestCausedDispose": false])
         return
       }
+      self.cancelIdleTimer(instance)
       // Arm the switch-demo race guard before teardown; cleared in
-      // `handleDisposed`. See "The dispose→open \"switch-demo\" race".
-      self.isDisposing = true
-      controller.requestDispose(wasVisible: self.isVisible)
+      // `handleDisposed(id:)`. See "The dispose→open \"switch-demo\" race".
+      instance.isDisposing = true
+      controller.requestDispose(wasVisible: instance.isVisible)
       invoke.resolve(["requestCausedDispose": true])
     }
   }
 
-  /// An instance exists but is off screen — the only state the idle backstop reclaims.
-  private var hasHiddenInstance: Bool {
-    currentController != nil && !isVisible
-  }
-
-  /// (Re)arm the idle teardown backstop (Teardown backstops). Called on every
-  /// activity (inbound bridge message or any command); cancels instead of arming
-  /// unless `hasHiddenInstance`. Main-thread only (Timer schedules on the current
-  /// run loop, and all the plugin's UI work is main-thread).
-  private func resetIdleTimer() {
-    idleTimer?.invalidate()
-    idleTimer = nil
-    guard self.hasHiddenInstance else { return }
-    idleTimer = Timer.scheduledTimer(
+  /// (Re)arm instance `id`'s idle teardown backstop (Teardown backstops). Called
+  /// on every activity (inbound bridge message or any command); cancels instead
+  /// of arming unless the instance `isHidden`. No-op if `id` has no instance.
+  /// Main-thread only (Timer schedules on the current run loop, and all the
+  /// plugin's UI work is main-thread).
+  private func resetIdleTimer(_ id: String) {
+    guard let instance = self.instances[id] else { return }
+    instance.idleTimer?.invalidate()
+    instance.idleTimer = nil
+    guard instance.isHidden else { return }
+    instance.idleTimer = Timer.scheduledTimer(
       withTimeInterval: NativeWebviewPlugin.idleTeardownSeconds,
       repeats: false
     ) { [weak self] _ in
-      guard let self = self, let controller = self.currentController, !self.isVisible
+      guard let self = self, let instance = self.instances[id], let controller = instance.controller,
+        !instance.isVisible
       else { return }
-      // Idle past the backstop — auto-dispose, arming the race guard for
-      // symmetry with a host `dispose`. See Teardown backstops.
-      self.isDisposing = true
+      // Idle past the backstop — auto-dispose this instance, arming the race
+      // guard for symmetry with a host `dispose`. See Teardown backstops.
+      instance.isDisposing = true
       controller.requestDispose(wasVisible: false)
     }
   }
 
-  /// Cancel the idle teardown backstop (instance shown or disposed).
-  private func cancelIdleTimer() {
-    idleTimer?.invalidate()
-    idleTimer = nil
+  /// Cancel `instance`'s idle teardown backstop (instance shown or disposed).
+  private func cancelIdleTimer(_ instance: NativeWebviewInstance) {
+    instance.idleTimer?.invalidate()
+    instance.idleTimer = nil
   }
 
   /// Evaluate JS inside the current native webview. Rejects if no native webview
@@ -425,8 +556,9 @@ class NativeWebviewPlugin: Plugin {
   @objc public func evaluateJs(_ invoke: Invoke) throws {
     let args = try invoke.parseArgs(EvaluateJsArgs.self)
     DispatchQueue.main.async {
-      self.resetIdleTimer()  // a command counts as activity
-      guard let webView = self.currentWebView else {
+      let id = args.id
+      self.resetIdleTimer(id)  // a command counts as activity
+      guard let instance = self.instances[id], let webView = instance.webView else {
         invoke.reject("native-webview: no native webview open")
         return
       }
@@ -444,7 +576,8 @@ class NativeWebviewPlugin: Plugin {
   @objc public func patchWindowText(_ invoke: Invoke) throws {
     let args = try invoke.parseArgs(PatchWindowTextArgs.self)
     DispatchQueue.main.async {
-      guard let controller = self.currentController else {
+      self.resetIdleTimer(args.id)  // a command carrying its id counts as activity
+      guard let instance = self.instances[args.id], let controller = instance.controller else {
         invoke.resolve(["set": false])
         return
       }
@@ -459,52 +592,76 @@ class NativeWebviewPlugin: Plugin {
   /// a USER dismissal and a host `hide()`. Marks it hidden, emits `hidden` on
   /// the latest channel, and arms the idle backstop. Tears nothing down. See
   /// "User dismissal hides; only `dispose` tears down".
-  private func handleHidden() {
-    guard self.currentController != nil else { return }
+  private func handleHidden(id: String) {
+    guard let instance = self.instances[id], instance.controller != nil else { return }
     // A user swipe can fire `presentationControllerDidDismiss` *during* a
     // `dispose()` whose own dismiss is still animating. Ignore it while
     // disposing: otherwise we'd emit a spurious `hidden` and re-arm the idle
     // timer `dispose` just cancelled, both ahead of the `disposed` that
-    // `handleDisposed` emits. Mirrors Android's `show()`-guards-on-`isDisposing`
+    // `handleDisposed(id:)` emits. Mirrors Android's `show()`-guards-on-`isDisposing`
     // posture. See "The dispose→open \"switch-demo\" race".
-    guard !self.isDisposing else { return }
-    self.isVisible = false
+    guard !instance.isDisposing else { return }
+    instance.isVisible = false
+    instance.navigation = nil  // wrapper is gone (dismissed); rebuilt on next show
+    self.presentationStack.removeAll { $0 == id }
     // Lowercase tag matches `models.rs`; `JsonObject` pins the non-throwing send overload.
     let data: JsonObject = ["event": "hidden"]
-    self.currentBridge?.channel.send(data)
-    self.resetIdleTimer()  // now hidden — start the idle backstop counting down
+    instance.bridge?.channel.send(data)
+    self.resetIdleTimer(id)  // now hidden — start the idle backstop counting down
+    // Dismissing the frontmost exposes whatever it was covering — bring that
+    // next instance back to the foreground (a fresh-wrapper present).
+    self.revealTopIfNeeded()
   }
 
   /// React to the instance being torn down — shared by a host `dispose()`, the
   /// idle backstop, and natural teardown (controller deinit). Frees captured
   /// state and, unless a switch-demo replay was queued, emits `disposed`. See
   /// "The dispose→open \"switch-demo\" race".
-  private func handleDisposed() {
-    self.cancelIdleTimer()
+  private func handleDisposed(id: String) {
+    guard let instance = self.instances[id] else { return }
+    self.cancelIdleTimer(instance)
     // Read the latest (possibly re-wired) channel BEFORE clearing the bridge so
     // the `disposed` echo follows a fresh `openUrl`'s channel to the most recent
     // caller (matches desktop's `CurrentChannel` handling). See Re-open rewire.
-    let disposeChannel = self.currentBridge?.channel
-    self.currentWebView = nil
-    self.currentController = nil
-    self.currentBridge = nil
-    self.currentNavigation = nil
-    self.isVisible = false
-    self.isDisposing = false
+    let wasVisible = instance.isVisible
+    let disposeChannel = instance.bridge?.channel
+    instance.webView = nil
+    instance.controller = nil
+    instance.bridge = nil
+    instance.navigation = nil
+    instance.isVisible = false
+    instance.isDisposing = false
+    self.presentationStack.removeAll { $0 == id }
     // If a switch-demo replay was queued, run it and suppress the `disposed`
     // echo; otherwise emit `disposed`. See "The dispose→open \"switch-demo\" race".
-    if let pending = self.onDisposeFinishedHandler {
-      self.onDisposeFinishedHandler = nil
-      self.pendingInvoke = nil
+    if let pending = instance.onDisposeFinishedHandler {
+      instance.onDisposeFinishedHandler = nil
+      instance.pendingInvoke = nil
+      // The replay's `buildInstance(id:…)` overwrites `instances[id]` with a fresh
+      // (hidden) instance, so leave the (now-cleared) entry in place for it to
+      // replace; the caller's own `show` will present it.
       pending()
     } else {
-      // Lowercase tag matches `models.rs`; `JsonObject` pins the non-throwing send overload.
+      // Terminal teardown for this id: drop the entry so a later `openUrl` builds
+      // fresh, then emit `disposed`. Lowercase tag matches `models.rs`;
+      // `JsonObject` pins the non-throwing send overload.
+      self.instances[id] = nil
       let data: JsonObject = ["event": "disposed"]
       disposeChannel?.send(data)
+      // Disposing the frontmost exposes whatever it was covering — reveal it.
+      // (A covered/hidden dispose leaves the frontmost untouched, so this no-ops.)
+      if wasVisible { self.revealTopIfNeeded() }
     }
   }
 
-  private func present(
+  /// Build a fresh, alive-but-HIDDEN instance for `id`: the `WKWebView`, its
+  /// document-start script, the message bridge, and the `NativeWebviewController`
+  /// chrome — but NOT the presentation wrapper (`show` → `presentInstance` builds
+  /// that on demand). Overwrites any prior (torn-down) entry for `id`, seeds
+  /// cookies before the first navigation, and arms the idle backstop so a
+  /// built-but-never-shown instance is still reclaimed. Never presents.
+  private func buildInstance(
+    id: String,
     url: URL,
     initScript: String?,
     channel: Channel,
@@ -513,6 +670,10 @@ class NativeWebviewPlugin: Plugin {
     initialMessage: String?,
     cookies: [CookieArg]?
   ) {
+    // Fresh per-id instance; overwrites any prior (torn-down) entry for this id.
+    let instance = NativeWebviewInstance()
+    self.instances[id] = instance
+
     let contentController = WKUserContentController()
     // Caller-supplied document-start script, injected into all frames on ANY
     // origin. The plugin is content-agnostic — no script means no injection.
@@ -527,8 +688,8 @@ class NativeWebviewPlugin: Plugin {
     }
     let bridge = NativeWebviewMessageBridge(channel: channel)
     contentController.add(bridge, name: NativeWebviewPlugin.messageHandlerName)
-    currentBridge = bridge
-    bridge.onActivity = { [weak self] in self?.resetIdleTimer() }  // inbound traffic is activity
+    instance.bridge = bridge
+    bridge.onActivity = { [weak self] in self?.resetIdleTimer(id) }  // inbound traffic is activity
 
     let configuration = WKWebViewConfiguration()
     configuration.userContentController = contentController
@@ -539,10 +700,10 @@ class NativeWebviewPlugin: Plugin {
     NativeWebviewPlugin.seedCookies(cookies, into: webView) {
       webView.load(URLRequest(url: url))
     }
-    currentWebView = webView
+    instance.webView = webView
 
     let browser = NativeWebviewController(webView: webView, initialUrl: url.absoluteString)
-    currentController = browser
+    instance.controller = browser
     // Apply initial chrome before presentation so the bar is correct on first
     // paint (nil = leave unchanged). See Chrome URL-fallback.
     browser.applyWindowText(
@@ -553,19 +714,33 @@ class NativeWebviewPlugin: Plugin {
     // User dismissal HIDES (keeps alive); only dispose tears down. See "User
     // dismissal hides; only `dispose` tears down".
     browser.onUserDismiss = { [weak self] in
-      self?.handleHidden()
+      self?.handleHidden(id: id)
     }
     browser.onDispose = { [weak self] in
-      self?.handleDisposed()
+      self?.handleDisposed(id: id)
     }
 
-    let navigation = UINavigationController(rootViewController: browser)
+    // Build HIDDEN — the presentation wrapper and UIKit `present(_:)` are
+    // deferred to `show` → `presentInstance`. `navigation` stays nil until then.
+    instance.navigation = nil
+    instance.isVisible = false
+    // Arm the idle backstop so a built-but-never-shown instance is reclaimed.
+    resetIdleTimer(id)
+  }
+
+  /// Build a fresh page-sheet `UINavigationController` around `controller`,
+  /// themed to the app palette. Called on every `presentInstance` (never
+  /// re-presenting a discarded wrapper), so the sheet's presentation delegate is
+  /// re-bound each time and interactive swipe-to-dismiss keeps working across
+  /// re-shows.
+  private func buildNavigation(for controller: NativeWebviewController) -> UINavigationController {
+    let navigation = UINavigationController(rootViewController: controller)
     navigation.modalPresentationStyle = .pageSheet
     // iOS: a `.pageSheet`'s interactive swipe-to-dismiss bypasses the Close
     // button, so register the controller as the sheet's presentation delegate to
     // catch the swipe and route it through the same HIDE path (see
     // `presentationControllerDidDismiss`).
-    navigation.presentationController?.delegate = browser
+    navigation.presentationController?.delegate = controller
     // Theme the native chrome to the app palette, tracking the OS appearance.
     let barAppearance = UINavigationBarAppearance()
     barAppearance.configureWithOpaqueBackground()
@@ -587,11 +762,7 @@ class NativeWebviewPlugin: Plugin {
     // render. The view controller also flips this on appear; doing it here too
     // avoids a flash at open.
     navigation.isToolbarHidden = false
-    // Build HIDDEN — do NOT present here (`show` does that later).
-    currentNavigation = navigation
-    isVisible = false
-    // Arm the idle backstop so a built-but-never-shown instance is reclaimed.
-    resetIdleTimer()
+    return navigation
   }
 
   /// The top-most presented view controller to present the native webview from.

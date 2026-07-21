@@ -9,7 +9,7 @@ use crate::OnDeviceWebviewHandle;
 pub struct RecordingStubWebviewHandle(pub Mutex<Vec<String>>);
 
 impl OnDeviceWebviewHandle for RecordingStubWebviewHandle {
-    fn open(&self, _title: String, url: String) {
+    fn open(&self, _app_id: String, _title: String, url: String) {
         self.0.lock().expect("sink mutex").push(url.to_owned());
     }
 }

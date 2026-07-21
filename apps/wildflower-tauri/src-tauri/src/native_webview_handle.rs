@@ -29,11 +29,19 @@ use tauri_plugin_log::log;
 use tauri_plugin_native_webview::{CookieSameSite, CookieSpec};
 use tokio::sync::watch;
 
-/// The `tauri-plugin-native-webview` instance id for the apps-launch popup — a
-/// distinct instance from the browser sniffer's scrape webview (`"sniffer"`), so
-/// launching an app never navigates a running scrape's webview away.
-const LAUNCH_WEBVIEW_ID: &str = "launch";
 use tunnel_rust::TunnelService;
+
+/// The `tauri-plugin-native-webview` instance id for an apps-launch popup. Each
+/// launched app gets its **own** instance keyed `launch-<app-id>` — distinct from
+/// the browser sniffer's scrape webview (`"sniffer"`) and from every other app,
+/// so launching an app never navigates another app's (or a running scrape's)
+/// webview, and each app keeps its own history/session and its own entry in the
+/// mobile presentation stack. App ids are kebab slugs (`[a-z0-9-]`), so the
+/// composed id stays a valid Tauri window label on desktop
+/// (`native-webview-launch-<app-id>`).
+fn launch_webview_id(app_id: &str) -> String {
+    format!("launch-{app_id}")
+}
 
 /// The host's on-device webview handle: opens the resolved launch URL in a
 /// native webview popup, seeding the owner session cookies when the target is
@@ -78,10 +86,12 @@ impl OnDeviceWebviewHandle for NativeWebviewHandle {
     ///
     /// The handler only calls this for a loopback (local) caller — a host popup
     /// is useless to a remote one — so this impl doesn't re-check provenance.
-    fn open(&self, title: String, url: String) {
+    fn open(&self, app_id: String, title: String, url: String) {
         let handle = self.app.clone();
         let token = self.token_rx.borrow().clone();
         let tunnel = Arc::clone(&self.tunnel);
+        // Each app gets its own `launch-<app-id>` instance (see `launch_webview_id`).
+        let id = launch_webview_id(&app_id);
 
         tauri::async_runtime::spawn_blocking(move || {
             // Read the tunnel host on the blocking thread — it's a settings
@@ -104,7 +114,7 @@ impl OnDeviceWebviewHandle for NativeWebviewHandle {
                     cookies.len(),
                 );
             }
-            if let Err(error) = open_app_in_native_webview(&handle, title, url, cookies) {
+            if let Err(error) = open_app_in_native_webview(&handle, &id, title, url, cookies) {
                 log::error!("[launch] failed to open native webview for launch: {error}");
             }
         });
@@ -166,7 +176,7 @@ fn cookie_spec_from(cookie: &tauri::webview::cookie::Cookie<'_>, tunnel_host: &s
     }
 }
 
-/// Present `url` in the shared native webview popup, titled with `title` (the
+/// Present `url` in the `id` native webview popup, titled with `title` (the
 /// launched app's name), seeding `cookies` into its store before the first
 /// navigation.
 ///
@@ -174,10 +184,12 @@ fn cookie_spec_from(cookie: &tauri::webview::cookie::Cookie<'_>, tunnel_host: &s
 /// builds it from a trusted origin), then `open_url`s it and `show`s it (two
 /// calls, per the plugin's visibility-independent-of-content model). The apps
 /// launch has no host↔popup bridge, so it injects no `init_script` and passes a
-/// no-op event channel. Both calls are idempotent: a second launch navigates the
-/// existing popup rather than stacking a new one.
+/// no-op event channel. Both calls are idempotent per `id`: re-launching the
+/// **same** app navigates its existing popup, while a different app opens its own
+/// instance (presented on top of the stack on mobile).
 fn open_app_in_native_webview(
     handle: &AppHandle,
+    id: &str,
     title: String,
     url: String,
     cookies: Vec<CookieSpec>,
@@ -201,7 +213,7 @@ fn open_app_in_native_webview(
     handle
         .native_webview()
         .open_url(
-            LAUNCH_WEBVIEW_ID,
+            id,
             OpenRequest {
                 url: url.to_owned(),
                 // No host↔popup bridge on the apps-launch path, so no document-start
@@ -225,7 +237,7 @@ fn open_app_in_native_webview(
         if let Ok(parsed) = tauri::Url::parse(&format!("https://{domain}/")) {
             match handle
                 .native_webview()
-                .content_cookie_names_for_url(LAUNCH_WEBVIEW_ID, parsed)
+                .content_cookie_names_for_url(id, parsed)
             {
                 Ok(Some(names)) => log::info!(
                     "[launch] popup cookie store for https://{domain}/ now holds: {names:?}"
@@ -239,7 +251,7 @@ fn open_app_in_native_webview(
     let _ = seeded_domain;
     handle
         .native_webview()
-        .show(LAUNCH_WEBVIEW_ID)
+        .show(id)
         .map_err(|error| anyhow::anyhow!("tauri-plugin-native-webview show failed: {error}"))?;
     Ok(())
 }

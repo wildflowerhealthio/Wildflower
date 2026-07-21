@@ -210,6 +210,55 @@ async fn run_server(
     // release from the bundled resource dir (declared in `tauri.conf.json` under
     // `bundle.resources`, copied to `<resource_dir>/fhir-search-params/`). Same
     // dev/release split as the vendored self-hosted apps below.
+    // Android: `bundle.resources` land in the APK's `assets/`, which are NOT real
+    // filesystem paths — `resource_dir()` returns a virtual path `std::fs` (and so
+    // HFS's `SqliteBackend`) can't read, and HFS `bail!`s "bundle not found". Tauri
+    // exposes no Rust-side reader for bundle resources (`AssetResolver` covers only
+    // `frontendDist`), and reading the APK asset directly needs the `unsafe` JNI
+    // `AssetManager` the workspace forbids. So on Android we embed the ~2.3 MB
+    // bundle in the binary and materialize it to a real app-data dir at startup.
+    // Because the APK-asset copy is never read on Android, `tauri.android.conf.json`
+    // drops it from `bundle.resources` (a `null` merge-patch override) so the APK
+    // ships the bundle once (the binary embed) rather than twice.
+    // Desktop/iOS keep reading the deployed resource straight off disk (their
+    // resource dir is a real directory). NOTE: the sibling `self-hosted-apps/`
+    // resource has the same limitation, but `sync_vendored_self_hosted_apps`
+    // no-ops on a missing source dir, so it degrades to "no vendored apps" rather
+    // than failing startup.
+    #[cfg(target_os = "android")]
+    let search_parameter_data_dir = {
+        const EMBEDDED_SEARCH_PARAMETERS_R4: &[u8] = include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../slices/emr/emr-rust/assets/search-parameters-r4.json"
+        ));
+        // Filename matches `emr_rust`'s `SEARCH_PARAMETERS_R4_FILENAME` and the
+        // `tauri.conf.json` resource mapping.
+        let dir = runtime.app_data_dir.join("fhir-search-params");
+        std::fs::create_dir_all(&dir).with_context(|| {
+            format!("failed to create fhir-search-params dir {}", dir.display())
+        })?;
+        let file = dir.join("search-parameters-r4.json");
+        // Materialize the embedded bundle only when the on-disk copy is missing
+        // or differs from what this build carries — an app update ships fresh
+        // bytes and triggers a rewrite, while an unchanged bundle skips the
+        // ~2.3 MB write on every cold start. A cheap length check short-circuits
+        // the common already-current case before the byte-for-byte compare.
+        let up_to_date = std::fs::metadata(&file)
+            .ok()
+            .filter(|m| m.len() == EMBEDDED_SEARCH_PARAMETERS_R4.len() as u64)
+            .and_then(|_| std::fs::read(&file).ok())
+            .is_some_and(|existing| existing == EMBEDDED_SEARCH_PARAMETERS_R4);
+        if !up_to_date {
+            std::fs::write(&file, EMBEDDED_SEARCH_PARAMETERS_R4).with_context(|| {
+                format!(
+                    "failed to materialize embedded SearchParameter bundle to {}",
+                    file.display()
+                )
+            })?;
+        }
+        dir
+    };
+    #[cfg(not(target_os = "android"))]
     let search_parameter_data_dir = if cfg!(debug_assertions) && !cfg!(mobile) {
         std::path::PathBuf::from(concat!(
             env!("CARGO_MANIFEST_DIR"),

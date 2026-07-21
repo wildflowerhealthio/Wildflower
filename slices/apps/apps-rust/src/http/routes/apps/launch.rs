@@ -242,9 +242,11 @@ async fn launch(
         // The loopback caller cleared the umbrella + SMART gates above; hand the URL
         // to the host webview and `204` (the seam is contractually fire-and-forget).
         RequestProvenance::Loopback => {
-            state
-                .on_device_webview_handle
-                .open(registration.name.clone(), resolved.target_url);
+            state.on_device_webview_handle.open(
+                registration.id.clone(),
+                registration.name.clone(),
+                resolved.target_url,
+            );
             Ok(no_content())
         }
         // A forwarded self-hosted launch re-scopes the caller's session onto its

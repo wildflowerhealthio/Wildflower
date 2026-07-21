@@ -3,7 +3,13 @@ use std::sync::Arc;
 use gatekeeper_rust::bridge::GatekeeperHostToWeb;
 use serde::Deserialize;
 use shared_structures_rust::bridge::BRIDGE_EVENT;
-use tauri::{AppHandle, Emitter, Listener, Manager};
+use tauri::{AppHandle, Emitter, Listener};
+// `Manager` brings in `get_webview_window`, used only by the desktop
+// `raise_main_window` (the mobile variant is an empty stub), so gating it to
+// desktop keeps mobile builds free of an `unused_imports` warning — same posture
+// as `MAIN_WINDOW_LABEL` above.
+#[cfg(desktop)]
+use tauri::Manager;
 use tauri_plugin_log::log;
 use tokio::sync::{watch, Notify};
 
