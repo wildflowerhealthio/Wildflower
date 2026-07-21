@@ -43,22 +43,31 @@ const byActiveThenNewest = (a: MedicationView, b: MedicationView): number => {
 }
 
 /**
- * The repeats status as a single self-describing line: `"2 / 3 Repeats
- * Available"`, or `"No Repeats"` when none are allowed (or the count is absent).
+ * The repeats status as a self-describing label plus a `danger` flag:
+ * - no repeats allowed (or count absent) → `"No Repeats"` (neutral)
+ * - allowed but none remaining (`0 / N`) → `"No Repeats Remaining"` (danger)
+ * - some remaining → `"2 / 3 Repeats Available"` (neutral)
+ *
  * A missing available count with repeats allowed reads as `0` remaining.
  */
-const repeatsSummary = (allowed: number | null, available: number | null): string =>
-  allowed === null || allowed <= 0
-    ? 'No Repeats'
-    : `${available ?? 0} / ${allowed} Repeats Available`
+const repeatsSummary = (
+  allowed: number | null,
+  available: number | null
+): { readonly text: string; readonly danger: boolean } => {
+  if (allowed === null || allowed <= 0) return { text: 'No Repeats', danger: false }
+  const remaining = available ?? 0
+  if (remaining <= 0) return { text: 'No Repeats Remaining', danger: true }
+  return { text: `${remaining} / ${allowed} Repeats Available`, danger: false }
+}
 
 /**
- * Renders the patient's medications as a single flat list — active first, then
- * newest authored first. Each row shows the medication name, DIN, description,
- * status/date, prescriber, estimated next-fill day (with a coarse "in 3 days"
- * hint), a combined repeats summary and notes, plus a sponsorship chip (with a
- * coverage link) when a program in `catalogs` covers it in the selected
- * `province`. Eligibility is computed via `sponsorship-core`'s
+ * Renders the patient's medications split into an "Active Medications" section
+ * and a "Completed" section (shown only when non-empty), each newest-authored
+ * first. Every row shows the medication name, an eligibility chip (linking to
+ * coverage) and pharmacy-location button, DIN + description, a combined
+ * next-fill / repeats line, prescriber and notes. The layout is a mobile-first
+ * vertical stack that wraps on narrow screens and right-aligns the chip/pharmacy
+ * actions on wider ones. Eligibility is computed via `sponsorship-core`'s
  * {@link groupMedications} and memoized on its inputs.
  */
 export const MedicationsView = ({
@@ -84,28 +93,21 @@ export const MedicationsView = ({
 
   const ordered = useMemo(() => [...medications].toSorted(byActiveThenNewest), [medications])
 
-  if (ordered.length === 0) {
-    return <p className={styles.empty}>No medications found.</p>
-  }
-
-  return (
-    <ul className={styles.list}>
-      {ordered.map((view) => {
-        const eligible = eligibility.get(view.medication.id)
-        return (
-          <li key={view.medication.id} className={styles.row}>
-            {/* Line 1 left: name · description */}
-            <p className={styles.primary}>
-              <span className={styles.name}>{view.medication.displayName}</span>
-              {view.description !== null && (
-                <>
-                  <span className={styles.sep}> · </span>
-                  <span className={styles.description}>{view.description}</span>
-                </>
-              )}
-            </p>
-            {/* Line 1 right: eligibility · pharmacy-location button · DIN */}
-            <p className={styles.identity}>
+  const row = (view: MedicationView): JSX.Element => {
+    const eligible = eligibility.get(view.medication.id)
+    const repeats = repeatsSummary(view.repeatsAllowed, view.repeatsAvailable)
+    // With repeats left, the supply-runout date is the next fill; with none, it
+    // is simply when the supply is exhausted (nothing left to fill).
+    const hasRefill =
+      view.repeatsAllowed !== null && view.repeatsAllowed > 0 && (view.repeatsAvailable ?? 0) > 0
+    const fillLabel = hasRefill ? 'Next fill' : 'Supply exhausted'
+    return (
+      <li key={view.medication.id} className={styles.row}>
+        {/* Name + right-aligned eligibility / pharmacy actions (wrap on mobile). */}
+        <p className={styles.header}>
+          <span className={styles.name}>{view.medication.displayName}</span>
+          {(eligible !== undefined || view.rexallStoreUrl !== null) && (
+            <span className={styles.actions}>
               {eligible !== undefined && (
                 <SponsorChip sponsor={eligible.sponsor} drug={eligible.drug} />
               )}
@@ -119,42 +121,71 @@ export const MedicationsView = ({
                   Rexall
                 </a>
               )}
-              {view.din !== null && <span className={styles.din}>DIN {view.din}</span>}
-            </p>
-            {/* Line 2 left: status · repeats */}
-            <p className={styles.statusLine}>
-              {view.medication.status !== undefined && (
-                <>
-                  <span className={styles.status}>{view.medication.status}</span>
-                  <span className={styles.sep}> · </span>
-                </>
-              )}
-              <span className={styles.repeats}>
-                {repeatsSummary(view.repeatsAllowed, view.repeatsAvailable)}
+            </span>
+          )}
+        </p>
+        {/* Description · DIN */}
+        {(view.description !== null || view.din !== null) && (
+          <p className={styles.secondary}>
+            {view.description !== null && (
+              <span className={styles.description}>{view.description}</span>
+            )}
+            {view.description !== null && view.din !== null && (
+              <span className={styles.sep}> · </span>
+            )}
+            {view.din !== null && <span className={styles.din}>DIN {view.din}</span>}
+          </p>
+        )}
+        {/* Combined next-fill / supply-exhausted date + repeats line. */}
+        <p className={styles.meta}>
+          {view.nextFillDate !== null && (
+            <span className={styles.metaItem}>
+              <span className={styles.factLabel}>{fillLabel}</span>{' '}
+              <time dateTime={view.nextFillDate}>{view.nextFillDate.slice(0, 10)}</time>{' '}
+              <span className={styles.relative}>
+                {describeDayFromNow(view.nextFillDate, nowMillis)}
               </span>
-            </p>
-            {/* Line 2 right: prescriber */}
-            {view.requester !== null && (
-              <p className={styles.prescriber}>
-                <span className={styles.factValue}>Dr. {view.requester}</span>
-              </p>
-            )}
-            {/* Line 3: next fill */}
-            {view.nextFillDate !== null && (
-              <p className={styles.nextFill}>
-                <span className={styles.factLabel}>Next fill</span>{' '}
-                <time dateTime={view.nextFillDate}>{view.nextFillDate.slice(0, 10)}</time>{' '}
-                <span className={styles.relative}>
-                  {describeDayFromNow(view.nextFillDate, nowMillis)}
-                </span>
-              </p>
-            )}
-            {/* Line 4: note */}
-            {view.note !== null && <p className={styles.note}>{view.note}</p>}
-          </li>
-        )
-      })}
-    </ul>
+            </span>
+          )}
+          {view.nextFillDate !== null && <span className={styles.sep}> · </span>}
+          <span className={repeats.danger ? styles.repeatsDanger : styles.repeats}>
+            {repeats.text}
+          </span>
+        </p>
+        {view.requester !== null && (
+          <p className={styles.prescriber}>
+            <span className={styles.factValue}>Dr. {view.requester}</span>
+          </p>
+        )}
+        {view.note !== null && <p className={styles.note}>{view.note}</p>}
+      </li>
+    )
+  }
+
+  if (ordered.length === 0) {
+    return <p className={styles.empty}>No medications found.</p>
+  }
+
+  const active = ordered.filter((view) => view.medication.status === 'active')
+  const completed = ordered.filter((view) => view.medication.status !== 'active')
+
+  return (
+    <div className={styles.sections}>
+      <section className={styles.section}>
+        <h2 className={styles.sectionHeading}>Active Medications</h2>
+        {active.length > 0 ? (
+          <ul className={styles.list}>{active.map(row)}</ul>
+        ) : (
+          <p className={styles.empty}>No active medications.</p>
+        )}
+      </section>
+      {completed.length > 0 && (
+        <section className={styles.section}>
+          <h2 className={styles.sectionHeading}>Completed</h2>
+          <ul className={styles.list}>{completed.map(row)}</ul>
+        </section>
+      )}
+    </div>
   )
 }
 

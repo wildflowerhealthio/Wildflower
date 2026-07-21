@@ -204,13 +204,15 @@ describe('medicationRequestToMedicationView', () => {
     expect(weeks.nextFillDate).toBe('2026-06-15T00:00:00.000Z')
   })
 
-  test('no next-fill estimate without an authored date or a recognizable supply unit', () => {
+  test('no next-fill estimate without an authored date', () => {
     const noDate = medicationRequestToMedicationView(
       decode({ ...base, dispenseRequest: { expectedSupplyDuration: { value: 30, code: 'd' } } }),
       'fallback'
     )
     expect(noDate.nextFillDate).toBeNull()
+  })
 
+  test('an unrecognized supply unit falls back to days', () => {
     const unknownUnit = medicationRequestToMedicationView(
       decode({
         ...base,
@@ -219,7 +221,7 @@ describe('medicationRequestToMedicationView', () => {
       }),
       'fallback'
     )
-    expect(unknownUnit.nextFillDate).toBeNull()
+    expect(unknownUnit.nextFillDate).toBe('2026-07-01T00:00:00.000Z')
   })
 
   test('joins multiple notes with newlines', () => {

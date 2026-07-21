@@ -90,7 +90,7 @@ describe('MedicationsView', () => {
         {
           din: '02241497',
           description: '20 mg - Tablet',
-          requester: 'Dr. Jane Smith',
+          requester: 'Jane Smith',
           note: 'Take with food',
           repeatsAllowed: 3,
           repeatsAvailable: 2,
@@ -106,8 +106,9 @@ describe('MedicationsView', () => {
     expect(screen.getByText('2 / 3 Repeats Available')).toBeDefined()
   })
 
-  test('combined repeats reads "0 / 3" when none remain and "No Repeats" when none allowed', () => {
+  test('repeats: none-remaining is a danger "No Repeats Remaining"; no-allowance is "No Repeats"', () => {
     const medications: readonly MedicationView[] = [
+      // Allowed but none left → danger label.
       view(
         { id: 'exhausted', displayName: 'Exhausted' },
         { repeatsAllowed: 3, repeatsAvailable: 0 }
@@ -121,21 +122,48 @@ describe('MedicationsView', () => {
     ]
     render(<MedicationsView medications={medications} province="ON" catalogs={catalogs} />)
 
-    expect(screen.getByText('0 / 3 Repeats Available')).toBeDefined()
-    expect(screen.getAllByText('No Repeats')).toHaveLength(2)
+    const danger = screen.getByText('No Repeats Remaining')
+    const neutral = screen.getAllByText('No Repeats')
+    expect(neutral).toHaveLength(2)
+    // The danger variant carries a different (red) class than the neutral ones.
+    expect(danger.className).toContain('repeatsDanger')
+    expect(danger.className).not.toBe(neutral[0]?.className)
   })
 
-  test('renders the estimated next-fill day with a relative hint', () => {
+  test('labels the supply date "Next fill" with refills left and "Supply exhausted" without', () => {
     const medications: readonly MedicationView[] = [
-      view({ id: '1', displayName: 'Atorvastatin' }, { nextFillDate: '2026-06-30T00:00:00.000Z' }),
+      view(
+        { id: 'refill', displayName: 'Has refills' },
+        { nextFillDate: '2026-06-30T00:00:00.000Z', repeatsAllowed: 3, repeatsAvailable: 2 }
+      ),
+      view(
+        { id: 'dry', displayName: 'No refills' },
+        { nextFillDate: '2026-08-11T00:00:00.000Z', repeatsAllowed: 3, repeatsAvailable: 0 }
+      ),
     ]
     render(<MedicationsView medications={medications} province="ON" catalogs={catalogs} />)
 
-    expect(screen.getByText('Next fill')).toBeDefined()
     // The absolute day is stable regardless of "now"; the relative hint is
     // covered deterministically by describeDayFromNow's own unit tests.
-    const fill = screen.getByText('Next fill').nextElementSibling
-    expect(fill?.textContent).toContain('2026-06-30')
+    expect(screen.getByText('Next fill').nextElementSibling?.textContent).toContain('2026-06-30')
+    expect(screen.getByText('Supply exhausted').nextElementSibling?.textContent).toContain(
+      '2026-08-11'
+    )
+  })
+
+  test('combines the fill date and repeats onto a single metadata line', () => {
+    const medications: readonly MedicationView[] = [
+      view(
+        { id: '1', displayName: 'Atorvastatin', status: 'active' },
+        { nextFillDate: '2026-08-11T00:00:00.000Z', repeatsAllowed: 12, repeatsAvailable: 2 }
+      ),
+    ]
+    render(<MedicationsView medications={medications} province="ON" catalogs={catalogs} />)
+
+    const metaLine = screen.getByText('Next fill').closest('p')
+    expect(metaLine).not.toBeNull()
+    expect(metaLine?.textContent).toContain('2026-08-11')
+    expect(metaLine?.textContent).toContain('2 / 12 Repeats Available')
   })
 
   test('renders a Rexall store link only when the request carries a store URL', () => {
@@ -158,6 +186,47 @@ describe('MedicationsView', () => {
     }
     // Exactly one Rexall link across the list — the non-Rexall row has none.
     expect(screen.getAllByRole('link', { name: 'Rexall' })).toHaveLength(1)
+  })
+
+  test('splits medications into "Active Medications" and "Completed" sections', () => {
+    const medications: readonly MedicationView[] = [
+      view({ id: 'a', displayName: 'Active one', status: 'active' }),
+      view({ id: 'c', displayName: 'Done one', status: 'completed' }),
+    ]
+    render(<MedicationsView medications={medications} province="ON" catalogs={catalogs} />)
+
+    const active = screen.getByRole('heading', { name: 'Active Medications' })
+    const completed = screen.getByRole('heading', { name: 'Completed' })
+    // Each section owns only its own row.
+    const activeList = active.nextElementSibling
+    const completedList = completed.nextElementSibling
+    expect(activeList?.textContent).toContain('Active one')
+    expect(activeList?.textContent).not.toContain('Done one')
+    expect(completedList?.textContent).toContain('Done one')
+  })
+
+  test('omits the Completed section when every medication is active', () => {
+    render(
+      <MedicationsView
+        medications={[view({ id: 'a', displayName: 'A', status: 'active' })]}
+        province="ON"
+        catalogs={catalogs}
+      />
+    )
+    expect(screen.getByRole('heading', { name: 'Active Medications' })).toBeDefined()
+    expect(screen.queryByRole('heading', { name: 'Completed' })).toBeNull()
+  })
+
+  test('shows an empty note under Active when all medications are completed', () => {
+    render(
+      <MedicationsView
+        medications={[view({ id: 'c', displayName: 'Done', status: 'completed' })]}
+        province="ON"
+        catalogs={catalogs}
+      />
+    )
+    expect(screen.getByText('No active medications.')).toBeDefined()
+    expect(screen.getByRole('heading', { name: 'Completed' })).toBeDefined()
   })
 
   test('renders an empty state when there are no medications', () => {

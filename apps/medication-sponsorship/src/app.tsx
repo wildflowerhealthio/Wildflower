@@ -58,7 +58,7 @@ export const App = (): JSX.Element => {
   return (
     <main className={styles.app}>
       <header className={styles.header}>
-        <h1 className={styles.title}>Sponsored Medications</h1>
+        <h1 className={styles.title}>Medications</h1>
         <ProvincePicker value={province} onChange={setProvince} />
       </header>
       {state.kind === 'loading' && <p className={styles.status}>Loading medications…</p>}

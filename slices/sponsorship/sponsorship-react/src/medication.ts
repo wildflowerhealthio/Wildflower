@@ -244,8 +244,8 @@ const repeatsOf = (
 
 // UCUM time codes and their spelled-out `unit` fallbacks → a builder for the
 // matching `DateTime.add` part. Supply durations are almost always days, but
-// weeks/months are valid; an unrecognized unit yields no next-fill estimate.
-// `Partial` keeps index access `Builder | undefined`.
+// weeks/months are valid; an unrecognized or absent unit falls back to days
+// (see `supplyToParts`). `Partial` keeps index access `Builder | undefined`.
 type PartBuilder = (amount: number) => Partial<DateTime.DateTime.PartsForMath>
 const UCUM_UNIT: Partial<Record<string, PartBuilder>> = {
   s: (n) => ({ seconds: n }),
@@ -294,7 +294,6 @@ const supplyToParts = (supply: SupplyDuration): Partial<DateTime.DateTime.PartsF
  * present.
  */
 const nextFillDateOf = (request: MedicationRequestResource): string | null => {
-  debugger
   const authored = request.authoredOn
   if (authored === null || authored === undefined) return null
   const dispenseRequest = decodeDispenseRequest(request.dispenseRequest)
@@ -380,7 +379,6 @@ const medicationRequestToMedicationView = (
 ): MedicationView => {
   const contained = containedMedicationOf(request)
   const repeats = repeatsOf(request)
-  debugger
   return {
     medication: medicationRequestToMedication(request, fallbackId),
     din: contained === undefined ? null : dinOf(contained),
