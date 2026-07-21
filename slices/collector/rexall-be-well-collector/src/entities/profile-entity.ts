@@ -12,16 +12,12 @@ type PatientType = typeof Patient.Schema.Type
  * FHIR**, so it does not go through `fhir-stu3-as-r4`; it is decoded here and then
  * synthesized into an R4 `Patient`.
  *
- * Only `identifiers.uid` is required — it is the id every medication's `subject`
+ * The payload nests everything under a top-level `data` envelope. Only
+ * `data.identifiers.uid` is required — it is the id every medication's `subject`
  * references, so it becomes the synthesized `Patient.id`. Everything else is
- * optional and lenient (unknown fields are dropped on decode, Effect's default).
- *
- * ⚠️ The exact field names below (`firstName` / `lastName` / `dateOfBirth` /
- * `email` / `address.postalCode`) are **synthesized from the epic notes, not a
- * real capture** — an open question on issue #339. Reconcile them against a
- * redacted `/me` capture before relying on the synthesized demographics; a
- * name/DOB/address the capture spells differently simply won't populate until the
- * field name here matches (decode never fails on the mismatch, it just drops it).
+ * optional and lenient (unknown fields are dropped on decode, Effect's default),
+ * so a field the capture omits simply leaves its Patient slot at the schema
+ * default rather than failing the decode.
  */
 const ProfileSchema = Schema.Struct({
   data: Schema.Struct({

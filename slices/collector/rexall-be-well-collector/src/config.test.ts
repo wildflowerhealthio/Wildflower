@@ -144,7 +144,7 @@ describe('scrapingPlan', () => {
           action: { kind: 'Fill', querySelector: 'input[type="email"]', value: 'a@b.com' },
         },
       },
-      { _tag: 'Delay', duration: Duration.seconds(1) },
+      { _tag: 'Delay', duration: Duration.seconds(0.25) },
       {
         _tag: 'Navigation',
         action: {
@@ -152,7 +152,7 @@ describe('scrapingPlan', () => {
           action: { kind: 'Fill', querySelector: 'input[type="password"]', value: 'secret' },
         },
       },
-      { _tag: 'Delay', duration: Duration.seconds(1) },
+      { _tag: 'Delay', duration: Duration.seconds(0.25) },
       {
         _tag: 'Navigation',
         action: {

@@ -61,7 +61,9 @@ describe('ProfileEntity', () => {
     })
 
     it('synthesizes a bare Patient when only the uid is present', () => {
-      const result = runParse(makeResponse(JSON.stringify({ identifiers: { uid: 'uid-only' } })))
+      const result = runParse(
+        makeResponse(JSON.stringify({ data: { identifiers: { uid: 'uid-only' } } }))
+      )
       if (result._tag !== 'Right') throw new Error('expected a successful parse')
       const patient = result.right[0]
       expect(patient.id).toBe('uid-only')
@@ -72,7 +74,7 @@ describe('ProfileEntity', () => {
 
     it('fails with ParseError when the required uid is missing', () => {
       expectLeftToEqual(
-        runParse(makeResponse(JSON.stringify({ identifiers: {} }))),
+        runParse(makeResponse(JSON.stringify({ data: { identifiers: {} } }))),
         expect.objectContaining({ _tag: 'ParseError' })
       )
     })

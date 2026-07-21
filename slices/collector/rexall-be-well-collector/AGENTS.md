@@ -70,10 +70,13 @@ collector end-to-end:
   `PageLoaded` (a hard cross-host redirect, or an SPA route the sniffer's settle
   watch still reports). Falls back to a fixed `Delay` if it bites (see the sniffer
   caveat on issue #339).
-- **Profile field names** — `ProfileEntity`'s `ProfileSchema` field names
-  (`firstName` / `dateOfBirth` / `address.postalCode` / …) are provisional; a
-  capture that spells them differently simply won't populate those Patient fields
-  (decode never fails on the mismatch).
+- **Profile field names** — reconciled against production: `ProfileEntity`'s
+  `ProfileSchema` reads the `/me` payload's top-level `data` envelope
+  (`data.identifiers.uid` / `data.identifiers.email` / `data.firstName` /
+  `data.lastName` / `data.birthDate` / `data.address.postalCode`), and
+  `profile-me.json` mirrors that shape. Decode stays lenient — a field the
+  capture omits simply won't populate its Patient slot (it never fails the
+  decode).
 - **Detail XHR richness** — the list-vs-detail capture diff that decides whether
   the deferred detail crawl is needed at all.
 
