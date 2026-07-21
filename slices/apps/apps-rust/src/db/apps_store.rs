@@ -242,7 +242,7 @@ mod tests {
                 "growth-chart",
                 "medication-viewer",
                 "precise-hbr",
-                "medication-sponsorship",
+                "wildflower-medication",
             ],
         );
     }

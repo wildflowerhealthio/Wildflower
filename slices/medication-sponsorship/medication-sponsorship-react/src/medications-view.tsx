@@ -7,7 +7,7 @@ import {
   type SponsorCatalog,
   type SponsoredDrug,
   type SponsorProgram,
-} from 'sponsorship-core'
+} from 'medication-sponsorship-core'
 
 import { describeDayFromNow, type MedicationView } from './medication.ts'
 import { SponsorChip } from './sponsor-chip.tsx'
@@ -67,7 +67,7 @@ const repeatsSummary = (
  * coverage) and pharmacy-location button, DIN + description, a combined
  * next-fill / repeats line, prescriber and notes. The layout is a mobile-first
  * vertical stack that wraps on narrow screens and right-aligns the chip/pharmacy
- * actions on wider ones. Eligibility is computed via `sponsorship-core`'s
+ * actions on wider ones. Eligibility is computed via `medication-sponsorship-core`'s
  * {@link groupMedications} and memoized on its inputs.
  */
 export const MedicationsView = ({

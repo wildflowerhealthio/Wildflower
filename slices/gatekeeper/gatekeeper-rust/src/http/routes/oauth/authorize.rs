@@ -572,7 +572,7 @@ mod redirect_resolution_tests {
     fn topology() -> SelfHostedRedirectTopology {
         SelfHostedRedirectTopology {
             port: 8090,
-            subdomain: "medication-sponsorship".to_owned(),
+            subdomain: "medication".to_owned(),
         }
     }
 
@@ -610,7 +610,7 @@ mod redirect_resolution_tests {
         );
         assert_eq!(
             resolved,
-            Some(Url::parse("https://medication-sponsorship.ruth.wildflowerhealth.io/").unwrap())
+            Some(Url::parse("https://medication.ruth.wildflowerhealth.io/").unwrap())
         );
     }
 

@@ -6,7 +6,7 @@ import {
   type Medication,
   type SponsorCatalog,
   type SponsoredDrug,
-} from 'sponsorship-core'
+} from 'medication-sponsorship-core'
 
 import type { MedicationView } from './medication.ts'
 import { MedicationsView } from './medications-view.tsx'

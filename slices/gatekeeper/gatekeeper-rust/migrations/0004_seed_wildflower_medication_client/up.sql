@@ -1,4 +1,4 @@
--- Seed the medication-sponsorship SMART app's OAuth client (same pattern and
+-- Seed the Medications SMART app's OAuth client (same pattern and
 -- column formats as 0003_seed_sample_clients; see `db/clients.rs`). A public
 -- PKCE client — the app is a browser SMART app with no client secret.
 --
@@ -21,11 +21,11 @@ INSERT OR IGNORE INTO clients
     (client_id, name, kind, redirect_uris, allowed_scopes, allowed_grant_types, secret_hash, registered_at, disabled_at)
 VALUES
     (
-        'medication-sponsorship',
-        'Sponsored Medications',
+        'wildflower-medication',
+        'Medications',
         'public',
         '["/"]',
-        '["launch","openid","fhirUser","patient/Patient.read","patient/MedicationRequest.read","patient/Medication.read","system/MedicationRequest.read","system/Medication.read"]',
+        '["launch","openid","fhirUser","system/MedicationRequest.read","system/Medication.read"]',
         '["authorization_code","refresh_token"]',
         NULL,
         '2024-01-01 00:00:00+00:00',

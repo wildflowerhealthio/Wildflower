@@ -2,7 +2,7 @@ import type { SmartLaunchConfig } from 'fhir-r4-react/smart'
 
 /**
  * SMART registration for this app. `clientId` MUST match the OAuth client
- * seeded in gatekeeper (`0004_seed_medication_sponsorship_client`), and the
+ * seeded in gatekeeper (`0004_seed_wildflower_medication_client`), and the
  * scopes must be a subset of that client's allowed scopes: EHR launch + patient
  * context, then read the patient plus their MedicationRequests (and any
  * referenced Medication resources). The `system/` scopes support a launch with
@@ -13,7 +13,6 @@ import type { SmartLaunchConfig } from 'fhir-r4-react/smart'
  * set here; `redirectUri` is computed at launch time from the current origin.
  */
 export const smartConfig: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
-  clientId: 'medication-sponsorship',
-  scope:
-    'launch openid fhirUser patient/Patient.read patient/MedicationRequest.read patient/Medication.read system/MedicationRequest.read system/Medication.read',
+  clientId: 'wildflower-medication',
+  scope: 'launch openid fhirUser system/MedicationRequest.read system/Medication.read',
 }

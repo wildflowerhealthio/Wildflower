@@ -1,11 +1,11 @@
 import { DateTime, Option, Schema } from 'effect'
 import type { MedicationRequest } from 'fhir-r4/resources'
-import type { Medication } from 'sponsorship-core'
+import type { Medication } from 'medication-sponsorship-core'
 
 /** The decoded FHIR R4 `MedicationRequest` resource. */
 type MedicationRequestResource = Schema.Schema.Type<typeof MedicationRequest.Schema>
 
-// carebook dialect constants for the medication-sponsorship FHIR server. These
+// carebook dialect constants for the Medications app's FHIR server. These
 // are the exact URLs that server emits and are distinct from the Rexall STU3
 // dialect in `rexall-be-well-collector` — keep them verbatim. The DIN lives as
 // a `code.coding` entry on the (contained) Medication; the human-readable
@@ -330,7 +330,7 @@ const describeDayFromNow = (iso: string, nowMillis: number): string => {
 }
 
 /**
- * Map a decoded FHIR `MedicationRequest` onto the `sponsorship-core`
+ * Map a decoded FHIR `MedicationRequest` onto the `medication-sponsorship-core`
  * {@link Medication} value the matcher and grouping consume. `fallbackId`
  * supplies a stable React key when the resource carries no `id`.
  */

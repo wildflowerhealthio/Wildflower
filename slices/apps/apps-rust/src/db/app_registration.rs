@@ -167,7 +167,7 @@ mod tests {
                 "growth-chart",
                 "medication-viewer",
                 "precise-hbr",
-                "medication-sponsorship",
+                "wildflower-medication",
             ],
             "seeded apps must come back in position order",
         );
@@ -216,7 +216,7 @@ mod tests {
             ("api-docs".to_owned(), false),
             ("api-view".to_owned(), true),
             ("patient-browser".to_owned(), true),
-            ("medication-sponsorship".to_owned(), true),
+            ("wildflower-medication".to_owned(), true),
         ];
         let updated = store
             .replace_placements(&entries)

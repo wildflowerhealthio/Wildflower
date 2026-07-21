@@ -1,5 +1,5 @@
 {
-  "name": "medication-sponsorship",
+  "name": "wildflower-medication",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -13,10 +13,10 @@
   "dependencies": {
     "effect": "catalog:",
     "fhir-r4-react": "workspace:*",
+    "medication-sponsorship-core": "workspace:*",
+    "medication-sponsorship-react": "workspace:*",
     "react": "catalog:",
-    "react-dom": "catalog:",
-    "sponsorship-core": "workspace:*",
-    "sponsorship-react": "workspace:*"
+    "react-dom": "catalog:"
   },
   "devDependencies": {
     "@testing-library/dom": "^10.4.0",

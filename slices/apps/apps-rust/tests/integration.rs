@@ -151,7 +151,7 @@ async fn fresh_install_lists_the_default_set() {
             "growth-chart",
             "medication-viewer",
             "precise-hbr",
-            "medication-sponsorship",
+            "wildflower-medication",
         ],
     );
 }
@@ -345,7 +345,7 @@ async fn home_screen_reorders_and_disables_a_system_app() {
         { "id": "growth-chart", "onHomescreen": true },
         { "id": "medication-viewer", "onHomescreen": true },
         { "id": "precise-hbr", "onHomescreen": true },
-        { "id": "medication-sponsorship", "onHomescreen": true },
+        { "id": "wildflower-medication", "onHomescreen": true },
     ]);
     let res = router
         .clone()
@@ -368,7 +368,7 @@ async fn home_screen_reorders_and_disables_a_system_app() {
             "growth-chart",
             "medication-viewer",
             "precise-hbr",
-            "medication-sponsorship",
+            "wildflower-medication",
         ],
     );
     let api_docs = arr.iter().find(|v| v["id"] == "api-docs").unwrap();

@@ -1,6 +1,11 @@
 import type { JSX } from 'react'
 
-import { isProvince, type Province, provinceCodes, provinceNames } from 'sponsorship-core'
+import {
+  isProvince,
+  type Province,
+  provinceCodes,
+  provinceNames,
+} from 'medication-sponsorship-core'
 
 import styles from './province-picker.module.css'
 

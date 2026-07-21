@@ -20,7 +20,7 @@ export default defineConfig({
     // maps the whole `slices/apps/self-hosted-apps/` dir into `bundle.resources`)
     // and the host's `sync_vendored_self_hosted_apps` seeds it into app-data on
     // startup. The folder is gitignored like every other vendored build.
-    outDir: '../../slices/apps/self-hosted-apps/medication-sponsorship',
+    outDir: '../../slices/apps/self-hosted-apps/medication',
     emptyOutDir: true,
     rollupOptions: {
       input: {

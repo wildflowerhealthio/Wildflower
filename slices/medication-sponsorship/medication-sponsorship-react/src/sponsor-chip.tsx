@@ -1,6 +1,10 @@
 import type { JSX } from 'react'
 
-import { type SponsoredDrug, type SponsorProgram, sponsorProgramLabels } from 'sponsorship-core'
+import {
+  type SponsoredDrug,
+  type SponsorProgram,
+  sponsorProgramLabels,
+} from 'medication-sponsorship-core'
 
 import styles from './sponsor-chip.module.css'
 

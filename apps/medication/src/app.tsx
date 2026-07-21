@@ -2,13 +2,13 @@ import type { JSX } from 'react'
 import { useEffect, useState } from 'react'
 
 import { fetchMedicationRequests, readySmartClient } from 'fhir-r4-react/smart'
-import type { Province } from 'sponsorship-core'
+import type { Province } from 'medication-sponsorship-core'
 import {
   MedicationsView,
   type MedicationView,
   medicationRequestsToMedicationViews,
   ProvincePicker,
-} from 'sponsorship-react'
+} from 'medication-sponsorship-react'
 
 import { catalogs } from './catalogs.ts'
 import styles from './app.module.css'
@@ -23,7 +23,7 @@ const loadMedications = async (): Promise<readonly MedicationView[]> => {
   // `client.patient.id` is `null` under a `system/` launch (no patient context);
   // `fetchMedicationRequests` then reads across every patient the granted scopes
   // expose rather than failing.
-  const requests = await fetchMedicationRequests(client, client.patient.id)
+  const requests = await fetchMedicationRequests(client, null)
   return medicationRequestsToMedicationViews(requests)
 }
 
