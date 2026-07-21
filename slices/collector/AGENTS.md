@@ -74,19 +74,25 @@ before adding one.
 
 ## Traps
 
-- **`Step` is a `Navigation | Delay` union; only `NavigationStep.action` reaches
-  the wire.** The automatic-navigation machine forwards only a `Navigation` step's
-  `action` (typed against the bridge message bodies themselves), so both the
-  plan-only `advanceWhen` gate and the whole `Delay` variant stay off the wire by
-  construction — there is no "strip before dispatch" step to remember. A new
-  scripted interaction is a `PageAction` `action` union variant, not a new bridge
-  tag; a new _pause_ is a `Delay` step, not a plan-wide delay field.
-- **There is no implicit inter-step settle — plans own their grace periods.** A
-  `Navigation` dispatches on the same transition as its gating `PageLoaded`, and
-  the run closes the stream the moment both completion gates hold. If post-load
-  XHR fan-out must finish before the run completes, add an explicit **trailing
-  `Delay` step** (it delays reaching `Drained`, keeping the run open while those
-  requests start and are tracked).
+- **`Step` is a `Navigation | Delay | AwaitPageSettled` union; only
+  `NavigationStep.action` reaches the wire.** The automatic-navigation machine
+  forwards only a `Navigation` step's `action` (typed against the bridge message
+  bodies themselves), so both plan-only hold variants (`Delay`, `AwaitPageSettled`)
+  stay off the wire by construction — there is no "strip before dispatch" step to
+  remember. A new scripted interaction is a `PageAction` `action` union variant,
+  not a new bridge tag; a new _pause_ is a `Delay` (fixed) or `AwaitPageSettled`
+  (wait for a matching settled page load) step, not a plan-wide delay field.
+- **Every `Navigation` dispatches and advances immediately — plans own their
+  waits.** A `Fill` / `Click` / `Open` never waits for a `PageLoaded` (a
+  `PageAction` fires none at all), so consecutive actions drain in one turn; a
+  login is `Fill`/`Fill`/`Click` back-to-back. Any wait is an explicit step: a
+  `Delay` for a fixed pause, or an **`AwaitPageSettled`** to hold until a settled
+  `PageLoaded` matches a url pattern (aborting on its `timeout`). Two consequences:
+  (1) after a `Click`/`Open` that navigates, gate the _next_ step with an
+  `AwaitPageSettled` for the destination — don't expect the action itself to wait;
+  (2) to keep the run open for post-load XHR fan-out, add a trailing
+  `AwaitPageSettled` (wait for the page) and/or `Delay` (fixed grace) — otherwise
+  the queue drains the instant the last action dispatches.
 - **Completion couples the two machines — `Drained ∧ all requests settled`.** The
   automatic-navigation machine can't complete on an empty queue alone (an in-flight
   request may still `followUpSteps`). It reaches `Done` only when the lifecycle

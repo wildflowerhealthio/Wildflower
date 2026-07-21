@@ -246,14 +246,18 @@ closure — it names `DispatchNavigation` / `DispatchSniffingComplete` /
 `Schedule*` / `CancelTimer` / `RequestCompletionCheck` / `Warn*` effects for the
 runtime to discharge.
 
-On each `PageLoaded` the machine pops and processes the queue head: a
-`Navigation` dispatches its `action` (immediately, or — for an unmet `UrlMatch`
-`advanceWhen` — once a matching `PageLoaded` arrives), a `Delay` arms a timer for
-its `duration`, and an empty queue transitions to `Drained`. A `StepsGenerated`
-input appends to the back of the queue (breadth-first), or from `Drained`
-re-awakens the machine and dispatches the new head with no `PageLoaded`. There is
-**no implicit settle timer**: a dispatch happens on the same transition as its
-gating `PageLoaded`.
+On the first `PageLoaded` the machine begins draining the queue front-to-back,
+and it keeps draining as far as it can each turn: a `Navigation` **dispatches its
+`action` and immediately advances** (a `Fill` / `Click` / `Open` never waits for
+a `PageLoaded`, so consecutive navigations dispatch back-to-back), a `Delay` arms
+a timer for its `duration` and rests, an `AwaitPageSettled` parks until a settled
+`PageLoaded` matches its `pattern` (or aborts on its `timeout`) — resuming the
+drain from the tail on a match — and an empty queue transitions to `Drained`. A
+`StepsGenerated` input appends to the back of the queue (breadth-first), or from
+`Drained` re-awakens the machine and drains the new steps with no `PageLoaded`.
+There is **no implicit settle timer**: all waiting is an explicit `Delay` or
+`AwaitPageSettled` step, so `AwaitingPageLoaded` is a start-up-only resting state
+(nothing but `Stop` returns to it).
 
 The **transition function is pure** — it never sends a message, forks a
 fiber, or logs; it only names the side-effect messages the runtime should

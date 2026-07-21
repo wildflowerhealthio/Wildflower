@@ -1,4 +1,5 @@
-import { Arbitrary, Schema } from 'effect'
+import { UrlMatch } from 'collector-fundamentals/model'
+import { Arbitrary, Duration, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
@@ -136,7 +137,7 @@ describe('scrapingPlan', () => {
     })
   })
 
-  it('navigates to the Observation endpoint as a single Open step via a direct Uri', () => {
+  it('navigates to the Observation endpoint as an Open step, then holds until it settles', () => {
     const plan = scrapingPlan(defaultConfig)
     expect(plan.stepSequence).toEqual([
       {
@@ -148,6 +149,14 @@ describe('scrapingPlan', () => {
             uri: 'https://r4.smarthealthit.org/Observation?subject%3APatient=8c0f46f4-dd7b-4a5f-bd35-f0f41a2f8882&_count=250&_format=json',
           },
         },
+      },
+      {
+        _tag: 'AwaitPageSettled',
+        pattern: UrlMatch.make({
+          segments: [UrlMatch.literal('Observation')],
+          end: 'mustHaveQuery',
+        }),
+        timeout: Duration.seconds(30),
       },
     ])
   })

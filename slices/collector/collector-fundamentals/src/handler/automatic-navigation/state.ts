@@ -15,13 +15,15 @@ import type { Step } from '../../model/step.ts'
  * [Handler Explanation](../../../docs/Handler%20Explanation.md#timers-are-inputs-correlated-by-generation)
  * for the full discipline.
  *
- * - `AwaitingPageLoaded` — dispatched a navigation (or idle at start); waiting
- *   for a `PageLoaded` to pop and process the next `queue` head.
+ * - `AwaitingPageLoaded` — *start-up only*: waiting for the first settled
+ *   `PageLoaded` to begin draining `queue`. A `Navigation` never returns here —
+ *   it dispatches and advances immediately — so nothing transitions back into
+ *   this state except `Stop`'s reset.
  * - `DelayPending` — a `Delay` step's timer is running; `queue` is what remains
  *   *after* that delay.
- * - `AwaitingUrlMatch` — the head `Navigation` step's `advanceWhen` `UrlMatch`
- *   is unmet; `queue[0]` is that still-undispatched step and a URL-match
- *   timeout daemon is pending.
+ * - `AwaitingUrlMatch` — the head `AwaitPageSettled` hold's `pattern` is unmet;
+ *   `queue[0]` is that still-unconsumed hold and a URL-match timeout daemon is
+ *   pending.
  * - `Drained` — the queue is empty, but the run may not be over: an in-flight
  *   request could still `followUpSteps` more work. Terminal only once the
  *   lifecycle confirms no sniffed request is still incomplete (via

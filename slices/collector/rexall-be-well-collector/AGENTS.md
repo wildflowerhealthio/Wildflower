@@ -65,10 +65,11 @@ collector end-to-end:
 
 - **Login-form selectors** — `config.ts`'s `EMAIL_SELECTOR` / `PASSWORD_SELECTOR`
   / `SUBMIT_SELECTOR` are best-guess defaults for `verify.letsbewell.ca/login`.
-- **Login transition** — the `advanceWhen` gate assumes the post-login jump to
-  `app.letsbewell.ca` is a hard cross-host redirect (which emits a `PageLoaded`),
-  not a client-side SPA route (which does not). Falls back to a fixed `Delay` if
-  it bites (see the sniffer caveat on issue #339).
+- **Login transition** — the `AwaitPageSettled` hold after the submit `Click`
+  assumes the post-login jump to `app.letsbewell.ca` surfaces a settled
+  `PageLoaded` (a hard cross-host redirect, or an SPA route the sniffer's settle
+  watch still reports). Falls back to a fixed `Delay` if it bites (see the sniffer
+  caveat on issue #339).
 - **Profile field names** — `ProfileEntity`'s `ProfileSchema` field names
   (`firstName` / `dateOfBirth` / `address.postalCode` / …) are provisional; a
   capture that spells them differently simply won't populate those Patient fields

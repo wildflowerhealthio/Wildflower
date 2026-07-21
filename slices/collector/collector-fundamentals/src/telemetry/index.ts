@@ -33,8 +33,8 @@ const Sniffing = {
     Span: { Name: 'collector.sniffing.wait' },
   },
   /**
-   * Holding a step until a `PageLoaded` whose `url` matches the step's
-   * `advanceWhen` pattern. The span closes when the wait cap
+   * Holding on an `AwaitPageSettled` step until a settled `PageLoaded` whose
+   * `url` matches the step's `pattern`. The span closes when the wait cap
    * (`timeout`) elapses; a match interrupts the fiber before the span
    * closes, so a closed span means the step timed out and the run
    * aborted via `SniffingComplete`.

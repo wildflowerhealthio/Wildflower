@@ -23,12 +23,13 @@ const DEFAULT_MAX_GENERATED_STEPS = 500
  *     whether to track the in-flight response (first `isFoundAt` match
  *     wins; non-matching responses are cancelled via `sendMessage`).
  *   - Drives the sniffer through a **breadth-first step queue** seeded with
- *     `stepSequence`. On each `PageLoaded` it pops and processes the queue
- *     head: a `Navigation` step's `action` is dispatched (immediately, or —
- *     for a `UrlMatch` `advanceWhen` — once a matching `PageLoaded` arrives,
- *     aborting via `SniffingComplete` if the per-step `timeout` elapses); a
- *     `Delay` step arms a timer for its `duration` before the next entry. When
- *     the queue drains *and* every sniffed request has settled, fires
+ *     `stepSequence`. Starting on the first settled `PageLoaded` it drains the
+ *     queue front-to-back: each `Navigation` step's `action` is dispatched and
+ *     the drain immediately continues (a `Fill` / `Click` / `Open` never waits
+ *     for a `PageLoaded`), a `Delay` step arms a timer for its `duration`, and
+ *     an `AwaitPageSettled` step holds until a settled `PageLoaded` matches its
+ *     `pattern` (aborting via `SniffingComplete` if its `timeout` elapses first).
+ *     When the queue drains *and* every sniffed request has settled, fires
  *     `SniffingComplete`.
  *   - Appends any steps an entity's `followUpSteps` produces to the *back* of
  *     that same queue, so a parsed list/table can open every page it links —

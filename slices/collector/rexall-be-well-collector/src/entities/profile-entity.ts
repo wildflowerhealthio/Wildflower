@@ -24,12 +24,13 @@ type PatientType = typeof Patient.Schema.Type
  * field name here matches (decode never fails on the mismatch, it just drops it).
  */
 const ProfileSchema = Schema.Struct({
-  identifiers: Schema.Struct({ uid: Schema.String }),
-  firstName: Schema.optional(Schema.String),
-  lastName: Schema.optional(Schema.String),
-  dateOfBirth: Schema.optional(Schema.String),
-  email: Schema.optional(Schema.String),
-  address: Schema.optional(Schema.Struct({ postalCode: Schema.optional(Schema.String) })),
+  data: Schema.Struct({
+    identifiers: Schema.Struct({ uid: Schema.String, email: Schema.optional(Schema.String) }),
+    firstName: Schema.optional(Schema.String),
+    lastName: Schema.optional(Schema.String),
+    birthDate: Schema.optional(Schema.String),
+    address: Schema.optional(Schema.Struct({ postalCode: Schema.optional(Schema.String) })),
+  }),
 })
 
 type Profile = typeof ProfileSchema.Type
@@ -47,19 +48,20 @@ const decodePatient = Schema.decodeUnknown(Patient.Schema)
 const patientWire = (profile: Profile): Record<string, unknown> => {
   const wire: Record<string, unknown> = {
     resourceType: 'Patient',
-    id: profile.identifiers.uid,
+    id: profile.data.identifiers.uid,
   }
-  if (profile.firstName != null || profile.lastName != null) {
+  if (profile.data.firstName != null || profile.data.lastName != null) {
     wire['name'] = [
       {
-        ...(profile.lastName != null ? { family: profile.lastName } : {}),
-        ...(profile.firstName != null ? { given: [profile.firstName] } : {}),
+        ...(profile.data.lastName != null ? { family: profile.data.lastName } : {}),
+        ...(profile.data.firstName != null ? { given: [profile.data.firstName] } : {}),
       },
     ]
   }
-  if (profile.dateOfBirth != null) wire['birthDate'] = profile.dateOfBirth
-  if (profile.email != null) wire['telecom'] = [{ system: 'email', value: profile.email }]
-  const postalCode = profile.address?.postalCode
+  if (profile.data.birthDate != null) wire['birthDate'] = profile.data.birthDate
+  if (profile.data.identifiers.email != null)
+    wire['telecom'] = [{ system: 'email', value: profile.data.identifiers.email }]
+  const postalCode = profile.data.address?.postalCode
   if (postalCode != null) wire['address'] = [{ postalCode }]
   return wire
 }

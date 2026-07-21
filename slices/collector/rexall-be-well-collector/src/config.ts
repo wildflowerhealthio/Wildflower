@@ -69,14 +69,14 @@ const defaultConfig: InstanceConfig = {
 }
 
 /** The user-facing login page the sniffer webview mounts first. */
-const LOGIN_URL = 'https://verify.letsbewell.ca/login'
+const LOGIN_URL = 'https://letsbewell.ca/sign-in'
 
 /** The user-facing prescriptions page whose load fires the profile + list XHRs. */
 const PRESCRIPTIONS_URL = 'https://app.letsbewell.ca/health/prescriptions'
 
 /**
  * Provisional login-form selectors — an **open question** on issue #339 (the real
- * `verify.letsbewell.ca/login` DOM was not captured). These are best-guess
+ * `letsbewell.ca/sign-in` DOM was not captured). These are best-guess
  * defaults for a standard email/password form; reconcile them against the real
  * page. A selector that matches nothing simply no-ops the `Fill`/`Click` (the
  * sniffer retries on the next `PageLoaded`), so a wrong guess fails the login
@@ -87,15 +87,26 @@ const PASSWORD_SELECTOR = 'input[type="password"]'
 const SUBMIT_SELECTOR = 'button[type="submit"]'
 
 /**
- * Hold the submit `Click` until a `PageLoaded` on `app.letsbewell.ca` arrives —
- * the cross-host `verify.` → `app.` login redirect. This works only if that
- * transition is a hard document navigation (very likely for a cross-host jump),
- * not a client-side SPA route (which emits no `PageLoaded` — see the sniffer
- * caveat on #339). {@link LOGIN_TIMEOUT} bounds the wait so a stuck login aborts
- * rather than hangs.
+ * The post-login redirect target: any `app.letsbewell.ca` page. After the submit
+ * `Click`, an `AwaitPageSettled` hold parks on this until a settled `PageLoaded`
+ * on the `app.` host arrives — the cross-host `letsbewell.ca` → `app.` login
+ * redirect. This works only if that transition surfaces a settled page load (a
+ * hard document navigation, or an SPA route the sniffer's settle watch still
+ * reports); {@link LOGIN_TIMEOUT} bounds the wait so a stuck login aborts rather
+ * than hangs. See the sniffer caveat on #339.
  */
-const LOGIN_ADVANCE_PATTERN = /:\/\/app\.letsbewell\.ca/
+const APP_LANDED_PATTERN = /:\/\/app\.letsbewell\.ca/
 const LOGIN_TIMEOUT = Duration.seconds(30)
+
+/**
+ * The prescriptions page itself (the `app.` landing above is any post-login
+ * page). After `Open`ing it, an `AwaitPageSettled` hold waits for *this* page to
+ * load and settle before the trailing {@link SETTLE} window — so the settle
+ * window measures quiet time on the prescriptions page, not a race against its
+ * initial load.
+ */
+const PRESCRIPTIONS_SETTLED_PATTERN = /:\/\/app\.letsbewell\.ca\/health\/prescriptions/
+const PRESCRIPTIONS_TIMEOUT = Duration.seconds(30)
 
 /**
  * Trailing settle window for the Angular XHR fan-out the prescriptions page
@@ -112,9 +123,12 @@ const SETTLE = Duration.seconds(8)
  * URL is ever `Open`ed directly**: the tunnel requests need auth/bearer headers
  * the Angular SPA injects, and crafting them is an explicit product constraint.
  *
- * The `stepSequence` scripts the login (Fill email, Fill password, Click submit
- * gated on the `app.letsbewell.ca` redirect), then `Open`s the prescriptions
- * page and holds open for {@link SETTLE} while its profile + list XHRs settle.
+ * The `stepSequence` scripts the login (Fill email, Fill password, Click submit),
+ * holds on an `AwaitPageSettled` for the post-login `app.letsbewell.ca` redirect,
+ * then `Open`s the prescriptions page, waits for *it* to settle, and holds open
+ * for {@link SETTLE} while its profile + list XHRs settle. Every `Fill`/`Click`
+ * dispatches and advances immediately (a `PageAction` fires no `PageLoaded`), so
+ * the short `Delay`s between them are the only thing pacing the login form.
  * `ProfileEntity` recognizes `…/profile/v2/me`; `MedicationListEntity` recognizes
  * the `…/pharmacy/Location?…` searchset — disjoint patterns, so entity order is
  * not load-bearing.
@@ -137,11 +151,19 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirRes
     firstPage,
     stepSequence: [
       {
+        _tag: 'Delay',
+        duration: Duration.seconds(2),
+      },
+      {
         _tag: 'Navigation',
         action: {
           _tag: 'PageAction',
           action: { kind: 'Fill', querySelector: EMAIL_SELECTOR, value: config.email },
         },
+      },
+      {
+        _tag: 'Delay',
+        duration: Duration.seconds(0.25),
       },
       {
         _tag: 'Navigation',
@@ -151,19 +173,33 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirRes
         },
       },
       {
+        _tag: 'Delay',
+        duration: Duration.seconds(0.25),
+      },
+      {
         _tag: 'Navigation',
         action: {
           _tag: 'PageAction',
           action: { kind: 'Click', querySelector: SUBMIT_SELECTOR },
         },
-        advanceWhen: { _tag: 'UrlMatch', pattern: LOGIN_ADVANCE_PATTERN, timeout: LOGIN_TIMEOUT },
       },
+      // Wait for the post-login redirect to land on the `app.` host before
+      // opening the prescriptions page (opening it pre-login would bounce to the
+      // sign-in screen).
+      { _tag: 'AwaitPageSettled', pattern: APP_LANDED_PATTERN, timeout: LOGIN_TIMEOUT },
       {
         _tag: 'Navigation',
         action: {
           _tag: 'Open',
           source: { _tag: 'Uri', uri: PRESCRIPTIONS_URL },
         },
+      },
+      // Hold until the prescriptions page itself has loaded and settled, then
+      // give its profile + list XHR fan-out the trailing settle window.
+      {
+        _tag: 'AwaitPageSettled',
+        pattern: PRESCRIPTIONS_SETTLED_PATTERN,
+        timeout: PRESCRIPTIONS_TIMEOUT,
       },
       { _tag: 'Delay', duration: SETTLE },
     ],

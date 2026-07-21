@@ -130,12 +130,13 @@ describe('RexallCollectorDescriptor', () => {
 describe('scrapingPlan', () => {
   it('mounts the letsbewell login page as the first page', () => {
     const plan = scrapingPlan(defaultConfig)
-    expect(plan.firstPage).toEqual({ _tag: 'Uri', uri: 'https://verify.letsbewell.ca/login' })
+    expect(plan.firstPage).toEqual({ _tag: 'Uri', uri: 'https://letsbewell.ca/sign-in' })
   })
 
-  it('scripts login (fill/fill/click) then opens the prescriptions page and settles', () => {
+  it('scripts login (fill/fill/click), holds for the redirect, opens prescriptions, and settles', () => {
     const plan = scrapingPlan({ _tag: 'rexall', email: 'a@b.com', password: 'secret' })
     expect(plan.stepSequence).toEqual([
+      { _tag: 'Delay', duration: Duration.seconds(2) },
       {
         _tag: 'Navigation',
         action: {
@@ -143,6 +144,7 @@ describe('scrapingPlan', () => {
           action: { kind: 'Fill', querySelector: 'input[type="email"]', value: 'a@b.com' },
         },
       },
+      { _tag: 'Delay', duration: Duration.seconds(1) },
       {
         _tag: 'Navigation',
         action: {
@@ -150,17 +152,18 @@ describe('scrapingPlan', () => {
           action: { kind: 'Fill', querySelector: 'input[type="password"]', value: 'secret' },
         },
       },
+      { _tag: 'Delay', duration: Duration.seconds(1) },
       {
         _tag: 'Navigation',
         action: {
           _tag: 'PageAction',
           action: { kind: 'Click', querySelector: 'button[type="submit"]' },
         },
-        advanceWhen: {
-          _tag: 'UrlMatch',
-          pattern: /:\/\/app\.letsbewell\.ca/,
-          timeout: Duration.seconds(30),
-        },
+      },
+      {
+        _tag: 'AwaitPageSettled',
+        pattern: /:\/\/app\.letsbewell\.ca/,
+        timeout: Duration.seconds(30),
       },
       {
         _tag: 'Navigation',
@@ -168,6 +171,11 @@ describe('scrapingPlan', () => {
           _tag: 'Open',
           source: { _tag: 'Uri', uri: 'https://app.letsbewell.ca/health/prescriptions' },
         },
+      },
+      {
+        _tag: 'AwaitPageSettled',
+        pattern: /:\/\/app\.letsbewell\.ca\/health\/prescriptions/,
+        timeout: Duration.seconds(30),
       },
       { _tag: 'Delay', duration: Duration.seconds(8) },
     ])

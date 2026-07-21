@@ -4,37 +4,6 @@ import type { Duration } from 'effect'
 import type { OpenMessage } from '../bridge.ts'
 
 /**
- * When the automatic-navigation machine should dispatch a {@link NavigationStep},
- * relative to the `PageLoaded` events flowing back from the sniffer.
- *
- * - Absent (`advanceWhen` omitted): the default — dispatch as soon as the
- *   machine reaches this step's turn in the queue (on the `PageLoaded` that
- *   pops it, or immediately when a generated step re-awakens a drained
- *   machine). No implicit settle delay is applied; a plan that needs a grace
- *   period inserts an explicit {@link DelayStep}.
- * - `UrlMatch`: hold the step until a `PageLoaded` arrives whose `url` matches
- *   `pattern`, then dispatch. Use for login flows whose redirects / SPA
- *   navigations settle at an unpredictable time — a fixed delay would race
- *   them. `pattern` is a `RegExp` built with `UrlMatch.make({ segments, end })`.
- *   `timeout` bounds the wait: if no matching `PageLoaded` is seen within it,
- *   the run aborts via `SniffingComplete` rather than hanging (the sync
- *   runner's idle timeout is the ultimate backstop).
- */
-interface UrlMatchAdvance {
-  readonly _tag: 'UrlMatch'
-  readonly pattern: RegExp
-  readonly timeout: Duration.Duration
-}
-
-/**
- * The advance condition attached to a {@link NavigationStep}. A union so more
- * trigger kinds (element-present, response-seen, …) can be added later
- * without touching the {@link NavigationStep} shape; today the only non-default
- * kind is {@link UrlMatchAdvance}.
- */
-type Advance = UrlMatchAdvance
-
-/**
  * What a {@link NavigationStep} tells the sniffer to do, typed *against the
  * bridge message bodies themselves* so a step can never carry a field the wire
  * doesn't:
@@ -48,41 +17,47 @@ type Advance = UrlMatchAdvance
  *   interaction (`Click` / `Fill`, discriminated by the inner `kind`). New
  *   interaction kinds are added as `action` union variants, not new tags.
  *
- * Because the wire-facing step field is exactly `StepAction`, both the
- * plan-only `advanceWhen` (on {@link NavigationStep}) and the whole
- * {@link DelayStep} variant structurally cannot leak onto the wire — the
- * automatic-navigation machine forwards a `NavigationStep`'s `action` untouched
- * and never forwards a `DelayStep` at all (it consumes it as a timer).
+ * Because the wire-facing step field is exactly `StepAction`, the plan-only
+ * {@link DelayStep} and {@link AwaitPageSettledStep} variants structurally
+ * cannot leak onto the wire — the automatic-navigation machine forwards a
+ * {@link NavigationStep}'s `action` untouched and never forwards a `Delay` /
+ * `AwaitPageSettled` at all (it consumes them as timers / holds).
  */
 type StepAction = typeof OpenMessage.Type | typeof PageActionMessage.Type
 
 /**
- * A scripted navigation step: a {@link StepAction} to dispatch plus an optional
- * {@link Advance} gating *when* the automatic-navigation machine dispatches it.
+ * A scripted navigation step: a {@link StepAction} the automatic-navigation
+ * machine dispatches to the sniffer.
  *
- * `advanceWhen` is a plan-only field — the automatic-navigation machine reads it
- * to schedule the dispatch but forwards only `action` to the sniffer, so it
- * never reaches the wire. A `Fill` action's `value` is interpolated from the
- * remote's config (e.g. a username / password) when the collector builds its
- * `ScrapingPlan`; because a credential can therefore ride that payload, see the
- * secrets note on `browser-sniffer-core`'s `FillAction`.
+ * A `Navigation` **always dispatches and immediately advances** to the next
+ * queue entry — it never waits for a `PageLoaded`. An `Open` navigates the page
+ * and a `Click` may too, but neither the machine nor the wire distinguishes
+ * "this action loads a page" from "this one doesn't": a plan that must wait for
+ * a load inserts an explicit {@link AwaitPageSettledStep} (or {@link DelayStep})
+ * after the action. This keeps every action uniform — *fire and advance* — with
+ * all waiting expressed as its own step.
+ *
+ * A `Fill` action's `value` is interpolated from the remote's config (e.g. a
+ * username / password) when the collector builds its `ScrapingPlan`; because a
+ * credential can therefore ride that payload, see the secrets note on
+ * `browser-sniffer-core`'s `FillAction`.
  */
 interface NavigationStep {
   readonly _tag: 'Navigation'
   readonly action: StepAction
-  readonly advanceWhen?: Advance
 }
 
 /**
  * A plan-only pause: the automatic-navigation machine arms a timer for
  * `duration`, waits it out, then processes the next queue entry. It is never
  * forwarded to the wire (it carries no `action`) — the FSM consumes it as a
- * timer, so, like `advanceWhen`, a `Delay` structurally cannot reach the bridge.
+ * timer, so a `Delay` structurally cannot reach the bridge.
  *
- * A plan inserts an explicit `Delay` exactly where a wait matters — most
+ * Use a `Delay` for a *fixed* wait whose length is known up front — most
  * commonly a *trailing* `Delay` so post-load XHR fan-out has time to start (and
- * be tracked) before the queue drains and the run completes. There is no other
- * inter-step wait: an ungated `Navigation` dispatches on its gating `PageLoaded`.
+ * be tracked) before the queue drains and the run completes. When the wait is
+ * "until a page has loaded and gone quiet" rather than a fixed span, prefer
+ * {@link AwaitPageSettledStep}.
  */
 interface DelayStep {
   readonly _tag: 'Delay'
@@ -90,12 +65,44 @@ interface DelayStep {
 }
 
 /**
- * One entry in a {@link ScrapingPlan.stepSequence} (or generated by an
- * {@link EntityDefinition.followUpSteps}): either a {@link NavigationStep}
- * dispatched to the sniffer or a plan-only {@link DelayStep} the FSM consumes as
- * a timer. A tagged union keyed by `_tag`; the automatic-navigation machine
- * routes on it.
+ * A plan-only hold that waits for a *settled page load* whose url matches
+ * `pattern`, then processes the next queue entry. Like {@link DelayStep} it
+ * carries no `action` and never reaches the wire — the FSM consumes it as a
+ * hold.
+ *
+ * "Settled" is exactly the sniffer's `PageLoaded` signal, which fires **once
+ * per page** only after that page has (a) fired `load` and (b) gone quiet — no
+ * structural DOM mutation and no in-flight request for the sniffer's quiet
+ * window — or hit the sniffer's internal max-wait ceiling. So this step waits
+ * for a real, quiesced page rather than a raw `load`, which is what makes it the
+ * right tool for a login redirect / SPA route whose settle time is
+ * unpredictable (a fixed `Delay` would race it).
+ *
+ * `pattern` disambiguates *which* settled page to wait for (e.g. the post-login
+ * `app.` host, not the login page). If the page already in hand when the hold is
+ * reached already matches, it is satisfied immediately; otherwise the machine
+ * parks until a matching `PageLoaded` arrives.
+ *
+ * `timeout` is the machine-side cap on that wait — distinct from the sniffer's
+ * internal settle ceiling: if no matching settled `PageLoaded` arrives within
+ * it, the run aborts via `SniffingComplete` rather than hanging (the sync
+ * runner's idle timeout is the ultimate backstop). `pattern` is a `RegExp` built
+ * with `UrlMatch.make({ segments, end })`.
  */
-type Step = NavigationStep | DelayStep
+interface AwaitPageSettledStep {
+  readonly _tag: 'AwaitPageSettled'
+  readonly pattern: RegExp
+  readonly timeout: Duration.Duration
+}
 
-export type { Step, NavigationStep, DelayStep, StepAction, Advance, UrlMatchAdvance }
+/**
+ * One entry in a {@link ScrapingPlan.stepSequence} (or generated by an
+ * {@link EntityDefinition.followUpSteps}): a {@link NavigationStep} dispatched
+ * to the sniffer, or one of the two plan-only holds the FSM consumes without
+ * dispatching — a {@link DelayStep} (fixed wait) or an
+ * {@link AwaitPageSettledStep} (wait for a matching settled page load). A tagged
+ * union keyed by `_tag`; the automatic-navigation machine routes on it.
+ */
+type Step = NavigationStep | DelayStep | AwaitPageSettledStep
+
+export type { Step, NavigationStep, DelayStep, AwaitPageSettledStep, StepAction }

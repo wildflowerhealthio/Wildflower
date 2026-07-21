@@ -28,42 +28,49 @@ import * as State from './state.ts'
  * arming a fresh timer always bumps it so a superseded timer's `*Fired` is
  * dropped as stale.
  *
+ * Every `Navigation` **dispatches and immediately advances** — no step waits for
+ * a `PageLoaded` on its own account. Waiting is expressed only by the two hold
+ * steps: `Delay` (a fixed timer) and `AwaitPageSettled` (park until a matching
+ * settled `PageLoaded`). `AwaitingPageLoaded` is therefore a *start-up-only*
+ * resting state: the machine waits there for the first settled page load, then
+ * drains the queue.
+ *
  * Transition table (see [Handler Explanation](../../../docs/Handler%20Explanation.md)):
- *   AwaitingPageLoaded(q) ─PageLoaded→ processHead(q, url)
- *   DelayPending(q)       ─PageLoaded→ DelayPending(q)                 (no re-arm)
- *   DelayPending(q)       ─DelayTimerFired (gen match)→ processHead(q, ⊥)
- *   AwaitingUrlMatch(q)   ─PageLoaded, head UrlMatch matches→ dispatch head, AwaitingPageLoaded(tail)
+ *   AwaitingPageLoaded(q) ─PageLoaded→ drain(q, url)                    (start-up: first settled load)
+ *   DelayPending(q)       ─PageLoaded→ DelayPending(q)                  (no re-arm)
+ *   DelayPending(q)       ─DelayTimerFired (gen match)→ drain(q, ⊥)
+ *   AwaitingUrlMatch(q)   ─PageLoaded, head AwaitPageSettled matches→ drain(tail, url)  (cancels timeout)
  *   AwaitingUrlMatch(q)   ─PageLoaded, still unmatched→ AwaitingUrlMatch(q)   (no-op)
  *   AwaitingUrlMatch(q)   ─UrlMatchTimeoutFired (gen match)→ Done       (dispatches SniffingComplete)
- *   Drained               ─StepsGenerated→ processHead(steps, ⊥)        (re-awaken, no PageLoaded)
+ *   Drained               ─StepsGenerated→ drain(steps, ⊥)             (re-awaken, no PageLoaded)
  *   Drained               ─NoMoreResultsExpected→ Done                  (dispatches SniffingComplete)
  *   <active>              ─StepsGenerated→ append to queue              (otherwise unchanged)
  *   <not Drained>         ─NoMoreResultsExpected→ no-op
  *   Done                  ─PageLoaded / StepsGenerated→ WARN-drop
  *   any                   ─Stop→ AwaitingPageLoaded(initialQueue)       (interrupt any pending timer)
  *
- * where `processHead(q, url)`:
- *   q empty            → Drained + RequestCompletionCheck (ask the lifecycle to confirm completion)
- *   Delay head         → arm timer, DelayPending(tail)
- *   Navigation, gate unmet (or no url) → AwaitingUrlMatch(q) + timeout   (head kept for dispatch)
- *   Navigation, ungated / gate met     → dispatch action, AwaitingPageLoaded(tail)
+ * where `drain(q, url)` pops entries front-to-back, dispatching each
+ * `Navigation` and continuing, until it rests:
+ *   q empty                             → Drained + RequestCompletionCheck (ask the lifecycle to confirm completion)
+ *   Delay head                          → arm timer, DelayPending(tail)
+ *   AwaitPageSettled head, url matches  → continue with tail             (already on the awaited page)
+ *   AwaitPageSettled head, no/no-match  → AwaitingUrlMatch(q) + timeout  (head kept, parks for a matching PageLoaded)
+ *   Navigation head                     → dispatch action, continue with tail
  */
 
 /** A pure transition result: the next state and the effects it requests. */
 type Transition = readonly [State.StepState, readonly SideEffectMessage[]]
 
 /**
- * Pop and act on the queue head. `url` is the `PageLoaded` url in hand, or
- * `undefined` when the head is processed off a timer fire or a `Drained`
- * re-awaken — a `UrlMatch` gate can only be satisfied with a url, so a gated
- * head with no url in hand parks in `AwaitingUrlMatch` to await a matching
- * `PageLoaded`.
+ * Drain the queue front-to-back: dispatch each `Navigation` and continue,
+ * consume a `Delay` as a timer, and satisfy or park on an `AwaitPageSettled`.
+ * `url` is the settled-page url in hand — the one that started this drain (a
+ * `PageLoaded`), or `undefined` when draining off a timer fire or a `Drained`
+ * re-awaken. An `AwaitPageSettled` is satisfied immediately only if that url
+ * already matches its `pattern`; otherwise it parks in `AwaitingUrlMatch` to
+ * await a matching settled `PageLoaded`.
  */
-const processHead = (
-  queue: State.Queue,
-  url: string | undefined,
-  generation: number
-): Transition => {
+const drainFrom = (queue: State.Queue, url: string | undefined, generation: number): Transition => {
   const [head, ...tail] = queue
   if (head === undefined) {
     // Queue drained. Not terminal on its own — an in-flight request could still
@@ -75,42 +82,43 @@ const processHead = (
     const g = generation + 1
     return [State.delayPending(tail, g), [scheduleDelayTimer(g, Duration.toMillis(head.duration))]]
   }
-  const advance = head.advanceWhen
-  if (advance !== undefined && (url === undefined || !advance.pattern.test(url))) {
-    // Gated `Navigation` whose `UrlMatch` is not (yet) satisfied by this url:
-    // keep it at the queue head and park under a fresh URL-match timeout.
+  if (head._tag === 'AwaitPageSettled') {
+    if (url !== undefined && head.pattern.test(url)) {
+      // Already on the settled page this hold waits for — proceed without parking.
+      return drainFrom(tail, url, generation)
+    }
+    // The awaited page is not (yet) in hand: keep the hold at the queue head and
+    // park under a fresh URL-match timeout until a matching `PageLoaded` arrives.
     const g = generation + 1
     return [
       State.awaitingUrlMatch(queue, g),
-      [scheduleUrlMatchTimeout(g, Duration.toMillis(advance.timeout))],
+      [scheduleUrlMatchTimeout(g, Duration.toMillis(head.timeout))],
     ]
   }
-  // Ungated, or gated and satisfied → dispatch the action now. No timer is
+  // Navigation: dispatch the action now and keep draining the tail in the same
+  // turn. A `Fill` / `Click` / `Open` never waits for a `PageLoaded` — waiting is
+  // a hold step's job — so several actions can dispatch back-to-back. No timer is
   // armed, so the generation is unchanged.
-  return [State.awaitingPageLoaded(tail, generation), [dispatchNavigation(head.action)]]
+  const [next, effects] = drainFrom(tail, url, generation)
+  return [next, [dispatchNavigation(head.action), ...effects]]
 }
 
 const onPageLoaded = (state: State.StepState, url: string): Transition =>
   Match.value(state).pipe(
     Match.withReturnType<Transition>(),
-    Match.tag('AwaitingPageLoaded', (s) => processHead(s.queue, url, s.generation)),
-    // Extra `PageLoaded`s during a `Delay` do not re-arm the timer — explicit
+    // Start-up: the first settled page load kicks off draining the queue.
+    Match.tag('AwaitingPageLoaded', (s) => drainFrom(s.queue, url, s.generation)),
+    // Extra `PageLoaded`s during a `Delay` do not re-arm the timer — fixed
     // delays make timing the plan author's responsibility.
     Match.tag('DelayPending', (s) => [s, []]),
-    // Re-test the head step's pattern against this url. On a match, cancel the
-    // timeout, dispatch the head, and advance; otherwise stay parked.
+    // An `AwaitPageSettled` hold: if this settled page matches, cancel the
+    // timeout and resume draining from the tail (the hold is consumed, never
+    // dispatched); otherwise stay parked.
     Match.tag('AwaitingUrlMatch', (s) => {
       const [head, ...tail] = s.queue
-      if (
-        head !== undefined &&
-        head._tag === 'Navigation' &&
-        head.advanceWhen !== undefined &&
-        head.advanceWhen.pattern.test(url)
-      ) {
-        return [
-          State.awaitingPageLoaded(tail, s.generation),
-          [cancelTimer(s.generation), dispatchNavigation(head.action)],
-        ]
+      if (head !== undefined && head._tag === 'AwaitPageSettled' && head.pattern.test(url)) {
+        const [next, effects] = drainFrom(tail, url, s.generation)
+        return [next, [cancelTimer(s.generation), ...effects]]
       }
       return [s, []]
     }),
@@ -124,7 +132,7 @@ const onDelayTimerFired = (state: State.StepState, generation: number): Transiti
   if (state._tag !== 'DelayPending' || state.generation !== generation) {
     return [state, []]
   }
-  return processHead(state.queue, undefined, state.generation)
+  return drainFrom(state.queue, undefined, state.generation)
 }
 
 const onUrlMatchTimeoutFired = (state: State.StepState, generation: number): Transition => {
@@ -133,9 +141,7 @@ const onUrlMatchTimeoutFired = (state: State.StepState, generation: number): Tra
   }
   const head = state.queue[0]
   const timeoutMs =
-    head !== undefined && head._tag === 'Navigation' && head.advanceWhen !== undefined
-      ? Duration.toMillis(head.advanceWhen.timeout)
-      : 0
+    head !== undefined && head._tag === 'AwaitPageSettled' ? Duration.toMillis(head.timeout) : 0
   return [State.done(state.generation), [warnUrlMatchTimeout(timeoutMs), dispatchSniffingComplete]]
 }
 
@@ -146,10 +152,10 @@ const onStepsGenerated = (state: State.StepState, steps: readonly Step[]): Trans
   const prependToExistingSteps = (queue: State.Queue): State.Queue => [...queue, ...steps]
   return Match.value(state).pipe(
     Match.withReturnType<Transition>(),
-    // Idle: the generated head dispatches now (the machine is idle; the steps'
-    // own `advanceWhen` gates still apply), typically re-entering
-    // `AwaitingPageLoaded` on a navigation.
-    Match.tag('Drained', (s) => processHead(steps, undefined, s.generation)),
+    // Idle: the generated steps drain now (the machine is idle; a generated
+    // `Navigation` dispatches immediately, a generated hold parks), typically
+    // re-entering `Drained` once they finish.
+    Match.tag('Drained', (s) => drainFrom(steps, undefined, s.generation)),
     Match.tag('AwaitingPageLoaded', (s) => [
       State.awaitingPageLoaded(prependToExistingSteps(s.queue), s.generation),
       [],

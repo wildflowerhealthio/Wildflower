@@ -96,9 +96,9 @@ const sideEffectHandlers = {
     ctx: HandlerContext
   ): Effect.Effect<void, never, never> =>
     // A `Navigation` step's `action` is already a bridge message body — forward
-    // it straight to the sniffer. The plan-only `advanceWhen` lived on the step
-    // wrapper, never on the action, so it cannot leak onto the wire (no
-    // destructure-and-strip needed), and a `Delay` never reaches here.
+    // it straight to the sniffer. The plan-only holds (`Delay` /
+    // `AwaitPageSettled`) carry no `action` and are consumed by the FSM, so they
+    // never reach here and nothing can leak onto the wire.
     ctx.sendMessage(msg.action).pipe(
       Effect.withSpan(Telemetry.Sniffing.Dispatch.Span.Name, {
         attributes: { [Telemetry.Sniffing.Attributes.LinkKind]: linkKindOf(msg.action) },
