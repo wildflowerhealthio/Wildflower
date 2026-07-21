@@ -9,6 +9,7 @@ import {
   EntityDefinition,
   ScrapingPlan,
   type Step,
+  UrlMatch,
   WebViewSource,
 } from 'collector-fundamentals/model'
 import type { TransportAdapter } from 'effect-messaging-core'
@@ -94,19 +95,27 @@ describe('CollectorBridgeMessageHandler.make: composition', () => {
       }).pipe(Effect.provide(Layer.mergeAll(TestContext.TestContext, adapterLayer)))
     ))
 
-  it('injects a follow-up Open, dedups the repeated URI, and completes after the last settle', () =>
+  it('injects a follow-up Open + hold, dedups the repeated URI, and completes after the last settle', () =>
     Effect.runPromise(
       Effect.gen(function* () {
         const sendMessage = vi.fn<SendMessage>(() => Effect.void)
-        // Every parse links back to the *same* second page — the repeat is
-        // dropped by URI dedup, which is what terminates the crawl.
+        // A follow-up `Open` dispatches and advances immediately (the new model),
+        // so a bare `Open` would drain onto an empty map and let the run complete
+        // before its page is ever sniffed. The crawl therefore pairs the `Open`
+        // with a trailing `AwaitPageSettled` hold that keeps the run open until
+        // /people/2 loads. /people/2 then links back to itself, but as a *bare*
+        // `Open` (no hold) — URI dedup drops that repeat cleanly, so nothing
+        // dangles and the crawl terminates on the last settle.
         const handler = makeGeneratingHandler({
           sendMessage,
-          followUpSteps: () => [openStepFor('https://example.com/people/2')],
+          followUpSteps: (_resources, response) =>
+            response.url.endsWith('/people/1')
+              ? [openStepFor('https://example.com/people/2'), awaitSettledFor('2')]
+              : [openStepFor('https://example.com/people/2')],
         })
 
-        // First page settles → generates Open(/people/2), which dispatches now
-        // (the machine is drained) without waiting for a PageLoaded.
+        // First page settles → dispatches Open(/people/2) and parks on the hold,
+        // so r1 settling does NOT complete the run — it stays open for /people/2.
         yield* handler.ResponseStart(
           responseStart({ id: 'r1', url: 'https://example.com/people/1' })
         )
@@ -114,8 +123,9 @@ describe('CollectorBridgeMessageHandler.make: composition', () => {
         yield* settleRequest(handler, 'r1', { name: 'Ada', age: 36 })
         expect(dispatchedOpens(sendMessage)).toEqual(['https://example.com/people/2'])
 
-        // Second page settles → its follow-up repeats /people/2 → dedup drops it →
-        // queue drains onto an empty map → SniffingComplete → close.
+        // /people/2 loads → releases the hold → is tracked and settles → its
+        // follow-up repeats /people/2 → dedup drops it → queue drains onto an
+        // empty map → SniffingComplete → close.
         yield* handler.ResponseStart(
           responseStart({ id: 'r2', url: 'https://example.com/people/2' })
         )
@@ -187,6 +197,17 @@ const delayStep = (duration: Duration.Duration): Step.Step => ({ _tag: 'Delay', 
 const openStepFor = (uri: string): Step.Step => ({
   _tag: 'Navigation',
   action: { _tag: 'Open', source: { _tag: 'Uri', uri } },
+})
+
+/**
+ * An `AwaitPageSettled` hold matching `…/people/<segment>` — a `followUpSteps`
+ * crawl trails one after its `Open` so the run stays open until the opened page
+ * settles (a bare `Open` dispatches and advances without waiting).
+ */
+const awaitSettledFor = (segment: string): Step.Step => ({
+  _tag: 'AwaitPageSettled',
+  pattern: UrlMatch.make({ segments: [UrlMatch.literal('people'), UrlMatch.literal(segment)] }),
+  timeout: Duration.seconds(30),
 })
 
 const isOpenMessage = Schema.is(OpenMessage)
