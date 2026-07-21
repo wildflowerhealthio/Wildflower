@@ -15,6 +15,13 @@ export default defineConfig({
   base: './',
   plugins: [react()],
   build: {
+    // Build straight into the vendored self-hosted-apps tree so the bundle
+    // ships as a Tauri resource (`wildflower-tauri/src-tauri/tauri.conf.json`
+    // maps the whole `slices/apps/self-hosted-apps/` dir into `bundle.resources`)
+    // and the host's `sync_vendored_self_hosted_apps` seeds it into app-data on
+    // startup. The folder is gitignored like every other vendored build.
+    outDir: '../../slices/apps/self-hosted-apps/medication-sponsorship',
+    emptyOutDir: true,
     rollupOptions: {
       input: {
         main: './index.html',
