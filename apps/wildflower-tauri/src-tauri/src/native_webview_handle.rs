@@ -9,17 +9,29 @@
 //! round-trip: the server already owns origin/tunnel resolution, so the host
 //! only needs the finished URL.
 //!
-//! ## Owner-session seeding for tunnel targets (#256)
+//! ## Owner-session seeding (#256)
 //!
-//! A cloud / `requires_tunnel` launch opens the app's **tunnel-origin** URL,
-//! which immediately redirects into the tunnel-origin gatekeeper OAuth consent
-//! flow. That flow must recognise the owner — but the popup's cookie jar is
-//! empty, and the loopback-provenance trust (`inject_loopback_owner_token`)
-//! deliberately never extends to relayed (`Forwarded`) callers. So before the
-//! popup opens, the host seeds the same `wf_auth`/`wf_auth_exp` cookies a web
-//! user would hold, built by [`gatekeeper_rust::owner_session_cookies`] and
-//! scoped to the tunnel public host + its subdomains. See
-//! [`cookies_for_target`] for the exact gating.
+//! Some launches open a URL whose page then navigates into a gatekeeper OAuth
+//! flow that must recognise the owner — but the popup's cookie jar starts empty
+//! and the loopback-provenance owner trust (`inject_loopback_owner_token`)
+//! doesn't reach every such navigation. So before the popup opens, the host
+//! seeds the same `wf_auth`/`wf_auth_exp` cookies a web user would hold, built
+//! by [`gatekeeper_rust::owner_session_cookies`]. Two targets need it:
+//!
+//! - **Cloud / `requires_tunnel`** opens the app's **tunnel-origin** URL, which
+//!   redirects into the tunnel-origin consent flow. The popup jar is empty and
+//!   the loopback trust deliberately never extends to relayed (`Forwarded`)
+//!   callers. Seeded `Secure`, scoped to the tunnel public host + its subdomains.
+//! - **Self-hosted / system SMART on loopback** opens `http://127.0.0.1:<port>`,
+//!   and a SMART app's `fhirclient` then navigates the popup to the loopback
+//!   gatekeeper `/authorize` surface. That surface is a *pre-auth public path*,
+//!   which `inject_loopback_owner_token` skips (a stray owner bearer there could
+//!   confuse client auth) — so the owner session has to ride a cookie instead.
+//!   Seeded **non-`Secure`** (WebKit won't send a `Secure` cookie over http
+//!   loopback) and scoped to the loopback host itself, shared by the app port
+//!   and the API `:8080`.
+//!
+//! See [`cookies_for_target`] for the exact gating.
 
 use std::sync::Arc;
 
@@ -112,48 +124,80 @@ impl OnDeviceWebviewHandle for NativeWebviewHandle {
 }
 
 /// Compute the cookies to seed into the popup for `url` — the owner session
-/// pair, or nothing. Pure, so the gating is unit-testable.
+/// pair, or nothing. Pure, so the gating is unit-testable. Always requires a
+/// host owner token; the target's scheme then picks the cookie host + `Secure`:
 ///
-/// Seeds only when **all** hold:
-/// - a host owner token exists;
-/// - a tunnel `public_host` is configured;
-/// - the target scheme is **https** — http targets (loopback / self-hosted /
-///   system, all `http://127.0.0.1…`) authenticate by connection provenance and
-///   need no cookie.
-///
-/// The target host need not be under the tunnel host: a cloud app's launch URL is
-/// on its own domain, and the tunnel origin only appears when it redirects into
-/// the gatekeeper authorize flow. The cookie's `Domain=<tunnel host>` confines the
-/// bearer regardless (see the multi-tenant guard on
-/// [`gatekeeper_rust::owner_session_cookies`]), so seeding is always safe.
+/// - **https** — a cloud / tunnel launch. Scoped to the authoritative tunnel
+///   `public_host` (never the target's own third-party host — the multi-tenant
+///   guard on [`gatekeeper_rust::owner_session_cookies`]), `Secure`. The launch
+///   URL may be on its own domain; the tunnel origin only appears when it
+///   redirects into the authorize flow, and `Domain=<tunnel host>` confines the
+///   bearer regardless. Nothing is seeded when no tunnel host is configured.
+/// - **http on a loopback host** (`127.0.0.1` / `::1` / `localhost`) — a
+///   self-hosted / system launch. A SMART app's popup detours through the
+///   loopback gatekeeper OAuth surface, a pre-auth public path the
+///   connection-provenance owner-token injection skips, so the owner session
+///   rides a cookie instead. Scoped to the loopback host itself (shared by the
+///   app port and the API `:8080`) and **not** `Secure` (WebKit won't send a
+///   `Secure` cookie over http loopback). Needs no tunnel host.
+/// - any other target (a non-loopback http host) seeds nothing — the owner
+///   bearer never leaves loopback or the tunnel host.
 fn cookies_for_target(
     token: Option<&str>,
     url: &str,
     tunnel_host: Option<&str>,
 ) -> Vec<CookieSpec> {
-    let (Some(token), Some(tunnel_host)) = (token, tunnel_host) else {
+    let Some(token) = token else {
         return vec![];
     };
-    let is_https = tauri::Url::parse(url).is_ok_and(|parsed| parsed.scheme() == "https");
-    if !is_https {
+    let Ok(parsed) = tauri::Url::parse(url) else {
         return vec![];
-    }
-    gatekeeper_rust::owner_session_cookies(token, tunnel_host, /* secure */ true)
+    };
+    let (cookie_host, secure) = match parsed.scheme() {
+        "https" => (tunnel_host, true),
+        "http" if host_is_loopback(&parsed) => (parsed.host_str(), false),
+        _ => (None, false),
+    };
+    let Some(cookie_host) = cookie_host else {
+        return vec![];
+    };
+    gatekeeper_rust::owner_session_cookies(token, cookie_host, secure)
         .iter()
-        .map(|cookie| cookie_spec_from(cookie, tunnel_host))
+        .map(|cookie| cookie_spec_from(cookie, cookie_host))
         .collect()
+}
+
+/// Whether `url`'s host is a loopback address (`127.0.0.0/8`, `::1`) or
+/// `localhost` — the only http hosts the owner session is ever planted on, so a
+/// stray non-loopback http target can never receive the bearer.
+fn host_is_loopback(url: &tauri::Url) -> bool {
+    let Some(host) = url.host_str() else {
+        return false;
+    };
+    if host.eq_ignore_ascii_case("localhost") {
+        return true;
+    }
+    // `host_str` brackets an IPv6 literal (`[::1]`); strip them so it parses as
+    // an `IpAddr`. A hostname never parses as an IP, so this stays false for one.
+    let unbracketed = host
+        .strip_prefix('[')
+        .and_then(|inner| inner.strip_suffix(']'))
+        .unwrap_or(host);
+    unbracketed
+        .parse::<std::net::IpAddr>()
+        .is_ok_and(|ip| ip.is_loopback())
 }
 
 /// Map one gatekeeper-built cookie onto the plugin's wire [`CookieSpec`].
 /// The fallbacks mirror the builder's invariants (it always sets every
 /// attribute); they exist so a builder change degrades safely instead of
 /// panicking in the launch path.
-fn cookie_spec_from(cookie: &tauri::webview::cookie::Cookie<'_>, tunnel_host: &str) -> CookieSpec {
+fn cookie_spec_from(cookie: &tauri::webview::cookie::Cookie<'_>, cookie_host: &str) -> CookieSpec {
     use tauri::webview::cookie::SameSite;
     CookieSpec {
         name: cookie.name().to_owned(),
         value: cookie.value().to_owned(),
-        domain: cookie.domain().unwrap_or(tunnel_host).to_owned(),
+        domain: cookie.domain().unwrap_or(cookie_host).to_owned(),
         path: cookie.path().unwrap_or("/").to_owned(),
         secure: cookie.secure().unwrap_or(true),
         http_only: cookie.http_only().unwrap_or(false),
@@ -194,10 +238,13 @@ fn open_app_in_native_webview(
     // No popup events to consume: native chrome owns Close and the apps flow
     // expects no host→web reply, so a no-op channel satisfies `open_url`.
     let channel: Channel<NativeWebviewEvent> = Channel::new(|_event| Ok(()));
-    // The domain the cookies are scoped to, kept for the read-back below — the
-    // launch URL itself is typically on the third-party app's domain, where a
-    // tunnel-scoped cookie would (correctly) not match.
-    let seeded_domain = cookies.first().map(|cookie| cookie.domain.clone());
+    // The domain + `Secure` the cookies are scoped to, kept for the read-back
+    // below — the launch URL itself is typically on the third-party app's domain
+    // (tunnel case), where a tunnel-scoped cookie would (correctly) not match, so
+    // the read-back queries the seeded host on its own scheme instead.
+    let seeded = cookies
+        .first()
+        .map(|cookie| (cookie.domain.clone(), cookie.secure));
     handle
         .native_webview()
         .open_url(
@@ -221,14 +268,15 @@ fn open_app_in_native_webview(
     // back — against the seeded *domain* (the tunnel host), not the launch URL.
     // Names only; an empty read-back is the smoking gun for a cookie-write failure.
     #[cfg(desktop)]
-    if let Some(domain) = seeded_domain {
-        if let Ok(parsed) = tauri::Url::parse(&format!("https://{domain}/")) {
+    if let Some((domain, secure)) = seeded {
+        let scheme = if secure { "https" } else { "http" };
+        if let Ok(parsed) = tauri::Url::parse(&format!("{scheme}://{domain}/")) {
             match handle
                 .native_webview()
                 .content_cookie_names_for_url(LAUNCH_WEBVIEW_ID, parsed)
             {
                 Ok(Some(names)) => log::info!(
-                    "[launch] popup cookie store for https://{domain}/ now holds: {names:?}"
+                    "[launch] popup cookie store for {scheme}://{domain}/ now holds: {names:?}"
                 ),
                 Ok(None) => log::warn!("[launch] cookie read-back: no content webview open"),
                 Err(error) => log::warn!("[launch] cookie read-back failed: {error}"),
@@ -236,7 +284,7 @@ fn open_app_in_native_webview(
         }
     }
     #[cfg(not(desktop))]
-    let _ = seeded_domain;
+    let _ = seeded;
     handle
         .native_webview()
         .show(LAUNCH_WEBVIEW_ID)
@@ -290,13 +338,51 @@ mod tests {
         }
     }
 
-    /// http targets never seed: loopback / self-hosted / system launches are
-    /// `http://127.0.0.1…` and authenticate by connection provenance.
+    /// An http *loopback* target (a self-hosted / system SMART launch on
+    /// `http://127.0.0.1:<port>`) seeds the owner session so the popup's SMART
+    /// OAuth navigation to the loopback API is recognised — scoped to the
+    /// loopback host itself and **not** `Secure` (WebKit won't send a `Secure`
+    /// cookie over http loopback). Needs no tunnel host.
     #[test]
-    fn never_seeds_an_http_target() {
+    fn seeds_owner_cookies_for_a_loopback_http_target() {
         let cookies = cookies_for_target(
             Some(TOKEN),
-            "http://127.0.0.1:4180/apps/patient-browser",
+            "http://127.0.0.1:8090/launch.html?iss=http://127.0.0.1:8080/fhir-r4",
+            None,
+        );
+        assert_eq!(cookies.len(), 2);
+        assert_eq!(cookies[0].name, "wf_auth");
+        assert_eq!(cookies[0].value, TOKEN);
+        assert!(cookies[0].http_only);
+        assert_eq!(cookies[1].name, "wf_auth_exp");
+        assert!(!cookies[1].http_only);
+        for cookie in &cookies {
+            assert_eq!(cookie.domain, "127.0.0.1");
+            assert_eq!(cookie.path, "/");
+            assert!(!cookie.secure);
+            assert_eq!(cookie.same_site, CookieSameSite::Lax);
+        }
+    }
+
+    /// `localhost` counts as loopback too — some hosts serve on it — and seeds
+    /// scoped to the `localhost` name.
+    #[test]
+    fn seeds_owner_cookies_for_a_localhost_http_target() {
+        let cookies = cookies_for_target(Some(TOKEN), "http://localhost:8090/launch.html", None);
+        assert_eq!(cookies.len(), 2);
+        for cookie in &cookies {
+            assert_eq!(cookie.domain, "localhost");
+            assert!(!cookie.secure);
+        }
+    }
+
+    /// A *non-loopback* http target never seeds — the owner bearer must never
+    /// leave loopback or the tunnel host, even with a token and tunnel host set.
+    #[test]
+    fn never_seeds_a_non_loopback_http_target() {
+        let cookies = cookies_for_target(
+            Some(TOKEN),
+            "http://evil.example.test/apps/patient-browser",
             Some(TUNNEL_HOST),
         );
         assert!(cookies.is_empty());
