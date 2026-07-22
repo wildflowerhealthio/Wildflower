@@ -152,10 +152,12 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirRes
     stepSequence: [
       {
         _tag: 'Delay',
+        name: 'Waiting for login page',
         duration: Duration.seconds(2),
       },
       {
         _tag: 'Navigation',
+        name: 'Entering email',
         action: {
           _tag: 'PageAction',
           action: { kind: 'Fill', querySelector: EMAIL_SELECTOR, value: config.email },
@@ -163,10 +165,12 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirRes
       },
       {
         _tag: 'Delay',
+        name: 'Pausing before password',
         duration: Duration.seconds(0.25),
       },
       {
         _tag: 'Navigation',
+        name: 'Entering password',
         action: {
           _tag: 'PageAction',
           action: { kind: 'Fill', querySelector: PASSWORD_SELECTOR, value: config.password },
@@ -174,10 +178,12 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirRes
       },
       {
         _tag: 'Delay',
+        name: 'Pausing before submit',
         duration: Duration.seconds(0.25),
       },
       {
         _tag: 'Navigation',
+        name: 'Submitting login',
         action: {
           _tag: 'PageAction',
           action: { kind: 'Click', querySelector: SUBMIT_SELECTOR },
@@ -186,9 +192,15 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirRes
       // Wait for the post-login redirect to land on the `app.` host before
       // opening the prescriptions page (opening it pre-login would bounce to the
       // sign-in screen).
-      { _tag: 'AwaitPageSettled', pattern: APP_LANDED_PATTERN, timeout: LOGIN_TIMEOUT },
+      {
+        _tag: 'AwaitPageSettled',
+        name: 'Waiting for logged-in page',
+        pattern: APP_LANDED_PATTERN,
+        timeout: LOGIN_TIMEOUT,
+      },
       {
         _tag: 'Navigation',
+        name: 'Opening prescriptions',
         action: {
           _tag: 'Open',
           source: { _tag: 'Uri', uri: PRESCRIPTIONS_URL },
@@ -198,10 +210,11 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirRes
       // give its profile + list XHR fan-out the trailing settle window.
       {
         _tag: 'AwaitPageSettled',
+        name: 'Waiting for prescriptions to load',
         pattern: PRESCRIPTIONS_SETTLED_PATTERN,
         timeout: PRESCRIPTIONS_TIMEOUT,
       },
-      { _tag: 'Delay', duration: SETTLE },
+      { _tag: 'Delay', name: 'Collecting prescriptions', duration: SETTLE },
     ],
   })
 }

@@ -62,6 +62,21 @@ const SniffingComplete = Schema.parseJson(Schema.TaggedStruct('SniffingComplete'
  */
 const OpenMessage = Schema.parseJson(Schema.TaggedStruct('Open', { source: WebViewSourceSchema }))
 
+/**
+ * Web → Host: the collector SPA's automatic-navigation machine reached a
+ * step and asks the host to display that step's manually-authored `name` in
+ * the built-in sniffer browser's native chrome, so the user can see what the
+ * automation is doing ("Entering email", "Waiting for prescriptions to
+ * load"). The Tauri host (`browser-sniffer-tauri-rust`) writes `name` to the
+ * sniffer webview's chrome **subtitle** via the native-webview plugin's
+ * `patch_window_text` — replacing the static "Collecting Automatically" seed
+ * as the run progresses. It is a pure chrome-label update: no page navigation,
+ * and it is never forwarded into the sniffed page.
+ */
+const SetSnifferStatus = Schema.parseJson(
+  Schema.TaggedStruct('SetSnifferStatus', { name: Schema.String })
+)
+
 type CollectorBridge = Bridge.Bridge<
   'Collector',
   {
@@ -78,16 +93,19 @@ type CollectorBridge = Bridge.Bridge<
     SniffingComplete: typeof SniffingComplete
     Open: typeof OpenMessage
     PageAction: typeof PageActionMessage
+    SetSnifferStatus: typeof SetSnifferStatus
   }
 >
 
 /**
  * Slice-level bridge between the embedded collector SPA and the Tauri
  * host. Web→Host carries control signals (`RequestSniffableWebView`,
- * `CancelSnifferRequest`, `SniffingComplete`) and script-driven
- * navigation steps (`Open`, `PageAction`); Host→Web carries the
- * sniffer-event subset collector parses plus the `PageLoaded`
- * notification that drives the step timer.
+ * `CancelSnifferRequest`, `SniffingComplete`, `SetSnifferStatus`) and
+ * script-driven navigation steps (`Open`, `PageAction`); Host→Web carries
+ * the sniffer-event subset collector parses plus the `PageLoaded`
+ * notification that drives the step timer. `SetSnifferStatus` is a pure
+ * chrome-label update the host writes to the sniffer webview's subtitle; it
+ * is host-consumed and never forwarded into the sniffed page.
  *
  * `PageAction` is the same `PageActionMessage` schema `BrowserSnifferBridge`
  * declares for its Host→Web side, so the Tauri host forwards the decoded
@@ -114,7 +132,8 @@ const CollectorBridge: CollectorBridge = Bridge.make({
     ['SniffingComplete', SniffingComplete],
     ['Open', OpenMessage],
     ['PageAction', PageActionMessage],
+    ['SetSnifferStatus', SetSnifferStatus],
   ] as const,
 })
 
-export { CollectorBridge, OpenMessage, RequestSniffableWebView, SniffingComplete }
+export { CollectorBridge, OpenMessage, RequestSniffableWebView, SetSnifferStatus, SniffingComplete }

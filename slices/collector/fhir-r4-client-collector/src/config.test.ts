@@ -142,6 +142,7 @@ describe('scrapingPlan', () => {
     expect(plan.stepSequence).toEqual([
       {
         _tag: 'Navigation',
+        name: 'Loading observations',
         action: {
           _tag: 'Open',
           source: {
@@ -152,6 +153,7 @@ describe('scrapingPlan', () => {
       },
       {
         _tag: 'AwaitPageSettled',
+        name: 'Waiting for observations to load',
         pattern: UrlMatch.make({
           segments: [UrlMatch.literal('Observation')],
           end: 'mustHaveQuery',

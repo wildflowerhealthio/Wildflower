@@ -82,6 +82,16 @@ before adding one.
   remember. A new scripted interaction is a `PageAction` `action` union variant,
   not a new bridge tag; a new _pause_ is a `Delay` (fixed) or `AwaitPageSettled`
   (wait for a matching settled page load) step, not a plan-wide delay field.
+- **Every `Step` carries a required `name`; the machine pushes it as a separate
+  `SetSnifferStatus` control message, _not_ on the step's own action.** As the
+  machine reaches each step it emits `SetSnifferStatus { name }`, which the Tauri
+  host writes to the sniffer chrome's subtitle (`patch_window_text`) so a run is
+  legible. This is how the plan-only holds can label the chrome despite carrying
+  no `action`. Consequence: consecutive `Navigation` steps drain in one turn and
+  their names flush back-to-back, so only the _last_ is visible — put a name that
+  needs to be seen on a step that holds (`Delay` / `AwaitPageSettled`) or on one
+  immediately followed by a hold. Renaming/adding the tag is a wire change — keep
+  `bridge.ts`, `events.rs`, and the `lib.rs` drift-guard test in lockstep.
 - **Every `Navigation` dispatches and advances immediately — plans own their
   waits.** A `Fill` / `Click` / `Open` never waits for a `PageLoaded` (a
   `PageAction` fires none at all), so consecutive actions drain in one turn; a

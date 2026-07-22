@@ -101,6 +101,7 @@ const make = <TResources>({
     const runEffect = (effect: SideEffectMessage): Effect.Effect<void, never, never> =>
       Match.value(effect).pipe(
         Match.withReturnType<Effect.Effect<void, never, never>>(),
+        Match.tag('SetStepName', (m) => sideEffectHandlers.SetStepName(m, ctx)),
         Match.tag('DispatchNavigation', (m) => sideEffectHandlers.DispatchNavigation(m, ctx)),
         Match.tag('DispatchSniffingComplete', (m) =>
           sideEffectHandlers.DispatchSniffingComplete(m, ctx)

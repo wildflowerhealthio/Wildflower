@@ -143,6 +143,7 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirRes
     stepSequence: [
       {
         _tag: 'Navigation',
+        name: 'Loading observations',
         action: {
           _tag: 'Open',
           source: {
@@ -156,6 +157,7 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirRes
       // queue would drain before the Observation request is tracked.
       {
         _tag: 'AwaitPageSettled',
+        name: 'Waiting for observations to load',
         pattern: OBSERVATION_SETTLED_PATTERN,
         timeout: OBSERVATION_TIMEOUT,
       },

@@ -8,6 +8,11 @@ pub const REQUEST_SNIFFABLE_WEBVIEW: &str = "RequestSniffableWebView";
 pub const OPEN: &str = "Open";
 pub const SNIFFING_COMPLETE: &str = "SniffingComplete";
 
+/// Web→host control tag: set the sniffer chrome's subtitle to the current
+/// step's name. Host-consumed on every platform (routed to
+/// `patch_window_text`), never forwarded into the sniffed page.
+pub const SET_SNIFFER_STATUS: &str = "SetSnifferStatus";
+
 /// Web→host *data-plane* tag literals the sniffer's native-webview page
 /// legitimately posts (the page-observation stream the SPA collector consumes).
 /// These are the ONLY inner `_tag`s `native_webview_bridge` re-emits from an

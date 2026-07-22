@@ -55,9 +55,10 @@ describe('CollectorBridgeMessageHandler.make: composition', () => {
         yield* handler.ResponseStart(
           responseStart({ id: 'r2', url: 'https://example.com/people/2' })
         )
-        // Arms the delay timer; nothing dispatched yet.
+        // Arms the delay timer; the delay step's name is pushed to the chrome,
+        // but nothing is *dispatched* yet.
         yield* handler.PageLoaded(pageLoaded())
-        expect(sendMessage).not.toHaveBeenCalled()
+        expect(dispatched(sendMessage)).toEqual([])
 
         yield* handler.cancelAllRequestSniffing(cancelSend)
 
@@ -73,7 +74,7 @@ describe('CollectorBridgeMessageHandler.make: composition', () => {
         // Navigation half: the interrupted delay timer never processes `linkA`.
         yield* TestClock.adjust(Duration.seconds(5))
         yield* Effect.yieldNow()
-        expect(sendMessage).not.toHaveBeenCalled()
+        expect(dispatched(sendMessage)).toEqual([])
       }).pipe(Effect.provide(Layer.mergeAll(TestContext.TestContext, adapterLayer)))
     ))
 
@@ -188,14 +189,20 @@ const PersonSchema = Schema.Struct({ name: Schema.String, age: Schema.Number })
 
 const linkA: Step.Step = {
   _tag: 'Navigation',
+  name: 'open a',
   action: { _tag: 'Open', source: { _tag: 'Uri', uri: 'https://example.com/a' } },
 }
 
-const delayStep = (duration: Duration.Duration): Step.Step => ({ _tag: 'Delay', duration })
+const delayStep = (duration: Duration.Duration): Step.Step => ({
+  _tag: 'Delay',
+  name: 'delay',
+  duration,
+})
 
 /** A `Navigation`/`Open` step targeting `uri` (the shape `followUpSteps` returns). */
 const openStepFor = (uri: string): Step.Step => ({
   _tag: 'Navigation',
+  name: `open ${uri}`,
   action: { _tag: 'Open', source: { _tag: 'Uri', uri } },
 })
 
@@ -206,6 +213,7 @@ const openStepFor = (uri: string): Step.Step => ({
  */
 const awaitSettledFor = (segment: string): Step.Step => ({
   _tag: 'AwaitPageSettled',
+  name: `await people/${segment}`,
   pattern: UrlMatch.make({ segments: [UrlMatch.literal('people'), UrlMatch.literal(segment)] }),
   timeout: Duration.seconds(30),
 })
@@ -219,6 +227,19 @@ const dispatchedOpens = (sendMessage: ReturnType<typeof vi.fn<SendMessage>>): st
     .map((call) => call[0])
     .filter(isOpenMessage)
     .map((m) => (isUriSource(m.source) ? m.source.uri : ''))
+
+/**
+ * The messages the machine actually *dispatched*, with the per-step
+ * `SetSnifferStatus` chrome-label pushes filtered out. Every step emits one
+ * before its own effect, so a "no navigation dispatched yet" assertion checks
+ * this rather than the raw call count.
+ */
+const dispatched = (
+  sendMessage: ReturnType<typeof vi.fn<SendMessage>>
+): readonly CollectorBridgeMessageHandler.OutboundMessage[] =>
+  sendMessage.mock.calls
+    .map((call) => call[0])
+    .filter((message) => message._tag !== 'SetSnifferStatus')
 
 /**
  * Build a handler whose single entity parses a JSON person and generates the

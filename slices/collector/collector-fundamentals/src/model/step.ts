@@ -40,10 +40,12 @@ type StepAction = typeof OpenMessage.Type | typeof PageActionMessage.Type
  * A `Fill` action's `value` is interpolated from the remote's config (e.g. a
  * username / password) when the collector builds its `ScrapingPlan`; because a
  * credential can therefore ride that payload, see the secrets note on
- * `browser-sniffer-core`'s `FillAction`.
+ * `browser-sniffer-core`'s `FillAction`. `name` is a manual, human-readable
+ * label — see the shared `name` note on {@link Step}.
  */
 interface NavigationStep {
   readonly _tag: 'Navigation'
+  readonly name: string
   readonly action: StepAction
 }
 
@@ -61,6 +63,7 @@ interface NavigationStep {
  */
 interface DelayStep {
   readonly _tag: 'Delay'
+  readonly name: string
   readonly duration: Duration.Duration
 }
 
@@ -91,6 +94,7 @@ interface DelayStep {
  */
 interface AwaitPageSettledStep {
   readonly _tag: 'AwaitPageSettled'
+  readonly name: string
   readonly pattern: RegExp
   readonly timeout: Duration.Duration
 }
@@ -102,6 +106,18 @@ interface AwaitPageSettledStep {
  * dispatching — a {@link DelayStep} (fixed wait) or an
  * {@link AwaitPageSettledStep} (wait for a matching settled page load). A tagged
  * union keyed by `_tag`; the automatic-navigation machine routes on it.
+ *
+ * Every variant carries a **required** `name`: a manually-authored,
+ * human-readable label ("Entering email", "Waiting for prescriptions to load")
+ * the automatic-navigation machine pushes to the built-in sniffer browser's
+ * native chrome (its subtitle) when the step begins, so a run is legible while
+ * it executes. Unlike a `Navigation`'s `action`, `name` never rides the step's
+ * own wire message — the machine surfaces it through a separate
+ * `SetSnifferStatus` bridge control message (see `bridge.ts`), which is why the
+ * plan-only holds (`Delay` / `AwaitPageSettled`) can label the chrome even
+ * though they carry no `action`. Because consecutive `Navigation` steps drain in
+ * one turn, only the last of a back-to-back run is visible — a name is most
+ * meaningful on a step that holds, or on one immediately followed by a hold.
  */
 type Step = NavigationStep | DelayStep | AwaitPageSettledStep
 

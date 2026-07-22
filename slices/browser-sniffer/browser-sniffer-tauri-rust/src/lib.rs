@@ -47,10 +47,11 @@ pub fn attach_browser_sniffer(app: &AppHandle) {
     // the boot log shows who dispatches what. See the effect-messaging-tauri
     // README ("Tag uniqueness across processes").
     log::info!(
-        "[browser-sniffer] listening on '{BRIDGE_EVENT}' for tags: [{}, {}, {}, {}, {}]",
+        "[browser-sniffer] listening on '{BRIDGE_EVENT}' for tags: [{}, {}, {}, {}, {}, {}]",
         events::REQUEST_SNIFFABLE_WEBVIEW,
         events::OPEN,
         events::SNIFFING_COMPLETE,
+        events::SET_SNIFFER_STATUS,
         events::PAGE_ACTION,
         events::CANCEL_SNIFFER_REQUEST,
     );
@@ -70,6 +71,7 @@ pub fn attach_browser_sniffer(app: &AppHandle) {
             }
             events::OPEN => handlers::open::handle(&handle, payload),
             events::SNIFFING_COMPLETE => handlers::sniffing_complete::handle(&handle),
+            events::SET_SNIFFER_STATUS => handlers::set_sniffer_status::handle(&handle, payload),
             #[cfg(any(target_os = "ios", target_os = "android"))]
             events::PAGE_ACTION | events::CANCEL_SNIFFER_REQUEST => {
                 native_webview_bridge::forward_to_native_webview(&handle, payload);
@@ -92,6 +94,7 @@ mod tests {
         assert_eq!(events::REQUEST_SNIFFABLE_WEBVIEW, "RequestSniffableWebView");
         assert_eq!(events::OPEN, "Open");
         assert_eq!(events::SNIFFING_COMPLETE, "SniffingComplete");
+        assert_eq!(events::SET_SNIFFER_STATUS, "SetSnifferStatus");
         assert_eq!(events::PAGE_ACTION, "PageAction");
         assert_eq!(events::CANCEL_SNIFFER_REQUEST, "CancelSnifferRequest");
     }

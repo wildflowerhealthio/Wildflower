@@ -39,9 +39,9 @@ describe('automatic-navigation.make', () => {
           // A single PageLoaded drains BOTH — each `Open` dispatches and advances
           // in the same turn. No clock is advanced anywhere.
           yield* machine.handlePageLoaded(pageLoaded('https://example.com/'))
-          expect(sendMessage).toHaveBeenCalledTimes(2)
-          expect(sendMessage.mock.calls[0][0]).toEqual(linkA.action)
-          expect(sendMessage.mock.calls[1][0]).toEqual(linkB.action)
+          expect(dispatched(sendMessage)).toHaveLength(2)
+          expect(dispatched(sendMessage)[0]).toEqual(linkA.action)
+          expect(dispatched(sendMessage)[1]).toEqual(linkB.action)
         })
       ))
 
@@ -61,7 +61,7 @@ describe('automatic-navigation.make', () => {
           // A `Fill`/`Click` fires no `PageLoaded`, yet all three dispatch in
           // order off the single start-up load — the whole point of the model.
           yield* machine.handlePageLoaded(pageLoaded('https://example.com/login'))
-          expect(sendMessage.mock.calls.map((call) => call[0])).toEqual([
+          expect(dispatched(sendMessage)).toEqual([
             fillStep('alice').action,
             fillStep('hunter2').action,
             clickStep('button[type="submit"]').action,
@@ -77,8 +77,8 @@ describe('automatic-navigation.make', () => {
 
           yield* machine.handlePageLoaded(pageLoaded('https://example.com/login'))
 
-          expect(sendMessage).toHaveBeenCalledTimes(1)
-          expect(sendMessage.mock.calls[0][0]).toEqual({
+          expect(dispatched(sendMessage)).toHaveLength(1)
+          expect(dispatched(sendMessage)[0]).toEqual({
             _tag: 'PageAction',
             action: { kind: 'Fill', querySelector: '#field', value: 'alice' },
           })
@@ -88,8 +88,9 @@ describe('automatic-navigation.make', () => {
     it('should dispatch every navigation action in queue order, then SniffingComplete', () =>
       fc.assert(
         fc.property(fc.array(fc.webUrl()), (uris) => {
-          // Arrange: one ungated Open step per url.
-          const steps = uris.map(openStep)
+          // Arrange: one ungated Open step per url. (Wrapped so `Array.map`'s
+          // index isn't passed as `openStep`'s `name`.)
+          const steps = uris.map((uri) => openStep(uri))
           const sendMessage = vi.fn<SendMessage>(() => Effect.void)
           const machine = makeMachine({ sendMessage, stepSequence: steps })
 
@@ -103,7 +104,7 @@ describe('automatic-navigation.make', () => {
           )
 
           // Assert: each action in order, then the terminal.
-          const sent = sendMessage.mock.calls.map((call) => call[0])
+          const sent = dispatched(sendMessage)
           expect(sent).toEqual([...steps.map((s) => s.action), { _tag: 'SniffingComplete' }])
         }),
         { numRuns: numRunsFor({ base: 100 }) }
@@ -126,12 +127,12 @@ describe('automatic-navigation.make', () => {
 
           // Empty queue drains on the first PageLoaded, but is not terminal yet.
           yield* machine.handlePageLoaded(pageLoaded())
-          expect(sendMessage).not.toHaveBeenCalled()
+          expect(dispatched(sendMessage)).toEqual([])
 
           // No incomplete requests → the lifecycle signals → complete.
           yield* machine.signalNoMoreResultsExpected
-          expect(sendMessage).toHaveBeenCalledOnce()
-          expect(sendMessage.mock.calls[0][0]).toEqual({ _tag: 'SniffingComplete' })
+          expect(dispatched(sendMessage)).toHaveLength(1)
+          expect(dispatched(sendMessage)[0]).toEqual({ _tag: 'SniffingComplete' })
           expect(completed).toBe(1)
         })
       ))
@@ -144,7 +145,7 @@ describe('automatic-navigation.make', () => {
 
           // Still AwaitingPageLoaded (start-up) → NoMoreResultsExpected is a no-op.
           yield* machine.signalNoMoreResultsExpected
-          expect(sendMessage).not.toHaveBeenCalled()
+          expect(dispatched(sendMessage)).toEqual([])
         })
       ))
 
@@ -212,12 +213,12 @@ describe('automatic-navigation.make', () => {
           const machine = makeMachine({ sendMessage, stepSequence: [] })
 
           yield* machine.handlePageLoaded(pageLoaded()) // → Drained
-          expect(sendMessage).not.toHaveBeenCalled()
+          expect(dispatched(sendMessage)).toEqual([])
 
           // A generated step dispatches immediately — the machine is idle.
           yield* machine.handleStepsGenerated([linkA])
-          expect(sendMessage).toHaveBeenCalledTimes(1)
-          expect(sendMessage.mock.calls[0][0]).toEqual(linkA.action)
+          expect(dispatched(sendMessage)).toHaveLength(1)
+          expect(dispatched(sendMessage)[0]).toEqual(linkA.action)
         })
       ))
 
@@ -238,11 +239,7 @@ describe('automatic-navigation.make', () => {
           yield* machine.handleStepsGenerated([linkC])
           yield* machine.handlePageLoaded(pageLoaded('https://example.com/gate')) // release hold → linkB, linkC
 
-          expect(sendMessage.mock.calls.map((call) => call[0])).toEqual([
-            linkA.action,
-            linkB.action,
-            linkC.action,
-          ])
+          expect(dispatched(sendMessage)).toEqual([linkA.action, linkB.action, linkC.action])
         })
       ))
 
@@ -283,12 +280,12 @@ describe('automatic-navigation.make', () => {
           yield* machine.handlePageLoaded(pageLoaded())
           yield* TestClock.adjust(Duration.seconds(4))
           yield* Effect.yieldNow()
-          expect(sendMessage).not.toHaveBeenCalled()
+          expect(dispatched(sendMessage)).toEqual([])
 
           yield* TestClock.adjust(Duration.seconds(1))
           yield* Effect.yieldNow()
-          expect(sendMessage).toHaveBeenCalledTimes(1)
-          expect(sendMessage.mock.calls[0][0]).toEqual(linkA.action)
+          expect(dispatched(sendMessage)).toHaveLength(1)
+          expect(dispatched(sendMessage)[0]).toEqual(linkA.action)
         })
       ))
 
@@ -304,12 +301,12 @@ describe('automatic-navigation.make', () => {
           yield* machine.handlePageLoaded(pageLoaded())
           yield* TestClock.adjust(Duration.seconds(3))
           yield* Effect.yieldNow()
-          expect(sendMessage).not.toHaveBeenCalled() // second delay now running
+          expect(dispatched(sendMessage)).toEqual([]) // second delay now running
 
           yield* TestClock.adjust(Duration.seconds(2))
           yield* Effect.yieldNow()
-          expect(sendMessage).toHaveBeenCalledTimes(1)
-          expect(sendMessage.mock.calls[0][0]).toEqual(linkA.action)
+          expect(dispatched(sendMessage)).toHaveLength(1)
+          expect(dispatched(sendMessage)[0]).toEqual(linkA.action)
         })
       ))
 
@@ -325,8 +322,8 @@ describe('automatic-navigation.make', () => {
           yield* machine.handlePageLoaded(pageLoaded('https://example.com/x'))
           yield* TestClock.adjust(Duration.seconds(2)) // t=5: original window elapses
           yield* Effect.yieldNow()
-          expect(sendMessage).toHaveBeenCalledTimes(1)
-          expect(sendMessage.mock.calls[0][0]).toEqual(linkA.action)
+          expect(dispatched(sendMessage)).toHaveLength(1)
+          expect(dispatched(sendMessage)[0]).toEqual(linkA.action)
         })
       ))
 
@@ -366,12 +363,12 @@ describe('automatic-navigation.make', () => {
           })
 
           yield* machine.handlePageLoaded(pageLoaded('https://example.com/login'))
-          expect(sendMessage).not.toHaveBeenCalled() // login ≠ dashboard → parked
+          expect(dispatched(sendMessage)).toEqual([]) // login ≠ dashboard → parked
 
           // On match the hold is consumed and the tail drains — linkA dispatches.
           yield* machine.handlePageLoaded(pageLoaded('https://example.com/dashboard'))
-          expect(sendMessage).toHaveBeenCalledTimes(1)
-          expect(sendMessage.mock.calls[0][0]).toEqual(linkA.action)
+          expect(dispatched(sendMessage)).toHaveLength(1)
+          expect(dispatched(sendMessage)[0]).toEqual(linkA.action)
         })
       ))
 
@@ -384,8 +381,8 @@ describe('automatic-navigation.make', () => {
           // The start-up load is already on the awaited page → the hold passes
           // through in the same drain and linkA dispatches at once.
           yield* machine.handlePageLoaded(pageLoaded('https://example.com/login'))
-          expect(sendMessage).toHaveBeenCalledTimes(1)
-          expect(sendMessage.mock.calls[0][0]).toEqual(linkA.action)
+          expect(dispatched(sendMessage)).toHaveLength(1)
+          expect(dispatched(sendMessage)[0]).toEqual(linkA.action)
         })
       ))
 
@@ -401,12 +398,12 @@ describe('automatic-navigation.make', () => {
           yield* machine.handlePageLoaded(pageLoaded('https://example.com/login'))
           yield* TestClock.adjust(Duration.seconds(29))
           yield* Effect.yieldNow()
-          expect(sendMessage).not.toHaveBeenCalled()
+          expect(dispatched(sendMessage)).toEqual([])
 
           yield* TestClock.adjust(Duration.seconds(1))
           yield* Effect.yieldNow()
-          expect(sendMessage).toHaveBeenCalledTimes(1)
-          expect(sendMessage.mock.calls[0][0]).toEqual({ _tag: 'SniffingComplete' })
+          expect(dispatched(sendMessage)).toHaveLength(1)
+          expect(dispatched(sendMessage)[0]).toEqual({ _tag: 'SniffingComplete' })
         })
       ))
 
@@ -422,13 +419,13 @@ describe('automatic-navigation.make', () => {
           yield* machine.handlePageLoaded(pageLoaded('https://example.com/login'))
           yield* TestClock.adjust(Duration.seconds(10))
           yield* machine.handlePageLoaded(pageLoaded('https://example.com/dashboard'))
-          expect(sendMessage).toHaveBeenCalledTimes(1)
-          expect(sendMessage.mock.calls[0][0]).toEqual(linkA.action)
+          expect(dispatched(sendMessage)).toHaveLength(1)
+          expect(dispatched(sendMessage)[0]).toEqual(linkA.action)
 
           // The superseded timeout must not fire an abort after being cancelled.
           yield* TestClock.adjust(Duration.seconds(60))
           yield* Effect.yieldNow()
-          expect(sendMessage).toHaveBeenCalledTimes(1)
+          expect(dispatched(sendMessage)).toHaveLength(1)
         })
       ))
   })
@@ -444,7 +441,7 @@ describe('automatic-navigation.make', () => {
           yield* machine.stopAutomaticNavigation()
           yield* TestClock.adjust(five)
           yield* Effect.yieldNow()
-          expect(sendMessage).not.toHaveBeenCalled()
+          expect(dispatched(sendMessage)).toEqual([])
         })
       ))
 
@@ -461,7 +458,7 @@ describe('automatic-navigation.make', () => {
           yield* machine.stopAutomaticNavigation()
           yield* TestClock.adjust(Duration.seconds(30))
           yield* Effect.yieldNow()
-          expect(sendMessage).not.toHaveBeenCalled()
+          expect(dispatched(sendMessage)).toEqual([])
         })
       ))
 
@@ -477,13 +474,13 @@ describe('automatic-navigation.make', () => {
           })
 
           yield* machine.handlePageLoaded(pageLoaded('https://example.com/')) // dispatch linkA, park
-          expect(sendMessage).toHaveBeenCalledTimes(1)
-          expect(sendMessage.mock.calls[0][0]).toEqual(linkA.action)
+          expect(dispatched(sendMessage)).toHaveLength(1)
+          expect(dispatched(sendMessage)[0]).toEqual(linkA.action)
 
           yield* machine.stopAutomaticNavigation()
           yield* machine.handlePageLoaded(pageLoaded('https://example.com/')) // restart from linkA
-          expect(sendMessage).toHaveBeenCalledTimes(2)
-          expect(sendMessage.mock.calls[1][0]).toEqual(linkA.action)
+          expect(dispatched(sendMessage)).toHaveLength(2)
+          expect(dispatched(sendMessage)[1]).toEqual(linkA.action)
         })
       ))
   })
@@ -509,7 +506,7 @@ describe('automatic-navigation.make', () => {
             }),
             Effect.scoped
           )
-          expect(sendMessage).not.toHaveBeenCalled()
+          expect(dispatched(sendMessage)).toEqual([])
         })
       ))
 
@@ -521,7 +518,7 @@ describe('automatic-navigation.make', () => {
 
           yield* machine.handlePageLoaded(pageLoaded())
           yield* machine.signalNoMoreResultsExpected // → Done
-          expect(sendMessage).toHaveBeenCalledOnce()
+          expect(dispatched(sendMessage)).toHaveLength(1)
 
           yield* machine.handlePageLoaded(pageLoaded('https://example.com/late')).pipe(
             LoggingLayerTest.expectToLog((logs) => {
@@ -536,7 +533,78 @@ describe('automatic-navigation.make', () => {
             }),
             Effect.scoped
           )
-          expect(sendMessage).toHaveBeenCalledOnce() // no extra dispatch
+          expect(dispatched(sendMessage)).toHaveLength(1) // no extra dispatch
+        })
+      ))
+  })
+
+  describe('step names (SetSnifferStatus)', () => {
+    it('should push a Navigation step name to the sniffer chrome right before its action', () =>
+      run(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const step = openStep('https://example.com/a', 'Loading page')
+          const machine = makeMachine({ sendMessage, stepSequence: [step] })
+
+          yield* machine.handlePageLoaded(pageLoaded())
+          // The chrome label is pushed in the same turn, immediately before the
+          // action — never on the wire action itself.
+          expect(allSent(sendMessage)).toEqual([
+            { _tag: 'SetSnifferStatus', name: 'Loading page' },
+            step.action,
+          ])
+        })
+      ))
+
+    it('should push a Delay step name while the timer is still running (before any dispatch)', () =>
+      run(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [delayStep(five, 'Pausing before login'), linkA],
+          })
+
+          yield* machine.handlePageLoaded(pageLoaded())
+          // The hold's name is visible even though nothing has dispatched yet.
+          expect(statusNames(sendMessage)).toEqual(['Pausing before login'])
+          expect(dispatched(sendMessage)).toEqual([])
+        })
+      ))
+
+    it('should push an AwaitPageSettled step name when it parks', () =>
+      run(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [
+              awaitSettled('dashboard', Duration.seconds(30), 'Waiting for dashboard'),
+              linkA,
+            ],
+          })
+
+          yield* machine.handlePageLoaded(pageLoaded('https://example.com/login')) // parks
+          expect(statusNames(sendMessage)).toEqual(['Waiting for dashboard'])
+          expect(dispatched(sendMessage)).toEqual([])
+        })
+      ))
+
+    it('should push each name in step order for back-to-back navigations (the chrome ends on the last)', () =>
+      run(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [
+              fillStep('alice', 'Entering email'),
+              fillStep('hunter2', 'Entering password'),
+            ],
+          })
+
+          yield* machine.handlePageLoaded(pageLoaded())
+          // Both names are pushed, in order — the last is what the user is left seeing.
+          expect(statusNames(sendMessage)).toEqual(['Entering email', 'Entering password'])
         })
       ))
   })
@@ -581,30 +649,46 @@ const pageLoaded = (
   pageContentId: 'page-1',
 })
 
-const openStep = (uri: string): Step.NavigationStep => ({
+// Every step carries a required `name`. The builders default it from the step's
+// content so the fixtures stay terse; a caller that asserts on the name passes an
+// explicit one. The name never rides the step's `action`, so `linkA.action`
+// comparisons are unaffected — only the separate `SetSnifferStatus` push carries it.
+const openStep = (uri: string, name = `open ${uri}`): Step.NavigationStep => ({
   _tag: 'Navigation',
+  name,
   action: { _tag: 'Open', source: { _tag: 'Uri', uri } },
 })
 
 /** A `Fill` PageAction step; the querySelector is fixed so equality is by value. */
-const fillStep = (value: string): Step.NavigationStep => ({
+const fillStep = (value: string, name = `fill ${value}`): Step.NavigationStep => ({
   _tag: 'Navigation',
+  name,
   action: { _tag: 'PageAction', action: { kind: 'Fill', querySelector: '#field', value } },
 })
 
-const clickStep = (querySelector: string): Step.NavigationStep => ({
+const clickStep = (
+  querySelector: string,
+  name = `click ${querySelector}`
+): Step.NavigationStep => ({
   _tag: 'Navigation',
+  name,
   action: { _tag: 'PageAction', action: { kind: 'Click', querySelector } },
 })
 
-const delayStep = (duration: Duration.Duration): Step.Step => ({ _tag: 'Delay', duration })
+const delayStep = (duration: Duration.Duration, name = 'delay'): Step.Step => ({
+  _tag: 'Delay',
+  name,
+  duration,
+})
 
 /** A hold until a settled `PageLoaded` whose last path segment is `segment`. */
 const awaitSettled = (
   segment: string,
-  timeout: Duration.Duration = Duration.seconds(30)
+  timeout: Duration.Duration = Duration.seconds(30),
+  name = `await ${segment}`
 ): Step.AwaitPageSettledStep => ({
   _tag: 'AwaitPageSettled',
+  name,
   pattern: UrlMatch.make({ segments: [UrlMatch.literal(segment)] }),
   timeout,
 })
@@ -613,6 +697,32 @@ const linkA = openStep('https://example.com/a')
 const linkB = openStep('https://example.com/b')
 const linkC = openStep('https://example.com/c')
 
-/** The `_tag`s of the messages sent so far, in order. */
+/**
+ * The messages the machine actually *dispatched*, with the per-step
+ * `SetSnifferStatus` chrome-label pushes filtered out. Every step emits one of
+ * those before its own effect (see `Step.name`); the dispatch/timer/completion
+ * tests assert on the navigation actions and terminals only, so they route
+ * through this. The `SetSnifferStatus` emission has its own dedicated tests.
+ */
+const dispatched = (
+  sendMessage: ReturnType<typeof vi.fn<SendMessage>>
+): readonly StepOutboundMessage[] =>
+  sendMessage.mock.calls
+    .map((call) => call[0])
+    .filter((message) => message._tag !== 'SetSnifferStatus')
+
+/** Every message sent so far, in order — status pushes included. */
+const allSent = (
+  sendMessage: ReturnType<typeof vi.fn<SendMessage>>
+): readonly StepOutboundMessage[] => sendMessage.mock.calls.map((call) => call[0])
+
+/** The `_tag`s of the *dispatched* messages so far (status pushes excluded), in order. */
 const sentTags = (sendMessage: ReturnType<typeof vi.fn<SendMessage>>): string[] =>
-  sendMessage.mock.calls.map((call) => call[0]._tag)
+  dispatched(sendMessage).map((message) => message._tag)
+
+/** The step names pushed to the sniffer chrome so far, in order. */
+const statusNames = (sendMessage: ReturnType<typeof vi.fn<SendMessage>>): string[] =>
+  sendMessage.mock.calls
+    .map((call) => call[0])
+    .filter((message) => message._tag === 'SetSnifferStatus')
+    .map((message) => (message as { readonly name: string }).name)

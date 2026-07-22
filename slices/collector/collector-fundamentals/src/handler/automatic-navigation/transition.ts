@@ -9,6 +9,7 @@ import {
   requestCompletionCheck,
   scheduleDelayTimer,
   scheduleUrlMatchTimeout,
+  setStepName,
   type SideEffectMessage,
   warnDroppedPageLoaded,
   warnDroppedSteps,
@@ -69,6 +70,9 @@ type Transition = readonly [State.StepState, readonly SideEffectMessage[]]
  * re-awaken. An `AwaitPageSettled` is satisfied immediately only if that url
  * already matches its `pattern`; otherwise it parks in `AwaitingUrlMatch` to
  * await a matching settled `PageLoaded`.
+ *
+ * Every step reached emits a leading `SetStepName` for its required `name`, so
+ * the sniffer chrome's subtitle tracks the current step.
  */
 const drainFrom = (queue: State.Queue, url: string | undefined, generation: number): Transition => {
   const [head, ...tail] = queue
@@ -78,21 +82,30 @@ const drainFrom = (queue: State.Queue, url: string | undefined, generation: numb
     // settled (it re-injects `NoMoreResultsExpected` iff so).
     return [State.drained(generation), [requestCompletionCheck]]
   }
+  // Every step carries a required, human-readable `name`; surface it to the
+  // sniffer chrome as the step begins. Prepended so the label paints before the
+  // step's own effect (dispatch / timer / park) and before the tail drains — a
+  // back-to-back `Navigation` run therefore leaves only the last name visible.
+  const nameEffect = setStepName(head.name)
   if (head._tag === 'Delay') {
     const g = generation + 1
-    return [State.delayPending(tail, g), [scheduleDelayTimer(g, Duration.toMillis(head.duration))]]
+    return [
+      State.delayPending(tail, g),
+      [nameEffect, scheduleDelayTimer(g, Duration.toMillis(head.duration))],
+    ]
   }
   if (head._tag === 'AwaitPageSettled') {
     if (url !== undefined && head.pattern.test(url)) {
       // Already on the settled page this hold waits for — proceed without parking.
-      return drainFrom(tail, url, generation)
+      const [next, effects] = drainFrom(tail, url, generation)
+      return [next, [nameEffect, ...effects]]
     }
     // The awaited page is not (yet) in hand: keep the hold at the queue head and
     // park under a fresh URL-match timeout until a matching `PageLoaded` arrives.
     const g = generation + 1
     return [
       State.awaitingUrlMatch(queue, g),
-      [scheduleUrlMatchTimeout(g, Duration.toMillis(head.timeout))],
+      [nameEffect, scheduleUrlMatchTimeout(g, Duration.toMillis(head.timeout))],
     ]
   }
   // Navigation: dispatch the action now and keep draining the tail in the same
@@ -100,7 +113,7 @@ const drainFrom = (queue: State.Queue, url: string | undefined, generation: numb
   // a hold step's job — so several actions can dispatch back-to-back. No timer is
   // armed, so the generation is unchanged.
   const [next, effects] = drainFrom(tail, url, generation)
-  return [next, [dispatchNavigation(head.action), ...effects]]
+  return [next, [nameEffect, dispatchNavigation(head.action), ...effects]]
 }
 
 const onPageLoaded = (state: State.StepState, url: string): Transition =>

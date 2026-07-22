@@ -48,7 +48,9 @@ import type * as Step from './step.ts'
  *   `response.url` (e.g. open every entry linked from a list/table). Run-wide
  *   dedup of generated `Open`s by URI and a `ScrapingPlan.maxGeneratedSteps`
  *   cap (enforced by the handler, not here) keep the naturally-recursive
- *   fan-out terminating. Omit it for a leaf entity that never spawns work.
+ *   fan-out terminating. Omit it for a leaf entity that never spawns work. Each
+ *   generated `Step` must carry a `name` (as any authored step does) — it labels
+ *   the sniffer chrome as the generated step runs.
  *
  *   Generation is a separate, named field rather than a `parse` side-channel, so
  *   `parse` stays a pure decode with no hidden control flow, and the handler —

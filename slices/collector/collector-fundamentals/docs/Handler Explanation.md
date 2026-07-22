@@ -242,7 +242,7 @@ The inputs are `PageLoaded`, `Stop`, `DelayTimerFired`, `UrlMatchTimeoutFired`,
 `StepsGenerated`, and `NoMoreResultsExpected`; the states are
 `AwaitingPageLoaded`, `DelayPending`, `AwaitingUrlMatch`, `Drained`, and `Done`.
 Because the queue lives in the state, the transition needs no `ScrapingPlan`
-closure — it names `DispatchNavigation` / `DispatchSniffingComplete` /
+closure — it names `SetStepName` / `DispatchNavigation` / `DispatchSniffingComplete` /
 `Schedule*` / `CancelTimer` / `RequestCompletionCheck` / `Warn*` effects for the
 runtime to discharge.
 
@@ -255,6 +255,14 @@ a timer for its `duration` and rests, an `AwaitPageSettled` parks until a settle
 drain from the tail on a match — and an empty queue transitions to `Drained`. A
 `StepsGenerated` input appends to the back of the queue (breadth-first), or from
 `Drained` re-awakens the machine and drains the new steps with no `PageLoaded`.
+
+As it reaches each step — before that step's own dispatch, timer, or park — the
+machine emits a leading `SetStepName` for the step's required `name`, which the
+handler forwards as a `SetSnifferStatus` bridge message; the Tauri host writes it
+to the sniffer chrome's subtitle so the running step is visible. A back-to-back
+`Navigation` run therefore flushes several names in one turn and only the last is
+seen — names on hold steps (or a `Navigation` gated by a following hold) are the
+ones a user reliably reads.
 There is **no implicit settle timer**: all waiting is an explicit `Delay` or
 `AwaitPageSettled` step, so `AwaitingPageLoaded` is a start-up-only resting state
 (nothing but `Stop` returns to it).

@@ -136,25 +136,28 @@ describe('scrapingPlan', () => {
   it('scripts login (fill/fill/click), holds for the redirect, opens prescriptions, and settles', () => {
     const plan = scrapingPlan({ _tag: 'rexall', email: 'a@b.com', password: 'secret' })
     expect(plan.stepSequence).toEqual([
-      { _tag: 'Delay', duration: Duration.seconds(2) },
+      { _tag: 'Delay', name: 'Waiting for login page', duration: Duration.seconds(2) },
       {
         _tag: 'Navigation',
+        name: 'Entering email',
         action: {
           _tag: 'PageAction',
           action: { kind: 'Fill', querySelector: 'input[type="email"]', value: 'a@b.com' },
         },
       },
-      { _tag: 'Delay', duration: Duration.seconds(0.25) },
+      { _tag: 'Delay', name: 'Pausing before password', duration: Duration.seconds(0.25) },
       {
         _tag: 'Navigation',
+        name: 'Entering password',
         action: {
           _tag: 'PageAction',
           action: { kind: 'Fill', querySelector: 'input[type="password"]', value: 'secret' },
         },
       },
-      { _tag: 'Delay', duration: Duration.seconds(0.25) },
+      { _tag: 'Delay', name: 'Pausing before submit', duration: Duration.seconds(0.25) },
       {
         _tag: 'Navigation',
+        name: 'Submitting login',
         action: {
           _tag: 'PageAction',
           action: { kind: 'Click', querySelector: 'button[type="submit"]' },
@@ -162,11 +165,13 @@ describe('scrapingPlan', () => {
       },
       {
         _tag: 'AwaitPageSettled',
+        name: 'Waiting for logged-in page',
         pattern: /:\/\/app\.letsbewell\.ca/,
         timeout: Duration.seconds(30),
       },
       {
         _tag: 'Navigation',
+        name: 'Opening prescriptions',
         action: {
           _tag: 'Open',
           source: { _tag: 'Uri', uri: 'https://app.letsbewell.ca/health/prescriptions' },
@@ -174,10 +179,11 @@ describe('scrapingPlan', () => {
       },
       {
         _tag: 'AwaitPageSettled',
+        name: 'Waiting for prescriptions to load',
         pattern: /:\/\/app\.letsbewell\.ca\/health\/prescriptions/,
         timeout: Duration.seconds(30),
       },
-      { _tag: 'Delay', duration: Duration.seconds(8) },
+      { _tag: 'Delay', name: 'Collecting prescriptions', duration: Duration.seconds(8) },
     ])
   })
 
