@@ -5,4 +5,5 @@
 
 pub(crate) mod open;
 pub(crate) mod request_sniffable_webview;
+pub(crate) mod set_sniffer_status;
 pub(crate) mod sniffing_complete;

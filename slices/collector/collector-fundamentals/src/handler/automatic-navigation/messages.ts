@@ -1,6 +1,10 @@
 import type { PageActionMessage, PageLoadedMessageBody } from 'browser-sniffer-core'
 
-import type { OpenMessage, SniffingComplete as SniffingCompleteMessage } from '../../bridge.ts'
+import type {
+  OpenMessage,
+  SetSnifferStatus as SetSnifferStatusMessage,
+  SniffingComplete as SniffingCompleteMessage,
+} from '../../bridge.ts'
 import type { Step, StepAction } from '../../model/step.ts'
 
 /**
@@ -17,14 +21,16 @@ import type { Step, StepAction } from '../../model/step.ts'
 
 /**
  * The subset of the handler's outbound messages the automatic-navigation machine can ask
- * the host to send: the scripted `Open` / `PageAction` navigation steps
- * and the terminal `SniffingComplete`. (`CancelSnifferRequest` is the
+ * the host to send: the scripted `Open` / `PageAction` navigation steps,
+ * the terminal `SniffingComplete`, and the `SetSnifferStatus` chrome-label
+ * update it emits as each step begins. (`CancelSnifferRequest` is the
  * response tracker's, not the automatic-navigation machine's.)
  */
 type StepOutboundMessage =
   | typeof OpenMessage.Type
   | typeof PageActionMessage.Type
   | typeof SniffingCompleteMessage.Type
+  | typeof SetSnifferStatusMessage.Type
 
 // ---------------------------------------------------------------------------
 // Input messages
@@ -75,6 +81,11 @@ type InputMessage =
  * *names* these, which the interpreter in `./make.ts` discharges through
  * the handlers in `./side-effect-handlers.ts`.
  *
+ * - `SetStepName` — forward a step's manually-authored `name` to the host as a
+ *   `SetSnifferStatus` bridge body, so the sniffer chrome's subtitle reflects
+ *   the step that just began. Emitted by the transition for *every* step it
+ *   reaches (a name is required on every step); the handler carries only the
+ *   string, so it needs no plan lookup.
  * - `DispatchNavigation` — forward a `Navigation` step's `action` (already a
  *   bridge message body) to the sniffer, span-wrapped. The transition carries
  *   the action itself (the queue lives in the state), so the handler needs no
@@ -98,6 +109,7 @@ type InputMessage =
  * handlers re-inflate via `Duration.millis`.
  */
 type SideEffectMessage =
+  | { readonly _tag: 'SetStepName'; readonly name: string }
   | { readonly _tag: 'DispatchNavigation'; readonly action: StepAction }
   | { readonly _tag: 'DispatchSniffingComplete' }
   | {
@@ -117,6 +129,7 @@ type SideEffectMessage =
   | { readonly _tag: 'WarnDroppedSteps'; readonly count: number }
 
 // Terse constructors so the transition table reads as data, not object literals.
+const setStepName = (name: string): SideEffectMessage => ({ _tag: 'SetStepName', name })
 const dispatchNavigation = (action: StepAction): SideEffectMessage => ({
   _tag: 'DispatchNavigation',
   action,
@@ -155,6 +168,7 @@ export {
   requestCompletionCheck,
   scheduleDelayTimer,
   scheduleUrlMatchTimeout,
+  setStepName,
   warnDroppedPageLoaded,
   warnDroppedSteps,
   warnUrlMatchTimeout,

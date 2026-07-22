@@ -4,6 +4,7 @@ import type { MessageHandler } from 'effect-messaging-core'
 import {
   type CollectorBridge,
   OpenMessage,
+  type SetSnifferStatus as SetSnifferStatusMessage,
   type SniffingComplete as SniffingCompleteMessage,
 } from '../bridge.ts'
 import { ScrapingPlan, WebViewSource } from '../model/index.ts'
@@ -30,13 +31,15 @@ type Service = MessageHandler.HandlersFor<CollectorBridge['HostToWeb']>
  * handler forwards that `action` to `sendMessage` without translation (the
  * plan-only holds carry no `action`: a `Delay` / `AwaitPageSettled` step is
  * consumed by the FSM as a timer / page-settle wait, so neither reaches the
- * wire).
+ * wire). `SetSnifferStatus` carries each step's `name` to the host, which
+ * writes it to the sniffer chrome subtitle (automatic navigation).
  */
 type OutboundMessage =
   | typeof CancelSnifferRequestMessage.Type
   | typeof OpenMessage.Type
   | typeof PageActionMessage.Type
   | typeof SniffingCompleteMessage.Type
+  | typeof SetSnifferStatusMessage.Type
 
 interface CollectorBridgeMessageHandler<TResources> extends Service {
   readonly incompleteSniffedRequests: MutableHashMap.MutableHashMap<

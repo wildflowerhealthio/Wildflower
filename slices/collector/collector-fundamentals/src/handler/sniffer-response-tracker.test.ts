@@ -557,6 +557,7 @@ describe('SnifferResponseTracker.make: follow-up generation', () => {
 /** A `Navigation`/`Open` step targeting `uri`, the shape `followUpSteps` returns. */
 const openStepFor = (uri: string): Step.Step => ({
   _tag: 'Navigation',
+  name: `open ${uri}`,
   action: { _tag: 'Open', source: { _tag: 'Uri', uri } },
 })
 

@@ -11,6 +11,7 @@ A pure event-bus router. The Rust side listens on the multiplexed `BRIDGE_EVENT`
 | `RequestSniffableWebView`             | Present the sniffer's native webview: `native_webview().open_url(...)` (navigate, building hidden if absent) then `native_webview().show()`. A second tag while it is up rebinds the existing native webview in place (channel + initScript + chrome + URL — see "Re-wire" below).                                                                                                                  |
 | `Open`                                | Decode the `Open` payload, resolve its `WebViewSource`, then `open_or_navigate` — identical in effect to `RequestSniffableWebView` (both resolve the source; the native webview is opened fresh if absent, else navigated in place). Distinct tag/payload so the SPA can drive a navigation independently of the initial present.                                                                   |
 | `SniffingComplete`                    | Dispose the native webview via `native_webview().dispose()` — the sniff is done, so its background runtime is torn down and resources freed. `SniffingComplete` is SPA-driven and terminal; the host doesn't re-emit it.                                                                                                                                                                            |
+| `SetSnifferStatus`                    | Decode the `{ name }` payload and write it to the sniffer chrome **subtitle** via `native_webview().patch_window_text(...)` — the collector's per-step label ("Entering email", "Waiting for prescriptions to load"). Host-consumed on **every** platform (like `Open` / `SniffingComplete`), never forwarded into the page; a decode failure or missing webview is warned-and-dropped.             |
 | `PageAction` / `CancelSnifferRequest` | **Mobile only**: forwarded into the native webview via `native_webview().evaluate_js(...)`. Desktop's native-webview content webview is still a Tauri webview (`__TAURI__.event.listen`) and receives Rust `app.emit('bridge', …)` directly. `PageAction` carries the scripted interaction (`Click` / `Fill`, demuxed page-side by `action.kind`); the host forwards it by `_tag` without decoding. |
 
 The data plane is host-mediated on **both** platforms: the content webview loads untrusted third-party content, so its web→host `bridge:ResponseStart` / `ResponseData` / `PageLoaded` / etc. never reach `BRIDGE_EVENT` straight from the page — the host allowlists the inner `_tag` (the data-plane set, excluding control tags) and re-broadcasts. Two transports, one gate:
@@ -81,6 +82,8 @@ The plugin's `open_url()` is idempotent: a second call while a native webview is
 
 The sniffer passes `initial_subtitle: "Collecting Automatically"` to `open_url()` so the native webview's first paint already shows the sniffer status — vs. a post-open `patch_window_text` call that would race the chrome bar's build on desktop (the chrome webview isn't ready until after `add_child` resolves). Title defaults to the URL host on every fresh build; `message` is reserved for future per-request counters.
 
+Once the collector's automatic-navigation machine starts stepping, each step's `SetSnifferStatus { name }` **overwrites** that subtitle via `sniffer_window::set_status` (`patch_window_text`), so `"Collecting Automatically"` is just the pre-first-step default. That post-open patch is safe here — the first named step is emitted no earlier than the start-up `PageLoaded`, by which time the chrome exists, and `patch_window_text` returns `set: false` (never an error) if it doesn't.
+
 ## Crate layout
 
 ```text
@@ -89,15 +92,17 @@ browser-sniffer-tauri-rust/
 │   ├── lib.rs                       — public surface + `attach_browser_sniffer` glue
 │   ├── events.rs                    — event-name constants (drift guard against the TS side)
 │   ├── bootstrap.rs                 — `include_str!` of the per-target TS-generated IIFE
-│   ├── sniffer_window.rs            — `open_or_navigate` (plugin call site)
+│   ├── sniffer_window.rs            — `open_or_navigate` + `set_status` (plugin call sites)
 │   ├── native_webview_bridge.rs     — `NativeWebviewChannel` + `Channel<NativeWebviewEvent>` handler + mobile `evaluate_js` forwarder
 │   ├── model/
 │   │   ├── request_sniffable_webview.rs — `RequestSniffableWebViewPayload`
 │   │   ├── open.rs                  — `OpenPayload`
+│   │   ├── set_sniffer_status.rs    — `SetSnifferStatusPayload`
 │   │   └── web_view_source.rs       — `WebViewSourcePayload`, `resolve_source`, `SourceResolveError`
 │   └── handlers/
 │       ├── request_sniffable_webview.rs
 │       ├── open.rs
+│       ├── set_sniffer_status.rs
 │       └── sniffing_complete.rs
 └── Cargo.toml
 ```

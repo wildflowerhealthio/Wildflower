@@ -13,8 +13,8 @@ import type { InputMessage, StepOutboundMessage } from './messages.ts'
  * Effect<void>`. The interpreter in `./make.ts` routes to these; they
  * close over nothing but their arguments. `Schedule*` fork span-wrapped
  * daemons that re-inject a `*Fired` input; `CancelTimer` interrupts a
- * registered daemon; `Dispatch*` send bridge messages; `RequestCompletionCheck`
- * forks the drained-completion check; `Warn*` log.
+ * registered daemon; `SetStepName` / `Dispatch*` send bridge messages;
+ * `RequestCompletionCheck` forks the drained-completion check; `Warn*` log.
  */
 
 /** Live timer fibers, keyed by the generation they were scheduled under. */
@@ -91,6 +91,14 @@ const linkKindOf = (action: StepAction): string =>
   isPageAction(action) ? `${action._tag}:${action.action.kind}` : action._tag
 
 const sideEffectHandlers = {
+  SetStepName: (
+    msg: { readonly name: string },
+    ctx: HandlerContext
+  ): Effect.Effect<void, never, never> =>
+    // Push the step's label to the sniffer chrome. The host writes it to the
+    // native webview's subtitle (`patch_window_text`); it never reaches the
+    // sniffed page.
+    ctx.sendMessage({ _tag: 'SetSnifferStatus', name: msg.name }),
   DispatchNavigation: (
     msg: { readonly action: StepAction },
     ctx: HandlerContext

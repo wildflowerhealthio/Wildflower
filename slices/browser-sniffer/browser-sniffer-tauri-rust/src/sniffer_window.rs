@@ -70,3 +70,32 @@ pub(crate) fn open_or_navigate(app: &AppHandle, url: WebviewUrl) -> anyhow::Resu
 
     Ok(())
 }
+
+/// Write `name` to the sniffer chrome's **subtitle** — the live replacement for
+/// the static `"Collecting Automatically"` seed set at open time — so the user
+/// can see which scripted step is running. Driven by the collector SPA's
+/// `SetSnifferStatus` bridge message as each step begins.
+///
+/// `title` / `message` are left `None` (unchanged): the title keeps the plugin's
+/// URL fallback and the bottom `message` slot stays reserved for a future
+/// resource counter. `patch_window_text` is a no-op (`set: false`, never an
+/// error) if no native webview is up or its chrome isn't built yet, so this may
+/// be called speculatively without a race dance.
+pub(crate) fn set_status(app: &AppHandle, name: String) -> anyhow::Result<()> {
+    use tauri_plugin_native_webview::{NativeWebviewExt, PatchWindowTextRequest};
+
+    app.native_webview()
+        .patch_window_text(
+            crate::SNIFFER_WEBVIEW_ID,
+            PatchWindowTextRequest {
+                title: None,
+                subtitle: Some(name),
+                message: None,
+            },
+        )
+        .map_err(|error| {
+            anyhow::anyhow!("tauri-plugin-native-webview patch_window_text failed: {error}")
+        })?;
+
+    Ok(())
+}
