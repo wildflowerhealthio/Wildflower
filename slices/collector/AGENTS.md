@@ -74,15 +74,24 @@ before adding one.
 
 ## Traps
 
-- **`Step` is a `Navigation | Delay | AwaitPageSettled | AwaitUserDismiss` union;
-  only `NavigationStep.action` reaches the wire.** The automatic-navigation machine
-  forwards only a `Navigation` step's `action` (typed against the bridge message
-  bodies themselves), so all three plan-only hold variants (`Delay`,
-  `AwaitPageSettled`, `AwaitUserDismiss`) stay off the wire by construction —
-  there is no "strip before dispatch" step to remember. A new scripted
-  interaction is a `PageAction` `action` union variant, not a new bridge tag; a
-  new _pause_ is a `Delay` (fixed) or `AwaitPageSettled` (wait for a matching
-  settled page load) step, not a plan-wide delay field.
+- **`Step` is a `Navigation | Delay | AwaitPageSettled | AwaitUserDismiss |
+  EnsureWindowVisible` union.** Two variants reach the wire — a `Navigation`'s
+  `action` (typed against the bridge message bodies themselves) and
+  `EnsureWindowVisible` (a fire-and-advance `EnsureSnifferVisible` show request).
+  The three plan-only holds (`Delay`, `AwaitPageSettled`, `AwaitUserDismiss`) carry
+  no payload and are consumed by the FSM, so they stay off the wire by construction
+  — there is no "strip before dispatch" step to remember. A new scripted
+  interaction is a `PageAction` `action` union variant, not a new bridge tag; a new
+  _pause_ is a `Delay` (fixed) or `AwaitPageSettled` (wait for a matching settled
+  page load) step, not a plan-wide delay field.
+- **`EnsureWindowVisible` forces the sniffer window on screen without
+  re-navigating.** A fire-and-advance step (dispatches and advances like a
+  `Navigation`) whose `EnsureSnifferVisible` message the host maps to
+  `native_webview().show(SNIFFER_WEBVIEW_ID)` — re-presenting a hidden-but-alive
+  webview, idempotent no-op if none exists. Place it right before `AwaitUserDismiss`
+  so a webview the user dismissed earlier in the run (now alive but hidden) is
+  brought back for them to close; without it that hold would wait on an off-screen
+  window.
 - **`AwaitUserDismiss` is a terminal, user-driven hold.** It parks _indefinitely_
   until the user closes the sniffer webview, then ends the run (`SniffingComplete`).
   Its signal is the host→web `CollectorBridge` `UserDismissed` message, which

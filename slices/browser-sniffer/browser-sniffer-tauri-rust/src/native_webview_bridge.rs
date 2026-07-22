@@ -6,13 +6,14 @@
 //! - **Native webview → host** ([`install`]): a long-lived
 //!   `Channel<NativeWebviewEvent>` decodes each plugin event and re-emits onto
 //!   `BRIDGE_EVENT`. `Message` is validated ([`validate_native_webview_message`])
-//!   and its inner payload forwarded; `Hidden` (the user dismissed / closed the
-//!   webview) is synthesized into a host-origin `UserDismissed` control message
-//!   on `BRIDGE_EVENT` for the collector SPA, while `Disposed` stays
-//!   lifecycle-only (it is what the SPA-driven `SniffingComplete` teardown itself
-//!   produces, so re-emitting on it would loop). The channel is cloned and reused
-//!   across opens — `Clone` preserves the handler, so it fires for every native
-//!   webview.
+//!   and its inner payload forwarded; `Hidden` is synthesized into a host-origin
+//!   `UserDismissed` control message on `BRIDGE_EVENT` for the collector SPA,
+//!   while `Disposed` stays lifecycle-only (it is the normal outcome of the
+//!   SPA-driven `SniffingComplete` teardown, so it is not a user signal). `Hidden`
+//!   is the user-dismissal signal *in practice* — see `classify_event` for the
+//!   caveat that a programmatic `hide()` would also emit it. The channel is cloned
+//!   and reused across opens — `Clone` preserves the handler, so it fires for
+//!   every native webview.
 //! - **Host → native webview** ([`forward_to_native_webview`]): mobile-only.
 //!   Desktop's content webview is a Tauri webview that receives
 //!   `app.emit('bridge', …)` natively.
@@ -196,8 +197,8 @@ enum BridgeAction<'a> {
     /// is the warn-logged reason.
     Drop(Cow<'static, str>),
     /// Synthesize a host-origin control envelope `{"_tag": tag}` and emit it on
-    /// `BRIDGE_EVENT`. Used for the user-dismiss (`Hidden`) → `UserDismissed`
-    /// signal — the payload is host-generated, not forwarded from the page.
+    /// `BRIDGE_EVENT`. Used for the `Hidden` → `UserDismissed` signal — the
+    /// payload is host-generated, not forwarded from the page.
     EmitControl(&'static str),
     /// A lifecycle event (`Disposed`) — log the carried note at debug and re-emit
     /// nothing (the SPA owns the terminal `SniffingComplete`).
@@ -213,11 +214,15 @@ fn classify_event(event: &NativeWebviewEvent) -> BridgeAction<'_> {
             Ok(inner_payload) => BridgeAction::ReEmit(inner_payload),
             Err(reason) => BridgeAction::Drop(reason),
         },
-        // A `Hidden` is the user closing/dismissing the sniffer window (the
-        // plugin's `prevent_close` + `hide`); surface it to the SPA as
-        // `UserDismissed` so an `AwaitUserDismiss` step can end the run. `Disposed`
-        // is the terminal teardown the SPA's own `SniffingComplete` triggers, so
-        // it stays lifecycle-only — re-emitting on it would loop.
+        // A `Hidden` is surfaced to the SPA as `UserDismissed` so an
+        // `AwaitUserDismiss` step can end the run. It is the user-dismissal signal
+        // *in practice* (desktop titlebar X / iOS Close/swipe / Android back →
+        // `prevent_close` + `hide`; see plugin `lifecycle.rs`) — but note the
+        // plugin's programmatic `hide()` command also emits `Hidden`, so this is a
+        // faithful "user closed it" signal only because nothing calls `hide()` on
+        // the `SNIFFER_WEBVIEW_ID` instance. `Disposed` stays lifecycle-only: it is
+        // the normal outcome of the SPA's own `SniffingComplete` teardown, not a
+        // user action.
         NativeWebviewEvent::Hidden => BridgeAction::EmitControl(events::USER_DISMISSED),
         NativeWebviewEvent::Disposed => BridgeAction::Lifecycle("native webview disposed"),
     }

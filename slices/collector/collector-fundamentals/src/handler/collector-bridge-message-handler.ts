@@ -3,6 +3,7 @@ import { Effect, type Mailbox, type MutableHashMap, Option, Schema } from 'effec
 import type { MessageHandler } from 'effect-messaging-core'
 import {
   type CollectorBridge,
+  type EnsureSnifferVisible as EnsureSnifferVisibleMessage,
   OpenMessage,
   type SetSnifferStatus as SetSnifferStatusMessage,
   type SniffingComplete as SniffingCompleteMessage,
@@ -26,18 +27,21 @@ type Service = MessageHandler.HandlersFor<CollectorBridge['HostToWeb']>
  * the supplied `sendMessage`. `CancelSnifferRequest` short-circuits an
  * unmatched response stream (response tracker); `Open` / `PageAction`
  * drive the scripted navigation and `SniffingComplete` is the terminal
- * hand-off when the link sequence is exhausted (automatic navigation). The
- * `Open` / `PageAction` payloads *are* a `Navigation` step's `action` — the
- * handler forwards that `action` to `sendMessage` without translation (the
- * plan-only holds carry no `action`: a `Delay` / `AwaitPageSettled` step is
- * consumed by the FSM as a timer / page-settle wait, so neither reaches the
- * wire). `SetSnifferStatus` carries each step's `name` to the host, which
- * writes it to the sniffer chrome subtitle (automatic navigation).
+ * hand-off when the link sequence is exhausted (automatic navigation).
+ * `EnsureSnifferVisible` is the fire-and-advance `EnsureWindowVisible` step's
+ * request to re-present the sniffer webview. The `Open` / `PageAction` payloads
+ * *are* a `Navigation` step's `action` — the handler forwards that `action` to
+ * `sendMessage` without translation (the plan-only holds carry no `action`: a
+ * `Delay` / `AwaitPageSettled` / `AwaitUserDismiss` step is consumed by the FSM as
+ * a timer / page-settle / dismiss wait, so none reaches the wire).
+ * `SetSnifferStatus` carries each step's `name` to the host, which writes it to
+ * the sniffer chrome subtitle (automatic navigation).
  */
 type OutboundMessage =
   | typeof CancelSnifferRequestMessage.Type
   | typeof OpenMessage.Type
   | typeof PageActionMessage.Type
+  | typeof EnsureSnifferVisibleMessage.Type
   | typeof SniffingCompleteMessage.Type
   | typeof SetSnifferStatusMessage.Type
 

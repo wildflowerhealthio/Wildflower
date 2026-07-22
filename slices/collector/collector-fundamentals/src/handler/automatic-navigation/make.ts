@@ -113,6 +113,7 @@ const make = <TResources>({
         Match.tag('DispatchSniffingComplete', (m) =>
           sideEffectHandlers.DispatchSniffingComplete(m, ctx)
         ),
+        Match.tag('DispatchEnsureVisible', (m) => sideEffectHandlers.DispatchEnsureVisible(m, ctx)),
         Match.tag('ScheduleDelayTimer', (m) => sideEffectHandlers.ScheduleDelayTimer(m, ctx)),
         Match.tag('ScheduleUrlMatchTimeout', (m) =>
           sideEffectHandlers.ScheduleUrlMatchTimeout(m, ctx)

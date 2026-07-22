@@ -553,6 +553,41 @@ describe('automatic-navigation.make', () => {
       ))
   })
 
+  describe('EnsureWindowVisible', () => {
+    it('should dispatch EnsureSnifferVisible and advance (fire-and-advance)', () =>
+      run(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({ sendMessage, stepSequence: [ensureVisible(), linkA] })
+
+          // Both drain on the single start-up load: the show request dispatches,
+          // then linkA — the step never waits.
+          yield* machine.handlePageLoaded(pageLoaded())
+          expect(sentTags(sendMessage)).toEqual(['EnsureSnifferVisible', 'Open'])
+          expect(sendMessage.mock.calls[0][0]).toEqual({ _tag: 'EnsureSnifferVisible' })
+        })
+      ))
+
+    it('should re-present the window then park when paired before AwaitUserDismiss', () =>
+      run(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [ensureVisible(), awaitUserDismiss()],
+          })
+
+          // The show dispatches, then the machine parks on the dismiss hold.
+          yield* machine.handlePageLoaded(pageLoaded())
+          expect(sentTags(sendMessage)).toEqual(['EnsureSnifferVisible'])
+
+          // Closing the (now-visible) window ends the run.
+          yield* machine.handleUserDismissed(userDismissed())
+          expect(sentTags(sendMessage)).toEqual(['EnsureSnifferVisible', 'SniffingComplete'])
+        })
+      ))
+  })
+
   describe('Stop', () => {
     it('should interrupt a pending Delay timer', () =>
       run(
@@ -806,6 +841,9 @@ const delayStep = (duration: Duration.Duration, name = 'delay'): Step.Step => ({
 
 /** A terminal hold that parks until the user dismisses the sniffer webview. */
 const awaitUserDismiss = (): Step.AwaitUserDismissStep => ({ _tag: 'AwaitUserDismiss' })
+
+/** A fire-and-advance step asking the host to (re-)present the sniffer webview. */
+const ensureVisible = (): Step.EnsureWindowVisibleStep => ({ _tag: 'EnsureWindowVisible' })
 
 /** The decoded `UserDismissed` bridge message the machine's handler accepts. */
 const userDismissed = (): { readonly _tag: 'UserDismissed' } => ({ _tag: 'UserDismissed' })

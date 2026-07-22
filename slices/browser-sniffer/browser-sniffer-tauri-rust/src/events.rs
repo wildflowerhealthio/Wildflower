@@ -13,6 +13,13 @@ pub const SNIFFING_COMPLETE: &str = "SniffingComplete";
 /// `patch_window_text`), never forwarded into the sniffed page.
 pub const SET_SNIFFER_STATUS: &str = "SetSnifferStatus";
 
+/// Web→host: the SPA asks the host to (re-)present the existing sniffer webview
+/// (a fire-and-advance `EnsureWindowVisible` step). Maps to
+/// `native_webview().show(SNIFFER_WEBVIEW_ID)` — re-presents a hidden-but-alive
+/// webview without navigating; idempotent no-op if none exists. Mirrors
+/// `collector-fundamentals`'s `CollectorBridge` `EnsureSnifferVisible` message.
+pub const ENSURE_SNIFFER_VISIBLE: &str = "EnsureSnifferVisible";
+
 /// Web→host *data-plane* tag literals the sniffer's native-webview page
 /// legitimately posts (the page-observation stream the SPA collector consumes).
 /// These are the ONLY inner `_tag`s `native_webview_bridge` re-emits from an

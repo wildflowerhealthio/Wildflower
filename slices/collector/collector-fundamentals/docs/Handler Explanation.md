@@ -253,7 +253,9 @@ and it keeps draining as far as it can each turn: a `Navigation` **dispatches it
 a `PageLoaded`, so consecutive navigations dispatch back-to-back), a `Delay` arms
 a timer for its `duration` and rests, an `AwaitPageSettled` parks until a settled
 `PageLoaded` matches its `pattern` (or aborts on its `timeout`) — resuming the
-drain from the tail on a match — and an empty queue transitions to `Drained`. A
+drain from the tail on a match — an `EnsureWindowVisible` dispatches an
+`EnsureSnifferVisible` show request and immediately advances (fire-and-advance,
+like a `Navigation`), and an empty queue transitions to `Drained`. A
 `StepsGenerated` input appends to the back of the queue (breadth-first), or from
 `Drained` re-awakens the machine and drains the new steps with no `PageLoaded`.
 

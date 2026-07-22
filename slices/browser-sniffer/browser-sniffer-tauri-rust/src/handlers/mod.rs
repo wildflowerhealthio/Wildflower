@@ -3,6 +3,7 @@
 //! dispatches to the sniffer-window layer; failures log and the listener
 //! loop continues to the next event.
 
+pub(crate) mod ensure_sniffer_visible;
 pub(crate) mod open;
 pub(crate) mod request_sniffable_webview;
 pub(crate) mod set_sniffer_status;

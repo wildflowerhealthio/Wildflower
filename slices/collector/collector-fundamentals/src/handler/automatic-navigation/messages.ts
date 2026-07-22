@@ -1,6 +1,7 @@
 import type { PageActionMessage, PageLoadedMessageBody } from 'browser-sniffer-core'
 
 import type {
+  EnsureSnifferVisible as EnsureSnifferVisibleMessage,
   OpenMessage,
   SetSnifferStatus as SetSnifferStatusMessage,
   SniffingComplete as SniffingCompleteMessage,
@@ -22,13 +23,15 @@ import type { Step, StepAction } from '../../model/step.ts'
 /**
  * The subset of the handler's outbound messages the automatic-navigation machine can ask
  * the host to send: the scripted `Open` / `PageAction` navigation steps,
- * the terminal `SniffingComplete`, and the `SetSnifferStatus` chrome-label
- * update it emits as each step begins. (`CancelSnifferRequest` is the
- * response tracker's, not the automatic-navigation machine's.)
+ * the `EnsureSnifferVisible` show request, the terminal `SniffingComplete`, and
+ * the `SetSnifferStatus` chrome-label update it emits as each step begins.
+ * (`CancelSnifferRequest` is the response tracker's, not the
+ * automatic-navigation machine's.)
  */
 type StepOutboundMessage =
   | typeof OpenMessage.Type
   | typeof PageActionMessage.Type
+  | typeof EnsureSnifferVisibleMessage.Type
   | typeof SniffingCompleteMessage.Type
   | typeof SetSnifferStatusMessage.Type
 
@@ -98,6 +101,9 @@ type InputMessage =
  *   plan lookup.
  * - `DispatchSniffingComplete` — send the terminal `SniffingComplete`, then run
  *   the `onSniffingComplete` hook, span-wrapped.
+ * - `DispatchEnsureVisible` — send `EnsureSnifferVisible` (the fire-and-advance
+ *   `EnsureWindowVisible` step's request to re-present the sniffer webview),
+ *   span-wrapped.
  * - `ScheduleDelayTimer` / `ScheduleUrlMatchTimeout` — fork a daemon that sleeps
  *   then re-injects the matching `*Fired` input under `generation`.
  * - `CancelTimer` — interrupt the daemon registered under `generation`
@@ -118,6 +124,7 @@ type SideEffectMessage =
   | { readonly _tag: 'SetStepName'; readonly name: string }
   | { readonly _tag: 'DispatchNavigation'; readonly action: StepAction }
   | { readonly _tag: 'DispatchSniffingComplete' }
+  | { readonly _tag: 'DispatchEnsureVisible' }
   | {
       readonly _tag: 'ScheduleDelayTimer'
       readonly generation: number
@@ -141,6 +148,7 @@ const dispatchNavigation = (action: StepAction): SideEffectMessage => ({
   action,
 })
 const dispatchSniffingComplete: SideEffectMessage = { _tag: 'DispatchSniffingComplete' }
+const dispatchEnsureVisible: SideEffectMessage = { _tag: 'DispatchEnsureVisible' }
 const scheduleDelayTimer = (generation: number, durationMs: number): SideEffectMessage => ({
   _tag: 'ScheduleDelayTimer',
   generation,
@@ -169,6 +177,7 @@ const warnDroppedSteps = (count: number): SideEffectMessage => ({
 export type { InputMessage, SideEffectMessage, StepOutboundMessage }
 export {
   cancelTimer,
+  dispatchEnsureVisible,
   dispatchNavigation,
   dispatchSniffingComplete,
   requestCompletionCheck,

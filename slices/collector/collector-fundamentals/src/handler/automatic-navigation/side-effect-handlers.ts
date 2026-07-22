@@ -124,6 +124,18 @@ const sideEffectHandlers = {
         attributes: { [Telemetry.Sniffing.Attributes.LinkKind]: 'SniffingComplete' },
       })
     ),
+  DispatchEnsureVisible: (
+    _msg: { readonly _tag: 'DispatchEnsureVisible' },
+    ctx: HandlerContext
+  ): Effect.Effect<void, never, never> =>
+    // Ask the host to (re-)present the sniffer webview — a fire-and-advance
+    // `EnsureWindowVisible` step. No hook and no acknowledgement; the host maps it
+    // to `native_webview().show(...)`.
+    ctx.sendMessage({ _tag: 'EnsureSnifferVisible' }).pipe(
+      Effect.withSpan(Telemetry.Sniffing.Dispatch.Span.Name, {
+        attributes: { [Telemetry.Sniffing.Attributes.LinkKind]: 'EnsureSnifferVisible' },
+      })
+    ),
   ScheduleDelayTimer: (
     msg: { readonly generation: number; readonly durationMs: number },
     ctx: HandlerContext

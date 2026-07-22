@@ -3,6 +3,7 @@ import { Duration, Match } from 'effect'
 import type { Step } from '../../model/step.ts'
 import {
   cancelTimer,
+  dispatchEnsureVisible,
   dispatchNavigation,
   dispatchSniffingComplete,
   type InputMessage,
@@ -59,6 +60,7 @@ import * as State from './state.ts'
  *   AwaitPageSettled head, url matches  → continue with tail             (already on the awaited page)
  *   AwaitPageSettled head, no/no-match  → AwaitingUrlMatch(q) + timeout  (head kept, parks for a matching PageLoaded)
  *   AwaitUserDismiss head               → AwaitingUserDismiss(q)         (head kept, parks for UserDismissed; no timer)
+ *   EnsureWindowVisible head            → dispatch EnsureSnifferVisible, continue with tail (fire-and-advance)
  *   Navigation head                     → dispatch action, continue with tail
  */
 
@@ -116,6 +118,13 @@ const drainFrom = (queue: State.Queue, url: string | undefined, generation: numb
     // armed (generation unchanged); only the external `UserDismissed` input
     // resumes from here (in `onUserDismissed`, which ends the run).
     return [State.awaitingUserDismiss(queue, generation), []]
+  }
+  if (head._tag === 'EnsureWindowVisible') {
+    // Fire-and-advance, like a Navigation: ask the host to re-present the sniffer
+    // webview and keep draining the tail in the same turn. It is not a hold — it
+    // dispatches and moves on — so no timer is armed (generation unchanged).
+    const [next, effects] = drainFrom(tail, url, generation)
+    return [next, [dispatchEnsureVisible, ...effects]]
   }
   // Navigation: dispatch the action now and keep draining the tail in the same
   // turn. A `Fill` / `Click` / `Open` never waits for a `PageLoaded` — waiting is
