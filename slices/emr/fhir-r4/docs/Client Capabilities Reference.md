@@ -58,6 +58,16 @@ Per FHIR R4 § Observation.search, the standard parameters include `_id`, `_last
 
 Implication: the typed client cannot ask "latest blood pressure for this patient" — the primary reason to query Observation. Adding `subject`/`patient`/`code`/`category`/`date` would unlock the canonical workflows.
 
+## DocumentReference search parameters (only paging declared)
+
+Per FHIR R4 § DocumentReference.search, the standard parameters include `_id`, `_lastUpdated`, `patient`, `subject`, `type`, `category`, `status`, `date`, `period`, `author`, `custodian`, `encounter`, `facility`, `setting`, `identifier`, `relatesto`, `relation`, `security-label`, `format`, `contenttype`, `language`, `location`, etc. The `HttpApi` description (and therefore the typed client) declares `_count` and `_pageToken` only.
+
+Implication: the typed client cannot ask "the discharge summaries for this patient" — the primary reason to query DocumentReference. Adding `patient`/`subject`/`type`/`category`/`status`/`date` would unlock the canonical document-retrieval workflows. HFS may support more server-side, but the typed client can't express them.
+
+## DocumentReference choice / required modeling
+
+`DocumentReference` has no `choice[x]` elements, so the XOR caveat above does not apply to it. Its modifier-required `status` (`current | superseded | entered-in-error`) is modeled as a plain required `Schema.Literal` (no `unknown`-default rescue like `Observation.status`, since HFS serves it reliably). `content` is `1..*` in the spec; the client models it as a plain (non-optional) array, so its presence is required on both the decoded and wire sides, but the array's non-emptiness (`min 1`) is **not** enforced — a payload with `content: []` validates. The `content.attachment` and `relatesTo.code`/`relatesTo.target` required sub-elements are likewise modeled as required (non-nullable) fields.
+
 ## MedicationRequest / MedicationDispense search parameters (only paging declared)
 
 Per FHIR R4, `MedicationRequest.search` and `MedicationDispense.search` define parameters such as `_id`, `_lastUpdated`, `code`, `subject`, `patient`, `encounter`/`context`, `status`, `intent` (request only), `authoredon` / `whenprepared` / `whenhandedover` (with date prefixes), `identifier`, `medication`, and `prescription` (dispense only). The `HttpApi` description declares `_count` and `_pageToken` only — same minimal paging surface as Observation. HFS indexes the full R4 parameter set server-side (e.g. `MedicationRequest.subject` feeds Patient `$everything`), but the typed client can't express those filters. Adding `subject`/`patient`/`code`/`status` would unlock the canonical medication workflows.

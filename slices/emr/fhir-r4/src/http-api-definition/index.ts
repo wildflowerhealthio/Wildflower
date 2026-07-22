@@ -1,5 +1,6 @@
 import { HttpApi, type HttpApiError } from '@effect/platform'
 import * as Binary from './binary.ts'
+import * as DocumentReference from './document-reference.ts'
 import * as MedicationDispense from './medication-dispense.ts'
 import * as MedicationRequest from './medication-request.ts'
 import * as Observation from './observation.ts'
@@ -13,7 +14,8 @@ const FhirResourcesApi: HttpApi.HttpApi<
   | typeof Binary.httpApiGroup
   | typeof Observation.httpApiGroup
   | typeof MedicationRequest.httpApiGroup
-  | typeof MedicationDispense.httpApiGroup,
+  | typeof MedicationDispense.httpApiGroup
+  | typeof DocumentReference.httpApiGroup,
   HttpApiError.HttpApiDecodeError
 > = HttpApi.make('FhirResourcesApi')
   .add(Patient.httpApiGroup)
@@ -21,12 +23,14 @@ const FhirResourcesApi: HttpApi.HttpApi<
   .add(Observation.httpApiGroup)
   .add(MedicationRequest.httpApiGroup)
   .add(MedicationDispense.httpApiGroup)
+  .add(DocumentReference.httpApiGroup)
   .prefix(FhirResourcesApiPrefix)
 
 export {
   FhirResourcesApi,
   FhirResourcesApiPrefix,
   Binary,
+  DocumentReference,
   MedicationDispense,
   MedicationRequest,
   Observation,
