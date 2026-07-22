@@ -1,5 +1,6 @@
 export type { FhirResource } from './fhir-resource.ts'
 export * from './binary/index.ts'
+export * from './document-reference/index.ts'
 export * from './medication/index.ts'
 export * from './medication-dispense/index.ts'
 export * from './medication-request/index.ts'

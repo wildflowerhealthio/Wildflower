@@ -68,6 +68,9 @@ const upsertResource = (
       case 'MedicationDispense':
         yield* client.MedicationDispense.Update({ path, payload: { ...resource, id } })
         break
+      case 'DocumentReference':
+        yield* client.DocumentReference.Update({ path, payload: { ...resource, id } })
+        break
       default: {
         const unreachable: never = resource
         yield* Effect.fail(

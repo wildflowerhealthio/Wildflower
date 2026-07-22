@@ -1,4 +1,5 @@
 import type { Binary } from './binary/index.ts'
+import type { DocumentReference } from './document-reference/index.ts'
 import type { MedicationDispense } from './medication-dispense/index.ts'
 import type { MedicationRequest } from './medication-request/index.ts'
 import type { Observation } from './observation/index.ts'
@@ -6,7 +7,7 @@ import type { Patient } from './patient/index.ts'
 
 /**
  * The closed union of every FHIR resource this slice can read/write — the
- * five domain resources with a typed `Update` endpoint on
+ * six domain resources with a typed `Update` endpoint on
  * {@link FhirR4ResourcesHttpApiClient}. Discriminated by `resourceType`, so a
  * `switch` over it is exhaustive (see {@link upsertResource}).
  *
@@ -21,5 +22,6 @@ type FhirResource =
   | typeof Observation.Schema.Type
   | typeof MedicationRequest.Schema.Type
   | typeof MedicationDispense.Schema.Type
+  | typeof DocumentReference.Schema.Type
 
 export type { FhirResource }

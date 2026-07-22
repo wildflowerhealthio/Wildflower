@@ -6776,6 +6776,1154 @@
           "required": true
         }
       }
+    },
+    "/fhir-r4/DocumentReference": {
+      "get": {
+        "tags": [
+          "DocumentReference"
+        ],
+        "operationId": "DocumentReference.SearchByGet",
+        "parameters": [
+          {
+            "name": "_count",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "a string to be decoded into a number"
+            },
+            "required": false,
+            "description": "a string to be decoded into a number"
+          },
+          {
+            "name": "_pageToken",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Bundle",
+                  "description": "A container for a collection of resources.",
+                  "required": [
+                    "resourceType",
+                    "type"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Bundle"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "identifier": {
+                      "type": "object",
+                      "description": "A persistent identifier for the bundle that will not change as a bundle is copied from server to server."
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "document",
+                        "message",
+                        "transaction",
+                        "transaction-response",
+                        "batch",
+                        "batch-response",
+                        "history",
+                        "searchset",
+                        "collection"
+                      ],
+                      "description": "Indicates the purpose of this bundle - how it is intended to be used."
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "The date/time that the bundle was assembled."
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "If a set of search matches, this is the (potentially estimated) total number of entries of type \"match\" across all pages in the search."
+                    },
+                    "link": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A series of links that provide context to this bundle."
+                    },
+                    "entry": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "description": "An entry in a bundle resource - will either contain a resource or information about a resource (transactions and history only).",
+                        "properties": {
+                          "fullUrl": {
+                            "type": "string"
+                          },
+                          "link": {
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
+                          },
+                          "request": {
+                            "type": "object"
+                          },
+                          "resource": {
+                            "type": "object"
+                          },
+                          "response": {
+                            "type": "object"
+                          },
+                          "search": {
+                            "type": "object"
+                          }
+                        }
+                      },
+                      "description": "An entry in a bundle resource."
+                    },
+                    "signature": {
+                      "type": "object",
+                      "description": "Digital Signature - base64 encoded. XML-DSig or a JWT."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "DocumentReference"
+        ],
+        "operationId": "DocumentReference.Create",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "DocumentReference",
+                  "description": "A reference to a document of any kind for any purpose. Provides metadata about the document so that the document can be discovered and managed.",
+                  "required": [
+                    "resourceType",
+                    "status",
+                    "content"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "DocumentReference"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "masterIdentifier": {
+                      "type": "object",
+                      "description": "Master Version Specific Identifier."
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Other identifiers for the document."
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "current",
+                        "superseded",
+                        "entered-in-error"
+                      ],
+                      "description": "The status of this document reference."
+                    },
+                    "docStatus": {
+                      "type": "string",
+                      "enum": [
+                        "preliminary",
+                        "final",
+                        "amended",
+                        "entered-in-error"
+                      ],
+                      "description": "The status of the underlying document."
+                    },
+                    "type": {
+                      "type": "object",
+                      "description": "Kind of document (LOINC if possible)."
+                    },
+                    "category": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Categorization of document."
+                    },
+                    "subject": {
+                      "type": "object",
+                      "description": "Who/what is the subject of the document."
+                    },
+                    "date": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "When this document reference was created."
+                    },
+                    "author": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Who and/or what authored the document."
+                    },
+                    "authenticator": {
+                      "type": "object",
+                      "description": "Who/what authenticated the document."
+                    },
+                    "custodian": {
+                      "type": "object",
+                      "description": "Organization which maintains the document."
+                    },
+                    "relatesTo": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Relationships to other documents."
+                    },
+                    "description": {
+                      "type": "string",
+                      "description": "Human-readable description."
+                    },
+                    "securityLabel": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Document security-tags."
+                    },
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Document referenced."
+                    },
+                    "context": {
+                      "type": "object",
+                      "description": "Clinical context of document."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "title": "DocumentReference",
+                "description": "A reference to a document of any kind for any purpose. Provides metadata about the document so that the document can be discovered and managed.",
+                "required": [
+                  "resourceType",
+                  "status",
+                  "content"
+                ],
+                "properties": {
+                  "resourceType": {
+                    "type": "string",
+                    "enum": [
+                      "DocumentReference"
+                    ]
+                  },
+                  "id": {
+                    "type": "string",
+                    "description": "Logical id of this artifact."
+                  },
+                  "meta": {
+                    "type": "object",
+                    "description": "Metadata about the resource."
+                  },
+                  "implicitRules": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "A set of rules under which this content was created."
+                  },
+                  "language": {
+                    "type": "string",
+                    "description": "Language of the resource content."
+                  },
+                  "text": {
+                    "type": "object",
+                    "description": "Human-readable summary of the resource."
+                  },
+                  "contained": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "extension": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "modifierExtension": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "masterIdentifier": {
+                    "type": "object",
+                    "description": "Master Version Specific Identifier."
+                  },
+                  "identifier": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Other identifiers for the document."
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "current",
+                      "superseded",
+                      "entered-in-error"
+                    ],
+                    "description": "The status of this document reference."
+                  },
+                  "docStatus": {
+                    "type": "string",
+                    "enum": [
+                      "preliminary",
+                      "final",
+                      "amended",
+                      "entered-in-error"
+                    ],
+                    "description": "The status of the underlying document."
+                  },
+                  "type": {
+                    "type": "object",
+                    "description": "Kind of document (LOINC if possible)."
+                  },
+                  "category": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Categorization of document."
+                  },
+                  "subject": {
+                    "type": "object",
+                    "description": "Who/what is the subject of the document."
+                  },
+                  "date": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "When this document reference was created."
+                  },
+                  "author": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Who and/or what authored the document."
+                  },
+                  "authenticator": {
+                    "type": "object",
+                    "description": "Who/what authenticated the document."
+                  },
+                  "custodian": {
+                    "type": "object",
+                    "description": "Organization which maintains the document."
+                  },
+                  "relatesTo": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Relationships to other documents."
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "Human-readable description."
+                  },
+                  "securityLabel": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Document security-tags."
+                  },
+                  "content": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Document referenced."
+                  },
+                  "context": {
+                    "type": "object",
+                    "description": "Clinical context of document."
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/fhir-r4/DocumentReference/{id}": {
+      "get": {
+        "tags": [
+          "DocumentReference"
+        ],
+        "operationId": "DocumentReference.GetById",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "DocumentReference",
+                  "description": "A reference to a document of any kind for any purpose. Provides metadata about the document so that the document can be discovered and managed.",
+                  "required": [
+                    "resourceType",
+                    "status",
+                    "content"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "DocumentReference"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "masterIdentifier": {
+                      "type": "object",
+                      "description": "Master Version Specific Identifier."
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Other identifiers for the document."
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "current",
+                        "superseded",
+                        "entered-in-error"
+                      ],
+                      "description": "The status of this document reference."
+                    },
+                    "docStatus": {
+                      "type": "string",
+                      "enum": [
+                        "preliminary",
+                        "final",
+                        "amended",
+                        "entered-in-error"
+                      ],
+                      "description": "The status of the underlying document."
+                    },
+                    "type": {
+                      "type": "object",
+                      "description": "Kind of document (LOINC if possible)."
+                    },
+                    "category": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Categorization of document."
+                    },
+                    "subject": {
+                      "type": "object",
+                      "description": "Who/what is the subject of the document."
+                    },
+                    "date": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "When this document reference was created."
+                    },
+                    "author": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Who and/or what authored the document."
+                    },
+                    "authenticator": {
+                      "type": "object",
+                      "description": "Who/what authenticated the document."
+                    },
+                    "custodian": {
+                      "type": "object",
+                      "description": "Organization which maintains the document."
+                    },
+                    "relatesTo": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Relationships to other documents."
+                    },
+                    "description": {
+                      "type": "string",
+                      "description": "Human-readable description."
+                    },
+                    "securityLabel": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Document security-tags."
+                    },
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Document referenced."
+                    },
+                    "context": {
+                      "type": "object",
+                      "description": "Clinical context of document."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFound"
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "DocumentReference"
+        ],
+        "operationId": "DocumentReference.Update",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "DocumentReference",
+                  "description": "A reference to a document of any kind for any purpose. Provides metadata about the document so that the document can be discovered and managed.",
+                  "required": [
+                    "resourceType",
+                    "status",
+                    "content"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "DocumentReference"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "masterIdentifier": {
+                      "type": "object",
+                      "description": "Master Version Specific Identifier."
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Other identifiers for the document."
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "current",
+                        "superseded",
+                        "entered-in-error"
+                      ],
+                      "description": "The status of this document reference."
+                    },
+                    "docStatus": {
+                      "type": "string",
+                      "enum": [
+                        "preliminary",
+                        "final",
+                        "amended",
+                        "entered-in-error"
+                      ],
+                      "description": "The status of the underlying document."
+                    },
+                    "type": {
+                      "type": "object",
+                      "description": "Kind of document (LOINC if possible)."
+                    },
+                    "category": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Categorization of document."
+                    },
+                    "subject": {
+                      "type": "object",
+                      "description": "Who/what is the subject of the document."
+                    },
+                    "date": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "When this document reference was created."
+                    },
+                    "author": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Who and/or what authored the document."
+                    },
+                    "authenticator": {
+                      "type": "object",
+                      "description": "Who/what authenticated the document."
+                    },
+                    "custodian": {
+                      "type": "object",
+                      "description": "Organization which maintains the document."
+                    },
+                    "relatesTo": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Relationships to other documents."
+                    },
+                    "description": {
+                      "type": "string",
+                      "description": "Human-readable description."
+                    },
+                    "securityLabel": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Document security-tags."
+                    },
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Document referenced."
+                    },
+                    "context": {
+                      "type": "object",
+                      "description": "Clinical context of document."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "title": "DocumentReference",
+                "description": "A reference to a document of any kind for any purpose. Provides metadata about the document so that the document can be discovered and managed.",
+                "required": [
+                  "resourceType",
+                  "status",
+                  "content"
+                ],
+                "properties": {
+                  "resourceType": {
+                    "type": "string",
+                    "enum": [
+                      "DocumentReference"
+                    ]
+                  },
+                  "id": {
+                    "type": "string",
+                    "description": "Logical id of this artifact."
+                  },
+                  "meta": {
+                    "type": "object",
+                    "description": "Metadata about the resource."
+                  },
+                  "implicitRules": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "A set of rules under which this content was created."
+                  },
+                  "language": {
+                    "type": "string",
+                    "description": "Language of the resource content."
+                  },
+                  "text": {
+                    "type": "object",
+                    "description": "Human-readable summary of the resource."
+                  },
+                  "contained": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "extension": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "modifierExtension": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "masterIdentifier": {
+                    "type": "object",
+                    "description": "Master Version Specific Identifier."
+                  },
+                  "identifier": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Other identifiers for the document."
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "current",
+                      "superseded",
+                      "entered-in-error"
+                    ],
+                    "description": "The status of this document reference."
+                  },
+                  "docStatus": {
+                    "type": "string",
+                    "enum": [
+                      "preliminary",
+                      "final",
+                      "amended",
+                      "entered-in-error"
+                    ],
+                    "description": "The status of the underlying document."
+                  },
+                  "type": {
+                    "type": "object",
+                    "description": "Kind of document (LOINC if possible)."
+                  },
+                  "category": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Categorization of document."
+                  },
+                  "subject": {
+                    "type": "object",
+                    "description": "Who/what is the subject of the document."
+                  },
+                  "date": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "When this document reference was created."
+                  },
+                  "author": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Who and/or what authored the document."
+                  },
+                  "authenticator": {
+                    "type": "object",
+                    "description": "Who/what authenticated the document."
+                  },
+                  "custodian": {
+                    "type": "object",
+                    "description": "Organization which maintains the document."
+                  },
+                  "relatesTo": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Relationships to other documents."
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "Human-readable description."
+                  },
+                  "securityLabel": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Document security-tags."
+                  },
+                  "content": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Document referenced."
+                  },
+                  "context": {
+                    "type": "object",
+                    "description": "Clinical context of document."
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/fhir-r4/DocumentReference/_search": {
+      "post": {
+        "tags": [
+          "DocumentReference"
+        ],
+        "operationId": "DocumentReference.Search",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Bundle",
+                  "description": "A container for a collection of resources.",
+                  "required": [
+                    "resourceType",
+                    "type"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Bundle"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "identifier": {
+                      "type": "object",
+                      "description": "A persistent identifier for the bundle that will not change as a bundle is copied from server to server."
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "document",
+                        "message",
+                        "transaction",
+                        "transaction-response",
+                        "batch",
+                        "batch-response",
+                        "history",
+                        "searchset",
+                        "collection"
+                      ],
+                      "description": "Indicates the purpose of this bundle - how it is intended to be used."
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "The date/time that the bundle was assembled."
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "If a set of search matches, this is the (potentially estimated) total number of entries of type \"match\" across all pages in the search."
+                    },
+                    "link": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A series of links that provide context to this bundle."
+                    },
+                    "entry": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "description": "An entry in a bundle resource - will either contain a resource or information about a resource (transactions and history only).",
+                        "properties": {
+                          "fullUrl": {
+                            "type": "string"
+                          },
+                          "link": {
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
+                          },
+                          "request": {
+                            "type": "object"
+                          },
+                          "resource": {
+                            "type": "object"
+                          },
+                          "response": {
+                            "type": "object"
+                          },
+                          "search": {
+                            "type": "object"
+                          }
+                        }
+                      },
+                      "description": "An entry in a bundle resource."
+                    },
+                    "signature": {
+                      "type": "object",
+                      "description": "Digital Signature - base64 encoded. XML-DSig or a JWT."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [],
+                "properties": {
+                  "_count": {
+                    "type": "string",
+                    "description": "a string to be decoded into a number"
+                  },
+                  "_pageToken": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": true
+        }
+      }
     }
   },
   "components": {
@@ -6798,6 +7946,9 @@
     },
     {
       "name": "MedicationDispense"
+    },
+    {
+      "name": "DocumentReference"
     }
   ]
 }
