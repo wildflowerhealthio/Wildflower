@@ -222,6 +222,12 @@ importers:
 
   apps/medication:
     dependencies:
+      '@fontsource-variable/atkinson-hyperlegible-mono':
+        specifier: 'catalog:'
+        version: 5.2.5
+      '@fontsource-variable/atkinson-hyperlegible-next':
+        specifier: 'catalog:'
+        version: 5.2.6
       effect:
         specifier: 3.21.4
         version: 3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
@@ -240,6 +246,12 @@ importers:
       react-dom:
         specifier: 19.2.7
         version: 19.2.7(react@19.2.7)
+      react-tundraish:
+        specifier: workspace:*
+        version: link:../../global/react-tundraish
+      tundra-css:
+        specifier: 'catalog:'
+        version: 0.14.0
     devDependencies:
       '@testing-library/dom':
         specifier: ^10.4.0
@@ -1659,6 +1671,9 @@ importers:
       react-dom:
         specifier: 19.2.7
         version: 19.2.7(react@19.2.7)
+      react-tundraish:
+        specifier: workspace:*
+        version: link:../../../global/react-tundraish
       typescript:
         specifier: 5.9.3
         version: 5.9.3

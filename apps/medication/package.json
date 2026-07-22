@@ -11,12 +11,16 @@
     "test": "vp test --passWithNoTests"
   },
   "dependencies": {
+    "@fontsource-variable/atkinson-hyperlegible-mono": "catalog:",
+    "@fontsource-variable/atkinson-hyperlegible-next": "catalog:",
     "effect": "catalog:",
     "fhir-r4-react": "workspace:*",
     "medication-sponsorship-core": "workspace:*",
     "medication-sponsorship-react": "workspace:*",
     "react": "catalog:",
-    "react-dom": "catalog:"
+    "react-dom": "catalog:",
+    "react-tundraish": "workspace:*",
+    "tundra-css": "catalog:"
   },
   "devDependencies": {
     "@testing-library/dom": "^10.4.0",

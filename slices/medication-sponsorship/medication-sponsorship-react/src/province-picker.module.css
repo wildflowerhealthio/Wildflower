@@ -1,31 +1,37 @@
+/*
+ * Province `<select>`. The label uses the same muted body treatment as the view
+ * detail lines; the control reads the Tundra input tokens (`--input-*`,
+ * `--element-color-border`, `--radius-*`) so it matches the design system's
+ * form controls in both colour schemes.
+ */
 .picker {
   display: inline-flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: var(--space-2);
   font: inherit;
 }
 
 .label {
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--sponsorship-muted, #555);
+  font-size: var(--font-size-3);
+  font-weight: var(--font-weight-3);
+  color: var(--color-neutral-4);
 }
 
 .select {
-  padding: 0.4rem 0.6rem;
-  border: 1px solid var(--sponsorship-border, #ccc);
-  border-radius: 0.375rem;
-  background: var(--sponsorship-surface, #fff);
+  /* tundra's reset strips native `select` chrome (it expects tundra's own
+   * control classes to repaint it); this control isn't tundra-classed, so
+   * restore the native chevron here so the dropdown stays discoverable. */
+  appearance: auto;
+  padding: var(--space-3) var(--space-5);
+  border: 1px solid var(--element-color-border);
+  border-radius: var(--input-border-radius);
+  background: var(--input-color-background);
   color: inherit;
   font: inherit;
+  font-size: var(--font-size-3);
 }
 
-@media (prefers-color-scheme: dark) {
-  .label {
-    color: var(--sponsorship-muted, #aaa);
-  }
-  .select {
-    border-color: var(--sponsorship-border, #444);
-    background: var(--sponsorship-surface, #1c1c1c);
-  }
+.select:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
 }

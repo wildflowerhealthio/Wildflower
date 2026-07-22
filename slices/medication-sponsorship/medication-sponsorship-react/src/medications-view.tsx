@@ -127,9 +127,7 @@ export const MedicationsView = ({
         {/* Description · DIN */}
         {(view.description !== null || view.din !== null) && (
           <p className={styles.secondary}>
-            {view.description !== null && (
-              <span className={styles.description}>{view.description}</span>
-            )}
+            {view.description !== null && <span>{view.description}</span>}
             {view.description !== null && view.din !== null && (
               <span className={styles.sep}> · </span>
             )}
@@ -138,25 +136,19 @@ export const MedicationsView = ({
         )}
         {/* Combined next-fill / supply-exhausted date + repeats line. */}
         <p className={styles.meta}>
+          <span className={repeats.danger ? styles.repeatsDanger : styles.repeats}>
+            {repeats.text}
+          </span>
+          {view.nextFillDate !== null && <span className={styles.sep}> · </span>}
           {view.nextFillDate !== null && (
             <span className={styles.metaItem}>
               <span className={styles.factLabel}>{fillLabel}</span>{' '}
               <time dateTime={view.nextFillDate}>{view.nextFillDate.slice(0, 10)}</time>{' '}
-              <span className={styles.relative}>
-                {describeDayFromNow(view.nextFillDate, nowMillis)}
-              </span>
+              <span>{describeDayFromNow(view.nextFillDate, nowMillis)}</span>
             </span>
           )}
-          {view.nextFillDate !== null && <span className={styles.sep}> · </span>}
-          <span className={repeats.danger ? styles.repeatsDanger : styles.repeats}>
-            {repeats.text}
-          </span>
         </p>
-        {view.requester !== null && (
-          <p className={styles.prescriber}>
-            <span className={styles.factValue}>Dr. {view.requester}</span>
-          </p>
-        )}
+        {view.requester !== null && <p className={styles.prescriber}>Dr. {view.requester}</p>}
         {view.note !== null && <p className={styles.note}>{view.note}</p>}
       </li>
     )
@@ -172,7 +164,7 @@ export const MedicationsView = ({
   return (
     <div className={styles.sections}>
       <section className={styles.section}>
-        <h2 className={styles.sectionHeading}>Active Medications</h2>
+        <h2 className="text-heading-2">Active Medications</h2>
         {active.length > 0 ? (
           <ul className={styles.list}>{active.map(row)}</ul>
         ) : (
@@ -181,7 +173,7 @@ export const MedicationsView = ({
       </section>
       {completed.length > 0 && (
         <section className={styles.section}>
-          <h2 className={styles.sectionHeading}>Completed</h2>
+          <h2 className="text-heading-2">Completed</h2>
           <ul className={styles.list}>{completed.map(row)}</ul>
         </section>
       )}

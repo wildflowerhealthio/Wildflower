@@ -31,6 +31,7 @@
     "medication-sponsorship-core": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
+    "react-tundraish": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
@@ -38,6 +39,7 @@
     "effect": "catalog:",
     "fhir-r4": "workspace:*",
     "medication-sponsorship-core": "workspace:*",
-    "react": "catalog:"
+    "react": "catalog:",
+    "react-tundraish": "workspace:*"
   }
 }
