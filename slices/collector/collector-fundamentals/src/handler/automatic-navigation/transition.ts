@@ -43,6 +43,8 @@ import * as State from './state.ts'
  *   AwaitingUrlMatch(q)   ─PageLoaded, head AwaitPageSettled matches→ drain(tail, url)  (cancels timeout)
  *   AwaitingUrlMatch(q)   ─PageLoaded, still unmatched→ AwaitingUrlMatch(q)   (no-op)
  *   AwaitingUrlMatch(q)   ─UrlMatchTimeoutFired (gen match)→ Done       (dispatches SniffingComplete)
+ *   AwaitingUserDismiss(q)─UserDismissed→ Done                          (dispatches SniffingComplete)
+ *   AwaitingUserDismiss(q)─PageLoaded / *TimerFired→ AwaitingUserDismiss(q)  (no-op; unbounded wait)
  *   Drained               ─StepsGenerated→ drain(steps, ⊥)             (re-awaken, no PageLoaded)
  *   Drained               ─NoMoreResultsExpected→ Done                  (dispatches SniffingComplete)
  *   <active>              ─StepsGenerated→ append to queue              (otherwise unchanged)
@@ -56,6 +58,7 @@ import * as State from './state.ts'
  *   Delay head                          → arm timer, DelayPending(tail)
  *   AwaitPageSettled head, url matches  → continue with tail             (already on the awaited page)
  *   AwaitPageSettled head, no/no-match  → AwaitingUrlMatch(q) + timeout  (head kept, parks for a matching PageLoaded)
+ *   AwaitUserDismiss head               → AwaitingUserDismiss(q)         (head kept, parks for UserDismissed; no timer)
  *   Navigation head                     → dispatch action, continue with tail
  */
 
@@ -108,6 +111,12 @@ const drainFrom = (queue: State.Queue, url: string | undefined, generation: numb
       [nameEffect, scheduleUrlMatchTimeout(g, Duration.toMillis(head.timeout))],
     ]
   }
+  if (head._tag === 'AwaitUserDismiss') {
+    // Keep the hold at the queue head and park *indefinitely* — no timer is
+    // armed (generation unchanged); only the external `UserDismissed` input
+    // resumes from here (in `onUserDismissed`, which ends the run).
+    return [State.awaitingUserDismiss(queue, generation), []]
+  }
   // Navigation: dispatch the action now and keep draining the tail in the same
   // turn. A `Fill` / `Click` / `Open` never waits for a `PageLoaded` — waiting is
   // a hold step's job — so several actions can dispatch back-to-back. No timer is
@@ -135,6 +144,10 @@ const onPageLoaded = (state: State.StepState, url: string): Transition =>
       }
       return [s, []]
     }),
+    // Parked on an `AwaitUserDismiss` hold: the sniffer webview is still alive,
+    // so a page it loads while the user has it open does not advance the queue —
+    // only the external `UserDismissed` signal does.
+    Match.tag('AwaitingUserDismiss', (s) => [s, []]),
     Match.tag('Drained', (s) => [s, [warnDroppedPageLoaded(url)]]),
     Match.tag('Done', (s) => [s, [warnDroppedPageLoaded(url)]]),
     Match.exhaustive
@@ -181,6 +194,10 @@ const onStepsGenerated = (state: State.StepState, steps: readonly Step[]): Trans
       State.awaitingUrlMatch(prependToExistingSteps(s.queue), s.generation),
       [],
     ]),
+    Match.tag('AwaitingUserDismiss', (s) => [
+      State.awaitingUserDismiss(prependToExistingSteps(s.queue), s.generation),
+      [],
+    ]),
     // Terminal: a straggler request settled and generated steps after the run
     // completed. Nothing to do — drop and WARN.
     Match.tag('Done', (s) => [s, [warnDroppedSteps(steps.length)]]),
@@ -190,6 +207,17 @@ const onStepsGenerated = (state: State.StepState, steps: readonly Step[]): Trans
 
 const onNoMoreResultsExpected = (state: State.StepState): Transition =>
   state._tag === 'Drained'
+    ? [State.done(state.generation), [dispatchSniffingComplete]]
+    : [state, []]
+
+// The user dismissed (closed) the sniffer webview. Only meaningful while parked
+// on an `AwaitUserDismiss` hold: end the run directly (`SniffingComplete`), since
+// the closed window means no further requests will arrive — any still-incomplete
+// requests are abandoned by the normal run teardown. A silent no-op in every
+// other state (a hide adjacent to teardown, or a run without the step, must not
+// end early); unlike a stray `PageLoaded` this is expected, so it does not WARN.
+const onUserDismissed = (state: State.StepState): Transition =>
+  state._tag === 'AwaitingUserDismiss'
     ? [State.done(state.generation), [dispatchSniffingComplete]]
     : [state, []]
 
@@ -225,6 +253,7 @@ const transition =
       Match.tag('UrlMatchTimeoutFired', (m) => onUrlMatchTimeoutFired(state, m.generation)),
       Match.tag('StepsGenerated', (m) => onStepsGenerated(state, m.steps)),
       Match.tag('NoMoreResultsExpected', () => onNoMoreResultsExpected(state)),
+      Match.tag('UserDismissed', () => onUserDismissed(state)),
       Match.tag('Stop', () => onStop(state, initialQueue)),
       Match.exhaustive
     )

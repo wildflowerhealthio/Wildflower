@@ -231,18 +231,19 @@ identity is **owner of a step queue** (seeded from `stepSequence`, grown by
 
 | Part                 | File                    | What it holds                                  |
 | -------------------- | ----------------------- | ---------------------------------------------- |
-| Input messages       | messages.ts             | the six inputs that drive the machine          |
-| States               | state.ts                | five states; active variants carry the queue   |
+| Input messages       | messages.ts             | the seven inputs that drive the machine        |
+| States               | state.ts                | six states; active variants carry the queue    |
 | Side-effect messages | messages.ts             | the effects a transition can request           |
 | Side-effect handlers | side-effect-handlers.ts | one `(msg, ctx) => Effect` per side-effect tag |
 | Transition           | transition.ts           | pure `(state, input) → [state, effects]`       |
 | Runtime              | make.ts                 | serialized dispatch + timer registry           |
 
 The inputs are `PageLoaded`, `Stop`, `DelayTimerFired`, `UrlMatchTimeoutFired`,
-`StepsGenerated`, and `NoMoreResultsExpected`; the states are
-`AwaitingPageLoaded`, `DelayPending`, `AwaitingUrlMatch`, `Drained`, and `Done`.
-Because the queue lives in the state, the transition needs no `ScrapingPlan`
-closure — it names `SetStepName` / `DispatchNavigation` / `DispatchSniffingComplete` /
+`StepsGenerated`, `NoMoreResultsExpected`, and `UserDismissed`; the states are
+`AwaitingPageLoaded`, `DelayPending`, `AwaitingUrlMatch`, `AwaitingUserDismiss`,
+`Drained`, and `Done`. Because the queue lives in the state, the transition needs
+no `ScrapingPlan` closure — it names `SetStepName` / `DispatchNavigation` /
+`DispatchSniffingComplete` /
 `Schedule*` / `CancelTimer` / `RequestCompletionCheck` / `Warn*` effects for the
 runtime to discharge.
 
@@ -266,6 +267,13 @@ ones a user reliably reads.
 There is **no implicit settle timer**: all waiting is an explicit `Delay` or
 `AwaitPageSettled` step, so `AwaitingPageLoaded` is a start-up-only resting state
 (nothing but `Stop` returns to it).
+
+An `AwaitUserDismiss` step parks in `AwaitingUserDismiss` and waits _indefinitely_
+— no timer is armed. Only the external `UserDismissed` input (the user closed the
+sniffer webview, forwarded from the host) resumes from there, and it ends the run
+directly (`Done` + `SniffingComplete`); a `UserDismissed` arriving in any other
+state is a silent no-op. This is the one hold whose completion is the user's to
+decide, so a plan using it should raise `ScrapingPlan.idleTimeout` accordingly.
 
 The **transition function is pure** — it never sends a message, forks a
 fiber, or logs; it only names the side-effect messages the runtime should

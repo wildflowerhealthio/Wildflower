@@ -39,6 +39,16 @@ pub const LOG: &str = "Log";
 pub const PAGE_ACTION: &str = "PageAction";
 pub const CANCEL_SNIFFER_REQUEST: &str = "CancelSnifferRequest";
 
+/// Host→web control tag the crate *synthesizes* from a plugin `Hidden` lifecycle
+/// event (the user dismissed / closed the sniffer webview) and emits on
+/// `BRIDGE_EVENT` for the collector SPA. It is host-originated, not a page
+/// observation, so it is deliberately **excluded** from
+/// [`crate::native_webview_bridge`]'s page→host data-plane allowlist — an
+/// untrusted page must not be able to forge it. Drift-guarded in
+/// [`crate::tests::bridge_tags_match_the_ts_convention`]; mirrors
+/// `collector-fundamentals`'s `CollectorBridge` `UserDismissed` message.
+pub const USER_DISMISSED: &str = "UserDismissed";
+
 /// Window label assigned to the main React SPA webview by
 /// `apps/wildflower-tauri/src-tauri/tauri.conf.json`. Re-exported so
 /// integration tests can drift-guard against a config rename; not

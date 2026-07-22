@@ -243,6 +243,7 @@ const make = <TResources>({
       RequestError: tracker.handleRequestError,
       Cancelled: tracker.handleCancelled,
       PageLoaded: automaticNavigation.handlePageLoaded,
+      UserDismissed: automaticNavigation.handleUserDismissed,
     }
   })
 

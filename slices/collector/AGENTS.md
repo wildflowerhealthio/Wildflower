@@ -74,14 +74,24 @@ before adding one.
 
 ## Traps
 
-- **`Step` is a `Navigation | Delay | AwaitPageSettled` union; only
-  `NavigationStep.action` reaches the wire.** The automatic-navigation machine
+- **`Step` is a `Navigation | Delay | AwaitPageSettled | AwaitUserDismiss` union;
+  only `NavigationStep.action` reaches the wire.** The automatic-navigation machine
   forwards only a `Navigation` step's `action` (typed against the bridge message
-  bodies themselves), so both plan-only hold variants (`Delay`, `AwaitPageSettled`)
-  stay off the wire by construction — there is no "strip before dispatch" step to
-  remember. A new scripted interaction is a `PageAction` `action` union variant,
-  not a new bridge tag; a new _pause_ is a `Delay` (fixed) or `AwaitPageSettled`
-  (wait for a matching settled page load) step, not a plan-wide delay field.
+  bodies themselves), so all three plan-only hold variants (`Delay`,
+  `AwaitPageSettled`, `AwaitUserDismiss`) stay off the wire by construction —
+  there is no "strip before dispatch" step to remember. A new scripted
+  interaction is a `PageAction` `action` union variant, not a new bridge tag; a
+  new _pause_ is a `Delay` (fixed) or `AwaitPageSettled` (wait for a matching
+  settled page load) step, not a plan-wide delay field.
+- **`AwaitUserDismiss` is a terminal, user-driven hold.** It parks _indefinitely_
+  until the user closes the sniffer webview, then ends the run (`SniffingComplete`).
+  Its signal is the host→web `CollectorBridge` `UserDismissed` message, which
+  `browser-sniffer-tauri-rust` synthesizes from the native-webview plugin's
+  `Hidden` lifecycle event (`Disposed` stays lifecycle-only — it is what
+  `SniffingComplete` teardown itself produces). Because the wait is unbounded, a
+  plan ending in this step should set `ScrapingPlan.idleTimeout` high (e.g.
+  `Duration.infinity`) so the sync runner's silent-host idle guard (default 30 s)
+  doesn't abandon it first.
 - **Every `Step` carries a required `name`; the machine pushes it as a separate
   `SetSnifferStatus` control message, _not_ on the step's own action.** As the
   machine reaches each step it emits `SetSnifferStatus { name }`, which the Tauri

@@ -24,6 +24,10 @@ import type { Step } from '../../model/step.ts'
  * - `AwaitingUrlMatch` — the head `AwaitPageSettled` hold's `pattern` is unmet;
  *   `queue[0]` is that still-unconsumed hold and a URL-match timeout daemon is
  *   pending.
+ * - `AwaitingUserDismiss` — parked on a head `AwaitUserDismiss` hold, waiting
+ *   *indefinitely* for the external `UserDismissed` signal (the user closing the
+ *   sniffer webview). `queue[0]` is that still-unconsumed hold and, unlike the
+ *   other holds, no timer daemon is pending — the wait is unbounded.
  * - `Drained` — the queue is empty, but the run may not be over: an in-flight
  *   request could still `followUpSteps` more work. Terminal only once the
  *   lifecycle confirms no sniffed request is still incomplete (via
@@ -36,6 +40,7 @@ type StepState =
   | { readonly _tag: 'AwaitingPageLoaded'; readonly queue: Queue; readonly generation: number }
   | { readonly _tag: 'DelayPending'; readonly queue: Queue; readonly generation: number }
   | { readonly _tag: 'AwaitingUrlMatch'; readonly queue: Queue; readonly generation: number }
+  | { readonly _tag: 'AwaitingUserDismiss'; readonly queue: Queue; readonly generation: number }
   | { readonly _tag: 'Drained'; readonly generation: number }
   | { readonly _tag: 'Done'; readonly generation: number }
 
@@ -54,8 +59,13 @@ const awaitingUrlMatch = (queue: Queue, generation: number): StepState => ({
   queue,
   generation,
 })
+const awaitingUserDismiss = (queue: Queue, generation: number): StepState => ({
+  _tag: 'AwaitingUserDismiss',
+  queue,
+  generation,
+})
 const drained = (generation: number): StepState => ({ _tag: 'Drained', generation })
 const done = (generation: number): StepState => ({ _tag: 'Done', generation })
 
 export type { StepState, Queue }
-export { awaitingPageLoaded, awaitingUrlMatch, delayPending, done, drained }
+export { awaitingPageLoaded, awaitingUrlMatch, awaitingUserDismiss, delayPending, done, drained }

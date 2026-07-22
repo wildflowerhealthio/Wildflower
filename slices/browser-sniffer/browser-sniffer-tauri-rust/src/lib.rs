@@ -97,6 +97,7 @@ mod tests {
         assert_eq!(events::SET_SNIFFER_STATUS, "SetSnifferStatus");
         assert_eq!(events::PAGE_ACTION, "PageAction");
         assert_eq!(events::CANCEL_SNIFFER_REQUEST, "CancelSnifferRequest");
+        assert_eq!(events::USER_DISMISSED, "UserDismissed");
     }
 
     /// The bootstrap IIFE is generated at build time. An empty file

@@ -37,7 +37,7 @@ type StepOutboundMessage =
 // ---------------------------------------------------------------------------
 
 /**
- * Everything that can drive the machine forward. Five kinds:
+ * Everything that can drive the machine forward. Six kinds:
  *
  * - `PageLoaded` — the sole *external* event, forwarded verbatim from the
  *   bridge (its shape is `browser-sniffer-core`'s `PageLoadedMessageBody`,
@@ -62,6 +62,11 @@ type StepOutboundMessage =
  *   still incomplete. Only meaningful in `Drained` (`Drained → Done`,
  *   dispatching `SniffingComplete`); a no-op in every other state, because more
  *   `PageLoaded`s / generations may still come from steps not yet dispatched.
+ * - `UserDismissed` — the *external* signal that the user closed (dismissed) the
+ *   sniffer webview, forwarded from the host on the `CollectorBridge`. Only
+ *   meaningful while parked on an `AwaitUserDismiss` hold (`AwaitingUserDismiss →
+ *   Done`, dispatching `SniffingComplete`); a silent no-op in every other state,
+ *   since an incidental hide during a run without the step must not end it.
  */
 type InputMessage =
   | typeof PageLoadedMessageBody.Type
@@ -70,6 +75,7 @@ type InputMessage =
   | { readonly _tag: 'UrlMatchTimeoutFired'; readonly generation: number }
   | { readonly _tag: 'StepsGenerated'; readonly steps: readonly Step[] }
   | { readonly _tag: 'NoMoreResultsExpected' }
+  | { readonly _tag: 'UserDismissed' }
 
 // ---------------------------------------------------------------------------
 // Side-effect messages

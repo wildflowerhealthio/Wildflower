@@ -32,6 +32,13 @@ type Service = MessageHandler.HandlersFor<CollectorBridge['HostToWeb']>
 interface AutomaticNavigation {
   readonly handlePageLoaded: Service['PageLoaded']
   /**
+   * The external `UserDismissed` signal (the user closed the sniffer webview),
+   * forwarded from the host on the `CollectorBridge`. Ends the run
+   * (`SniffingComplete`) only while parked on an `AwaitUserDismiss` hold; a
+   * silent no-op in every other state.
+   */
+  readonly handleUserDismissed: Service['UserDismissed']
+  /**
    * Append `followUpSteps`-generated steps to the back of the queue (the
    * composition dedups/caps them first). From `Drained` this re-awakens the
    * machine and dispatches the new head without waiting for a `PageLoaded`.
@@ -139,6 +146,7 @@ const make = <TResources>({
       )
 
     const handlePageLoaded: Service['PageLoaded'] = (event) => dispatch(event)
+    const handleUserDismissed: Service['UserDismissed'] = () => dispatch({ _tag: 'UserDismissed' })
     const handleStepsGenerated = (steps: readonly Step[]): Effect.Effect<void, never, never> =>
       dispatch({ _tag: 'StepsGenerated', steps })
     const signalNoMoreResultsExpected: Effect.Effect<void, never, never> = dispatch({
@@ -149,6 +157,7 @@ const make = <TResources>({
 
     return {
       handlePageLoaded,
+      handleUserDismissed,
       handleStepsGenerated,
       signalNoMoreResultsExpected,
       stopAutomaticNavigation,

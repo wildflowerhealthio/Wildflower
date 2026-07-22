@@ -322,7 +322,10 @@ const buildImportEffect = <Resources, R>({
         sniffResultMailbox,
         processSniffResult,
         onIdleTimeout: abandonAllRequestSniffing,
-        idleTimeout,
+        // A plan may raise (or disable) the silent-host idle guard — e.g. one
+        // ending in `AwaitUserDismiss`, whose wait for the user to close the
+        // sniffer webview is unbounded — else fall back to the runner default.
+        idleTimeout: scrapingPlan.idleTimeout ?? idleTimeout,
       })
       // Idle-timeout escape: `abandonAllRequestSniffing` publishes every
       // still-incomplete sniffed request as a `Left` failure on

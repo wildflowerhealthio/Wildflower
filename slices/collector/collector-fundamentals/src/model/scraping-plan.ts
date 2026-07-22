@@ -1,3 +1,4 @@
+import type { Duration } from 'effect'
 import { deepFreeze } from 'kitchen-sink'
 import type * as EntityDefinition from './entity-definition.ts'
 import type * as Step from './step.ts'
@@ -59,6 +60,11 @@ const DEFAULT_MAX_GENERATED_STEPS = 500
  *   `Open`, or an earlier generated `Open`) is dropped, so a page that links to
  *   itself or a cycle of pages terminates. Dedup applies only to *generated*
  *   steps — the authored sequence is never dropped.
+ * - `idleTimeout`: overrides the sync runner's silent-host idle guard for this
+ *   plan (the runner's `DEFAULT_IDLE_TIMEOUT` otherwise). Raise it (e.g.
+ *   `Duration.infinity`) for a plan that ends in an `AwaitUserDismiss` step, whose
+ *   wait for the user to close the sniffer webview is unbounded and would
+ *   otherwise be abandoned by the default idle timeout.
  */
 interface ScrapingPlan<TResources> {
   readonly name: string
@@ -67,6 +73,7 @@ interface ScrapingPlan<TResources> {
   readonly stepSequence: readonly Step.Step[]
   readonly maxGeneratedSteps?: number
   readonly dedupeGeneratedOpenUris?: boolean
+  readonly idleTimeout?: Duration.DurationInput
 }
 
 /**
@@ -85,6 +92,7 @@ const make = <TResources>(plan: ScrapingPlan<TResources>): ScrapingPlan<TResourc
     stepSequence: plan.stepSequence,
     maxGeneratedSteps: plan.maxGeneratedSteps,
     dedupeGeneratedOpenUris: plan.dedupeGeneratedOpenUris,
+    idleTimeout: plan.idleTimeout,
   })
 
 export { make, DEFAULT_MAX_GENERATED_STEPS }

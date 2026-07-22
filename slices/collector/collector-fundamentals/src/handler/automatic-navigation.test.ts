@@ -430,6 +430,129 @@ describe('automatic-navigation.make', () => {
       ))
   })
 
+  describe('AwaitUserDismiss', () => {
+    it('should park on the hold, dispatching nothing and staying open under NoMoreResultsExpected', () =>
+      run(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          let completed = 0
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [linkA, awaitUserDismiss()],
+            onSniffingComplete: Effect.sync(() => {
+              completed += 1
+            }),
+          })
+
+          // linkA dispatches, then the machine parks on the hold — no terminal.
+          yield* machine.handlePageLoaded(pageLoaded())
+          expect(sentTags(sendMessage)).toEqual(['Open'])
+
+          // While parked the run stays open: an empty-map signal cannot complete
+          // it (the queue is not drained — the hold is still at its head).
+          yield* machine.signalNoMoreResultsExpected
+          expect(sentTags(sendMessage)).toEqual(['Open'])
+          expect(completed).toBe(0)
+        })
+      ))
+
+    it('should end the run via SniffingComplete when the user dismisses while parked', () =>
+      run(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          let completed = 0
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [awaitUserDismiss()],
+            onSniffingComplete: Effect.sync(() => {
+              completed += 1
+            }),
+          })
+
+          yield* machine.handlePageLoaded(pageLoaded()) // → parked, nothing sent
+          expect(sendMessage).not.toHaveBeenCalled()
+
+          yield* machine.handleUserDismissed(userDismissed())
+          expect(sentTags(sendMessage)).toEqual(['SniffingComplete'])
+          expect(completed).toBe(1)
+        })
+      ))
+
+    it('should ignore a page load while parked (the webview is still alive)', () =>
+      run(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({ sendMessage, stepSequence: [awaitUserDismiss()] })
+
+          yield* machine.handlePageLoaded(pageLoaded('https://example.com/one'))
+          yield* machine.handlePageLoaded(pageLoaded('https://example.com/two'))
+          expect(sendMessage).not.toHaveBeenCalled() // still parked, not advanced
+        })
+      ))
+
+    it('should no-op on UserDismissed when no AwaitUserDismiss hold is pending', () =>
+      run(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({ sendMessage, stepSequence: [linkA] })
+
+          yield* machine.handlePageLoaded(pageLoaded()) // linkA drains → Drained
+          expect(sentTags(sendMessage)).toEqual(['Open'])
+
+          // An incidental dismiss in a run without the step must not end it.
+          yield* machine.handleUserDismissed(userDismissed())
+          expect(sentTags(sendMessage)).toEqual(['Open'])
+        })
+      ))
+
+    it('should silently no-op (no dispatch, no WARN) on a UserDismissed after Done', () =>
+      run(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({ sendMessage, stepSequence: [awaitUserDismiss()] })
+
+          yield* machine.handlePageLoaded(pageLoaded())
+          yield* machine.handleUserDismissed(userDismissed()) // → Done + SniffingComplete
+          expect(sentTags(sendMessage)).toEqual(['SniffingComplete'])
+
+          // A second dismiss (e.g. the follow-up Disposed's own hide) is expected,
+          // so — unlike a stray PageLoaded — it neither dispatches nor WARNs.
+          yield* machine.handleUserDismissed(userDismissed()).pipe(
+            LoggingLayerTest.expectToLog((logs) => {
+              expect(logs).not.toContainEqual(expect.objectContaining({ level: 'WARN' }))
+            }),
+            Effect.scoped
+          )
+          expect(sentTags(sendMessage)).toEqual(['SniffingComplete'])
+        })
+      ))
+
+    it('should always end in exactly one trailing SniffingComplete for park-then-dismiss', () =>
+      fc.assert(
+        fc.property(fc.array(fc.webUrl(), { maxLength: 6 }), (uris) => {
+          // Arbitrary navigations followed by a terminal user-dismiss hold.
+          const steps = [...uris.map(openStep), awaitUserDismiss()]
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({ sendMessage, stepSequence: steps })
+
+          Effect.runSync(
+            Effect.gen(function* () {
+              yield* machine.handlePageLoaded(pageLoaded())
+              yield* machine.handleUserDismissed(userDismissed())
+            }).pipe(Effect.provide(TestContext.TestContext))
+          )
+
+          // Every navigation dispatches in order, then a single trailing terminal.
+          const sent = sendMessage.mock.calls.map((call) => call[0])
+          expect(sent).toEqual([
+            ...uris.map((uri) => openStep(uri).action),
+            { _tag: 'SniffingComplete' },
+          ])
+        }),
+        { numRuns: numRunsFor({ base: 100 }) }
+      ))
+  })
+
   describe('Stop', () => {
     it('should interrupt a pending Delay timer', () =>
       run(
@@ -680,6 +803,12 @@ const delayStep = (duration: Duration.Duration, name = 'delay'): Step.Step => ({
   name,
   duration,
 })
+
+/** A terminal hold that parks until the user dismisses the sniffer webview. */
+const awaitUserDismiss = (): Step.AwaitUserDismissStep => ({ _tag: 'AwaitUserDismiss' })
+
+/** The decoded `UserDismissed` bridge message the machine's handler accepts. */
+const userDismissed = (): { readonly _tag: 'UserDismissed' } => ({ _tag: 'UserDismissed' })
 
 /** A hold until a settled `PageLoaded` whose last path segment is `segment`. */
 const awaitSettled = (
