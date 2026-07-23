@@ -163,25 +163,37 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirRes
     stepSequence: [
       // Wait for the `mypharmacy` login page to redirect to the shared
       // `accounts.pcid.ca` login before filling the credentials.
-      { _tag: 'AwaitPageSettled', pattern: PCID_LOGIN_PATTERN, timeout: REDIRECT_TIMEOUT },
+      {
+        _tag: 'AwaitPageSettled',
+        name: 'Waiting for login page',
+        pattern: PCID_LOGIN_PATTERN,
+        timeout: REDIRECT_TIMEOUT,
+      },
       {
         _tag: 'Navigation',
+        name: 'Entering email',
         action: {
           _tag: 'PageAction',
-          action: { kind: 'Fill', querySelector: EMAIL_SELECTOR, value: config.email },
+          action: {
+            kind: 'Fill',
+            querySelector: EMAIL_SELECTOR,
+            value: config.email,
+          },
         },
       },
-      { _tag: 'Delay', duration: Duration.seconds(0.25) },
+      { _tag: 'Delay', name: 'Waiting to enter email', duration: Duration.seconds(0.25) },
       {
         _tag: 'Navigation',
+        name: 'Entering password',
         action: {
           _tag: 'PageAction',
           action: { kind: 'Fill', querySelector: PASSWORD_SELECTOR, value: config.password },
         },
       },
-      { _tag: 'Delay', duration: Duration.seconds(0.25) },
+      { _tag: 'Delay', name: 'Waiting before submitting', duration: Duration.seconds(0.25) },
       {
         _tag: 'Navigation',
+        name: 'Clicking submit',
         action: {
           _tag: 'PageAction',
           action: { kind: 'Click', querySelector: SUBMIT_SELECTOR },
@@ -190,9 +202,15 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirRes
       // Pause through the user's 2FA on `accounts.pcid.ca/login/verification`
       // until the health dashboard loads and settles (its `getProfile` XHR is
       // sniffed as it settles).
-      { _tag: 'AwaitPageSettled', pattern: HEALTHDASHBOARD_PATTERN, timeout: TWO_FA_TIMEOUT },
+      {
+        _tag: 'AwaitPageSettled',
+        name: 'Waiting for Health Dashboard',
+        pattern: HEALTHDASHBOARD_PATTERN,
+        timeout: TWO_FA_TIMEOUT,
+      },
       {
         _tag: 'Navigation',
+        name: 'Opening prescriptions page',
         action: {
           _tag: 'Open',
           source: { _tag: 'Uri', uri: PRESCRIPTIONS_URL },
@@ -202,10 +220,11 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirRes
       // give its per-prescription status XHR fan-out the trailing settle window.
       {
         _tag: 'AwaitPageSettled',
+        name: 'Waiting for prescriptions to settle',
         pattern: PRESCRIPTIONS_SETTLED_PATTERN,
         timeout: PRESCRIPTIONS_TIMEOUT,
       },
-      { _tag: 'Delay', duration: SETTLE },
+      { _tag: 'Delay', name: 'Done, waiting just a little longer', duration: SETTLE },
     ],
   })
 }
