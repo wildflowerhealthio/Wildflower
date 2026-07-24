@@ -31,6 +31,18 @@ ignore = [
   # attacker-supplied ciphertext, so the timing side-channel is not reachable
   # here. Reviewed, low-risk, temporary until `rsa` ships a constant-time release.
   "RUSTSEC-2023-0071",
+  # quick-xml < 0.41 — two parser denial-of-service issues (quadratic
+  # duplicate-attribute scan; unbounded `NsReader` namespace allocation). Both
+  # are fixed in 0.41.0, which we already build via `plist` <- `tauri`; the
+  # flagged copies are the semver-incompatible older majors pinned by
+  # `object_store` (0.37) and `octofhir-ucum` (0.38, a build-dependency), so we
+  # cannot pull them forward until those upstreams bump. Neither parses
+  # attacker-supplied XML: the build-dep reads vendored UCUM data, and
+  # `object_store`'s is S3 API responses over a cloud backend the EMR store
+  # does not use. Reviewed, low-risk, temporary — cargo-deny reports
+  # `advisory-not-detected` once these stop matching, which is the cue to drop.
+  "RUSTSEC-2026-0194",
+  "RUSTSEC-2026-0195",
 ]
 # Only fail on "unmaintained" advisories for crates we depend on directly; deep
 # transitive ones (e.g. the gtk3/atk chain pulled in by Tauri, or unic-* and
@@ -58,6 +70,14 @@ allow = [
   "CC0-1.0",
   "MPL-2.0",
   "CDLA-Permissive-2.0",
+  # The original bzip2/libbzip2 license (Julian Seward), carried by the Rust
+  # translation in `libbz2-rs-sys` <- `bzip2` <- `zip` <- `apps-rust`. It is a
+  # hybrid of two licenses already allowed above: retain-the-notice and
+  # no-endorsement from BSD-3-Clause, don't-misrepresent-the-origin and
+  # mark-altered-sources from Zlib. Permissive — no copyleft, no
+  # source-disclosure obligation, and the two Zlib-derived clauses only bind
+  # someone redistributing *modified source*, which we do not do.
+  "bzip2-1.0.6",
 ]
 confidence-threshold = 0.8
 exceptions = []

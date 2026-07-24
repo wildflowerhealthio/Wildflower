@@ -26,8 +26,7 @@ interface HostBindings<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
   }
   readonly onTransportReady: {
     readonly [I in keyof Bridges]:
-      | ((send: MessageSender<readonly [Bridges[I]], 'HostToWeb'>) => Effect.Effect<void>)
-      | undefined
+      ((send: MessageSender<readonly [Bridges[I]], 'HostToWeb'>) => Effect.Effect<void>) | undefined
   }
 }
 ```
