@@ -45,7 +45,6 @@
     "react-dom": "catalog:",
     "react-kitchen-sink": "workspace:*",
     "react-tundraish": "workspace:*",
-    "shared-structures-react": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:",
     "web-trace-core": "workspace:*"
@@ -61,7 +60,6 @@
     "react": "catalog:",
     "react-kitchen-sink": "workspace:*",
     "react-tundraish": "workspace:*",
-    "shared-structures-react": "workspace:*",
     "web-trace-core": "workspace:*"
   }
 }

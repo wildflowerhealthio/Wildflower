@@ -31,6 +31,26 @@ describe('hostOf', () => {
     // Assert
     expect(host).toBe('not a url at all')
   })
+
+  it('should fall back to the raw value for a URL that parses but names no host', () => {
+    // Arrange — `blob:` and `data:` parse, and their `host` is the empty string.
+
+    // Act / Assert — a blank would describe the session with nothing at all
+    expect(hostOf('blob:https://portal.example.org/2f8c-4a1b')).toBe(
+      'blob:https://portal.example.org/2f8c-4a1b'
+    )
+    expect(hostOf('data:text/html,hello')).toBe('data:text/html,hello')
+  })
+
+  it('should never describe a non-empty URL with a blank host', () => {
+    fc.assert(
+      fc.property(fc.string({ minLength: 1 }), (url) => {
+        // Act / Assert — the result is either a real host or the URL itself
+        expect(hostOf(url)).not.toBe('')
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
 })
 
 describe('groupIntoSessions', () => {

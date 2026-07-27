@@ -55,8 +55,11 @@ this package and a collector.
   is all-or-nothing, so failing the page would let one resource from an older
   encoding make every recording on the device unreadable. `TraceExchangePage.unreadable`
   carries the count and `SessionsList` surfaces it — a partial list must never
-  read as a complete one. A `DocumentReference` from another category is a
-  different case: not a trace at all, so dropped without being counted.
+  read as a complete one. The count is of **exchanges**, not recordings: one
+  trace resource is one exchange, so the notice counts exchanges rather than
+  recordings; calling them recordings would claim whole sessions were lost. A
+  `DocumentReference` from another category is a different case: not a trace at
+  all, so dropped without being counted.
 - **A failed read renders nothing, not an empty list.** "No recordings on this
   device" is a claim about the device; a failed read only means the device was
   never successfully asked. `RecordingsPanel` shows the banner alone when the
@@ -64,7 +67,10 @@ this package and a collector.
 - **Paging goes through `_pageToken`, read off the bundle's `next` link.** Do not
   follow the link URL directly — that bypasses the typed client's schema and its
   auth. An unparseable or token-less `next` link reads as "no more pages"
-  (`nextPageToken` returns `undefined`) rather than failing the read.
+  (`nextPageToken` returns `undefined`) rather than failing the read — and a
+  present-but-empty `_pageToken=` counts as token-less, since `''` is not `null`
+  and TanStack Query would take it for a real cursor and re-request page one
+  forever.
 - **`status: 0` is a real value.** The sniffer reports it for an opaque CORS
   response or an aborted request, so it classifies as `other`, badges as a
   warning, and renders as `opaque` — never as a zero-valued success.

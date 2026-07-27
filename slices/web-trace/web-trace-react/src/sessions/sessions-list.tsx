@@ -18,7 +18,14 @@ interface SessionsListProps {
   readonly isLoadingMore: boolean
   /** Fetches the next page. */
   readonly onLoadMore: () => void
-  /** How many trace resources could not be decoded across the pages read so far. */
+  /**
+   * How many trace resources could not be decoded across the pages read so far.
+   *
+   * @remarks
+   * One trace resource is one exchange, not one recording — a session that lost
+   * three of its fifty exchanges is still listed, so the notice counts exchanges
+   * and says so. Calling them recordings would claim whole sessions were lost.
+   */
   readonly unreadableCount: number
   readonly className?: string
 }
@@ -81,8 +88,8 @@ const SessionsList = ({
         <p className={cn(styles['sessions__notice'], 'text-body-3')}>
           <StatusBadge tone="warning">
             {unreadableCount === 1
-              ? '1 recording could not be read'
-              : `${unreadableCount} recordings could not be read`}
+              ? '1 exchange could not be read'
+              : `${unreadableCount} exchanges could not be read`}
           </StatusBadge>
         </p>
       ) : null}

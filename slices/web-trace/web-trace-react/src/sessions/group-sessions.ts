@@ -39,15 +39,20 @@ interface TraceSession {
  * The host an exchange addressed, falling back to the raw URL.
  *
  * @param url - The exchange's URL as the sniffer reported it
- * @returns The URL's host, or the URL itself when it does not parse
+ * @returns The URL's host, or the URL itself when it does not parse or names no
+ *   host
  *
  * @remarks
  * The sniffer types `url` as a plain string, so a value `URL` rejects is
- * possible; the raw string never claims a host that was not observed.
+ * possible; the raw string never claims a host that was not observed. A URL that
+ * parses but carries no authority — `blob:`, `data:`, `about:` — has an empty
+ * `host`, which would describe the session with a blank, so it falls back the
+ * same way an unparseable value does.
  */
 const hostOf = (url: string): string => {
   try {
-    return new URL(url).host
+    const { host } = new URL(url)
+    return host === '' ? url : host
   } catch {
     return url
   }

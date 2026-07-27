@@ -49,13 +49,17 @@ const RELATIVE_LINK_BASE = 'https://relative.invalid'
  * @remarks
  * An unparseable or token-less `next` link reads as "no more pages" rather than
  * raising: the caller cannot act on the distinction, since either way there is
- * no cursor to send.
+ * no cursor to send. A present-but-empty `_pageToken=` is token-less too — the
+ * server minted no cursor, and treating `''` as one would make paging ask for
+ * the same page forever, since the empty string is not `null` and so reads to
+ * TanStack Query as a real next page.
  */
 const nextPageToken = (links: readonly PageLink[]): string | undefined => {
   const next = links.find((link) => link.relation === NEXT_RELATION)
   if (next === undefined) return undefined
   try {
-    return new URL(next.url, RELATIVE_LINK_BASE).searchParams.get(PAGE_TOKEN_PARAM) ?? undefined
+    const token = new URL(next.url, RELATIVE_LINK_BASE).searchParams.get(PAGE_TOKEN_PARAM)
+    return token === null || token === '' ? undefined : token
   } catch {
     return undefined
   }

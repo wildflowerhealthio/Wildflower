@@ -40,6 +40,18 @@ describe('nextPageToken', () => {
     expect(token).toBeUndefined()
   })
 
+  it('should return undefined when the next link carries an empty cursor', () => {
+    // Arrange — a `_pageToken=` with nothing after it is no cursor at all;
+    // carrying `''` forward would ask the server for the same page forever.
+    const links = [nextLink('https://device.local/fhir-r4/DocumentReference?_pageToken=')]
+
+    // Act
+    const token = nextPageToken(links)
+
+    // Assert
+    expect(token).toBeUndefined()
+  })
+
   it('should read a cursor out of a server-relative next link', () => {
     // Arrange — HFS is free to return either an absolute or a relative link.
     const links = [nextLink('/fhir-r4/DocumentReference?category=web-trace&_pageToken=relative-1')]

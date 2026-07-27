@@ -2278,9 +2278,6 @@ importers:
       react-tundraish:
         specifier: workspace:*
         version: link:../../../global/react-tundraish
-      shared-structures-react:
-        specifier: workspace:*
-        version: link:../../shared-structures/shared-structures-react
       typescript:
         specifier: 5.9.3
         version: 5.9.3

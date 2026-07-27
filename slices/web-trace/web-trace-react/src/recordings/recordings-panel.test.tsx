@@ -27,13 +27,19 @@ vi.mock('fhir-r4-react', async (importOriginal) => {
 
 let currentRunAuthed: RunAuthed
 let requestCount = 0
+let queryClient: QueryClient
 
 beforeEach(() => {
   requestCount = 0
+  // One client per test, built here rather than inside the wrapper component:
+  // a `new QueryClient()` in the wrapper's body would mint a fresh cache on
+  // every re-render of the wrapper, silently discarding the pages under test.
+  queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 })
 
 afterEach(() => {
   cleanup()
+  queryClient.clear()
   vi.restoreAllMocks()
 })
 
@@ -218,9 +224,7 @@ const serveFailure = (): void => {
   )
 }
 
-/** A fresh `QueryClient` per render, with retries off so a failure surfaces at once. */
+/** The test's own `QueryClient`, with retries off so a failure surfaces at once. */
 const withQueryClient = ({ children }: { readonly children: ReactNode }): JSX.Element => (
-  <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-    {children}
-  </QueryClientProvider>
+  <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
 )

@@ -86,15 +86,25 @@ describe('SessionsList', () => {
     expect(screen.getByText('1+ exchanges')).toBeDefined()
   })
 
-  it('should surface how many recordings could not be read', () => {
+  it('should surface how many exchanges could not be read', () => {
     // Act
     render(<SessionsList {...props({ unreadableCount: 3 })} />)
 
-    // Assert — a dropped recording is reported, never silently omitted
-    expect(screen.getByText('3 recordings could not be read')).toBeDefined()
+    // Assert — a dropped exchange is reported, never silently omitted, and it is
+    // counted as an exchange: three lost rows are not three lost recordings
+    expect(screen.getByText('3 exchanges could not be read')).toBeDefined()
+    expect(screen.queryByText(/recordings could not be read/)).toBeNull()
   })
 
-  it('should say nothing about unreadable recordings when there are none', () => {
+  it('should count a single unreadable exchange in the singular', () => {
+    // Act
+    render(<SessionsList {...props({ unreadableCount: 1 })} />)
+
+    // Assert
+    expect(screen.getByText('1 exchange could not be read')).toBeDefined()
+  })
+
+  it('should say nothing about unreadable exchanges when there are none', () => {
     // Act
     render(<SessionsList {...props({ unreadableCount: 0 })} />)
 
