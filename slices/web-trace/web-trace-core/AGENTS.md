@@ -18,6 +18,9 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
 - **`src/trace-exchange.ts`** — the vocabulary. `TraceExchange` is one recorded
   HTTP exchange; `StoredBody` / `SkippedBody` is the captured-or-recorded-omission
   split; `TraceTimings` is what the capture could measure.
+- **`src/pseudonymizer/`** — the export boundary's redactor. `shapes.ts` detects
+  what a value looks like and generates another value that looks the same;
+  `hmac.ts` is the Web Crypto seam every fake is seeded from.
 - **`src/test-helpers.ts`** — `fast-check` arbitraries for realistic captures,
   exported as `web-trace-core/test-helpers` so downstream packages can reuse them.
 
@@ -55,6 +58,13 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
   already assigns a correlation id per request, so ids are deterministic without
   threading a counter through a parse, retried writes are idempotent upserts, and
   two sessions cannot collide.
+- **The `-core` layer talks to `globalThis.crypto.subtle`, not `node:crypto`.**
+  That is what keeps the pure layer platform-free, and it is why the
+  pseudonymizer is `Effect`-returning: Web Crypto has no synchronous digest.
+- **`detectShape`'s classes are ordered most-specific-first and are disjoint by
+  construction.** Loosening one regex can silently steal values from a later
+  class. The example table in `shapes.test.ts` is the readable statement of what
+  each class means; extend it when you touch a pattern.
 
 ## Testing
 
