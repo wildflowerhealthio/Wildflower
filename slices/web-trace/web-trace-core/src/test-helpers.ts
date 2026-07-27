@@ -1,6 +1,7 @@
-import { DateTime, Schema } from 'effect'
+import { DateTime, Duration, Schema } from 'effect'
 import type * as FastCheck from 'fast-check'
 
+import { noTimings } from './trace-exchange.ts'
 import type { TraceBody, TraceExchange } from './trace-exchange.ts'
 
 /**
@@ -59,7 +60,7 @@ const traceExchange = (
     statusText: 'OK',
     headers: [['Content-Type', 'application/json']],
     startedAt: DateTime.unsafeMake(startedAtMillis ?? CAPTURE_FLOOR),
-    timings: { waitMs: null, receiveMs: null },
+    timings: noTimings,
     body: {
       _tag: 'StoredBody',
       contentType: 'application/json',
@@ -172,6 +173,14 @@ const arbitraries = (
     )
   )
 
+  // Whole microseconds: the resolution a capture actually measures at, and the
+  // coarsest at which `Duration.millis` is canonical. Raw doubles would fail
+  // the round-trip property on Duration's Millis/Nanos normalization rather
+  // than on anything the schema does — see this package's AGENTS.md.
+  const waitDuration = fc
+    .integer({ min: 0, max: 5_000_000 })
+    .map((micros) => Duration.millis(micros / 1000))
+
   const url = fc
     .tuple(
       fc.constantFrom(...HOSTS),
@@ -199,12 +208,10 @@ const arbitraries = (
       fc.constantFrom(200, 201, 400, 404, 500),
       headers,
       fc.integer({ min: CAPTURE_FLOOR, max: CAPTURE_CEILING }),
-      fc.option(fc.double({ min: 0, max: 5000, noNaN: true, noDefaultInfinity: true }), {
-        nil: null,
-      }),
+      fc.option(waitDuration, { nil: null }),
       body
     )
-    .map(([index, requestUrl, status, requestHeaders, millis, waitMs, requestBody]) => ({
+    .map(([index, requestUrl, status, requestHeaders, millis, wait, requestBody]) => ({
       sessionId: 'session-2f8c',
       requestId: `req-${index}`,
       url: requestUrl,
@@ -212,7 +219,7 @@ const arbitraries = (
       statusText: status === 200 ? 'OK' : 'Error',
       headers: requestHeaders,
       startedAt: DateTime.unsafeMake(millis),
-      timings: { waitMs, receiveMs: null },
+      timings: { wait, receive: null },
       body: requestBody,
     }))
 

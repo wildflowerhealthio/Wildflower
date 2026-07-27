@@ -63,21 +63,50 @@ const SkippedBody = Schema.TaggedStruct('SkippedBody', {
 const TraceBody = Schema.Union(StoredBody, SkippedBody)
 
 /**
- * The response-side timings the capture could observe, in milliseconds.
+ * One observed timing: a `Duration` in app, a non-negative finite count of
+ * milliseconds on the wire.
  *
  * @remarks
+ * `Schema.DurationFromMillis` alone would be wrong here. It is built on
+ * `NonNegative`, which admits `+Infinity`, and `JSON.stringify(Infinity)` is
+ * `null` — the very value this schema uses for "not measured". An infinite
+ * duration would therefore survive a JSON round-trip as a plausible-looking
+ * absence. Composing `Schema.JsonNumber` in front rejects it in both
+ * directions, along with `NaN`.
+ */
+const ObservedDuration = Schema.compose(
+  Schema.JsonNumber.pipe(Schema.greaterThanOrEqualTo(0)),
+  Schema.DurationFromMillis
+).annotations({
+  identifier: 'ObservedDuration',
+  description: 'A measured elapsed time, carried on the wire as milliseconds.',
+})
+
+/**
+ * The response-side timings the capture could observe.
+ *
+ * @remarks
+ * Decoded, both are `Duration`s: nothing downstream has to remember whether a
+ * bare number was seconds or milliseconds. Encoded, both are millisecond
+ * numbers under the `waitMs` / `receiveMs` keys — the wire has no type to carry
+ * the unit, so the key carries it.
+ *
  * Both are nullable because the sniffer reports neither on its own — a capture
  * that measures them supplies them, and one that doesn't leaves them `null`,
- * which the HAR emitter turns into the spec's `-1`. There is no `send` timing
- * at all: nothing observes the request side.
+ * which the HAR emitter turns into the spec's `-1`. `Duration.zero` is a
+ * measurement of zero, not an absence. There is no `send` timing at all:
+ * nothing observes the request side.
  */
 const TraceTimings = Schema.Struct({
-  waitMs: Schema.NullOr(Schema.Number.pipe(Schema.greaterThanOrEqualTo(0))),
-  receiveMs: Schema.NullOr(Schema.Number.pipe(Schema.greaterThanOrEqualTo(0))),
+  wait: Schema.NullOr(ObservedDuration).pipe(Schema.propertySignature, Schema.fromKey('waitMs')),
+  receive: Schema.NullOr(ObservedDuration).pipe(
+    Schema.propertySignature,
+    Schema.fromKey('receiveMs')
+  ),
 })
 
 /** A {@link TraceTimings} with nothing observed. */
-const noTimings: typeof TraceTimings.Type = { waitMs: null, receiveMs: null }
+const noTimings: typeof TraceTimings.Type = { wait: null, receive: null }
 
 /**
  * One recorded HTTP exchange — the unit of storage, redaction, and export.

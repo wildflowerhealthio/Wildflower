@@ -32,6 +32,25 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
   method, no request headers, and no request body. A `TraceExchange` therefore
   cannot tell a GET from a POST to the same URL. Anything downstream that wants
   one has to say it does not have it, not guess.
+- **`TraceTimings` is `Duration` in app and milliseconds on the wire.** The
+  fields are `wait` / `receive` decoded and `waitMs` / `receiveMs` encoded, via
+  `Schema.fromKey`. Nothing downstream of a decode has to know what unit a bare
+  number was in, and the wire — which has no type to carry a unit — keeps saying
+  so in the key. `null` means unmeasured; `Duration.zero` is a measurement of
+  zero.
+- **`Schema.DurationFromMillis` on its own is not enough.** It is built on
+  `NonNegative`, which admits `+Infinity`, and `JSON.stringify(Infinity)` is
+  `null` — exactly the value `TraceTimings` uses for "not measured", so an
+  infinite duration round-trips through JSON into a plausible absence. Timings
+  go through `ObservedDuration`, which composes `Schema.JsonNumber` in front;
+  don't unwrap it. Negatives are the same class of trap: `Duration.millis(-1)`
+  is silently `Duration.zero`.
+- **Timing arbitraries draw whole microseconds, not raw doubles.**
+  `Duration.millis` is canonical only at microsecond resolution or coarser:
+  `Duration.millis(4999.9999999999995)` is `Nanos:5000000000`, which encodes to
+  `5000` and decodes back to `Millis:5000`. Equal by `Duration.equals`, different
+  by `toEqual`, so raw doubles fail the round-trip property on Duration's
+  internals rather than on anything this package does.
 - **`{sessionId}-{requestId}` is the identity of an exchange.** The sniffer
   already assigns a correlation id per request, so ids are deterministic without
   threading a counter through a parse, retried writes are idempotent upserts, and

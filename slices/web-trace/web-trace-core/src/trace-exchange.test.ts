@@ -1,5 +1,5 @@
 import { HeadersWire, ResponseStartMessageBody, SnifferRequestId } from 'browser-sniffer-core'
-import { DateTime, Schema } from 'effect'
+import { DateTime, Duration, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
@@ -88,8 +88,40 @@ describe('TraceExchange', () => {
   })
 
   test('an unmeasured timing is null rather than zero, since zero is a measurement', () => {
-    const exchange = traceExchange({ timings: { waitMs: 0, receiveMs: null } })
-    expect(decode(encode(exchange)).timings).toEqual({ waitMs: 0, receiveMs: null })
+    const exchange = traceExchange({ timings: { wait: Duration.zero, receive: null } })
+    expect(decode(encode(exchange)).timings).toEqual({ wait: Duration.zero, receive: null })
+  })
+
+  test('timings are Durations in app and millisecond numbers on the wire', () => {
+    // The unit lives in the encoded key, not in a field the app has to read.
+    const exchange = traceExchange({
+      timings: { wait: Duration.millis(12.5), receive: Duration.seconds(2) },
+    })
+    expect(encode(exchange).timings).toEqual({ waitMs: 12.5, receiveMs: 2000 })
+    expect(decode(encode(exchange)).timings.receive).toStrictEqual(Duration.seconds(2))
+  })
+
+  test('an infinite timing is rejected, since JSON would turn it into "not measured"', () => {
+    // `JSON.stringify(Infinity)` is `null`, which this schema reads as an
+    // absence — so an infinite duration would come back a plausible lie.
+    expect(() =>
+      decode({ ...encode(traceExchange()), timings: { waitMs: Infinity, receiveMs: null } })
+    ).toThrow()
+    expect(() =>
+      encode(traceExchange({ timings: { wait: Duration.infinity, receive: null } }))
+    ).toThrow()
+  })
+
+  test('a negative timing is rejected rather than silently clamped to zero', () => {
+    // `Duration.millis(-1)` is `Duration.zero`, so without the non-negative
+    // filter on the encoded side a corrupt wire value would decode to a
+    // plausible-looking measurement.
+    expect(() =>
+      decode({
+        ...encode(traceExchange()),
+        timings: { waitMs: -1, receiveMs: null },
+      })
+    ).toThrow()
   })
 
   test('startedAt survives the wire as the same instant', () => {
