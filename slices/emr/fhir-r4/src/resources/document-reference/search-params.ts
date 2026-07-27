@@ -1,5 +1,6 @@
 import { Schema } from 'effect'
 
+import * as DateSearchParam from '../search/date-search-param.ts'
 import { StatusSchema } from './document-reference.ts'
 
 const NumFromStr = Schema.NumberFromString.pipe(Schema.int(), Schema.greaterThanOrEqualTo(0))
@@ -12,10 +13,12 @@ const NumFromStr = Schema.NumberFromString.pipe(Schema.int(), Schema.greaterThan
  * `_id`, `identifier`, `category` and `type` are FHIR `token` parameters: a
  * bare `code` or the `system|code` form, passed through as written. `status`
  * is narrowed to {@link StatusSchema}, so an out-of-set code fails to
- * typecheck rather than reaching the server; `date` travels as an ISO 8601
- * instant. The narrowings that remain — no reference-typed parameters, no
- * date prefixes or partial-precision ranges, one value per key — are
- * catalogued in `fhir-r4/docs/Client Capabilities Reference.md`.
+ * typecheck rather than reaching the server; `date` is a
+ * {@link DateSearchParam.Schema} — a prefixed instant (`ge2026-07-27T…Z`) or a
+ * bare, precision-preserving date literal (`2026-07`). The narrowings that
+ * remain — no reference-typed parameters, no prefixed partial-precision
+ * ranges, one value per key — are catalogued in
+ * `fhir-r4/docs/Client Capabilities Reference.md`.
  */
 const SearchParams = Schema.Struct({
   _count: Schema.optional(NumFromStr.pipe(Schema.between(0, 1000))),
@@ -25,7 +28,7 @@ const SearchParams = Schema.Struct({
   category: Schema.optional(Schema.String),
   type: Schema.optional(Schema.String),
   status: Schema.optional(StatusSchema),
-  date: Schema.optional(Schema.DateTimeUtc),
+  date: Schema.optional(DateSearchParam.Schema),
 })
 
 type SearchParamsType = Schema.Schema.Type<typeof SearchParams>

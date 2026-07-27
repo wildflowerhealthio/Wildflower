@@ -85,12 +85,9 @@
             "name": "birthdate",
             "in": "query",
             "schema": {
-              "type": "string",
-              "description": "a string matching the pattern ^\\d{4}-\\d{2}-\\d{2}$",
-              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              "$ref": "#/components/schemas/FhirDateSearch"
             },
-            "required": false,
-            "description": "a string matching the pattern ^\\d{4}-\\d{2}-\\d{2}$"
+            "required": false
           }
         ],
         "security": [],
@@ -1302,9 +1299,7 @@
                     ]
                   },
                   "birthdate": {
-                    "type": "string",
-                    "description": "a string matching the pattern ^\\d{4}-\\d{2}-\\d{2}$",
-                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                    "$ref": "#/components/schemas/FhirDateSearch"
                   }
                 },
                 "additionalProperties": false
@@ -6851,7 +6846,7 @@
             "name": "date",
             "in": "query",
             "schema": {
-              "$ref": "#/components/schemas/DateTimeUtc"
+              "$ref": "#/components/schemas/FhirDateSearch"
             },
             "required": false
           }
@@ -7990,7 +7985,7 @@
                     ]
                   },
                   "date": {
-                    "$ref": "#/components/schemas/DateTimeUtc"
+                    "$ref": "#/components/schemas/FhirDateSearch"
                   }
                 },
                 "additionalProperties": false
@@ -8004,9 +7999,9 @@
   },
   "components": {
     "schemas": {
-      "DateTimeUtc": {
+      "FhirDateSearch": {
         "type": "string",
-        "description": "a string to be decoded into a DateTime.Utc"
+        "description": "A FHIR R4 date search value (§ search.html#date): a comparison prefix (eq/ne/gt/lt/ge/le/sa/eb/ap) in front of a complete instant, or a bare date/dateTime of any precision. See slices/emr/fhir-r4/docs/Client Capabilities Reference.md."
       }
     },
     "securitySchemes": {}

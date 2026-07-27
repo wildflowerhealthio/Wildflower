@@ -22,7 +22,7 @@ describe('DocumentReferenceSearchParams', () => {
     // Act
     const decoded = decodeQuery(query)
 
-    // Assert
+    // Assert — a bare instant decodes to the literal string verbatim.
     expect(decoded).toSchemaEqual(SearchParams, {
       _count: 20,
       _pageToken: 'opaque-server-token',
@@ -31,7 +31,7 @@ describe('DocumentReferenceSearchParams', () => {
       category: 'http://terminology.hl7.org/CodeSystem/document-category|clinical-note',
       type: 'http://loinc.org|18842-5',
       status: 'current',
-      date: DateTime.unsafeMake('2026-07-27T14:27:30.000Z'),
+      date: '2026-07-27T14:27:30.000Z',
     })
   })
 
@@ -83,16 +83,31 @@ describe('DocumentReferenceSearchParams', () => {
     expect(Either.isLeft(result)).toBe(true)
   })
 
-  it('should normalize a partial-precision date to the instant it names', () => {
-    // Arrange — FHIR reads `date=2026-07` as "anywhere in July 2026"; this
-    // client has no range modelling, so the value collapses to one instant.
+  it('should preserve a bare partial-precision date verbatim', () => {
+    // Arrange — FHIR reads `date=2026-07` as "anywhere in July 2026". The
+    // value is carried through as written so the server interprets the range;
+    // no day/hour precision is invented.
     const query = { date: '2026-07' }
 
     // Act
     const reEncoded = Schema.encodeSync(SearchParams)(decodeQuery(query))
 
     // Assert
-    expect(reEncoded).toEqual({ date: '2026-07-01T00:00:00.000Z' })
+    expect(reEncoded).toEqual({ date: '2026-07' })
+  })
+
+  it('should decode a prefixed date to a comparison against an instant', () => {
+    // Arrange
+    const query = { date: 'ge2026-07-27T14:27:30.000Z' }
+
+    // Act
+    const decoded = decodeQuery(query)
+
+    // Assert — a prefix pairs with a complete instant, parsed to a DateTime.
+    expect(decoded).toSchemaEqual(SearchParams, {
+      date: { prefix: 'ge', dateTime: DateTime.unsafeMake('2026-07-27T14:27:30.000Z') },
+    })
+    expect(Schema.encodeSync(SearchParams)(decoded)).toEqual(query)
   })
 
   it('should round-trip any parameter set through the wire', () => {
@@ -141,7 +156,30 @@ const canonicalWireQueryArb: fc.Arbitrary<Record<string, string>> = fc.record(
     category: fc.string(),
     type: fc.string(),
     status: fc.constantFrom('current', 'superseded', 'entered-in-error'),
-    date: fc.date({ noInvalidDate: true }).map((instant) => instant.toISOString()),
+    date: canonicalDateWireArb(),
   },
   { requiredKeys: [] }
 )
+
+/**
+ * The canonical wire spellings a `date` value round-trips to: a bare literal
+ * at any FHIR precision (kept verbatim), or a comparison prefix in front of a
+ * complete instant (re-emitted as `${prefix}${DateTime.formatIso(...)}`).
+ * Years stay in FHIR's `[1000, 9999]` window so `formatIso` is defined.
+ */
+function canonicalDateWireArb(): fc.Arbitrary<string> {
+  const year = fc.integer({ min: 1000, max: 9999 }).map(String)
+  const month = fc.integer({ min: 1, max: 12 }).map((m) => String(m).padStart(2, '0'))
+  const day = fc.integer({ min: 1, max: 28 }).map((d) => String(d).padStart(2, '0'))
+  const instant = fc
+    .integer({ min: -30610224000000, max: 253402300799999 })
+    .map((ms) => new Date(ms).toISOString())
+  const prefix = fc.constantFrom('eq', 'ne', 'gt', 'lt', 'ge', 'le', 'sa', 'eb', 'ap')
+  return fc.oneof(
+    year,
+    fc.tuple(year, month).map(([y, m]) => `${y}-${m}`),
+    fc.tuple(year, month, day).map(([y, m, d]) => `${y}-${m}-${d}`),
+    instant,
+    fc.tuple(prefix, instant).map(([p, i]) => `${p}${i}`)
+  )
+}
