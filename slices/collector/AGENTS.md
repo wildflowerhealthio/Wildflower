@@ -75,7 +75,7 @@ before adding one.
 ## Traps
 
 - **`Step` is a `Navigation | Delay | AwaitPageSettled | AwaitUserDismiss |
-  EnsureWindowVisible` union.** Two variants reach the wire — a `Navigation`'s
+EnsureWindowVisible` union.** Two variants reach the wire — a `Navigation`'s
   `action` (typed against the bridge message bodies themselves) and
   `EnsureWindowVisible` (a fire-and-advance `EnsureSnifferVisible` show request).
   The three plan-only holds (`Delay`, `AwaitPageSettled`, `AwaitUserDismiss`) carry

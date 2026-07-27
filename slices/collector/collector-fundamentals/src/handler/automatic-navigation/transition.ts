@@ -117,14 +117,14 @@ const drainFrom = (queue: State.Queue, url: string | undefined, generation: numb
     // Keep the hold at the queue head and park *indefinitely* — no timer is
     // armed (generation unchanged); only the external `UserDismissed` input
     // resumes from here (in `onUserDismissed`, which ends the run).
-    return [State.awaitingUserDismiss(queue, generation), []]
+    return [State.awaitingUserDismiss(queue, generation), [nameEffect]]
   }
   if (head._tag === 'EnsureWindowVisible') {
     // Fire-and-advance, like a Navigation: ask the host to re-present the sniffer
     // webview and keep draining the tail in the same turn. It is not a hold — it
     // dispatches and moves on — so no timer is armed (generation unchanged).
     const [next, effects] = drainFrom(tail, url, generation)
-    return [next, [dispatchEnsureVisible, ...effects]]
+    return [next, [nameEffect, dispatchEnsureVisible, ...effects]]
   }
   // Navigation: dispatch the action now and keep draining the tail in the same
   // turn. A `Fill` / `Click` / `Open` never waits for a `PageLoaded` — waiting is

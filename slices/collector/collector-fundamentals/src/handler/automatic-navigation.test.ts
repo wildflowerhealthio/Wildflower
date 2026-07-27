@@ -469,8 +469,8 @@ describe('automatic-navigation.make', () => {
             }),
           })
 
-          yield* machine.handlePageLoaded(pageLoaded()) // → parked, nothing sent
-          expect(sendMessage).not.toHaveBeenCalled()
+          yield* machine.handlePageLoaded(pageLoaded()) // → parked, nothing dispatched
+          expect(dispatched(sendMessage)).toEqual([])
 
           yield* machine.handleUserDismissed(userDismissed())
           expect(sentTags(sendMessage)).toEqual(['SniffingComplete'])
@@ -486,7 +486,7 @@ describe('automatic-navigation.make', () => {
 
           yield* machine.handlePageLoaded(pageLoaded('https://example.com/one'))
           yield* machine.handlePageLoaded(pageLoaded('https://example.com/two'))
-          expect(sendMessage).not.toHaveBeenCalled() // still parked, not advanced
+          expect(dispatched(sendMessage)).toEqual([]) // still parked, not advanced
         })
       ))
 
@@ -531,7 +531,7 @@ describe('automatic-navigation.make', () => {
       fc.assert(
         fc.property(fc.array(fc.webUrl(), { maxLength: 6 }), (uris) => {
           // Arbitrary navigations followed by a terminal user-dismiss hold.
-          const steps = [...uris.map(openStep), awaitUserDismiss()]
+          const steps = [...uris.map((uri) => openStep(uri)), awaitUserDismiss()]
           const sendMessage = vi.fn<SendMessage>(() => Effect.void)
           const machine = makeMachine({ sendMessage, stepSequence: steps })
 
@@ -543,8 +543,7 @@ describe('automatic-navigation.make', () => {
           )
 
           // Every navigation dispatches in order, then a single trailing terminal.
-          const sent = sendMessage.mock.calls.map((call) => call[0])
-          expect(sent).toEqual([
+          expect(dispatched(sendMessage)).toEqual([
             ...uris.map((uri) => openStep(uri).action),
             { _tag: 'SniffingComplete' },
           ])
@@ -564,7 +563,7 @@ describe('automatic-navigation.make', () => {
           // then linkA — the step never waits.
           yield* machine.handlePageLoaded(pageLoaded())
           expect(sentTags(sendMessage)).toEqual(['EnsureSnifferVisible', 'Open'])
-          expect(sendMessage.mock.calls[0][0]).toEqual({ _tag: 'EnsureSnifferVisible' })
+          expect(dispatched(sendMessage)[0]).toEqual({ _tag: 'EnsureSnifferVisible' })
         })
       ))
 
@@ -748,6 +747,42 @@ describe('automatic-navigation.make', () => {
         })
       ))
 
+    it('should push an AwaitUserDismiss step name when it parks', () =>
+      run(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [awaitUserDismiss('Close the window when you are done')],
+          })
+
+          yield* machine.handlePageLoaded(pageLoaded()) // parks on the hold
+          // The hold hands control to the user, so its label is the one they are
+          // left reading — it must reach the chrome even though nothing dispatches.
+          expect(statusNames(sendMessage)).toEqual(['Close the window when you are done'])
+          expect(dispatched(sendMessage)).toEqual([])
+        })
+      ))
+
+    it('should push an EnsureWindowVisible step name before its show request', () =>
+      run(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [ensureVisible('Bringing the window back')],
+          })
+
+          yield* machine.handlePageLoaded(pageLoaded())
+          // Fire-and-advance, so — like a Navigation — the label precedes the
+          // dispatch rather than replacing it.
+          expect(allSent(sendMessage)).toEqual([
+            { _tag: 'SetSnifferStatus', name: 'Bringing the window back' },
+            { _tag: 'EnsureSnifferVisible' },
+          ])
+        })
+      ))
+
     it('should push each name in step order for back-to-back navigations (the chrome ends on the last)', () =>
       run(
         Effect.gen(function* () {
@@ -840,10 +875,16 @@ const delayStep = (duration: Duration.Duration, name = 'delay'): Step.Step => ({
 })
 
 /** A terminal hold that parks until the user dismisses the sniffer webview. */
-const awaitUserDismiss = (): Step.AwaitUserDismissStep => ({ _tag: 'AwaitUserDismiss' })
+const awaitUserDismiss = (name = 'await dismiss'): Step.AwaitUserDismissStep => ({
+  _tag: 'AwaitUserDismiss',
+  name,
+})
 
 /** A fire-and-advance step asking the host to (re-)present the sniffer webview. */
-const ensureVisible = (): Step.EnsureWindowVisibleStep => ({ _tag: 'EnsureWindowVisible' })
+const ensureVisible = (name = 'ensure visible'): Step.EnsureWindowVisibleStep => ({
+  _tag: 'EnsureWindowVisible',
+  name,
+})
 
 /** The decoded `UserDismissed` bridge message the machine's handler accepts. */
 const userDismissed = (): { readonly _tag: 'UserDismissed' } => ({ _tag: 'UserDismissed' })
