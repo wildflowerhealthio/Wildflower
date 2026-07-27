@@ -88,6 +88,27 @@ const Write = {
   Query: { Span: { Name: 'fhir.upsert.query' } },
 } as const
 
+/**
+ * Writing a decoded batch back to the store through the typed client
+ * (`persistResources`) — the client side of a write, as opposed to
+ * {@link Write}, which names the server's handling of one.
+ */
+const Persist = {
+  /**
+   * One resource's write within a batch, retries included.
+   *
+   * @remarks
+   * Tagged with {@link Resource.Attributes.Type}. Each retry attempt is its own
+   * OTel HTTP client span (a `PUT`) nested under this one, so the attempt count
+   * reads straight off the trace.
+   *
+   * A caller that batches is expected to own the span *above* this one — the
+   * collector slice's `collector.importing` is the example — so no batch span is
+   * emitted here.
+   */
+  Write: { Span: { Name: 'fhir.persist.write' } },
+} as const
+
 /** `$everything`: the primary resource plus its related resources. */
 const Everything = {
   /** Attribute keys specific to the `$everything` spans. */
@@ -103,4 +124,4 @@ const Everything = {
   GetRelated: { Span: { Name: 'fhir.everything.get_related' } },
 } as const
 
-export { Everything, Read, Resource, Search, Write }
+export { Everything, Persist, Read, Resource, Search, Write }

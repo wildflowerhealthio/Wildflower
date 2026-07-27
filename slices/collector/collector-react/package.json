@@ -54,7 +54,8 @@
     "telemetry-react": "workspace:*",
     "typescript": "catalog:",
     "vite": "catalog:",
-    "vite-plus": "catalog:"
+    "vite-plus": "catalog:",
+    "web-trace-collector": "workspace:*"
   },
   "peerDependencies": {
     "@effect/platform": "catalog:",
@@ -74,6 +75,7 @@
     "react-tundraish": "workspace:*",
     "rexall-be-well-collector": "workspace:*",
     "shared-structures-react": "workspace:*",
-    "telemetry-react": "workspace:*"
+    "telemetry-react": "workspace:*",
+    "web-trace-collector": "workspace:*"
   }
 }

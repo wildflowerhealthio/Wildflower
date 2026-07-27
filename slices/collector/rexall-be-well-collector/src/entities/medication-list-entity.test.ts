@@ -1,4 +1,5 @@
-import { Response } from 'collector-fundamentals/model'
+import type { Response } from 'collector-fundamentals/model'
+import { makeRemoteResponse } from 'collector-fundamentals/test-helpers'
 import { Effect, type Either, type ParseResult } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
@@ -9,17 +10,12 @@ import { MedicationListEntity, type MedicationResource } from './medication-list
 
 const { expectRightToEqual } = utilityExpectations(expect)
 
-const encoder = new TextEncoder()
-
 /** The prescriptions searchset URL the SPA fires (tunnel host), matched by `isFoundAt`. */
 const LIST_URL =
   'https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/pharmacy/Location?subject=Patient/uid-abc-123&_query=lastActiveOnly&_revinclude=MedicationRequest:extension.medicationrecord-processor&_count=2147483646'
 
-const makeResponse = (body: string, url = LIST_URL): Response.RemoteResponse => {
-  const r = new Response.RemoteResponse(url, 200, 'OK', [['content-type', 'application/fhir+json']])
-  r.appendChunk(encoder.encode(body))
-  return r
-}
+const makeResponse = (body: string, url = LIST_URL): Response.RemoteResponse =>
+  makeRemoteResponse({ url, headers: [['content-type', 'application/fhir+json']], body })
 
 const runParse = (
   r: Response.RemoteResponse

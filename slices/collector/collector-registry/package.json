@@ -52,7 +52,8 @@
     "rexall-be-well-collector": "workspace:*",
     "shared-structures-core": "workspace:*",
     "typescript": "catalog:",
-    "vite-plus": "catalog:"
+    "vite-plus": "catalog:",
+    "web-trace-collector": "workspace:*"
   },
   "peerDependencies": {
     "@effect/platform": "catalog:",
@@ -63,6 +64,7 @@
     "fhir-r4-client-collector": "workspace:*",
     "kitchen-sink": "workspace:*",
     "rexall-be-well-collector": "workspace:*",
-    "shared-structures-core": "workspace:*"
+    "shared-structures-core": "workspace:*",
+    "web-trace-collector": "workspace:*"
   }
 }

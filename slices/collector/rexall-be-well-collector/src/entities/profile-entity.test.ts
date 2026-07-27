@@ -1,4 +1,5 @@
-import { Response } from 'collector-fundamentals/model'
+import type { Response } from 'collector-fundamentals/model'
+import { makeRemoteResponse } from 'collector-fundamentals/test-helpers'
 import { Effect, type Either, type ParseResult } from 'effect'
 import * as fc from 'fast-check'
 import type { Patient } from 'fhir-r4/resources'
@@ -10,15 +11,10 @@ import { ProfileEntity } from './profile-entity.ts'
 
 const { expectLeftToEqual } = utilityExpectations(expect)
 
-const encoder = new TextEncoder()
-
 const PROFILE_URL = 'https://rexall-prd-tunnel.letsbewell.ca/enduser/profile/v2/me'
 
-const makeResponse = (body: string, url = PROFILE_URL): Response.RemoteResponse => {
-  const r = new Response.RemoteResponse(url, 200, 'OK', [['content-type', 'application/json']])
-  r.appendChunk(encoder.encode(body))
-  return r
-}
+const makeResponse = (body: string, url = PROFILE_URL): Response.RemoteResponse =>
+  makeRemoteResponse({ url, body })
 
 const runParse = (
   r: Response.RemoteResponse

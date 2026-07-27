@@ -6,11 +6,11 @@ import {
 } from 'collector-fundamentals/model'
 import { Duration, type FastCheck, Schema } from 'effect'
 import type { LazyArbitrary } from 'effect/Arbitrary'
+import { persistResources } from 'fhir-r4/clients'
 import type { FhirResource } from 'fhir-r4/resources'
 
 import { MedicationListEntity } from './entities/medication-list-entity.ts'
 import { ProfileEntity } from './entities/profile-entity.ts'
-import { persistResources } from './persist.ts'
 
 /**
  * A well-formed email address: a non-empty local part, `@`, and a dotted

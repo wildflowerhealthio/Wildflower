@@ -17,6 +17,12 @@ applied retroactively to sessions already recorded.
   mounts. Presentation and interaction only, and the "view raw" half of the
   asymmetry above. See its [AGENTS.md](./web-trace-react/AGENTS.md).
 
+The capture half lives outside this slice, in the collector slice where the
+descriptor seam is: [`web-trace-collector`](../collector/web-trace-collector/AGENTS.md)
+is the `*-client-collector` that records a hand-driven session and writes each
+exchange through `web-trace-core`'s codec. It imports the encoding; it never
+re-derives it.
+
 ## Why this slice exists
 
 The FHIR encoding of a trace cannot live anywhere it already had a home:

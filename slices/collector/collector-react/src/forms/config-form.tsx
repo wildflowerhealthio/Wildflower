@@ -3,6 +3,7 @@ import { type CollectorTag, type ConfigForTag } from 'collector-registry/registr
 import { FhirR4ConfigForm } from 'fhir-r4-client-collector'
 import type { JSX } from 'react'
 import { RexallConfigForm } from 'rexall-be-well-collector'
+import { WebTraceConfigForm } from 'web-trace-collector'
 
 /**
  * A per-collector config form, keyed to its tag: the form for `T` is written
@@ -31,6 +32,7 @@ type ConfigFormComponent<T extends CollectorTag> = (
 const configForms: { readonly [T in CollectorTag]: ConfigFormComponent<T> } = {
   'fhir-r4': FhirR4ConfigForm,
   rexall: RexallConfigForm,
+  'web-trace': WebTraceConfigForm,
 }
 
 /**

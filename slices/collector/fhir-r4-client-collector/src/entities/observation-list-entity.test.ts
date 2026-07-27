@@ -3,22 +3,20 @@ import * as fc from 'fast-check'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { Response } from 'collector-fundamentals/model'
+import type { Response } from 'collector-fundamentals/model'
+import { makeRemoteResponse } from 'collector-fundamentals/test-helpers'
 import type { Observation } from 'fhir-r4/resources'
 
 import { ObservationListEntity } from './observation-list-entity.ts'
 
 const { expectRightToEqual, expectLeftToEqual } = utilityExpectations(expect)
 
-const encoder = new TextEncoder()
-
-const makeResponse = (body: string): Response.RemoteResponse => {
-  const r = new Response.RemoteResponse('https://example.com/Observation?_count=1', 200, 'OK', [
-    ['content-type', 'application/fhir+json'],
-  ])
-  r.appendChunk(encoder.encode(body))
-  return r
-}
+const makeResponse = (body: string): Response.RemoteResponse =>
+  makeRemoteResponse({
+    url: 'https://example.com/Observation?_count=1',
+    headers: [['content-type', 'application/fhir+json']],
+    body,
+  })
 
 /**
  * Build the WebView JSON-viewer wrapper around a raw FHIR JSON

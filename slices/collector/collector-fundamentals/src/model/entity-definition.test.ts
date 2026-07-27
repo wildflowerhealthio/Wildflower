@@ -3,20 +3,13 @@ import * as fc from 'fast-check'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { SimpleEntity } from '../test-helpers.ts'
-import { RemoteResponse } from './response.ts'
+import { makeRemoteResponse, SimpleEntity } from '../test-helpers.ts'
+import type { RemoteResponse } from './response.ts'
 
 const { expectRightToEqual, expectLeftToEqual } = utilityExpectations(expect)
 
-const encoder = new TextEncoder()
-
-const makeResponse = (body: string): RemoteResponse => {
-  const r = new RemoteResponse('https://example.com/resource/id', 200, 'OK', [
-    ['content-type', 'text'],
-  ])
-  r.appendChunk(encoder.encode(body))
-  return r
-}
+const makeResponse = (body: string): RemoteResponse =>
+  makeRemoteResponse({ headers: [['content-type', 'text']], body })
 
 /**
  * `parse` returns an `Effect<readonly TResources[], ParseError>`. The

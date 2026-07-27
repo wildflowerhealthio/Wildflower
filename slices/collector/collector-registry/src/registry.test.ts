@@ -89,6 +89,30 @@ describe('resourcePersistenceRuntimeForConfig', () => {
     expect(planFor(config)).toEqual(fhirR4ScrapingPlan(config))
   })
 
+  /**
+   * The parts of a plan that identify *which collector built it for which
+   * config*, with the per-build parts projected away.
+   *
+   * A plan factory is not obliged to be pure: `web-trace-collector` mints a
+   * fresh session id per build (that is what stops two recordings of one remote
+   * from upserting over each other) and closes its entity over it, so two builds
+   * from the same config are structurally unequal by construction — different
+   * session id, different `parse` closure. Deep equality would therefore assert
+   * "the factory is pure", which is not the property this test is about.
+   *
+   * What survives the projection still fails loudly on a mis-dispatch: a plan
+   * from the wrong descriptor has a different `name`, different entity names,
+   * and a `firstPage` derived from a different config field.
+   */
+  const planIdentity = (
+    plan: ScrapingPlan.ScrapingPlan<unknown>
+  ): Record<string, unknown> | undefined => ({
+    name: plan.name,
+    firstPage: plan.firstPage,
+    stepNames: plan.stepSequence.map((step) => `${step._tag}:${step.name}`),
+    entityNames: plan.entityDefinitions.map((entity) => entity.name),
+  })
+
   it('dispatches every schema-conformant config to its descriptor plan', () => {
     // The dispatch must route by the config's own tag for any collector
     // in the list, not just the hardcoded fhir-r4 example above.
@@ -104,7 +128,9 @@ describe('resourcePersistenceRuntimeForConfig', () => {
         const descriptorPlan = descriptor
           ?.resourcePersistenceRuntimeIfMatches(config)
           ?.run((context) => context.scrapingPlan)
-        expect(planFor(config)).toEqual(descriptorPlan)
+        expect(planIdentity(planFor(config))).toEqual(
+          descriptorPlan === undefined ? undefined : planIdentity(descriptorPlan)
+        )
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )
