@@ -23,8 +23,8 @@ An ordinary `*-client-collector`, mirroring `rexall-be-well-collector`'s layout:
   allowlist token matching, the size cap, and the SHA-256 every body carries.
 - `src/entities/raw-exchange-entity.ts` — the catch-all entity. One
   `DocumentReference` per exchange, encoded by `web-trace-core`'s codec.
-- the persist sink — built in `src/config.ts` from `fhir-r4`'s shared
-  `makePersistResources`, passing this collector's telemetry names.
+- the persist sink — `fhir-r4`'s `persistResources`, imported in `src/config.ts`
+  and handed straight to the descriptor.
 - `src/web-trace-config-form.tsx` (+ `.module.css`) — the `ConfigFormProps` form
   `collector-react` registers.
 

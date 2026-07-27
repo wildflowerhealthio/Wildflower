@@ -19,7 +19,7 @@ that depends on `collector-fundamentals` only.
 | Entities       | `*-client-collector/src/entities/`          | `EntityDefinition.make` — recognize + parse one response shape |
 | Config         | `*-client-collector/src/config.ts`          | `Schema.TaggedStruct` + fast-check arbitraries                 |
 | Scraping plan  | `*-client-collector/src/config.ts`          | `ScrapingPlan.make` — first page, steps, entities              |
-| Persist sink   | `*-client-collector/src/config.ts`          | `fhir-r4`'s `makePersistResources` — don't write your own      |
+| Persist sink   | `*-client-collector/src/config.ts`          | import `fhir-r4`'s `persistResources` — don't write your own   |
 | Descriptor     | `*-client-collector/src/config.ts`          | `CollectorDescriptor.make` — bundles all of the above          |
 | Config form    | `*-client-collector/src/*-config-form.tsx`  | `ConfigFormProps<Config>`                                      |
 | Registry entry | `collector-registry/src/registry.ts`        | append to `descriptors`                                        |
@@ -149,27 +149,22 @@ it returns the resources it couldn't write as `PersistFailure` data on a `never`
 error channel, so one bad resource can't fail the whole run.
 
 **Don't write one.** For a collector targeting the on-device FHIR R4 store —
-every collector so far — build it from `fhir-r4`'s shared
-`makePersistResources`, which already owns all of the above:
+every collector so far — import `fhir-r4`'s, which already owns all of the
+above, and hand it to the descriptor:
 
 ```ts
-import * as Telemetry from 'collector-fundamentals/telemetry'
-import { makePersistResources } from 'fhir-r4/clients'
-
-const persistResources = makePersistResources({
-  spanName: Telemetry.Importing.Update.Span.Name,
-  kindAttributeKey: Telemetry.Importing.Update.Span.Attributes.Kind,
-  logLabel: 'my-new persist',
-})
+import { persistResources } from 'fhir-r4/clients'
 ```
 
-The three options are the only per-collector part; the retry schedule, the
-`WRITE_CONCURRENCY` bound, and the failure accounting are shared. They are
-options rather than imports because `fhir-r4` sits **below** this slice and
-cannot name its telemetry catalog — which is also why the sink declares its own
-`ResourceWriteFailure` rather than importing `PersistFailure`. The two are
-checked against each other structurally when `CollectorDescriptor.make` receives
-your sink, so a drift between them is a compile error here, not a silent
+There is nothing per-collector to configure: the retry schedule, the
+`WRITE_CONCURRENCY` bound, the failure accounting, and the telemetry are all
+shared. The span it emits (`fhir.persist.write`, tagged `fhir.resource.type`) is
+named in `fhir-r4`'s own catalog, because the write is `fhir-r4`'s — a collector
+cannot make one write report itself as two different operations. That is also
+why the sink declares its own `ResourceWriteFailure` rather than importing
+`PersistFailure`: `fhir-r4` sits **below** this slice and cannot name it. The two
+are checked against each other structurally when `CollectorDescriptor.make`
+receives your sink, so a drift between them is a compile error here, not a silent
 divergence.
 
 The write requirement (`R`, here `FhirR4ResourcesHttpApiClient`) bubbles up as

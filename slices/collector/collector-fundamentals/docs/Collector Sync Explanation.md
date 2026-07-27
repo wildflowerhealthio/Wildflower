@@ -101,21 +101,23 @@ everything from it — the config union, the tag literal,
 dispatch — so there is no parallel switch to keep in sync.
 
 `persistResources` is the seam. Every collector targeting the on-device FHIR R4
-store builds its sink from `fhir-r4`'s `makePersistResources`, which owns
-everything about _how_ a batch is written — `WRITE_CONCURRENCY`, the
-retry/backoff schedule, the per-resource span — on top of `fhir-r4`'s reusable
-`upsertResource` (the `switch (resource.resourceType)` that PUTs each resource to
-its typed client endpoint). It returns the resources it could not write as
-failure data rather than failing. The runner owns only _when_ to write, the batch
+store uses `fhir-r4`'s `persistResources`, which owns everything about _how_ a
+batch is written — `WRITE_CONCURRENCY`, the retry/backoff schedule, the
+per-resource span — on top of `fhir-r4`'s reusable `upsertResource` (the
+`switch (resource.resourceType)` that PUTs each resource to its typed client
+endpoint). It returns the resources it could not write as failure data rather
+than failing. The runner owns only _when_ to write, the batch
 `collector.importing` span, and folding those failures into the summary.
 
 The sink lives in `fhir-r4` rather than here because it needs `upsertResource`
 and the typed client, and `collector-fundamentals` is deliberately FHIR-agnostic
 — which is exactly why it was three duplicated copies before it was
-consolidated. `fhir-r4` sits below this slice and cannot name it, so the span
-names and log label are **supplied by each collector** rather than imported, and
-the failure record is declared there and checked against `PersistFailure`
-structurally at each `CollectorDescriptor.make` call.
+consolidated. It takes no options: the write is `fhir-r4`'s, so it emits
+`fhir.persist.write` from that package's own catalog, and a trace reads
+`collector.importing` → `fhir.persist.write` → `PUT`. The failure record is
+declared there too — `fhir-r4` sits below this slice and cannot name it — and is
+checked against `PersistFailure` structurally at each `CollectorDescriptor.make`
+call.
 
 ## The drive loop and its completion predicate
 

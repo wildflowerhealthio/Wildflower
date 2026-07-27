@@ -4,10 +4,9 @@ import {
   ScrapingPlan,
   type WebViewSource,
 } from 'collector-fundamentals/model'
-import * as Telemetry from 'collector-fundamentals/telemetry'
 import { Duration, type FastCheck, Schema } from 'effect'
 import type { LazyArbitrary } from 'effect/Arbitrary'
-import { makePersistResources } from 'fhir-r4/clients'
+import { persistResources } from 'fhir-r4/clients'
 import type { FhirResource } from 'fhir-r4/resources'
 
 import { makeRawExchangeEntity } from './entities/raw-exchange-entity.ts'
@@ -185,18 +184,6 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirRes
     idleTimeout: IDLE_TIMEOUT,
   })
 }
-
-/**
- * The descriptor's persist sink: `fhir-r4`'s shared batch write, told to report
- * itself in the collector slice's telemetry vocabulary. The retries, per-resource
- * span, concurrency bound, and failure-as-data accounting all live in
- * {@link makePersistResources}; only the names are ours.
- */
-const persistResources = makePersistResources({
-  spanName: Telemetry.Importing.Update.Span.Name,
-  kindAttributeKey: Telemetry.Importing.Update.Span.Attributes.Kind,
-  logLabel: 'web-trace persist',
-})
 
 /**
  * The web-trace collector as one first-class value for `collector-registry`.

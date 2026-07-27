@@ -9,6 +9,7 @@ import {
   type Schema,
   TestClock,
   TestContext,
+  Tracer,
 } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -21,10 +22,11 @@ import {
   Observation,
   Patient,
 } from '../resources/index.ts'
+import * as Telemetry from '../telemetry/index.ts'
 import { FhirR4ResourcesHttpApiClient } from './fhir-r4-resources-http-api-client.ts'
 import {
   describeResource,
-  makePersistResources,
+  persistResources,
   type ResourceWriteFailure,
 } from './persist-resources.ts'
 import { UnsupportedFhirResourceTypeError } from './upsert-resource.ts'
@@ -50,16 +52,7 @@ import { UnsupportedFhirResourceTypeError } from './upsert-resource.ts'
  * arbitrary (a fixed seed keeps them deterministic).
  */
 
-/** Stands in for a caller's telemetry vocabulary; the sink never supplies its own. */
-const TEST_OPTIONS = {
-  spanName: 'test.importing.update',
-  kindAttributeKey: 'test.importing.resource.kind',
-  logLabel: 'test persist',
-} as const
-
-const persistResources = makePersistResources(TEST_OPTIONS)
-
-describe('makePersistResources', () => {
+describe('persistResources', () => {
   for (const { resourceType, make } of cases) {
     it(`routes ${resourceType} to PUT /fhir-r4/${resourceType}/<id>`, async () => {
       const id = `${resourceType}-1`
@@ -131,25 +124,24 @@ describe('makePersistResources', () => {
     expect(failures[0]?.cause).toBeInstanceOf(UnsupportedFhirResourceTypeError)
   })
 
-  it('reports failures under whatever log label the caller supplied', async () => {
-    // The caller-owned half of the options: two sinks built from the same
-    // factory stay independent, which is what lets `fhir-r4` host this without
-    // naming any one consumer's vocabulary.
-    const other = makePersistResources({ ...TEST_OPTIONS, logLabel: 'other persist' })
-    const records: Array<RecordedRequest> = []
+  it('names its own span and tags it with the resource type', async () => {
+    // The write is this package's, so its telemetry is too — a caller cannot
+    // rename it or re-tag it. Captured off a real tracer rather than asserted
+    // against the catalog constant, which would only pin a copy of itself.
+    const spans: Array<{ readonly name: string; readonly attributes: Map<string, unknown> }> = []
     const clientLayer = FhirR4ResourcesHttpApiClient.layer.pipe(
-      Layer.provide(recordingHttpClientLayer(records, () => true))
+      Layer.provide(recordingHttpClientLayer([], () => false))
     )
-    const failures = await Effect.runPromise(
-      Effect.gen(function* () {
-        const fiber = yield* Effect.fork(
-          other([byType('Patient').make('x-1')]).pipe(Effect.provide(clientLayer))
-        )
-        yield* TestClock.adjust(Duration.seconds(2))
-        return yield* Fiber.join(fiber)
-      }).pipe(Effect.provide(TestContext.TestContext))
+    await Effect.runPromise(
+      persistResources([byType('Observation').make('obs-1')]).pipe(
+        Effect.provide(clientLayer),
+        Effect.provide(Layer.setTracer(capturingTracer(spans)))
+      )
     )
-    expect(failures).toHaveLength(1)
+
+    const write = spans.find((span) => span.name === Telemetry.Persist.Write.Span.Name)
+    expect(write?.name).toBe('fhir.persist.write')
+    expect(write?.attributes.get('fhir.resource.type')).toBe('Observation')
   })
 })
 
@@ -208,6 +200,40 @@ const byType = (resourceType: FhirResource['resourceType']): (typeof cases)[numb
   if (found === undefined) throw new Error(`no case for ${resourceType}`)
   return found
 }
+
+/**
+ * A tracer that records every span it is asked to start, so a test can assert on
+ * the name and attributes rather than on the catalog constant naming them.
+ */
+const capturingTracer = (
+  spans: Array<{ readonly name: string; readonly attributes: Map<string, unknown> }>
+): Tracer.Tracer =>
+  Tracer.make({
+    span: (name, parent, context, links, startTime, kind): Tracer.Span => {
+      const attributes = new Map<string, unknown>()
+      spans.push({ name, attributes })
+      return {
+        _tag: 'Span' as const,
+        spanId: name,
+        traceId: 'test-trace',
+        name,
+        sampled: true,
+        parent,
+        context,
+        links,
+        kind,
+        status: { _tag: 'Started' as const, startTime },
+        attributes,
+        attribute(key: string, value: unknown) {
+          attributes.set(key, value)
+        },
+        addLinks() {},
+        event() {},
+        end() {},
+      }
+    },
+    context: (f) => f(),
+  })
 
 /**
  * An origin the endpoint paths are resolved against.

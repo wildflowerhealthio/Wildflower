@@ -4,8 +4,7 @@ export {
 } from './fhir-r4-resources-http-api-client.ts'
 export {
   describeResource,
-  makePersistResources,
-  type PersistOptions,
+  persistResources,
   type ResourceWriteFailure,
   type ResourceWriteTarget,
   WRITE_CONCURRENCY,

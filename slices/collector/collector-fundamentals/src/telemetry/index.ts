@@ -1,8 +1,13 @@
 /**
  * Central catalog of OpenTelemetry span names and attribute keys for the
- * Collector hot path. Kept in one file — even for spans that fire from
- * other packages (the FHIR write-back lives in `collector-react`) — so the
- * naming philosophy stays coherent in a single place.
+ * Collector hot path. Kept in one file — including spans that fire from other
+ * packages in this slice — so the naming philosophy stays coherent in a single
+ * place.
+ *
+ * It names what this slice *emits*, and nothing else. The per-resource write a
+ * descriptor's persist sink performs is `fhir-r4`'s, so it is named in
+ * `fhir-r4/telemetry` (`Persist`) rather than restated here — see
+ * {@link Importing}.
  *
  * Shape: `FeatureArea.Task.[Subtask].Span.{ Name, Attributes }`, with
  * attribute keys that recur across a feature lifted to a feature-level
@@ -79,7 +84,18 @@ const Entity = {
   },
 } as const
 
-/** Turning a scraped HTTP response into resources and writing them back. */
+/**
+ * Turning a scraped HTTP response into resources and writing them back.
+ *
+ * @remarks
+ * Only the parts this slice *emits* are named here. The per-resource write is
+ * `fhir-r4`'s (`fhir.persist.write`, tagged `fhir.resource.type`, with each
+ * retry attempt nested under it as a standard OTel `PUT` HTTP client span), so
+ * it is named in that package's catalog — a descriptor's persist sink is
+ * `fhir-r4`'s `persistResources`, not something a collector writes. `Importing`
+ * is still its parent span, so a trace reads `collector.importing` →
+ * `fhir.persist.write` → `PUT`.
+ */
 const Importing = {
   Span: {
     Name: 'collector.importing',
@@ -95,31 +111,6 @@ const Importing = {
       Attributes: {
         /** Error class when the parse fails (OTel semconv); unset on success. */
         ErrorType: 'error.type',
-      },
-    },
-  },
-  /** Writing one parsed resource back to its target, with retries. */
-  Update: {
-    Span: {
-      Name: 'collector.importing.update',
-      Attributes: {
-        /**
-         * The resource's collector-agnostic kind label (for fhir-r4, its
-         * `resourceType`), set by the collector's persist sink when it tags
-         * each write. Kept generic so telemetry never names a collector's
-         * resource union.
-         */
-        Kind: 'collector.importing.resource.kind',
-      },
-    },
-    /** A single FHIR PUT — modelled as a standard OTel HTTP client request. */
-    Attempt: {
-      Span: {
-        Name: 'PUT',
-        Attributes: {
-          /** HTTP request method (OTel semconv). */
-          Method: 'http.request.method',
-        },
       },
     },
   },

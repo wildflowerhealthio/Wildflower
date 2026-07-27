@@ -1,6 +1,7 @@
 import { Array as Arr, Effect, Schedule } from 'effect'
 
 import type { FhirResource } from '../resources/index.ts'
+import * as Telemetry from '../telemetry/index.ts'
 import type { FhirR4ResourcesHttpApiClient } from './fhir-r4-resources-http-api-client.ts'
 import { UnsupportedFhirResourceTypeError, upsertResource } from './upsert-resource.ts'
 
@@ -16,13 +17,18 @@ import { UnsupportedFhirResourceTypeError, upsertResource } from './upsert-resou
  * `*-client-collector`) before it was consolidated; they differed only in a log
  * prefix.
  *
- * It stays free of collector vocabulary: span names and the log label are
- * *supplied* by the caller ({@link PersistOptions}) rather than imported, because
- * `fhir-r4` sits below the collector slice and must not name it. The failure
- * record is likewise declared here and is structurally compatible with the
- * collector's `PersistFailure` — each descriptor's `CollectorDescriptor.make`
- * call is where the two are checked against each other, so a drift between them
- * is a compile error at every call site rather than a silent divergence.
+ * It takes no options. The write is this package's, so the span it emits
+ * (`fhir.persist.write`) and the resource attribute it tags
+ * (`fhir.resource.type`) are named in this package's own
+ * {@link Telemetry} catalog, not handed in by whoever calls it — a caller cannot
+ * make the same write report itself as two different operations.
+ *
+ * The failure record is likewise declared here rather than imported, because
+ * `fhir-r4` sits below its consumers and must not name them. It is structurally
+ * compatible with the collector slice's `PersistFailure`, and each descriptor's
+ * `CollectorDescriptor.make` call is where the two are checked against each
+ * other — so a drift between them is a compile error at every call site rather
+ * than a silent divergence.
  *
  * @packageDocumentation
  */
@@ -55,24 +61,6 @@ interface ResourceWriteFailure {
 }
 
 /**
- * What a caller supplies so the batch reports itself in that caller's own
- * vocabulary.
- *
- * @remarks
- * All three are caller-owned on purpose: `fhir-r4` cannot import the collector
- * telemetry catalog that defines these span names, and hardcoding them here
- * would put collector vocabulary in the EMR slice.
- */
-interface PersistOptions {
-  /** Span name for one resource's write, e.g. the collector's `collector.importing.update`. */
-  readonly spanName: string
-  /** Attribute key the resource's kind label is recorded under on that span. */
-  readonly kindAttributeKey: string
-  /** Prefix for the retries-exhausted log line, e.g. `'rexall persist'`. */
-  readonly logLabel: string
-}
-
-/**
  * Max concurrent resource PUTs within a single batch.
  *
  * @remarks
@@ -97,11 +85,12 @@ const describeResource = (resource: FhirResource): ResourceWriteTarget => ({
 })
 
 /**
- * Build a batch write over the typed FHIR R4 client.
+ * Write a decoded batch back to the store, returning only what could not be
+ * written.
  *
- * @param options - The caller's span names and log label
- * @returns A function that writes a batch and returns only what it could not
- *   write — never failing, so one bad resource cannot fail the batch
+ * @param resources - The batch to write
+ * @returns The resources that failed after their retries — never failing, so
+ *   one bad resource cannot fail the batch
  *
  * @remarks
  * "Which resource type goes to which endpoint" is {@link upsertResource}. What
@@ -113,7 +102,7 @@ const describeResource = (resource: FhirResource): ResourceWriteTarget => ({
  *   "exponential" — `either` would stop on whichever fired first. A permanent
  *   {@link UnsupportedFhirResourceTypeError} is *not* retried; it is recorded on
  *   the first attempt rather than backed off pointlessly.
- * - **per-resource span**: `options.spanName`, tagged with the resource's kind.
+ * - **per-resource span**: `fhir.persist.write`, tagged with the resource type.
  * - **concurrency**: {@link WRITE_CONCURRENCY} PUTs in flight per batch.
  * - **failure accounting**: a resource still failing after its retries becomes
  *   one {@link ResourceWriteFailure} carrying the real cause.
@@ -122,52 +111,42 @@ const describeResource = (resource: FhirResource): ResourceWriteTarget => ({
  * retried write replaces the resource it already wrote rather than duplicating
  * it. The client requirement stays in `R` for app wiring to provide.
  */
-const makePersistResources =
-  (
-    options: PersistOptions
-  ): ((
-    resources: ReadonlyArray<FhirResource>
-  ) => Effect.Effect<ReadonlyArray<ResourceWriteFailure>, never, FhirR4ResourcesHttpApiClient>) =>
-  (resources) =>
-    Effect.forEach(
-      resources,
-      (resource) => {
-        const failed = describeResource(resource)
-        return upsertResource(resource).pipe(
-          Effect.retry({
-            schedule: Schedule.exponential('250 millis').pipe(
-              Schedule.intersect(Schedule.recurs(3))
-            ),
-            // Don't retry a permanent structural failure — an unsupported
-            // `resourceType` never becomes supported, so backing off 3× just
-            // delays recording it (~1.75s). Transient write errors still retry.
-            while: (cause) => !(cause instanceof UnsupportedFhirResourceTypeError),
-          }),
-          // Log once, *after* the retries are exhausted — placing `tapError`
-          // before `retry` would re-log on every failed attempt (up to 4× per
-          // resource). Each attempt is still its own HTTP span on the trace.
-          Effect.tapError((cause) =>
-            Effect.logError(
-              `${options.logLabel}: upsert failed for ${failed.label}/${failed.id}`,
-              cause
-            )
-          ),
-          Effect.withSpan(options.spanName, {
-            attributes: { [options.kindAttributeKey]: failed.label },
-          }),
-          Effect.matchEffect({
-            onSuccess: () => Effect.succeedNone,
-            onFailure: (cause) => Effect.succeedSome<ResourceWriteFailure>({ failed, cause }),
-          })
-        )
-      },
-      { concurrency: WRITE_CONCURRENCY }
-    ).pipe(Effect.map(Arr.getSomes))
+const persistResources = (
+  resources: ReadonlyArray<FhirResource>
+): Effect.Effect<ReadonlyArray<ResourceWriteFailure>, never, FhirR4ResourcesHttpApiClient> =>
+  Effect.forEach(
+    resources,
+    (resource) => {
+      const failed = describeResource(resource)
+      return upsertResource(resource).pipe(
+        Effect.retry({
+          schedule: Schedule.exponential('250 millis').pipe(Schedule.intersect(Schedule.recurs(3))),
+          // Don't retry a permanent structural failure — an unsupported
+          // `resourceType` never becomes supported, so backing off 3× just
+          // delays recording it (~1.75s). Transient write errors still retry.
+          while: (cause) => !(cause instanceof UnsupportedFhirResourceTypeError),
+        }),
+        // Log once, *after* the retries are exhausted — placing `tapError`
+        // before `retry` would re-log on every failed attempt (up to 4× per
+        // resource). Each attempt is still its own HTTP span on the trace.
+        Effect.tapError((cause) =>
+          Effect.logError(`fhir-r4 persist: upsert failed for ${failed.label}/${failed.id}`, cause)
+        ),
+        Effect.withSpan(Telemetry.Persist.Write.Span.Name, {
+          attributes: { [Telemetry.Resource.Attributes.Type]: failed.label },
+        }),
+        Effect.matchEffect({
+          onSuccess: () => Effect.succeedNone,
+          onFailure: (cause) => Effect.succeedSome<ResourceWriteFailure>({ failed, cause }),
+        })
+      )
+    },
+    { concurrency: WRITE_CONCURRENCY }
+  ).pipe(Effect.map(Arr.getSomes))
 
 export {
   describeResource,
-  makePersistResources,
-  type PersistOptions,
+  persistResources,
   type ResourceWriteFailure,
   type ResourceWriteTarget,
   WRITE_CONCURRENCY,
