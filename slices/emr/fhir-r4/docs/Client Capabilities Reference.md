@@ -58,11 +58,19 @@ Per FHIR R4 § Observation.search, the standard parameters include `_id`, `_last
 
 Implication: the typed client cannot ask "latest blood pressure for this patient" — the primary reason to query Observation. Adding `subject`/`patient`/`code`/`category`/`date` would unlock the canonical workflows.
 
-## DocumentReference search parameters (only paging declared)
+## DocumentReference search parameters (subset declared)
 
-Per FHIR R4 § DocumentReference.search, the standard parameters include `_id`, `_lastUpdated`, `patient`, `subject`, `type`, `category`, `status`, `date`, `period`, `author`, `custodian`, `encounter`, `facility`, `setting`, `identifier`, `relatesto`, `relation`, `security-label`, `format`, `contenttype`, `language`, `location`, etc. The `HttpApi` description (and therefore the typed client) declares `_count` and `_pageToken` only.
+Per FHIR R4 § DocumentReference.search, the standard parameters include `_id`, `_lastUpdated`, `patient`, `subject`, `type`, `category`, `status`, `date`, `period`, `author`, `custodian`, `encounter`, `facility`, `setting`, `identifier`, `relatesto`, `relation`, `security-label`, `format`, `contenttype`, `language`, `location`, etc. The `HttpApi` description (and therefore the typed client) declares: `_count`, `_pageToken`, `_id`, `identifier`, `category`, `type`, `status`, `date`.
 
-Implication: the typed client cannot ask "the discharge summaries for this patient" — the primary reason to query DocumentReference. Adding `patient`/`subject`/`type`/`category`/`status`/`date` would unlock the canonical document-retrieval workflows. HFS may support more server-side, but the typed client can't express them.
+`status` is narrowed to the `DocumentReference.status` value set (`current | superseded | entered-in-error`), so an out-of-set code fails to typecheck. `date` is a `DateTime.Utc` encoded as an ISO 8601 instant — the same modelling as the `DocumentReference.date` element itself.
+
+Three narrowings remain:
+
+- **No reference-typed parameters.** `patient`, `subject`, `author`, `custodian`, `encounter` are not declared, so the client still cannot ask "the discharge summaries for **this patient**" in one query — it filters by `category`/`type` and reads `subject` off the returned resources.
+- **`date` is equality at one instant.** FHIR's date prefixes (`gt`/`lt`/`ge`/`le`/`sa`/`eb`/`ap`) and partial-precision ranges are not expressible; a partial-precision wire value like `date=2026-07` decodes to the instant it names (`2026-07-01T00:00:00.000Z`) rather than the July-2026 range FHIR reads it as. Same limitation as Patient's `birthdate`.
+- **Single value per parameter.** Every `SearchParams` struct in this package is a flat one-value-per-key record, so FHIR's comma-separated OR (`category=a,b`) and repeated-key AND are not modelled.
+
+HFS may support more server-side, but the typed client can't express them — and, per "No drift guard against the HFS server" above, nothing verifies that HFS honours the parameters declared here. That pairing stays hand-checked.
 
 ## DocumentReference choice / required modeling
 
