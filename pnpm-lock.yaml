@@ -1079,6 +1079,9 @@ importers:
       vite-plus:
         specifier: 'catalog:'
         version: 0.2.5(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(esbuild@0.28.1)(jiti@2.7.0)(jsdom@29.1.1)(terser@5.49.0)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0)
+      web-trace-collector:
+        specifier: workspace:*
+        version: link:../web-trace-collector
 
   slices/collector/collector-registry:
     devDependencies:
@@ -1124,6 +1127,9 @@ importers:
       vite-plus:
         specifier: 'catalog:'
         version: 0.2.5(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(esbuild@0.28.1)(jiti@2.7.0)(jsdom@29.1.1)(terser@5.49.0)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.1.5(@types/node@26.1.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(yaml@2.9.0)
+      web-trace-collector:
+        specifier: workspace:*
+        version: link:../web-trace-collector
 
   slices/collector/fhir-r4-client-collector:
     devDependencies:
@@ -1253,6 +1259,72 @@ importers:
       vite-plus:
         specifier: 'catalog:'
         version: 0.2.5(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(esbuild@0.28.1)(jiti@2.7.0)(jsdom@29.1.1)(terser@5.49.0)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.1.5(@types/node@26.1.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(yaml@2.9.0)
+
+  slices/collector/web-trace-collector:
+    devDependencies:
+      '@testing-library/dom':
+        specifier: 'catalog:'
+        version: 10.4.1
+      '@testing-library/react':
+        specifier: 'catalog:'
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@testing-library/user-event':
+        specifier: 'catalog:'
+        version: 14.6.1(@testing-library/dom@10.4.1)
+      '@types/node':
+        specifier: ^26
+        version: 26.1.0
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.17
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.2.3(@types/react@19.2.17)
+      '@typescript/native-preview':
+        specifier: 'catalog:'
+        version: 7.0.0-dev.20260707.2
+      browser-sniffer-core:
+        specifier: workspace:*
+        version: link:../../browser-sniffer/browser-sniffer-core
+      collector-fundamentals:
+        specifier: workspace:*
+        version: link:../collector-fundamentals
+      effect:
+        specifier: 3.21.4
+        version: 3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
+      fast-check:
+        specifier: 'catalog:'
+        version: 3.23.2
+      fhir-r4:
+        specifier: workspace:*
+        version: link:../../emr/fhir-r4
+      jsdom:
+        specifier: 'catalog:'
+        version: 29.1.1
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../global/kitchen-sink
+      react:
+        specifier: 'catalog:'
+        version: 19.2.8
+      react-dom:
+        specifier: 19.2.8
+        version: 19.2.8(react@19.2.8)
+      react-kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../global/react-kitchen-sink
+      react-tundraish:
+        specifier: workspace:*
+        version: link:../../../global/react-tundraish
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vite-plus:
+        specifier: 'catalog:'
+        version: 0.2.5(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(esbuild@0.28.1)(jiti@2.7.0)(jsdom@29.1.1)(terser@5.49.0)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.1.5(@types/node@26.1.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(yaml@2.9.0)
+      web-trace-core:
+        specifier: workspace:*
+        version: link:../../web-trace/web-trace-core
 
   slices/databases/databases-core:
     devDependencies:

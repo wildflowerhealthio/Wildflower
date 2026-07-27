@@ -10,9 +10,15 @@ applied retroactively to sessions already recorded.
 
 ## Package roles
 
-- **`web-trace-core`** — the pure layer, and today the only package in the
-  slice: the vocabulary of a recorded session, and the translations built on it.
+- **`web-trace-core`** — the pure layer, and the only package _in_ the slice:
+  the vocabulary of a recorded session, and the translations built on it.
   See its [AGENTS.md](./web-trace-core/AGENTS.md).
+
+The capture half lives outside this slice, in the collector slice where the
+descriptor seam is: [`web-trace-collector`](../collector/web-trace-collector/AGENTS.md)
+is the `*-client-collector` that records a hand-driven session and writes each
+exchange through `web-trace-core`'s codec. It imports the encoding; it never
+re-derives it.
 
 ## Why this slice exists
 

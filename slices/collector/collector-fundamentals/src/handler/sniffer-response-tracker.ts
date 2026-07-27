@@ -1,5 +1,14 @@
 import { type CancelSnifferRequestMessage } from 'browser-sniffer-core'
-import { Data, Effect, Either, Encoding, MutableHashMap, Option, type ParseResult } from 'effect'
+import {
+  Data,
+  DateTime,
+  Effect,
+  Either,
+  Encoding,
+  MutableHashMap,
+  Option,
+  type ParseResult,
+} from 'effect'
 import type { MessageHandler } from 'effect-messaging-core'
 import { UnknownException } from 'effect/Cause'
 import type { CollectorBridge } from '../bridge.ts'
@@ -203,25 +212,32 @@ const make = <TResources>({
           )
       )
 
-    const handleResponseStart: Service['ResponseStart'] = (event) => {
-      const entity = matchEntity(event.url)
-      if (Option.isNone(entity)) {
-        return sendMessage({
-          _tag: 'CancelSnifferRequest',
-          id: event.id,
-        } satisfies typeof CancelSnifferRequestMessage.Type)
-      }
-      MutableHashMap.set(event.id, {
-        response: new Response.RemoteResponse(
-          event.url,
-          event.status,
-          event.statusText,
-          event.headers
-        ),
-        entity: entity.value,
-      })(incompleteSniffedRequests)
-      return Effect.void
-    }
+    const handleResponseStart: Service['ResponseStart'] = (event) =>
+      Effect.gen(function* () {
+        const entity = matchEntity(event.url)
+        if (Option.isNone(entity)) {
+          yield* sendMessage({
+            _tag: 'CancelSnifferRequest',
+            id: event.id,
+          } satisfies typeof CancelSnifferRequestMessage.Type)
+          return
+        }
+        // Read here rather than at settle: this is the instant the response
+        // *started*, the only one the sniffer reports, and a capturing entity
+        // that timestamps an exchange must not label the settle as the start.
+        const startedAt = yield* DateTime.now
+        MutableHashMap.set(event.id, {
+          response: new Response.RemoteResponse(
+            event.id,
+            event.url,
+            event.status,
+            event.statusText,
+            event.headers,
+            startedAt
+          ),
+          entity: entity.value,
+        })(incompleteSniffedRequests)
+      })
 
     const handleResponseData: Service['ResponseData'] = (event) =>
       withTracked('ResponseData', event.id, ({ response }) =>

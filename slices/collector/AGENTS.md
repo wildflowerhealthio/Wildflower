@@ -27,9 +27,14 @@ before adding one.
   `CollectorDescriptor` per import site: config schema + arbitraries, scraping
   plan, entities, display strings, persist sink, and the collector's own
   `ConfigForm`. Depends on `collector-fundamentals` only — never on
-  `collector-react`. (`fhir-r4-client-collector` and `rexall-be-well-collector`
-  are the two today; the latter also carries the Rexall
-  [carebook dialect](./rexall-be-well-collector/AGENTS.md) it decodes with.)
+  `collector-react`. Three today: `fhir-r4-client-collector`,
+  `rexall-be-well-collector` (which also carries the Rexall
+  [carebook dialect](./rexall-be-well-collector/AGENTS.md) it decodes with), and
+  [`web-trace-collector`](./web-trace-collector/AGENTS.md) — the odd one out, a
+  development-purposes _recorder_ that decodes nothing, claims every response,
+  and writes each exchange as a FHIR `DocumentReference` via `web-trace-core`'s
+  codec. It is also the only collector whose run ends when the **user** closes
+  the sniffer window rather than when a script finishes.
 - **`collector-react`** — the browser UI adapter: the generic account
   create/edit/list screens, the closed `tag → ConfigForm` registry
   (`src/forms/config-form.tsx`), the remotes queries/mutations, and the sync
@@ -53,6 +58,17 @@ before adding one.
   owns only _when_ to write and how to fold failures into the summary. Only the
   resource type is sealed (existential `Resources`); the write requirement `R`
   stays visible so the registry can surface `CollectorRequirements`.
+- **A `RemoteResponse` carries the sniffer's correlation `id` and the observed
+  `startedAt`, and exposes the body two ways.** Most entities decode a known
+  payload and use only `url` / `headers` / `text()`. An entity that _records_ an
+  exchange rather than decoding one needs more: `id` (the sniffer's per-request
+  key, which makes a stored exchange's id deterministic without threading a
+  counter through `parse`), `startedAt` (the response-start instant the tracker
+  observed — `parse` runs at settle, so reading a clock there would label the end
+  as the beginning), and **`bytes()` rather than `text()`**. `text()` is UTF-8
+  and therefore lossy: a body that is not valid UTF-8 comes back peppered with
+  U+FFFD, and a re-encode of that string is not the body that arrived. Anything
+  that stores, hashes, or forwards a body must read `bytes()`.
 - **First `isFoundAt` match wins, so overlapping URL patterns are a silent
   ordering dependency — keep them disjoint.** `CollectorBridgeMessageHandler`
   consults `entityDefinitions` in list order at each `ResponseStart`; a
@@ -118,6 +134,14 @@ EnsureWindowVisible` union.** Two variants reach the wire — a `Navigation`'s
   30 s) doesn't know the hold is waiting on a person, and will abandon the run
   long before the user acts — and before the hold's own bound can do its job.
   Note the runner's `idleTimeout` option, when passed, wins over the plan's.
+  `web-trace-collector` is the one plan that uses the pairing today, and its
+  `config.test.ts` pins the ordering.
+- **A plan factory is not obliged to be pure.** `web-trace-collector`'s mints a
+  fresh session id per build, deliberately, so two recordings of one remote don't
+  upsert over each other — one plan build is one recording. A test that compares
+  plans across two builds must therefore compare an identity _projection_ (name,
+  `firstPage`, step names, entity names), not deep-equal them; `registry.test.ts`
+  shows the shape.
 - **Every `Step` carries a required `name`; the machine pushes it as a separate
   `SetSnifferStatus` control message, _not_ on the step's own action.** As the
   machine reaches each step it emits `SetSnifferStatus { name }`, which the Tauri
