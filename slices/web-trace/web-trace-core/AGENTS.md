@@ -3,6 +3,9 @@
 The pure layer of the web-trace slice. No DOM, no `fs`, no UI, no store — one
 vocabulary, and the translations built on it.
 
+Read the [Redaction Explanation](./docs/Redaction%20Explanation.md) before
+touching anything under `src/pseudonymizer/`.
+
 ## Layering
 
 `web-trace-core` is a `-core` package and follows the rule in
@@ -21,8 +24,9 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
 - **`src/codec/`** — `TraceExchange` ⇄ FHIR R4 `DocumentReference`.
   `systems.ts` holds the private systems and extension URLs.
 - **`src/pseudonymizer/`** — the export boundary's redactor. `shapes.ts` detects
-  what a value looks like and generates another value that looks the same;
-  `hmac.ts` is the Web Crypto seam every fake is seeded from.
+  what a value looks like and generates another value that looks the same,
+  `leaves.ts` decides what counts as a leaf, `redact.ts` is the two-step
+  policy/rewrite engine, and `hmac.ts` is the Web Crypto seam.
 - **`src/test-helpers.ts`** — `fast-check` arbitraries for realistic captures,
   exported as `web-trace-core/test-helpers` so downstream packages can reuse them.
 
@@ -75,6 +79,15 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
   construction.** Loosening one regex can silently steal values from a later
   class. The example table in `shapes.test.ts` is the readable statement of what
   each class means; extend it when you touch a pattern.
+- **`buildRedactionPolicy` then `redactExchange` is two steps for a reason.** The
+  enum carve-out counts distinct values across the _whole session_, so it cannot
+  be decided one exchange at a time. The policy also accumulates the
+  value→pseudonym table — reuse one policy for a whole export, and never share
+  one between exports.
+- **A generated fake is re-derived until it is acceptable, not accepted on the
+  first try.** A candidate must differ from its original, re-detect to the same
+  shape, and be unused. That loop is what makes "no value survives itself" and
+  "unequal inputs stay unequal" true by construction rather than by luck.
 
 ## Testing
 
@@ -84,8 +97,13 @@ Property-based, per the project standard — see
 would satisfy the schema while generating bodies that are not base64 and URLs
 that are not URLs, which exercises nothing anything downstream actually does.
 
+The five properties the privacy boundary rests on live in
+`src/pseudonymizer/redact.test.ts`.
+
 ## References
 
+- [Redaction Explanation](./docs/Redaction%20Explanation.md) — the pseudonymizer's
+  design and its stated limits.
 - [slice AGENTS.md](../AGENTS.md) — why this slice exists at all.
 - [slices/AGENTS.md](../../AGENTS.md) — the layering rules.
 - [browser-sniffer AGENTS.md](../../browser-sniffer/AGENTS.md) — the upstream
