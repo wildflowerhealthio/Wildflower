@@ -1,0 +1,13 @@
+.exchanges {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.exchanges__empty {
+  margin: 0;
+}
+
+.exchanges__url {
+  overflow-wrap: anywhere;
+}

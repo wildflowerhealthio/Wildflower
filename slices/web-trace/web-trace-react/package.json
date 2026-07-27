@@ -1,0 +1,65 @@
+{
+  "name": "web-trace-react",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Browser UI adapter for the web-trace slice: the recordings viewer the on-device app mounts. Reads trace DocumentReferences through fhir-r4-react's authed runner, decodes them with web-trace-core's codec, and groups them into sessions. Presentation only — the codec, pseudonymizer, and HAR emitter all live in web-trace-core, and the viewer shows raw values because redaction belongs at the export boundary.",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Assessment-is/wildflower.git",
+    "directory": "slices/web-trace/web-trace-react"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@effect/platform": "catalog:",
+    "@tanstack/react-query": "catalog:",
+    "@tanstack/react-router": "catalog:",
+    "@testing-library/dom": "catalog:",
+    "@testing-library/react": "catalog:",
+    "@testing-library/user-event": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "effect": "catalog:",
+    "fast-check": "catalog:",
+    "fhir-r4": "workspace:*",
+    "fhir-r4-react": "workspace:*",
+    "jsdom": "catalog:",
+    "kitchen-sink": "workspace:*",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-kitchen-sink": "workspace:*",
+    "react-tundraish": "workspace:*",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:",
+    "web-trace-core": "workspace:*"
+  },
+  "peerDependencies": {
+    "@effect/platform": "catalog:",
+    "@tanstack/react-query": "catalog:",
+    "@tanstack/react-router": "catalog:",
+    "effect": "catalog:",
+    "fhir-r4": "workspace:*",
+    "fhir-r4-react": "workspace:*",
+    "kitchen-sink": "workspace:*",
+    "react": "catalog:",
+    "react-kitchen-sink": "workspace:*",
+    "react-tundraish": "workspace:*",
+    "web-trace-core": "workspace:*"
+  }
+}
