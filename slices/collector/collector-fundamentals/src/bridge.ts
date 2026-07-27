@@ -103,6 +103,20 @@ const EnsureSnifferVisible = Schema.parseJson(Schema.TaggedStruct('EnsureSniffer
  */
 const UserDismissed = Schema.parseJson(Schema.TaggedStruct('UserDismissed', {}))
 
+/**
+ * Host → Web: the sniffer webview was **torn down** — the native-webview
+ * plugin's `Disposed` lifecycle event, which follows a real destroy (the plugin's
+ * own lifetime cap, an app quit, or this run's `SniffingComplete` teardown).
+ *
+ * Deliberately a separate tag from `UserDismissed` rather than folded into it: a
+ * dispose happens on *every* run as part of normal teardown, so treating it as a
+ * user signal would race ordinary shutdown. The automatic-navigation machine acts
+ * on it only while parked on an `AwaitUserDismiss` hold — where the window the
+ * hold waits on no longer exists, so continuing to wait is pointless — and
+ * ignores it everywhere else.
+ */
+const SnifferDisposed = Schema.parseJson(Schema.TaggedStruct('SnifferDisposed', {}))
+
 type CollectorBridge = Bridge.Bridge<
   'Collector',
   {
@@ -113,6 +127,7 @@ type CollectorBridge = Bridge.Bridge<
     Cancelled: typeof CancelledMessage
     PageLoaded: typeof PageLoadedMessage
     UserDismissed: typeof UserDismissed
+    SnifferDisposed: typeof SnifferDisposed
   },
   {
     RequestSniffableWebView: typeof RequestSniffableWebView
@@ -131,8 +146,9 @@ type CollectorBridge = Bridge.Bridge<
  * `CancelSnifferRequest`, `SniffingComplete`, `SetSnifferStatus`,
  * `EnsureSnifferVisible`) and script-driven navigation steps (`Open`,
  * `PageAction`); Host→Web carries the sniffer-event subset collector parses, the
- * `PageLoaded` notification that drives the step timer, and the `UserDismissed`
- * signal that the user closed the sniffer webview. `SetSnifferStatus` is a pure
+ * `PageLoaded` notification that drives the step timer, and the two sniffer
+ * webview lifecycle signals (`UserDismissed` — the user closed it;
+ * `SnifferDisposed` — it was torn down). `SetSnifferStatus` is a pure
  * chrome-label update the host writes to the sniffer webview's subtitle; it is
  * host-consumed and never forwarded into the sniffed page.
  *
@@ -155,6 +171,7 @@ const CollectorBridge: CollectorBridge = Bridge.make({
     ['Cancelled', CancelledMessage],
     ['PageLoaded', PageLoadedMessage],
     ['UserDismissed', UserDismissed],
+    ['SnifferDisposed', SnifferDisposed],
   ] as const,
   webToHost: [
     ['RequestSniffableWebView', RequestSniffableWebView],
@@ -173,6 +190,7 @@ export {
   OpenMessage,
   RequestSniffableWebView,
   SetSnifferStatus,
+  SnifferDisposed,
   SniffingComplete,
   UserDismissed,
 }

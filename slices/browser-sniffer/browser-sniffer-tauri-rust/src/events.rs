@@ -56,6 +56,18 @@ pub const CANCEL_SNIFFER_REQUEST: &str = "CancelSnifferRequest";
 /// `collector-fundamentals`'s `CollectorBridge` `UserDismissed` message.
 pub const USER_DISMISSED: &str = "UserDismissed";
 
+/// Host→web control tag the crate *synthesizes* from a plugin `Disposed`
+/// lifecycle event (the sniffer webview was torn down). Kept distinct from
+/// [`USER_DISMISSED`] on purpose: a dispose is also what this run's own
+/// `SniffingComplete` teardown produces, so one arrives on every run and folding
+/// it into the dismissal signal would race ordinary shutdown. Host-originated
+/// like `UserDismissed`, so it is likewise **excluded** from
+/// [`crate::native_webview_bridge`]'s page→host data-plane allowlist.
+/// Drift-guarded in [`crate::tests::bridge_tags_match_the_ts_convention`];
+/// mirrors `collector-fundamentals`'s `CollectorBridge` `SnifferDisposed`
+/// message.
+pub const SNIFFER_DISPOSED: &str = "SnifferDisposed";
+
 /// Window label assigned to the main React SPA webview by
 /// `apps/wildflower-tauri/src-tauri/tauri.conf.json`. Re-exported so
 /// integration tests can drift-guard against a config rename; not

@@ -24,10 +24,13 @@ import type { Step } from '../../model/step.ts'
  * - `AwaitingUrlMatch` — the head `AwaitPageSettled` hold's `pattern` is unmet;
  *   `queue[0]` is that still-unconsumed hold and a URL-match timeout daemon is
  *   pending.
- * - `AwaitingUserDismiss` — parked on a head `AwaitUserDismiss` hold, waiting
- *   *indefinitely* for the external `UserDismissed` signal (the user closing the
- *   sniffer webview). `queue[0]` is that still-unconsumed hold and, unlike the
- *   other holds, no timer daemon is pending — the wait is unbounded.
+ * - `AwaitingUserDismiss` — parked on a head `AwaitUserDismiss` hold, waiting for
+ *   the external `UserDismissed` signal (the user closing the sniffer webview).
+ *   `queue[0]` is that still-unconsumed hold and a user-dismiss timeout daemon is
+ *   pending, so the wait is bounded even though what it waits on is a person. A
+ *   `SnifferDisposed` also resumes from here. Unlike `AwaitingUrlMatch`, none of
+ *   those endings is terminal: the hold is consumed and the queue keeps draining,
+ *   because the run may still have requests in flight.
  * - `Drained` — the queue is empty, but the run may not be over: an in-flight
  *   request could still `followUpSteps` more work. Terminal only once the
  *   lifecycle confirms no sniffed request is still incomplete (via

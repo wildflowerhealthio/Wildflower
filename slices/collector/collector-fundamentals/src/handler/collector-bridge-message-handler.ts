@@ -248,6 +248,7 @@ const make = <TResources>({
       Cancelled: tracker.handleCancelled,
       PageLoaded: automaticNavigation.handlePageLoaded,
       UserDismissed: automaticNavigation.handleUserDismissed,
+      SnifferDisposed: automaticNavigation.handleSnifferDisposed,
     }
   })
 

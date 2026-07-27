@@ -17,11 +17,19 @@ import type { OpenMessage } from '../bridge.ts'
  *   interaction (`Click` / `Fill`, discriminated by the inner `kind`). New
  *   interaction kinds are added as `action` union variants, not new tags.
  *
- * Because the wire-facing step field is exactly `StepAction`, the plan-only
- * {@link DelayStep} and {@link AwaitPageSettledStep} variants structurally
- * cannot leak onto the wire — the automatic-navigation machine forwards a
- * {@link NavigationStep}'s `action` untouched and never forwards a `Delay` /
- * `AwaitPageSettled` at all (it consumes them as timers / holds).
+ * `StepAction` is the only step field that is *forwarded* to the wire: the
+ * automatic-navigation machine passes a {@link NavigationStep}'s `action`
+ * through untouched. Every other message the machine emits — `SniffingComplete`,
+ * `EnsureSnifferVisible`, `SetSnifferStatus` — it constructs itself, so no plan
+ * data rides those. Typing this against the bridge bodies is therefore what
+ * stops a *plan* from putting a field on the wire that the wire doesn't have; it
+ * is not a claim that only `Navigation` steps reach the host (an
+ * {@link EnsureWindowVisibleStep} does too, via a machine-built message).
+ *
+ * The three plan-only holds ({@link DelayStep}, {@link AwaitPageSettledStep},
+ * {@link AwaitUserDismissStep}) carry no `action` at all and are consumed by the
+ * FSM as timers / holds, so they structurally cannot leak — there is no "strip
+ * before dispatch" step to remember.
  */
 type StepAction = typeof OpenMessage.Type | typeof PageActionMessage.Type
 
@@ -100,31 +108,45 @@ interface AwaitPageSettledStep {
 }
 
 /**
- * A plan-only hold that parks *indefinitely* until the user dismisses the
- * sniffer webview (closes its window), then ends the run by dispatching
- * `SniffingComplete`. Like {@link DelayStep} / {@link AwaitPageSettledStep} it
- * carries no `action` and never reaches the wire — the FSM consumes it as a
- * hold.
+ * A plan-only hold that parks until the user dismisses the sniffer webview
+ * (closes its window), then resumes draining the queue. Like {@link DelayStep} /
+ * {@link AwaitPageSettledStep} it carries no `action` and never reaches the wire
+ * — the FSM consumes it as a hold.
  *
- * Unlike the other two holds it has no timer of its own: the wait is unbounded
- * and driven by an *external* signal. The Tauri host detects the user-dismiss
- * gesture (on desktop, the window's X → the native-webview plugin's `Hidden`
- * lifecycle event; the webview stays alive) and emits a `UserDismissed`
- * host→web message on the `CollectorBridge`; the automatic-navigation machine
- * receives it as its `UserDismissed` input and, only while parked on this hold,
- * transitions to `Done` and dispatches `SniffingComplete`. A `UserDismissed`
+ * What resumes it is an *external* signal rather than a page event: the Tauri
+ * host detects the user-dismiss gesture (on desktop, the window's X → the
+ * native-webview plugin's `Hidden` lifecycle event; the webview stays alive) and
+ * emits a `UserDismissed` host→web message on the `CollectorBridge`. The
+ * automatic-navigation machine takes it as its `UserDismissed` input and, only
+ * while parked on this hold, consumes the hold and drains on. A `UserDismissed`
  * arriving in any other state is ignored.
+ *
+ * **Dismissing does not itself end the run.** Requests sniffed before the
+ * dismissal may still be in flight, and the webview stays alive and keeps
+ * sniffing them, so the hold resolves to the ordinary `Drained` state and the
+ * run completes through the usual gate — queue drained **and** every sniffed
+ * request settled. Ending the run directly on dismissal would strand those
+ * requests: `SniffingComplete` would fire while the map was non-empty and the
+ * results stream would never close.
+ *
+ * `timeout` bounds the wait, mirroring {@link AwaitPageSettledStep}'s: if the
+ * user never closes the window, the hold gives up after it (WARN-logged) and
+ * wraps up the same way rather than parking forever. Two more things can end the
+ * wait early: the sniffer webview being torn down (the plugin's `Disposed`
+ * event, surfaced as `SnifferDisposed`), and the sync runner's own idle guard —
+ * so a plan ending in this step should set {@link ScrapingPlan.idleTimeout}
+ * comfortably *above* this `timeout`, or the guard will abandon the run first.
+ * Note also that the native-webview plugin's own absolute lifetime cap is not
+ * re-armed by a `show`, so it can cut a very long hold short.
  *
  * Use this as the *terminal* step of a plan whose completion is the user's to
  * decide — e.g. the user finishes something manually in the browser and closing
- * the window is the "I'm done" signal. Because the wait is unbounded, a plan
- * ending in this step should raise its {@link ScrapingPlan.idleTimeout} (e.g.
- * `Duration.infinity`) so the run isn't abandoned by the sync runner's
- * silent-host idle guard while it waits.
+ * the window is the "I'm done" signal.
  */
 interface AwaitUserDismissStep {
   readonly _tag: 'AwaitUserDismiss'
   readonly name: string
+  readonly timeout: Duration.Duration
 }
 
 /**
@@ -142,6 +164,21 @@ interface AwaitUserDismissStep {
  * webview the user dismissed earlier in the run (now alive but hidden) is brought
  * back for them to close. Without it, a prior dismissal would leave the
  * `AwaitUserDismiss` hold waiting on a window that isn't visible.
+ *
+ * It is **best-effort, not a guarantee**, because it is fire-and-advance: nothing
+ * is acknowledged, so the machine advances whether or not a window appeared. Two
+ * consequences worth knowing when a plan pairs it with a hold:
+ *
+ * - If no live webview exists, the host's `show` lands harmlessly and the hold
+ *   that follows waits on a window that never appears. What ends that wait is the
+ *   hold's own `timeout` (and a `SnifferDisposed` if the webview is torn down),
+ *   not anything this step detects — the plugin's `show` cannot distinguish
+ *   "absent" from "already visible", so the host has no failure to report.
+ * - A `Hidden` the plugin emitted *before* this show is indistinguishable from a
+ *   real dismissal after it, so a stale one can end the following hold early.
+ *   Acceptable because ending early now resumes draining rather than abandoning
+ *   in-flight requests, but it is why the pairing is a strong convention rather
+ *   than an enforced invariant.
  */
 interface EnsureWindowVisibleStep {
   readonly _tag: 'EnsureWindowVisible'

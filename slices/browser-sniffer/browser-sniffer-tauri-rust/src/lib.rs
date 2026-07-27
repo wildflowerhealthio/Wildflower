@@ -47,7 +47,7 @@ pub fn attach_browser_sniffer(app: &AppHandle) {
     // the boot log shows who dispatches what. See the effect-messaging-tauri
     // README ("Tag uniqueness across processes").
     log::info!(
-        "[browser-sniffer] listening on '{BRIDGE_EVENT}' for tags: [{}, {}, {}, {}, {}, {}]",
+        "[browser-sniffer] listening on '{BRIDGE_EVENT}' for tags: [{}, {}, {}, {}, {}, {}, {}]",
         events::REQUEST_SNIFFABLE_WEBVIEW,
         events::OPEN,
         events::SNIFFING_COMPLETE,
@@ -101,6 +101,7 @@ mod tests {
         assert_eq!(events::PAGE_ACTION, "PageAction");
         assert_eq!(events::CANCEL_SNIFFER_REQUEST, "CancelSnifferRequest");
         assert_eq!(events::USER_DISMISSED, "UserDismissed");
+        assert_eq!(events::SNIFFER_DISPOSED, "SnifferDisposed");
     }
 
     /// The bootstrap IIFE is generated at build time. An empty file

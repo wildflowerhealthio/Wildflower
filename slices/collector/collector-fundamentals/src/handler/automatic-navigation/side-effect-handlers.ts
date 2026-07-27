@@ -105,8 +105,8 @@ const sideEffectHandlers = {
   ): Effect.Effect<void, never, never> =>
     // A `Navigation` step's `action` is already a bridge message body — forward
     // it straight to the sniffer. The plan-only holds (`Delay` /
-    // `AwaitPageSettled`) carry no `action` and are consumed by the FSM, so they
-    // never reach here and nothing can leak onto the wire.
+    // `AwaitPageSettled` / `AwaitUserDismiss`) carry no `action` and are consumed
+    // by the FSM, so they never reach here and nothing can leak onto the wire.
     ctx.sendMessage(msg.action).pipe(
       Effect.withSpan(Telemetry.Sniffing.Dispatch.Span.Name, {
         attributes: { [Telemetry.Sniffing.Attributes.LinkKind]: linkKindOf(msg.action) },
@@ -158,6 +158,17 @@ const sideEffectHandlers = {
       spanAttributes: { [Telemetry.Sniffing.Attributes.UrlMatchTimeoutMs]: msg.timeoutMs },
       fired: { _tag: 'UrlMatchTimeoutFired', generation: msg.generation },
     }),
+  ScheduleUserDismissTimeout: (
+    msg: { readonly generation: number; readonly timeoutMs: number },
+    ctx: HandlerContext
+  ): Effect.Effect<void, never, never> =>
+    scheduleTimerDaemon(ctx, {
+      generation: msg.generation,
+      duration: Duration.millis(msg.timeoutMs),
+      spanName: Telemetry.Sniffing.UserDismissWait.Span.Name,
+      spanAttributes: { [Telemetry.Sniffing.Attributes.UserDismissTimeoutMs]: msg.timeoutMs },
+      fired: { _tag: 'UserDismissTimeoutFired', generation: msg.generation },
+    }),
   CancelTimer: (
     msg: { readonly generation: number },
     ctx: HandlerContext
@@ -183,6 +194,20 @@ const sideEffectHandlers = {
   ): Effect.Effect<void, never, never> =>
     Effect.logWarning(
       `CollectorBridgeMessageHandler.PageLoaded: URL-match step timed out after ${msg.timeoutMs}ms with no matching PageLoaded; aborting via SniffingComplete`
+    ),
+  WarnUserDismissTimeout: (
+    msg: { readonly timeoutMs: number },
+    _ctx: HandlerContext
+  ): Effect.Effect<void, never, never> =>
+    Effect.logWarning(
+      `CollectorBridgeMessageHandler.UserDismissed: user-dismiss step timed out after ${msg.timeoutMs}ms with the sniffer webview still open; wrapping up with what was sniffed`
+    ),
+  WarnSnifferDisposed: (
+    _msg: { readonly _tag: 'WarnSnifferDisposed' },
+    _ctx: HandlerContext
+  ): Effect.Effect<void, never, never> =>
+    Effect.logWarning(
+      'CollectorBridgeMessageHandler.SnifferDisposed: the sniffer webview was disposed while a user-dismiss step was waiting on it; wrapping up with what was sniffed'
     ),
   WarnDroppedPageLoaded: (
     msg: { readonly url: string },

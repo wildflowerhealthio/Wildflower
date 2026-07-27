@@ -8,7 +8,9 @@ import { describe, expect, it } from 'vite-plus/test'
 import {
   processSniffResultsFromMailbox,
   collectImportSummary,
+  DEFAULT_IDLE_TIMEOUT,
   type FailedResource,
+  resolveIdleTimeout,
   type SniffResult,
 } from './sync-run.ts'
 
@@ -45,6 +47,32 @@ class RecordingSink {
     this.onErrorCalls.push(cause)
   }
 }
+
+describe('resolveIdleTimeout', () => {
+  const caller = Duration.seconds(5)
+  const plan = Duration.minutes(20)
+
+  it('lets an explicit caller override beat the plan', () => {
+    // The regression: this used to read `plan ?? caller`, so a collector whose
+    // plan set a timeout silently overrode the argument the caller passed.
+    expect(resolveIdleTimeout(caller, plan)).toBe(caller)
+  })
+
+  it("falls back to the plan's guard when the caller has no opinion", () => {
+    // A plan ending in `AwaitUserDismiss` raises this, since that hold waits on a
+    // person rather than the host — the default would abandon the run first.
+    expect(resolveIdleTimeout(undefined, plan)).toBe(plan)
+  })
+
+  it('falls back to the runner default when neither sets one', () => {
+    expect(resolveIdleTimeout(undefined, undefined)).toBe(DEFAULT_IDLE_TIMEOUT)
+  })
+
+  it('treats a caller-supplied zero as chosen, not absent', () => {
+    // Guards a `||`-style regression: zero is falsy but a legitimate choice.
+    expect(resolveIdleTimeout(Duration.zero, plan)).toBe(Duration.zero)
+  })
+})
 
 describe('collectImportSummary', () => {
   it('accumulates every failure, pushes the growing list to setFailed, and fires onError once each', async () => {

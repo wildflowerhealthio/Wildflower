@@ -24,6 +24,8 @@ import {
   responseStart,
   settleForkedWork,
   type SimpleHandlerArgs,
+  snifferDisposed,
+  userDismissed,
 } from './collector-bridge-message-handler.test-helpers.ts'
 import * as CollectorBridgeMessageHandler from './collector-bridge-message-handler.ts'
 
@@ -176,6 +178,113 @@ describe('CollectorBridgeMessageHandler.make: composition', () => {
         expect(dispatchedOpens(sendMessage)).toEqual(['https://example.com/people/a'])
       }).pipe(Effect.provide(Layer.mergeAll(TestContext.TestContext, adapterLayer)))
     ))
+
+  describe('AwaitUserDismiss against the real run lifecycle', () => {
+    // These exercise the composition rather than the FSM alone. The machine's own
+    // tests stub `onSniffingComplete`, so they cannot see what the *lifecycle*
+    // does with a terminal — and the whole hazard here is that a dismissal could
+    // fire `SniffingComplete` while requests are still incomplete, which
+    // `handleSniffingComplete` answers by leaving the results stream open forever.
+
+    it('keeps the run open when the user dismisses with a request still in flight, then completes on its settle', () =>
+      Effect.runPromise(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const handler = makeSimpleHandler({
+            sendMessage,
+            stepSequence: [awaitUserDismissStep()],
+          })
+
+          // A request is sniffed and still accumulating when the user closes the
+          // window — the realistic case: they finished their manual step while an
+          // XHR the page kicked off is mid-flight.
+          yield* handler.ResponseStart(
+            responseStart({ id: 'r1', url: 'https://example.com/people/1' })
+          )
+          yield* handler.PageLoaded(pageLoaded())
+          yield* handler.UserDismissed(userDismissed())
+          yield* settleForkedWork
+
+          // The run must NOT have completed: `SniffingComplete` here would be
+          // dispatched against a non-empty incomplete map, and the lifecycle only
+          // closes the stream when that map is empty — so the stream would never
+          // close and the run would hang until the idle timeout.
+          expect(dispatched(sendMessage)).toEqual([])
+          expect(Option.isNone(yield* handler.requestSniffingResults.size)).toBe(false)
+
+          // The webview stayed alive and the request finished. *Now* the run ends,
+          // through the ordinary gate, and the result is not lost.
+          yield* settleRequest(handler, 'r1', { name: 'Ada', age: 36 })
+          yield* settleForkedWork
+          expect(dispatched(sendMessage)).toEqual([{ _tag: 'SniffingComplete' }])
+          expect(drainResults(handler)).toHaveLength(1)
+          expect(Option.isNone(yield* handler.requestSniffingResults.size)).toBe(true)
+        }).pipe(Effect.provide(Layer.mergeAll(TestContext.TestContext, adapterLayer)))
+      ))
+
+    it('completes promptly when the user dismisses with nothing in flight', () =>
+      Effect.runPromise(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const handler = makeSimpleHandler({
+            sendMessage,
+            stepSequence: [awaitUserDismissStep()],
+          })
+
+          yield* handler.PageLoaded(pageLoaded())
+          expect(dispatched(sendMessage)).toEqual([]) // parked on the hold
+
+          yield* handler.UserDismissed(userDismissed())
+          yield* settleForkedWork
+          expect(dispatched(sendMessage)).toEqual([{ _tag: 'SniffingComplete' }])
+          expect(Option.isNone(yield* handler.requestSniffingResults.size)).toBe(true)
+        }).pipe(Effect.provide(Layer.mergeAll(TestContext.TestContext, adapterLayer)))
+      ))
+
+    it('wraps up when the sniffer webview is disposed while the hold is waiting', () =>
+      Effect.runPromise(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const handler = makeSimpleHandler({
+            sendMessage,
+            stepSequence: [awaitUserDismissStep()],
+          })
+
+          yield* handler.PageLoaded(pageLoaded())
+          // The window is gone (plugin lifetime cap, app quit): nothing will ever
+          // deliver the dismissal the hold is waiting for.
+          yield* handler.SnifferDisposed(snifferDisposed())
+          yield* settleForkedWork
+          expect(dispatched(sendMessage)).toEqual([{ _tag: 'SniffingComplete' }])
+          expect(Option.isNone(yield* handler.requestSniffingResults.size)).toBe(true)
+        }).pipe(Effect.provide(Layer.mergeAll(TestContext.TestContext, adapterLayer)))
+      ))
+
+    it('leaves a run without the step untouched when a dismiss or dispose arrives', () =>
+      Effect.runPromise(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          // A trailing hold keeps the run open, so an incidental signal that
+          // wrongly ended it would be visible as an early terminal.
+          const handler = makeSimpleHandler({
+            sendMessage,
+            stepSequence: [awaitSettledFor('never')],
+          })
+
+          yield* handler.ResponseStart(
+            responseStart({ id: 'r1', url: 'https://example.com/people/1' })
+          )
+          yield* handler.PageLoaded(pageLoaded())
+          yield* handler.UserDismissed(userDismissed())
+          yield* handler.SnifferDisposed(snifferDisposed())
+          yield* settleForkedWork
+
+          // Neither signal is meaningful here — the run is still going.
+          expect(dispatched(sendMessage)).toEqual([])
+          expect(Option.isNone(yield* handler.requestSniffingResults.size)).toBe(false)
+        }).pipe(Effect.provide(Layer.mergeAll(TestContext.TestContext, adapterLayer)))
+      ))
+  })
 })
 
 // Helpers
@@ -211,6 +320,13 @@ const openStepFor = (uri: string): Step.Step => ({
  * crawl trails one after its `Open` so the run stays open until the opened page
  * settles (a bare `Open` dispatches and advances without waiting).
  */
+/** A terminal hold that parks until the user closes the sniffer webview. */
+const awaitUserDismissStep = (timeout = Duration.minutes(10)): Step.Step => ({
+  _tag: 'AwaitUserDismiss',
+  name: 'await dismiss',
+  timeout,
+})
+
 const awaitSettledFor = (segment: string): Step.Step => ({
   _tag: 'AwaitPageSettled',
   name: `await people/${segment}`,
