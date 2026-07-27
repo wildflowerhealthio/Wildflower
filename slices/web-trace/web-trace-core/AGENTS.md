@@ -18,6 +18,8 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
 - **`src/trace-exchange.ts`** — the vocabulary. `TraceExchange` is one recorded
   HTTP exchange; `StoredBody` / `SkippedBody` is the captured-or-recorded-omission
   split; `TraceTimings` is what the capture could measure.
+- **`src/codec/`** — `TraceExchange` ⇄ FHIR R4 `DocumentReference`.
+  `systems.ts` holds the private systems and extension URLs.
 - **`src/pseudonymizer/`** — the export boundary's redactor. `shapes.ts` detects
   what a value looks like and generates another value that looks the same;
   `hmac.ts` is the Web Crypto seam every fake is seeded from.
@@ -58,6 +60,14 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
   already assigns a correlation id per request, so ids are deterministic without
   threading a counter through a parse, retried writes are idempotent upserts, and
   two sessions cannot collide.
+- **The encoding has exactly one definition — import it, never reimplement it.**
+  A second copy drifts, and already-recorded sessions stop decoding. The private
+  systems and extension URLs in `src/codec/systems.ts` are part of the persisted
+  wire format: that file is append-mostly.
+- **`subject` stays absent on every trace resource.** Traces are engineering
+  artifacts that happen to contain PHI; an unset `subject` keeps them out of
+  `Patient/$everything` and out of clinical exports. They stay reachable by
+  `category` search — `isWebTrace` is the one place that predicate is spelled out.
 - **The `-core` layer talks to `globalThis.crypto.subtle`, not `node:crypto`.**
   That is what keeps the pure layer platform-free, and it is why the
   pseudonymizer is `Effect`-returning: Web Crypto has no synchronous digest.
