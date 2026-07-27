@@ -1,4 +1,4 @@
-import { deepFreeze } from 'kitchen-sink'
+import { Duration } from 'effect'
 import type * as EntityDefinition from './entity-definition.ts'
 import type * as Step from './step.ts'
 import type * as WebViewSource from './web-view-source.ts'
@@ -59,6 +59,13 @@ const DEFAULT_MAX_GENERATED_STEPS = 500
  *   `Open`, or an earlier generated `Open`) is dropped, so a page that links to
  *   itself or a cycle of pages terminates. Dedup applies only to *generated*
  *   steps — the authored sequence is never dropped.
+ * - `idleTimeout`: the plan's silent-host idle guard, used when the caller
+ *   doesn't override it (the runner's `DEFAULT_IDLE_TIMEOUT` otherwise; an
+ *   explicit runner option beats both). Raise it for a plan that ends in an
+ *   `AwaitUserDismiss` step: that hold waits on a person, not the host, so the
+ *   default 30 s guard would abandon the run long before the user acts. Set it
+ *   comfortably *above* that step's own `timeout`, or the guard fires first and
+ *   the hold's bound never gets to do its job.
  */
 interface ScrapingPlan<TResources> {
   readonly name: string
@@ -67,6 +74,38 @@ interface ScrapingPlan<TResources> {
   readonly stepSequence: readonly Step.Step[]
   readonly maxGeneratedSteps?: number
   readonly dedupeGeneratedOpenUris?: boolean
+  readonly idleTimeout?: Duration.DurationInput
+}
+
+/**
+ * Recursively freeze `value` — `kitchen-sink`'s `deepFreeze`, except that
+ * `Duration`s are left alone.
+ *
+ * A plan carries `Duration`s in four places (`Delay.duration`,
+ * `AwaitPageSettled.timeout`, `AwaitUserDismiss.timeout`, and `idleTimeout`), and
+ * some of them are **process-wide singletons**: `Duration.infinity` and
+ * `Duration.zero` are module-level values Effect hands out by reference, so
+ * freezing one here mutates state every other caller in the process shares.
+ * Concretely, `Duration`'s `Hash` implementation memoises onto the instance with
+ * `Object.defineProperty`, which throws on a frozen object — so freezing
+ * `Duration.infinity` while building one plan can make hashing it throw
+ * anywhere, for the rest of the process.
+ *
+ * Fixed here rather than in `deepFreeze` itself: this is the boundary that knows
+ * it is freezing Effect values, and narrowing the shared utility's semantics
+ * would change behaviour for every other caller.
+ */
+const freezePlanValue = (value: unknown): void => {
+  if (value === null || typeof value !== 'object' || Object.isFrozen(value)) {
+    return
+  }
+  if (Duration.isDuration(value)) {
+    return
+  }
+  Object.freeze(value)
+  for (const child of Object.values(value)) {
+    freezePlanValue(child)
+  }
 }
 
 /**
@@ -76,16 +115,22 @@ interface ScrapingPlan<TResources> {
  * freezing also keeps the type-level `readonly` honest at runtime so
  * a caller can't push into `entityDefinitions` or `stepSequence`
  * after construction.
+ *
+ * `Duration`-valued fields are the one exception — see {@link freezePlanValue}.
  */
-const make = <TResources>(plan: ScrapingPlan<TResources>): ScrapingPlan<TResources> =>
-  deepFreeze({
+const make = <TResources>(plan: ScrapingPlan<TResources>): ScrapingPlan<TResources> => {
+  const frozen: ScrapingPlan<TResources> = {
     name: plan.name,
     entityDefinitions: plan.entityDefinitions,
     firstPage: plan.firstPage,
     stepSequence: plan.stepSequence,
     maxGeneratedSteps: plan.maxGeneratedSteps,
     dedupeGeneratedOpenUris: plan.dedupeGeneratedOpenUris,
-  })
+    idleTimeout: plan.idleTimeout,
+  }
+  freezePlanValue(frozen)
+  return frozen
+}
 
 export { make, DEFAULT_MAX_GENERATED_STEPS }
 export type { ScrapingPlan }

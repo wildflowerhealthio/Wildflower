@@ -79,6 +79,8 @@ type FinishArg = Parameters<Handler['ResponseFinished']>[0]
 type ErrorArg = Parameters<Handler['RequestError']>[0]
 type CancelledArg = Parameters<Handler['Cancelled']>[0]
 type PageLoadedArg = Parameters<Handler['PageLoaded']>[0]
+type UserDismissedArg = Parameters<Handler['UserDismissed']>[0]
+type SnifferDisposedArg = Parameters<Handler['SnifferDisposed']>[0]
 
 const responseStart = (overrides: { id: string; url: string }): StartArg => ({
   _tag: 'ResponseStart',
@@ -111,6 +113,10 @@ const pageLoaded = (overrides: { url?: string; pageContentId?: string } = {}): P
   pageContentId: overrides.pageContentId ?? 'page-1',
 })
 
+const userDismissed = (): UserDismissedArg => ({ _tag: 'UserDismissed' })
+
+const snifferDisposed = (): SnifferDisposedArg => ({ _tag: 'SnifferDisposed' })
+
 /**
  * Let a forked `RequestCompletionCheck` daemon run to completion. It sleeps
  * nothing, so cooperative yields — not a clock tick — are what let it re-enter
@@ -136,6 +142,8 @@ export {
   runHandlerPromise,
   runHandlerSync,
   settleForkedWork,
+  snifferDisposed,
+  userDismissed,
 }
 export type {
   CancelledArg,
@@ -146,5 +154,7 @@ export type {
   PageLoadedArg,
   SimpleHandlerArgs,
   SimpleResources,
+  SnifferDisposedArg,
   StartArg,
+  UserDismissedArg,
 }

@@ -27,6 +27,8 @@ const Sniffing = {
     LinkKind: 'collector.sniffing.link.kind',
     /** Configured URL-match wait cap for the step, in milliseconds. */
     UrlMatchTimeoutMs: 'collector.sniffing.step.url_match_timeout_ms',
+    /** Configured user-dismiss wait cap for the step, in milliseconds. */
+    UserDismissTimeoutMs: 'collector.sniffing.step.user_dismiss_timeout_ms',
   },
   /** Waiting out an explicit `Delay` step before processing the next queue entry. */
   Wait: {
@@ -41,6 +43,15 @@ const Sniffing = {
    */
   UrlMatchWait: {
     Span: { Name: 'collector.sniffing.url_match_wait' },
+  },
+  /**
+   * Holding on an `AwaitUserDismiss` step until the user closes the sniffer
+   * webview. The span closes when the wait cap (`timeout`) elapses; a dismissal
+   * (or a dispose) interrupts the fiber before the span closes, so a closed span
+   * means the user never closed the window and the machine gave up waiting.
+   */
+  UserDismissWait: {
+    Span: { Name: 'collector.sniffing.user_dismiss_wait' },
   },
   /** Dispatching a navigation (or the terminal `SniffingComplete`) to the sniffer. */
   Dispatch: {

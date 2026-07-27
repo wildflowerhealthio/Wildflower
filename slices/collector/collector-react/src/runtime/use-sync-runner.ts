@@ -22,12 +22,7 @@ import { type Duration, Match } from 'effect'
 import { useCallback, useRef, useState } from 'react'
 
 import { useRunAuthed } from '../queries/use-run-authed.ts'
-import {
-  buildImportEffect,
-  DEFAULT_IDLE_TIMEOUT,
-  type FailedResource,
-  type ImportSummary,
-} from './sync-run.ts'
+import { buildImportEffect, type FailedResource, type ImportSummary } from './sync-run.ts'
 import { useCollectorRegister } from './use-collector-register.ts'
 import { useCollectorSender } from './use-collector-sender.ts'
 
@@ -37,6 +32,13 @@ import { useCollectorSender } from './use-collector-sender.ts'
  * retries). `idleTimeout` is the stalled-host guard: if no sniffer event
  * arrives within the window the run settles anyway, so a silent host
  * can't pin the mutation in `pending` forever.
+ *
+ * Supplying `idleTimeout` **overrides the collector's own
+ * `ScrapingPlan.idleTimeout`** for this runner; omitting it lets the plan's
+ * value apply, falling back to `sync-run.ts`'s `DEFAULT_IDLE_TIMEOUT`. It is
+ * deliberately left `undefined` rather than defaulted here — defaulting at this
+ * boundary would make every run look like an explicit override and the plan's
+ * guard could never take effect.
  */
 interface SyncRunnerInput {
   readonly onError?: (error: unknown) => void
@@ -74,10 +76,7 @@ interface SyncRunner {
  * left to finish (or settle via the idle guard); all teardown lives in
  * the Effect's `release`.
  */
-const useSyncRunner = ({
-  onError,
-  idleTimeout = DEFAULT_IDLE_TIMEOUT,
-}: SyncRunnerInput = {}): SyncRunner => {
+const useSyncRunner = ({ onError, idleTimeout }: SyncRunnerInput = {}): SyncRunner => {
   const sendCollectorMessage = useCollectorSender()
   const collectorRegister = useCollectorRegister()
   const runAuthed = useRunAuthed()

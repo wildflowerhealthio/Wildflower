@@ -77,6 +77,46 @@ const SetSnifferStatus = Schema.parseJson(
   Schema.TaggedStruct('SetSnifferStatus', { name: Schema.String })
 )
 
+/**
+ * Web → Host: the collector SPA asks the host to (re-)present the existing
+ * sniffer webview — `browser-sniffer-tauri-rust` maps it to
+ * `native_webview().show(SNIFFER_WEBVIEW_ID)`. Unlike `Open` it does **not**
+ * navigate: it re-presents a hidden-but-alive webview without reloading the page,
+ * and no-ops if none exists. The automatic-navigation machine dispatches it for
+ * an `EnsureWindowVisible` step so a plan can ask for the window to be on screen
+ * before an `AwaitUserDismiss` hold (e.g. after the user dismissed it earlier in
+ * the run, leaving it alive but hidden).
+ */
+const EnsureSnifferVisible = Schema.parseJson(Schema.TaggedStruct('EnsureSnifferVisible', {}))
+
+/**
+ * Host → Web: the Tauri host observed that the user dismissed (closed) the
+ * sniffer webview — on desktop, clicking the window's X, which the
+ * native-webview plugin turns into a `Hidden` lifecycle event (the webview stays
+ * alive). The host synthesizes this control message from that event; it does not
+ * originate from the injected page, so it lives on `CollectorBridge` only (not
+ * `BrowserSnifferBridge`) and is not part of the page→host data-plane allowlist.
+ *
+ * The collector-react SPA forwards it into the automatic-navigation machine,
+ * which consumes an `AwaitUserDismiss` hold it is parked on; in any other state
+ * it is ignored.
+ */
+const UserDismissed = Schema.parseJson(Schema.TaggedStruct('UserDismissed', {}))
+
+/**
+ * Host → Web: the sniffer webview was **torn down** — the native-webview
+ * plugin's `Disposed` lifecycle event, which follows a real destroy (the plugin's
+ * own lifetime cap, an app quit, or this run's `SniffingComplete` teardown).
+ *
+ * Deliberately a separate tag from `UserDismissed` rather than folded into it: a
+ * dispose happens on *every* run as part of normal teardown, so treating it as a
+ * user signal would race ordinary shutdown. The automatic-navigation machine acts
+ * on it only while parked on an `AwaitUserDismiss` hold — where the window the
+ * hold waits on no longer exists, so continuing to wait is pointless — and
+ * ignores it everywhere else.
+ */
+const SnifferDisposed = Schema.parseJson(Schema.TaggedStruct('SnifferDisposed', {}))
+
 type CollectorBridge = Bridge.Bridge<
   'Collector',
   {
@@ -86,6 +126,8 @@ type CollectorBridge = Bridge.Bridge<
     RequestError: typeof RequestErrorMessage
     Cancelled: typeof CancelledMessage
     PageLoaded: typeof PageLoadedMessage
+    UserDismissed: typeof UserDismissed
+    SnifferDisposed: typeof SnifferDisposed
   },
   {
     RequestSniffableWebView: typeof RequestSniffableWebView
@@ -94,18 +136,21 @@ type CollectorBridge = Bridge.Bridge<
     Open: typeof OpenMessage
     PageAction: typeof PageActionMessage
     SetSnifferStatus: typeof SetSnifferStatus
+    EnsureSnifferVisible: typeof EnsureSnifferVisible
   }
 >
 
 /**
  * Slice-level bridge between the embedded collector SPA and the Tauri
  * host. Web→Host carries control signals (`RequestSniffableWebView`,
- * `CancelSnifferRequest`, `SniffingComplete`, `SetSnifferStatus`) and
- * script-driven navigation steps (`Open`, `PageAction`); Host→Web carries
- * the sniffer-event subset collector parses plus the `PageLoaded`
- * notification that drives the step timer. `SetSnifferStatus` is a pure
- * chrome-label update the host writes to the sniffer webview's subtitle; it
- * is host-consumed and never forwarded into the sniffed page.
+ * `CancelSnifferRequest`, `SniffingComplete`, `SetSnifferStatus`,
+ * `EnsureSnifferVisible`) and script-driven navigation steps (`Open`,
+ * `PageAction`); Host→Web carries the sniffer-event subset collector parses, the
+ * `PageLoaded` notification that drives the step timer, and the two sniffer
+ * webview lifecycle signals (`UserDismissed` — the user closed it;
+ * `SnifferDisposed` — it was torn down). `SetSnifferStatus` is a pure
+ * chrome-label update the host writes to the sniffer webview's subtitle; it is
+ * host-consumed and never forwarded into the sniffed page.
  *
  * `PageAction` is the same `PageActionMessage` schema `BrowserSnifferBridge`
  * declares for its Host→Web side, so the Tauri host forwards the decoded
@@ -125,6 +170,8 @@ const CollectorBridge: CollectorBridge = Bridge.make({
     ['RequestError', RequestErrorMessage],
     ['Cancelled', CancelledMessage],
     ['PageLoaded', PageLoadedMessage],
+    ['UserDismissed', UserDismissed],
+    ['SnifferDisposed', SnifferDisposed],
   ] as const,
   webToHost: [
     ['RequestSniffableWebView', RequestSniffableWebView],
@@ -133,7 +180,17 @@ const CollectorBridge: CollectorBridge = Bridge.make({
     ['Open', OpenMessage],
     ['PageAction', PageActionMessage],
     ['SetSnifferStatus', SetSnifferStatus],
+    ['EnsureSnifferVisible', EnsureSnifferVisible],
   ] as const,
 })
 
-export { CollectorBridge, OpenMessage, RequestSniffableWebView, SetSnifferStatus, SniffingComplete }
+export {
+  CollectorBridge,
+  EnsureSnifferVisible,
+  OpenMessage,
+  RequestSniffableWebView,
+  SetSnifferStatus,
+  SnifferDisposed,
+  SniffingComplete,
+  UserDismissed,
+}

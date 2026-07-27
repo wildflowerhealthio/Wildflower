@@ -74,14 +74,50 @@ before adding one.
 
 ## Traps
 
-- **`Step` is a `Navigation | Delay | AwaitPageSettled` union; only
-  `NavigationStep.action` reaches the wire.** The automatic-navigation machine
-  forwards only a `Navigation` step's `action` (typed against the bridge message
-  bodies themselves), so both plan-only hold variants (`Delay`, `AwaitPageSettled`)
-  stay off the wire by construction — there is no "strip before dispatch" step to
-  remember. A new scripted interaction is a `PageAction` `action` union variant,
-  not a new bridge tag; a new _pause_ is a `Delay` (fixed) or `AwaitPageSettled`
-  (wait for a matching settled page load) step, not a plan-wide delay field.
+- **`Step` is a `Navigation | Delay | AwaitPageSettled | AwaitUserDismiss |
+EnsureWindowVisible` union.** Two variants reach the wire — a `Navigation`'s
+  `action` (typed against the bridge message bodies themselves) and
+  `EnsureWindowVisible` (a fire-and-advance `EnsureSnifferVisible` show request).
+  The three plan-only holds (`Delay`, `AwaitPageSettled`, `AwaitUserDismiss`) carry
+  no payload and are consumed by the FSM, so they stay off the wire by construction
+  — there is no "strip before dispatch" step to remember. A new scripted
+  interaction is a `PageAction` `action` union variant, not a new bridge tag; a new
+  _pause_ is a `Delay` (fixed) or `AwaitPageSettled` (wait for a matching settled
+  page load) step, not a plan-wide delay field.
+- **`EnsureWindowVisible` asks for the sniffer window on screen — best-effort,
+  not a guarantee.** A fire-and-advance step (dispatches and advances like a
+  `Navigation`) whose `EnsureSnifferVisible` message the host maps to
+  `native_webview().show(SNIFFER_WEBVIEW_ID)` — re-presenting a hidden-but-alive
+  webview, idempotent no-op if none exists. Place it right before `AwaitUserDismiss`
+  so a webview the user dismissed earlier in the run (now alive but hidden) is
+  brought back for them to close. Nothing acknowledges the show, so the machine
+  advances either way: if no webview exists the following hold waits on a window
+  that never appears, and it is that hold's `timeout` (or a `SnifferDisposed`)
+  that ends the wait. The plugin's `show` can't tell "absent" from "already
+  visible", so there is no failure for the host to report. Likewise a `Hidden`
+  emitted _before_ the show is indistinguishable from a dismissal after it, so a
+  stale one can release the hold early.
+- **`AwaitUserDismiss` is a user-driven hold that _drains_, it does not
+  complete.** It parks until the user closes the sniffer webview, then consumes
+  the hold and keeps draining — it does **not** dispatch `SniffingComplete`
+  itself. That is load-bearing: requests sniffed before the dismissal may still be
+  in flight and the webview stays alive to finish them, so completing here would
+  fire `SniffingComplete` against a non-empty request map and the results stream
+  would never close (the run would hang until the idle timeout). Completion stays
+  on the usual gate — queue drained ∧ every request settled.
+- **Three things can end that hold, all via the same drain path:** the host→web
+  `UserDismissed` message (synthesized from the plugin's `Hidden` lifecycle
+  event), the step's own required `timeout` (WARN), and `SnifferDisposed`
+  (synthesized from the plugin's `Disposed`, WARN). `Disposed` gets its **own
+  tag** rather than being folded into `UserDismissed` because the run's own
+  `SniffingComplete` teardown disposes the webview — one arrives on every run, so
+  conflating them would race ordinary shutdown. Both signals are silent no-ops
+  outside the hold.
+- **A plan ending in `AwaitUserDismiss` must raise `ScrapingPlan.idleTimeout`
+  above that step's `timeout`.** The sync runner's silent-host guard (default
+  30 s) doesn't know the hold is waiting on a person, and will abandon the run
+  long before the user acts — and before the hold's own bound can do its job.
+  Note the runner's `idleTimeout` option, when passed, wins over the plan's.
 - **Every `Step` carries a required `name`; the machine pushes it as a separate
   `SetSnifferStatus` control message, _not_ on the step's own action.** As the
   machine reaches each step it emits `SetSnifferStatus { name }`, which the Tauri
@@ -89,8 +125,9 @@ before adding one.
   legible. This is how the plan-only holds can label the chrome despite carrying
   no `action`. Consequence: consecutive `Navigation` steps drain in one turn and
   their names flush back-to-back, so only the _last_ is visible — put a name that
-  needs to be seen on a step that holds (`Delay` / `AwaitPageSettled`) or on one
-  immediately followed by a hold. Renaming/adding the tag is a wire change — keep
+  needs to be seen on a step that holds (`Delay` / `AwaitPageSettled` /
+  `AwaitUserDismiss`) or on one immediately followed by a hold. Renaming/adding
+  the tag is a wire change — keep
   `bridge.ts`, `events.rs`, and the `lib.rs` drift-guard test in lockstep.
 - **Every `Navigation` dispatches and advances immediately — plans own their
   waits.** A `Fill` / `Click` / `Open` never waits for a `PageLoaded` (a

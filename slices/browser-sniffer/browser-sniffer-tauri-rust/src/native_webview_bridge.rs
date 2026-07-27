@@ -6,10 +6,16 @@
 //! - **Native webview → host** ([`install`]): a long-lived
 //!   `Channel<NativeWebviewEvent>` decodes each plugin event and re-emits onto
 //!   `BRIDGE_EVENT`. `Message` is validated ([`validate_native_webview_message`])
-//!   and its inner payload forwarded; `Hidden` / `Disposed` are lifecycle-only
-//!   (the terminal `SniffingComplete` is SPA-driven, so neither re-emits it).
-//!   The channel is cloned and reused across opens — `Clone` preserves the
-//!   handler, so it fires for every native webview.
+//!   and its inner payload forwarded; `Hidden` is synthesized into a host-origin
+//!   `UserDismissed` control message on `BRIDGE_EVENT` for the collector SPA, and
+//!   `Disposed` into a host-origin `SnifferDisposed` one. `Hidden` is the
+//!   user-dismissal signal *in practice* — see `classify_event` for the caveat
+//!   that a programmatic `hide()` would also emit it. The two stay separate tags
+//!   because a dispose is also the normal outcome of the SPA-driven
+//!   `SniffingComplete` teardown, so it arrives on every run and the SPA must be
+//!   able to tell it apart from a user's dismissal. The channel is cloned and
+//!   reused across opens — `Clone` preserves the handler, so it fires for every
+//!   native webview.
 //! - **Host → native webview** ([`forward_to_native_webview`]): mobile-only.
 //!   Desktop's content webview is a Tauri webview that receives
 //!   `app.emit('bridge', …)` natively.
@@ -192,9 +198,11 @@ enum BridgeAction<'a> {
     /// Drop a `Message` that failed envelope / allowlist validation; the `Cow`
     /// is the warn-logged reason.
     Drop(Cow<'static, str>),
-    /// A lifecycle event (`Hidden` / `Disposed`) — log the carried note at debug
-    /// and re-emit nothing (the SPA owns the terminal `SniffingComplete`).
-    Lifecycle(&'static str),
+    /// Synthesize a host-origin control envelope `{"_tag": tag}` and emit it on
+    /// `BRIDGE_EVENT`. Used for the `Hidden` → `UserDismissed` and
+    /// `Disposed` → `SnifferDisposed` signals — the payload is host-generated,
+    /// not forwarded from the page.
+    EmitControl(&'static str),
 }
 
 /// Decide what to do with a decoded native-webview event. Pure (no `AppHandle`,
@@ -206,12 +214,20 @@ fn classify_event(event: &NativeWebviewEvent) -> BridgeAction<'_> {
             Ok(inner_payload) => BridgeAction::ReEmit(inner_payload),
             Err(reason) => BridgeAction::Drop(reason),
         },
-        // Neither is terminal: hide keeps the webview sniffing, dispose follows
-        // the SPA's own `SniffingComplete`. See [`BridgeAction::Lifecycle`].
-        NativeWebviewEvent::Hidden => {
-            BridgeAction::Lifecycle("native webview hidden; sniff continues in the background")
-        }
-        NativeWebviewEvent::Disposed => BridgeAction::Lifecycle("native webview disposed"),
+        // A `Hidden` is surfaced to the SPA as `UserDismissed` so an
+        // `AwaitUserDismiss` step can stop waiting. It is the user-dismissal signal
+        // *in practice* (desktop titlebar X / iOS Close/swipe / Android back →
+        // `prevent_close` + `hide`; see plugin `lifecycle.rs`) — but note the
+        // plugin's programmatic `hide()` command also emits `Hidden`, so this is a
+        // faithful "user closed it" signal only because nothing calls `hide()` on
+        // the `SNIFFER_WEBVIEW_ID` instance.
+        NativeWebviewEvent::Hidden => BridgeAction::EmitControl(events::USER_DISMISSED),
+        // A `Disposed` is surfaced as its own `SnifferDisposed` tag rather than
+        // folded into `UserDismissed`: the SPA's own `SniffingComplete` teardown
+        // disposes the webview, so one arrives on every run. Kept distinct, the SPA
+        // can ignore it except while an `AwaitUserDismiss` step is waiting on a
+        // window that no longer exists.
+        NativeWebviewEvent::Disposed => BridgeAction::EmitControl(events::SNIFFER_DISPOSED),
     }
 }
 
@@ -244,8 +260,17 @@ fn dispatch_body(app: &AppHandle, body: &InvokeResponseBody) {
         BridgeAction::Drop(reason) => {
             log::warn!("[browser-sniffer] native-webview message dropped: {reason}");
         }
-        BridgeAction::Lifecycle(note) => {
-            log::debug!("[browser-sniffer] {note}");
+        BridgeAction::EmitControl(tag) => {
+            match app.emit(BRIDGE_EVENT, serde_json::json!({ "_tag": tag })) {
+                // Log the success too, not just the failure: these tags are the
+                // host's only trace of a webview lifecycle transition, and "did the
+                // host see the dismissal and emit it?" has to be answerable from a
+                // log when a run ends earlier or later than a user expected.
+                Ok(()) => log::debug!("[browser-sniffer] emitted host control `{tag}`"),
+                Err(error) => {
+                    log::warn!("[browser-sniffer] failed to emit host control `{tag}`: {error}");
+                }
+            }
         }
     }
 }
@@ -448,6 +473,13 @@ mod tests {
             events::SNIFFING_COMPLETE,
             events::OPEN,
             events::REQUEST_SNIFFABLE_WEBVIEW,
+            events::SET_SNIFFER_STATUS,
+            events::ENSURE_SNIFFER_VISIBLE,
+            // The two host-synthesized lifecycle tags: a page that could forge
+            // either would be able to cut an `AwaitUserDismiss` hold short, ending
+            // the run's collection early without the user ever closing the window.
+            events::USER_DISMISSED,
+            events::SNIFFER_DISPOSED,
         ] {
             let json = format!(r#"{{"event":"{BRIDGE_EVENT}","payload":{{"_tag":"{tag}"}}}}"#);
             assert!(
@@ -527,6 +559,10 @@ mod tests {
             events::SNIFFING_COMPLETE,
             events::OPEN,
             events::REQUEST_SNIFFABLE_WEBVIEW,
+            events::SET_SNIFFER_STATUS,
+            events::ENSURE_SNIFFER_VISIBLE,
+            events::USER_DISMISSED,
+            events::SNIFFER_DISPOSED,
         ] {
             let payload = serde_json::json!({ "_tag": tag });
             assert!(
@@ -574,21 +610,37 @@ mod tests {
         assert!(matches!(classify_event(&event), BridgeAction::Drop(_)));
     }
 
-    /// Dispatch classification: the lifecycle events re-emit NOTHING. A hide
-    /// keeps the sniff running in the background and a dispose follows the SPA's
-    /// own terminal `SniffingComplete`, so neither fabricates a terminal event
-    /// on the bus. This guards the behavioral change from the old
-    /// `Closed → SniffingComplete` re-emit.
+    /// Dispatch classification: a `Hidden` (the user closing/dismissing the
+    /// sniffer window) is surfaced to the SPA as a host-origin `UserDismissed`
+    /// control message, carrying exactly that tag.
     #[test]
-    fn lifecycle_events_classify_as_no_emit() {
+    fn hidden_classifies_as_user_dismissed_control() {
         assert!(matches!(
             classify_event(&NativeWebviewEvent::Hidden),
-            BridgeAction::Lifecycle(_)
+            BridgeAction::EmitControl(events::USER_DISMISSED)
         ));
+    }
+
+    /// Dispatch classification: a `Disposed` (the sniffer webview torn down) is
+    /// surfaced as its own `SnifferDisposed` control message — NOT as
+    /// `UserDismissed`. The SPA's own `SniffingComplete` teardown disposes the
+    /// webview, so one arrives on every run; conflating the two tags would make
+    /// ordinary shutdown indistinguishable from the user closing the window.
+    #[test]
+    fn disposed_classifies_as_sniffer_disposed_control() {
         assert!(matches!(
             classify_event(&NativeWebviewEvent::Disposed),
-            BridgeAction::Lifecycle(_)
+            BridgeAction::EmitControl(events::SNIFFER_DISPOSED)
         ));
+    }
+
+    /// The two lifecycle signals carry distinct tags. Pinned explicitly because
+    /// the whole point of the separation is that the SPA can tell a user's
+    /// dismissal apart from teardown — a refactor that collapsed them would
+    /// otherwise still satisfy both classification tests above.
+    #[test]
+    fn hidden_and_disposed_carry_distinct_tags() {
+        assert_ne!(events::USER_DISMISSED, events::SNIFFER_DISPOSED);
     }
 
     /// Undecodable envelope JSON is an `Err`, not a panic. The bridge listener

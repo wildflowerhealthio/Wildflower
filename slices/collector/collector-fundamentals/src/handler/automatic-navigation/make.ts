@@ -23,14 +23,32 @@ type Service = MessageHandler.HandlersFor<CollectorBridge['HostToWeb']>
 
 /**
  * The automatic-navigation half of {@link CollectorBridgeMessageHandler}: the
- * `handlePageLoaded` handler, the injection points the composition drives
+ * `handlePageLoaded` handler, the host-signal handlers (`handleUserDismissed` /
+ * `handleSnifferDisposed`), the injection points the composition drives
  * (`handleStepsGenerated` / `signalNoMoreResultsExpected`), the delay /
- * URL-match-timeout daemons, and `stopAutomaticNavigation` (this machine's share
- * of the lifecycle teardown). It interacts with the response tracker only
- * through the supplied `sendMessage` and the injected hooks.
+ * URL-match / user-dismiss timeout daemons, and `stopAutomaticNavigation` (this
+ * machine's share of the lifecycle teardown). It interacts with the response
+ * tracker only through the supplied `sendMessage` and the injected hooks.
  */
 interface AutomaticNavigation {
   readonly handlePageLoaded: Service['PageLoaded']
+  /**
+   * The external `UserDismissed` signal (the user closed the sniffer webview),
+   * forwarded from the host on the `CollectorBridge`. Consumes an
+   * `AwaitUserDismiss` hold the machine is parked on and resumes draining; a
+   * silent no-op in every other state. It does not end the run on its own —
+   * completion still goes through the usual drained-and-settled gate.
+   */
+  readonly handleUserDismissed: Service['UserDismissed']
+  /**
+   * The external `SnifferDisposed` signal (the sniffer webview was torn down),
+   * forwarded from the host on the `CollectorBridge`. Only acted on while parked
+   * on an `AwaitUserDismiss` hold, where the window being waited on no longer
+   * exists so the machine wraps up instead of waiting out the hold's timeout. A
+   * silent no-op everywhere else — this run's own teardown produces a dispose
+   * too.
+   */
+  readonly handleSnifferDisposed: Service['SnifferDisposed']
   /**
    * Append `followUpSteps`-generated steps to the back of the queue (the
    * composition dedups/caps them first). From `Drained` this re-awakens the
@@ -106,15 +124,23 @@ const make = <TResources>({
         Match.tag('DispatchSniffingComplete', (m) =>
           sideEffectHandlers.DispatchSniffingComplete(m, ctx)
         ),
+        Match.tag('DispatchEnsureVisible', (m) => sideEffectHandlers.DispatchEnsureVisible(m, ctx)),
         Match.tag('ScheduleDelayTimer', (m) => sideEffectHandlers.ScheduleDelayTimer(m, ctx)),
         Match.tag('ScheduleUrlMatchTimeout', (m) =>
           sideEffectHandlers.ScheduleUrlMatchTimeout(m, ctx)
+        ),
+        Match.tag('ScheduleUserDismissTimeout', (m) =>
+          sideEffectHandlers.ScheduleUserDismissTimeout(m, ctx)
         ),
         Match.tag('CancelTimer', (m) => sideEffectHandlers.CancelTimer(m, ctx)),
         Match.tag('RequestCompletionCheck', (m) =>
           sideEffectHandlers.RequestCompletionCheck(m, ctx)
         ),
         Match.tag('WarnUrlMatchTimeout', (m) => sideEffectHandlers.WarnUrlMatchTimeout(m, ctx)),
+        Match.tag('WarnUserDismissTimeout', (m) =>
+          sideEffectHandlers.WarnUserDismissTimeout(m, ctx)
+        ),
+        Match.tag('WarnSnifferDisposed', (m) => sideEffectHandlers.WarnSnifferDisposed(m, ctx)),
         Match.tag('WarnDroppedPageLoaded', (m) => sideEffectHandlers.WarnDroppedPageLoaded(m, ctx)),
         Match.tag('WarnDroppedSteps', (m) => sideEffectHandlers.WarnDroppedSteps(m, ctx)),
         Match.exhaustive
@@ -139,6 +165,9 @@ const make = <TResources>({
       )
 
     const handlePageLoaded: Service['PageLoaded'] = (event) => dispatch(event)
+    const handleUserDismissed: Service['UserDismissed'] = () => dispatch({ _tag: 'UserDismissed' })
+    const handleSnifferDisposed: Service['SnifferDisposed'] = () =>
+      dispatch({ _tag: 'SnifferDisposed' })
     const handleStepsGenerated = (steps: readonly Step[]): Effect.Effect<void, never, never> =>
       dispatch({ _tag: 'StepsGenerated', steps })
     const signalNoMoreResultsExpected: Effect.Effect<void, never, never> = dispatch({
@@ -149,6 +178,8 @@ const make = <TResources>({
 
     return {
       handlePageLoaded,
+      handleUserDismissed,
+      handleSnifferDisposed,
       handleStepsGenerated,
       signalNoMoreResultsExpected,
       stopAutomaticNavigation,

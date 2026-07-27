@@ -231,20 +231,22 @@ identity is **owner of a step queue** (seeded from `stepSequence`, grown by
 
 | Part                 | File                    | What it holds                                  |
 | -------------------- | ----------------------- | ---------------------------------------------- |
-| Input messages       | messages.ts             | the six inputs that drive the machine          |
-| States               | state.ts                | five states; active variants carry the queue   |
+| Input messages       | messages.ts             | the nine inputs that drive the machine         |
+| States               | state.ts                | six states; active variants carry the queue    |
 | Side-effect messages | messages.ts             | the effects a transition can request           |
 | Side-effect handlers | side-effect-handlers.ts | one `(msg, ctx) => Effect` per side-effect tag |
 | Transition           | transition.ts           | pure `(state, input) → [state, effects]`       |
 | Runtime              | make.ts                 | serialized dispatch + timer registry           |
 
 The inputs are `PageLoaded`, `Stop`, `DelayTimerFired`, `UrlMatchTimeoutFired`,
-`StepsGenerated`, and `NoMoreResultsExpected`; the states are
-`AwaitingPageLoaded`, `DelayPending`, `AwaitingUrlMatch`, `Drained`, and `Done`.
+`UserDismissTimeoutFired`, `StepsGenerated`, `NoMoreResultsExpected`,
+`UserDismissed`, and `SnifferDisposed`; the states are `AwaitingPageLoaded`,
+`DelayPending`, `AwaitingUrlMatch`, `AwaitingUserDismiss`, `Drained`, and `Done`.
 Because the queue lives in the state, the transition needs no `ScrapingPlan`
-closure — it names `SetStepName` / `DispatchNavigation` / `DispatchSniffingComplete` /
-`Schedule*` / `CancelTimer` / `RequestCompletionCheck` / `Warn*` effects for the
-runtime to discharge.
+closure — it names `SetStepName` / `DispatchNavigation` /
+`DispatchSniffingComplete` / `DispatchEnsureVisible` / `Schedule*` /
+`CancelTimer` / `RequestCompletionCheck` / `Warn*` effects for the runtime to
+discharge.
 
 On the first `PageLoaded` the machine begins draining the queue front-to-back,
 and it keeps draining as far as it can each turn: a `Navigation` **dispatches its
@@ -252,7 +254,9 @@ and it keeps draining as far as it can each turn: a `Navigation` **dispatches it
 a `PageLoaded`, so consecutive navigations dispatch back-to-back), a `Delay` arms
 a timer for its `duration` and rests, an `AwaitPageSettled` parks until a settled
 `PageLoaded` matches its `pattern` (or aborts on its `timeout`) — resuming the
-drain from the tail on a match — and an empty queue transitions to `Drained`. A
+drain from the tail on a match — an `EnsureWindowVisible` dispatches an
+`EnsureSnifferVisible` show request and immediately advances (fire-and-advance,
+like a `Navigation`), and an empty queue transitions to `Drained`. A
 `StepsGenerated` input appends to the back of the queue (breadth-first), or from
 `Drained` re-awakens the machine and drains the new steps with no `PageLoaded`.
 
@@ -263,9 +267,35 @@ to the sniffer chrome's subtitle so the running step is visible. A back-to-back
 `Navigation` run therefore flushes several names in one turn and only the last is
 seen — names on hold steps (or a `Navigation` gated by a following hold) are the
 ones a user reliably reads.
-There is **no implicit settle timer**: all waiting is an explicit `Delay` or
-`AwaitPageSettled` step, so `AwaitingPageLoaded` is a start-up-only resting state
-(nothing but `Stop` returns to it).
+There is **no implicit settle timer**: all waiting is an explicit `Delay`,
+`AwaitPageSettled`, or `AwaitUserDismiss` step, so `AwaitingPageLoaded` is a
+start-up-only resting state (nothing but `Stop` returns to it).
+
+An `AwaitUserDismiss` step parks in `AwaitingUserDismiss` under its own `timeout`.
+Three inputs resume from there, all onto the same path — **consume the hold and
+carry on draining**: the external `UserDismissed` (the user closed the sniffer
+webview, forwarded from the host), `SnifferDisposed` (the webview was torn down,
+so nothing will ever deliver that dismissal), and the step's own
+`UserDismissTimeoutFired` (the user never acted). The latter two WARN; all three
+land in `Drained`. Outside the hold, `UserDismissed` and `SnifferDisposed` are
+silent no-ops — both also occur during ordinary teardown, so neither may disturb
+a run that isn't waiting on one.
+
+Note the asymmetry with the other timed hold. An `AwaitPageSettled` that times out
+**aborts** the run (`Done` + `SniffingComplete`), because the page it needed never
+arrived and every step behind it is meaningless. An `AwaitUserDismiss` that ends
+merely **drains**, because the plan got as far as handing control to the user and
+whatever was sniffed is a valid result.
+
+That difference is load-bearing rather than stylistic: the dismiss path is the one
+that can end with requests still in flight. The webview stays alive and keeps
+sniffing them, so dispatching `SniffingComplete` at dismissal would hit
+`handleSniffingComplete` with a non-empty incomplete-request map — which closes
+nothing (see [Termination](#termination-the-run-lifecycle)) — and the results
+stream would never close. Draining instead defers to the ordinary gate, so a
+dismissal cannot outrun the requests it leaves behind. Because the hold waits on a
+person rather than the host, a plan using it should raise
+`ScrapingPlan.idleTimeout` above the step's `timeout`.
 
 The **transition function is pure** — it never sends a message, forks a
 fiber, or logs; it only names the side-effect messages the runtime should
@@ -284,7 +314,8 @@ coupling this drives.
 
 A pure transition can't fork or interrupt a fiber, so timers are modelled
 as messages: a `Schedule*` effect forks a daemon that sleeps and then
-re-injects a `DelayTimerFired` / `UrlMatchTimeoutFired` **input** back
+re-injects a `DelayTimerFired` / `UrlMatchTimeoutFired` /
+`UserDismissTimeoutFired` **input** back
 through `dispatch`. To tell a live timer from a stale one, every
 timer-bearing state carries a monotonic **generation**, and the fired input
 carries the generation it was scheduled under. The transition advances only

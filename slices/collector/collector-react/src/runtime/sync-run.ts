@@ -70,8 +70,25 @@ interface ImportSummary {
  */
 type SniffResult<Resources> = CollectorBridgeMessageHandler.SniffResult<Resources>
 
-/** Stalled-host guard window when the caller doesn't override it. */
+/** Stalled-host guard window when neither the caller nor the plan sets one. */
 const DEFAULT_IDLE_TIMEOUT: Duration.DurationInput = Duration.seconds(30)
+
+/**
+ * Resolve a run's silent-host idle guard, **most specific first**: an explicit
+ * caller override, then the collector's own `ScrapingPlan.idleTimeout`, then
+ * {@link DEFAULT_IDLE_TIMEOUT}.
+ *
+ * The caller is ahead of the plan deliberately. Someone passing a timeout is
+ * overriding it for this run, and plan data — which the caller may not even know
+ * about — must not silently win over an explicit argument. That ordering only
+ * works if callers pass `undefined` when they have no opinion instead of
+ * pre-defaulting: a defaulted value is indistinguishable from a chosen one here,
+ * and would mean the plan's guard could never take effect.
+ */
+const resolveIdleTimeout = (
+  callerIdleTimeout: Duration.DurationInput | undefined,
+  planIdleTimeout: Duration.DurationInput | undefined
+): Duration.DurationInput => callerIdleTimeout ?? planIdleTimeout ?? DEFAULT_IDLE_TIMEOUT
 
 /**
  * The drive loop as a `Stream` over the handler's read-only results mailbox
@@ -225,7 +242,14 @@ const buildImportEffect = <Resources, R>({
   readonly collectorRegister: ReturnType<typeof useCollectorRegister>
   readonly onNewFailureCause: (error: unknown) => void
   readonly onFailureSetUpdated: (failed: ReadonlyArray<FailedResource>) => void
-  readonly idleTimeout: Duration.DurationInput
+  /**
+   * The caller's silent-host guard. **Wins over the plan's own
+   * `ScrapingPlan.idleTimeout`** when supplied; `undefined` (the caller has no
+   * opinion) falls through to the plan's, then to {@link DEFAULT_IDLE_TIMEOUT}.
+   * Callers must therefore pass `undefined` rather than pre-defaulting, or the
+   * plan's value can never take effect.
+   */
+  readonly idleTimeout: Duration.DurationInput | undefined
 }): Effect.Effect<ImportSummary, never, R> =>
   Effect.scoped(
     Effect.gen(function* () {
@@ -322,7 +346,7 @@ const buildImportEffect = <Resources, R>({
         sniffResultMailbox,
         processSniffResult,
         onIdleTimeout: abandonAllRequestSniffing,
-        idleTimeout,
+        idleTimeout: resolveIdleTimeout(idleTimeout, scrapingPlan.idleTimeout),
       })
       // Idle-timeout escape: `abandonAllRequestSniffing` publishes every
       // still-incomplete sniffed request as a `Left` failure on
@@ -358,5 +382,6 @@ export {
   buildImportEffect,
   collectImportSummary,
   DEFAULT_IDLE_TIMEOUT,
+  resolveIdleTimeout,
 }
 export type { FailedResource, ImportSummary, SniffResult }
