@@ -315,11 +315,6 @@ const openStepFor = (uri: string): Step.Step => ({
   action: { _tag: 'Open', source: { _tag: 'Uri', uri } },
 })
 
-/**
- * An `AwaitPageSettled` hold matching `…/people/<segment>` — a `followUpSteps`
- * crawl trails one after its `Open` so the run stays open until the opened page
- * settles (a bare `Open` dispatches and advances without waiting).
- */
 /** A terminal hold that parks until the user closes the sniffer webview. */
 const awaitUserDismissStep = (timeout = Duration.minutes(10)): Step.Step => ({
   _tag: 'AwaitUserDismiss',
@@ -327,6 +322,11 @@ const awaitUserDismissStep = (timeout = Duration.minutes(10)): Step.Step => ({
   timeout,
 })
 
+/**
+ * An `AwaitPageSettled` hold matching `…/people/<segment>` — a `followUpSteps`
+ * crawl trails one after its `Open` so the run stays open until the opened page
+ * settles (a bare `Open` dispatches and advances without waiting).
+ */
 const awaitSettledFor = (segment: string): Step.Step => ({
   _tag: 'AwaitPageSettled',
   name: `await people/${segment}`,

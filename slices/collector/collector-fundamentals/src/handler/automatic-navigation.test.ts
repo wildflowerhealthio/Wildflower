@@ -10,6 +10,8 @@ import {
   type AutomaticNavigation,
   make,
   type StepOutboundMessage,
+  type StepState,
+  transition,
 } from './automatic-navigation/index.ts'
 import { settleForkedWork } from './collector-bridge-message-handler.test-helpers.ts'
 
@@ -779,6 +781,33 @@ describe('automatic-navigation.make', () => {
           expect(dispatched(sendMessage)).toEqual([])
         })
       ))
+
+    /**
+     * Exercised against the *pure* transition rather than the live machine: a
+     * leaked timer is only observable as a still-sleeping daemon (a fired one is
+     * dropped by the generation guard either way), so the effect list is the
+     * honest assertion surface. The `AwaitUserDismiss` hold is the one that
+     * matters most — its `timeout` is minutes, and `forkDaemon` detaches the
+     * fiber, so an uncancelled one keeps the discarded machine's whole context
+     * alive for the rest of that sleep.
+     */
+    it('should ask for the pending AwaitUserDismiss timeout to be cancelled', () => {
+      const queue: readonly Step.Step[] = [awaitUserDismiss(five)]
+      const step = transition(queue)
+      const start: StepState = { _tag: 'AwaitingPageLoaded', queue, generation: 0 }
+
+      const [parked, parkEffects] = step(start, pageLoaded())
+      expect(parked._tag).toBe('AwaitingUserDismiss')
+      expect(parkEffects).toContainEqual({
+        _tag: 'ScheduleUserDismissTimeout',
+        generation: 1,
+        timeoutMs: 5000,
+      })
+
+      const [stopped, stopEffects] = step(parked, { _tag: 'Stop' })
+      expect(stopped._tag).toBe('AwaitingPageLoaded')
+      expect(stopEffects).toContainEqual({ _tag: 'CancelTimer', generation: 1 })
+    })
 
     it('should restore the initial queue so a subsequent PageLoaded restarts from step 0', () =>
       run(

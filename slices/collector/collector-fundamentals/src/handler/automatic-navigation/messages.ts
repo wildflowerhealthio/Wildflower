@@ -40,7 +40,7 @@ type StepOutboundMessage =
 // ---------------------------------------------------------------------------
 
 /**
- * Everything that can drive the machine forward. Six kinds:
+ * Everything that can drive the machine forward — nine inputs, in seven kinds:
  *
  * - `PageLoaded` — the sole *external* event, forwarded verbatim from the
  *   bridge (its shape is `browser-sniffer-core`'s `PageLoadedMessageBody`,

@@ -319,6 +319,14 @@ const onStop = (state: State.StepState, initialQueue: State.Queue): Transition =
       State.awaitingPageLoaded(initialQueue, s.generation),
       [cancelTimer(s.generation)],
     ]),
+    // Every timer-bearing state must cancel here: the daemons are `forkDaemon`ed,
+    // so one left running outlives the discarded machine (and the `ctx` it closes
+    // over) for the rest of its sleep — a user-dismiss hold's `timeout` is
+    // typically minutes.
+    Match.tag('AwaitingUserDismiss', (s) => [
+      State.awaitingPageLoaded(initialQueue, s.generation),
+      [cancelTimer(s.generation)],
+    ]),
     Match.orElse((s) => [State.awaitingPageLoaded(initialQueue, s.generation), []])
   )
 

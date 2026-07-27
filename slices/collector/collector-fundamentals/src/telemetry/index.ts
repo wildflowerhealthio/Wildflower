@@ -46,9 +46,10 @@ const Sniffing = {
   },
   /**
    * Holding on an `AwaitUserDismiss` step until the user closes the sniffer
-   * webview. The span closes when the wait cap (`timeout`) elapses; a dismissal
-   * (or a dispose) interrupts the fiber before the span closes, so a closed span
-   * means the user never closed the window and the machine gave up waiting.
+   * webview. The span covers the wait itself: it ends normally when the wait cap
+   * (`timeout`) elapses, and ends *interrupted* when a dismissal (or a dispose)
+   * cancels the timer first — so it is the span's exit status, not its presence,
+   * that says whether the user acted.
    */
   UserDismissWait: {
     Span: { Name: 'collector.sniffing.user_dismiss_wait' },
