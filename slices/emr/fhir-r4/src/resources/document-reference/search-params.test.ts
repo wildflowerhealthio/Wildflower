@@ -56,17 +56,21 @@ describe('DocumentReferenceSearchParams', () => {
     expect(reEncoded).toEqual(query)
   })
 
-  it('should not accept an undeclared parameter, in the type or the decoded value', () => {
+  it('should not accept an undeclared parameter, in the type or on the wire', () => {
     // Arrange — `author` is a real FHIR R4 DocumentReference search parameter
     // this client deliberately does not declare. The `@ts-expect-error` IS the
     // assertion: it fails the typecheck if `author` ever becomes assignable.
     // @ts-expect-error — `author` is not a declared search parameter
     const undeclared: SearchParamsType = { author: 'Practitioner/1' }
 
-    // Act
-    const decoded = Schema.decodeUnknownSync(SearchParams)(undeclared)
+    // Act — encode is the direction that reaches HFS (the client is the only
+    // side that builds a query here); decode is the inbound direction.
+    const encoded = Schema.encodeSync(SearchParams)(undeclared)
+    const decoded = decodeQuery({ author: 'Practitioner/1' })
 
-    // Assert — an undeclared key never reaches the server.
+    // Assert — an undeclared key never reaches the server, and never comes back
+    // through as a decoded field either.
+    expect(encoded).toEqual({})
     expect(decoded).toEqual({})
   })
 
