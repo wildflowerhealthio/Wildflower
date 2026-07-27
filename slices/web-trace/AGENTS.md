@@ -10,9 +10,12 @@ applied retroactively to sessions already recorded.
 
 ## Package roles
 
-- **`web-trace-core`** — the pure layer, and today the only package in the
-  slice: the vocabulary of a recorded session, and the translations built on it.
-  See its [AGENTS.md](./web-trace-core/AGENTS.md).
+- **`web-trace-core`** — the pure layer: the vocabulary of a recorded session,
+  and the translations built on it. See its
+  [AGENTS.md](./web-trace-core/AGENTS.md).
+- **`web-trace-react`** — the browser UI adapter: the on-device viewer a host app
+  mounts. Presentation and interaction only, and the "view raw" half of the
+  asymmetry above. See its [AGENTS.md](./web-trace-react/AGENTS.md).
 
 ## Why this slice exists
 
@@ -39,6 +42,8 @@ It is consumed by both a collector and a React app, so it has to sit below both.
 ## References
 
 - [web-trace-core AGENTS.md](./web-trace-core/AGENTS.md) — module layout and traps.
+- [web-trace-react AGENTS.md](./web-trace-react/AGENTS.md) — the viewer's module
+  layout, and why a session is a grouping rather than a resource.
 - [browser-sniffer AGENTS.md](../browser-sniffer/AGENTS.md) — the upstream
   page-sniffing primitive a capture consumes, and the source of the
   known limitation that there is no request side.

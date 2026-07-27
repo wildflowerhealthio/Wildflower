@@ -1,0 +1,17 @@
+.recordings {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.recordings__session-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem 0.75rem;
+}
+
+.recordings__session-id {
+  margin: 0;
+  overflow-wrap: anywhere;
+}

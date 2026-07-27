@@ -1,0 +1,17 @@
+.sessions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.sessions__notice {
+  margin: 0;
+}
+
+.sessions__empty {
+  margin: 0;
+}
+
+.sessions__more {
+  align-self: flex-start;
+}
