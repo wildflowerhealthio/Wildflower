@@ -277,7 +277,10 @@ carry on draining**: the external `UserDismissed` (the user closed the sniffer
 webview, forwarded from the host), `SnifferDisposed` (the webview was torn down,
 so nothing will ever deliver that dismissal), and the step's own
 `UserDismissTimeoutFired` (the user never acted). The latter two WARN; all three
-land in `Drained`. Outside the hold, `UserDismissed` and `SnifferDisposed` are
+resume the drain from the tail behind the hold — reaching `Drained` when that
+tail is empty (the usual case, since the hold is normally terminal), or resting
+on whatever hold the tail's own head asks for. None of them is terminal on its
+own. Outside the hold, `UserDismissed` and `SnifferDisposed` are
 silent no-ops — both also occur during ordinary teardown, so neither may disturb
 a run that isn't waiting on one.
 

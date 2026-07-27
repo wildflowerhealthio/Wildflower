@@ -85,12 +85,9 @@
             "name": "birthdate",
             "in": "query",
             "schema": {
-              "type": "string",
-              "description": "a string matching the pattern ^\\d{4}-\\d{2}-\\d{2}$",
-              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              "$ref": "#/components/schemas/FhirDateSearch"
             },
-            "required": false,
-            "description": "a string matching the pattern ^\\d{4}-\\d{2}-\\d{2}$"
+            "required": false
           }
         ],
         "security": [],
@@ -1302,9 +1299,7 @@
                     ]
                   },
                   "birthdate": {
-                    "type": "string",
-                    "description": "a string matching the pattern ^\\d{4}-\\d{2}-\\d{2}$",
-                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                    "$ref": "#/components/schemas/FhirDateSearch"
                   }
                 },
                 "additionalProperties": false
@@ -6801,6 +6796,59 @@
               "type": "string"
             },
             "required": false
+          },
+          {
+            "name": "_id",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "identifier",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "current",
+                "superseded",
+                "entered-in-error"
+              ]
+            },
+            "required": false
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/FhirDateSearch"
+            },
+            "required": false
           }
         ],
         "security": [],
@@ -7915,6 +7963,29 @@
                   },
                   "_pageToken": {
                     "type": "string"
+                  },
+                  "_id": {
+                    "type": "string"
+                  },
+                  "identifier": {
+                    "type": "string"
+                  },
+                  "category": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "current",
+                      "superseded",
+                      "entered-in-error"
+                    ]
+                  },
+                  "date": {
+                    "$ref": "#/components/schemas/FhirDateSearch"
                   }
                 },
                 "additionalProperties": false
@@ -7927,7 +7998,12 @@
     }
   },
   "components": {
-    "schemas": {},
+    "schemas": {
+      "FhirDateSearch": {
+        "type": "string",
+        "description": "A FHIR R4 date search value (§ search.html#date): an optional comparison prefix (eq/ne/gt/lt/ge/le/sa/eb/ap) in front of a date or dateTime of any precision, e.g. ge2026, 2026-07, or lt2026-07-27T14:27:30Z. The value denotes the period its precision implies. See slices/emr/fhir-r4/docs/Client Capabilities Reference.md."
+      }
+    },
     "securitySchemes": {}
   },
   "security": [],

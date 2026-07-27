@@ -48,9 +48,9 @@ To fix: parameterise `Reference` by allowed target types and apply a regex on `r
 
 ## Patient search parameters (subset declared)
 
-Per FHIR R4 § Patient.search, the standard parameters include `_id`, `_lastUpdated`, `name`, `family`, `given`, `identifier`, `address`, `address-city/state/postalcode/country`, `telecom`, `email`, `phone`, `birthdate` (with date prefixes), `gender`, `active`, `deceased`, `general-practitioner`, `organization`, `link`. The `HttpApi` description (and therefore the typed client) declares only: `_count`, `_pageToken`, `gender`, `active`, `birthdate` (equality only — no date prefixes / partial-precision ranges). HFS may support more server-side, but the typed client can't express them.
+Per FHIR R4 § Patient.search, the standard parameters include `_id`, `_lastUpdated`, `name`, `family`, `given`, `identifier`, `address`, `address-city/state/postalcode/country`, `telecom`, `email`, `phone`, `birthdate` (with date prefixes), `gender`, `active`, `deceased`, `general-practitioner`, `organization`, `link`. The `HttpApi` description (and therefore the typed client) declares only: `_count`, `_pageToken`, `gender`, `active`, `birthdate` (the shared `DateSearchParam` value — see "Date search parameter modelling" below). HFS may support more server-side, but the typed client can't express them.
 
-Implication: SMART apps that search by name or MRN through the typed client will not work. Add `_id`, `name`, `family`, `given`, `identifier`, and date-prefixed `birthdate` for a baseline US Core / SMART experience.
+Implication: SMART apps that search by name or MRN through the typed client will not work. Add `_id`, `name`, `family`, `given`, and `identifier` for a baseline US Core / SMART experience (`birthdate` already carries date prefixes via `DateSearchParam`).
 
 ## Observation search parameters (only paging declared)
 
@@ -58,11 +58,46 @@ Per FHIR R4 § Observation.search, the standard parameters include `_id`, `_last
 
 Implication: the typed client cannot ask "latest blood pressure for this patient" — the primary reason to query Observation. Adding `subject`/`patient`/`code`/`category`/`date` would unlock the canonical workflows.
 
-## DocumentReference search parameters (only paging declared)
+## DocumentReference search parameters (subset declared)
 
-Per FHIR R4 § DocumentReference.search, the standard parameters include `_id`, `_lastUpdated`, `patient`, `subject`, `type`, `category`, `status`, `date`, `period`, `author`, `custodian`, `encounter`, `facility`, `setting`, `identifier`, `relatesto`, `relation`, `security-label`, `format`, `contenttype`, `language`, `location`, etc. The `HttpApi` description (and therefore the typed client) declares `_count` and `_pageToken` only.
+Per FHIR R4 § DocumentReference.search, the standard parameters include `_id`, `_lastUpdated`, `patient`, `subject`, `type`, `category`, `status`, `date`, `period`, `author`, `custodian`, `encounter`, `facility`, `setting`, `identifier`, `relatesto`, `relation`, `security-label`, `format`, `contenttype`, `language`, `location`, etc. The `HttpApi` description (and therefore the typed client) declares: `_count`, `_pageToken`, `_id`, `identifier`, `category`, `type`, `status`, `date`.
 
-Implication: the typed client cannot ask "the discharge summaries for this patient" — the primary reason to query DocumentReference. Adding `patient`/`subject`/`type`/`category`/`status`/`date` would unlock the canonical document-retrieval workflows. HFS may support more server-side, but the typed client can't express them.
+`status` is narrowed to the `DocumentReference.status` value set (`current | superseded | entered-in-error`), so an out-of-set code fails to typecheck. `date` is the shared **`DateSearchParam`** value (see "Date search parameter modelling" below).
+
+Two narrowings remain:
+
+- **No reference-typed parameters.** `patient`, `subject`, `author`, `custodian`, `encounter` are not declared, so the client still cannot ask "the discharge summaries for **this patient**" in one query — it filters by `category`/`type` and reads `subject` off the returned resources.
+- **Single value per parameter.** Every `SearchParams` struct in this package is a flat one-value-per-key record, so FHIR's comma-separated OR (`category=a,b`) and repeated-key AND are not modelled.
+
+HFS may support more server-side, but the typed client can't express them — and, per "No drift guard against the HFS server" above, nothing verifies that HFS honours the parameters declared here. That pairing stays hand-checked.
+
+## Date search parameter modelling
+
+`date`-typed search parameters (`DocumentReference.date`, `Patient.birthdate`) share one schema, `DateSearchParam` (`resources/search/date-search-param.ts`), rather than each declaring an ad-hoc string or a bare `DateTime.Utc`. Per FHIR R4 § search.html#date, a `date` search value targets resource elements of type `date`, `dateTime`, `instant`, `Period`, or `Timing`, and a date search is **intrinsically a match against a period** — whatever the precision of the value, and whatever the type of the element it is compared to.
+
+The schema models exactly that. Every value — prefixed or not, complete or partial — decodes to one shape:
+
+```ts
+{
+  prefix: Prefix
+  value: string
+  lowerBound: DateTime.Utc
+  upperBound: DateTime.Utc
+}
+```
+
+- `prefix` is the comparison (`eq`/`ne`/`gt`/`lt`/`ge`/`le`/`sa`/`eb`/`ap`), accepted at **any** precision — `ge2026` means "on or after the start of 2026", as the spec intends.
+- `value` is the literal exactly as authored, so no precision is invented on the wire: `date=2026-07` is sent as `2026-07`, leaving the server its own range interpretation.
+- `lowerBound`/`upperBound` are the period the literal denotes, filled per the spec's rule — the lower bound takes the lowest possible value of every unspecified level (first month, first day, zero-filled time), the upper bound the highest (last month, last day _allowing for leap years_, `23:59:59.999`). So `2026-07` bounds `[2026-07-01T00:00:00.000Z, 2026-07-31T23:59:59.999Z]`, and `2024-02` correctly ends on the 29th.
+
+Grammar accepted: a 4-digit year, optionally narrowed to year-month, then full date, then a time. Following § search.html#date, **seconds are optional** (`2026-07-27T14:27Z` is valid — the search section departs from the XML Schema dateTime type here), while a timezone stays **required** once a time is present, as in the underlying `dateTime` datatype.
+
+Normalizations and deviations:
+
+- **A prefix-less value re-emits with its implied `eq`.** The spec assumes `eq` when no prefix is given, and the decoded shape always materializes one, so `2026-07` encodes back as `eq2026-07`. Same query, spelled explicitly.
+- **Leap seconds collapse.** FHIR's grammar admits second `60`, which POSIX time cannot represent; such a value is accepted and both its bounds are pinned to the last representable instant of that minute (`…:59.999`).
+- **Timezone-less times are rejected.** § search.html#date only _recommends_ a timezone when a time is present (and § 47 says a server should then assume its local zone), but the `dateTime` datatype grammar requires one, and bounds cannot be resolved to UTC without it. Spell the zone explicitly.
+- **Dates are bounded in UTC.** Per § 46, dates carry no timezone and none should be considered, so a year/month/day value bounds in UTC rather than any local zone.
 
 ## DocumentReference choice / required modeling
 

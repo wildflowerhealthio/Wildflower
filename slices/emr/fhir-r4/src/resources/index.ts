@@ -1,4 +1,5 @@
 export type { FhirResource } from './fhir-resource.ts'
+export * as DateSearchParam from './search/date-search-param.ts'
 export * from './binary/index.ts'
 export * from './document-reference/index.ts'
 export * from './medication/index.ts'

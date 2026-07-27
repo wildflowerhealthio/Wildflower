@@ -1,6 +1,7 @@
 import { Schema } from 'effect'
 
 import { AdministrativeGender } from '../../data-types/complex/administrative-gender.ts'
+import * as DateSearchParam from '../search/date-search-param.ts'
 
 const NumFromStr = Schema.NumberFromString.pipe(Schema.int(), Schema.greaterThanOrEqualTo(0))
 
@@ -20,10 +21,11 @@ const SearchParams = Schema.Struct({
   _pageToken: Schema.optional(Schema.String),
   gender: Schema.optional(AdministrativeGender),
   active: Schema.optional(BoolFromStr),
-  // FHIR `birthdate` search param maps to `Patient.birthDate`. Equality
-  // only in baseline; date prefixes (gt/lt/ge/le/sa/eb/ap) and partial-precision
-  // ranges are not yet supported.
-  birthdate: Schema.optional(Schema.String.pipe(Schema.pattern(/^\d{4}-\d{2}-\d{2}$/))),
+  // FHIR `birthdate` search param maps to `Patient.birthDate`. A
+  // `DateSearchParam` value: an optional comparison prefix in front of a date
+  // literal of any precision (`ge2000`, `2000-05`, `lt2000-05-01`), carrying
+  // the period that precision implies.
+  birthdate: Schema.optional(DateSearchParam.Schema),
 })
 
 type SearchParamsType = Schema.Schema.Type<typeof SearchParams>

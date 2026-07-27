@@ -39,10 +39,13 @@ describe('generateFhirR4OpenApiSpec', () => {
     const spec = generateFhirR4OpenApiSpec()
 
     // Assert — no operation advertises Effect's HttpApiDecodeError 400, and the
-    // components pruned down to nothing (every schema existed only for that error).
+    // schemas that existed only to describe it are pruned. `FhirDateSearch`
+    // survives because the FHIR contract itself names it (the `date` /
+    // `birthdate` search parameter value); pinning the exact set keeps a stray
+    // schema from creeping back.
     const json = JSON.stringify(spec)
     expect(json).not.toContain('HttpApiDecodeError')
-    expect(spec.components?.schemas ?? {}).toEqual({})
+    expect(Object.keys(spec.components?.schemas ?? {})).toEqual(['FhirDateSearch'])
   })
 
   it('should match the committed snapshot embedded by emr-rust (regenerate with UPDATE_OPENAPI=1)', () => {
