@@ -41,6 +41,7 @@ const baseDatatypes: {
   CodeableConcept: Datatype.SchemaFor<'CodeableConcept'> | undefined
   Coding: Datatype.SchemaFor<'Coding'> | undefined
   ContactPoint: Datatype.SchemaFor<'ContactPoint'> | undefined
+  Duration: Datatype.SchemaFor<'Duration'> | undefined
   HumanName: Datatype.SchemaFor<'HumanName'> | undefined
   Identifier: Datatype.SchemaFor<'Identifier'> | undefined
   Meta: Datatype.SchemaFor<'Meta'> | undefined
@@ -71,6 +72,7 @@ const baseDatatypes: {
   CodeableConcept: undefined,
   Coding: undefined,
   ContactPoint: undefined,
+  Duration: undefined,
   HumanName: undefined,
   Identifier: undefined,
   Meta: undefined,

@@ -45,34 +45,86 @@ const WEB_TRACE_SESSION_IDENTIFIER_SYSTEM = `${WEB_TRACE_BASE}/sid/web-trace-ses
 const WEB_TRACE_REQUEST_IDENTIFIER_SYSTEM = `${WEB_TRACE_BASE}/sid/web-trace-request` as const
 
 /**
+ * Base for every web-trace extension URL, including the nested ones.
+ *
+ * @remarks
+ * FHIR permits a bare token for a sub-extension's `url`, but this encoding
+ * spells every extension — nested included — as an absolute URL under this
+ * base. A token like `name` is only meaningful relative to a parent nobody
+ * carries around; a URL identifies the same thing wherever it is quoted, in a
+ * search expression, a bug report, or a `StructureDefinition` we may later
+ * serve.
+ */
+const WEB_TRACE_EXTENSION_BASE = `${WEB_TRACE_BASE}/StructureDefinition` as const
+
+/**
  * Resource-level extension holding the response status line.
  *
  * @remarks
  * `DocumentReference.description` renders the status for a human, but parsing it
  * back is fragile — the status code and text ride here so the codec round-trips
- * losslessly. Sub-extensions: `code` (`valueInteger`), `text` (`valueString`).
+ * losslessly. Sub-extensions: {@link RESPONSE_STATUS_CODE_EXTENSION} and
+ * {@link RESPONSE_STATUS_TEXT_EXTENSION}.
  */
-const RESPONSE_STATUS_EXTENSION = `${WEB_TRACE_BASE}/StructureDefinition/web-trace-response-status`
+const RESPONSE_STATUS_EXTENSION = `${WEB_TRACE_EXTENSION_BASE}/web-trace-response-status` as const
+
+/** Sub-extension of {@link RESPONSE_STATUS_EXTENSION}: the status code (`valueInteger`). */
+const RESPONSE_STATUS_CODE_EXTENSION =
+  `${WEB_TRACE_EXTENSION_BASE}/web-trace-response-status-code` as const
+
+/** Sub-extension of {@link RESPONSE_STATUS_EXTENSION}: the reason phrase (`valueString`). */
+const RESPONSE_STATUS_TEXT_EXTENSION =
+  `${WEB_TRACE_EXTENSION_BASE}/web-trace-response-status-text` as const
 
 /**
  * Content-level extension holding the response headers as ordered pairs.
  *
  * @remarks
- * One repetition per header, in capture order, each with `name`/`value`
- * (`valueString`) sub-extensions. Repeats of the same header name (`Set-Cookie`)
- * survive, which a `Record<string, string>` would collapse.
+ * One {@link RESPONSE_HEADER_EXTENSION} repetition per header, in capture order.
+ * Repeats of the same header name (`Set-Cookie`) survive, which a
+ * `Record<string, string>` would collapse.
  */
-const RESPONSE_HEADERS_EXTENSION = `${WEB_TRACE_BASE}/StructureDefinition/web-trace-response-headers`
+const RESPONSE_HEADERS_EXTENSION = `${WEB_TRACE_EXTENSION_BASE}/web-trace-response-headers` as const
+
+/** Sub-extension of {@link RESPONSE_HEADERS_EXTENSION}: one header, name and value. */
+const RESPONSE_HEADER_EXTENSION = `${WEB_TRACE_EXTENSION_BASE}/web-trace-response-header` as const
+
+/** Sub-extension of {@link RESPONSE_HEADER_EXTENSION}: the field name (`valueString`). */
+const RESPONSE_HEADER_NAME_EXTENSION =
+  `${WEB_TRACE_EXTENSION_BASE}/web-trace-response-header-name` as const
+
+/** Sub-extension of {@link RESPONSE_HEADER_EXTENSION}: the field value (`valueString`). */
+const RESPONSE_HEADER_VALUE_EXTENSION =
+  `${WEB_TRACE_EXTENSION_BASE}/web-trace-response-header-value` as const
 
 /**
- * Content-level extension holding observed timings in milliseconds.
+ * Content-level extension holding the observed timings.
  *
  * @remarks
- * Sub-extensions `waitMs` / `receiveMs` (`valueDecimal`), each present only when
- * the capture observed it. An absent sub-extension is "not measured", which the
- * HAR emitter renders as `-1`.
+ * Sub-extensions {@link TIMING_WAIT_EXTENSION} / {@link TIMING_RECEIVE_EXTENSION},
+ * each a `valueDuration` and each present only when the capture observed it. An
+ * absent sub-extension is "not measured", which the HAR emitter renders as `-1`.
  */
-const RESPONSE_TIMINGS_EXTENSION = `${WEB_TRACE_BASE}/StructureDefinition/web-trace-timings`
+const RESPONSE_TIMINGS_EXTENSION = `${WEB_TRACE_EXTENSION_BASE}/web-trace-timings` as const
+
+/** Sub-extension of {@link RESPONSE_TIMINGS_EXTENSION}: time to first byte (`valueDuration`). */
+const TIMING_WAIT_EXTENSION = `${WEB_TRACE_EXTENSION_BASE}/web-trace-timing-wait` as const
+
+/** Sub-extension of {@link RESPONSE_TIMINGS_EXTENSION}: time spent reading the body (`valueDuration`). */
+const TIMING_RECEIVE_EXTENSION = `${WEB_TRACE_EXTENSION_BASE}/web-trace-timing-receive` as const
+
+/**
+ * UCUM, the system a FHIR `Duration` states its unit in.
+ *
+ * @remarks
+ * A `Duration` with a value must carry a UCUM code (invariant `drt-1`), so the
+ * timing sub-extensions write `system`/`code` as well as the human-facing
+ * `unit`.
+ */
+const UCUM_SYSTEM = 'http://unitsofmeasure.org'
+
+/** UCUM code — and display unit — for a millisecond. */
+const UCUM_MILLISECOND_CODE = 'ms'
 
 /**
  * Content-level extension naming why a body was not stored (`valueString`).
@@ -82,17 +134,27 @@ const RESPONSE_TIMINGS_EXTENSION = `${WEB_TRACE_BASE}/StructureDefinition/web-tr
  * presence is what distinguishes a policy-skipped body from a genuinely empty
  * one.
  */
-const BODY_SKIPPED_REASON_EXTENSION = `${WEB_TRACE_BASE}/StructureDefinition/web-trace-body-skipped`
+const BODY_SKIPPED_REASON_EXTENSION = `${WEB_TRACE_EXTENSION_BASE}/web-trace-body-skipped` as const
 
 export {
   BODY_SKIPPED_REASON_EXTENSION,
+  RESPONSE_HEADER_EXTENSION,
+  RESPONSE_HEADER_NAME_EXTENSION,
+  RESPONSE_HEADER_VALUE_EXTENSION,
   RESPONSE_HEADERS_EXTENSION,
+  RESPONSE_STATUS_CODE_EXTENSION,
   RESPONSE_STATUS_EXTENSION,
+  RESPONSE_STATUS_TEXT_EXTENSION,
   RESPONSE_TIMINGS_EXTENSION,
+  TIMING_RECEIVE_EXTENSION,
+  TIMING_WAIT_EXTENSION,
+  UCUM_MILLISECOND_CODE,
+  UCUM_SYSTEM,
   WEB_REQUEST_TRACE_CODE,
   WEB_TRACE_BASE,
   WEB_TRACE_CATEGORY_CODE,
   WEB_TRACE_CODE_SYSTEM,
+  WEB_TRACE_EXTENSION_BASE,
   WEB_TRACE_RAW_CODE,
   WEB_TRACE_REDACTION_SYSTEM,
   WEB_TRACE_REQUEST_IDENTIFIER_SYSTEM,

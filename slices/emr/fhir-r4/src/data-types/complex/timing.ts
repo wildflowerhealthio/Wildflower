@@ -79,9 +79,9 @@ const EventTimingSchema = Schema.Literal(
 const TimingRepeatStruct = mutableEncoded(
   StructNoContext({
     ...Element.fields,
-    // bounds[x]: the (Range, Period) subset. boundsDuration is omitted —
-    // Duration is unregistered, so the wire encoder would reject any non-null
-    // value per the unregistered-slot contract from PR #61.
+    // bounds[x]: the (Range, Period) subset. boundsDuration is not modeled.
+    // Duration is registered now, so nothing rejects it any more — adding the
+    // field is just a change nobody has needed yet.
     boundsPeriod: OrNullAsOptional(Period.Schema),
     boundsRange: OrNullAsOptional(Range.Schema),
     count: OrNullAsOptional(Schema.Int.pipe(Schema.positive())),

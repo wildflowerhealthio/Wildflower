@@ -64,6 +64,22 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
   A second copy drifts, and already-recorded sessions stop decoding. The private
   systems and extension URLs in `src/codec/systems.ts` are part of the persisted
   wire format: that file is append-mostly.
+- **The encoding is a schema, not a pair of functions.**
+  `TraceExchangeFromDocumentReference` is the definition;
+  `toDocumentReference` / `fromDocumentReference` are `Schema.encode` /
+  `Schema.decode` of it, and `TraceExchangeFromFhirJson` composes it with
+  `DocumentReference.Schema` to start from raw FHIR JSON. Both directions fail
+  with a `ParseError`, so the codec composes into a struct or a refinement like
+  any other schema — don't reintroduce a bespoke error type.
+- **Every extension url is absolute, nested ones included.** FHIR permits a bare
+  token for a sub-extension's `url`, but a token like `name` only means anything
+  next to a parent nobody carries around. `systems.ts` names each one and a
+  property test fails if a bare token creeps back in.
+- **Timings are `valueDuration`, which needs `Duration` registered in
+  `fhir-r4`.** The registry treats an unregistered `value[x]` datatype as decode
+  to `null` / fail on encode, so a `valueDuration` only round-trips because
+  `data-types/complex/duration.ts` registers itself. If timings start silently
+  arriving as `null`, that registration is what to check.
 - **`subject` stays absent on every trace resource.** Traces are engineering
   artifacts that happen to contain PHI; an unset `subject` keeps them out of
   `Patient/$everything` and out of clinical exports. They stay reachable by
