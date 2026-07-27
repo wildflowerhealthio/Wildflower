@@ -1,4 +1,4 @@
-import { Arbitrary, DateTime, Either, Schema } from 'effect'
+import { Arbitrary, DateTime, Either, Option, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
@@ -22,7 +22,8 @@ describe('DocumentReferenceSearchParams', () => {
     // Act
     const decoded = decodeQuery(query)
 
-    // Assert — a bare instant decodes to the literal string verbatim.
+    // Assert — a prefix-less date decodes to its implied period, with the
+    // literal kept verbatim.
     expect(decoded).toSchemaEqual(SearchParams, {
       _count: 20,
       _pageToken: 'opaque-server-token',
@@ -31,7 +32,12 @@ describe('DocumentReferenceSearchParams', () => {
       category: 'http://terminology.hl7.org/CodeSystem/document-category|clinical-note',
       type: 'http://loinc.org|18842-5',
       status: 'current',
-      date: '2026-07-27T14:27:30.000Z',
+      date: {
+        prefix: Option.none(),
+        value: '2026-07-27T14:27:30.000Z',
+        lowerBound: DateTime.unsafeMake('2026-07-27T14:27:30.000Z'),
+        upperBound: DateTime.unsafeMake('2026-07-27T14:27:30.000Z'),
+      },
     })
   })
 
@@ -96,16 +102,21 @@ describe('DocumentReferenceSearchParams', () => {
     expect(reEncoded).toEqual({ date: '2026-07' })
   })
 
-  it('should decode a prefixed date to a comparison against an instant', () => {
-    // Arrange
-    const query = { date: 'ge2026-07-27T14:27:30.000Z' }
+  it('should decode a prefixed partial-precision date to the period it ranges over', () => {
+    // Arrange — FHIR's `ge2026-07` means "on or after the start of July 2026".
+    const query = { date: 'ge2026-07' }
 
     // Act
     const decoded = decodeQuery(query)
 
-    // Assert — a prefix pairs with a complete instant, parsed to a DateTime.
+    // Assert — the prefix applies at whatever precision the caller authored.
     expect(decoded).toSchemaEqual(SearchParams, {
-      date: { prefix: 'ge', dateTime: DateTime.unsafeMake('2026-07-27T14:27:30.000Z') },
+      date: {
+        prefix: Option.some('ge' as const),
+        value: '2026-07',
+        lowerBound: DateTime.unsafeMake('2026-07-01T00:00:00.000Z'),
+        upperBound: DateTime.unsafeMake('2026-07-31T23:59:59.999Z'),
+      },
     })
     expect(Schema.encodeSync(SearchParams)(decoded)).toEqual(query)
   })

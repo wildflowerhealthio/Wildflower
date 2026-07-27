@@ -73,17 +73,31 @@ HFS may support more server-side, but the typed client can't express them — an
 
 ## Date search parameter modelling
 
-`date`-typed search parameters (`DocumentReference.date`, `Patient.birthdate`) share one schema, `DateSearchParam` (`resources/search/date-search-param.ts`), rather than each declaring an ad-hoc string or a bare `DateTime.Utc`. Per FHIR R4 § search.html#date, a `date` search value targets resource elements of type `date`, `dateTime`, `instant`, `Period`, or `Timing`, and takes one of two wire shapes, decoded to a two-case union:
+`date`-typed search parameters (`DocumentReference.date`, `Patient.birthdate`) share one schema, `DateSearchParam` (`resources/search/date-search-param.ts`), rather than each declaring an ad-hoc string or a bare `DateTime.Utc`. Per FHIR R4 § search.html#date, a `date` search value targets resource elements of type `date`, `dateTime`, `instant`, `Period`, or `Timing`, and a date search is **intrinsically a match against a period** — whatever the precision of the value, and whatever the type of the element it is compared to.
 
-- **Prefixed instant** — a comparison prefix (`eq`/`ne`/`gt`/`lt`/`ge`/`le`/`sa`/`eb`/`ap`) in front of a **complete** instant, e.g. `ge2026-07-27T14:27:30Z`, decoded to `{ prefix, dateTime: DateTime.Utc }`.
-- **Bare date literal** — a prefix-less `date`/`dateTime` at any FHIR precision (`2026`, `2026-07`, `2026-07-27`, or a full instant), decoded to the literal **string, verbatim**.
+The schema models exactly that. Every value — prefixed or not, complete or partial — decodes to one shape:
 
-The two shapes keep partial precision honest: a `DateTime.Utc` cannot represent "sometime in July 2026" without inventing a day and time, so a partial-precision value is only accepted **bare** and is carried through as written (the server interprets the implied range — a bare `date=2026-07` now stays `2026-07`, no longer normalized to `2026-07-01T00:00:00.000Z`). A comparison prefix is only meaningful against a definite point in time, so the prefixed shape **requires** a complete instant (date, time, and timezone) and rejects a partial value rather than widening it.
+```ts
+{
+  prefix: Prefix
+  value: string
+  lowerBound: DateTime.Utc
+  upperBound: DateTime.Utc
+}
+```
 
-Narrowings that remain:
+- `prefix` is the comparison (`eq`/`ne`/`gt`/`lt`/`ge`/`le`/`sa`/`eb`/`ap`), accepted at **any** precision — `ge2026` means "on or after the start of 2026", as the spec intends.
+- `value` is the literal exactly as authored, so no precision is invented on the wire: `date=2026-07` is sent as `2026-07`, leaving the server its own range interpretation.
+- `lowerBound`/`upperBound` are the period the literal denotes, filled per the spec's rule — the lower bound takes the lowest possible value of every unspecified level (first month, first day, zero-filled time), the upper bound the highest (last month, last day _allowing for leap years_, `23:59:59.999`). So `2026-07` bounds `[2026-07-01T00:00:00.000Z, 2026-07-31T23:59:59.999Z]`, and `2024-02` correctly ends on the 29th.
 
-- **No prefixed partial-precision ranges.** FHIR's `ge2026` ("on or after the start of 2026") is not expressible directly; spell it `ge2026-01-01T00:00:00Z`. Bare `ne`/`ap` against a partial value (range-negation / approximation) are likewise not modelled — only bare equality carries partial precision.
-- **Prefixed instants are canonicalized.** A prefixed value round-trips through `DateTime.formatIso`, so a non-canonical instant (e.g. missing milliseconds) re-emits in the canonical `…T…:…:….SSSZ` form. Bare literals are never rewritten.
+Grammar accepted: a 4-digit year, optionally narrowed to year-month, then full date, then a time. Following § search.html#date, **seconds are optional** (`2026-07-27T14:27Z` is valid — the search section departs from the XML Schema dateTime type here), while a timezone stays **required** once a time is present, as in the underlying `dateTime` datatype.
+
+Normalizations and deviations:
+
+- **A prefix-less value re-emits with its implied `eq`.** The spec assumes `eq` when no prefix is given, and the decoded shape always materializes one, so `2026-07` encodes back as `eq2026-07`. Same query, spelled explicitly.
+- **Leap seconds collapse.** FHIR's grammar admits second `60`, which POSIX time cannot represent; such a value is accepted and both its bounds are pinned to the last representable instant of that minute (`…:59.999`).
+- **Timezone-less times are rejected.** § search.html#date only _recommends_ a timezone when a time is present (and § 47 says a server should then assume its local zone), but the `dateTime` datatype grammar requires one, and bounds cannot be resolved to UTC without it. Spell the zone explicitly.
+- **Dates are bounded in UTC.** Per § 46, dates carry no timezone and none should be considered, so a year/month/day value bounds in UTC rather than any local zone.
 
 ## DocumentReference choice / required modeling
 

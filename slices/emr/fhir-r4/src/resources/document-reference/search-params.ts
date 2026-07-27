@@ -14,10 +14,10 @@ const NumFromStr = Schema.NumberFromString.pipe(Schema.int(), Schema.greaterThan
  * bare `code` or the `system|code` form, passed through as written. `status`
  * is narrowed to {@link StatusSchema}, so an out-of-set code fails to
  * typecheck rather than reaching the server; `date` is a
- * {@link DateSearchParam.Schema} — a prefixed instant (`ge2026-07-27T…Z`) or a
- * bare, precision-preserving date literal (`2026-07`). The narrowings that
- * remain — no reference-typed parameters, no prefixed partial-precision
- * ranges, one value per key — are catalogued in
+ * {@link DateSearchParam.Schema} — an optional comparison prefix in front of a
+ * date literal of any precision (`ge2026-07-27T…Z`, `2026-07`), carrying the
+ * period that precision implies. The narrowings that remain — no
+ * reference-typed parameters, one value per key — are catalogued in
  * `fhir-r4/docs/Client Capabilities Reference.md`.
  */
 const SearchParams = Schema.Struct({

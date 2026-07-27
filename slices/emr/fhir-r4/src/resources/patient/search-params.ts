@@ -22,8 +22,9 @@ const SearchParams = Schema.Struct({
   gender: Schema.optional(AdministrativeGender),
   active: Schema.optional(BoolFromStr),
   // FHIR `birthdate` search param maps to `Patient.birthDate`. A
-  // `DateSearchParam` value: a prefixed instant (`ge2000-01-01T00:00:00Z`) or a
-  // bare, precision-preserving date literal (`2000`, `2000-05`, `2000-05-01`).
+  // `DateSearchParam` value: an optional comparison prefix in front of a date
+  // literal of any precision (`ge2000`, `2000-05`, `lt2000-05-01`), carrying
+  // the period that precision implies.
   birthdate: Schema.optional(DateSearchParam.Schema),
 })
 
