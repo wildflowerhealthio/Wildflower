@@ -1,0 +1,121 @@
+# Redaction Explanation
+
+Why the pseudonymizer is shaped the way it is, and — more importantly — what it
+does not protect. This is the privacy boundary of the Web Trace feature: capture
+is lossless and the viewer shows raw data, so this module is the only thing
+standing between a recorded browsing session and a collector author's inbox.
+
+For the module layout and its traps, see
+[web-trace-core AGENTS.md](../AGENTS.md).
+
+## Shape-preserving, not a skeleton
+
+A collector author reading a trace is trying to answer "what does this API
+return, and how do I parse it". A structural skeleton — every value replaced by
+`"<string>"` — answers none of that. So redaction replaces each value with
+another value of the same _shape_: an ISO date stays an ISO date at the same
+precision with the same timezone designator, a UUID stays a v4 UUID, a phone
+number keeps its punctuation, a JWT stays a structurally valid JWT with the same
+claim names and the same signing algorithm.
+
+The shape classes are `iso8601`, `jwt`, `uuid`, `email`, `currency`,
+`postalCode`, `phone`, `epochMillis`, `numericId`, `alphanumericId`, and a
+`freeText` fallback. The fallback is what makes the module safe by default: an
+unrecognized value is still pseudonymized, just with the least
+structure-preserving generator. Nothing reaches an export unredacted because its
+shape went unrecognized.
+
+## Salt per export, not per session
+
+The salt is minted once per export and never reused. Within one export the
+mapping is stable, so if response A's `pid` equals response B's `patientId` they
+are still equal after redaction — and that correspondence is exactly what tells a
+collector author the two endpoints share a key. Across exports the mapping is
+independent, so two exports of the same session cannot be linked back together.
+
+The mapping is not only a keyed hash. Each export keeps a value→pseudonym table,
+and a candidate pseudonym is rejected and re-derived unless it differs from its
+original, re-detects to the same shape class, and has not already been handed to
+a different original. That loop is what makes two of the guarantees true by
+construction rather than probabilistically:
+
+- no value survives as itself, even a short one;
+- two different originals never collapse onto one pseudonym.
+
+It also means a shape with a small space can genuinely run out — sixteen distinct
+one-digit numbers cannot all get distinct one-digit fakes. That raises
+`PseudonymSpaceExhausted` rather than silently colliding or silently widening the
+value. Raising the enum threshold or adding a per-path verbatim override is the
+fix.
+
+## The enum carve-out
+
+Pure pseudonymization turns `"status": "active"` into noise. Status codes and
+unit enums are not PHI, and they are precisely what an `EntityDefinition`
+branches on. So a path whose distinct values across the whole session number at
+most the threshold (default 12) exports verbatim.
+
+This is why redaction is two steps. `buildRedactionPolicy` walks the session and
+counts; `redactExchange` rewrites one exchange against the result. The split lets
+the viewer render the decisions it made, lets a reviewer override one path, and
+lets a single exchange be re-redacted after an override without recounting.
+
+Paths are keyed so that counting is meaningful: body leaves by JSON path with
+array indices collapsed (`body:$.entry[].resource.status`), query values by
+parameter name, headers by lowercased name, and URL segments by
+host-plus-path-template rather than by literal URL — counting per literal URL
+would give every record its own path and defeat the carve-out entirely.
+
+## What is structure and what is data
+
+Preserved verbatim, because it is format rather than content: JSON keys, nesting,
+array cardinality, HTTP status codes and status text, header _names_, content
+types, URL scheme and host, the URL path's shape, `null`, booleans, and empty
+strings. A skipped body's recorded size is kept too — it is a fact about what was
+dropped. A walked JSON body's size is recomputed from the rewritten bytes, since
+the pseudonyms are not the same length as what they replace.
+
+Pseudonymized, because it identifies: every JSON leaf value, header values,
+cookie values, query values, the body digest, and URL path segments that look
+like identifiers. A path segment "looks like an identifier" when it carries a
+digit or matches a recognized identifier shape — so `patients` and `v2` survive
+as the route structure a collector author needs, while `10432` and
+`8a3f…` do not.
+
+## Limits — read these before trusting a redacted export
+
+- **Only JSON bodies are walked.** An HTML, XML, or binary body is dropped at the
+  boundary and recorded as a `SkippedBody` with its size, because this module
+  cannot pseudonymize a format it cannot parse and shipping it unredacted is not
+  an option. A trace of an HTML-heavy portal loses most of its body content on
+  export.
+- **The body digest is pseudonymized, not preserved.** A real digest of a small
+  body lets a recipient confirm a guessed body, so the exported hash is an
+  opaque same-shaped value, not a checksum. Do not treat it as one.
+- **Response timings and status survive, and so does a skipped body's size.**
+  They are facts about the response that a collector author needs, and they
+  identify nothing on their own — but they are a side channel in the strict sense.
+- **The host survives, and so do the TLD of an email and the `iss`/`aud` of a
+  JWT.** These describe the _system_, which is the point of the export. They do
+  say which portal was visited.
+- **Very short values are pseudonymized but weakly.** A two-character value has a
+  small pseudonym space; the table guarantees it changes and stays distinct, but
+  not that it is unguessable.
+- **This is pseudonymization, not anonymization.** Structure, cardinality, and
+  the join relationships between endpoints all survive by design. A redacted
+  trace of a single-patient session still describes that session's shape.
+
+## Testing
+
+The five properties the boundary rests on are in
+`src/pseudonymizer/redact.test.ts`: no original leaf survives as a substring of
+the output, shape class is preserved, one salt is injective in both directions,
+two salts are disjoint, and keys/cardinality/URL structure are unchanged.
+
+The substring property is asserted for leaf values of eight characters or more.
+Shorter values will turn up inside a long fake by chance, and asserting otherwise
+would be asserting something false; that they still change and stay distinct is
+covered by the injectivity property, which applies at every length.
+
+See [Property Testing Reference](../../../../docs/Testing/Property%20Testing%20Reference.md)
+for the conventions those tests follow.

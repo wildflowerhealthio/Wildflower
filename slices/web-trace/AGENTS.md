@@ -29,7 +29,9 @@ It is consumed by both a collector and a React app, so it has to sit below both.
 
 - **Redaction happens at the export boundary and nowhere else.** Capture is
   lossless and the viewer shows raw data — it is the user's own device and their
-  own data.
+  own data. A change under `web-trace-core/src/pseudonymizer/` changes what
+  leaves the device; read the
+  [Redaction Explanation](./web-trace-core/docs/Redaction%20Explanation.md) first.
 - **A trace never claims to know what the sniffer did not observe.** There is no
   request method, no request headers, and no request body; anything that needs
   one says it is missing rather than guessing.
