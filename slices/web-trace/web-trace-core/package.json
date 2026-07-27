@@ -2,7 +2,7 @@
   "name": "web-trace-core",
   "version": "0.0.0",
   "private": true,
-  "description": "Pure core of the web-trace slice: the vocabulary of a recorded browsing session. No DOM, no fs, no UI — consumed by both a collector and the web-trace SMART app.",
+  "description": "Pure core of the web-trace slice: the vocabulary of a recorded browsing session and the TraceExchange ⇄ FHIR DocumentReference codec. No DOM, no fs, no UI — consumed by both a collector and the web-trace SMART app.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
@@ -17,6 +17,10 @@
     ".": {
       "source": "./src/index.ts",
       "default": "./dist/index.js"
+    },
+    "./codec": {
+      "source": "./src/codec/index.ts",
+      "default": "./dist/codec/index.js"
     },
     "./test-helpers": {
       "source": "./src/test-helpers.ts",
@@ -36,12 +40,15 @@
     "browser-sniffer-core": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
+    "fhir-r4": "workspace:*",
     "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
     "browser-sniffer-core": "workspace:*",
-    "effect": "catalog:"
+    "effect": "catalog:",
+    "fhir-r4": "workspace:*",
+    "kitchen-sink": "workspace:*"
   }
 }
