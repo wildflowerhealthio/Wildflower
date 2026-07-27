@@ -22,6 +22,10 @@
       "source": "./src/codec/index.ts",
       "default": "./dist/codec/index.js"
     },
+    "./pseudonymizer": {
+      "source": "./src/pseudonymizer/index.ts",
+      "default": "./dist/pseudonymizer/index.js"
+    },
     "./test-helpers": {
       "source": "./src/test-helpers.ts",
       "default": "./dist/test-helpers.js"

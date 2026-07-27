@@ -20,6 +20,9 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
   split; `TraceTimings` is what the capture could measure.
 - **`src/codec/`** — `TraceExchange` ⇄ FHIR R4 `DocumentReference`.
   `systems.ts` holds the private systems and extension URLs.
+- **`src/pseudonymizer/`** — the export boundary's redactor. `shapes.ts` detects
+  what a value looks like and generates another value that looks the same;
+  `hmac.ts` is the Web Crypto seam every fake is seeded from.
 - **`src/test-helpers.ts`** — `fast-check` arbitraries for realistic captures,
   exported as `web-trace-core/test-helpers` so downstream packages can reuse them.
 
@@ -65,6 +68,13 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
   artifacts that happen to contain PHI; an unset `subject` keeps them out of
   `Patient/$everything` and out of clinical exports. They stay reachable by
   `category` search — `isWebTrace` is the one place that predicate is spelled out.
+- **The `-core` layer talks to `globalThis.crypto.subtle`, not `node:crypto`.**
+  That is what keeps the pure layer platform-free, and it is why the
+  pseudonymizer is `Effect`-returning: Web Crypto has no synchronous digest.
+- **`detectShape`'s classes are ordered most-specific-first and are disjoint by
+  construction.** Loosening one regex can silently steal values from a later
+  class. The example table in `shapes.test.ts` is the readable statement of what
+  each class means; extend it when you touch a pattern.
 
 ## Testing
 

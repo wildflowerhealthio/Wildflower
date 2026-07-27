@@ -10,6 +10,7 @@ export default defineConfig({
     entry: {
       index: 'src/index.ts',
       'codec/index': 'src/codec/index.ts',
+      'pseudonymizer/index': 'src/pseudonymizer/index.ts',
       'test-helpers': 'src/test-helpers.ts',
     },
   },
