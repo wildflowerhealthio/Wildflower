@@ -19,7 +19,8 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
   HTTP exchange; `StoredBody` / `SkippedBody` is the captured-or-recorded-omission
   split; `TraceTimings` is what the capture could measure.
 - **`src/codec/`** — `TraceExchange` ⇄ FHIR R4 `DocumentReference`.
-  `systems.ts` holds the private systems and extension URLs.
+  `systems.ts` holds the private systems and extension URLs;
+  `fhir-duration.ts` is the `Duration` ⇄ FHIR `Duration` unit conversion.
 - **`src/pseudonymizer/`** — the export boundary's redactor. `shapes.ts` detects
   what a value looks like and generates another value that looks the same;
   `hmac.ts` is the Web Crypto seam every fake is seeded from.
@@ -80,6 +81,14 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
   to `null` / fail on encode, so a `valueDuration` only round-trips because
   `data-types/complex/duration.ts` registers itself. If timings start silently
   arriving as `null`, that registration is what to check.
+- **A `valueDuration` is parsed, not read.** `DurationFromFhirDuration` is the
+  schema; it interprets the UCUM `code` the resource states, so a timing written
+  in seconds decodes to a second-sized `Duration` and one in a unit with no
+  fixed length (`mo`, `a`) fails rather than being averaged. Reaching for
+  `.valueDuration?.value` instead reintroduces exactly the bug that motivated
+  it: everything silently read as milliseconds. `readTimings` therefore works on
+  the _decoded_ side, which is why `timings` is omitted from the struct the rest
+  of the decode goes through.
 - **`subject` stays absent on every trace resource.** Traces are engineering
   artifacts that happen to contain PHI; an unset `subject` keeps them out of
   `Patient/$everything` and out of clinical exports. They stay reachable by

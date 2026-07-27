@@ -3,8 +3,10 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
+import type * as FhirR4 from 'fhir/r4.d.ts'
+
 import { arbitraries, traceExchange } from '../test-helpers.ts'
-import type { TraceExchange } from '../trace-exchange.ts'
+import type { TraceExchange, TraceTimings } from '../trace-exchange.ts'
 import { traceResourceId } from '../trace-exchange.ts'
 import {
   fromDocumentReference,
@@ -47,6 +49,39 @@ const comparable = (
 
 const roundTrip = (exchange: TraceExchange): Promise<TraceExchange> =>
   Effect.runPromise(toDocumentReference(exchange).pipe(Effect.flatMap(fromDocumentReference)))
+
+/**
+ * Decodes a trace whose `wait` timing carries `valueDuration` verbatim, so a
+ * unit this codec never writes can still be put in front of the decoder.
+ */
+const decodeWithWaitDuration = (
+  valueDuration: FhirR4.Duration
+): Promise<typeof TraceTimings.Type> => {
+  const wire = traceExchangeToWire(
+    traceExchange({ timings: { wait: Duration.millis(1), receive: null } })
+  )
+  const patched = {
+    ...wire,
+    content: wire.content.map((entry) => ({
+      ...entry,
+      extension: entry.extension?.map((extension) =>
+        extension.url === RESPONSE_TIMINGS_EXTENSION
+          ? {
+              ...extension,
+              extension: extension.extension?.map((timing) =>
+                timing.url === TIMING_WAIT_EXTENSION ? { ...timing, valueDuration } : timing
+              ),
+            }
+          : extension
+      ),
+    })),
+  }
+  return Effect.runPromise(
+    Schema.decodeUnknown(TraceExchangeFromFhirJson)(patched).pipe(
+      Effect.map((exchange) => exchange.timings)
+    )
+  )
+}
 
 describe('TraceExchange ⇄ DocumentReference', () => {
   test('property: every exchange round-trips through a DocumentReference without loss', async () => {
@@ -209,26 +244,36 @@ describe('TraceExchange ⇄ DocumentReference', () => {
     const timings = traceExchangeToWire(exchange).content[0]?.extension?.find(
       (entry) => entry.url === RESPONSE_TIMINGS_EXTENSION
     )?.extension
-    expect(timings).toEqual([
-      {
-        url: TIMING_WAIT_EXTENSION,
-        valueDuration: {
-          value: 12.5,
-          unit: UCUM_MILLISECOND_CODE,
-          system: UCUM_SYSTEM,
-          code: UCUM_MILLISECOND_CODE,
-        },
-      },
-      {
-        url: TIMING_RECEIVE_EXTENSION,
-        valueDuration: {
-          value: 3,
-          unit: UCUM_MILLISECOND_CODE,
-          system: UCUM_SYSTEM,
-          code: UCUM_MILLISECOND_CODE,
-        },
-      },
+    expect(timings?.map((entry) => entry.url)).toEqual([
+      TIMING_WAIT_EXTENSION,
+      TIMING_RECEIVE_EXTENSION,
     ])
+    expect(timings?.[0]?.valueDuration).toMatchObject({
+      value: 12.5,
+      unit: UCUM_MILLISECOND_CODE,
+      system: UCUM_SYSTEM,
+      code: UCUM_MILLISECOND_CODE,
+    })
+    expect(timings?.[1]?.valueDuration).toMatchObject({ value: 3, code: UCUM_MILLISECOND_CODE })
+  })
+
+  test('a timing written in seconds decodes as seconds, not as milliseconds', async () => {
+    // The codec always writes `ms`, but a resource states its own unit and a
+    // server (or a later encoding) may pick another. Reading `.value` alone
+    // would make this 1.5 milliseconds.
+    const decoded = await decodeWithWaitDuration({
+      value: 1.5,
+      unit: 's',
+      system: UCUM_SYSTEM,
+      code: 's',
+    })
+    expect(decoded).toEqual({ wait: Duration.millis(1500), receive: null })
+  })
+
+  test('a timing in a unit that cannot be converted fails rather than being assumed', async () => {
+    await expect(
+      decodeWithWaitDuration({ value: 1, unit: 'fortnight', code: 'fortnight' })
+    ).rejects.toThrow(/fortnight/)
   })
 
   test('property: every extension url on the wire is absolute, nested ones included', () => {

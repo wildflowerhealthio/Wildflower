@@ -1,9 +1,11 @@
-import { Effect, ParseResult, Schema } from 'effect'
+import { DateTime, type Duration, Effect, ParseResult, Schema } from 'effect'
 import { DocumentReference } from 'fhir-r4/resources'
 
 import type * as FhirR4 from 'fhir/r4.d.ts'
 
+import type { TraceTimings } from '../trace-exchange.ts'
 import { TraceExchange, traceResourceId } from '../trace-exchange.ts'
+import { DurationFromFhirDuration } from './fhir-duration.ts'
 import {
   BODY_SKIPPED_REASON_EXTENSION,
   RESPONSE_HEADER_EXTENSION,
@@ -16,8 +18,6 @@ import {
   RESPONSE_TIMINGS_EXTENSION,
   TIMING_RECEIVE_EXTENSION,
   TIMING_WAIT_EXTENSION,
-  UCUM_MILLISECOND_CODE,
-  UCUM_SYSTEM,
   WEB_REQUEST_TRACE_CODE,
   WEB_TRACE_CATEGORY_CODE,
   WEB_TRACE_CODE_SYSTEM,
@@ -36,15 +36,27 @@ import {
  */
 
 type DocumentReferenceType = typeof DocumentReference.Schema.Type
-type TraceExchangeEncoded = typeof TraceExchange.Encoded
+
+/**
+ * The exchange minus its timings.
+ *
+ * @remarks
+ * Timings are the one field the decode does not read off the wire form:
+ * {@link readTimings} produces `Duration`s directly, from the units the FHIR
+ * `Duration`s state. Omitting the field here is what lets those `Duration`s be
+ * handed over as-is rather than converted back to milliseconds for
+ * `TraceExchange` to convert forward again.
+ */
+const TraceExchangeWithoutTimings = TraceExchange.omit('timings')
 
 // The `ParseResult.*` variants (rather than `Schema.*`) fail with a bare
 // `ParseIssue`, which is what a `transformOrFail` step has to return — so an
 // inner failure keeps its structure instead of being flattened into a string.
 const decodeResource = ParseResult.decodeUnknown(DocumentReference.Schema)
 const encodeResource = ParseResult.encode(DocumentReference.Schema)
-const decodeExchange = ParseResult.decodeUnknown(TraceExchange)
-const encodeExchange = Schema.encodeSync(TraceExchange)
+const decodeExchangeWithoutTimings = ParseResult.decodeUnknown(TraceExchangeWithoutTimings)
+const decodeDuration = ParseResult.decodeUnknown(DurationFromFhirDuration)
+const encodeDuration = Schema.encodeSync(DurationFromFhirDuration)
 
 /** A `valueString` sub-extension; the shape most leaf extensions here use. */
 const stringExtension = (url: string, value: string): FhirR4.Extension => ({
@@ -52,32 +64,19 @@ const stringExtension = (url: string, value: string): FhirR4.Extension => ({
   valueString: value,
 })
 
-/**
- * A `valueDuration` sub-extension, in milliseconds.
- *
- * @remarks
- * FHIR's `Duration` is a `Quantity`, and invariant `drt-1` requires a UCUM code
- * whenever there is a value — so the unit is stated three ways: `unit` for a
- * human, `system`/`code` for a machine.
- */
-const durationExtension = (url: string, milliseconds: number): FhirR4.Extension => ({
+/** A `valueDuration` sub-extension. {@link DurationFromFhirDuration} owns the units. */
+const durationExtension = (url: string, duration: Duration.Duration): FhirR4.Extension => ({
   url,
-  valueDuration: {
-    value: milliseconds,
-    unit: UCUM_MILLISECOND_CODE,
-    system: UCUM_SYSTEM,
-    code: UCUM_MILLISECOND_CODE,
-  },
+  valueDuration: encodeDuration(duration),
 })
 
 /**
  * Human-readable one-liner for `DocumentReference.description`, e.g.
  * `https://portal.example/api/patients?q=… → 200`.
  */
-const describeExchange = (exchange: TraceExchangeEncoded): string =>
-  `${exchange.url} → ${exchange.status}`
+const describeExchange = (exchange: TraceExchange): string => `${exchange.url} → ${exchange.status}`
 
-const headersExtension = (exchange: TraceExchangeEncoded): FhirR4.Extension => ({
+const headersExtension = (exchange: TraceExchange): FhirR4.Extension => ({
   url: RESPONSE_HEADERS_EXTENSION,
   extension: exchange.headers.map(([name, value]) => ({
     url: RESPONSE_HEADER_EXTENSION,
@@ -88,21 +87,21 @@ const headersExtension = (exchange: TraceExchangeEncoded): FhirR4.Extension => (
   })),
 })
 
-const timingsExtension = (exchange: TraceExchangeEncoded): readonly FhirR4.Extension[] => {
-  const { waitMs, receiveMs } = exchange.timings
-  if (waitMs === null && receiveMs === null) return []
+const timingsExtension = (exchange: TraceExchange): readonly FhirR4.Extension[] => {
+  const { wait, receive } = exchange.timings
+  if (wait === null && receive === null) return []
   return [
     {
       url: RESPONSE_TIMINGS_EXTENSION,
       extension: [
-        ...(waitMs === null ? [] : [durationExtension(TIMING_WAIT_EXTENSION, waitMs)]),
-        ...(receiveMs === null ? [] : [durationExtension(TIMING_RECEIVE_EXTENSION, receiveMs)]),
+        ...(wait === null ? [] : [durationExtension(TIMING_WAIT_EXTENSION, wait)]),
+        ...(receive === null ? [] : [durationExtension(TIMING_RECEIVE_EXTENSION, receive)]),
       ],
     },
   ]
 }
 
-const contentEntry = (exchange: TraceExchangeEncoded): FhirR4.DocumentReferenceContent => ({
+const contentEntry = (exchange: TraceExchange): FhirR4.DocumentReferenceContent => ({
   extension: [
     headersExtension(exchange),
     ...timingsExtension(exchange),
@@ -122,16 +121,18 @@ const contentEntry = (exchange: TraceExchangeEncoded): FhirR4.DocumentReferenceC
 })
 
 /**
- * The wire resource for an already-encoded exchange — the half of the encoding
- * that is a pure rearrangement, with no schema work of its own.
+ * Encodes one recorded exchange as the FHIR R4 `DocumentReference` wire object.
+ *
+ * @param exchange - The exchange to encode
+ * @returns The wire-format resource, ready to decode or to write
  *
  * @remarks
- * Takes the *encoded* exchange (`startedAt` an ISO string, timings bare
- * milliseconds) because that is what the schema transform is handed. Nothing
- * here restates a decode: `TraceExchange` has already said what a `Duration`
- * looks like on the wire.
+ * `subject` is deliberately absent: traces are engineering artifacts that happen
+ * to contain PHI, and leaving `subject` unset keeps them out of
+ * `Patient/$everything` and out of clinical exports. They stay reachable by
+ * `category` search.
  */
-const wireFromEncodedExchange = (exchange: TraceExchangeEncoded): FhirR4.DocumentReference => ({
+const traceExchangeToWire = (exchange: TraceExchange): FhirR4.DocumentReference => ({
   resourceType: 'DocumentReference',
   id: traceResourceId(exchange),
   status: 'current',
@@ -150,26 +151,11 @@ const wireFromEncodedExchange = (exchange: TraceExchangeEncoded): FhirR4.Documen
   ],
   type: { coding: [{ system: WEB_TRACE_CODE_SYSTEM, code: WEB_REQUEST_TRACE_CODE }] },
   category: [{ coding: [{ system: WEB_TRACE_CODE_SYSTEM, code: WEB_TRACE_CATEGORY_CODE }] }],
-  date: exchange.startedAt,
+  date: DateTime.formatIso(exchange.startedAt),
   description: describeExchange(exchange),
   securityLabel: [{ coding: [{ system: WEB_TRACE_REDACTION_SYSTEM, code: WEB_TRACE_RAW_CODE }] }],
   content: [contentEntry(exchange)],
 })
-
-/**
- * Encodes one recorded exchange as the FHIR R4 `DocumentReference` wire object.
- *
- * @param exchange - The exchange to encode
- * @returns The wire-format resource, ready to decode or to write
- *
- * @remarks
- * `subject` is deliberately absent: traces are engineering artifacts that happen
- * to contain PHI, and leaving `subject` unset keeps them out of
- * `Patient/$everything` and out of clinical exports. They stay reachable by
- * `category` search.
- */
-const traceExchangeToWire = (exchange: TraceExchange): FhirR4.DocumentReference =>
-  wireFromEncodedExchange(encodeExchange(exchange))
 
 /** Finds the first extension with `url`, at whatever level it was handed. */
 const findExtension = (
@@ -191,20 +177,43 @@ const readHeaders = (
     }
   )
 
-// A `Duration` with no `value` is the same absence as no sub-extension at all.
-const readDurationMillis = (
+/**
+ * Reads one timing sub-extension as a `Duration`, or `null` if it is absent.
+ *
+ * @remarks
+ * An absent sub-extension is "not measured". A present one is *parsed*, not
+ * read: {@link DurationFromFhirDuration} interprets the UCUM code the resource
+ * states, so a duration written in seconds decodes to a second-sized
+ * `Duration`, and one whose unit cannot be converted fails instead of passing
+ * for milliseconds.
+ */
+const readDuration = (
   timings: readonly FhirR4.Extension[] | undefined,
   url: string
-): number | null => findExtension(timings, url)?.valueDuration?.value ?? null
+): Effect.Effect<Duration.Duration | null, ParseResult.ParseIssue> => {
+  const quantity = findExtension(timings, url)?.valueDuration
+  return quantity === undefined ? Effect.succeed(null) : decodeDuration(quantity)
+}
 
-// The result feeds the schema's `TraceExchange` decode, so this reads the
-// *encoded* timings — milliseconds, not `Duration`s.
-const readTimings = (content: FhirR4.DocumentReferenceContent): TraceExchangeEncoded['timings'] => {
+/**
+ * Reads the observed timings, decoded — `Duration`s, not milliseconds.
+ *
+ * @remarks
+ * This is the one part of a resource the codec decodes itself rather than
+ * handing to `TraceExchange`, because the wire form carries its own unit and
+ * `TraceTimings` does not: `waitMs` means milliseconds by name, while a FHIR
+ * `Duration` means whatever its `code` says. Parsing here and omitting
+ * `timings` from {@link TraceExchangeWithoutTimings} keeps the two facts from
+ * having to agree.
+ */
+const readTimings = (
+  content: FhirR4.DocumentReferenceContent
+): Effect.Effect<typeof TraceTimings.Type, ParseResult.ParseIssue> => {
   const timings = findExtension(content.extension, RESPONSE_TIMINGS_EXTENSION)?.extension
-  return {
-    waitMs: readDurationMillis(timings, TIMING_WAIT_EXTENSION),
-    receiveMs: readDurationMillis(timings, TIMING_RECEIVE_EXTENSION),
-  }
+  return Effect.all({
+    wait: readDuration(timings, TIMING_WAIT_EXTENSION),
+    receive: readDuration(timings, TIMING_RECEIVE_EXTENSION),
+  })
 }
 
 const readBody = (content: FhirR4.DocumentReferenceContent): Record<string, unknown> => {
@@ -221,18 +230,25 @@ const readBody = (content: FhirR4.DocumentReferenceContent): Record<string, unkn
 }
 
 /**
- * Reads the encoded exchange out of a `DocumentReference` wire object, or names
- * the first thing the encoding requires and the resource does not carry.
+ * Reads the exchange — minus its timings — out of a `DocumentReference` wire
+ * object, or names the first thing the encoding requires and the resource does
+ * not carry.
  *
  * @remarks
- * Returns the *encoded* form; the surrounding schema turns it into a
- * `TraceExchange`, so a wire value of the wrong type fails as a `ParseIssue`
- * against `TraceExchange` rather than as a hand-written check here.
+ * Returns the *encoded* form for {@link TraceExchangeWithoutTimings} to decode,
+ * so a wire value of the wrong type fails as a `ParseIssue` against the schema
+ * rather than as a hand-written check here. Timings are the exception and come
+ * from {@link readTimings}, which is why the content entry is handed back
+ * alongside.
  */
 const readEncodedExchange = (
   wire: FhirR4.DocumentReference
 ):
-  | { readonly ok: true; readonly value: unknown }
+  | {
+      readonly ok: true
+      readonly value: unknown
+      readonly content: FhirR4.DocumentReferenceContent
+    }
   | { readonly ok: false; readonly reason: string } => {
   const content = wire.content?.[0]
   if (content === undefined) return { ok: false, reason: 'No content entry' }
@@ -252,6 +268,7 @@ const readEncodedExchange = (
 
   return {
     ok: true,
+    content,
     value: {
       sessionId,
       requestId,
@@ -260,7 +277,6 @@ const readEncodedExchange = (
       statusText,
       headers: readHeaders(content),
       startedAt: wire.date,
-      timings: readTimings(content),
       body: readBody(content),
     },
   }
@@ -277,10 +293,11 @@ const readEncodedExchange = (
  *
  * Both directions fail the way any schema does, with a `ParseError`: a resource
  * that is missing the status extension, the trace identifiers, or a content
- * entry raises a `ParseResult.Type` issue naming what was missing, and anything
+ * entry raises a `ParseResult.Type` issue naming what was missing; anything
  * present but ill-typed fails against `TraceExchange` itself rather than against
- * a hand-written check. Compose it, refine it, or put it in a struct like any
- * other schema.
+ * a hand-written check; and a timing in a unit that cannot be converted fails
+ * against {@link DurationFromFhirDuration}. Compose it, refine it, or put it in
+ * a struct like any other schema.
  */
 const TraceExchangeFromDocumentReference: Schema.Schema<TraceExchange, DocumentReferenceType> =
   Schema.transformOrFail(
@@ -293,7 +310,10 @@ const TraceExchangeFromDocumentReference: Schema.Schema<TraceExchange, DocumentR
           Effect.flatMap((wire) => {
             const read = readEncodedExchange(wire)
             return read.ok
-              ? decodeExchange(read.value)
+              ? Effect.all({
+                  exchange: decodeExchangeWithoutTimings(read.value),
+                  timings: readTimings(read.content),
+                }).pipe(Effect.map(({ exchange, timings }) => ({ ...exchange, timings })))
               : Effect.fail(
                   new ParseResult.Type(ast, resource, `${wire.id ?? '<no id>'}: ${read.reason}`)
                 )
