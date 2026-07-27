@@ -1,0 +1,495 @@
+import { Effect, Schema } from 'effect'
+import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
+import { describe, expect, test } from 'vite-plus/test'
+
+import { arbitraries, jsonBody, traceExchange } from '../test-helpers.ts'
+import type { TraceBody, TraceExchange } from '../trace-exchange.ts'
+import { type JsonLeaf, type LeafVisitor, mapExchangeLeaves } from './leaves.ts'
+import { buildRedactionPolicy, redactExchange, redactSession } from './redact.ts'
+import { detectShape } from './shapes.ts'
+
+const { session: sessionArbitrary } = arbitraries(fc)
+
+const decodeBase64 = Schema.decodeSync(Schema.StringFromBase64)
+const decodeBase64Url = Schema.decodeSync(Schema.StringFromBase64Url)
+
+const SALT_A = 'test-salt-a'
+const SALT_B = 'test-salt-b'
+
+/** `JSON.parse` narrowed to `unknown` at the boundary, so no assertion is needed downstream. */
+const parseUnknown = (text: string): unknown => JSON.parse(text)
+
+/** Reads a stored JSON body through `schema`. Throws if the body was skipped — that is a test bug. */
+const storedJson = <A, I>(body: TraceBody, schema: Schema.Schema<A, I>): A => {
+  if (body._tag !== 'StoredBody') throw new Error('Expected a stored body')
+  return Schema.decodeUnknownSync(schema)(parseUnknown(decodeBase64(body.data)))
+}
+
+/** Reads a JWT segment's claims as an open record, for asserting on claim names. */
+const claimsOf = (segment: string): Record<string, unknown> =>
+  Schema.decodeUnknownSync(Schema.Record({ key: Schema.String, value: Schema.Unknown }))(
+    parseUnknown(decodeBase64Url(segment))
+  )
+
+/** Everything a reader of the exported exchange could actually see, as one string. */
+const renderExchange = (exchange: TraceExchange): string =>
+  [
+    exchange.url,
+    exchange.headers.map(([name, value]) => `${name}: ${value}`).join('\n'),
+    exchange.body.hash,
+    exchange.body._tag === 'StoredBody' ? decodeBase64(exchange.body.data) : exchange.body.reason,
+  ].join('\n')
+
+/** Every leaf the traversal visits, in visit order — the pairing key for before/after. */
+const collectLeaves = (exchange: TraceExchange): Promise<readonly JsonLeaf[]> => {
+  const collected: JsonLeaf[] = []
+  const collecting: LeafVisitor<never> = {
+    visitString: (_path, value) => Effect.sync(() => (collected.push(value), value)),
+    visitJsonLeaf: (_path, value) => Effect.sync(() => (collected.push(value), value)),
+  }
+  return Effect.runPromise(mapExchangeLeaves(exchange, collecting).pipe(Effect.as(collected)))
+}
+
+const collectSessionLeaves = async (
+  exchanges: readonly TraceExchange[]
+): Promise<readonly JsonLeaf[]> => (await Promise.all(exchanges.map(collectLeaves))).flat()
+
+const redactWith = (
+  exchanges: readonly TraceExchange[],
+  options: { readonly salt: string; readonly enumCarveOut?: boolean }
+): Promise<readonly TraceExchange[]> =>
+  Effect.runPromise(
+    buildRedactionPolicy(exchanges, {
+      salt: options.salt,
+      enumCarveOut: options.enumCarveOut ?? false,
+    }).pipe(Effect.flatMap((policy) => redactSession(policy, exchanges)))
+  )
+
+/** Structure only: object keys, array cardinality, and leaf types. No values. */
+const skeleton = (value: unknown): unknown => {
+  if (Array.isArray(value)) return { array: value.length, of: value.map(skeleton) }
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, skeleton(child)]))
+  }
+  return value === null ? 'null' : typeof value
+}
+
+const bodySkeleton = (exchange: TraceExchange): unknown =>
+  exchange.body._tag === 'StoredBody'
+    ? skeleton(JSON.parse(decodeBase64(exchange.body.data)))
+    : { skipped: exchange.body.contentType }
+
+const urlStructure = (url: string): unknown => {
+  const parsed = new URL(url)
+  return {
+    protocol: parsed.protocol,
+    host: parsed.host,
+    segments: parsed.pathname.split('/').length,
+    queryNames: [...parsed.searchParams.keys()],
+  }
+}
+
+describe('the pseudonymizer', () => {
+  test('property: no original leaf value survives as a substring of any output', async () => {
+    await fc.assert(
+      fc.asyncProperty(sessionArbitrary, async (session) => {
+        const redacted = await redactWith(session, { salt: SALT_A })
+        const output = redacted.map(renderExchange).join('\n')
+        // Short values are excluded on purpose: a two-character value will turn
+        // up inside a long fake by chance, and a value that short is not what a
+        // privacy boundary exists to protect. Every pseudonymized leaf, of any
+        // length, is separately asserted never to equal itself after redaction
+        // by the shape-and-injectivity properties below.
+        const originals = (await collectSessionLeaves(session))
+          .filter((leaf): leaf is string => typeof leaf === 'string')
+          .filter((leaf) => leaf.length >= 8)
+        expect(originals.length).toBeGreaterThan(0)
+        for (const original of originals) expect(output).not.toContain(original)
+      }),
+      { numRuns: numRunsFor({ base: 60 }) }
+    )
+  })
+
+  test('property: every pseudonymized leaf keeps its shape class', async () => {
+    await fc.assert(
+      fc.asyncProperty(sessionArbitrary, async (session) => {
+        const redacted = await redactWith(session, { salt: SALT_A })
+        const before = await collectSessionLeaves(session)
+        const after = await collectSessionLeaves(redacted)
+        expect(after).toHaveLength(before.length)
+        for (const [index, original] of before.entries()) {
+          const replacement = after[index]
+          if (original === null || typeof original === 'boolean' || original === '') {
+            expect(replacement).toEqual(original)
+            continue
+          }
+          expect(typeof replacement).toBe(typeof original)
+          expect(detectShape(String(replacement))).toBe(detectShape(String(original)))
+        }
+      }),
+      { numRuns: numRunsFor({ base: 60 }) }
+    )
+  })
+
+  test('property: within one salt, equal inputs map to equal outputs and unequal to unequal', async () => {
+    await fc.assert(
+      fc.asyncProperty(sessionArbitrary, async (session) => {
+        const redacted = await redactWith(session, { salt: SALT_A })
+        const before = await collectSessionLeaves(session)
+        const after = await collectSessionLeaves(redacted)
+
+        const forward = new Map<string, string>()
+        const backward = new Map<string, string>()
+        for (const [index, original] of before.entries()) {
+          if (original === null || typeof original === 'boolean' || original === '') continue
+          const input = String(original)
+          const output = String(after[index])
+          // Equal inputs → equal outputs: the correspondence that tells a
+          // collector author two endpoints share a key.
+          expect(forward.get(input) ?? output).toBe(output)
+          // Unequal inputs → unequal outputs: no two originals may read as one.
+          expect(backward.get(output) ?? input).toBe(input)
+          forward.set(input, output)
+          backward.set(output, input)
+        }
+      }),
+      { numRuns: numRunsFor({ base: 60 }) }
+    )
+  })
+
+  test('property: two salts produce disjoint outputs for the same session', async () => {
+    // Restricted to high-entropy identifiers: a three-digit id has a thousand
+    // possible fakes, so two independent salts landing on the same one says
+    // nothing about the salts.
+    const highEntropy = fc.array(fc.uuid(), { minLength: 2, maxLength: 5 }).map((ids) =>
+      ids.map((id, index) =>
+        traceExchange({
+          requestId: `req-${index}`,
+          url: `https://portal.example.org/api/v2/patients/${id}`,
+          body: {
+            _tag: 'StoredBody',
+            contentType: 'application/json',
+            data: jsonBody({ id, mrn: `MRN${id.replaceAll('-', '')}` }),
+            size: 64,
+            hash: 'RBNvo1WzZ4oRRq0W9+hknpT7T8If536DEMBg9hyq/4o=',
+          },
+        })
+      )
+    )
+
+    await fc.assert(
+      fc.asyncProperty(highEntropy, async (session) => {
+        const withA = await collectSessionLeaves(await redactWith(session, { salt: SALT_A }))
+        const withB = await collectSessionLeaves(await redactWith(session, { salt: SALT_B }))
+        const outputsOfA = new Set(
+          withA.filter((leaf): leaf is string => typeof leaf === 'string' && leaf.length >= 8)
+        )
+        const overlap = withB.filter(
+          (leaf): leaf is string => typeof leaf === 'string' && outputsOfA.has(leaf)
+        )
+        expect(overlap).toEqual([])
+      }),
+      { numRuns: numRunsFor({ base: 40 }) }
+    )
+  })
+
+  test('property: JSON keys, array cardinality, header names and URL structure survive', async () => {
+    await fc.assert(
+      fc.asyncProperty(sessionArbitrary, async (session) => {
+        const redacted = await redactWith(session, { salt: SALT_A })
+        for (const [index, original] of session.entries()) {
+          const after = redacted[index]
+          expect(after).toBeDefined()
+          if (after === undefined) continue
+          expect(bodySkeleton(after)).toEqual(bodySkeleton(original))
+          expect(after.headers.map(([name]) => name)).toEqual(
+            original.headers.map(([name]) => name)
+          )
+          expect(urlStructure(after.url)).toEqual(urlStructure(original.url))
+          // Status, statusText and the capture instant are facts about the
+          // response, not about a person.
+          expect(after.status).toBe(original.status)
+          expect(after.statusText).toBe(original.statusText)
+          expect(after.startedAt).toEqual(original.startedAt)
+        }
+      }),
+      { numRuns: numRunsFor({ base: 60 }) }
+    )
+  })
+})
+
+describe('cross-endpoint identifier joins', () => {
+  test('the same identifier under different key names lands on the same pseudonym', async () => {
+    const shared = 'e4b1c0aa-1f2c-4b6a-9d3e-77a10b2c3d4e'
+    const session = [
+      traceExchange({
+        requestId: 'req-0',
+        url: 'https://portal.example.org/api/v2/patients',
+        body: {
+          _tag: 'StoredBody',
+          contentType: 'application/json',
+          data: jsonBody({ pid: shared }),
+          size: 48,
+          hash: 'RBNvo1WzZ4oRRq0W9+hknpT7T8If536DEMBg9hyq/4o=',
+        },
+      }),
+      traceExchange({
+        requestId: 'req-1',
+        url: 'https://api.example.com/v1/observations',
+        body: {
+          _tag: 'StoredBody',
+          contentType: 'application/json',
+          data: jsonBody({ patientId: shared, other: shared }),
+          size: 96,
+          hash: 'RBNvo1WzZ4oRRq0W9+hknpT7T8If536DEMBg9hyq/4o=',
+        },
+      }),
+    ]
+    const [first, second] = await redactWith(session, { salt: SALT_A })
+    expect(first).toBeDefined()
+    expect(second).toBeDefined()
+    if (first === undefined || second === undefined) return
+
+    const { pid } = storedJson(first.body, Schema.Struct({ pid: Schema.String }))
+    const { patientId, other } = storedJson(
+      second.body,
+      Schema.Struct({ patientId: Schema.String, other: Schema.String })
+    )
+
+    expect(pid).not.toBe(shared)
+    expect(patientId).toBe(pid)
+    expect(other).toBe(pid)
+  })
+})
+
+describe('the enum carve-out', () => {
+  const statusSession = (statuses: readonly string[]): readonly TraceExchange[] =>
+    statuses.map((status, index) =>
+      traceExchange({
+        requestId: `req-${index}`,
+        body: {
+          _tag: 'StoredBody',
+          contentType: 'application/json',
+          data: jsonBody({ status, id: `record-${index}-8f3a11c9b2` }),
+          size: 40,
+          hash: 'RBNvo1WzZ4oRRq0W9+hknpT7T8If536DEMBg9hyq/4o=',
+        },
+      })
+    )
+
+  const RecordShape = Schema.Struct({ status: Schema.String, id: Schema.String })
+
+  const statusesOf = (exchanges: readonly TraceExchange[]): readonly string[] =>
+    exchanges.map((exchange) => storedJson(exchange.body, RecordShape).status)
+
+  const idsOf = (exchanges: readonly TraceExchange[]): readonly string[] =>
+    exchanges.map((exchange) => storedJson(exchange.body, RecordShape).id)
+
+  test('a low-cardinality path exports verbatim while its high-cardinality sibling does not', async () => {
+    // Sixteen exchanges cycling three statuses: `$.status` has three distinct
+    // values across the session and stays; `$.id` has sixteen and does not.
+    const statuses = Array.from(
+      { length: 16 },
+      (_unused, index) => ['active', 'completed', 'cancelled'][index % 3] ?? 'active'
+    )
+    const session = statusSession(statuses)
+    const redacted = await Effect.runPromise(
+      buildRedactionPolicy(session, { salt: SALT_A }).pipe(
+        Effect.flatMap((policy) => redactSession(policy, session))
+      )
+    )
+    expect(statusesOf(redacted)).toEqual(statuses)
+    expect(idsOf(redacted)).not.toEqual(idsOf(session))
+  })
+
+  test('a path above the threshold is pseudonymized', async () => {
+    const session = statusSession(['a1', 'b2', 'c3', 'd4', 'e5'])
+    const redacted = await Effect.runPromise(
+      buildRedactionPolicy(session, { salt: SALT_A, enumThreshold: 3 }).pipe(
+        Effect.flatMap((policy) => redactSession(policy, session))
+      )
+    )
+    expect(statusesOf(redacted)).not.toEqual(statusesOf(session))
+  })
+
+  test('a per-path override wins over the threshold in both directions', async () => {
+    const session = statusSession(['active', 'completed', 'active'])
+    const redacted = await Effect.runPromise(
+      buildRedactionPolicy(session, {
+        salt: SALT_A,
+        overrides: { 'body:$.status': 'pseudonymize', 'body:$.id': 'verbatim' },
+      }).pipe(Effect.flatMap((policy) => redactSession(policy, session)))
+    )
+    expect(statusesOf(redacted)).not.toEqual(statusesOf(session))
+    expect(idsOf(redacted)).toEqual(idsOf(session))
+  })
+
+  test('the policy reports its decisions for the viewer to render', async () => {
+    const session = statusSession(
+      Array.from({ length: 16 }, (_unused, index) => (index % 2 === 0 ? 'active' : 'completed'))
+    )
+    const policy = await Effect.runPromise(buildRedactionPolicy(session, { salt: SALT_A }))
+    expect(policy.stats.find((stat) => stat.path === 'body:$.status')).toEqual({
+      path: 'body:$.status',
+      distinctValues: 2,
+      verbatim: true,
+      decidedBy: 'threshold',
+    })
+    expect(policy.stats.find((stat) => stat.path === 'body:$.id')).toEqual({
+      path: 'body:$.id',
+      distinctValues: 16,
+      verbatim: false,
+      decidedBy: 'threshold',
+    })
+  })
+})
+
+describe('bodies the pseudonymizer cannot walk', () => {
+  test('a non-JSON body is dropped, keeping its size and naming why', async () => {
+    const session = [
+      traceExchange({
+        headers: [['Content-Type', 'text/html']],
+        body: {
+          _tag: 'StoredBody',
+          contentType: 'text/html',
+          data: jsonBody('<html><body>Ada Lovelace, MRN 88213</body></html>'),
+          size: 48,
+          hash: 'RBNvo1WzZ4oRRq0W9+hknpT7T8If536DEMBg9hyq/4o=',
+        },
+      }),
+    ]
+    const [redacted] = await redactWith(session, { salt: SALT_A })
+    expect(redacted?.body._tag).toBe('SkippedBody')
+    expect(redacted?.body.size).toBe(48)
+    expect(renderExchange(redacted)).not.toContain('Lovelace')
+  })
+
+  test('the body hash is pseudonymized, so a guessed body cannot be confirmed against it', async () => {
+    const hash = 'RBNvo1WzZ4oRRq0W9+hknpT7T8If536DEMBg9hyq/4o='
+    const [redacted] = await redactWith(
+      [
+        traceExchange({
+          body: {
+            _tag: 'SkippedBody',
+            contentType: 'image/png',
+            size: 1024,
+            hash,
+            reason: 'Content type outside the allowlist',
+          },
+        }),
+      ],
+      { salt: SALT_A }
+    )
+    expect(redacted?.body.hash).not.toBe(hash)
+    expect(redacted?.body.hash).toHaveLength(hash.length)
+  })
+})
+
+describe('JWTs', () => {
+  const token = [
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9',
+    'eyJzdWIiOiJlNGIxYzBhYS0xZjJjLTRiNmEtOWQzZS03N2ExMGIyYzNkNGUiLCJpc3MiOiJodHRwczovL2F1dGguZXhhbXBsZS5vcmciLCJleHAiOjE3MTAxNTAwNjJ9',
+    'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk',
+  ].join('.')
+
+  test('a token becomes a structurally valid fake that keeps the mechanism and drops the subject', async () => {
+    const session = [
+      traceExchange({
+        headers: [
+          ['Content-Type', 'application/json'],
+          ['Authorization-Token', token],
+        ],
+      }),
+    ]
+    const [redacted] = await redactWith(session, { salt: SALT_A })
+    const fake = redacted?.headers.find(([name]) => name === 'Authorization-Token')?.[1] ?? ''
+    expect(fake).not.toBe(token)
+
+    const [header, payload, signature] = fake.split('.')
+    expect(signature).toHaveLength(43)
+    const decodedHeader = claimsOf(header ?? '')
+    const decodedPayload = claimsOf(payload ?? '')
+
+    // The mechanism survives: a collector author learns the algorithm, the
+    // issuer, and which claims the endpoint expects.
+    expect(decodedHeader).toEqual({ alg: 'HS256', typ: 'JWT' })
+    expect(Object.keys(decodedPayload)).toEqual(['sub', 'iss', 'exp'])
+    expect(decodedPayload['iss']).toBe('https://auth.example.org')
+    // The subject does not.
+    expect(decodedPayload['sub']).not.toBe('e4b1c0aa-1f2c-4b6a-9d3e-77a10b2c3d4e')
+    expect(decodedPayload['sub']).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+    )
+    expect(typeof decodedPayload['exp']).toBe('number')
+  })
+
+  test('a claim inside the token joins with the same identifier in a response body', async () => {
+    const subject = 'e4b1c0aa-1f2c-4b6a-9d3e-77a10b2c3d4e'
+    const session = [
+      traceExchange({
+        requestId: 'req-0',
+        headers: [
+          ['Content-Type', 'application/json'],
+          ['Authorization-Token', token],
+        ],
+        body: {
+          _tag: 'StoredBody',
+          contentType: 'application/json',
+          data: jsonBody({ patientId: subject }),
+          size: 48,
+          hash: 'RBNvo1WzZ4oRRq0W9+hknpT7T8If536DEMBg9hyq/4o=',
+        },
+      }),
+    ]
+    const [redacted] = await redactWith(session, { salt: SALT_A })
+    expect(redacted).toBeDefined()
+    if (redacted === undefined) return
+    const fake = redacted.headers.find(([name]) => name === 'Authorization-Token')?.[1] ?? ''
+    const claims = claimsOf(fake.split('.')[1] ?? '')
+    const { patientId } = storedJson(redacted.body, Schema.Struct({ patientId: Schema.String }))
+    expect(claims['sub']).toBe(patientId)
+  })
+})
+
+describe('redaction stability', () => {
+  test('property: redacting twice through one policy is idempotent for a given exchange', async () => {
+    await fc.assert(
+      fc.asyncProperty(sessionArbitrary, async (session) => {
+        const outcome = await Effect.runPromise(
+          buildRedactionPolicy(session, { salt: SALT_A, enumCarveOut: false }).pipe(
+            Effect.flatMap((policy) =>
+              Effect.all(
+                session.map((exchange) =>
+                  Effect.all([redactExchange(policy, exchange), redactExchange(policy, exchange)])
+                )
+              )
+            )
+          )
+        )
+        for (const [first, second] of outcome) expect(second).toEqual(first)
+      }),
+      { numRuns: numRunsFor({ base: 40 }) }
+    )
+  })
+
+  test('two policies built from the same salt and session agree', async () => {
+    const session = statusSessionFixture()
+    const first = await redactWith(session, { salt: SALT_A })
+    const second = await redactWith(session, { salt: SALT_A })
+    expect(second).toEqual(first)
+  })
+})
+
+const statusSessionFixture = (): readonly TraceExchange[] => [
+  traceExchange({
+    requestId: 'req-0',
+    body: {
+      _tag: 'StoredBody',
+      contentType: 'application/json',
+      data: jsonBody({ id: 'record-8f3a11c9b2', status: 'active' }),
+      size: 40,
+      hash: 'RBNvo1WzZ4oRRq0W9+hknpT7T8If536DEMBg9hyq/4o=',
+    },
+  }),
+]
