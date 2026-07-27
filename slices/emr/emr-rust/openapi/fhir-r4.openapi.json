@@ -6801,6 +6801,59 @@
               "type": "string"
             },
             "required": false
+          },
+          {
+            "name": "_id",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "identifier",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "current",
+                "superseded",
+                "entered-in-error"
+              ]
+            },
+            "required": false
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/DateTimeUtc"
+            },
+            "required": false
           }
         ],
         "security": [],
@@ -7915,6 +7968,29 @@
                   },
                   "_pageToken": {
                     "type": "string"
+                  },
+                  "_id": {
+                    "type": "string"
+                  },
+                  "identifier": {
+                    "type": "string"
+                  },
+                  "category": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "current",
+                      "superseded",
+                      "entered-in-error"
+                    ]
+                  },
+                  "date": {
+                    "$ref": "#/components/schemas/DateTimeUtc"
                   }
                 },
                 "additionalProperties": false
@@ -7927,7 +8003,12 @@
     }
   },
   "components": {
-    "schemas": {},
+    "schemas": {
+      "DateTimeUtc": {
+        "type": "string",
+        "description": "a string to be decoded into a DateTime.Utc"
+      }
+    },
     "securitySchemes": {}
   },
   "security": [],
