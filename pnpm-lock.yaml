@@ -2191,6 +2191,9 @@ importers:
       fast-check:
         specifier: 'catalog:'
         version: 3.23.2
+      fhir-r4:
+        specifier: workspace:*
+        version: link:../../emr/fhir-r4
       kitchen-sink:
         specifier: workspace:*
         version: link:../../../global/kitchen-sink
