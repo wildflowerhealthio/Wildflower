@@ -18,17 +18,14 @@ type RemoteResponseHeaders = readonly (readonly [string, string])[]
  * @remarks
  * The constructor mirrors the sniffer's `ResponseStart` wire body field-for-field
  * (`id`, `url`, `status`, `statusText`, `headers`) and adds `startedAt`, the
- * instant the tracker observed that event. Everything an entity is allowed to
- * know about a response is here: the tracker never pre-extracts a slice of it,
- * so an entity can reach for `text()`, `bytes()`, `headers`, or `url` on demand
- * without the dispatcher having to guess in advance which it will need.
+ * instant the tracker observed that event. Everything an entity may know about a
+ * response is here — the tracker never pre-extracts a slice of it.
  *
- * `id` and `startedAt` exist for a capturing entity that records the exchange
- * itself rather than decoding a payload out of it (`web-trace-collector`): the
- * id is the sniffer's own per-request correlation key, which makes a recorded
- * exchange's storage id deterministic without threading a counter through
- * `parse`, and `startedAt` is the only instant on the response the sniffer
- * actually observes. A decoding entity is free to ignore both.
+ * `id` and `startedAt` serve a *capturing* entity, one that records the exchange
+ * rather than decoding a payload out of it: `id` is the sniffer's per-request
+ * correlation key, which makes a recorded exchange's storage id deterministic
+ * without threading a counter through `parse`, and `startedAt` is the only
+ * instant on the response the sniffer observes. A decoding entity ignores both.
  */
 class RemoteResponse {
   #chunks: Uint8Array[] = []
@@ -62,21 +59,18 @@ class RemoteResponse {
    * @returns A fresh `Uint8Array` of every buffered chunk concatenated in order
    *
    * @remarks
-   * The lossless counterpart to {@link text}: a body that is not valid UTF-8
-   * (an image, a protobuf, a gzip the shim did not decode) survives here but
-   * comes back from `text()` peppered with U+FFFD replacement characters, and
-   * a re-encode of that string is not the body that arrived. An entity that
-   * stores, hashes, or forwards a body must read it through this; one that
-   * decodes a known-JSON payload can keep using `text()`.
+   * The lossless counterpart to {@link text}: a body that is not valid UTF-8 (an
+   * image, a protobuf, a gzip the shim did not decode) survives here but comes
+   * back from `text()` peppered with U+FFFD, and a re-encode of that string is
+   * not the body that arrived. An entity that stores, hashes, or forwards a body
+   * must read it through this; one decoding a known-JSON payload can keep to
+   * `text()`.
    *
-   * A fresh array each call, so a caller cannot mutate the buffered chunks —
-   * the tracker hands the same `RemoteResponse` to `parse` and to its own
-   * failure reporting.
-   *
-   * The return type pins the backing store to a real `ArrayBuffer` (rather than
-   * the default `ArrayBufferLike`), which is what the platform's `BufferSource`
-   * parameters — `crypto.subtle.digest`, `Blob`, `fetch` — require. It is true
-   * by construction here, so pinning it saves every caller a cast.
+   * A fresh array each call, so a caller cannot mutate the buffered chunks. Its
+   * `ArrayBuffer` backing store is pinned rather than left `ArrayBufferLike`
+   * because that is what platform `BufferSource` parameters
+   * (`crypto.subtle.digest`, `Blob`, `fetch`) accept — true by construction
+   * here, so pinning it saves every caller a cast.
    */
   bytes(): Uint8Array<ArrayBuffer> {
     const combined = new Uint8Array(this.byteLength)

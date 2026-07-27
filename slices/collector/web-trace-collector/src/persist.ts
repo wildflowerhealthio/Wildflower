@@ -7,51 +7,30 @@ import type { FhirResource } from 'fhir-r4/resources'
 
 /**
  * The web-trace collector's persist sink: the descriptor's `persistResources`.
- * Writes a recorded batch of trace `DocumentReference`s back to the typed
- * {@link FhirR4ResourcesHttpApiClient} and hands back the resources it could not
- * write as {@link CollectorDescriptor.PersistFailure} data.
  *
- * This is a verbatim copy of `rexall-be-well-collector/src/persist.ts` (itself a
- * copy of `fhir-r4-client-collector`'s): all three target the same on-device
- * FHIR R4 store through the same {@link upsertResource} dispatch, so the sink is
- * identical. Slice layering forbids a `*-client-collector` importing another, so
- * the file is duplicated rather than shared (noted in the PR description).
+ * @remarks
+ * A **verbatim copy** of `rexall-be-well-collector/src/persist.ts` (itself a copy
+ * of `fhir-r4-client-collector`'s). All three write to the same on-device FHIR R4
+ * store through the same {@link upsertResource} dispatch, so the sink is
+ * identical; slice layering forbids a `*-client-collector` importing another, so
+ * it is duplicated rather than shared. Read that file for the rationale behind
+ * the retry schedule, the per-resource span, and the concurrency bound — and
+ * change all three together.
  *
- * The write is an **upsert on a deterministic id** (`{sessionId}-{requestId}`,
- * from `web-trace-core`), so the retries below are idempotent: a retried write
- * replaces the exchange it already wrote rather than duplicating it.
+ * What is specific here: the resource id is `web-trace-core`'s deterministic
+ * `{sessionId}-{requestId}`, so a retried write replaces the exchange it already
+ * wrote rather than duplicating it.
  *
- * "Which resource type goes to which endpoint" is `fhir-r4`'s reusable
- * {@link upsertResource}. This sink owns everything *around* the write:
- * - **retries**: bounded exponential backoff (3 retries, 250ms → 1s). Each
- *   attempt is its own OTel HTTP span, so the attempt count reads straight off
- *   the trace. `Schedule.intersect` enforces both "stop after N" *and*
- *   "exponential" (`either` would stop on whichever fired first). A permanent
- *   `UnsupportedFhirResourceTypeError` is *not* retried — it is recorded on the
- *   first attempt rather than backed off pointlessly.
- * - **per-resource span**: `collector.importing.update`, tagged with the
- *   resource's kind label so a trace names what was written.
- * - **concurrency**: {@link WRITE_CONCURRENCY} PUTs in flight per batch.
- * - **failure accounting**: a resource still failing after its retries becomes
- *   one {@link CollectorDescriptor.PersistFailure} carrying the real cause; the
- *   batch Effect itself never fails, so one bad exchange cannot lose a session.
+ * @packageDocumentation
  */
 
-/**
- * Max concurrent resource PUTs within a single batch. *Unbounded* concurrency
- * fired hundreds of simultaneous upserts that stalled the inline-awaited drive
- * loop, so the `Sync` span never ended and never flushed. The stall was a
- * property of unboundedness, not of parallelism per se, so this stays a small
- * fixed bound — enough to reclaim throughput over a serial `1`, far below the
- * "hundreds in flight" that triggered the stall.
- */
+/** Max concurrent resource PUTs within a single batch. See the sibling sink for why it is bounded. */
 const WRITE_CONCURRENCY = 8
 
 /**
- * Describe a FHIR resource for the write span and the runner's `partial`
- * failure summary — `label` is the FHIR `resourceType`, `id` its logical id
- * (falling back to a sentinel for the null-id case that {@link upsertResource}
- * skips), so the runner never has to inspect a resource's fields itself.
+ * Describe a FHIR resource for the write span and the runner's `partial` failure
+ * summary, so the runner never inspects a resource's fields itself. The sentinel
+ * id covers the null-id case {@link upsertResource} skips.
  */
 const describeResource = (resource: FhirResource): CollectorDescriptor.FailedResource => ({
   label: resource.resourceType,
@@ -60,10 +39,8 @@ const describeResource = (resource: FhirResource): CollectorDescriptor.FailedRes
 
 /**
  * Persist a recorded batch, returning only the resources that could not be
- * written. Each resource is retried and spanned independently; a success
- * contributes no failure, a retry-exhausted resource contributes one
- * `PersistFailure` with its cause. `Arr.getSomes` then drops the successes,
- * leaving the failed subset for the runner to fold into the summary.
+ * written. Each resource is retried and spanned independently and the batch
+ * Effect never fails, so one bad exchange cannot lose a session.
  */
 const persistResources = (
   resources: ReadonlyArray<FhirResource>

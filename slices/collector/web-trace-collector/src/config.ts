@@ -115,11 +115,10 @@ const defaultConfig: InstanceConfig = {
 const USER_DISMISS_TIMEOUT = Duration.hours(2)
 
 /**
- * The plan's silent-host guard. **Must sit above {@link USER_DISMISS_TIMEOUT}**:
- * the sync runner does not know the hold is waiting on a person, and the 30 s
- * default would abandon the run long before the user acts — and before the
- * hold's own bound could do its job. See the `AwaitUserDismiss` trap in
- * `slices/collector/AGENTS.md`.
+ * The plan's silent-host guard. **Must sit above {@link USER_DISMISS_TIMEOUT}** —
+ * the sync runner does not know the hold is waiting on a person, and its 30 s
+ * default would abandon the run first. See the `AwaitUserDismiss` trap in
+ * [slices/collector/AGENTS.md](../AGENTS.md).
  */
 const IDLE_TIMEOUT = Duration.hours(3)
 
@@ -130,11 +129,10 @@ const IDLE_TIMEOUT = Duration.hours(3)
  * @returns A fresh session id, prefixed with the label when there is one
  *
  * @remarks
- * `crypto.randomUUID()` is what makes two runs of the same configured remote
- * distinct, which is what keeps `{sessionId}-{requestId}` from silently
- * upserting the second recording over the first. The label is a readability
- * prefix only — an id derived from the label alone would collide on exactly the
- * case a user is most likely to hit (recording the same flow twice).
+ * The uuid is what makes two runs of the same configured remote distinct, so
+ * `{sessionId}-{requestId}` cannot silently upsert the second recording over the
+ * first. The label is a readability prefix only — deriving the id from it alone
+ * would collide on exactly the case a user is most likely to hit.
  */
 const mintSessionId = (config: InstanceConfig): string => {
   const uuid = globalThis.crypto.randomUUID()
@@ -150,19 +148,14 @@ const mintSessionId = (config: InstanceConfig): string => {
  *
  * @remarks
  * The run model everywhere else in this slice is *scripted*; this one is
- * *exploratory*, and the plan is what bridges the two. An empty `stepSequence`
- * would complete the instant the first `PageLoaded` settled — before the user
- * had clicked anything — so completion is deferred to the user by
- * `[EnsureWindowVisible, AwaitUserDismiss]`: put the sniffer window on screen,
- * then park until they close it. Closing it *drains* rather than completing, so
- * requests still in flight when they close are finished and recorded before the
- * run ends.
+ * *exploratory*. An empty `stepSequence` would complete the instant the first
+ * `PageLoaded` settled — before the user had clicked anything — so completion is
+ * deferred to them by `[EnsureWindowVisible, AwaitUserDismiss]`.
  *
  * **The session id is minted here, once per plan build**, and the entity closes
- * over it. `makeScrapingPlan` is called exactly once per sync run (by
- * `resourcePersistenceRuntimeForConfig`, from the runner's `mutationFn`), so one
- * plan build is one recording. That does make this factory impure — two calls
- * with the same config produce plans with different session ids, by design.
+ * over it. `makeScrapingPlan` is called exactly once per sync run, so one plan
+ * build is one recording — which does make this factory impure, by design. See
+ * the [package AGENTS.md](../AGENTS.md) for what that costs a caller.
  */
 const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirResource> => {
   const firstPage: WebViewSource.Any = { _tag: 'Uri', uri: config.rootUrl }

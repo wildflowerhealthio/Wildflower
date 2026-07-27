@@ -66,25 +66,18 @@ const contentTypeOf = (headers: Response.RemoteResponseHeaders): string => {
  *
  * @remarks
  * A literal full-string match would be useless in practice: the single most
- * interesting body in a health portal trace is `application/fhir+json`, which
- * no one thinks to add to a list they were told defaults to "json". So a media
- * type answers to its top-level type, its subtype, and — when the subtype
- * carries a structured suffix (RFC 6839's `+json`, `+xml`, …) — both halves of
- * that subtype:
- *
- * | Content type              | Tokens                                     |
- * | ------------------------- | ------------------------------------------ |
- * | `application/json`        | `application`, `json`                      |
- * | `text/html`               | `text`, `html`                             |
- * | `application/fhir+json`   | `application`, `fhir+json`, `fhir`, `json` |
- * | `application/xhtml+xml`   | `application`, `xhtml+xml`, `xhtml`, `xml` |
- * | `image/png`               | `image`, `png`                             |
+ * interesting body in a health portal trace is `application/fhir+json`, which no
+ * one thinks to add to a list they were told defaults to "json". So a media type
+ * answers to its top-level type, its subtype, and — when the subtype carries a
+ * structured suffix (RFC 6839's `+json`, `+xml`, …) — both halves of that
+ * subtype, making `application/fhir+json` answer to all of `application`,
+ * `fhir+json`, `fhir`, and `json`. The example table in `body-policy.test.ts` is
+ * the readable statement of the rule; extend it when you touch this.
  *
  * The top-level type being a token is what makes the default `text` entry mean
- * "any `text/*`" — including `text/css` and `text/javascript`. That is
- * deliberate (they are text, and a trace of an SPA is more legible with them
- * than without), and `maxBodyBytes` is what keeps a bundle from dominating the
- * recording.
+ * "any `text/*`", including `text/javascript`. That is deliberate — they are
+ * text, and a trace of an SPA is more legible with them — and `maxBodyBytes` is
+ * what keeps a bundle from dominating the recording.
  */
 const contentTypeTokens = (contentType: string): ReadonlySet<string> => {
   const [type, subtype] = contentType.split('/')

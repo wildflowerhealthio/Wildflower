@@ -20,11 +20,9 @@ import { type BodyDigestUnavailable, type BodyPolicy, decideBody } from '../body
  * @returns The equivalent `ParseError`, naming the real reason
  *
  * @remarks
- * `Forbidden` is the issue for an effectful step that refused, which is exactly
- * what happened. The failure is scoped to the one exchange that hit it: the
- * tracker records a failed sniff and the run keeps draining, so a session is
- * never lost to it (nor is the failure swallowed — a fabricated digest would
- * make the trace lie about a body it never hashed).
+ * Scoped to the one exchange that hit it — the tracker records a failed sniff
+ * and the run keeps draining — rather than swallowed, since a fabricated digest
+ * would make the trace lie about a body it never hashed.
  */
 const digestFailureAsParseError = (cause: BodyDigestUnavailable): ParseResult.ParseError =>
   new ParseResult.ParseError({
@@ -51,17 +49,11 @@ interface RawExchangeEntityOptions {
  *   `DocumentReference`
  *
  * @remarks
- * **`isFoundAt` returns `true` unconditionally, and that matters twice.** The
- * obvious half is coverage: a recording that filtered by URL would decide in
- * advance what a collector author is allowed to discover, which is the opposite
- * of the point. The half that is easy to miss is that
- * `CollectorBridgeMessageHandler` fires a `CancelSnifferRequest` at any response
- * no entity claims — so a narrower predicate here would not merely skip those
- * exchanges, it would **abort the requests the user's own browsing depends on**
- * and break the page in front of them.
- *
- * The encoding is `web-trace-core`'s and is imported, never re-derived: a second
- * copy would drift and already-recorded sessions would stop decoding.
+ * **`isFoundAt` returns `true` unconditionally, and that matters twice** —
+ * coverage, and the fact that `CollectorBridgeMessageHandler` fires a
+ * `CancelSnifferRequest` at any response no entity claims, so narrowing this
+ * would abort the requests the user's own browsing depends on. See invariant 1
+ * in the [package AGENTS.md](../../AGENTS.md) before touching it.
  */
 const makeRawExchangeEntity = (
   options: RawExchangeEntityOptions
