@@ -14,5 +14,4 @@
 export * from './body-policy.ts'
 export * from './config.ts'
 export * from './entities/raw-exchange-entity.ts'
-export * from './persist.ts'
 export * from './web-trace-config-form.tsx'

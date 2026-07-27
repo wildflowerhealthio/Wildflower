@@ -5,14 +5,15 @@ import {
   UrlMatch,
   type WebViewSource,
 } from 'collector-fundamentals/model'
+import * as Telemetry from 'collector-fundamentals/telemetry'
 import { Duration, type FastCheck, Schema } from 'effect'
 import type { LazyArbitrary } from 'effect/Arbitrary'
+import { makePersistResources } from 'fhir-r4/clients'
 import type { FhirResource } from 'fhir-r4/resources'
 
 import { ObservationEntity } from './entities/observation-entity.ts'
 import { ObservationListEntity } from './entities/observation-list-entity.ts'
 import { PatientEntity } from './entities/patient-entity.ts'
-import { persistResources } from './persist.ts'
 
 /**
  * `rootUrl` must be an absolute `http(s)://` URL with at least a host
@@ -164,6 +165,18 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirRes
     ],
   })
 }
+
+/**
+ * The descriptor's persist sink: `fhir-r4`'s shared batch write, told to report
+ * itself in the collector slice's telemetry vocabulary. The retries, per-resource
+ * span, concurrency bound, and failure-as-data accounting all live in
+ * {@link makePersistResources}; only the names are ours.
+ */
+const persistResources = makePersistResources({
+  spanName: Telemetry.Importing.Update.Span.Name,
+  kindAttributeKey: Telemetry.Importing.Update.Span.Attributes.Kind,
+  logLabel: 'fhir-r4 persist',
+})
 
 /**
  * The FHIR R4 collector as one first-class value: the config schema,

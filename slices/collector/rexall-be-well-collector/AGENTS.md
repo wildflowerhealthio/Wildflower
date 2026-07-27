@@ -32,8 +32,8 @@ machinery lives in `slices/emr/fhir-stu3-as-r4`.
   bundle "as is" (a `Schema.Union` of the two carebook `R4FromStu3Schema`
   transforms plus a `null` catch-all for non-medication entries), then splits off
   just `MedicationRequest` / `MedicationDispense`, dropping-and-counting the rest.
-- `src/persist.ts` — the write sink (a verbatim copy of
-  `fhir-r4-client-collector/src/persist.ts`; slice layering forbids importing it).
+- the persist sink — built in `src/config.ts` from `fhir-r4`'s shared
+  `makePersistResources`, passing this collector's telemetry names.
 - `src/extract-json.ts` — XHR/JSON-viewer body normalizer (also copied).
 - `src/rexall-config-form.tsx` (+ `.module.css`) — the email/password
   `ConfigFormProps` form `collector-react` registers.

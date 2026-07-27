@@ -14,7 +14,6 @@ export * as Carebook from './carebook.ts'
 export * as Bundle from './bundle.ts'
 
 export * from './config.ts'
-export * from './persist.ts'
 export * from './rexall-config-form.tsx'
 export * from './entities/profile-entity.ts'
 export * from './entities/medication-list-entity.ts'

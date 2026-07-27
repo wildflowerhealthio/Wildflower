@@ -4,13 +4,14 @@ import {
   ScrapingPlan,
   type WebViewSource,
 } from 'collector-fundamentals/model'
+import * as Telemetry from 'collector-fundamentals/telemetry'
 import { Duration, type FastCheck, Schema } from 'effect'
 import type { LazyArbitrary } from 'effect/Arbitrary'
+import { makePersistResources } from 'fhir-r4/clients'
 import type { FhirResource } from 'fhir-r4/resources'
 
 import { MedicationListEntity } from './entities/medication-list-entity.ts'
 import { ProfileEntity } from './entities/profile-entity.ts'
-import { persistResources } from './persist.ts'
 
 /**
  * A well-formed email address: a non-empty local part, `@`, and a dotted
@@ -218,6 +219,18 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirRes
     ],
   })
 }
+
+/**
+ * The descriptor's persist sink: `fhir-r4`'s shared batch write, told to report
+ * itself in the collector slice's telemetry vocabulary. The retries, per-resource
+ * span, concurrency bound, and failure-as-data accounting all live in
+ * {@link makePersistResources}; only the names are ours.
+ */
+const persistResources = makePersistResources({
+  spanName: Telemetry.Importing.Update.Span.Name,
+  kindAttributeKey: Telemetry.Importing.Update.Span.Attributes.Kind,
+  logLabel: 'rexall persist',
+})
 
 /**
  * The Rexall collector as one first-class value for `collector-registry` to

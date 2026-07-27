@@ -58,6 +58,15 @@ before adding one.
   owns only _when_ to write and how to fold failures into the summary. Only the
   resource type is sealed (existential `Resources`); the write requirement `R`
   stays visible so the registry can surface `CollectorRequirements`.
+- **Don't write a FHIR persist sink — build it from `fhir-r4`'s
+  `makePersistResources`.** It lives there, not in `collector-fundamentals`,
+  because it needs `upsertResource` and the typed client while this slice's
+  fundamentals stay FHIR-agnostic; that is exactly why it was three duplicated
+  copies before it was consolidated. Since `fhir-r4` sits below this slice and
+  cannot name it, each collector **supplies** the span names and log label, and
+  the sink declares its own `ResourceWriteFailure` — structurally checked against
+  `PersistFailure` when `CollectorDescriptor.make` receives the sink, so a drift
+  is a compile error at every collector rather than a silent divergence.
 - **A `RemoteResponse` carries the sniffer's correlation `id` and the observed
   `startedAt`, and exposes the body two ways.** Most entities decode a known
   payload and use only `url` / `headers` / `text()`. An entity that _records_ an
