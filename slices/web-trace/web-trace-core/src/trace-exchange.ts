@@ -74,11 +74,11 @@ const TraceBody = Schema.Union(StoredBody, SkippedBody)
  * absence. Composing `Schema.JsonNumber` in front rejects it in both
  * directions, along with `NaN`.
  */
-const ObservedDuration = Schema.compose(
+const DurationFromJsonNumberMillis = Schema.compose(
   Schema.JsonNumber.pipe(Schema.greaterThanOrEqualTo(0)),
   Schema.DurationFromMillis
 ).annotations({
-  identifier: 'ObservedDuration',
+  identifier: 'DurationFromJsonNumberMillis',
   description: 'A measured elapsed time, carried on the wire as milliseconds.',
 })
 
@@ -98,8 +98,11 @@ const ObservedDuration = Schema.compose(
  * nothing observes the request side.
  */
 const TraceTimings = Schema.Struct({
-  wait: Schema.NullOr(ObservedDuration).pipe(Schema.propertySignature, Schema.fromKey('waitMs')),
-  receive: Schema.NullOr(ObservedDuration).pipe(
+  wait: Schema.NullOr(DurationFromJsonNumberMillis).pipe(
+    Schema.propertySignature,
+    Schema.fromKey('waitMs')
+  ),
+  receive: Schema.NullOr(DurationFromJsonNumberMillis).pipe(
     Schema.propertySignature,
     Schema.fromKey('receiveMs')
   ),

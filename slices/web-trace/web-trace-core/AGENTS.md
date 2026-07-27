@@ -42,9 +42,9 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
   `NonNegative`, which admits `+Infinity`, and `JSON.stringify(Infinity)` is
   `null` — exactly the value `TraceTimings` uses for "not measured", so an
   infinite duration round-trips through JSON into a plausible absence. Timings
-  go through `ObservedDuration`, which composes `Schema.JsonNumber` in front;
-  don't unwrap it. Negatives are the same class of trap: `Duration.millis(-1)`
-  is silently `Duration.zero`.
+  go through `DurationFromJsonNumberMillis`, which composes `Schema.JsonNumber`
+  in front; don't unwrap it. Negatives are the same class of trap:
+  `Duration.millis(-1)` is silently `Duration.zero`.
 - **Timing arbitraries draw whole microseconds, not raw doubles.**
   `Duration.millis` is canonical only at microsecond resolution or coarser:
   `Duration.millis(4999.9999999999995)` is `Nanos:5000000000`, which encodes to
