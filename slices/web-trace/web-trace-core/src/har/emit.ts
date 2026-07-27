@@ -1,0 +1,174 @@
+import { DateTime, Duration } from 'effect'
+
+import type { TraceExchange } from '../trace-exchange.ts'
+import type { Har, HarContent, HarEntry, HarNameValue, HarRequest, HarTimings } from './har.ts'
+
+/**
+ * Turns a set of decoded exchanges into a HAR 1.2 archive — the format the
+ * export boundary hands to a collector author.
+ *
+ * @remarks
+ * HAR was chosen because it is widely consumable and agents read it fluently.
+ * The awkward part is that HAR assumes a full request/response pair and a trace
+ * has only the response half, so this emitter is explicit about every gap rather
+ * than filling one in. See {@link emitHar}.
+ *
+ * @packageDocumentation
+ */
+
+/** HAR's own sentinel for "not applicable, or not measured". */
+const NOT_MEASURED = -1
+
+/**
+ * Why `request.method` is `UNKNOWN`. Carried on every entry so a reader who has
+ * never seen the epic still learns why, from the file itself.
+ */
+const METHOD_COMMENT =
+  'The capture shims fetch and XMLHttpRequest on the response side only, so the request method was never observed. It is reported as UNKNOWN rather than guessed as GET: a GET and a POST to this URL are indistinguishable in this trace.'
+
+/** Why a request carries no headers or body. */
+const REQUEST_COMMENT =
+  'No request headers or request body were captured. A POST payload — the single most useful artifact for designing a collector against a search API — is not present in this trace.'
+
+/** Why a `content` entry has a size but no text. */
+const SKIPPED_BODY_COMMENT =
+  'Body not stored by the capture policy; its size and a pseudonymous digest are recorded so the trace is explicit about what it dropped.'
+
+/**
+ * Options for {@link emitHar}.
+ */
+interface EmitHarOptions {
+  /** The session these exchanges came from, recorded on `log.creator`. */
+  readonly sessionId: string
+  /**
+   * Version string for `log.creator.version`.
+   *
+   * @defaultValue `'0'`
+   */
+  readonly creatorVersion?: string
+  /** Free-text note placed on `log.comment`, e.g. the redaction settings used. */
+  readonly comment?: string
+}
+
+const CREATOR_NAME = 'Wildflower Web Trace'
+
+const queryStringOf = (url: string): readonly HarNameValue[] => {
+  try {
+    return [...new URL(url).searchParams].map(([name, value]) => ({ name, value }))
+  } catch {
+    return []
+  }
+}
+
+const headersOf = (exchange: TraceExchange): readonly HarNameValue[] =>
+  exchange.headers.map(([name, value]) => ({ name, value }))
+
+const mimeTypeOf = (exchange: TraceExchange): string => exchange.body.contentType
+
+const contentOf = (exchange: TraceExchange): HarContent =>
+  exchange.body._tag === 'StoredBody'
+    ? {
+        size: exchange.body.size,
+        mimeType: mimeTypeOf(exchange),
+        text: exchange.body.data,
+        encoding: 'base64',
+      }
+    : {
+        size: exchange.body.size,
+        mimeType: mimeTypeOf(exchange),
+        comment: `${SKIPPED_BODY_COMMENT} Reason: ${exchange.body.reason}`,
+      }
+
+/** HAR states every phase in milliseconds, so a measured `Duration` becomes one. */
+const phaseOf = (measured: Duration.Duration | null): number =>
+  measured === null ? NOT_MEASURED : Duration.toMillis(measured)
+
+const timingsOf = (exchange: TraceExchange): HarTimings => ({
+  // There is no request side to time.
+  send: NOT_MEASURED,
+  wait: phaseOf(exchange.timings.wait),
+  receive: phaseOf(exchange.timings.receive),
+})
+
+/**
+ * `entry.time` is the sum of the measured phases, or `-1` when nothing was
+ * measured — HAR has no way to say "partially measured", and summing `-1`s into
+ * a plausible-looking total would be a lie.
+ */
+const totalTimeOf = (timings: HarTimings): number => {
+  const measured = [timings.send, timings.wait, timings.receive].filter((phase) => phase >= 0)
+  return measured.length === 0 ? NOT_MEASURED : measured.reduce((total, phase) => total + phase, 0)
+}
+
+const requestOf = (exchange: TraceExchange): HarRequest => ({
+  method: 'UNKNOWN',
+  url: exchange.url,
+  httpVersion: '',
+  cookies: [],
+  headers: [],
+  queryString: queryStringOf(exchange.url),
+  headersSize: NOT_MEASURED,
+  bodySize: NOT_MEASURED,
+  comment: `${METHOD_COMMENT} ${REQUEST_COMMENT}`,
+})
+
+const entryOf = (exchange: TraceExchange): HarEntry => {
+  const timings = timingsOf(exchange)
+  return {
+    startedDateTime: DateTime.formatIso(exchange.startedAt),
+    time: totalTimeOf(timings),
+    request: requestOf(exchange),
+    response: {
+      status: exchange.status,
+      statusText: exchange.statusText,
+      httpVersion: '',
+      cookies: [],
+      headers: headersOf(exchange),
+      content: contentOf(exchange),
+      redirectURL: '',
+      headersSize: NOT_MEASURED,
+      bodySize: exchange.body.size,
+    },
+    cache: {},
+    timings,
+  }
+}
+
+/**
+ * Emits a HAR 1.2 archive for a set of exchanges.
+ *
+ * @param exchanges - The exchanges to include, typically already redacted
+ * @param options - Session identity and creator metadata
+ * @returns An archive that validates against the HAR 1.2 schema
+ *
+ * @remarks
+ * Entries come out ordered by `startedDateTime`, the only ordering a reader can
+ * act on — the capture order of concurrent requests is not meaningful.
+ *
+ * Nothing unobserved is guessed: `request.method` is `UNKNOWN`, unmeasured
+ * timings are `-1`, and a skipped body has a `size` and no `text`. Each carries
+ * a HAR `comment` saying so, so a reader learns it from the file.
+ *
+ * This function does not redact. Pass it exchanges that have already been
+ * through the pseudonymizer — an archive built from raw exchanges contains
+ * everything the capture saw.
+ */
+const emitHar = (exchanges: readonly TraceExchange[], options: EmitHarOptions): Har => ({
+  log: {
+    version: '1.2',
+    creator: {
+      name: CREATOR_NAME,
+      version: options.creatorVersion ?? '0',
+      comment: `Session ${options.sessionId}`,
+    },
+    entries: [...exchanges]
+      .toSorted(
+        (left, right) =>
+          DateTime.toEpochMillis(left.startedAt) - DateTime.toEpochMillis(right.startedAt)
+      )
+      .map(entryOf),
+    ...(options.comment === undefined ? {} : { comment: options.comment }),
+  },
+})
+
+export { CREATOR_NAME, type EmitHarOptions, emitHar, NOT_MEASURED }

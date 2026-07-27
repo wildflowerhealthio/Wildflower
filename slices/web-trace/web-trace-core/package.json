@@ -2,7 +2,7 @@
   "name": "web-trace-core",
   "version": "0.0.0",
   "private": true,
-  "description": "Pure core of the web-trace slice: the vocabulary of a recorded browsing session and the TraceExchange ⇄ FHIR DocumentReference codec. No DOM, no fs, no UI — consumed by both a collector and the web-trace SMART app.",
+  "description": "Pure core of the web-trace slice: the TraceExchange ⇄ FHIR DocumentReference codec, the shape-preserving pseudonymizer that is the epic's privacy boundary, and the HAR 1.2 emitter. No DOM, no fs, no UI — consumed by both a collector and the web-trace SMART app.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
@@ -21,6 +21,10 @@
     "./codec": {
       "source": "./src/codec/index.ts",
       "default": "./dist/codec/index.js"
+    },
+    "./har": {
+      "source": "./src/har/index.ts",
+      "default": "./dist/har/index.js"
     },
     "./pseudonymizer": {
       "source": "./src/pseudonymizer/index.ts",
@@ -41,10 +45,12 @@
   "devDependencies": {
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
+    "ajv": "catalog:",
     "browser-sniffer-core": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
     "fhir-r4": "workspace:*",
+    "har-schema": "catalog:",
     "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"

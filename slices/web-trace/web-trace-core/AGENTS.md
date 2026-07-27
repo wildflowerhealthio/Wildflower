@@ -28,6 +28,7 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
   what a value looks like and generates another value that looks the same,
   `leaves.ts` decides what counts as a leaf, `redact.ts` is the two-step
   policy/rewrite engine, and `hmac.ts` is the Web Crypto seam.
+- **`src/har/`** — HAR 1.2 emission.
 - **`src/test-helpers.ts`** — `fast-check` arbitraries for realistic captures,
   exported as `web-trace-core/test-helpers` so downstream packages can reuse them.
 
@@ -113,6 +114,12 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
   first try.** A candidate must differ from its original, re-detect to the same
   shape, and be unused. That loop is what makes "no value survives itself" and
   "unequal inputs stay unequal" true by construction rather than by luck.
+- **The HAR emitter never guesses.** `request.method` is `UNKNOWN`, unmeasured
+  timings are `-1`, and a skipped body has a size and no text. Each carries a
+  comment in the archive explaining itself. Filling one of these in with a
+  plausible value would make the trace lie about what was observed.
+- **The emitter does not redact.** `emitHar` on raw exchanges produces an archive
+  containing everything the capture saw. Redaction is the caller's step.
 
 ## Testing
 
@@ -123,7 +130,12 @@ would satisfy the schema while generating bodies that are not base64 and URLs
 that are not URLs, which exercises nothing anything downstream actually does.
 
 The five properties the privacy boundary rests on live in
-`src/pseudonymizer/redact.test.ts`.
+`src/pseudonymizer/redact.test.ts`; the HAR emitter is validated against the
+published `har-schema` (HAR 1.2) rather than a hand-copied transcription of it.
+
+`ajv` is catalogued and listed in the **root** `devDependencies` so version 8
+wins the hoist — eslint drags in ajv 6, and a root-level `vp lint` resolves bare
+specifiers against the workspace root, not against this package.
 
 ## References
 
