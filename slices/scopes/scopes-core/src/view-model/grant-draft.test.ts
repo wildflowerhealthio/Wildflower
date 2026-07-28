@@ -194,13 +194,12 @@ const flagNameArb = fc.constantFrom(...Scope.Known.Name.all)
 /** A `patient/<Resource>.<perms>` v2 scope string over a real catalog resource. */
 const fhirScopeStringArb = fc
   .record({ name: resourceNameArb, perms: fc.uniqueArray(interactionArb, { minLength: 1 }) })
-  .map(
-    ({ name, perms }) =>
-      new Scope.FhirV2(
-        patient,
-        Scope.ResourceType.Fhir.parse(name)!,
-        new Scope.Permission.Cruds(perms)
-      ).serialize()!
+  .map(({ name, perms }) =>
+    new Scope.FhirV2(
+      patient,
+      Scope.ResourceType.Fhir.parse(name)!,
+      new Scope.Permission.Cruds(perms)
+    ).serialize()!
   )
 
 /** A requested scope list: some v2 resource scopes plus some known flags. */

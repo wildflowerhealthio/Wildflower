@@ -58,6 +58,13 @@ interface ResourcePersistenceContext<Resources, R> {
   readonly persistResources: (
     resources: ReadonlyArray<Resources>
   ) => Effect.Effect<ReadonlyArray<PersistFailure>, never, R>
+  /**
+   * The framework-minted id of this run, sealed alongside the plan that was
+   * built with it — a runtime instance *is* one run. The runner hands it to
+   * `CollectorBridgeMessageHandler.make` so the plan's `captureProvenance`
+   * hook (and anything else run-scoped) shares one identity, minted once.
+   */
+  readonly runId: string
 }
 
 /**

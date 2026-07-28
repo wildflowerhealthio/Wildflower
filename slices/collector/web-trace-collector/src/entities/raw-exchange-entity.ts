@@ -2,8 +2,11 @@ import { EntityDefinition } from 'collector-fundamentals/model'
 import { DateTime, Effect, ParseResult } from 'effect'
 import { TraceExchange } from 'web-trace-core'
 import { type DocumentReferenceType, toDocumentReference } from 'web-trace-core/codec'
+import { toExchangeFields } from 'web-trace-core/provenance'
 
-import { type BodyDigestUnavailable, type BodyPolicy, decideBody } from '../body-policy.ts'
+import type { BodyDigestUnavailable } from 'web-trace-core/capture'
+
+import { type BodyPolicy, decideBody } from '../body-policy.ts'
 
 /**
  * The one entity a web-trace recording needs: it claims every response and
@@ -71,13 +74,7 @@ const makeRawExchangeEntity = (
         const settledAt = yield* DateTime.now
         return [
           yield* toDocumentReference({
-            sessionId: options.sessionId,
-            requestId: response.id,
-            url: response.url,
-            status: response.status,
-            statusText: response.statusText,
-            headers: response.headers,
-            startedAt: response.startedAt,
+            ...toExchangeFields(options.sessionId, response),
             timings: {
               // Nothing observes the request side, so there is no wait to
               // report and none is invented.
@@ -89,6 +86,9 @@ const makeRawExchangeEntity = (
               receive: DateTime.distanceDuration(response.startedAt, settledAt),
             },
             body,
+            // A recording decodes nothing, so it produces nothing to link. The
+            // provenance direction belongs to the production collectors.
+            producedResources: [],
           }),
         ]
       }),

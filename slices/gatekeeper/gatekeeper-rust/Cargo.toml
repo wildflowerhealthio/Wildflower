@@ -65,7 +65,7 @@ zeroize = { version = "1.8", features = ["derive"] }
 strum = { version = "0.28", features = ["derive"] }
 rand = "0.10"
 uuid = { version = "1", features = ["v4"] }
-base64 = "0.22"
+base64 = "0.23"
 percent-encoding = "2"
 serde_urlencoded = "0.7"
 # Typed `Set-Cookie` building + robust `Cookie`-header parsing for the web

@@ -237,6 +237,10 @@ describe('a redacted HAR is usable as a fixture', () => {
             size: entry.response.content.size,
             hash: '',
           },
+    // HAR 1.2 has no field for "the resources this response produced", so an
+    // exported archive cannot carry the provenance link and a reader cannot
+    // recover it. Empty here states that, rather than inventing one.
+    producedResources: [],
   })
 
   test('property: a redacted session emits a valid HAR that reads back into encodable exchanges', async () => {

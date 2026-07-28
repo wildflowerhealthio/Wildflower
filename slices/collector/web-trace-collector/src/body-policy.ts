@@ -1,6 +1,7 @@
 import type { Response } from 'collector-fundamentals/model'
-import { Data, Effect, Encoding } from 'effect'
+import { Effect, Encoding } from 'effect'
 import type { TraceBody } from 'web-trace-core'
+import { type BodyDigestUnavailable, contentTypeOf, sha256Base64 } from 'web-trace-core/capture'
 
 /**
  * The capture-time body policy: whether a sniffed response's body is stored in
@@ -17,46 +18,6 @@ import type { TraceBody } from 'web-trace-core'
  *
  * @packageDocumentation
  */
-
-/**
- * Raised when `globalThis.crypto.subtle` is missing or its digest refuses.
- *
- * @remarks
- * Every body — stored or skipped — carries a SHA-256, so this is not
- * recoverable by storing less: without a digest there is no honest
- * `TraceExchange` to build. In practice it means an insecure origin (browsers
- * gate `crypto.subtle` on secure contexts) or a runtime below the project's
- * floor, so it is an environment defect rather than a per-response problem.
- * The entity turns it into a `ParseError` for the one exchange that hit it,
- * which the run records as a failed sniff and carries on from.
- */
-class BodyDigestUnavailable extends Data.TaggedError('BodyDigestUnavailable')<{
-  readonly reason: string
-}> {}
-
-/** RFC 9110's default for an entity whose `Content-Type` the server did not state. */
-const UNKNOWN_CONTENT_TYPE = 'application/octet-stream'
-
-/**
- * The response's `Content-Type`, lower-cased with its parameters stripped.
- *
- * @param headers - The response headers as received
- * @returns The bare media type, or {@link UNKNOWN_CONTENT_TYPE} when absent or blank
- *
- * @remarks
- * Header names are matched case-insensitively (HTTP does not fix their case,
- * and the sniffer forwards what arrived). Parameters are dropped, so
- * `application/json; charset=utf-8` and `application/json` are one content type
- * — but the *media type* keeps its full `type/subtype+suffix` form, which is
- * what {@link contentTypeTokens} needs. The first `Content-Type` wins; a
- * response carrying two is malformed and the trace records the one the parser
- * would have used.
- */
-const contentTypeOf = (headers: Response.RemoteResponseHeaders): string => {
-  const header = headers.find(([name]) => name.toLowerCase() === 'content-type')
-  const mediaType = header?.[1].split(';')[0]?.trim().toLowerCase()
-  return mediaType === undefined || mediaType === '' ? UNKNOWN_CONTENT_TYPE : mediaType
-}
 
 /**
  * The allowlist tokens a media type answers to.
@@ -104,41 +65,6 @@ const isAllowlisted = (contentType: string, allowlist: readonly string[]): boole
   const tokens = contentTypeTokens(contentType)
   return allowlist.some((entry) => tokens.has(entry.trim().toLowerCase()))
 }
-
-/**
- * The base64-encoded SHA-256 of `bytes`, matching FHIR's `Attachment.hash`
- * (a `base64Binary`).
- *
- * @param bytes - The raw response body, as `RemoteResponse.bytes()` hands it
- *   over (its backing store is pinned to a real `ArrayBuffer`, which is what
- *   `crypto.subtle.digest`'s `BufferSource` parameter requires)
- * @returns The digest, base64-encoded
- *
- * @remarks
- * Web Crypto rather than `node:crypto`: a collector runs in a WebView, and the
- * `-core` package this feeds holds the same line. Its digest is
- * `Promise`-returning, which is why the whole body policy is `Effect`-shaped.
- */
-const sha256Base64 = (
-  bytes: Uint8Array<ArrayBuffer>
-): Effect.Effect<string, BodyDigestUnavailable> =>
-  Effect.suspend(() =>
-    globalThis.crypto?.subtle === undefined
-      ? Effect.fail(
-          new BodyDigestUnavailable({
-            reason:
-              'globalThis.crypto.subtle is unavailable (insecure context or unsupported runtime)',
-          })
-        )
-      : Effect.tryPromise({
-          try: async () =>
-            Encoding.encodeBase64(
-              new Uint8Array(await globalThis.crypto.subtle.digest('SHA-256', bytes))
-            ),
-          catch: (cause) =>
-            new BodyDigestUnavailable({ reason: `SHA-256 digest failed: ${String(cause)}` }),
-        })
-  )
 
 /** The two knobs {@link decideBody} reads off the collector's config. */
 interface BodyPolicy {
@@ -201,13 +127,4 @@ const decideBody = (
     } as const
   })
 
-export {
-  BodyDigestUnavailable,
-  type BodyPolicy,
-  contentTypeOf,
-  contentTypeTokens,
-  decideBody,
-  isAllowlisted,
-  sha256Base64,
-  UNKNOWN_CONTENT_TYPE,
-}
+export { type BodyPolicy, contentTypeTokens, decideBody, isAllowlisted }

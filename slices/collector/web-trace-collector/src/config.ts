@@ -123,21 +123,24 @@ const USER_DISMISS_TIMEOUT = Duration.hours(2)
 const IDLE_TIMEOUT = Duration.hours(3)
 
 /**
- * Mint the id every exchange in one recording shares.
+ * Derive the id every exchange in one recording shares.
  *
  * @param config - The remote's config, for its optional label
- * @returns A fresh session id, prefixed with the label when there is one
+ * @param runId - The framework-minted id of this run
+ * @returns The session id, prefixed with the label when there is one
  *
  * @remarks
- * The uuid is what makes two runs of the same configured remote distinct, so
+ * The run id is what makes two runs of the same configured remote distinct, so
  * `{sessionId}-{requestId}` cannot silently upsert the second recording over the
- * first. The label is a readability prefix only — deriving the id from it alone
- * would collide on exactly the case a user is most likely to hit.
+ * first. It is minted by the framework (one per plan build, by construction —
+ * see `CollectorDescriptor.make`), which is what lets this factory stay
+ * deterministic given its inputs. The label is a readability prefix only —
+ * deriving the id from it alone would collide on exactly the case a user is
+ * most likely to hit.
  */
-const mintSessionId = (config: InstanceConfig): string => {
-  const uuid = globalThis.crypto.randomUUID()
+const sessionIdFor = (config: InstanceConfig, runId: string): string => {
   const label = config.sessionLabel?.trim()
-  return label === undefined || label === '' ? uuid : `${label}-${uuid}`
+  return label === undefined || label === '' ? runId : `${label}-${runId}`
 }
 
 /**
@@ -152,15 +155,20 @@ const mintSessionId = (config: InstanceConfig): string => {
  * `PageLoaded` settled — before the user had clicked anything — so completion is
  * deferred to them by `[EnsureWindowVisible, AwaitUserDismiss]`.
  *
- * **The session id is minted here, once per plan build**, and the entity closes
- * over it. `makeScrapingPlan` is called exactly once per sync run, so one plan
- * build is one recording — which does make this factory impure, by design. See
- * the [package AGENTS.md](../AGENTS.md) for what that costs a caller.
+ * The session id derives from the framework-minted `runId` (one per plan
+ * build, enforced by `CollectorDescriptor.make`), so one plan build is one
+ * recording and this factory is deterministic given its inputs. The entity
+ * still closes over the id, so two builds' plans differ by those closures —
+ * a test comparing plans across builds compares an identity *projection*;
+ * see the [package AGENTS.md](../AGENTS.md).
  */
-const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirResource> => {
+const scrapingPlan = (
+  config: InstanceConfig,
+  runId: string
+): ScrapingPlan.ScrapingPlan<FhirResource> => {
   const firstPage: WebViewSource.Any = { _tag: 'Uri', uri: config.rootUrl }
   const entity = makeRawExchangeEntity({
-    sessionId: mintSessionId(config),
+    sessionId: sessionIdFor(config, runId),
     policy: { bodyContentTypes: config.bodyContentTypes, maxBodyBytes: config.maxBodyBytes },
   })
   return ScrapingPlan.make<FhirResource>({
@@ -216,7 +224,7 @@ export {
   IDLE_TIMEOUT,
   InstanceConfig,
   isAbsoluteHttpUrl,
-  mintSessionId,
+  sessionIdFor,
   scrapingPlan,
   USER_DISMISS_TIMEOUT,
   WebTraceCollectorDescriptor,

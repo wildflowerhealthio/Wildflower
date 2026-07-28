@@ -20,6 +20,7 @@ that depends on `collector-fundamentals` only.
 | Config         | `*-client-collector/src/config.ts`          | `Schema.TaggedStruct` + fast-check arbitraries                 |
 | Scraping plan  | `*-client-collector/src/config.ts`          | `ScrapingPlan.make` — first page, steps, entities              |
 | Persist sink   | `*-client-collector/src/config.ts`          | import `fhir-r4`'s `persistResources` — don't write your own   |
+| Provenance     | `*-client-collector/src/config.ts`          | one `captureProvenance:` line on the plan (see step 6)         |
 | Descriptor     | `*-client-collector/src/config.ts`          | `CollectorDescriptor.make` — bundles all of the above          |
 | Config form    | `*-client-collector/src/*-config-form.tsx`  | `ConfigFormProps<Config>`                                      |
 | Registry entry | `collector-registry/src/registry.ts`        | append to `descriptors`                                        |
@@ -177,7 +178,63 @@ A collector targeting something _other_ than the FHIR store writes its own sink
 to the same contract. Route "which resource → which endpoint" through that
 target slice's reusable helper (FHIR's `upsertResource`), not an inline switch.
 
-## 6. Descriptor + package index
+## 6. Provenance: store the source of every resource you produce
+
+Every resource a collector produces was derived from a response, and that
+response is discarded the moment `parse` settles. State the plan-level
+`captureProvenance` hook and each one is kept as a trace `DocumentReference`,
+linked to the resources it produced — so a resource that turns out to be wrong
+can be traced back to what made it. This is **not** opt-in: the scope is
+bounded by what the plan actually consumes, and that bound is what makes it
+always-on.
+
+Add `web-trace-core` to the package's `devDependencies` **and**
+`peerDependencies`, run `vp install`, then wire one module-level hook into the
+plan:
+
+```ts
+import { makeFhirProvenanceCapture } from 'web-trace-core/provenance'
+
+// Module-level, NOT built inside the factory: two plans built from one config
+// share the reference, so tests can deep-equal them.
+const captureProvenance = makeFhirProvenanceCapture('my-collector')<FhirResource>
+
+const scrapingPlan = (
+  config: InstanceConfig,
+  _runId: string
+): ScrapingPlan.ScrapingPlan<FhirResource> =>
+  ScrapingPlan.make<FhirResource>({
+    entityDefinitions: [PatientEntity, ObservationEntity],
+    captureProvenance,
+    …
+  })
+```
+
+That is the whole wiring. The framework owns everything else:
+
+- **The run id is minted at dispatch** — `resourcePersistenceRuntimeIfMatches`
+  mints one uuid, builds the plan with it, and seals both into the same
+  runtime, so one runtime instance is one run and a second sync can never
+  upsert its traces over the first's. The prefix you pass
+  (`makeFhirProvenanceCapture('my-collector')`) names the collector in every
+  session id, so a run is legible in the Web Trace viewer.
+- **The hook fires only for a parse that produced resources.** A failed parse
+  is never captured, and neither is an empty one — that rule is the line
+  between provenance collection and bulk recording (a recorder is its own
+  catch-all entity — see `web-trace-collector`). A failing or dying hook is
+  WARN-logged and the parse output flows on unchanged, and `followUpSteps`
+  always sees the raw parse output, never a trace.
+- **Traces ride the batch's `diagnostics` channel**, structurally separate from
+  the clinical resources, and the runner persists them best-effort through the
+  same sink: a failed trace write is WARN-logged and never reaches the run's
+  summary, so it cannot downgrade a clean import to `partial`.
+- **The body is read with `response.bytes()`, never `text()`** — `text()` is
+  UTF-8 and lossy, so a re-encode of it is not the body that arrived and a hash
+  over it means nothing. The trace stores the **raw** bytes, not the
+  `extractJson`-unwrapped string your entity decoded, verbatim: no allowlist,
+  no truncation.
+
+## 7. Descriptor + package index
 
 `CollectorDescriptor.make` bundles the config schema, its default, the plan
 factory, the display strings, and the persist sink into the one value the
@@ -201,10 +258,10 @@ const FhirR4CollectorDescriptor = CollectorDescriptor.make({
 `make` adds the derived `resourcePersistenceRuntimeIfMatches` guard (how the
 registry dispatches a stored config without an unsafe cast). Keep `display`
 strings **kind-level** — a title like "Demo FHIR Server" names a _route's_ demo
-entry, not the collector. Export the descriptor (and the form from step 8) from
+entry, not the collector. Export the descriptor (and the form from step 9) from
 the package `index.ts`.
 
-## 7. Register in the registry
+## 8. Register in the registry
 
 Add the package as a dependency of `collector-registry` and append the
 descriptor to the closed tuple in `collector-registry/src/registry.ts`:
@@ -217,7 +274,7 @@ That's the only edit here. `CollectorConfig`, `CollectorTag`,
 `CollectorRequirements`, and `resourcePersistenceRuntimeForConfig` all re-derive
 from the tuple — there is no parallel switch or union to update.
 
-## 8. Write and register the config form
+## 9. Write and register the config form
 
 The form is written against the collector's own concrete config
 (`ConfigFormProps<Config>` from `collector-fundamentals/config-form`). It owns
@@ -241,12 +298,12 @@ const configForms: { readonly [T in CollectorTag]: ConfigFormComponent<T> } = {
 }
 ```
 
-The mapped type is the exhaustiveness lock: adding the descriptor in step 7
+The mapped type is the exhaustiveness lock: adding the descriptor in step 8
 widens `CollectorTag`, and this record then **fails to compile** until the new
 form is registered. That compile error is your reminder — you can't ship a
 registered collector with no form.
 
-## 9. Tests per layer
+## 10. Tests per layer
 
 Changes must include tests (see [AGENTS.md](../../../AGENTS.md) and the
 `/javascript-testing-expert` command). Cover each layer where it lives:
@@ -262,9 +319,14 @@ Changes must include tests (see [AGENTS.md](../../../AGENTS.md) and the
   and returns `undefined` for foreign ones; `display` strings.
 - **Persist sink** — a failing write becomes one `PersistFailure`, not a run
   failure.
+- **Provenance** — the plan states `captureProvenance` and its traces carry the
+  collector's prefix (one stub invocation is enough; the capture policy — the
+  verbatim body, both link directions, multi-source naming, and
+  never-degrading-the-run — is covered once, in `web-trace-core`'s and
+  `collector-fundamentals`' own suites, not per collector).
 - **Form** — decodes valid input, renders a `ParseError` inline for bad input.
 
-## 10. Regenerate the OpenAPI snapshots (the non-obvious ripple)
+## 11. Regenerate the OpenAPI snapshots (the non-obvious ripple)
 
 A new config **widens `CollectorConfig`**, which is the payload schema of
 `CreateRemote` / `UpdateRemote`. That changes the collector remotes **wire
@@ -282,7 +344,7 @@ collector is added — but the _client_ spec (`OpenApi.fromApi(CollectorApi)`)
 does, and the TS drift test pins the two together. Details and gotchas:
 [OpenAPI Spec Drift How-To](../../../docs/Effect/OpenAPI%20Spec%20Drift%20How-To.md).
 
-## 11. Verify
+## 12. Verify
 
 ```bash
 vp run ready   # fmt + lint + lint:comments + lint:docs + pack + test:all

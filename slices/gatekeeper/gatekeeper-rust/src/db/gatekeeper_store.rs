@@ -44,9 +44,12 @@ const MIGRATION_NAMESPACE: &str = "gatekeeper";
 /// slices). Migration `0001` deliberately DROPs the tables the retired rusqlite
 /// migrations managed (destructive rebaseline — see its header), `0002` creates
 /// the cross-kind `grants` VIEW over the two concrete grant tables (its own
-/// migration so it can be up/down'd independently), and `0003` seeds the SMART
-/// sample-app clients; because each migration runs only once per database, an
-/// upgrade neither re-drops nor re-seeds.
+/// migration so it can be up/down'd independently), `0003` seeds the SMART
+/// sample-app clients, and `0004` / `0005` each register one shipped self-hosted
+/// SMART app's client (`wildflower-medication`, `wildflower-web-trace`) — one
+/// migration per app, matching the per-app seed migrations in the apps slice;
+/// because each migration runs only once per database, an upgrade neither
+/// re-drops nor re-seeds.
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
 /// The `SQLite` adapter for the [`GatekeeperStore`] port. Cheap to clone (the

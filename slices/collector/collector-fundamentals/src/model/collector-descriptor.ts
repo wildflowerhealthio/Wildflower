@@ -57,9 +57,13 @@ import type * as ScrapingPlan from './scraping-plan.ts'
  * - `configSchema`: the `Schema` for this collector's per-instance
  *   config; the registry unions these into `CollectorConfig`.
  * - `defaultConfig`: a valid config to seed a new-instance form.
- * - `makeScrapingPlan`: the per-config plan *factory* (today's
- *   `scrapingPlan(config)`). Distinct from the already-applied
- *   `scrapingPlan` inside a {@link ResourcePersistenceContext}.
+ * - `makeScrapingPlan`: the per-config plan *factory*
+ *   (`scrapingPlan(config, runId)`). Distinct from the already-applied
+ *   `scrapingPlan` inside a {@link ResourcePersistenceContext}. The `runId`
+ *   is minted by `resourcePersistenceRuntimeIfMatches` at dispatch — the
+ *   factory itself stays deterministic given its inputs; a factory that
+ *   needs a per-run identity (a session id, a provenance run id) derives it
+ *   from `runId` instead of minting its own.
  * - `display`: the {@link CollectorDisplay} strings.
  * - `persistResources`: writes one decoded batch back to wherever this
  *   collector targets (for fhir-r4, the typed FHIR client). Owns *how* the
@@ -88,7 +92,7 @@ interface CollectorDescriptor<Config extends { readonly _tag: string }, Resource
   readonly tag: Config['_tag']
   readonly configSchema: Schema.Schema<Config>
   readonly defaultConfig: Config
-  readonly makeScrapingPlan: (config: Config) => ScrapingPlan.ScrapingPlan<Resources>
+  readonly makeScrapingPlan: (config: Config, runId: string) => ScrapingPlan.ScrapingPlan<Resources>
   readonly display: CollectorDisplay<Config>
   readonly persistResources: (
     resources: ReadonlyArray<Resources>
@@ -108,7 +112,7 @@ interface CollectorDescriptorSpec<Config extends { readonly _tag: string }, Reso
   readonly tag: Config['_tag']
   readonly configSchema: Schema.Schema<Config>
   readonly defaultConfig: Config
-  readonly makeScrapingPlan: (config: Config) => ScrapingPlan.ScrapingPlan<Resources>
+  readonly makeScrapingPlan: (config: Config, runId: string) => ScrapingPlan.ScrapingPlan<Resources>
   readonly display: CollectorDisplay<Config>
   readonly persistResources: (
     resources: ReadonlyArray<Resources>
@@ -151,6 +155,15 @@ type RequirementsOf<D> =
  * {@link ResourcePersistenceRuntime.make} seals the applied plan and the persist
  * sink behind the existential carrier, so the descriptor never spells out the
  * `{ run: (program) => program(context) }` plumbing.
+ *
+ * **The run id is minted here, and a runtime instance IS one run.** The guard
+ * mints a fresh uuid, applies the plan factory to it, and seals both into the
+ * same context — so "one plan build is one run" is enforced by construction
+ * rather than by convention, and everything downstream (the handler's
+ * provenance hook, a session-scoped entity) reads the id from the context
+ * instead of minting its own. The consequence is that the guard is impure;
+ * the plan *factories* stay deterministic given `(config, runId)`, which is
+ * what lets tests compare plans by deep equality against a fixed id.
  */
 const make = <Config extends { readonly _tag: string }, Resources, R>(
   spec: CollectorDescriptorSpec<Config, Resources, R>
@@ -158,13 +171,17 @@ const make = <Config extends { readonly _tag: string }, Resources, R>(
   const isConfig = Schema.is(spec.configSchema)
   const resourcePersistenceRuntimeIfMatches = (
     config: unknown
-  ): ResourcePersistenceRuntime<R> | undefined =>
-    isConfig(config)
-      ? ResourcePersistenceRuntime.make({
-          scrapingPlan: spec.makeScrapingPlan(config),
-          persistResources: spec.persistResources,
-        })
-      : undefined
+  ): ResourcePersistenceRuntime<R> | undefined => {
+    if (!isConfig(config)) {
+      return undefined
+    }
+    const runId = globalThis.crypto.randomUUID()
+    return ResourcePersistenceRuntime.make({
+      scrapingPlan: spec.makeScrapingPlan(config, runId),
+      persistResources: spec.persistResources,
+      runId,
+    })
+  }
   // Same narrowing rationale as above: `isConfig` narrows to the concrete
   // `Config` here, so `display.listSubtitle` is callable — a union-typed
   // descriptor's `listSubtitle` parameter collapses to `never`.

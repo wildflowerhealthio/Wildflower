@@ -389,6 +389,7 @@ const makeGeneratingHandler = (opts: {
         maxGeneratedSteps: opts.maxGeneratedSteps,
       }),
       sendMessage: opts.sendMessage,
+      runId: 'test-run',
     })
   )
 

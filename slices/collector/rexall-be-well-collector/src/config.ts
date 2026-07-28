@@ -9,6 +9,8 @@ import type { LazyArbitrary } from 'effect/Arbitrary'
 import { persistResources } from 'fhir-r4/clients'
 import type { FhirResource } from 'fhir-r4/resources'
 
+import { makeFhirProvenanceCapture } from 'web-trace-core/provenance'
+
 import { MedicationListEntity } from './entities/medication-list-entity.ts'
 import { ProfileEntity } from './entities/profile-entity.ts'
 
@@ -117,6 +119,15 @@ const PRESCRIPTIONS_TIMEOUT = Duration.seconds(30)
 const SETTLE = Duration.seconds(8)
 
 /**
+ * This collector's provenance hook: every response an entity derives a
+ * resource from is stored verbatim as a trace `DocumentReference`, linked
+ * both ways to the resources it produced. Module-level — not built inside
+ * the factory — so two plans built from one config share the reference and
+ * stay deep-equal (`toEqual` compares functions by identity).
+ */
+const captureProvenance = makeFhirProvenanceCapture('rexall')<FhirResource>
+
+/**
  * Build the Rexall scraping plan for a configured account. Every navigated page
  * is a user-facing `letsbewell.ca` page — the login page, then the prescriptions
  * page — and the collector only *sniffs* the XHRs those pages fire. **No tunnel
@@ -136,18 +147,29 @@ const SETTLE = Duration.seconds(8)
  * v1 is **list-only**: no per-medication detail crawl. The list `_revinclude`
  * already carries `MedicationDispense`, so the deferred `followUpSteps` crawl is
  * left out until a capture diff proves the detail XHR is richer (issue #339).
+ *
+ * Provenance is the plan-level `captureProvenance` hook — the whole of this
+ * collector's wiring is the one line naming it. The framework mints the run
+ * id (this factory ignores its `runId` parameter — the hook receives it at
+ * invocation), invokes the hook only for a response whose parse produced
+ * resources, and persists the resulting trace best-effort. It matters more
+ * here than for `fhir-r4-client-collector`, because this collector
+ * *translates* — the trace is the only record of what the STU3 → R4 transform
+ * was actually given. The factory stays deterministic given its inputs, so
+ * tests deep-equal plans built from one config.
  */
-const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirResource> => {
+const scrapingPlan = (
+  config: InstanceConfig,
+  _runId: string
+): ScrapingPlan.ScrapingPlan<FhirResource> => {
   const firstPage: WebViewSource.Any = { _tag: 'Uri', uri: LOGIN_URL }
   return ScrapingPlan.make<FhirResource>({
     name: 'Rexall Be Well',
-    // Widening upcast (safe: `EntityDefinition` is covariant in its resource
-    // type, and Patient / MedicationRequest / MedicationDispense are all
-    // `FhirResource`), mirroring `fhir-r4-client-collector`.
     entityDefinitions: [
       ProfileEntity,
       MedicationListEntity,
     ] as readonly EntityDefinition.EntityDefinition<FhirResource>[],
+    captureProvenance,
     firstPage,
     stepSequence: [
       {

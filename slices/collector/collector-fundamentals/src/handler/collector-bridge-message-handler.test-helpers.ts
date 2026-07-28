@@ -52,6 +52,7 @@ const makeSimpleHandler = (
         stepSequence: stepSequence ?? [],
       }),
       sendMessage: noopSendMessage,
+      runId: 'test-run',
       ...rest,
     })
   )

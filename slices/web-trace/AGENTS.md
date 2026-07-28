@@ -23,6 +23,13 @@ is the `*-client-collector` that records a hand-driven session and writes each
 exchange through `web-trace-core`'s codec. It imports the encoding; it never
 re-derives it.
 
+The surface that mounts the viewer lives outside the slice too:
+[`apps/web-trace`](../../apps/web-trace/AGENTS.md) is a self-hosted SMART app
+that wraps `web-trace-react`. It is a host, not a second viewer — the auth
+wiring a self-hosted origin needs (bearer token, FHIR base prefix, the router
+`useRunAuthed` reads through) is all it adds, plus the exchange detail
+`RecordingsPanel` deliberately leaves to its host.
+
 ## Why this slice exists
 
 The FHIR encoding of a trace cannot live anywhere it already had a home:

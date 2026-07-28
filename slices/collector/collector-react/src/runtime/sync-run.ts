@@ -200,6 +200,69 @@ const collectImportSummary = <R>(
   )
 
 /**
+ * Fold one response outcome into the drive step's failure data. The sink owns
+ * the retry/backoff schedule, the per-resource span, and concurrency; the
+ * runner owns only the batch `collector.importing` span (resource count) and
+ * folding failures into the summary. Null-id handling lives in the sink (a
+ * skipped resource contributes no failure), so the runner stays
+ * resource-agnostic. `Right` a decoded {@link SniffedBatch} → persist; `Left`
+ * a response-level failure → one `PersistFailure` keyed on the URL.
+ *
+ * On the `Right` side the batch's two channels get different accounting:
+ *
+ * - `resources` — the primary output — is written first, so a diagnostic write
+ *   can never delay (let alone displace) a clinical one, and its failures are
+ *   returned. An empty batch makes no call at all.
+ * - `diagnostics` ride the *same* sink — never a re-derived write — but their
+ *   failures stop here: WARN-logged by `label`/`id` and kept out of the
+ *   returned failures, so `collectImportSummary` never folds a failed
+ *   *diagnostic* write into `RunnerState: 'partial'` or the caller's
+ *   `onError`. A record about the run must not degrade the run it records.
+ */
+const makeProcessSniffResult =
+  <Resources, R>(
+    persistResources: CollectorDescriptor.ResourcePersistenceContext<
+      Resources,
+      R
+    >['persistResources']
+  ) =>
+  (
+    event: SniffResult<Resources>
+  ): Effect.Effect<ReadonlyArray<CollectorDescriptor.PersistFailure>, never, R> =>
+    Either.match(event, {
+      onRight: ({ resources, diagnostics }) =>
+        Effect.gen(function* () {
+          const failures =
+            resources.length === 0
+              ? []
+              : yield* persistResources(resources).pipe(
+                  Effect.withSpan(Telemetry.Importing.Span.Name, {
+                    attributes: {
+                      [Telemetry.Importing.Span.Attributes.ResourceCount]: resources.length,
+                    },
+                  })
+                )
+          if (diagnostics.length > 0) {
+            const diagnosticFailures = yield* persistResources(diagnostics)
+            yield* Effect.forEach(
+              diagnosticFailures,
+              ({ failed, cause }) =>
+                Effect.logWarning(
+                  `sync-run: diagnostic ${failed.label} ${failed.id} was not written; the run is unaffected`,
+                  cause
+                ),
+              { discard: true }
+            )
+          }
+          return failures
+        }),
+      onLeft: ({ error, url }) =>
+        Effect.succeed<ReadonlyArray<CollectorDescriptor.PersistFailure>>([
+          { failed: { label: 'response', id: url }, cause: error },
+        ]),
+    })
+
+/**
  * Model the whole sync as one long, interruptible Effect on a single
  * fiber:
  *
@@ -230,7 +293,7 @@ const collectImportSummary = <R>(
  * {@link CollectorDescriptor.ResourcePersistenceProgram}.
  */
 const buildImportEffect = <Resources, R>({
-  context: { scrapingPlan, persistResources },
+  context: { scrapingPlan, persistResources, runId },
   sendCollectorMessage,
   collectorRegister,
   onNewFailureCause: handleNewFailureCause,
@@ -253,30 +316,7 @@ const buildImportEffect = <Resources, R>({
 }): Effect.Effect<ImportSummary, never, R> =>
   Effect.scoped(
     Effect.gen(function* () {
-      // Fold one response outcome into the drive step's failure data. The sink
-      // owns the retry/backoff schedule, the per-resource span, and concurrency;
-      // the runner owns only the batch `collector.importing` span (resource
-      // count) and folding failures into the summary. Null-id handling lives in
-      // the sink (a skipped resource contributes no failure), so the runner
-      // stays resource-agnostic. `Right` a decoded batch → persist; `Left` a
-      // response-level failure → one `PersistFailure` keyed on the URL.
-      const processSniffResult = (
-        event: SniffResult<Resources>
-      ): Effect.Effect<ReadonlyArray<CollectorDescriptor.PersistFailure>, never, R> =>
-        Either.match(event, {
-          onRight: (resources) =>
-            persistResources(resources).pipe(
-              Effect.withSpan(Telemetry.Importing.Span.Name, {
-                attributes: {
-                  [Telemetry.Importing.Span.Attributes.ResourceCount]: resources.length,
-                },
-              })
-            ),
-          onLeft: ({ error, url }) =>
-            Effect.succeed<ReadonlyArray<CollectorDescriptor.PersistFailure>>([
-              { failed: { label: 'response', id: url }, cause: error },
-            ]),
-        })
+      const processSniffResult = makeProcessSniffResult(persistResources)
 
       // The handler observes its own `SniffingComplete` internally (the step
       // machine's terminal dispatch runs the lifecycle's `handleSniffingComplete`
@@ -298,6 +338,7 @@ const buildImportEffect = <Resources, R>({
             } = yield* CollectorBridgeMessageHandler.make<Resources>({
               scrapingPlan,
               sendMessage: sendCollectorMessage,
+              runId,
             })
 
             yield* collectorRegister
@@ -382,6 +423,7 @@ export {
   buildImportEffect,
   collectImportSummary,
   DEFAULT_IDLE_TIMEOUT,
+  makeProcessSniffResult,
   resolveIdleTimeout,
 }
 export type { FailedResource, ImportSummary, SniffResult }

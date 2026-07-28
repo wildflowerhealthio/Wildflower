@@ -2,14 +2,15 @@ import type { CollectorDescriptor } from 'collector-fundamentals/model'
 import { Duration, Effect, Either, Fiber, Mailbox, Stream, TestClock, TestContext } from 'effect'
 import { UnknownException } from 'effect/Cause'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
-import { describe, expect, it } from 'vite-plus/test'
+import { LoggingLayerTest, numRunsFor } from 'kitchen-sink/test'
+import { describe, expect, it, vi } from 'vite-plus/test'
 
 import {
   processSniffResultsFromMailbox,
   collectImportSummary,
   DEFAULT_IDLE_TIMEOUT,
   type FailedResource,
+  makeProcessSniffResult,
   resolveIdleTimeout,
   type SniffResult,
 } from './sync-run.ts'
@@ -74,6 +75,118 @@ describe('resolveIdleTimeout', () => {
   })
 })
 
+describe('makeProcessSniffResult', () => {
+  /** A resource is a bare `label`/`id` pair so failures can be built without a codec. */
+  interface TestResource {
+    readonly label: string
+    readonly id: string
+  }
+
+  const failureFor = (resource: TestResource): PersistFailure => ({
+    failed: { label: resource.label, id: resource.id },
+    cause: new Error(`could not write ${resource.id}`),
+  })
+
+  type Sink = (
+    resources: ReadonlyArray<TestResource>
+  ) => Effect.Effect<ReadonlyArray<PersistFailure>, never, never>
+
+  /** The injected sink, recording every batch; `failing` resources report failures. */
+  const spySink = (
+    failing: (resource: TestResource) => boolean = () => false
+  ): ReturnType<typeof vi.fn<Sink>> =>
+    vi.fn<Sink>((resources) => Effect.succeed(resources.filter(failing).map(failureFor)))
+
+  const clinical = (id: string): TestResource => ({ label: 'Patient', id })
+  const trace = (id: string): TestResource => ({ label: 'DocumentReference', id })
+
+  const batch = (
+    resources: readonly TestResource[],
+    diagnostics: readonly TestResource[] = []
+  ): SniffResult<TestResource> => Either.right({ resources, diagnostics })
+
+  it('writes the primary resources before the diagnostics, through the same sink', async () => {
+    const sink = spySink()
+
+    await runTest(
+      makeProcessSniffResult(sink)(batch([clinical('c1'), clinical('c2')], [trace('t1')]))
+    )
+
+    expect(sink.mock.calls.map(([resources]) => resources)).toEqual([
+      // Primary first, so a diagnostic write can never delay or displace the
+      // collector's real output.
+      [clinical('c1'), clinical('c2')],
+      [trace('t1')],
+    ])
+  })
+
+  it('returns only the primary failures; a failed diagnostic write WARNs and stays out', async () => {
+    const sink = spySink(() => true)
+
+    const failures = await runTest(
+      makeProcessSniffResult(sink)(batch([clinical('c1')], [trace('t1')])).pipe(
+        LoggingLayerTest.expectToLog((logs) => {
+          const warnings = logs.filter((log) => log.level === 'WARN')
+          expect(warnings).toHaveLength(1)
+          // Names the failed diagnostic by label and id, so the loss is
+          // attributable without ever reaching the run summary.
+          expect(warnings[0]?.message).toContain('DocumentReference t1')
+        }),
+        Effect.scoped
+      )
+    )
+
+    expect(failures).toEqual([failureFor(clinical('c1'))])
+  })
+
+  it('makes exactly one write for a batch with no diagnostics', async () => {
+    const sink = spySink()
+
+    await runTest(makeProcessSniffResult(sink)(batch([clinical('c1')])))
+
+    expect(sink).toHaveBeenCalledOnce()
+  })
+
+  it('makes no write at all for an empty batch', async () => {
+    // Deliberate change from the older fold, which round-tripped
+    // `persistResources([])` through the sink under an empty-count span.
+    const sink = spySink()
+
+    expect(await runTest(makeProcessSniffResult(sink)(batch([])))).toEqual([])
+    expect(sink).not.toHaveBeenCalled()
+  })
+
+  it('still writes diagnostics when the primary half is empty', async () => {
+    const sink = spySink()
+
+    await runTest(makeProcessSniffResult(sink)(batch([], [trace('t1')])))
+
+    expect(sink.mock.calls.map(([resources]) => resources)).toEqual([[trace('t1')]])
+  })
+
+  it('folds a Left into one response-level failure without touching the sink', async () => {
+    const sink = spySink()
+
+    const failures = await runTest(
+      makeProcessSniffResult(sink)(
+        Either.left({
+          error: new UnknownException('boom'),
+          url: 'https://example.com/x',
+          abandoned: false,
+        })
+      )
+    )
+
+    expect(failures).toEqual([
+      {
+        failed: { label: 'response', id: 'https://example.com/x' },
+        cause: new UnknownException('boom'),
+      },
+    ])
+    expect(sink).not.toHaveBeenCalled()
+  })
+})
+
 describe('collectImportSummary', () => {
   it('accumulates every failure, pushes the growing list to setFailed, and fires onError once each', async () => {
     const sink = new RecordingSink()
@@ -129,7 +242,7 @@ describe('processSniffResultsFromMailbox', () => {
     await runTest(
       Effect.gen(function* () {
         const source = yield* Mailbox.make<SniffResult<unknown>>()
-        yield* source.offer(Either.right([]))
+        yield* source.offer(Either.right({ resources: [], diagnostics: [] }))
         yield* source.offer(
           Either.left({
             error: new UnknownException('x'),

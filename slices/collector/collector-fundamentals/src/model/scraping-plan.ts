@@ -1,10 +1,27 @@
-import { Duration } from 'effect'
+import { Duration, type Effect } from 'effect'
 import type * as EntityDefinition from './entity-definition.ts'
+import type { RemoteResponse } from './response.ts'
 import type * as Step from './step.ts'
 import type * as WebViewSource from './web-view-source.ts'
 
 /** Default {@link ScrapingPlan.maxGeneratedSteps} when a plan omits it. */
 const DEFAULT_MAX_GENERATED_STEPS = 500
+
+/**
+ * What one invocation of {@link ScrapingPlan.captureProvenance} hands back:
+ * the parse output (possibly annotated with links) and any diagnostic
+ * resources the capture minted alongside it.
+ */
+interface CaptureProvenanceResult<TResources> {
+  /** The parse output, possibly link-annotated; the run's primary output. */
+  readonly resources: readonly TResources[]
+  /**
+   * Records *about* the run, not part of it — persisted best-effort through
+   * the same sink, WARN-logged on failure, and never part of the run's
+   * failure summary.
+   */
+  readonly diagnostics: readonly TResources[]
+}
 
 /**
  * Per-slice declaration of *what* to recognize on a sync run and *how*
@@ -75,6 +92,32 @@ interface ScrapingPlan<TResources> {
   readonly maxGeneratedSteps?: number
   readonly dedupeGeneratedOpenUris?: boolean
   readonly idleTimeout?: Duration.DurationInput
+  // Declared as a *method* signature, not a `readonly` arrow property, for the
+  // same reason as `EntityDefinition.followUpSteps`: `produced` puts
+  // `TResources` in a parameter (contravariant) position, which would make
+  // `ScrapingPlan` invariant in `TResources` and break the
+  // `ScrapingPlan<Resources>` → `ScrapingPlan<unknown>` widening the
+  // sealed-`Resources` existential relies on. Method parameters are checked
+  // bivariantly, so this keeps the type covariant.
+  /**
+   * The plan-level provenance seam. When present, the handler invokes it once
+   * per response whose parse succeeded with a **non-empty** batch — the only
+   * moment the "this response → these resources" pairing exists — passing the
+   * framework-minted run id, the settled response, and the parse output.
+   *
+   * The framework owns every rule that keeps this a diagnostic: a failed parse
+   * is never captured, an empty parse is never captured, a failing or *dying*
+   * hook is WARN-logged and the parse output flows on unchanged (hence the
+   * permissive `unknown` error channel — nothing downstream widens), and
+   * `followUpSteps` always sees the raw parse output, never the hook's.
+   * `diagnostics` ride a separate channel to the sink and are written
+   * best-effort — see {@link CaptureProvenanceResult}.
+   */
+  captureProvenance?(
+    runId: string,
+    response: RemoteResponse,
+    produced: readonly TResources[]
+  ): Effect.Effect<CaptureProvenanceResult<TResources>, unknown>
 }
 
 /**
@@ -127,10 +170,15 @@ const make = <TResources>(plan: ScrapingPlan<TResources>): ScrapingPlan<TResourc
     maxGeneratedSteps: plan.maxGeneratedSteps,
     dedupeGeneratedOpenUris: plan.dedupeGeneratedOpenUris,
     idleTimeout: plan.idleTimeout,
+    // Declared as a method (for covariance — see the interface note), so
+    // copying the reference trips `unbound-method`; it is a pure, `this`-free
+    // function, so the concern (unintended `this` scoping) can't apply.
+    // oxlint-disable-next-line typescript-eslint/unbound-method -- pure, this-free method; the copy is safe
+    captureProvenance: plan.captureProvenance,
   }
   freezePlanValue(frozen)
   return frozen
 }
 
 export { make, DEFAULT_MAX_GENERATED_STEPS }
-export type { ScrapingPlan }
+export type { CaptureProvenanceResult, ScrapingPlan }
