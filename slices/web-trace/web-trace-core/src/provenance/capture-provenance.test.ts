@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vite-plus/test'
 
 import { fromDocumentReference, isWebTrace } from '../codec/index.ts'
 import { traceResourceId } from '../trace-exchange.ts'
+import type { CaptureInput, ReferencableResource } from './capture-provenance.ts'
 import { captureProvenance, referenceTo, withMetaSource } from './capture-provenance.ts'
 
 const STARTED_AT = DateTime.unsafeMake('2026-07-27T10:00:00.000Z')
@@ -18,13 +19,16 @@ const emptyMeta = {
   source: null,
 } as const
 
-const observation = (id: string | null): { resourceType: string; id: string | null; meta: null } => ({
+const observation = (id: string | null): ReferencableResource => ({
   resourceType: 'Observation',
   id,
   meta: null,
 })
 
-const input = (bytes: Uint8Array<ArrayBuffer>, overrides: Partial<{ sessionId: string }> = {}) => ({
+const input = (
+  bytes: Uint8Array<ArrayBuffer>,
+  overrides: Partial<{ sessionId: string }> = {}
+): CaptureInput => ({
   sessionId: overrides.sessionId ?? 'fhir-r4-run-1',
   requestId: 'req-7',
   url: 'https://portal.example.org/Observation?subject=abc',
@@ -177,7 +181,10 @@ describe('captureProvenance', () => {
   it('property: two responses in one run produce distinct traces that both name a shared resource', async () => {
     await fc.assert(
       fc.asyncProperty(
-        fc.tuple(fc.string({ minLength: 1, maxLength: 12 }), fc.string({ minLength: 1, maxLength: 12 })),
+        fc.tuple(
+          fc.string({ minLength: 1, maxLength: 12 }),
+          fc.string({ minLength: 1, maxLength: 12 })
+        ),
         async ([first, second]) => {
           fc.pre(first !== second)
           const shared = observation('shared-1')
@@ -198,7 +205,7 @@ describe('captureProvenance', () => {
           }
         }
       ),
-      { numRuns: numRunsFor('slices/web-trace/web-trace-core') }
+      { numRuns: numRunsFor({ base: 60 }) }
     )
   })
 })

@@ -2,9 +2,13 @@ import { type DateTime, Effect, type ParseResult } from 'effect'
 
 import type { Meta } from 'fhir-r4/data-types'
 
-import { type BodyDigestUnavailable, type CaptureHeaders, storeBodyVerbatim } from '../capture/index.ts'
-import { noTimings, traceResourceId } from '../trace-exchange.ts'
+import {
+  type BodyDigestUnavailable,
+  type CaptureHeaders,
+  storeBodyVerbatim,
+} from '../capture/index.ts'
 import { type DocumentReferenceType, toDocumentReference } from '../codec/index.ts'
+import { noTimings, traceResourceId } from '../trace-exchange.ts'
 
 /**
  * The minimum a resource must expose to be linked: FHIR's `resourceType` and
@@ -119,10 +123,7 @@ interface CaptureInput {
 const captureProvenance = <TResource extends ReferencableResource>(
   input: CaptureInput,
   produced: readonly TResource[]
-): Effect.Effect<
-  ProvenanceCapture<TResource>,
-  BodyDigestUnavailable | ParseResult.ParseError
-> =>
+): Effect.Effect<ProvenanceCapture<TResource>, BodyDigestUnavailable | ParseResult.ParseError> =>
   Effect.gen(function* () {
     const body = yield* storeBodyVerbatim(input.bytes, input.headers)
     const references = produced.flatMap((resource) => {

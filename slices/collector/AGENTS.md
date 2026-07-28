@@ -79,7 +79,7 @@ before adding one.
   tell a failed diagnostic from a failed clinical write. So wrap the sink:
   `persistResources: DiagnosticResources.withDiagnosticResources(persistResources, isDiagnostic)`
   (`collector-fundamentals/model`). It partitions the batch, writes the clinical
-  half **first** through the *same* injected sink (never a re-derived write —
+  half **first** through the _same_ injected sink (never a re-derived write —
   see the guardrail above), WARN-logs each diagnostic failure by `label`/`id`,
   and returns only the clinical failures. An empty partition costs no call, so a
   batch with no diagnostics is still exactly one write.
@@ -214,7 +214,7 @@ EnsureWindowVisible` union.** Two variants reach the wire — a `Navigation`'s
   **nothing** is therefore never captured, and neither is a failed parse — if
   you want every exchange stored regardless, that is a recorder, i.e. its own
   entity claiming every response (see `web-trace-collector`), not a capture.
-  Two more properties the wrapper guarantees: a failing or *dying* `capture` is
+  Two more properties the wrapper guarantees: a failing or _dying_ `capture` is
   WARN-logged and returns the inner resources unchanged (a diagnostic never
   takes a run down, and the error channel stays `ParseError`-only), and
   `followUpSteps` still receives the **inner** entity's resources, so a

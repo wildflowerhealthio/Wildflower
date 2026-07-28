@@ -40,9 +40,9 @@ describe('sha256Base64', () => {
   // The NIST vector for "abc", so the digest is pinned to a published value
   // rather than to whatever this implementation happens to produce.
   it('should match the published SHA-256 of "abc"', async () => {
-    await expect(
-      Effect.runPromise(sha256Base64(new TextEncoder().encode('abc')))
-    ).resolves.toBe('ungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0=')
+    await expect(Effect.runPromise(sha256Base64(new TextEncoder().encode('abc')))).resolves.toBe(
+      'ungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0='
+    )
   })
 })
 
@@ -65,9 +65,7 @@ describe('storeBodyVerbatim', () => {
   // size and hash with no data would defeat the point.
   it('should store a body no recorder allowlist would carry, at a size no cap would allow', async () => {
     const big = new Uint8Array(4 * 1024 * 1024)
-    const stored = await Effect.runPromise(
-      storeBodyVerbatim(big, [['content-type', 'video/mp4']])
-    )
+    const stored = await Effect.runPromise(storeBodyVerbatim(big, [['content-type', 'video/mp4']]))
     expect(stored._tag).toBe('StoredBody')
     expect(stored.size).toBe(4 * 1024 * 1024)
     expect(stored.contentType).toBe('video/mp4')
@@ -81,11 +79,13 @@ describe('storeBodyVerbatim', () => {
         expect(stored.size).toBe(body.length)
         expect(stored.hash).toBe(await Effect.runPromise(sha256Base64(body)))
         // Round-trips: what was stored decodes back to exactly what arrived.
-        expect([...Encoding.decodeBase64(stored.data).pipe((either) =>
-          either._tag === 'Right' ? either.right : new Uint8Array()
-        )]).toEqual([...body])
+        expect([
+          ...Encoding.decodeBase64(stored.data).pipe((either) =>
+            either._tag === 'Right' ? either.right : new Uint8Array()
+          ),
+        ]).toEqual([...body])
       }),
-      { numRuns: numRunsFor('slices/web-trace/web-trace-core') }
+      { numRuns: numRunsFor({ base: 60 }) }
     )
   })
 })
