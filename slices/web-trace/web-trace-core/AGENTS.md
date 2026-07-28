@@ -154,6 +154,32 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
   Widening `CODE_TOKEN` widens what leaves the device; `redact.test.ts` holds a
   property over the whole leaf corpus that fails if a verbatim path ever carries
   a digit, a space, or punctuation.
+- **There are two verbatim rules, and the URI one is tested first.**
+  `isCodeToken` is shape-gated _then counted_; `isNamespaceUri` is shape-gated
+  and **never counted**, and answers to its own `namespaceUris` option. The
+  order is not cosmetic: a URI is never a code token, so testing the code rule
+  first would report every hidden `system` field as `notCode` and send the
+  reviewer to a threshold that cannot bring it back. Exempting URIs from the
+  count is deliberate — cardinality is a PHI signal only for values that
+  describe a person, and eighteen distinct `extension[].url` values against a
+  threshold of twelve is what the real capture held.
+- **`isNamespaceUri` reads the value, never the field name.** `system` and
+  `url` are promises the server makes; a `system` holding
+  `http://host/Patient/8a3f2b1c` would export a record URL on the strength of
+  its key. The gate is scheme + no query/fragment/credentials + code-token path
+  segments, with an **allowlist** of version prefixes (`v`, `r`, `stu`, `dstu`,
+  `fhir`) as the only digit-bearing exception. Widening that to "letters then
+  digits" admits `w8`, `h1`, and `wqx0` — the opaque tenant segments a
+  per-record URL is built from — so don't. `redact.test.ts` holds a property
+  over the whole leaf corpus that fails if a verbatim path ever carries
+  anything but a namespace URI.
+- **The generated corpus carries namespace URIs on purpose.**
+  `test-helpers.ts` puts them at `system` and `url` keys, kept out of
+  `identifier` so it stays unambiguous which rule let a value through. Without
+  them both carve-out properties pass without ever reaching their rule. For the
+  same reason `redactWith` in `redact.test.ts` pins **both** switches off: the
+  core defaults them on, and a property about pseudonymization would otherwise
+  be reading values a carve-out let past.
 - **A generated fake is re-derived until it is acceptable, not accepted on the
   first try.** A candidate must differ from its original, re-detect to the same
   shape, and be unused. That loop is what makes "no value survives itself" and

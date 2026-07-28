@@ -43,10 +43,18 @@ const valueCell = (value: string | null): string => (value === null ? '—' : va
  * outcome is the thing they are deciding about, so the option says it — and
  * says *why*, because "hidden because it is not a code" and "hidden because
  * there are too many values" have different fixes.
+ *
+ * A namespace-URI row names its rule instead of its count, in both directions.
+ * The count is not what decided it — those paths are exempt from the threshold
+ * — so reporting `visible (18 values)` would tell the reviewer to go looking
+ * for a threshold that had no say, and `hidden (not a code)` would point at a
+ * switch that would not bring it back.
  */
 const autoLabel = (row: PreviewRow): string => {
   const values = `${row.distinctValues} ${row.distinctValues === 1 ? 'value' : 'values'}`
   if (row.decidedBy === 'override') return 'Auto'
+  if (row.decidedBy === 'namespaceUri') return 'Auto — visible (schema URL)'
+  if (row.decidedBy === 'namespaceUrisOff') return 'Auto — hidden (schema URLs off)'
   if (row.verbatim) return `Auto — visible (${values})`
   if (row.decidedBy === 'disabled') return 'Auto — hidden (codes off)'
   return row.decidedBy === 'notCode' ? 'Auto — hidden (not a code)' : `Auto — hidden (${values})`
@@ -156,6 +164,7 @@ const ExportPanel = ({
     error,
     setEnumCarveOut,
     setEnumThreshold,
+    setNamespaceUris,
     setOverride,
     download,
   } = useExport(exchanges, sessionId)
@@ -237,6 +246,11 @@ const ExportPanel = ({
             }}
           />
         </Field>
+        <ToggleSwitch
+          checked={settings.namespaceUris}
+          label="Show schema URLs as captured (system, extension url)"
+          onChange={setNamespaceUris}
+        />
       </div>
 
       <ErrorBanner error={error} />
@@ -254,7 +268,10 @@ const ExportPanel = ({
             {visible.length === 0 ? (
               <p className={cn(styles['export__note'], 'text-body-3')}>
                 Every value in this export is replaced with a pseudonym. Turn on
-                <em> Show short codes as captured</em> if you need status and unit codes readable.
+                <em> Show short codes as captured</em> if you need status and unit codes readable,
+                or
+                <em> Show schema URLs as captured</em> to keep the URLs that name what a code or an
+                extension means.
               </p>
             ) : (
               <>
@@ -278,8 +295,8 @@ const ExportPanel = ({
               {`Replaced with pseudonyms (${hidden.length})`}
             </summary>
             <p className={cn(styles['export__note'], 'text-body-3')}>
-              A field is hidden when it is not a short code, when it takes more values than the
-              threshold, or when codes are switched off entirely. Open one to reveal it.
+              A field is hidden when it is neither a short code nor a schema URL, when it takes more
+              values than the threshold, or when the matching switch is off. Open one to reveal it.
             </p>
             {hidden.length === 0 ? (
               <p className={cn(styles['export__note'], 'text-body-3')}>Nothing is pseudonymized.</p>

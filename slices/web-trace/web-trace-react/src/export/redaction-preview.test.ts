@@ -162,9 +162,11 @@ describe('buildExportPreview', () => {
       }),
     ]
 
-    // Act
+    // Act — both verbatim rules off. There are two, and "carving out at all"
+    // means neither, so leaving the namespace-URI rule at its default would
+    // let a `system` field through a test that claims nothing survives.
     const preview = await Effect.runPromise(
-      buildExportPreview(exchanges, { salt: SALT, enumCarveOut: false })
+      buildExportPreview(exchanges, { salt: SALT, enumCarveOut: false, namespaceUris: false })
     )
 
     // Assert — nothing is verbatim, and every row says the carve-out is what
@@ -217,12 +219,15 @@ describe('buildExportPreview', () => {
     // a *string* leaf whose value is literally `"null"` is skipped too — a
     // false negative worth the simplicity, since it cannot mask a real one:
     // every other value on the path is still checked on other runs.
+    // The namespace-URI rule is off for the same reason the code carve-out is:
+    // a carved-out row is *meant* to show its before unchanged, so either rule
+    // left on would make this property assert the opposite of the design.
     const structural: ReadonlySet<string> = new Set(['null', 'true', 'false', ''])
     await fc.assert(
       fc.asyncProperty(fc$.session, async (exchanges) => {
         // Act
         const preview = await Effect.runPromise(
-          buildExportPreview(exchanges, { salt: SALT, enumCarveOut: false })
+          buildExportPreview(exchanges, { salt: SALT, enumCarveOut: false, namespaceUris: false })
         )
 
         // Assert — with the carve-out off, every row is pseudonymized, and the

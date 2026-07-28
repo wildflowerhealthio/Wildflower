@@ -6,7 +6,14 @@ import { describe, expect, test } from 'vite-plus/test'
 import { arbitraries, jsonBody, traceExchange } from '../test-helpers.ts'
 import type { TraceBody, TraceExchange } from '../trace-exchange.ts'
 import { type JsonLeaf, type LeafVisitor, mapExchangeLeaves } from './leaves.ts'
-import { buildRedactionPolicy, isCodeToken, redactExchange, redactSession } from './redact.ts'
+import {
+  buildRedactionPolicy,
+  isCodeToken,
+  isNamespaceUri,
+  redactExchange,
+  type RedactionPolicy,
+  redactSession,
+} from './redact.ts'
 import { detectShape } from './shapes.ts'
 
 const { session: sessionArbitrary } = arbitraries(fc)
@@ -55,14 +62,26 @@ const collectSessionLeaves = async (
   exchanges: readonly TraceExchange[]
 ): Promise<readonly JsonLeaf[]> => (await Promise.all(exchanges.map(collectLeaves))).flat()
 
+/**
+ * Redaction with **every** verbatim rule off unless a test asks for one, so the
+ * properties below are about pseudonymization itself rather than about what a
+ * carve-out let through. Both switches have to be named: the core defaults them
+ * on, and a corpus that contains namespace URIs would otherwise carry some of
+ * its own values into the output.
+ */
 const redactWith = (
   exchanges: readonly TraceExchange[],
-  options: { readonly salt: string; readonly enumCarveOut?: boolean }
+  options: {
+    readonly salt: string
+    readonly enumCarveOut?: boolean
+    readonly namespaceUris?: boolean
+  }
 ): Promise<readonly TraceExchange[]> =>
   Effect.runPromise(
     buildRedactionPolicy(exchanges, {
       salt: options.salt,
       enumCarveOut: options.enumCarveOut ?? false,
+      namespaceUris: options.namespaceUris ?? false,
     }).pipe(Effect.flatMap((policy) => redactSession(policy, exchanges)))
   )
 
@@ -417,8 +436,15 @@ describe('the enum carve-out', () => {
     // widened back toward a count-only rule.
     return fc.assert(
       fc.asyncProperty(sessionArbitrary, async (session) => {
+        // Namespace URIs off: they are a *second* verbatim rule with its own
+        // shape gate, and leaving them on would let this property pass on paths
+        // the code carve-out never decided.
         const policy = await Effect.runPromise(
-          buildRedactionPolicy(session, { salt: SALT_A, enumThreshold: 1_000_000 })
+          buildRedactionPolicy(session, {
+            salt: SALT_A,
+            enumThreshold: 1_000_000,
+            namespaceUris: false,
+          })
         )
         for (const stat of policy.stats) {
           if (stat.verbatim) expect(stat.decidedBy).toBe('threshold')
@@ -468,6 +494,259 @@ describe('isCodeToken', () => {
     ]) {
       expect(isCodeToken(identifying)).toBe(false)
     }
+  })
+})
+
+describe('isNamespaceUri', () => {
+  test('admits URIs that name a schema and rejects URIs that address a record', () => {
+    // The readable statement of the rule, in the terms the docs use.
+    for (const namespace of [
+      'http://schema.carebook.com/v1/fhir/identifier/medicationrequest-external-id',
+      'http://schema.carebook.com/v1/fhir/coding/medication-din-code',
+      'http://schemas.carebook.com/v1/fhir/medicationrequest/extension/number-of-repeats-available',
+      'http://loinc.org',
+      'http://snomed.info/sct',
+      'https://terminology.hl7.org/CodeSystem/v3-ActCode',
+      'http://hl7.org/fhir/StructureDefinition/patient-birthTime',
+      'urn:oid:2.16.840.1.113883.4.1',
+    ]) {
+      expect(isNamespaceUri(namespace)).toBe(true)
+    }
+
+    for (const record of [
+      // A pagination link: the query string carries the patient it is about.
+      'https://portal.example.org/fhir/Location?subject=Patient/8a3f2b1c&_count=20',
+      // A record URL: `8a3f2b1c` is the record, not a vocabulary term.
+      'http://portal.example.org/fhir/Patient/8a3f2b1c',
+      // Opaque tenant and environment segments, which a "letters then digits"
+      // version rule would have admitted.
+      'https://portal.example.org/enduser/health/h1/fhir/wqx0/pharmacy/Location',
+      // A UUID naming a system is still a generated identifier.
+      'urn:uuid:e4b1c0aa-1f2c-4b6a-9d3e-77a10b2c3d4e',
+      // Credentials and fragments never appear in a vocabulary URI.
+      'https://user:secret@portal.example.org/fhir/coding',
+      'https://portal.example.org/fhir/coding#patient-8a3f',
+      // Not a URI, or not one of the two admitted schemes.
+      'ftp://portal.example.org/fhir/coding',
+      'active',
+      'ada@example.com',
+      `https://portal.example.org/${'a'.repeat(300)}`,
+    ]) {
+      expect(isNamespaceUri(record)).toBe(false)
+    }
+  })
+
+  test('rejects a bare digit run that is not a version, so numeric ids cannot ride in', () => {
+    // A documented miss: `v2-0203` is a genuine HL7 system, but `0203` is a
+    // bare digit run and admitting those would readmit every numeric id. The
+    // answer is a per-path override, not a looser rule.
+    expect(isNamespaceUri('http://terminology.hl7.org/CodeSystem/v2-0203')).toBe(false)
+  })
+})
+
+describe('the namespace-URI carve-out', () => {
+  /** A bundle whose `system` names a vocabulary and whose `value` names a record. */
+  const codedSession = (systems: readonly string[]): readonly TraceExchange[] =>
+    systems.map((system, index) =>
+      traceExchange({
+        requestId: `req-${index}`,
+        body: {
+          _tag: 'StoredBody',
+          contentType: 'application/json',
+          data: jsonBody({ system, value: `record-${index}-8f3a11c9b2` }),
+          size: 96,
+          hash: 'RBNvo1WzZ4oRRq0W9+hknpT7T8If536DEMBg9hyq/4o=',
+        },
+      })
+    )
+
+  const CodedShape = Schema.Struct({ system: Schema.String, value: Schema.String })
+
+  const systemsOf = (exchanges: readonly TraceExchange[]): readonly string[] =>
+    exchanges.map((exchange) => storedJson(exchange.body, CodedShape).system)
+
+  const valuesOf = (exchanges: readonly TraceExchange[]): readonly string[] =>
+    exchanges.map((exchange) => storedJson(exchange.body, CodedShape).value)
+
+  const policyFor = (
+    session: readonly TraceExchange[],
+    namespaceUris: boolean
+  ): Promise<RedactionPolicy> =>
+    Effect.runPromise(
+      buildRedactionPolicy(session, { salt: SALT_A, enumCarveOut: false, namespaceUris })
+    )
+
+  test('a system URI exports as captured while the identifier beside it does not', async () => {
+    // The case the whole rule exists for: the URI is the label that says what
+    // the code means, the value beside it is the record.
+    const session = codedSession([
+      'http://schema.carebook.com/v1/fhir/coding/medication-din-code',
+      'http://schema.carebook.com/v1/fhir/coding/medication-form-code',
+    ])
+
+    const redacted = await redactWith(session, { salt: SALT_A, namespaceUris: true })
+
+    expect(systemsOf(redacted)).toEqual(systemsOf(session))
+    expect(valuesOf(redacted)).not.toEqual(valuesOf(session))
+  })
+
+  test('a URI path is exempt from the distinct-value threshold', async () => {
+    // Eighteen distinct extension urls is what the real export held, against a
+    // default threshold of twelve. Cardinality carries no signal for a value
+    // that names a schema, so it does not get a say.
+    const session = codedSession(
+      Array.from(
+        { length: 18 },
+        (_unused, index) =>
+          `http://schemas.carebook.com/v1/fhir/extension/field-${'a'.repeat(index + 1)}`
+      )
+    )
+
+    const redacted = await redactWith(session, { salt: SALT_A, namespaceUris: true })
+
+    expect(systemsOf(redacted)).toEqual(systemsOf(session))
+  })
+
+  test('the rule answers to its own switch, not to the code carve-out', async () => {
+    const session = codedSession(['http://schema.carebook.com/v1/fhir/coding/medication-din-code'])
+
+    // Codes on, URIs off: the URI is still hidden.
+    const withoutUris = await Effect.runPromise(
+      buildRedactionPolicy(session, {
+        salt: SALT_A,
+        enumCarveOut: true,
+        namespaceUris: false,
+      }).pipe(Effect.flatMap((policy) => redactSession(policy, session)))
+    )
+    expect(systemsOf(withoutUris)).not.toEqual(systemsOf(session))
+
+    // Codes off, URIs on: the URI survives anyway.
+    const withUris = await Effect.runPromise(
+      buildRedactionPolicy(session, {
+        salt: SALT_A,
+        enumCarveOut: false,
+        namespaceUris: true,
+      }).pipe(Effect.flatMap((policy) => redactSession(policy, session)))
+    )
+    expect(systemsOf(withUris)).toEqual(systemsOf(session))
+  })
+
+  test('a path holding a record URL is not carved out, whatever the field is called', async () => {
+    // `system` is a promise the server makes, not a fact about the value. The
+    // rule reads the value.
+    const session = codedSession([
+      'https://portal.example.org/fhir/Location?subject=Patient/8a3f2b1c&_count=20',
+    ])
+
+    const redacted = await redactWith(session, { salt: SALT_A, namespaceUris: true })
+
+    expect(systemsOf(redacted)).not.toEqual(systemsOf(session))
+  })
+
+  test('one record URL disqualifies the whole path, not just that value', async () => {
+    // Same per-path reasoning as the code carve-out: exporting the namespaces
+    // verbatim would export the record URL sitting at the same path.
+    const session = codedSession([
+      ...Array.from(
+        { length: 9 },
+        () => 'http://schema.carebook.com/v1/fhir/coding/medication-din-code'
+      ),
+      'https://portal.example.org/fhir/Location?subject=Patient/8a3f2b1c',
+    ])
+
+    const redacted = await redactWith(session, { salt: SALT_A, namespaceUris: true })
+
+    expect(systemsOf(redacted)).not.toEqual(systemsOf(session))
+  })
+
+  test('the policy names the rule that decided, in both directions', async () => {
+    const session = codedSession([
+      'http://schema.carebook.com/v1/fhir/coding/medication-din-code',
+      'http://schema.carebook.com/v1/fhir/coding/medication-form-code',
+    ])
+
+    const visible = await policyFor(session, true)
+    expect(visible.stats.find((stat) => stat.path === 'body:$.system')).toEqual({
+      path: 'body:$.system',
+      distinctValues: 2,
+      verbatim: true,
+      decidedBy: 'namespaceUri',
+    })
+
+    // Hidden by its own switch reads as `namespaceUrisOff`, never as
+    // `notCode` — a URI is never a code token, so the code carve-out's label
+    // would point the reviewer at a switch that cannot bring it back.
+    const hidden = await policyFor(session, false)
+    expect(hidden.stats.find((stat) => stat.path === 'body:$.system')).toEqual({
+      path: 'body:$.system',
+      distinctValues: 2,
+      verbatim: false,
+      decidedBy: 'namespaceUrisOff',
+    })
+  })
+
+  test('property: with the rule on, every value exported as captured is a namespace URI', async () => {
+    // The mirror of the code carve-out's own property, and the assertion that
+    // would catch the URI rule being widened toward "any URL". Codes are off
+    // and the threshold is irrelevant, so the URI rule is the only thing that
+    // can make a path verbatim.
+    await fc.assert(
+      fc.asyncProperty(sessionArbitrary, async (session) => {
+        const policy = await Effect.runPromise(
+          buildRedactionPolicy(session, {
+            salt: SALT_A,
+            enumCarveOut: false,
+            namespaceUris: true,
+          })
+        )
+        for (const stat of policy.stats) {
+          if (stat.verbatim) expect(stat.decidedBy).toBe('namespaceUri')
+        }
+
+        const verbatimPaths = policy.stats.filter((stat) => stat.verbatim).map((stat) => stat.path)
+        const offenders: string[] = []
+        const checking: LeafVisitor<never> = {
+          visitString: (path, value) =>
+            Effect.sync(() => {
+              if (verbatimPaths.includes(path) && value !== '' && !isNamespaceUri(value)) {
+                offenders.push(value)
+              }
+              return value
+            }),
+          visitJsonLeaf: (path, value) =>
+            Effect.sync(() => {
+              const text = typeof value === 'string' ? value : JSON.stringify(value)
+              if (verbatimPaths.includes(path) && text !== '' && !isNamespaceUri(text)) {
+                offenders.push(text)
+              }
+              return value
+            }),
+        }
+        for (const exchange of session) {
+          await Effect.runPromise(mapExchangeLeaves(exchange, checking))
+        }
+        expect(offenders).toEqual([])
+      }),
+      { numRuns: numRunsFor({ base: 40 }) }
+    )
+  })
+
+  test('property: with the rule on, nothing but a namespace URI survives in the output', async () => {
+    // The blast radius, stated as the privacy claim rather than as a diff:
+    // ticking the box exposes namespace URIs and nothing else. Same
+    // eight-character floor as the headline substring property, and for the
+    // same reason — a short value turns up inside a long fake by chance.
+    await fc.assert(
+      fc.asyncProperty(sessionArbitrary, async (session) => {
+        const redacted = await redactWith(session, { salt: SALT_A, namespaceUris: true })
+        const output = redacted.map(renderExchange).join('\n')
+        const originals = (await collectSessionLeaves(session))
+          .filter((leaf): leaf is string => typeof leaf === 'string')
+          .filter((leaf) => leaf.length >= 8 && !isNamespaceUri(leaf))
+        for (const original of originals) expect(output).not.toContain(original)
+      }),
+      { numRuns: numRunsFor({ base: 40 }) }
+    )
   })
 })
 
