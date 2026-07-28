@@ -23,12 +23,26 @@ The same risk exists for any tool that crosses package boundaries inside a singl
 | `@types/node`        | `^24`                                    | Jest 29 (via the now-removed Expo packages) dragged in `@types/node@25.5.0` while the workspace catalog is `^24`, splitting vite-plus into two peer-tuple variants (24.12.2 and 25.5.0). Retained to keep a single `@types/node` major; re-evaluate in the next override audit now that Jest is gone.                                                                                                                                                  |
 | `@opentelemetry/api` | `1.9.0`                                  | Sentry packages pull `@opentelemetry/api@1.9.1` transitively while the workspace catalog is `1.9.0`. Same variant-split problem.                                                                                                                                                                                                                                                                                                                       |
 | `typescript`         | `5.9.3`                                  | The root has `typescript-eslint`, which resolves `typescript@6.0.2` from npm; workspace packages use the catalog's `^5` (5.9.3).                                                                                                                                                                                                                                                                                                                       |
-| `vite`               | `npm:@voidzero-dev/vite-plus-core@0.2.5` | The catalog's `vite` alias only binds `catalog:` references. Plugins that peer-depend on bare `vite` (`@vitejs/plugin-react`, `@tanstack/router-plugin`, `vite-plugin-singlefile`) get a real `vite@8` auto-installed by pnpm's auto-install-peers, which hoists over the alias and splits `Plugin`/`UserConfig` types ("Excessive stack depth", "No overload matches" in every vite config). The override rewrites those peers to the vite-plus core. |
+| `vite`               | `npm:@voidzero-dev/vite-plus-core@0.2.6` | The catalog's `vite` alias only binds `catalog:` references. Plugins that peer-depend on bare `vite` (`@vitejs/plugin-react`, `@tanstack/router-plugin`, `vite-plugin-singlefile`) get a real `vite@8` auto-installed by pnpm's auto-install-peers, which hoists over the alias and splits `Plugin`/`UserConfig` types ("Excessive stack depth", "No overload matches" in every vite config). The override rewrites those peers to the vite-plus core. |
 | `vitest`             | `4.1.10`                                 | Bare `vitest` peers otherwise auto-install whatever the registry's latest is, splitting runner state from the copy `vp test` loads (vite-plus 0.2.x depends on real vitest; the old `@voidzero-dev/vite-plus-test` alias line ended at 0.1.24). Vite+'s upgrade guide expects this pin in `pnpm.overrides`; re-pin to the version `vp --version` reports on every vite-plus bump.                                                                      |
 | `@effect/workflow`   | `0.18.1`                                 | `@effect/cluster@0.58.2` declares `@effect/workflow@^0.18.0` as a peer, but pnpm's auto-install-peers picked `0.15.2`. No workspace package imports `@effect/workflow` directly, so the catalog entry never binds — the override forces the version `@effect/cluster` (and the rest of the 0.96/0.75/0.60 platform/rpc/experimental line) needs.                                                                                                       |
 | `react-dom`          | `19.2.8`                                 | Transitive consumers (`@tanstack/react-router`, `@dnd-kit/core`) peer-depend on bare `react-dom`, which pnpm resolves independently of the catalog. React refuses to run when `react` and `react-dom` differ at all, throwing `Incompatible React versions` at import time and failing every jsdom test file. Re-pin to match the catalog's `react` on every React bump — the catalog alone does not hold the two together.                            |
 
 These overrides are what allow `vp test` from the workspace root to load all package configs into one Vitest process via `test.projects` (see [vite.config.ts](../../vite.config.ts)).
+
+## Re-pinning on a vite-plus bump
+
+The `vite` and `vitest` overrides are pinned to exact versions that track `vite-plus`, so **both must be re-pinned whenever the catalog's `vite-plus` moves** — a Dependabot bump touches only the catalog and will leave them behind. When that happens, `vite-plus@<new>` installs its own `@voidzero-dev/vite-plus-core` next to the older one the override still holds, and the resulting two `UserConfig` types make every `defineConfig` call fail to typecheck with `TS2321: Excessive stack depth comparing types … and 'UserConfig'` (plus a companion `TS2769: No overload matches this call`).
+
+Widening the catalog range does not help — an exact override outranks it, so `vp install` reports `Lockfile is up to date, resolution step is skipped` and nothing moves. Edit the override in the root [package.json](../../package.json).
+
+To check for the split without a full build:
+
+```bash
+grep -oE "@voidzero-dev/vite-plus-core@[0-9.]+" pnpm-lock.yaml | sort -u   # expect exactly one line
+```
+
+Read `vitest`'s target from the `vp --version` output rather than guessing it.
 
 ## When to add a new override
 
