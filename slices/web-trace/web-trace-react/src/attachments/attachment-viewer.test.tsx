@@ -113,9 +113,10 @@ describe('AttachmentViewer', () => {
     // Act
     render(<AttachmentViewer attachment={attachment} />)
 
-    // Assert
+    // Assert — the size reads in the app's one byte format (`kitchen-sink`'s
+    // `formatBytes`), not as a raw count this component spells out itself
     expect(screen.getByText('Body not stored at capture: over the size cap.')).toBeDefined()
-    expect(screen.getByText('84,213,760 bytes')).toBeDefined()
+    expect(screen.getByText('80 MB')).toBeDefined()
     expect(screen.getByText(`sha256 ${HASH}`)).toBeDefined()
   })
 
@@ -178,6 +179,26 @@ describe('AttachmentViewer', () => {
 
     // Assert
     expect(screen.getByText(huge)).toBeDefined()
+  })
+
+  it('should not carry a revealed large body over to the next attachment', async () => {
+    // Arrange — this viewer is shared, so a list hands the same mounted instance
+    // a different attachment in place and React keeps the state across the swap.
+    const first = 'a'.repeat(PREVIEW_CHARACTER_CAP + 1)
+    const second = 'b'.repeat(PREVIEW_CHARACTER_CAP + 1)
+    const { rerender } = render(<AttachmentViewer attachment={stored('text/plain', first)} />)
+    await userEvent.click(
+      screen.getByRole('button', { name: `Show ${first.length.toLocaleString()} characters` })
+    )
+    expect(screen.queryByRole('button', { name: /^Show / })).toBeNull()
+
+    // Act
+    rerender(<AttachmentViewer attachment={stored('text/plain', second)} />)
+
+    // Assert — consent was given for one body, not for every body after it
+    expect(
+      screen.getByRole('button', { name: `Show ${second.length.toLocaleString()} characters` })
+    ).toBeDefined()
   })
 
   it('should render a body at the cap without asking', () => {

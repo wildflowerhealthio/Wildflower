@@ -76,7 +76,7 @@ const ExchangeDetail = ({ exchange, className }: ExchangeDetailProps): JSX.Eleme
             // Header names repeat legitimately (`Set-Cookie`), and the capture
             // preserves order, so the index is part of the identity here.
             // oxlint-disable-next-line react/no-array-index-key -- duplicate header names are valid; position is the key
-            <div key={`${name}-${index}`} style={{ display: 'contents' }}>
+            <div key={`${name}-${index}`} className={styles['detail__header-row']}>
               <dt className={cn(styles['detail__header-name'], 'text-body-3')}>{name}</dt>
               <dd className={cn(styles['detail__header-value'], 'text-body-3')}>{value}</dd>
             </div>

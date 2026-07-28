@@ -1,7 +1,12 @@
+/*
+ * One recorded exchange in full. Skin values read from the tundraish token
+ * ramps and machine strings take `--font-mono` — see the package `AGENTS.md`.
+ */
+
 .detail {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: var(--space-7);
   min-width: 0;
 }
 
@@ -9,35 +14,46 @@
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 0.5rem 0.75rem;
+  gap: var(--space-4) var(--space-5);
 }
 
 .detail__url {
   margin: 0;
   overflow-wrap: anywhere;
+  font-family: var(--font-mono);
 }
 
 .detail__section-title {
-  margin: 0 0 0.5rem;
+  margin: 0 0 var(--space-4);
+  color: var(--color-neutral-4);
 }
 
 .detail__headers {
   display: grid;
   grid-template-columns: minmax(8rem, max-content) 1fr;
-  gap: 0.25rem 1rem;
+  gap: var(--space-2) var(--space-7);
   margin: 0;
+}
+
+/* Keeps the keyed row wrapper's `<dt>`/`<dd>` in the grid above. */
+.detail__header-row {
+  display: contents;
 }
 
 .detail__header-name {
   margin: 0;
   overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  color: var(--color-neutral-4);
 }
 
 .detail__header-value {
   margin: 0;
   overflow-wrap: anywhere;
+  font-family: var(--font-mono);
 }
 
 .detail__note {
   margin: 0;
+  color: var(--color-neutral-3);
 }

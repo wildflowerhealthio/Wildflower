@@ -1,4 +1,5 @@
-import { useState, type JSX } from 'react'
+import { formatBytes } from 'kitchen-sink'
+import { useMemo, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { Chip, StatusBadge } from 'react-tundraish'
 
@@ -31,9 +32,9 @@ interface AttachmentViewerProps {
   readonly className?: string
 }
 
-/** `1,024 bytes`, or nothing when the size was never recorded. */
+/** `1.5 KB`, or nothing when the size was never recorded. */
 const describeSize = (size: number | null): string | null =>
-  size === null ? null : `${size.toLocaleString()} bytes`
+  size === null ? null : formatBytes(size)
 
 /** The absence note, phrased so each case says what actually happened. */
 const describeAbsence = (attachment: ViewableAttachment): string | null => {
@@ -66,14 +67,33 @@ const AttachmentViewer = ({
   label = 'Body',
   className,
 }: AttachmentViewerProps): JSX.Element => {
-  const [revealedLarge, setRevealedLarge] = useState(false)
+  /**
+   * The bytes the reveal was granted for, not a bare flag: this viewer is
+   * shared, and a leftover `true` would open the *next* large body handed to the
+   * same instance — see the package `AGENTS.md`.
+   */
+  const [revealedBody, setRevealedBody] = useState<string | null>(null)
 
+  const { data } = attachment
   const size = describeSize(attachment.size)
   const absenceNote = describeAbsence(attachment)
   const previewKind = previewKindFor(attachment.contentType)
 
+  /**
+   * Memoized because the cap can only be checked against the decoded length, so
+   * this runs *before* the guard on a string that may be tens of megabytes.
+   */
+  const decoded = useMemo(
+    (): string | null =>
+      data === null || previewKind === 'none' || previewKind === 'image' ? null : decodeText(data),
+    [data, previewKind]
+  )
+
+  const withheld =
+    decoded !== null && decoded.length > PREVIEW_CHARACTER_CAP && revealedBody !== data
+
   const content = ((): JSX.Element | null => {
-    if (attachment.data === null) return null
+    if (data === null) return null
     if (previewKind === 'none') {
       return (
         <p className={cn(styles['attachment__note'], 'text-body-3')}>
@@ -90,31 +110,29 @@ const AttachmentViewer = ({
         />
       )
     }
-
-    const text = decodeText(attachment.data)
-    if (text === null) {
+    if (decoded === null) {
       return (
         <p className={cn(styles['attachment__note'], 'text-body-3')}>
           <StatusBadge tone="warning">Body is not decodable base64</StatusBadge>
         </p>
       )
     }
-    if (text.length > PREVIEW_CHARACTER_CAP && !revealedLarge) {
+    if (withheld) {
       return (
         <button
           type="button"
           className={cn(styles['attachment__reveal'], 'button-3 outline')}
           onClick={(): void => {
-            setRevealedLarge(true)
+            setRevealedBody(data)
           }}
         >
-          {`Show ${text.length.toLocaleString()} characters`}
+          {`Show ${decoded.length.toLocaleString()} characters`}
         </button>
       )
     }
     return (
       <pre className={cn(styles['attachment__body'], 'text-body-3')}>
-        {previewKind === 'json' ? formatJson(text) : text}
+        {previewKind === 'json' ? formatJson(decoded) : decoded}
       </pre>
     )
   })()

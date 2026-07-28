@@ -106,7 +106,22 @@ this package and a collector.
 - **A large body waits behind a control.** The verbatim capture policy stores
   bodies whole, so pretty-printing one into the DOM on open can hang the tab.
   Past `PREVIEW_CHARACTER_CAP` the viewer offers to show it; the content stays
-  reachable, just not by accident.
+  reachable, just not by accident. The reveal state holds _the bytes it was
+  granted for_, not a boolean — the viewer is shared, so a caller can hand the
+  same mounted instance a different attachment, and a leftover `true` would open
+  the next large body immediately. For the same reason the decode is memoized on
+  those bytes: the cap can only be checked against the decoded length, so the
+  decode runs before the guard and must not run again on every render.
+- **One content-type normalisation, two names.** `mediaTypeOf` is the function;
+  `filter-exchanges.ts` re-exports it as `normalizeContentType` because that is
+  what the filter calls its key. A second copy could drift, and a body that
+  classified one way for the filter and another for the viewer would be a bug
+  with no visible cause.
+- **Skin values come from the tundraish token ramps.** `--space-N`, `--radius-N`,
+  `--color-divider`, `--color-neutral-N`, and `--font-mono` for genuine machine
+  strings (a captured URL, a header row, a body, a hash). A literal `rem` or a
+  `color-mix` off `currentColor` renders fine but drops out of the design system
+  the moment a token is re-pointed — see `react-tundraish/src/tokens.css`.
 - **The filter components are fully controlled.** `ExchangeList` and
   `ExchangeFiltersBar` hold no filter state; the owner does (`RecordingsPanel` in
   production, a small wrapper in the tests). Content-type options are computed

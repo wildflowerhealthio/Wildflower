@@ -109,7 +109,17 @@ type PreviewKind = 'json' | 'text' | 'image' | 'none'
 
 const decodeBase64 = Schema.decodeSync(Schema.StringFromBase64)
 
-/** The media type alone, lower-cased — the same normalisation the list filter uses. */
+/**
+ * The media type alone, lower-cased — `application/json` for
+ * `Application/JSON; charset=utf-8`.
+ *
+ * @param contentType - A recorded content type, with or without parameters
+ * @returns The media type alone
+ *
+ * @remarks
+ * The package's one content-type normalisation; the exchange filter re-exports
+ * it as `normalizeContentType`.
+ */
 const mediaTypeOf = (contentType: string): string =>
   (contentType.split(';')[0] ?? '').trim().toLowerCase()
 
