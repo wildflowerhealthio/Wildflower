@@ -128,6 +128,28 @@ describe('medicationRequestToMedicationView', () => {
     expect(view.nextFillDate).toBeNull()
   })
 
+  test('reads the description from the Medication narrative when it is there', () => {
+    // `rexall-be-well-collector` promotes the carebook `description` extension
+    // into `text.div` and drops the extension; the narrative must win.
+    const promoted = {
+      ...carebookRequest,
+      contained: [
+        {
+          ...carebookRequest.contained[0],
+          text: { status: 'generated', div: '20 mg - Atorvastatin' },
+          extension: [],
+        },
+      ],
+    }
+    const view = medicationRequestToMedicationView(decode(promoted), 'fallback')
+    expect(view.description).toBe('20 mg - Atorvastatin')
+  })
+
+  test('still reads the description extension on a resource written before the promotion', () => {
+    const view = medicationRequestToMedicationView(decode(carebookRequest), 'fallback')
+    expect(view.description).toBe('20 mg - Tablet')
+  })
+
   test('leaves every carebook field null when the request carries none of them', () => {
     const view = medicationRequestToMedicationView(decode(base), 'fallback')
     expect(view.din).toBeNull()

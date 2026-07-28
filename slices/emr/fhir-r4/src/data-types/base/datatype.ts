@@ -129,6 +129,8 @@ const baseSchemas = {
   id: IdSchema,
   instant: InstantSchema,
   integer: Schema.Int,
+  // FHIR R4 `positiveInt`: an integer strictly greater than zero.
+  positiveInt: Schema.Int.pipe(Schema.positive()),
   string: Schema.String,
   time: TimeSchema,
   uri: UriSchema,

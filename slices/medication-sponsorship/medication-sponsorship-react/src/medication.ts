@@ -5,11 +5,15 @@ import type { Medication } from 'medication-sponsorship-core'
 /** The decoded FHIR R4 `MedicationRequest` resource. */
 type MedicationRequestResource = Schema.Schema.Type<typeof MedicationRequest.Schema>
 
-// carebook dialect constants for the Medications app's FHIR server. These
-// are the exact URLs that server emits and are distinct from the Rexall STU3
-// dialect in `rexall-be-well-collector` — keep them verbatim. The DIN lives as
-// a `code.coding` entry on the (contained) Medication; the human-readable
-// description and the remaining-repeats count are `extension`s.
+// carebook dialect constants for the Medications app's FHIR server. Keep them
+// verbatim. The DIN lives as a `code.coding` entry on the (contained)
+// Medication; the human-readable description and the remaining-repeats count
+// are `extension`s.
+//
+// These are *the same* dialect `rexall-be-well-collector` decodes, not a
+// distinct one — a real capture of the Rexall tunnel emits these exact URLs,
+// including the `v2` spelling of the repeats extension below. Change one side
+// and check the other.
 const DIN_CODING_SYSTEM = 'http://schema.carebook.com/v1/fhir/coding/medication-din-code'
 const DESCRIPTION_EXTENSION_URL =
   'http://schemas.carebook.com/v1/fhir/medication/extension/description'
@@ -57,6 +61,7 @@ const ContainedMedication = Schema.Struct({
   id: nullableString,
   resourceType: nullableString,
   code: Schema.optional(Schema.NullOr(MedicationConcept)),
+  text: Schema.optional(Schema.NullOr(Schema.Struct({ div: nullableString }))),
   extension: Schema.optional(
     Schema.Array(Schema.Struct({ url: nullableString, valueString: nullableString }))
   ),
@@ -130,8 +135,20 @@ const dinOf = (medication: ContainedMedicationValue): string | null => {
   return null
 }
 
-/** The carebook description extension (e.g. `"999 mg - Capsule"`). */
+/**
+ * The carebook description (e.g. `"999 mg - Capsule"`).
+ *
+ * Read from the Medication's narrative first: `rexall-be-well-collector`
+ * promotes the carebook `description` extension into `text.div` and drops the
+ * extension, because the narrative is the conventional FHIR home for a
+ * human-readable rendering (and the dialect's own narrative was a byte-copy of
+ * `code.text`, so nothing was displaced). The extension read stays as the
+ * fallback: resources written to the store before that promotion still carry
+ * it, as does the Medications app's own FHIR server.
+ */
 const descriptionOf = (medication: ContainedMedicationValue): string | null => {
+  const narrative = nonEmpty(medication.text?.div)
+  if (narrative !== null) return narrative
   for (const extension of medication.extension ?? []) {
     if (extension.url === DESCRIPTION_EXTENSION_URL) {
       const value = nonEmpty(extension.valueString)

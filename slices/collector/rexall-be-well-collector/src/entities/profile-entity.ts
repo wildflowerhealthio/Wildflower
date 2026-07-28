@@ -18,14 +18,31 @@ type PatientType = typeof Patient.Schema.Type
  * optional and lenient (unknown fields are dropped on decode, Effect's default),
  * so a field the capture omits simply leaves its Patient slot at the schema
  * default rather than failing the decode.
+ *
+ * @remarks
+ * The field names here are reconciled against a real (anonymized) capture. Note
+ * that the name and postal-code paths are **not** the flat ones you would
+ * expect: names are nested under `data.names`, and the postal code is a
+ * top-level `data.zipPostalCode` rather than an `address` sub-object. Because
+ * the decode is deliberately lenient, getting these wrong does not fail — it
+ * silently leaves `Patient.name` and `Patient.address` empty, which is exactly
+ * what happened before the capture arrived.
+ *
+ * Fields the payload also carries and this schema deliberately ignores:
+ * `identifiers.reportingGuid`, `accountState`, `createdOn` / `updatedOn`, and
+ * the top-level `related.profiles` array (dependants, empty in the capture).
  */
 const ProfileSchema = Schema.Struct({
   data: Schema.Struct({
     identifiers: Schema.Struct({ uid: Schema.String, email: Schema.optional(Schema.String) }),
-    firstName: Schema.optional(Schema.String),
-    lastName: Schema.optional(Schema.String),
+    names: Schema.optional(
+      Schema.Struct({
+        firstName: Schema.optional(Schema.String),
+        lastName: Schema.optional(Schema.String),
+      })
+    ),
     birthDate: Schema.optional(Schema.String),
-    address: Schema.optional(Schema.Struct({ postalCode: Schema.optional(Schema.String) })),
+    zipPostalCode: Schema.optional(Schema.String),
   }),
 })
 
@@ -33,6 +50,14 @@ type Profile = typeof ProfileSchema.Type
 
 const decodeProfile = Schema.decode(Schema.parseJson(ProfileSchema))
 const decodePatient = Schema.decodeUnknown(Patient.Schema)
+
+/**
+ * The value, or `null` when absent or blank. The carebook profile sends `""`
+ * for a name it holds no value for, which would otherwise synthesize a
+ * `Patient.name` entry of empty strings.
+ */
+const nonEmpty = (value: string | null | undefined): string | null =>
+  value !== null && value !== undefined && value.length > 0 ? value : null
 
 /**
  * Build the FHIR R4 `Patient` **wire** object from the decoded carebook profile,
@@ -46,19 +71,22 @@ const patientWire = (profile: Profile): Record<string, unknown> => {
     resourceType: 'Patient',
     id: profile.data.identifiers.uid,
   }
-  if (profile.data.firstName != null || profile.data.lastName != null) {
+  const family = nonEmpty(profile.data.names?.lastName)
+  const given = nonEmpty(profile.data.names?.firstName)
+  if (family !== null || given !== null) {
     wire['name'] = [
       {
-        ...(profile.data.lastName != null ? { family: profile.data.lastName } : {}),
-        ...(profile.data.firstName != null ? { given: [profile.data.firstName] } : {}),
+        ...(family !== null ? { family } : {}),
+        ...(given !== null ? { given: [given] } : {}),
       },
     ]
   }
-  if (profile.data.birthDate != null) wire['birthDate'] = profile.data.birthDate
-  if (profile.data.identifiers.email != null)
-    wire['telecom'] = [{ system: 'email', value: profile.data.identifiers.email }]
-  const postalCode = profile.data.address?.postalCode
-  if (postalCode != null) wire['address'] = [{ postalCode }]
+  const birthDate = nonEmpty(profile.data.birthDate)
+  if (birthDate !== null) wire['birthDate'] = birthDate
+  const email = nonEmpty(profile.data.identifiers.email)
+  if (email !== null) wire['telecom'] = [{ system: 'email', value: email }]
+  const postalCode = nonEmpty(profile.data.zipPostalCode)
+  if (postalCode !== null) wire['address'] = [{ postalCode }]
   return wire
 }
 

@@ -3,6 +3,7 @@ import { Effect, Schema } from 'effect'
 import { Bundle, MedicationDispense, MedicationRequest } from 'fhir-stu3-as-r4/schemas'
 
 import { extractJson } from '../extract-json.ts'
+import { promoteMedicationDispense, promoteMedicationRequest } from '../promote.ts'
 
 /**
  * A parsed medication resource: the decoded output of either carebook
@@ -54,6 +55,17 @@ const isMedication = (resource: MedicationResource | null): resource is Medicati
   resource !== null
 
 /**
+ * Move the carebook extensions that have a conventional R4 home into it. Runs
+ * after the generic STU3→R4 transform, so `fhir-stu3-as-r4` stays generic and
+ * bidirectional — see `promote.ts` for what moves and what deliberately does
+ * not.
+ */
+const promote = (resource: MedicationResource): MedicationResource =>
+  resource.resourceType === 'MedicationRequest'
+    ? promoteMedicationRequest(resource)
+    : promoteMedicationDispense(resource)
+
+/**
  * `…://host/…/pharmacy/Location?…`. The `mustHaveQuery` boundary keeps this
  * list-searchset pattern disjoint from any single-resource pattern (and from
  * `ProfileEntity`'s `…/profile/v2/me`), so `ScrapingPlan.entityDefinitions`
@@ -98,6 +110,7 @@ const MedicationListEntity: EntityDefinition.EntityDefinition<MedicationResource
         const resources = allEntries
           .map(({ resource }) => resource)
           .filter((resource) => isMedication(resource))
+          .map(promote)
         const droppedCount = allEntries.length - resources.length
         if (droppedCount > 0) {
           yield* Effect.logInfo(

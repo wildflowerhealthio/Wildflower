@@ -135,12 +135,20 @@ Per FHIR R4 § Binary, the resource explicitly _does not_ extend `DomainResource
 
 ## Unregistered choice-element datatypes (`value[x]` / `effective[x]`)
 
-The fhir-r4 datatype registry (`slices/emr/fhir-r4/src/data-types/base/datatype-registry.ts`) ships wire schemas for a subset of FHIR R4 `Datatype.Name` — primitives (`boolean`, `canonical`, `date`, `dateTime`, `decimal`, `id`, `instant`, `integer`, `string`, `time`, `uri`, `url`) plus complex (`Address`, `Annotation`, `Attachment`, `CodeableConcept`, `Coding`, `ContactPoint`, `Duration`, `HumanName`, `Identifier`, `Meta`, `Period`, `Quantity`, `Range`, `Ratio`, `Reference`, `SampledData`, `SimpleQuantity`, `Timing`). Any `value[x]` or `effective[x]` slot whose datatype is **not** registered (e.g. `valueMoney`, `valueAge`, `valueSignature`, `valueDistance`, `valueCount`, `valueBase64Binary`, `valueCode`, `valueMarkdown`, `valueOid`, `valueUuid`, `valuePositiveInt`, `valueUnsignedInt`, …) behaves as follows on the wire:
+The fhir-r4 datatype registry (`slices/emr/fhir-r4/src/data-types/base/datatype-registry.ts`) ships wire schemas for a subset of FHIR R4 `Datatype.Name` — primitives (`boolean`, `canonical`, `date`, `dateTime`, `decimal`, `id`, `instant`, `integer`, `positiveInt`, `string`, `time`, `uri`, `url`) plus complex (`Address`, `Annotation`, `Attachment`, `CodeableConcept`, `Coding`, `ContactPoint`, `Duration`, `HumanName`, `Identifier`, `Meta`, `Period`, `Quantity`, `Range`, `Ratio`, `Reference`, `SampledData`, `SimpleQuantity`, `Timing`). Any `value[x]` or `effective[x]` slot whose datatype is **not** registered (e.g. `valueMoney`, `valueAge`, `valueSignature`, `valueDistance`, `valueCount`, `valueBase64Binary`, `valueCode`, `valueMarkdown`, `valueOid`, `valueUuid`, `valueUnsignedInt`, …) behaves as follows on the wire:
 
 - **Decode**: any wire content for an unregistered slot decodes to `null` (the slot exists at the type level so the in-memory shape still matches the decoded resource type).
 - **Encode**: a non-null in-memory value at an unregistered slot **fails encoding** with a `ParseResult.Type` issue naming the unregistered datatype (`UnregisteredDatatype` tagged error in `datatype-registry.ts`). This is intentional — silent drops were the previous (pre-PR-#61) behavior and masked data loss.
 
 `Duration` (`data-types/complex/duration.ts`) registers itself like every other complex datatype, so `Extension.valueDuration` round-trips. It was deliberately unregistered until web-trace's response-timing extension needed a `valueDuration`; the schema is also used directly by `MedicationRequest.dispenseRequest`'s duration fields.
+
+`positiveInt` is seeded from `Datatype.baseSchemas` like every other primitive,
+so `Extension.valuePositiveInt` round-trips. It was deliberately unregistered
+until the Rexall/carebook dialect turned out to emit two of them — the
+`sort-order` extension and the `number-of-repeats-available` modifierExtension —
+which decoded to `null` and were silently lost. Note the dialect also dual-writes
+that modifierExtension as a `v2` `valueDecimal`, which is why the loss went
+unnoticed: the `v2` copy was the only readable one.
 
 `Timing.repeat.boundsDuration` is still absent from `TimingRepeat` — the field was never modeled, only `boundsPeriod` and `boundsRange` are. Registering `Duration` removes the reason it could not be added, but adding the field is a separate change.
 
