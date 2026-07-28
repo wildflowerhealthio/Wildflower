@@ -13,20 +13,15 @@ import {
 
 /**
  * Covers the untyped half of re-keying: the walk that finds a `Reference`
- * wherever a schema put one, and rebuilds the resource around a replacement.
+ * wherever a schema put one and rebuilds the resource around a replacement.
  *
- * `withRewrittenReferences` asserts a return type the compiler cannot check
- * (see its remarks), so the tests here are what stands behind that assertion.
- * Two properties carry it:
- *
- * - a walk that rewrites **nothing** returns a deep-equal value — so the
- *   rebuild never loses, reorders, or invents a field;
- * - a walk that rewrites returns a value differing **only** at `reference` and
- *   `identifier` — so the rebuild is a substitution, not a transformation.
- *
- * Both run over generated values that include the shapes a decoded FHIR
- * resource actually contains, `URL` instances especially: they are the case a
- * naive `Object.entries` rebuild silently erases.
+ * `withRewrittenReferences` asserts a return type the compiler cannot check, so
+ * these tests are what stands behind that assertion. Two properties carry it: a
+ * walk that rewrites **nothing** is deep-equal to its input (the rebuild never
+ * loses, reorders, or invents a field), and a walk that rewrites differs
+ * **only** at `reference` and `identifier` (a substitution, not a
+ * transformation). Both run over generated values including `URL` instances —
+ * the case a naive `Object.entries` rebuild silently erases.
  */
 
 const sourceIdentifier: IdentifierType = {

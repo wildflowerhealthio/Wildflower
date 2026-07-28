@@ -9,13 +9,12 @@ import type { SourceIdentity } from './source-identity.ts'
  * @packageDocumentation
  *
  * @remarks
- * A collector reading a real FHIR server has to answer "whose ids are these?"
- * before it can re-key anything, and the answer is the **service base URL** —
- * the prefix everything after `Type/id` hangs off. Recovering it is FHIR's
- * RESTful URL scheme rather than any one collector's business, which is why it
- * lives here beside the derivation instead of in the first collector that
- * needed it: the second one would have copied it, and a copy that drifts
- * silently splits one server into two namespaces.
+ * A collector reading a real FHIR server answers "whose ids are these?" with
+ * the **service base URL** — the prefix everything after `Type/id` hangs off.
+ * Recovering it is FHIR's RESTful URL scheme rather than any one collector's
+ * business, so it lives here beside the derivation: the second collector would
+ * otherwise copy it, and a copy that drifts splits one server into two
+ * namespaces.
  */
 
 /**
@@ -42,19 +41,16 @@ const TRAILING_SEGMENTS: Record<FhirUrlShape, number> = { instance: 2, search: 1
  * @remarks
  * `…/baseR4/Patient/123?_format=json` and `…/baseR4/Observation?subject=…` both
  * reduce to `…/baseR4`, which is what makes an `Observation`'s
- * `subject: 'Patient/123'` derive the very id the `Patient` was stored under:
- * the two responses agree on the namespace because they agree on the server,
- * not because anything coordinated them.
+ * `subject: 'Patient/123'` derive the very id the `Patient` was stored under.
  *
- * The shape is taken from the caller rather than sniffed out of the path,
- * because the path alone does not determine it. Recognizing the resource type
- * by its capitalized-letters shape looks reliable — every base-path segment in
- * the wild (`/baseR4`, `/fhir/R4`, `/interconnect-fhir-oauth/api/FHIR/R4`) is
- * lowercase or mixed with digits — but ids are not: `Patient/JohnDoe` is a
- * legal instance URL whose _id_ is type-shaped, and reading it as the type
- * would put that one resource in a namespace of its own, with a dangling
- * `subject` as the only symptom. A property test caught it; a collector's
- * entity already knows which pattern it matched, so it says.
+ * The shape comes from the caller because the path alone does not determine it.
+ * Recognizing the resource type by its capitalized-letters shape looks reliable
+ * — every base-path segment in the wild (`/baseR4`, `/fhir/R4`,
+ * `/interconnect-fhir-oauth/api/FHIR/R4`) is lowercase or mixed with digits —
+ * but ids are not: `Patient/JohnDoe`'s _id_ is type-shaped, and reading it as
+ * the type puts that one resource in a namespace of its own, with a dangling
+ * `subject` as the only symptom. A property test caught it; the calling entity
+ * already knows which pattern it matched.
  */
 const fhirServiceBase = (url: URL, shape: FhirUrlShape): URL => {
   const segments = url.pathname.split('/')
@@ -76,9 +72,8 @@ const fhirServiceBase = (url: URL, shape: FhirUrlShape): URL => {
  * @returns The source identity, or the reason its URL could not be read
  *
  * @remarks
- * Returns an `Either` rather than throwing, because a response URL reaches a
- * collector from an untyped path (the sniffer forwards what the browser said)
- * and a `new URL` throw inside an entity's `parse` would surface as a defect —
+ * An `Either` rather than a throw: a response URL reaches a collector from an
+ * untyped path, and a `new URL` throw inside `parse` would surface as a defect,
  * escaping the seam that keeps one bad response from taking a run down.
  */
 const fhirServerSourceIdentity = (
@@ -112,9 +107,9 @@ const fhirServerSourceIdentity = (
  *
  * @remarks
  * The whole of a FHIR-server collector's re-keying: an entity's `parse` ends
- * with this and states nothing beyond its own prefix and URL shape. Both
- * failures are environment-level rather than per-resource (no Web Crypto, or a
- * response URL that is not a URL), so both fail the one parse — see
+ * with this and states nothing beyond its prefix and URL shape. Both failures
+ * are environment-level rather than per-resource (no Web Crypto, or a response
+ * URL that is not a URL), so both fail the one parse — see
  * {@link parseWithSourceIdentity}.
  */
 const parseWithFhirServerIdentity = <TResource extends SourceKeyedResource>(

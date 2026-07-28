@@ -4,15 +4,10 @@ import { describe, expect, it } from 'vite-plus/test'
 import { SOURCE_PREFIX, withSourceIdentity } from './source-identity.ts'
 
 /**
- * Covers the two things this package still states about identity now that the
- * derivation, the service-base recovery, and the failure shaping all live in
- * `fhir-r4/identity`: the collector's own prefix, and that both entity URL
- * shapes reduce to one namespace.
- *
- * The second is the load-bearing one and it is only checkable here, because
- * only this package pairs a shape with a URL. `fhir-r4`'s own suite proves
- * `fhirServiceBase` agrees when told the right shape; this proves the entities
- * tell it the right shape.
+ * Covers the two things this package still states about identity: its prefix,
+ * and that both entity URL shapes reduce to one namespace. The second is only
+ * checkable here — `fhir-r4`'s suite proves `fhirServiceBase` agrees when told
+ * the right shape; this proves the entities tell it the right shape.
  */
 
 const patient = { resourceType: 'Patient', id: '42', identifier: [] as const }

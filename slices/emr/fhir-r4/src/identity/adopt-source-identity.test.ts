@@ -14,11 +14,10 @@ import { FHIR_ID_PATTERN, type SourceIdentity } from './source-identity.ts'
 
 /**
  * Covers re-keying as the single operation it has to be: the resource's own id,
- * the identifier that records the source's, and the references that would
- * otherwise be left pointing at ids the store no longer holds.
+ * the identifier recording the source's, and the references that would
+ * otherwise point at ids the store no longer holds.
  *
- * The load-bearing test is "should keep a resource and its subject linked" — it
- * is the whole reason references are rewritten rather than left alone, and it
+ * "should keep a resource and its subject linked" is the load-bearing one — it
  * is what a naive per-resource re-key silently breaks: the Patient stores fine,
  * the MedicationRequest stores fine, and the link between them is gone.
  */

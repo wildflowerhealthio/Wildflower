@@ -10,15 +10,12 @@ import {
 } from './fhir-server-identity.ts'
 
 /**
- * Covers the question a collector reading a real FHIR server has to answer
- * before it can re-key anything: which server assigned these ids.
- *
- * Getting it wrong is not loud. Two responses from one server that disagree on
- * the base derive two namespaces, and the only symptom is an `Observation`
- * whose `subject` names a `Patient` the store does not have — so the base is
- * pinned against the URL shapes collectors actually match, including the
- * base-path mountings real servers use (`/baseR4`, `/fhir/R4`, Epic's
- * `/interconnect-fhir-oauth/api/FHIR/R4`).
+ * Covers which server assigned the ids in a response. Getting it wrong is not
+ * loud: two responses from one server that disagree on the base derive two
+ * namespaces, and the only symptom is an `Observation` whose `subject` names a
+ * `Patient` the store does not have. So the base is pinned against the URL
+ * shapes collectors actually match, base-path mountings included (`/baseR4`,
+ * `/fhir/R4`, Epic's `/interconnect-fhir-oauth/api/FHIR/R4`).
  */
 
 const patient = { resourceType: 'Patient', id: '42', identifier: [] as const }

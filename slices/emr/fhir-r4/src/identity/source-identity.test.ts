@@ -16,18 +16,12 @@ import {
 } from './source-identity.ts'
 
 /**
- * Covers the derivation a collector re-keys with: source id → store-local
- * logical id, plus the `Identifier` that records where that id came from.
- *
- * The three properties the whole scheme rests on are asserted directly, because
- * each maps to a concrete failure if it lapses:
- *
- * - **stable** — an unstable id turns every sync into a fresh duplicate instead
- *   of an upsert;
- * - **legal** — an id outside FHIR's `[A-Za-z0-9-.]{1,64}` is rejected by the
- *   store's `PUT` at runtime, for input the collector cannot control;
- * - **separating** — two sites, or two resource types, that derive one id
- *   overwrite each other silently.
+ * Covers the derivation a collector re-keys with. Its three properties are
+ * asserted directly because each maps to a concrete failure: an unstable id
+ * turns every sync into a duplicate instead of an upsert; an id outside FHIR's
+ * `[A-Za-z0-9-.]{1,64}` is rejected by the store's `PUT` at runtime, for input
+ * the collector cannot control; and two sites (or two resource types) that
+ * derive one id overwrite each other silently.
  */
 
 const hapi: SourceIdentity = { prefix: 'fhir-r4', system: new URL('https://hapi.fhir.org/baseR4') }
