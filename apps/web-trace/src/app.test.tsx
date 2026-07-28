@@ -1,5 +1,5 @@
 import { HttpClient, HttpClientResponse } from '@effect/platform'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { Effect, Layer } from 'effect'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
@@ -12,8 +12,8 @@ import { buildSmartRouterContext } from './smart-runtime.ts'
 /**
  * The app's own wiring, end to end: its router context satisfies
  * `web-trace-react`'s `useRunAuthed`, its HTTP layer addresses the FHIR server
- * the SMART handshake named and carries the granted token, and the exchange
- * detail the panel leaves to its host is rendered by this app.
+ * the SMART handshake named and carries the granted token, and the panel it
+ * mounts walks all the way down to one exchange's detail.
  *
  * Only the transport is a stub. Everything above it — the router, the query,
  * the typed FHIR client, the codec — is the production path, so a break in any
@@ -97,9 +97,8 @@ describe('TraceApp', () => {
     expect(sent[0]?.authorization).toBe(`Bearer ${ACCESS_TOKEN}`)
   })
 
-  it('should open an exchange detail, which the panel leaves to its host', async () => {
-    // Arrange
-    const url = 'https://portal.example.org/api/v2/patients/8f14e45f'
+  /** Walk the panel down from the sessions list to one exchange's detail. */
+  const openTheDetail = async (url: string): Promise<void> => {
     mount(
       searchset([traceExchangeToWire(traceExchange({ sessionId: 'morning', requestId: 'a', url }))])
     )
@@ -107,31 +106,33 @@ describe('TraceApp', () => {
       expect(screen.getByRole('button', { name: /morning/ })).toBeDefined()
     })
     await userEvent.click(screen.getByRole('button', { name: /morning/ }))
-
-    // Act
     await userEvent.click(
       screen.getByRole('button', { name: new RegExp('portal\\.example\\.org') })
     )
+  }
 
-    // Assert — the detail names what the capture could not observe, rather
-    // than letting a reader assume a GET.
-    expect(screen.getByRole('heading', { name: url })).toBeDefined()
-    expect(screen.getByText(/carries no request method/)).toBeDefined()
+  it('should open an exchange detail, which the panel owns', async () => {
+    // Arrange
+    const url = 'https://portal.example.org/api/v2/patients/8f14e45f'
+
+    // Act
+    await openTheDetail(url)
+
+    // Assert — the detail names what the capture could not observe, rather than
+    // letting a reader assume a GET. Both `getByRole` calls raise on a second
+    // match, which is what catches a detail surface reappearing in this app:
+    // it would open alongside the panel's, not instead of it. The URL is matched
+    // inside the article because the panel's session header shows it too.
+    const detail = screen.getByRole('article')
+    expect(within(detail).getByText(url)).toBeDefined()
+    expect(within(detail).getByText(/records no request method/)).toBeDefined()
+    expect(screen.getByRole('button', { name: 'Back to exchanges' })).toBeDefined()
   })
 
   it('should return from an exchange detail to the exchange list', async () => {
     // Arrange
     const url = 'https://portal.example.org/api/v2/patients/8f14e45f'
-    mount(
-      searchset([traceExchangeToWire(traceExchange({ sessionId: 'morning', requestId: 'a', url }))])
-    )
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /morning/ })).toBeDefined()
-    })
-    await userEvent.click(screen.getByRole('button', { name: /morning/ }))
-    await userEvent.click(
-      screen.getByRole('button', { name: new RegExp('portal\\.example\\.org') })
-    )
+    await openTheDetail(url)
 
     // Act
     await userEvent.click(screen.getByRole('button', { name: 'Back to exchanges' }))

@@ -65,19 +65,20 @@ package growing a second, prop-threaded way in.
   rawest data on the device; never writing is worth preserving as a property of
   it. `system/` rather than `patient/` because trace `DocumentReference`s carry
   no `subject` and are not reachable through patient context.
-- **The viewer does not redact, and neither does the detail surface here.**
-  Capture is lossless and this runs on the user's own device against their own
-  data. Redaction belongs to the export boundary.
-- **`bodyText` decodes with `fatal: true`.** A lenient decode substitutes U+FFFD,
-  which would render a JPEG as replacement characters and claim it was text —
-  the same lossiness the capture side stores raw bytes to avoid.
-- **`RecordingsPanel` is hidden while a detail is open, never unmounted.** Which
-  session is open and which filters are applied are the panel's own `useState`,
-  so swapping it out for `ExchangeDetail` discards both and "Back to exchanges"
-  lands the reader on the sessions list instead of the exchange list they came
-  from. A test that only matches the URL cannot catch this — a session row's
-  subtitle is its host, so it matches on either surface; `app.test.tsx` asserts
-  the panel's "All recordings" control, which exists only inside an open session.
+- **The viewer does not redact.** Capture is lossless and this runs on the user's
+  own device against their own data. Redaction belongs to the export boundary.
+- **`RecordingsPanel` owns every level, including the exchange detail.** This app
+  renders no viewing surface of its own and holds no selection state. It briefly
+  did: the panel used to leave the detail to its host, and this app carried
+  `exchange-detail.tsx`, `body-text.ts`, and `headers.ts` to satisfy that. When
+  the panel grew its own third level, **both** surfaces opened on one click. The
+  app's `hidden` wrapper dropped the panel out of the accessibility tree, so
+  every query but one saw a single detail; "Back to exchanges" then resolved to
+  the app's control, closed the app's copy, and revealed the panel still holding
+  the detail the reader had just dismissed. Re-adding a detail surface here
+  re-creates that. The slice's `viewable-attachment.ts` carries the
+  `fatal: true` body decode that `body-text.ts` used to, and `ExchangeDetail`
+  keys repeated header rows by position, which is what `headers.ts` was for.
 
 ## Seeded registration
 
@@ -95,14 +96,17 @@ above `MIN_UPLOAD_PORT` (8082) so shipping it does not consume a low upload port
 - `smart-runtime.test.ts` — the auth wiring in isolation: prefix derivation
   (including the raise), the relative/absolute split, and that an absent token
   sets no header rather than a `Bearer` with nothing after it.
-- `body-text.test.ts` — the base64 → bytes → text path, property-tested over
-  arbitrary bytes, plus the not-UTF-8 and malformed-base64 cases.
-- `headers.test.ts` / `exchange-detail.test.tsx` — that a response repeating a
-  header name **and** its value still renders both rows. `name:value` is not a
-  unique React key, so `keyedHeaders` disambiguates by occurrence.
 - `app.test.tsx` — the whole tree over a stub transport. It asserts the URL and
   the `Authorization` header that actually went on the wire, so the two
-  self-hosted-origin facts above are pinned rather than assumed.
+  self-hosted-origin facts above are pinned rather than assumed. It also walks
+  the panel down to an exchange detail and back out, which is what would catch a
+  detail surface reappearing here: a second `Back to exchanges` on the page makes
+  `getByRole` raise, and the walk back out asserts the panel's "All recordings"
+  control — a URL match alone would pass on either surface, since a session row's
+  subtitle is its host.
+
+Body decoding and header-row keying are the slice's tests now, in
+`web-trace-react`'s `attachments/` and `exchanges/`.
 
 ## References
 
