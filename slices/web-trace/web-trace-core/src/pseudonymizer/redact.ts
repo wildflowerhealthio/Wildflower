@@ -54,7 +54,60 @@ class PseudonymSpaceExhausted extends Data.TaggedError('PseudonymSpaceExhausted'
 type RedactionError = PseudonymSpaceExhausted | WebCryptoUnavailable
 
 /** How a path's verbatim/pseudonymize decision was reached. */
-type EnumDecision = 'threshold' | 'override' | 'disabled'
+type EnumDecision = 'threshold' | 'override' | 'disabled' | 'notCode'
+
+/**
+ * The longest value the carve-out will treat as a code.
+ *
+ * @remarks
+ * A controlled-vocabulary code is short. Past this a letters-only run is prose —
+ * a free-text note, a display name — not something an `EntityDefinition`
+ * branches on.
+ */
+const CODE_TOKEN_MAX_LENGTH = 64
+
+/**
+ * Letters, hyphens, and underscores only — no digits, no spaces, no punctuation.
+ *
+ * @remarks
+ * An **allowlist**, deliberately: the carve-out has to admit only what it can
+ * positively recognise as a code, because everything it fails to exclude leaves
+ * the device verbatim.
+ */
+const CODE_TOKEN = /^[A-Za-z][A-Za-z_-]*$/
+
+/**
+ * Whether a value may be exported verbatim by the enum carve-out.
+ *
+ * @param value - The leaf's string form, as the counting pass recorded it
+ * @returns `true` for a controlled-vocabulary code, `false` for anything else
+ *
+ * @remarks
+ * **Cardinality alone is not enough, and assuming it was is how PHI escaped.**
+ * The carve-out asks "how many distinct values does this path take"; in a trace
+ * of one patient's session, that patient's email, birth date, and postal code
+ * each take exactly *one* value at their path — comfortably under any threshold
+ * — so a count-only rule exports all three as captured.
+ *
+ * So a path also has to *look like* a controlled vocabulary. A code is letters
+ * and separators: `active`, `entered-in-error`, `mg`, `female`, `final`. A digit
+ * disqualifies (`1990-05-12`, `02139`, `8a3f2b1c`, `MRN12345`), a space
+ * disqualifies (`Ada Lovelace`), and any other character disqualifies
+ * (`ada@example.com`). That covers every identifying shape `detectShape` knows
+ * by construction, so the two rules cannot disagree.
+ *
+ * The empty string is eligible because it is structure rather than data — it is
+ * preserved by {@link redactExchange} regardless, and letting one empty
+ * observation disqualify a whole path would hide genuine enums.
+ *
+ * **The residue this does not solve**: a name that is a single lowercase word
+ * (`ada`, `boston`) is indistinguishable from a code by shape, and at a
+ * low-cardinality path it still exports verbatim. No reliable syntactic rule
+ * separates the two; the preview surfaces every carved-out path so a reviewer
+ * can override one, and the carve-out is off by default in the export UI.
+ */
+const isCodeToken = (value: string): boolean =>
+  value === '' || (value.length <= CODE_TOKEN_MAX_LENGTH && CODE_TOKEN.test(value))
 
 /**
  * What {@link buildRedactionPolicy} concluded about one path, for the viewer to
@@ -191,11 +244,21 @@ const buildRedactionPolicy = (
           decidedBy: 'override',
         }
       }
+      if (!carveOut) {
+        return { path, distinctValues: values.size, verbatim: false, decidedBy: 'disabled' }
+      }
+      // Shape before count. A path is only a candidate for the carve-out if
+      // *every* value it took looks like a code — one identifying value is
+      // enough to disqualify the path, because the carve-out is per path and
+      // exporting the rest verbatim would export that one too.
+      if (![...values].every(isCodeToken)) {
+        return { path, distinctValues: values.size, verbatim: false, decidedBy: 'notCode' }
+      }
       return {
         path,
         distinctValues: values.size,
-        verbatim: carveOut && values.size <= threshold,
-        decidedBy: carveOut ? 'threshold' : 'disabled',
+        verbatim: values.size <= threshold,
+        decidedBy: 'threshold',
       }
     })
     const verbatimPaths = new Set(stats.filter((stat) => stat.verbatim).map((stat) => stat.path))
@@ -416,8 +479,10 @@ const redactSession = (
 
 export {
   buildRedactionPolicy,
+  CODE_TOKEN_MAX_LENGTH,
   DEFAULT_ENUM_THRESHOLD,
   type EnumDecision,
+  isCodeToken,
   type PathOverride,
   type PathStat,
   PseudonymSpaceExhausted,

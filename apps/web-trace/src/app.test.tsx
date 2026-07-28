@@ -144,4 +144,48 @@ describe('TraceApp', () => {
     expect(screen.getByRole('button', { name: 'All recordings' })).toBeDefined()
     expect(screen.getByRole('button', { name: new RegExp('portal\\.example\\.org') })).toBeDefined()
   })
+
+  // The tabstrip is the only navigation this app owns. Everything below a tab
+  // belongs to the slice panel that tab selects.
+  it('should swap the recordings panel for the documents panel, unmounting the one it leaves', async () => {
+    // Arrange
+    mount(searchset([traceExchangeToWire(traceExchange({ sessionId: 'morning', requestId: 'a' }))]))
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /morning/ })).toBeDefined()
+    })
+
+    // Act
+    await userEvent.click(screen.getByRole('tab', { name: 'Documents' }))
+
+    // Assert — the documents browser's own filter bar is up, and the recordings
+    // panel is *gone* rather than hidden. A `hidden` wrapper is what made the
+    // last two-surfaces-at-once collision invisible to every query but one, so
+    // this asserts the absence directly.
+    await waitFor(() => {
+      expect(screen.getByLabelText('Category')).toBeDefined()
+    })
+    expect(screen.queryByRole('button', { name: /morning/ })).toBeNull()
+    expect(screen.queryByLabelText('URL contains')).toBeNull()
+  })
+
+  it('should return to the recordings panel from the documents tab', async () => {
+    // Arrange
+    mount(searchset([traceExchangeToWire(traceExchange({ sessionId: 'morning', requestId: 'a' }))]))
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /morning/ })).toBeDefined()
+    })
+    await userEvent.click(screen.getByRole('tab', { name: 'Documents' }))
+    await waitFor(() => {
+      expect(screen.getByLabelText('Category')).toBeDefined()
+    })
+
+    // Act
+    await userEvent.click(screen.getByRole('tab', { name: 'Recordings' }))
+
+    // Assert
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /morning/ })).toBeDefined()
+    })
+    expect(screen.queryByLabelText('Category')).toBeNull()
+  })
 })

@@ -1,7 +1,8 @@
 # AGENTS.md — slices/web-trace/web-trace-react
 
 The browser UI adapter of the web-trace slice: the on-device viewer for recorded
-browsing sessions, mounted by the host app.
+browsing sessions and the device's documents, plus the export flow, mounted by
+the host app.
 
 ## Layering
 
@@ -12,15 +13,18 @@ reverse. It also depends on `fhir-r4` (the typed client) and `fhir-r4-react`
 
 **Presentation and interaction only.** The codec, the pseudonymizer, and the HAR
 emitter are `web-trace-core`'s; this package imports them and reimplements none
-of them. See the [slice AGENTS.md](../AGENTS.md) for why the core sits below both
-this package and a collector.
+of them. The export flow is the sharpest case: it **drives** `redactSession` and
+`emitHar` and adds no redaction of its own. See the
+[slice AGENTS.md](../AGENTS.md) for why the core sits below both this package and
+a collector.
 
 ## Module layout
 
 - **`src/queries/`** — the reads. `trace-exchanges.ts` is the paged
-  `DocumentReference` search, decoded back into `TraceExchange`s;
-  `page-token.ts` pulls the continuation cursor out of a bundle's `next` link;
-  `keys.ts` holds the query-key roots.
+  `DocumentReference` search pinned to the web-trace category and decoded back
+  into `TraceExchange`s; `documents.ts` is its category-agnostic sibling, which
+  hands back the resources undecoded; `page-token.ts` pulls the continuation
+  cursor out of a bundle's `next` link; `keys.ts` holds the query-key roots.
 - **`src/sessions/`** — `group-sessions.ts` is the pure grouping of exchanges
   into sessions, `use-trace-sessions.ts` is the hook over the paged read (and
   `summarizePages`, its pure half), `sessions-list.tsx` is the list.
@@ -30,8 +34,18 @@ this package and a collector.
 - **`src/attachments/`** — `viewable-attachment.ts` is the viewer's view-model,
   its two adapters, and the content-type classification; `attachment-viewer.tsx`
   is the viewer itself, shared by both tabs.
+- **`src/documents/`** — the documents tab. `document-filters.ts` is the pure
+  filters → search-parameters translation, `describe-document.ts` the pure "what
+  did the record actually say" helpers, `document-filters-bar.tsx` the controls,
+  `documents-list.tsx` the list, `document-detail.tsx` one document in full, and
+  `documents-panel.tsx` composes them; `use-documents.ts` is the hook over the
+  paged read.
+- **`src/export/`** — the export flow. `redaction-preview.ts` builds the
+  per-path before → after **from the pseudonymizer's own output**,
+  `download-har.ts` turns an archive into a same-origin blob, `use-export.ts`
+  holds one export's salt and settings, and `export-panel.tsx` is the surface.
 - **`src/recordings/`** — `recordings-panel.tsx` composes the above into the
-  mountable recordings tab.
+  mountable recordings tab, including the export flow as its fourth level.
 
 ## Traps
 
@@ -131,6 +145,101 @@ this package and a collector.
   router is needed to render one — which is what lets the list components be
   tested without mounting a router.
 
+### Documents tab
+
+- **The documents read is a sibling of the trace read, never a parameter on
+  it.** `trace-exchanges.ts` pins `category` and decodes every row through
+  `fromDocumentReference`; `documents.ts` sends no category and does not decode.
+  One read that sometimes decoded and sometimes did not would have no single
+  return type, and the two carry different page shapes for the same reason.
+- **A neutral filter control sends no parameter at all.** FHIR reads `category=`
+  as a search for the empty token, which matches nothing — so an untouched box
+  would silently produce "no documents" rather than every document.
+  `documentSearchParams` is the one place that is decided, and a property test
+  pins that no axis can ever emit an empty value.
+- **The filters are part of the query key.** They narrow server-side, so
+  changing one is a different search rather than a narrowing of loaded rows.
+  Sharing a key would serve the previous search's rows under the new filters
+  until a refetch landed.
+- **This read has no `unreadable` count, and that is not an oversight.** The
+  trace read gets a second, per-resource decode it can fail leniently; here the
+  typed client decodes the whole bundle, and Effect array decode is
+  all-or-nothing — one `DocumentReference` the schema rejects fails the page.
+  That is the client's contract. An entry with no `resource` is still dropped
+  silently, since it is an `outcome` rather than a lost document.
+- **`Coding.system` and `Identifier.system` decode to `URL`, which adds a
+  trailing slash to a host-only URI.** The server's `http://loinc.org` reads
+  back as `http://loinc.org/`, and these strings render as `system|code` tokens
+  a reader copies into the filter box — where the extra slash matches nothing.
+  `systemUri` drops the lone root slash and only that one; a URI with a path
+  keeps whatever it carries, because the decode cannot tell an added slash from
+  a real one there.
+- **A concept that says nothing describes as nothing.** A `CodeableConcept` with
+  neither `text` nor `coding` yields `null`, never a placeholder — a placeholder
+  reads as a value the server sent.
+
+### Export flow
+
+- **The preview is the pseudonymizer's output, not a second implementation.**
+  `buildExportPreview` runs `redactSession` and samples the `after` values from
+  what it produced, and the panel emits **those same exchanges**. The ticket's
+  acceptance test exists to prove the UI routes _through_ the pseudonymizer
+  rather than around it, so a preview that computed its own before/after would
+  defeat the test it is meant to satisfy — and could show a reviewer something
+  the download does not do.
+- **The salt is minted once per export and threaded.** Changing the threshold or
+  an override re-runs redaction under the _same_ salt. Minting per rebuild would
+  re-pseudonymize everything on each keystroke, and would break the property the
+  design rests on: pseudonyms stable _within_ an export so identifier joins
+  survive, independent _across_ exports so two archives cannot be linked.
+- **A failed rebuild clears the preview.** Leaving the previous one downloadable
+  would hand over an archive built under settings the reviewer has since changed.
+- **The subset reuses `filterExchanges`, it does not rebuild it.** "A session or
+  a filtered subset" is the exchange list's own `ExchangeFilters` over the open
+  session, which is why the export hangs off `RecordingsPanel` rather than
+  living in a tab of its own. The panel memoises the filtered array, because the
+  export hook rebuilds its preview whenever that identity changes.
+- **The carve-out is off when the panel opens.** The safest archive is the one
+  produced by clicking Download without reading anything, so exporting original
+  values is opted _into_ against a preview that lists exactly what it exposes,
+  not opted out of afterwards. The core's own default (on, N=12) is the default
+  for the _threshold_ once it is switched on — see `DEFAULT_EXPORT_SETTINGS`.
+- **The preview is split by outcome, not listed as one table.** The rows that
+  need scrutiny are the ones leaving **as captured**; they are a handful next to
+  the pseudonymized majority, which sits behind a disclosure so it cannot bury
+  them. A single sorted table put the rows that matter wherever the path names
+  happened to fall.
+- **The `Auto` option says what it resolves to, and why.** `Auto — visible
+(3 values)` / `Auto — hidden (not a code)` / `Auto — hidden (codes off)`. A
+  bare `Auto` makes the reviewer infer the outcome from another column, and the
+  two hidden cases have different fixes — one is answered by raising the
+  threshold, the other never is.
+- **The preview table is fixed-layout with explicit column widths.** A path key
+  is several times longer than the values beside it, so an auto-laid-out table
+  hands the path most of the width and squeezes the captured/exported columns —
+  the ones actually being read — down to a few characters.
+- **The export is JSON-only, and says how much it drops.** A non-JSON body
+  becomes a `SkippedBody` at the redaction boundary — the redactor cannot
+  pseudonymize a format it cannot parse, and shipping one unredacted is not an
+  option. The viewer shows every content type; the export does not, and
+  `droppedBodyCount` surfaces the difference. An export that quietly dropped a
+  body would misrepresent what the session did.
+- **The download is a blob from the app's own origin, and there is nowhere to
+  add an upload.** No network egress at any point is the premise of the app —
+  registered `local_only = 1`, which is also why the host uses a plain
+  `FetchHttpClient.layer`.
+- **A preview row can honestly show `before === after` for a path it calls
+  pseudonymized.** `null`, `true`/`false`, and `''` are structure rather than
+  data, so `redactExchange` passes them through whatever the policy decided.
+  The row's decision is about the **path**; its before/after is a **sample**,
+  and a sampled structural value survives. Do not "fix" this by rewriting the
+  decision per value — the row would then disagree with the policy the archive
+  was actually built from.
+- **A session id is not assumed to be path-safe.** It comes from the capture, so
+  `harFileName` sanitizes it; an id that sanitizes to nothing falls back to
+  `session`, since a file named `.har` is hidden on Unix and reads as a failed
+  download.
+
 ## Testing
 
 Property-based where there is an invariant, example-based where there is a
@@ -155,7 +264,33 @@ and [React Testing Reference](../../../docs/Testing/React%20Testing%20Reference.
   those assertions exist to check.
 - The FHIR `Attachment` fixtures decode wire JSON through `Attachment.Schema`
   rather than hand-writing the decoded shape, so they carry the schema's brands
-  and its absent-field handling instead of a test author's guess at them.
+  and its absent-field handling instead of a test author's guess at them. The
+  document fixtures in `documents/describe-document.test.ts` decode through
+  `DocumentReference.Schema` for the same reason — and `content` is required
+  `1..*` with no default, so a fixture that says nothing about content still has
+  to carry one.
+- `documents/documents-panel.test.tsx` is what makes "one attachment viewer,
+  two adapters" an observed fact rather than a claim about the shape of the
+  code: it walks down to a document's content and finds the shared viewer's own
+  output, including the by-reference case a `TraceBody` cannot express.
+- **`export/export-panel.test.tsx` decodes the archive's bodies before
+  asserting on them.** HAR carries a body as base64 in `content.text`, so
+  searching the raw file for a captured value finds nothing _whether or not it
+  was redacted_ — a "no original value survives" assertion over the undecoded
+  bytes is exactly the test that cannot fail.
+- **That test defines `URL.createObjectURL` onto the real `URL`, never over
+  it.** jsdom does not implement it, but replacing the global with a plain
+  object breaks `new URL(...)` — which the pseudonymizer uses on every captured
+  URL — so the subject fails instead of the seam being filled.
+- The enum carve-out is **shape-gated before it is counted**, so a corpus for
+  testing the split needs letter-only codes on one path and something
+  disqualifying on the other. Digit-bearing values are rejected on shape and
+  never reach the threshold, so a test using them passes without exercising the
+  count at all.
+- `export/export-panel.test.tsx` carries the single-patient case directly:
+  email, birth date, and postal code in one exchange, each at one distinct
+  value. That is the corpus a count-only carve-out exported verbatim, and it is
+  asserted against the **downloaded archive**, not the preview.
 
 ## References
 

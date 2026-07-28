@@ -1,0 +1,17 @@
+.documents {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.documents__title {
+  overflow-wrap: anywhere;
+}
+
+.documents__empty {
+  margin: 0;
+}
+
+.documents__more {
+  align-self: flex-start;
+}

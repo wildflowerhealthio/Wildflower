@@ -6,7 +6,7 @@ import { describe, expect, test } from 'vite-plus/test'
 import { arbitraries, jsonBody, traceExchange } from '../test-helpers.ts'
 import type { TraceBody, TraceExchange } from '../trace-exchange.ts'
 import { type JsonLeaf, type LeafVisitor, mapExchangeLeaves } from './leaves.ts'
-import { buildRedactionPolicy, redactExchange, redactSession } from './redact.ts'
+import { buildRedactionPolicy, isCodeToken, redactExchange, redactSession } from './redact.ts'
 import { detectShape } from './shapes.ts'
 
 const { session: sessionArbitrary } = arbitraries(fc)
@@ -304,7 +304,10 @@ describe('the enum carve-out', () => {
   })
 
   test('a path above the threshold is pseudonymized', async () => {
-    const session = statusSession(['a1', 'b2', 'c3', 'd4', 'e5'])
+    // Letter-only codes, so the code-token rule admits them and the threshold
+    // is what actually decides. Digit-bearing values would be disqualified on
+    // shape and this test would pass without exercising the threshold.
+    const session = statusSession(['alpha', 'bravo', 'charlie', 'delta', 'echo'])
     const redacted = await Effect.runPromise(
       buildRedactionPolicy(session, { salt: SALT_A, enumThreshold: 3 }).pipe(
         Effect.flatMap((policy) => redactSession(policy, session))
@@ -336,12 +339,135 @@ describe('the enum carve-out', () => {
       verbatim: true,
       decidedBy: 'threshold',
     })
+    // The id carries digits, so it is disqualified on shape before the count is
+    // ever consulted — `notCode`, not `threshold`.
     expect(policy.stats.find((stat) => stat.path === 'body:$.id')).toEqual({
       path: 'body:$.id',
       distinctValues: 16,
       verbatim: false,
-      decidedBy: 'threshold',
+      decidedBy: 'notCode',
     })
+  })
+
+  test('a single-patient session does not export its email, birth date, or postal code', async () => {
+    // The case a count-only carve-out got wrong. In a trace of one patient's
+    // session each of these takes exactly *one* value at its path, so every
+    // threshold admits it — and all three left the device as captured.
+    const identifying = {
+      email: 'ada@example.com',
+      birthDate: '1990-05-12',
+      zipPostalCode: '02139',
+      phone: '+1 (617) 555-0142',
+      status: 'active',
+    }
+    const session = [
+      traceExchange({
+        requestId: 'req-0',
+        body: {
+          _tag: 'StoredBody',
+          contentType: 'application/json',
+          data: jsonBody(identifying),
+          size: 120,
+          hash: 'RBNvo1WzZ4oRRq0W9+hknpT7T8If536DEMBg9hyq/4o=',
+        },
+      }),
+    ]
+
+    const redacted = await Effect.runPromise(
+      buildRedactionPolicy(session, { salt: SALT_A }).pipe(
+        Effect.flatMap((policy) => redactSession(policy, session))
+      )
+    )
+
+    const Shape = Schema.Struct({
+      email: Schema.String,
+      birthDate: Schema.String,
+      zipPostalCode: Schema.String,
+      phone: Schema.String,
+      status: Schema.String,
+    })
+    const redactedBody = redacted[0]?.body
+    if (redactedBody === undefined) throw new Error('expected one redacted exchange')
+    const out = storedJson(redactedBody, Shape)
+    expect(out.email).not.toBe(identifying.email)
+    expect(out.birthDate).not.toBe(identifying.birthDate)
+    expect(out.zipPostalCode).not.toBe(identifying.zipPostalCode)
+    expect(out.phone).not.toBe(identifying.phone)
+    // The carve-out still earns its keep: a code an EntityDefinition branches
+    // on survives at the same one-distinct-value cardinality.
+    expect(out.status).toBe('active')
+  })
+
+  test('one identifying value disqualifies the whole path, not just that value', async () => {
+    // The carve-out is per path. A path that is a code in nine exchanges and an
+    // email in the tenth cannot export the nine verbatim without exporting the
+    // tenth too.
+    const session = statusSession([...Array.from({ length: 9 }, () => 'active'), 'ada@example.com'])
+    const policy = await Effect.runPromise(buildRedactionPolicy(session, { salt: SALT_A }))
+    expect(policy.stats.find((stat) => stat.path === 'body:$.status')).toMatchObject({
+      verbatim: false,
+      decidedBy: 'notCode',
+    })
+  })
+
+  test('nothing carrying a digit, a space, or punctuation is ever carved out', () => {
+    // The rule stated as a property over the whole leaf corpus: whatever the
+    // session holds, every path the policy leaves verbatim holds only code
+    // tokens. This is the assertion that would catch the carve-out being
+    // widened back toward a count-only rule.
+    return fc.assert(
+      fc.asyncProperty(sessionArbitrary, async (session) => {
+        const policy = await Effect.runPromise(
+          buildRedactionPolicy(session, { salt: SALT_A, enumThreshold: 1_000_000 })
+        )
+        for (const stat of policy.stats) {
+          if (stat.verbatim) expect(stat.decidedBy).toBe('threshold')
+        }
+        const verbatimPaths = policy.stats.filter((stat) => stat.verbatim).map((stat) => stat.path)
+        const offenders: string[] = []
+        const checking: LeafVisitor<never> = {
+          visitString: (path, value) =>
+            Effect.sync(() => {
+              if (verbatimPaths.includes(path) && !isCodeToken(value)) offenders.push(value)
+              return value
+            }),
+          visitJsonLeaf: (path, value) =>
+            Effect.sync(() => {
+              const text = typeof value === 'string' ? value : JSON.stringify(value)
+              if (verbatimPaths.includes(path) && !isCodeToken(text)) offenders.push(text)
+              return value
+            }),
+        }
+        for (const exchange of session) {
+          await Effect.runPromise(mapExchangeLeaves(exchange, checking))
+        }
+        expect(offenders).toEqual([])
+      }),
+      { numRuns: numRunsFor({ base: 40 }) }
+    )
+  })
+})
+
+describe('isCodeToken', () => {
+  test('admits controlled-vocabulary codes and rejects everything identifying', () => {
+    // The readable statement of what the carve-out will and will not admit.
+    for (const code of ['active', 'entered-in-error', 'mg', 'female', 'final', 'in_progress', '']) {
+      expect(isCodeToken(code)).toBe(true)
+    }
+    for (const identifying of [
+      'ada@example.com',
+      '1990-05-12',
+      '02139',
+      '+1 (617) 555-0142',
+      'Ada Lovelace',
+      '8a3f2b1c',
+      'MRN12345',
+      'v2',
+      '123 Elm Street',
+      'a'.repeat(65),
+    ]) {
+      expect(isCodeToken(identifying)).toBe(false)
+    }
   })
 })
 

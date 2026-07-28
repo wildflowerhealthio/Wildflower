@@ -52,8 +52,41 @@ fix.
 
 Pure pseudonymization turns `"status": "active"` into noise. Status codes and
 unit enums are not PHI, and they are precisely what an `EntityDefinition`
-branches on. So a path whose distinct values across the whole session number at
-most the threshold (default 12) exports verbatim.
+branches on. So a path can export verbatim — but it has to clear **two**
+independent bars, and the order matters.
+
+### Shape first, count second
+
+A value is eligible only if it looks like a controlled-vocabulary code:
+letters, hyphens, and underscores, no digits, no spaces, at most 64 characters
+(`isCodeToken`). Every distinct value the path took has to qualify; one that
+does not disqualifies the path, because the carve-out is per path and exporting
+the rest verbatim would export that one too.
+
+**Counting alone was not enough, and assuming it was let PHI out.** The
+threshold asks how many distinct values a path takes. In a trace of one
+patient's session, that patient's email, birth date, and postal code each take
+exactly _one_ value at their path — comfortably under any threshold — so a
+count-only rule exported all three as captured. Low cardinality is what PHI
+looks like in a single-patient trace, not what an enum looks like.
+
+The shape bar is an **allowlist**, deliberately: the carve-out has to admit only
+what it can positively recognise, because everything it fails to exclude leaves
+the device. It excludes every identifying class `detectShape` knows by
+construction — an email has `@`, a date and a postal code have digits, a name
+has a space — so the two rules cannot disagree.
+
+Only then does the count apply: a qualifying path whose distinct values number
+at most the threshold (default 12) exports verbatim.
+
+### What this still does not solve
+
+A name that is a single lowercase word — `ada`, `boston` — is indistinguishable
+from a code by shape, and at a low-cardinality path it still exports verbatim.
+No reliable syntactic rule separates the two. Two things bound the damage: the
+export preview lists every carved-out path with a sample of what it holds, so a
+reviewer can override one; and the carve-out is **off by default** in the export
+UI, so the safe behaviour is what happens when nobody touches a control.
 
 This is why redaction is two steps. `buildRedactionPolicy` walks the session and
 counts; `redactExchange` rewrites one exchange against the result. The split lets

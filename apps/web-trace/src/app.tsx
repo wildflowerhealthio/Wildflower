@@ -8,34 +8,71 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { readySmartClient } from 'fhir-r4-react/smart'
-import { useEffect, useMemo, useState, type JSX } from 'react'
+import { useId, useEffect, useMemo, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { PageLoading } from 'react-tundraish'
-import { RecordingsPanel } from 'web-trace-react'
+import { DocumentsPanel, RecordingsPanel } from 'web-trace-react'
 
 import { buildSmartRouterContext, type RouterContext } from './smart-runtime.ts'
 import styles from './app.module.css'
 
+/** Which of the viewer's two panels is showing. */
+type ViewerTab = 'recordings' | 'documents'
+
+/** The tabs, in the order they render. */
+const TABS: readonly { readonly id: ViewerTab; readonly label: string }[] = [
+  { id: 'recordings', label: 'Recordings' },
+  { id: 'documents', label: 'Documents' },
+]
+
 /**
- * The recordings surface: the app's title, and the slice's panel.
+ * The viewer surface: the app's title, the tabstrip, and whichever of the
+ * slice's two panels is open.
  *
  * @remarks
- * The panel owns all three master/detail levels — sessions, exchanges, and one
- * exchange in full — so this app holds no viewing logic and no selection state.
- * Adding a detail surface back here opens two at once; see the trap in
- * [AGENTS.md](../AGENTS.md).
+ * **This app composes the tabs; it renders no viewing surface of its own**, and
+ * the unselected panel is unmounted rather than hidden. Both rules exist
+ * because breaking either reproduces the two-details-at-once collision — see
+ * the traps in [AGENTS.md](../AGENTS.md).
  */
-const RecordingsScreen = (): JSX.Element => (
-  <>
-    <header className={styles['header']}>
-      <h1 className="text-heading-3">Web Trace</h1>
-      <p className={cn(styles['subtitle'], 'text-body-3')}>
-        Browsing sessions recorded on this device.
-      </p>
-    </header>
-    <RecordingsPanel />
-  </>
-)
+const ViewerScreen = (): JSX.Element => {
+  const [tab, setTab] = useState<ViewerTab>('recordings')
+  const tabPanelId = useId()
+
+  return (
+    <>
+      <header className={styles['header']}>
+        <h1 className="text-heading-3">Web Trace</h1>
+        <p className={cn(styles['subtitle'], 'text-body-3')}>
+          Browsing sessions and documents recorded on this device.
+        </p>
+      </header>
+
+      <div className={styles['tabs']} role="tablist" aria-label="Web Trace views">
+        {TABS.map(({ id, label }) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            id={`${tabPanelId}-${id}-tab`}
+            aria-selected={tab === id}
+            aria-controls={tabPanelId}
+            className={cn(styles['tabs__tab'], tab === id && styles['tabs__tab--active'])}
+            onClick={(): void => {
+              setTab(id)
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div id={tabPanelId} role="tabpanel" aria-labelledby={`${tabPanelId}-${tab}-tab`}>
+        {tab === 'recordings' ? <RecordingsPanel /> : <DocumentsPanel />}
+      </div>
+    </>
+  )
+}
 
 /** Props for {@link TraceApp}. */
 interface TraceAppProps {
@@ -70,7 +107,7 @@ const TraceApp = ({ context }: TraceAppProps): JSX.Element => {
     const indexRoute = createRoute({
       getParentRoute: () => rootRoute,
       path: '/',
-      component: RecordingsScreen,
+      component: ViewerScreen,
     })
     return createRouter({
       routeTree: rootRoute.addChildren([indexRoute]),
@@ -151,4 +188,4 @@ const App = (): JSX.Element => {
   )
 }
 
-export { App, RecordingsScreen, TraceApp, type TraceAppProps }
+export { App, TraceApp, type TraceAppProps, ViewerScreen }

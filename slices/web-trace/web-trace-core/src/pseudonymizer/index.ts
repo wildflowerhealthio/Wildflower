@@ -33,8 +33,10 @@ export {
 } from './leaves.ts'
 export {
   buildRedactionPolicy,
+  CODE_TOKEN_MAX_LENGTH,
   DEFAULT_ENUM_THRESHOLD,
   type EnumDecision,
+  isCodeToken,
   type PathOverride,
   type PathStat,
   PseudonymSpaceExhausted,

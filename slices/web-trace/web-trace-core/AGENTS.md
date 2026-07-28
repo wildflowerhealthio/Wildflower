@@ -145,6 +145,15 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
   be decided one exchange at a time. The policy also accumulates the
   value→pseudonym table — reuse one policy for a whole export, and never share
   one between exports.
+- **The carve-out is shape-gated before it is counted, and the order is not
+  cosmetic.** `isCodeToken` admits only letters/hyphens/underscores; a path with
+  any other value is `notCode` and never reaches the threshold. A count-only
+  rule let a single-patient session export its own email, birth date, and postal
+  code — each takes exactly one distinct value at its path, so every threshold
+  admitted it. **Low cardinality is what PHI looks like in a one-patient trace.**
+  Widening `CODE_TOKEN` widens what leaves the device; `redact.test.ts` holds a
+  property over the whole leaf corpus that fails if a verbatim path ever carries
+  a digit, a space, or punctuation.
 - **A generated fake is re-derived until it is acceptable, not accepted on the
   first try.** A candidate must differ from its original, re-detect to the same
   shape, and be unused. That loop is what makes "no value survives itself" and

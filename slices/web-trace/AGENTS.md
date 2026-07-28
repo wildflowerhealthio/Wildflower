@@ -14,8 +14,10 @@ applied retroactively to sessions already recorded.
   and the translations built on it. See its
   [AGENTS.md](./web-trace-core/AGENTS.md).
 - **`web-trace-react`** — the browser UI adapter: the on-device viewer a host app
-  mounts. Presentation and interaction only, and the "view raw" half of the
-  asymmetry above. See its [AGENTS.md](./web-trace-react/AGENTS.md).
+  mounts, as two panels (recordings and documents) plus the export flow.
+  Presentation and interaction only, and the "view raw" half of the asymmetry
+  above — the export flow drives `web-trace-core`'s pseudonymizer rather than
+  redacting itself. See its [AGENTS.md](./web-trace-react/AGENTS.md).
 
 The capture half lives outside this slice, in the collector slice where the
 descriptor seam is: [`web-trace-collector`](../collector/web-trace-collector/AGENTS.md)
@@ -27,8 +29,10 @@ The surface that mounts the viewer lives outside the slice too:
 [`apps/web-trace`](../../apps/web-trace/AGENTS.md) is a self-hosted SMART app
 that wraps `web-trace-react`. It is a host, not a second viewer — the auth
 wiring a self-hosted origin needs (bearer token, FHIR base prefix, the router
-`useRunAuthed` reads through) is all it adds, plus the exchange detail
-`RecordingsPanel` deliberately leaves to its host.
+`useRunAuthed` reads through) is all it adds, plus the tabstrip that chooses
+between the slice's two panels. **Every viewing surface belongs to the slice**,
+the exchange detail included: the app briefly owned one and the result was two
+details open at once. See the app's AGENTS.md for that trap in full.
 
 ## Why this slice exists
 

@@ -1,11 +1,12 @@
-import { useState, type JSX } from 'react'
+import { useMemo, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { ErrorBanner, PageLoading } from 'react-tundraish'
 import { traceResourceId, type TraceExchange } from 'web-trace-core'
 
 import { ExchangeDetail } from '../exchanges/exchange-detail.tsx'
 import { ExchangeList } from '../exchanges/exchange-list.tsx'
-import { NO_FILTERS, type ExchangeFilters } from '../exchanges/filter-exchanges.ts'
+import { filterExchanges, NO_FILTERS, type ExchangeFilters } from '../exchanges/filter-exchanges.ts'
+import { ExportPanel } from '../export/export-panel.tsx'
 import type { TraceExchangesQueryOptions } from '../queries/index.ts'
 import { SessionsList } from '../sessions/sessions-list.tsx'
 import { useTraceSessions } from '../sessions/use-trace-sessions.ts'
@@ -24,16 +25,39 @@ interface RecordingsPanelProps {
 }
 
 /**
+ * The header above every level below the sessions list: the control back, and
+ * what is currently open.
+ *
+ * @param title - What the open level is showing
+ * @param backLabel - Where the control goes — one level up, always
+ * @param onBack - Closes the current level
+ * @returns The header row
+ */
+const sessionHeader = (title: string, backLabel: string, onBack: () => void): JSX.Element => (
+  <div className={styles['recordings__session-header']}>
+    <button type="button" className="button-3 outline" onClick={onBack}>
+      {backLabel}
+    </button>
+    <p className={cn(styles['recordings__session-id'], 'text-label-3')}>{title}</p>
+  </div>
+)
+
+/**
  * The recordings tab: the device's sessions, the exchanges of whichever one is
- * open, and the full detail of whichever exchange is open. Data comes from
+ * open, the full detail of whichever exchange is open, and the export flow for
+ * whichever exchanges the filters currently show. Data comes from
  * {@link useTraceSessions}, which reads through router context — mount it inside
  * the host app's router and `QueryClientProvider`.
  *
  * @remarks
- * Three master/detail levels, each replacing the last with a control back.
+ * Four master/detail levels, each replacing the last with a control back.
  * Selection and filter state live here; filters reset per session, and an open
  * id that is no longer present falls back to the level above rather than
  * rendering an empty detail.
+ *
+ * The export hangs off this panel rather than a tab of its own because its
+ * subset — "a session, or a filtered subset of its exchanges" — is the state
+ * this panel already holds.
  */
 const RecordingsPanel = ({
   onSelectExchange,
@@ -44,6 +68,7 @@ const RecordingsPanel = ({
     useTraceSessions(queryOptions)
   const [openSessionId, setOpenSessionId] = useState<string | null>(null)
   const [openExchangeId, setOpenExchangeId] = useState<string | null>(null)
+  const [isExporting, setIsExporting] = useState(false)
   const [filters, setFilters] = useState<ExchangeFilters>(NO_FILTERS)
 
   const openSession = sessions.find((session) => session.sessionId === openSessionId)
@@ -51,13 +76,16 @@ const RecordingsPanel = ({
     (exchange) => traceResourceId(exchange) === openExchangeId
   )
 
-  const sessionHeader = (title: string, onBack: () => void): JSX.Element => (
-    <div className={styles['recordings__session-header']}>
-      <button type="button" className="button-3 outline" onClick={onBack}>
-        {openExchange === undefined ? 'All recordings' : 'Back to exchanges'}
-      </button>
-      <p className={cn(styles['recordings__session-id'], 'text-label-3')}>{title}</p>
-    </div>
+  /**
+   * The exchanges an export would cover: the same pure `filterExchanges` over
+   * the same `ExchangeFilters` the list is showing — the filter is reused, not
+   * rebuilt. Memoised because the export hook rebuilds its preview whenever
+   * this identity changes, and `filterExchanges` returns a fresh array.
+   */
+  const exportableExchanges = useMemo(
+    (): readonly TraceExchange[] =>
+      openSession === undefined ? [] : filterExchanges(openSession.exchanges, filters),
+    [openSession, filters]
   )
 
   const body = ((): JSX.Element | null => {
@@ -74,6 +102,7 @@ const RecordingsPanel = ({
           onSelectSession={(sessionId: string): void => {
             setOpenSessionId(sessionId)
             setOpenExchangeId(null)
+            setIsExporting(false)
             setFilters(NO_FILTERS)
           }}
           hasMore={hasMore}
@@ -83,10 +112,24 @@ const RecordingsPanel = ({
         />
       )
     }
+    if (isExporting) {
+      return (
+        <>
+          {sessionHeader(openSession.sessionId, 'Back to exchanges', (): void => {
+            setIsExporting(false)
+          })}
+          <ExportPanel
+            exchanges={exportableExchanges}
+            sessionExchangeCount={openSession.exchanges.length}
+            sessionId={openSession.sessionId}
+          />
+        </>
+      )
+    }
     if (openExchange !== undefined) {
       return (
         <>
-          {sessionHeader(openExchange.url, (): void => {
+          {sessionHeader(openExchange.url, 'Back to exchanges', (): void => {
             setOpenExchangeId(null)
           })}
           <ExchangeDetail exchange={openExchange} />
@@ -95,9 +138,21 @@ const RecordingsPanel = ({
     }
     return (
       <>
-        {sessionHeader(openSession.sessionId, (): void => {
+        {sessionHeader(openSession.sessionId, 'All recordings', (): void => {
           setOpenSessionId(null)
         })}
+        <div className={styles['recordings__session-actions']}>
+          <button
+            type="button"
+            className="button-3 outline"
+            onClick={(): void => {
+              setOpenExchangeId(null)
+              setIsExporting(true)
+            }}
+          >
+            {`Export ${exportableExchanges.length === openSession.exchanges.length ? 'recording' : 'these exchanges'}…`}
+          </button>
+        </div>
         <ExchangeList
           exchanges={openSession.exchanges}
           filters={filters}
