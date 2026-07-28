@@ -16,7 +16,7 @@ catalog:
   '@effect/cli': 0.76.0
   '@effect/cluster': 0.60.0
   '@effect/experimental': 0.61.0
-  '@effect/language-service': ^0.87.0
+  '@effect/language-service': ^0.87.1
   '@effect/opentelemetry': 0.64.0
   '@effect/platform': 0.97.0
   '@effect/platform-browser': 0.77.0
@@ -47,9 +47,9 @@ catalog:
   # copy of `@sentry/core` is installed. Divergent majors install two
   # side-by-side, and the mismatched `Client` types break
   # `setupEventContextTrace` / `SentrySampler` consumers (telemetry-node/web).
-  '@sentry/node': 10.67.0
-  '@sentry/opentelemetry': 10.67.0
-  '@sentry/react': 10.67.0
+  '@sentry/node': 10.68.0
+  '@sentry/opentelemetry': 10.68.0
+  '@sentry/react': 10.68.0
   '@tanstack/react-query': ^5.101.4
   '@tanstack/react-router': ^1.170.18
   '@tanstack/router-plugin': ^1.168.23
@@ -61,7 +61,7 @@ catalog:
   '@testing-library/dom': ^10.4.0
   '@testing-library/react': ^16.3.0
   '@testing-library/user-event': ^14.5.2
-  '@tsdown/css': ^0.22.13
+  '@tsdown/css': ^0.22.14
   '@types/fhir': ^0.0.44
   # `har-schema` is the published HAR 1.2 JSON Schema and `ajv` compiles it —
   # together they are how `web-trace-core` holds its emitter to the real spec
@@ -81,7 +81,7 @@ catalog:
   fast-check: 3.23.2
   har-schema: ^2.0.0
   jose: ^6.2.4
-  jsdom: ^29.1.1
+  jsdom: ^30.0.0
   nanoid: ^6.0.0
   qrcode-generator: 2.0.4
   react: 19.2.8
@@ -90,7 +90,7 @@ catalog:
 
   typescript: 7.0.2
   vite: npm:@voidzero-dev/vite-plus-core@^0.2.2
-  vite-plus: ^0.2.5
+  vite-plus: ^0.2.6
   # vite-plus 0.2.x depends on real vitest (the @voidzero-dev/vite-plus-test
   # alias line ended at 0.1.24); pin to the version `vp --version` bundles.
   vitest: 4.1.10
