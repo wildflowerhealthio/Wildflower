@@ -65,20 +65,36 @@ package growing a second, prop-threaded way in.
   rawest data on the device; never writing is worth preserving as a property of
   it. `system/` rather than `patient/` because trace `DocumentReference`s carry
   no `subject` and are not reachable through patient context.
-- **The viewer does not redact.** Capture is lossless and this runs on the user's
-  own device against their own data. Redaction belongs to the export boundary.
-- **`RecordingsPanel` owns every level, including the exchange detail.** This app
-  renders no viewing surface of its own and holds no selection state. It briefly
-  did: the panel used to leave the detail to its host, and this app carried
-  `exchange-detail.tsx`, `body-text.ts`, and `headers.ts` to satisfy that. When
-  the panel grew its own third level, **both** surfaces opened on one click. The
-  app's `hidden` wrapper dropped the panel out of the accessibility tree, so
-  every query but one saw a single detail; "Back to exchanges" then resolved to
-  the app's control, closed the app's copy, and revealed the panel still holding
-  the detail the reader had just dismissed. Re-adding a detail surface here
-  re-creates that. The slice's `viewable-attachment.ts` carries the
-  `fatal: true` body decode that `body-text.ts` used to, and `ExchangeDetail`
-  keys repeated header rows by position, which is what `headers.ts` was for.
+- **The viewer does not redact; the export flow does, and it lives in the
+  slice.** Capture is lossless and this runs on the user's own device against
+  their own data. Redaction belongs to the export boundary, and the button that
+  reaches it is `RecordingsPanel`'s — this app adds no export surface, so the
+  `local_only = 1` claim has no code here to violate it.
+- **The slice's panels own every level, including the exchange detail.** This app
+  renders no viewing surface of its own and holds no selection state within a
+  panel. It briefly did: the panel used to leave the detail to its host, and
+  this app carried `exchange-detail.tsx`, `body-text.ts`, and `headers.ts` to
+  satisfy that. When the panel grew its own third level, **both** surfaces
+  opened on one click. The app's `hidden` wrapper dropped the panel out of the
+  accessibility tree, so every query but one saw a single detail; "Back to
+  exchanges" then resolved to the app's control, closed the app's copy, and
+  revealed the panel still holding the detail the reader had just dismissed.
+  Re-adding a detail surface here re-creates that. The slice's
+  `viewable-attachment.ts` carries the `fatal: true` body decode that
+  `body-text.ts` used to, and `ExchangeDetail` keys repeated header rows by
+  position, which is what `headers.ts` was for.
+- **The tabstrip is the one piece of navigation this app does own, and the line
+  is composition vs. viewing.** `ViewerScreen` chooses between `RecordingsPanel`
+  and `DocumentsPanel`; each panel still owns every master/detail level inside
+  it — recordings goes sessions → exchanges → one exchange → export, documents
+  goes documents → one document. Selecting which slice component to mount is
+  composition; rendering any level below a tab would be viewing logic and
+  belongs in the slice.
+- **The unselected panel is unmounted, never hidden.** A `hidden` wrapper is
+  exactly what made the last collision invisible to every accessibility query
+  but one. An unmounted panel cannot answer a query at all, so a duplicated
+  control surfaces as a test failure rather than as a silent overlap —
+  `app.test.tsx` asserts the absence directly.
 
 ## Seeded registration
 
@@ -103,7 +119,8 @@ above `MIN_UPLOAD_PORT` (8082) so shipping it does not consume a low upload port
   detail surface reappearing here: a second `Back to exchanges` on the page makes
   `getByRole` raise, and the walk back out asserts the panel's "All recordings"
   control — a URL match alone would pass on either surface, since a session row's
-  subtitle is its host.
+  subtitle is its host. Two further cases drive the tabstrip and assert the
+  unselected panel is **absent**, not hidden.
 
 Body decoding and header-row keying are the slice's tests now, in
 `web-trace-react`'s `attachments/` and `exchanges/`.

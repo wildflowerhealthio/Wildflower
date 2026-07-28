@@ -27,6 +27,48 @@ export {
   previewKindFor,
   type ViewableAttachment,
 } from './attachments/viewable-attachment.ts'
+export {
+  describeCategories,
+  describeConcept,
+  describeContent,
+  describeIdentifiers,
+  documentTitle,
+  statusTone,
+  systemUri,
+} from './documents/describe-document.ts'
+export { DocumentDetail, type DocumentDetailProps } from './documents/document-detail.tsx'
+export {
+  DocumentFiltersBar,
+  type DocumentFiltersBarProps,
+} from './documents/document-filters-bar.tsx'
+export {
+  DOCUMENT_STATUSES,
+  type DocumentFilters,
+  type DocumentSearchParams,
+  type DocumentStatus,
+  documentSearchParams,
+  isNarrowed,
+  NO_DOCUMENT_FILTERS,
+} from './documents/document-filters.ts'
+export { DocumentsList, type DocumentsListProps } from './documents/documents-list.tsx'
+export { DocumentsPanel, type DocumentsPanelProps } from './documents/documents-panel.tsx'
+export { type DocumentsState, flattenPages, useDocuments } from './documents/use-documents.ts'
+export { downloadBlob, HAR_MEDIA_TYPE, harBlob, harFileName } from './export/download-har.ts'
+export { ExportPanel, type ExportPanelProps } from './export/export-panel.tsx'
+export {
+  buildExportPreview,
+  droppedBodyCount,
+  type ExportPreview,
+  type PreviewRow,
+  sampleLeaves,
+} from './export/redaction-preview.ts'
+export {
+  DEFAULT_EXPORT_SETTINGS,
+  describeSettings,
+  type ExportSettings,
+  type ExportState,
+  useExport,
+} from './export/use-export.ts'
 export { ExchangeDetail, type ExchangeDetailProps } from './exchanges/exchange-detail.tsx'
 export { ExchangeList, type ExchangeListProps } from './exchanges/exchange-list.tsx'
 export { ExchangeFiltersBar, type ExchangeFiltersBarProps } from './exchanges/exchange-filters.tsx'
@@ -42,13 +84,20 @@ export {
   statusClassOf,
 } from './exchanges/filter-exchanges.ts'
 export {
+  DEFAULT_DOCUMENTS_PAGE_SIZE,
   DEFAULT_PAGE_SIZE,
+  type DocumentPage,
+  DOCUMENTS_QUERY_KEY,
+  type DocumentsQueryOptions,
+  documentsInfiniteQueryOptions,
+  type FoundDocument,
   nextPageToken,
   type PageLink,
   TRACE_EXCHANGES_QUERY_KEY,
   type TraceExchangePage,
   type TraceExchangesQueryOptions,
   traceExchangesInfiniteQueryOptions,
+  useDocumentsQuery,
   useTraceExchangesQuery,
   WEB_TRACE_CATEGORY_TOKEN,
   WEB_TRACE_QUERY_KEY,

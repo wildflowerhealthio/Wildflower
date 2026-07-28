@@ -1,0 +1,190 @@
+import { Effect } from 'effect'
+import { useCallback, useEffect, useState } from 'react'
+import type { TraceExchange } from 'web-trace-core'
+import { emitHar } from 'web-trace-core/har'
+import {
+  DEFAULT_ENUM_THRESHOLD,
+  mintExportSalt,
+  type PathOverride,
+} from 'web-trace-core/pseudonymizer'
+
+import { downloadBlob, harBlob, harFileName } from './download-har.ts'
+import { buildExportPreview, type ExportPreview } from './redaction-preview.ts'
+
+/** The reviewer's settings for one export. */
+interface ExportSettings {
+  /**
+   * Whether the enum carve-out runs.
+   *
+   * @defaultValue true
+   */
+  readonly enumCarveOut: boolean
+  /**
+   * The distinct-value ceiling below which a path exports verbatim.
+   *
+   * @defaultValue 12
+   */
+  readonly enumThreshold: number
+  /** Per-path decisions that win over the threshold. */
+  readonly overrides: Readonly<Record<string, PathOverride>>
+}
+
+/** The settings an export opens with: the carve-out on, at the core's default N. */
+const DEFAULT_EXPORT_SETTINGS: ExportSettings = {
+  enumCarveOut: true,
+  enumThreshold: DEFAULT_ENUM_THRESHOLD,
+  overrides: {},
+}
+
+/** What {@link useExport} hands the export panel. */
+interface ExportState {
+  /** The current settings. */
+  readonly settings: ExportSettings
+  /** The rows to review and the exchanges to emit, or `null` before the first build. */
+  readonly preview: ExportPreview | null
+  /** Whether a preview is being built — true on open, and after every settings change. */
+  readonly isBuilding: boolean
+  /** What went wrong building the preview, or `null`. */
+  readonly error: Error | null
+  /** Turns the enum carve-out on or off. */
+  readonly setEnumCarveOut: (enabled: boolean) => void
+  /** Sets the carve-out's distinct-value ceiling. */
+  readonly setEnumThreshold: (threshold: number) => void
+  /** Overrides one path's decision, or clears the override with `null`. */
+  readonly setOverride: (path: string, override: PathOverride | null) => void
+  /** Emits the reviewed archive and saves it. A no-op before the preview is ready. */
+  readonly download: () => void
+}
+
+/** Whatever `Effect.runPromise` rejected with, as an `Error` the banner can render. */
+const asError = (cause: unknown): Error =>
+  cause instanceof Error ? cause : new Error(String(cause))
+
+/** The note placed on the archive's `log.comment`, so the file states how it was made. */
+const describeSettings = (settings: ExportSettings): string => {
+  const overrides = Object.entries(settings.overrides)
+  const carveOut = settings.enumCarveOut
+    ? `enum carve-out on, threshold ${settings.enumThreshold}`
+    : 'enum carve-out off'
+  const overrideNote =
+    overrides.length === 0
+      ? 'no per-path overrides'
+      : overrides.map(([path, decision]) => `${path}=${decision}`).join('; ')
+  return `Redacted at export: ${carveOut}; ${overrideNote}. Pseudonyms are stable within this archive only — a fresh salt is minted per export, so two exports of one session cannot be linked.`
+}
+
+/**
+ * Drives one export: mints its salt, keeps the preview in step with the
+ * reviewer's settings, and hands the reviewed archive to the browser.
+ *
+ * @param exchanges - The exchanges being exported. Pass a **stable** reference
+ *   (memoise the filtered subset) — its identity is what triggers a rebuild.
+ * @param sessionId - The session the archive names
+ * @returns The settings, the preview, and the controls over both
+ *
+ * @remarks
+ * **The salt is minted once, when the export opens, and threaded through every
+ * rebuild.** Changing the threshold or an override re-runs the redaction under
+ * the *same* salt, so a reviewer adjusting a control does not watch every
+ * pseudonym change underneath them — and, more importantly, the archive they
+ * download is the one they reviewed. Minting per rebuild would also make two
+ * exports of one session unlinkable in the wrong direction: the point is that
+ * pseudonyms are stable *within* an export and independent *across* exports.
+ */
+const useExport = (exchanges: readonly TraceExchange[], sessionId: string): ExportState => {
+  const [salt, setSalt] = useState<string | null>(null)
+  const [settings, setSettings] = useState<ExportSettings>(DEFAULT_EXPORT_SETTINGS)
+  const [preview, setPreview] = useState<ExportPreview | null>(null)
+  const [error, setError] = useState<Error | null>(null)
+  const [isBuilding, setIsBuilding] = useState(true)
+
+  // One salt for the life of this export. Deliberately not in the rebuild
+  // effect below: a fresh salt per settings change would re-pseudonymize
+  // everything on every keystroke in the threshold box.
+  useEffect(() => {
+    let cancelled = false
+    Effect.runPromise(mintExportSalt)
+      .then((minted) => {
+        if (!cancelled) setSalt(minted)
+      })
+      .catch((cause: unknown) => {
+        if (!cancelled) {
+          setError(asError(cause))
+          setIsBuilding(false)
+        }
+      })
+    return (): void => {
+      cancelled = true
+    }
+  }, [])
+
+  const { enumCarveOut, enumThreshold, overrides } = settings
+
+  useEffect(() => {
+    if (salt === null) return undefined
+    let cancelled = false
+    setIsBuilding(true)
+    Effect.runPromise(
+      buildExportPreview(exchanges, { salt, enumCarveOut, enumThreshold, overrides })
+    )
+      .then((next) => {
+        if (cancelled) return
+        setPreview(next)
+        setError(null)
+      })
+      .catch((cause: unknown) => {
+        if (cancelled) return
+        // The archive must never be a stale one built under different
+        // settings, so a failed rebuild clears the preview rather than
+        // leaving the previous one downloadable.
+        setPreview(null)
+        setError(asError(cause))
+      })
+      .finally(() => {
+        if (!cancelled) setIsBuilding(false)
+      })
+    return (): void => {
+      cancelled = true
+    }
+  }, [salt, exchanges, enumCarveOut, enumThreshold, overrides])
+
+  const download = useCallback((): void => {
+    if (preview === null) return
+    const archive = emitHar(preview.redacted, {
+      sessionId,
+      comment: describeSettings(settings),
+    })
+    downloadBlob(harBlob(archive), harFileName(sessionId))
+  }, [preview, sessionId, settings])
+
+  return {
+    settings,
+    preview,
+    isBuilding,
+    error,
+    setEnumCarveOut: (enabled: boolean): void => {
+      setSettings((current) => ({ ...current, enumCarveOut: enabled }))
+    },
+    setEnumThreshold: (threshold: number): void => {
+      setSettings((current) => ({ ...current, enumThreshold: threshold }))
+    },
+    setOverride: (path: string, override: PathOverride | null): void => {
+      setSettings((current) => {
+        const { [path]: _cleared, ...rest } = current.overrides
+        return {
+          ...current,
+          overrides: override === null ? rest : { ...rest, [path]: override },
+        }
+      })
+    },
+    download,
+  }
+}
+
+export {
+  DEFAULT_EXPORT_SETTINGS,
+  describeSettings,
+  type ExportSettings,
+  type ExportState,
+  useExport,
+}

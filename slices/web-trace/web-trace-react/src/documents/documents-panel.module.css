@@ -1,0 +1,17 @@
+.documents-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.documents-panel__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-3) var(--space-4);
+}
+
+.documents-panel__title {
+  margin: 0;
+  overflow-wrap: anywhere;
+}

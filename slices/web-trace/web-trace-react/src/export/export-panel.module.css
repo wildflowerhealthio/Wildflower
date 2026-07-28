@@ -1,0 +1,76 @@
+/*
+ * The export flow: subset, settings, per-path preview, download. Skin values
+ * read from the tundraish token ramps and machine strings take `--font-mono`
+ * — see the package `AGENTS.md`.
+ */
+
+.export {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  min-width: 0;
+}
+
+.export__note {
+  margin: 0;
+  color: var(--color-neutral-3);
+}
+
+.export__settings {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--space-5) var(--space-7);
+}
+
+.export__threshold {
+  width: 6rem;
+}
+
+.export__section-title {
+  margin: 0 0 var(--space-4);
+  color: var(--color-neutral-4);
+}
+
+.export__table-scroll {
+  overflow-x: auto;
+}
+
+.export__table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.export__table th,
+.export__table td {
+  padding: var(--space-2) var(--space-4);
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.export__table th {
+  color: var(--color-neutral-4);
+  white-space: nowrap;
+}
+
+.export__path,
+.export__value {
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+}
+
+.export__value {
+  max-width: 18rem;
+}
+
+.export__override {
+  width: 100%;
+}
+
+.export__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+}

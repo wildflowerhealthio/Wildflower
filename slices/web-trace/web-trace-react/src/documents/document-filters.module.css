@@ -1,0 +1,16 @@
+.filters {
+  display: grid;
+  grid-template-columns: minmax(12rem, 2fr) minmax(12rem, 2fr) minmax(10rem, 1fr);
+  gap: var(--space-4);
+  align-items: end;
+}
+
+@media (max-width: 40rem) {
+  .filters {
+    grid-template-columns: 1fr;
+  }
+}
+
+.filters__select {
+  width: 100%;
+}
