@@ -1,6 +1,7 @@
 export { deepFreeze } from './deep-freeze.ts'
 export { formatBytes } from './format-bytes.ts'
 export { formatRelativeTime } from './format-relative-time.ts'
+export { nonEmpty } from './non-empty.ts'
 export { sentenceJoin } from './sentence-join.ts'
 export { stripTrailingSlash } from './strip-trailing-slash.ts'
 export { unknownErrorToString } from './unknown-error-to-string.ts'

@@ -150,6 +150,21 @@ which decoded to `null` and were silently lost. Note the dialect also dual-write
 that modifierExtension as a `v2` `valueDecimal`, which is why the loss went
 unnoticed: the `v2` copy was the only readable one.
 
+**Deviation — `positiveInt` accepts any integer, including `0` and negatives.**
+FHIR R4 defines `positiveInt` as an integer strictly greater than zero, and the
+registered schema is `Schema.Int` with no positivity refinement. This is
+deliberate. A `value[x]` slot sits inside an `Extension` inside a resource, and
+Effect decode is all-or-nothing, so a refinement failure on one extension value
+fails the **whole enclosing resource** — and a caller that decodes a
+heterogeneous bundle through a union with a catch-all (the
+`rexall-be-well-collector` medication list is one) can only observe that as the
+resource silently disappearing. Vendors really do send `valuePositiveInt: 0`:
+carebook writes the remaining-repeats count that way, so a prescription with no
+repeats left would have deleted itself from the medication list. Reject
+out-of-range values where they are read and it matters, not in the wire decode.
+`slices/emr/fhir-r4/src/data-types/base/datatype-registry.test.ts` pins all
+three cases (positive round-trip, `0` decodes, non-integer still rejected).
+
 `Timing.repeat.boundsDuration` is still absent from `TimingRepeat` — the field was never modeled, only `boundsPeriod` and `boundsRange` are. Registering `Duration` removes the reason it could not be added, but adding the field is a separate change.
 
 To register a new datatype: add an entry to `baseDatatypes` in `datatype-registry.ts` and a `registerDatatypeSchema('Name', NameSchema)` line at the bottom of its datatype module file.

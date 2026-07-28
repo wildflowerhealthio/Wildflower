@@ -48,7 +48,7 @@ const CarebookExtension = {
   // --- medicationrequest/ ---
   /** Estimated pick-up time. Equal to the paired dispense's `whenHandedOver`. */
   RequestEstimatedPickUp: `${EXTENSION_BASE}/medicationrequest/extension/estimated-pick-up`,
-  /** Request type discriminator; see {@link RequestType}. Promoted to `category`. */
+  /** Request type discriminator; see {@link RequestTypeCode}. Promoted to `category`. */
   RequestType: `${EXTENSION_BASE}/medicationrequest/extension/request-type`,
   /** The dispensing pharmacy. Promoted to `dispenseRequest.performer`. */
   RequestMedicationProcessor: `${EXTENSION_BASE}/medicationrequest/extension/medication-processor`,
@@ -58,7 +58,12 @@ const CarebookExtension = {
   DoNotPerform: `${EXTENSION_BASE}/medicationrequest/extension/do-not-perform`,
   /** Whether the prescription is renewable. No conventional R4 field. */
   Renewable: `${EXTENSION_BASE}/medicationrequest/extension/renewable`,
-  /** Rexall store number. Promoted onto the `dispenseRequest.performer` reference. */
+  /**
+   * Rexall store number. **Kept as an extension on purpose** — see AGENTS.md:
+   * the obvious home, `Reference.identifier` on the promoted
+   * `dispenseRequest.performer`, is 0..1 and the dialect already fills it with
+   * carebook's own pharmacy id. `medication-sponsorship-react` reads it here.
+   */
   RequestExternalStoreId: `${EXTENSION_BASE}/medicationrequest/extension/external-store-id`,
   /** Presentation rank for the prescriptions list. Non-contiguous; not clinical. */
   SortOrder: `${EXTENSION_BASE}/medicationrequest/extension/sort-order`,
@@ -93,7 +98,7 @@ const CarebookExtension = {
   DispenseMedicationProcessor: `${EXTENSION_BASE}/medicationdispense/extension/medication-processor`,
   /** Duplicate of {@link CarebookExtension.DispenseMedicationProcessor} in every observed record. */
   DispenseMedicationRecordProcessor: `${EXTENSION_BASE}/medicationdispense/extension/medicationrecord-processor`,
-  /** Rexall store number. Promoted onto the `location` reference. */
+  /** Rexall store number. Kept as an extension — see {@link CarebookExtension.RequestExternalStoreId}. */
   DispenseExternalStoreId: `${EXTENSION_BASE}/medicationdispense/extension/external-store-id`,
 
   // --- medication/ — on the contained Medication ---
@@ -125,27 +130,22 @@ const CarebookCodingSystem = {
   Din: `${SYSTEM_BASE}/coding/medication-din-code`,
   /** Dose form, on `Medication.form` (e.g. `capsule`, `tablet`). */
   MedicationForm: `${SYSTEM_BASE}/coding/medication-form-code`,
-  /** The {@link RequestType} value set. Under `schemas` (plural), unlike the two above. */
+  /** The {@link RequestTypeCode} value set. Under `schemas` (plural), unlike the two above. */
   RequestType: `${EXTENSION_BASE}/coding/medicationrequest-request-type-code`,
 } as const
-
-/**
- * Identifier system for the Rexall store number once it is promoted onto a
- * `Reference.identifier`.
- *
- * Minted by us, under our own namespace: carebook publishes the store number
- * only as a bare `valueString` extension and defines no identifier system for
- * it, so reusing a `carebook.com` URL here would misattribute our modelling
- * choice to the vendor.
- */
-const REXALL_STORE_IDENTIFIER_SYSTEM = 'http://wildflower.health/identifier/rexall-store-id'
 
 /**
  * `MedicationRequest.request-type` value set, as observed. Note this is
  * `fill | refill` — **not** `order | refill`; `intent` is a constant `order`
  * across every observed record and carries no signal.
+ *
+ * @remarks
+ * Named `RequestTypeCode` rather than `RequestType` because two *urls* in this
+ * module are already called that — {@link CarebookExtension.RequestType} (the
+ * extension) and {@link CarebookCodingSystem.RequestType} (the coding system) —
+ * and a bare `{@link RequestType}` could mean any of the three.
  */
-const RequestType = { Fill: 'fill', Refill: 'refill' } as const
+const RequestTypeCode = { Fill: 'fill', Refill: 'refill' } as const
 
 /** Value {@link CarebookExtension.ExternalSystemSource} carries for Rexall-sourced records. */
 const REXALL_SYSTEM_SOURCE = 'RexallPharmacy'
@@ -156,8 +156,7 @@ export {
   CarebookIdentifierSystem,
   EXTENSION_BASE,
   EXTENSION_BASE_V2,
-  REXALL_STORE_IDENTIFIER_SYSTEM,
   REXALL_SYSTEM_SOURCE,
-  RequestType,
+  RequestTypeCode,
   SYSTEM_BASE,
 }

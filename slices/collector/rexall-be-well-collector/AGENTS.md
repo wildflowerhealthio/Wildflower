@@ -121,14 +121,19 @@ dialect, so they live beside the rest of the carebook knowledge.
 
 What moves (lift-and-drop — the extension is removed once the value lands):
 
-| Extension                                               | Conventional home                                                                                     |
-| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `medicationrequest/…/do-not-perform`                    | `MedicationRequest.doNotPerform` — an exact 1:1; the extension exists only because the source is STU3 |
-| `medicationrequest/…/request-type` (`fill` \| `refill`) | `MedicationRequest.category` — `intent` is a constant `order` and carries no signal                   |
-| `medicationrequest/…/medication-processor`              | `dispenseRequest.performer`                                                                           |
-| `medicationdispense/…/medication-processor`             | `MedicationDispense.location`                                                                         |
-| `medication/…/description`                              | the contained `Medication`'s narrative (`text.div`)                                                   |
-| `medication/…/strength`                                 | `Medication.ingredient[0].strength`, **only when it parses** as `<number> <unit>`                     |
+| Extension                                               | Conventional home                                                                                       |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `medicationrequest/…/do-not-perform`                    | `MedicationRequest.doNotPerform` — an exact 1:1; the extension exists only because the source is STU3   |
+| `medicationrequest/…/request-type` (`fill` \| `refill`) | `MedicationRequest.category` — `intent` is a constant `order` and carries no signal                     |
+| `medicationrequest/…/medication-processor`              | `dispenseRequest.performer`                                                                             |
+| `medicationdispense/…/medication-processor`             | `MedicationDispense.location`                                                                           |
+| `medication/…/description`                              | the contained `Medication`'s narrative (`text.div`), **only when** it is absent or the `code.text` copy |
+| `medication/…/strength`                                 | merged into `Medication.ingredient[0].strength`, **only when it parses** as `<number> <unit>`           |
+
+The same contained-Medication promotions run on `MedicationDispense.contained`.
+No dispense in the capture inlines a Medication, but the slot is identical, and
+one that did would otherwise be stored differently from the same drug on the
+request beside it.
 
 Two things ride along, both fixing accuracy bugs rather than moving extensions:
 
@@ -136,7 +141,11 @@ Two things ride along, both fixing accuracy bugs rather than moving extensions:
   `medicationCodeableConcept` and leaves `contained[0]` unreferenced, so its
   `form`, `manufacturer`, strength and description are unreachable.
   `medicationReference: '#id'` replaces the inline concept (`medication[x]` is a
-  choice, and the contained `code` is byte-identical to it).
+  choice, and the contained `code` is byte-identical to it) — **carrying the
+  concept's label onto `Reference.display`**, so a reader that only renders
+  `medication[x]` still has a name. A `medicationReference` already pointing
+  somewhere that is not a `#fragment` is left alone: that is an external
+  Medication, not an orphan to adopt.
 - **Supply durations get their unit.** `dispenseRequest.expectedSupplyDuration`
   and `MedicationDispense.daysSupply` both arrive as a bare `{ value }`. They
   are days; the UCUM `d` is spelled out.
@@ -145,7 +154,27 @@ Two things ride along, both fixing accuracy bugs rather than moving extensions:
 
 - **A promotion that fails leaves its extension alone.** An unparseable
   strength, a value that will not decode, a contained Medication with no
-  `code` — each is a no-op, never a silent drop.
+  `code` (**including an explicit `"code": null` — `contained` is raw
+  passthrough JSON, so nothing filters those upstream**), a
+  `medication-processor` on a request that carries no `dispenseRequest` to hold
+  it, a narrative already holding real content — each is a no-op, never a silent
+  drop.
+- **Extensions are consumed by array index, never by url.** The dialect writes
+  several urls twice and `promote.ts` reads only the first, so dropping by url
+  would delete a second copy nobody examined. Same reasoning inside a contained
+  Medication, where each extension entry is decoded on its own: one malformed
+  entry then disables only itself instead of switching off every promotion on
+  the drug that carries it.
+- **`parseStrength` takes `.` as the only decimal separator.** Rexall is an
+  English-Canadian pharmacy, so `"1,000 mg"` is one thousand milligrams written
+  with a thousands separator. Reading that comma as a decimal point would write
+  a 1 mg strength and drop the extension holding the truth — a silent 1000×
+  dosage error in the clinical record. The string simply fails to match instead.
+- **The promoted narrative is XHTML, not the bare description.** R4 types
+  `Narrative.div` as `xhtml` and requires a single `<div>` in the XHTML
+  namespace; a conformant server rejects anything else on write. `promote.ts`
+  wraps and escapes, and `medication-sponsorship-react` extracts the text
+  content back out — the two are a pair.
 - **`external-store-id` stays an extension on purpose.** `Reference.identifier`
   is 0..1 and the dialect already fills it on the processor reference with
   carebook's own pharmacy id; giving the store number that slot would discard a
@@ -165,15 +194,29 @@ Two things ride along, both fixing accuracy bugs rather than moving extensions:
   for the offset to survive. Fixing it means changing the `dateTime` handling in
   `fhir-r4`, not this package.
 - **`medication-sponsorship-react` reads this dialect too**, off the same
-  decoded resources. It reads the description (narrative first, extension as the
-  pre-promotion fallback), the DIN, the `v2` repeats modifierExtension, and
-  `external-system-source` + `external-store-id` for the store link. Changing
-  what this package emits can break that view — check it.
+  decoded resources. It reads the description (**the extension first**, the
+  narrative as the post-promotion fallback), the DIN, the `v2` repeats
+  modifierExtension, and `external-system-source` + `external-store-id` for the
+  store link. Changing what this package emits can break that view — check it.
+  The read order is load-bearing in one direction only: exactly one of the two
+  is present on a resource this package wrote, but a resource that has _not_
+  been promoted (already in the store, or from the Medications app's own FHIR
+  server) carries both, and its narrative is the dialect's byte-copy of
+  `code.text` — i.e. the drug name the card already shows as its title.
+  `medication-sponsorship-react` also keeps its own hand-maintained copy of five
+  of these URLs plus `REXALL_SYSTEM_SOURCE`; the two catalogues are not shared
+  because that slice does not depend on this one. Change one side, check the
+  other.
 - **`valuePositiveInt` used to decode to `null`.** `positiveInt` was not in
   `fhir-r4`'s datatype registry, so `sort-order` and the `v1`
   `number-of-repeats-available` were silently lost, and only the `v2`
   `valueDecimal` copy survived. It is registered now; the dual-write is why
-  nobody noticed.
+  nobody noticed. It is registered **without** the spec's `> 0` refinement, and
+  that is deliberate: carebook sends `valuePositiveInt: 0` for a prescription
+  with no repeats left, and a refinement failure inside an extension fails the
+  whole resource, which `medicationOrNull`'s catch-all turns into the
+  MedicationRequest silently vanishing from the list. See the deviation note in
+  [fhir-r4's Client Capabilities Reference](../../emr/fhir-r4/docs/Client%20Capabilities%20Reference.md).
 
 ## v1 scope: list-only
 

@@ -1,6 +1,6 @@
 import { Schema } from 'effect'
 import * as fc from 'fast-check'
-import { Code, Extension, type IdentifierAndReference } from 'fhir-r4/data-types'
+import { Code, Extension, IdentifierAndReference } from 'fhir-r4/data-types'
 import { MedicationDispense, MedicationRequest } from 'fhir-r4/resources'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
@@ -95,9 +95,128 @@ describe('promoteMedicationRequest', () => {
     // Act
     const promoted = promoteMedicationRequest(request)
 
+    // Assert — the concept's label survives on the reference, so a reader that
+    // renders `medication[x]` still has a name after the choice slot moves.
+    expect(promoted.medicationReference?.reference).toBe('#med-1')
+    expect(promoted.medicationReference?.display).toBe('Atorvastatin 20 mg tablet')
+    expect(promoted.medicationCodeableConcept).toBeNull()
+  })
+
+  it('should keep an existing medicationReference display when it relinks', () => {
+    // Arrange — the pre-promotion carebook shape: a `#` reference that already
+    // names the drug. Retargeting it must not cost the name.
+    const request = {
+      ...MedicationRequest.empty,
+      contained: [containedMedication({ id: 'med-1' })],
+      medicationReference: {
+        ...emptyReference,
+        reference: '#med-0',
+        display: 'Atorvastatin 20 mg tablet',
+      },
+    }
+
+    // Act
+    const promoted = promoteMedicationRequest(request)
+
     // Assert
     expect(promoted.medicationReference?.reference).toBe('#med-1')
-    expect(promoted.medicationCodeableConcept).toBeNull()
+    expect(promoted.medicationReference?.display).toBe('Atorvastatin 20 mg tablet')
+  })
+
+  it('should take the display from the contained code when nothing else names the drug', () => {
+    // Arrange — the real capture's DIN codings carry `{system, code}` only, so
+    // a contained Medication may have no `text` and no coding `display`.
+    const request = {
+      ...MedicationRequest.empty,
+      contained: [
+        {
+          resourceType: 'Medication',
+          id: 'med-1',
+          code: { coding: [{ system: 'urn:din', code: '02241497', display: 'Atorvastatin' }] },
+        },
+      ],
+    }
+
+    // Act
+    const promoted = promoteMedicationRequest(request)
+
+    // Assert
+    expect(promoted.medicationReference?.display).toBe('Atorvastatin')
+  })
+
+  it('should never retarget a medicationReference that points outside the resource', () => {
+    // Arrange — an external Medication is somebody else's resource; the
+    // contained one is an addition, not a correction.
+    const request = {
+      ...MedicationRequest.empty,
+      contained: [containedMedication({ id: 'med-1' })],
+      medicationReference: { ...emptyReference, reference: 'Medication/external-1' },
+    }
+
+    // Act
+    const promoted = promoteMedicationRequest(request)
+
+    // Assert
+    expect(promoted.medicationReference?.reference).toBe('Medication/external-1')
+  })
+
+  it('should leave medication[x] alone when the contained Medication has an explicit null code', () => {
+    // Arrange — `contained` is raw passthrough JSON, so an explicit `null` is
+    // never filtered out upstream. It is as unusable as an absent code.
+    const request = {
+      ...MedicationRequest.empty,
+      contained: [{ resourceType: 'Medication', id: 'med-1', code: null }],
+      medicationCodeableConcept: { id: null, extension: [], coding: [], text: 'Something' },
+    }
+
+    // Act
+    const promoted = promoteMedicationRequest(request)
+
+    // Assert
+    expect(promoted.medicationReference).toBeNull()
+    expect(promoted.medicationCodeableConcept?.text).toBe('Something')
+  })
+
+  it('should keep medication-processor when there is no dispenseRequest to hold it', () => {
+    // Arrange — `dispenseRequest` is optional in the dialect. With no
+    // destination the value has nowhere to land, so dropping the extension
+    // would destroy the dispensing pharmacy outright.
+    const request = {
+      ...MedicationRequest.empty,
+      extension: [
+        extensionWith(CarebookExtension.RequestMedicationProcessor, {
+          valueReference: referenceTo('pharmacy-4821'),
+        }),
+      ],
+      dispenseRequest: null,
+    }
+
+    // Act
+    const promoted = promoteMedicationRequest(request)
+
+    // Assert
+    expect(promoted.dispenseRequest).toBeNull()
+    expect(urlsOf(promoted.extension)).toEqual([CarebookExtension.RequestMedicationProcessor])
+  })
+
+  it('should keep a second copy of a url whose value it never read', () => {
+    // Arrange — the dialect writes some urls twice. Only the first is read, so
+    // consuming by url rather than by entry would delete an unexamined value.
+    const request = {
+      ...MedicationRequest.empty,
+      extension: [
+        extensionWith(CarebookExtension.DoNotPerform, { valueBoolean: true }),
+        extensionWith(CarebookExtension.DoNotPerform, { valueBoolean: false }),
+      ],
+    }
+
+    // Act
+    const promoted = promoteMedicationRequest(request)
+
+    // Assert
+    expect(promoted.doNotPerform).toBe(true)
+    expect(promoted.extension).toHaveLength(1)
+    expect(promoted.extension[0]?.valueBoolean).toBe(false)
   })
 
   it('should leave medication[x] alone when the contained Medication carries no code', () => {
@@ -153,7 +272,54 @@ describe('promoteMedicationRequest', () => {
     expect(containedExtensionUrls(medication)).toEqual([CarebookExtension.MedicationStrength])
   })
 
-  it('should move the Medication description into the resource narrative', () => {
+  it('should never read a thousands separator as a decimal point', () => {
+    // Arrange — Rexall is an English-Canadian pharmacy: `1,000 mg` is one
+    // thousand milligrams. Parsing the comma as a decimal point would write a
+    // 1 mg strength and drop the extension that held the truth.
+    const request = {
+      ...MedicationRequest.empty,
+      contained: [containedMedication({ id: 'med-1', strength: '1,000 mg' })],
+    }
+
+    // Act
+    const medication = firstContained(promoteMedicationRequest(request))
+
+    // Assert
+    expect(medication['ingredient']).toBeUndefined()
+    expect(containedExtensionUrls(medication)).toEqual([CarebookExtension.MedicationStrength])
+  })
+
+  it('should merge the strength into the first ingredient without dropping the others', () => {
+    // Arrange — a compounded prescription. Replacing `ingredient` outright
+    // would delete both real ingredients.
+    const request = {
+      ...MedicationRequest.empty,
+      contained: [
+        {
+          ...containedMedication({ id: 'med-1', strength: '20 mg' }),
+          ingredient: [
+            { itemCodeableConcept: { text: 'Ingredient A' }, isActive: true },
+            { itemCodeableConcept: { text: 'Ingredient B' } },
+          ],
+        },
+      ],
+    }
+
+    // Act
+    const medication = firstContained(promoteMedicationRequest(request))
+
+    // Assert
+    expect(medication['ingredient']).toEqual([
+      {
+        itemCodeableConcept: { text: 'Ingredient A' },
+        isActive: true,
+        strength: ratioOf(20, 'mg'),
+      },
+      { itemCodeableConcept: { text: 'Ingredient B' } },
+    ])
+  })
+
+  it('should move the Medication description into a conformant XHTML narrative', () => {
     // Arrange
     const request = {
       ...MedicationRequest.empty,
@@ -163,9 +329,106 @@ describe('promoteMedicationRequest', () => {
     // Act
     const medication = firstContained(promoteMedicationRequest(request))
 
-    // Assert
-    expect(medication['text']).toEqual({ status: 'generated', div: '20 mg - Atorvastatin' })
+    // Assert — R4 types `Narrative.div` as `xhtml`; a bare string is not a
+    // legal narrative, and a conformant server rejects it on write.
+    expect(medication['text']).toEqual({
+      status: 'generated',
+      div: '<div xmlns="http://www.w3.org/1999/xhtml">20 mg - Atorvastatin</div>',
+    })
     expect(containedExtensionUrls(medication)).toEqual([])
+  })
+
+  it('should escape a description that would otherwise break the narrative markup', () => {
+    // Arrange
+    const request = {
+      ...MedicationRequest.empty,
+      contained: [containedMedication({ id: 'med-1', description: '5 mg & 10 mg <combo>' })],
+    }
+
+    // Act
+    const medication = firstContained(promoteMedicationRequest(request))
+
+    // Assert
+    expect(medication['text']).toEqual({
+      status: 'generated',
+      div: '<div xmlns="http://www.w3.org/1999/xhtml">5 mg &amp; 10 mg &lt;combo&gt;</div>',
+    })
+  })
+
+  it('should replace the dialect narrative, which is a byte-copy of code.text', () => {
+    // Arrange — what the real capture sends. The copy is why the narrative is
+    // free real estate: the description is strictly richer than the same string.
+    const request = {
+      ...MedicationRequest.empty,
+      contained: [
+        {
+          ...containedMedication({ id: 'med-1', description: '20 mg - Atorvastatin' }),
+          text: { status: 'generated', div: 'Atorvastatin 20 mg tablet' },
+        },
+      ],
+    }
+
+    // Act
+    const medication = firstContained(promoteMedicationRequest(request))
+
+    // Assert
+    expect(medication['text']).toEqual({
+      status: 'generated',
+      div: '<div xmlns="http://www.w3.org/1999/xhtml">20 mg - Atorvastatin</div>',
+    })
+  })
+
+  it('should not overwrite a narrative holding something other than the code text', () => {
+    // Arrange — somebody's real content. The promotion stands down, and per the
+    // lift-and-drop rule the description extension stays where it is.
+    const request = {
+      ...MedicationRequest.empty,
+      contained: [
+        {
+          ...containedMedication({ id: 'med-1', description: '20 mg - Atorvastatin' }),
+          text: { status: 'additional', div: '<div>Do not crush. Take with food.</div>' },
+        },
+      ],
+    }
+
+    // Act
+    const medication = firstContained(promoteMedicationRequest(request))
+
+    // Assert
+    expect(medication['text']).toEqual({
+      status: 'additional',
+      div: '<div>Do not crush. Take with food.</div>',
+    })
+    expect(containedExtensionUrls(medication)).toEqual([CarebookExtension.MedicationDescription])
+  })
+
+  it('should promote the siblings of a malformed extension entry', () => {
+    // Arrange — one entry with no `url`. Decoding the array as a whole would
+    // silently switch off every promotion on this Medication.
+    const request = {
+      ...MedicationRequest.empty,
+      contained: [
+        {
+          resourceType: 'Medication',
+          id: 'med-1',
+          code: { text: 'Atorvastatin 20 mg tablet' },
+          extension: [
+            { valueString: 'no url here' },
+            { url: CarebookExtension.MedicationDescription, valueString: '20 mg - Atorvastatin' },
+          ],
+        },
+      ],
+    }
+
+    // Act
+    const medication = firstContained(promoteMedicationRequest(request))
+
+    // Assert
+    expect(medication['text']).toEqual({
+      status: 'generated',
+      div: '<div xmlns="http://www.w3.org/1999/xhtml">20 mg - Atorvastatin</div>',
+    })
+    expect(medication['extension']).toEqual([{ valueString: 'no url here' }])
   })
 
   it('should spell out the day unit on a bare expectedSupplyDuration', () => {
@@ -318,6 +581,63 @@ describe('promoteMedicationDispense', () => {
     ])
   })
 
+  it('should promote a contained Medication exactly as the request path does', () => {
+    // Arrange — no dispense in the reference capture inlines a Medication, but
+    // it has the same raw `contained` slot. One that did would otherwise land
+    // in the store shaped differently from the identical drug on the request
+    // beside it.
+    const dispense = {
+      ...MedicationDispense.empty,
+      contained: [
+        containedMedication({
+          id: 'med-1',
+          strength: '20 mg',
+          description: '20 mg - Atorvastatin',
+        }),
+      ],
+    }
+
+    // Act
+    const medication = firstContained(promoteMedicationDispense(dispense))
+
+    // Assert
+    expect(medication['text']).toEqual({
+      status: 'generated',
+      div: '<div xmlns="http://www.w3.org/1999/xhtml">20 mg - Atorvastatin</div>',
+    })
+    expect(medication['ingredient']).toEqual([
+      { itemCodeableConcept: { text: 'Atorvastatin 20 mg tablet' }, strength: ratioOf(20, 'mg') },
+    ])
+    expect(containedExtensionUrls(medication)).toEqual([])
+  })
+
+  it('should always be idempotent — a second promotion changes nothing', () => {
+    fc.assert(
+      fc.property(fc.array(unrelatedUrl), (extras) => {
+        // Arrange
+        const dispense = {
+          ...MedicationDispense.empty,
+          contained: [containedMedication({ id: 'med-1', strength: '5 mg', description: 'Drug' })],
+          extension: [
+            extensionWith(CarebookExtension.DispenseMedicationProcessor, {
+              valueReference: referenceTo('pharmacy-4821'),
+            }),
+            ...extras.map((url) => extensionWith(url, { valueString: 'kept' })),
+          ],
+          daysSupply: { ...emptyQuantity, value: 90 },
+        }
+
+        // Act
+        const once = promoteMedicationDispense(dispense)
+        const twice = promoteMedicationDispense(once)
+
+        // Assert
+        expect(twice).toEqual(once)
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
   it('should never drop an extension it does not promote', () => {
     fc.assert(
       fc.property(fc.array(unrelatedUrl, { minLength: 1 }), (urls) => {
@@ -350,6 +670,8 @@ const extensionWith = (url: string, value: Partial<Extension.Type>): Extension.T
   url,
   ...value,
 })
+
+const emptyReference = IdentifierAndReference.emptyReference
 
 const referenceTo = (id: string): IdentifierAndReference.ReferenceType => ({
   id: null,

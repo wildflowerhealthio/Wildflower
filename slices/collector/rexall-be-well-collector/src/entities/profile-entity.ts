@@ -1,6 +1,7 @@
 import { EntityDefinition, UrlMatch } from 'collector-fundamentals/model'
 import { Effect, Schema } from 'effect'
 import { Patient } from 'fhir-r4/resources'
+import { nonEmpty } from 'kitchen-sink'
 
 import { extractJson } from '../extract-json.ts'
 
@@ -52,19 +53,15 @@ const decodeProfile = Schema.decode(Schema.parseJson(ProfileSchema))
 const decodePatient = Schema.decodeUnknown(Patient.Schema)
 
 /**
- * The value, or `null` when absent or blank. The carebook profile sends `""`
- * for a name it holds no value for, which would otherwise synthesize a
- * `Patient.name` entry of empty strings.
- */
-const nonEmpty = (value: string | null | undefined): string | null =>
-  value !== null && value !== undefined && value.length > 0 ? value : null
-
-/**
  * Build the FHIR R4 `Patient` **wire** object from the decoded carebook profile,
  * emitting a field only when the source carries it (so an absent name/DOB/etc.
  * leaves the corresponding R4 slot at its schema default rather than a synthetic
  * empty). The result is decoded through `Patient.Schema` so it lands as a proper
  * decoded R4 value — matching how `PatientEntity` decodes a wire Patient.
+ *
+ * `nonEmpty` is what makes "absent" and "blank" one case: the carebook profile
+ * sends `""` for a name it holds no value for, which would otherwise synthesize
+ * a `Patient.name` entry of empty strings.
  */
 const patientWire = (profile: Profile): Record<string, unknown> => {
   const wire: Record<string, unknown> = {
