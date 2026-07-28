@@ -42,18 +42,14 @@ const Row = ({
  * carries.
  *
  * @remarks
- * The attachments render through the **same** `AttachmentViewer` the recordings
- * tab uses, adapted by `fromFhirAttachment`. That adapter exists precisely so
- * one viewer can serve both tabs — a `DocumentReference` attachment can be held
- * by reference (`Attachment.url`), which a `TraceBody` has no way to express,
- * and a trace body can be skipped-at-capture, which an `Attachment` has no way
- * to express. Neither type could be the viewer's input on its own.
+ * This is the documents-tab half of the shared attachment viewer: the
+ * attachments render through the **same** `AttachmentViewer` the recordings tab
+ * uses, adapted by `fromFhirAttachment`. See the "one attachment viewer, two
+ * adapters" trap in the package `AGENTS.md` for why neither source type could
+ * be the viewer's input on its own.
  *
- * Content renders raw, like everything else in this package: the device is the
- * user's and the data is theirs. Redaction is the export flow's job.
- *
- * A `content` entry whose attachment is held elsewhere is **named, not
- * fetched** — no network egress at any point is the premise of the app.
+ * Content renders raw, and an attachment held elsewhere is named rather than
+ * fetched.
  */
 const DocumentDetail = ({ document, className }: DocumentDetailProps): JSX.Element => (
   <article className={cn(styles['detail'], className)}>

@@ -30,20 +30,10 @@ const TABS: readonly { readonly id: ViewerTab; readonly label: string }[] = [
  * slice's two panels is open.
  *
  * @remarks
- * **This app composes the tabs; it renders no viewing surface of its own.** The
- * distinction is what keeps the trap in [AGENTS.md](../AGENTS.md) from
- * returning: choosing between two slice panels is composition, and each panel
- * still owns every master/detail level inside it — `RecordingsPanel` owns
- * sessions → exchanges → one exchange → export, and `DocumentsPanel` owns
- * documents → one document. Adding a detail surface *here* would open two at
- * once, which is exactly what happened when the panel and this app both
- * rendered an exchange detail.
- *
- * Only the selected panel is mounted; the other is **unmounted, never
- * hidden**. A `hidden` wrapper is what made the last collision invisible to
- * every accessibility query but one. An unmounted panel cannot answer a query
- * at all, so a duplicated control shows up as a test failure rather than as a
- * silent overlap.
+ * **This app composes the tabs; it renders no viewing surface of its own**, and
+ * the unselected panel is unmounted rather than hidden. Both rules exist
+ * because breaking either reproduces the two-details-at-once collision — see
+ * the traps in [AGENTS.md](../AGENTS.md).
  */
 const ViewerScreen = (): JSX.Element => {
   const [tab, setTab] = useState<ViewerTab>('recordings')

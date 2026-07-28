@@ -55,10 +55,9 @@ const sessionHeader = (title: string, backLabel: string, onBack: () => void): JS
  * id that is no longer present falls back to the level above rather than
  * rendering an empty detail.
  *
- * The export hangs off this panel rather than off a tab of its own because its
- * first step — "a session, or a filtered subset of its exchanges" — is exactly
- * the state this panel already holds. A separate surface would need its own
- * session picker and its own copy of the filter bar.
+ * The export hangs off this panel rather than a tab of its own because its
+ * subset — "a session, or a filtered subset of its exchanges" — is the state
+ * this panel already holds.
  */
 const RecordingsPanel = ({
   onSelectExchange,

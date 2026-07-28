@@ -17,16 +17,10 @@ import {
  * own output.
  *
  * @remarks
- * The `after` values here are the values that go into the archive: they are
- * sampled from what {@link redactSession} produced, and the very same redacted
- * exchanges are handed to `emitHar`. That is deliberate. The ticket's export
- * acceptance test exists to prove the UI routes *through* the pseudonymizer
- * rather than around it, so a preview that computed its own before/after would
- * defeat the test it is meant to satisfy — and could show a reviewer something
- * the download does not do.
- *
- * Nothing in this module redacts. It calls `web-trace-core`'s redactor and
- * reads its results.
+ * Nothing here redacts: this module calls `web-trace-core`'s redactor and reads
+ * its results, so the `after` a reviewer sees is literally what the archive
+ * carries. See the package `AGENTS.md` for why a preview that computed its own
+ * before/after would defeat the acceptance test it exists to satisfy.
  *
  * @packageDocumentation
  */
@@ -42,15 +36,13 @@ interface PreviewRow extends PathStat {
    */
   readonly before: string | null
   /**
-   * The same position's value after redaction, or `null` when the redacted
-   * walk produced no value at this path.
+   * The same position's value after redaction, or `null` when the redacted walk
+   * produced no value at this path.
    *
    * @remarks
-   * `null` is rare and honest rather than impossible: a pseudonym keeps its
-   * original's shape, so a redacted URL segment still reads as an identifier
-   * and lands on the same path template — but a preview that invented an
-   * `after` for a path the redactor did not produce would be asserting
-   * something about the archive that is not true.
+   * `null` is rare — a pseudonym keeps its original's shape, so a redacted URL
+   * segment still lands on the same path template — but inventing an `after`
+   * the redactor never produced would assert something untrue about the archive.
    */
   readonly after: string | null
 }
@@ -63,10 +55,9 @@ interface ExportPreview {
    * The redacted exchanges themselves — what `emitHar` must be given.
    *
    * @remarks
-   * Carried on the preview rather than recomputed at download time so the
-   * archive cannot differ from what was reviewed. Re-redacting would mint the
-   * same values (the policy's assignment table is deterministic under one
-   * salt), but "would" is weaker than "is the same object".
+   * Carried on the preview rather than recomputed at download time, so the
+   * archive cannot differ from what was reviewed. Re-redacting *would* mint the
+   * same values, but "would" is weaker than "is the same object".
    */
   readonly redacted: readonly TraceExchange[]
 }

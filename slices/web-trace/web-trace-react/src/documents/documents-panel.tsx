@@ -29,15 +29,13 @@ interface DocumentsPanelProps {
  * the host app's router and `QueryClientProvider`.
  *
  * @remarks
- * Two master/detail levels, with a control back — one fewer than the recordings
- * tab, because a document is a resource in its own right and has no session to
- * be grouped into.
+ * Two master/detail levels — one fewer than the recordings tab, because a
+ * document is a resource in its own right with no session to be grouped into.
  *
- * Filter state lives here, and it is part of the **query key**: an edit
+ * Filter state lives here and is part of the **query key**, so an edit
  * re-searches server-side rather than narrowing a loaded list. An open document
- * that is no longer in the results falls back to the list rather than rendering
- * an empty detail, which is what happens when a filter changes while a detail
- * is open.
+ * that the new results no longer contain falls back to the list rather than
+ * rendering an empty detail.
  */
 const DocumentsPanel = ({
   onSelectDocument,

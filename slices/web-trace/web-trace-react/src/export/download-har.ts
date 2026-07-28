@@ -5,11 +5,9 @@ import type { Har } from 'web-trace-core/har'
  * origin, and nothing else.
  *
  * @remarks
- * **No network egress at any point.** That is the premise of the app, not a
- * preference: it is registered `local_only = 1`, which is also why the host
- * uses a plain `FetchHttpClient.layer` rather than the telemetry one. The
- * download is an object URL over bytes already in the page — there is no upload
- * step, no share endpoint, and no place to add one.
+ * **No network egress at any point** — the premise of the app, not a
+ * preference. The download is an object URL over bytes already in the page:
+ * there is no upload step, no share endpoint, and no place to add one.
  *
  * @packageDocumentation
  */

@@ -50,12 +50,8 @@ const isOverrideChoice = (value: string): value is PathOverride | typeof AUTO =>
  *
  * @remarks
  * The `after` column is the pseudonymizer's **own output** — the same redacted
- * exchanges this panel hands to `emitHar`. Nothing here re-implements
- * redaction, and there is no path by which the archive can differ from what was
- * reviewed.
- *
- * The download is a blob from the app's own origin. There is no network egress
- * at any point; see `download-har.ts`.
+ * exchanges this panel hands to `emitHar`, so the archive cannot differ from
+ * what was reviewed. The download is a same-origin blob; see `download-har.ts`.
  */
 const ExportPanel = ({
   exchanges,

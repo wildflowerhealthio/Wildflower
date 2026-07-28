@@ -84,12 +84,10 @@ const describeSettings = (settings: ExportSettings): string => {
  *
  * @remarks
  * **The salt is minted once, when the export opens, and threaded through every
- * rebuild.** Changing the threshold or an override re-runs the redaction under
- * the *same* salt, so a reviewer adjusting a control does not watch every
- * pseudonym change underneath them — and, more importantly, the archive they
- * download is the one they reviewed. Minting per rebuild would also make two
- * exports of one session unlinkable in the wrong direction: the point is that
- * pseudonyms are stable *within* an export and independent *across* exports.
+ * rebuild**, so changing a control re-redacts under the same salt and the
+ * archive downloaded is the one reviewed. See the package `AGENTS.md` for why
+ * per-rebuild minting would break the stable-within / independent-across
+ * property the design rests on.
  */
 const useExport = (exchanges: readonly TraceExchange[], sessionId: string): ExportState => {
   const [salt, setSalt] = useState<string | null>(null)
