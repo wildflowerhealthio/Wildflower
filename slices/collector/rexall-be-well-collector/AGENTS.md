@@ -41,6 +41,9 @@ machinery lives in `slices/emr/fhir-stu3-as-r4`.
   `captureProvenance`.
 - the persist sink — `fhir-r4`'s `persistResources`, imported in `src/config.ts`
   and handed straight to the descriptor.
+- `src/source-identity.ts` — the module-level `RexallSource` (the one fact this
+  package states about identity) and the thin `withSourceIdentity` call each
+  entity's `parse` ends with. See [Source identity](#source-identity) below.
 - `src/extract-json.ts` — XHR/JSON-viewer body normalizer (a copy of
   `fhir-r4-client-collector`'s; slice layering forbids importing it).
 - `src/rexall-config-form.tsx` (+ `.module.css`) — the email/password
@@ -52,6 +55,36 @@ the prescriptions page); the collector only **sniffs** the XHRs those pages fire
 **No tunnel/API URL is ever crafted or opened directly** — those requests need
 auth/bearer headers the Angular SPA injects, and crafting them is an explicit
 product constraint.
+
+## Source identity
+
+Everything this collector produces arrives keyed by carebook: the profile's
+`identifiers.uid` becomes the `Patient`'s id and is what every medication's
+`subject` references, and each medication carries carebook's own record id.
+Those ids are unique _within carebook_, and carebook is under no obligation to
+keep them inside FHIR's `[A-Za-z0-9-.]{1,64}` — so both entities end `parse`
+with `withSourceIdentity` — three lines over `fhir-r4/identity`'s
+`parseWithSourceIdentity`, which owns the derivation and the `ParseError`
+shaping. Unlike `fhir-r4-client-collector` there is no server to read off the
+response: this collector points at one site by construction.
+
+- **One module-level `RexallSource`, shared by both entities.** That is what
+  keeps `ProfileEntity`'s `Patient` and `MedicationListEntity`'s `subject`
+  references pointing at each other: they agree because they name one system,
+  not because anything coordinated them. `medication-list-entity.test.ts` pins
+  it by parsing both fixtures and comparing. Keeping it module-level also keeps
+  the entities module-level, and with them the plan deep-equality
+  `config.test.ts` rests on.
+- **The system is `https://letsbewell.ca` — the site, not the tunnel.** The
+  tunnel host (`rexall-prd-tunnel.letsbewell.ca`) encodes a deployment that
+  could be renamed without the user's prescriptions becoming different
+  prescriptions, and a derived id must not move when it is. It is a namespace,
+  not a fetch target — the no-tunnel-URL-is-ever-opened rule is untouched.
+- **Two accounts on one device share the namespace.** For a record they both
+  hold, that is an upsert of the same prescription rather than a collision
+  between different ones. Deriving per account would mean per-config entities.
+- **`parse` is async now.** Deriving an id needs Web Crypto, so both entities
+  are `Effect.gen` and their suites `Effect.runPromise`.
 
 ## Provenance
 

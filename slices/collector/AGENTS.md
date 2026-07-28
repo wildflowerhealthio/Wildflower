@@ -79,6 +79,25 @@ before adding one.
   here. The sink declares its own `ResourceWriteFailure`, structurally checked
   against `PersistFailure` when `CollectorDescriptor.make` receives it, so a
   drift is a compile error at every collector rather than a silent divergence.
+- **A FHIR-targeting entity re-keys what it decodes — a source's own ids are
+  never stored as-is.** The on-device store is shared by every collector and
+  keyed by `(resourceType, id)` alone, so two remotes that both host a
+  `Patient/1` would overwrite each other, and a source id need not even be a
+  legal FHIR one. `parse` therefore ends with `fhir-r4/identity`'s
+  `adoptSourceIdentityAll`, which derives the `id`, keeps the source's as an
+  `Identifier`, and rewrites relative references through the same derivation.
+  The derivation lives in `fhir-r4` for the same reason `persistResources` does
+  — this slice's fundamentals stay FHIR-agnostic — and so does everything a
+  second collector would otherwise copy: use `parseWithSourceIdentity(source,
+ast, resources)` for a fixed-site collector, or
+  `parseWithFhirServerIdentity(prefix, shape, responseUrl, ast, resources)`
+  when the source is a FHIR server named by the response URL. Both come
+  pre-shaped to `parse`'s `ParseError`-only error channel. Each collector states
+  only **whose** ids these are, as one module-level `SourceIdentity` (or one
+  prefix); making it per-config would turn entities into factories and break the
+  plan deep-equality the per-collector suites rest on. Consequence: `parse` is
+  `Effect`-async wherever it re-keys (Web Crypto), so entity suites run it with
+  `Effect.runPromise`.
 - **A diagnostic resource rides the batch's `diagnostics` channel — never the
   `resources` array.** `SniffResult`'s success arm is a
   `SniffedBatch { resources, diagnostics }`: the split is structural, decided

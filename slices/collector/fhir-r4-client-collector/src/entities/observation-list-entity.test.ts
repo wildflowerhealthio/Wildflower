@@ -8,6 +8,7 @@ import { makeRemoteResponse } from 'collector-fundamentals/test-helpers'
 import type { Observation } from 'fhir-r4/resources'
 
 import { ObservationListEntity } from './observation-list-entity.ts'
+import { PatientEntity } from './patient-entity.ts'
 
 const { expectRightToEqual, expectLeftToEqual } = utilityExpectations(expect)
 
@@ -46,8 +47,20 @@ const bundle = (...resources: readonly unknown[]): Record<string, unknown> => ({
 
 const runParse = (
   r: Response.RemoteResponse
-): Either.Either<readonly (typeof Observation.Schema.Type)[], ParseResult.ParseError> =>
-  Effect.runSync(Effect.either(ObservationListEntity.parse(r)))
+): Promise<Either.Either<readonly (typeof Observation.Schema.Type)[], ParseResult.ParseError>> =>
+  Effect.runPromise(Effect.either(ObservationListEntity.parse(r)))
+
+/** The shape every re-keyed id from this collector takes. */
+const DERIVED_ID = /^fhir-r4-[0-9a-f]{32}$/
+
+/** The resources of a parse that was expected to succeed. */
+const parsedResources = async (
+  r: Response.RemoteResponse
+): Promise<readonly (typeof Observation.Schema.Type)[]> => {
+  const result = await runParse(r)
+  if (result._tag !== 'Right') throw new Error('expected a successful parse')
+  return result.right
+}
 
 describe('ObservationListEntity', () => {
   describe('isFoundAt', () => {
@@ -81,87 +94,135 @@ describe('ObservationListEntity', () => {
   })
 
   describe('parse', () => {
-    it('parses a Bundle of Observations into an array of resources', () => {
-      expectRightToEqual(
-        runParse(makeResponse(JSON.stringify(bundle(observation('1'), observation('2'))))),
-        [expect.objectContaining({ id: '1' }), expect.objectContaining({ id: '2' })]
+    it('parses a Bundle of Observations into an array of resources', async () => {
+      // Act
+      const observations = await parsedResources(
+        makeResponse(JSON.stringify(bundle(observation('1'), observation('2'))))
       )
+
+      // Assert
+      expect(observations).toHaveLength(2)
+      for (const resource of observations) expect(resource.id).toMatch(DERIVED_ID)
     })
 
-    it('returns an empty array for a Bundle with no entries', () => {
+    it('re-keys each Observation distinctly and records the server id', async () => {
+      // Act
+      const observations = await parsedResources(
+        makeResponse(JSON.stringify(bundle(observation('1'), observation('2'))))
+      )
+
+      // Assert
+      expect(new Set(observations.map((resource) => resource.id)).size).toBe(2)
+      expect(observations.map((resource) => resource.identifier)).toEqual([
+        [expect.objectContaining({ value: '1' })],
+        [expect.objectContaining({ value: '2' })],
+      ])
+    })
+
+    it('rewrites a subject reference to the id the Patient entity derives', async () => {
+      // A list response and a `Patient` response from one server reduce to the
+      // same service base, which is the whole reason the link survives.
+      const withSubject = {
+        ...observation('1'),
+        subject: { reference: 'Patient/42' },
+      }
+      const observations = await parsedResources(makeResponse(JSON.stringify(bundle(withSubject))))
+      const patients = await Effect.runPromise(
+        PatientEntity.parse(
+          makeRemoteResponse({
+            url: 'https://example.com/Patient/42',
+            body: JSON.stringify({ resourceType: 'Patient', id: '42' }),
+          })
+        )
+      )
+      // Assert
+      expect(observations[0]?.subject?.reference).toBe(`Patient/${patients[0]?.id}`)
+    })
+
+    it('returns an empty array for a Bundle with no entries', async () => {
       expectRightToEqual(
-        runParse(makeResponse(JSON.stringify({ resourceType: 'Bundle', type: 'searchset' }))),
+        await runParse(makeResponse(JSON.stringify({ resourceType: 'Bundle', type: 'searchset' }))),
         []
       )
     })
 
-    it('drops entries with no `resource` (e.g. search-outcome/request-only entries)', () => {
-      expectRightToEqual(
-        runParse(
-          makeResponse(
-            JSON.stringify({
-              resourceType: 'Bundle',
-              type: 'searchset',
-              entry: [
-                { resource: observation('1') },
-                // A resource-less entry (FHIR allows search-outcome or
-                // request/response-only entries); `OrNullAsOptional` decodes
-                // it fine and `.filter(isObservation)` drops it here.
-                {
-                  fullUrl: 'https://example.com/Observation?_count=1',
-                  search: { mode: 'outcome' },
-                },
-              ],
-            })
-          )
-        ),
-        [expect.objectContaining({ id: '1' })]
+    it('drops entries with no `resource` (e.g. search-outcome/request-only entries)', async () => {
+      // Act
+      const observations = await parsedResources(
+        makeResponse(
+          JSON.stringify({
+            resourceType: 'Bundle',
+            type: 'searchset',
+            entry: [
+              { resource: observation('1') },
+              // A resource-less entry (FHIR allows search-outcome or
+              // request/response-only entries); `OrNullAsOptional` decodes
+              // it fine and `.filter(isObservation)` drops it here.
+              {
+                fullUrl: 'https://example.com/Observation?_count=1',
+                search: { mode: 'outcome' },
+              },
+            ],
+          })
+        )
       )
+
+      // Assert
+      expect(observations.map((resource) => resource.identifier)).toEqual([
+        [expect.objectContaining({ value: '1' })],
+      ])
     })
 
-    it('keeps an Observation missing `status`, defaulting it to `unknown` (real HAPI data)', () => {
+    it('keeps an Observation missing `status`, defaulting it to `unknown` (real HAPI data)', async () => {
       // HAPI's public sandbox returns hand-entered Observations that omit the
       // FHIR-required `status`. Before the schema leniency this failed the
       // ENTIRE page decode; now the entry survives with status defaulted.
       const { status: _dropped, ...noStatus } = observation('bad')
-      expectRightToEqual(
-        runParse(makeResponse(JSON.stringify(bundle(observation('1'), noStatus)))),
-        [
-          expect.objectContaining({ id: '1', status: 'final' }),
-          expect.objectContaining({ id: 'bad', status: 'unknown' }),
-        ]
+
+      // Act
+      const observations = await parsedResources(
+        makeResponse(JSON.stringify(bundle(observation('1'), noStatus)))
       )
+
+      // Assert
+      expect(observations.map((resource) => resource.status)).toEqual(['final', 'unknown'])
     })
 
-    it('still fails the decode when an entry has a present-but-invalid `status`', () => {
+    it('still fails the decode when an entry has a present-but-invalid `status`', async () => {
       // Only absence is rescued — a present, unrecognized status is a genuine
       // wire error and must not be silently coerced.
       expectLeftToEqual(
-        runParse(makeResponse(JSON.stringify(bundle({ ...observation('x'), status: 'bogus' })))),
+        await runParse(
+          makeResponse(JSON.stringify(bundle({ ...observation('x'), status: 'bogus' })))
+        ),
         expect.objectContaining({ _tag: 'ParseError' })
       )
     })
 
-    it('parses a Bundle wrapped in the WebView JSON-viewer HTML envelope', () => {
+    it('parses a Bundle wrapped in the WebView JSON-viewer HTML envelope', async () => {
+      // Arrange
       const raw = JSON.stringify(bundle(observation('99')))
-      expectRightToEqual(runParse(makeResponse(wrappedHtml(raw))), [
-        expect.objectContaining({ id: '99' }),
+
+      // Act
+      const observations = await parsedResources(makeResponse(wrappedHtml(raw)))
+
+      // Assert
+      expect(observations.map((resource) => resource.identifier)).toEqual([
+        [expect.objectContaining({ value: '99' })],
       ])
     })
 
-    it('fails with ParseError for malformed JSON', () => {
+    it('fails with ParseError for malformed JSON', async () => {
       expectLeftToEqual(
-        runParse(makeResponse('{ not valid json }')),
+        await runParse(makeResponse('{ not valid json }')),
         expect.objectContaining({ _tag: 'ParseError' })
       )
     })
 
-    it('never throws on arbitrary JSON strings', () => {
-      fc.assert(
-        fc.property(fc.json(), (json) => {
-          const result = Effect.runSync(
-            Effect.either(ObservationListEntity.parse(makeResponse(json)))
-          )
+    it('never throws on arbitrary JSON strings', async () => {
+      await fc.assert(
+        fc.asyncProperty(fc.json(), async (json) => {
+          const result = await runParse(makeResponse(json))
           expect(['Right', 'Left']).toContain(result._tag)
         }),
         { numRuns: numRunsFor({ base: 100 }) }

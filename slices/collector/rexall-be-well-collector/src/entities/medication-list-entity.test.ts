@@ -6,7 +6,10 @@ import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import prescriptions from '../fixtures/prescriptions-searchset.json' with { type: 'json' }
+import profileMe from '../fixtures/profile-me.json' with { type: 'json' }
+import { RexallSource } from '../source-identity.ts'
 import { MedicationListEntity, type MedicationResource } from './medication-list-entity.ts'
+import { ProfileEntity } from './profile-entity.ts'
 
 const { expectRightToEqual } = utilityExpectations(expect)
 
@@ -14,13 +17,45 @@ const { expectRightToEqual } = utilityExpectations(expect)
 const LIST_URL =
   'https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/pharmacy/Location?subject=Patient/uid-abc-123&_query=lastActiveOnly&_revinclude=MedicationRequest:extension.medicationrecord-processor&_count=2147483646'
 
+/** The profile endpoint, so one test can drive both entities of a run. */
+const PROFILE_URL = 'https://rexall-prd-tunnel.letsbewell.ca/enduser/profile/v2/me'
+
+/** The shape every re-keyed Rexall resource id takes. */
+const DERIVED_ID = /^rexall-[0-9a-f]{32}$/
+
+/** The resources of a parse that was expected to succeed. */
+const parsedResources = async (
+  r: Response.RemoteResponse
+): Promise<readonly MedicationResource[]> => {
+  const result = await runParse(r)
+  if (result._tag !== 'Right') throw new Error('expected a successful parse')
+  return result.right
+}
+
+/**
+ * The medication carebook sent under `sourceId`. The stored `id` is derived, so
+ * the carebook id it was re-keyed from is only reachable as an `Identifier` —
+ * which is what makes the promotion expectations below still name a fixture
+ * entry rather than a hash.
+ */
+const bySourceId = (
+  resources: readonly MedicationResource[],
+  sourceId: string
+): MedicationResource | undefined =>
+  resources.find((resource) =>
+    resource.identifier.some(
+      (identifier) =>
+        identifier.system?.href === RexallSource.system.href && identifier.value === sourceId
+    )
+  )
+
 const makeResponse = (body: string, url = LIST_URL): Response.RemoteResponse =>
   makeRemoteResponse({ url, headers: [['content-type', 'application/fhir+json']], body })
 
 const runParse = (
   r: Response.RemoteResponse
-): Either.Either<readonly MedicationResource[], ParseResult.ParseError> =>
-  Effect.runSync(Effect.either(MedicationListEntity.parse(r)))
+): Promise<Either.Either<readonly MedicationResource[], ParseResult.ParseError>> =>
+  Effect.runPromise(Effect.either(MedicationListEntity.parse(r)))
 
 describe('MedicationListEntity', () => {
   describe('isFoundAt', () => {
@@ -47,37 +82,82 @@ describe('MedicationListEntity', () => {
   })
 
   describe('parse', () => {
-    it('keeps only MedicationRequest + MedicationDispense, dropping the other resources', () => {
-      const result = runParse(makeResponse(JSON.stringify(prescriptions)))
-      // The fixture has 7 entries: Location (match) + two MedicationRequests +
-      // two MedicationDispenses + DocumentReference + Immunization. Only the
-      // four medications survive; the Location / DocumentReference /
-      // Immunization decode to null through the catch-all union member and are
-      // dropped.
-      expectRightToEqual(result, [
-        expect.objectContaining({ resourceType: 'MedicationRequest', id: 'mr-0001' }),
-        expect.objectContaining({ resourceType: 'MedicationRequest', id: 'mr-0002' }),
-        expect.objectContaining({ resourceType: 'MedicationDispense', id: 'md-0001' }),
-        expect.objectContaining({ resourceType: 'MedicationDispense', id: 'md-0002' }),
+    it('keeps only MedicationRequest + MedicationDispense, dropping the other resources', async () => {
+      // Act — the fixture has 7 entries: Location (match) + two
+      // MedicationRequests + two MedicationDispenses + DocumentReference +
+      // Immunization. Only the four medications survive; the Location /
+      // DocumentReference / Immunization decode to null through the catch-all
+      // union member and are dropped.
+      const medications = await parsedResources(makeResponse(JSON.stringify(prescriptions)))
+
+      // Assert
+      expect(medications.map((resource) => resource.resourceType)).toEqual([
+        'MedicationRequest',
+        'MedicationRequest',
+        'MedicationDispense',
+        'MedicationDispense',
+      ])
+      for (const resource of medications) expect(resource.id).toMatch(DERIVED_ID)
+    })
+
+    it('records the carebook ids the medications arrived with', async () => {
+      // Act
+      const medications = await parsedResources(makeResponse(JSON.stringify(prescriptions)))
+
+      // Assert — the ids are derived, so carebook's own are kept as identifiers,
+      // beside the carebook external-id identifier the dialect already carries.
+      expect(medications.map((resource) => resource.identifier)).toEqual([
+        expect.arrayContaining([
+          expect.objectContaining({ system: RexallSource.system, value: 'mr-0001' }),
+        ]),
+        expect.arrayContaining([
+          expect.objectContaining({ system: RexallSource.system, value: 'mr-0002' }),
+        ]),
+        expect.arrayContaining([
+          expect.objectContaining({ system: RexallSource.system, value: 'md-0001' }),
+        ]),
+        expect.arrayContaining([
+          expect.objectContaining({ system: RexallSource.system, value: 'md-0002' }),
+        ]),
       ])
     })
 
-    it('decodes the carebook MedicationRequest straight to its fhir-r4 shape', () => {
-      const result = runParse(makeResponse(JSON.stringify(prescriptions)))
-      if (result._tag !== 'Right') throw new Error('expected a successful parse')
-      const request = result.right.find((r) => r.resourceType === 'MedicationRequest')
+    it('links every medication to the Patient the profile synthesizes', async () => {
+      // The invariant re-keying exists to preserve: two entities, two
+      // responses, one namespace — so `subject` still names the stored Patient.
+      const medications = await parsedResources(makeResponse(JSON.stringify(prescriptions)))
+      const profile = await Effect.runPromise(
+        ProfileEntity.parse(
+          makeRemoteResponse({ url: PROFILE_URL, body: JSON.stringify(profileMe) })
+        )
+      )
+
+      // Assert — all four, so a medication left behind by the rewrite shows up
+      // as a missing entry rather than a shorter list that still matches.
+      expect(medications.map((resource) => resource.subject?.reference)).toEqual(
+        Array.from({ length: 4 }, () => `Patient/${profile[0]?.id}`)
+      )
+    })
+
+    it('decodes the carebook MedicationRequest straight to its fhir-r4 shape', async () => {
+      const medications = await parsedResources(makeResponse(JSON.stringify(prescriptions)))
+      const request = medications.find((r) => r.resourceType === 'MedicationRequest')
       // STU3 requester.agent flattens to the R4 requester reference — proof the
       // R4FromStu3 transform ran (not a raw passthrough).
       if (request?.resourceType !== 'MedicationRequest')
         throw new Error('missing MedicationRequest')
-      expect(request.requester?.reference).toBe('Practitioner/dr-smith')
+      // Re-keyed like every other relative reference, and traceable back to
+      // the id carebook stated.
+      expect(request.requester?.reference).toMatch(/^Practitioner\/rexall-[0-9a-f]{32}$/)
+      expect(request.requester?.identifier).toEqual(
+        expect.objectContaining({ system: RexallSource.system, value: 'dr-smith' })
+      )
       expect(request.dispenseRequest?.numberOfRepeatsAllowed).toBe(3)
     })
 
-    it('promotes the carebook extensions that have a conventional R4 home', () => {
-      const result = runParse(makeResponse(JSON.stringify(prescriptions)))
-      if (result._tag !== 'Right') throw new Error('expected a successful parse')
-      const request = result.right.find((r) => r.id === 'mr-0001')
+    it('promotes the carebook extensions that have a conventional R4 home', async () => {
+      const medications = await parsedResources(makeResponse(JSON.stringify(prescriptions)))
+      const request = bySourceId(medications, 'mr-0001')
       if (request?.resourceType !== 'MedicationRequest')
         throw new Error('missing MedicationRequest')
 
@@ -102,10 +182,9 @@ describe('MedicationListEntity', () => {
       })
     })
 
-    it('leaves the extensions with no conventional home in place', () => {
-      const result = runParse(makeResponse(JSON.stringify(prescriptions)))
-      if (result._tag !== 'Right') throw new Error('expected a successful parse')
-      const request = result.right.find((r) => r.id === 'mr-0001')
+    it('leaves the extensions with no conventional home in place', async () => {
+      const medications = await parsedResources(makeResponse(JSON.stringify(prescriptions)))
+      const request = bySourceId(medications, 'mr-0001')
       if (request?.resourceType !== 'MedicationRequest')
         throw new Error('missing MedicationRequest')
       const urls = request.extension.map((e) => e.url)
@@ -123,10 +202,9 @@ describe('MedicationListEntity', () => {
       expect(urls).toContain('http://example.org/unknown-future-extension')
     })
 
-    it('promotes the dispensing pharmacy onto MedicationDispense.location', () => {
-      const result = runParse(makeResponse(JSON.stringify(prescriptions)))
-      if (result._tag !== 'Right') throw new Error('expected a successful parse')
-      const dispense = result.right.find((r) => r.id === 'md-0001')
+    it('promotes the dispensing pharmacy onto MedicationDispense.location', async () => {
+      const medications = await parsedResources(makeResponse(JSON.stringify(prescriptions)))
+      const dispense = bySourceId(medications, 'md-0001')
       if (dispense?.resourceType !== 'MedicationDispense')
         throw new Error('missing MedicationDispense')
       expect(dispense.location?.identifier?.value).toBe('pharmacy-4821')
@@ -136,17 +214,15 @@ describe('MedicationListEntity', () => {
       )
     })
 
-    it('returns an empty array for a searchset with no entries', () => {
+    it('returns an empty array for a searchset with no entries', async () => {
       const empty = { resourceType: 'Bundle', type: 'searchset', total: 0, entry: [] }
-      expectRightToEqual(runParse(makeResponse(JSON.stringify(empty))), [])
+      expectRightToEqual(await runParse(makeResponse(JSON.stringify(empty))), [])
     })
 
-    it('never throws on arbitrary JSON strings', () => {
-      fc.assert(
-        fc.property(fc.json(), (json) => {
-          const result = Effect.runSync(
-            Effect.either(MedicationListEntity.parse(makeResponse(json)))
-          )
+    it('never throws on arbitrary JSON strings', async () => {
+      await fc.assert(
+        fc.asyncProperty(fc.json(), async (json) => {
+          const result = await runParse(makeResponse(json))
           expect(['Right', 'Left']).toContain(result._tag)
         }),
         { numRuns: numRunsFor({ base: 100 }) }

@@ -4,6 +4,7 @@ import { Bundle } from 'fhir-r4/data-types'
 import { Observation } from 'fhir-r4/resources'
 
 import { extractJson } from '../extract-json.ts'
+import { withSourceIdentity } from '../source-identity.ts'
 
 type ObservationType = typeof Observation.Schema.Type
 
@@ -33,6 +34,10 @@ const observationListUrl = UrlMatch.make({
  * {@link extractJson} normalizes the body
  * across raw-JSON XHR intercepts and the mobile WebView's JSON viewer
  * wrap.
+ *
+ * The surviving `Observation`s are re-keyed by {@link withSourceIdentity},
+ * `subject` included — a list response and the `Patient` response reduce to the
+ * same service base, so the re-keyed references still resolve.
  */
 const ObservationListEntity: EntityDefinition.EntityDefinition<ObservationType> =
   EntityDefinition.make({
@@ -49,7 +54,7 @@ const ObservationListEntity: EntityDefinition.EntityDefinition<ObservationType> 
             `ObservationListEntity: dropped ${droppedCount} of ${allEntries.length} Bundle entries that did not decode as Observation`
           )
         }
-        return resources
+        return yield* withSourceIdentity(response.url, 'search', ObservationBundle.ast, resources)
       }),
   })
 

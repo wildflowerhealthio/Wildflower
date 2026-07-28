@@ -9,7 +9,7 @@ import type { Patient } from 'fhir-r4/resources'
 
 import { PatientEntity } from './patient-entity.ts'
 
-const { expectRightToEqual, expectLeftToEqual } = utilityExpectations(expect)
+const { expectLeftToEqual } = utilityExpectations(expect)
 
 const makeResponse = (body: string): Response.RemoteResponse =>
   makeRemoteResponse({
@@ -30,11 +30,23 @@ const wrappedHtml = (rawJson: string): string => {
   return `<html><body><pre style="word-wrap: break-word;">${escaped}</pre></body></html>`
 }
 
-/** Run `parse` (now Effect-returning) and convert to an Either for the `expectRight/LeftToEqual` helpers. */
+/** Run `parse` and convert to an Either for the `expectRight/LeftToEqual` helpers. */
 const runParse = (
   r: Response.RemoteResponse
-): Either.Either<readonly (typeof Patient.Schema.Type)[], ParseResult.ParseError> =>
-  Effect.runSync(Effect.either(PatientEntity.parse(r)))
+): Promise<Either.Either<readonly (typeof Patient.Schema.Type)[], ParseResult.ParseError>> =>
+  Effect.runPromise(Effect.either(PatientEntity.parse(r)))
+
+/** The shape every re-keyed id from this collector takes. */
+const DERIVED_ID = /^fhir-r4-[0-9a-f]{32}$/
+
+/** The resources of a parse that was expected to succeed. */
+const parsedResources = async (
+  r: Response.RemoteResponse
+): Promise<readonly (typeof Patient.Schema.Type)[]> => {
+  const result = await runParse(r)
+  if (result._tag !== 'Right') throw new Error('expected a successful parse')
+  return result.right
+}
 
 describe('PatientEntity', () => {
   describe('isFoundAt', () => {
@@ -57,47 +69,71 @@ describe('PatientEntity', () => {
   })
 
   describe('parse', () => {
-    it('parses a minimal valid Patient JSON into a single-resource array', () => {
-      expectRightToEqual(
-        runParse(makeResponse(JSON.stringify({ resourceType: 'Patient', id: '42' }))),
-        [expect.objectContaining({ id: '42' })]
+    it('parses a minimal valid Patient JSON into a single-resource array', async () => {
+      // Act
+      const patients = await parsedResources(
+        makeResponse(JSON.stringify({ resourceType: 'Patient', id: '42' }))
       )
+
+      // Assert
+      expect(patients).toHaveLength(1)
+      expect(patients[0]?.id).toMatch(DERIVED_ID)
     })
 
-    it('parses a Patient with name and gender', () => {
-      expectRightToEqual(
-        runParse(
-          makeResponse(
-            JSON.stringify({
-              resourceType: 'Patient',
-              id: '42',
-              gender: 'male',
-              name: [{ given: ['John'], family: 'Doe' }],
-            })
-          )
-        ),
-        [expect.objectContaining({ id: '42', gender: 'male' })]
+    it('records the server-assigned id as an identifier', async () => {
+      // Arrange / Act — `Patient/42` on this server is not `Patient/42` on
+      // another, so the stored id is derived, and the server's own is kept to
+      // get back to it.
+      const patients = await parsedResources(
+        makeResponse(JSON.stringify({ resourceType: 'Patient', id: '42' }))
       )
-    })
 
-    it('parses a Patient JSON wrapped in the WebView JSON-viewer HTML envelope', () => {
-      const raw = JSON.stringify({ resourceType: 'Patient', id: '99' })
-      expectRightToEqual(runParse(makeResponse(wrappedHtml(raw))), [
-        expect.objectContaining({ id: '99' }),
+      // Assert
+      expect(patients[0]?.identifier).toEqual([
+        expect.objectContaining({ system: new URL('https://example.com/'), value: '42' }),
       ])
     })
 
-    it('fails with ParseError for malformed JSON', () => {
+    it('parses a Patient with name and gender', async () => {
+      // Act
+      const patients = await parsedResources(
+        makeResponse(
+          JSON.stringify({
+            resourceType: 'Patient',
+            id: '42',
+            gender: 'male',
+            name: [{ given: ['John'], family: 'Doe' }],
+          })
+        )
+      )
+
+      // Assert
+      expect(patients[0]?.gender).toBe('male')
+      expect(patients[0]?.name[0]?.family).toBe('Doe')
+    })
+
+    it('parses a Patient JSON wrapped in the WebView JSON-viewer HTML envelope', async () => {
+      // Arrange
+      const raw = JSON.stringify({ resourceType: 'Patient', id: '99' })
+
+      // Act
+      const patients = await parsedResources(makeResponse(wrappedHtml(raw)))
+
+      // Assert
+      expect(patients[0]?.identifier).toEqual([expect.objectContaining({ value: '99' })])
+    })
+
+    it('fails with ParseError for malformed JSON', async () => {
       expectLeftToEqual(
-        runParse(makeResponse('{ not valid json }')),
+        await runParse(makeResponse('{ not valid json }')),
         expect.objectContaining({ _tag: 'ParseError' })
       )
     })
 
-    it('never throws on arbitrary JSON strings', () => {
-      fc.assert(
-        fc.property(fc.json(), (json) => {
-          const result = Effect.runSync(Effect.either(PatientEntity.parse(makeResponse(json))))
+    it('never throws on arbitrary JSON strings', async () => {
+      await fc.assert(
+        fc.asyncProperty(fc.json(), async (json) => {
+          const result = await runParse(makeResponse(json))
           expect(['Right', 'Left']).toContain(result._tag)
         }),
         { numRuns: numRunsFor({ base: 100 }) }

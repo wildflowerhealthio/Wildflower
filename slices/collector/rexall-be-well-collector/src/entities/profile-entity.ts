@@ -4,6 +4,7 @@ import { Patient } from 'fhir-r4/resources'
 import { nonEmpty } from 'kitchen-sink'
 
 import { extractJson } from '../extract-json.ts'
+import { withSourceIdentity } from '../source-identity.ts'
 
 type PatientType = typeof Patient.Schema.Type
 
@@ -100,6 +101,12 @@ const profileUrl = UrlMatch.make({
  * carries them. Follow-up navigation (the prescriptions page) is declared on the
  * plan's `stepSequence`, not emitted here. {@link extractJson} normalizes the
  * body across raw-XHR intercepts and the mobile WebView's JSON-viewer wrap.
+ *
+ * The synthesized `Patient` is then re-keyed by {@link withSourceIdentity}:
+ * carebook's `uid` is not a store-wide id (and need not even be a legal FHIR
+ * one), so the stored `id` is derived from it and the `uid` itself is kept as
+ * an `Identifier`. `MedicationListEntity` re-keys the `subject` references
+ * against the same source, which is what keeps them pointing here.
  */
 const ProfileEntity: EntityDefinition.EntityDefinition<PatientType> = EntityDefinition.make({
   name: 'ProfileEntity',
@@ -108,7 +115,7 @@ const ProfileEntity: EntityDefinition.EntityDefinition<PatientType> = EntityDefi
     Effect.gen(function* () {
       const profile = yield* decodeProfile(extractJson(response.text()))
       const patient = yield* decodePatient(patientWire(profile))
-      return [patient]
+      return yield* withSourceIdentity(Patient.Schema.ast, [patient])
     }),
 })
 

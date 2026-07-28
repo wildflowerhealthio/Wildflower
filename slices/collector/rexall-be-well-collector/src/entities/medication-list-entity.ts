@@ -4,6 +4,7 @@ import { Bundle, MedicationDispense, MedicationRequest } from 'fhir-stu3-as-r4/s
 
 import { extractJson } from '../extract-json.ts'
 import { promoteMedicationDispense, promoteMedicationRequest } from '../promote.ts'
+import { withSourceIdentity } from '../source-identity.ts'
 
 /**
  * A parsed medication resource: the decoded output of either carebook
@@ -92,6 +93,14 @@ const medicationListUrl = UrlMatch.make({
  * {@link extractJson} normalizes the body across raw-XHR intercepts and the
  * mobile WebView's JSON-viewer wrap.
  *
+ * The surviving medications are then re-keyed by {@link withSourceIdentity} —
+ * their own carebook ids derived, carebook's kept as `Identifier`s, and their
+ * `subject` references put through the same derivation, so each still names the
+ * `Patient` `ProfileEntity` synthesized from the same account. Re-keying runs
+ * **after** {@link promote}, not before: promotion lifts references out of
+ * extensions (`medication-processor` → `dispenseRequest.performer`) into slots
+ * the reference rewrite walks, so the other order would leave those behind.
+ *
  * `followUpSteps` is intentionally omitted: v1 ships list-only. The list
  * `_revinclude` already carries `MedicationDispense`, so the per-medication
  * detail crawl (one `Open` per `MedicationRequest.id` →
@@ -117,7 +126,7 @@ const MedicationListEntity: EntityDefinition.EntityDefinition<MedicationResource
             `MedicationListEntity: dropped ${droppedCount} of ${allEntries.length} Bundle entries that are not MedicationRequest/MedicationDispense`
           )
         }
-        return resources
+        return yield* withSourceIdentity(MedicationListBundle.ast, resources)
       }),
   })
 

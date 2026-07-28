@@ -67,6 +67,30 @@ const PatientEntity = EntityDefinition.make({
   `Either`, so an entity can `Effect.logInfo` dropped entries. Emit `[]` for a
   resource you can't use (e.g. a null id) rather than failing. `parse` stays a
   **pure decode** — it never emits navigation.
+- **Re-key what you decode — never store a source's own ids.** The store is
+  shared with every other collector and keyed by `(resourceType, id)` alone, so
+  a remote's `Patient/1` would overwrite another remote's. `parse` therefore
+  ends by putting its output through `fhir-r4/identity`, which derives each `id`
+  from `(source system, resourceType, source id)`, records the source's id as an
+  `Identifier`, and rewrites every relative `Type/id` reference through the same
+  derivation so the links between the resources you produce still resolve. Two
+  entry points, both already `ParseError`-shaped for `parse`'s error channel:
+
+  - `parseWithSourceIdentity(source, ast, resources)` — for a collector pointed
+    at one site. Give it one module-level `SourceIdentity` (`{ prefix, system }`);
+    see `rexall-be-well-collector/src/source-identity.ts`.
+  - `parseWithFhirServerIdentity(prefix, shape, response.url, ast, resources)` —
+    for a real FHIR server, where the namespace is the service base URL read off
+    the response. `shape` is `'instance'` (`…/Patient/<id>`) or `'search'`
+    (`…/Observation?…`); the entity knows which pattern it matched, and guessing
+    it from the path is unsafe (`Patient/JohnDoe`'s id is type-shaped). See
+    `fhir-r4-client-collector/src/source-identity.ts`.
+
+  Keep the source module-level: a per-config one would turn entities into
+  factories and break the plan deep-equality the config tests rest on. Deriving
+  needs Web Crypto, so `parse` becomes `Effect.gen` and its suite
+  `Effect.runPromise`.
+
 - **`followUpSteps` (optional) is the reactive-crawl seam.** A pure, synchronous
   `(resources, response) => Step[]`: every time this entity's `parse` succeeds,
   the returned steps are appended to the back of the navigation queue (open every
@@ -313,6 +337,12 @@ Changes must include tests (see [AGENTS.md](../../../AGENTS.md) and the
 - **Entities** — `isFoundAt` matches the right URLs and _rejects_ the
   neighbours (the disjointness that step 2's ordering depends on); `parse`
   decodes a fixture and drops unusable entries.
+- **Source identity** — that two entities of one run agree: parse both fixtures
+  and assert the second's `subject` names the first's re-keyed `id`. This is
+  the only place that invariant is checkable, and re-keying breaks it silently
+  (each resource stores fine; only the link between them is gone). The
+  derivation's own properties — stability, FHIR-legal ids, separation across
+  sources — are covered once in `fhir-r4`'s `identity` suite, not per collector.
 - **Scraping plan** — `firstPage` / `stepSequence` are the exact URLs
   (encoding, `?_format=json`, disjoint query patterns).
 - **Descriptor** — `resourcePersistenceRuntimeIfMatches` matches its own configs

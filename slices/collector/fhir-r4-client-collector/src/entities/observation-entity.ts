@@ -3,6 +3,7 @@ import { Effect, Schema } from 'effect'
 import { Observation } from 'fhir-r4/resources'
 
 import { extractJson } from '../extract-json.ts'
+import { withSourceIdentity } from '../source-identity.ts'
 
 type ObservationType = typeof Observation.Schema.Type
 
@@ -19,13 +20,22 @@ const observationUrl = UrlMatch.make({ segments: [UrlMatch.literal('Observation'
  * further mapping. {@link extractJson} normalizes the body
  * across raw-JSON XHR intercepts and the mobile WebView's JSON viewer
  * wrap.
+ *
+ * {@link withSourceIdentity} then re-keys it onto the store's namespace —
+ * including its `subject`, so the link to the `Patient` this collector stored
+ * survives the re-key.
  */
 const ObservationEntity: EntityDefinition.EntityDefinition<ObservationType> = EntityDefinition.make(
   {
     name: 'ObservationEntity',
     isFoundAt: (url) => observationUrl.test(url),
     parse: (response) =>
-      Effect.map(decode(extractJson(response.text())), (observation) => [observation]),
+      Effect.gen(function* () {
+        const observation = yield* decode(extractJson(response.text()))
+        return yield* withSourceIdentity(response.url, 'instance', Observation.Schema.ast, [
+          observation,
+        ])
+      }),
   }
 )
 

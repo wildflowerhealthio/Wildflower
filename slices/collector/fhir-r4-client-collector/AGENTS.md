@@ -23,6 +23,9 @@ An ordinary `*-client-collector` (`rexall-be-well-collector` and
 - `src/entities/observation-list-entity.ts` — `…/Observation?…` → the
   `Observation`s of a searchset `Bundle`, dropping-and-counting entries that
   carry no resource.
+- `src/source-identity.ts` — this collector's prefix, and the thin
+  `withSourceIdentity` call each entity's `parse` ends with. See
+  [Source identity](#source-identity) below.
 - the provenance hook — `web-trace-core`'s `makeFhirProvenanceCapture('fhir-r4')`,
   one module-level line in `src/config.ts`, stated as the plan's
   `captureProvenance`.
@@ -44,6 +47,45 @@ one `Open` step navigates to `…/Observation?subject%3APatient=…`, followed b
 `AwaitPageSettled` hold — a `Navigation` dispatches and advances immediately, so
 without that hold the queue would drain before the Observation request is even
 tracked.
+
+## Source identity
+
+The store is shared with every other collector and keyed by
+`(resourceType, id)` alone, so the server's own `Patient/1` cannot be stored as
+`Patient/1` — the next FHIR remote's would overwrite it. Every entity therefore
+ends its `parse` with `withSourceIdentity`, which puts the decoded resources
+through `fhir-r4/identity`'s `adoptSourceIdentityAll`: the `id` is derived from
+`(service base URL, resourceType, server id)`, the server's id is kept as an
+`Identifier`, and every relative reference is re-derived the same way.
+
+**Almost none of that is here.** `fhir-r4/identity`'s
+`parseWithFhirServerIdentity` owns the derivation, the service-base recovery,
+and the `ParseError` shaping — so the next collector reading a FHIR server
+reuses it rather than copying it. `src/source-identity.ts` states this
+package's two remaining facts: the `SOURCE_PREFIX` (`'fhir-r4'`, which labels
+every id it mints) and the signature that takes the URL shape from the calling
+entity.
+
+- **The server is read off `response.url`, not `config.rootUrl`.** Both name the
+  same server, but the response is what an entity already has; taking it from
+  config would mean building entities per configured remote, turning three
+  module-level constants into factories and taking the `ScrapingPlan`
+  deep-equality the config tests rest on with them.
+- **The entity states its URL shape (`'instance'` / `'search'`); the base is
+  not sniffed out of the path.** `…/baseR4/Patient/123` and
+  `…/baseR4/Observation?…` both have to reduce to `…/baseR4` or an
+  `Observation`'s `subject` derives an id no `Patient` was stored under. Reading
+  the resource type by its capitalized shape looks safe — every base-path
+  segment in the wild is lowercase or mixed with digits — but ids are not:
+  `Patient/JohnDoe` is a legal instance URL whose _id_ is type-shaped. A
+  property test caught it; the entity already knows which pattern it matched.
+  `source-identity.test.ts` is down to the half only this package can check —
+  that the entities pass the _right_ shape, so both reduce to one namespace;
+  `fhirServiceBase`'s own behaviour is pinned in `fhir-r4`'s suite.
+- **`parse` is async now.** Deriving an id needs Web Crypto, so the entities are
+  `Effect.gen` and their suites `Effect.runPromise`. A missing `crypto.subtle`
+  (insecure context) fails that one parse as a `ParseError` rather than storing
+  a resource under an un-namespaced id.
 
 ## Provenance
 

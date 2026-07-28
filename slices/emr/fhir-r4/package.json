@@ -18,6 +18,10 @@
       "source": "./src/http-api-definition/index.ts",
       "default": "./dist/http-api-definition/index.js"
     },
+    "./identity": {
+      "source": "./src/identity/index.ts",
+      "default": "./dist/identity/index.js"
+    },
     "./resources": {
       "source": "./src/resources/index.ts",
       "default": "./dist/resources/index.js"
