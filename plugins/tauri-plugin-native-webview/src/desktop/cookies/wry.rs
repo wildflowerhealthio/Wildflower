@@ -1,83 +1,22 @@
-//! Pre-navigation cookie seeding, and the "seed then navigate" step that pairs
-//! with it.
+//! The `Webview::set_cookie` implementation of the seeding contract, for
+//! **Linux and Windows** (see [`super`] for the contract itself, and for why
+//! macOS cannot use this).
 //!
-//! [`seed_then_navigate`] is the single entry point both cookie-carrying open
-//! paths use ([`super::NativeWebview::open_url`]'s build/rewire branch and the
-//! `CloseRequested` deferred replay in [`super::lifecycle`]). Its two
-//! implementations differ in the one thing that matters — how the write reaches
-//! WebKit:
-//!
-//! - **macOS** writes `WKHTTPCookieStore` asynchronously and navigates from the
-//!   completion block. wry's `Webview::set_cookie` cannot be used here at all;
-//!   see [`super::cookie_store`].
-//! - **Everything else desktop** keeps the wry path (`Webview::set_cookie` +
-//!   `navigate`) on a spawned thread, where the writes and the navigation queue
-//!   onto the main loop in FIFO order.
+//! wry's cookie API on these platforms is an ordinary queued write, so the
+//! ordering guarantee is the main loop's FIFO: `set_cookie`, `set_cookie`,
+//! `navigate` queued in that order land in that order, and every cookie commits
+//! before the target's first request. The one requirement is that the writes are
+//! queued rather than run inline, which is why this spawns a thread — tauri's
+//! `send_user_message` executes inline when it is already on the main thread.
 
 use tauri::{AppHandle, Runtime};
 use url::Url;
 
-use super::labels::content_label;
+use crate::desktop::labels::content_label;
 use crate::models::CookieSpec;
 
-/// Write `cookies` into instance `id`'s cookie jar and navigate its content
-/// webview to `target` once they have committed.
-///
-/// Asynchronous on every platform: it returns as soon as the work is scheduled,
-/// so the caller must not treat a successful return as "the cookies are in the
-/// jar". Callers park the content webview at `about:blank` first (see
-/// [`super::lifecycle::present`]) precisely so the target's first request cannot
-/// outrun the seed.
-///
-/// Safe to call from **either** thread. macOS marshals onto the main thread
-/// itself; the other desktop backends spawn, because a wry `set_cookie` issued
-/// from the main thread would run inline (see the module doc).
-#[cfg(target_os = "macos")]
-pub(super) fn seed_then_navigate<R: Runtime>(
-    app: &AppHandle<R>,
-    id: &str,
-    cookies: Vec<CookieSpec>,
-    target: Url,
-) -> crate::Result<()> {
-    use objc2::MainThreadMarker;
-    use tauri::Manager;
-
-    let handle = app.clone();
-    let id = id.to_owned();
-    app.run_on_main_thread(move || {
-        let Some(mtm) = MainThreadMarker::new() else {
-            log::error!("[native-webview] cookie seed skipped: not on the main thread");
-            return;
-        };
-        // Every spec in one open is scoped to the same host (the host builds
-        // them as a set), so the first one names the jar to read back.
-        let read_back = cookies.first().map(|cookie| cookie.domain.clone());
-        super::cookie_store::seed_default_store_then(&cookies, mtm, move || {
-            match handle.get_webview(&content_label(&id)) {
-                Some(content) => {
-                    if let Err(error) = content.navigate(target) {
-                        log::error!("[native-webview] navigate after cookie seed failed: {error}");
-                    }
-                }
-                // The instance was torn down between the seed and its
-                // completion. The cookies are in the (process-global) jar
-                // regardless; there is just nothing left to navigate.
-                None => log::warn!(
-                    "[native-webview] cookie seed committed but instance {id} is already gone"
-                ),
-            }
-            if let Some(domain) = read_back {
-                super::cookie_store::log_default_store_names(domain, mtm);
-            }
-        });
-    })?;
-    Ok(())
-}
-
-/// See the macOS [`seed_then_navigate`] for the contract; this is the wry-backed
-/// implementation for the other desktop targets.
-#[cfg(not(target_os = "macos"))]
-pub(super) fn seed_then_navigate<R: Runtime>(
+/// See [`super`] for the contract this implements.
+pub(in crate::desktop) fn seed_then_navigate<R: Runtime>(
     app: &AppHandle<R>,
     id: &str,
     cookies: Vec<CookieSpec>,
@@ -108,9 +47,6 @@ pub(super) fn seed_then_navigate<R: Runtime>(
 /// `Cookie` handed to `Webview::set_cookie`. Pure field mapping — attribute
 /// grammar stays the vetted cookie crate's.
 ///
-/// macOS does not go through this: it writes `WKHTTPCookieStore` directly (see
-/// [`super::cookie_store`]), so the type never gets built there.
-#[cfg(not(target_os = "macos"))]
 fn cookie_from_spec(spec: &CookieSpec) -> tauri::webview::cookie::Cookie<'static> {
     use crate::models::CookieSameSite;
     use tauri::webview::cookie::{time::Duration, Cookie, SameSite};
@@ -143,7 +79,6 @@ fn cookie_from_spec(spec: &CookieSpec) -> tauri::webview::cookie::Cookie<'static
 /// thread: each `set_cookie` is a message the main loop processes on its own
 /// FIFO iteration, so a `navigate` queued after this runs only once every cookie
 /// has committed — the seeding contract (see docs/Explanation.md).
-#[cfg(not(target_os = "macos"))]
 fn seed_cookies<R: Runtime>(
     content: &tauri::webview::Webview<R>,
     cookies: &[CookieSpec],
@@ -154,7 +89,7 @@ fn seed_cookies<R: Runtime>(
     Ok(())
 }
 
-#[cfg(all(test, not(target_os = "macos")))]
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::models::CookieSameSite;

@@ -14,9 +14,9 @@
 //!
 //! - [`labels`] — per-instance window/webview label construction + parsing.
 //! - [`state`] — the per-id [`state::InstanceState`] registry.
-//! - [`cookies`] — pre-navigation cookie seeding; on macOS it delegates the
-//!   write itself to [`cookie_store`], which talks to `WKHTTPCookieStore`
-//!   directly to avoid wry's deadlocking run-loop pump.
+//! - [`cookies`] — pre-navigation cookie seeding: a seam over two
+//!   interchangeable implementations, because macOS cannot use wry's cookie API
+//!   (it deadlocks the app).
 //! - [`chrome`] — the chrome bar, its build, the `x-nv-action` action scheme.
 //! - [`lifecycle`] — `present` (build/reopen/teardown) + window listeners.
 //! - this module — plugin `init` + the [`NativeWebview`] handle (public API).
@@ -53,8 +53,6 @@ use tauri::{AppHandle, Manager, Runtime};
 use crate::models::{EvaluateJsRequest, NativeWebviewEvent, OpenRequest, PatchWindowTextRequest};
 
 mod chrome;
-#[cfg(target_os = "macos")]
-mod cookie_store;
 mod cookies;
 mod labels;
 mod lifecycle;

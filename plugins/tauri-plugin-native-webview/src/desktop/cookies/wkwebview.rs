@@ -1,12 +1,13 @@
-//! macOS cookie seeding that never pumps the main run loop.
+//! The `WKHTTPCookieStore` implementation of the seeding contract, for
+//! **macOS** (see [`super`] for the contract itself).
 //!
 //! wry's `Webview::set_cookie` re-entrantly spins the main `NSRunLoop` inside
-//! tao's event handler and self-deadlocks the app. This module bypasses it,
-//! firing `WKHTTPCookieStore.setCookie(_:completionHandler:)` on the main thread
-//! but **asynchronously** and running the caller's follow-up work from the
-//! completion block. Why that is the only shape that works — and why moving the
-//! call off the main thread was never the fix — is in
-//! [docs/Lifecycle and Races Explanation.md](../../docs/Lifecycle%20and%20Races%20Explanation.md)
+//! tao's event handler and self-deadlocks the app, so this bypasses it and
+//! messages WebKit directly: `setCookie(_:completionHandler:)` fired on the main
+//! thread but **asynchronously**, with the navigation issued from the last
+//! completion. Why that is the only shape that works — and why moving the call
+//! off the main thread was never the fix — is in
+//! [docs/Lifecycle and Races Explanation.md](../../../docs/Lifecycle%20and%20Races%20Explanation.md)
 //! § "Cookie seeding must not pump the main run loop".
 //!
 //! **The default data store** is the right jar, not a widening of scope: wry
@@ -18,9 +19,10 @@
 //! **Unsafe**: this is the crate's only `unsafe` island (see the crate's
 //! `[lints.rust]` block). Everything here is Objective-C messaging through
 //! `objc2` — `unsafe` because the bindings are, not because an invariant is
-//! being hand-waved. Each block says what makes it sound.
-
-#![allow(unsafe_code)]
+//! being hand-waved. The opt-out is per-block rather than module-wide, so the
+//! `unsafe` surface here is exactly the set of `#[allow(unsafe_code)]` sites
+//! below: a new one cannot appear without adding a line that says so, and every
+//! such line sits on top of the `SAFETY` note that justifies it.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -35,8 +37,52 @@ use objc2_foundation::{
     NSHTTPCookieVersion, NSMutableDictionary, NSString,
 };
 use objc2_web_kit::{WKHTTPCookieStore, WKWebsiteDataStore};
+use tauri::{AppHandle, Runtime};
+use url::Url;
 
+use crate::desktop::labels::content_label;
 use crate::models::{CookieSameSite, CookieSpec};
+
+/// See [`super`] for the contract this implements.
+pub(in crate::desktop) fn seed_then_navigate<R: Runtime>(
+    app: &AppHandle<R>,
+    id: &str,
+    cookies: Vec<CookieSpec>,
+    target: Url,
+) -> crate::Result<()> {
+    use tauri::Manager;
+
+    let handle = app.clone();
+    let id = id.to_owned();
+    app.run_on_main_thread(move || {
+        let Some(mtm) = MainThreadMarker::new() else {
+            log::error!("[native-webview] cookie seed skipped: not on the main thread");
+            return;
+        };
+        // Every spec in one open is scoped to the same host (the host builds
+        // them as a set), so the first one names the jar to read back.
+        let read_back = cookies.first().map(|cookie| cookie.domain.clone());
+        seed_default_store_then(&cookies, mtm, move || {
+            match handle.get_webview(&content_label(&id)) {
+                Some(content) => {
+                    if let Err(error) = content.navigate(target) {
+                        log::error!("[native-webview] navigate after cookie seed failed: {error}");
+                    }
+                }
+                // The instance was torn down between the seed and its
+                // completion. The cookies are in the (process-global) jar
+                // regardless; there is just nothing left to navigate.
+                None => log::warn!(
+                    "[native-webview] cookie seed committed but instance {id} is already gone"
+                ),
+            }
+            if let Some(domain) = read_back {
+                log_default_store_names(domain, mtm);
+            }
+        });
+    })?;
+    Ok(())
+}
 
 /// The property dictionary `NSHTTPCookie::cookieWithProperties` is built from —
 /// a port of wry's `cookie_into_wkwebview` (`wry-0.55.1`
@@ -64,6 +110,7 @@ fn cookie_properties(
     // SAFETY: the `NSHTTPCookie*` keys are Foundation's own exported string
     // constants. Reading them is `unsafe` only because they are `extern "C"`
     // statics; they are initialised before any Rust code runs.
+    #[allow(unsafe_code)]
     let (name_key, value_key, path_key, domain_key) = unsafe {
         (
             NSHTTPCookieName,
@@ -81,6 +128,7 @@ fn cookie_properties(
     if let Some(seconds) = spec.max_age {
         let max_age = NSString::from_str(&seconds.to_string());
         // SAFETY: as above — exported Foundation constants.
+        #[allow(unsafe_code)]
         let (max_age_key, version_key) = unsafe { (NSHTTPCookieMaximumAge, NSHTTPCookieVersion) };
         properties.insert(max_age_key, &*max_age);
         // `Max-Age` is an RFC-2965 attribute, so the cookie must declare v1 —
@@ -90,6 +138,7 @@ fn cookie_properties(
 
     if spec.secure {
         // SAFETY: as above — an exported Foundation constant.
+        #[allow(unsafe_code)]
         let secure_key = unsafe { NSHTTPCookieSecure };
         properties.insert(secure_key, ns_string!("TRUE"));
     }
@@ -118,14 +167,20 @@ fn cookie_from_spec(spec: &CookieSpec) -> Option<Retained<NSHTTPCookie>> {
     // SAFETY: `properties` is an `NSHTTPCookiePropertyKey` → `NSString`
     // dictionary, which is the shape `cookieWithProperties:` documents; the
     // generic parameters on the Rust side say the same thing.
-    unsafe { NSHTTPCookie::cookieWithProperties(&properties) }
+    #[allow(unsafe_code)]
+    unsafe {
+        NSHTTPCookie::cookieWithProperties(&properties)
+    }
 }
 
 /// The process-global cookie jar every webview in this app shares (see the
 /// module doc).
 fn default_cookie_store(mtm: MainThreadMarker) -> Retained<WKHTTPCookieStore> {
     // SAFETY: both calls are main-thread-only, which `mtm` witnesses.
-    unsafe { WKWebsiteDataStore::defaultDataStore(mtm).httpCookieStore() }
+    #[allow(unsafe_code)]
+    unsafe {
+        WKWebsiteDataStore::defaultDataStore(mtm).httpCookieStore()
+    }
 }
 
 /// Write every cookie in `specs` into the default cookie store and run
@@ -135,17 +190,14 @@ fn default_cookie_store(mtm: MainThreadMarker) -> Retained<WKHTTPCookieStore> {
 /// blocks: each `setCookie:completionHandler:` returns immediately, the
 /// completions arrive on later, non-nested main-loop iterations, and an
 /// [`AtomicUsize`] counts them down so `on_committed` runs exactly once — after
-/// the final write. That is the whole point of this module; see the module doc
-/// for the deadlock it avoids.
+/// the final write. That is the whole point of this module; see its doc for
+/// the deadlock it avoids.
 ///
 /// `on_committed` still runs when `specs` is empty or every spec is rejected, so
 /// a caller that parks a webview at `about:blank` pending the seed is never left
 /// stranded there.
-pub(super) fn seed_default_store_then<F>(
-    specs: &[CookieSpec],
-    mtm: MainThreadMarker,
-    on_committed: F,
-) where
+fn seed_default_store_then<F>(specs: &[CookieSpec], mtm: MainThreadMarker, on_committed: F)
+where
     F: FnOnce() + 'static,
 {
     let cookies: Vec<Retained<NSHTTPCookie>> = specs
@@ -194,7 +246,10 @@ pub(super) fn seed_default_store_then<F>(
         });
         // SAFETY: `cookie` outlives the call (WebKit copies it), and the block
         // is retained by the runtime for as long as the completion is pending.
-        unsafe { store.setCookie_completionHandler(cookie, Some(&completion)) };
+        #[allow(unsafe_code)]
+        unsafe {
+            store.setCookie_completionHandler(cookie, Some(&completion))
+        };
     }
 }
 
@@ -206,12 +261,13 @@ pub(super) fn seed_default_store_then<F>(
 /// Also async, and for the same reason: wry's `cookies_for_url` reads the store
 /// through the very `wait_for_blocking_operation` pump this module exists to
 /// avoid, so the read-back must not go through it either.
-pub(super) fn log_default_store_names(domain: String, mtm: MainThreadMarker) {
+fn log_default_store_names(domain: String, mtm: MainThreadMarker) {
     let store = default_cookie_store(mtm);
     let completion: RcBlock<dyn Fn(std::ptr::NonNull<NSArray<NSHTTPCookie>>)> =
         RcBlock::new(move |cookies: std::ptr::NonNull<NSArray<NSHTTPCookie>>| {
             // SAFETY: WebKit hands the block a live array it owns for the
             // duration of the call; we only read from it here.
+            #[allow(unsafe_code)]
             let cookies = unsafe { cookies.as_ref() };
             let names: Vec<String> = cookies
                 .to_vec()
@@ -224,7 +280,10 @@ pub(super) fn log_default_store_names(domain: String, mtm: MainThreadMarker) {
             log::info!("[native-webview] cookie store for {domain} now holds: {names:?}");
         });
     // SAFETY: the block is retained by the runtime until the completion fires.
-    unsafe { store.getAllCookies(&completion) };
+    #[allow(unsafe_code)]
+    unsafe {
+        store.getAllCookies(&completion)
+    };
 }
 
 #[cfg(test)]
@@ -263,6 +322,7 @@ mod tests {
     fn cookie_properties_map_every_attribute() {
         let properties = cookie_properties(&spec());
         // SAFETY: exported Foundation constants (see `cookie_properties`).
+        #[allow(unsafe_code)]
         let (name_key, value_key, path_key, domain_key, secure_key, max_age_key, version_key) = unsafe {
             (
                 NSHTTPCookieName,
@@ -308,6 +368,7 @@ mod tests {
             ..spec()
         });
         // SAFETY: exported Foundation constants (see `cookie_properties`).
+        #[allow(unsafe_code)]
         let (secure_key, max_age_key, version_key) = unsafe {
             (
                 NSHTTPCookieSecure,
