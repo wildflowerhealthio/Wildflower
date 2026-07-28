@@ -2,7 +2,7 @@
   "name": "web-trace-core",
   "version": "0.0.0",
   "private": true,
-  "description": "Pure core of the web-trace slice: the TraceExchange ⇄ FHIR DocumentReference codec, the shape-preserving pseudonymizer that is the epic's privacy boundary, and the HAR 1.2 emitter. No DOM, no fs, no UI — consumed by both a collector and the web-trace SMART app.",
+  "description": "Pure core of the web-trace slice: the TraceExchange \u21c4 FHIR DocumentReference codec, the shape-preserving pseudonymizer that is the epic's privacy boundary, and the HAR 1.2 emitter. No DOM, no fs, no UI \u2014 consumed by both a collector and the web-trace SMART app.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
@@ -18,6 +18,10 @@
       "source": "./src/index.ts",
       "default": "./dist/index.js"
     },
+    "./capture": {
+      "source": "./src/capture/index.ts",
+      "default": "./dist/capture/index.js"
+    },
     "./codec": {
       "source": "./src/codec/index.ts",
       "default": "./dist/codec/index.js"
@@ -25,6 +29,10 @@
     "./har": {
       "source": "./src/har/index.ts",
       "default": "./dist/har/index.js"
+    },
+    "./provenance": {
+      "source": "./src/provenance/index.ts",
+      "default": "./dist/provenance/index.js"
     },
     "./pseudonymizer": {
       "source": "./src/pseudonymizer/index.ts",

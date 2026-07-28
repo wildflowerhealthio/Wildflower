@@ -3,7 +3,9 @@ import { DateTime, Effect, ParseResult } from 'effect'
 import { TraceExchange } from 'web-trace-core'
 import { type DocumentReferenceType, toDocumentReference } from 'web-trace-core/codec'
 
-import { type BodyDigestUnavailable, type BodyPolicy, decideBody } from '../body-policy.ts'
+import type { BodyDigestUnavailable } from 'web-trace-core/capture'
+
+import { type BodyPolicy, decideBody } from '../body-policy.ts'
 
 /**
  * The one entity a web-trace recording needs: it claims every response and
@@ -89,6 +91,9 @@ const makeRawExchangeEntity = (
               receive: DateTime.distanceDuration(response.startedAt, settledAt),
             },
             body,
+            // A recording decodes nothing, so it produces nothing to link. The
+            // provenance direction belongs to the production collectors.
+            producedResources: [],
           }),
         ]
       }),

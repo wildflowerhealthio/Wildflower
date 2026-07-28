@@ -7,7 +7,9 @@ import { describe, expect, it } from 'vite-plus/test'
 import { traceResourceId } from 'web-trace-core'
 import { type DocumentReferenceType, fromDocumentReference, isWebTrace } from 'web-trace-core/codec'
 
-import { BodyDigestUnavailable, type BodyPolicy } from '../body-policy.ts'
+import { BodyDigestUnavailable } from 'web-trace-core/capture'
+
+import type { BodyPolicy } from '../body-policy.ts'
 import { DEFAULT_BODY_CONTENT_TYPES, DEFAULT_MAX_BODY_BYTES } from '../config.ts'
 import { digestFailureAsParseError, makeRawExchangeEntity } from './raw-exchange-entity.ts'
 
