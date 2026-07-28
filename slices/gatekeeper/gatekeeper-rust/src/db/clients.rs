@@ -192,24 +192,27 @@ mod tests {
         assert_eq!(fetched.disabled_at, Some(disabled_at));
     }
 
-    /// The SMART sample-app clients are seeded by migration `0003` (not Rust),
-    /// so a freshly-migrated store has them — and every hand-written row
-    /// decodes back to a valid `Client`. This is the guard that the SQL seed's
-    /// JSON columns and `registered_at` text stay in the exact shape the
-    /// store's read path parses (a malformed value would fail `client_by_id`'s
-    /// row mapping, not silently).
+    /// Every SMART client is seeded by a migration (not Rust) — the sample apps by
+    /// `0003`, the shipped self-hosted apps by `0004` / `0005` — so a
+    /// freshly-migrated store has them all, and every hand-written row decodes
+    /// back to a valid `Client`. This is the guard that the SQL seeds' JSON
+    /// columns and `registered_at` text stay in the exact shape the store's read
+    /// path parses (a malformed value would fail `client_by_id`'s row mapping,
+    /// not silently).
     #[test]
-    fn migration_seeds_the_sample_smart_clients() {
+    fn migrations_seed_the_smart_app_clients() {
         let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
         for client_id in [
             "growth_chart",
             "my_web_app",
             "cc344727-6f90-496c-94fd-c7829aa9a51d",
+            "wildflower-medication",
+            "wildflower-web-trace",
         ] {
             let client = store
                 .client_by_id(client_id)
                 .expect("query (a decode failure surfaces here)")
-                .unwrap_or_else(|| panic!("{client_id} is seeded by migration 0003"));
+                .unwrap_or_else(|| panic!("{client_id} is seeded by a clients migration"));
             assert_eq!(client.client_id, client_id);
             assert_eq!(client.kind, ClientKind::Public);
             assert!(
@@ -245,6 +248,26 @@ mod tests {
             vec![
                 AllowedGrantType::AuthorizationCode,
                 AllowedGrantType::RefreshToken
+            ],
+        );
+
+        // `wildflower-web-trace` (the Web Trace viewer) pins the two decisions in
+        // its seed: the single **app-relative** redirect, because the app's origin
+        // differs per launch (loopback vs tunnel) and isn't known at seed time; and
+        // a read-only `system/` resource scope, because trace `DocumentReference`s
+        // carry no `subject` and so aren't reachable through patient context.
+        let web_trace = store.client_by_id("wildflower-web-trace").unwrap().unwrap();
+        assert_eq!(
+            web_trace.redirect_uris,
+            vec![RegisteredRedirectUri::AppRelative("/".to_owned())],
+        );
+        assert_eq!(
+            web_trace.allowed_scopes,
+            vec![
+                "launch".to_string(),
+                "openid".to_string(),
+                "fhirUser".to_string(),
+                "system/DocumentReference.read".to_string(),
             ],
         );
 

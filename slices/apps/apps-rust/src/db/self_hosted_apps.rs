@@ -133,9 +133,11 @@ pub(super) fn insert_self_hosted_app(
         // The id is the caller's, used verbatim. Reject a clash rather than
         // discovering a free variant — the check runs inside the transaction so it
         // can't race a concurrent insert. A name-derived id clash is a client-fixable
-        // `400 InvalidName`. (Every self-hosted row's subdomain equals its id, so the
-        // global id space subsumes the subdomain space; the `UNIQUE(subdomain)`
-        // column stays a backstop.)
+        // `400 InvalidName`. (Every *uploaded* self-hosted row's subdomain equals its
+        // id, so the global id space subsumes the subdomain space; the
+        // `UNIQUE(subdomain)` column stays a backstop. The seeded rows are the
+        // exception — `wildflower-medication` serves at `medication` — and their
+        // migrations lean on that: the id is a seed's fallback subdomain.)
         if id_taken(conn, &registration.id)? {
             return Err(AppsError::InvalidName {
                 message: "an app with this name already exists".to_owned(),
@@ -277,15 +279,16 @@ mod tests {
     use crate::domain::{AppKind, AppsError, AppsStore};
 
     /// An inserted upload lands at the lowest free upload port (8082 — the seeded
-    /// self-hosted apps sit at 8081 and 8090, both outside the 8082+ climb), and
-    /// appends at the next position (after the seven seeded rows → 7), non-seeded.
+    /// self-hosted apps sit at 8081, 8090, and 8091, all outside the start of the
+    /// 8082+ climb), and appends at the next position (after the eight seeded rows
+    /// → 8), non-seeded.
     #[test]
     fn insert_self_hosted_allocates_the_next_port_and_position() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
         let (registration, config) = insert_upload(&store, "My App", "my-app");
         assert_eq!(registration.id, "my-app");
         assert_eq!(registration.name, "My App");
-        assert_eq!(registration.position, 7);
+        assert_eq!(registration.position, 8);
         assert!(registration.local_only);
         assert!(registration.on_homescreen);
         assert_eq!(registration.kind, AppKind::SelfHosted);
@@ -299,7 +302,7 @@ mod tests {
 
         let (registration2, config2) = insert_upload(&store, "Other", "other");
         assert_eq!(config2.port, 8083);
-        assert_eq!(registration2.position, 8);
+        assert_eq!(registration2.position, 9);
     }
 
     /// A `launch_path` supplied at insert round-trips through both the insert

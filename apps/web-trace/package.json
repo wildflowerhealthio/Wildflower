@@ -1,0 +1,44 @@
+{
+  "name": "wildflower-web-trace",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vp build",
+    "check": "vp check",
+    "dev": "vp dev",
+    "preview": "vp preview",
+    "test": "vp test --passWithNoTests"
+  },
+  "dependencies": {
+    "@effect/platform": "catalog:",
+    "@fontsource-variable/atkinson-hyperlegible-mono": "catalog:",
+    "@fontsource-variable/atkinson-hyperlegible-next": "catalog:",
+    "@tanstack/react-query": "catalog:",
+    "@tanstack/react-router": "catalog:",
+    "effect": "catalog:",
+    "fhir-r4": "workspace:*",
+    "fhir-r4-react": "workspace:*",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-kitchen-sink": "workspace:*",
+    "react-tundraish": "workspace:*",
+    "shared-structures-react": "workspace:*",
+    "tundra-css": "catalog:",
+    "web-trace-core": "workspace:*",
+    "web-trace-react": "workspace:*"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "catalog:",
+    "@testing-library/react": "catalog:",
+    "@testing-library/user-event": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "fast-check": "catalog:",
+    "jsdom": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

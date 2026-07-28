@@ -168,7 +168,7 @@ mod tests {
         );
         assert_eq!(registration.kind, AppKind::Cloud);
         assert_eq!(
-            registration.position, 7,
+            registration.position, 8,
             "the store assigns the tail position"
         );
         assert!(registration.on_homescreen);
@@ -196,7 +196,7 @@ mod tests {
             "second insert with the same id is a no-op",
         );
         let (fetched, _) = store.find_app("app-x").unwrap().unwrap();
-        assert_eq!(fetched.position, 7);
+        assert_eq!(fetched.position, 8);
     }
 
     /// A seeded app's id can't be re-created — `app_registrations` already holds it,
