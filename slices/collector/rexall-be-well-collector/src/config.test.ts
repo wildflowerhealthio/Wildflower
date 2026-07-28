@@ -1,3 +1,4 @@
+import type { ScrapingPlan } from 'collector-fundamentals/model'
 import { Arbitrary, Duration, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
@@ -6,6 +7,26 @@ import { describe, expect, it } from 'vite-plus/test'
 import { InstanceConfig, RexallCollectorDescriptor, defaultConfig, scrapingPlan } from './config.ts'
 
 const { expectRightToEqual, expectLeftToEqual } = utilityExpectations(expect)
+
+/**
+ * The parts of a plan that identify *which factory built it for which config*,
+ * with the per-build parts projected away.
+ *
+ * `scrapingPlan` mints a fresh provenance run id per build and closes both
+ * entities over it, so two builds from one config are structurally unequal by
+ * construction (different id, different capturing `parse` closure). Deep
+ * equality would assert "the factory is pure", which is deliberately no longer
+ * true — see the `scrapingPlan` remarks and the plan-purity trap in
+ * [slices/collector/AGENTS.md](../../AGENTS.md). Everything a wrong factory
+ * would get wrong survives the projection: the plan name, the entity names, the
+ * step sequence (which carries the configured credentials), and `firstPage`.
+ */
+const planIdentity = (plan: ScrapingPlan.ScrapingPlan<unknown>): Record<string, unknown> => ({
+  name: plan.name,
+  firstPage: plan.firstPage,
+  steps: plan.stepSequence,
+  entityNames: plan.entityDefinitions.map((entity) => entity.name),
+})
 
 describe('InstanceConfig', () => {
   it('decodes defaultConfig without error', () => {
@@ -81,8 +102,10 @@ describe('RexallCollectorDescriptor', () => {
     expect(RexallCollectorDescriptor.tag).toBe('rexall')
     expect(RexallCollectorDescriptor.configSchema).toBe(InstanceConfig)
     expect(RexallCollectorDescriptor.defaultConfig).toEqual(defaultConfig)
-    expect(RexallCollectorDescriptor.makeScrapingPlan(defaultConfig)).toEqual(
-      scrapingPlan(defaultConfig)
+    // An identity projection of a produced plan stands in for identity — the
+    // factory is per-run impure; see `planIdentity`.
+    expect(planIdentity(RexallCollectorDescriptor.makeScrapingPlan(defaultConfig))).toEqual(
+      planIdentity(scrapingPlan(defaultConfig))
     )
   })
 
@@ -104,7 +127,9 @@ describe('RexallCollectorDescriptor', () => {
 
   it('matches its own configs and rejects foreign ones via resourcePersistenceRuntimeIfMatches', () => {
     const runtime = RexallCollectorDescriptor.resourcePersistenceRuntimeIfMatches(defaultConfig)
-    expect(runtime?.run((context) => context.scrapingPlan)).toEqual(scrapingPlan(defaultConfig))
+    expect(runtime?.run((context) => planIdentity(context.scrapingPlan))).toEqual(
+      planIdentity(scrapingPlan(defaultConfig))
+    )
     expect(
       RexallCollectorDescriptor.resourcePersistenceRuntimeIfMatches({
         _tag: 'fhir-r4',

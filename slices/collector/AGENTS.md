@@ -30,14 +30,20 @@ before adding one.
   `CollectorDescriptor` per import site: config schema + arbitraries, scraping
   plan, entities, display strings, persist sink, and the collector's own
   `ConfigForm`. Depends on `collector-fundamentals` only — never on
-  `collector-react`. Three today: `fhir-r4-client-collector`,
-  `rexall-be-well-collector` (which also carries the Rexall
-  [carebook dialect](./rexall-be-well-collector/AGENTS.md) it decodes with), and
+  `collector-react`. Three today:
+  [`fhir-r4-client-collector`](./fhir-r4-client-collector/AGENTS.md),
+  [`rexall-be-well-collector`](./rexall-be-well-collector/AGENTS.md) (which also
+  carries the Rexall carebook dialect it decodes with), and
   [`web-trace-collector`](./web-trace-collector/AGENTS.md) — the odd one out, a
   development-purposes _recorder_ that decodes nothing, claims every response,
   and writes each exchange as a FHIR `DocumentReference` via `web-trace-core`'s
   codec. It is also the only collector whose run ends when the **user** closes
-  the sniffer window rather than when a script finishes.
+  the sniffer window rather than when a script finishes. The two _production_
+  collectors keep the source of what they produce too: each wraps its entities in
+  a `withProvenance` capture and its sink in `withDiagnosticResources`, so every
+  response that yielded a resource is stored verbatim as a trace
+  `DocumentReference` linked to it. Each carries a near-identical
+  `src/provenance.ts` — slice layering forbids one importing the other's.
 - **`collector-react`** — the browser UI adapter: the generic account
   create/edit/list screens, the closed `tag → ConfigForm` registry
   (`src/forms/config-form.tsx`), the remotes queries/mutations, and the sync
@@ -161,12 +167,17 @@ EnsureWindowVisible` union.** Two variants reach the wire — a `Navigation`'s
   Note the runner's `idleTimeout` option, when passed, wins over the plan's.
   `web-trace-collector` is the one plan that uses the pairing today, and its
   `config.test.ts` pins the ordering.
-- **A plan factory is not obliged to be pure.** `web-trace-collector`'s mints a
-  fresh session id per build, deliberately, so two recordings of one remote don't
-  upsert over each other — one plan build is one recording. A test that compares
-  plans across two builds must therefore compare an identity _projection_ (name,
-  `firstPage`, step names, entity names), not deep-equal them; `registry.test.ts`
-  shows the shape.
+- **A plan factory is not obliged to be pure, and none of the three are.**
+  `web-trace-collector`'s mints a fresh session id per build, deliberately, so two
+  recordings of one remote don't upsert over each other; `fhir-r4-client-collector`
+  and `rexall-be-well-collector` each mint a provenance **run id** per build for
+  the same reason, so one sync's traces are grouped and cannot upsert over the
+  previous sync's. One plan build is one run — `makeScrapingPlan` is called
+  exactly once per sync, by `CollectorDescriptor.make`'s
+  `resourcePersistenceRuntimeIfMatches`. A test that compares plans across two
+  builds must therefore compare an identity _projection_ (name, `firstPage`, step
+  names, entity names), not deep-equal them; `registry.test.ts` and both
+  collectors' `config.test.ts` show the shape.
 - **Every `Step` carries a required `name`; the machine pushes it as a separate
   `SetSnifferStatus` control message, _not_ on the step's own action.** As the
   machine reaches each step it emits `SetSnifferStatus { name }`, which the Tauri

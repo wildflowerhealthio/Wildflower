@@ -1,12 +1,7 @@
 import type { Response } from 'collector-fundamentals/model'
 import { Effect, Encoding } from 'effect'
 import type { TraceBody } from 'web-trace-core'
-import {
-  type BodyDigestUnavailable,
-  contentTypeOf,
-  sha256Base64,
-  UNKNOWN_CONTENT_TYPE,
-} from 'web-trace-core/capture'
+import { type BodyDigestUnavailable, contentTypeOf, sha256Base64 } from 'web-trace-core/capture'
 
 /**
  * The capture-time body policy: whether a sniffed response's body is stored in
