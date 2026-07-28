@@ -32,6 +32,9 @@ machinery lives in `slices/emr/fhir-stu3-as-r4`.
   bundle "as is" (a `Schema.Union` of the two carebook `R4FromStu3Schema`
   transforms plus a `null` catch-all for non-medication entries), then splits off
   just `MedicationRequest` / `MedicationDispense`, dropping-and-counting the rest.
+- the provenance hook — `web-trace-core`'s `makeFhirProvenanceCapture('rexall')`,
+  one module-level line in `src/config.ts`, stated as the plan's
+  `captureProvenance`.
 - the persist sink — `fhir-r4`'s `persistResources`, imported in `src/config.ts`
   and handed straight to the descriptor.
 - `src/extract-json.ts` — XHR/JSON-viewer body normalizer (a copy of
@@ -45,6 +48,58 @@ the prescriptions page); the collector only **sniffs** the XHRs those pages fire
 **No tunnel/API URL is ever crafted or opened directly** — those requests need
 auth/bearer headers the Angular SPA injects, and crafting them is an explicit
 product constraint.
+
+## Provenance
+
+The plan states one hook: `captureProvenance: makeFhirProvenanceCapture('rexall')`
+(module-level, so two plans from one config deep-equal). The framework does the
+rest — it mints the run id at dispatch, invokes the hook only for a response
+whose parse produced resources, and persists the resulting trace best-effort on
+the batch's `diagnostics` channel. A non-empty parse therefore yields the
+decoded resources each carrying `meta.source` back to the trace, plus one trace
+`DocumentReference` naming all of them in `context.related`. The encoding and
+both link directions live in `web-trace-core`; this package only names itself.
+
+It matters more here than for `fhir-r4-client-collector`, because this collector
+**translates**: a `MedicationRequest` is the output of a carebook STU3 → R4
+transform, and a `Patient` is _synthesized_ from a bespoke non-FHIR profile
+payload. The trace is the only record of what the transform was actually given.
+
+- **The body is read with `response.bytes()`, never `text()`.** `text()` is UTF-8
+  and lossy — a body that is not valid UTF-8 comes back peppered with U+FFFD, and
+  a re-encode of that string is not what arrived, which would make the stored hash
+  meaningless.
+- **The trace stores the _raw_ carebook payload**, not the
+  `extractJson`-unwrapped string the entity decoded and not the R4 resource it
+  became.
+- **Verbatim: no allowlist, no truncation.** `web-trace-collector`'s content-type
+  allowlist and 1 MiB cap are a _recording_ policy; a body that justifies a
+  specific clinical resource _is_ the provenance.
+
+### Traps
+
+- **`scrapingPlan` is `(config, runId) => plan` and deterministic given its
+  inputs.** The framework mints the run id at dispatch (one per
+  `resourcePersistenceRuntimeIfMatches` call, so one plan build is one run);
+  this factory ignores the parameter — the hook receives the id at invocation.
+  The trace resource id is `{rexall-runId}-{requestId}`, which is why the id
+  must be fresh per run: a config-derived id would make a second sync of the
+  same account silently upsert its traces over the first's. Tests deep-equal
+  plans built with a fixed run id.
+- **A response that produced no resource is not captured.** The tracker skips
+  the hook on an empty parse — the line between provenance collection and bulk
+  recording. A searchset whose entries are all `Location` / `DocumentReference` /
+  `Immunization` decodes fine and yields nothing, so it leaves no trace, by
+  design. (The carebook searchset's clinical `DocumentReference` entries are
+  also why the diagnostic split being _structural_ matters: a clinical
+  `DocumentReference` in `resources` keeps its failure accounting; only the
+  hook-minted trace rides `diagnostics`.)
+- **A trace must never degrade the primary output.** A failing or dying hook is
+  WARN-logged by the tracker and the entities' own resources flow on
+  unchanged; a failing trace _write_ is WARN-logged by the runner and kept out
+  of the run's reported failures. If an existing entity suite's expectations
+  have to change to accommodate provenance, something has gone wrong — the
+  wiring only adds `meta.source` and a separate diagnostic.
 
 ## v1 scope: list-only
 
@@ -84,8 +139,12 @@ collector end-to-end:
 ## References
 
 - [Adding a Collector How-To](../docs/Adding%20a%20Collector%20How-To.md) — the
-  recipe this collector follows
-- [fhir-r4-client-collector](../fhir-r4-client-collector) — the worked example mirrored
+  recipe this collector follows, including the provenance step
+- [fhir-r4-client-collector](../fhir-r4-client-collector/AGENTS.md) — the worked
+  example mirrored, and the source of the duplicated `provenance.ts` /
+  `extract-json.ts`
+- [web-trace-core](../../web-trace/web-trace-core/AGENTS.md) — the codec and the
+  two body policies the provenance capture picks between
 - [fhir-stu3-as-r4](../../emr/fhir-stu3-as-r4) — the STU3⇄R4 schemas the bundles decode with
 - [fhir-r4](../../emr/fhir-r4) — the R4 resource types and the `upsertResource` write path
 - [collector-fundamentals](../collector-fundamentals) — the descriptor / entity / plan primitives

@@ -10,6 +10,8 @@ import type { LazyArbitrary } from 'effect/Arbitrary'
 import { persistResources } from 'fhir-r4/clients'
 import type { FhirResource } from 'fhir-r4/resources'
 
+import { makeFhirProvenanceCapture } from 'web-trace-core/provenance'
+
 import { ObservationEntity } from './entities/observation-entity.ts'
 import { ObservationListEntity } from './entities/observation-list-entity.ts'
 import { PatientEntity } from './entities/patient-entity.ts'
@@ -93,6 +95,15 @@ const OBSERVATION_SETTLED_PATTERN = UrlMatch.make({
 const OBSERVATION_TIMEOUT = Duration.seconds(30)
 
 /**
+ * This collector's provenance hook: every response an entity derives a
+ * resource from is stored verbatim as a trace `DocumentReference`, linked
+ * both ways to the resources it produced. Module-level — not built inside
+ * the factory — so two plans built from one config share the reference and
+ * stay deep-equal (`toEqual` compares functions by identity).
+ */
+const captureProvenance = makeFhirProvenanceCapture('fhir-r4')<FhirResource>
+
+/**
  * Build the FHIR R4 scraping plan for a configured patient on a
  * configured server. The plan's `firstPage` navigates the sniffer
  * webview directly to `/Patient/:id?_format=json`; the browser-sniffer's
@@ -123,8 +134,19 @@ const OBSERVATION_TIMEOUT = Duration.seconds(30)
  * R4 logical-id grammar) — `encodeURIComponent` on `patientId` is
  * still applied defensively in case the value reaches this function
  * through an untyped path.
+ *
+ * Provenance is the plan-level `captureProvenance` hook — the whole of this
+ * collector's wiring is the one line naming it. The framework mints the run
+ * id (this factory ignores its `runId` parameter — the hook receives it at
+ * invocation), invokes the hook only for a response whose parse produced
+ * resources, and persists the resulting trace best-effort. The factory stays
+ * deterministic given its inputs, so tests deep-equal plans built from one
+ * config.
  */
-const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirResource> => {
+const scrapingPlan = (
+  config: InstanceConfig,
+  _runId: string
+): ScrapingPlan.ScrapingPlan<FhirResource> => {
   const safePatientId = encodeURIComponent(config.patientId)
   const patientUrl = `${config.rootUrl}/Patient/${safePatientId}?_format=json`
   const observationUrl = `${config.rootUrl}/Observation?subject%3APatient=${safePatientId}&_count=250&_format=json`
@@ -139,6 +161,7 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirRes
       ObservationEntity,
       ObservationListEntity,
     ] as readonly EntityDefinition.EntityDefinition<FhirResource>[],
+    captureProvenance,
     firstPage,
     stepSequence: [
       {

@@ -71,10 +71,16 @@ same two things in the same order: **drop** the tracked id, then **publish** the
 settled `SniffResult` via the injected `handleNewSniffResult`. This is the
 `offerSniffResultAndUntrack` helper, and the order is load-bearing.
 
-A successful `ResponseFinished` parse prepends a third step: **generate**. Before
-the drop, it calls the pinned entity's `followUpSteps` (if any) with the parsed
-resources and the settled `RemoteResponse`, and hands them to
-`handleGeneratedSteps` — so the full order is **generate → drop → offer**. The
+A successful `ResponseFinished` parse prepends two steps: **generate**, then
+**capture**. Before the drop, it calls the pinned entity's `followUpSteps` (if
+any) with the parsed resources and the settled `RemoteResponse`, and hands them
+to `handleGeneratedSteps`; then, for a non-empty parse on a plan that states a
+`captureProvenance` hook, it invokes the hook to build the settled
+`SniffedBatch` (`resources` possibly link-annotated, plus best-effort
+`diagnostics`) — so the full order is **generate → capture → drop → offer**.
+Capture running _after_ generation is what guarantees `followUpSteps` never
+sees a hook-rewritten batch; a failing or dying hook is WARN-logged and the
+parse output flows on unchanged, with no diagnostics. The
 generate-first ordering is what makes completion race-free: injecting the
 generated steps moves the machine _out of_ `Drained` (see [Termination](#termination-the-run-lifecycle))
 before the offer's close-check can inject `NoMoreResultsExpected`, so the machine

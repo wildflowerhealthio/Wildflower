@@ -8,7 +8,7 @@ import {
   type SetSnifferStatus as SetSnifferStatusMessage,
   type SniffingComplete as SniffingCompleteMessage,
 } from '../bridge.ts'
-import { ScrapingPlan, WebViewSource } from '../model/index.ts'
+import { type Response, ScrapingPlan, WebViewSource } from '../model/index.ts'
 import type * as Step from '../model/step.ts'
 import * as AutomaticNavigation from './automatic-navigation/index.ts'
 import * as RunLifecycleState from './run-lifecycle-state.ts'
@@ -134,11 +134,29 @@ const openUri = (step: Step.Step): string | undefined => {
 const make = <TResources>({
   scrapingPlan,
   sendMessage,
+  runId,
 }: {
   scrapingPlan: ScrapingPlan.ScrapingPlan<TResources>
   sendMessage: (message: OutboundMessage) => Effect.Effect<void, never, never>
+  /**
+   * The framework-minted id of this sync run, from the
+   * `ResourcePersistenceContext` the plan was sealed with. Pre-applied to the
+   * plan's `captureProvenance` hook here so the tracker stays run-id-agnostic;
+   * every trace the run writes shares it.
+   */
+  runId: string
 }): Effect.Effect<CollectorBridgeMessageHandler<TResources>, never, never> =>
   Effect.gen(function* () {
+    // Bind the plan's provenance hook (declared as a method for covariance —
+    // see `ScrapingPlan`) with the run id applied, so the tracker receives a
+    // plain `(response, produced)` capture or nothing at all.
+    // oxlint-disable-next-line typescript-eslint/unbound-method -- pure, this-free method; the copy is safe
+    const planCaptureProvenance = scrapingPlan.captureProvenance
+    const captureProvenance =
+      planCaptureProvenance === undefined
+        ? undefined
+        : (response: Response.RemoteResponse, produced: readonly TResources[]) =>
+            planCaptureProvenance(runId, response, produced)
     // Run-wide crawler safety, applied to *generated* steps only (never the
     // authored sequence): dedup generated `Open`s by URI so a self-link or a
     // cycle terminates, and cap total generated steps. The visited-set is seeded
@@ -210,6 +228,7 @@ const make = <TResources>({
         sendMessage,
         handleNewSniffResult: (result) => lifecycle.handleNewSniffResult(result),
         handleGeneratedSteps: (steps) => enqueueGeneratedSteps(steps),
+        captureProvenance,
       })
 
     const lifecycle: RunLifecycleState.RunLifecycleState<TResources> =

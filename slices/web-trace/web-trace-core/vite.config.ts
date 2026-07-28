@@ -9,8 +9,10 @@ export default defineConfig({
     platform: 'neutral',
     entry: {
       index: 'src/index.ts',
+      'capture/index': 'src/capture/index.ts',
       'codec/index': 'src/codec/index.ts',
       'har/index': 'src/har/index.ts',
+      'provenance/index': 'src/provenance/index.ts',
       'pseudonymizer/index': 'src/pseudonymizer/index.ts',
       'test-helpers': 'src/test-helpers.ts',
     },
