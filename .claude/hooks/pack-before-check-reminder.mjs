@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// PreToolUse hook on Bash: hold the session's first `vp check` until a build has
+// PreToolUse hook on Bash: hold the session's first typecheck until a build has
 // run. Why, and what counts as a build, is documented in the "New kitchen-sink
 // subpaths need a built dist before `vp check`" section of
 // docs/Testing/Testing Reference.md; REMINDER below is what the agent is told.
@@ -12,26 +12,74 @@ import { readFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 
-// `vp run <script>` names that leave the workspace built. `ready` qualifies
-// because it runs `vp run pack` before `vp run test:all`.
-const BUILD_SCRIPTS = new Set(['pack', 'build', 'ready'])
-// The per-package `check` script is `vp check`, so it needs the same build.
-const CHECK_SCRIPT = 'check'
+// Subcommands that leave the workspace built.
+const BUILD_SUBCOMMANDS = new Set(['build', 'pack'])
+// Subcommands that type-check against the `default` (`dist/`) export condition.
+// `vp lint` counts: `lint.options.typeCheck` is on in vite.config.ts, so lint
+// runs the same tsgolint pass `vp check` does.
+const CHECK_SUBCOMMANDS = new Set(['check', 'lint'])
+// `vp run <script>` names that leave the workspace built.
+const BUILD_SCRIPTS = new Set(['pack', 'build'])
+// Per-package `check` is `vp check`; `lint` would be `vp lint`. Both need the
+// build.
+const CHECK_SCRIPTS = new Set(['check', 'lint'])
+// Scripts that type-check *before* they build, so they need a pack of their
+// own: root `ready` is `vp fmt && vp lint && … && vp run pack && …`, and its
+// type-aware `vp lint` step fails on an unbuilt workspace long before the pack.
+const CHECK_THEN_BUILD_SCRIPTS = new Set(['ready'])
 
 const REMINDER =
-  'Held this `vp check` (once per session): nothing has been built yet this session, and ' +
+  'Held this typecheck (once per session): nothing has been built yet this session, and ' +
   'typecheck resolves tests against the `default` (`dist/`) export condition — so on a freshly ' +
   'bootstrapped container it reports cascades of errors that are only missing builds. See the ' +
   '"New kitchen-sink subpaths need a built dist before `vp check`" section of ' +
   'docs/Testing/Testing Reference.md. Run `vp run pack` first (`vp run -F <pkg> build` for one ' +
-  'package; `vp run ready` packs too). If the workspace is already built, or you mean to check ' +
-  'against the current dist, retry the command — it will proceed.'
+  'package). If the workspace is already built, or you mean to check against the current dist, ' +
+  'retry the command — it will proceed.'
+
+// Drop heredoc bodies: their lines are data the shell feeds to a command, not
+// commands. Without this a commit message or generated doc whose line *starts*
+// with `vp check` trips the hold, and one starting with `vp run pack` silently
+// satisfies it.
+function withoutHeredocBodies(command) {
+  const kept = []
+  let terminator = null
+  for (const line of command.split('\n')) {
+    if (terminator !== null) {
+      if (line.trim() === terminator) terminator = null
+      continue
+    }
+    kept.push(line)
+    const opener = /<<-?\s*(['"]?)([\w.-]+)\1/.exec(line)
+    if (opener !== null) terminator = opener[2]
+  }
+  return kept.join('\n')
+}
 
 // Split a command into the segments a `&&` / `||` / `;` / `|` / newline chain
 // runs in order, so `vp run pack && vp check` reads as a build followed by a
-// check. Newlines matter because a heredoc body arrives as part of the command.
+// check. Separators inside quotes don't split, so a `-m "…"` message body
+// stays part of the `git` segment rather than becoming a command of its own.
 function segmentsOf(command) {
-  return command.split(/[|;&\n]+/)
+  const segments = []
+  let current = ''
+  let quote = null
+  for (const character of withoutHeredocBodies(command)) {
+    if (quote !== null) {
+      if (character === quote) quote = null
+      current += character
+    } else if (character === "'" || character === '"') {
+      quote = character
+      current += character
+    } else if (character === '|' || character === ';' || character === '&' || character === '\n') {
+      segments.push(current)
+      current = ''
+    } else {
+      current += character
+    }
+  }
+  segments.push(current)
+  return segments
 }
 
 // A segment's `vp` argument list, or null. Only a `vp` in **command position**
@@ -48,32 +96,37 @@ function vpArgs(segment) {
   return tokens.slice(index + 1)
 }
 
-// 'build' | 'check' | null for one `vp` invocation's arguments.
+// 'build' | 'check' | 'check-then-build' | null for one `vp` invocation's
+// arguments.
 function classify(args) {
   const words = args.filter((arg) => !arg.startsWith('-'))
   const [subcommand, ...rest] = words
-  if (subcommand === 'build') return 'build'
-  if (subcommand === 'check') return 'check'
+  if (subcommand === undefined) return null
+  if (BUILD_SUBCOMMANDS.has(subcommand)) return 'build'
+  if (CHECK_SUBCOMMANDS.has(subcommand)) return 'check'
   if (subcommand !== 'run') return null
   // `vp run [-r] [-F <pkg>] <script>` — dropping the flags above leaves their
   // values behind, so match on membership rather than re-parsing vp's flag
-  // grammar. No workspace package is named `pack`/`build`/`ready`/`check`.
+  // grammar. No workspace package is named `pack`/`build`/`ready`/`check`/`lint`.
+  if (rest.some((word) => CHECK_THEN_BUILD_SCRIPTS.has(word))) return 'check-then-build'
   if (rest.some((word) => BUILD_SCRIPTS.has(word))) return 'build'
-  if (rest.includes(CHECK_SCRIPT)) return 'check'
+  if (rest.some((word) => CHECK_SCRIPTS.has(word))) return 'check'
   return null
 }
 
-// Walk the command left to right, carrying whether a build has been seen.
+// Walk the command left to right, carrying whether a build has been seen. A
+// `check-then-build` needs the build to already exist *and* leaves one behind.
 function scanCommand(command, alreadyBuilt) {
   let built = alreadyBuilt
+  let holdsCheck = false
   for (const segment of segmentsOf(command)) {
     const args = vpArgs(segment)
     if (args === null) continue
     const kind = classify(args)
-    if (kind === 'build') built = true
-    else if (kind === 'check' && !built) return { built, holdsCheck: true }
+    if ((kind === 'check' || kind === 'check-then-build') && !built) holdsCheck = true
+    if (kind === 'build' || kind === 'check-then-build') built = true
   }
-  return { built, holdsCheck: false }
+  return { built, holdsCheck }
 }
 
 function main() {
@@ -98,9 +151,12 @@ function main() {
 
   const { built, holdsCheck } = scanCommand(command, state.built)
   const hold = holdsCheck && !state.reminded
-  if (built !== state.built || hold) {
+  // A held command never runs, so a build later in the same line hasn't
+  // happened either — only record one when the command is let through.
+  const nextBuilt = hold ? state.built : built
+  if (nextBuilt !== state.built || hold) {
     mkdirSync(stateDir, { recursive: true })
-    writeFileSync(stateFile, JSON.stringify({ built, reminded: state.reminded || hold }))
+    writeFileSync(stateFile, JSON.stringify({ built: nextBuilt, reminded: state.reminded || hold }))
   }
   if (!hold) return
 

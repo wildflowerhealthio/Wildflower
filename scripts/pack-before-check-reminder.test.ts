@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -72,14 +73,31 @@ describe('pack-before-check-reminder hook', () => {
   it.each([
     ['vp run pack'],
     ['vp build'],
+    // The bare subcommand, as used by global/kitchen-sink/README.md and the
+    // `vp pack` references in vite.config.ts / docs/Agents/Strategies.md.
+    ['vp pack'],
     ['vp run -r build'],
     ['vp run -F kitchen-sink build'],
-    // `ready` runs `vp run pack` before `vp run test:all`.
-    ['vp run ready'],
   ])('treats `%s` as a build, so a later check is not held', (buildCommand) => {
     const session = `build-${buildCommand}`
     expect(heldReason(runHook(session, buildCommand))).toBeUndefined()
     expect(heldReason(runHook(session, 'vp check'))).toBeUndefined()
+  })
+
+  it('holds `vp lint` — `lint.options.typeCheck` makes it type-check too', () => {
+    expect(heldReason(runHook('lint-held', 'vp lint'))).toBeDefined()
+  })
+
+  it('lets `vp lint` through once something has been built', () => {
+    expect(heldReason(runHook('lint-after-pack', 'vp run pack'))).toBeUndefined()
+    expect(heldReason(runHook('lint-after-pack', 'vp lint'))).toBeUndefined()
+  })
+
+  it('holds `vp run ready` — it type-checks (`vp lint`) before it packs', () => {
+    expect(heldReason(runHook('ready', 'vp run ready'))).toBeDefined()
+    // The retry runs, and it does pack, so it satisfies later checks.
+    expect(heldReason(runHook('ready', 'vp run ready'))).toBeUndefined()
+    expect(heldReason(runHook('ready', 'vp check'))).toBeUndefined()
   })
 
   it('honors a build earlier in the same command line', () => {
@@ -114,10 +132,20 @@ describe('pack-before-check-reminder hook', () => {
     // Caught in the wild: committing this hook held its own `git commit`,
     // because the message heredoc talks about `vp check`.
     ["git commit -F - <<'EOF'\nHold the first vp check\nEOF"],
+    // A heredoc body line that *starts* with the command is still data, both
+    // when it names a check (a false hold that also burns the session's one
+    // reminder)...
+    ["git commit -F - <<'EOF'\nvp check now waits for a pack\nEOF"],
+    // ...and when it names a build (which would silently satisfy the hold).
+    ["cat > notes.md <<'EOF'\nvp run pack\nEOF"],
+    // Separators inside quotes don't start a new command either.
+    ['git commit -m "fix: pack first\nvp check waits for a pack"'],
     ['echo "run vp check first"'],
     ['grep -n "vp check" AGENTS.md'],
   ])('ignores `vp` outside command position in `%s`', (prose) => {
-    const session = `prose-${prose.slice(0, 12)}`
+    // Hashed, not sliced: several of these rows share a `git commit -` prefix,
+    // and a shared session id would let one row's state leak into the next.
+    const session = `prose-${createHash('sha1').update(prose).digest('hex').slice(0, 12)}`
     expect(heldReason(runHook(session, prose))).toBeUndefined()
     // ...and prose naming a build must not satisfy the requirement either.
     expect(heldReason(runHook(session, 'vp check'))).toBeDefined()
