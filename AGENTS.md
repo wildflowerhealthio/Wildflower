@@ -140,6 +140,8 @@ Polyglot repo: a 15-member Cargo workspace (~207 `.rs` files) alongside the TS p
 
 `.devcontainer/postCreateCommand.sh` installs a **global** `vp` (latest/unpinned) then runs `vp install`. The workspace pins vite-plus lower via the catalog, so for `vp test` in jsdom packages use the workspace-local binary `node_modules/.bin/vp` — the global `vp`'s bundled vitest can't resolve jsdom. Re-run `vp install` after any `package.json` edit.
 
+Bootstrap installs but does **not** build, and `vp check` typechecks tests against the `default` (`dist/`) export condition — so a first `vp check` on an unpacked workspace reports errors that are only missing builds. Run `vp run pack` first (`vp run -F <pkg> build` for one package; `vp run ready` packs too). A Claude PreToolUse hook (`.claude/hooks/pack-before-check-reminder.mjs`) holds the session's first `vp check` to say so; retrying it proceeds.
+
 ## Git hooks
 
 Installed via `vp config` (the `prepare` script), so a plain `git commit` triggers real work — don't kill one that looks "hung":
