@@ -81,7 +81,7 @@ catalog:
   fast-check: 3.23.2
   har-schema: ^2.0.0
   jose: ^6.2.4
-  jsdom: ^29.1.1
+  jsdom: ^30.0.0
   nanoid: ^6.0.0
   qrcode-generator: 2.0.4
   react: 19.2.8
