@@ -34,7 +34,7 @@ url = "2"
 # special characters (spaces, quotes, `<`, `>`, `#`), and percent-encoding
 # the whole document is ~6× the original size; base64 is ~1.35× and
 # Url::parse handles it without escaping.
-base64 = "0.22"
+base64 = "0.23"
 
 [build-dependencies]
 # Generates the per-command permissions + ACL schema from `COMMANDS` and wires
