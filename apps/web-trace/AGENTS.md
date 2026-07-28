@@ -71,6 +71,13 @@ package growing a second, prop-threaded way in.
 - **`bodyText` decodes with `fatal: true`.** A lenient decode substitutes U+FFFD,
   which would render a JPEG as replacement characters and claim it was text —
   the same lossiness the capture side stores raw bytes to avoid.
+- **`RecordingsPanel` is hidden while a detail is open, never unmounted.** Which
+  session is open and which filters are applied are the panel's own `useState`,
+  so swapping it out for `ExchangeDetail` discards both and "Back to exchanges"
+  lands the reader on the sessions list instead of the exchange list they came
+  from. A test that only matches the URL cannot catch this — a session row's
+  subtitle is its host, so it matches on either surface; `app.test.tsx` asserts
+  the panel's "All recordings" control, which exists only inside an open session.
 
 ## Seeded registration
 

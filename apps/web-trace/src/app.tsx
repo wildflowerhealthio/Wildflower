@@ -36,9 +36,18 @@ const RecordingsScreen = (): JSX.Element => {
           Browsing sessions recorded on this device.
         </p>
       </header>
-      {selected === null ? (
+      {/*
+       * The panel stays *mounted* while a detail is open, hidden rather than
+       * unmounted. Which session is open and which filters are applied are the
+       * panel's own `useState`, so swapping it out for the detail would discard
+       * both — "Back to exchanges" would land the reader on the sessions list,
+       * having lost their place. `hidden` also drops the panel out of the
+       * accessibility tree, so the detail is the only surface while it is up.
+       */}
+      <div hidden={selected !== null}>
         <RecordingsPanel onSelectExchange={setSelected} />
-      ) : (
+      </div>
+      {selected !== null && (
         <ExchangeDetail
           exchange={selected}
           onClose={(): void => {

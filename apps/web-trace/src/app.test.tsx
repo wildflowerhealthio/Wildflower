@@ -136,7 +136,11 @@ describe('TraceApp', () => {
     // Act
     await userEvent.click(screen.getByRole('button', { name: 'Back to exchanges' }))
 
-    // Assert
+    // Assert — back to the *exchange* list of the session that was open, not to
+    // the sessions list. The panel's "All recordings" control is what tells the
+    // two apart: a session row's subtitle is its host, so a URL match alone
+    // passes on either surface.
+    expect(screen.getByRole('button', { name: 'All recordings' })).toBeDefined()
     expect(screen.getByRole('button', { name: new RegExp('portal\\.example\\.org') })).toBeDefined()
   })
 })
