@@ -55,10 +55,10 @@ codes an `EntityDefinition` branches on, and the URIs that say what those codes
 _mean_. They are recognised by separate rules, decided independently, and
 switched independently.
 
-|                | admits                                     | gated on         | counted?          |
-| -------------- | ------------------------------------------ | ---------------- | ----------------- |
-| Enum carve-out | `active`, `mg`, `entered-in-error`         | `isCodeToken`    | yes, threshold 12 |
-| Namespace URIs | `http://…/fhir/coding/medication-din-code` | `isNamespaceUri` | no                |
+|                | admits                                     | gated on                                  | counted?          |
+| -------------- | ------------------------------------------ | ----------------------------------------- | ----------------- |
+| Enum carve-out | `active`, `mg`, `entered-in-error`         | `isCodeToken`                             | yes, threshold 12 |
+| Namespace URIs | `http://…/fhir/coding/medication-din-code` | `isNamespaceUri` — trusted host, or shape | no                |
 
 The URI rule is tested first. A URI is never a code token, so a hidden `system`
 field would otherwise always report `notCode` — pointing the reviewer at a
@@ -117,7 +117,44 @@ exporting the second is a leak.
 They are separated by the value's shape, never by the field's name. A field
 name is a promise the server makes, and a `system` holding
 `http://host/Patient/8a3f2b1c` would export a record URL verbatim on the
-strength of that promise. `isNamespaceUri` admits a value only when it is:
+strength of that promise. A value qualifies one of two ways: its **host** is
+trusted, or its **shape** reads as a namespace.
+
+### The host allowlist
+
+`TERMINOLOGY_HOSTS` names hosts that publish vocabulary. A URI on one of them
+is admitted whatever its shape, because every shape rule below exists to tell a
+namespace from a record URL and the host has already answered that. It answers
+it better, too: `http://terminology.hl7.org/CodeSystem/v2-0203` is a real
+system that the shape rules reject, because `0203` is a digit run they cannot
+distinguish from a record id.
+
+A trusted host skips **every** structural check, query string included. That is
+the deliberate cost: `https://terminology.hl7.org/ValueSet/$expand?filter=ada`
+would export as captured. It is acceptable because a published registry serves
+no records, so a parameter on one cannot carry a patient.
+
+The list holds two kinds of entry and they are not equally safe:
+
+- **Standards bodies and public registries** — `hl7.org`, `terminology.hl7.org`,
+  `loinc.org`, `snomed.info`, `unitsofmeasure.org`, `dicom.nema.org`,
+  `nlm.nih.gov`, `www.ama-assn.org`, `www.whocc.no`,
+  `fhir.infoway-inforoute.ca`. These cannot serve a record URL, because serving
+  records is not something they do.
+- **Portal schema hosts** — `schema.carebook.com`, `schemas.carebook.com`.
+  These are trusted because someone read a capture from that portal and
+  concluded it publishes schemas at that hostname. Add one only after looking.
+  If a portal ever served a record URL from its schema host, this would export
+  it.
+
+Matching is **exact**, on the hostname. `hl7.org.example.com` is a different
+host, not a suffix of a trusted one, and a new subdomain of a trusted host
+needs its own entry rather than arriving on its own — which is why
+`schema.carebook.com` and `schemas.carebook.com` are both listed.
+
+### The shape rule
+
+For every other host, `isNamespaceUri` admits a value only when it is:
 
 - `urn:oid:` naming a registered arc, or `http` / `https`;
 - carrying no query, no fragment, and no credentials;
@@ -129,9 +166,9 @@ The version exception is an allowlist of prefixes rather than "letters then
 digits", because the looser rule also admits `w8`, `h1`, and `wqx0` — the
 opaque tenant and environment segments a per-record URL is built from.
 
-The host is deliberately unconstrained. It is an organization-level fact the
-export already discloses for every exchange, so constraining it would reject
-legitimate systems and buy nothing.
+An untrusted host is otherwise unconstrained: it is an organization-level fact
+the export already discloses for every exchange, so rejecting hosts that carry
+a digit would reject legitimate systems and buy nothing.
 
 ### Not counted, and that is the point
 
@@ -146,11 +183,12 @@ would have hidden the field for no reason anyone could act on.
 
 ### What this still does not solve
 
-A segment whose digits are not a version is rejected, so
-`http://terminology.hl7.org/CodeSystem/v2-0203` stays hidden even though it is
-a genuine HL7 system. Admitting a bare digit run would readmit every numeric
-id, which is a worse trade. The answer is the same per-path override the code
-carve-out's residue uses.
+On an untrusted host, a segment whose digits are not a version is rejected —
+`https://portal.example.org/CodeSystem/v2-0203` stays hidden. Admitting a bare
+digit run would readmit every numeric id, which is a worse trade. Two answers
+exist and they are ordered: add the host to `TERMINOLOGY_HOSTS` if it is a
+registry or a schema host someone has read a capture from, and otherwise use
+the per-path override the code carve-out's residue uses.
 
 This is why redaction is two steps. `buildRedactionPolicy` walks the session and
 counts; `redactExchange` rewrites one exchange against the result. The split lets

@@ -138,6 +138,44 @@ const VERSION_PART = /^(?:v|r|stu|dstu|fhir)\d{1,3}$/i
  */
 const URN_OID = /^urn:oid:[0-2](?:\.(?:0|[1-9]\d*))+$/
 
+/**
+ * Hosts that publish vocabulary, and so are trusted whatever the URI's shape.
+ *
+ * @remarks
+ * The shape rules below exist to tell a namespace from a record URL. For a host
+ * that serves nothing but published terminology, the host itself already
+ * answers that — and answers it better, since a real system like
+ * `.../CodeSystem/v2-0203` fails the shape rules on a digit run that means an
+ * HL7 table number rather than a record id.
+ *
+ * **Two kinds of entry sit here, and they are not equally safe.** A standards
+ * body cannot serve a record URL, because serving records is not a thing it
+ * does. A vendor schema host is trusted on the strength of someone having
+ * looked at that portal and concluded it publishes schemas at this hostname.
+ * Add a vendor host only after looking; matching is exact, so a new subdomain
+ * needs a new entry and cannot arrive on its own.
+ *
+ * See `docs/Redaction Explanation.md` for what a trusted host costs.
+ */
+const TERMINOLOGY_HOSTS: ReadonlySet<string> = new Set([
+  // Standards bodies and public terminology registries.
+  'hl7.org',
+  'www.hl7.org',
+  'terminology.hl7.org',
+  'loinc.org',
+  'snomed.info',
+  'unitsofmeasure.org',
+  'dicom.nema.org',
+  'nlm.nih.gov',
+  'www.nlm.nih.gov',
+  'www.ama-assn.org',
+  'www.whocc.no',
+  'fhir.infoway-inforoute.ca',
+  // Portal schema hosts, added after reading a capture from that portal.
+  'schema.carebook.com',
+  'schemas.carebook.com',
+])
+
 /** Whether one `-`/`_`-separated part of a path segment reads as vocabulary. */
 const isNamespacePart = (part: string): boolean => CODE_TOKEN.test(part) || VERSION_PART.test(part)
 
@@ -163,12 +201,15 @@ const isNamespaceSegment = (segment: string): boolean =>
  * included. The rule reads the **value**, never the field name — a `system`
  * holding `http://host/Patient/8a3f2b1c` must not ride in on its key.
  *
- * Why each clause is drawn where it is, what the unconstrained host costs, and
- * the `v2-0203` case this deliberately misses are all in
- * `docs/Redaction Explanation.md`.
+ * A value qualifies two ways: its host is a {@link TERMINOLOGY_HOSTS} entry, or
+ * its shape reads as a namespace. The host check comes first and is the whole
+ * decision — a trusted host means every structural rule below is skipped, query
+ * string included.
+ *
+ * Why each clause is drawn where it is, and what the host allowlist costs, are
+ * in `docs/Redaction Explanation.md`.
  */
 const isNamespaceUri = (value: string): boolean => {
-  if (value.length > NAMESPACE_URI_MAX_LENGTH) return false
   if (value.startsWith('urn:')) return URN_OID.test(value)
 
   let parsed: URL
@@ -178,6 +219,12 @@ const isNamespaceUri = (value: string): boolean => {
     return false
   }
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false
+
+  // Matched on `hostname`, so a port cannot defeat the entry — and exactly, so
+  // `hl7.org.example.com` is a different host rather than a suffix of one.
+  if (TERMINOLOGY_HOSTS.has(parsed.hostname)) return true
+
+  if (value.length > NAMESPACE_URI_MAX_LENGTH) return false
   if (parsed.search !== '' || parsed.hash !== '') return false
   if (parsed.username !== '' || parsed.password !== '') return false
   // A leading `/` and a trailing one both split to an empty segment; a
@@ -610,6 +657,7 @@ export {
   isNamespaceUriPath,
   NAMESPACE_URI_MAX_LENGTH,
   type PathOverride,
+  TERMINOLOGY_HOSTS,
   type PathStat,
   PseudonymSpaceExhausted,
   redactExchange,

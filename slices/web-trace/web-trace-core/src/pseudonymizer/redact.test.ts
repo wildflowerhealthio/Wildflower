@@ -508,6 +508,8 @@ describe('isNamespaceUri', () => {
       'http://snomed.info/sct',
       'https://terminology.hl7.org/CodeSystem/v3-ActCode',
       'http://hl7.org/fhir/StructureDefinition/patient-birthTime',
+      'http://www.nlm.nih.gov/research/umls/rxnorm',
+      'http://unitsofmeasure.org',
       'urn:oid:2.16.840.1.113883.4.1',
     ]) {
       expect(isNamespaceUri(namespace)).toBe(true)
@@ -537,10 +539,35 @@ describe('isNamespaceUri', () => {
   })
 
   test('rejects a bare digit run that is not a version, so numeric ids cannot ride in', () => {
-    // A documented miss: `v2-0203` is a genuine HL7 system, but `0203` is a
-    // bare digit run and admitting those would readmit every numeric id. The
-    // answer is a per-path override, not a looser rule.
-    expect(isNamespaceUri('http://terminology.hl7.org/CodeSystem/v2-0203')).toBe(false)
+    // The shape rules cannot tell `0203` — an HL7 table number — from a record
+    // id, so on an unknown host it stays hidden. Widening the shape rule to
+    // admit it would readmit every numeric id.
+    expect(isNamespaceUri('https://portal.example.org/CodeSystem/v2-0203')).toBe(false)
+    // A published registry answers that question by being the host it is.
+    expect(isNamespaceUri('http://terminology.hl7.org/CodeSystem/v2-0203')).toBe(true)
+  })
+
+  test('admits anything a trusted host serves, including a URI with a query', () => {
+    // The cost of the host allowlist, stated rather than left implicit: a
+    // trusted host skips *every* structural rule, so a parameterised URL on
+    // one exports as captured. Acceptable because a published registry serves
+    // no records — and the reason a vendor host belongs on the list only after
+    // someone has read a capture from that portal.
+    expect(isNamespaceUri('https://terminology.hl7.org/ValueSet/$expand?filter=ada')).toBe(true)
+    expect(isNamespaceUri(`http://loinc.org/${'a'.repeat(400)}`)).toBe(true)
+  })
+
+  test('matches a trusted host exactly, so a lookalike domain is not trusted', () => {
+    // The allowlist is a set of hosts, not a suffix test. Both of these read as
+    // hl7.org at a glance and neither is it.
+    expect(isNamespaceUri('https://hl7.org.example.com/CodeSystem/v2-0203')).toBe(false)
+    expect(isNamespaceUri('https://evil.example.com/terminology.hl7.org/CodeSystem/v2-0203')).toBe(
+      false
+    )
+    // A subdomain of a trusted host is a different host, and needs its own
+    // entry — `schema.` and `schemas.carebook.com` are both listed for exactly
+    // this reason.
+    expect(isNamespaceUri('https://tenant.hl7.org/CodeSystem/v2-0203')).toBe(false)
   })
 })
 

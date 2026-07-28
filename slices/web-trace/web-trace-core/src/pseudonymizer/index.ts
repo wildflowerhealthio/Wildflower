@@ -48,5 +48,6 @@ export {
   type RedactionOptions,
   type RedactionPolicy,
   redactSession,
+  TERMINOLOGY_HOSTS,
 } from './redact.ts'
 export { detectShape, generateFake, type LeafShape } from './shapes.ts'

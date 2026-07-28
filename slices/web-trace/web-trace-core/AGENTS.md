@@ -166,13 +166,23 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
 - **`isNamespaceUri` reads the value, never the field name.** `system` and
   `url` are promises the server makes; a `system` holding
   `http://host/Patient/8a3f2b1c` would export a record URL on the strength of
-  its key. The gate is scheme + no query/fragment/credentials + code-token path
-  segments, with an **allowlist** of version prefixes (`v`, `r`, `stu`, `dstu`,
-  `fhir`) as the only digit-bearing exception. Widening that to "letters then
-  digits" admits `w8`, `h1`, and `wqx0` — the opaque tenant segments a
-  per-record URL is built from — so don't. `redact.test.ts` holds a property
-  over the whole leaf corpus that fails if a verbatim path ever carries
-  anything but a namespace URI.
+  its key. A value qualifies by **trusted host or by shape**. The shape gate is
+  scheme + no query/fragment/credentials + code-token path segments, with an
+  **allowlist** of version prefixes (`v`, `r`, `stu`, `dstu`, `fhir`) as the
+  only digit-bearing exception. Widening that to "letters then digits" admits
+  `w8`, `h1`, and `wqx0` — the opaque tenant segments a per-record URL is built
+  from — so don't. `redact.test.ts` holds a property over the whole leaf corpus
+  that fails if a verbatim path ever carries anything but a namespace URI.
+- **A `TERMINOLOGY_HOSTS` entry skips _every_ structural check, query string
+  included.** That is what lets `.../CodeSystem/v2-0203` through, where the
+  shape rules cannot tell an HL7 table number from a record id. Matching is
+  **exact on `hostname`** — not a suffix test, or `hl7.org.example.com` would
+  be trusted, and not on `host`, or a port would defeat an entry. The list
+  mixes standards bodies (which cannot serve a record URL) with portal schema
+  hosts (which are trusted because someone read a capture from that portal);
+  only add one of the second kind after looking at real traffic. A subdomain
+  needs its own entry, which is why `schema.` and `schemas.carebook.com` are
+  both listed.
 - **The generated corpus carries namespace URIs on purpose.**
   `test-helpers.ts` puts them at `system` and `url` keys, kept out of
   `identifier` so it stays unambiguous which rule let a value through. Without
