@@ -23,10 +23,11 @@ An ordinary `*-client-collector` (`rexall-be-well-collector` and
 - `src/entities/observation-list-entity.ts` — `…/Observation?…` → the
   `Observation`s of a searchset `Bundle`, dropping-and-counting entries that
   carry no resource.
-- `src/provenance.ts` — the provenance wiring: `mintRunId`, `withProvenance`,
-  `isTraceResource`.
+- the provenance hook — `web-trace-core`'s `makeFhirProvenanceCapture('fhir-r4')`,
+  one module-level line in `src/config.ts`, stated as the plan's
+  `captureProvenance`.
 - the persist sink — `fhir-r4`'s `persistResources`, imported in `src/config.ts`
-  and wrapped in `withDiagnosticResources` before it reaches the descriptor.
+  and handed straight to the descriptor.
 - `src/extract-json.ts` — XHR/JSON-viewer body normalizer (copied verbatim in
   `rexall-be-well-collector`; slice layering forbids importing it).
 - `src/fhir-r4-config-form.tsx` (+ `.module.css`) — the rootUrl/patientId
@@ -46,14 +47,14 @@ tracked.
 
 ## Provenance
 
-Every entity in the plan is wrapped in `withProvenance(runId)`
-(`CapturedSource.withCapturedSource` under the hood), and the descriptor's
-`persistResources` is wrapped in
-`DiagnosticResources.withDiagnosticResources(persistResources, isTraceResource)`.
-A non-empty parse therefore hands back `[...resources, trace]`: the decoded
-resources each carrying `meta.source` back to the trace, plus one trace
+The plan states one hook: `captureProvenance: makeFhirProvenanceCapture('fhir-r4')`
+(module-level, so two plans from one config deep-equal). The framework does the
+rest — it mints the run id at dispatch, invokes the hook only for a response
+whose parse produced resources, and persists the resulting trace best-effort on
+the batch's `diagnostics` channel. A non-empty parse therefore yields the
+decoded resources each carrying `meta.source` back to the trace, plus one trace
 `DocumentReference` naming all of them in `context.related`. The encoding and
-both link directions live in `web-trace-core`; this package only wires them.
+both link directions live in `web-trace-core`; this package only names itself.
 
 - **The body is read with `response.bytes()`, never `text()`.** `text()` is UTF-8
   and lossy — a body that is not valid UTF-8 comes back peppered with U+FFFD, and
@@ -69,36 +70,26 @@ both link directions live in `web-trace-core`; this package only wires them.
 
 ## Traps
 
-- **`scrapingPlan` is deliberately impure.** It mints a fresh provenance run id
-  per build and closes every entity over it, because the trace resource id is
-  `{runId}-{requestId}`: a run id derived from the config would make a second
-  sync of the same remote silently upsert its traces over the first's.
-  `makeScrapingPlan` is called exactly once per sync run, so one plan build is
-  one run. Consequence: two builds from one config are structurally unequal, so
-  `config.test.ts` and `collector-registry`'s dispatch test compare a plan
-  _identity projection_ (name, `firstPage`, steps, entity names) rather than
-  deep-equalling plans.
-- **A response that produced no resource is not captured.** `withCapturedSource`
-  skips an empty parse, which is the line between provenance collection and bulk
-  recording. `PatientEntity` returns `[]` for a patient with a null id and
-  `ObservationListEntity` returns `[]` for a bundle with no usable entries —
-  those responses leave no trace, by design.
-- **`isTraceResource` is not `resourceType === 'DocumentReference'`.** A
-  collector could legitimately produce a _clinical_ `DocumentReference` one day,
-  and demoting it to a diagnostic would drop its failed write out of the run's
-  summary. The predicate is the resource type **and** `isWebTrace`, the category
-  check the codec and the viewer both use.
-- **A trace must never degrade the primary output.** A failing or dying capture
-  is WARN-logged and the entity's own resources are returned unchanged; a failing
-  trace _write_ is WARN-logged by `withDiagnosticResources` and kept out of the
-  run's reported failures. If an existing entity suite's expectations have to
-  change to accommodate provenance, something has gone wrong — the wiring only
-  adds `meta.source` and a trailing trace.
-- **`src/provenance.ts` is a near-identical copy of the one in
-  `rexall-be-well-collector`.** Slice layering forbids one `*-client-collector`
-  importing another (the same reason `extract-json.ts` is duplicated). Keep the
-  substance in `web-trace-core` — anything that starts to look like policy
-  belongs there, not in a third copy.
+- **`scrapingPlan` is `(config, runId) => plan` and deterministic given its
+  inputs.** The framework mints the run id at dispatch (one per
+  `resourcePersistenceRuntimeIfMatches` call, so one plan build is one run);
+  this factory ignores the parameter — the hook receives the id at invocation.
+  The trace resource id is `{fhir-r4-runId}-{requestId}`, which is why the id
+  must be fresh per run: a config-derived id would make a second sync silently
+  upsert its traces over the first's. Tests deep-equal plans built with a
+  fixed run id.
+- **A response that produced no resource is not captured.** The tracker skips
+  the hook on an empty parse, which is the line between provenance collection
+  and bulk recording. `PatientEntity` returns `[]` for a patient with a null id
+  and `ObservationListEntity` returns `[]` for a bundle with no usable
+  entries — those responses leave no trace, by design.
+- **A trace must never degrade the primary output.** A failing or dying hook is
+  WARN-logged by the tracker and the entity's own resources flow on unchanged;
+  a failing trace _write_ is WARN-logged by the runner and kept out of the
+  run's reported failures — the trace rides the `diagnostics` channel, so the
+  separation is structural, not a predicate. If an existing entity suite's
+  expectations have to change to accommodate provenance, something has gone
+  wrong — the wiring only adds `meta.source` and a separate diagnostic.
 - **`entityDefinitions` order is not load-bearing here, and should stay that
   way.** `mustHaveQuery` on the Observation-list pattern keeps it disjoint from
   the single-`Observation` pattern; without it the first `isFoundAt` match would
@@ -123,12 +114,12 @@ Two static edits, per the descriptor seam:
 - [Adding a Collector How-To](../docs/Adding%20a%20Collector%20How-To.md) — the
   recipe this collector is the worked example for, including the provenance step.
 - [slices/collector/AGENTS.md](../AGENTS.md) — package roles, the
-  `withCapturedSource` / `withDiagnosticResources` guardrails, and the
+  `captureProvenance` / diagnostics-channel guardrails, and the
   plan-purity trap in full.
 - [web-trace-core AGENTS.md](../../web-trace/web-trace-core/AGENTS.md) — the
   codec and the two body policies the provenance capture picks between.
 - [fhir-r4](../../emr/fhir-r4) — the R4 resource schemas and the
   `persistResources` / `upsertResource` write path.
 - [rexall-be-well-collector](../rexall-be-well-collector/AGENTS.md) — the other
-  production collector, which mirrors this layout and duplicates its provenance
-  wiring.
+  production collector, which mirrors this layout and states the same one-line
+  provenance hook.

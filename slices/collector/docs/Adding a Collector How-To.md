@@ -20,7 +20,7 @@ that depends on `collector-fundamentals` only.
 | Config         | `*-client-collector/src/config.ts`          | `Schema.TaggedStruct` + fast-check arbitraries                 |
 | Scraping plan  | `*-client-collector/src/config.ts`          | `ScrapingPlan.make` — first page, steps, entities              |
 | Persist sink   | `*-client-collector/src/config.ts`          | import `fhir-r4`'s `persistResources` — don't write your own   |
-| Provenance     | `*-client-collector/src/provenance.ts`      | `withCapturedSource` + `withDiagnosticResources` wiring        |
+| Provenance     | `*-client-collector/src/config.ts`          | one `captureProvenance:` line on the plan (see step 6)         |
 | Descriptor     | `*-client-collector/src/config.ts`          | `CollectorDescriptor.make` — bundles all of the above          |
 | Config form    | `*-client-collector/src/*-config-form.tsx`  | `ConfigFormProps<Config>`                                      |
 | Registry entry | `collector-registry/src/registry.ts`        | append to `descriptors`                                        |
@@ -181,88 +181,58 @@ target slice's reusable helper (FHIR's `upsertResource`), not an inline switch.
 ## 6. Provenance: store the source of every resource you produce
 
 Every resource a collector produces was derived from a response, and that
-response is discarded the moment `parse` settles. Wire the two seams below and
-each one is kept as a trace `DocumentReference`, linked to the resources it
-produced — so a resource that turns out to be wrong can be traced back to what
-made it. This is **not** opt-in: the scope is bounded by what the plan actually
-consumes, and that bound is what makes it always-on.
+response is discarded the moment `parse` settles. State the plan-level
+`captureProvenance` hook and each one is kept as a trace `DocumentReference`,
+linked to the resources it produced — so a resource that turns out to be wrong
+can be traced back to what made it. This is **not** opt-in: the scope is
+bounded by what the plan actually consumes, and that bound is what makes it
+always-on.
 
-Copy `fhir-r4-client-collector/src/provenance.ts` — three small functions, and
-the copy is deliberate (slice layering forbids one `*-client-collector`
-importing another; the substance lives in `web-trace-core`). Add
-`web-trace-core` to the package's `devDependencies` **and** `peerDependencies`,
-then `vp install`.
-
-```ts
-const mintRunId = (): string => `my-collector-${globalThis.crypto.randomUUID()}`
-
-const withProvenance =
-  (sessionId: string) => (entity: EntityDefinition.EntityDefinition<FhirResource>) =>
-    CapturedSource.withCapturedSource(entity, (response, produced) =>
-      Effect.map(
-        captureProvenance(
-          {
-            sessionId,
-            requestId: response.id,
-            url: response.url,
-            status: response.status,
-            statusText: response.statusText,
-            headers: response.headers,
-            startedAt: response.startedAt,
-            // `bytes()`, never `text()` — see below.
-            bytes: response.bytes(),
-          },
-          produced
-        ),
-        ({ linked, trace }) => [...linked, trace]
-      )
-    )
-
-const isTraceResource = (resource: FhirResource): boolean =>
-  resource.resourceType === 'DocumentReference' && isWebTrace(resource)
-```
-
-Then mint the run id **inside** the plan factory, wrap every entity with it, and
-wrap the persist sink where the descriptor takes it (step 7):
+Add `web-trace-core` to the package's `devDependencies` **and**
+`peerDependencies`, run `vp install`, then wire one module-level hook into the
+plan:
 
 ```ts
-const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirResource> => {
-  const capture = withProvenance(mintRunId())
-  return ScrapingPlan.make<FhirResource>({
-    entityDefinitions: [capture(PatientEntity), capture(ObservationEntity)],
+import { makeFhirProvenanceCapture } from 'web-trace-core/provenance'
+
+// Module-level, NOT built inside the factory: two plans built from one config
+// share the reference, so tests can deep-equal them.
+const captureProvenance = makeFhirProvenanceCapture('my-collector')<FhirResource>
+
+const scrapingPlan = (
+  config: InstanceConfig,
+  _runId: string
+): ScrapingPlan.ScrapingPlan<FhirResource> =>
+  ScrapingPlan.make<FhirResource>({
+    entityDefinitions: [PatientEntity, ObservationEntity],
+    captureProvenance,
     …
   })
-}
-
-persistResources: DiagnosticResources.withDiagnosticResources(persistResources, isTraceResource)
 ```
 
-Five things to get right:
+That is the whole wiring. The framework owns everything else:
 
-- **Read the body with `response.bytes()`, never `text()`.** `text()` is UTF-8
-  and lossy, so a re-encode of it is not the body that arrived and a hash over it
-  means nothing. The trace stores the **raw** bytes — not the
-  `extractJson`-unwrapped string your entity decoded.
-- **`withCapturedSource` skips an empty parse.** A response that decoded to
-  nothing is never captured; that rule is the line between provenance collection
-  and bulk recording (a recorder is its own catch-all entity — see
-  `web-trace-collector`). A failing or dying capture is WARN-logged and returns
-  the inner resources unchanged, and `followUpSteps` still sees only the inner
-  resources.
-- **`withDiagnosticResources` is not optional.** A trace rides in the same batch
-  as the clinical resources, and the runner folds _any_ `PersistFailure` into a
-  `partial` import summary — so without the wrapper a failed trace write
-  downgrades a clean run.
-- **Don't test `resourceType === 'DocumentReference'` on its own.** A collector
-  may one day produce a _clinical_ `DocumentReference`, and demoting that to a
-  diagnostic would hide its failed write. `isWebTrace` is the category predicate
-  the codec and the viewer both use.
-- **The plan factory is now impure** — it mints a fresh run id per build, so the
-  traces of one sync are grouped and a second sync cannot upsert over the first.
-  `makeScrapingPlan` is called exactly once per run, so one build is one run.
-  Consequence: a test comparing two plan builds must compare an identity
-  _projection_ (name, `firstPage`, step names, entity names), not deep-equal
-  them.
+- **The run id is minted at dispatch** — `resourcePersistenceRuntimeIfMatches`
+  mints one uuid, builds the plan with it, and seals both into the same
+  runtime, so one runtime instance is one run and a second sync can never
+  upsert its traces over the first's. The prefix you pass
+  (`makeFhirProvenanceCapture('my-collector')`) names the collector in every
+  session id, so a run is legible in the Web Trace viewer.
+- **The hook fires only for a parse that produced resources.** A failed parse
+  is never captured, and neither is an empty one — that rule is the line
+  between provenance collection and bulk recording (a recorder is its own
+  catch-all entity — see `web-trace-collector`). A failing or dying hook is
+  WARN-logged and the parse output flows on unchanged, and `followUpSteps`
+  always sees the raw parse output, never a trace.
+- **Traces ride the batch's `diagnostics` channel**, structurally separate from
+  the clinical resources, and the runner persists them best-effort through the
+  same sink: a failed trace write is WARN-logged and never reaches the run's
+  summary, so it cannot downgrade a clean import to `partial`.
+- **The body is read with `response.bytes()`, never `text()`** — `text()` is
+  UTF-8 and lossy, so a re-encode of it is not the body that arrived and a hash
+  over it means nothing. The trace stores the **raw** bytes, not the
+  `extractJson`-unwrapped string your entity decoded, verbatim: no allowlist,
+  no truncation.
 
 ## 7. Descriptor + package index
 
@@ -349,14 +319,11 @@ Changes must include tests (see [AGENTS.md](../../../AGENTS.md) and the
   and returns `undefined` for foreign ones; `display` strings.
 - **Persist sink** — a failing write becomes one `PersistFailure`, not a run
   failure.
-- **Provenance** — a response that produced a resource is captured with its body
-  **verbatim** (base64 of the exact bytes, including a body that is not valid
-  UTF-8 and one over the recorder's 1 MiB cap); a response that produced
-  **nothing** is not captured at all, driven through the entity's real
-  empty-parse path; both link directions round-trip through
-  `fromDocumentReference`; a resource produced by two responses is named by both
-  traces; and a failing trace write neither fails the run nor lands in its
-  reported failures.
+- **Provenance** — the plan states `captureProvenance` and its traces carry the
+  collector's prefix (one stub invocation is enough; the capture policy — the
+  verbatim body, both link directions, multi-source naming, and
+  never-degrading-the-run — is covered once, in `web-trace-core`'s and
+  `collector-fundamentals`' own suites, not per collector).
 - **Form** — decodes valid input, renders a `ParseError` inline for bad input.
 
 ## 11. Regenerate the OpenAPI snapshots (the non-obvious ripple)

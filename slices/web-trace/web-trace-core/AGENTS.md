@@ -28,7 +28,14 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
   the content-type rule, the SHA-256 every body carries, and `storeBodyVerbatim`.
   Policy is _not_ here — see the trap below.
 - **`src/provenance/`** — the receipt for a resource a collector derived from a
-  response: `captureProvenance` builds the trace and links it both ways.
+  response: `captureProvenance` builds the trace and links it both ways;
+  `toExchangeFields` is the one statement of the response → exchange field
+  mapping (the recorder's entity spreads it too); `makeFhirProvenanceCapture`
+  is the hook factory a production collector states as its plan's
+  `captureProvenance`. `CapturedResponse` names the readable surface of
+  `collector-fundamentals`' `RemoteResponse` _structurally_ — this package
+  sits below the collector slice and must not import it, so the boundary is a
+  shape, not a dependency.
 - **`src/pseudonymizer/`** — the export boundary's redactor. `shapes.ts` detects
   what a value looks like and generates another value that looks the same,
   `leaves.ts` decides what counts as a leaf, `redact.ts` is the two-step
