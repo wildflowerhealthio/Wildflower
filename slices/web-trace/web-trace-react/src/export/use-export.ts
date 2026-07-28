@@ -25,6 +25,13 @@ interface ExportSettings {
    * @defaultValue 12
    */
   readonly enumThreshold: number
+  /**
+   * Whether namespace-URI paths — `Coding.system`, `Identifier.system`,
+   * `Extension.url` — export as captured.
+   *
+   * @defaultValue true
+   */
+  readonly namespaceUris: boolean
   /** Per-path decisions that win over the threshold. */
   readonly overrides: Readonly<Record<string, PathOverride>>
 }
@@ -39,10 +46,16 @@ interface ExportSettings {
  * author cannot branch on `status` if it is noise — but it is the setting that
  * lets original values leave the device, so it is opted into against a preview
  * that lists exactly what it exposes, rather than opted out of after the fact.
+ *
+ * **Schema URLs are off for the same reason**, even though a namespace URI is
+ * the safer of the two to expose. Both deliberately disagree with the core's
+ * own defaults: the core answers "what should redaction do when nobody said",
+ * the panel answers "what should leave the device when nobody looked".
  */
 const DEFAULT_EXPORT_SETTINGS: ExportSettings = {
   enumCarveOut: false,
   enumThreshold: DEFAULT_ENUM_THRESHOLD,
+  namespaceUris: false,
   overrides: {},
 }
 
@@ -60,6 +73,8 @@ interface ExportState {
   readonly setEnumCarveOut: (enabled: boolean) => void
   /** Sets the carve-out's distinct-value ceiling. */
   readonly setEnumThreshold: (threshold: number) => void
+  /** Turns the namespace-URI rule on or off. */
+  readonly setNamespaceUris: (enabled: boolean) => void
   /** Overrides one path's decision, or clears the override with `null`. */
   readonly setOverride: (path: string, override: PathOverride | null) => void
   /** Emits the reviewed archive and saves it. A no-op before the preview is ready. */
@@ -76,11 +91,12 @@ const describeSettings = (settings: ExportSettings): string => {
   const carveOut = settings.enumCarveOut
     ? `enum carve-out on, threshold ${settings.enumThreshold}`
     : 'enum carve-out off'
+  const uris = settings.namespaceUris ? 'schema URLs on' : 'schema URLs off'
   const overrideNote =
     overrides.length === 0
       ? 'no per-path overrides'
       : overrides.map(([path, decision]) => `${path}=${decision}`).join('; ')
-  return `Redacted at export: ${carveOut}; ${overrideNote}. Pseudonyms are stable within this archive only — a fresh salt is minted per export, so two exports of one session cannot be linked.`
+  return `Redacted at export: ${carveOut}; ${uris}; ${overrideNote}. Pseudonyms are stable within this archive only — a fresh salt is minted per export, so two exports of one session cannot be linked.`
 }
 
 /**
@@ -126,14 +142,20 @@ const useExport = (exchanges: readonly TraceExchange[], sessionId: string): Expo
     }
   }, [])
 
-  const { enumCarveOut, enumThreshold, overrides } = settings
+  const { enumCarveOut, enumThreshold, namespaceUris, overrides } = settings
 
   useEffect(() => {
     if (salt === null) return undefined
     let cancelled = false
     setIsBuilding(true)
     Effect.runPromise(
-      buildExportPreview(exchanges, { salt, enumCarveOut, enumThreshold, overrides })
+      buildExportPreview(exchanges, {
+        salt,
+        enumCarveOut,
+        enumThreshold,
+        namespaceUris,
+        overrides,
+      })
     )
       .then((next) => {
         if (cancelled) return
@@ -154,7 +176,7 @@ const useExport = (exchanges: readonly TraceExchange[], sessionId: string): Expo
     return (): void => {
       cancelled = true
     }
-  }, [salt, exchanges, enumCarveOut, enumThreshold, overrides])
+  }, [salt, exchanges, enumCarveOut, enumThreshold, namespaceUris, overrides])
 
   const download = useCallback((): void => {
     if (preview === null) return
@@ -175,6 +197,9 @@ const useExport = (exchanges: readonly TraceExchange[], sessionId: string): Expo
     },
     setEnumThreshold: (threshold: number): void => {
       setSettings((current) => ({ ...current, enumThreshold: threshold }))
+    },
+    setNamespaceUris: (enabled: boolean): void => {
+      setSettings((current) => ({ ...current, namespaceUris: enabled }))
     },
     setOverride: (path: string, override: PathOverride | null): void => {
       setSettings((current) => {

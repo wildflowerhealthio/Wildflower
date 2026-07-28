@@ -141,6 +141,62 @@ const onePatient = (): readonly TraceExchange[] => [
   }),
 ]
 
+/**
+ * A searchset bundle shaped like the real capture this rule came from: private
+ * `system` and `extension.url` keys, a coded value, and a `link.url` that
+ * addresses one patient.
+ */
+const fhirBundle = (): readonly TraceExchange[] => [
+  traceExchange({
+    sessionId: SESSION_ID,
+    requestId: 'req-0',
+    body: {
+      _tag: 'StoredBody',
+      contentType: 'application/fhir+json',
+      size: 512,
+      hash: 'aGFzaA==',
+      data: jsonBody({
+        resourceType: 'Bundle',
+        type: 'searchset',
+        link: [
+          {
+            relation: 'self',
+            url: 'https://portal.example.org/fhir/MedicationRequest?_id=faa2ea21-545d-45b1-aed8-b76b6f894bb6',
+          },
+        ],
+        entry: [
+          {
+            resource: {
+              resourceType: 'MedicationRequest',
+              identifier: [
+                {
+                  system:
+                    'http://schema.carebook.com/v1/fhir/identifier/medicationrequest-external-id',
+                  value: '7565407',
+                },
+              ],
+              medicationCodeableConcept: {
+                coding: [
+                  {
+                    system: 'http://schema.carebook.com/v1/fhir/coding/medication-din-code',
+                    code: '85785208',
+                  },
+                ],
+              },
+              extension: [
+                {
+                  url: 'http://schemas.carebook.com/v1/fhir/medicationrequest/extension/number-of-repeats-available',
+                  valuePositiveInt: 3,
+                },
+              ],
+            },
+          },
+        ],
+      }),
+    },
+  }),
+]
+
 /** Mounts the panel and waits for its first preview. */
 const mountAndSettle = async (
   exchanges: readonly TraceExchange[],
@@ -158,9 +214,24 @@ const mountAndSettle = async (
   })
 }
 
+/** The panel's two verbatim switches, both off when it opens. */
+const codesSwitch = (): HTMLElement =>
+  screen.getByRole('switch', { name: /Show short codes as captured/ })
+
+const schemaUrlsSwitch = (): HTMLElement =>
+  screen.getByRole('switch', { name: /Show schema URLs as captured/ })
+
 /** Turns on the code carve-out, which is off when the panel opens. */
 const showCodes = async (): Promise<void> => {
-  await userEvent.click(screen.getByRole('switch'))
+  await userEvent.click(codesSwitch())
+  await waitFor(() => {
+    expect(screen.queryByText('No fields are exported as captured')).toBeNull()
+  })
+}
+
+/** Turns on the namespace-URI rule, which is off when the panel opens. */
+const showSchemaUrls = async (): Promise<void> => {
+  await userEvent.click(schemaUrlsSwitch())
   await waitFor(() => {
     expect(screen.queryByText('No fields are exported as captured')).toBeNull()
   })
@@ -189,7 +260,8 @@ describe('ExportPanel', () => {
 
     // Assert
     expect(screen.getByText('No fields are exported as captured')).toBeDefined()
-    expect(screen.getByRole('switch')).toHaveProperty('checked', false)
+    expect(codesSwitch()).toHaveProperty('checked', false)
+    expect(schemaUrlsSwitch()).toHaveProperty('checked', false)
 
     await userEvent.click(screen.getByRole('button', { name: 'Download redacted HAR' }))
     const text = await downloadedText()
@@ -301,6 +373,50 @@ describe('ExportPanel', () => {
     // Assert — the override is honoured all the way to the file, which is what
     // makes it a decision the reviewer actually owns.
     expect(await downloadedText()).toContain(`${MRN_PREFIX}0000`)
+  })
+
+  it('should keep FHIR schema URLs readable once the reviewer asks, and the record URL beside them hidden', async () => {
+    // Arrange — a MedicationRequest bundle shaped like the real one. The three
+    // `system`/`url` fields name what the codes beside them *mean*; the
+    // `link.url` addresses one patient's page and carries their id in its
+    // query string. Both are URIs at low cardinality, so only their shape
+    // separates them.
+    await mountAndSettle(fhirBundle())
+
+    // Act
+    await showSchemaUrls()
+    await userEvent.click(screen.getByRole('button', { name: 'Download redacted HAR' }))
+
+    // Assert — the keys survive
+    const text = await downloadedText()
+    for (const system of [
+      'http://schema.carebook.com/v1/fhir/identifier/medicationrequest-external-id',
+      'http://schema.carebook.com/v1/fhir/coding/medication-din-code',
+      'http://schemas.carebook.com/v1/fhir/medicationrequest/extension/number-of-repeats-available',
+    ]) {
+      expect(text).toContain(system)
+    }
+    // …and the record URL, the patient id inside it, and the code values do not
+    expect(text).not.toContain('_id=faa2ea21-545d-45b1-aed8-b76b6f894bb6')
+    expect(text).not.toContain('faa2ea21-545d-45b1-aed8-b76b6f894bb6')
+    expect(text).not.toContain('85785208')
+  })
+
+  it('should name the schema-URL rule in the preview rather than the value count', async () => {
+    // Arrange — the count is not what decided these rows, so reporting it would
+    // send the reviewer to a threshold that had no say.
+    await mountAndSettle(fhirBundle())
+
+    // Assert
+    expect(within(rowFor('system')).getByText('Auto — hidden (schema URLs off)')).toBeDefined()
+
+    // Act
+    await showSchemaUrls()
+
+    // Assert
+    await waitFor(() => {
+      expect(within(rowFor('system')).getByText('Auto — visible (schema URL)')).toBeDefined()
+    })
   })
 
   it('should state what the archive contains and what it never could', async () => {

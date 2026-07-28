@@ -135,8 +135,35 @@ const arbitraries = (
 
   const identifier = fc.oneof(uuid, alphanumeric, numeric, isoDate, email)
 
+  /**
+   * A URI that names a schema rather than a record — what a FHIR
+   * `Coding.system`, `Identifier.system`, or `Extension.url` holds.
+   *
+   * @remarks
+   * Deliberately **not** part of {@link identifier}: a namespace URI is the one
+   * leaf class the pseudonymizer may export as captured, so mixing it into the
+   * identifiers that fill URLs and headers would make the properties about what
+   * survives ambiguous about which rule let a value through.
+   */
+  const namespaceUri = fc
+    .tuple(
+      fc.constantFrom('http', 'https'),
+      fc.constantFrom(...HOSTS),
+      fc.constantFrom('v1', 'v2', 'R4'),
+      fc.array(fc.constantFrom('fhir', 'coding', 'identifier', 'extension', 'common'), {
+        minLength: 1,
+        maxLength: 4,
+      }),
+      fc.constantFrom('external-id', 'request-type', 'din-code', 'number-of-repeats-available')
+    )
+    .map(
+      ([scheme, host, version, path, name]) =>
+        `${scheme}://${host}/${version}/${path.join('/')}/${name}`
+    )
+
   const jsonLeaf = fc.oneof(
     identifier,
+    namespaceUri,
     fc.integer({ min: 1, max: 10_000 }),
     fc.boolean(),
     fc.constant(null)
@@ -148,7 +175,17 @@ const arbitraries = (
       jsonLeaf,
       fc.array(tie('node'), { maxLength: 3 }),
       fc.dictionary(
-        fc.constantFrom('id', 'name', 'status', 'updatedAt', 'entry', 'resource', 'value'),
+        fc.constantFrom(
+          'id',
+          'name',
+          'status',
+          'updatedAt',
+          'entry',
+          'resource',
+          'value',
+          'system',
+          'url'
+        ),
         tie('node'),
         { maxKeys: 4 }
       )

@@ -54,7 +54,13 @@ class PseudonymSpaceExhausted extends Data.TaggedError('PseudonymSpaceExhausted'
 type RedactionError = PseudonymSpaceExhausted | WebCryptoUnavailable
 
 /** How a path's verbatim/pseudonymize decision was reached. */
-type EnumDecision = 'threshold' | 'override' | 'disabled' | 'notCode'
+type EnumDecision =
+  | 'threshold'
+  | 'override'
+  | 'disabled'
+  | 'notCode'
+  | 'namespaceUri'
+  | 'namespaceUrisOff'
 
 /**
  * The longest value the carve-out will treat as a code.
@@ -109,6 +115,142 @@ const CODE_TOKEN = /^[A-Za-z][A-Za-z_-]*$/
 const isCodeToken = (value: string): boolean =>
   value === '' || (value.length <= CODE_TOKEN_MAX_LENGTH && CODE_TOKEN.test(value))
 
+/** The longest value the carve-out will treat as a namespace URI. */
+const NAMESPACE_URI_MAX_LENGTH = 256
+
+/**
+ * Version tokens a namespace path may carry, as an allowlist.
+ *
+ * @remarks
+ * A version segment is the one place a digit belongs in a namespace path.
+ * Widening this to "letters then digits" also admits `w8`, `h1`, and `wqx0` —
+ * the opaque tenant segments a per-record URL is built from, which is exactly
+ * what {@link isNamespaceUri} exists to reject.
+ */
+const VERSION_PART = /^(?:v|r|stu|dstu|fhir)\d{1,3}$/i
+
+/**
+ * An OID in `urn:oid:` form — a registered arc path, digits and dots only.
+ *
+ * @remarks
+ * `urn:uuid:` is deliberately not admitted: a UUID naming a system is still a
+ * generated identifier.
+ */
+const URN_OID = /^urn:oid:[0-2](?:\.(?:0|[1-9]\d*))+$/
+
+/**
+ * Hosts that publish vocabulary, and so are trusted whatever the URI's shape.
+ *
+ * @remarks
+ * The shape rules below exist to tell a namespace from a record URL. For a host
+ * that serves nothing but published terminology, the host itself already
+ * answers that — and answers it better, since a real system like
+ * `.../CodeSystem/v2-0203` fails the shape rules on a digit run that means an
+ * HL7 table number rather than a record id.
+ *
+ * **Two kinds of entry sit here, and they are not equally safe.** A standards
+ * body cannot serve a record URL, because serving records is not a thing it
+ * does. A vendor schema host is trusted on the strength of someone having
+ * looked at that portal and concluded it publishes schemas at this hostname.
+ * Add a vendor host only after looking; matching is exact, so a new subdomain
+ * needs a new entry and cannot arrive on its own.
+ *
+ * See `docs/Redaction Explanation.md` for what a trusted host costs.
+ */
+const TERMINOLOGY_HOSTS: ReadonlySet<string> = new Set([
+  // Standards bodies and public terminology registries.
+  'hl7.org',
+  'www.hl7.org',
+  'terminology.hl7.org',
+  'loinc.org',
+  'snomed.info',
+  'unitsofmeasure.org',
+  'dicom.nema.org',
+  'nlm.nih.gov',
+  'www.nlm.nih.gov',
+  'www.ama-assn.org',
+  'www.whocc.no',
+  'fhir.infoway-inforoute.ca',
+  // Portal schema hosts, added after reading a capture from that portal.
+  'schema.carebook.com',
+  'schemas.carebook.com',
+])
+
+/** Whether one `-`/`_`-separated part of a path segment reads as vocabulary. */
+const isNamespacePart = (part: string): boolean => CODE_TOKEN.test(part) || VERSION_PART.test(part)
+
+/**
+ * Whether a path segment is built entirely of vocabulary parts.
+ *
+ * @remarks
+ * Split before testing, so `v3-ActCode` is judged as a version token joined to
+ * a code rather than rejected whole for its digit.
+ */
+const isNamespaceSegment = (segment: string): boolean =>
+  segment.split(/[-_]/).every(isNamespacePart)
+
+/**
+ * Whether a value is a URI that names a *schema* rather than a *record*.
+ *
+ * @param value - The leaf's string form, as the counting pass recorded it
+ * @returns `true` for a namespace URI, `false` for anything else
+ *
+ * @remarks
+ * `Coding.system` and `Extension.url` name a schema and are the labels that
+ * make a payload legible; `Bundle.link.url` addresses one record, patient id
+ * included. The rule reads the **value**, never the field name — a `system`
+ * holding `http://host/Patient/8a3f2b1c` must not ride in on its key.
+ *
+ * A value qualifies two ways: its host is a {@link TERMINOLOGY_HOSTS} entry, or
+ * its shape reads as a namespace. The host check comes first and is the whole
+ * decision — a trusted host means every structural rule below is skipped, query
+ * string included.
+ *
+ * Why each clause is drawn where it is, and what the host allowlist costs, are
+ * in `docs/Redaction Explanation.md`.
+ */
+const isNamespaceUri = (value: string): boolean => {
+  if (value.startsWith('urn:')) return URN_OID.test(value)
+
+  let parsed: URL
+  try {
+    parsed = new URL(value)
+  } catch {
+    return false
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false
+
+  // Matched on `hostname`, so a port cannot defeat the entry — and exactly, so
+  // `hl7.org.example.com` is a different host rather than a suffix of one.
+  if (TERMINOLOGY_HOSTS.has(parsed.hostname)) return true
+
+  if (value.length > NAMESPACE_URI_MAX_LENGTH) return false
+  if (parsed.search !== '' || parsed.hash !== '') return false
+  if (parsed.username !== '' || parsed.password !== '') return false
+  // A leading `/` and a trailing one both split to an empty segment; a
+  // host-only system like `http://loinc.org` is all of them.
+  return parsed.pathname
+    .split('/')
+    .every((segment) => segment === '' || isNamespaceSegment(segment))
+}
+
+/**
+ * Whether a path's observed values are namespace URIs, and so export as
+ * captured when the reviewer has asked for schema URLs.
+ *
+ * @param values - Every distinct value the path took across the session
+ * @returns `true` when the path is a namespace-URI path
+ *
+ * @remarks
+ * At least one value has to be a namespace URI, or a path holding nothing but
+ * empty strings would report itself as one. Empty strings are otherwise
+ * tolerated for the same reason {@link isCodeToken} tolerates them: they are
+ * preserved regardless, and letting one absent observation disqualify a path
+ * would hide a genuine namespace field.
+ */
+const isNamespaceUriPath = (values: readonly string[]): boolean =>
+  values.some(isNamespaceUri) && values.every((value) => value === '' || isNamespaceUri(value))
+
 /**
  * What {@link buildRedactionPolicy} concluded about one path, for the viewer to
  * render and a reviewer to override.
@@ -145,6 +287,16 @@ interface RedactionOptions {
    * @defaultValue true
    */
   readonly enumCarveOut?: boolean
+  /**
+   * Whether namespace-URI paths export as captured.
+   *
+   * @remarks
+   * Independent of {@link RedactionOptions.enumCarveOut} and of
+   * {@link RedactionOptions.enumThreshold} — a namespace URI is not an enum.
+   *
+   * @defaultValue true
+   */
+  readonly namespaceUris?: boolean
   /** Per-path decisions that win over the threshold, keyed by {@link PathStat.path}. */
   readonly overrides?: Readonly<Record<string, PathOverride>>
 }
@@ -211,6 +363,12 @@ const isPlainDecimal = (text: string): boolean => /^-?\d+(\.\d+)?$/.test(text)
  * into noise. A status code or a unit enum is not PHI, and it is exactly what an
  * `EntityDefinition` branches on — so a path whose values across the session
  * number at most the threshold is left alone.
+ *
+ * There are **two** verbatim rules, decided independently: the code carve-out
+ * is shape-gated then counted, {@link isNamespaceUri} is shape-gated and not
+ * counted. The URI rule is tested first, so a hidden `system` field reports
+ * `namespaceUrisOff` rather than the `notCode` it would always land on — the
+ * two have different fixes.
  */
 const buildRedactionPolicy = (
   exchanges: readonly TraceExchange[],
@@ -219,6 +377,7 @@ const buildRedactionPolicy = (
   Effect.gen(function* () {
     const threshold = options.enumThreshold ?? DEFAULT_ENUM_THRESHOLD
     const carveOut = options.enumCarveOut ?? true
+    const namespaceUris = options.namespaceUris ?? true
     const overrides = options.overrides ?? {}
 
     const seen = new Map<string, Set<string>>()
@@ -242,6 +401,17 @@ const buildRedactionPolicy = (
           distinctValues: values.size,
           verbatim: override === 'verbatim',
           decidedBy: 'override',
+        }
+      }
+      // Settled before the code carve-out and outside it: own switch, and no
+      // count. A portal with forty private extensions has forty keys, not
+      // forty secrets.
+      if (isNamespaceUriPath([...values])) {
+        return {
+          path,
+          distinctValues: values.size,
+          verbatim: namespaceUris,
+          decidedBy: namespaceUris ? 'namespaceUri' : 'namespaceUrisOff',
         }
       }
       if (!carveOut) {
@@ -483,7 +653,11 @@ export {
   DEFAULT_ENUM_THRESHOLD,
   type EnumDecision,
   isCodeToken,
+  isNamespaceUri,
+  isNamespaceUriPath,
+  NAMESPACE_URI_MAX_LENGTH,
   type PathOverride,
+  TERMINOLOGY_HOSTS,
   type PathStat,
   PseudonymSpaceExhausted,
   redactExchange,

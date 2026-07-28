@@ -37,6 +37,9 @@ export {
   DEFAULT_ENUM_THRESHOLD,
   type EnumDecision,
   isCodeToken,
+  isNamespaceUri,
+  isNamespaceUriPath,
+  NAMESPACE_URI_MAX_LENGTH,
   type PathOverride,
   type PathStat,
   PseudonymSpaceExhausted,
@@ -45,5 +48,6 @@ export {
   type RedactionOptions,
   type RedactionPolicy,
   redactSession,
+  TERMINOLOGY_HOSTS,
 } from './redact.ts'
 export { detectShape, generateFake, type LeafShape } from './shapes.ts'

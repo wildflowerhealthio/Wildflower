@@ -199,11 +199,26 @@ a collector.
   session, which is why the export hangs off `RecordingsPanel` rather than
   living in a tab of its own. The panel memoises the filtered array, because the
   export hook rebuilds its preview whenever that identity changes.
-- **The carve-out is off when the panel opens.** The safest archive is the one
-  produced by clicking Download without reading anything, so exporting original
-  values is opted _into_ against a preview that lists exactly what it exposes,
-  not opted out of afterwards. The core's own default (on, N=12) is the default
-  for the _threshold_ once it is switched on — see `DEFAULT_EXPORT_SETTINGS`.
+- **Both carve-outs are off when the panel opens.** The safest archive is the
+  one produced by clicking Download without reading anything, so exporting
+  original values is opted _into_ against a preview that lists exactly what it
+  exposes, not opted out of afterwards. That applies to schema URLs as much as
+  to short codes, even though a namespace URI is the safer of the two to
+  expose. The core's own default (both on, N=12) is the default for the
+  _threshold_ once codes are switched on — see `DEFAULT_EXPORT_SETTINGS`, which
+  deliberately disagrees with the core on the two booleans: the core answers
+  "what should redaction do when nobody said", the panel answers "what should
+  leave the device when nobody looked".
+- **There are two switches, so `getByRole('switch')` is ambiguous.** Query by
+  accessible name (`codesSwitch` / `schemaUrlsSwitch` in
+  `export-panel.test.tsx`). Both settings are also part of the rebuild effect's
+  dependency list and of `describeSettings`, so the archive's own `log.comment`
+  states each one — an archive that did not say which rules were on could not
+  be read back years later.
+- **A schema-URL row names its rule, not its count.** `Auto — visible (schema
+URL)` / `Auto — hidden (schema URLs off)`. Those paths are exempt from the
+  threshold, so reporting `visible (18 values)` would send the reviewer to a
+  control that had no say in the decision.
 - **The preview is split by outcome, not listed as one table.** The rows that
   need scrutiny are the ones leaving **as captured**; they are a handful next to
   the pseudonymized majority, which sits behind a disclosure so it cannot bury

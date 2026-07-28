@@ -154,6 +154,42 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
   Widening `CODE_TOKEN` widens what leaves the device; `redact.test.ts` holds a
   property over the whole leaf corpus that fails if a verbatim path ever carries
   a digit, a space, or punctuation.
+- **There are two verbatim rules, and the URI one is tested first.**
+  `isCodeToken` is shape-gated _then counted_; `isNamespaceUri` is shape-gated
+  and **never counted**, and answers to its own `namespaceUris` option. The
+  order is not cosmetic: a URI is never a code token, so testing the code rule
+  first would report every hidden `system` field as `notCode` and send the
+  reviewer to a threshold that cannot bring it back. Exempting URIs from the
+  count is deliberate — cardinality is a PHI signal only for values that
+  describe a person, and eighteen distinct `extension[].url` values against a
+  threshold of twelve is what the real capture held.
+- **`isNamespaceUri` reads the value, never the field name.** `system` and
+  `url` are promises the server makes; a `system` holding
+  `http://host/Patient/8a3f2b1c` would export a record URL on the strength of
+  its key. A value qualifies by **trusted host or by shape**. The shape gate is
+  scheme + no query/fragment/credentials + code-token path segments, with an
+  **allowlist** of version prefixes (`v`, `r`, `stu`, `dstu`, `fhir`) as the
+  only digit-bearing exception. Widening that to "letters then digits" admits
+  `w8`, `h1`, and `wqx0` — the opaque tenant segments a per-record URL is built
+  from — so don't. `redact.test.ts` holds a property over the whole leaf corpus
+  that fails if a verbatim path ever carries anything but a namespace URI.
+- **A `TERMINOLOGY_HOSTS` entry skips _every_ structural check, query string
+  included.** That is what lets `.../CodeSystem/v2-0203` through, where the
+  shape rules cannot tell an HL7 table number from a record id. Matching is
+  **exact on `hostname`** — not a suffix test, or `hl7.org.example.com` would
+  be trusted, and not on `host`, or a port would defeat an entry. The list
+  mixes standards bodies (which cannot serve a record URL) with portal schema
+  hosts (which are trusted because someone read a capture from that portal);
+  only add one of the second kind after looking at real traffic. A subdomain
+  needs its own entry, which is why `schema.` and `schemas.carebook.com` are
+  both listed.
+- **The generated corpus carries namespace URIs on purpose.**
+  `test-helpers.ts` puts them at `system` and `url` keys, kept out of
+  `identifier` so it stays unambiguous which rule let a value through. Without
+  them both carve-out properties pass without ever reaching their rule. For the
+  same reason `redactWith` in `redact.test.ts` pins **both** switches off: the
+  core defaults them on, and a property about pseudonymization would otherwise
+  be reading values a carve-out let past.
 - **A generated fake is re-derived until it is acceptable, not accepted on the
   first try.** A candidate must differ from its original, re-detect to the same
   shape, and be unused. That loop is what makes "no value survives itself" and

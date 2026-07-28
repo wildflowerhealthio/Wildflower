@@ -48,6 +48,22 @@ one-digit numbers cannot all get distinct one-digit fakes. That raises
 value. Raising the enum threshold or adding a per-path verbatim override is the
 fix.
 
+## Two carve-outs, not one
+
+Pure pseudonymization destroys two different things that are not PHI: the short
+codes an `EntityDefinition` branches on, and the URIs that say what those codes
+_mean_. They are recognised by separate rules, decided independently, and
+switched independently.
+
+|                | admits                                     | gated on                                  | counted?          |
+| -------------- | ------------------------------------------ | ----------------------------------------- | ----------------- |
+| Enum carve-out | `active`, `mg`, `entered-in-error`         | `isCodeToken`                             | yes, threshold 12 |
+| Namespace URIs | `http://…/fhir/coding/medication-din-code` | `isNamespaceUri` — trusted host, or shape | no                |
+
+The URI rule is tested first. A URI is never a code token, so a hidden `system`
+field would otherwise always report `notCode` — pointing the reviewer at a
+threshold that cannot bring it back, instead of at the switch that can.
+
 ## The enum carve-out
 
 Pure pseudonymization turns `"status": "active"` into noise. Status codes and
@@ -88,6 +104,92 @@ export preview lists every carved-out path with a sample of what it holds, so a
 reviewer can override one; and the carve-out is **off by default** in the export
 UI, so the safe behaviour is what happens when nobody touches a control.
 
+## The namespace-URI carve-out
+
+FHIR spends URIs on two jobs that look alike and are not. `Coding.system`,
+`Identifier.system`, and `Extension.url` hold URIs that name a _schema_ —
+`http://schema.carebook.com/v1/fhir/coding/medication-din-code` is the label
+that tells a collector author what the code beside it is. `Bundle.link.url`
+holds a URI that addresses a _record_, patient id in the query string included.
+Pseudonymizing the first destroys the only thing that made the payload legible;
+exporting the second is a leak.
+
+They are separated by the value's shape, never by the field's name. A field
+name is a promise the server makes, and a `system` holding
+`http://host/Patient/8a3f2b1c` would export a record URL verbatim on the
+strength of that promise. A value qualifies one of two ways: its **host** is
+trusted, or its **shape** reads as a namespace.
+
+### The host allowlist
+
+`TERMINOLOGY_HOSTS` names hosts that publish vocabulary. A URI on one of them
+is admitted whatever its shape, because every shape rule below exists to tell a
+namespace from a record URL and the host has already answered that. It answers
+it better, too: `http://terminology.hl7.org/CodeSystem/v2-0203` is a real
+system that the shape rules reject, because `0203` is a digit run they cannot
+distinguish from a record id.
+
+A trusted host skips **every** structural check, query string included. That is
+the deliberate cost: `https://terminology.hl7.org/ValueSet/$expand?filter=ada`
+would export as captured. It is acceptable because a published registry serves
+no records, so a parameter on one cannot carry a patient.
+
+The list holds two kinds of entry and they are not equally safe:
+
+- **Standards bodies and public registries** — `hl7.org`, `terminology.hl7.org`,
+  `loinc.org`, `snomed.info`, `unitsofmeasure.org`, `dicom.nema.org`,
+  `nlm.nih.gov`, `www.ama-assn.org`, `www.whocc.no`,
+  `fhir.infoway-inforoute.ca`. These cannot serve a record URL, because serving
+  records is not something they do.
+- **Portal schema hosts** — `schema.carebook.com`, `schemas.carebook.com`.
+  These are trusted because someone read a capture from that portal and
+  concluded it publishes schemas at that hostname. Add one only after looking.
+  If a portal ever served a record URL from its schema host, this would export
+  it.
+
+Matching is **exact**, on the hostname. `hl7.org.example.com` is a different
+host, not a suffix of a trusted one, and a new subdomain of a trusted host
+needs its own entry rather than arriving on its own — which is why
+`schema.carebook.com` and `schemas.carebook.com` are both listed.
+
+### The shape rule
+
+For every other host, `isNamespaceUri` admits a value only when it is:
+
+- `urn:oid:` naming a registered arc, or `http` / `https`;
+- carrying no query, no fragment, and no credentials;
+- built of path segments that are code tokens, with version tokens (`v1`, `R4`,
+  `stu3`) the sole digit-bearing exception;
+- at most 256 characters.
+
+The version exception is an allowlist of prefixes rather than "letters then
+digits", because the looser rule also admits `w8`, `h1`, and `wqx0` — the
+opaque tenant and environment segments a per-record URL is built from.
+
+An untrusted host is otherwise unconstrained: it is an organization-level fact
+the export already discloses for every exchange, so rejecting hosts that carry
+a digit would reject legitimate systems and buy nothing.
+
+### Not counted, and that is the point
+
+A namespace URI is exempt from the distinct-value threshold. The threshold
+exists because low cardinality is what PHI looks like in a single-patient
+trace — but that reasoning is about values that describe a _person_. A URI that
+names a schema describes the system, so its cardinality carries no signal in
+either direction. A portal with forty private extensions has forty keys, not
+forty secrets. The real capture that motivated this had eighteen distinct
+`extension[].url` values against a default threshold of twelve; counting them
+would have hidden the field for no reason anyone could act on.
+
+### What this still does not solve
+
+On an untrusted host, a segment whose digits are not a version is rejected —
+`https://portal.example.org/CodeSystem/v2-0203` stays hidden. Admitting a bare
+digit run would readmit every numeric id, which is a worse trade. Two answers
+exist and they are ordered: add the host to `TERMINOLOGY_HOSTS` if it is a
+registry or a schema host someone has read a capture from, and otherwise use
+the per-path override the code carve-out's residue uses.
+
 This is why redaction is two steps. `buildRedactionPolicy` walks the session and
 counts; `redactExchange` rewrites one exchange against the result. The split lets
 the viewer render the decisions it made, lets a reviewer override one path, and
@@ -107,6 +209,10 @@ types, URL scheme and host, the URL path's shape, `null`, booleans, and empty
 strings. A skipped body's recorded size is kept too — it is a fact about what was
 dropped. A walked JSON body's size is recomputed from the rewritten bytes, since
 the pseudonyms are not the same length as what they replace.
+
+Preserved when the reviewer asks for it: short controlled-vocabulary codes, and
+the namespace URIs that name what those codes mean. Both are off by default in
+the export UI.
 
 Pseudonymized, because it identifies: every JSON leaf value, header values,
 cookie values, query values, the body digest, and URL path segments that look
@@ -144,6 +250,13 @@ The five properties the boundary rests on are in
 `src/pseudonymizer/redact.test.ts`: no original leaf survives as a substring of
 the output, shape class is preserved, one salt is injective in both directions,
 two salts are disjoint, and keys/cardinality/URL structure are unchanged.
+
+Each carve-out then adds the property that bounds what it exposes: no verbatim
+path carries a digit, a space, or punctuation when only codes are on; nothing
+but a namespace URI survives when only URIs are on. Both are stated over the
+whole generated corpus, which is why `test-helpers.ts` generates namespace URIs
+at `system` and `url` keys — a corpus without them would let either property
+pass without ever reaching the rule it is about.
 
 The substring property is asserted for leaf values of eight characters or more.
 Shorter values will turn up inside a long fake by chance, and asserting otherwise
