@@ -17,7 +17,7 @@ import {
 
 /**
  * Direct unit coverage of the extracted framework-free core
- * ({@link ./sync-run.ts}), without React Testing Library. Two suites:
+ * (`./sync-run.ts`), without React Testing Library. Two suites:
  *
  * - {@link collectImportSummary} — the fold that turns the drive stream's
  *   per-step failure chunks into the `ImportSummary` (and drives `setFailed` /

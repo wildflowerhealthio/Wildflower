@@ -9,8 +9,8 @@ import type { InputMessage, StepOutboundMessage } from './messages.ts'
 /**
  * Part 4 of the automatic-navigation machine: the side-effect handlers.
  *
- * One handler per side-effect message `_tag`, each `(msg, ctx) =>
- * Effect<void>`. The interpreter in `./make.ts` routes to these; they
+ * One handler per side-effect message `_tag`, each
+ * `(msg, ctx) => Effect<void>`. The interpreter in `./make.ts` routes to these; they
  * close over nothing but their arguments. `Schedule*` fork span-wrapped
  * daemons that re-inject a `*Fired` input; `CancelTimer` interrupts a
  * registered daemon; `SetStepName` / `Dispatch*` send bridge messages;

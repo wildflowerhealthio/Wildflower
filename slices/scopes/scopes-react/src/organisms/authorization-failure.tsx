@@ -52,8 +52,8 @@ const fluentScope = (raw: string): string | null => {
 
 /**
  * The read-only **authorization-failure** surface: the caller is authenticated
- * but their token doesn't cover the scope(s) an action requires (a `403
- * InsufficientScope`). It names the missing scopes — the canonical scope string
+ * but their token doesn't cover the scope(s) an action requires (a
+ * `403 InsufficientScope`). It names the missing scopes — the canonical scope string
  * plus a friendly resource label where one exists — so the user knows *which*
  * permission is missing rather than seeing an opaque error, and exposes an
  * optional step-up hook. Presentational only: detection + the request action

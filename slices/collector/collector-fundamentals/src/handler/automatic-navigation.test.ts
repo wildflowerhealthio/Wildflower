@@ -27,8 +27,8 @@ import { settleForkedWork } from './collector-bridge-message-handler.test-helper
  * navigations drain on a single settled load. The only waits are the hold steps:
  * a `Delay` (fixed timer) and an `AwaitPageSettled` (park until a matching
  * settled `PageLoaded`, aborting on its `timeout`). The first `PageLoaded` is
- * start-up: it kicks off draining the queue. Completion is `queue drained
- * (Drained) ∧ NoMoreResultsExpected`.
+ * start-up: it kicks off draining the queue. Completion is
+ * `queue drained (Drained) ∧ NoMoreResultsExpected`.
  */
 describe('automatic-navigation.make', () => {
   describe('navigation dispatch', () => {

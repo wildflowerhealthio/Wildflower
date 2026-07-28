@@ -24,8 +24,9 @@ import * as SnifferResponseTracker from './sniffer-response-tracker.ts'
  * `stopAutomaticNavigation` increments a counter, and `signalNoMoreResultsExpected`
  * models the machine's response to "no more results" — it records the signal and,
  * when the harness's `drained` flag is set (the machine's queue is empty), fires
- * `handleSniffingComplete` just as `Drained + NoMoreResultsExpected → Done →
- * SniffingComplete` would. Completion is thus the queue-drained ∧ requests-settled
+ * `handleSniffingComplete` just as
+ * `Drained + NoMoreResultsExpected → Done → SniffingComplete` would.
+ * Completion is thus the queue-drained ∧ requests-settled
  * coupling, with no settle window (that grace is gone; plans use trailing `Delay`s).
  */
 

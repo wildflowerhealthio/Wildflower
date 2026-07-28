@@ -1,6 +1,6 @@
 /**
  * The thin React shell around the framework-free sync-run core
- * ({@link ./sync-run.ts}): the `useMutation` wiring, the per-run
+ * (`./sync-run.ts`): the `useMutation` wiring, the per-run
  * `AbortController`, and the `RunnerState` mapping. It injects the two
  * React-facing callbacks (`setFailed` / `onError`) into the core as plain
  * functions.

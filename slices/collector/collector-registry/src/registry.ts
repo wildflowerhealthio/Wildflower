@@ -50,8 +50,8 @@ const CollectorConfig: Schema.Schema<CollectorConfig> = Schema.Union(
  * same {@link descriptors} list. Used as the schema of a remote's wire
  * `tag` field.
  *
- * Annotated as `Schema.Schema<CollectorTag>` (where `CollectorTag =
- * CollectorConfig['_tag']`) so the literal list stays locked to the
+ * Annotated as `Schema.Schema<CollectorTag>` (where
+ * `CollectorTag = CollectorConfig['_tag']`) so the literal list stays locked to the
  * config union — adding a collector without its tag flowing through is
  * a compile error, preserving the previous hand-written `Schema.Literal`
  * lock.
