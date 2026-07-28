@@ -96,11 +96,11 @@ describe('smartHttpClientLayer', () => {
 
   test('a token is never sent to an origin the session did not name', async () => {
     const sent = await sendThrough(session, HttpClientRequest.get('https://elsewhere.test/thing'))
-    // The header rides every request the client makes; what pins the blast
-    // radius is that the typed client only ever emits relative paths, which the
-    // prefix above sends to the FHIR server. This test documents that an
-    // absolute URL is not silently re-addressed to it.
+    // Two halves of the same claim: an absolute URL is neither silently
+    // re-addressed to the FHIR server, nor handed the credential that server
+    // issued. The session granted a token for its own origin only.
     expect(sent.url).not.toContain('127.0.0.1:8080')
+    expect(sent.authorization).toBeUndefined()
   })
 })
 

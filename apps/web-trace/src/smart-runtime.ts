@@ -95,6 +95,12 @@ const hasAbsoluteScheme = (url: string): boolean => /^[a-z][a-z0-9+.-]*:/iu.test
  * A session with no `accessToken` sets no header at all, rather than an empty
  * `Bearer `: an absent credential must read as absent.
  *
+ * The token rides only the requests this layer *addressed* — i.e. the relative
+ * paths the typed client emits, which the prefix sends to the FHIR server. An
+ * already-absolute URL names an origin the session never granted anything for,
+ * so it goes out bare: a credential must never leave for a host that did not
+ * issue it.
+ *
  * The transport is a parameter rather than baked in — the same shape as
  * `apps/wildflower-react`'s `prependApiBaseUrl` — so what goes on the wire can
  * be asserted against a stub instead of a real `fetch`.
@@ -115,9 +121,8 @@ const smartHttpClientLayer = (
     Effect.map(HttpClient.HttpClient, (client) =>
       client.pipe(
         HttpClient.mapRequest((request) => {
-          const addressed = hasAbsoluteScheme(request.url)
-            ? request
-            : HttpClientRequest.prependUrl(baseUrl)(request)
+          if (hasAbsoluteScheme(request.url)) return request
+          const addressed = HttpClientRequest.prependUrl(baseUrl)(request)
           return accessToken === undefined
             ? addressed
             : HttpClientRequest.bearerToken(accessToken)(addressed)

@@ -4,6 +4,7 @@ import { cn } from 'react-kitchen-sink'
 import type { TraceExchange } from 'web-trace-core'
 
 import { bodyText } from './body-text.ts'
+import { keyedHeaders } from './headers.ts'
 import styles from './exchange-detail.module.css'
 
 /** Props for {@link ExchangeDetail}. */
@@ -67,8 +68,8 @@ const ExchangeDetail = ({ exchange, onClose }: ExchangeDetailProps): JSX.Element
         <p className={cn(styles['detail__note'], 'text-body-3')}>No headers were recorded.</p>
       ) : (
         <dl className={styles['detail__headers']}>
-          {exchange.headers.map(([name, value]) => (
-            <div key={`${name}:${value}`} className={styles['detail__header-row']}>
+          {keyedHeaders(exchange.headers).map(({ key, name, value }) => (
+            <div key={key} className={styles['detail__header-row']}>
               <dt>{name}</dt>
               <dd>{value}</dd>
             </div>

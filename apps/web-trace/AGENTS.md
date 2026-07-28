@@ -40,6 +40,10 @@ package growing a second, prop-threaded way in.
   so its real URL carries `?code=…&state=…`. A browser history would try to
   match that against the route tree, and any navigation would rewrite the URL
   the SMART handshake is still reading.
+- **The bearer token rides only the requests the layer addressed.** An
+  already-absolute URL is passed through untouched _and_ uncredentialed: the
+  SMART token was granted for the FHIR server the handshake named, so it must
+  never leave for an origin the session did not name.
 - **The transport is a parameter, not a baked-in `FetchHttpClient.layer`.** That
   is what lets `app.test.tsx` drive the whole tree — router, query, typed client,
   codec — over a stub and assert what actually went on the wire. `app.tsx` is the
@@ -86,6 +90,9 @@ above `MIN_UPLOAD_PORT` (8082) so shipping it does not consume a low upload port
   sets no header rather than a `Bearer` with nothing after it.
 - `body-text.test.ts` — the base64 → bytes → text path, property-tested over
   arbitrary bytes, plus the not-UTF-8 and malformed-base64 cases.
+- `headers.test.ts` / `exchange-detail.test.tsx` — that a response repeating a
+  header name **and** its value still renders both rows. `name:value` is not a
+  unique React key, so `keyedHeaders` disambiguates by occurrence.
 - `app.test.tsx` — the whole tree over a stub transport. It asserts the URL and
   the `Authorization` header that actually went on the wire, so the two
   self-hosted-origin facts above are pinned rather than assumed.
