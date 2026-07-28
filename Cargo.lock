@@ -7768,6 +7768,11 @@ name = "tauri-plugin-native-webview"
 version = "0.0.0"
 dependencies = [
  "base64 0.23.0",
+ "block2",
+ "log",
+ "objc2",
+ "objc2-foundation",
+ "objc2-web-kit",
  "serde",
  "serde_json",
  "tauri",

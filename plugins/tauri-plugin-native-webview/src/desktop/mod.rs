@@ -14,7 +14,9 @@
 //!
 //! - [`labels`] — per-instance window/webview label construction + parsing.
 //! - [`state`] — the per-id [`state::InstanceState`] registry.
-//! - [`cookies`] — pre-navigation cookie seeding.
+//! - [`cookies`] — pre-navigation cookie seeding: a seam over two
+//!   interchangeable implementations, because macOS cannot use wry's cookie API
+//!   (it deadlocks the app).
 //! - [`chrome`] — the chrome bar, its build, the `x-nv-action` action scheme.
 //! - [`lifecycle`] — `present` (build/reopen/teardown) + window listeners.
 //! - this module — plugin `init` + the [`NativeWebview`] handle (public API).
@@ -47,7 +49,6 @@ use std::sync::atomic::Ordering;
 use serde::de::DeserializeOwned;
 use tauri::plugin::PluginApi;
 use tauri::{AppHandle, Manager, Runtime};
-use url::Url;
 
 use crate::models::{EvaluateJsRequest, NativeWebviewEvent, OpenRequest, PatchWindowTextRequest};
 
@@ -62,7 +63,7 @@ mod state;
 pub(crate) use chrome::register_chrome_action_scheme;
 
 use chrome::WINDOW_TEXT_FN;
-use cookies::seed_cookies;
+use cookies::seed_then_navigate;
 use labels::{chrome_label, content_label, window_label};
 use lifecycle::{blank_url, present, PresentOutcome};
 use state::{instance_state, PluginState};
@@ -92,23 +93,23 @@ impl<R: Runtime> NativeWebview<R> {
     /// `rx.recv()`. Off-main-thread callers block on the main thread draining the
     /// queue — safe, no self-wait.
     ///
-    /// A cookie-carrying request (see [`OpenRequest`]'s `cookies`) MUST be sent
-    /// from OFF the main thread: the webview builds at `about:blank`, then this
-    /// caller thread queues the cookie writes + the real-target navigation onto the
-    /// main loop (FIFO). See [`cookies::seed_cookies`] for why the main thread
-    /// deadlocks. Exception: when a dispose is in flight `present` defers the whole
-    /// request (cookies and all) into `pending_reopen` and returns
-    /// [`PresentOutcome::Deferred`], and this thread seeds nothing — the
-    /// `CloseRequested` replay ([`lifecycle`]) seeds the deferred cookies off-main
-    /// after it reuses the content webview, so a dispose→open on the `launch`
-    /// instance keeps its auth seeding.
+    /// A cookie-carrying request (see [`OpenRequest`]'s `cookies`) builds the
+    /// webview at `about:blank` and hands the seed + real-target navigation to
+    /// [`cookies::seed_then_navigate`], which is **asynchronous**: `open_url`
+    /// returns before the cookies commit and before the target load starts.
+    /// Exception: when a dispose is in flight `present` defers the whole request
+    /// (cookies and all) into `pending_reopen` and returns
+    /// [`PresentOutcome::Deferred`], and nothing is seeded here — the
+    /// `CloseRequested` replay ([`lifecycle`]) seeds the deferred cookies after it
+    /// reuses the content webview, so a dispose→open on the `launch` instance
+    /// keeps its auth seeding.
     pub fn open_url(&self, id: &str, payload: OpenRequest) -> crate::Result<()> {
         // Parse once (http(s)-only — see [`crate::url_scheme`]) and thread the
         // parsed `Url` to `present` so the build path doesn't re-parse.
         let target = crate::url_scheme::parse_http_url(&payload.url)?;
-        // Keep a copy for the caller-thread seed on the build/rewire path. The
-        // payload keeps its OWN `cookies` so the deferred branch carries them into
-        // `pending_reopen` for the replay to seed (see the method doc).
+        // Keep a copy for the seed on the build/rewire path. The payload keeps its
+        // OWN `cookies` so the deferred branch carries them into `pending_reopen`
+        // for the replay to seed (see the method doc).
         let cookies = payload.cookies.clone();
         let build_url = if cookies.is_empty() {
             target.clone()
@@ -132,44 +133,21 @@ impl<R: Runtime> NativeWebview<R> {
         let outcome = rx
             .recv()
             .map_err(|error| crate::Error::Internal(error.to_string()))??;
-        // Seed from this thread ONLY when `present` built or rewired now — the
-        // content webview is live. On the deferred branch (`present` saw a dispose
-        // in flight) the instance's content webview is doomed, so seeding here
-        // would race the teardown and lose the cookies; the `CloseRequested` replay
-        // seeds the deferred payload's cookies instead.
-        if !cookies.is_empty() && matches!(outcome, PresentOutcome::Presented) {
-            let content = self.0.get_webview(&content_label(id)).ok_or_else(|| {
-                crate::Error::Internal(
-                    "native-webview content webview missing after a cookie-seeding open".to_owned(),
-                )
-            })?;
-            seed_cookies(&content, &cookies)?;
-            content.navigate(target)?;
+        // Seed ONLY when `present` built or rewired now — the content webview is
+        // live. On the deferred branch (`present` saw a dispose in flight) the
+        // instance's content webview is doomed, so seeding here would race the
+        // teardown and lose the cookies; the `CloseRequested` replay seeds the
+        // deferred payload's cookies instead.
+        //
+        // The generation `present` reports is this open's claim on the content
+        // webview; the seed navigates only while that claim still holds (see
+        // [`cookies::seed_then_navigate`]).
+        if let PresentOutcome::Presented(generation) = outcome {
+            if !cookies.is_empty() {
+                seed_then_navigate(&self.0, id, cookies, target, generation)?;
+            }
         }
         Ok(())
-    }
-
-    /// Cookie **names** currently visible to instance `id`'s content webview for
-    /// `url` — a read-back for verifying the pre-navigation cookie seeding (see
-    /// [`OpenRequest`]'s `cookies`). Names only, never values: the point is
-    /// observability ("did `wf_auth` land?"), not exfiltrating the jar.
-    /// `Ok(None)` when no content webview is open. Desktop-only (mobile has no
-    /// equivalent surface; wry's Android cookie read is a stub anyway).
-    pub fn content_cookie_names_for_url(
-        &self,
-        id: &str,
-        url: Url,
-    ) -> crate::Result<Option<Vec<String>>> {
-        let Some(content) = self.0.get_webview(&content_label(id)) else {
-            return Ok(None);
-        };
-        let cookies = content.cookies_for_url(url)?;
-        Ok(Some(
-            cookies
-                .iter()
-                .map(|cookie| cookie.name().to_owned())
-                .collect(),
-        ))
     }
 
     /// Evaluate JS in instance `id`'s content webview. Returns an error if no
