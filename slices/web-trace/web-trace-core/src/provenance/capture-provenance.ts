@@ -8,7 +8,7 @@ import {
   storeBodyVerbatim,
 } from '../capture/index.ts'
 import { type DocumentReferenceType, toDocumentReference } from '../codec/index.ts'
-import { noTimings, traceResourceId } from '../trace-exchange.ts'
+import { noTimings, type TraceExchange, traceResourceId } from '../trace-exchange.ts'
 
 /**
  * The minimum a resource must expose to be linked: FHIR's `resourceType` and
@@ -32,6 +32,63 @@ interface ProvenanceCapture<TResource> {
   /** The produced resources, each carrying `meta.source` back to the trace. */
   readonly linked: readonly TResource[]
 }
+
+/**
+ * The readable surface of a captured response — structurally the part of
+ * `collector-fundamentals`' `RemoteResponse` a capture consumes.
+ *
+ * @remarks
+ * Structural on purpose: `web-trace-core` sits below the collector slice and
+ * cannot import it, so this names the fields rather than the class. A real
+ * `RemoteResponse` satisfies it as-is — a collector passes the response object
+ * straight through instead of copying fields into an intermediate.
+ *
+ * `bytes()` is the body read, **never `text()`**: `text()` is UTF-8 and lossy,
+ * and the stored body has to be byte-identical to what arrived for a hash over
+ * it to mean anything.
+ */
+interface CapturedResponse {
+  /** The sniffer's per-request correlation key. */
+  readonly id: string
+  readonly url: string
+  readonly status: number
+  readonly statusText: string
+  readonly headers: CaptureHeaders
+  /** The response-start instant the sniffer observed. */
+  readonly startedAt: DateTime.Utc
+  /** The raw body, as the bytes that arrived. */
+  bytes(): Uint8Array<ArrayBuffer>
+}
+
+/**
+ * The response facts every trace states, projected once.
+ *
+ * @param sessionId - The id every trace from one run shares
+ * @param response - The response, as observed
+ * @returns The sniffer-observed half of a `TraceExchange`
+ *
+ * @remarks
+ * This is the **single** statement of the response → exchange field mapping.
+ * Every builder of a trace — the provenance capture below, and
+ * `web-trace-collector`'s recording entity — spreads this rather than restating
+ * the seven fields, so the mapping cannot drift between consumers. What varies
+ * per consumer (`timings`, `body`, `producedResources`) stays at the call site.
+ */
+const toExchangeFields = (
+  sessionId: string,
+  response: CapturedResponse
+): Pick<
+  TraceExchange,
+  'sessionId' | 'requestId' | 'url' | 'status' | 'statusText' | 'headers' | 'startedAt'
+> => ({
+  sessionId,
+  requestId: response.id,
+  url: response.url,
+  status: response.status,
+  statusText: response.statusText,
+  headers: response.headers,
+  startedAt: response.startedAt,
+})
 
 /**
  * The relative FHIR reference for a resource, or `null` when it has no id.
@@ -78,26 +135,11 @@ const withMetaSource = <TResource extends ReferencableResource>(
   },
 })
 
-/** The response facts a capture needs. A collector reads these off its `RemoteResponse`. */
-interface CaptureInput {
-  /** Identifies the collector run; shared by every trace it writes. */
-  readonly sessionId: string
-  /** The sniffer's per-request correlation key. */
-  readonly requestId: string
-  readonly url: string
-  readonly status: number
-  readonly statusText: string
-  readonly headers: CaptureHeaders
-  /** The response-start instant the sniffer observed. */
-  readonly startedAt: DateTime.Utc
-  /** The raw body, read through `RemoteResponse.bytes()` — never `text()`. */
-  readonly bytes: Uint8Array<ArrayBuffer>
-}
-
 /**
  * Capture one response as the provenance of the resources it produced.
  *
- * @param input - The response, as observed
+ * @param sessionId - The id every trace from this run shares
+ * @param response - The response, as observed
  * @param produced - The resources this response's entity derived from it
  * @returns The trace and the same resources, linked both ways
  *
@@ -121,30 +163,25 @@ interface CaptureInput {
  * for.
  */
 const captureProvenance = <TResource extends ReferencableResource>(
-  input: CaptureInput,
+  sessionId: string,
+  response: CapturedResponse,
   produced: readonly TResource[]
 ): Effect.Effect<ProvenanceCapture<TResource>, BodyDigestUnavailable | ParseResult.ParseError> =>
   Effect.gen(function* () {
-    const body = yield* storeBodyVerbatim(input.bytes, input.headers)
+    const body = yield* storeBodyVerbatim(response.bytes(), response.headers)
     const references = produced.flatMap((resource) => {
       const reference = referenceTo(resource)
       return reference === null ? [] : [reference]
     })
     const trace = yield* toDocumentReference({
-      sessionId: input.sessionId,
-      requestId: input.requestId,
-      url: input.url,
-      status: input.status,
-      statusText: input.statusText,
-      headers: input.headers,
-      startedAt: input.startedAt,
+      ...toExchangeFields(sessionId, response),
       timings: noTimings,
       body,
       producedResources: references,
     })
     const source = `DocumentReference/${traceResourceId({
-      sessionId: input.sessionId,
-      requestId: input.requestId,
+      sessionId,
+      requestId: response.id,
     })}`
     return {
       trace,
@@ -152,11 +189,60 @@ const captureProvenance = <TResource extends ReferencableResource>(
     }
   })
 
+/** What a provenance hook hands the collector runtime for one response. */
+interface ProvenanceHookResult<TResource> {
+  /** The parse output, each resource carrying `meta.source` back to the trace. */
+  readonly resources: readonly TResource[]
+  /** The trace — persisted best-effort, never part of the run's summary. */
+  readonly diagnostics: readonly DocumentReferenceType[]
+}
+
+/**
+ * Build a `ScrapingPlan.captureProvenance` hook for one collector.
+ *
+ * @param collectorPrefix - Names the collector in every session id it writes
+ *   (`fhir-r4`, `rexall`, …)
+ * @returns A hook the collector's plan states as `captureProvenance`
+ *
+ * @remarks
+ * This is the whole of a production collector's provenance wiring: the
+ * framework mints the run id, invokes the hook only for a parse that actually
+ * produced resources, and treats `diagnostics` as best-effort writes — so
+ * nothing else needs to be wrapped or wired per collector.
+ *
+ * The prefix keeps a session legible in the viewer without opening an exchange;
+ * the uuid half comes from the framework's run id, which is what makes two runs
+ * of the same configured remote distinct — `{sessionId}-{requestId}` is the
+ * trace's resource id, and a stable session id would silently upsert the second
+ * run's traces over the first's.
+ *
+ * The hook's shape matches `collector-fundamentals`' plan hook structurally;
+ * this package cannot import that type (layering), which is why the signature is
+ * spelled here.
+ */
+const makeFhirProvenanceCapture =
+  (collectorPrefix: string) =>
+  <TResource extends ReferencableResource>(
+    runId: string,
+    response: CapturedResponse,
+    produced: readonly TResource[]
+  ): Effect.Effect<
+    ProvenanceHookResult<TResource>,
+    BodyDigestUnavailable | ParseResult.ParseError
+  > =>
+    Effect.map(
+      captureProvenance(`${collectorPrefix}-${runId}`, response, produced),
+      ({ trace, linked }) => ({ resources: linked, diagnostics: [trace] })
+    )
+
 export {
+  type CapturedResponse,
   captureProvenance,
-  type CaptureInput,
+  makeFhirProvenanceCapture,
   type ProvenanceCapture,
+  type ProvenanceHookResult,
   type ReferencableResource,
   referenceTo,
+  toExchangeFields,
   withMetaSource,
 }

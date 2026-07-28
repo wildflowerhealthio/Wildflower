@@ -1,6 +1,6 @@
 import {
   CollectorDescriptor,
-  DiagnosticResources,
+  type EntityDefinition,
   ScrapingPlan,
   UrlMatch,
   type WebViewSource,
@@ -10,10 +10,11 @@ import type { LazyArbitrary } from 'effect/Arbitrary'
 import { persistResources } from 'fhir-r4/clients'
 import type { FhirResource } from 'fhir-r4/resources'
 
+import { makeFhirProvenanceCapture } from 'web-trace-core/provenance'
+
 import { ObservationEntity } from './entities/observation-entity.ts'
 import { ObservationListEntity } from './entities/observation-list-entity.ts'
 import { PatientEntity } from './entities/patient-entity.ts'
-import { isTraceResource, mintRunId, withProvenance } from './provenance.ts'
 
 /**
  * `rootUrl` must be an absolute `http(s)://` URL with at least a host
@@ -94,6 +95,15 @@ const OBSERVATION_SETTLED_PATTERN = UrlMatch.make({
 const OBSERVATION_TIMEOUT = Duration.seconds(30)
 
 /**
+ * This collector's provenance hook: every response an entity derives a
+ * resource from is stored verbatim as a trace `DocumentReference`, linked
+ * both ways to the resources it produced. Module-level — not built inside
+ * the factory — so two plans built from one config share the reference and
+ * stay deep-equal (`toEqual` compares functions by identity).
+ */
+const captureProvenance = makeFhirProvenanceCapture('fhir-r4')<FhirResource>
+
+/**
  * Build the FHIR R4 scraping plan for a configured patient on a
  * configured server. The plan's `firstPage` navigates the sniffer
  * webview directly to `/Patient/:id?_format=json`; the browser-sniffer's
@@ -125,16 +135,18 @@ const OBSERVATION_TIMEOUT = Duration.seconds(30)
  * still applied defensively in case the value reaches this function
  * through an untyped path.
  *
- * **The run id is minted here, once per plan build**, and every entity closes
- * over it — which makes this factory impure, deliberately. `makeScrapingPlan`
- * is called exactly once per sync run (by `CollectorDescriptor.make`'s
- * `resourcePersistenceRuntimeIfMatches`), so one plan build is one run and the
- * traces of a run are grouped by that id. Consequence for callers: two builds
- * from one config are structurally unequal, so a test comparing plans must
- * compare an identity *projection* rather than deep-equalling them — the same
- * trade `web-trace-collector` documents. See the [slice AGENTS.md](../AGENTS.md).
+ * Provenance is the plan-level `captureProvenance` hook — the whole of this
+ * collector's wiring is the one line naming it. The framework mints the run
+ * id (this factory ignores its `runId` parameter — the hook receives it at
+ * invocation), invokes the hook only for a response whose parse produced
+ * resources, and persists the resulting trace best-effort. The factory stays
+ * deterministic given its inputs, so tests deep-equal plans built from one
+ * config.
  */
-const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirResource> => {
+const scrapingPlan = (
+  config: InstanceConfig,
+  _runId: string
+): ScrapingPlan.ScrapingPlan<FhirResource> => {
   const safePatientId = encodeURIComponent(config.patientId)
   const patientUrl = `${config.rootUrl}/Patient/${safePatientId}?_format=json`
   const observationUrl = `${config.rootUrl}/Observation?subject%3APatient=${safePatientId}&_count=250&_format=json`
@@ -142,19 +154,14 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirRes
     _tag: 'Uri',
     uri: patientUrl,
   }
-  // One run id for the whole plan, so every trace this run writes is grouped.
-  // Wrapping each entity (rather than the array) also removes the widening
-  // upcast this list used to need: `withProvenance` takes and returns
-  // `EntityDefinition<FhirResource>`, and each narrow entity is assignable to
-  // that by covariance.
-  const capture = withProvenance(mintRunId())
   return ScrapingPlan.make<FhirResource>({
     name: 'FHIR R4',
     entityDefinitions: [
-      capture(PatientEntity),
-      capture(ObservationEntity),
-      capture(ObservationListEntity),
-    ],
+      PatientEntity,
+      ObservationEntity,
+      ObservationListEntity,
+    ] as readonly EntityDefinition.EntityDefinition<FhirResource>[],
+    captureProvenance,
     firstPage,
     stepSequence: [
       {
@@ -190,11 +197,6 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirRes
  * names a *route's demo entry*, not the collector, so it stays there;
  * this descriptor's `title` is the collector kind ("FHIR R4") and its
  * `listSubtitle` surfaces a remote's configured `rootUrl`.
- *
- * `persistResources` is `fhir-r4`'s sink wrapped in `withDiagnosticResources`:
- * the provenance traces ride in the same batch as the clinical resources, and
- * without the wrapper a failed *trace* write would downgrade a clean run to
- * `partial`. The clinical half is written first, through that same sink.
  */
 const FhirR4CollectorDescriptor = CollectorDescriptor.make({
   tag: 'fhir-r4',
@@ -206,7 +208,7 @@ const FhirR4CollectorDescriptor = CollectorDescriptor.make({
     description: 'Health records from a FHIR R4 server',
     listSubtitle: (config) => config.rootUrl,
   },
-  persistResources: DiagnosticResources.withDiagnosticResources(persistResources, isTraceResource),
+  persistResources,
 })
 
 export { InstanceConfig, defaultConfig, scrapingPlan, FhirR4CollectorDescriptor }

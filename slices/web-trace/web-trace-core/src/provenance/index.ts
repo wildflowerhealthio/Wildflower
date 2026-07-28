@@ -12,9 +12,13 @@
  * @packageDocumentation
  */
 export {
+  type CapturedResponse,
   captureProvenance,
+  makeFhirProvenanceCapture,
   type ProvenanceCapture,
+  type ProvenanceHookResult,
   referenceTo,
   type ReferencableResource,
+  toExchangeFields,
   withMetaSource,
 } from './capture-provenance.ts'
