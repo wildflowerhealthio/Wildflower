@@ -1,4 +1,4 @@
-import { Duration, Hash } from 'effect'
+import { Duration, Effect, Hash } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as ScrapingPlan from './scraping-plan.ts'
@@ -69,6 +69,27 @@ describe('ScrapingPlan.make', () => {
   it('demonstrates why: hashing a frozen Duration throws', () => {
     const frozen = Object.freeze(Duration.seconds(1))
     expect(() => Hash.hash(frozen)).toThrow()
+  })
+
+  it('carries captureProvenance through the clone', () => {
+    // `make` copies an explicit field list; a forgotten copy would silently
+    // drop the hook and every trace with it. The reference (not a wrapper)
+    // must survive, since plan deep-equality in collector tests compares
+    // function fields by identity.
+    const captureProvenance: NonNullable<ScrapingPlan.ScrapingPlan<never>['captureProvenance']> = (
+      _runId,
+      _response,
+      produced
+    ) => Effect.succeed({ resources: produced, diagnostics: [] })
+    const plan = ScrapingPlan.make<never>({
+      name: 'HookPlan',
+      entityDefinitions: [],
+      firstPage: { _tag: 'Uri', uri: 'https://example.com/' },
+      stepSequence: [],
+      captureProvenance,
+    })
+
+    expect(plan.captureProvenance === captureProvenance).toBe(true)
   })
 
   it('keeps Duration-valued step fields readable after freezing', () => {

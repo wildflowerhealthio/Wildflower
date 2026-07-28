@@ -11,7 +11,7 @@ import {
   IDLE_TIMEOUT,
   InstanceConfig,
   isAbsoluteHttpUrl,
-  mintSessionId,
+  sessionIdFor,
   scrapingPlan,
   USER_DISMISS_TIMEOUT,
   WebTraceCollectorDescriptor,
@@ -93,29 +93,29 @@ describe('defaults', () => {
   })
 })
 
-describe('mintSessionId', () => {
-  it('is fresh per call, so two recordings of one remote never collide', () => {
-    const ids = new Set(Array.from({ length: 50 }, () => mintSessionId(defaultConfig)))
-    expect(ids.size).toBe(50)
+describe('sessionIdFor', () => {
+  it('derives from the framework run id, so two runs of one remote never collide', () => {
+    expect(sessionIdFor(defaultConfig, 'run-a')).not.toBe(sessionIdFor(defaultConfig, 'run-b'))
   })
 
   it('prefixes the label when there is one, for a legible session id', () => {
-    expect(mintSessionId({ ...defaultConfig, sessionLabel: 'refill' })).toMatch(/^refill-/)
+    expect(sessionIdFor({ ...defaultConfig, sessionLabel: 'refill' }, 'run-a')).toMatch(/^refill-/)
   })
 
   it.each([
     ['an absent label', undefined],
     ['a whitespace-only label', '   '],
-  ])('emits a bare uuid for %s', (_label, sessionLabel) => {
-    expect(mintSessionId({ ...defaultConfig, sessionLabel })).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
-    )
+  ])('emits the bare run id for %s', (_label, sessionLabel) => {
+    expect(sessionIdFor({ ...defaultConfig, sessionLabel }, 'run-a')).toBe('run-a')
   })
 })
 
 describe('scrapingPlan', () => {
   it('opens the configured root URL first', () => {
-    const plan = scrapingPlan({ ...defaultConfig, rootUrl: 'https://portal.example.com/login' })
+    const plan = scrapingPlan(
+      { ...defaultConfig, rootUrl: 'https://portal.example.com/login' },
+      'run-1'
+    )
     expect(plan.firstPage).toEqual({ _tag: 'Uri', uri: 'https://portal.example.com/login' })
   })
 
@@ -123,7 +123,7 @@ describe('scrapingPlan', () => {
     // The pairing is the whole reason this collector can exist — an empty step
     // sequence would complete on the first settled PageLoaded, before the user
     // had clicked anything.
-    expect(scrapingPlan(defaultConfig).stepSequence.map((step) => step._tag)).toEqual([
+    expect(scrapingPlan(defaultConfig, 'run-1').stepSequence.map((step) => step._tag)).toEqual([
       'EnsureWindowVisible',
       'AwaitUserDismiss',
     ])
@@ -133,11 +133,11 @@ describe('scrapingPlan', () => {
     // Otherwise the sync runner's silent-host guard abandons the run long
     // before the user acts, and before the hold's own bound can do its job.
     expect(Duration.toMillis(IDLE_TIMEOUT)).toBeGreaterThan(Duration.toMillis(USER_DISMISS_TIMEOUT))
-    expect(scrapingPlan(defaultConfig).idleTimeout).toStrictEqual(IDLE_TIMEOUT)
+    expect(scrapingPlan(defaultConfig, 'run-1').idleTimeout).toStrictEqual(IDLE_TIMEOUT)
   })
 
   it('registers exactly one entity, and it is the catch-all recorder', () => {
-    const plan = scrapingPlan(defaultConfig)
+    const plan = scrapingPlan(defaultConfig, 'run-1')
     expect(plan.entityDefinitions.map((entity) => entity.name)).toEqual(['RawExchangeEntity'])
     fc.assert(
       fc.property(fc.webUrl(), (url) => {
@@ -147,20 +147,21 @@ describe('scrapingPlan', () => {
     )
   })
 
-  it('gives each build its own session id, so two runs are two recordings', async () => {
+  it('gives each run its own session id, so two runs are two recordings', async () => {
     // Reached through the entity rather than asserted on the plan, because the
     // session id is deliberately not a plan field — it lives in the closure the
-    // recording entity carries.
-    const resourceIdFromAFreshBuild = async (): Promise<string | undefined> => {
-      const [entity] = scrapingPlan(defaultConfig).entityDefinitions
+    // recording entity carries. The id derives from the framework's run id, so
+    // distinctness is per *run* — the framework mints a fresh one per build.
+    const resourceIdFromABuildFor = async (runId: string): Promise<string | undefined> => {
+      const [entity] = scrapingPlan(defaultConfig, runId).entityDefinitions
       if (entity === undefined) throw new Error('unreachable: one entity asserted above')
       const [resource] = await Effect.runPromise(entity.parse(makeRemoteResponse({ id: 'req-1' })))
       return resource?.id ?? undefined
     }
 
     const [first, second] = await Promise.all([
-      resourceIdFromAFreshBuild(),
-      resourceIdFromAFreshBuild(),
+      resourceIdFromABuildFor('run-a'),
+      resourceIdFromABuildFor('run-b'),
     ])
     expect(first).toBeDefined()
     expect(first).not.toBe(second)

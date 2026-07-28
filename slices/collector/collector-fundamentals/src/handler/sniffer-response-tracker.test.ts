@@ -76,6 +76,7 @@ describe('CollectorBridgeMessageHandler.make: sniffer response tracker', () => {
             stepSequence: [],
           }),
           sendMessage,
+          runId: 'test-run',
         })
       )
 
@@ -105,7 +106,7 @@ describe('CollectorBridgeMessageHandler.make: sniffer response tracker', () => {
 
       const results = drainResults(handler)
       expect(results).toHaveLength(1)
-      expectRightToEqual(results[0], [{ name: 'Bob', age: 25 }])
+      expectRightToEqual(results[0], { resources: [{ name: 'Bob', age: 25 }], diagnostics: [] })
     })
 
     it('emits a WARN log and no-ops for an untracked response id', async () => {
@@ -191,7 +192,7 @@ describe('CollectorBridgeMessageHandler.make: sniffer response tracker', () => {
       expect(results).toHaveLength(1)
       // The parsed resources reflect the appended body chunks; the response
       // URL is asserted on the failure paths (which keep it on the `Left`).
-      expectRightToEqual(results[0], [{ name: 'Carol', age: 40 }])
+      expectRightToEqual(results[0], { resources: [{ name: 'Carol', age: 40 }], diagnostics: [] })
     })
 
     it('removes the response after finishing so a second ResponseFinished is a no-op', async () => {
@@ -239,6 +240,7 @@ describe('CollectorBridgeMessageHandler.make: sniffer response tracker', () => {
             stepSequence: [],
           }),
           sendMessage: noopSendMessage,
+          runId: 'test-run',
         })
       )
 
@@ -252,7 +254,7 @@ describe('CollectorBridgeMessageHandler.make: sniffer response tracker', () => {
       expect(results).toHaveLength(1)
       // Overlapping wins because it's first in `entityDefinitions`; its parse
       // returns an empty resource list regardless of body.
-      expectRightToEqual(results[0], [])
+      expectRightToEqual(results[0], { resources: [], diagnostics: [] })
     })
 
     it('handles multiple concurrent tracked responses independently', () => {
@@ -277,8 +279,8 @@ describe('CollectorBridgeMessageHandler.make: sniffer response tracker', () => {
       // Result events arrive in finish order: r2 first, then r1.
       const results = drainResults(handler)
       expect(results).toHaveLength(2)
-      expectRightToEqual(results[0], [{ name: 'Bob', age: 25 }])
-      expectRightToEqual(results[1], [{ name: 'Alice', age: 30 }])
+      expectRightToEqual(results[0], { resources: [{ name: 'Bob', age: 25 }], diagnostics: [] })
+      expectRightToEqual(results[1], { resources: [{ name: 'Alice', age: 30 }], diagnostics: [] })
     })
   })
 
@@ -614,3 +616,174 @@ const makeBareTracker = (options: {
       handleGeneratedSteps: options.handleGeneratedSteps,
     })
   )
+
+describe('CollectorBridgeMessageHandler.make: captureProvenance', () => {
+  type Hook = NonNullable<ScrapingPlan.ScrapingPlan<SimpleResources>['captureProvenance']>
+
+  const planWith = (
+    captureProvenance: Hook,
+    entity: EntityDefinition.EntityDefinition<SimpleResources> = SimpleEntity
+  ): ScrapingPlan.ScrapingPlan<SimpleResources> =>
+    ScrapingPlan.make<SimpleResources>({
+      name: 'CapturePlan',
+      entityDefinitions: [entity],
+      firstPage: { _tag: 'Uri', uri: 'https://example.com/' },
+      stepSequence: [],
+      captureProvenance,
+    })
+
+  /** A hook that link-annotates the parse output and mints one diagnostic. */
+  const annotatingHook: Hook = (runId, _response, produced) =>
+    Effect.succeed({
+      resources: produced.map((person) => ({ ...person, name: `${person.name}@${runId}` })),
+      diagnostics: [{ name: 'trace', age: 0 }],
+    })
+
+  const settle = (
+    handler: ReturnType<typeof makeSimpleHandler>,
+    options: { readonly id?: string; readonly body?: string } = {}
+  ): void => {
+    const id = options.id ?? 'r1'
+    runHandlerSync(
+      handler.ResponseStart(responseStart({ id, url: 'https://example.com/people/1' }))
+    )
+    runHandlerSync(
+      handler.ResponseData(responseData(id, options.body ?? '{"name":"Bob","age":25}'))
+    )
+    runHandlerSync(handler.ResponseFinished(responseFinished(id)))
+  }
+
+  it('invokes the hook with the run id, the response, and the parse output', () => {
+    const hook = vi.fn(annotatingHook)
+    const handler = makeSimpleHandler({ scrapingPlan: planWith(hook), runId: 'run-77' })
+
+    settle(handler)
+
+    expect(hook).toHaveBeenCalledOnce()
+    const [runId, response, produced] = hook.mock.calls[0] ?? []
+    expect(runId).toBe('run-77')
+    expect(response?.url).toBe('https://example.com/people/1')
+    expect(produced).toEqual([{ name: 'Bob', age: 25 }])
+    expectRightToEqual(drainResults(handler)[0], {
+      resources: [{ name: 'Bob@run-77', age: 25 }],
+      diagnostics: [{ name: 'trace', age: 0 }],
+    })
+  })
+
+  it('shares one run id across every settled response in a run', () => {
+    const hook = vi.fn(annotatingHook)
+    const handler = makeSimpleHandler({ scrapingPlan: planWith(hook), runId: 'run-a' })
+
+    settle(handler, { id: 'r1' })
+    settle(handler, { id: 'r2' })
+
+    expect(hook.mock.calls.map(([runId]) => runId)).toEqual(['run-a', 'run-a'])
+  })
+
+  it('never invokes the hook for a failed parse', () => {
+    const hook = vi.fn(annotatingHook)
+    const handler = makeSimpleHandler({ scrapingPlan: planWith(hook) })
+
+    settle(handler, { body: 'not json' })
+
+    expect(hook).not.toHaveBeenCalled()
+    expect(drainResults(handler)[0]?._tag).toBe('Left')
+  })
+
+  it('never invokes the hook for an empty parse — the line between provenance and recording', () => {
+    const emptyEntity: EntityDefinition.EntityDefinition<SimpleResources> = EntityDefinition.make({
+      name: 'EmptyEntity',
+      isFoundAt: (url) => /\/people\//.test(url),
+      parse: () => Effect.succeed([]),
+    })
+    const hook = vi.fn(annotatingHook)
+    const handler = makeSimpleHandler({ scrapingPlan: planWith(hook, emptyEntity) })
+
+    settle(handler)
+
+    expect(hook).not.toHaveBeenCalled()
+    expectRightToEqual(drainResults(handler)[0], { resources: [], diagnostics: [] })
+  })
+
+  describe('when the hook does not succeed', () => {
+    /**
+     * A failure, a synchronous throw, and a mid-effect defect all reach the
+     * same guard: the run must survive all three with the parse output intact.
+     */
+    const brokenHooks: readonly (readonly [string, Hook])[] = [
+      ['fails with its own error', () => Effect.fail({ _tag: 'TraceWriteFailed' })],
+      [
+        'throws synchronously',
+        () => {
+          throw new Error('capture blew up')
+        },
+      ],
+      ['dies mid-effect', () => Effect.die(new Error('capture died'))],
+    ]
+
+    for (const [description, hook] of brokenHooks) {
+      it(`keeps the parse output, adds no diagnostics, and WARNs when the hook ${description}`, async () => {
+        const handler = makeSimpleHandler({ scrapingPlan: planWith(hook) })
+
+        runHandlerSync(
+          handler.ResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/1' }))
+        )
+        runHandlerSync(handler.ResponseData(responseData('r1', '{"name":"Bob","age":25}')))
+        await runHandlerPromise(
+          handler.ResponseFinished(responseFinished('r1')).pipe(
+            LoggingLayerTest.expectToLog((logs) => {
+              const warnings = logs.filter((log) => log.level === 'WARN')
+              expect(warnings).toHaveLength(1)
+              // Names the response URL, so a warning in a busy run is attributable.
+              expect(warnings[0]?.message).toContain('capturing provenance for')
+              expect(warnings[0]?.message).toContain('https://example.com/people/1')
+            }),
+            Effect.scoped
+          )
+        )
+
+        expectRightToEqual(drainResults(handler)[0], {
+          resources: [{ name: 'Bob', age: 25 }],
+          diagnostics: [],
+        })
+      })
+    }
+  })
+
+  it('feeds followUpSteps the raw parse output, never the hook-rewritten batch', () => {
+    const followUpSteps = vi.fn((resources: readonly SimpleResources[]): readonly Step.Step[] =>
+      resources.map((person) => ({
+        _tag: 'Navigation',
+        name: `open ${person.name}`,
+        action: {
+          _tag: 'Open',
+          source: { _tag: 'Uri', uri: `https://example.com/${person.name}` },
+        },
+      }))
+    )
+    const generatingPersonEntity: EntityDefinition.EntityDefinition<SimpleResources> =
+      EntityDefinition.make({
+        name: 'GeneratingPersonEntity',
+        isFoundAt: (url) => /\/people\//.test(url),
+        parse: (response) =>
+          Effect.map(
+            Schema.decode(
+              Schema.parseJson(Schema.Struct({ name: Schema.String, age: Schema.Number }))
+            )(response.text()),
+            (person) => [person]
+          ),
+        followUpSteps,
+      })
+    const handler = makeSimpleHandler({
+      scrapingPlan: planWith(annotatingHook, generatingPersonEntity),
+    })
+
+    settle(handler)
+
+    expect(followUpSteps).toHaveBeenCalledOnce()
+    // The raw parse output — not the hook's rewritten resources, and never a
+    // diagnostic — so a generator that opens a link per produced resource does
+    // not also fire for a provenance record.
+    expect(followUpSteps.mock.calls[0]?.[0]).toEqual([{ name: 'Bob', age: 25 }])
+  })
+})

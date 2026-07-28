@@ -3,12 +3,21 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
+import type { CaptureHeaders } from '../capture/index.ts'
 import { fromDocumentReference, isWebTrace } from '../codec/index.ts'
 import { traceResourceId } from '../trace-exchange.ts'
-import type { CaptureInput, ReferencableResource } from './capture-provenance.ts'
-import { captureProvenance, referenceTo, withMetaSource } from './capture-provenance.ts'
+import type { CapturedResponse, ReferencableResource } from './capture-provenance.ts'
+import {
+  captureProvenance,
+  makeFhirProvenanceCapture,
+  referenceTo,
+  toExchangeFields,
+  withMetaSource,
+} from './capture-provenance.ts'
 
 const STARTED_AT = DateTime.unsafeMake('2026-07-27T10:00:00.000Z')
+
+const SESSION_ID = 'fhir-r4-run-1'
 
 const emptyMeta = {
   lastUpdated: null,
@@ -25,21 +34,34 @@ const observation = (id: string | null): ReferencableResource => ({
   meta: null,
 })
 
-const input = (
+const response = (
   bytes: Uint8Array<ArrayBuffer>,
-  overrides: Partial<{ sessionId: string }> = {}
-): CaptureInput => ({
-  sessionId: overrides.sessionId ?? 'fhir-r4-run-1',
-  requestId: 'req-7',
+  overrides: Partial<{ requestId: string; headers: CaptureHeaders }> = {}
+): CapturedResponse => ({
+  id: overrides.requestId ?? 'req-7',
   url: 'https://portal.example.org/Observation?subject=abc',
   status: 200,
   statusText: 'OK',
-  headers: [['content-type', 'application/fhir+json']] as const,
+  headers: overrides.headers ?? ([['content-type', 'application/fhir+json']] as const),
   startedAt: STARTED_AT,
-  bytes,
+  bytes: () => bytes,
 })
 
 const utf8 = (text: string): Uint8Array<ArrayBuffer> => new TextEncoder().encode(text)
+
+describe('toExchangeFields', () => {
+  it('should project the response facts, renaming only the correlation id', () => {
+    expect(toExchangeFields(SESSION_ID, response(utf8('{}')))).toEqual({
+      sessionId: SESSION_ID,
+      requestId: 'req-7',
+      url: 'https://portal.example.org/Observation?subject=abc',
+      status: 200,
+      statusText: 'OK',
+      headers: [['content-type', 'application/fhir+json']],
+      startedAt: STARTED_AT,
+    })
+  })
+})
 
 describe('referenceTo', () => {
   it('should build a relative reference from the resource type and id', () => {
@@ -85,7 +107,8 @@ describe('captureProvenance', () => {
     big.fill(7)
     const capture = await Effect.runPromise(
       captureProvenance(
-        { ...input(big), headers: [['content-type', 'application/octet-stream']] },
+        SESSION_ID,
+        response(big, { headers: [['content-type', 'application/octet-stream']] }),
         [observation('abc-1')]
       )
     )
@@ -98,14 +121,14 @@ describe('captureProvenance', () => {
   it('should store a body that is not UTF-8 decodable rather than dropping it', async () => {
     const invalid = Uint8Array.from([0xff, 0xfe, 0xfd])
     const capture = await Effect.runPromise(
-      captureProvenance(input(invalid), [observation('abc-1')])
+      captureProvenance(SESSION_ID, response(invalid), [observation('abc-1')])
     )
     expect(capture.trace.content[0]?.attachment.data).toBe(Encoding.encodeBase64(invalid))
   })
 
   it('should name every produced resource in context.related', async () => {
     const capture = await Effect.runPromise(
-      captureProvenance(input(utf8('{}')), [observation('a'), observation('b')])
+      captureProvenance(SESSION_ID, response(utf8('{}')), [observation('a'), observation('b')])
     )
     expect(capture.trace.context?.related.map((reference) => reference.reference)).toEqual([
       'Observation/a',
@@ -115,16 +138,16 @@ describe('captureProvenance', () => {
 
   it('should point every produced resource back at the trace', async () => {
     const capture = await Effect.runPromise(
-      captureProvenance(input(utf8('{}')), [observation('a'), observation('b')])
+      captureProvenance(SESSION_ID, response(utf8('{}')), [observation('a'), observation('b')])
     )
-    const expected = `DocumentReference/${traceResourceId({ sessionId: 'fhir-r4-run-1', requestId: 'req-7' })}`
+    const expected = `DocumentReference/${traceResourceId({ sessionId: SESSION_ID, requestId: 'req-7' })}`
     expect(capture.linked.map((resource) => resource.meta?.source)).toEqual([expected, expected])
     expect(capture.trace.id).toBe('fhir-r4-run-1-req-7')
   })
 
   it('should skip an id-less resource in the forward link without dropping it from the output', async () => {
     const capture = await Effect.runPromise(
-      captureProvenance(input(utf8('{}')), [observation('a'), observation(null)])
+      captureProvenance(SESSION_ID, response(utf8('{}')), [observation('a'), observation(null)])
     )
     expect(capture.trace.context?.related.map((reference) => reference.reference)).toEqual([
       'Observation/a',
@@ -138,14 +161,14 @@ describe('captureProvenance', () => {
   // on the shape of the encoded resource.
   it('should round-trip the provenance link back through the codec', async () => {
     const capture = await Effect.runPromise(
-      captureProvenance(input(utf8('{"resourceType":"Bundle"}')), [
+      captureProvenance(SESSION_ID, response(utf8('{"resourceType":"Bundle"}')), [
         observation('a'),
         observation('b'),
       ])
     )
     const exchange = await Effect.runPromise(fromDocumentReference(capture.trace))
     expect(exchange.producedResources).toEqual(['Observation/a', 'Observation/b'])
-    expect(exchange.sessionId).toBe('fhir-r4-run-1')
+    expect(exchange.sessionId).toBe(SESSION_ID)
     expect(exchange.requestId).toBe('req-7')
   })
 
@@ -153,7 +176,7 @@ describe('captureProvenance', () => {
   // trace has to answer that predicate or it is invisible in the app.
   it('should be found by the same category predicate the viewer searches on', async () => {
     const capture = await Effect.runPromise(
-      captureProvenance(input(utf8('{}')), [observation('a')])
+      captureProvenance(SESSION_ID, response(utf8('{}')), [observation('a')])
     )
     expect(isWebTrace(capture.trace)).toBe(true)
   })
@@ -162,7 +185,7 @@ describe('captureProvenance', () => {
   // subject keeps them out of `Patient/$everything` and clinical exports.
   it('should leave subject unset', async () => {
     const capture = await Effect.runPromise(
-      captureProvenance(input(utf8('{}')), [observation('a')])
+      captureProvenance(SESSION_ID, response(utf8('{}')), [observation('a')])
     )
     // Asserted on the JSON actually written: the encoder leaves the key holding
     // `undefined`, which `JSON.stringify` drops. Asserting on the object alone
@@ -172,7 +195,7 @@ describe('captureProvenance', () => {
 
   it('should not claim a transfer time it did not measure', async () => {
     const capture = await Effect.runPromise(
-      captureProvenance(input(utf8('{}')), [observation('a')])
+      captureProvenance(SESSION_ID, response(utf8('{}')), [observation('a')])
     )
     const exchange = await Effect.runPromise(fromDocumentReference(capture.trace))
     expect(exchange.timings).toEqual({ wait: null, receive: null })
@@ -189,10 +212,10 @@ describe('captureProvenance', () => {
           fc.pre(first !== second)
           const shared = observation('shared-1')
           const list = await Effect.runPromise(
-            captureProvenance({ ...input(utf8('[]')), requestId: first }, [shared])
+            captureProvenance(SESSION_ID, response(utf8('[]'), { requestId: first }), [shared])
           )
           const detail = await Effect.runPromise(
-            captureProvenance({ ...input(utf8('{}')), requestId: second }, [shared])
+            captureProvenance(SESSION_ID, response(utf8('{}'), { requestId: second }), [shared])
           )
           // Distinct traces...
           expect(list.trace.id).not.toBe(detail.trace.id)
@@ -207,5 +230,31 @@ describe('captureProvenance', () => {
       ),
       { numRuns: numRunsFor({ base: 60 }) }
     )
+  })
+})
+
+describe('makeFhirProvenanceCapture', () => {
+  const hook = makeFhirProvenanceCapture('fhir-r4')
+
+  it('should prefix the framework run id into the session id', async () => {
+    const result = await Effect.runPromise(hook('run-9', response(utf8('{}')), [observation('a')]))
+    const trace = result.diagnostics[0]
+    if (trace === undefined) {
+      throw new Error('expected the hook to produce a trace')
+    }
+    expect(trace.id).toBe('fhir-r4-run-9-req-7')
+    const exchange = await Effect.runPromise(fromDocumentReference(trace))
+    expect(exchange.sessionId).toBe('fhir-r4-run-9')
+  })
+
+  it('should hand back the linked resources and exactly one trace as a diagnostic', async () => {
+    const result = await Effect.runPromise(
+      hook('run-9', response(utf8('{}')), [observation('a'), observation('b')])
+    )
+    expect(result.diagnostics).toHaveLength(1)
+    expect(result.resources.map((resource) => resource.meta?.source)).toEqual([
+      'DocumentReference/fhir-r4-run-9-req-7',
+      'DocumentReference/fhir-r4-run-9-req-7',
+    ])
   })
 })

@@ -1,7 +1,8 @@
-import type { ScrapingPlan } from 'collector-fundamentals/model'
 import { UrlMatch } from 'collector-fundamentals/model'
-import { Arbitrary, Duration, Schema } from 'effect'
+import { makeRemoteResponse } from 'collector-fundamentals/test-helpers'
+import { Arbitrary, Duration, Effect, Schema } from 'effect'
 import * as fc from 'fast-check'
+import { Patient } from 'fhir-r4/resources'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -10,24 +11,14 @@ import { FhirR4CollectorDescriptor, InstanceConfig, defaultConfig, scrapingPlan 
 const { expectRightToEqual, expectLeftToEqual } = utilityExpectations(expect)
 
 /**
- * The parts of a plan that identify *which factory built it for which config*,
- * with the per-build parts projected away.
- *
- * `scrapingPlan` mints a fresh provenance run id per build and closes every
- * entity over it, so two builds from one config are structurally unequal by
- * construction (different id, different capturing `parse` closure). Deep
- * equality would assert "the factory is pure", which is deliberately no longer
- * true — see the `scrapingPlan` remarks and the plan-purity trap in
- * [slices/collector/AGENTS.md](../../AGENTS.md). Everything a wrong factory
- * would get wrong survives the projection: the plan name, the entity names, the
- * step sequence, and the config-derived `firstPage`.
+ * The factory is deterministic given `(config, runId)` and its function-valued
+ * fields (entities, the provenance hook) are module-level singletons, so plans
+ * from one config deep-equal each other — no identity projection needed.
  */
-const planIdentity = (plan: ScrapingPlan.ScrapingPlan<unknown>): Record<string, unknown> => ({
-  name: plan.name,
-  firstPage: plan.firstPage,
-  steps: plan.stepSequence,
-  entityNames: plan.entityDefinitions.map((entity) => entity.name),
-})
+const FIXED_RUN_ID = 'test-run'
+
+/** A minimal decoded Patient for exercising the provenance hook's wiring. */
+const patient = Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id: 'p1' })
 
 describe('InstanceConfig', () => {
   it('decodes defaultConfig without error', () => {
@@ -108,11 +99,8 @@ describe('FhirR4CollectorDescriptor', () => {
     expect(FhirR4CollectorDescriptor.tag).toBe('fhir-r4')
     expect(FhirR4CollectorDescriptor.configSchema).toBe(InstanceConfig)
     expect(FhirR4CollectorDescriptor.defaultConfig).toEqual(defaultConfig)
-    // The plan factory is the module's `scrapingPlan` — an identity projection
-    // of a produced plan stands in for identity (the factory is per-run impure;
-    // see `planIdentity`).
-    expect(planIdentity(FhirR4CollectorDescriptor.makeScrapingPlan(defaultConfig))).toEqual(
-      planIdentity(scrapingPlan(defaultConfig))
+    expect(FhirR4CollectorDescriptor.makeScrapingPlan(defaultConfig, FIXED_RUN_ID)).toEqual(
+      scrapingPlan(defaultConfig, FIXED_RUN_ID)
     )
   })
 
@@ -134,9 +122,10 @@ describe('FhirR4CollectorDescriptor', () => {
 
   it('matches its own configs and rejects foreign ones via resourcePersistenceRuntimeIfMatches', () => {
     // The matched runtime seals `Resources`; reach the plan only through `run`.
+    // The runtime minted its own run id, so compare against a plan built with it.
     const runtime = FhirR4CollectorDescriptor.resourcePersistenceRuntimeIfMatches(defaultConfig)
-    expect(runtime?.run((context) => planIdentity(context.scrapingPlan))).toEqual(
-      planIdentity(scrapingPlan(defaultConfig))
+    expect(runtime?.run((context) => context.scrapingPlan)).toEqual(
+      runtime?.run((context) => scrapingPlan(defaultConfig, context.runId))
     )
     expect(
       FhirR4CollectorDescriptor.resourcePersistenceRuntimeIfMatches({
@@ -154,7 +143,7 @@ describe('scrapingPlan', () => {
   // inline-`Html` wrapper — or a dropped `?_format=json` / mis-encoded
   // `subject:Patient` query — would silently change what page loads.
   it('mounts the Patient endpoint as the first page via a direct Uri', () => {
-    const plan = scrapingPlan(defaultConfig)
+    const plan = scrapingPlan(defaultConfig, FIXED_RUN_ID)
     expect(plan.firstPage).toEqual({
       _tag: 'Uri',
       uri: 'https://r4.smarthealthit.org/Patient/8c0f46f4-dd7b-4a5f-bd35-f0f41a2f8882?_format=json',
@@ -162,7 +151,7 @@ describe('scrapingPlan', () => {
   })
 
   it('navigates to the Observation endpoint as an Open step, then holds until it settles', () => {
-    const plan = scrapingPlan(defaultConfig)
+    const plan = scrapingPlan(defaultConfig, FIXED_RUN_ID)
     expect(plan.stepSequence).toEqual([
       {
         _tag: 'Navigation',
@@ -187,16 +176,35 @@ describe('scrapingPlan', () => {
     ])
   })
 
+  it('states the provenance hook, which mints fhir-r4-prefixed session ids', async () => {
+    // The hook itself is exercised in web-trace-core's suite; here pin that
+    // the plan wires it and that this collector's traces carry its prefix.
+    const plan = scrapingPlan(defaultConfig, FIXED_RUN_ID)
+    // Declared as a method for covariance; it is pure and this-free, so the
+    // reference is safe to bind.
+    // oxlint-disable-next-line typescript-eslint/unbound-method -- pure, this-free method
+    const hook = plan.captureProvenance
+    expect(hook).toBeDefined()
+    const response = makeRemoteResponse({ id: 'req-1' })
+    const result = await Effect.runPromise(
+      hook?.(FIXED_RUN_ID, response, [patient]) ?? Effect.die('hook asserted defined above')
+    )
+    expect(result.diagnostics.map((trace) => trace.id)).toEqual(['fhir-r4-test-run-req-1'])
+  })
+
   it('percent-encodes a patientId that contains URL-significant characters', () => {
     // patientId is schema-constrained to [A-Za-z0-9.-], but the plan
     // applies encodeURIComponent defensively for values arriving through
     // an untyped path — pin that the encoding actually happens by feeding
     // a value with URL-significant characters past the type.
-    const plan = scrapingPlan({
-      _tag: 'fhir-r4',
-      rootUrl: 'https://example.com',
-      patientId: 'a/b c',
-    })
+    const plan = scrapingPlan(
+      {
+        _tag: 'fhir-r4',
+        rootUrl: 'https://example.com',
+        patientId: 'a/b c',
+      },
+      FIXED_RUN_ID
+    )
     expect(plan.firstPage).toEqual({
       _tag: 'Uri',
       uri: 'https://example.com/Patient/a%2Fb%20c?_format=json',

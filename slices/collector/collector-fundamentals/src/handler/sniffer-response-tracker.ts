@@ -1,5 +1,6 @@
 import { type CancelSnifferRequestMessage } from 'browser-sniffer-core'
 import {
+  Cause,
   Data,
   DateTime,
   Effect,
@@ -60,13 +61,28 @@ type SniffFailure = {
 }
 
 /**
- * One settled outcome for a sniffed request, the element type of the run's
- * `requestSniffingResults` stream: `Right` a decoded resource batch, `Left` a
- * {@link SniffFailure}. The tracker folds the response URL into the `Left` at
- * emit time (it holds the `RemoteResponse`), so consumers get everything they
- * need without the full response object — the runner reads only the URL.
+ * A settled request's decoded output, split by what the run owes the caller
+ * for it. `resources` is the primary output — the runner persists it and
+ * reports its write failures. `diagnostics` are records *about* the run (a
+ * provenance trace, say) minted by the plan's `captureProvenance` hook; the
+ * runner persists them best-effort and a failed diagnostic write never reaches
+ * the run's summary. The split is structural — decided where the batch is
+ * built — so no downstream consumer re-derives it from resource shapes.
  */
-type SniffResult<TResources> = Either.Either<readonly TResources[], SniffFailure>
+interface SniffedBatch<TResources> {
+  readonly resources: readonly TResources[]
+  readonly diagnostics: readonly TResources[]
+}
+
+/**
+ * One settled outcome for a sniffed request, the element type of the run's
+ * `requestSniffingResults` stream: `Right` a decoded {@link SniffedBatch},
+ * `Left` a {@link SniffFailure}. The tracker folds the response URL into the
+ * `Left` at emit time (it holds the `RemoteResponse`), so consumers get
+ * everything they need without the full response object — the runner reads
+ * only the URL.
+ */
+type SniffResult<TResources> = Either.Either<SniffedBatch<TResources>, SniffFailure>
 
 /**
  * The response-tracker half of {@link CollectorBridgeMessageHandler}: the five
@@ -120,11 +136,24 @@ const make = <TResources>({
   sendMessage,
   handleNewSniffResult,
   handleGeneratedSteps,
+  captureProvenance,
 }: {
   matchEntity: (url: string) => Option.Option<EntityDefinition.EntityDefinition<TResources>>
   sendMessage: (
     message: typeof CancelSnifferRequestMessage.Type
   ) => Effect.Effect<void, never, never>
+  /**
+   * The plan's provenance hook with the run id already applied (the
+   * composition owns the id; the tracker stays plan-decoupled). Invoked only
+   * for a parse that succeeded with a non-empty batch — the one moment the
+   * "this response → these resources" pairing exists. The tracker enforces
+   * every rule that keeps it a diagnostic: a failing or dying hook is
+   * WARN-logged and the parse output flows on unchanged.
+   */
+  captureProvenance?: (
+    response: Response.RemoteResponse,
+    produced: readonly TResources[]
+  ) => Effect.Effect<SniffedBatch<TResources>, unknown>
   /**
    * Publish one settled {@link SniffResult} onto the {@link RunLifecycleState}'s
    * stream. Offers the result, then runs the lifecycle's stream-close check —
@@ -198,7 +227,7 @@ const make = <TResources>({
       id: string,
       response: Response.RemoteResponse,
       result: Either.Either<
-        readonly TResources[],
+        SniffedBatch<TResources>,
         ParseResult.ParseError | UnknownException | SnifferCancelled
       >
     ): Effect.Effect<void, never, never> =>
@@ -314,9 +343,38 @@ const make = <TResources>({
               )
             )
           }
+          // Capture provenance *after* generation (the hook must never change
+          // what `followUpSteps` sees) and *before* the drop-then-offer. The
+          // rules that keep the hook a diagnostic are enforced here, once, for
+          // every plan: a failed parse was never captured (this branch is
+          // Right-only), an empty parse is never captured — that rule is the
+          // line between deliberate provenance collection and bulk recording —
+          // and a failing or *dying* hook is WARN-logged and the parse output
+          // flows on unchanged, so a diagnostic can never take a run down.
+          // `Effect.suspend` turns a synchronously-throwing hook into a caught
+          // defect rather than an escape from this pipeline.
+          const settled = Either.isLeft(result)
+            ? Either.left(result.left)
+            : Either.right(
+                yield* result.right.length === 0 || captureProvenance === undefined
+                  ? Effect.succeed<SniffedBatch<TResources>>({
+                      resources: result.right,
+                      diagnostics: [],
+                    })
+                  : Effect.suspend(() => captureProvenance(response, result.right)).pipe(
+                      Effect.catchAllCause((cause) =>
+                        Effect.as(
+                          Effect.logWarning(
+                            `CollectorBridgeMessageHandler.ResponseFinished: capturing provenance for ${response.url} failed; keeping the parsed resources (${Cause.pretty(cause)})`
+                          ),
+                          { resources: result.right, diagnostics: [] }
+                        )
+                      )
+                    )
+              )
           // The parse is span-wrapped and latency-bearing, so the drop-then-offer
           // ordering matters most here (see `offerSniffResultAndUntrack`).
-          yield* offerSniffResultAndUntrack(event.id, response, result)
+          yield* offerSniffResultAndUntrack(event.id, response, settled)
         })
       )
 
@@ -400,5 +458,11 @@ const make = <TResources>({
     }
   })
 
-export type { IncompleteSniffedRequest, SnifferResponseTracker, SniffFailure, SniffResult }
+export type {
+  IncompleteSniffedRequest,
+  SniffedBatch,
+  SnifferResponseTracker,
+  SniffFailure,
+  SniffResult,
+}
 export { make, SnifferCancelled }

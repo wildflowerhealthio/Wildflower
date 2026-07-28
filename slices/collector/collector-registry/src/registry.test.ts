@@ -77,15 +77,13 @@ describe('resourcePersistenceRuntimeForConfig', () => {
    * The parts of a plan that identify *which collector built it for which
    * config*, with the per-build parts projected away.
    *
-   * A plan factory is not obliged to be pure: `web-trace-collector` mints a
-   * fresh session id per build (that is what stops two recordings of one remote
-   * from upserting over each other), and `fhir-r4-client-collector` /
-   * `rexall-be-well-collector` each mint a provenance run id per build (so the
-   * traces of one sync are grouped and cannot upsert over the previous run's).
-   * Each closes its entities over that id, so two builds from the same config
-   * are structurally unequal by construction — different id, different `parse`
-   * closure. Deep equality would therefore assert "the factory is pure", which
-   * is not the property this test is about.
+   * Every plan factory is deterministic given `(config, runId)` — the
+   * framework mints the id at dispatch — but the runtime's id is fresh per
+   * `resourcePersistenceRuntimeIfMatches` call, and `web-trace-collector`'s
+   * recording entity closes over a session id derived from it. Two dispatches
+   * of the same config therefore differ by that closure, so the union-wide
+   * sweep below compares an identity projection. (The per-collector suites
+   * deep-equal plans against a fixed run id.)
    *
    * What survives the projection still fails loudly on a mis-dispatch: a plan
    * from the wrong descriptor has a different `name`, different entity names,
@@ -110,11 +108,13 @@ describe('resourcePersistenceRuntimeForConfig', () => {
       patientId: '12345',
     })
 
-    // Same `name` + same step sequence + a `firstPage` pointed at the
-    // configured patientUrl pin the dispatch. Compared as an identity
-    // projection rather than deep-equalled, because the fhir-r4 plan factory
-    // mints a fresh provenance run id per build — see `planIdentity` above.
-    expect(planIdentity(planFor(config))).toEqual(planIdentity(fhirR4ScrapingPlan(config)))
+    // The fhir-r4 factory is deterministic given `(config, runId)` and its
+    // function-valued plan fields are module singletons, so the dispatched
+    // plan deep-equals one built directly with the runtime's own run id.
+    const runtime = resourcePersistenceRuntimeForConfig(config)
+    expect(runtime.run((context) => context.scrapingPlan)).toEqual(
+      runtime.run((context) => fhirR4ScrapingPlan(config, context.runId))
+    )
   })
 
   it('dispatches every schema-conformant config to its descriptor plan', () => {
