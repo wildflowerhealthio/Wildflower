@@ -11,10 +11,10 @@ import { type Arbitrary, DateTime, type FastCheck, Option, ParseResult, Schema }
  * complete or partial — to the same shape: a comparison {@link Prefix}, the
  * literal exactly as authored, and the closed interval that literal denotes.
  *
- * - `ge2026` → `{ prefix: some('ge'), value: '2026', lowerBound: 2026-01-01T00:00:00.000Z,
- *   upperBound: 2026-12-31T23:59:59.999Z }`
- * - `2026-07` → `{ prefix: none(), value: '2026-07', lowerBound: 2026-07-01T00:00:00.000Z,
- *   upperBound: 2026-07-31T23:59:59.999Z }`
+ * - `ge2026` →
+ *   `{ prefix: some('ge'), value: '2026', lowerBound: 2026-01-01T00:00:00.000Z, upperBound: 2026-12-31T23:59:59.999Z }`
+ * - `2026-07` →
+ *   `{ prefix: none(), value: '2026-07', lowerBound: 2026-07-01T00:00:00.000Z, upperBound: 2026-07-31T23:59:59.999Z }`
  *
  * @remarks
  * The bounds follow the spec's rule for filling unspecified levels: the lower

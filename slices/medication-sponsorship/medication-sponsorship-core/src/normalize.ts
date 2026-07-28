@@ -42,7 +42,7 @@ const normalizeName = (value: string): string =>
     .filter((token) => token.length > 0 && !isNoiseToken(token))
     .join(' ')
 
-/** Split a name into its normalized tokens (empty input -> no tokens). */
+/** Split a name into its normalized tokens (empty input → no tokens). */
 const tokenize = (value: string): readonly string[] => {
   const normalized = normalizeName(value)
   return normalized.length === 0 ? [] : normalized.split(' ')

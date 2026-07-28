@@ -50,6 +50,7 @@ import * as State from './state.ts'
  * must go through `Drained` rather than completing directly.
  *
  * Transition table (see [Handler Explanation](../../../docs/Handler%20Explanation.md)):
+ * ```text
  *   AwaitingPageLoaded(q) ─PageLoaded→ drain(q, url)                    (start-up: first settled load)
  *   DelayPending(q)       ─PageLoaded→ DelayPending(q)                  (no re-arm)
  *   DelayPending(q)       ─DelayTimerFired (gen match)→ drain(q, ⊥)
@@ -67,9 +68,11 @@ import * as State from './state.ts'
  *   <not parked>          ─UserDismissed / SnifferDisposed→ no-op       (silent: both also occur at teardown)
  *   Done                  ─PageLoaded / StepsGenerated→ WARN-drop
  *   any                   ─Stop→ AwaitingPageLoaded(initialQueue)       (interrupt any pending timer)
+ * ```
  *
  * where `drain(q, url)` pops entries front-to-back, dispatching each
  * `Navigation` and continuing, until it rests:
+ * ```text
  *   q empty                             → Drained + RequestCompletionCheck (ask the lifecycle to confirm completion)
  *   Delay head                          → arm timer, DelayPending(tail)
  *   AwaitPageSettled head, url matches  → continue with tail             (already on the awaited page)
@@ -77,6 +80,7 @@ import * as State from './state.ts'
  *   AwaitUserDismiss head               → AwaitingUserDismiss(q) + timeout (head kept, parks for UserDismissed)
  *   EnsureWindowVisible head            → dispatch EnsureSnifferVisible, continue with tail (fire-and-advance)
  *   Navigation head                     → dispatch action, continue with tail
+ * ```
  */
 
 /** A pure transition result: the next state and the effects it requests. */

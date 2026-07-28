@@ -252,8 +252,8 @@ const wildflowerSectionForDraft = (
  * surfaces resources the draft grants beyond `requested` and rows the user added via
  * "+ Add rule" (`extra`), so the **expandable** picker can build a grant up (not only prune it).
  * `activeContext` is the FHIR context the subject selector currently targets (shown even when
- * empty). Reduces to {@link listFromRequest} in clamped mode (`available = requested`, `draft ⊆
- * requested`, empty `extra`, no `activeContext`).
+ * empty). Reduces to {@link listFromRequest} in clamped mode
+ * (`available = requested`, `draft ⊆ requested`, empty `extra`, no `activeContext`).
  */
 const listForDraft = (
   request: ScopeRequest.ScopeRequest,

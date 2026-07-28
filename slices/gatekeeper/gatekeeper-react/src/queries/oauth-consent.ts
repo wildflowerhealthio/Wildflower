@@ -33,9 +33,10 @@ const EXPIRED_CONSENT_MESSAGE =
   'This authorization request has expired or was already completed. Return to the app and try connecting again.'
 
 /**
- * The server treats an expired request as not found (`load_pending_
- * authorization_code_request` enforces the 5-minute TTL at read time), so a
- * consent screen left open past the deadline 404s on approve/deny. Fold that
+ * The server treats an expired request as not found
+ * (`load_pending_authorization_code_request` enforces the 5-minute TTL at read
+ * time), so a consent screen left open past the deadline 404s on
+ * approve/deny. Fold that
  * failure into the result's `error` arm with copy that tells the user the way
  * out — the raw "OAuthConsentNotFound" would read as a dead end. Exported as
  * the mutation's testable seam; other failures pass through untouched.

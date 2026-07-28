@@ -20,8 +20,8 @@ interface AccountFormScreenProps<T extends CollectorTag> {
   /** Mirrors the owning mutation's pending state. */
   readonly disabled: boolean
   /**
-   * The owning mutation's error, surfaced in the banner — a `403
-   * InsufficientScope` renders the permission surface (naming the missing
+   * The owning mutation's error, surfaced in the banner — a
+   * `403 InsufficientScope` renders the permission surface (naming the missing
    * scopes), anything else a plain message; `null`/absent when idle.
    */
   readonly error: unknown
@@ -34,7 +34,7 @@ interface AccountFormScreenProps<T extends CollectorTag> {
  * The generic account create/edit screen. It owns the chrome shared across
  * every collector — the page header, the type badge, the account-name field,
  * the mutation-error banner, and the Save/Cancel row — and hosts the
- * per-collector {@link configFormForTag config form} for `tag`, handing it the
+ * per-collector {@link configFormForTag | config form} for `tag`, handing it the
  * name field + type badge as its `header` and the Save/Cancel row as its
  * `footer`. The config form owns its fields and decodes on submit; this screen
  * only fills in the account name (defaulting an empty name to

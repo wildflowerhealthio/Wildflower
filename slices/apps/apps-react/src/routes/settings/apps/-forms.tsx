@@ -34,7 +34,8 @@ interface CloudAppFieldsProps {
  * The four controlled inputs a cloud app carries (name / subtitle / launch URL /
  * requires-tunnel), used by both the create page and the per-app edit page. The
  * URL description spells out the `{origin}` / `{launch}` tokens the server
- * substitutes at launch (matching {@link import('apps-core/http-api-definition').Schemas.AppUrlSchema}).
+ * substitutes at launch (matching `apps-core/http-api-definition`'s
+ * `Schemas.AppUrlSchema`).
  */
 const CloudAppFields = ({ fields, onChange, disabled }: CloudAppFieldsProps): JSX.Element => (
   <>
