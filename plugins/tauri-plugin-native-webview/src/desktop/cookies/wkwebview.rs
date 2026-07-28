@@ -183,24 +183,62 @@ fn default_cookie_store(mtm: MainThreadMarker) -> Retained<WKHTTPCookieStore> {
     }
 }
 
-/// Write every cookie in `specs` into the default cookie store and run
-/// `on_committed` once the last write has landed.
+/// The cookie writes still in flight, and what to run when the last one lands.
 ///
-/// MUST be called on the main thread (`mtm` is the witness). Nothing here
-/// blocks: each `setCookie:completionHandler:` returns immediately, the
-/// completions arrive on later, non-nested main-loop iterations, and an
-/// [`AtomicUsize`] counts them down so `on_committed` runs exactly once — after
-/// the final write. That is the whole point of this module; see its doc for
-/// the deadlock it avoids.
+/// `setCookie:completionHandler:` is fired once per cookie and each completion
+/// arrives on its own main-loop iteration — WebKit offers no "all done" signal —
+/// so the only way to sequence work after the whole batch is to count the
+/// completions down. Shared by every completion block, hence the [`Arc`] that
+/// [`Self::new`] hands back.
 ///
-/// `on_committed` still runs when `specs` is empty or every spec is rejected, so
-/// a caller that parks a webview at `about:blank` pending the seed is never left
-/// stranded there.
-fn seed_default_store_then<F>(specs: &[CookieSpec], mtm: MainThreadMarker, on_committed: F)
-where
-    F: FnOnce() + 'static,
-{
-    let cookies: Vec<Retained<NSHTTPCookie>> = specs
+/// Nothing here waits. Counting is what *replaces* waiting: blocking for these
+/// completions is precisely the deadlock this module exists to avoid (see the
+/// module doc).
+struct PendingWrites<F> {
+    /// Writes not yet reported complete. Reaching zero is the trigger.
+    outstanding: AtomicUsize,
+    /// The continuation, held in a slot the last completion takes it out of: it
+    /// is `FnOnce`, but an Objective-C block is `Fn` and so cannot consume its
+    /// captures. Every completion runs on the main thread, so this `Mutex` is
+    /// never actually contended — it is here for shared mutability, not to
+    /// arbitrate between threads.
+    on_all_committed: Mutex<Option<F>>,
+}
+
+impl<F: FnOnce()> PendingWrites<F> {
+    /// Expect `count` completions, then run `on_all_committed`.
+    fn new(count: usize, on_all_committed: F) -> Arc<Self> {
+        Arc::new(Self {
+            outstanding: AtomicUsize::new(count),
+            on_all_committed: Mutex::new(Some(on_all_committed)),
+        })
+    }
+
+    /// Report one write as committed, running the continuation if this was the
+    /// last one outstanding. Every completion block calls exactly this.
+    fn record_commit(&self) {
+        // `fetch_sub` returns the count from *before* the subtraction, so a
+        // previous value of 1 means this call is the one that reached zero.
+        let was_last = self.outstanding.fetch_sub(1, Ordering::SeqCst) == 1;
+        if !was_last {
+            return;
+        }
+        let Ok(mut slot) = self.on_all_committed.lock() else {
+            log::error!("[native-webview] cookie seed continuation slot poisoned");
+            return;
+        };
+        // `take` makes the run-once guarantee structural rather than a promise
+        // the count has to keep.
+        if let Some(run) = slot.take() {
+            run();
+        }
+    }
+}
+
+/// Build the `NSHTTPCookie` batch for `specs`, logging and dropping any single
+/// cookie Foundation rejects rather than failing the whole launch.
+fn cookies_from_specs(specs: &[CookieSpec]) -> Vec<Retained<NSHTTPCookie>> {
+    specs
         .iter()
         .filter_map(|spec| {
             let cookie = cookie_from_spec(spec);
@@ -212,38 +250,37 @@ where
             }
             cookie
         })
-        .collect();
+        .collect()
+}
 
+/// Write every cookie in `specs` into the default cookie store and run
+/// `on_committed` once the last write has landed.
+///
+/// MUST be called on the main thread (`mtm` is the witness). Nothing here
+/// blocks: each `setCookie:completionHandler:` returns immediately and the
+/// completions arrive on later, non-nested main-loop iterations, with
+/// [`PendingWrites`] counting them down. That is the whole point of this module;
+/// see its doc for the deadlock it avoids.
+///
+/// `on_committed` still runs when `specs` is empty or every spec is rejected, so
+/// a caller that parks a webview at `about:blank` pending the seed is never left
+/// stranded there.
+fn seed_default_store_then<F>(specs: &[CookieSpec], mtm: MainThreadMarker, on_committed: F)
+where
+    F: FnOnce() + 'static,
+{
+    let cookies = cookies_from_specs(specs);
     if cookies.is_empty() {
         on_committed();
         return;
     }
 
     let store = default_cookie_store(mtm);
-    let remaining = Arc::new(AtomicUsize::new(cookies.len()));
-    // `on_committed` is `FnOnce` but a block is `Fn`, so it lives in a slot the
-    // winning completion takes it out of. Every completion runs on the main
-    // thread, so the lock is never actually contended — it is here to satisfy
-    // the shared-mutability requirement, not to arbitrate.
-    let pending: Arc<Mutex<Option<F>>> = Arc::new(Mutex::new(Some(on_committed)));
+    let pending = PendingWrites::new(cookies.len(), on_committed);
 
     for cookie in &cookies {
-        let remaining = Arc::clone(&remaining);
         let pending = Arc::clone(&pending);
-        let completion: RcBlock<dyn Fn()> = RcBlock::new(move || {
-            // `fetch_sub` returns the *previous* value, so `1` means this
-            // completion is the last one outstanding.
-            if remaining.fetch_sub(1, Ordering::SeqCst) != 1 {
-                return;
-            }
-            let Ok(mut slot) = pending.lock() else {
-                log::error!("[native-webview] cookie seed completion slot poisoned");
-                return;
-            };
-            if let Some(run) = slot.take() {
-                run();
-            }
-        });
+        let completion: RcBlock<dyn Fn()> = RcBlock::new(move || pending.record_commit());
         // SAFETY: `cookie` outlives the call (WebKit copies it), and the block
         // is retained by the runtime for as long as the completion is pending.
         #[allow(unsafe_code)]
@@ -289,6 +326,48 @@ fn log_default_store_names(domain: String, mtm: MainThreadMarker) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Drive a [`PendingWrites`] the way WebKit drives the real completion
+    /// blocks: build one caller per expected write, then fire them in
+    /// `fire_order`. Returns how many times the continuation ran.
+    fn run_completions(count: usize, fire_order: &[usize]) -> usize {
+        let runs = Arc::new(AtomicUsize::new(0));
+        let runs_in_continuation = Arc::clone(&runs);
+        let pending = PendingWrites::new(count, move || {
+            runs_in_continuation.fetch_add(1, Ordering::SeqCst);
+        });
+        // One `Fn` closure per write, each holding its own handle — the shape
+        // `seed_default_store_then` hands to `RcBlock::new`.
+        let completions: Vec<Box<dyn Fn()>> = (0..count)
+            .map(|_| {
+                let pending = Arc::clone(&pending);
+                Box::new(move || pending.record_commit()) as Box<dyn Fn()>
+            })
+            .collect();
+        for &index in fire_order {
+            completions[index]();
+        }
+        runs.load(Ordering::SeqCst)
+    }
+
+    /// The continuation runs exactly once, on the last completion — whatever
+    /// order WebKit delivers them in. Ordering is not ours to choose: the
+    /// completions are independent main-loop callbacks.
+    #[test]
+    fn pending_writes_runs_the_continuation_once_after_the_last_commit() {
+        assert_eq!(run_completions(3, &[0, 1, 2]), 1);
+        assert_eq!(run_completions(3, &[2, 0, 1]), 1, "order must not matter");
+        assert_eq!(run_completions(1, &[0]), 1);
+    }
+
+    /// A partially-committed batch must NOT navigate: that is the bug the
+    /// counting prevents — the target's first request would race the cookies
+    /// still in flight and arrive unauthenticated.
+    #[test]
+    fn pending_writes_holds_the_continuation_until_every_write_commits() {
+        assert_eq!(run_completions(3, &[0]), 0);
+        assert_eq!(run_completions(3, &[0, 1]), 0);
+    }
 
     fn spec() -> CookieSpec {
         CookieSpec {
