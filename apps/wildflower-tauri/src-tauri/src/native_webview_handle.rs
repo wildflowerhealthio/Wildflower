@@ -273,9 +273,18 @@ fn open_app_in_native_webview(
     // seed (the desktop backend writes the store from a completion block, off the
     // path that used to deadlock the app), so a read from this thread would race
     // the writes and report an empty jar on a launch that went on to work fine.
-    // The plugin logs the read-back from its own seed completion instead, where
-    // it means something — grep the launch log for `[native-webview] cookie
-    // store for … now holds`.
+    //
+    // What replaces it is platform-specific, because the deadlock that forced
+    // the change is:
+    //
+    // - **macOS**: the plugin logs the read-back from its own seed completion,
+    //   where it means something — grep the launch log for `[native-webview]
+    //   cookie store for … now holds`.
+    // - **Linux / Windows**: no equivalent line exists. That seed path writes
+    //   through tauri's `Webview::set_cookie` and has no post-seed read-back, so
+    //   the only cookie evidence in the log is a `[native-webview] cookie seed
+    //   failed` on a hard error. A *silent* failure (the write succeeds, the
+    //   cookie doesn't take effect) shows up only as the app's own login flow.
     handle
         .native_webview()
         .show(id)

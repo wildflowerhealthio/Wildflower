@@ -15,12 +15,15 @@ use url::Url;
 use crate::desktop::labels::content_label;
 use crate::models::CookieSpec;
 
+use super::superseded;
+
 /// See [`super`] for the contract this implements.
 pub(in crate::desktop) fn seed_then_navigate<R: Runtime>(
     app: &AppHandle<R>,
     id: &str,
     cookies: Vec<CookieSpec>,
     target: Url,
+    scheduled_at: u64,
 ) -> crate::Result<()> {
     use tauri::Manager;
 
@@ -35,6 +38,16 @@ pub(in crate::desktop) fn seed_then_navigate<R: Runtime>(
             log::error!("[native-webview] cookie seed failed: {error}");
             // Still navigate: an un-authenticated page beats a webview stuck at
             // `about:blank`.
+        }
+        // This thread races any concurrent rewire of the same instance — a
+        // single in-flight seed is enough, since nothing serialises it against
+        // the main loop. See [`super::superseded`].
+        if superseded(&handle, &id, scheduled_at) {
+            log::warn!(
+                "[native-webview] cookie seed for instance {id} committed after a newer open — \
+                 not navigating"
+            );
+            return;
         }
         if let Err(error) = content.navigate(target) {
             log::error!("[native-webview] navigate after cookie seed failed: {error}");

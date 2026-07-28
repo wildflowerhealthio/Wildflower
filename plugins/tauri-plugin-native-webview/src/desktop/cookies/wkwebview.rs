@@ -43,12 +43,15 @@ use url::Url;
 use crate::desktop::labels::content_label;
 use crate::models::{CookieSameSite, CookieSpec};
 
+use super::superseded;
+
 /// See [`super`] for the contract this implements.
 pub(in crate::desktop) fn seed_then_navigate<R: Runtime>(
     app: &AppHandle<R>,
     id: &str,
     cookies: Vec<CookieSpec>,
     target: Url,
+    scheduled_at: u64,
 ) -> crate::Result<()> {
     use tauri::Manager;
 
@@ -59,22 +62,42 @@ pub(in crate::desktop) fn seed_then_navigate<R: Runtime>(
             log::error!("[native-webview] cookie seed skipped: not on the main thread");
             return;
         };
+        // Check before writing anything, matching the wry implementation: the
+        // writes land in the process-global jar, so once they are scheduled
+        // there is nothing to withdraw if the instance turns out to be gone.
+        if handle.get_webview(&content_label(&id)).is_none() {
+            log::warn!("[native-webview] cookie seed skipped: instance {id} is already gone");
+            return;
+        }
         // Every spec in one open is scoped to the same host (the host builds
         // them as a set), so the first one names the jar to read back.
         let read_back = cookies.first().map(|cookie| cookie.domain.clone());
         seed_default_store_then(&cookies, mtm, move || {
-            match handle.get_webview(&content_label(&id)) {
-                Some(content) => {
-                    if let Err(error) = content.navigate(target) {
-                        log::error!("[native-webview] navigate after cookie seed failed: {error}");
+            // Re-check rather than trusting the check above: the completions
+            // arrive on later main-loop iterations, so a newer open can have
+            // rewired this instance's content webview in between and the
+            // `target` captured here is then stale. See [`super::superseded`].
+            if superseded(&handle, &id, scheduled_at) {
+                log::warn!(
+                    "[native-webview] cookie seed for instance {id} committed after a newer open \
+                     — not navigating"
+                );
+            } else {
+                match handle.get_webview(&content_label(&id)) {
+                    Some(content) => {
+                        if let Err(error) = content.navigate(target) {
+                            log::error!(
+                                "[native-webview] navigate after cookie seed failed: {error}"
+                            );
+                        }
                     }
+                    // The instance was torn down between the seed and its
+                    // completion. The cookies are in the (process-global) jar
+                    // regardless; there is just nothing left to navigate.
+                    None => log::warn!(
+                        "[native-webview] cookie seed committed but instance {id} is already gone"
+                    ),
                 }
-                // The instance was torn down between the seed and its
-                // completion. The cookies are in the (process-global) jar
-                // regardless; there is just nothing left to navigate.
-                None => log::warn!(
-                    "[native-webview] cookie seed committed but instance {id} is already gone"
-                ),
             }
             if let Some(domain) = read_back {
                 log_default_store_names(domain, mtm);

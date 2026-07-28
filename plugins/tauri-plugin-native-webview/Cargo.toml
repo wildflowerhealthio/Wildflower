@@ -41,7 +41,7 @@ base64 = "0.23"
 # be observable in the launch log instead.
 log = "0.4"
 
-# The macOS cookie seeding (`desktop/cookie_store.rs`) talks to WebKit directly
+# The macOS cookie seeding (`desktop/cookies/wkwebview.rs`) talks to WebKit directly
 # instead of going through wry's `Webview::set_cookie`, which pumps a nested run
 # loop inside tao's event handler and self-deadlocks the app. Every version here
 # is one wry already pulls in, so these add no new crates to the lockfile and
@@ -76,11 +76,16 @@ tauri-plugin = { version = "2", features = ["build"] }
 serde_json = { workspace = true }
 
 # `deny`, not the workspace's `forbid`, so exactly one module can opt out:
-# `desktop/cookie_store.rs` (macOS) has to message WebKit's `WKHTTPCookieStore`
-# directly — the wry cookie API deadlocks the app (see that module's doc), and
-# `forbid` cannot be lifted by an `#[allow]` anywhere in the crate. `deny` keeps
-# every *other* `unsafe` in the crate a hard error, so the exception stays
-# confined to the one file that carries the `#![allow(unsafe_code)]`.
+# `desktop/cookies/wkwebview.rs` (macOS) has to message WebKit's
+# `WKHTTPCookieStore` directly — the wry cookie API deadlocks the app (see that
+# module's doc), and `forbid` cannot be lifted by an `#[allow]` anywhere in the
+# crate. `deny` keeps every *other* `unsafe` in the crate a hard error.
+#
+# The opt-out inside that file is per BLOCK, not module-wide — there is no inner
+# `#![allow(unsafe_code)]`. Each `unsafe` block carries its own
+# `#[allow(unsafe_code)]` on top of the `SAFETY` note justifying it, so the
+# crate's whole unsafe surface is the set of those attribute lines and a new
+# `unsafe` block cannot appear without a line that says so.
 #
 # The rest of the workspace still opts into `[workspace.lints]`, which defines
 # only `unsafe_code = "forbid"`; nothing else is lost by not inheriting it here.

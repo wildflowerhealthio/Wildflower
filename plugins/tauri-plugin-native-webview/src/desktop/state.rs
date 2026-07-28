@@ -4,7 +4,7 @@
 //! app-global too; see [`install_instance_state`]) lives here in a per-id map.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, AtomicU64};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 
 use tauri::ipc::Channel;
@@ -75,6 +75,24 @@ pub(super) struct InstanceState {
     /// the `CloseRequested` replay doesn't re-parse). The handler `Option::take`s
     /// it: `Some` → cancel the dispose and replay; `None` → dispose proceeds.
     pub(super) pending_reopen: Mutex<Option<(OpenRequest, Url)>>,
+    /// Advances on every open that points this instance's content webview at a
+    /// new target (fresh build or rewire). An asynchronous cookie seed captures
+    /// the value current when it was scheduled and re-checks it before
+    /// navigating, so a seed whose open has since been superseded drops its
+    /// navigation instead of dragging the webview back to a stale target — see
+    /// [`super::cookies`] and docs/Lifecycle and Races Explanation.md
+    /// § "A seed's navigation belongs to the open that scheduled it".
+    ///
+    /// Bumped and read **only on the main thread** (every mutation goes through
+    /// [`super::lifecycle::present`] or the `CloseRequested` replay, both of
+    /// which are main-thread), so "bump, then hand the new value to the seed" is
+    /// effectively atomic against other opens.
+    ///
+    /// Unlike the rest of this struct it survives a fresh build's state reset
+    /// (see [`install_instance_state`]): the token has to stay monotonic per id
+    /// for the lifetime of the process, or a rebuild could hand a new open the
+    /// same value an in-flight seed from before the rebuild is holding.
+    pub(super) open_generation: AtomicU64,
     /// Generation counter for the absolute-timeout backstop (see
     /// [`super::lifecycle`]).
     pub(super) timeout_generation: AtomicU64,
@@ -90,8 +108,9 @@ pub(super) struct InstanceState {
 
 impl InstanceState {
     /// A fresh instance's state (nav history at 0, not disposing, no pending
-    /// replay), bound to `channel`.
-    fn new(channel: Channel<NativeWebviewEvent>) -> Self {
+    /// replay), bound to `channel`. `open_generation` is carried in rather than
+    /// zeroed — see [`Self::open_generation`].
+    fn new(channel: Channel<NativeWebviewEvent>, open_generation: u64) -> Self {
         Self {
             chrome_height: Mutex::new(CHROME_HEIGHT_BASE),
             applied_layout: Mutex::new(None),
@@ -100,6 +119,7 @@ impl InstanceState {
             nav_can_forward: AtomicBool::new(false),
             disposing: AtomicBool::new(false),
             pending_reopen: Mutex::new(None),
+            open_generation: AtomicU64::new(open_generation),
             timeout_generation: AtomicU64::new(0),
             timeout_wait: Mutex::new(()),
             timeout_changed: Condvar::new(),
@@ -145,6 +165,8 @@ pub(super) fn lock_state<'a, T>(
 /// The per-id map here is what makes multiple live instances possible. Entries
 /// are kept across dispose/reopen (ids are a small fixed set), so a fresh build
 /// overwrites any prior entry for the same id — equivalent to the old reset.
+/// [`InstanceState::open_generation`] is the one field carried across that
+/// overwrite (see its doc: the token must not restart).
 pub(super) fn install_instance_state<R: Runtime>(
     app: &AppHandle<R>,
     id: &str,
@@ -156,5 +178,11 @@ pub(super) fn install_instance_state<R: Runtime>(
     let Ok(mut map) = state.instances.lock() else {
         return;
     };
-    map.insert(id.to_owned(), Arc::new(InstanceState::new(channel)));
+    let open_generation = map
+        .get(id)
+        .map_or(0, |prior| prior.open_generation.load(Ordering::SeqCst));
+    map.insert(
+        id.to_owned(),
+        Arc::new(InstanceState::new(channel, open_generation)),
+    );
 }

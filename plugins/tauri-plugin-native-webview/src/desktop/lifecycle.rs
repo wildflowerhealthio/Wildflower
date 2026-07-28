@@ -29,7 +29,14 @@ pub(super) enum PresentOutcome {
     /// `open_url` hands any cookies to
     /// [`super::cookies::seed_then_navigate`], which seeds them and navigates to
     /// the target once they commit.
-    Presented,
+    ///
+    /// Carries the [`super::state::InstanceState::open_generation`] this open
+    /// claimed. `present` bumps it and reports the new value from the main
+    /// thread, where every bump happens, so the value cannot already be stale by
+    /// the time the caller reads it — that is what lets the asynchronous seed
+    /// tell "my open is still current" from "a later open has taken this
+    /// webview".
+    Presented(u64),
     /// A dispose was in flight, so the request (cookies and all) was deferred into
     /// [`super::state::InstanceState::pending_reopen`]; the `CloseRequested`
     /// replay owns the rebuild AND the cookie seeding.
@@ -46,6 +53,26 @@ const ABSOLUTE_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 /// navigating to the real target (see [`present`]).
 pub(super) fn blank_url() -> crate::Result<Url> {
     Url::parse("about:blank").map_err(|error| crate::Error::Internal(error.to_string()))
+}
+
+/// Claim the next [`super::state::InstanceState::open_generation`] for instance
+/// `id` and return it: this open now owns the content webview, and any seed
+/// still in flight for an earlier one is superseded (see
+/// [`super::cookies::superseded`]).
+///
+/// MUST be called on the main thread — see that field's doc for why the
+/// bump-then-read has to be uncontended.
+///
+/// A claim always increments before returning, so a claimed generation is
+/// always ≥ 1. The 0 returned when the instance has no registered state at all
+/// (`PluginState` missing or its lock poisoned — not reachable from a healthy
+/// open, since the fresh build installs the state first) is therefore
+/// distinguishable from any real claim, and
+/// [`super::cookies::seed_then_navigate`] treats it as already superseded.
+fn claim_open_generation<R: Runtime>(app: &AppHandle<R>, id: &str) -> u64 {
+    instance_state(app, id).map_or(0, |instance| {
+        instance.open_generation.fetch_add(1, Ordering::SeqCst) + 1
+    })
 }
 
 /// Arm (or re-arm) instance `id`'s [`ABSOLUTE_TIMEOUT`] backstop — see
@@ -126,8 +153,9 @@ fn arm_absolute_timeout<R: Runtime>(app: &AppHandle<R>, id: &str) {
 /// the target once the cookie writes commit.
 ///
 /// The returned [`PresentOutcome`] tells the caller whether the content webview
-/// is live now (`Presented` — `open_url` seeds the cookies) or the request was
-/// deferred (`Deferred` — the `CloseRequested` replay seeds them instead).
+/// is live now (`Presented` — `open_url` seeds the cookies, using the generation
+/// it carries) or the request was deferred (`Deferred` — the `CloseRequested`
+/// replay seeds them instead).
 pub(super) fn present<R: Runtime>(
     app: &AppHandle<R>,
     id: &str,
@@ -152,8 +180,8 @@ pub(super) fn present<R: Runtime>(
 
     // Already open: rewire this instance in place rather than rebuild.
     if let Some(content) = app.get_webview(&content_label(id)) {
-        apply_rewire(app, id, &content, &payload, target_url, build_url)?;
-        return Ok(PresentOutcome::Presented);
+        let generation = apply_rewire(app, id, &content, &payload, target_url, build_url)?;
+        return Ok(PresentOutcome::Presented(generation));
     }
 
     let init_script = payload.init_script;
@@ -184,6 +212,9 @@ pub(super) fn present<R: Runtime>(
     // Must precede `add_child` so the chrome's first height report (on
     // DOMContentLoaded) and the resize listener find the instance state present.
     install_instance_state(app, id, channel);
+    // The claim reads that state too, so it has to come after — this build now
+    // owns the content webview (see [`claim_open_generation`]).
+    let generation = claim_open_generation(app, id);
 
     // Chrome webview. The initial state is baked into the `data:` HTML (vs a
     // post-open patch) so the bar is correct on first paint — see the Lifecycle
@@ -268,7 +299,7 @@ pub(super) fn present<R: Runtime>(
     install_window_listeners(app, id, &window);
     arm_absolute_timeout(app, id);
 
-    Ok(PresentOutcome::Presented)
+    Ok(PresentOutcome::Presented(generation))
 }
 
 /// Replay an `open` request onto instance `id`'s existing chrome + content
@@ -284,6 +315,10 @@ pub(super) fn present<R: Runtime>(
 /// [`super::cookies::seed_then_navigate`] navigates to the target after the
 /// cookie writes commit. The `CloseRequested` replay passes the target for both
 /// when the deferred payload carries no cookies.
+///
+/// Returns the [`super::state::InstanceState::open_generation`] this rewire
+/// claimed — a rewire is exactly the event a seed still in flight for the
+/// previous open must lose to (see [`claim_open_generation`]).
 fn apply_rewire<R: Runtime>(
     app: &AppHandle<R>,
     id: &str,
@@ -291,7 +326,8 @@ fn apply_rewire<R: Runtime>(
     payload: &OpenRequest,
     target: Url,
     navigate_to: Url,
-) -> crate::Result<()> {
+) -> crate::Result<u64> {
+    let generation = claim_open_generation(app, id);
     if let Some(instance) = instance_state(app, id) {
         *lock_state(&instance.current_channel, "current-channel")? =
             payload.native_webview_event_channel.clone();
@@ -324,7 +360,7 @@ fn apply_rewire<R: Runtime>(
     let _ = content.navigate(navigate_to);
     // A reopen starts a new task clock — re-arm the backstop.
     arm_absolute_timeout(app, id);
-    Ok(())
+    Ok(generation)
 }
 
 /// Instance `id`'s window lifecycle hooks:
@@ -403,8 +439,19 @@ fn install_window_listeners<R: Runtime>(app: &AppHandle<R>, id: &str, window: &W
                 // main-thread tao callback on WebKit — see
                 // [`super::cookies::seed_then_navigate`].
                 let blank = blank_url().unwrap_or_else(|_| target.clone());
-                let _ = apply_rewire(&app_window, &id, &content, &payload, target.clone(), blank);
-                let _ = seed_then_navigate(&app_window, &id, cookies, target);
+                // The rewire's own generation is the one this seed belongs to,
+                // so a further open landing before the writes commit takes the
+                // navigation away from it.
+                let generation =
+                    match apply_rewire(&app_window, &id, &content, &payload, target.clone(), blank)
+                    {
+                        Ok(generation) => generation,
+                        Err(error) => {
+                            log::error!("[native-webview] deferred reopen rewire failed: {error}");
+                            return;
+                        }
+                    };
+                let _ = seed_then_navigate(&app_window, &id, cookies, target, generation);
             }
         }
         WindowEvent::Destroyed => {

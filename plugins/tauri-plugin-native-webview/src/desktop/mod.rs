@@ -138,8 +138,16 @@ impl<R: Runtime> NativeWebview<R> {
         // instance's content webview is doomed, so seeding here would race the
         // teardown and lose the cookies; the `CloseRequested` replay seeds the
         // deferred payload's cookies instead.
-        if !cookies.is_empty() && matches!(outcome, PresentOutcome::Presented) {
-            seed_then_navigate(&self.0, id, cookies, target)?;
+        //
+        // The generation `present` reports is this open's claim on the content
+        // webview: the seed navigates only while it still holds (see
+        // [`cookies::seed_then_navigate`]), so a later open that rewires the
+        // same instance keeps its own target instead of being dragged back to
+        // this one when these writes finally commit.
+        if let PresentOutcome::Presented(generation) = outcome {
+            if !cookies.is_empty() {
+                seed_then_navigate(&self.0, id, cookies, target, generation)?;
+            }
         }
         Ok(())
     }

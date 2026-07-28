@@ -4,6 +4,9 @@
 //! implementation. It contains no cookie logic of its own, and the `cfg` below
 //! is the only platform branch in the seeding path — [`wkwebview`] and [`wry`]
 //! each expose exactly one item, `seed_then_navigate`, with the same signature.
+//! The one piece of shared behaviour that lives here rather than in either
+//! implementation is [`superseded`], so both agree on when a scheduled seed has
+//! lost its claim on the webview.
 //!
 //! ## The contract both implementations satisfy
 //!
@@ -13,11 +16,13 @@
 //!     id: &str,
 //!     cookies: Vec<CookieSpec>,
 //!     target: Url,
+//!     scheduled_at: u64,
 //! ) -> crate::Result<()>
 //! ```
 //!
 //! Write `cookies` into instance `id`'s cookie jar, then navigate its content
-//! webview to `target` once they have committed.
+//! webview to `target` once they have committed — unless a newer open has
+//! superseded the one identified by `scheduled_at`.
 //!
 //! - **Asynchronous.** It returns as soon as the work is scheduled, so a
 //!   successful return does *not* mean the cookies are in the jar. Callers park
@@ -27,6 +32,15 @@
 //! - **Callable from either thread.** Each implementation marshals as it needs
 //!   to. This is what lets the `CloseRequested` deferred replay — a main-thread
 //!   tao callback — call it directly instead of spawning a thread and hoping.
+//! - **Scoped to one open.** `scheduled_at` is the caller's
+//!   [`super::state::InstanceState::open_generation`], read at the moment the
+//!   open pointed the content webview at `target`. Because the seed is
+//!   asynchronous, a later open of the same instance can rewire that webview
+//!   before this seed finishes; [`superseded`] is how each implementation
+//!   detects that and drops its navigation rather than dragging the webview
+//!   back to a stale target. The cookie writes themselves are not withdrawn —
+//!   they are first-party cookies for the app's own host, and the jar is
+//!   process-global regardless.
 //! - **Best-effort past the schedule point.** A failure after the call returns
 //!   (webview torn down, a cookie Foundation rejects) is logged, not surfaced;
 //!   the navigation still happens, because an unauthenticated page beats a
@@ -60,6 +74,12 @@
 //! dependencies are likewise scoped to `cfg(target_os = "macos")` in
 //! `Cargo.toml`, so an iOS build pulls none of them.
 
+use std::sync::atomic::Ordering;
+
+use tauri::{AppHandle, Runtime};
+
+use super::state::instance_state;
+
 #[cfg(target_os = "macos")]
 mod wkwebview;
 #[cfg(not(target_os = "macos"))]
@@ -73,3 +93,78 @@ mod wry;
 pub(super) use wkwebview::seed_then_navigate;
 #[cfg(not(target_os = "macos"))]
 pub(super) use wry::seed_then_navigate;
+
+/// Has a newer open taken instance `id`'s content webview since a seed was
+/// scheduled at generation `scheduled_at`?
+///
+/// The hazard this answers is specific to the seed being asynchronous. Both
+/// implementations resolve the content webview **by label, at completion time**,
+/// and a label is stable across rewires and even across a dispose→rebuild — so
+/// the webview a late completion finds under `content_label(id)` need not be the
+/// one its open was about to navigate. Without this check, an `open_url(target1,
+/// cookies)` immediately followed by an `open_url(target2)` on the same instance
+/// can end with the popup parked on `target1`: open #2 navigates on the main
+/// FIFO, then seed #1's completion lands and navigates the reused webview back.
+/// Nothing in WebKit (macOS) or the main loop (wry, where the seed runs on its
+/// own thread) orders those against each other.
+///
+/// Comparing against a monotonic per-instance token makes the answer exact
+/// rather than best-effort — see [`super::state::InstanceState::open_generation`].
+fn superseded<R: Runtime>(app: &AppHandle<R>, id: &str, scheduled_at: u64) -> bool {
+    let current =
+        instance_state(app, id).map(|instance| instance.open_generation.load(Ordering::SeqCst));
+    is_superseded(current, scheduled_at)
+}
+
+/// The decision [`superseded`] wraps, split out from the `AppHandle` lookup so
+/// it is testable on every platform (the implementations it guards are each
+/// behind a `cfg`, and one of them never builds in CI).
+///
+/// Two of the three cases are "yes" for the same reason — the seed cannot show
+/// that its open is the current one:
+///
+/// - `current` is `None`: the instance has no registered state at all, so there
+///   is no live open to belong to.
+/// - `scheduled_at` is 0: the open never claimed a generation. A claim
+///   increments before returning (see
+///   [`super::lifecycle::claim_open_generation`]), so 0 is not a value any open
+///   can hold, and must not be allowed to match a not-yet-claimed counter.
+fn is_superseded(current: Option<u64>, scheduled_at: u64) -> bool {
+    scheduled_at == 0 || current != Some(scheduled_at)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The seed's own open is still the current one — navigate.
+    #[test]
+    fn is_superseded_says_no_for_the_scheduling_open() {
+        assert!(!is_superseded(Some(7), 7));
+    }
+
+    /// Any *other* generation means a later open has rewired the content
+    /// webview, so the seed's target is stale. Compared for inequality, not
+    /// `>`: the token is monotonic, but a seed that somehow outlives a counter
+    /// it can no longer match must bail either way.
+    #[test]
+    fn is_superseded_says_yes_once_a_newer_open_lands() {
+        assert!(is_superseded(Some(8), 7));
+        assert!(is_superseded(Some(0), 7));
+    }
+
+    /// No instance state → nothing to navigate on behalf of.
+    #[test]
+    fn is_superseded_says_yes_when_the_instance_is_gone() {
+        assert!(is_superseded(None, 7));
+    }
+
+    /// The unclaimed sentinel never matches — including against a counter that
+    /// is itself still at 0, which is the one comparison a plain inequality
+    /// would get wrong.
+    #[test]
+    fn is_superseded_says_yes_for_an_open_that_claimed_nothing() {
+        assert!(is_superseded(Some(0), 0));
+        assert!(is_superseded(None, 0));
+    }
+}

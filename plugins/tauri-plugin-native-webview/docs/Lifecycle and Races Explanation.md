@@ -185,8 +185,8 @@ wry's nested pump is the hazard.
 The fix removes the pump rather than trying to schedule around it: on macOS the
 plugin writes `WKHTTPCookieStore.setCookie(_:completionHandler:)` itself, on the
 main thread but asynchronously, counts the completions, and navigates from the
-last one (`desktop/cookie_store.rs`, wired in through
-`desktop/cookies.rs::seed_then_navigate`). Completions arrive on ordinary,
+last one (`desktop/cookies/wkwebview.rs`, wired in through the seam
+`desktop/cookies/mod.rs::seed_then_navigate`). Completions arrive on ordinary,
 non-nested run-loop iterations, so tao's callback mutex is never re-entered and
 the deadlock is structurally impossible. The same reasoning applies to reads:
 wry's `cookies_for_url` pumps identically, so the post-seed read-back log uses an
@@ -204,6 +204,41 @@ Two consequences worth holding onto:
 Non-macOS desktop targets keep the wry `set_cookie` path (their cookie APIs do
 not pump), and iOS/Android already issue the load from their native cookie-write
 completion handlers.
+
+## A seed's navigation belongs to the open that scheduled it
+
+Making the seed asynchronous opens a second race, on every desktop platform. The
+navigation now fires from a callback that resolves the content webview **by
+label** — and a label outlives the open that scheduled the seed: it survives a
+rewire, and even a dispose→rebuild. So the webview a late completion finds under
+`content_label(id)` need not be the one its open was about to navigate.
+
+The sharp case is an `open_url(target1, cookies)` followed quickly by another
+open of the same instance. Open #2 rewires and navigates to `target2`; then the
+last write of seed #1 commits, finds the reused webview, and navigates it back
+to `target1` — with nothing after it to correct the mistake. Nothing orders those
+two against each other: WebKit gives no cross-batch completion-ordering
+guarantee, and on the wry path the seed runs on its own detached thread, so a
+single in-flight seed is enough to trigger it. (Pre-async, this could not happen:
+the seed and its navigation were synchronous, so a sequential caller had all of
+open #1's messages queued before open #2 began.)
+
+The fix is a per-instance **open generation**
+(`desktop/state.rs::InstanceState::open_generation`). Every open that points the
+content webview at a new target — fresh build or rewire — claims the next value
+on the main thread, and the seed carries the value its open claimed. Before
+navigating, each implementation re-reads the counter
+(`desktop/cookies/mod.rs::superseded`): unchanged means the seed still owns the
+webview, anything else means a newer open does, and the seed logs and drops its
+navigation. The token is monotonic per instance id for the life of the process —
+a fresh build resets the rest of `InstanceState` but carries this field across —
+so a rebuilt instance can never hand a new open a value an older in-flight seed
+is still holding.
+
+The cookie writes are **not** withdrawn when a seed loses this check; only the
+navigation is. They are first-party cookies for the app's own host going into a
+process-global jar that the newer open's webview shares, so the residue is a
+cookie set slightly early, not a leak into someone else's store.
 
 ## Teardown backstops
 
