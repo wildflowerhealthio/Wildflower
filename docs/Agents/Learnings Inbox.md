@@ -6,6 +6,12 @@ _Last triaged 2026-07-04 — durable lessons were promoted to `Strategies.md`, t
 
 <!-- Append new entries below this line -->
 
+## Framework-minted per-run ids beat per-factory minting: sealing the id with the plan makes "one build = one run" structural
+
+**Discovered during**: claude/issue-439-collector-provenance — reworking PR #453's provenance seams after review
+**Learning**: The first cut had each collector's plan factory mint its own run/session uuid, which made three factories impure, forced three test files onto identity-projection comparisons, and rested "one plan build is one run" on an unenforced calling convention. Moving the mint to the single dispatch point (`resourcePersistenceRuntimeIfMatches`) and widening the factory to `(config, runId)` inverted all of that: the factories are deterministic given inputs, the invariant is enforced by construction (the runtime seals the plan and its id together), and tests deep-equal plans against a fixed id. The general shape: when several components each mint a "fresh per X" identity, look for the one seam where X is created and mint there — the impurity concentrates into one place and everything downstream becomes a pure function of the id. Two supporting facts made the test reverts work: `toEqual` compares functions by reference, so any function-valued plan field (entities, hooks) must be a **module-level singleton**, never built inside the factory; and a per-build entity **closure** (the recorder's) still defeats deep equality even with a fixed id, so the projection legitimately survives exactly there.
+**Suggested destination**: Strategies.md, or the plan-determinism trap in `slices/collector/AGENTS.md` (already updated on this branch)
+
 ## Collapsing per-interaction bridge tags into one `PageAction` message: the step becomes `{ action; advanceWhen? }`, so plan-only fields can't leak by construction
 
 **Discovered during**: claude/issue-386 — replacing the `Click`/`Fill` bridge tags with a single `PageAction` message family and recomposing `Link`
