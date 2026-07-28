@@ -1,0 +1,43 @@
+.attachment {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.attachment__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  margin: 0;
+}
+
+.attachment__hash {
+  overflow-wrap: anywhere;
+}
+
+.attachment__note {
+  margin: 0;
+}
+
+.attachment__body {
+  margin: 0;
+  max-height: 28rem;
+  overflow: auto;
+  padding: 0.75rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border-radius: 0.375rem;
+  border: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+}
+
+.attachment__image {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.375rem;
+  border: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+}
+
+.attachment__reveal {
+  align-self: flex-start;
+}

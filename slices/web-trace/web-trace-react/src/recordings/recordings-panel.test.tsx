@@ -156,12 +156,65 @@ describe('RecordingsPanel', () => {
       requestId: 'a',
     })
   })
+
+  it('should open an exchange onto its full detail, raw', async () => {
+    // Arrange
+    const url = 'https://portal.example.org/api/v2/patients/8f14e45f?name=Ada%20Lovelace'
+    serve([
+      searchset([
+        wire({
+          sessionId: 'morning',
+          requestId: 'a',
+          url,
+          headers: [['Set-Cookie', 'session=8f14e45fceea467a; Path=/']],
+        }),
+      ]),
+    ])
+    render(<RecordingsPanel />, { wrapper: withQueryClient })
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /morning/ })).toBeDefined()
+    })
+    await userEvent.click(screen.getByRole('button', { name: /morning/ }))
+
+    // Act
+    await userEvent.click(screen.getByRole('button', { name: new RegExp(escapeRegExp(url)) }))
+
+    // Assert — headers and body render unredacted, and the filters are gone
+    expect(screen.getByLabelText('Response headers')).toBeDefined()
+    expect(screen.getByText('session=8f14e45fceea467a; Path=/')).toBeDefined()
+    expect(screen.queryByLabelText('URL contains')).toBeNull()
+  })
+
+  it('should return from an exchange detail to its session, not to the session list', async () => {
+    // Arrange
+    serve([
+      searchset([
+        wire({ sessionId: 'morning', requestId: 'a', url: 'https://portal.example.org/one' }),
+      ]),
+    ])
+    render(<RecordingsPanel />, { wrapper: withQueryClient })
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /morning/ })).toBeDefined()
+    })
+    await userEvent.click(screen.getByRole('button', { name: /morning/ }))
+    await userEvent.click(screen.getByRole('button', { name: /portal\.example\.org\/one/ }))
+
+    // Act
+    await userEvent.click(screen.getByRole('button', { name: 'Back to exchanges' }))
+
+    // Assert — one level up, not two
+    expect(screen.getByLabelText('URL contains')).toBeDefined()
+    expect(screen.getByRole('button', { name: 'All recordings' })).toBeDefined()
+  })
 })
 
 // Helpers
 
 const wire = (overrides: Parameters<typeof traceExchange>[0]): unknown =>
   traceExchangeToWire(traceExchange(overrides))
+
+/** Escapes a URL so it can be matched literally inside an accessible-name regex. */
+const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 const searchset = (resources: readonly unknown[], nextCursor?: string): unknown => ({
   resourceType: 'Bundle',

@@ -11,6 +11,23 @@
  *
  * @packageDocumentation
  */
+export {
+  AttachmentViewer,
+  type AttachmentViewerProps,
+  PREVIEW_CHARACTER_CAP,
+} from './attachments/attachment-viewer.tsx'
+export {
+  type AttachmentAbsence,
+  decodeText,
+  formatJson,
+  fromFhirAttachment,
+  fromTraceBody,
+  mediaTypeOf,
+  type PreviewKind,
+  previewKindFor,
+  type ViewableAttachment,
+} from './attachments/viewable-attachment.ts'
+export { ExchangeDetail, type ExchangeDetailProps } from './exchanges/exchange-detail.tsx'
 export { ExchangeList, type ExchangeListProps } from './exchanges/exchange-list.tsx'
 export { ExchangeFiltersBar, type ExchangeFiltersBarProps } from './exchanges/exchange-filters.tsx'
 export {

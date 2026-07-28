@@ -1,0 +1,43 @@
+.detail {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.detail__summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem 0.75rem;
+}
+
+.detail__url {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.detail__section-title {
+  margin: 0 0 0.5rem;
+}
+
+.detail__headers {
+  display: grid;
+  grid-template-columns: minmax(8rem, max-content) 1fr;
+  gap: 0.25rem 1rem;
+  margin: 0;
+}
+
+.detail__header-name {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.detail__header-value {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.detail__note {
+  margin: 0;
+}
