@@ -112,6 +112,28 @@ const TraceTimings = Schema.Struct({
 const noTimings: typeof TraceTimings.Type = { wait: null, receive: null }
 
 /**
+ * A relative FHIR reference to a resource this exchange produced, e.g.
+ * `Observation/abc-123`.
+ *
+ * @remarks
+ * Relative rather than absolute because the trace and the resource it points at
+ * always live in the same store — an absolute reference would bake in an origin
+ * that differs between the loopback API and the tunnel, and a trace must not
+ * claim to know which one a later reader is on.
+ *
+ * The pattern is FHIR R4's own: a resource type followed by an `id`, whose
+ * character set and 64-char cap are the spec's. It is a refinement rather than a
+ * bare string so a caller cannot pass a bare id (`abc-123`) or a search URL and
+ * have it silently written as a reference nothing resolves.
+ */
+const ProducedResourceReference = Schema.NonEmptyString.pipe(
+  Schema.pattern(/^[A-Za-z]+\/[A-Za-z0-9\-.]{1,64}$/u)
+).annotations({
+  identifier: 'ProducedResourceReference',
+  description: 'Relative FHIR reference to a resource derived from this exchange.',
+})
+
+/**
  * One recorded HTTP exchange — the unit of storage, redaction, and export.
  *
  * @remarks
@@ -119,6 +141,17 @@ const noTimings: typeof TraceTimings.Type = { wait: null, receive: null }
  * `requestId` is the sniffer's own per-request correlation key, which makes
  * `{sessionId}-{requestId}` a deterministic resource id: retried writes are
  * idempotent upserts and two sessions cannot collide.
+ *
+ * `producedResources` is the provenance link: the resources a collector derived
+ * from this exchange, or empty for a recording that decoded nothing. It defaults
+ * to empty, so every trace written before it existed still decodes — and so a
+ * recorder, which derives nothing by definition, does not have to say so twice.
+ *
+ * **This is the direction that survives multiple sources.** A resource derived
+ * from a list response *and* a detail response is named by both of their traces;
+ * the resource's own back-pointer (`meta.source`) is a single FHIR `uri` and can
+ * only hold the last writer. Anything that needs every source of a resource must
+ * read it from this side.
  */
 const TraceExchange = Schema.Struct({
   sessionId: TraceSessionId,
@@ -130,6 +163,9 @@ const TraceExchange = Schema.Struct({
   startedAt: Schema.DateTimeUtc,
   timings: TraceTimings,
   body: TraceBody,
+  producedResources: Schema.optionalWith(Schema.Array(ProducedResourceReference), {
+    default: (): readonly string[] => [],
+  }),
 })
 
 type TraceExchange = typeof TraceExchange.Type

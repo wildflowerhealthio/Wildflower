@@ -121,6 +121,28 @@ const contentEntry = (exchange: TraceExchange): FhirR4.DocumentReferenceContent 
 })
 
 /**
+ * `context.related`, the provenance link — or no `context` at all when the
+ * exchange produced nothing.
+ *
+ * @remarks
+ * Standard FHIR rather than one of this codec's private extensions:
+ * `DocumentReference.context.related` is defined as "related identifiers or
+ * resources associated with the DocumentReference", which is exactly what a
+ * derived resource is. A private extension would carry the same data somewhere
+ * no other reader thinks to look.
+ *
+ * A recorder produces nothing, so its trace carries no `context` key at all —
+ * an empty `related` array would assert "this exchange produced no resources"
+ * where the truth is that nothing was decoding.
+ */
+const contextEntry = (
+  exchange: TraceExchange
+): { readonly context?: FhirR4.DocumentReferenceContext } =>
+  exchange.producedResources.length === 0
+    ? {}
+    : { context: { related: exchange.producedResources.map((reference) => ({ reference })) } }
+
+/**
  * Encodes one recorded exchange as the FHIR R4 `DocumentReference` wire object.
  *
  * @param exchange - The exchange to encode
@@ -155,6 +177,7 @@ const traceExchangeToWire = (exchange: TraceExchange): FhirR4.DocumentReference 
   description: describeExchange(exchange),
   securityLabel: [{ coding: [{ system: WEB_TRACE_REDACTION_SYSTEM, code: WEB_TRACE_RAW_CODE }] }],
   content: [contentEntry(exchange)],
+  ...contextEntry(exchange),
 })
 
 /** Finds the first extension with `url`, at whatever level it was handed. */
@@ -215,6 +238,23 @@ const readTimings = (
     receive: readDuration(timings, TIMING_RECEIVE_EXTENSION),
   })
 }
+
+/**
+ * The provenance link, read back off `context.related`.
+ *
+ * @remarks
+ * A `related` entry with no `reference` (FHIR permits an `identifier`-only
+ * reference) contributes nothing here rather than failing the decode: it is a
+ * link this codec cannot follow, and one unusable entry must not make a whole
+ * recorded exchange unreadable. Whatever is present is handed to
+ * `ProducedResourceReference` to validate, so a `reference` that is not a
+ * relative resource reference fails against the schema rather than against a
+ * check written here.
+ */
+const readProducedResources = (wire: FhirR4.DocumentReference): readonly string[] =>
+  (wire.context?.related ?? []).flatMap((reference) =>
+    reference.reference === undefined ? [] : [reference.reference]
+  )
 
 const readBody = (content: FhirR4.DocumentReferenceContent): Record<string, unknown> => {
   const attachment = content.attachment
@@ -278,6 +318,7 @@ const readEncodedExchange = (
       headers: readHeaders(content),
       startedAt: wire.date,
       body: readBody(content),
+      producedResources: readProducedResources(wire),
     },
   }
 }

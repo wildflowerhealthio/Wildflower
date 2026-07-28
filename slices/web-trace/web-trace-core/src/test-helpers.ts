@@ -68,6 +68,9 @@ const traceExchange = (
       size: 2,
       hash: 'RBNvo1WzZ4oRRq0W9+hknpT7T8If536DEMBg9hyq/4o=',
     },
+    // Empty by default: most exchanges under test are recordings, which decode
+    // nothing. A provenance test overrides it.
+    producedResources: [],
     ...rest,
   }
 }
@@ -221,6 +224,7 @@ const arbitraries = (
       startedAt: DateTime.unsafeMake(millis),
       timings: { wait, receive: null },
       body: requestBody,
+      producedResources: [],
     }))
 
   return {

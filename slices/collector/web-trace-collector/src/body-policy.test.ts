@@ -6,14 +6,12 @@ import { describe, expect, it } from 'vite-plus/test'
 import type { TraceBody } from 'web-trace-core'
 
 import {
-  type BodyPolicy,
   contentTypeOf,
-  contentTypeTokens,
-  decideBody,
-  isAllowlisted,
   sha256Base64,
   UNKNOWN_CONTENT_TYPE,
-} from './body-policy.ts'
+} from 'web-trace-core/capture'
+
+import { type BodyPolicy, contentTypeTokens, decideBody, isAllowlisted } from './body-policy.ts'
 import { DEFAULT_BODY_CONTENT_TYPES, DEFAULT_MAX_BODY_BYTES } from './config.ts'
 
 const defaultPolicy: BodyPolicy = {

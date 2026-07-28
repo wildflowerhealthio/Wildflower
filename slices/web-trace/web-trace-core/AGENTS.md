@@ -24,6 +24,11 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
 - **`src/codec/`** — `TraceExchange` ⇄ FHIR R4 `DocumentReference`.
   `systems.ts` holds the private systems and extension URLs;
   `fhir-duration.ts` is the `Duration` ⇄ FHIR `Duration` unit conversion.
+- **`src/capture/`** — the capture-side primitives both consumers share:
+  the content-type rule, the SHA-256 every body carries, and `storeBodyVerbatim`.
+  Policy is _not_ here — see the trap below.
+- **`src/provenance/`** — the receipt for a resource a collector derived from a
+  response: `captureProvenance` builds the trace and links it both ways.
 - **`src/pseudonymizer/`** — the export boundary's redactor. `shapes.ts` detects
   what a value looks like and generates another value that looks the same,
   `leaves.ts` decides what counts as a leaf, `redact.ts` is the two-step
@@ -94,6 +99,29 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
   it: everything silently read as milliseconds. `readTimings` therefore works on
   the _decoded_ side, which is why `timings` is omitted from the struct the rest
   of the decode goes through.
+- **There are two body policies, and the split is deliberate.** A recorder
+  (`web-trace-collector`) stores under an allowlist and a `maxBodyBytes` cap,
+  because an exploratory session of a whole portal balloons otherwise. A
+  provenance capture stores **verbatim** — no allowlist, no truncation — because
+  a body that justifies a specific clinical resource _is_ the provenance, and
+  storing its `size` and `hash` with no `data` would defeat the point. What both
+  share (`contentTypeOf`, `sha256Base64`) lives in `src/capture/`; what differs
+  stays with its consumer. Don't unify them.
+- **`producedResources` is the direction that survives multiple sources.** A
+  resource derived from a list response _and_ a detail response is named by
+  both of their traces via `context.related`. The resource's own back-pointer,
+  `meta.source`, is a single FHIR `uri` and holds only the last writer — so
+  anything that needs _every_ source of a resource must read it from the trace
+  side. This also matters because the typed client expresses no reference-typed
+  search parameter: there is no query for "every trace naming this resource",
+  only the direct read `meta.source` gives you.
+- **An empty `producedResources` writes no `context` at all.** A recorder
+  produces nothing, and an empty `related` array would assert "this exchange
+  produced no resources" where the truth is that nothing was decoding.
+- **HAR export drops the provenance link.** HAR 1.2 has no field for "the
+  resources this response produced", so an exported archive cannot carry it and
+  a reader cannot recover it. `emit.test.ts` states this rather than inventing a
+  place to put it.
 - **`subject` stays absent on every trace resource.** Traces are engineering
   artifacts that happen to contain PHI; an unset `subject` keeps them out of
   `Patient/$everything` and out of clinical exports. They stay reachable by
