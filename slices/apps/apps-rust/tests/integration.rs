@@ -152,6 +152,7 @@ async fn fresh_install_lists_the_default_set() {
             "medication-viewer",
             "precise-hbr",
             "wildflower-medication",
+            "wildflower-web-trace",
         ],
     );
 }
@@ -346,6 +347,7 @@ async fn home_screen_reorders_and_disables_a_system_app() {
         { "id": "medication-viewer", "onHomescreen": true },
         { "id": "precise-hbr", "onHomescreen": true },
         { "id": "wildflower-medication", "onHomescreen": true },
+        { "id": "wildflower-web-trace", "onHomescreen": true },
     ]);
     let res = router
         .clone()
@@ -369,6 +371,7 @@ async fn home_screen_reorders_and_disables_a_system_app() {
             "medication-viewer",
             "precise-hbr",
             "wildflower-medication",
+            "wildflower-web-trace",
         ],
     );
     let api_docs = arr.iter().find(|v| v["id"] == "api-docs").unwrap();

@@ -50,6 +50,7 @@ export default defineConfig({
     // running everything under a single root config.
     projects: [
       'apps/medication/vite.config.ts',
+      'apps/web-trace/vite.config.ts',
       'apps/website/vite.config.ts',
       'apps/wildflower-react/vite.config.ts',
       'global/effect-messaging/effect-messaging-core/vite.config.ts',

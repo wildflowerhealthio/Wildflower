@@ -386,6 +386,7 @@ mod tests {
                 "medication-viewer",
                 "precise-hbr",
                 "wildflower-medication",
+                "wildflower-web-trace",
             ],
         );
     }
@@ -1270,6 +1271,7 @@ mod tests {
             ("api-view", true),
             ("patient-browser", true),
             ("wildflower-medication", true),
+            ("wildflower-web-trace", true),
         ];
         let (status, body) = send(&st, put_json("/home-screen", home_screen_body(&ordered))).await;
         assert_eq!(status, StatusCode::OK, "body: {body}");
@@ -1290,6 +1292,7 @@ mod tests {
                 "api-view",
                 "patient-browser",
                 "wildflower-medication",
+                "wildflower-web-trace",
             ],
         );
         let api_docs = body

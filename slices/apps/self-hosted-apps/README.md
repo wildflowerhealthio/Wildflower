@@ -1,13 +1,16 @@
 # self-hosted-apps
 
-Home for vendored third-party FHIR apps served from the device. Today that's a
-single app: [`patient-browser`][upstream], a SMART-on-FHIR sample app.
+Home for vendored FHIR app builds served from the device. Today that's three
+apps: [`patient-browser`][upstream], a third-party SMART-on-FHIR sample app;
+`medication`, the first-party Medications app built from `apps/medication/`; and
+`web-trace`, the first-party Web Trace recordings viewer built from
+`apps/web-trace/`.
 
 [upstream]: https://github.com/smart-on-fhir/patient-browser
 
 This directory holds the **vendored builds** — one gitignored folder per app
 (e.g. `patient-browser/`), each containing the app's static files — plus these
-docs. There is no TypeScript package here anymore: the app is served by
+docs. There is no TypeScript package here anymore: the apps are served by
 the sibling Rust crate [`self-hosted-apps-rust`](../self-hosted-apps-rust) at the root of
 a dedicated loopback origin. (The former TS path — a base64-inlined
 `generated-patient-browser.ts` served from an `HttpApi` group at

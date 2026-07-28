@@ -277,15 +277,16 @@ mod tests {
     use crate::domain::{AppKind, AppsError, AppsStore};
 
     /// An inserted upload lands at the lowest free upload port (8082 — the seeded
-    /// self-hosted apps sit at 8081 and 8090, both outside the 8082+ climb), and
-    /// appends at the next position (after the seven seeded rows → 7), non-seeded.
+    /// self-hosted apps sit at 8081, 8090, and 8091, all outside the start of the
+    /// 8082+ climb), and appends at the next position (after the eight seeded rows
+    /// → 8), non-seeded.
     #[test]
     fn insert_self_hosted_allocates_the_next_port_and_position() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
         let (registration, config) = insert_upload(&store, "My App", "my-app");
         assert_eq!(registration.id, "my-app");
         assert_eq!(registration.name, "My App");
-        assert_eq!(registration.position, 7);
+        assert_eq!(registration.position, 8);
         assert!(registration.local_only);
         assert!(registration.on_homescreen);
         assert_eq!(registration.kind, AppKind::SelfHosted);
@@ -299,7 +300,7 @@ mod tests {
 
         let (registration2, config2) = insert_upload(&store, "Other", "other");
         assert_eq!(config2.port, 8083);
-        assert_eq!(registration2.position, 8);
+        assert_eq!(registration2.position, 9);
     }
 
     /// A `launch_path` supplied at insert round-trips through both the insert
