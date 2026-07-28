@@ -84,14 +84,18 @@ artifact for designing a collector against a search API — are not captured.
 - **The encoding lives in `web-trace-core` and is imported, never re-derived.**
   A second copy drifts, and already-recorded sessions stop decoding.
   `toDocumentReference` is the only way a trace resource is built here.
-- **`makeScrapingPlan` is deliberately impure.** It mints a fresh session id per
-  build (`mintSessionId`), because `{sessionId}-{requestId}` is the resource id:
-  a session id derived from the config would make a second recording of the same
-  remote silently upsert over the first. It is called exactly once per sync run,
-  so one plan build is one recording. Consequence: two builds from one config are
-  structurally unequal, which is why `collector-registry`'s dispatch test
-  compares a plan _identity projection_ rather than deep equality.
-- **`sessionLabel` is a label, not an identity.** It only prefixes the minted id
+- **`makeScrapingPlan` is `(config, runId) => plan`, deterministic given its
+  inputs — the framework mints the run id.** The session id is
+  `sessionIdFor(config, runId)` (the optional label prefixed onto the
+  framework's per-dispatch uuid), because `{sessionId}-{requestId}` is the
+  resource id: a session id derived from the config alone would make a second
+  recording of the same remote silently upsert over the first. One dispatch is
+  one run is one recording, enforced by `CollectorDescriptor.make` sealing the
+  plan and its run id together. The recording entity still closes over the
+  session id, so two _dispatches_ produce structurally unequal plans — which is
+  why `collector-registry`'s union-wide dispatch test compares a plan
+  _identity projection_ rather than deep equality.
+- **`sessionLabel` is a label, not an identity.** It only prefixes the run id
   for legibility. Deriving the id from it alone collides on exactly the case a
   user is most likely to hit — recording the same flow twice.
 - **`[EnsureWindowVisible, AwaitUserDismiss]` is the whole run model.** An empty

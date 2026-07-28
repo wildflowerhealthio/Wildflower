@@ -14,8 +14,10 @@ before adding one.
   `ResourcePersistence*` write seam, `EntityDefinition` / `UrlMatch` /
   `ScrapingPlan` / `Step`, and the `./config-form` view contract, plus
   `CollectorBridgeMessageHandler` (the response tracker + automatic-navigation
-  machine + run lifecycle) and the two diagnostic seams `withCapturedSource`
-  (entity combinator) / `withDiagnosticResources` (persist-sink wrapper). No
+  machine + run lifecycle). Provenance is core here: the framework mints the
+  run id at dispatch and invokes the plan's optional `captureProvenance` hook
+  at the tracker seam, and a settled batch structurally separates `resources`
+  from best-effort `diagnostics`. No
   registry, no HTTP runtime, no React. Everything else depends on it; it depends
   on nothing else in the slice. Deliberately FHIR-agnostic — nothing here names
   a resource type.
@@ -39,11 +41,11 @@ before adding one.
   and writes each exchange as a FHIR `DocumentReference` via `web-trace-core`'s
   codec. It is also the only collector whose run ends when the **user** closes
   the sniffer window rather than when a script finishes. The two _production_
-  collectors keep the source of what they produce too: each wraps its entities in
-  a `withProvenance` capture and its sink in `withDiagnosticResources`, so every
+  collectors keep the source of what they produce too: each states one
+  plan-level `captureProvenance` hook
+  (`web-trace-core`'s `makeFhirProvenanceCapture('<prefix>')`), so every
   response that yielded a resource is stored verbatim as a trace
-  `DocumentReference` linked to it. Each carries a near-identical
-  `src/provenance.ts` — slice layering forbids one importing the other's.
+  `DocumentReference` linked to it — the framework does the rest.
 - **`collector-react`** — the browser UI adapter: the generic account
   create/edit/list screens, the closed `tag → ConfigForm` registry
   (`src/forms/config-form.tsx`), the remotes queries/mutations, and the sync
@@ -77,18 +79,18 @@ before adding one.
   here. The sink declares its own `ResourceWriteFailure`, structurally checked
   against `PersistFailure` when `CollectorDescriptor.make` receives it, so a
   drift is a compile error at every collector rather than a silent divergence.
-- **A diagnostic resource must be written through `withDiagnosticResources`, or
-  a failed diagnostic write silently downgrades a clean run to `partial`.** A
-  trace / provenance record rides in the same batch as the clinical resources,
-  and `collector-react`'s `collectImportSummary` folds **any** `PersistFailure`
-  into `RunnerState: 'partial'` and fires the caller's `onError` — it cannot
-  tell a failed diagnostic from a failed clinical write. So wrap the sink:
-  `persistResources: DiagnosticResources.withDiagnosticResources(persistResources, isDiagnostic)`
-  (`collector-fundamentals/model`). It partitions the batch, writes the clinical
+- **A diagnostic resource rides the batch's `diagnostics` channel — never the
+  `resources` array.** `SniffResult`'s success arm is a
+  `SniffedBatch { resources, diagnostics }`: the split is structural, decided
+  where the batch is built (the plan's `captureProvenance` hook), so nothing
+  downstream re-derives it from resource shapes. The runner writes the primary
   half **first** through the _same_ injected sink (never a re-derived write —
-  see the guardrail above), WARN-logs each diagnostic failure by `label`/`id`,
-  and returns only the clinical failures. An empty partition costs no call, so a
-  batch with no diagnostics is still exactly one write.
+  see the guardrail above) and reports its failures; diagnostics are written
+  second, each failure WARN-logged by `label`/`id` and kept out of the
+  summary — `collector-react`'s `collectImportSummary` folds **any** returned
+  `PersistFailure` into `RunnerState: 'partial'` and fires the caller's
+  `onError`, which is exactly why a diagnostic failure must never be returned.
+  An empty half costs no call.
 - **A `RemoteResponse` carries the sniffer's correlation `id` and the observed
   `startedAt`, and exposes the body two ways.** Most entities decode a known
   payload and use only `url` / `headers` / `text()`. An entity that _records_ an
@@ -167,17 +169,19 @@ EnsureWindowVisible` union.** Two variants reach the wire — a `Navigation`'s
   Note the runner's `idleTimeout` option, when passed, wins over the plan's.
   `web-trace-collector` is the one plan that uses the pairing today, and its
   `config.test.ts` pins the ordering.
-- **A plan factory is not obliged to be pure, and none of the three are.**
-  `web-trace-collector`'s mints a fresh session id per build, deliberately, so two
-  recordings of one remote don't upsert over each other; `fhir-r4-client-collector`
-  and `rexall-be-well-collector` each mint a provenance **run id** per build for
-  the same reason, so one sync's traces are grouped and cannot upsert over the
-  previous sync's. One plan build is one run — `makeScrapingPlan` is called
-  exactly once per sync, by `CollectorDescriptor.make`'s
-  `resourcePersistenceRuntimeIfMatches`. A test that compares plans across two
-  builds must therefore compare an identity _projection_ (name, `firstPage`, step
-  names, entity names), not deep-equal them; `registry.test.ts` and both
-  collectors' `config.test.ts` show the shape.
+- **Plan factories are `(config, runId) => plan` and deterministic given their
+  inputs — the framework mints the id.** `CollectorDescriptor.make`'s
+  `resourcePersistenceRuntimeIfMatches` mints one uuid per dispatch, applies
+  the factory to it, and seals both into the `ResourcePersistenceContext` — a
+  runtime instance _is_ one run, by construction. A factory that needs a
+  per-run identity derives it from `runId` (the recorder's `sessionIdFor`,
+  the provenance hook's session prefix) instead of minting its own, because
+  `{sessionId}-{requestId}` is a trace's resource id and a stable id would
+  silently upsert one run's traces over the previous run's. Consequence for
+  tests: per-collector suites deep-equal plans built with a fixed run id; only
+  `registry.test.ts`'s union-wide sweep still compares an identity
+  _projection_, because the recorder's recording entity closes over the
+  session id and two dispatches mint different ids.
 - **Every `Step` carries a required `name`; the machine pushes it as a separate
   `SetSnifferStatus` control message, _not_ on the step's own action.** As the
   machine reaches each step it emits `SetSnifferStatus { name }`, which the Tauri
@@ -216,26 +220,27 @@ EnsureWindowVisible` union.** Two variants reach the wire — a `Navigation`'s
   (default 500) — both adjustable per-plan (`dedupeGeneratedOpenUris`,
   `maxGeneratedSteps`). Dropped steps WARN-log with counts. These two are the
   termination guards for the naturally-recursive entity-hung generators.
-- **`withCapturedSource` skips capture on an empty parse — that rule is the line
-  between deliberate provenance collection and bulk recording.** The combinator
-  (`collector-fundamentals/model`) wraps an `EntityDefinition` so a non-empty
-  `parse` also runs a `capture(response, produced)`, which is the only place the
-  "response → the resources it produced" pairing exists (the tracker discards
-  the `RemoteResponse` the moment the parse settles). A response that decoded to
-  **nothing** is therefore never captured, and neither is a failed parse — if
-  you want every exchange stored regardless, that is a recorder, i.e. its own
-  entity claiming every response (see `web-trace-collector`), not a capture.
-  Two more properties the wrapper guarantees: a failing or _dying_ `capture` is
-  WARN-logged and returns the inner resources unchanged (a diagnostic never
-  takes a run down, and the error channel stays `ParseError`-only), and
-  `followUpSteps` still receives the **inner** entity's resources, so a
-  generator that opens a link per resource does not also fire for a provenance
-  record.
-- **The tracker's ordering is generate → drop → offer.** A successful parse's
-  `followUpSteps` are injected _before_ the settle is dropped and offered, so the
-  machine leaves `Drained` before the offer's close-check can inject
-  `NoMoreResultsExpected` — completion can't race ahead of the steps a settle
-  produced.
+- **`captureProvenance` fires only for a non-empty successful parse — that rule
+  is the line between deliberate provenance collection and bulk recording.**
+  The tracker invokes the plan's hook inside `ResponseFinished`, the only place
+  the "response → the resources it produced" pairing exists (the
+  `RemoteResponse` is discarded the moment the settle is offered). A response
+  that decoded to **nothing** is therefore never captured, and neither is a
+  failed parse — if you want every exchange stored regardless, that is a
+  recorder, i.e. its own entity claiming every response (see
+  `web-trace-collector`), not a capture. Two more properties the tracker
+  enforces: a failing or _dying_ hook is WARN-logged and the parse output flows
+  on unchanged (a diagnostic never takes a run down, and the stream's error
+  shape is untouched), and `followUpSteps` receives the **raw** parse output —
+  generation runs before the hook — so a generator that opens a link per
+  resource does not also fire for a provenance record.
+- **The tracker's ordering is generate → capture → drop → offer.** A successful
+  parse's `followUpSteps` are injected _before_ the settle is dropped and
+  offered, so the machine leaves `Drained` before the offer's close-check can
+  inject `NoMoreResultsExpected` — completion can't race ahead of the steps a
+  settle produced. The provenance capture runs between generation and the
+  drop, which is what guarantees `followUpSteps` never sees a hook-rewritten
+  batch.
 - **The sync drive loop is a decision table, not a state machine, and
   completion is not computed in the runner.** It drains the handler's
   `requestSniffingResults` stream until that stream finishes; the handler closes

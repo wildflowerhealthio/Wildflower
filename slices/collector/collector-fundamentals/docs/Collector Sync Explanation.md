@@ -129,8 +129,10 @@ The handler publishes each settled outcome — a decoded batch (`Right`) or a
 sniff-level parse/transport failure (`Left`) — onto its own
 `requestSniffingResults` stream, which `processSniffResultsFromMailbox` reads directly (no
 `onResult` callback, no adapter in between). Each drive step pulls one result and
-writes the batch inline, emitting that batch's `PersistFailure`s as the step's
-stream element. The run's output is thus _produced by the Stream_ — the fold is
+writes the batch inline — the primary `resources` first (their failures are the
+step's output), then any `diagnostics` best-effort through the same sink, each
+diagnostic failure WARN-logged and kept out of the summary — emitting the
+primary batch's `PersistFailure`s as the step's stream element. The run's output is thus _produced by the Stream_ — the fold is
 where `setFailed` / `onError` fire and the summary accumulates.
 
 The step is a plain decision table — **not** a state machine. (Contrast the step

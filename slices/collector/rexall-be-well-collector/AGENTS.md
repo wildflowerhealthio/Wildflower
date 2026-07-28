@@ -32,11 +32,11 @@ machinery lives in `slices/emr/fhir-stu3-as-r4`.
   bundle "as is" (a `Schema.Union` of the two carebook `R4FromStu3Schema`
   transforms plus a `null` catch-all for non-medication entries), then splits off
   just `MedicationRequest` / `MedicationDispense`, dropping-and-counting the rest.
-- `src/provenance.ts` — the provenance wiring: `mintRunId`, `withProvenance`,
-  `isTraceResource` (a copy of `fhir-r4-client-collector`'s, for the same layering
-  reason as `extract-json.ts` below).
+- the provenance hook — `web-trace-core`'s `makeFhirProvenanceCapture('rexall')`,
+  one module-level line in `src/config.ts`, stated as the plan's
+  `captureProvenance`.
 - the persist sink — `fhir-r4`'s `persistResources`, imported in `src/config.ts`
-  and wrapped in `withDiagnosticResources` before it reaches the descriptor.
+  and handed straight to the descriptor.
 - `src/extract-json.ts` — XHR/JSON-viewer body normalizer (a copy of
   `fhir-r4-client-collector`'s; slice layering forbids importing it).
 - `src/rexall-config-form.tsx` (+ `.module.css`) — the email/password
@@ -51,14 +51,14 @@ product constraint.
 
 ## Provenance
 
-Both entities are wrapped in `withProvenance(runId)`
-(`CapturedSource.withCapturedSource` under the hood), and the descriptor's
-`persistResources` is wrapped in
-`DiagnosticResources.withDiagnosticResources(persistResources, isTraceResource)`.
-A non-empty parse therefore hands back `[...resources, trace]`: the decoded
-resources each carrying `meta.source` back to the trace, plus one trace
+The plan states one hook: `captureProvenance: makeFhirProvenanceCapture('rexall')`
+(module-level, so two plans from one config deep-equal). The framework does the
+rest — it mints the run id at dispatch, invokes the hook only for a response
+whose parse produced resources, and persists the resulting trace best-effort on
+the batch's `diagnostics` channel. A non-empty parse therefore yields the
+decoded resources each carrying `meta.source` back to the trace, plus one trace
 `DocumentReference` naming all of them in `context.related`. The encoding and
-both link directions live in `web-trace-core`; this package only wires them.
+both link directions live in `web-trace-core`; this package only names itself.
 
 It matters more here than for `fhir-r4-client-collector`, because this collector
 **translates**: a `MedicationRequest` is the output of a carebook STU3 → R4
@@ -78,36 +78,28 @@ payload. The trace is the only record of what the transform was actually given.
 
 ### Traps
 
-- **`scrapingPlan` is deliberately impure.** It mints a fresh provenance run id
-  per build and closes both entities over it, because the trace resource id is
-  `{runId}-{requestId}`: a run id derived from the config would make a second
-  sync of the same account silently upsert its traces over the first's.
-  `makeScrapingPlan` is called exactly once per sync run, so one plan build is
-  one run. Consequence: two builds from one config are structurally unequal, so
-  `config.test.ts` and `collector-registry`'s dispatch test compare a plan
-  _identity projection_ (name, `firstPage`, steps, entity names) rather than
-  deep-equalling plans.
-- **A response that produced no resource is not captured.** `withCapturedSource`
-  skips an empty parse — the line between provenance collection and bulk
+- **`scrapingPlan` is `(config, runId) => plan` and deterministic given its
+  inputs.** The framework mints the run id at dispatch (one per
+  `resourcePersistenceRuntimeIfMatches` call, so one plan build is one run);
+  this factory ignores the parameter — the hook receives the id at invocation.
+  The trace resource id is `{rexall-runId}-{requestId}`, which is why the id
+  must be fresh per run: a config-derived id would make a second sync of the
+  same account silently upsert its traces over the first's. Tests deep-equal
+  plans built with a fixed run id.
+- **A response that produced no resource is not captured.** The tracker skips
+  the hook on an empty parse — the line between provenance collection and bulk
   recording. A searchset whose entries are all `Location` / `DocumentReference` /
   `Immunization` decodes fine and yields nothing, so it leaves no trace, by
-  design.
-- **`isTraceResource` is not `resourceType === 'DocumentReference'`.** The
-  carebook searchset already carries clinical `DocumentReference` entries; if one
-  ever survived the entity's filter, demoting it to a diagnostic would drop its
-  failed write out of the run's summary. The predicate is the resource type
-  **and** `isWebTrace`, the category check the codec and the viewer both use.
-- **A trace must never degrade the primary output.** A failing or dying capture
-  is WARN-logged and the entity's own resources are returned unchanged; a failing
-  trace _write_ is WARN-logged by `withDiagnosticResources` and kept out of the
-  run's reported failures. If an existing entity suite's expectations have to
-  change to accommodate provenance, something has gone wrong — the wiring only
-  adds `meta.source` and a trailing trace.
-- **`src/provenance.ts` is a near-identical copy** of
-  `fhir-r4-client-collector`'s, for the same reason `extract-json.ts` is: slice
-  layering forbids one `*-client-collector` importing another. Keep the substance
-  in `web-trace-core` — anything that starts to look like policy belongs there,
-  not in a third copy.
+  design. (The carebook searchset's clinical `DocumentReference` entries are
+  also why the diagnostic split being _structural_ matters: a clinical
+  `DocumentReference` in `resources` keeps its failure accounting; only the
+  hook-minted trace rides `diagnostics`.)
+- **A trace must never degrade the primary output.** A failing or dying hook is
+  WARN-logged by the tracker and the entities' own resources flow on
+  unchanged; a failing trace _write_ is WARN-logged by the runner and kept out
+  of the run's reported failures. If an existing entity suite's expectations
+  have to change to accommodate provenance, something has gone wrong — the
+  wiring only adds `meta.source` and a separate diagnostic.
 
 ## v1 scope: list-only
 
