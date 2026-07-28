@@ -14,8 +14,11 @@ before adding one.
   `ResourcePersistence*` write seam, `EntityDefinition` / `UrlMatch` /
   `ScrapingPlan` / `Step`, and the `./config-form` view contract, plus
   `CollectorBridgeMessageHandler` (the response tracker + automatic-navigation
-  machine + run lifecycle). No registry, no HTTP runtime, no React. Everything
-  else depends on it; it depends on nothing else in the slice.
+  machine + run lifecycle) and the two diagnostic seams `withCapturedSource`
+  (entity combinator) / `withDiagnosticResources` (persist-sink wrapper). No
+  registry, no HTTP runtime, no React. Everything else depends on it; it depends
+  on nothing else in the slice. Deliberately FHIR-agnostic — nothing here names
+  a resource type.
 - **`collector-registry`** — the **closed, compile-time** assembly. A single
   `descriptors` tuple lists every collector; the `CollectorConfig` union, the
   `CollectorTag` literal, `CollectorRequirements`, and the
@@ -68,6 +71,18 @@ before adding one.
   here. The sink declares its own `ResourceWriteFailure`, structurally checked
   against `PersistFailure` when `CollectorDescriptor.make` receives it, so a
   drift is a compile error at every collector rather than a silent divergence.
+- **A diagnostic resource must be written through `withDiagnosticResources`, or
+  a failed diagnostic write silently downgrades a clean run to `partial`.** A
+  trace / provenance record rides in the same batch as the clinical resources,
+  and `collector-react`'s `collectImportSummary` folds **any** `PersistFailure`
+  into `RunnerState: 'partial'` and fires the caller's `onError` — it cannot
+  tell a failed diagnostic from a failed clinical write. So wrap the sink:
+  `persistResources: DiagnosticResources.withDiagnosticResources(persistResources, isDiagnostic)`
+  (`collector-fundamentals/model`). It partitions the batch, writes the clinical
+  half **first** through the *same* injected sink (never a re-derived write —
+  see the guardrail above), WARN-logs each diagnostic failure by `label`/`id`,
+  and returns only the clinical failures. An empty partition costs no call, so a
+  batch with no diagnostics is still exactly one write.
 - **A `RemoteResponse` carries the sniffer's correlation `id` and the observed
   `startedAt`, and exposes the body two ways.** Most entities decode a known
   payload and use only `url` / `headers` / `text()`. An entity that _records_ an
@@ -190,6 +205,21 @@ EnsureWindowVisible` union.** Two variants reach the wire — a `Navigation`'s
   (default 500) — both adjustable per-plan (`dedupeGeneratedOpenUris`,
   `maxGeneratedSteps`). Dropped steps WARN-log with counts. These two are the
   termination guards for the naturally-recursive entity-hung generators.
+- **`withCapturedSource` skips capture on an empty parse — that rule is the line
+  between deliberate provenance collection and bulk recording.** The combinator
+  (`collector-fundamentals/model`) wraps an `EntityDefinition` so a non-empty
+  `parse` also runs a `capture(response, produced)`, which is the only place the
+  "response → the resources it produced" pairing exists (the tracker discards
+  the `RemoteResponse` the moment the parse settles). A response that decoded to
+  **nothing** is therefore never captured, and neither is a failed parse — if
+  you want every exchange stored regardless, that is a recorder, i.e. its own
+  entity claiming every response (see `web-trace-collector`), not a capture.
+  Two more properties the wrapper guarantees: a failing or *dying* `capture` is
+  WARN-logged and returns the inner resources unchanged (a diagnostic never
+  takes a run down, and the error channel stays `ParseError`-only), and
+  `followUpSteps` still receives the **inner** entity's resources, so a
+  generator that opens a link per resource does not also fire for a provenance
+  record.
 - **The tracker's ordering is generate → drop → offer.** A successful parse's
   `followUpSteps` are injected _before_ the settle is dropped and offered, so the
   machine leaves `Drained` before the offer's close-check can inject

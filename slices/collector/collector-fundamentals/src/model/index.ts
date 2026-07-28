@@ -1,4 +1,6 @@
+export * as CapturedSource from './captured-source.ts'
 export * as CollectorDescriptor from './collector-descriptor.ts'
+export * as DiagnosticResources from './diagnostic-resources.ts'
 export * as EntityDefinition from './entity-definition.ts'
 export * as Step from './step.ts'
 export * as Response from './response.ts'
