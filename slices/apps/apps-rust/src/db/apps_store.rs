@@ -178,7 +178,11 @@ impl AppsStore for SqliteAppsStore {
 
 #[cfg(test)]
 mod tests {
+    use diesel::migration::{Migration, MigrationSource, MigrationVersion};
     use diesel::prelude::*;
+    use diesel::sql_types::{Integer, Text};
+    use diesel::sqlite::{Sqlite, SqliteConnection};
+    use diesel::{sql_query, QueryableByName};
 
     use super::*;
     use crate::db::app_registration::app_registrations;
@@ -248,6 +252,140 @@ mod tests {
                 "wildflower-medication",
                 "wildflower-web-trace",
             ],
+        );
+    }
+
+    /// The loopback origin a self-hosted row was seeded onto.
+    #[derive(QueryableByName)]
+    struct SeededOrigin {
+        #[diesel(sql_type = Integer)]
+        port: i32,
+        #[diesel(sql_type = Text)]
+        subdomain: String,
+    }
+
+    /// [`MIGRATIONS`] narrowed to the versions at or below `.0` — it drives a
+    /// database to the state an install was in *before* a seed migration ran, so a
+    /// test can occupy the port and subdomain that seed prefers and then let it run.
+    struct MigrationsThrough(&'static str);
+
+    impl MigrationSource<Sqlite> for MigrationsThrough {
+        fn migrations(&self) -> diesel::migration::Result<Vec<Box<dyn Migration<Sqlite>>>> {
+            let mut migrations = MIGRATIONS.migrations()?;
+            let last = MigrationVersion::from(self.0);
+            migrations.retain(|m| m.name().version() <= last);
+            Ok(migrations)
+        }
+    }
+
+    /// Register a non-seeded self-hosted app holding `port` and `subdomain` — the
+    /// row an upload leaves behind (its subdomain is its slug, which is its id).
+    fn occupy(conn: &mut SqliteConnection, slug: &str, port: i32) {
+        sql_query(
+            "INSERT INTO app_registrations \
+             (id, kind, position, on_homescreen, name, local_only, requires_tunnel) \
+             VALUES (?, 'self-hosted', (SELECT MAX(position) + 1 FROM app_registrations), 1, ?, 1, 0)",
+        )
+        .bind::<Text, _>(slug)
+        .bind::<Text, _>(slug)
+        .execute(conn)
+        .expect("registration insert must succeed");
+        sql_query(
+            "INSERT INTO self_hosted_app_configurations \
+             (id, port, content_folder, subdomain, seeded) VALUES (?, ?, ?, ?, 0)",
+        )
+        .bind::<Text, _>(slug)
+        .bind::<Integer, _>(port)
+        .bind::<Text, _>(format!("{slug}-folder"))
+        .bind::<Text, _>(slug)
+        .execute(conn)
+        .expect("configuration insert must succeed");
+    }
+
+    fn origin_of(conn: &mut SqliteConnection, id: &str) -> SeededOrigin {
+        sql_query("SELECT port, subdomain FROM self_hosted_app_configurations WHERE id = ?")
+            .bind::<Text, _>(id)
+            .get_result(conn)
+            .expect("the seeded self-hosted row must exist")
+    }
+
+    /// With nothing in the way, each seed lands on the literal origin it documents
+    /// — the fallback expressions below must not move a fresh install.
+    #[test]
+    fn seeded_self_hosted_apps_land_on_their_documented_ports() {
+        let store = SqliteAppsStore::open_in_memory().unwrap();
+        let mut conn = store.pool().get().unwrap();
+        let medication = origin_of(&mut conn, "wildflower-medication");
+        assert_eq!(
+            (medication.port, medication.subdomain.as_str()),
+            (8090, "medication")
+        );
+        let web_trace = origin_of(&mut conn, "wildflower-web-trace");
+        assert_eq!(
+            (web_trace.port, web_trace.subdomain.as_str()),
+            (8091, "web-trace")
+        );
+    }
+
+    /// `port` and `subdomain` are UNIQUE, so an install that uploaded an app onto
+    /// 8091 / `web-trace` before upgrading into 0004 would abort the migration —
+    /// and with it `SqliteAppsStore::new`, leaving the registry unopenable. The
+    /// seed allocates around the collision instead: the next port above the
+    /// allocated ones, and the app id as the subdomain.
+    #[test]
+    fn web_trace_seed_allocates_around_a_taken_port_and_subdomain() {
+        let pool = persistence_rust::open_in_memory_pool().unwrap();
+        let mut conn = pool.get().unwrap();
+        persistence_rust::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0003"),
+        )
+        .unwrap();
+        occupy(&mut conn, "web-trace", 8091);
+
+        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
+            .expect("0004 must apply over the collision, not abort the migration run");
+
+        let seeded = origin_of(&mut conn, "wildflower-web-trace");
+        assert_eq!(seeded.port, 8092, "the next port above every allocated one");
+        assert_eq!(seeded.subdomain, "wildflower-web-trace");
+        let upload = origin_of(&mut conn, "web-trace");
+        assert_eq!(
+            (upload.port, upload.subdomain.as_str()),
+            (8091, "web-trace"),
+            "the upload keeps the origin it was allocated — the seed moves, not it",
+        );
+    }
+
+    /// The same for 0003, whose 8090 / `medication` pair is taken by an upload named
+    /// "Medication". 0004 then runs over the *displaced* medication row: its 8091 is
+    /// gone too, so it allocates once more — the fallbacks compose down the chain.
+    #[test]
+    fn medication_seed_allocates_around_a_taken_port_and_subdomain() {
+        let pool = persistence_rust::open_in_memory_pool().unwrap();
+        let mut conn = pool.get().unwrap();
+        persistence_rust::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0002"),
+        )
+        .unwrap();
+        occupy(&mut conn, "medication", 8090);
+
+        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
+            .expect("0003 must apply over the collision, not abort the migration run");
+
+        let medication = origin_of(&mut conn, "wildflower-medication");
+        assert_eq!(
+            (medication.port, medication.subdomain.as_str()),
+            (8091, "wildflower-medication"),
+        );
+        let web_trace = origin_of(&mut conn, "wildflower-web-trace");
+        assert_eq!(
+            (web_trace.port, web_trace.subdomain.as_str()),
+            (8092, "web-trace"),
+            "0004's own subdomain was never taken — only its port had to move",
         );
     }
 }

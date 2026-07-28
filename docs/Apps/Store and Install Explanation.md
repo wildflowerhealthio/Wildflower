@@ -177,9 +177,11 @@ slug already in the global id space is rejected `400 InvalidName` ("an app with
 this name already exists"), which the caller resolves by renaming — the store
 raises that directly from its in-transaction id check (there's no granular typed
 insert error for self-hosted, unlike cloud's `CloudInsertError`). Every
-self-hosted row's subdomain equals its id, so the id
+_uploaded_ self-hosted row's subdomain equals its id, so the id
 check subsumes the subdomain space; the `UNIQUE(subdomain)` column stays a
-backstop.
+backstop. The migration-seeded rows are the exception — `wildflower-medication`
+serves at `medication` — which is what makes the app id available as a seed's
+fallback subdomain (below).
 
 ### Port allocation → lowest free, reused
 
@@ -191,6 +193,35 @@ than `MAX(port) + 1` keeps a delete → same-bundle-reinstall cycle on its
 original origin — a SMART-on-FHIR origin-stability property. Exhaustion is
 `PortSpaceExhausted` — a server resource fault, not a name problem, so it must
 not read as a `400`.
+
+### A seed migration allocates around a collision rather than aborting
+
+The shipped self-hosted apps are seeded by migrations (`0003` for Medications,
+`0004` for Web Trace) that name a port and a subdomain — 8090/`medication`,
+8091/`web-trace`. Both columns are `UNIQUE`, and an install that uploaded apps
+before upgrading into one of those migrations can already hold either value: ten
+uploads climb 8082..8091 lowest-first, and an app named "Web Trace" slugs to
+exactly `web-trace`. A literal there would abort the migration, and a failed
+migration takes `SqliteAppsStore::new` — and so the whole registry — down with
+it.
+
+So each seed prefers its literal and falls back in SQL:
+
+- **`port` → `MAX(port) + 1`.** Free by construction, and still above the upload
+  floor, which is the property the literal was chosen for. Not lowest-free like
+  the upload allocator: lowest-free exists to hold a delete →
+  same-bundle-reinstall cycle on one origin, and a once-per-install seed has no
+  such cycle.
+- **`subdomain` → the app id** (`wildflower-web-trace`). Free by construction
+  too: an uploaded row's subdomain is its slug, which is its id, so that
+  subdomain being taken would mean an app of that id exists — which the
+  registration insert would already have rejected on the primary key.
+
+The app's identity is unaffected either way: the id, the `client_id`, and the
+gatekeeper client are what the seed writes, and the launch URL is rendered from
+the row at read time. The one collision no seed can allocate around is an upload
+already holding the seeded **id** — that id is what the gatekeeper client and
+the vendored bundle are keyed on.
 
 ### Zip extraction guards two archive hazards
 
