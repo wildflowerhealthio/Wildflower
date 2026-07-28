@@ -47,12 +47,10 @@ interface ExportSettings {
  * lets original values leave the device, so it is opted into against a preview
  * that lists exactly what it exposes, rather than opted out of after the fact.
  *
- * **Schema URLs are off by default too, and for the same reason**, even though
- * a namespace URI is a far safer thing to expose than a code — the rule that
- * an untouched panel produces the safest possible archive is worth more than
- * the clicks it costs. Note this differs from the core's own default, which is
- * on: the core answers "what should redaction do when nobody said", the panel
- * answers "what should leave the device when nobody looked".
+ * **Schema URLs are off for the same reason**, even though a namespace URI is
+ * the safer of the two to expose. Both deliberately disagree with the core's
+ * own defaults: the core answers "what should redaction do when nobody said",
+ * the panel answers "what should leave the device when nobody looked".
  */
 const DEFAULT_EXPORT_SETTINGS: ExportSettings = {
   enumCarveOut: false,

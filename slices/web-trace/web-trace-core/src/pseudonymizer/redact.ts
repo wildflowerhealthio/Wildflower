@@ -115,26 +115,17 @@ const CODE_TOKEN = /^[A-Za-z][A-Za-z_-]*$/
 const isCodeToken = (value: string): boolean =>
   value === '' || (value.length <= CODE_TOKEN_MAX_LENGTH && CODE_TOKEN.test(value))
 
-/**
- * The longest value the carve-out will treat as a namespace URI.
- *
- * @remarks
- * Four times {@link CODE_TOKEN_MAX_LENGTH}, because a namespace URI spends most
- * of its length on structure — scheme, host, and a path of code tokens — before
- * it reaches the token that actually names something. The real private
- * extension URLs this bound was fitted to run to about 90 characters.
- */
+/** The longest value the carve-out will treat as a namespace URI. */
 const NAMESPACE_URI_MAX_LENGTH = 256
 
 /**
  * Version tokens a namespace path may carry, as an allowlist.
  *
  * @remarks
- * A version segment is the one place a digit belongs in a namespace path, and
- * it has to be admitted by an allowlist rather than by "letters then digits":
- * that looser rule also admits `w8`, `h1`, and `wqx0` — the opaque tenant and
- * environment segments a per-record URL is built from, which is exactly what
- * this predicate exists to reject.
+ * A version segment is the one place a digit belongs in a namespace path.
+ * Widening this to "letters then digits" also admits `w8`, `h1`, and `wqx0` —
+ * the opaque tenant segments a per-record URL is built from, which is exactly
+ * what {@link isNamespaceUri} exists to reject.
  */
 const VERSION_PART = /^(?:v|r|stu|dstu|fhir)\d{1,3}$/i
 
@@ -142,9 +133,8 @@ const VERSION_PART = /^(?:v|r|stu|dstu|fhir)\d{1,3}$/i
  * An OID in `urn:oid:` form — a registered arc path, digits and dots only.
  *
  * @remarks
- * `urn:oid:` is admitted because it names a registry entry; `urn:uuid:` is not,
- * because a UUID naming a system is still a generated identifier and is exactly
- * the kind of value the rest of this module works to replace.
+ * `urn:uuid:` is deliberately not admitted: a UUID naming a system is still a
+ * generated identifier.
  */
 const URN_OID = /^urn:oid:[0-2](?:\.(?:0|[1-9]\d*))+$/
 
@@ -155,9 +145,8 @@ const isNamespacePart = (part: string): boolean => CODE_TOKEN.test(part) || VERS
  * Whether a path segment is built entirely of vocabulary parts.
  *
  * @remarks
- * Split before testing, so a compound segment is judged part by part:
- * `v3-ActCode` is a version token joined to a code, which
- * {@link CODE_TOKEN} alone would reject for its digit.
+ * Split before testing, so `v3-ActCode` is judged as a version token joined to
+ * a code rather than rejected whole for its digit.
  */
 const isNamespaceSegment = (segment: string): boolean =>
   segment.split(/[-_]/).every(isNamespacePart)
@@ -169,36 +158,14 @@ const isNamespaceSegment = (segment: string): boolean =>
  * @returns `true` for a namespace URI, `false` for anything else
  *
  * @remarks
- * FHIR spends URIs on two very different jobs. `Coding.system`,
- * `Identifier.system`, and `Extension.url` hold URIs that say *what kind of
- * thing the value beside them is* — `.../fhir/coding/medication-din-code` is a
- * key, and pseudonymizing it destroys the one label that tells a collector
- * author what they are looking at. A `Bundle.link.url` holds a URI that
- * addresses *one particular record*, complete with the patient id in its query
- * string, and must not survive.
+ * `Coding.system` and `Extension.url` name a schema and are the labels that
+ * make a payload legible; `Bundle.link.url` addresses one record, patient id
+ * included. The rule reads the **value**, never the field name — a `system`
+ * holding `http://host/Patient/8a3f2b1c` must not ride in on its key.
  *
- * The two are separated by shape, not by field name, for the same reason the
- * code carve-out is: a field name is a promise the server makes, and a `system`
- * holding `http://host/Patient/8a3f2b1c` would export a record URL verbatim on
- * the strength of its key. So a namespace URI is:
- *
- * - `urn:oid:` naming a registered arc, or `http`/`https`;
- * - carrying no query, no fragment, and no credentials — a per-record URL
- *   almost always carries the first, and none of the three ever appear in a
- *   vocabulary URI;
- * - built of path segments that are {@link isCodeToken}-style vocabulary, with
- *   version tokens (`v1`, `R4`, `stu3`) the sole digit-bearing exception;
- * - bounded by {@link NAMESPACE_URI_MAX_LENGTH}.
- *
- * The host is **not** constrained. It is an organization-level fact that the
- * export already discloses for every exchange, so constraining it would buy
- * nothing while rejecting legitimate systems.
- *
- * **What this does not admit**: a segment whose digits are not a version, so
- * `http://terminology.hl7.org/CodeSystem/v2-0203` is hidden even though it is a
- * genuine HL7 system — `0203` is a bare digit run, and admitting those would
- * readmit every numeric id. A path holding one is answered by a per-path
- * override, the same escape hatch the code carve-out's residue uses.
+ * Why each clause is drawn where it is, what the unconstrained host costs, and
+ * the `v2-0203` case this deliberately misses are all in
+ * `docs/Redaction Explanation.md`.
  */
 const isNamespaceUri = (value: string): boolean => {
   if (value.length > NAMESPACE_URI_MAX_LENGTH) return false
@@ -278,9 +245,7 @@ interface RedactionOptions {
    *
    * @remarks
    * Independent of {@link RedactionOptions.enumCarveOut} and of
-   * {@link RedactionOptions.enumThreshold}, because a namespace URI is not an
-   * enum and its cardinality carries no signal — see
-   * {@link buildRedactionPolicy}.
+   * {@link RedactionOptions.enumThreshold} — a namespace URI is not an enum.
    *
    * @defaultValue true
    */
@@ -352,14 +317,11 @@ const isPlainDecimal = (text: string): boolean => /^-?\d+(\.\d+)?$/.test(text)
  * `EntityDefinition` branches on — so a path whose values across the session
  * number at most the threshold is left alone.
  *
- * There are **two** verbatim rules and they are decided independently. The code
- * carve-out is shape-gated then counted; the namespace-URI rule
- * ({@link isNamespaceUri}) is shape-gated and **not** counted, and answers to
- * its own {@link RedactionOptions.namespaceUris} switch. A path is tested
- * against the URI rule first, so that a hidden `system` field reports
- * `namespaceUrisOff` rather than `notCode` — the two have different fixes, and
- * a URI is never a code token, so it would otherwise always land on the
- * misleading one.
+ * There are **two** verbatim rules, decided independently: the code carve-out
+ * is shape-gated then counted, {@link isNamespaceUri} is shape-gated and not
+ * counted. The URI rule is tested first, so a hidden `system` field reports
+ * `namespaceUrisOff` rather than the `notCode` it would always land on — the
+ * two have different fixes.
  */
 const buildRedactionPolicy = (
   exchanges: readonly TraceExchange[],
@@ -394,13 +356,9 @@ const buildRedactionPolicy = (
           decidedBy: 'override',
         }
       }
-      // Namespace URIs are settled before the code carve-out and outside it:
-      // they answer to their own switch, and they are **not** counted. The
-      // threshold exists to spot enums, on the reasoning that low cardinality
-      // is what PHI looks like in a single-patient trace — but a namespace URI
-      // names a schema rather than a person, so its cardinality carries no
-      // signal either way. A portal with forty private extensions has forty
-      // keys, not forty secrets.
+      // Settled before the code carve-out and outside it: own switch, and no
+      // count. A portal with forty private extensions has forty keys, not
+      // forty secrets.
       if (isNamespaceUriPath([...values])) {
         return {
           path,

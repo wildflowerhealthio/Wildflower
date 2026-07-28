@@ -44,11 +44,9 @@ const valueCell = (value: string | null): string => (value === null ? '—' : va
  * says *why*, because "hidden because it is not a code" and "hidden because
  * there are too many values" have different fixes.
  *
- * A namespace-URI row names its rule instead of its count, in both directions.
- * The count is not what decided it — those paths are exempt from the threshold
- * — so reporting `visible (18 values)` would tell the reviewer to go looking
- * for a threshold that had no say, and `hidden (not a code)` would point at a
- * switch that would not bring it back.
+ * A namespace-URI row names its rule instead of its count, in both directions:
+ * those paths are exempt from the threshold, so a count would send the
+ * reviewer to a control that had no say in the decision.
  */
 const autoLabel = (row: PreviewRow): string => {
   const values = `${row.distinctValues} ${row.distinctValues === 1 ? 'value' : 'values'}`
