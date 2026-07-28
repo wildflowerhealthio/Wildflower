@@ -73,10 +73,9 @@ pub(in crate::desktop) fn seed_then_navigate<R: Runtime>(
         // them as a set), so the first one names the jar to read back.
         let read_back = cookies.first().map(|cookie| cookie.domain.clone());
         seed_default_store_then(&cookies, mtm, move || {
-            // Re-check rather than trusting the check above: the completions
-            // arrive on later main-loop iterations, so a newer open can have
-            // rewired this instance's content webview in between and the
-            // `target` captured here is then stale. See [`super::superseded`].
+            // Completions arrive on later main-loop iterations, so a newer open
+            // can have rewired this instance in between — see
+            // [`super::superseded`].
             if superseded(&handle, &id, scheduled_at) {
                 log::warn!(
                     "[native-webview] cookie seed for instance {id} committed after a newer open \

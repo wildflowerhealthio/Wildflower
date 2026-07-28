@@ -39,9 +39,8 @@ pub(in crate::desktop) fn seed_then_navigate<R: Runtime>(
             // Still navigate: an un-authenticated page beats a webview stuck at
             // `about:blank`.
         }
-        // This thread races any concurrent rewire of the same instance — a
-        // single in-flight seed is enough, since nothing serialises it against
-        // the main loop. See [`super::superseded`].
+        // Nothing serialises this thread against a concurrent rewire of the same
+        // instance — see [`super::superseded`].
         if superseded(&handle, &id, scheduled_at) {
             log::warn!(
                 "[native-webview] cookie seed for instance {id} committed after a newer open — \

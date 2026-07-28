@@ -76,22 +76,14 @@ pub(super) struct InstanceState {
     /// it: `Some` → cancel the dispose and replay; `None` → dispose proceeds.
     pub(super) pending_reopen: Mutex<Option<(OpenRequest, Url)>>,
     /// Advances on every open that points this instance's content webview at a
-    /// new target (fresh build or rewire). An asynchronous cookie seed captures
-    /// the value current when it was scheduled and re-checks it before
-    /// navigating, so a seed whose open has since been superseded drops its
-    /// navigation instead of dragging the webview back to a stale target — see
-    /// [`super::cookies`] and docs/Lifecycle and Races Explanation.md
+    /// new target, so an asynchronous cookie seed can tell whether it still owns
+    /// the navigation it scheduled — see docs/Lifecycle and Races Explanation.md
     /// § "A seed's navigation belongs to the open that scheduled it".
     ///
-    /// Bumped and read **only on the main thread** (every mutation goes through
-    /// [`super::lifecycle::present`] or the `CloseRequested` replay, both of
-    /// which are main-thread), so "bump, then hand the new value to the seed" is
-    /// effectively atomic against other opens.
-    ///
-    /// Unlike the rest of this struct it survives a fresh build's state reset
-    /// (see [`install_instance_state`]): the token has to stay monotonic per id
-    /// for the lifetime of the process, or a rebuild could hand a new open the
-    /// same value an in-flight seed from before the rebuild is holding.
+    /// Claimed only on the main thread ([`super::lifecycle::claim_open_generation`]),
+    /// and the one field [`install_instance_state`] carries across a fresh
+    /// build's reset: restarting it would let a rebuilt instance hand a new open
+    /// a value an older in-flight seed is still holding.
     pub(super) open_generation: AtomicU64,
     /// Generation counter for the absolute-timeout backstop (see
     /// [`super::lifecycle`]).

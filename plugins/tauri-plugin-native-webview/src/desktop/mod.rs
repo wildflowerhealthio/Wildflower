@@ -140,10 +140,8 @@ impl<R: Runtime> NativeWebview<R> {
         // deferred payload's cookies instead.
         //
         // The generation `present` reports is this open's claim on the content
-        // webview: the seed navigates only while it still holds (see
-        // [`cookies::seed_then_navigate`]), so a later open that rewires the
-        // same instance keeps its own target instead of being dragged back to
-        // this one when these writes finally commit.
+        // webview; the seed navigates only while that claim still holds (see
+        // [`cookies::seed_then_navigate`]).
         if let PresentOutcome::Presented(generation) = outcome {
             if !cookies.is_empty() {
                 seed_then_navigate(&self.0, id, cookies, target, generation)?;

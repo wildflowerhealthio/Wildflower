@@ -32,15 +32,10 @@
 //! - **Callable from either thread.** Each implementation marshals as it needs
 //!   to. This is what lets the `CloseRequested` deferred replay — a main-thread
 //!   tao callback — call it directly instead of spawning a thread and hoping.
-//! - **Scoped to one open.** `scheduled_at` is the caller's
-//!   [`super::state::InstanceState::open_generation`], read at the moment the
-//!   open pointed the content webview at `target`. Because the seed is
-//!   asynchronous, a later open of the same instance can rewire that webview
-//!   before this seed finishes; [`superseded`] is how each implementation
-//!   detects that and drops its navigation rather than dragging the webview
-//!   back to a stale target. The cookie writes themselves are not withdrawn —
-//!   they are first-party cookies for the app's own host, and the jar is
-//!   process-global regardless.
+//! - **Scoped to one open.** `scheduled_at` is the
+//!   [`super::state::InstanceState::open_generation`] the calling open claimed.
+//!   A later open of the same instance supersedes this seed's *navigation*
+//!   (via [`superseded`]) — never its writes.
 //! - **Best-effort past the schedule point.** A failure after the call returns
 //!   (webview torn down, a cookie Foundation rejects) is logged, not surfaced;
 //!   the navigation still happens, because an unauthenticated page beats a
@@ -97,19 +92,11 @@ pub(super) use wry::seed_then_navigate;
 /// Has a newer open taken instance `id`'s content webview since a seed was
 /// scheduled at generation `scheduled_at`?
 ///
-/// The hazard this answers is specific to the seed being asynchronous. Both
-/// implementations resolve the content webview **by label, at completion time**,
-/// and a label is stable across rewires and even across a dispose→rebuild — so
-/// the webview a late completion finds under `content_label(id)` need not be the
-/// one its open was about to navigate. Without this check, an `open_url(target1,
-/// cookies)` immediately followed by an `open_url(target2)` on the same instance
-/// can end with the popup parked on `target1`: open #2 navigates on the main
-/// FIFO, then seed #1's completion lands and navigates the reused webview back.
-/// Nothing in WebKit (macOS) or the main loop (wry, where the seed runs on its
-/// own thread) orders those against each other.
-///
-/// Comparing against a monotonic per-instance token makes the answer exact
-/// rather than best-effort — see [`super::state::InstanceState::open_generation`].
+/// Both implementations resolve that webview by label at completion time, and a
+/// label outlives the open that scheduled the seed — so this is what stops a
+/// late completion navigating a webview a newer open has since rewired. See
+/// [docs/Lifecycle and Races Explanation.md](../../../docs/Lifecycle%20and%20Races%20Explanation.md)
+/// § "A seed's navigation belongs to the open that scheduled it".
 fn superseded<R: Runtime>(app: &AppHandle<R>, id: &str, scheduled_at: u64) -> bool {
     let current =
         instance_state(app, id).map(|instance| instance.open_generation.load(Ordering::SeqCst));

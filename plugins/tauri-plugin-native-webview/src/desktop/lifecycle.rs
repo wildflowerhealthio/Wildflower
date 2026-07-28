@@ -31,11 +31,9 @@ pub(super) enum PresentOutcome {
     /// the target once they commit.
     ///
     /// Carries the [`super::state::InstanceState::open_generation`] this open
-    /// claimed. `present` bumps it and reports the new value from the main
-    /// thread, where every bump happens, so the value cannot already be stale by
-    /// the time the caller reads it — that is what lets the asynchronous seed
-    /// tell "my open is still current" from "a later open has taken this
-    /// webview".
+    /// claimed, for the seed to check before it navigates. Claimed and reported
+    /// from the main thread, where every claim happens, so it cannot already be
+    /// stale by the time the caller reads it.
     Presented(u64),
     /// A dispose was in flight, so the request (cookies and all) was deferred into
     /// [`super::state::InstanceState::pending_reopen`]; the `CloseRequested`
@@ -57,18 +55,13 @@ pub(super) fn blank_url() -> crate::Result<Url> {
 
 /// Claim the next [`super::state::InstanceState::open_generation`] for instance
 /// `id` and return it: this open now owns the content webview, and any seed
-/// still in flight for an earlier one is superseded (see
-/// [`super::cookies::superseded`]).
+/// still in flight for an earlier one is superseded. MUST be called on the main
+/// thread, so the claim can't race another open's.
 ///
-/// MUST be called on the main thread — see that field's doc for why the
-/// bump-then-read has to be uncontended.
-///
-/// A claim always increments before returning, so a claimed generation is
-/// always ≥ 1. The 0 returned when the instance has no registered state at all
-/// (`PluginState` missing or its lock poisoned — not reachable from a healthy
-/// open, since the fresh build installs the state first) is therefore
-/// distinguishable from any real claim, and
-/// [`super::cookies::seed_then_navigate`] treats it as already superseded.
+/// Incrementing before returning makes every claim ≥ 1, which is what lets the 0
+/// returned for an unregistered instance (`PluginState` missing or poisoned — a
+/// healthy open installs the state first) mean "claimed nothing" to
+/// [`super::cookies::superseded`].
 fn claim_open_generation<R: Runtime>(app: &AppHandle<R>, id: &str) -> u64 {
     instance_state(app, id).map_or(0, |instance| {
         instance.open_generation.fetch_add(1, Ordering::SeqCst) + 1
