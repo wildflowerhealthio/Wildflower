@@ -1,5 +1,7 @@
 import type { TraceExchange } from 'web-trace-core'
 
+import { mediaTypeOf } from '../attachments/viewable-attachment.ts'
+
 /**
  * The exchange list's filters: URL, status, and content type.
  *
@@ -55,10 +57,10 @@ const NO_FILTERS: ExchangeFilters = { urlQuery: '', statusClass: ANY, contentTyp
  * @remarks
  * Dropping parameters keeps one endpoint from appearing as several content types
  * because a charset came and went. This is the filter's key; the captured value
- * itself is untouched.
+ * itself is untouched. The filter's name for {@link mediaTypeOf}, and the same
+ * function, so a body cannot classify one way here and another in the viewer.
  */
-const normalizeContentType = (contentType: string): string =>
-  (contentType.split(';')[0] ?? '').trim().toLowerCase()
+const normalizeContentType = mediaTypeOf
 
 /**
  * The distinct content types present, as filter options.

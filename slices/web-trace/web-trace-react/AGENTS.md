@@ -25,7 +25,11 @@ this package and a collector.
   into sessions, `use-trace-sessions.ts` is the hook over the paged read (and
   `summarizePages`, its pure half), `sessions-list.tsx` is the list.
 - **`src/exchanges/`** — `filter-exchanges.ts` is the pure URL/status/content-type
-  filter, `exchange-filters.tsx` its controls, `exchange-list.tsx` the list.
+  filter, `exchange-filters.tsx` its controls, `exchange-list.tsx` the list, and
+  `exchange-detail.tsx` one exchange in full.
+- **`src/attachments/`** — `viewable-attachment.ts` is the viewer's view-model,
+  its two adapters, and the content-type classification; `attachment-viewer.tsx`
+  is the viewer itself, shared by both tabs.
 - **`src/recordings/`** — `recordings-panel.tsx` composes the above into the
   mountable recordings tab.
 
@@ -75,8 +79,49 @@ this package and a collector.
   response or an aborted request, so it classifies as `other`, badges as a
   warning, and renders as `opaque` — never as a zero-valued success.
 - **A skipped body renders as skipped.** `describeBody` prints its size and
-  reason. Flattening a `SkippedBody` into "no body" would make the viewer claim
-  something the trace does not.
+  reason in the list, and `AttachmentViewer` prints its size, hash, and reason in
+  the detail. Flattening a `SkippedBody` into "no body" would make the viewer
+  claim something the trace does not.
+- **One attachment viewer, two adapters — not two viewers.** Neither `TraceBody`
+  nor FHIR `Attachment` can be the viewer's input on its own: `SkippedBody.reason`
+  has no slot in `Attachment`, and `Attachment.url` has no counterpart in
+  `TraceBody`. `ViewableAttachment` is the shared shape, and `fromTraceBody` /
+  `fromFhirAttachment` adapt into it. Add a third caller by writing a third
+  adapter, never by branching inside the viewer.
+- **`AttachmentAbsence` has three cases and they are not interchangeable.**
+  Skipped at capture, held elsewhere by URL, and genuinely empty are different
+  facts; collapsing them to "no content" makes the viewer assert something the
+  record does not.
+- **An SVG is never rendered as an image.** `NEVER_RENDERED_MEDIA_TYPES` is
+  checked before every other rule in `previewKindFor`, so no later reordering can
+  promote one to `image`. An SVG can carry script and remote references, and
+  rendering a captured one would run what the recorded page served against the
+  viewer's own origin. Its markup renders as text instead.
+- **An unrecognised content type gets no preview.** The capture stores bodies of
+  any type; rendering arbitrary bytes as text produces noise that reads like
+  data. The viewer shows the metadata and says there is no preview.
+- **Images render from a `data:` URI, never a fetch.** No network egress at any
+  point is the premise of the app, and a by-reference attachment is named rather
+  than retrieved for the same reason.
+- **A large body waits behind a control.** The verbatim capture policy stores
+  bodies whole, so pretty-printing one into the DOM on open can hang the tab.
+  Past `PREVIEW_CHARACTER_CAP` the viewer offers to show it; the content stays
+  reachable, just not by accident. The reveal state holds _the bytes it was
+  granted for_, not a boolean — the viewer is shared, so a caller can hand the
+  same mounted instance a different attachment, and a leftover `true` would open
+  the next large body immediately. For the same reason the decode is memoized on
+  those bytes: the cap can only be checked against the decoded length, so the
+  decode runs before the guard and must not run again on every render.
+- **One content-type normalisation, two names.** `mediaTypeOf` is the function;
+  `filter-exchanges.ts` re-exports it as `normalizeContentType` because that is
+  what the filter calls its key. A second copy could drift, and a body that
+  classified one way for the filter and another for the viewer would be a bug
+  with no visible cause.
+- **Skin values come from the tundraish token ramps.** `--space-N`, `--radius-N`,
+  `--color-divider`, `--color-neutral-N`, and `--font-mono` for genuine machine
+  strings (a captured URL, a header row, a body, a hash). A literal `rem` or a
+  `color-mix` off `currentColor` renders fine but drops out of the design system
+  the moment a token is re-pointed — see `react-tundraish/src/tokens.css`.
 - **The filter components are fully controlled.** `ExchangeList` and
   `ExchangeFiltersBar` hold no filter state; the owner does (`RecordingsPanel` in
   production, a small wrapper in the tests). Content-type options are computed
@@ -103,7 +148,14 @@ and [React Testing Reference](../../../docs/Testing/React%20Testing%20Reference.
   every other assertion.
 - `recordings/recordings-panel.test.tsx` is the end-to-end one: it replaces only
   the router seam (`useRunAuthed`) and drives the whole tab, including the
-  straddling-session merge across two pages.
+  straddling-session merge across two pages and the walk down to an exchange
+  detail.
+- Assertions about re-indented JSON pass an identity `normalizer`. Testing
+  Library collapses whitespace by default, which would erase the indentation
+  those assertions exist to check.
+- The FHIR `Attachment` fixtures decode wire JSON through `Attachment.Schema`
+  rather than hand-writing the decoded shape, so they carry the schema's brands
+  and its absent-field handling instead of a test author's guess at them.
 
 ## References
 

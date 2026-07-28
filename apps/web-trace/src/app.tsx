@@ -11,53 +11,31 @@ import { readySmartClient } from 'fhir-r4-react/smart'
 import { useEffect, useMemo, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { PageLoading } from 'react-tundraish'
-import type { TraceExchange } from 'web-trace-core'
 import { RecordingsPanel } from 'web-trace-react'
 
-import { ExchangeDetail } from './exchange-detail.tsx'
 import { buildSmartRouterContext, type RouterContext } from './smart-runtime.ts'
 import styles from './app.module.css'
 
 /**
- * The recordings surface: the slice's panel, plus the exchange detail the panel
- * deliberately leaves to its host.
+ * The recordings surface: the app's title, and the slice's panel.
  *
  * @remarks
- * Selection lives here rather than in the panel because the panel's contract is
- * that the host owns the detail surface — see `RecordingsPanelProps`.
+ * The panel owns all three master/detail levels — sessions, exchanges, and one
+ * exchange in full — so this app holds no viewing logic and no selection state.
+ * Adding a detail surface back here opens two at once; see the trap in
+ * [AGENTS.md](../AGENTS.md).
  */
-const RecordingsScreen = (): JSX.Element => {
-  const [selected, setSelected] = useState<TraceExchange | null>(null)
-  return (
-    <>
-      <header className={styles['header']}>
-        <h1 className="text-heading-3">Web Trace</h1>
-        <p className={cn(styles['subtitle'], 'text-body-3')}>
-          Browsing sessions recorded on this device.
-        </p>
-      </header>
-      {/*
-       * The panel stays *mounted* while a detail is open, hidden rather than
-       * unmounted. Which session is open and which filters are applied are the
-       * panel's own `useState`, so swapping it out for the detail would discard
-       * both — "Back to exchanges" would land the reader on the sessions list,
-       * having lost their place. `hidden` also drops the panel out of the
-       * accessibility tree, so the detail is the only surface while it is up.
-       */}
-      <div hidden={selected !== null}>
-        <RecordingsPanel onSelectExchange={setSelected} />
-      </div>
-      {selected !== null && (
-        <ExchangeDetail
-          exchange={selected}
-          onClose={(): void => {
-            setSelected(null)
-          }}
-        />
-      )}
-    </>
-  )
-}
+const RecordingsScreen = (): JSX.Element => (
+  <>
+    <header className={styles['header']}>
+      <h1 className="text-heading-3">Web Trace</h1>
+      <p className={cn(styles['subtitle'], 'text-body-3')}>
+        Browsing sessions recorded on this device.
+      </p>
+    </header>
+    <RecordingsPanel />
+  </>
+)
 
 /** Props for {@link TraceApp}. */
 interface TraceAppProps {
