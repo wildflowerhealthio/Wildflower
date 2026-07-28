@@ -35,6 +35,36 @@ url = "2"
 # the whole document is ~6× the original size; base64 is ~1.35× and
 # Url::parse handles it without escaping.
 base64 = "0.23"
+# Facade only — the host installs `tauri-plugin-log`, which is what actually
+# routes these records. Used for the cookie-seed diagnostics: the seed is
+# asynchronous, so its outcome can no longer be returned to the caller and has to
+# be observable in the launch log instead.
+log = "0.4"
+
+# The macOS cookie seeding (`desktop/cookie_store.rs`) talks to WebKit directly
+# instead of going through wry's `Webview::set_cookie`, which pumps a nested run
+# loop inside tao's event handler and self-deadlocks the app. Every version here
+# is one wry already pulls in, so these add no new crates to the lockfile and
+# nothing new for cargo-deny to clear. `default-features = false` keeps the
+# generated-binding surface to the classes actually used — the objc2 framework
+# crates default to *every* class in the framework.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+block2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = [
+  "std",
+  "NSArray",
+  "NSDictionary",
+  "NSHTTPCookie",
+  "NSObject",
+  "NSString",
+] }
+objc2-web-kit = { version = "0.3", default-features = false, features = [
+  "std",
+  "block2",
+  "WKHTTPCookieStore",
+  "WKWebsiteDataStore",
+] }
 
 [build-dependencies]
 # Generates the per-command permissions + ACL schema from `COMMANDS` and wires
@@ -45,7 +75,14 @@ tauri-plugin = { version = "2", features = ["build"] }
 # Drift-guard tests round-trip the wire models through JSON.
 serde_json = { workspace = true }
 
-# Opt into the workspace lints (notably `unsafe_code = "forbid"`). The plugin's
-# Rust side is pure glue — all native code lives in Swift — so this holds.
-[lints]
-workspace = true
+# `deny`, not the workspace's `forbid`, so exactly one module can opt out:
+# `desktop/cookie_store.rs` (macOS) has to message WebKit's `WKHTTPCookieStore`
+# directly — the wry cookie API deadlocks the app (see that module's doc), and
+# `forbid` cannot be lifted by an `#[allow]` anywhere in the crate. `deny` keeps
+# every *other* `unsafe` in the crate a hard error, so the exception stays
+# confined to the one file that carries the `#![allow(unsafe_code)]`.
+#
+# The rest of the workspace still opts into `[workspace.lints]`, which defines
+# only `unsafe_code = "forbid"`; nothing else is lost by not inheriting it here.
+[lints.rust]
+unsafe_code = "deny"

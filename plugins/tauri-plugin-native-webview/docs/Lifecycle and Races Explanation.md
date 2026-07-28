@@ -137,8 +137,8 @@ The guard, identical in shape across platforms:
    suppresses the `Disposed` echo** (the caller logically continued, it did not
    tear down); if absent, the teardown proceeds and emits `Disposed`. The deferred
    payload carries its cookies, so on desktop the replay re-seeds them onto the
-   reused content webview (off the main thread, `about:blank` → seed →
-   target-navigate — the same order a non-deferred cookie open uses) rather than
+   reused content webview (`about:blank` → seed → target-navigate — the same
+   order, and the same seeding path, a non-deferred cookie open uses) rather than
    `open_url` seeding the doomed pre-dispose webview.
 4. The flag is cleared on that same completion, so later calls aren't stuck in the
    deferral branch.
@@ -149,6 +149,61 @@ also holds the deferred replay's `Invoke` separately (`pendingInvoke`) so a seco
 `open_url()` superseding a still-queued one can reject the superseded invoke
 rather than leaving its JS promise hung forever (there is no timeout on
 `open_url`).
+
+## Cookie seeding must not pump the main run loop
+
+A cookie-carrying `open_url` parks the content webview at `about:blank`, writes
+the cookies, and navigates to the real target from the writes' completion. The
+ordering is the easy half. The hard half is macOS-specific, and it is a
+**deadlock**, not a race.
+
+wry's `Webview::set_cookie` is not a fire-and-forget write on macOS. It calls
+`wait_for_blocking_operation`, which spins the main run loop with
+`-[NSRunLoop acceptInputForMode:beforeDate:]` until WebKit's `setCookie`
+completion fires. tauri delivers `WebviewMessage::SetCookie` on the main thread
+from inside tao's event handler, and that handler holds tao's
+`Handler.callback: Mutex` — a plain, non-reentrant `std::sync::Mutex`. The nested
+pump flushes whatever the run loop has queued; if that includes a pending
+Core-Animation transaction, the layer display re-enters tao through `draw_rect` →
+`handle_nonuser_event`, which takes **the mutex the outer frame already holds**.
+The main thread parks in `__psynch_mutexwait` and never comes back: no spinner,
+no recovery, force-quit only.
+
+This is why it looked intermittent and cold-launch-only. The deadlock needs a
+dirty CA layer pending at the instant of the pump; a cold launch is still
+building the popup window and its two child webviews (the launch log's two
+`web content process terminated` lines), so a layer display is reliably queued. A
+warm relaunch takes the re-open rewire path onto an already-painted webview, so
+usually nothing is pending and nothing hangs.
+
+Seeding from off the main thread does **not** fix this, and the earlier
+"fire-and-forget FIFO message" framing of that rule was wrong. Off-main only
+changes how `SetCookie` reaches the main thread — a queued user message instead
+of an inline call. It still executes on the main thread under tao's lock, and
+wry's nested pump is the hazard.
+
+The fix removes the pump rather than trying to schedule around it: on macOS the
+plugin writes `WKHTTPCookieStore.setCookie(_:completionHandler:)` itself, on the
+main thread but asynchronously, counts the completions, and navigates from the
+last one (`desktop/cookie_store.rs`, wired in through
+`desktop/cookies.rs::seed_then_navigate`). Completions arrive on ordinary,
+non-nested run-loop iterations, so tao's callback mutex is never re-entered and
+the deadlock is structurally impossible. The same reasoning applies to reads:
+wry's `cookies_for_url` pumps identically, so the post-seed read-back log uses an
+async `getAllCookies` too.
+
+Two consequences worth holding onto:
+
+- **`open_url` returns before the cookies commit** and before the target starts
+  loading. A caller cannot read the jar back on the next line and conclude
+  anything; the plugin logs the read-back from its own completion instead.
+- **Either thread may call it now.** The macOS path marshals onto the main thread
+  itself, which is what lets the `CloseRequested` deferred replay — which _is_ a
+  main-thread tao callback — seed inline instead of spawning a thread and hoping.
+
+Non-macOS desktop targets keep the wry `set_cookie` path (their cookie APIs do
+not pump), and iOS/Android already issue the load from their native cookie-write
+completion handlers.
 
 ## Teardown backstops
 

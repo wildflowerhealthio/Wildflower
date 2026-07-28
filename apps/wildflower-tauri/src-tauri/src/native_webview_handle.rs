@@ -250,13 +250,6 @@ fn open_app_in_native_webview(
     // No popup events to consume: native chrome owns Close and the apps flow
     // expects no host→web reply, so a no-op channel satisfies `open_url`.
     let channel: Channel<NativeWebviewEvent> = Channel::new(|_event| Ok(()));
-    // The domain + `Secure` the cookies are scoped to, kept for the read-back
-    // below — the launch URL itself is typically on the third-party app's domain
-    // (tunnel case), where a tunnel-scoped cookie would (correctly) not match, so
-    // the read-back queries the seeded host on its own scheme instead.
-    let seeded = cookies
-        .first()
-        .map(|cookie| (cookie.domain.clone(), cookie.secure));
     handle
         .native_webview()
         .open_url(
@@ -276,27 +269,13 @@ fn open_app_in_native_webview(
             },
         )
         .map_err(|error| anyhow::anyhow!("tauri-plugin-native-webview open_url failed: {error}"))?;
-    // Desktop `open_url` returns after the cookie seed commits, so read the store
-    // back — against the seeded *domain* (the tunnel host), not the launch URL.
-    // Names only; an empty read-back is the smoking gun for a cookie-write failure.
-    #[cfg(desktop)]
-    if let Some((domain, secure)) = seeded {
-        let scheme = if secure { "https" } else { "http" };
-        if let Ok(parsed) = tauri::Url::parse(&format!("{scheme}://{domain}/")) {
-            match handle
-                .native_webview()
-                .content_cookie_names_for_url(id, parsed)
-            {
-                Ok(Some(names)) => log::info!(
-                    "[launch] popup cookie store for {scheme}://{domain}/ now holds: {names:?}"
-                ),
-                Ok(None) => log::warn!("[launch] cookie read-back: no content webview open"),
-                Err(error) => log::warn!("[launch] cookie read-back failed: {error}"),
-            }
-        }
-    }
-    #[cfg(not(desktop))]
-    let _ = seeded;
+    // No cookie read-back here: `open_url` is asynchronous with respect to the
+    // seed (the desktop backend writes the store from a completion block, off the
+    // path that used to deadlock the app), so a read from this thread would race
+    // the writes and report an empty jar on a launch that went on to work fine.
+    // The plugin logs the read-back from its own seed completion instead, where
+    // it means something — grep the launch log for `[native-webview] cookie
+    // store for … now holds`.
     handle
         .native_webview()
         .show(id)
