@@ -199,6 +199,25 @@ a collector.
   session, which is why the export hangs off `RecordingsPanel` rather than
   living in a tab of its own. The panel memoises the filtered array, because the
   export hook rebuilds its preview whenever that identity changes.
+- **The carve-out is off when the panel opens.** The safest archive is the one
+  produced by clicking Download without reading anything, so exporting original
+  values is opted _into_ against a preview that lists exactly what it exposes,
+  not opted out of afterwards. The core's own default (on, N=12) is the default
+  for the _threshold_ once it is switched on — see `DEFAULT_EXPORT_SETTINGS`.
+- **The preview is split by outcome, not listed as one table.** The rows that
+  need scrutiny are the ones leaving **as captured**; they are a handful next to
+  the pseudonymized majority, which sits behind a disclosure so it cannot bury
+  them. A single sorted table put the rows that matter wherever the path names
+  happened to fall.
+- **The `Auto` option says what it resolves to, and why.** `Auto — visible
+(3 values)` / `Auto — hidden (not a code)` / `Auto — hidden (codes off)`. A
+  bare `Auto` makes the reviewer infer the outcome from another column, and the
+  two hidden cases have different fixes — one is answered by raising the
+  threshold, the other never is.
+- **The preview table is fixed-layout with explicit column widths.** A path key
+  is several times longer than the values beside it, so an auto-laid-out table
+  hands the path most of the width and squeezes the captured/exported columns —
+  the ones actually being read — down to a few characters.
 - **The export is JSON-only, and says how much it drops.** A non-JSON body
   becomes a `SkippedBody` at the redaction boundary — the redactor cannot
   pseudonymize a format it cannot parse, and shipping one unredacted is not an
@@ -263,11 +282,15 @@ and [React Testing Reference](../../../docs/Testing/React%20Testing%20Reference.
   it.** jsdom does not implement it, but replacing the global with a plain
   object breaks `new URL(...)` — which the pseudonymizer uses on every captured
   URL — so the subject fails instead of the seam being filled.
-- The enum carve-out counts distinct values **across the session**, not what a
-  field is called. A single-exchange corpus makes every path one-distinct-valued
-  and carves everything out, which is correct and useless for testing the split;
-  the export tests build a corpus with one constant path and one high-cardinality
-  path instead.
+- The enum carve-out is **shape-gated before it is counted**, so a corpus for
+  testing the split needs letter-only codes on one path and something
+  disqualifying on the other. Digit-bearing values are rejected on shape and
+  never reach the threshold, so a test using them passes without exercising the
+  count at all.
+- `export/export-panel.test.tsx` carries the single-patient case directly:
+  email, birth date, and postal code in one exchange, each at one distinct
+  value. That is the corpus a count-only carve-out exported verbatim, and it is
+  asserted against the **downloaded archive**, not the preview.
 
 ## References
 

@@ -232,9 +232,9 @@ describe('RecordingsPanel', () => {
 
     // Assert
     await waitFor(() => {
-      expect(screen.getByRole('region', { name: 'Redaction preview' })).toBeDefined()
+      expect(screen.getByRole('region', { name: 'Fields exported as captured' })).toBeDefined()
     })
-    expect(screen.getByText(/Exporting all 2 exchanges/)).toBeDefined()
+    expect(screen.getByText('All 2 exchanges')).toBeDefined()
   })
 
   it('should export the filtered subset, reusing the list filters rather than a second control', async () => {
@@ -258,7 +258,7 @@ describe('RecordingsPanel', () => {
     // Assert — the export covers what the filters showed, and the export
     // surface carries no filter bar of its own to disagree with them.
     await waitFor(() => {
-      expect(screen.getByText(/Exporting 1 of 2 exchanges/)).toBeDefined()
+      expect(screen.getByText('1 of 2 exchanges')).toBeDefined()
     })
     expect(screen.queryByLabelText('URL contains')).toBeNull()
   })
@@ -267,7 +267,7 @@ describe('RecordingsPanel', () => {
     // Arrange
     await openTheExport(['https://portal.example.org/one'])
     await waitFor(() => {
-      expect(screen.getByRole('region', { name: 'Redaction preview' })).toBeDefined()
+      expect(screen.getByRole('region', { name: 'Fields exported as captured' })).toBeDefined()
     })
 
     // Act
@@ -275,7 +275,7 @@ describe('RecordingsPanel', () => {
 
     // Assert — one level up, to the list the subset came from
     expect(screen.getByLabelText('URL contains')).toBeDefined()
-    expect(screen.queryByRole('region', { name: 'Redaction preview' })).toBeNull()
+    expect(screen.queryByRole('region', { name: 'Fields exported as captured' })).toBeNull()
   })
 })
 

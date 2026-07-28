@@ -1,5 +1,5 @@
 /*
- * The export flow: subset, settings, per-path preview, download. Skin values
+ * The export flow: manifest, settings, per-field preview, download. Skin values
  * read from the tundraish token ramps and machine strings take `--font-mono`
  * — see the package `AGENTS.md`.
  */
@@ -7,13 +7,23 @@
 .export {
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
+  gap: var(--space-7);
   min-width: 0;
 }
 
 .export__note {
-  margin: 0;
+  margin: var(--space-3) 0 0;
   color: var(--color-neutral-3);
+}
+
+.export__manifest {
+  margin: 0;
+  padding-left: var(--space-6);
+  color: var(--color-neutral-4);
+}
+
+.export__manifest li + li {
+  margin-top: var(--space-2);
 }
 
 .export__settings {
@@ -28,17 +38,56 @@
 }
 
 .export__section-title {
-  margin: 0 0 var(--space-4);
+  margin: var(--space-6) 0 var(--space-4);
+  color: var(--color-neutral-4);
+}
+
+.export__section-title:first-child {
+  margin-top: 0;
+}
+
+.export__details {
+  border-top: 1px solid var(--color-divider);
+  padding-top: var(--space-4);
+}
+
+.export__summary {
+  cursor: pointer;
   color: var(--color-neutral-4);
 }
 
 .export__table-scroll {
+  margin-top: var(--space-4);
   overflow-x: auto;
 }
 
+/*
+ * Fixed layout, not content-driven. A path key (`body:$.entry[].resource.status`)
+ * is several times longer than the values beside it, so an auto-laid-out table
+ * hands the path most of the width and squeezes the captured/exported columns —
+ * the ones actually being read — down to a few characters each.
+ */
 .export__table {
   width: 100%;
+  min-width: 46rem;
+  table-layout: fixed;
   border-collapse: collapse;
+}
+
+.export__col-path {
+  width: 26%;
+}
+
+.export__col-count {
+  width: 6%;
+}
+
+.export__col-value {
+  width: 25%;
+}
+
+.export__col-setting {
+  width: 18%;
 }
 
 .export__table th,
@@ -49,7 +98,7 @@
   border-bottom: 1px solid var(--color-divider);
 }
 
-.export__table th {
+.export__table thead th {
   color: var(--color-neutral-4);
   white-space: nowrap;
 }
@@ -60,8 +109,9 @@
   font-family: var(--font-mono);
 }
 
-.export__value {
-  max-width: 18rem;
+.export__path {
+  font-weight: 400;
+  color: var(--color-neutral-4);
 }
 
 .export__override {
