@@ -73,32 +73,19 @@ describe('resourcePersistenceRuntimeForConfig', () => {
   const planFor = (config: typeof CollectorConfig.Type): ScrapingPlan.ScrapingPlan<unknown> =>
     resourcePersistenceRuntimeForConfig(config).run((context) => context.scrapingPlan)
 
-  it('dispatches fhir-r4 configs to the fhir-r4 scraping plan', () => {
-    // Decode through the concrete fhir-r4 schema so `config` is the fhir-r4
-    // type `fhirR4ScrapingPlan` expects (the `CollectorConfig` union is now
-    // wider than a single collector).
-    const config = Schema.decodeSync(FhirR4InstanceConfig)({
-      _tag: 'fhir-r4',
-      rootUrl: 'https://example.com',
-      patientId: '12345',
-    })
-
-    // The plan factory is per-config so structural equality stands in
-    // for identity. Same `name` + same step sequence + a `firstPage`
-    // pointed at the configured patientUrl pin the dispatch.
-    expect(planFor(config)).toEqual(fhirR4ScrapingPlan(config))
-  })
-
   /**
    * The parts of a plan that identify *which collector built it for which
    * config*, with the per-build parts projected away.
    *
    * A plan factory is not obliged to be pure: `web-trace-collector` mints a
    * fresh session id per build (that is what stops two recordings of one remote
-   * from upserting over each other) and closes its entity over it, so two builds
-   * from the same config are structurally unequal by construction — different
-   * session id, different `parse` closure. Deep equality would therefore assert
-   * "the factory is pure", which is not the property this test is about.
+   * from upserting over each other), and `fhir-r4-client-collector` /
+   * `rexall-be-well-collector` each mint a provenance run id per build (so the
+   * traces of one sync are grouped and cannot upsert over the previous run's).
+   * Each closes its entities over that id, so two builds from the same config
+   * are structurally unequal by construction — different id, different `parse`
+   * closure. Deep equality would therefore assert "the factory is pure", which
+   * is not the property this test is about.
    *
    * What survives the projection still fails loudly on a mis-dispatch: a plan
    * from the wrong descriptor has a different `name`, different entity names,
@@ -111,6 +98,23 @@ describe('resourcePersistenceRuntimeForConfig', () => {
     firstPage: plan.firstPage,
     stepNames: plan.stepSequence.map((step) => `${step._tag}:${step.name}`),
     entityNames: plan.entityDefinitions.map((entity) => entity.name),
+  })
+
+  it('dispatches fhir-r4 configs to the fhir-r4 scraping plan', () => {
+    // Decode through the concrete fhir-r4 schema so `config` is the fhir-r4
+    // type `fhirR4ScrapingPlan` expects (the `CollectorConfig` union is now
+    // wider than a single collector).
+    const config = Schema.decodeSync(FhirR4InstanceConfig)({
+      _tag: 'fhir-r4',
+      rootUrl: 'https://example.com',
+      patientId: '12345',
+    })
+
+    // Same `name` + same step sequence + a `firstPage` pointed at the
+    // configured patientUrl pin the dispatch. Compared as an identity
+    // projection rather than deep-equalled, because the fhir-r4 plan factory
+    // mints a fresh provenance run id per build — see `planIdentity` above.
+    expect(planIdentity(planFor(config))).toEqual(planIdentity(fhirR4ScrapingPlan(config)))
   })
 
   it('dispatches every schema-conformant config to its descriptor plan', () => {

@@ -1,3 +1,4 @@
+import type { ScrapingPlan } from 'collector-fundamentals/model'
 import { UrlMatch } from 'collector-fundamentals/model'
 import { Arbitrary, Duration, Schema } from 'effect'
 import * as fc from 'fast-check'
@@ -7,6 +8,26 @@ import { describe, expect, it } from 'vite-plus/test'
 import { FhirR4CollectorDescriptor, InstanceConfig, defaultConfig, scrapingPlan } from './config.ts'
 
 const { expectRightToEqual, expectLeftToEqual } = utilityExpectations(expect)
+
+/**
+ * The parts of a plan that identify *which factory built it for which config*,
+ * with the per-build parts projected away.
+ *
+ * `scrapingPlan` mints a fresh provenance run id per build and closes every
+ * entity over it, so two builds from one config are structurally unequal by
+ * construction (different id, different capturing `parse` closure). Deep
+ * equality would assert "the factory is pure", which is deliberately no longer
+ * true — see the `scrapingPlan` remarks and the plan-purity trap in
+ * [slices/collector/AGENTS.md](../../AGENTS.md). Everything a wrong factory
+ * would get wrong survives the projection: the plan name, the entity names, the
+ * step sequence, and the config-derived `firstPage`.
+ */
+const planIdentity = (plan: ScrapingPlan.ScrapingPlan<unknown>): Record<string, unknown> => ({
+  name: plan.name,
+  firstPage: plan.firstPage,
+  steps: plan.stepSequence,
+  entityNames: plan.entityDefinitions.map((entity) => entity.name),
+})
 
 describe('InstanceConfig', () => {
   it('decodes defaultConfig without error', () => {
@@ -87,10 +108,11 @@ describe('FhirR4CollectorDescriptor', () => {
     expect(FhirR4CollectorDescriptor.tag).toBe('fhir-r4')
     expect(FhirR4CollectorDescriptor.configSchema).toBe(InstanceConfig)
     expect(FhirR4CollectorDescriptor.defaultConfig).toEqual(defaultConfig)
-    // The plan factory is the module's `scrapingPlan` — structural
-    // equality on a produced plan stands in for identity.
-    expect(FhirR4CollectorDescriptor.makeScrapingPlan(defaultConfig)).toEqual(
-      scrapingPlan(defaultConfig)
+    // The plan factory is the module's `scrapingPlan` — an identity projection
+    // of a produced plan stands in for identity (the factory is per-run impure;
+    // see `planIdentity`).
+    expect(planIdentity(FhirR4CollectorDescriptor.makeScrapingPlan(defaultConfig))).toEqual(
+      planIdentity(scrapingPlan(defaultConfig))
     )
   })
 
@@ -113,7 +135,9 @@ describe('FhirR4CollectorDescriptor', () => {
   it('matches its own configs and rejects foreign ones via resourcePersistenceRuntimeIfMatches', () => {
     // The matched runtime seals `Resources`; reach the plan only through `run`.
     const runtime = FhirR4CollectorDescriptor.resourcePersistenceRuntimeIfMatches(defaultConfig)
-    expect(runtime?.run((context) => context.scrapingPlan)).toEqual(scrapingPlan(defaultConfig))
+    expect(runtime?.run((context) => planIdentity(context.scrapingPlan))).toEqual(
+      planIdentity(scrapingPlan(defaultConfig))
+    )
     expect(
       FhirR4CollectorDescriptor.resourcePersistenceRuntimeIfMatches({
         _tag: 'not-fhir',

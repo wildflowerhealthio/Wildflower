@@ -1,6 +1,6 @@
 import {
   CollectorDescriptor,
-  type EntityDefinition,
+  DiagnosticResources,
   ScrapingPlan,
   type WebViewSource,
 } from 'collector-fundamentals/model'
@@ -11,6 +11,7 @@ import type { FhirResource } from 'fhir-r4/resources'
 
 import { MedicationListEntity } from './entities/medication-list-entity.ts'
 import { ProfileEntity } from './entities/profile-entity.ts'
+import { isTraceResource, mintRunId, withProvenance } from './provenance.ts'
 
 /**
  * A well-formed email address: a non-empty local part, `@`, and a dotted
@@ -136,18 +137,27 @@ const SETTLE = Duration.seconds(8)
  * v1 is **list-only**: no per-medication detail crawl. The list `_revinclude`
  * already carries `MedicationDispense`, so the deferred `followUpSteps` crawl is
  * left out until a capture diff proves the detail XHR is richer (issue #339).
+ *
+ * **The run id is minted here, once per plan build**, and both entities close
+ * over it — which makes this factory impure, deliberately. `makeScrapingPlan` is
+ * called exactly once per sync run (by `CollectorDescriptor.make`'s
+ * `resourcePersistenceRuntimeIfMatches`), so one plan build is one run and the
+ * traces of a run are grouped by that id. Consequence for callers: two builds
+ * from one config are structurally unequal, so a test comparing plans must
+ * compare an identity *projection* rather than deep-equalling them — the same
+ * trade `web-trace-collector` documents. See the [slice AGENTS.md](../AGENTS.md).
  */
 const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirResource> => {
   const firstPage: WebViewSource.Any = { _tag: 'Uri', uri: LOGIN_URL }
+  // One run id for the whole plan, so every trace this run writes is grouped.
+  // Wrapping each entity (rather than the array) also removes the widening
+  // upcast this list used to need: `withProvenance` takes and returns
+  // `EntityDefinition<FhirResource>`, and each narrow entity is assignable to
+  // that by covariance.
+  const capture = withProvenance(mintRunId())
   return ScrapingPlan.make<FhirResource>({
     name: 'Rexall Be Well',
-    // Widening upcast (safe: `EntityDefinition` is covariant in its resource
-    // type, and Patient / MedicationRequest / MedicationDispense are all
-    // `FhirResource`), mirroring `fhir-r4-client-collector`.
-    entityDefinitions: [
-      ProfileEntity,
-      MedicationListEntity,
-    ] as readonly EntityDefinition.EntityDefinition<FhirResource>[],
+    entityDefinitions: [capture(ProfileEntity), capture(MedicationListEntity)],
     firstPage,
     stepSequence: [
       {
@@ -224,6 +234,11 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirRes
  * assemble into the closed descriptor list. `title` is the collector kind
  * ("Rexall"); `listSubtitle` surfaces a remote's configured account email (there
  * is no server URL to show for a credential collector).
+ *
+ * `persistResources` is `fhir-r4`'s sink wrapped in `withDiagnosticResources`:
+ * the provenance traces ride in the same batch as the clinical resources, and
+ * without the wrapper a failed *trace* write would downgrade a clean run to
+ * `partial`. The clinical half is written first, through that same sink.
  */
 const RexallCollectorDescriptor = CollectorDescriptor.make({
   tag: 'rexall',
@@ -235,7 +250,7 @@ const RexallCollectorDescriptor = CollectorDescriptor.make({
     description: 'Prescriptions from Rexall Be Well (letsbewell.ca)',
     listSubtitle: (config) => config.email,
   },
-  persistResources,
+  persistResources: DiagnosticResources.withDiagnosticResources(persistResources, isTraceResource),
 })
 
 export { InstanceConfig, defaultConfig, scrapingPlan, RexallCollectorDescriptor }

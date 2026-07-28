@@ -1,6 +1,6 @@
 import {
   CollectorDescriptor,
-  type EntityDefinition,
+  DiagnosticResources,
   ScrapingPlan,
   UrlMatch,
   type WebViewSource,
@@ -13,6 +13,7 @@ import type { FhirResource } from 'fhir-r4/resources'
 import { ObservationEntity } from './entities/observation-entity.ts'
 import { ObservationListEntity } from './entities/observation-list-entity.ts'
 import { PatientEntity } from './entities/patient-entity.ts'
+import { isTraceResource, mintRunId, withProvenance } from './provenance.ts'
 
 /**
  * `rootUrl` must be an absolute `http(s)://` URL with at least a host
@@ -123,6 +124,15 @@ const OBSERVATION_TIMEOUT = Duration.seconds(30)
  * R4 logical-id grammar) — `encodeURIComponent` on `patientId` is
  * still applied defensively in case the value reaches this function
  * through an untyped path.
+ *
+ * **The run id is minted here, once per plan build**, and every entity closes
+ * over it — which makes this factory impure, deliberately. `makeScrapingPlan`
+ * is called exactly once per sync run (by `CollectorDescriptor.make`'s
+ * `resourcePersistenceRuntimeIfMatches`), so one plan build is one run and the
+ * traces of a run are grouped by that id. Consequence for callers: two builds
+ * from one config are structurally unequal, so a test comparing plans must
+ * compare an identity *projection* rather than deep-equalling them — the same
+ * trade `web-trace-collector` documents. See the [slice AGENTS.md](../AGENTS.md).
  */
 const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirResource> => {
   const safePatientId = encodeURIComponent(config.patientId)
@@ -132,13 +142,19 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirRes
     _tag: 'Uri',
     uri: patientUrl,
   }
+  // One run id for the whole plan, so every trace this run writes is grouped.
+  // Wrapping each entity (rather than the array) also removes the widening
+  // upcast this list used to need: `withProvenance` takes and returns
+  // `EntityDefinition<FhirResource>`, and each narrow entity is assignable to
+  // that by covariance.
+  const capture = withProvenance(mintRunId())
   return ScrapingPlan.make<FhirResource>({
     name: 'FHIR R4',
     entityDefinitions: [
-      PatientEntity,
-      ObservationEntity,
-      ObservationListEntity,
-    ] as readonly EntityDefinition.EntityDefinition<FhirResource>[],
+      capture(PatientEntity),
+      capture(ObservationEntity),
+      capture(ObservationListEntity),
+    ],
     firstPage,
     stepSequence: [
       {
@@ -174,6 +190,11 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirRes
  * names a *route's demo entry*, not the collector, so it stays there;
  * this descriptor's `title` is the collector kind ("FHIR R4") and its
  * `listSubtitle` surfaces a remote's configured `rootUrl`.
+ *
+ * `persistResources` is `fhir-r4`'s sink wrapped in `withDiagnosticResources`:
+ * the provenance traces ride in the same batch as the clinical resources, and
+ * without the wrapper a failed *trace* write would downgrade a clean run to
+ * `partial`. The clinical half is written first, through that same sink.
  */
 const FhirR4CollectorDescriptor = CollectorDescriptor.make({
   tag: 'fhir-r4',
@@ -185,7 +206,7 @@ const FhirR4CollectorDescriptor = CollectorDescriptor.make({
     description: 'Health records from a FHIR R4 server',
     listSubtitle: (config) => config.rootUrl,
   },
-  persistResources,
+  persistResources: DiagnosticResources.withDiagnosticResources(persistResources, isTraceResource),
 })
 
 export { InstanceConfig, defaultConfig, scrapingPlan, FhirR4CollectorDescriptor }
