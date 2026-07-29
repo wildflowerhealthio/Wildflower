@@ -3,7 +3,16 @@ export {
   gatekeeperSettingsItemsFragment,
 } from './settings-fragments.ts'
 
-export { buildDeviceLoginTarget, DEVICE_LOGIN_ROUTE } from './device-login-route.ts'
+export {
+  buildDeviceLoginTarget,
+  buildStepUpTarget,
+  DEVICE_LOGIN_ROUTE,
+  parseDeviceLoginSearch,
+  parseRequestScopes,
+  serializeRequestScopes,
+  type DeviceLoginSearch,
+  type DeviceLoginTarget,
+} from './device-login-route.ts'
 
 export {
   buildGatekeeperClientLayer,

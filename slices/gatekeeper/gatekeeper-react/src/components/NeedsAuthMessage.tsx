@@ -5,13 +5,14 @@ import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import { FIRST_PARTY_CLIENT_ID } from 'gatekeeper-core/contexts'
 import { OAuth } from 'gatekeeper-core/http-api-definition'
 
-import { useEffect, useMemo, useRef, useState, type JSX } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState, type JSX } from 'react'
 import { AuthedUntil, cn, useAuthStateSetter } from 'react-kitchen-sink'
 import { Field, FieldDescription, pageLayoutStyles, TextField } from 'react-tundraish'
 import { GrantDraft, ScopeRequest } from 'scopes-core'
 import type { GrantDraft as GrantDraftModel } from 'scopes-core'
 import { ScopePicker } from 'scopes-react'
 
+import { parseDeviceLoginSearch, parseRequestScopes } from '../device-login-route.ts'
 import {
   useGatekeeperFirstPartyClientId,
   useGatekeeperLocalGrantedScopes,
@@ -68,6 +69,36 @@ const sanitizeReturnTo = (raw: string | null): string => {
   return raw
 }
 
+/**
+ * Split a pre-filled step-up request into the scopes this client may actually
+ * ask for and the ones it may not.
+ *
+ * `/oauth/device_authorization` rejects the **whole** request with
+ * `invalid_scope` when any requested scope falls outside the client's
+ * `allowed_scopes` — so an out-of-envelope scope can't just ride along, or
+ * pressing "Request access" would dead-end on an OAuth error instead of
+ * starting the flow. `ungrantable` is therefore kept out of the draft but
+ * surfaced in the form: the user is told which permission this client can't
+ * request rather than watching it silently vanish from the picker.
+ *
+ * Membership is decided with the picker's own clamp
+ * ({@link ScopeRequest.isWithin}), which is coverage-aware the same way the
+ * server's `allowed_scope_covers` is — so anything this admits is a scope the
+ * device-authorization check also admits.
+ */
+const partitionByGrantability = (
+  scopes: readonly string[],
+  request: ScopeRequest.ScopeRequest
+): { readonly grantable: readonly string[]; readonly ungrantable: readonly string[] } => {
+  const grantable: string[] = []
+  const ungrantable: string[] = []
+  for (const scope of scopes) {
+    if (ScopeRequest.isWithin(GrantDraft.fromScopes([scope], null), request)) grantable.push(scope)
+    else ungrantable.push(scope)
+  }
+  return { grantable, ungrantable }
+}
+
 // Decoding gives literal `error` codes so downstream `Match.when({error: '…'})` is exhaustive.
 const OAuthErrorSchema = Schema.Union(OAuth.OAuthError400Schema, OAuth.OAuthError401Schema)
 type OAuthErrorBody = Schema.Schema.Type<typeof OAuthErrorSchema>
@@ -117,6 +148,17 @@ const toErrorState = (error: unknown): DeviceFlowState =>
  * and navigate to the sanitized `?returnTo=` path (or {@link POST_AUTH_DEFAULT_PATH})
  * with a full page load so the app reboots with the bearer in place.
  *
+ * It doubles as the **step-up** target (resource-authorization epic child ⑤):
+ * when a `403 InsufficientScope` surface sends the user here via
+ * `buildStepUpTarget`, the `?requestScopes=` param pre-fills the picker with the
+ * scopes that were missing — unioned with {@link PRESET_REQUEST_SCOPES}, since
+ * the device flow mints a whole new grant and requesting *only* the missing
+ * scopes would strip what the session could already do. Because that same
+ * navigation sets `returnTo` to where the denial happened, the full page load on
+ * grant lands back on the original page and its loader re-runs the denied action
+ * against the new grant. Scopes outside the client's `allowed_scopes` are named
+ * rather than requested — see {@link partitionByGrantability}.
+ *
  * @remarks
  * Because the flow is now user-gated (a button click), nothing fires on mount —
  * so the old mount-time debounce that guarded against a transient render burning
@@ -146,21 +188,45 @@ const NeedsAuthMessage = (): JSX.Element => {
   // request's `client_id` below.
   const firstPartyClientId = useGatekeeperFirstPartyClientId() ?? FIRST_PARTY_CLIENT_ID
 
-  // The expandable picker request: nothing requested yet (the user builds it),
-  // grantable up to the client's allowed set.
-  const request = useMemo(
-    () =>
-      ScopeRequest.expandable({
-        requested: [],
-        available: (localGrantedScopes ?? DEFAULT_ALLOWED_SCOPES).split(/\s+/).filter(Boolean),
-      }),
+  // The step-up pre-fill: the scopes a `403 InsufficientScope` named, threaded
+  // here as `?requestScopes=` by `buildStepUpTarget`. Read once at mount (the
+  // param can't change without a remount), and empty on the plain sign-in path.
+  const requestedScopes = useMemo(
+    () => parseRequestScopes(parseDeviceLoginSearch(window.location.search).requestScopes),
+    []
+  )
+  const available = useMemo(
+    () => (localGrantedScopes ?? DEFAULT_ALLOWED_SCOPES).split(/\s+/).filter(Boolean),
     [localGrantedScopes]
   )
+  // Which of the pre-filled scopes this client may ask for at all — see
+  // {@link partitionByGrantability} for why the rest is named instead of requested.
+  const { grantable, ungrantable } = useMemo(
+    () =>
+      partitionByGrantability(
+        requestedScopes,
+        ScopeRequest.expandable({ requested: [], available })
+      ),
+    [requestedScopes, available]
+  )
+
+  // The expandable picker request: seeded with whatever the step-up pre-filled
+  // (nothing on the plain sign-in path — the user builds it), grantable up to
+  // the client's allowed set.
+  const request = useMemo(
+    () => ScopeRequest.expandable({ requested: grantable, available }),
+    [grantable, available]
+  )
   const [draft, setDraft] = useState<GrantDraftModel.GrantDraft>(() => {
-    // Seed the read+search happy path when the envelope covers it; otherwise fall
-    // back to the empty draft (the user builds the request within what's allowed).
+    // Seed the read+search happy path when the envelope covers it, *unioned* with
+    // the step-up scopes: the device flow mints a whole new grant, so requesting
+    // only the missing scopes would strip the access the session already had.
+    // Otherwise fall back to the empty draft (the user builds the request within
+    // what's allowed).
     const preset = GrantDraft.fromScopes(PRESET_REQUEST_SCOPES, null)
-    return ScopeRequest.isWithin(preset, request) ? preset : GrantDraft.initial(request)
+    const presetScopes = ScopeRequest.isWithin(preset, request) ? PRESET_REQUEST_SCOPES : []
+    const seeded = GrantDraft.fromScopes([...grantable, ...presetScopes], null)
+    return ScopeRequest.isWithin(seeded, request) ? seeded : GrantDraft.initial(request)
   })
 
   // The forked flow, so an unmount mid-poll interrupts it (no orphan device code).
@@ -225,7 +291,7 @@ const NeedsAuthMessage = (): JSX.Element => {
         // re-boots with the now-persisted bearer in place — matching the
         // "this page will reload automatically once you sign in" copy.
         const returnTo = sanitizeReturnTo(
-          new URLSearchParams(window.location.search).get('returnTo')
+          parseDeviceLoginSearch(window.location.search).returnTo ?? null
         )
         window.location.assign(returnTo)
       })
@@ -249,6 +315,24 @@ const NeedsAuthMessage = (): JSX.Element => {
           Name this device and choose what it should be able to access. A signed-in device will
           review and approve the request.
         </p>
+        {grantable.length > 0 ? (
+          <p className="text-body-3">
+            The permissions the action you tried needs are already selected below.
+          </p>
+        ) : null}
+        {ungrantable.length > 0 ? (
+          <p className={cn(pageLayoutStyles['error'], 'text-body-3')}>
+            This application isn’t allowed to request{' '}
+            {ungrantable.map((scope, i) => (
+              <Fragment key={scope}>
+                <code>{scope}</code>
+                {i === ungrantable.length - 1 ? '' : ', '}
+              </Fragment>
+            ))}
+            , so it can’t be included. An administrator has to widen the client’s allowed scopes
+            first.
+          </p>
+        ) : null}
         <TextField
           label="Device name"
           value={deviceName}

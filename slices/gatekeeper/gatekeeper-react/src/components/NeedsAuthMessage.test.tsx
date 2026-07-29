@@ -100,6 +100,38 @@ const startSignIn = async (): Promise<void> => {
   await user.click(screen.getByRole('button', { name: 'Request access' }))
 }
 
+/**
+ * Run `body` with `window.location` swapped for a stub exposing just the
+ * `search` the screen reads and a spy-able `assign` — jsdom's real `location` is
+ * non-configurable, so neither can be set directly. The step-up path is driven
+ * entirely through `?requestScopes=` / `?returnTo=`, so this is how those tests
+ * put the screen in the state a 403 navigation leaves it in.
+ */
+const withLocation = async (
+  search: string,
+  body: (assign: ReturnType<typeof vi.fn<(url: string) => void>>) => Promise<void>
+): Promise<void> => {
+  const assignMock = vi.fn<(url: string) => void>()
+  const realLocation = window.location
+  Object.defineProperty(window, 'location', {
+    configurable: true,
+    value: { search, assign: assignMock },
+  })
+  try {
+    await body(assignMock)
+  } finally {
+    Object.defineProperty(window, 'location', { configurable: true, value: realLocation })
+  }
+}
+
+/** The `scope` string the stubbed device-authorization call received, as a set. */
+const capturedScopes = (capturedInput: unknown): ReadonlySet<string> => {
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test assertion: narrow the captured `unknown` to read the payload
+  const payload = (capturedInput as { readonly payload: Record<string, unknown> }).payload
+  const scope = payload['scope']
+  return new Set(typeof scope === 'string' ? scope.split(' ').filter(Boolean) : [])
+}
+
 describe('<NeedsAuthMessage> device flow', () => {
   test('shows the setup form on landing and fires no I/O until "Request access"', () => {
     let called = false
@@ -251,6 +283,134 @@ describe('<NeedsAuthMessage> device flow', () => {
     } finally {
       Object.defineProperty(window, 'location', { configurable: true, value: realLocation })
     }
+  })
+})
+
+/**
+ * The 403 step-up path (resource-authorization epic child ⑤). A denied action
+ * navigates here with `?requestScopes=` (what the 403 said was missing) and
+ * `?returnTo=` (where the denial happened); the screen must pre-fill the request
+ * with those scopes and land the user back where they were once the grant is
+ * issued, so the original action re-runs.
+ */
+describe('<NeedsAuthMessage> step-up pre-fill', () => {
+  test('requests the pre-filled scopes alongside the preset, not instead of it', async () => {
+    // The device flow mints a *whole new grant*, so requesting only the missing
+    // scope would strip the read+search access the session already had — the
+    // union is what keeps stepping up from being a downgrade.
+    let capturedInput: unknown
+    layerHolder.current = makeClientLayer({
+      DeviceAuthorization: (input) => {
+        capturedInput = input
+        return Effect.succeed(DEVICE_AUTH_RESPONSE)
+      },
+      TokenExchange: () => PENDING_FOREVER,
+    })
+
+    await withLocation('?requestScopes=wildflower%2FGrant.d', async () => {
+      render(withTokenStore(<NeedsAuthMessage />))
+      await startSignIn()
+
+      await waitFor(
+        () => {
+          expect(capturedInput).toBeDefined()
+        },
+        { timeout: 2000 }
+      )
+      const scopes = capturedScopes(capturedInput)
+      expect(scopes.has('wildflower/Grant.d')).toBe(true)
+      expect(scopes.has('system/*.rs')).toBe(true)
+      expect(scopes.has('wildflower/*.rs')).toBe(true)
+    })
+  })
+
+  test('names a scope the client may not request instead of requesting it', async () => {
+    // `/oauth/device_authorization` rejects the *whole* request with
+    // `invalid_scope` if any scope falls outside the client's allowed set, so an
+    // out-of-envelope scope must stay out of the payload — but the user is told
+    // about it rather than watching it silently vanish.
+    scopesHolder.current = 'wildflower/*.cruds'
+    let capturedInput: unknown
+    layerHolder.current = makeClientLayer({
+      DeviceAuthorization: (input) => {
+        capturedInput = input
+        return Effect.succeed(DEVICE_AUTH_RESPONSE)
+      },
+      TokenExchange: () => PENDING_FOREVER,
+    })
+
+    await withLocation(
+      '?requestScopes=wildflower%2FGrant.d%20patient%2FObservation.r',
+      async () => {
+        render(withTokenStore(<NeedsAuthMessage />))
+        expect(screen.getByText('patient/Observation.r')).toBeTruthy()
+        await startSignIn()
+
+        await waitFor(
+          () => {
+            expect(capturedInput).toBeDefined()
+          },
+          { timeout: 2000 }
+        )
+        const scopes = capturedScopes(capturedInput)
+        expect(scopes.has('wildflower/Grant.d')).toBe(true)
+        expect(scopes.has('patient/Observation.r')).toBe(false)
+      }
+    )
+  })
+
+  test('leaves the preset seed alone when no scopes were pre-filled', async () => {
+    // The undeclared-403 / plain-sign-in shape: an absent `requestScopes` must not
+    // narrow the request to nothing.
+    let capturedInput: unknown
+    layerHolder.current = makeClientLayer({
+      DeviceAuthorization: (input) => {
+        capturedInput = input
+        return Effect.succeed(DEVICE_AUTH_RESPONSE)
+      },
+      TokenExchange: () => PENDING_FOREVER,
+    })
+
+    await withLocation('?returnTo=%2Fsettings', async () => {
+      render(withTokenStore(<NeedsAuthMessage />))
+      await startSignIn()
+
+      await waitFor(
+        () => {
+          expect(capturedInput).toBeDefined()
+        },
+        { timeout: 2000 }
+      )
+      expect([...capturedScopes(capturedInput)].toSorted()).toEqual([
+        'system/*.rs',
+        'wildflower/*.rs',
+      ])
+    })
+  })
+
+  test('returns to where the denial happened once the grant is issued', async () => {
+    // This is the "retry the original action" leg: the full page load re-boots the
+    // app on the original route with a cold query cache, so its loader re-runs the
+    // denied call against the new grant.
+    layerHolder.current = makeClientLayer({
+      DeviceAuthorization: () => Effect.succeed(DEVICE_AUTH_RESPONSE),
+      TokenExchange: () => Effect.succeed({ access_token: 'issued-token', expires_in: 3600 }),
+    })
+
+    await withLocation(
+      '?returnTo=%2Fsettings%2Fdatabases&requestScopes=wildflower%2FGrant.d',
+      async (assignMock) => {
+        render(withTokenStore(<NeedsAuthMessage />))
+        await startSignIn()
+
+        await waitFor(
+          () => {
+            expect(assignMock).toHaveBeenCalledWith('/settings/databases')
+          },
+          { timeout: 2000 }
+        )
+      }
+    )
   })
 })
 
