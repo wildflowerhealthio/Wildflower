@@ -92,18 +92,14 @@ const adoptEntity = <TEntity extends AdoptableEntity>(
  *
  * @remarks
  * The whole of a collector's wiring: end the plan factory with
- * `adoptSourceIdentity(SOURCE)(ScrapingPlan.make({ … }))` and every resource the
- * plan produces is re-keyed, identified, and reference-rewritten. Entities
- * themselves stay unaware — their suites keep testing the un-adopted decode.
+ * `adoptSourceIdentity(SOURCE)(ScrapingPlan.make({ … }))`. Entities stay unaware
+ * — their suites keep testing the un-adopted decode. See
+ * `slices/collector/docs/Source Identity Explanation.md`.
  *
  * Only `entityDefinitions` changes; every other plan field (`captureProvenance`,
  * `stepSequence`, `firstPage`, timeouts) passes through by reference. Within an
  * entity only `parse` is wrapped, and only with `Effect.map`, so the error
  * channel is untouched and parses stay synchronously runnable.
- *
- * Ordering makes provenance fall out for free: the tracker runs `parse`, then
- * `followUpSteps`, then `captureProvenance`. Both provenance directions
- * therefore see adopted resources and need no changes.
  *
  * A locally-minted resource must **not** be routed through this. `web-trace`'s
  * traces derive their ids at their own codec, which is already the same

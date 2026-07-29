@@ -280,16 +280,9 @@ const adoptDocumentReference = (
  * trace. It is still adopted rather than passed through, because a reference to
  * a Binary from a sibling resource has to land on the same derived id.
  *
- * There is no "already adopted?" guard. Adoption runs exactly once per resource,
- * at the one choke point `adoptSourceIdentity` installs; a source that
- * publishes its own base URL as an identifier system yields a benign duplicate
- * identifier, nothing more.
- *
- * What is never touched: `contained` (raw passthrough JSON), `extension` /
- * `modifierExtension` including any `valueReference` inside them, `meta.source`
- * (a source-system URI at this point — the provenance hook overwrites it with a
- * local trace reference *after* adoption), `Identifier.assigner`,
- * `groupIdentifier`, and `Attachment.url`.
+ * The per-type rewrite table, the fields deliberately left alone, and why there
+ * is no "already adopted?" guard are all in
+ * `slices/collector/docs/Source Identity Explanation.md`.
  */
 const adoptResource =
   (source: SourceIdentity) =>
