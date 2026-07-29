@@ -1,81 +1,162 @@
 /**
  * Constants for the Rexall/carebook STU3 dialect: the extension URLs,
- * identifier systems, and coding systems observed in the tunnel API's
- * `…/fhir/stu3/…` responses.
+ * identifier systems, and coding systems the tunnel API's `…/fhir/stu3/…`
+ * responses actually emit.
  *
- * These are grouped here so the schema and transform modules reference a
- * single catalogue rather than sprinkling opaque URLs through the code, and so
- * a future capture that reveals a slightly different URL is a one-line change.
+ * Grouped here so the schema, transform and promotion modules reference a
+ * single catalogue, and so a future capture revealing a different URL is a
+ * one-line change.
  *
  * @remarks
- * Note the two host spellings the dialect uses: extension URLs live under
- * `schemas.carebook.com` (plural) while identifier/coding systems live under
- * `schema.carebook.com` (singular). Both are reproduced verbatim from the
- * epic's dialect notes — do not "correct" one to match the other.
+ * Reproduced verbatim from a real (anonymized) capture, and cross-checked
+ * against `medication-sponsorship-react`, which independently reads five of
+ * these off the same dialect. The inconsistencies below are the vendor's and
+ * must not be "tidied":
+ *
+ * - Two host spellings, and the split is not by kind: extension URLs **and**
+ *   the `request-type` coding system are under `schemas.carebook.com` (plural);
+ *   every identifier system and the `din` / `form` codings are under
+ *   `schema.carebook.com` (singular).
+ * - `number-of-repeats-available` is dual-written under `v1` and `v2` with
+ *   different value types (`positiveInt`, `decimal`) carrying the same number.
  */
 
-/** Base URL every carebook extension URL is built from (note: `schemas`, plural). */
+/** Extension base for the dialect's `v1` URLs (note: `schemas`, plural). */
 const EXTENSION_BASE = 'http://schemas.carebook.com/v1/fhir'
 
-/** Base URL every carebook identifier/coding system is built from (note: `schema`, singular). */
+/**
+ * Extension base for the dialect's `v2` URLs. Only
+ * {@link CarebookExtension.NumberOfRepeatsAvailableV2} uses it.
+ */
+const EXTENSION_BASE_V2 = 'http://schemas.carebook.com/v2/fhir'
+
+/** Base for identifier systems and the `din` / `form` codings (note: `schema`, singular). */
 const SYSTEM_BASE = 'http://schema.carebook.com/v1/fhir'
 
 /**
- * Carebook extension URLs. Carried verbatim onto the transformed R4 resources
- * (R4 permits arbitrary extensions) so no source metadata is dropped.
+ * Carebook extension URLs, grouped by the resource namespace they appear
+ * under. Every one of these is populated on every resource of its type in the
+ * reference capture.
  */
 const CarebookExtension = {
-  /** When the request was originally made in the source system. */
-  WhenRequested: `${EXTENSION_BASE}/when-requested`,
-  /** Estimated pick-up time for a dispense. */
-  EstimatedPickUp: `${EXTENSION_BASE}/estimated-pick-up`,
-  /** Identifier of the external system the record originated from. */
-  ExternalSystemSource: `${EXTENSION_BASE}/external-system-source`,
+  // --- common/ — emitted on both MedicationRequest and MedicationDispense ---
+  /** Identifier of the external system the record originated from (`RexallPharmacy`). */
+  ExternalSystemSource: `${EXTENSION_BASE}/common/extension/external-system-source`,
   /** How the record entered the source system. */
-  InputSource: `${EXTENSION_BASE}/input-source`,
-  /** Processor that handled the medication. */
-  MedicationProcessor: `${EXTENSION_BASE}/medication-processor`,
-  /** Processor that handled the medication record. */
-  MedicationRecordProcessor: `${EXTENSION_BASE}/medicationrecord-processor`,
-  /** External store identifier the record is associated with. */
-  ExternalStoreId: `${EXTENSION_BASE}/external-store-id`,
-  /** Request type discriminator (`order` | `refill`). */
-  RequestType: `${EXTENSION_BASE}/request-type`,
-  /** Whether the prescription is renewable. */
-  Renewable: `${EXTENSION_BASE}/renewable`,
-  /** Contained-Medication strength (free-text / structured strength). */
-  MedicationStrength: `${EXTENSION_BASE}/medication-strength`,
-  /** Contained-Medication human-readable description. */
-  MedicationDescription: `${EXTENSION_BASE}/medication-description`,
+  InputSource: `${EXTENSION_BASE}/common/extension/input-source`,
+
+  // --- medicationrequest/ ---
+  /** Estimated pick-up time. Equal to the paired dispense's `whenHandedOver`. */
+  RequestEstimatedPickUp: `${EXTENSION_BASE}/medicationrequest/extension/estimated-pick-up`,
+  /** Request type discriminator; see {@link RequestTypeCode}. Promoted to `category`. */
+  RequestType: `${EXTENSION_BASE}/medicationrequest/extension/request-type`,
+  /** The dispensing pharmacy. Promoted to `dispenseRequest.performer`. */
+  RequestMedicationProcessor: `${EXTENSION_BASE}/medicationrequest/extension/medication-processor`,
+  /** Duplicate of {@link CarebookExtension.RequestMedicationProcessor} in every observed record. */
+  RequestMedicationRecordProcessor: `${EXTENSION_BASE}/medicationrequest/extension/medicationrecord-processor`,
+  /** The R4 `doNotPerform` flag, which STU3 has no slot for. Promoted to `doNotPerform`. */
+  DoNotPerform: `${EXTENSION_BASE}/medicationrequest/extension/do-not-perform`,
+  /** Whether the prescription is renewable. No conventional R4 field. */
+  Renewable: `${EXTENSION_BASE}/medicationrequest/extension/renewable`,
   /**
-   * Repeats still available on the request. Emitted as a `modifierExtension`
-   * on `MedicationRequest.dispenseRequest` in the carebook dialect.
+   * Rexall store number. **Kept as an extension on purpose** — see AGENTS.md:
+   * the obvious home, `Reference.identifier` on the promoted
+   * `dispenseRequest.performer`, is 0..1 and the dialect already fills it with
+   * carebook's own pharmacy id. `medication-sponsorship-react` reads it here.
    */
-  NumberOfRepeatsAvailable: `${EXTENSION_BASE}/number-of-repeats-available`,
+  RequestExternalStoreId: `${EXTENSION_BASE}/medicationrequest/extension/external-store-id`,
+  /** Presentation rank for the prescriptions list. Non-contiguous; not clinical. */
+  SortOrder: `${EXTENSION_BASE}/medicationrequest/extension/sort-order`,
+  /** Unpopulated stub in the reference capture (`display: 'todo'`). */
+  PrescriptionOrder: `${EXTENSION_BASE}/medicationrequest/extension/prescription-order`,
+  /**
+   * Repeats still available. Emitted as a `modifierExtension` on
+   * `MedicationRequest.dispenseRequest`, as a `positiveInt`.
+   */
+  NumberOfRepeatsAvailable: `${EXTENSION_BASE}/medicationrequest/extension/number-of-repeats-available`,
+  /**
+   * The `v2` spelling of {@link CarebookExtension.NumberOfRepeatsAvailable},
+   * emitted alongside it as a `decimal` carrying the same number.
+   */
+  NumberOfRepeatsAvailableV2: `${EXTENSION_BASE_V2}/medicationrequest/extension/number-of-repeats-available`,
+
+  // --- medicationdispense/ ---
+  /** When the refill was requested. Equal to `whenPrepared` in every observed record. */
+  WhenRequested: `${EXTENSION_BASE}/medicationdispense/extension/when-requested`,
+  /** Estimated pick-up. Equal to `whenHandedOver` in every observed record. */
+  DispenseEstimatedPickUp: `${EXTENSION_BASE}/medicationdispense/extension/estimated-pick-up`,
+  /** Whether the refill was requested in-app. No conventional R4 field. */
+  DispensedInApp: `${EXTENSION_BASE}/medicationdispense/extension/dispensed-in-app`,
+  /**
+   * IANA zone of the dispensing pharmacy. The dialect's timestamps all arrive
+   * `+00:00`, so this is the only record of their local offset — but the R4
+   * schemas normalize `dateTime` to UTC on decode, so it cannot be applied to
+   * them today. Carried through unchanged.
+   */
+  MedicationProcessorTimezone: `${EXTENSION_BASE}/medicationdispense/extension/medication-processor-timezone`,
+  /** The dispensing pharmacy. Promoted to `MedicationDispense.location`. */
+  DispenseMedicationProcessor: `${EXTENSION_BASE}/medicationdispense/extension/medication-processor`,
+  /** Duplicate of {@link CarebookExtension.DispenseMedicationProcessor} in every observed record. */
+  DispenseMedicationRecordProcessor: `${EXTENSION_BASE}/medicationdispense/extension/medicationrecord-processor`,
+  /** Rexall store number. Kept as an extension — see {@link CarebookExtension.RequestExternalStoreId}. */
+  DispenseExternalStoreId: `${EXTENSION_BASE}/medicationdispense/extension/external-store-id`,
+
+  // --- medication/ — on the contained Medication ---
+  /** Free-text strength (e.g. `'10 mg'`). Promoted to `ingredient[0].strength` when parseable. */
+  MedicationStrength: `${EXTENSION_BASE}/medication/extension/strength`,
+  /** Human-readable label, richer than `code.text`. Promoted to the narrative. */
+  MedicationDescription: `${EXTENSION_BASE}/medication/extension/description`,
 } as const
 
-/** Carebook identifier systems. */
+/** Carebook identifier systems (all under the singular `schema.carebook.com`). */
 const CarebookIdentifierSystem = {
-  /** External id assigned to a MedicationRequest by the source system. */
+  /** External id assigned to a medication record by the source system. */
   MedicationRequestExternalId: `${SYSTEM_BASE}/identifier/medicationrequest-external-id`,
-  /** External id of the authorizing prescription for a MedicationRequest. */
+  /** External id of the authorizing prescription. */
   MedicationRequestExternalAuthorizingId: `${SYSTEM_BASE}/identifier/medicationrequest-external-authorizing-id`,
+  /**
+   * Marks an `authorizingPrescription` entry as the original order. The dialect
+   * emits this and {@link CarebookIdentifierSystem.MedicationRequestTypeRefill}
+   * as two entries carrying the *same* reference.
+   */
+  MedicationRequestTypeOrder: `${SYSTEM_BASE}/identifier/medication-request-type-order`,
+  /** Marks an `authorizingPrescription` entry as a refill. See the `Order` note. */
+  MedicationRequestTypeRefill: `${SYSTEM_BASE}/identifier/medication-request-type-refill`,
+} as const
+
+/** Carebook coding systems. Note the host spelling differs between these. */
+const CarebookCodingSystem = {
+  /** Health Canada Drug Identification Numbers, on `Medication.code`. */
+  Din: `${SYSTEM_BASE}/coding/medication-din-code`,
+  /** Dose form, on `Medication.form` (e.g. `capsule`, `tablet`). */
+  MedicationForm: `${SYSTEM_BASE}/coding/medication-form-code`,
+  /** The {@link RequestTypeCode} value set. Under `schemas` (plural), unlike the two above. */
+  RequestType: `${EXTENSION_BASE}/coding/medicationrequest-request-type-code`,
 } as const
 
 /**
- * Coding system for Health Canada Drug Identification Numbers (DIN) as emitted
- * by the carebook dialect on contained `Medication.code`.
+ * `MedicationRequest.request-type` value set, as observed. Note this is
+ * `fill | refill` — **not** `order | refill`; `intent` is a constant `order`
+ * across every observed record and carries no signal.
+ *
+ * @remarks
+ * Named `RequestTypeCode` rather than `RequestType` because two *urls* in this
+ * module are already called that — {@link CarebookExtension.RequestType} (the
+ * extension) and {@link CarebookCodingSystem.RequestType} (the coding system) —
+ * and a bare `{@link RequestType}` could mean any of the three.
  */
-const DIN_CODE_SYSTEM = `${SYSTEM_BASE}/CodeSystem/din`
+const RequestTypeCode = { Fill: 'fill', Refill: 'refill' } as const
 
-/** `MedicationRequest.request-type` extension value set. */
-const RequestType = { Order: 'order', Refill: 'refill' } as const
+/** Value {@link CarebookExtension.ExternalSystemSource} carries for Rexall-sourced records. */
+const REXALL_SYSTEM_SOURCE = 'RexallPharmacy'
 
 export {
+  CarebookCodingSystem,
   CarebookExtension,
   CarebookIdentifierSystem,
-  DIN_CODE_SYSTEM,
   EXTENSION_BASE,
+  EXTENSION_BASE_V2,
+  REXALL_SYSTEM_SOURCE,
+  RequestTypeCode,
   SYSTEM_BASE,
-  RequestType,
 }

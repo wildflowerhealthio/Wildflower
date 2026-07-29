@@ -31,6 +31,7 @@ const baseDatatypes: {
   id: Datatype.SchemaFor<'id'> | undefined
   instant: Datatype.SchemaFor<'instant'> | undefined
   integer: Datatype.SchemaFor<'integer'> | undefined
+  positiveInt: Datatype.SchemaFor<'positiveInt'> | undefined
   string: Datatype.SchemaFor<'string'> | undefined
   time: Datatype.SchemaFor<'time'> | undefined
   uri: Datatype.SchemaFor<'uri'> | undefined
@@ -62,6 +63,7 @@ const baseDatatypes: {
   id: Datatype.baseSchemas.id,
   instant: Datatype.baseSchemas.instant,
   integer: Datatype.baseSchemas.integer,
+  positiveInt: Datatype.baseSchemas.positiveInt,
   string: Datatype.baseSchemas.string,
   time: Datatype.baseSchemas.time,
   uri: Datatype.baseSchemas.uri,

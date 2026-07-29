@@ -49,4 +49,32 @@ describe('fhir-r4 datatype registry', () => {
       ).toThrow()
     })
   })
+
+  describe('positiveInt', () => {
+    const positiveIntExtension = (
+      value: number
+    ): { readonly url: string; readonly valuePositiveInt: number } => ({
+      url: 'http://example.org/ext/count',
+      valuePositiveInt: value,
+    })
+
+    test('round-trips a positive integer', () => {
+      const decoded = Schema.decodeSync(Extension.Schema)(positiveIntExtension(3))
+      expect(decoded.valuePositiveInt).toBe(3)
+      expect(Schema.encodeSync(Extension.Schema)(decoded)).toMatchObject({ valuePositiveInt: 3 })
+    })
+
+    test('decodes a zero rather than failing the resource that carries it', () => {
+      // A `value[x]` slot lives inside an `Extension` inside a resource, so a
+      // rejection here fails the whole enclosing resource — which a caller that
+      // unions over resource types can only observe as the resource vanishing.
+      // Vendors do send `valuePositiveInt: 0` (carebook's remaining-repeats
+      // dual-write); a zero-repeat prescription must not delete a medication.
+      expect(Schema.decodeSync(Extension.Schema)(positiveIntExtension(0)).valuePositiveInt).toBe(0)
+    })
+
+    test('still rejects a non-integer', () => {
+      expect(() => Schema.decodeSync(Extension.Schema)(positiveIntExtension(1.5))).toThrow()
+    })
+  })
 })

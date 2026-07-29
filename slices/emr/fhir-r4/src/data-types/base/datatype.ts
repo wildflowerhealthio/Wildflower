@@ -129,6 +129,15 @@ const baseSchemas = {
   id: IdSchema,
   instant: InstantSchema,
   integer: Schema.Int,
+  // FHIR R4 `positiveInt` is an integer strictly greater than zero, but this
+  // schema deliberately accepts any integer. The registry decodes third-party
+  // wire content, and a `value[x]` slot lives inside an `Extension` inside a
+  // resource: rejecting `0` here fails the whole enclosing resource, which a
+  // caller that unions over resource types can only observe as the resource
+  // vanishing. A vendor really does send `valuePositiveInt: 0` (carebook's
+  // remaining-repeats dual-write). Recorded in the Client Capabilities
+  // Reference under "Unregistered choice-element datatypes".
+  positiveInt: Schema.Int,
   string: Schema.String,
   time: TimeSchema,
   uri: UriSchema,

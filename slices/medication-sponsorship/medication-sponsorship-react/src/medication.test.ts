@@ -30,6 +30,10 @@ const carebookRequest = {
     {
       resourceType: 'Medication',
       id: 'med-1',
+      // The dialect ships a narrative of its own: a byte-copy of `code.text`.
+      // It is here so the extension-vs-narrative precedence below is exercised
+      // against the shape the vendor really sends, not a stripped-down one.
+      text: { status: 'generated', div: 'Atorvastatin 20 mg tablet' },
       code: {
         coding: [
           {
@@ -126,6 +130,53 @@ describe('medicationRequestToMedicationView', () => {
     expect(view.repeatsAvailable).toBe(0)
     // No `expectedSupplyDuration` on this request → no next-fill estimate.
     expect(view.nextFillDate).toBeNull()
+  })
+
+  test('reads the description out of the narrative once the extension has been promoted', () => {
+    // `rexall-be-well-collector` promotes the carebook `description` extension
+    // into `text.div` and drops the extension. `div` is `xhtml`, so the
+    // promoted narrative is markup and the text content is what displays.
+    const promoted = {
+      ...carebookRequest,
+      contained: [
+        {
+          ...carebookRequest.contained[0],
+          text: {
+            status: 'generated',
+            div: '<div xmlns="http://www.w3.org/1999/xhtml">20 mg - Atorvastatin</div>',
+          },
+          extension: [],
+        },
+      ],
+    }
+    const view = medicationRequestToMedicationView(decode(promoted), 'fallback')
+    expect(view.description).toBe('20 mg - Atorvastatin')
+  })
+
+  test('unescapes XML entities carried in a promoted narrative', () => {
+    const promoted = {
+      ...carebookRequest,
+      contained: [
+        {
+          ...carebookRequest.contained[0],
+          text: {
+            status: 'generated',
+            div: '<div xmlns="http://www.w3.org/1999/xhtml">5 mg &amp; 10 mg &lt;combo&gt;</div>',
+          },
+          extension: [],
+        },
+      ],
+    }
+    const view = medicationRequestToMedicationView(decode(promoted), 'fallback')
+    expect(view.description).toBe('5 mg & 10 mg <combo>')
+  })
+
+  test('prefers the description extension over the dialect narrative before promotion', () => {
+    // The un-promoted fixture carries both: the extension's richer description
+    // and the dialect's narrative byte-copy of `code.text`. Reading the
+    // narrative first would show the drug name the card already displays.
+    const view = medicationRequestToMedicationView(decode(carebookRequest), 'fallback')
+    expect(view.description).toBe('20 mg - Tablet')
   })
 
   test('leaves every carebook field null when the request carries none of them', () => {

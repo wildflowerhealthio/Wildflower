@@ -1,15 +1,22 @@
 import { DateTime, Option, Schema } from 'effect'
 import type { MedicationRequest } from 'fhir-r4/resources'
+import { nonEmpty } from 'kitchen-sink'
 import type { Medication } from 'medication-sponsorship-core'
 
 /** The decoded FHIR R4 `MedicationRequest` resource. */
 type MedicationRequestResource = Schema.Schema.Type<typeof MedicationRequest.Schema>
 
-// carebook dialect constants for the Medications app's FHIR server. These
-// are the exact URLs that server emits and are distinct from the Rexall STU3
-// dialect in `rexall-be-well-collector` — keep them verbatim. The DIN lives as
-// a `code.coding` entry on the (contained) Medication; the human-readable
-// description and the remaining-repeats count are `extension`s.
+// carebook dialect constants for the Medications app's FHIR server. Keep them
+// verbatim. The DIN lives as a `code.coding` entry on the (contained)
+// Medication; the human-readable description and the remaining-repeats count
+// are `extension`s.
+//
+// These are *the same* dialect `rexall-be-well-collector` decodes, not a
+// distinct one — a real capture of the Rexall tunnel emits these exact URLs,
+// including the `v2` spelling of the repeats extension below. That package
+// exports the catalogue as `Carebook.*`, but importing it would make this UI
+// slice depend on a collector slice for six string constants, so the two are
+// kept in step by hand. Change one side and check the other.
 const DIN_CODING_SYSTEM = 'http://schema.carebook.com/v1/fhir/coding/medication-din-code'
 const DESCRIPTION_EXTENSION_URL =
   'http://schemas.carebook.com/v1/fhir/medication/extension/description'
@@ -24,9 +31,6 @@ const EXTERNAL_STORE_ID_URL =
   'http://schemas.carebook.com/v1/fhir/medicationrequest/extension/external-store-id'
 const REXALL_SYSTEM_SOURCE = 'RexallPharmacy'
 const REXALL_STORE_URL_BASE = 'https://www.rexall.ca/storelocator/store/'
-
-const nonEmpty = (value: string | null | undefined): string | null =>
-  value !== null && value !== undefined && value.length > 0 ? value : null
 
 // Several fields we read — the `medication[x]` choice slots, `contained`,
 // `requester`, `note`, `dispenseRequest`, and the passthrough `value[x]` on an
@@ -57,6 +61,7 @@ const ContainedMedication = Schema.Struct({
   id: nullableString,
   resourceType: nullableString,
   code: Schema.optional(Schema.NullOr(MedicationConcept)),
+  text: Schema.optional(Schema.NullOr(Schema.Struct({ div: nullableString }))),
   extension: Schema.optional(
     Schema.Array(Schema.Struct({ url: nullableString, valueString: nullableString }))
   ),
@@ -130,7 +135,48 @@ const dinOf = (medication: ContainedMedicationValue): string | null => {
   return null
 }
 
-/** The carebook description extension (e.g. `"999 mg - Capsule"`). */
+const XML_UNESCAPES: Readonly<Record<string, string>> = {
+  '&amp;': '&',
+  '&lt;': '<',
+  '&gt;': '>',
+  '&quot;': '"',
+  '&#39;': "'",
+  '&apos;': "'",
+}
+
+/**
+ * The text content of a FHIR `Narrative.div`. `div` is typed `xhtml`, so it
+ * arrives as markup (`<div xmlns="…">20 mg - Atorvastatin</div>`), not as the
+ * string to display: tags are stripped, the five XML entities are unescaped,
+ * and whitespace is collapsed.
+ *
+ * @remarks
+ * Deliberately crude. A narrative is free-form and a server may put a whole
+ * generated table in one, which this flattens to a run-on line — acceptable
+ * because it is only ever the *fallback* in {@link descriptionOf}, reached when
+ * the carebook description extension is gone precisely because a promotion put
+ * that description in the narrative.
+ */
+const narrativeText = (div: string): string =>
+  div
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&(?:amp|lt|gt|quot|#39|apos);/g, (entity) => XML_UNESCAPES[entity] ?? entity)
+    .replace(/\s+/g, ' ')
+    .trim()
+
+/**
+ * The carebook description (e.g. `"999 mg - Capsule"`).
+ *
+ * Read from the `description` extension first, falling back to the Medication's
+ * narrative. `rexall-be-well-collector` promotes that extension into `text.div`
+ * and drops it, so a resource it wrote carries exactly one of the two.
+ *
+ * The order matters for a resource that has *not* been promoted — a row already
+ * in the store, or one from the Medications app's own FHIR server — because it
+ * carries **both**: the extension, and the dialect's own narrative, which is a
+ * byte-copy of `code.text`, i.e. the drug name the card already shows as its
+ * title.
+ */
 const descriptionOf = (medication: ContainedMedicationValue): string | null => {
   for (const extension of medication.extension ?? []) {
     if (extension.url === DESCRIPTION_EXTENSION_URL) {
@@ -138,7 +184,8 @@ const descriptionOf = (medication: ContainedMedicationValue): string | null => {
       if (value !== null) return value
     }
   }
-  return null
+  const narrative = nonEmpty(medication.text?.div)
+  return narrative === null ? null : nonEmpty(narrativeText(narrative))
 }
 
 /**
