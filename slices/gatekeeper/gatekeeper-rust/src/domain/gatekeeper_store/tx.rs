@@ -219,6 +219,54 @@ pub trait GatekeeperTx {
     fn issue_authorization_code(&mut self, code: &AuthorizationCode)
         -> Result<(), GatekeeperError>;
 
+    // ----- retention ------------------------------------------------------
+    //
+    // The three reclaiming deletes, each taking an already-computed *cutoff*
+    // rather than `now` — the retention windows themselves belong to the policy
+    // (`domain::retention`), not to a primitive. Composed there, in one
+    // transaction.
+
+    /// Delete every authorization request whose `expires_at` fell before
+    /// `cutoff`, returning how many rows went.
+    ///
+    /// # Errors
+    ///
+    /// [`GatekeeperError::Infrastructure`] if the delete fails.
+    fn delete_authorization_requests_expired_before(
+        &mut self,
+        cutoff: DateTime<Utc>,
+    ) -> Result<usize, GatekeeperError>;
+
+    /// Delete every authorization code whose `expires_at` fell before `cutoff`,
+    /// returning how many rows went. Redemption already deletes a code as it is
+    /// used, so this reaps only abandoned ones.
+    ///
+    /// # Errors
+    ///
+    /// [`GatekeeperError::Infrastructure`] if the delete fails.
+    fn delete_authorization_codes_expired_before(
+        &mut self,
+        cutoff: DateTime<Utc>,
+    ) -> Result<usize, GatekeeperError>;
+
+    /// Delete every refresh-token family whose absolute deadline fell before
+    /// `cutoff`, together with the tokens descended from it, returning how many
+    /// **families** went. The counterpart to
+    /// [`Self::expire_refresh_token_family`], which keeps the lineage readable:
+    /// this is where it is finally reclaimed, once `cutoff` says the audit
+    /// window has passed. Self-contained — children are deleted before parents
+    /// in its own (possibly nested) transaction, so the foreign key holds
+    /// whether it runs standalone or inside a larger transaction.
+    ///
+    /// # Errors
+    ///
+    /// [`GatekeeperError::Infrastructure`] if the transaction or either delete
+    /// fails.
+    fn delete_refresh_token_families_expired_before(
+        &mut self,
+        cutoff: DateTime<Utc>,
+    ) -> Result<usize, GatekeeperError>;
+
     // ----- refresh-token families ----------------------------------------
 
     /// Persist a new refresh-token family **row only** — a single-table insert.

@@ -20,4 +20,5 @@ OAuth 2.0 / SMART-on-FHIR authorization slice. Read the [Jargon Explanation](./d
 - [gatekeeper-core README](./gatekeeper-core/README.md) — tables, OAuth routes, page-path drift test
 - [Jargon Explanation](./docs/Jargon%20Explanation.md) — the domain vocabulary
 - [Auth Token Storage Explanation](./docs/Auth%20Token%20Storage%20Explanation.md) — token storage policies
+- [Retention Explanation](./docs/Retention%20Explanation.md) — the 90-day / 7-day windows, why they are measured past `expires_at`, and the startup+daily sweep that applies them
 - [Bridge Explanation](../../docs/Messaging/Bridge%20Explanation.md) — the webview ↔ host bridge this slice speaks over

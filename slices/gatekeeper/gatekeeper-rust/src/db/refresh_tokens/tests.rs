@@ -221,6 +221,82 @@ fn expire_family_pulls_deadline_back_and_stamps_the_live_token() {
     assert_eq!(other_token.consumed_at, None);
 }
 
+/// The reclaiming delete is FK-safe and cascades by hand: a family past the
+/// cutoff goes with **every** generation under it, so no token row is left
+/// pointing at a family that no longer exists (which `PRAGMA foreign_keys = ON`
+/// would reject outright, and which would otherwise read as "unknown token" and
+/// silently defeat replay detection).
+#[test]
+fn delete_expired_families_takes_every_generation_with_them() {
+    let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+    let mut dead = sample_family("family-dead", "client-1");
+    dead.expires_at = Utc::now() - chrono::Duration::days(91);
+    seed_family_with_token(&store, &dead, &sample_token("dead-1", "family-dead"));
+    store
+        .insert_refresh_token(&sample_token("dead-2", "family-dead"))
+        .expect("insert a second generation");
+
+    let purged = store
+        .with_connection(|tx| {
+            tx.delete_refresh_token_families_expired_before(Utc::now() - chrono::Duration::days(90))
+        })
+        .expect("delete");
+
+    assert_eq!(
+        purged, 1,
+        "one family removed, counted by family not by token"
+    );
+    for gone in ["dead-1", "dead-2"] {
+        assert!(
+            store
+                .refresh_token_with_family_by_hash(gone)
+                .expect("query")
+                .is_none(),
+            "{gone} outlived its family",
+        );
+    }
+}
+
+/// The cutoff is a strict `<` on the family's own deadline, so a family that
+/// merely *expired* — including one revoked for reuse, whose `expires_at` was
+/// pulled back to the revocation instant — stays readable until it ages past
+/// the window. This is what keeps the "revocation keeps the lineage auditable"
+/// guarantee from being quietly undone by the sweep.
+#[test]
+fn delete_expired_families_spares_the_recently_dead_and_the_live() {
+    let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+    let mut recently_revoked = sample_family("family-revoked", "client-1");
+    recently_revoked.expires_at = Utc::now() - chrono::Duration::days(1);
+    seed_family_with_token(
+        &store,
+        &recently_revoked,
+        &sample_token("revoked-token", "family-revoked"),
+    );
+    // `sample_family` deadlines land 90 days out, i.e. comfortably live.
+    seed_family_with_token(
+        &store,
+        &sample_family("family-live", "client-1"),
+        &sample_token("live-token", "family-live"),
+    );
+
+    let purged = store
+        .with_connection(|tx| {
+            tx.delete_refresh_token_families_expired_before(Utc::now() - chrono::Duration::days(90))
+        })
+        .expect("delete");
+
+    assert_eq!(purged, 0);
+    for spared in ["revoked-token", "live-token"] {
+        assert!(
+            store
+                .refresh_token_with_family_by_hash(spared)
+                .expect("query")
+                .is_some(),
+            "{spared} was reclaimed early",
+        );
+    }
+}
+
 #[test]
 fn expire_for_client_spares_other_clients() {
     let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");

@@ -198,6 +198,52 @@ impl GatekeeperTx for FakeGatekeeperTx<'_> {
         Ok(())
     }
 
+    fn delete_authorization_requests_expired_before(
+        &mut self,
+        cutoff: DateTime<Utc>,
+    ) -> Result<usize, GatekeeperError> {
+        let mut requests = self.store.authorization_requests.borrow_mut();
+        let before = requests.len();
+        requests.retain(|_, r| r.expires_at >= cutoff);
+        Ok(before - requests.len())
+    }
+
+    fn delete_authorization_codes_expired_before(
+        &mut self,
+        cutoff: DateTime<Utc>,
+    ) -> Result<usize, GatekeeperError> {
+        let mut codes = self.store.authorization_codes.borrow_mut();
+        let before = codes.len();
+        codes.retain(|_, c| c.expires_at >= cutoff);
+        Ok(before - codes.len())
+    }
+
+    fn delete_refresh_token_families_expired_before(
+        &mut self,
+        cutoff: DateTime<Utc>,
+    ) -> Result<usize, GatekeeperError> {
+        // Children first, mirroring the FK order the SQL body has to observe —
+        // the fake has no foreign keys, but a test that asserts on the token map
+        // should see the same intermediate shape.
+        let doomed: Vec<String> = self
+            .store
+            .families
+            .borrow()
+            .values()
+            .filter(|f| f.expires_at < cutoff)
+            .map(|f| f.family_id.clone())
+            .collect();
+        self.store
+            .tokens
+            .borrow_mut()
+            .retain(|_, t| !doomed.contains(&t.family_id));
+        self.store
+            .families
+            .borrow_mut()
+            .retain(|_, f| f.expires_at >= cutoff);
+        Ok(doomed.len())
+    }
+
     fn insert_refresh_token_family_row(
         &mut self,
         family: &RefreshTokenFamily,

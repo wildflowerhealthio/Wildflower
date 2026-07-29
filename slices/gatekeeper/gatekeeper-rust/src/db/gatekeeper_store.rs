@@ -264,6 +264,29 @@ impl GatekeeperTx for SqliteGatekeeperTx<'_> {
         authorization_codes::issue_authorization_code(self.conn, code)
     }
 
+    // ----- retention ------------------------------------------------------
+
+    fn delete_authorization_requests_expired_before(
+        &mut self,
+        cutoff: DateTime<Utc>,
+    ) -> Result<usize, GatekeeperError> {
+        authorization_requests::delete_authorization_requests_expired_before(self.conn, cutoff)
+    }
+
+    fn delete_authorization_codes_expired_before(
+        &mut self,
+        cutoff: DateTime<Utc>,
+    ) -> Result<usize, GatekeeperError> {
+        authorization_codes::delete_authorization_codes_expired_before(self.conn, cutoff)
+    }
+
+    fn delete_refresh_token_families_expired_before(
+        &mut self,
+        cutoff: DateTime<Utc>,
+    ) -> Result<usize, GatekeeperError> {
+        refresh_tokens::delete_refresh_token_families_expired_before(self.conn, cutoff)
+    }
+
     // ----- refresh-token families ----------------------------------------
 
     fn insert_refresh_token_family_row(
