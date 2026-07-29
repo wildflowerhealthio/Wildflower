@@ -401,8 +401,15 @@ const NeedsAuthMessage = (): JSX.Element => {
           review and approve the request.
         </p>
         {grantable.length > 0 ? (
+          // Attributed to the referring page, not to the reader. `?requestScopes=`
+          // rides a query param on a public route, so anyone who can hand out a
+          // link chooses what this pre-selects — nothing here ties it to a 403 the
+          // reader actually hit. Copy that claimed "the action you tried needs
+          // these" would vouch for a stranger's link; naming the source instead
+          // says only what the screen can actually stand behind.
           <p className="text-body-3">
-            The permissions the action you tried needs are already selected below.
+            The page that led you here requested these permissions — they’re already selected below.
+            Review them before you continue.
           </p>
         ) : null}
         {unrequestable.length > 0 ? (
