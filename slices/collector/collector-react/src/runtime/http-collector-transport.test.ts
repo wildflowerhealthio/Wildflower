@@ -1,7 +1,7 @@
 import { Effect } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
-import { describe, expect, it } from 'vite-plus/test'
+import { describe, expect, it, vi } from 'vite-plus/test'
 
 import {
   eventsUrlFor,
@@ -248,6 +248,123 @@ describe('makeHttpCollectorTransport', () => {
       expect(seen).toEqual(['dismissed'])
     })
 
+    it('should keep dispatching later events after a handler dies mid-stream', async () => {
+      // Arrange — a defect (not a typed failure) must not strand the frames
+      // queued behind it: `Effect.runPromise` would reject and abort the pass.
+      const { socket, open, emit } = fakeSocket()
+      const transport = makeHttpCollectorTransport({
+        fetchFn: fakeFetch(204).fetchFn,
+        createSocket: () => socket,
+        pageOrigin: 'http://page.test',
+      })
+      const seen: string[] = []
+      const handlers: CollectorHandlers = {
+        ...dropAllHandlers(),
+        ResponseStart: () =>
+          Effect.sync(() => {
+            throw new Error('tracker blew up')
+          }),
+        ResponseFinished: (message) =>
+          Effect.sync(() => {
+            seen.push(`finished:${message.id}`)
+          }),
+      }
+      const registration = Effect.runPromise(transport.register.register(handlers))
+      open()
+      await registration
+
+      // Act — the dying frame is followed by a good one in the same batch.
+      emit(
+        '{"_tag":"ResponseStart","id":"r1","url":"https://emr.example.test/x","status":200,"statusText":"OK","headers":[]}'
+      )
+      emit('{"_tag":"ResponseFinished","id":"r1"}')
+      await flushDispatch()
+
+      // Assert — the tail of the stream still arrived.
+      expect(seen).toEqual(['finished:r1'])
+    })
+
+    it('should warn but not throw when the host closes the stream abnormally', async () => {
+      // Arrange — the server closes with `close_code::ERROR` when its event
+      // broadcast lags; that must not be indistinguishable from teardown.
+      const { socket, open, close } = fakeSocket()
+      const transport = makeHttpCollectorTransport({
+        fetchFn: fakeFetch(204).fetchFn,
+        createSocket: () => socket,
+        pageOrigin: 'http://page.test',
+      })
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const registration = Effect.runPromise(transport.register.register(dropAllHandlers()))
+      open()
+      await registration
+
+      // Act
+      close({ code: 1011, reason: 'event stream lagged; reconnect and restart the run' })
+
+      // Assert
+      expect(warn).toHaveBeenCalledTimes(1)
+      expect(String(warn.mock.calls[0]?.[0])).toContain('1011')
+      expect(String(warn.mock.calls[0]?.[0])).toContain('event stream lagged')
+      warn.mockRestore()
+    })
+
+    it('should stay silent when the stream closes normally', async () => {
+      // Arrange
+      const { socket, open, close } = fakeSocket()
+      const transport = makeHttpCollectorTransport({
+        fetchFn: fakeFetch(204).fetchFn,
+        createSocket: () => socket,
+        pageOrigin: 'http://page.test',
+      })
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const registration = Effect.runPromise(transport.register.register(dropAllHandlers()))
+      open()
+      await registration
+
+      // Act
+      close({ code: 1000, reason: '' })
+
+      // Assert
+      expect(warn).not.toHaveBeenCalled()
+      warn.mockRestore()
+    })
+
+    it('should not close a newer run’s socket when an older run releases late', async () => {
+      // Arrange — run A registers, run B replaces it, then A's release lands.
+      const first = fakeSocket()
+      const second = fakeSocket()
+      const sockets = [first, second]
+      let handedOut = 0
+      const transport = makeHttpCollectorTransport({
+        fetchFn: fakeFetch(204).fetchFn,
+        createSocket: () => {
+          const next = sockets[handedOut]
+          handedOut += 1
+          if (next === undefined) throw new Error('unexpected extra socket')
+          return next.socket
+        },
+        pageOrigin: 'http://page.test',
+      })
+      const handlersA = dropAllHandlers()
+      const handlersB = dropAllHandlers()
+
+      const registrationA = Effect.runPromise(transport.register.register(handlersA))
+      first.open()
+      await registrationA
+      const registrationB = Effect.runPromise(transport.register.register(handlersB))
+      second.open()
+      await registrationB
+      const closesAfterReplacement = second.closeCalls()
+
+      // Act — run A's release arrives after run B took over.
+      await Effect.runPromise(transport.register.unregister(handlersA))
+
+      // Assert — B's stream is untouched; only B's own release closes it.
+      expect(second.closeCalls()).toBe(closesAfterReplacement)
+      await Effect.runPromise(transport.register.unregister(handlersB))
+      expect(second.closeCalls()).toBeGreaterThan(closesAfterReplacement)
+    })
+
     it('should stop dispatching after unregister closes the socket', async () => {
       // Arrange
       const { socket, open, emit, closeCalls } = fakeSocket()
@@ -308,11 +425,15 @@ const urlOf = (input: RequestInfo | URL): string => {
 const jsonBodyOf = (init: RequestInit | undefined): unknown =>
   typeof init?.body === 'string' ? JSON.parse(init.body) : undefined
 
-/** A hand-driven `EventSocket` fake: `open()` fires onopen, `emit(raw)` a frame. */
+/**
+ * A hand-driven `EventSocket` fake: `open()` fires onopen, `emit(raw)` a
+ * frame, `close({code, reason})` a host-initiated close.
+ */
 const fakeSocket = (): {
   readonly socket: EventSocket
   readonly open: () => void
   readonly emit: (raw: string) => void
+  readonly close: (init: { readonly code: number; readonly reason: string }) => void
   readonly closeCalls: () => number
 } => {
   let closes = 0
@@ -332,6 +453,9 @@ const fakeSocket = (): {
     },
     emit: (raw) => {
       socket.onmessage?.(new MessageEvent('message', { data: raw }))
+    },
+    close: ({ code, reason }) => {
+      socket.onclose?.(new CloseEvent('close', { code, reason }))
     },
     closeCalls: () => closes,
   }

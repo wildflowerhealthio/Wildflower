@@ -1122,9 +1122,6 @@ importers:
       effect-messaging-core:
         specifier: workspace:*
         version: link:../../../global/effect-messaging/effect-messaging-core
-      effect-messaging-react:
-        specifier: workspace:*
-        version: link:../../../global/effect-messaging/effect-messaging-react
       fhir-r4:
         specifier: workspace:*
         version: link:../../emr/fhir-r4

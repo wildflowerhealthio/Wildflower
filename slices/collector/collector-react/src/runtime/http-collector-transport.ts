@@ -26,6 +26,11 @@
  *   register-before-dispatch ordering (connect the stream, then `POST
  *   /sniffer/webview`) holds — events can't slip between the open and the
  *   first dispatch.
+ * - **A dropped stream is loud but not fatal.** There is no reconnect: the
+ *   server closes the socket outright when its broadcast lags (dropped
+ *   `ResponseData` chunks would corrupt every response assembled after the
+ *   gap), so an abnormal close is warn-logged and the run settles through its
+ *   idle guard rather than silently going quiet.
  */
 import { CollectorBridge } from 'collector-fundamentals/bridge'
 import { Effect, Schema } from 'effect'
@@ -146,8 +151,16 @@ const peekTag = (raw: string): string | undefined => {
 
 type RawRoute = (raw: string) => Effect.Effect<void>
 
+/** RFC 6455 `1000` — the only close code that means "we're done here". */
+const NORMAL_CLOSURE = 1000
+
 /** Decode a raw frame with `schema` and hand it to `handler`; a decode
- * failure is logged and dropped (the transport never takes a run down). */
+ * failure — or a handler defect — is logged and dropped (the transport never
+ * takes a run down).
+ *
+ * `catchAllCause`, not `catchAll`: a handler that *dies* (a defect, not a
+ * typed failure) would otherwise reject the dispatch promise, stranding every
+ * frame still queued behind it. The whole cause is logged either way. */
 const routeFor =
   <A>(
     schema: Schema.Schema<A, string, never>,
@@ -156,8 +169,8 @@ const routeFor =
   (raw) =>
     Schema.decode(schema)(raw).pipe(
       Effect.flatMap(handler),
-      Effect.catchAll((error) =>
-        Effect.logWarning('http-collector-transport: undecodable event dropped', error)
+      Effect.catchAllCause((cause) =>
+        Effect.logWarning('http-collector-transport: event dropped', cause)
       )
     )
 
@@ -204,6 +217,9 @@ void assertEveryHostToWebTagIsDispatched
 /** One live `/sniffer/events` connection with its sequential dispatch pump. */
 interface ActiveConnection {
   readonly socket: EventSocket
+  /** The handler record this connection was opened for — the key `unregister`
+   * matches on, so a late release can't close a newer run's stream. */
+  readonly handlers: CollectorHandlers
   close: () => void
 }
 
@@ -284,6 +300,22 @@ const makeHttpCollectorTransport = (
         await Effect.runPromise(route(raw))
       }
 
+      /**
+       * Belt-and-braces around {@link dispatch}: `routeFor` already folds the
+       * whole cause, so this only catches an interruption or a defect raised
+       * outside the routed Effect. One frame must never abort the pass — the
+       * frames queued behind it would sit there until the next inbound
+       * message, and the tail of a settled stream may never bring one.
+       */
+      const dispatchSafely = async (raw: string): Promise<void> => {
+        try {
+          await dispatch(raw)
+        } catch (error) {
+          // oxlint-disable-next-line no-console
+          console.warn('http-collector-transport: event dispatch threw; continuing', error)
+        }
+      }
+
       const drain = async (): Promise<void> => {
         if (draining) return
         draining = true
@@ -293,7 +325,7 @@ const makeHttpCollectorTransport = (
           while (queue.length > 0 && !connectionState.closed) {
             const raw = queue.shift()
             // oxlint-disable-next-line no-await-in-loop -- sequential by design; parallel dispatch would reorder the stream
-            if (raw !== undefined) await dispatch(raw)
+            if (raw !== undefined) await dispatchSafely(raw)
           }
         } finally {
           draining = false
@@ -303,6 +335,7 @@ const makeHttpCollectorTransport = (
       const socket = createSocket(eventsUrlFor(options.apiBaseUrl, pageOriginOf(options)))
       const connection: ActiveConnection = {
         socket,
+        handlers,
         close: () => {
           connectionState.closed = true
           socket.close()
@@ -330,7 +363,22 @@ const makeHttpCollectorTransport = (
         console.warn('http-collector-transport: /sniffer/events socket errored')
         resumeOnce()
       }
-      socket.onclose = () => {
+      socket.onclose = (event) => {
+        // A host-initiated close is a real signal, not routine teardown: the
+        // server closes with `close_code::ERROR` when the broadcast lagged
+        // (`events_socket.rs`), which means events were dropped mid-stream and
+        // the responses assembled after the gap are untrustworthy. Nothing
+        // reconnects today, so the run goes on to settle through its idle
+        // guard — surface *why* it went quiet rather than leaving an operator
+        // to infer it from a run that produced half a batch.
+        if (!connectionState.closed && event.code !== NORMAL_CLOSURE) {
+          // oxlint-disable-next-line no-console
+          console.warn(
+            `http-collector-transport: /sniffer/events closed abnormally (code ${event.code}${
+              event.reason === '' ? '' : `: ${event.reason}`
+            }); no further events will arrive for this run`
+          )
+        }
         resumeOnce()
         if (active === connection) active = null
       }
@@ -342,9 +390,17 @@ const makeHttpCollectorTransport = (
       })
     })
 
-  const unregister = (_handlers: CollectorHandlers): Effect.Effect<void> =>
+  /**
+   * Release this run's stream. Keyed on the handler record: a run's release
+   * runs after its own `register`, but a slow release must not close the
+   * socket a *newer* run has since opened (`register` already replaces a
+   * stray predecessor, so nothing leaks by leaving a foreign connection
+   * alone).
+   */
+  const unregister = (handlers: CollectorHandlers): Effect.Effect<void> =>
     Effect.sync(() => {
-      active?.close()
+      if (active === null || active.handlers !== handlers) return
+      active.close()
       active = null
     })
 
