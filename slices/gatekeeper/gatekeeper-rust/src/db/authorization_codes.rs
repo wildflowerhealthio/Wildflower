@@ -69,14 +69,11 @@ pub(super) fn issue_authorization_code(
 }
 
 /// Delete every authorization code that expired before `cutoff`, returning how
-/// many rows went. Redemption already deletes a code the moment it is used
-/// ([`redeem_authorization_code`]), so this only reaps codes that were minted
-/// and then abandoned — a `/authorize` the client never came back from.
+/// many rows went. Redemption already deletes a code as it is used
+/// ([`redeem_authorization_code`]), so this only reaps abandoned ones.
 ///
-/// `cutoff` is the *retention* cutoff (`now − AUTHORIZATION_RETENTION`), not
-/// `now`: an expired code is unusable the instant it expires (redemption
-/// re-checks `expires_at`), so the extra window buys audit visibility, not
-/// safety. Applied by the caller, `domain::retention::purge_expired`.
+/// `cutoff` is the *retention* cutoff, not `now`; the window is the caller's
+/// (`domain::retention::purge_expired`).
 pub(super) fn delete_authorization_codes_expired_before(
     conn: &mut SqliteConnection,
     cutoff: DateTime<Utc>,

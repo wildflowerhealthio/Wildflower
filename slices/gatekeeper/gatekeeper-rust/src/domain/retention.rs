@@ -1,46 +1,27 @@
-//! Retention policy for the gatekeeper's accumulating tables — the windows
-//! themselves plus [`purge_expired`], the sweep that applies them.
+//! Retention policy for the gatekeeper's three accumulating tables — the
+//! windows themselves plus `purge_expired`, the sweep that applies them.
 //!
-//! Three tables grow and nothing shrinks them. Refresh-token lineage is
-//! *expired in place*, never deleted (revocation pulls `expires_at` back so a
-//! replayed token still resolves to its dead family — see
-//! [`GatekeeperTx::expire_refresh_token_family`]), and rotation appends a row
-//! per generation. Authorization requests have no transition out of `pending`
-//! for a flow the user simply abandoned. Authorization codes are deleted on
-//! redemption, but a code nobody comes back for stays.
-//!
-//! In every case the audit value is bounded — a lineage is interesting while
-//! someone might still ask what happened to it, not forever — so the fix is a
-//! window, not a `DELETE … WHERE expires_at < now`. Each window is measured
-//! **past the row's own `expires_at`**, i.e. past the point the row stopped
-//! being usable, so nothing live is ever in range.
-//!
-//! The sweep runs on a timer from `setup_gatekeeper` (startup, then daily), so
-//! the desktop app needs no external cron.
+//! Each window is measured **past the row's own `expires_at`**, so nothing live
+//! is ever in range. Which tables grow, why each window is what it is, and why
+//! the sweep runs on a timer rather than on the insert path:
+//! `slices/gatekeeper/docs/Retention Explanation.md`.
 
 use chrono::{DateTime, Duration, Utc};
 
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::{GatekeeperStore, GatekeeperTx};
 
-/// How long a refresh-token family (and its tokens) is kept **past its absolute
-/// deadline**. Matches
-/// [`REFRESH_TOKEN_FAMILY_TTL`](crate::domain::refresh_token::REFRESH_TOKEN_FAMILY_TTL),
-/// so a family that runs its full course is readable for roughly twice its own
-/// lifetime before being reclaimed — the whole lineage stays auditable for a
-/// quarter after it dies, including the revoked-for-reuse case, where
-/// `expires_at` was pulled back to the revocation instant and the clock
-/// therefore starts at the revocation rather than at the original deadline.
+/// How long a refresh-token family (and its tokens) is kept past its absolute
+/// deadline. Deliberately equal to
+/// [`REFRESH_TOKEN_FAMILY_TTL`](crate::domain::refresh_token::REFRESH_TOKEN_FAMILY_TTL) —
+/// a lineage stays auditable for its own lifetime again after it dies.
 pub const REFRESH_TOKEN_FAMILY_RETENTION: Duration = Duration::days(90);
 
-/// How long an expired authorization request or authorization code is kept.
-/// Both are minute-scale objects (a 5-minute request TTL), so a week is a
-/// generous audit buffer over a very short useful life — long enough to answer
-/// "what did that client try to do last Tuesday", short enough that abandoned
-/// flows can't accumulate.
+/// How long an expired authorization request or code is kept — a generous audit
+/// buffer over objects whose useful life is minutes.
 pub const AUTHORIZATION_RETENTION: Duration = Duration::days(7);
 
-/// What one [`purge_expired`] pass reclaimed, per table. All-zero is the
+/// What one `purge_expired` pass reclaimed, per table. All-zero is the
 /// steady state, and the caller logs only a non-[`is_empty`](Self::is_empty)
 /// result so an idle app produces no log noise.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -65,26 +46,18 @@ impl PurgedCounts {
 }
 
 /// Delete every row that has aged past its retention window as of `now`, in one
-/// transaction, and report what went.
+/// transaction, and report what went. Idempotent — a second pass at the same
+/// `now` matches nothing.
 ///
-/// `now` is a parameter rather than a `Utc::now()` inside, so tests can place
-/// rows either side of a window without sleeping and the whole pass reads one
-/// consistent instant.
-///
-/// Each delete is guarded by its own window, computed here and handed down as a
-/// cutoff — the primitives never see a policy constant. Nothing live can match:
-/// a live refresh-token family has `expires_at` in the *future*, so it is not
-/// merely outside the 90-day window but on the far side of `now`; the same holds
-/// for a pending request or an unredeemed code against the 7-day window.
-///
-/// Idempotent by construction — a second pass at the same `now` matches nothing
-/// and reports all-zero.
+/// `now` is a parameter rather than a `Utc::now()` inside, so the whole pass
+/// reads one instant and tests can place rows either side of a window without
+/// sleeping. Each window is turned into a cutoff here; the store primitives
+/// never see a policy constant.
 ///
 /// # Errors
 ///
 /// [`GatekeeperError::Infrastructure`] if the transaction or any of the three
-/// deletes fails. The transaction means a partial sweep is rolled back, so a
-/// failure leaves the retained set exactly as it was.
+/// deletes fails — rolled back, so a failure leaves the retained set as it was.
 pub(crate) fn purge_expired(
     store: &impl GatekeeperStore,
     now: DateTime<Utc>,
@@ -92,10 +65,6 @@ pub(crate) fn purge_expired(
     let family_cutoff = now - REFRESH_TOKEN_FAMILY_RETENTION;
     let authorization_cutoff = now - AUTHORIZATION_RETENTION;
     store.transaction(|tx| {
-        // Struct-literal fields evaluate in source order, so the family delete
-        // (which drops child tokens first) runs before the two flat ones. The
-        // order doesn't matter across tables — the three sets are disjoint — but
-        // stating it keeps the FK-ordered step at the front where it reads.
         Ok(PurgedCounts {
             refresh_token_families: tx
                 .delete_refresh_token_families_expired_before(family_cutoff)?,

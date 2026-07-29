@@ -235,14 +235,10 @@ pub(super) fn expire_refresh_token_families_for_authorization_code(
 /// return how many **families** were removed. Children first, so the delete
 /// passes under `PRAGMA foreign_keys = ON`.
 ///
-/// This is the one place lineage is destroyed rather than expired in place:
-/// revocation pulls `expires_at` back and keeps the rows auditable
-/// ([`expire_refresh_token_family`]), and this reclaims them once that audit
-/// value has aged out. `cutoff` is therefore already the *retention* cutoff
-/// (`now − REFRESH_TOKEN_FAMILY_RETENTION`), not `now` — a family whose deadline
-/// has merely passed is dead but still readable, and a family whose deadline is
-/// still ahead of `cutoff` is live and never matches. The window is applied by
-/// the caller, `domain::retention::purge_expired`.
+/// The one place lineage is destroyed rather than expired in place — the
+/// counterpart to [`expire_refresh_token_family`], which keeps it readable.
+/// `cutoff` is the *retention* cutoff, not `now`; the window is the caller's
+/// (`domain::retention::purge_expired`).
 pub(super) fn delete_refresh_token_families_expired_before(
     conn: &mut SqliteConnection,
     cutoff: DateTime<Utc>,

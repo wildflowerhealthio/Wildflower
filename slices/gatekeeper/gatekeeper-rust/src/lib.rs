@@ -171,11 +171,10 @@ const OWNER_TOKEN_REMINT_INTERVAL: std::time::Duration = std::time::Duration::fr
 const REVOCATION_PURGE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
 
 /// How often the background sweep reclaims gatekeeper rows past their retention
-/// window (see [`domain::retention`]). Same cadence and shape as
-/// [`REVOCATION_PURGE_INTERVAL`] — first sweep at startup, then daily — which is
-/// what keeps this self-contained: the desktop app needs no external cron. Daily
-/// is far finer than the coarsest window it enforces (90 days), so a row is
-/// never retained meaningfully longer than the policy says.
+/// window (see [`domain::retention`]). Same cadence as
+/// [`REVOCATION_PURGE_INTERVAL`], and far finer than the coarsest window it
+/// enforces (90 days), so a row is never retained much longer than the policy
+/// says.
 const RETENTION_SWEEP_INTERVAL: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
 
 /// How often the background reaper re-runs the popup-head query so the
@@ -380,21 +379,18 @@ fn spawn_revocation_purge(revocation_store: RevocationStore) {
 }
 
 /// Spawn the background sweep that deletes gatekeeper rows past their retention
-/// window — refresh-token families (with their tokens) 90 days past their
-/// absolute deadline, authorization requests and codes 7 days past theirs. Once
-/// at startup (the interval's immediate first tick), then every
-/// [`RETENTION_SWEEP_INTERVAL`]. See [`domain::retention`] for why each window is
-/// what it is.
+/// window — once at startup (the interval's immediate first tick), then every
+/// [`RETENTION_SWEEP_INTERVAL`]. The windows and their rationale live in
+/// [`domain::retention`].
 ///
-/// Space reclamation only: every one of these rows is already past `expires_at`
-/// and rejected by the read paths, so nothing here changes what the server will
-/// honour. A failed sweep is logged and retried next tick — the transaction
-/// means a failure leaves the retained set untouched rather than half-swept.
+/// Space reclamation only: every row it touches is already past `expires_at`
+/// and rejected by the read paths, so nothing here changes what the server
+/// honours. A failed sweep is logged and retried next tick.
 fn spawn_retention_sweep(store: SqliteGatekeeperStore) {
     tokio::spawn(async move {
         let mut ticks = interval(RETENTION_SWEEP_INTERVAL);
-        // A long pause (suspend/resume) must not queue up catch-up sweeps — one
-        // tick after the gap is right, and it reclaims the same rows anyway.
+        // A long pause (suspend/resume) must not queue up catch-up sweeps —
+        // one tick after the gap reclaims the same rows anyway.
         ticks.set_missed_tick_behavior(MissedTickBehavior::Delay);
         loop {
             // First tick is immediate → startup sweep; then daily.

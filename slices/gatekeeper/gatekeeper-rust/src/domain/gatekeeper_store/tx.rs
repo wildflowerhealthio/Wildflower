@@ -222,9 +222,8 @@ pub trait GatekeeperTx {
     // ----- retention ------------------------------------------------------
     //
     // The three reclaiming deletes, each taking an already-computed *cutoff*
-    // rather than `now` — the retention windows themselves belong to the policy
-    // (`domain::retention`), not to a primitive. Composed there, in one
-    // transaction.
+    // rather than `now` — the windows belong to `domain::retention`, which
+    // composes these in one transaction, not to a primitive.
 
     /// Delete every authorization request whose `expires_at` fell before
     /// `cutoff`, returning how many rows went.
@@ -251,12 +250,10 @@ pub trait GatekeeperTx {
 
     /// Delete every refresh-token family whose absolute deadline fell before
     /// `cutoff`, together with the tokens descended from it, returning how many
-    /// **families** went. The counterpart to
-    /// [`Self::expire_refresh_token_family`], which keeps the lineage readable:
-    /// this is where it is finally reclaimed, once `cutoff` says the audit
-    /// window has passed. Self-contained — children are deleted before parents
-    /// in its own (possibly nested) transaction, so the foreign key holds
-    /// whether it runs standalone or inside a larger transaction.
+    /// **families** went — the counterpart to
+    /// [`Self::expire_refresh_token_family`], which keeps the lineage readable.
+    /// Self-contained: children before parents in its own (possibly nested)
+    /// transaction, so the foreign key holds either way.
     ///
     /// # Errors
     ///

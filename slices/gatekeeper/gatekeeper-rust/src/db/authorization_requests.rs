@@ -211,16 +211,12 @@ pub(super) fn insert_authorization_request(
 ) -> Result<(), GatekeeperError> {
     let as_infrastructure_error =
         |e| GatekeeperError::infrastructure("insert_authorization_request failed", e);
-    // Bulk reclamation is the retention sweep's job now
-    // (`domain::retention::purge_expired`, on a 7-day window) — this insert used
-    // to delete *every* expired row, which left no audit window at all. What
-    // stays here is the narrow half the sweep can't cover: an expired row still
-    // sitting at `status = 'pending'` under the same `user_code` would collide
-    // on the partial pending-user_code unique index and turn this insert into a
-    // hard error, and it may not be a sweep tick old yet. Scoped to *this*
-    // request's code and to *already-expired* rows, so a live request is never
-    // silently dropped; a code-flow request (no user_code) skips it entirely.
-    // Both statements run on the one connection the store checked out.
+    // Bulk reclamation belongs to `domain::retention::purge_expired`; what stays
+    // here is the narrow half a daily sweep can't cover — an already-expired row
+    // holding *this* request's `user_code` at `status = 'pending'` occupies the
+    // partial unique index and would make the insert below a hard error. Scoped
+    // to expired rows, so a live request is never silently dropped. See
+    // `slices/gatekeeper/docs/Retention Explanation.md`.
     if let Some(user_code) = request.user_code.as_deref() {
         diesel::delete(
             authorization_requests::table
@@ -328,13 +324,10 @@ pub(super) fn record_device_poll(
 
 /// Delete every authorization request that expired before `cutoff`, returning
 /// how many rows went. Nothing transitions an abandoned request out of
-/// `pending` — the flows only ever write terminal statuses on an approve, deny,
-/// or redemption — so this is the only thing that reclaims one.
+/// `pending`, so this is the only thing that reclaims one.
 ///
-/// `cutoff` is the *retention* cutoff (`now − AUTHORIZATION_RETENTION`), not
-/// `now`: every read path already filters on `expires_at`, so the window costs
-/// nothing but the rows it keeps readable. Applied by the caller,
-/// `domain::retention::purge_expired`.
+/// `cutoff` is the *retention* cutoff, not `now`; the window is the caller's
+/// (`domain::retention::purge_expired`).
 pub(super) fn delete_authorization_requests_expired_before(
     conn: &mut SqliteConnection,
     cutoff: DateTime<Utc>,
