@@ -8,6 +8,7 @@ import {
 import { Duration, type FastCheck, Schema } from 'effect'
 import type { LazyArbitrary } from 'effect/Arbitrary'
 import { persistResources } from 'fhir-r4/clients'
+import { adoptSourceIdentity } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
 
 import { makeFhirProvenanceCapture } from 'web-trace-core/provenance'
@@ -135,6 +136,13 @@ const captureProvenance = makeFhirProvenanceCapture('fhir-r4')<FhirResource>
  * still applied defensively in case the value reaches this function
  * through an untyped path.
  *
+ * The plan is wrapped in `adoptSourceIdentity` so every resource it parses is
+ * re-keyed under the configured server's namespace: a derived local id, the
+ * server's own id kept as `identifier[0]`, and references rewritten to match.
+ * The source system is `config.rootUrl` — the configured root, never a URL
+ * recovered from a response — and it doubles as `baseUrl`, so a server that
+ * spells its self-references absolutely rewrites them the same as relative ones.
+ *
  * Provenance is the plan-level `captureProvenance` hook — the whole of this
  * collector's wiring is the one line naming it. The framework mints the run
  * id (this factory ignores its `runId` parameter — the hook receives it at
@@ -154,7 +162,7 @@ const scrapingPlan = (
     _tag: 'Uri',
     uri: patientUrl,
   }
-  return ScrapingPlan.make<FhirResource>({
+  const plan = ScrapingPlan.make<FhirResource>({
     name: 'FHIR R4',
     entityDefinitions: [
       PatientEntity,
@@ -186,6 +194,7 @@ const scrapingPlan = (
       },
     ],
   })
+  return adoptSourceIdentity({ system: config.rootUrl, baseUrl: config.rootUrl })(plan)
 }
 
 /**

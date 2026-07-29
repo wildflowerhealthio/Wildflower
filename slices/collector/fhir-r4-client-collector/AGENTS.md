@@ -28,6 +28,10 @@ An ordinary `*-client-collector` (`rexall-be-well-collector` and
   `captureProvenance`.
 - the persist sink — `fhir-r4`'s `persistResources`, imported in `src/config.ts`
   and handed straight to the descriptor.
+- the source identity — `adoptSourceIdentity({ system: config.rootUrl, baseUrl:
+config.rootUrl })` wrapping the plan factory's return, so every resource is
+  keyed under the **configured** root rather than the server's own id. See the
+  [Source Identity Explanation](../docs/Source%20Identity%20Explanation.md).
 - `src/extract-json.ts` — XHR/JSON-viewer body normalizer (copied verbatim in
   `rexall-be-well-collector`; slice layering forbids importing it).
 - `src/fhir-r4-config-form.tsx` (+ `.module.css`) — the rootUrl/patientId
@@ -74,9 +78,9 @@ both link directions live in `web-trace-core`; this package only names itself.
   inputs.** The framework mints the run id at dispatch (one per
   `resourcePersistenceRuntimeIfMatches` call, so one plan build is one run);
   this factory ignores the parameter — the hook receives the id at invocation.
-  The trace resource id is `{fhir-r4-runId}-{requestId}`, which is why the id
-  must be fresh per run: a config-derived id would make a second sync silently
-  upsert its traces over the first's. Tests deep-equal plans built with a
+  The trace resource id is derived from `(fhir-r4-runId, requestId)`, which is
+  why the run id must be fresh per run: a config-derived one would make a second
+  sync silently upsert its traces over the first's. Tests deep-equal plans built with a
   fixed run id.
 - **A response that produced no resource is not captured.** The tracker skips
   the hook on an empty parse, which is the line between provenance collection

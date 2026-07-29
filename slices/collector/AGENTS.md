@@ -176,12 +176,15 @@ EnsureWindowVisible` union.** Two variants reach the wire — a `Navigation`'s
   runtime instance _is_ one run, by construction. A factory that needs a
   per-run identity derives it from `runId` (the recorder's `sessionIdFor`,
   the provenance hook's session prefix) instead of minting its own, because
-  `{sessionId}-{requestId}` is a trace's resource id and a stable id would
-  silently upsert one run's traces over the previous run's. Consequence for
+  a trace's resource id is derived from `(sessionId, requestId)` and a stable id
+  would silently upsert one run's traces over the previous run's. Consequence for
   tests: per-collector suites deep-equal plans built with a fixed run id; only
   `registry.test.ts`'s union-wide sweep still compares an identity
   _projection_, because the recorder's recording entity closes over the
-  session id and two dispatches mint different ids.
+  session id and two dispatches mint different ids. The `adoptSourceIdentity`
+  wrapper a production collector ends its factory with preserves this: it
+  memoizes one wrapped `parse` per `(source system, entity)`, so two plans built
+  from one config still name the same function.
 - **Every `Step` carries a required `name`; the machine pushes it as a separate
   `SetSnifferStatus` control message, _not_ on the step's own action.** As the
   machine reaches each step it emits `SetSnifferStatus { name }`, which the Tauri
@@ -257,6 +260,9 @@ EnsureWindowVisible` union.** Two variants reach the wire — a `Navigation`'s
 
 - [Adding a Collector How-To](./docs/Adding%20a%20Collector%20How-To.md) — the
   end-to-end checklist for a new collector.
+- [Source Identity Explanation](./docs/Source%20Identity%20Explanation.md) — why an
+  imported resource is re-keyed under a derived local id, and what happens to its
+  references.
 - [Collector Sync Explanation](./collector-fundamentals/docs/Collector%20Sync%20Explanation.md)
   — the Context/Program/Runtime write seam and the drive loop.
 - [Handler Explanation](./collector-fundamentals/docs/Handler%20Explanation.md)

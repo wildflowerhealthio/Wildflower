@@ -84,12 +84,17 @@ artifact for designing a collector against a search API — are not captured.
 - **The encoding lives in `web-trace-core` and is imported, never re-derived.**
   A second copy drifts, and already-recorded sessions stop decoding.
   `toDocumentReference` is the only way a trace resource is built here.
+- **This plan is _not_ wrapped in `adoptSourceIdentity`, and must not be.** A
+  trace's id already comes from the shared derivation, applied once at
+  `traceResourceId`; adopting it on top would hash a hash. The combinator is for
+  a collector that _imports_ resources another system identified — see the
+  [Source Identity Explanation](../docs/Source%20Identity%20Explanation.md).
 - **`makeScrapingPlan` is `(config, runId) => plan`, deterministic given its
   inputs — the framework mints the run id.** The session id is
   `sessionIdFor(config, runId)` (the optional label prefixed onto the
-  framework's per-dispatch uuid), because `{sessionId}-{requestId}` is the
-  resource id: a session id derived from the config alone would make a second
-  recording of the same remote silently upsert over the first. One dispatch is
+  framework's per-dispatch uuid), because `(sessionId, requestId)` is what the
+  resource id is derived from: a session id derived from the config alone would
+  make a second recording of the same remote silently upsert over the first. One dispatch is
   one run is one recording, enforced by `CollectorDescriptor.make` sealing the
   plan and its run id together. The recording entity still closes over the
   session id, so two _dispatches_ produce structurally unequal plans — which is

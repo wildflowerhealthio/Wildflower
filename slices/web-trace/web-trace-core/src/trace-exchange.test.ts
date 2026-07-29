@@ -1,9 +1,11 @@
 import { HeadersWire, ResponseStartMessageBody, SnifferRequestId } from 'browser-sniffer-core'
 import { DateTime, Duration, Schema } from 'effect'
 import * as fc from 'fast-check'
+import { localResourceId } from 'fhir-r4/identity'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
+import { WEB_TRACE_SESSION_IDENTIFIER_SYSTEM } from './codec/systems.ts'
 import { arbitraries, traceExchange } from './test-helpers.ts'
 import { TraceExchange, traceResourceId } from './trace-exchange.ts'
 
@@ -33,12 +35,35 @@ describe('TraceExchange', () => {
     )
   })
 
-  test('property: the resource id is {sessionId}-{requestId}', () => {
+  test('property: the resource id is the derived id of {sessionId}-{requestId}', () => {
     fc.assert(
       fc.property(exchangeArbitrary, (exchange) => {
-        expect(traceResourceId(exchange)).toBe(`${exchange.sessionId}-${exchange.requestId}`)
+        expect(traceResourceId(exchange)).toBe(
+          localResourceId(
+            WEB_TRACE_SESSION_IDENTIFIER_SYSTEM,
+            'DocumentReference',
+            `${exchange.sessionId}-${exchange.requestId}`
+          )
+        )
       }),
       { numRuns: numRunsFor({ base: 50 }) }
+    )
+  })
+
+  // A session label is an arbitrary non-empty string, so the old
+  // `{sessionId}-{requestId}` spelling could mint an id outside FHIR's grammar
+  // — a label with a space wrote an id no conformant server accepts. Going
+  // through the shared derivation makes that unrepresentable.
+  test('property: the resource id is always a legal FHIR R4 id', () => {
+    fc.assert(
+      fc.property(
+        fc.string({ minLength: 1 }),
+        fc.string({ minLength: 1 }),
+        (sessionId, requestId) => {
+          expect(traceResourceId({ sessionId, requestId })).toMatch(/^[A-Za-z0-9\-.]{1,64}$/)
+        }
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 

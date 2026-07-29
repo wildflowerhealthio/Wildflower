@@ -74,10 +74,17 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
   `5000` and decodes back to `Millis:5000`. Equal by `Duration.equals`, different
   by `toEqual`, so raw doubles fail the round-trip property on Duration's
   internals rather than on anything this package does.
-- **`{sessionId}-{requestId}` is the identity of an exchange.** The sniffer
-  already assigns a correlation id per request, so ids are deterministic without
-  threading a counter through a parse, retried writes are idempotent upserts, and
-  two sessions cannot collide.
+- **`(sessionId, requestId)` is the identity of an exchange; the resource id is
+  its hash.** The sniffer already assigns a correlation id per request, so ids
+  are deterministic without threading a counter through a parse, retried writes
+  are idempotent upserts, and two sessions cannot collide. What the pair is
+  _rendered_ as is `fhir-r4`'s `localResourceId` — the one derivation every
+  stored resource is keyed under — so a reader goes through the two `Identifier`
+  entries, never through the id. `traceResourceId` is the **single** site that
+  mints it; a trace must never also be run through `adoptSourceIdentity`, which
+  would hash the hash. A session label is an arbitrary string, so spelling the
+  id `{sessionId}-{requestId}` verbatim could mint an id outside FHIR's grammar;
+  going through the derivation makes that unrepresentable.
 - **The encoding has exactly one definition — import it, never reimplement it.**
   A second copy drifts, and already-recorded sessions stop decoding. The private
   systems and extension URLs in `src/codec/systems.ts` are part of the persisted

@@ -22,6 +22,12 @@ export default defineConfig({
       dts: { tsgo: true },
       exports: false,
       platform: 'neutral',
+      entry: { 'identity/index': 'src/identity/index.ts' },
+    },
+    {
+      dts: { tsgo: true },
+      exports: false,
+      platform: 'neutral',
       entry: { 'resources/index': 'src/resources/index.ts' },
     },
     {

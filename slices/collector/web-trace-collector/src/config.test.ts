@@ -3,6 +3,7 @@ import { Arbitrary, Duration, Effect, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
+import { traceResourceId } from 'web-trace-core'
 
 import {
   DEFAULT_BODY_CONTENT_TYPES,
@@ -165,9 +166,14 @@ describe('scrapingPlan', () => {
     ])
     expect(first).toBeDefined()
     expect(first).not.toBe(second)
-    // Both still end in the same request id — only the session half moved.
-    expect(first?.endsWith('-req-1')).toBe(true)
-    expect(second?.endsWith('-req-1')).toBe(true)
+    // Both are the derived id for the same request id under their own session,
+    // so only the session half moved.
+    expect(first).toBe(
+      traceResourceId({ sessionId: sessionIdFor(defaultConfig, 'run-a'), requestId: 'req-1' })
+    )
+    expect(second).toBe(
+      traceResourceId({ sessionId: sessionIdFor(defaultConfig, 'run-b'), requestId: 'req-1' })
+    )
   })
 })
 

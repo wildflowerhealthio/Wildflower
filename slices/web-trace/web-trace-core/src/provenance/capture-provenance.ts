@@ -212,9 +212,9 @@ interface ProvenanceHookResult<TResource> {
  *
  * The prefix keeps a session legible in the viewer without opening an exchange;
  * the uuid half comes from the framework's run id, which is what makes two runs
- * of the same configured remote distinct — `{sessionId}-{requestId}` is the
- * trace's resource id, and a stable session id would silently upsert the second
- * run's traces over the first's.
+ * of the same configured remote distinct — a trace's resource id is derived from
+ * `(sessionId, requestId)`, so a stable session id would silently upsert the
+ * second run's traces over the first's.
  *
  * The hook's shape matches `collector-fundamentals`' plan hook structurally;
  * this package cannot import that type (layering), which is why the signature is

@@ -81,9 +81,8 @@ describe('parse', () => {
     expect(isWebTrace(await parseOne())).toBe(true)
   })
 
-  it('ids the resource {sessionId}-{requestId}, so a retried write is an upsert', async () => {
+  it('ids the resource from (sessionId, requestId), so a retried write is an upsert', async () => {
     const resource = await parseOne({ id: 'req-77' })
-    expect(resource.id).toBe('session-abc-req-77')
     expect(resource.id).toBe(traceResourceId({ sessionId: SESSION_ID, requestId: 'req-77' }))
   })
 

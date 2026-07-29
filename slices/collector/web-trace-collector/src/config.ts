@@ -131,8 +131,8 @@ const IDLE_TIMEOUT = Duration.hours(3)
  *
  * @remarks
  * The run id is what makes two runs of the same configured remote distinct, so
- * `{sessionId}-{requestId}` cannot silently upsert the second recording over the
- * first. It is minted by the framework (one per plan build, by construction —
+ * the resource id derived from `(sessionId, requestId)` cannot silently upsert
+ * the second recording over the first. It is minted by the framework (one per plan build, by construction —
  * see `CollectorDescriptor.make`), which is what lets this factory stay
  * deterministic given its inputs. The label is a readability prefix only —
  * deriving the id from it alone would collide on exactly the case a user is

@@ -1,5 +1,8 @@
 import { HeadersWire, ResponseStartMessageBody, SnifferRequestId } from 'browser-sniffer-core'
 import { Schema } from 'effect'
+import { localResourceId } from 'fhir-r4/identity'
+
+import { WEB_TRACE_SESSION_IDENTIFIER_SYSTEM } from './codec/systems.ts'
 
 /**
  * The vocabulary of a web trace: one recorded HTTP exchange, plus the
@@ -139,7 +142,8 @@ const ProducedResourceReference = Schema.NonEmptyString.pipe(
  * @remarks
  * `startedAt` is the response start, the only instant the sniffer observes.
  * `requestId` is the sniffer's own per-request correlation key, which makes
- * `{sessionId}-{requestId}` a deterministic resource id: retried writes are
+ * `(sessionId, requestId)` a deterministic identity — see
+ * {@link traceResourceId} for what it is rendered as: retried writes are
  * idempotent upserts and two sessions cannot collide.
  *
  * `producedResources` is the provenance link: the resources a collector derived
@@ -176,13 +180,36 @@ type TraceTimings = typeof TraceTimings.Type
 type TraceSessionId = typeof TraceSessionId.Type
 
 /**
- * The deterministic FHIR resource id for an exchange: `{sessionId}-{requestId}`.
+ * The deterministic FHIR resource id for an exchange.
  *
  * @param exchange - The exchange whose resource id is wanted
  * @returns The id the codec writes to `DocumentReference.id`
+ *
+ * @remarks
+ * `(sessionId, requestId)` is the identity of an exchange — the sniffer assigns
+ * a correlation id per request, so ids are deterministic without threading a
+ * counter through a parse, retried writes are idempotent upserts, and two
+ * sessions cannot collide. The pair is *rendered* through `fhir-r4`'s
+ * `localResourceId`, the one derivation every stored resource is keyed under, so
+ * a trace shares the store's id shape rather than having its own.
+ *
+ * Going through that derivation is also what keeps the id legal. A session label
+ * is an arbitrary non-empty string, so a pair interpolated into an id verbatim
+ * could carry a space and land outside FHIR's grammar; the derived id is `wf-`
+ * plus 32 hex whatever the inputs are.
+ *
+ * The pair stays readable: the codec writes both halves as `Identifier` entries
+ * and the decode side reads identifiers, never the id.
+ *
+ * This is the **one** site that mints a trace's id. A trace must never also be
+ * routed through `adoptSourceIdentity` — that would hash this hash.
  */
 const traceResourceId = (exchange: Pick<TraceExchange, 'sessionId' | 'requestId'>): string =>
-  `${exchange.sessionId}-${exchange.requestId}`
+  localResourceId(
+    WEB_TRACE_SESSION_IDENTIFIER_SYSTEM,
+    'DocumentReference',
+    `${exchange.sessionId}-${exchange.requestId}`
+  )
 
 export {
   noTimings,
