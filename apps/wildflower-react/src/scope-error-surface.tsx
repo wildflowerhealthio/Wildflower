@@ -9,27 +9,22 @@ interface ScopeErrorSurfaceProps {
 }
 
 /**
- * The `403 InsufficientScope` surface plus its **step-up** action
- * (resource-authorization epic child ⑤). Renders the read-only
- * `AuthorizationFailure` and, when the 403 actually named scopes, wires its
- * `onRequestAccess` hook to a navigation to device login pre-filled with exactly
- * those scopes and with `returnTo` set to the current location — so a granted
- * request reloads this page and its loader re-runs the denied action against the
- * new grant.
- *
- * A component (not a bare `render` closure) because the step-up action needs the
- * router: it reads the current href and navigates. It only ever renders inside
- * `RouterProvider` — `ErrorBodyRendererContext` is provided above it in
- * `AppRootTree`, but every *consumer* (a route's error body, the databases
- * delete banner) is a descendant of the router.
+ * The `403 InsufficientScope` surface plus its **step-up** action: the read-only
+ * `AuthorizationFailure`, whose `onRequestAccess` hook navigates to device login
+ * pre-filled with the missing scopes and with `returnTo` set here. See the
+ * [Scope-Gated Endpoints How-To](../../../docs/Authorization/Scope-Gated%20Endpoints%20How-To.md)
+ * for the flow end to end.
  *
  * With no scopes named (the undeclared-403 path, where the body was never
- * decoded) the hook is omitted and the surface stays a read-only explanation:
- * there is nothing to pre-fill, so a "Request access" button would be
- * indistinguishable from a plain sign-in.
+ * decoded) the hook is omitted: there is nothing to pre-fill, so a "Request
+ * access" button would be indistinguishable from a plain sign-in.
  *
- * Its own module so `scope-error-renderer.tsx` keeps exporting just the renderer
- * function (a file may not mix component and non-component exports).
+ * A component rather than a bare `render` closure because the action needs the
+ * router. It only ever renders inside `RouterProvider` — `ErrorBodyRendererContext`
+ * is provided above it in `AppRootTree`, but every *consumer* (a route's error
+ * body, the databases delete banner) is a descendant of the router. Its own
+ * module so `scope-error-renderer.tsx` keeps exporting just the renderer function
+ * (a file may not mix component and non-component exports).
  */
 const ScopeErrorSurface = ({ missingScopes }: ScopeErrorSurfaceProps): JSX.Element => {
   const navigate = useNavigate()

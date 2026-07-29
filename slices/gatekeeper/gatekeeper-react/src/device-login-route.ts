@@ -64,11 +64,10 @@ const buildDeviceLoginTarget = (returnTo?: string): DeviceLoginTarget => ({
 })
 
 /**
- * The **step-up** target (resource-authorization epic child ⑤): device login with
- * the scope picker pre-filled with `missingScopes` — the scopes a
- * `403 InsufficientScope` said the caller lacks — and `returnTo` set to where the
- * denial happened, so a granted request lands the user back on the original page
- * (whose loader then re-runs the action against the new grant).
+ * The **step-up** target: device login with the picker pre-filled with the scopes
+ * a `403 InsufficientScope` said the caller lacks, and `returnTo` set to where the
+ * denial happened. See the
+ * [Scope-Gated Endpoints How-To](../../../../docs/Authorization/Scope-Gated%20Endpoints%20How-To.md).
  *
  * An empty `missingScopes` omits the param entirely, collapsing to a plain
  * {@link buildDeviceLoginTarget}: there is nothing to pre-fill, so the screen

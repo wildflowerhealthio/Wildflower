@@ -71,15 +71,10 @@ const sanitizeReturnTo = (raw: string | null): string => {
 
 /**
  * Split a pre-filled step-up request into the scopes this client may actually
- * ask for and the ones it may not.
- *
- * `/oauth/device_authorization` rejects the **whole** request with
- * `invalid_scope` when any requested scope falls outside the client's
- * `allowed_scopes` — so an out-of-envelope scope can't just ride along, or
- * pressing "Request access" would dead-end on an OAuth error instead of
- * starting the flow. `ungrantable` is therefore kept out of the draft but
- * surfaced in the form: the user is told which permission this client can't
- * request rather than watching it silently vanish from the picker.
+ * ask for and the ones it may not — `/oauth/device_authorization` rejects the
+ * **whole** request when any scope escapes the client's `allowed_scopes`, so
+ * `ungrantable` is named in the form instead of riding along (see the
+ * [Scope-Gated Endpoints How-To](../../../../../docs/Authorization/Scope-Gated%20Endpoints%20How-To.md)).
  *
  * Membership is decided with the picker's own clamp
  * ({@link ScopeRequest.isWithin}), which is coverage-aware the same way the
@@ -148,16 +143,11 @@ const toErrorState = (error: unknown): DeviceFlowState =>
  * and navigate to the sanitized `?returnTo=` path (or {@link POST_AUTH_DEFAULT_PATH})
  * with a full page load so the app reboots with the bearer in place.
  *
- * It doubles as the **step-up** target (resource-authorization epic child ⑤):
- * when a `403 InsufficientScope` surface sends the user here via
- * `buildStepUpTarget`, the `?requestScopes=` param pre-fills the picker with the
- * scopes that were missing — unioned with {@link PRESET_REQUEST_SCOPES}, since
- * the device flow mints a whole new grant and requesting *only* the missing
- * scopes would strip what the session could already do. Because that same
- * navigation sets `returnTo` to where the denial happened, the full page load on
- * grant lands back on the original page and its loader re-runs the denied action
- * against the new grant. Scopes outside the client's `allowed_scopes` are named
- * rather than requested — see {@link partitionByGrantability}.
+ * It doubles as the **step-up** target: a `403 InsufficientScope` surface sends
+ * the user here via `buildStepUpTarget`, and `?requestScopes=` pre-fills the
+ * picker with the scopes that were missing. See the
+ * [Scope-Gated Endpoints How-To](../../../../../docs/Authorization/Scope-Gated%20Endpoints%20How-To.md)
+ * for that flow end to end.
  *
  * @remarks
  * Because the flow is now user-gated (a button click), nothing fires on mount —
@@ -218,11 +208,10 @@ const NeedsAuthMessage = (): JSX.Element => {
     [grantable, available]
   )
   const [draft, setDraft] = useState<GrantDraftModel.GrantDraft>(() => {
-    // Seed the read+search happy path when the envelope covers it, *unioned* with
-    // the step-up scopes: the device flow mints a whole new grant, so requesting
-    // only the missing scopes would strip the access the session already had.
-    // Otherwise fall back to the empty draft (the user builds the request within
-    // what's allowed).
+    // The read+search happy path (when the envelope covers it) *unioned* with the
+    // step-up scopes — the device flow mints a whole new grant, so requesting only
+    // the missing scopes would strip the access the session already had. Falls
+    // back to the empty draft, which the user builds within what's allowed.
     const preset = GrantDraft.fromScopes(PRESET_REQUEST_SCOPES, null)
     const presetScopes = ScopeRequest.isWithin(preset, request) ? PRESET_REQUEST_SCOPES : []
     const seeded = GrantDraft.fromScopes([...grantable, ...presetScopes], null)
