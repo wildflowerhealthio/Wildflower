@@ -31,9 +31,15 @@ Every imported resource is keyed under a **derived local id**:
 localResourceId(sourceSystem, resourceType, originalId) → "wf-<32 lowercase hex>"
 ```
 
-It lives in `fhir-r4/identity` and is two 64-bit FNV-1a lanes over
-`${system}\n${resourceType}\n${originalId}`, concatenated. Properties that
-matter:
+It lives in `fhir-r4/identity` and is two 64-bit FNV-1a lanes over the three
+components, concatenated. The lane itself is `kitchen-sink`'s `fnv1a64` — the
+standard algorithm, pinned in `fnv1a.test.ts` against the published FNV test
+vectors, so "it is the standard implementation" is a checked fact rather than a
+claim. What stays in `fhir-r4/identity` is what is _not_ standard FNV: the second
+lane's displaced offset basis, the 128-bit concatenation, and the `wf-`
+rendering.
+
+Properties that matter:
 
 - **Synchronous.** Entity parses run under the collector's sync runner; Web
   Crypto's digest is async and would have forced the whole parse path to change.
@@ -49,10 +55,30 @@ matter:
 The `wf-` prefix is fixed rather than per-source. Source attribution lives in the
 identifier, not in the id.
 
+### The components are length-prefixed, not delimiter-joined
+
+`joinIdComponents` renders the three components as `${length}:${value}`
+concatenated — `1:a7:Patient3:abc` — rather than joining them on a separator.
+
+A separator is only unambiguous if no component can contain it, which is a
+precondition on every caller rather than a property of the function. The earlier
+`\n` join had exactly that flaw: `('a', 'b\nc', 'x')` and `('a\nb', 'c', 'x')` both
+spell `a\nb\nc\nx` and collided outright. Nothing on a production path could
+reach it — `system` is a regex-validated root URL or a minted constant, and
+`resourceType` is a union literal or the `[A-Za-z]+` capture from
+`RELATIVE_REFERENCE` — but the function whose job is to make ids unambiguous
+should not depend on its callers to be.
+
+`joinIdComponents` is exported because a caller that has to fold more than one
+value into a single `originalId` must fold it the same way rather than inventing
+a separator. `web-trace`'s `(sessionId, requestId)` pair is the one such caller;
+nesting is safe, since a joined component is delimited by its own length prefix.
+
 **The function is persisted wire format.** Its output is the primary key a
 resource is stored under, so changing the prime, either offset basis, the
-separator, the field order, or the prefix orphans everything already stored.
-`local-resource-id.test.ts` pins exact outputs so that change fails loudly.
+component encoding, the field order, or the prefix orphans everything already
+stored. `local-resource-id.test.ts` pins exact outputs so that change fails
+loudly.
 
 ## What adoption does to a resource
 
@@ -104,18 +130,36 @@ recoverable by resolving the rewritten reference and reading the target's
 
 ### Reference field table
 
-| Resource             | Rewritten fields                                                                                                                                                                                                                                                               |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `Patient`            | `generalPractitioner[]`, `managingOrganization`, `link[].other`, `contact[].organization`                                                                                                                                                                                      |
-| `Observation`        | `subject`, `encounter`, `device`, `specimen`, `basedOn[]`, `derivedFrom[]`, `focus[]`, `hasMember[]`, `partOf[]`, `performer[]`                                                                                                                                                |
-| `MedicationRequest`  | `subject`, `encounter`, `requester`, `performer`, `recorder`, `priorPrescription`, `reportedReference`, `medicationReference`, `supportingInformation[]`, `reasonReference[]`, `basedOn[]`, `insurance[]`, `detectedIssue[]`, `eventHistory[]`, `dispenseRequest.performer`    |
-| `MedicationDispense` | `subject`, `context`, `location`, `destination`, `statusReasonReference`, `medicationReference`, `partOf[]`, `supportingInformation[]`, `authorizingPrescription[]`, `receiver[]`, `detectedIssue[]`, `eventHistory[]`, `performer[].actor`, `substitution.responsibleParty[]` |
-| `DocumentReference`  | `subject`, `authenticator`, `custodian`, `author[]`, `relatesTo[].target`, `context.sourcePatientInfo`, `context.encounter[]`, `context.related[]`                                                                                                                             |
-| `Binary`             | `securityContext`                                                                                                                                                                                                                                                              |
+| Resource             | Rewritten fields                                                                                                                                                                                                                                                                                         |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Patient`            | `generalPractitioner[]`, `managingOrganization`, `link[].other`, `contact[].organization`                                                                                                                                                                                                                |
+| `Observation`        | `subject`, `encounter`, `device`, `specimen`, `basedOn[]`, `derivedFrom[]`, `focus[]`, `hasMember[]`, `partOf[]`, `performer[]`, `note[].authorReference`                                                                                                                                                |
+| `MedicationRequest`  | `subject`, `encounter`, `requester`, `performer`, `recorder`, `priorPrescription`, `reportedReference`, `medicationReference`, `supportingInformation[]`, `reasonReference[]`, `basedOn[]`, `insurance[]`, `detectedIssue[]`, `eventHistory[]`, `dispenseRequest.performer`, `note[].authorReference`    |
+| `MedicationDispense` | `subject`, `context`, `location`, `destination`, `statusReasonReference`, `medicationReference`, `partOf[]`, `supportingInformation[]`, `authorizingPrescription[]`, `receiver[]`, `detectedIssue[]`, `eventHistory[]`, `performer[].actor`, `substitution.responsibleParty[]`, `note[].authorReference` |
+| `DocumentReference`  | `subject`, `authenticator`, `custodian`, `author[]`, `relatesTo[].target`, `context.sourcePatientInfo`, `context.encounter[]`, `context.related[]`                                                                                                                                                       |
+| `Binary`             | `securityContext`                                                                                                                                                                                                                                                                                        |
 
 The list is explicit rather than a structural walk, so what gets rewritten is
-readable and reviewable. `adopt-resource.test.ts` diffs the _complement_ of this
-table on generated resources, so a field touched outside it fails.
+readable and reviewable. `adopt-resource.test.ts` guards it from both sides:
+
+- It diffs the _complement_ of this table on generated resources, so a field
+  touched **outside** it fails.
+- It walks each resource schema's own AST for every path that declares a
+  `Reference`, and asserts that set is exactly the rewritten paths. So a
+  `Reference` field missing from **both** the implementation and the table fails
+  too — the case the complement diff structurally cannot see, because a field
+  nobody rewrites is a field the complement asserts was left alone.
+
+The second guard is not theoretical: it is what found `note[].authorReference`,
+which a hand walk of the same six schemas had signed off as complete.
+`Annotation.author[x]` is a `Reference` when it is not the `authorString`
+variant, and it sits one level down inside an array.
+
+The walk stops at every `Reference` (that is the find) and at every `Identifier`
+(whose `assigner` is exempt wherever it is reached from), which is also what
+breaks the `Reference` ⇄ `Identifier` cycle. `extension`, `modifierExtension` and
+`contained` are pruned as exempt subtrees; `Extension` is recursive, so
+descending would not terminate anyway.
 
 ### Never touched
 
@@ -136,16 +180,35 @@ plan field (`captureProvenance`, `stepSequence`, `firstPage`, timeouts) through 
 reference. A collector's entire wiring is one line at the end of its plan factory
 — see the [Adding a Collector How-To](./Adding%20a%20Collector%20How-To.md).
 
-Two consequences worth knowing:
+Three consequences worth knowing:
 
 - **The wrapper is memoized per `(source, entity)`.** Plan factories are
   deterministic and per-collector suites deep-equal two plans built from one
   config; `toEqual` compares functions by identity, so a fresh closure per call
-  would break every one of them.
+  would break every one of them. The memo's outer map is keyed by source system
+  and is never evicted; for the FHIR collector that key is the user's configured
+  `rootUrl`, so its key space is user-driven rather than structural. Each entry
+  is one empty `WeakMap`, and that growth is accepted rather than solved — the
+  alternative trades it for the referential stability the memo exists to provide.
 - **`followUpSteps` receives adopted resources.** No entity defines one today,
   but a future generator that needs the source's id to build a source-server URL
   reads it back with `originalIdOf(source, resource)` rather than off
   `resource.id`.
+- **The plan's own type passes through, and that is checked rather than
+  assumed.** Adoption widens: `adoptResource` is declared `FhirResource →
+FhirResource`, because TypeScript cannot correlate the variant matched with the
+  branch taken and so cannot be told that every branch maps a variant to itself.
+  A combinator returning `TPlan` unchanged would therefore be asserting something
+  it does not deliver for a plan whose entities declare a narrower element type.
+  `adoptSourceIdentity` refuses such a plan instead, via a conditional on the
+  parameter (`TPlan & EntitiesParseEveryResource<TPlan>`) — the constraint alone
+  cannot do it, since a narrower entity is a legitimate subtype by covariance.
+  Both production collectors already widen at `ScrapingPlan.make<FhirResource>`,
+  so this costs them nothing.
+
+Note the variant preservation inside `adoptResource` is real but unchecked: each
+`adoptX` maps a variant to itself **by construction**, and an `adoptX` that
+returned a different variant would compile. That is stated on the function.
 
 The tracker's ordering is `parse` → `followUpSteps` → `captureProvenance`, so the
 provenance hook's `context.related` and `meta.source` are both built from adopted
@@ -173,13 +236,26 @@ encoding, so unification happened there instead:
 traceResourceId({ sessionId, requestId }) = localResourceId(
   WEB_TRACE_SESSION_IDENTIFIER_SYSTEM,
   'DocumentReference',
-  `${sessionId}-${requestId}`
+  joinIdComponents([sessionId, requestId])
 )
 ```
 
 `(sessionId, requestId)` is still the identity of an exchange; only the rendering
 changed, and both halves stay readable as `Identifier` entries the decode side
 reads. This also fixes the illegal-id case by construction.
+
+The pair goes through `joinIdComponents` rather than a `-` join for the reason
+given above: both halves are arbitrary non-empty strings, so `('s-req', '77')`
+and `('s', 'req-77')` would be the same exchange, one silently upserting over the
+other.
+
+**The derivation is not free, and the viewer must not pay it per render.** It is
+two hash lanes over the encoded pair, ~600× the cost of the string concatenation
+it replaced. `web-trace-react` keys its list rows and its open-exchange selection
+with `exchangeKey` — the same encoded pair, unhashed — because a React `key` and
+a selection key need identity within one list, not the resource id. Calling
+`traceResourceId` in a render body costs ~24 ms per keystroke over a
+thousand-exchange session.
 
 **One id-minting site per resource kind.** Running a locally-minted resource
 through `adoptSourceIdentity` as well would hash a hash, so a plan that produces

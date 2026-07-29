@@ -48,13 +48,47 @@ interface SourceIdentity {
  */
 const RELATIVE_REFERENCE = /^([A-Za-z]+)\/([A-Za-z0-9\-.]{1,64})$/
 
+/**
+ * One source's identity with the parts that cost something to compute worked out
+ * once, at the top of {@link adoptResource}.
+ *
+ * @remarks
+ * `new URL` is the most expensive thing in this file, and a page of 250
+ * `Observation`s carries a few thousand references — so it is paid once per
+ * adopted resource rather than once per rewritten reference.
+ */
+interface PreparedSource {
+  readonly source: SourceIdentity
+  /**
+   * `source.system` parsed once, and **treated as immutable by convention** —
+   * this one instance is written into every `Identifier.system` the adoption
+   * produces, so they alias rather than being the independent copies a per-call
+   * `new URL` gave. Clone before mutating.
+   *
+   * A `system` that is not absolute throws a `TypeError` here. That reaches the
+   * caller as a defect rather than the typed `ParseError` the wrapped `parse`
+   * advertises, deliberately: it means the collector is misconfigured, not that
+   * a response was bad. {@link SourceIdentity} states the requirement.
+   */
+  readonly systemUrl: URL
+  /** The `${baseUrl}/` prefix an absolute self-reference is stripped of, if any. */
+  readonly absolutePrefix: string | null
+}
+
+/** Work out a source's derived parts once, for one pass of {@link adoptResource}. */
+const prepare = (source: SourceIdentity): PreparedSource => ({
+  source,
+  systemUrl: new URL(source.system),
+  absolutePrefix: source.baseUrl === undefined ? null : `${source.baseUrl}/`,
+})
+
 /** A fully-populated decoded `Identifier` carrying the source's own id for a resource. */
-const sourceIdentifier = (source: SourceIdentity, value: string): IdentifierType => ({
+const sourceIdentifier = (prepared: PreparedSource, value: string): IdentifierType => ({
   id: null,
   extension: [],
   assigner: null,
   period: null,
-  system: new URL(source.system),
+  system: prepared.systemUrl,
   type: null,
   use: null,
   value,
@@ -76,12 +110,12 @@ const sourceIdentifier = (source: SourceIdentity, value: string): IdentifierType
  * the target's `identifier[0]`.
  */
 const rewriteReference =
-  (source: SourceIdentity) =>
+  (prepared: PreparedSource) =>
   (reference: ReferenceType): ReferenceType => {
     if (reference.reference === null) {
       return reference
     }
-    const absolutePrefix = source.baseUrl === undefined ? null : `${source.baseUrl}/`
+    const { absolutePrefix } = prepared
     const target =
       absolutePrefix !== null && reference.reference.startsWith(absolutePrefix)
         ? reference.reference.slice(absolutePrefix.length)
@@ -96,8 +130,8 @@ const rewriteReference =
     }
     return {
       ...reference,
-      reference: `${resourceType}/${localResourceId(source.system, resourceType, originalId)}`,
-      identifier: reference.identifier ?? sourceIdentifier(source, originalId),
+      reference: `${resourceType}/${localResourceId(prepared.source.system, resourceType, originalId)}`,
+      identifier: reference.identifier ?? sourceIdentifier(prepared, originalId),
     }
   }
 
@@ -107,29 +141,52 @@ const rewriteNullable = (
   reference: ReferenceType | null
 ): ReferenceType | null => (reference === null ? null : rewrite(reference))
 
+/** An `Annotation`'s reference-bearing half, named structurally. */
+interface Annotated {
+  readonly note: readonly { readonly authorReference: ReferenceType | null }[]
+}
+
+/**
+ * Rewrite the `authorReference` of every note on a resource that carries them.
+ *
+ * @remarks
+ * `Annotation.author[x]` is a `Reference` when it is not the `authorString`
+ * variant, so it dangles like any other if left holding the source's id. It sits
+ * one level down inside an array, which is why a hand audit missed it and the
+ * schema-derived coverage property in `adopt-resource.test.ts` did not.
+ */
+const rewriteNotes = <TResource extends Annotated>(
+  rewrite: (reference: ReferenceType) => ReferenceType,
+  resource: TResource
+): TResource['note'] =>
+  resource.note.map((note) => ({
+    ...note,
+    authorReference: rewriteNullable(rewrite, note.authorReference),
+  }))
+
 const adoptBinary = (
-  source: SourceIdentity,
+  prepared: PreparedSource,
   originalId: string,
   binary: typeof Binary.Schema.Type
 ): typeof Binary.Schema.Type => {
-  const rewrite = rewriteReference(source)
+  const rewrite = rewriteReference(prepared)
   return {
     ...binary,
-    id: localResourceId(source.system, 'Binary', originalId),
+    id: localResourceId(prepared.source.system, 'Binary', originalId),
     securityContext: rewriteNullable(rewrite, binary.securityContext),
   }
 }
 
 const adoptPatient = (
-  source: SourceIdentity,
+  prepared: PreparedSource,
   originalId: string,
   patient: typeof Patient.Schema.Type
 ): typeof Patient.Schema.Type => {
-  const rewrite = rewriteReference(source)
+  const rewrite = rewriteReference(prepared)
   return {
     ...patient,
-    id: localResourceId(source.system, 'Patient', originalId),
-    identifier: [sourceIdentifier(source, originalId), ...patient.identifier],
+    id: localResourceId(prepared.source.system, 'Patient', originalId),
+    identifier: [sourceIdentifier(prepared, originalId), ...patient.identifier],
     generalPractitioner: patient.generalPractitioner.map(rewrite),
     managingOrganization: rewriteNullable(rewrite, patient.managingOrganization),
     link: patient.link.map((link) => ({ ...link, other: rewrite(link.other) })),
@@ -141,15 +198,16 @@ const adoptPatient = (
 }
 
 const adoptObservation = (
-  source: SourceIdentity,
+  prepared: PreparedSource,
   originalId: string,
   observation: typeof Observation.Schema.Type
 ): typeof Observation.Schema.Type => {
-  const rewrite = rewriteReference(source)
+  const rewrite = rewriteReference(prepared)
   return {
     ...observation,
-    id: localResourceId(source.system, 'Observation', originalId),
-    identifier: [sourceIdentifier(source, originalId), ...observation.identifier],
+    id: localResourceId(prepared.source.system, 'Observation', originalId),
+    identifier: [sourceIdentifier(prepared, originalId), ...observation.identifier],
+    note: rewriteNotes(rewrite, observation),
     subject: rewriteNullable(rewrite, observation.subject),
     encounter: rewriteNullable(rewrite, observation.encounter),
     device: rewriteNullable(rewrite, observation.device),
@@ -164,15 +222,16 @@ const adoptObservation = (
 }
 
 const adoptMedicationRequest = (
-  source: SourceIdentity,
+  prepared: PreparedSource,
   originalId: string,
   request: typeof MedicationRequest.Schema.Type
 ): typeof MedicationRequest.Schema.Type => {
-  const rewrite = rewriteReference(source)
+  const rewrite = rewriteReference(prepared)
   return {
     ...request,
-    id: localResourceId(source.system, 'MedicationRequest', originalId),
-    identifier: [sourceIdentifier(source, originalId), ...request.identifier],
+    id: localResourceId(prepared.source.system, 'MedicationRequest', originalId),
+    identifier: [sourceIdentifier(prepared, originalId), ...request.identifier],
+    note: rewriteNotes(rewrite, request),
     subject: rewrite(request.subject),
     encounter: rewriteNullable(rewrite, request.encounter),
     requester: rewriteNullable(rewrite, request.requester),
@@ -198,15 +257,16 @@ const adoptMedicationRequest = (
 }
 
 const adoptMedicationDispense = (
-  source: SourceIdentity,
+  prepared: PreparedSource,
   originalId: string,
   dispense: typeof MedicationDispense.Schema.Type
 ): typeof MedicationDispense.Schema.Type => {
-  const rewrite = rewriteReference(source)
+  const rewrite = rewriteReference(prepared)
   return {
     ...dispense,
-    id: localResourceId(source.system, 'MedicationDispense', originalId),
-    identifier: [sourceIdentifier(source, originalId), ...dispense.identifier],
+    id: localResourceId(prepared.source.system, 'MedicationDispense', originalId),
+    identifier: [sourceIdentifier(prepared, originalId), ...dispense.identifier],
+    note: rewriteNotes(rewrite, dispense),
     subject: rewriteNullable(rewrite, dispense.subject),
     context: rewriteNullable(rewrite, dispense.context),
     location: rewriteNullable(rewrite, dispense.location),
@@ -234,15 +294,15 @@ const adoptMedicationDispense = (
 }
 
 const adoptDocumentReference = (
-  source: SourceIdentity,
+  prepared: PreparedSource,
   originalId: string,
   document: typeof DocumentReference.Schema.Type
 ): typeof DocumentReference.Schema.Type => {
-  const rewrite = rewriteReference(source)
+  const rewrite = rewriteReference(prepared)
   return {
     ...document,
-    id: localResourceId(source.system, 'DocumentReference', originalId),
-    identifier: [sourceIdentifier(source, originalId), ...document.identifier],
+    id: localResourceId(prepared.source.system, 'DocumentReference', originalId),
+    identifier: [sourceIdentifier(prepared, originalId), ...document.identifier],
     subject: rewriteNullable(rewrite, document.subject),
     authenticator: rewriteNullable(rewrite, document.authenticator),
     custodian: rewriteNullable(rewrite, document.custodian),
@@ -283,10 +343,15 @@ const adoptDocumentReference = (
  * The per-type rewrite table, the fields deliberately left alone, and why there
  * is no "already adopted?" guard are all in
  * `slices/collector/docs/Source Identity Explanation.md`.
+ *
+ * **Every branch below maps a variant to itself, by construction and not by the
+ * type system.** TypeScript cannot correlate the discriminant matched here with
+ * the branch taken, so an `adoptX` returning a different variant would compile
+ * and would silently widen what a caller gets back. Don't write one.
  */
-const adoptResource =
-  (source: SourceIdentity) =>
-  (resource: FhirResource): FhirResource => {
+const adoptResource = (source: SourceIdentity) => {
+  const prepared = prepare(source)
+  return (resource: FhirResource): FhirResource => {
     const originalId = resource.id
     if (originalId === null) {
       return resource
@@ -296,26 +361,27 @@ const adoptResource =
     // compile error, not a resource that silently keeps its source's id.
     return Match.value(resource).pipe(
       Match.discriminator('resourceType')('Binary', (binary) =>
-        adoptBinary(source, originalId, binary)
+        adoptBinary(prepared, originalId, binary)
       ),
       Match.discriminator('resourceType')('Patient', (patient) =>
-        adoptPatient(source, originalId, patient)
+        adoptPatient(prepared, originalId, patient)
       ),
       Match.discriminator('resourceType')('Observation', (observation) =>
-        adoptObservation(source, originalId, observation)
+        adoptObservation(prepared, originalId, observation)
       ),
       Match.discriminator('resourceType')('MedicationRequest', (request) =>
-        adoptMedicationRequest(source, originalId, request)
+        adoptMedicationRequest(prepared, originalId, request)
       ),
       Match.discriminator('resourceType')('MedicationDispense', (dispense) =>
-        adoptMedicationDispense(source, originalId, dispense)
+        adoptMedicationDispense(prepared, originalId, dispense)
       ),
       Match.discriminator('resourceType')('DocumentReference', (document) =>
-        adoptDocumentReference(source, originalId, document)
+        adoptDocumentReference(prepared, originalId, document)
       ),
       Match.exhaustive
     )
   }
+}
 
 /**
  * Read the source's own id back off a resource {@link adoptResource} adopted.

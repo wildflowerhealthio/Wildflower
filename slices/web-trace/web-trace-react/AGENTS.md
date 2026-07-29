@@ -29,7 +29,8 @@ a collector.
   into sessions, `use-trace-sessions.ts` is the hook over the paged read (and
   `summarizePages`, its pure half), `sessions-list.tsx` is the list.
 - **`src/exchanges/`** — `filter-exchanges.ts` is the pure URL/status/content-type
-  filter, `exchange-filters.tsx` its controls, `exchange-list.tsx` the list, and
+  filter, `exchange-key.ts` the cheap per-exchange key the list and the selection
+  use, `exchange-filters.tsx` its controls, `exchange-list.tsx` the list, and
   `exchange-detail.tsx` one exchange in full.
 - **`src/attachments/`** — `viewable-attachment.ts` is the viewer's view-model,
   its two adapters, and the content-type classification; `attachment-viewer.tsx`
@@ -136,6 +137,14 @@ a collector.
   strings (a captured URL, a header row, a body, a hash). A literal `rem` or a
   `color-mix` off `currentColor` renders fine but drops out of the design system
   the moment a token is re-pointed — see `react-tundraish/src/tokens.css`.
+- **Rows are keyed by `exchangeKey`, never by `traceResourceId`.** The resource
+  id is two 64-bit hash lanes over the `(sessionId, requestId)` pair — right at a
+  write or a decode, wrong in a render body. Both the list's `ItemListItem.id` and
+  `RecordingsPanel`'s `openExchangeId` run per listed exchange on every render,
+  and this panel owns the filter state, so one keystroke re-runs both: measured at
+  ~24 ms per keystroke over a thousand exchanges, against ~0.04 ms for the pair.
+  Neither needs the resource id — a React `key` and a selection key want identity
+  within one rendered list, which the pair already is.
 - **The filter components are fully controlled.** `ExchangeList` and
   `ExchangeFiltersBar` hold no filter state; the owner does (`RecordingsPanel` in
   production, a small wrapper in the tests). Content-type options are computed

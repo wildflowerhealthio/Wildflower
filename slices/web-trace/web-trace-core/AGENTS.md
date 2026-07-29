@@ -84,7 +84,16 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
   mints it; a trace must never also be run through `adoptSourceIdentity`, which
   would hash the hash. A session label is an arbitrary string, so spelling the
   id `{sessionId}-{requestId}` verbatim could mint an id outside FHIR's grammar;
-  going through the derivation makes that unrepresentable.
+  going through the derivation makes that unrepresentable. The pair is folded
+  with `joinIdComponents`, the length-prefixed encoding `localResourceId` uses on
+  its own components — a `-` join would make `('s-req', '77')` and
+  `('s', 'req-77')` the same exchange.
+- **`traceResourceId` is two hash lanes, not a concatenation — keep it out of
+  render paths.** It belongs at a write or a decode. The viewer keys its rows and
+  its selection with `web-trace-react`'s `exchangeKey` (the same encoded pair,
+  unhashed) because a React `key` needs identity within one list, not the
+  resource id. Calling this per row per render cost ~24 ms per keystroke on a
+  thousand-exchange session, against ~0.04 ms for the pair.
 - **The encoding has exactly one definition — import it, never reimplement it.**
   A second copy drifts, and already-recorded sessions stop decoding. The private
   systems and extension URLs in `src/codec/systems.ts` are part of the persisted

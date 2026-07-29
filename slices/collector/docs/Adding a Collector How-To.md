@@ -276,6 +276,13 @@ Three choices to make:
   ids already come from the same derivation at its codec, and wrapping would hash
   a hash.
 
+Build the plan as `ScrapingPlan.make<FhirResource>`, as both production
+collectors do. `adoptSourceIdentity` rejects a plan whose entities declare a
+narrower element type at compile time: adoption widens to `FhirResource` and
+cannot be declared not to, so a combinator that handed such a plan back unchanged
+would be claiming a type it does not deliver. The error names the constraint —
+widen the entity list, don't work around it.
+
 If you later add a `followUpSteps` generator that needs the source's id to build
 a source-server URL, read it back with `originalIdOf(source, resource)` — under an
 adopted plan the generator receives adopted resources, so `resource.id` is the

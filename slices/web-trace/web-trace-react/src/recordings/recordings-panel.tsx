@@ -1,9 +1,10 @@
 import { useMemo, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { ErrorBanner, PageLoading } from 'react-tundraish'
-import { traceResourceId, type TraceExchange } from 'web-trace-core'
+import { type TraceExchange } from 'web-trace-core'
 
 import { ExchangeDetail } from '../exchanges/exchange-detail.tsx'
+import { exchangeKey } from '../exchanges/exchange-key.ts'
 import { ExchangeList } from '../exchanges/exchange-list.tsx'
 import { filterExchanges, NO_FILTERS, type ExchangeFilters } from '../exchanges/filter-exchanges.ts'
 import { ExportPanel } from '../export/export-panel.tsx'
@@ -72,8 +73,11 @@ const RecordingsPanel = ({
   const [filters, setFilters] = useState<ExchangeFilters>(NO_FILTERS)
 
   const openSession = sessions.find((session) => session.sessionId === openSessionId)
+  // Keyed by `exchangeKey`, not by the resource id: this scan runs on every
+  // render of the panel that owns the filter state, so a keystroke in the filter
+  // bar would otherwise re-derive a hash per exchange before finding the match.
   const openExchange = openSession?.exchanges.find(
-    (exchange) => traceResourceId(exchange) === openExchangeId
+    (exchange) => exchangeKey(exchange) === openExchangeId
   )
 
   /**
@@ -158,7 +162,7 @@ const RecordingsPanel = ({
           filters={filters}
           onFiltersChange={setFilters}
           onSelectExchange={(exchange: TraceExchange): void => {
-            setOpenExchangeId(traceResourceId(exchange))
+            setOpenExchangeId(exchangeKey(exchange))
             onSelectExchange?.(exchange)
           }}
         />

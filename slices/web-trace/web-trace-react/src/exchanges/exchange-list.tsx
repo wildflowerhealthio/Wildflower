@@ -2,9 +2,10 @@ import { DateTime } from 'effect'
 import type { JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { ItemList, StatusBadge, type ItemListItem, type StatusTone } from 'react-tundraish'
-import { traceResourceId, type TraceExchange } from 'web-trace-core'
+import { type TraceExchange } from 'web-trace-core'
 
 import { ExchangeFiltersBar } from './exchange-filters.tsx'
+import { exchangeKey } from './exchange-key.ts'
 import { contentTypeOptions, filterExchanges, type ExchangeFilters } from './filter-exchanges.ts'
 import styles from './exchange-list.module.css'
 
@@ -73,8 +74,10 @@ const ExchangeList = ({
   className,
 }: ExchangeListProps): JSX.Element => {
   const matching = filterExchanges(exchanges, filters)
+  // `exchangeKey`, not `traceResourceId`: this runs for every matching row on
+  // every render, including every keystroke in the filter bar above.
   const items: readonly ItemListItem[] = matching.map((exchange) => ({
-    id: traceResourceId(exchange),
+    id: exchangeKey(exchange),
     title: <span className={styles['exchanges__url']}>{exchange.url}</span>,
     subtitle: describeBody(exchange),
     badge: <StatusBadge tone={toneOf(exchange.status)}>{describeStatus(exchange)}</StatusBadge>,

@@ -54,7 +54,37 @@ const plan = {
   captureProvenance,
 }
 
+/**
+ * An entity that declares it parses only `Patient`, as a collector's own
+ * entities do before the plan widens them.
+ */
+const narrowEntity = {
+  name: 'NarrowPatientEntity',
+  isFoundAt,
+  parse: (
+    _response: string
+  ): Effect.Effect<readonly (typeof Patient.Schema.Type)[], ParseResult.ParseError> =>
+    Effect.succeed([patient('src-1')]),
+}
+
+const narrowPlan = { ...plan, entityDefinitions: [narrowEntity] }
+
 describe('adoptSourceIdentity', () => {
+  // The combinator hands `TPlan` back unchanged, which is only truthful when the
+  // entities already declare the whole union: adoption widens to `FhirResource`
+  // and cannot be declared not to. So a narrower plan is refused at compile time
+  // rather than silently misdeclared. `@ts-expect-error` is the assertion — this
+  // file fails to typecheck if the guard stops rejecting it.
+  test('refuses a plan whose entities declare less than the whole FhirResource union', () => {
+    // @ts-expect-error the entities parse only Patient, so the passthrough would lie
+    const refused = (): unknown => adoptSourceIdentity(SOURCE)(narrowPlan)
+
+    // Widening the entity list is the fix, and it compiles.
+    const widened: readonly (typeof entity)[] = [entity]
+    expect(adoptSourceIdentity(SOURCE)({ ...plan, entityDefinitions: widened })).toBeDefined()
+    expect(typeof refused).toBe('function')
+  })
+
   test('adopts what the entities parse', async () => {
     const [wrapped] = adoptSourceIdentity(SOURCE)(plan).entityDefinitions
     if (wrapped === undefined) throw new Error('unreachable: one entity')

@@ -1,6 +1,6 @@
 import { HeadersWire, ResponseStartMessageBody, SnifferRequestId } from 'browser-sniffer-core'
 import { Schema } from 'effect'
-import { localResourceId } from 'fhir-r4/identity'
+import { joinIdComponents, localResourceId } from 'fhir-r4/identity'
 
 import { WEB_TRACE_SESSION_IDENTIFIER_SYSTEM } from './codec/systems.ts'
 
@@ -198,17 +198,25 @@ type TraceSessionId = typeof TraceSessionId.Type
  * could carry a space and land outside FHIR's grammar; the derived id is `wf-`
  * plus 32 hex whatever the inputs are.
  *
+ * The pair is folded through `joinIdComponents` rather than concatenated: a `-`
+ * join would make `('s-req', '77')` and `('s', 'req-77')` the same exchange, one
+ * silently upserting over the other.
+ *
  * The pair stays readable: the codec writes both halves as `Identifier` entries
  * and the decode side reads identifiers, never the id.
  *
  * This is the **one** site that mints a trace's id. A trace must never also be
  * routed through `adoptSourceIdentity` — that would hash this hash.
+ *
+ * **Not free** — two hash lanes, not a concatenation — so it belongs at a write
+ * or a decode, never in a React render body. A list or selection key wants
+ * `web-trace-react`'s `exchangeKey`.
  */
 const traceResourceId = (exchange: Pick<TraceExchange, 'sessionId' | 'requestId'>): string =>
   localResourceId(
     WEB_TRACE_SESSION_IDENTIFIER_SYSTEM,
     'DocumentReference',
-    `${exchange.sessionId}-${exchange.requestId}`
+    joinIdComponents([exchange.sessionId, exchange.requestId])
   )
 
 export {

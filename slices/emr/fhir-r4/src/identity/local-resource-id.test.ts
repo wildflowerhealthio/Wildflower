@@ -2,9 +2,64 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { localResourceId } from './local-resource-id.ts'
+import { joinIdComponents, localResourceId } from './local-resource-id.ts'
 
 const LOCAL_ID = /^wf-[0-9a-f]{32}$/
+
+/**
+ * A generator that can emit the component separator.
+ *
+ * @remarks
+ * `fc.string()` never emits `:` or a digit run adjacent to one, and never emits
+ * `\n` at all — so a property written over it cannot reach the boundary cases
+ * the encoding exists to handle, and passes without exercising them. Drawing
+ * from a tiny alphabet built out of the encoding's own metacharacters is what
+ * makes the distinctness property below load-bearing.
+ */
+const separatorProne = fc
+  .array(fc.constantFrom('a', '\n', ':', '0', '1', '2'), { maxLength: 8 })
+  .map((characters) => characters.join(''))
+
+describe('joinIdComponents', () => {
+  test('length-prefixes each component', () => {
+    expect(joinIdComponents(['a', 'bc'])).toBe('1:a2:bc')
+    expect(joinIdComponents([])).toBe('')
+    expect(joinIdComponents([''])).toBe('0:')
+  })
+
+  // The whole point of the encoding. A delimiter join collapses these two —
+  // `\n`-joining both gives `a\nb\nc` — and length-prefixing separates them.
+  test('a component cannot eat the delimiter and impersonate the next one', () => {
+    expect(joinIdComponents(['a', 'b\nc'])).not.toBe(joinIdComponents(['a\nb', 'c']))
+    expect(joinIdComponents(['a', 'b:c'])).not.toBe(joinIdComponents(['a:b', 'c']))
+  })
+
+  // The general statement of the above: the encoding is injective, so no two
+  // distinct component lists can hash to the same thing further down.
+  test('distinct component lists get distinct encodings', () => {
+    fc.assert(
+      fc.property(
+        fc.array(separatorProne, { maxLength: 4 }),
+        fc.array(separatorProne, { maxLength: 4 }),
+        (left, right) => {
+          fc.pre(
+            left.length !== right.length || left.some((value, index) => value !== right[index])
+          )
+          expect(joinIdComponents(left)).not.toBe(joinIdComponents(right))
+        }
+      ),
+      { numRuns: numRunsFor({ base: 500 }) }
+    )
+  })
+
+  // Why `traceResourceId` can fold its pair into one `originalId` without the
+  // nesting reintroducing an ambiguity at the outer level.
+  test('nests safely — a joined component is delimited by its own prefix', () => {
+    expect(joinIdComponents([joinIdComponents(['a', 'b']), 'c'])).not.toBe(
+      joinIdComponents([joinIdComponents(['a', 'b', 'c'])])
+    )
+  })
+})
 
 describe('localResourceId', () => {
   // -------------------------------------------------------------------------
@@ -15,18 +70,18 @@ describe('localResourceId', () => {
   // -------------------------------------------------------------------------
   test('pinned vectors — the derivation is persisted wire format', () => {
     expect(localResourceId('https://r4.smarthealthit.org', 'Patient', 'abc-123')).toBe(
-      'wf-40950b58dd8c4058433c5348f14b2c9d'
+      'wf-8dbbb24323c6b52abc40061152376d5d'
     )
     expect(
       localResourceId('https://wildflowerhealth.io/fhir/sid/rexall-carebook', 'Patient', 'uid-1')
-    ).toBe('wf-3c39598c9274726de159c22dd501d3ec')
+    ).toBe('wf-71ac4133067c57b6ca631c7748f55625')
     expect(
       localResourceId(
         'https://wildflowerhealth.io/fhir/sid/web-trace-session',
         'DocumentReference',
-        'rexall-run-1-req-1'
+        joinIdComponents(['rexall-run-1', 'req-1'])
       )
-    ).toBe('wf-d4b60c6aaf4d378f95b236d198652b94')
+    ).toBe('wf-d65e559b43d31313b36e16aa6504af46')
   })
 
   test('is deterministic', () => {
@@ -62,8 +117,8 @@ describe('localResourceId', () => {
   test('distinct triples get distinct ids', () => {
     fc.assert(
       fc.property(
-        fc.tuple(fc.string(), fc.string(), fc.string()),
-        fc.tuple(fc.string(), fc.string(), fc.string()),
+        fc.tuple(separatorProne, separatorProne, separatorProne),
+        fc.tuple(separatorProne, separatorProne, separatorProne),
         ([systemA, typeA, idA], [systemB, typeB, idB]) => {
           fc.pre(systemA !== systemB || typeA !== typeB || idA !== idB)
           expect(localResourceId(systemA, typeA, idA)).not.toBe(
@@ -71,7 +126,7 @@ describe('localResourceId', () => {
           )
         }
       ),
-      { numRuns: numRunsFor({ base: 200 }) }
+      { numRuns: numRunsFor({ base: 500 }) }
     )
   })
 
@@ -92,12 +147,20 @@ describe('localResourceId', () => {
     )
   })
 
-  // The `\n` separator with `originalId` last is what makes the encoding
-  // unambiguous: a component cannot eat the delimiter and impersonate the next
-  // one.
-  test('component boundaries are unambiguous', () => {
-    expect(localResourceId('https://a.example', 'Patient', 'x')).not.toBe(
-      localResourceId('https://a.example\nPatient', '', 'x')
-    )
+  // -------------------------------------------------------------------------
+  // The case that actually probes component boundaries: one component *eating*
+  // the delimiter, so both triples join to the same string. Under the previous
+  // `\n`-joined encoding these two collided outright — both spelled
+  // `a\nb\nc\nx`, and both returned `wf-cf864ef0771427ad6c04ec5454814bc2`. The
+  // length prefix is what separates them, and no precondition on the caller is
+  // needed for it to hold.
+  //
+  // A triple that merely differs by an extra separator (`('a', 'b', 'x')` vs
+  // `('a\nb', '', 'x')`) is *not* this test: those are different strings under
+  // any encoding, so asserting they differ passes for a trivial reason.
+  // -------------------------------------------------------------------------
+  test('a component cannot eat the delimiter and impersonate the next one', () => {
+    expect(localResourceId('a', 'b\nc', 'x')).not.toBe(localResourceId('a\nb', 'c', 'x'))
+    expect(localResourceId('a', 'b:c', 'x')).not.toBe(localResourceId('a:b', 'c', 'x'))
   })
 })

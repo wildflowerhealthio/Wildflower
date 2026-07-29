@@ -1,7 +1,7 @@
 import { HeadersWire, ResponseStartMessageBody, SnifferRequestId } from 'browser-sniffer-core'
 import { DateTime, Duration, Schema } from 'effect'
 import * as fc from 'fast-check'
-import { localResourceId } from 'fhir-r4/identity'
+import { joinIdComponents, localResourceId } from 'fhir-r4/identity'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
@@ -35,18 +35,28 @@ describe('TraceExchange', () => {
     )
   })
 
-  test('property: the resource id is the derived id of {sessionId}-{requestId}', () => {
+  test('property: the resource id is the derived id of the (sessionId, requestId) pair', () => {
     fc.assert(
       fc.property(exchangeArbitrary, (exchange) => {
         expect(traceResourceId(exchange)).toBe(
           localResourceId(
             WEB_TRACE_SESSION_IDENTIFIER_SYSTEM,
             'DocumentReference',
-            `${exchange.sessionId}-${exchange.requestId}`
+            joinIdComponents([exchange.sessionId, exchange.requestId])
           )
         )
       }),
       { numRuns: numRunsFor({ base: 50 }) }
+    )
+  })
+
+  // The pair is length-prefixed rather than `-`-joined, so a session id cannot
+  // absorb the front of a request id. Unreachable in practice — a session id
+  // carries a run uuid — but this is the id derivation, and it should not depend
+  // on that.
+  test('a session id cannot absorb part of a request id', () => {
+    expect(traceResourceId({ sessionId: 's-req', requestId: '77' })).not.toBe(
+      traceResourceId({ sessionId: 's', requestId: 'req-77' })
     )
   })
 
