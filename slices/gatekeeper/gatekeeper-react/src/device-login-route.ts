@@ -44,10 +44,12 @@ const serializeRequestScopes = (scopes: readonly string[]): string =>
   )
 
 /**
- * Read a `requestScopes` value back into a scope list — the inverse of
- * {@link serializeRequestScopes}. Total: a missing, empty, or all-whitespace
- * value yields no scopes, so a caller can always treat the result as "the
- * pre-filled request, possibly empty".
+ * Read a whitespace-separated scope list (the OAuth `scope` wire form) back into
+ * a scope list — the inverse of {@link serializeRequestScopes}, and the one
+ * decoder for every value in that form the screen reads (`?requestScopes=`, the
+ * host-threaded `localGrantedScopes`). Total: a missing, empty, or
+ * all-whitespace value yields no scopes, so a caller can always treat the result
+ * as "the list, possibly empty".
  */
 const parseRequestScopes = (raw: string | undefined | null): readonly string[] =>
   raw === undefined || raw === null
@@ -83,6 +85,22 @@ const buildStepUpTarget = (
 }
 
 /**
+ * Narrow an already-parsed search record — the shape a router's `validateSearch`
+ * receives — to {@link DeviceLoginSearch}, dropping non-string values and absent
+ * params (`returnTo: ''` and "no `returnTo`" stay distinguishable). The route's
+ * `validateSearch` and {@link parseDeviceLoginSearch} both go through this, so
+ * the param names and their admitted shapes live here only.
+ */
+const pickDeviceLoginSearch = (search: Record<string, unknown>): DeviceLoginSearch => {
+  const returnTo = search['returnTo']
+  const requestScopes = search['requestScopes']
+  return {
+    ...(typeof returnTo === 'string' ? { returnTo } : {}),
+    ...(typeof requestScopes === 'string' ? { requestScopes } : {}),
+  }
+}
+
+/**
  * Read {@link DeviceLoginSearch} out of a raw query string (`window.location.search`),
  * so the route's `validateSearch` and the screen's own mount-time reads share one
  * source for the param names. Values come back raw — `returnTo` is sanitized at
@@ -90,12 +108,12 @@ const buildStepUpTarget = (
  */
 const parseDeviceLoginSearch = (rawQuery: string): DeviceLoginSearch => {
   const params = new URLSearchParams(rawQuery)
-  const returnTo = params.get('returnTo')
-  const requestScopes = params.get('requestScopes')
-  return {
-    ...(returnTo === null ? {} : { returnTo }),
-    ...(requestScopes === null ? {} : { requestScopes }),
-  }
+  // First-wins on a repeated param, matching `URLSearchParams.get`; the record
+  // is built here rather than via `Object.fromEntries` (which is last-wins).
+  return pickDeviceLoginSearch({
+    returnTo: params.get('returnTo') ?? undefined,
+    requestScopes: params.get('requestScopes') ?? undefined,
+  })
 }
 
 export {
@@ -104,6 +122,7 @@ export {
   DEVICE_LOGIN_ROUTE,
   parseDeviceLoginSearch,
   parseRequestScopes,
+  pickDeviceLoginSearch,
   serializeRequestScopes,
 }
 export type { DeviceLoginSearch, DeviceLoginTarget }

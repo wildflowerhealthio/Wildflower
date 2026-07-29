@@ -251,20 +251,12 @@ describe('<NeedsAuthMessage> device flow', () => {
   })
 
   test('writes the issued token and navigates to the default path once exchange resolves', async () => {
-    // jsdom's `location.assign` isn't spy-able (non-configurable), so swap
-    // the whole `location` for a stub exposing just what the flow reads.
-    const assignMock = vi.fn<(url: string) => void>()
-    const realLocation = window.location
-    Object.defineProperty(window, 'location', {
-      configurable: true,
-      value: { search: '', assign: assignMock },
+    layerHolder.current = makeClientLayer({
+      DeviceAuthorization: () => Effect.succeed(DEVICE_AUTH_RESPONSE),
+      TokenExchange: () => Effect.succeed({ access_token: 'issued-token', expires_in: 3600 }),
     })
-    try {
-      layerHolder.current = makeClientLayer({
-        DeviceAuthorization: () => Effect.succeed(DEVICE_AUTH_RESPONSE),
-        TokenExchange: () => Effect.succeed({ access_token: 'issued-token', expires_in: 3600 }),
-      })
 
+    await withLocation('', async (assignMock) => {
       render(withTokenStore(<NeedsAuthMessage />))
       await startSignIn()
 
@@ -280,9 +272,7 @@ describe('<NeedsAuthMessage> device flow', () => {
       expect(setAuthStateMock.mock.calls[0]?.[0]?._tag).toBe('AuthedUntil')
       // No `?returnTo=` in the stub location, so sign-in lands on the default.
       expect(assignMock).toHaveBeenCalledWith('/home')
-    } finally {
-      Object.defineProperty(window, 'location', { configurable: true, value: realLocation })
-    }
+    })
   })
 })
 
@@ -357,6 +347,39 @@ describe('<NeedsAuthMessage> step-up pre-fill', () => {
         expect(scopes.has('patient/Observation.r')).toBe(false)
       }
     )
+  })
+
+  test('names a scope the grammar does not recognise instead of requesting it', async () => {
+    // The clamp folds only the resource partitions and the flags, so a scope no
+    // scope grammar parses (a resource type this build doesn't know, or a crafted
+    // `?requestScopes=`) would otherwise pass it, ride into the payload
+    // *invisibly* — the picker renders only the envelope's own unknowns, so there
+    // is no control to prune it with — and make the server reject the whole
+    // request with `invalid_scope`.
+    let capturedInput: unknown
+    layerHolder.current = makeClientLayer({
+      DeviceAuthorization: (input) => {
+        capturedInput = input
+        return Effect.succeed(DEVICE_AUTH_RESPONSE)
+      },
+      TokenExchange: () => PENDING_FOREVER,
+    })
+
+    await withLocation('?requestScopes=wildflower%2FGrant.d%20not-a-scope', async () => {
+      render(withTokenStore(<NeedsAuthMessage />))
+      expect(screen.getByText('not-a-scope')).toBeTruthy()
+      await startSignIn()
+
+      await waitFor(
+        () => {
+          expect(capturedInput).toBeDefined()
+        },
+        { timeout: 2000 }
+      )
+      const scopes = capturedScopes(capturedInput)
+      expect(scopes.has('wildflower/Grant.d')).toBe(true)
+      expect(scopes.has('not-a-scope')).toBe(false)
+    })
   })
 
   test('leaves the preset seed alone when no scopes were pre-filled', async () => {

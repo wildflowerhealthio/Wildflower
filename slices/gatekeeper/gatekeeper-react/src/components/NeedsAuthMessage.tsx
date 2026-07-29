@@ -80,15 +80,27 @@ const sanitizeReturnTo = (raw: string | null): string => {
  * ({@link ScopeRequest.isWithin}), which is coverage-aware the same way the
  * server's `allowed_scope_covers` is — so anything this admits is a scope the
  * device-authorization check also admits.
+ *
+ * With one gap closed here: the clamp folds only the *resource* partitions and
+ * the flags, so a string the grammar doesn't recognise sails through it and gets
+ * seeded invisibly — the picker renders only the *envelope's* own unknowns, so
+ * the user can neither see nor prune it — making the server reject the whole
+ * request. An unrecognised scope is therefore admitted only when the envelope
+ * names it verbatim, the same match `allowed_scope_covers` makes for one.
  */
 const partitionByGrantability = (
   scopes: readonly string[],
   request: ScopeRequest.ScopeRequest
 ): { readonly grantable: readonly string[]; readonly ungrantable: readonly string[] } => {
+  const envelopeUnknowns = new Set(
+    ScopeRequest.availableOf(request).unknown.map((scope) => scope.serialize())
+  )
   const grantable: string[] = []
   const ungrantable: string[] = []
   for (const scope of scopes) {
-    if (ScopeRequest.isWithin(GrantDraft.fromScopes([scope], null), request)) grantable.push(scope)
+    const asDraft = GrantDraft.fromScopes([scope], null)
+    const recognized = asDraft.unknown.every((unknown) => envelopeUnknowns.has(unknown.serialize()))
+    if (recognized && ScopeRequest.isWithin(asDraft, request)) grantable.push(scope)
     else ungrantable.push(scope)
   }
   return { grantable, ungrantable }
@@ -185,19 +197,20 @@ const NeedsAuthMessage = (): JSX.Element => {
     () => parseRequestScopes(parseDeviceLoginSearch(window.location.search).requestScopes),
     []
   )
+  // Same whitespace-separated wire form as `requestScopes`, so: same decoder.
   const available = useMemo(
-    () => (localGrantedScopes ?? DEFAULT_ALLOWED_SCOPES).split(/\s+/).filter(Boolean),
+    () => parseRequestScopes(localGrantedScopes ?? DEFAULT_ALLOWED_SCOPES),
     [localGrantedScopes]
   )
+  // The client's grantable envelope on its own, with nothing requested — what
+  // decides which pre-filled scopes may be asked for at all, and the reference
+  // the picker's request below widens from.
+  const envelope = useMemo(() => ScopeRequest.expandable({ requested: [], available }), [available])
   // Which of the pre-filled scopes this client may ask for at all — see
   // {@link partitionByGrantability} for why the rest is named instead of requested.
   const { grantable, ungrantable } = useMemo(
-    () =>
-      partitionByGrantability(
-        requestedScopes,
-        ScopeRequest.expandable({ requested: [], available })
-      ),
-    [requestedScopes, available]
+    () => partitionByGrantability(requestedScopes, envelope),
+    [requestedScopes, envelope]
   )
 
   // The expandable picker request: seeded with whatever the step-up pre-filled

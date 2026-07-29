@@ -17,7 +17,9 @@ interface ScopeErrorSurfaceProps {
  *
  * With no scopes named (the undeclared-403 path, where the body was never
  * decoded) the hook is omitted: there is nothing to pre-fill, so a "Request
- * access" button would be indistinguishable from a plain sign-in.
+ * access" button would be indistinguishable from a plain sign-in. The test is
+ * the built target, not `missingScopes.length` — a body naming only blank
+ * strings serializes to no `requestScopes` and lands on that same screen.
  *
  * A component rather than a bare `render` closure because the action needs the
  * router. It only ever renders inside `RouterProvider` — `ErrorBodyRendererContext`
@@ -29,11 +31,12 @@ interface ScopeErrorSurfaceProps {
 const ScopeErrorSurface = ({ missingScopes }: ScopeErrorSurfaceProps): JSX.Element => {
   const navigate = useNavigate()
   const href = useRouterState({ select: (state) => state.location.href })
+  const target = buildStepUpTarget(missingScopes, href)
   const onRequestAccess =
-    missingScopes.length === 0
+    target.search.requestScopes === undefined
       ? undefined
       : (): void => {
-          void navigate(buildStepUpTarget(missingScopes, href))
+          void navigate(target)
         }
   return <AuthorizationFailure missingScopes={missingScopes} onRequestAccess={onRequestAccess} />
 }
