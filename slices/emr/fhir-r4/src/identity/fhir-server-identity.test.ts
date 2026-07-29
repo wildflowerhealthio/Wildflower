@@ -58,7 +58,12 @@ describe('fhirServiceBase', () => {
       fc.property(
         fc.webUrl(),
         fc.constantFrom('Patient', 'Observation'),
-        fc.stringMatching(/^[A-Za-z0-9\-.]{1,64}$/),
+        // FHIR's id grammar admits `.` and `..`, but those are RFC 3986
+        // dot-segments: `new URL()` resolves them away before this function is
+        // ever handed a URL, so `…/Patient/..` arrives as the collection URL
+        // with the type already gone. Such an id cannot be named by a relative
+        // reference at all, so no response URL reaches here carrying one.
+        fc.stringMatching(/^[A-Za-z0-9\-.]{1,64}$/).filter((id) => id !== '.' && id !== '..'),
         (root, resourceType, id) => {
           // Arrange — the two URL shapes one server serves to two entities
           const single = new URL(`${root}/${resourceType}/${id}`)
