@@ -48,31 +48,55 @@ describe('fhirServiceBase', () => {
       'https://example.com:8443/fhir/Patient/1?_format=json',
       'https://example.com:8443/fhir',
     ],
+    // A trailing slash before the query names the same collection, so it must
+    // reduce to the same base — not to `…/baseR4/Observation`. No entity's
+    // `UrlMatch` admits this spelling today; it is pinned because this function
+    // is exported and takes any URL, not because a collector produces one.
+    [
+      'search' as const,
+      'https://hapi.fhir.org/baseR4/Observation/?_count=250',
+      'https://hapi.fhir.org/baseR4',
+    ],
   ])('should reduce a %s URL %s to %s', (shape, url, expected) => {
     // Act / Assert
     expect(fhirServiceBase(new URL(url), shape).href).toBe(expected)
   })
 
-  it('should always agree between a resource URL and its list URL', () => {
+  it('should recover the service base from every read URL shape it serves', () => {
     fc.assert(
       fc.property(
         fc.webUrl(),
         fc.constantFrom('Patient', 'Observation'),
-        // FHIR's id grammar admits `.` and `..`, but those are RFC 3986
-        // dot-segments: `new URL()` resolves them away before this function is
-        // ever handed a URL, so `…/Patient/..` arrives as the collection URL
-        // with the type already gone. Such an id cannot be named by a relative
-        // reference at all, so no response URL reaches here carrying one.
+        // FHIR's id grammar admits `.` and `..`, and those two cannot be put in
+        // a URL path segment by any spelling. They are RFC 3986 dot-segments,
+        // and the WHATWG parser resolves them away *including* their
+        // percent-encodings — `%2E%2E` is a double-dot segment by definition,
+        // so encoding does not carry them either (see the `encodeURIComponent`
+        // note below). `…/Patient/..` therefore reaches this function already
+        // reduced to the collection URL, with the type gone. An id that cannot
+        // survive URL parsing cannot be named by a relative reference at all,
+        // so no response URL reaches here carrying one.
         fc.stringMatching(/^[A-Za-z0-9\-.]{1,64}$/).filter((id) => id !== '.' && id !== '..'),
-        (root, resourceType, id) => {
-          // Arrange — the two URL shapes one server serves to two entities
-          const single = new URL(`${root}/${resourceType}/${id}`)
-          const list = new URL(`${root}/${resourceType}?_count=250`)
+        (rootUrl, resourceType, id) => {
+          // Arrange — one server's base, in the one spelling it mounts at, and
+          // the three read URLs it serves off it. The id is encoded because it
+          // is being interpolated into a path segment, which is how a caller
+          // builds one; over this generator's alphabet that is a no-op (every
+          // character FHIR allows in an id is RFC 3986 unreserved), so it
+          // documents the construction rather than widening what is covered.
+          const root = new URL(rootUrl)
+          const base = `${root.origin}${root.pathname.replace(/\/+$/, '')}`
+          const single = new URL(`${base}/${resourceType}/${encodeURIComponent(id)}`)
+          const list = new URL(`${base}/${resourceType}?_count=250`)
+          const listTrailingSlash = new URL(`${base}/${resourceType}/?_count=250`)
 
-          // Act / Assert — disagreeing here is a dangling `subject` at runtime
-          expect(fhirServiceBase(single, 'instance').href).toBe(
-            fhirServiceBase(list, 'search').href
-          )
+          // Act / Assert — against the base itself, not merely against each
+          // other: two shapes that reduce identically *wrongly* agree, and the
+          // symptom of a wrong base is a dangling `subject` at runtime.
+          const expected = new URL(base).href
+          expect(fhirServiceBase(single, 'instance').href).toBe(expected)
+          expect(fhirServiceBase(list, 'search').href).toBe(expected)
+          expect(fhirServiceBase(listTrailingSlash, 'search').href).toBe(expected)
         }
       ),
       { numRuns: numRunsFor({ base: 100 }) }
