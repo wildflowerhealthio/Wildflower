@@ -7,11 +7,11 @@ export {
   buildDeviceLoginTarget,
   buildStepUpTarget,
   DEVICE_LOGIN_ROUTE,
+  // Exported for `wildflower-react`'s step-up test, which reads the params back
+  // off the router with the decoder the screen itself uses rather than a
+  // hand-rolled one — the point of that assertion.
   parseDeviceLoginSearch,
   parseRequestScopes,
-  serializeRequestScopes,
-  type DeviceLoginSearch,
-  type DeviceLoginTarget,
 } from './device-login-route.ts'
 
 export {
