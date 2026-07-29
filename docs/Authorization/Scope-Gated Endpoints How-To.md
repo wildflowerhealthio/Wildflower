@@ -178,10 +178,17 @@ user-facing surface — but it helps to know what the contract buys:
 - **Step-up:** when the 403 named scopes, the surface offers "Request access",
   which navigates to device login via `buildStepUpTarget(missingScopes, href)`.
   The `?requestScopes=` param pre-fills the scope picker there with those scopes
-  **unioned with the screen's preset** — the device flow mints a whole new grant,
-  so requesting only the missing scopes would strip what the session already had —
-  and `?returnTo=` brings the user back to the denied page on grant, where the
-  loader re-runs the action against the new grant.
+  **unioned with whatever the caller's current token holds** — the device flow
+  mints a whole new grant, so requesting only the missing scopes would strip what
+  the session already had — and `?returnTo=` brings the user back to the denied
+  page on grant, where the loader re-runs the action against the new grant.
+- The current scopes come from `GET /access/session`, which reports back the
+  caller's own verified `scope` claim. It is **authN-only** — no `Scoped<…>`
+  capability — precisely because the callers who need it are the under-scoped
+  sessions arriving from a 403, whom a scope gate would lock out of reading their
+  own scopes. When that read fails (a 401 on the plain sign-in path, an older
+  server), the screen falls back to its fixed read+search preset, so the endpoint
+  is an improvement to the pre-fill rather than a dependency of the flow.
 
 The one thing a slice controls here is whether the missing scopes can be named at
 all: declare the 403 (above) and the surface reads them out of the body; skip it

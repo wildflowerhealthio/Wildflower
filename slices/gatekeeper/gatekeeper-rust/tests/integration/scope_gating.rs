@@ -125,3 +125,39 @@ async fn access_logout_is_self_service_any_valid_bearer() {
     let res = g.router.oneshot(req).await.expect("oneshot");
     assert_eq!(res.status(), StatusCode::SEE_OTHER);
 }
+
+#[tokio::test]
+async fn access_session_reports_the_callers_own_scopes_without_an_admin_scope() {
+    // `GET /access/session` is self-service like logout: it reports back the
+    // caller's *own* verified `scope` claim, so it takes no admin scope. That is
+    // the point — the callers who need it are the under-scoped sessions arriving
+    // from a 403, whom a scope gate would lock out of reading their own scopes.
+    let (g, _host_owner_token, db) = spin_up();
+    let token = mint_scoped_token(&db, &["patient/Observation.rs", "wildflower/Grant.r"]);
+    let req = loopback_request(
+        Request::get("/access/session")
+            .header("host", "127.0.0.1")
+            .header("authorization", format!("Bearer {token}")),
+        Body::empty(),
+    );
+    let res = g.router.oneshot(req).await.expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(
+        body_json(res.into_body()).await,
+        serde_json::json!({ "scopes": ["patient/Observation.rs", "wildflower/Grant.r"] }),
+    );
+}
+
+#[tokio::test]
+async fn access_session_without_a_token_is_401_not_an_empty_scope_list() {
+    // The `/access` authN gate still applies. An unauthenticated caller must get
+    // a 401 — never a 200 with `[]`, which the device-login screen would read as
+    // "this session holds nothing" rather than "there is no session".
+    let (g, _host_owner_token, _db) = spin_up();
+    let req = loopback_request(
+        Request::get("/access/session").header("host", "127.0.0.1"),
+        Body::empty(),
+    );
+    let res = g.router.oneshot(req).await.expect("oneshot");
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+}

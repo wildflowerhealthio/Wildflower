@@ -58,6 +58,7 @@ pub fn router(state: Arc<GatekeeperState>) -> Router {
         .merge(routes::devices::router())
         .merge(routes::logout::router())
         .merge(routes::revocations::router())
+        .merge(routes::session::router())
         .layer(axum_middleware::from_fn_with_state(
             state.clone(),
             middleware::require_valid_session,

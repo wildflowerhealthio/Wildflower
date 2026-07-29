@@ -31,12 +31,27 @@ import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 // Only the methods the device flow touches are stubbed; the rest of the
 // client shape is never read on these paths. The single assertion-time
 // cast keeps the stub minimal instead of re-declaring the whole API.
-const makeClientLayer = (oauth: {
-  readonly DeviceAuthorization: (input: unknown) => Effect.Effect<unknown, unknown>
-  readonly TokenExchange: (input: unknown) => Effect.Effect<unknown, unknown>
-}): Layer.Layer<GatekeeperHttpApiClient> =>
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test stub: only `oauth.DeviceAuthorization`/`TokenExchange` are touched on these paths
-  Layer.succeed(GatekeeperHttpApiClient, { oauth } as GatekeeperHttpApiClient['Type'])
+//
+// `accessManagement` is optional on purpose: omitting it stubs a client with no
+// `access-management` at all, which is what the screen's `GET /access/session`
+// read meets on the plain sign-in path (there, a 401). Either way the read fails
+// and the preset seed stands — so every test that isn't *about* the session seed
+// exercises that fallback, exactly as it behaved before the endpoint existed.
+const makeClientLayer = (
+  oauth: {
+    readonly DeviceAuthorization: (input: unknown) => Effect.Effect<unknown, unknown>
+    readonly TokenExchange: (input: unknown) => Effect.Effect<unknown, unknown>
+  },
+  accessManagement?: { readonly GetSession: () => Effect.Effect<unknown, unknown> }
+): Layer.Layer<GatekeeperHttpApiClient> =>
+  Layer.succeed(
+    GatekeeperHttpApiClient,
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test stub: only `oauth.*` and `access-management.GetSession` are touched on these paths
+    {
+      oauth,
+      ...(accessManagement === undefined ? {} : { 'access-management': accessManagement }),
+    } as GatekeeperHttpApiClient['Type']
+  )
 
 const layerHolder: { current: Layer.Layer<GatekeeperHttpApiClient> } = {
   current: Layer.die('no client layer set for test'),
@@ -434,6 +449,135 @@ describe('<NeedsAuthMessage> step-up pre-fill', () => {
         )
       }
     )
+  })
+})
+
+/**
+ * Seeding the new grant from the caller's *current* token (`GET /access/session`)
+ * rather than a fixed preset. The device flow mints a whole new grant, so
+ * whatever the form doesn't request is access the user loses on the way back —
+ * which turns "step up to get one more scope" into a net downgrade whenever the
+ * session was wider than {@link PRESET_REQUEST_SCOPES}. These pin that the
+ * session's own scopes reach the payload, that the read failing is survivable,
+ * and that a session scope the client can no longer request is named rather than
+ * dropped in silence.
+ */
+describe('<NeedsAuthMessage> current-session seed', () => {
+  test('carries the session’s own scopes into the new grant, not the preset', async () => {
+    // The regression this exists for: a session holding full `cruds` steps up for
+    // one missing scope and comes back with the read+search preset — silently
+    // losing every write it had.
+    let capturedInput: unknown
+    layerHolder.current = makeClientLayer(
+      {
+        DeviceAuthorization: (input) => {
+          capturedInput = input
+          return Effect.succeed(DEVICE_AUTH_RESPONSE)
+        },
+        TokenExchange: () => PENDING_FOREVER,
+      },
+      { GetSession: () => Effect.succeed({ scopes: ['system/*.cruds', 'wildflower/*.cruds'] }) }
+    )
+
+    await withLocation('?requestScopes=wildflower%2FGrant.d', async () => {
+      render(withTokenStore(<NeedsAuthMessage />))
+      // The read lands after first paint, so wait for the re-seed before starting.
+      // The picker's own statement is the signal, and a strict one: the preset
+      // seed reads "Read · Search", so a permission button naming Create/Update/
+      // Delete can only come from the session's `cruds`.
+      await waitFor(
+        () => {
+          expect(screen.getAllByRole('button', { name: /Create/ }).length).toBeGreaterThan(0)
+        },
+        { timeout: 2000 }
+      )
+      await startSignIn()
+
+      await waitFor(
+        () => {
+          expect(capturedInput).toBeDefined()
+        },
+        { timeout: 2000 }
+      )
+      const scopes = capturedScopes(capturedInput)
+      expect(scopes.has('system/*.cruds')).toBe(true)
+      expect(scopes.has('wildflower/*.cruds')).toBe(true)
+      // The preset's narrower read+search rows are subsumed, not re-added.
+      expect(scopes.has('system/*.rs')).toBe(false)
+    })
+  })
+
+  test('falls back to the preset when the session read fails', async () => {
+    // A 401 (no session — the plain sign-in path), an older server without the
+    // route, or a network blip must leave a working sign-in screen, not an error
+    // one: the screen behaves exactly as it did before the endpoint existed.
+    let capturedInput: unknown
+    layerHolder.current = makeClientLayer(
+      {
+        DeviceAuthorization: (input) => {
+          capturedInput = input
+          return Effect.succeed(DEVICE_AUTH_RESPONSE)
+        },
+        TokenExchange: () => PENDING_FOREVER,
+      },
+      { GetSession: () => Effect.fail({ error: 'Unauthorized' }) }
+    )
+
+    await withLocation('?requestScopes=wildflower%2FGrant.d', async () => {
+      render(withTokenStore(<NeedsAuthMessage />))
+      await startSignIn()
+
+      await waitFor(
+        () => {
+          expect(capturedInput).toBeDefined()
+        },
+        { timeout: 2000 }
+      )
+      const scopes = capturedScopes(capturedInput)
+      expect(scopes.has('wildflower/Grant.d')).toBe(true)
+      expect(scopes.has('system/*.rs')).toBe(true)
+      expect(scopes.has('wildflower/*.rs')).toBe(true)
+    })
+  })
+
+  test('names a session scope the client may no longer request', async () => {
+    // The allowed set can narrow after a token was minted. Re-requesting such a
+    // scope would make `/oauth/device_authorization` reject the whole request, so
+    // it stays out of the payload — but it is a real loss, so the user is told
+    // rather than left to discover it at the next 403.
+    scopesHolder.current = 'wildflower/*.cruds'
+    let capturedInput: unknown
+    layerHolder.current = makeClientLayer(
+      {
+        DeviceAuthorization: (input) => {
+          capturedInput = input
+          return Effect.succeed(DEVICE_AUTH_RESPONSE)
+        },
+        TokenExchange: () => PENDING_FOREVER,
+      },
+      { GetSession: () => Effect.succeed({ scopes: ['wildflower/*.cruds', 'system/*.rs'] }) }
+    )
+
+    await withLocation('', async () => {
+      render(withTokenStore(<NeedsAuthMessage />))
+      await waitFor(
+        () => {
+          expect(screen.getByText('system/*.rs')).toBeTruthy()
+        },
+        { timeout: 2000 }
+      )
+      await startSignIn()
+
+      await waitFor(
+        () => {
+          expect(capturedInput).toBeDefined()
+        },
+        { timeout: 2000 }
+      )
+      const scopes = capturedScopes(capturedInput)
+      expect(scopes.has('wildflower/*.cruds')).toBe(true)
+      expect(scopes.has('system/*.rs')).toBe(false)
+    })
   })
 })
 

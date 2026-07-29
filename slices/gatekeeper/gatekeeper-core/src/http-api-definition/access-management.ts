@@ -78,6 +78,16 @@ const HttpRequestNotFoundSchema = Schema.Struct({
 })
 
 /**
+ * What the caller's *current* access token carries — just the `scope` claim,
+ * already split into scopes. Not the whole claim set: `jti`/`iss`/`aud`/`patient`
+ * are session plumbing no caller has asked for, and leaving them off keeps
+ * `GetSession` from drifting into a general introspection endpoint.
+ */
+const SessionSchema = Schema.Struct({
+  scopes: Schema.Array(Schema.String),
+})
+
+/**
  * Owner-only operator surface. Every endpoint here carries
  * `RequireAuthMiddleware` so the slice's `-core` layer cannot ship them
  * unauthenticated by accident.
@@ -92,8 +102,13 @@ const HttpRequestNotFoundSchema = Schema.Struct({
  * - `ApproveRequest` / `DenyRequest`: Owner decision for a parked FHIR
  *   request — the server resumes the parked request once the status
  *   flips.
+ * - `GetSession`: the caller reading back *their own* token's scopes. The
+ *   odd one out — self-service rather than operator, and deliberately
+ *   ungated by any scope on the server, since the sessions that need it
+ *   most are the under-scoped ones an admin gate would lock out.
  */
 const httpApiGroup = HttpApiGroup.make('access-management', { topLevel: false })
+  .add(HttpApiEndpoint.get('GetSession', '/session').addSuccess(SessionSchema))
   .add(HttpApiEndpoint.get('ListGrants', '/grants').addSuccess(GrantsSchema))
   .add(
     HttpApiEndpoint.get('GetGrant', '/grants/:id')
@@ -123,10 +138,11 @@ const httpApiGroup = HttpApiGroup.make('access-management', { topLevel: false })
       .setPath(Schema.Struct({ id: Schema.String }))
       .addError(HttpRequestNotFoundSchema, { status: 404 })
   )
-  // Every endpoint on this surface is scope-gated on the server (a `Scoped<…>`
+  // Every *operator* endpoint here is scope-gated on the server (a `Scoped<…>`
   // capability per operation), so the shared `403 InsufficientScope` is declared
   // once at the group level rather than per endpoint — the generated client then
   // decodes it (naming the missing scopes) instead of an opaque `ResponseError`.
+  // `GetSession` is authN-only and simply never returns it.
   .addError(InsufficientScopeSchema, { status: 403 })
   .middleware(RequireAuthMiddleware)
   .prefix('/access')
@@ -139,4 +155,5 @@ export {
   HttpRequestSchema,
   HttpRequestsSchema,
   HttpRequestNotFoundSchema,
+  SessionSchema,
 }

@@ -17,6 +17,7 @@ import {
   useGatekeeperFirstPartyClientId,
   useGatekeeperLocalGrantedScopes,
   useGatekeeperRuntimeLayer,
+  type RuntimeLayer,
 } from '../router-context.ts'
 import deviceCodeStyles from '../styles/device-code.module.css'
 import pageLayout from '../styles/page-layout.module.css'
@@ -40,10 +41,15 @@ const DEVICE_GRANT_TYPE = 'urn:ietf:params:oauth:grant-type:device_code'
 const DEFAULT_ALLOWED_SCOPES = 'system/*.cruds wildflower/*.cruds'
 
 /**
- * The happy-path request the setup form starts from: read + search on every record
- * across all patients, plus the Wildflower admin surface — the most common device
- * grant, pre-filled so the default flow is name-it-and-go rather than rule-by-rule
- * assembly. Only seeded when the client's allowed set actually covers it.
+ * The happy-path request to start from when there is no session to carry over:
+ * read + search on every record across all patients, plus the Wildflower admin
+ * surface — the most common device grant, pre-filled so first-time sign-in is
+ * name-it-and-go rather than rule-by-rule assembly. Only seeded when the client's
+ * allowed set actually covers it.
+ *
+ * A signed-in caller stepping up is seeded from `GET /access/session` instead
+ * ({@link useCurrentSessionScopes}); a fixed preset there would hand back a
+ * *narrower* grant than the one the user already had.
  */
 const PRESET_REQUEST_SCOPES = ['system/*.rs', 'wildflower/*.rs']
 
@@ -106,6 +112,44 @@ const partitionByGrantability = (
   return { grantable, ungrantable }
 }
 
+/**
+ * The scopes the caller's session already holds, read once from
+ * `GET /access/session` — or `null` while that read is outstanding and whenever
+ * there is no session to read at all (the plain sign-in path, where it 401s).
+ *
+ * That endpoint is authN-only on purpose: the callers who need it most are the
+ * *under*-scoped sessions arriving from a `403 InsufficientScope`, whom an admin
+ * scope gate would lock out of reading their own scopes.
+ *
+ * Failure is never surfaced. This read only ever *improves* the pre-fill —
+ * without it the screen falls back to {@link PRESET_REQUEST_SCOPES}, exactly as
+ * it behaved before the endpoint existed — so a 401, an older server, or a
+ * network blip must not turn a working sign-in screen into an error one.
+ * `catchAllCause`, not `catchAll`, so a defect is swallowed on the same terms.
+ */
+const useCurrentSessionScopes = (layer: RuntimeLayer): readonly string[] | null => {
+  const [scopes, setScopes] = useState<readonly string[] | null>(null)
+  useEffect(() => {
+    const fiber = Effect.runFork(
+      Effect.gen(function* () {
+        const client = yield* GatekeeperHttpApiClient
+        const session = yield* client['access-management'].GetSession()
+        yield* Effect.sync(() => {
+          setScopes(session.scopes)
+        })
+      }).pipe(
+        Effect.catchAllCause(() => Effect.void),
+        Effect.provide(layer)
+      )
+    )
+    // Interrupt on unmount so a navigation mid-read can't set state on a gone tree.
+    return () => {
+      void Effect.runPromise(Fiber.interrupt(fiber))
+    }
+  }, [layer])
+  return scopes
+}
+
 // Decoding gives literal `error` codes so downstream `Match.when({error: '…'})` is exhaustive.
 const OAuthErrorSchema = Schema.Union(OAuth.OAuthError400Schema, OAuth.OAuthError401Schema)
 type OAuthErrorBody = Schema.Schema.Type<typeof OAuthErrorSchema>
@@ -146,9 +190,12 @@ const toErrorState = (error: unknown): DeviceFlowState =>
 /**
  * The device-login screen. On landing it shows a setup **form** — a device-name
  * field and the shared {@link ScopePicker} in `expandable` mode, seeded with the
- * {@link PRESET_REQUEST_SCOPES} happy path when the client's allowed set covers
- * it — so the user names the device and adjusts what to request before anything
- * hits the network. Only on "Start sign-in" does it run the RFC 8628
+ * caller's *current* scopes ({@link useCurrentSessionScopes}) or, with no session
+ * to read, the {@link PRESET_REQUEST_SCOPES} happy path — so the user names the
+ * device and adjusts what to request before anything hits the network. Seeding
+ * from the live session is what keeps a step-up from being a step *down*: the
+ * device flow mints a whole new grant, so whatever isn't requested is dropped.
+ * Only on "Start sign-in" does it run the RFC 8628
  * device-authorization flow: surface the `user_code`, poll `/oauth/token` until
  * approval, then write the token via the `AuthStateStore` provided by the
  * surrounding `<AuthStateProvider>` (resolved through {@link useAuthStateSetter})
@@ -206,30 +253,66 @@ const NeedsAuthMessage = (): JSX.Element => {
   // decides which pre-filled scopes may be asked for at all, and the reference
   // the picker's request below widens from.
   const envelope = useMemo(() => ScopeRequest.expandable({ requested: [], available }), [available])
-  // Which of the pre-filled scopes this client may ask for at all — see
+  // Which of the step-up scopes this client may ask for at all — see
   // {@link partitionByGrantability} for why the rest is named instead of requested.
+  // Kept separate from the carried-over set below because it, and only it, is
+  // what the "already selected" copy is about.
   const { grantable, ungrantable } = useMemo(
     () => partitionByGrantability(requestedScopes, envelope),
     [requestedScopes, envelope]
   )
+  const sessionScopes = useCurrentSessionScopes(layer)
+  // What the new grant carries over from the old one. The device flow mints a
+  // *whole new grant*, so anything the session held and this doesn't request is
+  // access the user silently loses on the way back — hence the session's own
+  // scopes, not a fixed preset. {@link PRESET_REQUEST_SCOPES} stands in only
+  // while the read is in flight and on the plain sign-in path, where there is no
+  // session to carry over from.
+  const { carriedOver, lostFromSession } = useMemo(() => {
+    if (sessionScopes === null) {
+      // Preset fallback: silently filtered, never announced. It is this screen's
+      // own suggestion, so a client that can't grant it has nothing to report.
+      const { grantable: presetGrantable } = partitionByGrantability(
+        PRESET_REQUEST_SCOPES,
+        envelope
+      )
+      return { carriedOver: presetGrantable, lostFromSession: [] as readonly string[] }
+    }
+    const split = partitionByGrantability(sessionScopes, envelope)
+    return { carriedOver: split.grantable, lostFromSession: split.ungrantable }
+  }, [sessionScopes, envelope])
 
-  // The expandable picker request: seeded with whatever the step-up pre-filled
-  // (nothing on the plain sign-in path — the user builds it), grantable up to
-  // the client's allowed set.
-  const request = useMemo(
-    () => ScopeRequest.expandable({ requested: grantable, available }),
-    [grantable, available]
+  // Everything the request starts from, deduped: what the 403 named plus what
+  // the session already held.
+  const seeded = useMemo(
+    () => [...new Set([...grantable, ...carriedOver])],
+    [grantable, carriedOver]
   )
-  const [draft, setDraft] = useState<GrantDraftModel.GrantDraft>(() => {
-    // The read+search happy path (when the envelope covers it) *unioned* with the
-    // step-up scopes — the device flow mints a whole new grant, so requesting only
-    // the missing scopes would strip the access the session already had. Falls
-    // back to the empty draft, which the user builds within what's allowed.
-    const preset = GrantDraft.fromScopes(PRESET_REQUEST_SCOPES, null)
-    const presetScopes = ScopeRequest.isWithin(preset, request) ? PRESET_REQUEST_SCOPES : []
-    const seeded = GrantDraft.fromScopes([...grantable, ...presetScopes], null)
-    return ScopeRequest.isWithin(seeded, request) ? seeded : GrantDraft.initial(request)
-  })
+  // Named for the user, deduped: a step-up scope this client may not request,
+  // and — the case that costs the user something — a scope the session holds
+  // today that a since-narrowed allowed set can no longer re-request.
+  const unrequestable = useMemo(
+    () => [...new Set([...ungrantable, ...lostFromSession])],
+    [ungrantable, lostFromSession]
+  )
+
+  // The expandable picker request: seeded with the step-up pre-fill and the
+  // carried-over session scopes (on the plain sign-in path, just the preset),
+  // grantable up to the client's allowed set.
+  const request = useMemo(
+    () => ScopeRequest.expandable({ requested: seeded, available }),
+    [seeded, available]
+  )
+  const [draft, setDraft] = useState<GrantDraftModel.GrantDraft>(() =>
+    GrantDraft.fromScopes(seeded, null)
+  )
+  // The session read lands after first paint, so the draft is re-seeded when it
+  // does — but only while the user hasn't touched the picker yet, or the arriving
+  // scopes would wipe out edits made in the meantime.
+  const draftEdited = useRef(false)
+  useEffect(() => {
+    if (!draftEdited.current) setDraft(GrantDraft.fromScopes(seeded, null))
+  }, [seeded])
 
   // The forked flow, so an unmount mid-poll interrupts it (no orphan device code).
   const fiberRef = useRef<Fiber.RuntimeFiber<void, never> | null>(null)
@@ -322,13 +405,13 @@ const NeedsAuthMessage = (): JSX.Element => {
             The permissions the action you tried needs are already selected below.
           </p>
         ) : null}
-        {ungrantable.length > 0 ? (
+        {unrequestable.length > 0 ? (
           <p className={cn(pageLayoutStyles['error'], 'text-body-3')}>
             This application isn’t allowed to request{' '}
-            {ungrantable.map((scope, i) => (
+            {unrequestable.map((scope, i) => (
               <Fragment key={scope}>
                 <code>{scope}</code>
-                {i === ungrantable.length - 1 ? '' : ', '}
+                {i === unrequestable.length - 1 ? '' : ', '}
               </Fragment>
             ))}
             , so it can’t be included. An administrator has to widen the client’s allowed scopes
@@ -346,7 +429,10 @@ const NeedsAuthMessage = (): JSX.Element => {
           subjectName={deviceName.trim() === '' ? 'This device' : deviceName.trim()}
           request={request}
           draft={draft}
-          onDraftChange={setDraft}
+          onDraftChange={(next) => {
+            draftEdited.current = true
+            setDraft(next)
+          }}
           mode="expandable"
           phrasing="requesting"
           // The FHIR server's patient/ support is too weak to rely on, so a device request
