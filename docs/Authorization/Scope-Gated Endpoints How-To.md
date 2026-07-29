@@ -162,6 +162,46 @@ OpenAPI drift snapshot test fails. A surface with no `utoipa` documentation (e.g
 gatekeeper's `/access`, which isn't in any committed spec) still returns the 403
 at runtime via the extractor — only the TS declaration is needed there.
 
+## What the caller sees: the 403 surface and step-up
+
+Nothing further is needed per slice — the web app already turns a `403` into a
+user-facing surface — but it helps to know what the contract buys:
+
+- `wildflower-react/src/router-context.ts` recognises both 403 shapes: a
+  **declared** one decodes to `{ error: 'InsufficientScope', missingScopes }`; an
+  **undeclared** one arrives as a bare `403` `ResponseError` with no decoded body.
+  Either way TanStack Query skips its retries (the token's scopes don't change
+  mid-session, so re-sending only delays the surface).
+- `renderScopeError` (wired into `ErrorBodyRendererContext` app-wide) renders
+  `scopes-react`'s `AuthorizationFailure`, which names each missing scope in plain
+  language (`wildflower/Grant.d` → "delete Grants").
+- **Step-up:** when the 403 named scopes, the surface offers "Request access",
+  which navigates to device login via `buildStepUpTarget(missingScopes, href)`.
+  The `?requestScopes=` param pre-fills the scope picker there with those scopes
+  **unioned with whatever the caller's current token holds** — the device flow
+  mints a whole new grant, so requesting only the missing scopes would strip what
+  the session already had — and `?returnTo=` brings the user back to the denied
+  page on grant, where the loader re-runs the action against the new grant.
+- The current scopes come from `GET /access/session`, which reports back the
+  caller's own verified `scope` claim. It is **authN-only** — no `Scoped<…>`
+  capability — precisely because the callers who need it are the under-scoped
+  sessions arriving from a 403, whom a scope gate would lock out of reading their
+  own scopes. When that read fails (a 401 on the plain sign-in path, an older
+  server), the screen falls back to its fixed read+search preset, so the endpoint
+  is an improvement to the pre-fill rather than a dependency of the flow.
+
+The one thing a slice controls here is whether the missing scopes can be named at
+all: declare the 403 (above) and the surface reads them out of the body; skip it
+and the user gets a correct but generic denial with no step-up offer.
+
+Because `/oauth/device_authorization` rejects the **whole** request with
+`invalid_scope` if any requested scope falls outside the client's `allowed_scopes`,
+a gated endpoint that requires a scope the first-party client isn't allowed to ask
+for is not steppable-up: the device-login screen names it as unrequestable instead
+of putting it in the request. Keep required scopes inside the client's allowed set
+(`tauri-shared-config.json`'s `local_granted_scopes`, which seeds them) or the
+step-up path dead-ends for that endpoint.
+
 ## Two flavours of gate
 
 - **Fixed capability** (gatekeeper's `/access`): the scope is constant, so

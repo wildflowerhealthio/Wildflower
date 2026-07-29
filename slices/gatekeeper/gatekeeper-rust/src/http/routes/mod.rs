@@ -10,4 +10,5 @@ pub mod logout;
 pub mod oauth;
 pub mod oauth_consents;
 pub mod revocations;
+pub mod session;
 pub mod well_known_jwks;

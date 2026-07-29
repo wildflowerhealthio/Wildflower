@@ -3,7 +3,16 @@ export {
   gatekeeperSettingsItemsFragment,
 } from './settings-fragments.ts'
 
-export { buildDeviceLoginTarget, DEVICE_LOGIN_ROUTE } from './device-login-route.ts'
+export {
+  buildDeviceLoginTarget,
+  buildStepUpTarget,
+  DEVICE_LOGIN_ROUTE,
+  // Exported for `wildflower-react`'s step-up test, which reads the params back
+  // off the router with the decoder the screen itself uses rather than a
+  // hand-rolled one — the point of that assertion.
+  parseDeviceLoginSearch,
+  parseRequestScopes,
+} from './device-login-route.ts'
 
 export {
   buildGatekeeperClientLayer,
