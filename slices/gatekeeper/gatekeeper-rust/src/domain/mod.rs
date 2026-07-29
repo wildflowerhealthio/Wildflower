@@ -43,6 +43,11 @@ pub mod oauth_error_code;
 // drift-tested against `gatekeeper-core/src/page-paths.ts`.
 pub mod page_paths;
 pub mod refresh_token;
+// The retention windows for the three accumulating tables plus the sweep that
+// applies them — the policy half of the startup/daily reaper `setup_gatekeeper`
+// spawns. Lives here (not in `db`) because the windows are a domain decision;
+// the store only takes cutoffs.
+pub mod retention;
 // The logout session-token revoke over the `Revocation` port.
 pub(crate) mod session;
 pub mod signing_key;

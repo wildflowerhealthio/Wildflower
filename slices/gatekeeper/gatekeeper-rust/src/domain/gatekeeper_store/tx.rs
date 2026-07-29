@@ -125,13 +125,21 @@ pub trait GatekeeperTx {
     /// be decoded as `String`.
     fn oldest_pending_device_user_code(&mut self) -> Result<Option<String>, GatekeeperError>;
 
-    /// Persist a freshly-constructed `AuthorizationRequest`, opportunistically
-    /// pruning expired rows first.
+    /// Persist a freshly-constructed `AuthorizationRequest`.
+    ///
+    /// Bulk reclamation of expired rows belongs to
+    /// [`domain::retention::purge_expired`](crate::domain::retention::purge_expired),
+    /// not here — an insert leaves unrelated expired rows alone so the retention
+    /// window is the only thing that decides when they go. Implementations may
+    /// still clear an *already-expired* `status = 'pending'` row holding this
+    /// request's `user_code`, since that row occupies the partial unique index
+    /// this insert would otherwise collide with.
     ///
     /// # Errors
     ///
-    /// [`GatekeeperError::Infrastructure`] if the prune or insert fails (for
-    /// example a unique-constraint violation on the id).
+    /// [`GatekeeperError::Infrastructure`] if the insert fails (for example a
+    /// unique-constraint violation on the id, or a collision with a *live*
+    /// pending request holding the same `user_code`).
     fn insert_authorization_request(
         &mut self,
         request: &AuthorizationRequest,
@@ -218,6 +226,51 @@ pub trait GatekeeperTx {
     /// unique-constraint violation on the code).
     fn issue_authorization_code(&mut self, code: &AuthorizationCode)
         -> Result<(), GatekeeperError>;
+
+    // ----- retention ------------------------------------------------------
+    //
+    // The three reclaiming deletes, each taking an already-computed *cutoff*
+    // rather than `now` — the windows belong to `domain::retention`, which
+    // composes these in one transaction, not to a primitive.
+
+    /// Delete every authorization request whose `expires_at` fell before
+    /// `cutoff`, returning how many rows went.
+    ///
+    /// # Errors
+    ///
+    /// [`GatekeeperError::Infrastructure`] if the delete fails.
+    fn delete_authorization_requests_expired_before(
+        &mut self,
+        cutoff: DateTime<Utc>,
+    ) -> Result<usize, GatekeeperError>;
+
+    /// Delete every authorization code whose `expires_at` fell before `cutoff`,
+    /// returning how many rows went. Redemption already deletes a code as it is
+    /// used, so this reaps only abandoned ones.
+    ///
+    /// # Errors
+    ///
+    /// [`GatekeeperError::Infrastructure`] if the delete fails.
+    fn delete_authorization_codes_expired_before(
+        &mut self,
+        cutoff: DateTime<Utc>,
+    ) -> Result<usize, GatekeeperError>;
+
+    /// Delete every refresh-token family whose absolute deadline fell before
+    /// `cutoff`, together with the tokens descended from it, returning how many
+    /// **families** went — the counterpart to
+    /// [`Self::expire_refresh_token_family`], which keeps the lineage readable.
+    /// Self-contained: children before parents in its own (possibly nested)
+    /// transaction, so the foreign key holds either way.
+    ///
+    /// # Errors
+    ///
+    /// [`GatekeeperError::Infrastructure`] if the transaction or either delete
+    /// fails.
+    fn delete_refresh_token_families_expired_before(
+        &mut self,
+        cutoff: DateTime<Utc>,
+    ) -> Result<usize, GatekeeperError>;
 
     // ----- refresh-token families ----------------------------------------
 

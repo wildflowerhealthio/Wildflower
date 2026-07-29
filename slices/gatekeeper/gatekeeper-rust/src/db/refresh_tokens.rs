@@ -230,5 +230,39 @@ pub(super) fn expire_refresh_token_families_for_authorization_code(
     })
 }
 
+/// Delete every refresh-token family whose absolute deadline fell before
+/// `cutoff`, along with the `refresh_tokens` rows descended from them, and
+/// return how many **families** were removed. Children first, so the delete
+/// passes under `PRAGMA foreign_keys = ON`.
+///
+/// The one place lineage is destroyed rather than expired in place — the
+/// counterpart to [`expire_refresh_token_family`], which keeps it readable.
+/// `cutoff` is the *retention* cutoff, not `now`; the window is the caller's
+/// (`domain::retention::purge_expired`).
+pub(super) fn delete_refresh_token_families_expired_before(
+    conn: &mut SqliteConnection,
+    cutoff: DateTime<Utc>,
+) -> Result<usize, GatekeeperError> {
+    conn.transaction(|conn| {
+        diesel::delete(
+            refresh_tokens::table.filter(
+                refresh_tokens::family_id.eq_any(
+                    refresh_token_families::table
+                        .filter(refresh_token_families::expires_at.lt(cutoff))
+                        .select(refresh_token_families::family_id),
+                ),
+            ),
+        )
+        .execute(conn)?;
+        diesel::delete(
+            refresh_token_families::table.filter(refresh_token_families::expires_at.lt(cutoff)),
+        )
+        .execute(conn)
+    })
+    .map_err(|e: diesel::result::Error| {
+        GatekeeperError::infrastructure("delete_refresh_token_families_expired_before failed", e)
+    })
+}
+
 #[cfg(test)]
 mod tests;

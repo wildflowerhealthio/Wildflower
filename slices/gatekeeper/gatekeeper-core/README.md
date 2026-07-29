@@ -43,6 +43,12 @@ because the wire schemas in this package mirror their rows.
 - `httpRequests` — observability/gating ledger for inbound proxied
   requests.
 
+`authorizationRequests`, `authorizationCodes`, and the refresh-token
+lineage are the three that would otherwise only grow — a background sweep
+reclaims them a fixed window past their own `expires_at` (7 days, 7 days,
+and 90 days respectively). See the
+[Retention Explanation](../docs/Retention%20Explanation.md).
+
 ## Routes
 
 - `/.well-known/jwks.json` — public JWKs for token verification.

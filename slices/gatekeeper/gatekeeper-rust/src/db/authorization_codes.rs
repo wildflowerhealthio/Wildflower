@@ -5,6 +5,7 @@
 //! to, each running on a connection the store has already checked out of the
 //! pool.
 
+use chrono::{DateTime, Utc};
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 
@@ -67,12 +68,29 @@ pub(super) fn issue_authorization_code(
     Ok(())
 }
 
+/// Delete every authorization code that expired before `cutoff`, returning how
+/// many rows went. Redemption already deletes a code as it is used
+/// ([`redeem_authorization_code`]), so this only reaps abandoned ones.
+///
+/// `cutoff` is the *retention* cutoff, not `now`; the window is the caller's
+/// (`domain::retention::purge_expired`).
+pub(super) fn delete_authorization_codes_expired_before(
+    conn: &mut SqliteConnection,
+    cutoff: DateTime<Utc>,
+) -> Result<usize, GatekeeperError> {
+    diesel::delete(authorization_codes::table.filter(authorization_codes::expires_at.lt(cutoff)))
+        .execute(conn)
+        .map_err(|e| {
+            GatekeeperError::infrastructure("delete_authorization_codes_expired_before failed", e)
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::db::test_support::{arb_timestamp, arb_url};
     use crate::db::SqliteGatekeeperStore;
-    use crate::domain::GatekeeperStore as _;
+    use crate::domain::{GatekeeperStore as _, GatekeeperTx as _};
     use proptest::prelude::*;
 
     fn arb_authorization_code() -> impl Strategy<Value = AuthorizationCode> {
@@ -157,6 +175,54 @@ mod tests {
                 .is_none(),
             "second redemption must lose",
         );
+    }
+
+    /// The retention delete is a strict `<` on the cutoff the policy hands
+    /// down: a code past it goes, one still inside the window stays, and an
+    /// unexpired code is never in range. Only abandoned codes ever reach here —
+    /// redemption deletes the row as it consumes it.
+    #[test]
+    fn delete_expired_codes_respects_the_cutoff() {
+        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+        let now = chrono::Utc::now();
+        let sample = |name: &str, expires_at| AuthorizationCode {
+            code: name.to_string(),
+            request_id: format!("req-{name}"),
+            client_id: "client-a".to_string(),
+            redirect_uri: url::Url::parse("https://example.com/cb").expect("url"),
+            code_challenge: "c".repeat(43),
+            granted_scopes: vec!["read".to_string()],
+            patient: None,
+            issued_at: now - chrono::Duration::minutes(1),
+            expires_at,
+        };
+        for code in [
+            sample("old", now - chrono::Duration::days(8)),
+            sample("recent", now - chrono::Duration::days(6)),
+            sample("live", now + chrono::Duration::minutes(1)),
+        ] {
+            store.issue_authorization_code(&code).expect("issue");
+        }
+
+        let purged = store
+            .with_connection(|tx| {
+                tx.delete_authorization_codes_expired_before(now - chrono::Duration::days(7))
+            })
+            .expect("delete");
+
+        assert_eq!(purged, 1);
+        assert!(store
+            .authorization_code_by_request_id("req-old")
+            .expect("query")
+            .is_none());
+        assert!(store
+            .authorization_code_by_request_id("req-recent")
+            .expect("query")
+            .is_some());
+        assert!(store
+            .authorization_code_by_request_id("req-live")
+            .expect("query")
+            .is_some());
     }
 
     /// The [`UrlText`](crate::db::shared::UrlText) mapping on `redirect_uri` rejects

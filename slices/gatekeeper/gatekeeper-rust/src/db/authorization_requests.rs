@@ -211,18 +211,22 @@ pub(super) fn insert_authorization_request(
 ) -> Result<(), GatekeeperError> {
     let as_infrastructure_error =
         |e| GatekeeperError::infrastructure("insert_authorization_request failed", e);
-    // Opportunistically prune expired requests before inserting, so a
-    // caller hitting /authorize or /device_authorization can't grow the
-    // table without bound — nothing else transitions abandoned rows out,
-    // and there is no background reaper. Best-effort cleanup keyed on the
-    // 5-minute request TTL; the prune runs first so it also clears a stale
-    // row that would otherwise collide on the pending-user_code index. Both
-    // statements run on the one connection the store checked out.
-    diesel::delete(
-        authorization_requests::table.filter(authorization_requests::expires_at.lt(Utc::now())),
-    )
-    .execute(conn)
-    .map_err(as_infrastructure_error)?;
+    // Bulk reclamation belongs to `domain::retention::purge_expired`. This
+    // predicate mirrors the partial unique index (expired *and* still pending)
+    // so it clears only rows that could actually collide with the insert below.
+    // A guard on that invariant, not a load-bearing step — `generate_unique_user_code`
+    // already regenerates away from any row holding the candidate. See
+    // `slices/gatekeeper/docs/Retention Explanation.md`.
+    if let Some(user_code) = request.user_code.as_deref() {
+        diesel::delete(
+            authorization_requests::table
+                .filter(authorization_requests::user_code.eq(user_code))
+                .filter(authorization_requests::status.eq(RequestStatus::Pending))
+                .filter(authorization_requests::expires_at.lt(Utc::now())),
+        )
+        .execute(conn)
+        .map_err(as_infrastructure_error)?;
+    }
     diesel::insert_into(authorization_requests::table)
         .values(Row::from(request))
         .execute(conn)
@@ -319,12 +323,31 @@ pub(super) fn record_device_poll(
     Ok(())
 }
 
+/// Delete every authorization request that expired before `cutoff`, returning
+/// how many rows went. Nothing transitions an abandoned request out of
+/// `pending`, so this is the only thing that reclaims one.
+///
+/// `cutoff` is the *retention* cutoff, not `now`; the window is the caller's
+/// (`domain::retention::purge_expired`).
+pub(super) fn delete_authorization_requests_expired_before(
+    conn: &mut SqliteConnection,
+    cutoff: DateTime<Utc>,
+) -> Result<usize, GatekeeperError> {
+    diesel::delete(
+        authorization_requests::table.filter(authorization_requests::expires_at.lt(cutoff)),
+    )
+    .execute(conn)
+    .map_err(|e| {
+        GatekeeperError::infrastructure("delete_authorization_requests_expired_before failed", e)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::db::test_support::{arb_opt_timestamp, arb_timestamp, arb_url};
     use crate::db::SqliteGatekeeperStore;
-    use crate::domain::GatekeeperStore as _;
+    use crate::domain::{GatekeeperStore as _, GatekeeperTx as _};
     use proptest::prelude::*;
 
     fn arb_scopes() -> impl Strategy<Value = Vec<String>> {
@@ -430,30 +453,171 @@ mod tests {
         }
     }
 
-    // insert_authorization_request opportunistically prunes expired rows, so a
-    // caller hitting /authorize or /device_authorization can't grow the table
-    // without bound (C16).
+    // Bulk reclamation moved to the retention sweep (#164), so an unrelated
+    // insert no longer destroys the audit trail: an expired row survives until
+    // it ages past the 7-day window. Previously *every* expired row went on the
+    // next insert, which made a retention window unenforceable.
     #[test]
-    fn insert_prunes_expired_authorization_requests() {
+    fn insert_leaves_unrelated_expired_requests_for_the_sweep() {
         let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
         let mut expired = device_request_with_status("expired-1", RequestStatus::Pending);
         expired.expires_at = Utc::now() - chrono::Duration::minutes(1);
         store
             .insert_authorization_request(&expired)
             .expect("insert expired");
-        // The next insert prunes the now-expired row.
+
         store
             .insert_authorization_request(&device_request_with_status(
                 "fresh-1",
                 RequestStatus::Pending,
             ))
             .expect("insert fresh");
+
+        assert!(
+            store
+                .authorization_request_by_id("expired-1")
+                .expect("query")
+                .is_some(),
+            "an unrelated expired row is the sweep's to reclaim, not this insert's",
+        );
         assert!(store
-            .authorization_request_by_id("expired-1")
+            .authorization_request_by_id("fresh-1")
+            .expect("query")
+            .is_some());
+    }
+
+    // The one thing the insert still prunes: an expired row holding the same
+    // `user_code` at `status = 'pending'`. Nothing transitions an abandoned
+    // request out of `pending`, so such a row sits in the partial
+    // pending-user_code unique index and would make this insert a hard error —
+    // and it may be up to a sweep interval away from being reclaimed.
+    #[test]
+    fn insert_clears_an_expired_row_holding_the_same_user_code() {
+        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+        let mut expired = device_request("dev-stale", "SAME-CODE", RequestStatus::Pending);
+        expired.expires_at = Utc::now() - chrono::Duration::minutes(1);
+        store
+            .insert_authorization_request(&expired)
+            .expect("insert expired");
+
+        let colliding = device_request("dev-new", "SAME-CODE", RequestStatus::Pending);
+        store
+            .insert_authorization_request(&colliding)
+            .expect("the colliding insert must not hit the unique index");
+
+        assert!(store
+            .authorization_request_by_id("dev-stale")
             .expect("query")
             .is_none());
         assert!(store
-            .authorization_request_by_id("fresh-1")
+            .authorization_request_by_id("dev-new")
+            .expect("query")
+            .is_some());
+    }
+
+    // ...but only *expired* rows: a live pending request holding the code is
+    // never silently dropped to make room. A genuine collision on a live code
+    // stays a hard error, exactly as before.
+    #[test]
+    fn insert_never_drops_a_live_row_holding_the_same_user_code() {
+        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+        let live = device_request("dev-live", "SAME-CODE", RequestStatus::Pending);
+        store
+            .insert_authorization_request(&live)
+            .expect("insert live");
+
+        let colliding = device_request("dev-new", "SAME-CODE", RequestStatus::Pending);
+        assert!(
+            store.insert_authorization_request(&colliding).is_err(),
+            "colliding with a live pending user_code must stay a hard error",
+        );
+        assert!(store
+            .authorization_request_by_id("dev-live")
+            .expect("query")
+            .is_some());
+    }
+
+    // ...and only *pending* ones. A terminal row is not in the partial unique
+    // index (`WHERE status = 'pending' AND user_code IS NOT NULL`), so it can't
+    // collide with this insert — dropping it would buy nothing and would cut the
+    // 7-day retention window short for a row the sweep is supposed to own.
+    #[test]
+    fn insert_leaves_an_expired_terminal_row_holding_the_same_user_code() {
+        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+        for (id, status) in [
+            ("dev-denied", RequestStatus::Denied),
+            ("dev-approved", RequestStatus::Approved),
+            ("dev-expired", RequestStatus::Expired),
+        ] {
+            let mut terminal = device_request(id, "SAME-CODE", status);
+            terminal.expires_at = Utc::now() - chrono::Duration::minutes(1);
+            store
+                .insert_authorization_request(&terminal)
+                .expect("insert expired terminal row");
+        }
+
+        let fresh = device_request("dev-new", "SAME-CODE", RequestStatus::Pending);
+        store
+            .insert_authorization_request(&fresh)
+            .expect("a terminal row must not block the insert");
+
+        for id in ["dev-denied", "dev-approved", "dev-expired"] {
+            assert!(
+                store
+                    .authorization_request_by_id(id)
+                    .expect("query")
+                    .is_some(),
+                "{id} is the sweep's to reclaim, not this insert's",
+            );
+        }
+        assert!(store
+            .authorization_request_by_id("dev-new")
+            .expect("query")
+            .is_some());
+    }
+
+    // The retention delete is a strict `<` on the cutoff the policy hands down:
+    // rows past it go, rows inside it and live rows stay.
+    #[test]
+    fn delete_expired_requests_respects_the_cutoff() {
+        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+        let mut old = device_request("dev-old", "OLD-0000", RequestStatus::Pending);
+        old.expires_at = Utc::now() - chrono::Duration::days(8);
+        store
+            .insert_authorization_request(&old)
+            .expect("insert old");
+        let mut recent = device_request("dev-recent", "REC-0000", RequestStatus::Pending);
+        recent.expires_at = Utc::now() - chrono::Duration::days(6);
+        store
+            .insert_authorization_request(&recent)
+            .expect("insert recent");
+        store
+            .insert_authorization_request(&device_request(
+                "dev-live",
+                "LIV-0000",
+                RequestStatus::Pending,
+            ))
+            .expect("insert live");
+
+        let purged = store
+            .with_connection(|tx| {
+                tx.delete_authorization_requests_expired_before(
+                    Utc::now() - chrono::Duration::days(7),
+                )
+            })
+            .expect("delete");
+
+        assert_eq!(purged, 1);
+        assert!(store
+            .authorization_request_by_id("dev-old")
+            .expect("query")
+            .is_none());
+        assert!(store
+            .authorization_request_by_id("dev-recent")
+            .expect("query")
+            .is_some());
+        assert!(store
+            .authorization_request_by_id("dev-live")
             .expect("query")
             .is_some());
     }

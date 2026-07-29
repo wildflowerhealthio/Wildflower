@@ -170,6 +170,13 @@ const OWNER_TOKEN_REMINT_INTERVAL: std::time::Duration = std::time::Duration::fr
 /// rejected by expiry validation regardless, so this only reclaims space.
 const REVOCATION_PURGE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
 
+/// How often the background sweep reclaims gatekeeper rows past their retention
+/// window (see [`domain::retention`]). Same cadence as
+/// [`REVOCATION_PURGE_INTERVAL`], and far finer than the coarsest window it
+/// enforces (90 days), so a row is never retained much longer than the policy
+/// says.
+const RETENTION_SWEEP_INTERVAL: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
+
 /// How often the background reaper re-runs the popup-head query so the
 /// watch channel drops a row whose `expires_at` has passed without any
 /// HTTP mutation arriving to trigger a republish. Picked well under the
@@ -284,6 +291,9 @@ pub fn setup_gatekeeper(
     // the row does.
     ports::DeviceUserCodePublisher::republish_active(state.as_ref());
     spawn_device_consent_reaper(state.clone());
+    // Reclaim gatekeeper rows past their retention window: once at startup, then
+    // daily. Spawned before the re-minter, which consumes `store`.
+    spawn_retention_sweep(store.clone());
     // Keep the webview's owner-session token fresh: re-mint + republish inside
     // the (now-short) owner-token TTL. See #269.
     spawn_owner_token_reminter(
@@ -363,6 +373,49 @@ fn spawn_revocation_purge(revocation_store: RevocationStore) {
                 }
                 Ok(_) => {}
                 Err(error) => tracing::warn!(%error, "revoked-jti sweep failed"),
+            }
+        }
+    });
+}
+
+/// Spawn the background sweep that deletes gatekeeper rows past their retention
+/// window — once at startup (the interval's immediate first tick), then every
+/// [`RETENTION_SWEEP_INTERVAL`]. The windows and their rationale live in
+/// [`domain::retention`].
+///
+/// Space reclamation only: every row it touches is already past `expires_at`
+/// and rejected by the read paths, so nothing here changes what the server
+/// honours. A failed sweep is logged and retried next tick.
+///
+/// Runs on [`spawn_blocking`](tokio::task::spawn_blocking) rather than a runtime
+/// worker: `pool.get()` alone can park for r2d2's 30s connection timeout, and the
+/// sweep then holds one write transaction across three unindexed full scans.
+fn spawn_retention_sweep(store: SqliteGatekeeperStore) {
+    tokio::spawn(async move {
+        let mut ticks = interval(RETENTION_SWEEP_INTERVAL);
+        // A long pause (suspend/resume) must not queue up catch-up sweeps —
+        // one tick after the gap reclaims the same rows anyway.
+        ticks.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        loop {
+            // First tick is immediate → startup sweep; then daily.
+            ticks.tick().await;
+            // Cheap clone (the pool is an `Arc` inside) so the loop keeps its own
+            // handle for the next tick.
+            let sweep_store = store.clone();
+            let swept = tokio::task::spawn_blocking(move || {
+                domain::retention::purge_expired(&sweep_store, Utc::now())
+            })
+            .await;
+            match swept {
+                Ok(Ok(purged)) if !purged.is_empty() => tracing::info!(
+                    refresh_token_families = purged.refresh_token_families,
+                    authorization_requests = purged.authorization_requests,
+                    authorization_codes = purged.authorization_codes,
+                    "swept gatekeeper rows past their retention window",
+                ),
+                Ok(Ok(_)) => {}
+                Ok(Err(error)) => tracing::warn!(%error, "gatekeeper retention sweep failed"),
+                Err(error) => tracing::warn!(%error, "gatekeeper retention sweep task failed"),
             }
         }
     });
