@@ -22,7 +22,7 @@ use crate::http::errors::InternalError;
 use crate::http::errors::{oauth_error_html, OAuthErrorKind};
 use crate::http::state::GatekeeperState;
 use crate::http::ServedOrigin;
-use crate::ports::{DeviceUserCodePublisher, SelfHostedRedirectTopology};
+use crate::ports::SelfHostedRedirectTopology;
 
 /// A `code_challenge` for the S256 method is the base64url SHA-256 digest:
 /// exactly 43 unpadded base64url characters (RFC 7636 §4.2).
@@ -241,12 +241,6 @@ pub(super) async fn handle_authorize_request(
         ttl: AUTHORIZATION_REQUEST_TTL,
     });
     state.store.insert_authorization_request(&request)?;
-    // `insert_authorization_request` opportunistically prunes every
-    // row past its `expires_at`, including pending device-code rows.
-    // Republish the head so the popup doesn't keep advertising a
-    // device-code `user_code` whose backing row this code-flow insert
-    // just swept out from under it.
-    DeviceUserCodePublisher::republish_active(state.as_ref());
 
     // Fully-pre-approved fast path: skip the Owner UI and 302 the user-agent
     // straight back to the client with a fresh code.

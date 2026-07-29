@@ -211,16 +211,17 @@ pub(super) fn insert_authorization_request(
 ) -> Result<(), GatekeeperError> {
     let as_infrastructure_error =
         |e| GatekeeperError::infrastructure("insert_authorization_request failed", e);
-    // Bulk reclamation belongs to `domain::retention::purge_expired`; what stays
-    // here is the narrow half a daily sweep can't cover — an already-expired row
-    // holding *this* request's `user_code` at `status = 'pending'` occupies the
-    // partial unique index and would make the insert below a hard error. Scoped
-    // to expired rows, so a live request is never silently dropped. See
+    // Bulk reclamation belongs to `domain::retention::purge_expired`. This
+    // predicate mirrors the partial unique index (expired *and* still pending)
+    // so it clears only rows that could actually collide with the insert below.
+    // A guard on that invariant, not a load-bearing step — `generate_unique_user_code`
+    // already regenerates away from any row holding the candidate. See
     // `slices/gatekeeper/docs/Retention Explanation.md`.
     if let Some(user_code) = request.user_code.as_deref() {
         diesel::delete(
             authorization_requests::table
                 .filter(authorization_requests::user_code.eq(user_code))
+                .filter(authorization_requests::status.eq(RequestStatus::Pending))
                 .filter(authorization_requests::expires_at.lt(Utc::now())),
         )
         .execute(conn)
@@ -532,6 +533,45 @@ mod tests {
         );
         assert!(store
             .authorization_request_by_id("dev-live")
+            .expect("query")
+            .is_some());
+    }
+
+    // ...and only *pending* ones. A terminal row is not in the partial unique
+    // index (`WHERE status = 'pending' AND user_code IS NOT NULL`), so it can't
+    // collide with this insert — dropping it would buy nothing and would cut the
+    // 7-day retention window short for a row the sweep is supposed to own.
+    #[test]
+    fn insert_leaves_an_expired_terminal_row_holding_the_same_user_code() {
+        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+        for (id, status) in [
+            ("dev-denied", RequestStatus::Denied),
+            ("dev-approved", RequestStatus::Approved),
+            ("dev-expired", RequestStatus::Expired),
+        ] {
+            let mut terminal = device_request(id, "SAME-CODE", status);
+            terminal.expires_at = Utc::now() - chrono::Duration::minutes(1);
+            store
+                .insert_authorization_request(&terminal)
+                .expect("insert expired terminal row");
+        }
+
+        let fresh = device_request("dev-new", "SAME-CODE", RequestStatus::Pending);
+        store
+            .insert_authorization_request(&fresh)
+            .expect("a terminal row must not block the insert");
+
+        for id in ["dev-denied", "dev-approved", "dev-expired"] {
+            assert!(
+                store
+                    .authorization_request_by_id(id)
+                    .expect("query")
+                    .is_some(),
+                "{id} is the sweep's to reclaim, not this insert's",
+            );
+        }
+        assert!(store
+            .authorization_request_by_id("dev-new")
             .expect("query")
             .is_some());
     }

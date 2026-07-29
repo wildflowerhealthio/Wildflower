@@ -386,6 +386,10 @@ fn spawn_revocation_purge(revocation_store: RevocationStore) {
 /// Space reclamation only: every row it touches is already past `expires_at`
 /// and rejected by the read paths, so nothing here changes what the server
 /// honours. A failed sweep is logged and retried next tick.
+///
+/// Runs on [`spawn_blocking`](tokio::task::spawn_blocking) rather than a runtime
+/// worker: `pool.get()` alone can park for r2d2's 30s connection timeout, and the
+/// sweep then holds one write transaction across three unindexed full scans.
 fn spawn_retention_sweep(store: SqliteGatekeeperStore) {
     tokio::spawn(async move {
         let mut ticks = interval(RETENTION_SWEEP_INTERVAL);
@@ -395,15 +399,23 @@ fn spawn_retention_sweep(store: SqliteGatekeeperStore) {
         loop {
             // First tick is immediate → startup sweep; then daily.
             ticks.tick().await;
-            match domain::retention::purge_expired(&store, Utc::now()) {
-                Ok(purged) if !purged.is_empty() => tracing::info!(
+            // Cheap clone (the pool is an `Arc` inside) so the loop keeps its own
+            // handle for the next tick.
+            let sweep_store = store.clone();
+            let swept = tokio::task::spawn_blocking(move || {
+                domain::retention::purge_expired(&sweep_store, Utc::now())
+            })
+            .await;
+            match swept {
+                Ok(Ok(purged)) if !purged.is_empty() => tracing::info!(
                     refresh_token_families = purged.refresh_token_families,
                     authorization_requests = purged.authorization_requests,
                     authorization_codes = purged.authorization_codes,
                     "swept gatekeeper rows past their retention window",
                 ),
-                Ok(_) => {}
-                Err(error) => tracing::warn!(%error, "gatekeeper retention sweep failed"),
+                Ok(Ok(_)) => {}
+                Ok(Err(error)) => tracing::warn!(%error, "gatekeeper retention sweep failed"),
+                Err(error) => tracing::warn!(%error, "gatekeeper retention sweep task failed"),
             }
         }
     });
